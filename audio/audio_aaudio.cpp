@@ -39,10 +39,10 @@ namespace Audio
 static aaudio_data_callback_result_t aaudio_callback(AAudioStream *stream, void *userData, void *audioData, int32_t numFrames);
 static void aaudio_error_callback(AAudioStream *stream, void *userData, aaudio_result_t error);
 
-struct AAudioBackend : Backend
+struct AAudioBackend final : Backend
 {
-	AAudioBackend(BackendCallback &callback)
-			: Backend(callback)
+	explicit AAudioBackend(BackendCallback *callback)
+		: Backend(callback)
 	{
 		device_alive.test_and_set();
 	}
@@ -140,12 +140,12 @@ bool AAudioBackend::update_buffer_size()
 			mix_buffers_ptr[c] = mix_buffers[c].data();
 		}
 
-		callback.set_backend_parameters(sample_rate, num_channels, size_t(frames_per_callback));
+		callback->set_backend_parameters(sample_rate, num_channels, size_t(frames_per_callback));
 	}
 
 	// Set initial latency estimate.
 	last_latency = double(AAudioStream_getBufferSizeInFrames(stream)) * inv_sample_rate;
-	callback.set_latency_usec(uint32_t(last_latency * 1e6));
+	callback->set_latency_usec(uint32_t(last_latency * 1e6));
 	return true;
 }
 
@@ -234,6 +234,12 @@ bool AAudioBackend::reinit()
 
 bool AAudioBackend::init(float, unsigned channels)
 {
+	if (!callback)
+	{
+		LOGE("AAudio does not support push backend yet.\n");
+		return false;
+	}
+
 	if (!create_stream(0.0f, channels))
 		return false;
 	if (!update_buffer_size())
@@ -281,7 +287,7 @@ void AAudioBackend::thread_callback(void *data, int32_t numFrames) noexcept
 
 			// Interpolate latency over time for a smoother result.
 			last_latency = 0.95 * last_latency + 0.05 * latency;
-			callback.set_latency_usec(uint32_t(last_latency * 1e6));
+			callback->set_latency_usec(uint32_t(last_latency * 1e6));
 
 			//LOGI("Measured latency: %.3f ms\n", last_latency * 1000.0);
 		}
@@ -302,7 +308,7 @@ void AAudioBackend::thread_callback(void *data, int32_t numFrames) noexcept
 	{
 		auto to_render = std::min(numFrames, frames_per_callback);
 
-		callback.mix_samples(mix_buffers_ptr, size_t(to_render));
+		callback->mix_samples(mix_buffers_ptr, size_t(to_render));
 
 		// Deal with whatever format AAudio wants.
 		// Convert from deinterleaved F32 to whatever.
@@ -356,7 +362,8 @@ void AAudioBackend::heartbeat()
 		if (stream)
 			AAudioStream_close(stream);
 		stream = nullptr;
-		callback.on_backend_stop();
+		if (callback)
+			callback->on_backend_stop();
 
 		if (!reinit())
 		{
@@ -374,7 +381,8 @@ bool AAudioBackend::start()
 	if (!stream)
 		return false;
 
-	callback.on_backend_start();
+	if (callback)
+		callback->on_backend_start();
 	frame_count = 0;
 	old_underrun_count = 0;
 
@@ -420,7 +428,8 @@ bool AAudioBackend::stop()
 		return false;
 	}
 
-	callback.on_backend_stop();
+	if (callback)
+		callback->on_backend_stop();
 	is_active = false;
 	return true;
 }
@@ -432,7 +441,7 @@ AAudioBackend::~AAudioBackend()
 		AAudioStream_close(stream);
 }
 
-Backend *create_aaudio_backend(BackendCallback &callback, float sample_rate, unsigned channels)
+Backend *create_aaudio_backend(BackendCallback *callback, float sample_rate, unsigned channels)
 {
 	if (android_api_version < 27) // Android 8.1.0
 	{

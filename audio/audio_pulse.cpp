@@ -33,17 +33,21 @@ namespace Granite
 {
 namespace Audio
 {
-struct Pulse : Backend
+struct Pulse final : Backend
 {
-	Pulse(BackendCallback &callback_)
+	explicit Pulse(BackendCallback *callback_)
 		: Backend(callback_)
 	{
 	}
 
-	~Pulse();
+	~Pulse() override;
+
 	bool init(float sample_rate_, unsigned channels_);
 	bool start() override;
 	bool stop() override;
+
+	bool get_buffer_status(size_t &write_avail, size_t &write_avail_frames, uint32_t &latency_usec) override;
+	size_t write_frames_interleaved(const float *data, size_t frames, bool blocking) override;
 
 	const char *get_backend_name() override
 	{
@@ -66,10 +70,13 @@ struct Pulse : Backend
 	pa_threaded_mainloop *mainloop = nullptr;
 	pa_context *context = nullptr;
 	pa_stream *stream = nullptr;
-	size_t buffer_size = 0;
+	size_t buffer_frames = 0;
 	int success = -1;
 	bool has_success = false;
 	bool is_active = false;
+
+	void update_buffer_attr(const pa_buffer_attr &attr) noexcept;
+	size_t to_frames(size_t size) const noexcept;
 };
 
 Pulse::~Pulse()
@@ -116,9 +123,60 @@ static void stream_state_cb(pa_stream *, void *data)
 	pa_threaded_mainloop_signal(pa->mainloop, 0);
 }
 
+static void stream_buffer_attr_cb(pa_stream *s, void *data)
+{
+	auto *pa = static_cast<Pulse *>(data);
+	auto *server_attr = pa_stream_get_buffer_attr(s);
+	if (server_attr)
+		pa->update_buffer_attr(*server_attr);
+}
+
+size_t Pulse::write_frames_interleaved(const float *data, size_t frames, bool blocking)
+{
+	if (callback)
+		return 0;
+
+	size_t written_frames = 0;
+	pa_threaded_mainloop_lock(mainloop);
+
+	while (frames)
+	{
+		size_t to_write = std::min(frames, to_frames(pa_stream_writable_size(stream)));
+		if (to_write)
+		{
+			if (pa_stream_write(stream, data, to_write * channels * sizeof(float), nullptr, 0, PA_SEEK_RELATIVE))
+			{
+				LOGE("Failed to write to pulse stream.\n");
+				break;
+			}
+
+			data += to_write * channels;
+			written_frames += to_write;
+			frames -= to_write;
+		}
+		else if (blocking)
+			pa_threaded_mainloop_wait(mainloop);
+		else
+			break;
+	}
+
+	pa_threaded_mainloop_unlock(mainloop);
+	return written_frames;
+}
+
 static void stream_request_cb(pa_stream *s, size_t length, void *data)
 {
 	auto *pa = static_cast<Pulse *>(data);
+	auto *cb = pa->get_callback();
+
+	// If we're not doing pull-based audio, just wake up main thread.
+	if (!cb)
+	{
+		pa_threaded_mainloop_signal(pa->mainloop, 0);
+		return;
+	}
+
+	// For callback based audio, render out audio immediately as requested.
 
 	float mix_channels[Backend::MaxAudioChannels][MAX_NUM_SAMPLES];
 	float *mix_channel_ptr[Backend::MaxAudioChannels];
@@ -132,8 +190,8 @@ static void stream_request_cb(pa_stream *s, size_t length, void *data)
 		return;
 	}
 
-	float *out_interleaved = static_cast<float *>(out_data);
-	size_t out_frames = length / (sizeof(float) * pa->channels);
+	auto *out_interleaved = static_cast<float *>(out_data);
+	size_t out_frames = pa->to_frames(length);
 	unsigned channels = pa->channels;
 
 	if (pa->is_active)
@@ -141,7 +199,7 @@ static void stream_request_cb(pa_stream *s, size_t length, void *data)
 		while (out_frames != 0)
 		{
 			size_t to_write = std::min<size_t>(out_frames, MAX_NUM_SAMPLES);
-			pa->get_callback().mix_samples(mix_channel_ptr, to_write);
+			cb->mix_samples(mix_channel_ptr, to_write);
 			out_frames -= to_write;
 
 			if (channels == 2)
@@ -174,7 +232,17 @@ static void stream_request_cb(pa_stream *s, size_t length, void *data)
 	if (negative)
 		latency_usec = 0;
 
-	pa->get_callback().set_latency_usec(uint32_t(latency_usec));
+	cb->set_latency_usec(uint32_t(latency_usec));
+}
+
+size_t Pulse::to_frames(size_t size) const noexcept
+{
+	return size / (channels * sizeof(float));
+}
+
+void Pulse::update_buffer_attr(const pa_buffer_attr &attr) noexcept
+{
+	buffer_frames = to_frames(attr.tlength);
 }
 
 bool Pulse::init(float sample_rate_, unsigned channels_)
@@ -225,6 +293,7 @@ bool Pulse::init(float sample_rate_, unsigned channels_)
 
 	pa_stream_set_state_callback(stream, stream_state_cb, this);
 	pa_stream_set_write_callback(stream, stream_request_cb, this);
+	pa_stream_set_buffer_attr_callback(stream, stream_buffer_attr_cb, this);
 
 	pa_buffer_attr buffer_attr = {};
 	buffer_attr.maxlength = -1u;
@@ -232,6 +301,7 @@ bool Pulse::init(float sample_rate_, unsigned channels_)
 	buffer_attr.prebuf = -1u;
 	buffer_attr.minreq = -1u;
 	buffer_attr.fragsize = -1u;
+	update_buffer_attr(buffer_attr);
 
 	if (pa_stream_connect_playback(stream, nullptr, &buffer_attr,
 	                               static_cast<pa_stream_flags_t>(PA_STREAM_AUTO_TIMING_UPDATE |
@@ -256,7 +326,11 @@ bool Pulse::init(float sample_rate_, unsigned channels_)
 
 	auto *stream_spec = pa_stream_get_sample_spec(stream);
 	this->sample_rate = float(stream_spec->rate);
-	callback.set_backend_parameters(this->sample_rate, channels_, MAX_NUM_SAMPLES);
+	if (callback)
+		callback->set_backend_parameters(this->sample_rate, channels_, MAX_NUM_SAMPLES);
+
+	if (const auto *attr = pa_stream_get_buffer_attr(stream))
+		update_buffer_attr(*attr);
 
 	pa_threaded_mainloop_unlock(mainloop);
 	return true;
@@ -269,7 +343,8 @@ bool Pulse::start()
 
 	has_success = false;
 	pa_threaded_mainloop_lock(mainloop);
-	callback.on_backend_start();
+	if (callback)
+		callback->on_backend_start();
 	pa_stream_cork(stream, 0, stream_success_cb, this);
 
 	while (!has_success)
@@ -295,7 +370,8 @@ bool Pulse::stop()
 	while (!has_success)
 		pa_threaded_mainloop_wait(mainloop);
 
-	callback.on_backend_stop();
+	if (callback)
+		callback->on_backend_stop();
 	pa_threaded_mainloop_unlock(mainloop);
 
 	is_active = false;
@@ -305,7 +381,32 @@ bool Pulse::stop()
 	return success >= 0;
 }
 
-Backend *create_pulse_backend(BackendCallback &callback, float sample_rate, unsigned channels)
+bool Pulse::get_buffer_status(size_t &write_avail, size_t &max_write_avail, uint32_t &latency_usec)
+{
+	pa_threaded_mainloop_lock(mainloop);
+	size_t writable_size = pa_stream_writable_size(stream);
+
+	// Update latency information.
+	pa_usec_t usec;
+	int negative = 0;
+	if (pa_stream_get_latency(stream, &usec, &negative) != 0)
+		usec = 0;
+	if (negative)
+		usec = 0;
+	latency_usec = usec;
+
+	pa_threaded_mainloop_unlock(mainloop);
+
+	write_avail = to_frames(writable_size);
+	max_write_avail = buffer_frames;
+
+	if (write_avail > max_write_avail)
+		LOGW("Write avail %zu > max write avail %zu?\n", write_avail, max_write_avail);
+
+	return true;
+}
+
+Backend *create_pulse_backend(BackendCallback *callback, float sample_rate, unsigned channels)
 {
 	auto *backend = new Pulse(callback);
 	if (!backend->init(sample_rate, channels))

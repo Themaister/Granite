@@ -28,7 +28,7 @@ namespace Granite
 {
 namespace Audio
 {
-Backend *create_oboe_backend(BackendCallback &callback, float sample_rate, unsigned channels);
+Backend *create_oboe_backend(BackendCallback *callback, float sample_rate, unsigned channels);
 void set_oboe_low_latency_parameters(unsigned sample_rate, unsigned block_frames);
 }
 }

@@ -39,6 +39,7 @@ elseif (NOT WIN32)
 elseif (WIN32)
     target_sources(granite-audio PRIVATE audio_wasapi.cpp audio_wasapi.hpp)
     target_compile_definitions(granite-audio PRIVATE AUDIO_HAVE_WASAPI=1)
+    target_link_libraries(granite-audio PRIVATE avrt)
 endif()
 
 target_link_libraries(granite-audio PUBLIC granite-filesystem granite-math granite-event)

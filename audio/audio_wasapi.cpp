@@ -23,8 +23,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <thread>
-#include <mutex>
-#include <condition_variable>
 #include <vector>
 #include <algorithm>
 #include <atomic>
@@ -32,6 +30,7 @@
 #include <audioclient.h>
 #include <audiopolicy.h>
 #include <mmdeviceapi.h>
+#include <avrt.h>
 #include "audio_interface.hpp"
 #include "dsp/dsp.hpp"
 #include "logging.hpp"
@@ -49,12 +48,13 @@ namespace Granite
 {
 namespace Audio
 {
-struct WASAPIBackend : Backend
+struct WASAPIBackend final : Backend
 {
-	WASAPIBackend(BackendCallback &callback)
-		: Backend(callback)
+	WASAPIBackend(BackendCallback *callback_)
+		: Backend(callback_)
 	{
 		dead = false;
+		audio_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
 	}
 
 	~WASAPIBackend();
@@ -62,6 +62,9 @@ struct WASAPIBackend : Backend
 
 	bool start() override;
 	bool stop() override;
+
+	bool get_buffer_status(size_t &write_avail, size_t &write_avail_frames, uint32_t &latency_usec) override;
+	size_t write_frames_interleaved(const float *data, size_t frames, bool blocking) override;
 
 	const char *get_backend_name() override
 	{
@@ -81,19 +84,23 @@ struct WASAPIBackend : Backend
 	void thread_runner() noexcept;
 
 	thread thr;
-	mutex lock;
-	condition_variable cond;
 	std::atomic<bool> dead;
 
 	IMMDeviceEnumerator *pEnumerator = nullptr;
 	IMMDevice *pDevice = nullptr;
 	IAudioClient *pAudioClient = nullptr;
 	IAudioRenderClient *pRenderClient = nullptr;
+	uint32_t buffer_latency_us = 0;
 	UINT32 buffer_frames = 0;
 	WAVEFORMATEX *format = nullptr;
 	bool is_active = false;
+	HANDLE audio_event = nullptr;
 
-	uint64_t padding_to_wait_period_us(uint32_t padding) noexcept;
+	bool kick_start() noexcept;
+
+	bool get_write_avail(UINT32 &avail) noexcept;
+	bool get_write_avail_blocking(UINT32 &avail) noexcept;
+	uint32_t get_latency_usec() noexcept;
 };
 
 WASAPIBackend::~WASAPIBackend()
@@ -109,6 +116,8 @@ WASAPIBackend::~WASAPIBackend()
 		pDevice->Release();
 	if (pEnumerator)
 		pEnumerator->Release();
+	if (audio_event)
+		CloseHandle(audio_event);
 }
 
 static REFERENCE_TIME seconds_to_reference_time(double t)
@@ -172,13 +181,20 @@ bool WASAPIBackend::init(float, unsigned channels)
 
 	format->nChannels = WORD(channels);
 
-	const double target_latency = 0.030;
+	const double target_latency = 0.050;
 	auto reference_time = seconds_to_reference_time(target_latency);
 
 	if (FAILED(pAudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED,
-	                                    0, reference_time, 0, format, nullptr)))
+	                                    AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+	                                    reference_time, 0, format, nullptr)))
 	{
 		LOGE("WASAPI: Failed to initialize audio client.\n");
+		return false;
+	}
+
+	if (FAILED(pAudioClient->SetEventHandle(audio_event)))
+	{
+		LOGE("WASAPI: Failed to set event handle.\n");
 		return false;
 	}
 
@@ -195,19 +211,26 @@ bool WASAPIBackend::init(float, unsigned channels)
 		return false;
 	}
 
+	if (callback)
+	{
+		callback->set_latency_usec(buffer_latency_us);
+		callback->set_backend_parameters(get_sample_rate(), get_num_channels(), MAX_NUM_FRAMES);
+	}
+	return true;
+}
+
+uint32_t WASAPIBackend::get_latency_usec() noexcept
+{
 	REFERENCE_TIME latency;
 	if (FAILED(pAudioClient->GetStreamLatency(&latency)))
 	{
 		LOGE("WASAPI: Failed to get stream latency.\n");
-		return false;
+		return 0;
 	}
 
 	double server_latency = reference_time_to_seconds(latency);
 	server_latency += double(buffer_frames) / get_sample_rate();
-	callback.set_latency_usec(uint32_t(server_latency * 1e6));
-
-	callback.set_backend_parameters(get_sample_rate(), get_num_channels(), MAX_NUM_FRAMES);
-	return true;
+	return uint32_t(server_latency * 1e6);
 }
 
 bool WASAPIBackend::start()
@@ -217,8 +240,17 @@ bool WASAPIBackend::start()
 	is_active = true;
 	dead = false;
 
-	callback.on_backend_start();
-	thr = thread(&WASAPIBackend::thread_runner, this);
+	if (callback)
+	{
+		callback->on_backend_start();
+		thr = thread(&WASAPIBackend::thread_runner, this);
+	}
+	else
+	{
+		if (!kick_start())
+			return false;
+	}
+
 	return true;
 }
 
@@ -230,46 +262,162 @@ bool WASAPIBackend::stop()
 
 	if (thr.joinable())
 	{
-		{
-			lock_guard<mutex> holder{ lock };
-			dead.store(true, std::memory_order_relaxed);
-			cond.notify_all();
-		}
+		dead.store(true, std::memory_order_relaxed);
+		SetEvent(audio_event);
 		thr.join();
 	}
 
-	callback.on_backend_stop();
+	if (callback)
+		callback->on_backend_stop();
 	return true;
 }
 
-uint64_t WASAPIBackend::padding_to_wait_period_us(uint32_t padding) noexcept
+bool WASAPIBackend::kick_start() noexcept
 {
-	float padding_seconds = padding / float(format->nSamplesPerSec);
-	float max_wait = padding_seconds * 0.5f;
-	if (max_wait > 0.01f)
-		max_wait = 0.01f;
-
-	return uint64_t(max_wait * 1e6f);
-}
-
-void WASAPIBackend::thread_runner() noexcept
-{
-	float *interleaved = nullptr;
-	if (FAILED(pRenderClient->GetBuffer(buffer_frames, reinterpret_cast<BYTE **>(&interleaved))))
+	BYTE *interleaved = nullptr;
+	if (FAILED(pRenderClient->GetBuffer(buffer_frames, &interleaved)))
 	{
 		LOGE("WASAPI: Failed to get buffer (start).\n");
-		return;
+		return false;
 	}
 
 	if (FAILED(pRenderClient->ReleaseBuffer(buffer_frames, AUDCLNT_BUFFERFLAGS_SILENT)))
 	{
 		LOGE("WASAPI: Failed to release buffer (start).\n");
-		return;
+		return false;
 	}
 
 	if (FAILED(pAudioClient->Start()))
 	{
 		LOGE("WASAPI: Failed to start audio client.\n");
+		return false;
+	}
+
+	buffer_latency_us = get_latency_usec();
+
+	return true;
+}
+
+size_t WASAPIBackend::write_frames_interleaved(const float *frames, size_t num_frames, bool blocking)
+{
+	if (callback)
+		return 0;
+
+	BYTE *interleaved = nullptr;
+	size_t written_frames = 0;
+
+	while (num_frames)
+	{
+		UINT32 write_avail = 0;
+
+		if (blocking)
+		{
+			if (!get_write_avail_blocking(write_avail))
+				break;
+		}
+		else
+		{
+			if (!get_write_avail(write_avail))
+				break;
+		}
+
+		size_t to_write = std::min<size_t>(num_frames, write_avail);
+
+		if (to_write)
+		{
+			if (FAILED(pRenderClient->GetBuffer(to_write, &interleaved)))
+			{
+				LOGE("WASAPI: Failed to get buffer.\n");
+				break;
+			}
+
+			memcpy(interleaved, frames, to_write * sizeof(float) * format->nChannels);
+
+			if (FAILED(pRenderClient->ReleaseBuffer(to_write, 0)))
+			{
+				LOGE("WASAPI: Failed to release buffer.\n");
+				break;
+			}
+
+			frames += to_write * format->nChannels;
+			written_frames += to_write;
+			num_frames -= to_write;
+		}
+		else
+			break;
+	}
+
+	return written_frames;
+}
+
+bool WASAPIBackend::get_buffer_status(size_t &write_avail, size_t &max_write_avail, uint32_t &latency_us)
+{
+	if (callback)
+		return false;
+
+	UINT32 write_avail_u32;
+	if (!get_write_avail(write_avail_u32))
+		return false;
+
+	write_avail = write_avail_u32;
+	max_write_avail = buffer_frames;
+	latency_us = buffer_latency_us;
+	return true;
+}
+
+bool WASAPIBackend::get_write_avail(UINT32 &avail) noexcept
+{
+	UINT32 padding;
+	if (FAILED(pAudioClient->GetCurrentPadding(&padding)))
+	{
+		LOGE("WASAPI: Failed to get buffer padding.\n");
+		return false;
+	}
+
+	avail = buffer_frames - padding;
+	return true;
+}
+
+bool WASAPIBackend::get_write_avail_blocking(UINT32 &avail) noexcept
+{
+	if (!get_write_avail(avail))
+		return false;
+
+	while (!dead.load(std::memory_order_relaxed) && avail == 0)
+	{
+		DWORD ret = WaitForSingleObject(audio_event, 2000);
+
+		if (ret == WAIT_OBJECT_0)
+		{
+			if (!get_write_avail(avail))
+				return false;
+		}
+		else if (ret == WAIT_TIMEOUT)
+		{
+			LOGE("Timed out waiting for audio event.\n");
+			return false;
+		}
+		else
+		{
+			LOGE("Other error for WFSO: #%x.\n", unsigned(ret));
+			return false;
+		}
+	}
+
+	return avail != 0;
+}
+
+void WASAPIBackend::thread_runner() noexcept
+{
+	DWORD task_index = 0;
+	HANDLE audio_task = AvSetMmThreadCharacteristicsA("Games", &task_index);
+	if (!audio_task)
+		LOGW("Failed to set thread characteristic.\n");
+
+	if (!kick_start())
+	{
+		if (audio_task)
+			AvRevertMmThreadCharacteristics(audio_task);
 		return;
 	}
 
@@ -280,48 +428,11 @@ void WASAPIBackend::thread_runner() noexcept
 
 	while (!dead.load(std::memory_order_relaxed))
 	{
-		UINT32 padding;
-		if (FAILED(pAudioClient->GetCurrentPadding(&padding)))
-		{
-			LOGE("WASAPI: Failed to get buffer padding.\n");
-			break;
-		}
-
-		UINT32 write_avail = buffer_frames - padding;
-		bool done = false;
-
-		while (write_avail == 0)
-		{
-			// Sleep for some appropriate time,
-			// although we might be woken up by the main thread wanting to kill us.
-			auto now = chrono::high_resolution_clock::now();
-			now += chrono::microseconds(padding_to_wait_period_us(padding));
-
-			{
-				unique_lock<mutex> holder{ lock };
-				cond.wait_until(holder, now, [this]() {
-					return dead.load(std::memory_order_relaxed);
-				});
-
-				if (dead.load(std::memory_order_relaxed))
-				{
-					done = true;
-					break;
-				}
-			}
-
-			if (FAILED(pAudioClient->GetCurrentPadding(&padding)))
-			{
-				LOGE("WASAPI: Failed to get buffer padding.\n");
-				return;
-			}
-
-			write_avail = buffer_frames - padding;
-		}
-
-		if (done)
+		UINT32 write_avail = 0;
+		if (!get_write_avail_blocking(write_avail))
 			break;
 
+		float *interleaved = nullptr;
 		if (FAILED(pRenderClient->GetBuffer(write_avail, reinterpret_cast<BYTE **>(&interleaved))))
 		{
 			LOGE("WASAPI: Failed to get buffer.\n");
@@ -333,7 +444,7 @@ void WASAPIBackend::thread_runner() noexcept
 		while (write_avail != 0)
 		{
 			size_t to_write = std::min<size_t>(write_avail, MAX_NUM_FRAMES);
-			callback.mix_samples(mix_channel_ptr, to_write);
+			callback->mix_samples(mix_channel_ptr, to_write);
 			write_avail -= to_write;
 
 			if (format->nChannels == 2)
@@ -356,6 +467,9 @@ void WASAPIBackend::thread_runner() noexcept
 		}
 	}
 
+	if (audio_task)
+		AvRevertMmThreadCharacteristics(audio_task);
+
 	if (FAILED(pAudioClient->Stop()))
 	{
 		LOGE("WASAPI: Failed to stop audio client.\n");
@@ -369,7 +483,7 @@ void WASAPIBackend::thread_runner() noexcept
 	}
 }
 
-Backend *create_wasapi_backend(BackendCallback &callback, float sample_rate, unsigned channels)
+Backend *create_wasapi_backend(BackendCallback *callback, float sample_rate, unsigned channels)
 {
 	auto *backend = new WASAPIBackend(callback);
 	if (!backend->init(sample_rate, channels))

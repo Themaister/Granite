@@ -26,6 +26,7 @@
 #include "logging.hpp"
 #include <string.h>
 #include <cmath>
+#include <vector>
 
 using namespace std;
 
@@ -36,9 +37,9 @@ namespace Audio
 static unsigned global_target_sample_rate;
 static unsigned global_target_block_frames;
 
-struct OpenSLESBackend : Backend
+struct OpenSLESBackend final : Backend
 {
-	OpenSLESBackend(BackendCallback &callback)
+	OpenSLESBackend(BackendCallback *callback)
 		: Backend(callback)
 	{
 	}
@@ -89,6 +90,12 @@ static void opensl_callback(SLAndroidSimpleBufferQueueItf itf, void *ctx);
 
 bool OpenSLESBackend::init(float target_sample_rate, unsigned)
 {
+	if (!callback)
+	{
+		LOGE("OpenSLES does not support push backend yet.\n");
+		return false;
+	}
+
 	if (global_target_sample_rate)
 		target_sample_rate = float(global_target_sample_rate);
 
@@ -173,11 +180,11 @@ bool OpenSLESBackend::init(float target_sample_rate, unsigned)
 	if ((*buffer_queue)->RegisterCallback(buffer_queue, opensl_callback, this) != SL_RESULT_SUCCESS)
 		return false;
 
-	callback.set_backend_parameters(this->sample_rate, num_channels, block_frames);
+	callback->set_backend_parameters(this->sample_rate, num_channels, block_frames);
 
 	double latency = double(buffer_count * block_frames) / this->sample_rate;
 	uint32_t latency_usec = uint32_t(latency * 1e6);
-	callback.set_latency_usec(latency_usec);
+	callback->set_latency_usec(latency_usec);
 
 	return true;
 }
@@ -192,7 +199,7 @@ void OpenSLESBackend::thread_callback() noexcept
 		while (enqueued_blocks < buffer_count)
 		{
 			float *channels[2] = { mix_buffers[0].data(), mix_buffers[1].data() };
-			callback.mix_samples(channels, block_frames);
+			callback->mix_samples(channels, block_frames);
 
 			DSP::interleave_stereo_f32_i16(buffers[buffer_index].data(),
 			                               channels[0], channels[1], block_frames);
@@ -234,7 +241,8 @@ bool OpenSLESBackend::start()
 	}
 
 	is_active = true;
-	callback.on_backend_start();
+	if (callback)
+		callback->on_backend_start();
 	return (*player)->SetPlayState(player, SL_PLAYSTATE_PLAYING) == SL_RESULT_SUCCESS;
 }
 
@@ -243,7 +251,8 @@ bool OpenSLESBackend::stop()
 	if (!is_active)
 		return false;
 	is_active = false;
-	callback.on_backend_stop();
+	if (callback)
+		callback->on_backend_stop();
 
 	if ((*player)->SetPlayState(player, SL_PLAYSTATE_STOPPED) != SL_RESULT_SUCCESS)
 		return false;
@@ -273,7 +282,7 @@ static void opensl_callback(SLAndroidSimpleBufferQueueItf, void *ctx)
 	sl->thread_callback();
 }
 
-Backend *create_opensl_backend(BackendCallback &callback, float sample_rate, unsigned channels)
+Backend *create_opensl_backend(BackendCallback *callback, float sample_rate, unsigned channels)
 {
 	auto *sl = new OpenSLESBackend(callback);
 	if (!sl->init(sample_rate, channels))

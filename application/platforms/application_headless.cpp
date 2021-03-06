@@ -564,10 +564,10 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		if (args.max_frames != UINT_MAX)
 		{
 			auto *mixer = new Audio::Mixer;
-			audio_dumper = new Audio::DumpBackend(*mixer, args.audio_output,
-												  float(args.sample_rate), 2,
-												  unsigned(std::round(args.sample_rate * args.time_step)),
-												  args.max_frames + 1);
+			audio_dumper = new Audio::DumpBackend(mixer, args.audio_output,
+			                                      float(args.sample_rate), 2,
+			                                      unsigned(std::round(args.sample_rate * args.time_step)),
+			                                      args.max_frames + 1);
 			Global::install_audio_system(audio_dumper, mixer);
 		}
 		else

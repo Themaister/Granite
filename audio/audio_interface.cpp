@@ -45,7 +45,7 @@ namespace Granite
 {
 namespace Audio
 {
-using BackendCreationCallback = Backend *(*)(BackendCallback &, float, unsigned);
+using BackendCreationCallback = Backend *(*)(BackendCallback *, float, unsigned);
 
 static const BackendCreationCallback backends[] = {
 #ifdef AUDIO_HAVE_PULSE
@@ -67,7 +67,7 @@ static const BackendCreationCallback backends[] = {
 		nullptr,
 };
 
-Backend::Backend(BackendCallback &callback_)
+Backend::Backend(BackendCallback *callback_)
 	: callback(callback_)
 {
 }
@@ -76,7 +76,17 @@ void Backend::heartbeat()
 {
 }
 
-Backend *create_default_audio_backend(BackendCallback &callback, float target_sample_rate, unsigned target_channels)
+bool Backend::get_buffer_status(size_t &, size_t &, uint32_t &)
+{
+	return false;
+}
+
+size_t Backend::write_frames_interleaved(const float *, size_t, bool)
+{
+	return 0;
+}
+
+Backend *create_default_audio_backend(BackendCallback *callback, float target_sample_rate, unsigned target_channels)
 {
 	for (auto &backend : backends)
 	{
@@ -107,7 +117,7 @@ struct DumpBackend::Impl
 	unsigned frame_offset = 0;
 };
 
-DumpBackend::DumpBackend(BackendCallback &callback_, const std::string &path, float target_sample_rate,
+DumpBackend::DumpBackend(BackendCallback *callback_, const std::string &path, float target_sample_rate,
                          unsigned target_channels, unsigned frames_per_tick, unsigned frames)
 	: Backend(callback_)
 {
@@ -118,8 +128,11 @@ DumpBackend::DumpBackend(BackendCallback &callback_, const std::string &path, fl
 	impl->frames = frames;
 	impl->frames_per_tick = frames_per_tick;
 
-	callback_.set_backend_parameters(target_sample_rate, target_channels, frames_per_tick);
-	callback_.set_latency_usec(0);
+	if (callback)
+	{
+		callback->set_backend_parameters(target_sample_rate, target_channels, frames_per_tick);
+		callback->set_latency_usec(0);
+	}
 
 	for (unsigned c = 0; c < target_channels; c++)
 	{
@@ -136,7 +149,7 @@ void DumpBackend::frame()
 {
 	if ((impl->frame_offset < impl->frames) && impl->mapped)
 	{
-		callback.mix_samples(impl->mix_buffers_ptr, impl->frames_per_tick);
+		callback->mix_samples(impl->mix_buffers_ptr, impl->frames_per_tick);
 
 		if (impl->target_channels == 2)
 		{
@@ -158,6 +171,12 @@ void DumpBackend::frame()
 
 bool DumpBackend::start()
 {
+	if (!callback)
+	{
+		LOGE("DumpBackend must be used with audio callback.\n");
+		return false;
+	}
+
 	size_t target_size = impl->frames * impl->frames_per_tick * impl->target_channels * sizeof(float);
 
 	impl->file = GRANITE_FILESYSTEM()->open(impl->path, Granite::FileMode::WriteOnly);
@@ -174,7 +193,8 @@ bool DumpBackend::start()
 		return false;
 	}
 
-	callback.on_backend_start();
+	if (callback)
+		callback->on_backend_start();
 	return true;
 }
 
@@ -188,7 +208,8 @@ bool DumpBackend::stop()
 	}
 
 	impl->file.reset();
-	callback.on_backend_stop();
+	if (callback)
+		callback->on_backend_stop();
 	return true;
 }
 
@@ -205,6 +226,16 @@ unsigned DumpBackend::get_num_channels()
 const char *DumpBackend::get_backend_name()
 {
 	return "dump";
+}
+
+size_t DumpBackend::write_frames_interleaved(const float *, size_t, bool)
+{
+	return 0;
+}
+
+bool DumpBackend::get_buffer_status(size_t &, size_t &, uint32_t &)
+{
+	return false;
 }
 }
 }

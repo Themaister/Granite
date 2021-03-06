@@ -39,10 +39,10 @@ void set_oboe_low_latency_parameters(unsigned sample_rate, unsigned block_frames
 	oboe::DefaultStreamValues::FramesPerBurst = block_frames;
 }
 
-struct OboeBackend : Backend, oboe::AudioStreamCallback
+struct OboeBackend final : Backend, oboe::AudioStreamCallback
 {
-	OboeBackend(BackendCallback &callback)
-			: Backend(callback)
+	explicit OboeBackend(BackendCallback *callback)
+		: Backend(callback)
 	{
 		device_alive.test_and_set();
 	}
@@ -146,6 +146,12 @@ void OboeBackend::setup_stream_builder(oboe::AudioStreamBuilder &builder)
 
 bool OboeBackend::init(float, unsigned channels)
 {
+	if (!callback)
+	{
+		LOGE("Push backend for Oboe not supported yet.\n");
+		return false;
+	}
+
 	num_channels = channels;
 	oboe::AudioStreamBuilder builder;
 	setup_stream_builder(builder);
@@ -175,12 +181,12 @@ bool OboeBackend::init(float, unsigned channels)
 			mix_buffers_ptr[c] = mix_buffers[c].data();
 		}
 
-		callback.set_backend_parameters(sample_rate, num_channels, size_t(frames_per_callback));
+		callback->set_backend_parameters(sample_rate, num_channels, size_t(frames_per_callback));
 	}
 
 	// Set initial latency estimate.
 	last_latency = double(stream->getBufferSizeInFrames()) * inv_sample_rate;
-	callback.set_latency_usec(uint32_t(last_latency * 1e6));
+	callback->set_latency_usec(uint32_t(last_latency * 1e6));
 
 	return true;
 }
@@ -233,7 +239,7 @@ oboe::DataCallbackResult OboeBackend::onAudioReady(
 
 			// Interpolate latency over time for a smoother result.
 			last_latency = 0.95 * last_latency + 0.05 * latency;
-			callback.set_latency_usec(uint32_t(last_latency * 1e6));
+			callback->set_latency_usec(uint32_t(last_latency * 1e6));
 
 			//LOGI("Measured latency: %.3f ms\n", last_latency * 1000.0);
 		}
@@ -254,7 +260,7 @@ oboe::DataCallbackResult OboeBackend::onAudioReady(
 	{
 		auto to_render = std::min(num_frames, frames_per_callback);
 
-		callback.mix_samples(mix_buffers_ptr, size_t(to_render));
+		callback->mix_samples(mix_buffers_ptr, size_t(to_render));
 
 		// Deal with whatever format AAudio wants.
 		// Convert from deinterleaved F32 to whatever.
@@ -306,7 +312,8 @@ bool OboeBackend::start()
 	if (!stream)
 		return false;
 
-	callback.on_backend_start();
+	if (callback)
+		callback->on_backend_start();
 	frame_count = 0;
 	old_underrun_count = 0;
 
@@ -337,12 +344,13 @@ bool OboeBackend::stop()
 		return false;
 	}
 
-	callback.on_backend_stop();
+	if (callback)
+		callback->on_backend_stop();
 	is_active = false;
 	return true;
 }
 
-Backend *create_oboe_backend(BackendCallback &callback, float sample_rate, unsigned channels)
+Backend *create_oboe_backend(BackendCallback *callback, float sample_rate, unsigned channels)
 {
 	auto *oboe = new OboeBackend(callback);
 	if (!oboe->init(sample_rate, channels))

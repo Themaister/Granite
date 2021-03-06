@@ -28,6 +28,6 @@ namespace Granite
 {
 namespace Audio
 {
-Backend *create_wasapi_backend(BackendCallback &callback, float sample_rate, unsigned channels);
+Backend *create_wasapi_backend(BackendCallback *callback, float sample_rate, unsigned channels);
 }
 }

@@ -48,7 +48,6 @@ option(GRANITE_HIDDEN "Declare symbols as hidden by default. Useful if you build
 option(GRANITE_SANITIZE_ADDRESS "Sanitize address" OFF)
 option(GRANITE_SANITIZE_THREADS "Sanitize threads" OFF)
 option(GRANITE_SANITIZE_MEMORY "Sanitize memory" OFF)
-option(GRANITE_ANDROID_AUDIO_OBOE "Use the Oboe library for audio." ON)
 option(GRANITE_TARGET_NATIVE "Target native arch (-march=native)" OFF)
 option(GRANITE_BULLET "Enable Bullet support." OFF)
 option(GRANITE_RENDERDOC_CAPTURE "Enable support for RenderDoc capture from API." ON)

@@ -71,7 +71,7 @@ if ((NOT ANDROID) AND (${GRANITE_PLATFORM} MATCHES "GLFW"))
     add_subdirectory(glfw EXCLUDE_FROM_ALL)
 endif()
 
-if (ANDROID AND GRANITE_ANDROID_AUDIO_OBOE)
+if (ANDROID AND GRANITE_AUDIO)
     add_subdirectory(oboe EXCLUDE_FROM_ALL)
     target_compile_options(oboe PUBLIC -Wno-unused-parameter)
 endif()

@@ -46,7 +46,8 @@ enum ManagerFeatureFlagBits
 	                                MANAGER_FEATURE_EVENT_BIT |
 	                                MANAGER_FEATURE_THREAD_GROUP_BIT |
 	                                MANAGER_FEATURE_COMMON_RENDERER_DATA_BIT |
-	                                MANAGER_FEATURE_UI_MANAGER_BIT)
+	                                MANAGER_FEATURE_UI_MANAGER_BIT |
+	                                MANAGER_FEATURE_AUDIO_BIT)
 };
 using ManagerFeatureFlags = uint32_t;
 

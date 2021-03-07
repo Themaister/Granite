@@ -120,6 +120,11 @@ public:
 
 	Util::LockFreeMessageQueue &get_message_queue();
 
+	void set_backend_parameters(float sample_rate, unsigned channels, size_t max_num_sample_count) override;
+	void on_backend_start() override;
+	void on_backend_stop() override;
+	void set_latency_usec(uint32_t usec) override;
+
 private:
 	enum { MaxSources = 128 };
 	std::atomic<uint32_t> active_channel_mask[MaxSources / 32];
@@ -141,11 +146,6 @@ private:
 	unsigned num_channels = 0;
 	float sample_rate = 0.0f;
 	double inv_sample_rate = 0.0;
-
-	void set_backend_parameters(float sample_rate, unsigned channels, size_t max_num_sample_count) override;
-	void on_backend_start() override;
-	void on_backend_stop() override;
-	void set_latency_usec(uint32_t usec) override;
 
 	StreamID generate_stream_id(unsigned index);
 	bool verify_stream_id(StreamID id);

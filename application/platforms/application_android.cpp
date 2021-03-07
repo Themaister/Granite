@@ -863,9 +863,6 @@ static void init_jni()
 #ifdef HAVE_GRANITE_AUDIO
 	int sample_rate = App::getAudioNativeSampleRate();
 	int block_frames = App::getAudioNativeBlockFrames();
-#ifdef AUDIO_HAVE_OPENSL
-	Granite::Audio::set_opensl_low_latency_parameters(sample_rate, block_frames);
-#endif
 #ifdef AUDIO_HAVE_OBOE
 	Granite::Audio::set_oboe_low_latency_parameters(sample_rate, block_frames);
 #endif
@@ -926,7 +923,9 @@ void android_main(android_app *app)
 	// Native glue does not implement this.
 	app->activity->callbacks->onContentRectChanged = on_content_rect_changed;
 
-	android_api_version = uint32_t(app->activity->sdkVersion);
+#ifdef AUDIO_HAVE_OBOE
+	Granite::Audio::set_oboe_android_api_version(app->activity->sdkVersion);
+#endif
 
 	// Statics on Android might not be cleared out.
 	global_state = {};

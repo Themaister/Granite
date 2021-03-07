@@ -23,10 +23,10 @@
 #include "audio_oboe.hpp"
 #include "dsp/dsp.hpp"
 #include "logging.hpp"
+#include "oboe/Oboe.h"
 #include <cmath>
 #include <vector>
 #include <algorithm>
-#include <oboe/Oboe.h>
 
 namespace Granite
 {
@@ -37,6 +37,13 @@ void set_oboe_low_latency_parameters(unsigned sample_rate, unsigned block_frames
 	// For OpenSL ES fallback path.
 	oboe::DefaultStreamValues::SampleRate = sample_rate;
 	oboe::DefaultStreamValues::FramesPerBurst = block_frames;
+}
+
+static uint32_t android_api_version;
+
+void set_oboe_android_api_version(uint32_t version)
+{
+	android_api_version = version;
 }
 
 struct OboeBackend final : Backend, oboe::AudioStreamCallback
@@ -69,6 +76,9 @@ struct OboeBackend final : Backend, oboe::AudioStreamCallback
 	bool stop() override;
 	void heartbeat() override;
 
+	bool get_buffer_status(size_t &write_avail, size_t &max_write_avail, uint32_t &latency_usec) override;
+	size_t write_frames_interleaved(const float *data, size_t num_frames, bool blocking) override;
+
 	oboe::AudioStream *stream = nullptr;
 	std::vector<float> mix_buffers[Backend::MaxAudioChannels];
 	float *mix_buffers_ptr[Backend::MaxAudioChannels] = {};
@@ -77,12 +87,12 @@ struct OboeBackend final : Backend, oboe::AudioStreamCallback
 	float sample_rate = 0.0f;
 	double inv_sample_rate = 0.0;
 	unsigned num_channels = 0;
-	int64_t frame_count = 0;
 	int32_t frames_per_callback = 0;
 	int32_t old_underrun_count = 0;
 	bool is_active = false;
 
 	double last_latency = 0.0;
+	uint32_t last_latency_usec = 0;
 
 	oboe::DataCallbackResult onAudioReady(oboe::AudioStream *oboe_stream,
 	                                      void *audio_data,
@@ -94,6 +104,9 @@ struct OboeBackend final : Backend, oboe::AudioStreamCallback
 	void setup_stream_builder(oboe::AudioStreamBuilder &builder);
 	bool reinit();
 	std::atomic_flag device_alive;
+
+	void update_xrun(oboe::AudioStream *s);
+	void update_latency(oboe::AudioStream *s);
 };
 
 OboeBackend::~OboeBackend()
@@ -128,16 +141,35 @@ void OboeBackend::setup_stream_builder(oboe::AudioStreamBuilder &builder)
 {
 	builder.setDirection(oboe::Direction::Output);
 	builder.setPerformanceMode(oboe::PerformanceMode::LowLatency);
-	builder.setCallback(this);
+	if (callback)
+		builder.setCallback(this);
 	// XXX: AAudio is broken on my device. See
 	// https://github.com/google/oboe/issues/380
 	// https://github.com/google/oboe/issues/381
 	// Force OpenSLES for now. It works quite well.
-	builder.setAudioApi(oboe::AudioApi::OpenSLES);
+	// Appears to work fine on Android 10 though ...
+
+	if (android_api_version >= 29)
+	{
+		LOGI("Oboe: Opting in to AAudio.\n");
+		builder.setAudioApi(oboe::AudioApi::AAudio);
+	}
+	else
+	{
+		LOGI("Oboe: Falling back to OpenSLES.\n");
+		builder.setAudioApi(oboe::AudioApi::OpenSLES);
+	}
+
 	builder.setChannelCount(num_channels);
 	builder.setContentType(oboe::ContentType::Music);
 	builder.setSharingMode(oboe::SharingMode::Shared);
 	builder.setUsage(oboe::Usage::Game);
+
+	// We're going to have to do conversion ourselves anyways,
+	// just let Oboe take care of it. It's easier to handle format conversion
+	// in the callback path.
+	if (!callback)
+		builder.setFormat(oboe::AudioFormat::Float);
 
 	// If we have already committed to a sample rate, keep using it.
 	if (sample_rate != 0.0f)
@@ -146,12 +178,6 @@ void OboeBackend::setup_stream_builder(oboe::AudioStreamBuilder &builder)
 
 bool OboeBackend::init(float, unsigned channels)
 {
-	if (!callback)
-	{
-		LOGE("Push backend for Oboe not supported yet.\n");
-		return false;
-	}
-
 	num_channels = channels;
 	oboe::AudioStreamBuilder builder;
 	setup_stream_builder(builder);
@@ -167,11 +193,30 @@ bool OboeBackend::init(float, unsigned channels)
 	num_channels = unsigned(stream->getChannelCount());
 	format = stream->getFormat();
 
+	// Aim for roughly 50ms latency.
+	const auto align = [](int32_t a, int32_t b) {
+		return ((a + b - 1) / b) * b;
+	};
+	auto target_frames = int32_t(sample_rate * 0.050f);
+	int32_t frames_per_burst = stream->getFramesPerBurst();
+	LOGI("Oboe: Frames per burst: %d.\n", frames_per_burst);
+	target_frames = align(target_frames, frames_per_burst);
+	// Aim for at least two bursts.
+	target_frames = std::max(target_frames, frames_per_burst * 2);
+
+	auto max_frames = stream->getBufferCapacityInFrames();
+	LOGI("Oboe: Max frames: %d.\n", max_frames);
+	target_frames = std::min(target_frames, max_frames);
+	LOGI("Oboe: Aiming for %d frames.\n", target_frames);
+	auto result = stream->setBufferSizeInFrames(target_frames);
+	if (!result)
+		LOGE("Oboe: Failed to set buffer size: %s.\n", oboe::convertToText(result.error()));
+
 	if (!frames_per_callback)
 	{
 		frames_per_callback = stream->getFramesPerCallback();
 		if (frames_per_callback == oboe::kUnspecified)
-			frames_per_callback = stream->getFramesPerBurst();
+			frames_per_callback = frames_per_burst;
 
 		// Allocate mix-buffers.
 		// If we have to generate more than this in a callback, iterate multiple times ...
@@ -181,12 +226,15 @@ bool OboeBackend::init(float, unsigned channels)
 			mix_buffers_ptr[c] = mix_buffers[c].data();
 		}
 
-		callback->set_backend_parameters(sample_rate, num_channels, size_t(frames_per_callback));
+		if (callback)
+			callback->set_backend_parameters(sample_rate, num_channels, size_t(frames_per_callback));
 	}
 
 	// Set initial latency estimate.
 	last_latency = double(stream->getBufferSizeInFrames()) * inv_sample_rate;
-	callback->set_latency_usec(uint32_t(last_latency * 1e6));
+	last_latency_usec = uint32_t(last_latency * 1e6);
+	if (callback)
+		callback->set_latency_usec(last_latency_usec);
 
 	return true;
 }
@@ -203,13 +251,23 @@ void OboeBackend::onErrorAfterClose(oboe::AudioStream *, oboe::Result error)
 		device_alive.clear(std::memory_order_release);
 }
 
-oboe::DataCallbackResult OboeBackend::onAudioReady(
-		oboe::AudioStream *oboe_stream,
-		void *audio_data,
-		int32_t num_frames)
+bool OboeBackend::get_buffer_status(size_t &write_avail, size_t &max_write_avail, uint32_t &latency_usec)
 {
-	auto xrun_count = oboe_stream->getXRunCount();
-	if (xrun_count.error() == oboe::Result::OK)
+	auto avail = stream->getAvailableFrames();
+	if (!avail)
+		return false;
+	max_write_avail = stream->getBufferSizeInFrames();
+	write_avail = max_write_avail - avail.value();
+
+	update_latency(stream);
+	latency_usec = last_latency_usec;
+	return true;
+}
+
+void OboeBackend::update_xrun(oboe::AudioStream *s)
+{
+	auto xrun_count = s->getXRunCount();
+	if (xrun_count)
 	{
 		int32_t underrun_count = xrun_count.value();
 		if (underrun_count > old_underrun_count)
@@ -218,13 +276,35 @@ oboe::DataCallbackResult OboeBackend::onAudioReady(
 			old_underrun_count = underrun_count;
 		}
 	}
+}
 
+size_t OboeBackend::write_frames_interleaved(const float *data, size_t num_frames, bool blocking)
+{
+	size_t written_frames = 0;
+	auto result = stream->write(data, num_frames, blocking ? (1000 * 1000 * 1000) : 0);
+	if (result)
+	{
+		written_frames = result.value();
+		update_xrun(stream);
+	}
+	else
+	{
+		LOGE("Oboe: Failed to write frames: %s.\n", oboe::convertToText(result.error()));
+		device_alive.clear(std::memory_order_release);
+		return 0;
+	}
+
+	return written_frames;
+}
+
+void OboeBackend::update_latency(oboe::AudioStream *s)
+{
 	// Update measured latency.
 	// Can fail spuriously, don't update latency estimate in that case.
 	int64_t frame_position, time_ns;
-	if (oboe_stream->getTimestamp(CLOCK_MONOTONIC, &frame_position, &time_ns) == oboe::Result::OK)
+	if (s->getTimestamp(CLOCK_MONOTONIC, &frame_position, &time_ns) == oboe::Result::OK)
 	{
-		timespec ts;
+		timespec ts = {};
 		if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
 		{
 			int64_t current_ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
@@ -232,6 +312,8 @@ oboe::DataCallbackResult OboeBackend::onAudioReady(
 			// Extrapolate play counter based on timestamp.
 			double playing_time = double(frame_position) * inv_sample_rate;
 			playing_time += 1e-9 * double(current_ns - time_ns);
+
+			auto frame_count = s->getFramesWritten();
 			double pushed_time = double(frame_count) * inv_sample_rate;
 			double latency = pushed_time - playing_time;
 			if (latency < 0.0)
@@ -239,13 +321,22 @@ oboe::DataCallbackResult OboeBackend::onAudioReady(
 
 			// Interpolate latency over time for a smoother result.
 			last_latency = 0.95 * last_latency + 0.05 * latency;
-			callback->set_latency_usec(uint32_t(last_latency * 1e6));
+			last_latency_usec = uint32_t(last_latency * 1e6);
+			if (callback)
+				callback->set_latency_usec(last_latency_usec);
 
 			//LOGI("Measured latency: %.3f ms\n", last_latency * 1000.0);
 		}
 	}
+}
 
-	frame_count += num_frames;
+oboe::DataCallbackResult OboeBackend::onAudioReady(
+		oboe::AudioStream *oboe_stream,
+		void *audio_data,
+		int32_t num_frames)
+{
+	update_xrun(oboe_stream);
+	update_latency(oboe_stream);
 
 	union
 	{
@@ -314,7 +405,6 @@ bool OboeBackend::start()
 
 	if (callback)
 		callback->on_backend_start();
-	frame_count = 0;
 	old_underrun_count = 0;
 
 	// Starts async, and will pull from callback.
@@ -338,7 +428,7 @@ bool OboeBackend::stop()
 		return false;
 
 	oboe::Result res;
-	if ((res = stream->stop(1000000)) != oboe::Result::OK)
+	if ((res = stream->stop(1000000000)) != oboe::Result::OK)
 	{
 		LOGE("Oboe: Failed to stop stream (%s).\n", oboe::convertToText(res));
 		return false;

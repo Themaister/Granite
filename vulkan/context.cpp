@@ -21,6 +21,7 @@
  */
 
 #include "context.hpp"
+#include "small_vector.hpp"
 #include <vector>
 #include <mutex>
 #include <algorithm>
@@ -580,123 +581,99 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		LOGI("GPU supports Vulkan 1.0.\n");
 	}
 
-	uint32_t queue_count;
-	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_count, nullptr);
-	vector<VkQueueFamilyProperties> queue_props(queue_count);
-	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_count, queue_props.data());
+	uint32_t queue_family_count;
+	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_family_count, nullptr);
+	Util::SmallVector<VkQueueFamilyProperties> queue_props(queue_family_count);
+	Util::SmallVector<uint32_t> queue_offsets(queue_family_count);
+	Util::SmallVector<Util::SmallVector<float, 3>> queue_priorities(queue_family_count);
+	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_family_count, queue_props.data());
 
-	for (unsigned i = 0; i < queue_count; i++)
-	{
-		VkBool32 supported = surface == VK_NULL_HANDLE;
-		if (surface != VK_NULL_HANDLE)
-			vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &supported);
-
-		static const VkQueueFlags required = VK_QUEUE_COMPUTE_BIT | VK_QUEUE_GRAPHICS_BIT;
-		if (supported && ((queue_props[i].queueFlags & required) == required))
-		{
-			graphics_queue_family = i;
-
-			// XXX: This assumes timestamp valid bits is the same for all queue types.
-			timestamp_valid_bits = queue_props[i].timestampValidBits;
-			break;
-		}
-	}
-
-	for (unsigned i = 0; i < queue_count; i++)
-	{
-		static const VkQueueFlags required = VK_QUEUE_COMPUTE_BIT;
-		if (i != graphics_queue_family && (queue_props[i].queueFlags & required) == required)
-		{
-			compute_queue_family = i;
-			break;
-		}
-	}
-
-	for (unsigned i = 0; i < queue_count; i++)
-	{
-		static const VkQueueFlags required = VK_QUEUE_TRANSFER_BIT;
-		if (i != graphics_queue_family && i != compute_queue_family && (queue_props[i].queueFlags & required) == required)
-		{
-			transfer_queue_family = i;
-			break;
-		}
-	}
-
-	if (transfer_queue_family == VK_QUEUE_FAMILY_IGNORED)
-	{
-		for (unsigned i = 0; i < queue_count; i++)
-		{
-			static const VkQueueFlags required = VK_QUEUE_TRANSFER_BIT;
-			if (i != graphics_queue_family && (queue_props[i].queueFlags & required) == required)
-			{
-				transfer_queue_family = i;
-				break;
-			}
-		}
-	}
-
-	if (graphics_queue_family == VK_QUEUE_FAMILY_IGNORED)
-		return false;
-
-	unsigned universal_queue_index = 1;
+	graphics_queue_family = VK_QUEUE_FAMILY_IGNORED;
+	compute_queue_family = VK_QUEUE_FAMILY_IGNORED;
+	transfer_queue_family = VK_QUEUE_FAMILY_IGNORED;
 	uint32_t graphics_queue_index = 0;
 	uint32_t compute_queue_index = 0;
 	uint32_t transfer_queue_index = 0;
 
-	if (compute_queue_family == VK_QUEUE_FAMILY_IGNORED)
+	const auto find_vacant_queue = [&](uint32_t &family, uint32_t &index,
+	                                   VkQueueFlags required, VkQueueFlags ignore_flags,
+	                                   float priority) -> bool {
+		for (unsigned family_index = 0; family_index < queue_family_count; family_index++)
+		{
+			if ((queue_props[family_index].queueFlags & ignore_flags) != 0)
+				continue;
+
+			// A graphics queue candidate must support present for us to select it.
+			if ((required & VK_QUEUE_GRAPHICS_BIT) != 0 && surface != VK_NULL_HANDLE)
+			{
+				VkBool32 supported = VK_FALSE;
+				if (vkGetPhysicalDeviceSurfaceSupportKHR(gpu, family_index, surface, &supported) != VK_SUCCESS || !supported)
+					continue;
+			}
+
+			if (queue_props[family_index].queueCount && (queue_props[family_index].queueFlags & required) == required)
+			{
+				family = family_index;
+				queue_props[family_index].queueCount--;
+				index = queue_offsets[family_index]++;
+				queue_priorities[family_index].push_back(priority);
+				return true;
+			}
+		}
+
+		return false;
+	};
+
+	if (!find_vacant_queue(graphics_queue_family, graphics_queue_index,
+	                       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0, 0.5f))
 	{
+		LOGE("Could not find suitable graphics queue.\n");
+		return false;
+	}
+
+	// XXX: This assumes timestamp valid bits is the same for all queue types.
+	timestamp_valid_bits = queue_props[graphics_queue_family].timestampValidBits;
+
+	// Prefer another graphics queue since we can do async graphics that way.
+	// The compute queue is to be treated as high priority since we also do async graphics on it.
+	if (!find_vacant_queue(compute_queue_family, compute_queue_index,
+	                       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0, 1.0f) &&
+	    !find_vacant_queue(compute_queue_family, compute_queue_index,
+	                       VK_QUEUE_COMPUTE_BIT, 0, 1.0f))
+	{
+		// Fallback to the graphics queue if we must.
 		compute_queue_family = graphics_queue_family;
-		compute_queue_index = std::min(queue_props[graphics_queue_family].queueCount - 1, universal_queue_index);
-		universal_queue_index++;
+		compute_queue_index = graphics_queue_index;
 	}
 
-	if (transfer_queue_family == VK_QUEUE_FAMILY_IGNORED)
+	// For transfer, try to find a queue which only supports transfer, e.g. DMA queue.
+	// If not, fallback to a dedicated compute queue.
+	// Finally, fallback to same queue as compute.
+	if (!find_vacant_queue(transfer_queue_family, transfer_queue_index,
+	                       VK_QUEUE_TRANSFER_BIT, VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0.5f) &&
+	    !find_vacant_queue(transfer_queue_family, transfer_queue_index,
+	                       VK_QUEUE_COMPUTE_BIT, VK_QUEUE_GRAPHICS_BIT, 0.5f))
 	{
-		transfer_queue_family = graphics_queue_family;
-		transfer_queue_index = std::min(queue_props[graphics_queue_family].queueCount - 1, universal_queue_index);
-		universal_queue_index++;
+		transfer_queue_family = compute_queue_family;
+		transfer_queue_index = compute_queue_index;
 	}
-	else if (transfer_queue_family == compute_queue_family)
-		transfer_queue_index = std::min(queue_props[compute_queue_family].queueCount - 1, 1u);
-
-	static const float graphics_queue_prio = 0.5f;
-	static const float compute_queue_prio = 1.0f;
-	static const float transfer_queue_prio = 1.0f;
-	float prio[3] = { graphics_queue_prio, compute_queue_prio, transfer_queue_prio };
-
-	unsigned queue_family_count = 0;
-	VkDeviceQueueCreateInfo queue_info[3] = {};
 
 	VkDeviceCreateInfo device_info = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
-	device_info.pQueueCreateInfos = queue_info;
 
-	queue_info[queue_family_count].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	queue_info[queue_family_count].queueFamilyIndex = graphics_queue_family;
-	queue_info[queue_family_count].queueCount = std::min(universal_queue_index,
-	                                                     queue_props[graphics_queue_family].queueCount);
-	queue_info[queue_family_count].pQueuePriorities = prio;
-	queue_family_count++;
-
-	if (compute_queue_family != graphics_queue_family)
+	Util::SmallVector<VkDeviceQueueCreateInfo> queue_infos;
+	for (uint32_t family_index = 0; family_index < queue_family_count; family_index++)
 	{
-		queue_info[queue_family_count].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queue_info[queue_family_count].queueFamilyIndex = compute_queue_family;
-		queue_info[queue_family_count].queueCount = std::min(transfer_queue_family == compute_queue_family ? 2u : 1u,
-		                                                     queue_props[compute_queue_family].queueCount);
-		queue_info[queue_family_count].pQueuePriorities = prio + 1;
-		queue_family_count++;
-	}
+		if (queue_offsets[family_index] == 0)
+			continue;
 
-	if (transfer_queue_family != graphics_queue_family && transfer_queue_family != compute_queue_family)
-	{
-		queue_info[queue_family_count].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queue_info[queue_family_count].queueFamilyIndex = transfer_queue_family;
-		queue_info[queue_family_count].queueCount = 1;
-		queue_info[queue_family_count].pQueuePriorities = prio + 2;
-		queue_family_count++;
+		VkDeviceQueueCreateInfo info = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
+		info.queueFamilyIndex = family_index;
+		info.queueCount = queue_offsets[family_index];
+		info.pQueuePriorities = queue_priorities[family_index].data();
+		queue_infos.push_back(info);
 	}
-
-	device_info.queueCreateInfoCount = queue_family_count;
+	device_info.pQueueCreateInfos = queue_infos.data();
+	device_info.queueCreateInfoCount = uint32_t(queue_infos.size());
 
 	vector<const char *> enabled_extensions;
 	vector<const char *> enabled_layers;
@@ -1110,6 +1087,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	device_table.vkGetDeviceQueue(device, graphics_queue_family, graphics_queue_index, &graphics_queue);
 	device_table.vkGetDeviceQueue(device, compute_queue_family, compute_queue_index, &compute_queue);
 	device_table.vkGetDeviceQueue(device, transfer_queue_family, transfer_queue_index, &transfer_queue);
+
+#ifdef VULKAN_DEBUG
+	LOGI("Graphics queue: family %u, index %u.\n", graphics_queue_family, graphics_queue_index);
+	LOGI("Compute queue: family %u, index %u.\n", compute_queue_family, compute_queue_index);
+	LOGI("Transfer queue: family %u, index %u.\n", transfer_queue_family, transfer_queue_index);
+#endif
 
 	check_descriptor_indexing_features();
 

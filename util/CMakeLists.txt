@@ -30,6 +30,8 @@ add_granite_internal_lib(granite-util
 target_include_directories(granite-util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(granite-util PUBLIC granite-application-global-interface)
 
-if (NOT WIN32)
+if (WIN32)
+    target_link_libraries(granite-util PRIVATE winmm)
+else()
     target_link_libraries(granite-util PUBLIC dl)
 endif()

@@ -30,6 +30,14 @@ namespace Vulkan
 {
 WSI::WSI()
 {
+	const char *frame_time_ms = getenv("GRANITE_FRAME_TIME_MS");
+	if (frame_time_ms)
+	{
+		auto period_ms = atol(frame_time_ms);
+		LOGI("Limiting frame times to %ld.\n", period_ms);
+		if (!frame_limiter.begin_interval_ns(1000000ull * period_ms))
+			LOGE("Failed to begin timer.\n");
+	}
 }
 
 void WSIPlatform::set_window_title(const string &)
@@ -396,6 +404,9 @@ bool WSI::begin_frame()
 bool WSI::end_frame()
 {
 	device->end_frame_context();
+
+	if (frame_limiter.is_active())
+		frame_limiter.wait_interval();
 
 	// Take ownership of the release semaphore so that the external user can use it.
 	if (frame_is_external)

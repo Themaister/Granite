@@ -23,7 +23,6 @@
 #include "timer.hpp"
 
 #ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
 #include <time.h>
@@ -122,5 +121,93 @@ double Timer::end()
 {
 	auto nt = get_current_time_nsecs();
 	return double(nt - t) * 1e-9;
+}
+
+struct FrameLimiter::Impl
+{
+#ifdef _WIN32
+	HANDLE timer_handle = nullptr;
+#else
+	int timer_fd = -1;
+#endif
+
+	bool begin_interval_ns(uint64_t ns)
+	{
+#ifdef _WIN32
+		if (!timer_handle)
+		{
+			timer_handle = CreateWaitableTimerA(nullptr, FALSE, nullptr);
+			if (timer_handle)
+				timeBeginPeriod(1);
+		}
+
+		if (!timer_handle)
+			return false;
+
+		LARGE_INTEGER due_time;
+		due_time.QuadPart = -int64_t(ns) / 100;
+		if (!SetWaitableTimer(timer_handle, &due_time, ns / 1000000,
+		                      nullptr, nullptr, FALSE))
+		{
+			CloseHandle(timer_handle);
+			timer_handle = nullptr;
+			return false;
+		}
+
+		return true;
+#else
+#endif
+	}
+
+	bool wait_interval()
+	{
+#ifdef _WIN32
+		if (!timer_handle)
+			return false;
+		return WaitForSingleObject(timer_handle, INFINITE) == WAIT_OBJECT_0;
+#else
+#endif
+	}
+
+	bool is_active() const
+	{
+		return timer_handle != nullptr;
+	}
+
+	~Impl()
+	{
+#ifdef _WIN32
+		if (timer_handle)
+		{
+			CloseHandle(timer_handle);
+			timeEndPeriod(1);
+		}
+#else
+#endif
+	}
+};
+
+FrameLimiter::FrameLimiter()
+{
+	impl.reset(new Impl);
+}
+
+FrameLimiter::~FrameLimiter()
+{
+}
+
+bool FrameLimiter::is_active() const
+{
+	return impl->is_active();
+}
+
+bool FrameLimiter::begin_interval_ns(uint64_t ns)
+{
+	return impl->begin_interval_ns(ns);
+}
+
+bool FrameLimiter::wait_interval()
+{
+	return impl->wait_interval();
 }
 }

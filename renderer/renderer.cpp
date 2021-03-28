@@ -40,6 +40,8 @@ enum GlobalDescriptorSetBindings
 	BINDING_GLOBAL_TRANSFORM = 0,
 	BINDING_GLOBAL_RENDER_PARAMETERS = 1,
 
+	BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_PARAMETERS = 2,
+
 	BINDING_GLOBAL_BRDF_TABLE = 4,
 	BINDING_GLOBAL_DIRECTIONAL_SHADOW = 5,
 	BINDING_GLOBAL_AMBIENT_OCCLUSION = 6,
@@ -248,6 +250,8 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 		global_defines.emplace_back("SHADOWS", 1);
 	if (flags & SHADOW_CASCADE_ENABLE_BIT)
 		global_defines.emplace_back("SHADOW_CASCADES", 1);
+	if (flags & VOLUMETRIC_DIFFUSE_ENABLE_BIT)
+		global_defines.emplace_back("VOLUMETRIC_DIFFUSE", 1);
 	if (flags & FOG_ENABLE_BIT)
 		global_defines.emplace_back("FOG", 1);
 	if (flags & VOLUMETRIC_FOG_ENABLE_BIT)
@@ -311,7 +315,7 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 	{
 		flags |= POSITIONAL_LIGHT_ENABLE_BIT;
 		if ((lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows()) ||
-		    (lighting.cluster->get_cluster_shadow_map_bindless_set() != VK_NULL_HANDLE))
+		    (lighting.cluster->get_cluster_bindless_set() != VK_NULL_HANDLE))
 		{
 			flags |= POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
 			if (lighting.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
@@ -322,6 +326,9 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 			flags |= POSITIONAL_LIGHT_CLUSTER_LIST_BIT;
 		if (lighting.cluster->clusterer_is_bindless())
 			flags |= POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT;
+
+		if (lighting.cluster->get_cluster_bindless_set())
+			flags |= VOLUMETRIC_DIFFUSE_ENABLE_BIT;
 	}
 
 	if (lighting.ambient_occlusion)
@@ -403,8 +410,14 @@ static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const Li
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_TRANSFORM, *cluster.get_cluster_transform_buffer());
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_BITMASK, *cluster.get_cluster_bitmask_buffer());
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_RANGE, *cluster.get_cluster_range_buffer());
-	if (cluster.get_cluster_shadow_map_bindless_set() != VK_NULL_HANDLE)
-		cmd.set_bindless(1, cluster.get_cluster_shadow_map_bindless_set());
+	if (cluster.get_cluster_bindless_set() != VK_NULL_HANDLE)
+	{
+		cmd.set_bindless(1, cluster.get_cluster_bindless_set());
+
+		size_t size = cluster.get_cluster_volumetric_diffuse_size();
+		void *parameters = cmd.allocate_constant_data(0, BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_PARAMETERS, size);
+		memcpy(parameters, cluster.get_cluster_volumetric_diffuse_data(), size);
+	}
 }
 
 static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
@@ -765,7 +778,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 
 		vector<pair<string, int>> cluster_defines;
 		if (light.cluster->get_spot_light_shadows() ||
-		    light.cluster->get_cluster_shadow_map_bindless_set())
+		    light.cluster->get_cluster_bindless_set())
 		{
 			cluster_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
 			if (light.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
@@ -780,7 +793,11 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 		}
 
 		if (light.cluster->clusterer_is_bindless())
+		{
 			cluster_defines.emplace_back("CLUSTERER_BINDLESS", 1);
+			if (light.cluster->get_cluster_bindless_set())
+				cluster_defines.emplace_back("VOLUMETRIC_DIFFUSE", 1);
+		}
 		else if (light.cluster->get_cluster_list_buffer())
 			cluster_defines.emplace_back("CLUSTER_LIST", 1);
 

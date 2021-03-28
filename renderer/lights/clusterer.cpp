@@ -191,7 +191,7 @@ const Vulkan::Buffer *LightClusterer::get_cluster_range_buffer() const
 	return bindless.range_buffer;
 }
 
-VkDescriptorSet LightClusterer::get_cluster_shadow_map_bindless_set() const
+VkDescriptorSet LightClusterer::get_cluster_bindless_set() const
 {
 	return bindless.desc_set;
 }
@@ -1130,6 +1130,23 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 	uint64_t total_pruned = bindless.shadow_map_cache.prune();
 	if (total_pruned)
 		LOGI("Clusterer pruned a total of %llu bytes.\n", static_cast<unsigned long long>(total_pruned));
+
+	bindless.volumetric.bindless_index_offset = bindless.count;
+	bindless.volumetric.num_volumes = 1;
+	bindless.volumetric.volumes[0].base_position = vec3(0.0f);
+	bindless.volumetric.volumes[0].inv_extent = vec3(0.2f);
+	bindless.volumetric.volumes[0].lo_tex_coord_x = 0.0f;
+	bindless.volumetric.volumes[0].hi_tex_coord_x = 1.0f;
+}
+
+const ClustererParametersVolumetric *LightClusterer::get_cluster_volumetric_diffuse_data() const
+{
+	return &bindless.volumetric;
+}
+
+size_t LightClusterer::get_cluster_volumetric_diffuse_size() const
+{
+	return bindless.volumetric.num_volumes * sizeof(DiffuseVolumeParameters) + offsetof(ClustererParametersVolumetric, volumes);
 }
 
 void LightClusterer::refresh_bindless(const RenderContext &context_, TaskComposer &composer)
@@ -1340,19 +1357,21 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 	}
 
 	if (!bindless.descriptor_pool)
-		bindless.descriptor_pool = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLightsBindless);
+		bindless.descriptor_pool = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLightsBindless + CLUSTERER_MAX_VOLUMES);
 
-	unsigned num_lights = std::max(1u, bindless.count);
+	unsigned total_lights = bindless.count + bindless.volumetric.num_volumes;
+	unsigned num_lights = std::max(1u, total_lights);
+
 	if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
 	{
-		bindless.descriptor_pool = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLightsBindless);
+		bindless.descriptor_pool = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLightsBindless + CLUSTERER_MAX_VOLUMES);
 		if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
 			LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
 	}
 
 	bindless.desc_set = bindless.descriptor_pool->get_descriptor_set();
 
-	if (!bindless.count)
+	if (!total_lights)
 		return;
 
 	if (enable_shadows)
@@ -1363,6 +1382,16 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 			assert(image);
 			bindless.descriptor_pool->set_texture(i, (*image)->get_view());
 		}
+	}
+
+	for (unsigned i = 0; i < bindless.volumetric.num_volumes; i++)
+	{
+		// For bringup, create dummy volumes.
+		auto info = ImageCreateInfo::immutable_3d_image(1, 1, 1, VK_FORMAT_R8G8B8A8_UNORM);
+		const uint8_t data[] = { 0, 0xff, 0, 0xff };
+		const ImageInitialData initial = { data, 1, 1 };
+		auto image = device.create_image(info, &initial);
+		bindless.descriptor_pool->set_texture(i + bindless.count, image->get_view());
 	}
 }
 

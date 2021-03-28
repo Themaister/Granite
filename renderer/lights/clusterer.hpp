@@ -72,8 +72,11 @@ public:
 	const Vulkan::Buffer *get_cluster_transform_buffer() const;
 	const Vulkan::Buffer *get_cluster_bitmask_buffer() const;
 	const Vulkan::Buffer *get_cluster_range_buffer() const;
-	VkDescriptorSet get_cluster_shadow_map_bindless_set() const;
+	VkDescriptorSet get_cluster_bindless_set() const;
 	bool clusterer_is_bindless() const;
+
+	const ClustererParametersVolumetric *get_cluster_volumetric_diffuse_data() const;
+	size_t get_cluster_volumetric_diffuse_size() const;
 
 	void set_scene(Scene *scene) override;
 	void set_base_renderer(const RendererSuite *suite) override;
@@ -234,6 +237,8 @@ private:
 		unsigned count = 0;
 		ClustererParametersBindless parameters;
 		ClustererBindlessTransforms transforms;
+		ClustererParametersVolumetric volumetric;
+
 		PositionalLight *handles[MaxLightsBindless] = {};
 
 		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;

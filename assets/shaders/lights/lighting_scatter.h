@@ -27,10 +27,8 @@ mediump vec3 compute_scatter_lighting(
 	float VoL = dot(normalize(light_camera_pos - light_world_pos), light_direction);
 	mediump vec3 in_scatter = light_color * (directional_scatter_phase_function(VoL) * shadow_term);
 
-#if 0
-	// We get most in-scatter from view direction, so just sample the environment like diffuse.
-	mediump vec3 envdiff = environment_intensity * textureLod(uIrradiance, light_world_pos - light_camera_pos, 0.0).rgb;
-	in_scatter += envdiff;
+#ifdef VOLUMETRIC_DIFFUSE
+	in_scatter += compute_volumetric_diffuse(light_world_pos, normalize(light_world_pos - light_camera_pos));
 #endif
 
 #ifdef POSITIONAL_LIGHTS

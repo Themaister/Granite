@@ -4,6 +4,11 @@
 #include "../inc/global_bindings.h"
 #define SPOT_LIGHT_SHADOW_ATLAS_SET 1
 #define POINT_LIGHT_SHADOW_ATLAS_SET 1
+#define VOLUMETRIC_DIFFUSE_ATLAS_SET 1
+
+#ifdef VOLUMETRIC_DIFFUSE
+#include "volumetric_diffuse.h"
+#endif
 
 layout(std140, set = 0, binding = BINDING_GLOBAL_CLUSTERER_PARAMETERS) uniform ClusterParameters
 {

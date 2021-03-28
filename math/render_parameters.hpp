@@ -122,6 +122,22 @@ struct ClustererParametersBindless
 	float z_scale;
 };
 
+struct DiffuseVolumeParameters
+{
+	vec3 base_position;
+	float lo_tex_coord_x;
+	vec3 inv_extent;
+	float hi_tex_coord_x;
+};
+
+#define CLUSTERER_MAX_VOLUMES 256
+struct ClustererParametersVolumetric
+{
+	uint32_t bindless_index_offset;
+	uint32_t num_volumes;
+	alignas(16) DiffuseVolumeParameters volumes[CLUSTERER_MAX_VOLUMES];
+};
+
 #define CLUSTERER_MAX_LIGHTS_BINDLESS 4096
 struct ClustererBindlessTransforms
 {

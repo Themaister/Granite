@@ -41,25 +41,8 @@ mediump vec3 compute_lighting(
 	mediump vec3 specref = light_color * NoL * shadow_term * cook_torrance_specular(N, H, NoL, NoV, specular_fresnel, roughness);
 	mediump vec3 diffref = light_color * NoL * shadow_term * (1.0 - specular_fresnel) * (1.0 / PI);
 
-#if 0
-	// Lookup reflectance terms.
-	mediump vec2 brdf = textureLod(uBRDFLut, vec2(NoV, roughness), 0.0).xy;
-	mediump vec3 ibl_fresnel = fresnel_ibl(F0, NoV, roughness);
-	mediump vec3 iblspec = ibl_fresnel * brdf.x + brdf.y;
-
-	// IBL specular term.
-	mediump vec3 reflected = reflect(-V, N);
-	mediump vec3 envspec = environment_intensity * textureLod(uReflection, reflected, material_roughness * environment_mipscale).rgb;
-
-	envspec *= iblspec;
-
-	// IBL diffuse term.
-	mediump vec3 envdiff = environment_intensity * textureLod(uIrradiance, N, 0.0).rgb;
-
-	diffref += envdiff * material_ambient_factor * (1.0 - ibl_fresnel);
-	specref += envspec * material_ambient_factor;
-#else
-	diffref += 0.1 * material_ambient_factor;
+#ifdef VOLUMETRIC_DIFFUSE
+	diffref += material_ambient_factor * compute_volumetric_diffuse(light_world_pos, material_normal);
 #endif
 
 	mediump vec3 reflected_light = specref;

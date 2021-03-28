@@ -37,4 +37,10 @@ void main()
         , registers.inv_resolution
 #endif
     );
+
+#ifdef VOLUMETRIC_DIFFUSE
+    FragColor += base_color_ambient.rgb *
+            ((1.0 - mr.x) * base_color_ambient.a) *
+            compute_volumetric_diffuse(pos, N);
+#endif
 }

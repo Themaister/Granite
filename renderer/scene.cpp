@@ -37,13 +37,13 @@ Scene::Scene()
 	  opaque(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, OpaqueComponent>()),
 	  transparent(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, TransparentComponent>()),
 	  positional_lights(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, PositionalLightComponent>()),
-	  volumetric_diffuse_lights(pool.get_component_group<RenderInfoComponent, VolumetricDiffuseLightComponent>()),
 	  static_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsStaticShadowComponent>()),
 	  dynamic_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
 	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
 	  cameras(pool.get_component_group<CameraComponent, CachedTransformComponent>()),
 	  directional_lights(pool.get_component_group<DirectionalLightComponent, CachedTransformComponent>()),
+	  volumetric_diffuse_lights(pool.get_component_group<VolumetricDiffuseLightComponent, RenderInfoComponent>()),
 	  ambient_lights(pool.get_component_group<AmbientLightComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
 	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, RenderInfoComponent>()),
@@ -607,6 +607,14 @@ void Scene::update_transform_listener_components()
 
 		// v = [0, 0, 1, 0].
 		l->direction = normalize(transform->transform->world_transform[2].xyz());
+	}
+
+	for (auto &light : volumetric_diffuse_lights)
+	{
+		VolumetricDiffuseLightComponent *l;
+		RenderInfoComponent *transform;
+		tie(l, transform) = light;
+		l->world_to_texture = inverse(transform->transform->world_transform);
 	}
 }
 

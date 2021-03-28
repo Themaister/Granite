@@ -202,6 +202,23 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	// Why not. :D
 	//Ocean::add_to_scene(scene_loader.get_scene());
 
+	{
+		auto &scene = scene_loader.get_scene();
+		auto entity = scene.create_entity();
+		entity->allocate_component<VolumetricDiffuseLightComponent>();
+		auto *transform = entity->allocate_component<RenderInfoComponent>();
+		auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
+
+		auto *bounded = entity->allocate_component<BoundedComponent>();
+		bounded->aabb = &VolumetricDiffuseLight::get_static_aabb();
+
+		auto node = scene.create_node();
+		node->transform.translation = vec3(-0.1f);
+		node->invalidate_cached_transform();
+		transform->transform = &node->cached_transform;
+		timestamp->current_timestamp = node->get_timestamp_pointer();
+	}
+
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);
 	cam.set_depth_range(0.1f, 1000.0f);

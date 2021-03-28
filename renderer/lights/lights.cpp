@@ -605,6 +605,12 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
 	}
 }
 
+const AABB &VolumetricDiffuseLight::get_static_aabb()
+{
+	static AABB aabb(vec3(-1.0f, -1.0f, -1.0f), vec3(1.0f, 1.0f, 0.0f));
+	return aabb;
+}
+
 const Vulkan::ImageView &VolumetricDiffuseLight::get_volume_view() const
 {
 	return volume->get_view();
@@ -613,6 +619,32 @@ const Vulkan::ImageView &VolumetricDiffuseLight::get_volume_view() const
 void VolumetricDiffuseLight::set_volume(Vulkan::ImageHandle vol)
 {
 	volume = std::move(vol);
+}
+
+VolumetricDiffuseLight::VolumetricDiffuseLight()
+{
+	EVENT_MANAGER_REGISTER_LATCH(VolumetricDiffuseLight, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
+}
+
+void VolumetricDiffuseLight::on_device_created(const Vulkan::DeviceCreatedEvent &e)
+{
+	auto &device = e.get_device();
+	auto info = ImageCreateInfo::immutable_3d_image(12, 2, 2, VK_FORMAT_R8G8B8A8_SRGB);
+
+	const uint32_t data[] = {
+		0xffu, 0xffu, 0x1fu, 0x1fu, 0xff00u, 0xff00u, 0x1f00u, 0x1f00u, 0xff0000u, 0xff0000u, 0x1f0000u, 0x1f0000u,
+		0xffu, 0xffu, 0x1fu, 0x1fu, 0xff00u, 0xff00u, 0x1f00u, 0x1f00u, 0xff0000u, 0xff0000u, 0x1f0000u, 0x1f0000u,
+		0xffu, 0xffu, 0x1fu, 0x1fu, 0xff00u, 0xff00u, 0x1f00u, 0x1f00u, 0xff0000u, 0xff0000u, 0x1f0000u, 0x1f0000u,
+		0xffu, 0xffu, 0x1fu, 0x1fu, 0xff00u, 0xff00u, 0x1f00u, 0x1f00u, 0xff0000u, 0xff0000u, 0x1f0000u, 0x1f0000u,
+	};
+
+	const ImageInitialData initial = { data, 12, 2 };
+	volume = device.create_image(info, &initial);
+}
+
+void VolumetricDiffuseLight::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
+{
+	volume.reset();
 }
 
 vec2 point_light_z_range(const RenderContext &context, const vec3 &center, float radius)

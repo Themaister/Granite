@@ -210,6 +210,7 @@ struct VolumetricDiffuseLightComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(VolumetricDiffuseLightComponent)
 	VolumetricDiffuseLight light;
+	mat4 world_to_texture;
 };
 
 struct AmbientLightComponent : ComponentBase

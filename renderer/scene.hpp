@@ -235,13 +235,13 @@ private:
 	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, OpaqueComponent> &opaque;
 	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, TransparentComponent> &transparent;
 	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, PositionalLightComponent> &positional_lights;
-	const ComponentGroupVector<RenderInfoComponent, VolumetricDiffuseLightComponent> &volumetric_diffuse_lights;
 	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsStaticShadowComponent> &static_shadowing;
 	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent> &dynamic_shadowing;
 	const ComponentGroupVector<RenderPassComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent> &render_pass_shadowing;
 	const ComponentGroupVector<UnboundedComponent, RenderableComponent> &backgrounds;
 	const ComponentGroupVector<CameraComponent, CachedTransformComponent> &cameras;
 	const ComponentGroupVector<DirectionalLightComponent, CachedTransformComponent> &directional_lights;
+	const ComponentGroupVector<VolumetricDiffuseLightComponent, RenderInfoComponent> &volumetric_diffuse_lights;
 	const ComponentGroupVector<AmbientLightComponent> &ambient_lights;
 	const ComponentGroupVector<PerFrameUpdateComponent> &per_frame_updates;
 	const ComponentGroupVector<PerFrameUpdateTransformComponent, RenderInfoComponent> &per_frame_update_transforms;

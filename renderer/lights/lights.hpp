@@ -25,6 +25,8 @@
 #include "abstract_renderable.hpp"
 #include "image.hpp"
 #include "light_info.hpp"
+#include "event.hpp"
+#include "application_wsi_events.hpp"
 
 namespace Granite
 {
@@ -162,14 +164,19 @@ private:
 	PointTransform shadow_transform;
 };
 
-class VolumetricDiffuseLight
+class VolumetricDiffuseLight : public EventHandler
 {
 public:
+	VolumetricDiffuseLight();
 	void set_volume(Vulkan::ImageHandle handle);
 	const Vulkan::ImageView &get_volume_view() const;
 
+	static const AABB &get_static_aabb();
+
 private:
 	Vulkan::ImageHandle volume;
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
 };
 
 vec2 spot_light_z_range(const RenderContext &context, const mat4 &model);

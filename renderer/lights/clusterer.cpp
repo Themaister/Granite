@@ -1132,12 +1132,22 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 		LOGI("Clusterer pruned a total of %llu bytes.\n", static_cast<unsigned long long>(total_pruned));
 
 	bindless.volumetric.bindless_index_offset = bindless.count;
-	bindless.volumetric.num_volumes = 1;
-	bindless.volumetric.fallback_volume = muglm::floatToHalf(vec4(0.0001f, 0.0001f, 0.0, 0.001f));
-	bindless.volumetric.volumes[0].base_position = vec3(0.0f);
-	bindless.volumetric.volumes[0].inv_extent = vec3(0.2f);
-	bindless.volumetric.volumes[0].lo_tex_coord_x = 0.0f;
-	bindless.volumetric.volumes[0].hi_tex_coord_x = 1.0f;
+	bindless.volumetric.num_volumes = std::min<uint32_t>(visible_diffuse_lights.size(), CLUSTERER_MAX_VOLUMES);
+	bindless.volumetric.fallback_volume = muglm::floatToHalf(vec4(0.0001f, 0.0001f, 0.0001f, 0.001f));
+
+	for (uint32_t i = 0; i < bindless.volumetric.num_volumes; i++)
+	{
+		auto &light  = *visible_diffuse_lights[i].volume;
+		auto &transform = *visible_diffuse_lights[i].transform;
+		auto &volume = bindless.volumetric.volumes[i];
+
+		volume.base_position = transform.transform->world_transform[3].xyz();
+		volume.inv_extent = vec3(0.2f);
+
+		float half_inv_width = (0.5f * 6.0f) / float(light.get_volume_view().get_image().get_width());
+		volume.lo_tex_coord_x = half_inv_width;
+		volume.hi_tex_coord_x = 1.0f - half_inv_width;
+	}
 }
 
 const ClustererParametersVolumetric *LightClusterer::get_cluster_volumetric_diffuse_data() const
@@ -1389,14 +1399,7 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 	}
 
 	for (unsigned i = 0; i < bindless.volumetric.num_volumes; i++)
-	{
-		// For bringup, create dummy volumes.
-		auto info = ImageCreateInfo::immutable_3d_image(1, 1, 1, VK_FORMAT_R8G8B8A8_UNORM);
-		const uint8_t data[] = { 0, 0xff, 0, 0xff };
-		const ImageInitialData initial = { data, 1, 1 };
-		auto image = device.create_image(info, &initial);
-		bindless.descriptor_pool->set_texture(i + bindless.count, image->get_view());
-	}
+		bindless.descriptor_pool->set_texture(i + bindless.count, visible_diffuse_lights[i].volume->get_volume_view());
 }
 
 bool LightClusterer::bindless_light_is_point(unsigned index) const

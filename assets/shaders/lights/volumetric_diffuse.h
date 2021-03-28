@@ -20,6 +20,7 @@ layout(std140, set = 0, binding = BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_PARAMETERS) 
 {
 	int bindless_index_offset;
 	int num_volumes;
+	uvec2 fallback_volume_fp16;
 	DiffuseVolumeParameters volumes[CLUSTERER_MAX_VOLUMES];
 } volumetric;
 
@@ -68,7 +69,10 @@ mediump vec4 compute_volumetric_diffuse(int index, vec3 world_pos, mediump vec3 
 
 mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal)
 {
-	mediump vec4 diffuse_weight = vec4(0.0);
+	mediump vec4 diffuse_weight = vec4(
+			unpackHalf2x16(volumetric.fallback_volume_fp16.x),
+			unpackHalf2x16(volumetric.fallback_volume_fp16.y));
+
 	for (int i = 0; i < volumetric.num_volumes; i++)
 		diffuse_weight += compute_volumetric_diffuse(i, world_pos, normal);
 	return diffuse_weight.rgb / max(diffuse_weight.a, 0.0001);

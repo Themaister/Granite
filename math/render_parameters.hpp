@@ -135,6 +135,7 @@ struct ClustererParametersVolumetric
 {
 	uint32_t bindless_index_offset;
 	uint32_t num_volumes;
+	muglm::u16vec4 fallback_volume;
 	alignas(16) DiffuseVolumeParameters volumes[CLUSTERER_MAX_VOLUMES];
 };
 

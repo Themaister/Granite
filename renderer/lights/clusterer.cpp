@@ -1133,6 +1133,7 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 
 	bindless.volumetric.bindless_index_offset = bindless.count;
 	bindless.volumetric.num_volumes = 1;
+	bindless.volumetric.fallback_volume = muglm::floatToHalf(vec4(0.0001f, 0.0001f, 0.0, 0.001f));
 	bindless.volumetric.volumes[0].base_position = vec3(0.0f);
 	bindless.volumetric.volumes[0].inv_extent = vec3(0.2f);
 	bindless.volumetric.volumes[0].lo_tex_coord_x = 0.0f;

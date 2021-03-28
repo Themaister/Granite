@@ -704,6 +704,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 				defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
 		}
 	}
+
 	if (light.ambient_occlusion)
 		defines.emplace_back("AMBIENT_OCCLUSION", 1);
 
@@ -796,7 +797,11 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 		{
 			cluster_defines.emplace_back("CLUSTERER_BINDLESS", 1);
 			if (light.cluster->get_cluster_bindless_set())
+			{
 				cluster_defines.emplace_back("VOLUMETRIC_DIFFUSE", 1);
+				if (light.ambient_occlusion)
+					cluster_defines.emplace_back("AMBIENT_OCCLUSION", 1);
+			}
 		}
 		else if (light.cluster->get_cluster_list_buffer())
 			cluster_defines.emplace_back("CLUSTER_LIST", 1);

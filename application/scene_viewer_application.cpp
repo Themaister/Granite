@@ -206,19 +206,6 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	context.set_lighting_parameters(&lighting);
 	cam.set_depth_range(0.1f, 1000.0f);
 
-	auto &ibl = scene_loader.get_scene().get_entity_pool().get_component_group<IBLComponent>();
-	if (!ibl.empty())
-	{
-		auto *ibl_component = get_component<IBLComponent>(ibl.front());
-		skydome_reflection = ibl_component->reflection_path;
-		skydome_irradiance = ibl_component->irradiance_path;
-		skydome_intensity = ibl_component->intensity;
-	}
-
-	auto &skybox = scene_loader.get_scene().get_entity_pool().get_component_group<SkyboxComponent>();
-	for (auto &box : skybox)
-		get_component<SkyboxComponent>(box)->skybox->set_color_mod(vec3(skydome_intensity));
-
 	// Create a dummy background if there isn't any background.
 	if (scene_loader.get_scene().get_entity_pool().get_component_group<BackgroundComponent>().empty())
 	{
@@ -390,18 +377,12 @@ void SceneViewerApplication::rescale_scene(float radius)
 
 void SceneViewerApplication::on_device_created(const DeviceCreatedEvent &device)
 {
-	if (!skydome_reflection.empty())
-		reflection = device.get_device().get_texture_manager().request_texture(skydome_reflection);
-	if (!skydome_irradiance.empty())
-		irradiance = device.get_device().get_texture_manager().request_texture(skydome_irradiance);
 	graph.set_device(&device.get_device());
 	context.set_device(&device.get_device());
 }
 
 void SceneViewerApplication::on_device_destroyed(const DeviceCreatedEvent &)
 {
-	reflection = nullptr;
-	irradiance = nullptr;
 	graph.set_device(nullptr);
 }
 
@@ -1043,11 +1024,6 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 
 	jitter.step(selected_camera->get_projection(), selected_camera->get_view());
 
-	if (reflection)
-		lighting.environment_radiance = &reflection->get_image()->get_view();
-	if (irradiance)
-		lighting.environment_irradiance = &irradiance->get_image()->get_view();
-	lighting.environment.intensity = skydome_intensity;
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 
 	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);

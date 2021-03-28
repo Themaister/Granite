@@ -14,12 +14,7 @@ mediump vec3 compute_lighting(
 		vec3 light_camera_pos,
 		mediump vec3 light_camera_front,
 		mediump vec3 light_direction,
-		mediump vec3 light_color
-#ifdef ENVIRONMENT
-		, mediump float environment_intensity
-		, mediump float environment_mipscale
-#endif
-		)
+		mediump vec3 light_color)
 {
 #ifdef SHADOWS
 	mediump float shadow_term = get_directional_shadow_term(
@@ -46,12 +41,12 @@ mediump vec3 compute_lighting(
 	mediump vec3 specref = light_color * NoL * shadow_term * cook_torrance_specular(N, H, NoL, NoV, specular_fresnel, roughness);
 	mediump vec3 diffref = light_color * NoL * shadow_term * (1.0 - specular_fresnel) * (1.0 / PI);
 
+#if 0
 	// Lookup reflectance terms.
 	mediump vec2 brdf = textureLod(uBRDFLut, vec2(NoV, roughness), 0.0).xy;
 	mediump vec3 ibl_fresnel = fresnel_ibl(F0, NoV, roughness);
 	mediump vec3 iblspec = ibl_fresnel * brdf.x + brdf.y;
 
-#ifdef ENVIRONMENT
 	// IBL specular term.
 	mediump vec3 reflected = reflect(-V, N);
 	mediump vec3 envspec = environment_intensity * textureLod(uReflection, reflected, material_roughness * environment_mipscale).rgb;

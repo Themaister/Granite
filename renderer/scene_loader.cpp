@@ -282,18 +282,7 @@ Scene::NodeHandle SceneLoader::parse_gltf(const std::string &path)
 			skybox = Util::make_handle<Skybox>(env.cube.path, false);
 			entity = scene->create_renderable(skybox, nullptr);
 			entity->allocate_component<BackgroundComponent>();
-
-			if (!env.reflection.path.empty() && !env.irradiance.path.empty())
-			{
-				auto *ibl = entity->allocate_component<IBLComponent>();
-				ibl->irradiance_path = env.irradiance.path;
-				ibl->reflection_path = env.reflection.path;
-				ibl->intensity = env.intensity;
-			}
 		}
-
-		if (skybox)
-			entity->allocate_component<SkyboxComponent>()->skybox = skybox.get();
 
 		if (env.fog.falloff != 0.0f)
 		{
@@ -539,24 +528,18 @@ Scene::NodeHandle SceneLoader::parse_scene_format(const std::string &path, const
 			auto &box = bg["skybox"];
 			auto texture_path = Path::relpath(path, box["path"].GetString());
 
-			Util::IntrusivePtr<Skybox> skybox;
 			AbstractRenderableHandle renderable;
-			bool use_ibl = false;
 
 			if (box.HasMember("projection"))
 			{
 				auto &proj = box["projection"];
 				if (strcmp(proj.GetString(), "latlon") == 0)
 				{
-					skybox = Util::make_handle<Skybox>(texture_path, true);
-					renderable = skybox;
-					use_ibl = true;
+					renderable = Util::make_handle<Skybox>(texture_path, true);
 				}
 				else if (strcmp(proj.GetString(), "cube") == 0)
 				{
-					skybox = Util::make_handle<Skybox>(texture_path, false);
-					renderable = skybox;
-					use_ibl = true;
+					renderable = Util::make_handle<Skybox>(texture_path, false);
 				}
 				else if (strcmp(proj.GetString(), "cylinder") == 0)
 				{
@@ -570,30 +553,8 @@ Scene::NodeHandle SceneLoader::parse_scene_format(const std::string &path, const
 			else
 				throw logic_error("Skybox projection must be specified.");
 
-			string reflection;
-			string irradiance;
-
-			if (box.HasMember("reflection"))
-				reflection = Path::relpath(path, box["reflection"].GetString());
-			if (box.HasMember("irradiance"))
-				irradiance = Path::relpath(path, box["irradiance"].GetString());
-
 			entity = scene->create_renderable(renderable, nullptr);
 			entity->allocate_component<BackgroundComponent>();
-
-			if (use_ibl || (!reflection.empty() && !irradiance.empty()))
-			{
-				if (skybox)
-					entity->allocate_component<SkyboxComponent>()->skybox = skybox.get();
-
-				if (!reflection.empty() && !irradiance.empty())
-				{
-					auto *ibl = entity->allocate_component<IBLComponent>();
-					ibl->irradiance_path = irradiance;
-					ibl->reflection_path = reflection;
-					ibl->intensity = 1.0f;
-				}
-			}
 		}
 		else
 			entity = scene->create_entity();

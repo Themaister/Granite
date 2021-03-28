@@ -85,20 +85,6 @@ struct EnvironmentComponent : ComponentBase
 	FogParameters fog;
 };
 
-struct SkyboxComponent : ComponentBase
-{
-	GRANITE_COMPONENT_TYPE_DECL(SkyboxComponent)
-	Skybox *skybox;
-};
-
-struct IBLComponent : ComponentBase
-{
-	GRANITE_COMPONENT_TYPE_DECL(IBLComponent)
-	std::string reflection_path;
-	std::string irradiance_path;
-	float intensity;
-};
-
 struct RenderableComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(RenderableComponent)

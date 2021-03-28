@@ -40,11 +40,7 @@ void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump 
 
     mediump vec3 lighting = emissive + compute_lighting(
         base_color.rgb, normal, metallic, roughness, ambient, base_color.a,
-        pos, global.camera_position, global.camera_front, directional.direction, directional.color
-#ifdef ENVIRONMENT
-        , environment.intensity, environment.mipscale
-#endif
-	);
+        pos, global.camera_position, global.camera_front, directional.direction, directional.color);
 
 #if defined(VOLUMETRIC_FOG)
     mediump vec4 fog = sample_volumetric_fog(uFogVolume,

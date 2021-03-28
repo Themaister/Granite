@@ -4,11 +4,6 @@
 #include "pbr.h"
 #include "../inc/global_bindings.h"
 
-#ifdef ENVIRONMENT
-layout(set = 0, binding = BINDING_GLOBAL_ENV_RADIANCE) uniform mediump samplerCube uReflection;
-layout(set = 0, binding = BINDING_GLOBAL_ENV_IRRADIANCE) uniform mediump samplerCube uIrradiance;
-#endif
-
 layout(set = 0, binding = BINDING_GLOBAL_BRDF_TABLE) uniform mediump sampler2D uBRDFLut;
 
 #ifdef RENDERER_FORWARD

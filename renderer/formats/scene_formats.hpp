@@ -189,9 +189,6 @@ struct MaterialInfo
 struct EnvironmentInfo
 {
 	MaterialInfo::Texture cube;
-	MaterialInfo::Texture reflection;
-	MaterialInfo::Texture irradiance;
-	float intensity;
 
 	struct Fog
 	{

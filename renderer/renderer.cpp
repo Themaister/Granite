@@ -39,8 +39,7 @@ enum GlobalDescriptorSetBindings
 {
 	BINDING_GLOBAL_TRANSFORM = 0,
 	BINDING_GLOBAL_RENDER_PARAMETERS = 1,
-	BINDING_GLOBAL_ENV_RADIANCE = 2,
-	BINDING_GLOBAL_ENV_IRRADIANCE = 3,
+
 	BINDING_GLOBAL_BRDF_TABLE = 4,
 	BINDING_GLOBAL_DIRECTIONAL_SHADOW = 5,
 	BINDING_GLOBAL_AMBIENT_OCCLUSION = 6,
@@ -126,7 +125,7 @@ Renderer::Renderer(RendererType type_, const ShaderSuiteResolver *resolver_)
 	EVENT_MANAGER_REGISTER_LATCH(Renderer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 
 	if (type == RendererType::GeneralDeferred || type == RendererType::GeneralForward)
-		set_mesh_renderer_options(SHADOW_CASCADE_ENABLE_BIT | SHADOW_ENABLE_BIT | FOG_ENABLE_BIT | ENVIRONMENT_ENABLE_BIT);
+		set_mesh_renderer_options(SHADOW_CASCADE_ENABLE_BIT | SHADOW_ENABLE_BIT | FOG_ENABLE_BIT);
 	else
 		set_mesh_renderer_options(0);
 }
@@ -253,8 +252,6 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 		global_defines.emplace_back("FOG", 1);
 	if (flags & VOLUMETRIC_FOG_ENABLE_BIT)
 		global_defines.emplace_back("VOLUMETRIC_FOG", 1);
-	if (flags & ENVIRONMENT_ENABLE_BIT)
-		global_defines.emplace_back("ENVIRONMENT", 1);
 	if (flags & REFRACTION_ENABLE_BIT)
 		global_defines.emplace_back("REFRACTION", 1);
 	if (flags & POSITIONAL_LIGHT_ENABLE_BIT)
@@ -295,8 +292,6 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(const LightingParameters &lighting)
 {
 	uint32_t flags = 0;
-	if (lighting.environment_irradiance && lighting.environment_radiance)
-		flags |= ENVIRONMENT_ENABLE_BIT;
 
 	if (lighting.shadows)
 	{
@@ -428,10 +423,6 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 	auto *combined = cmd.allocate_typed_constant_data<CombinedRenderParameters>(0, BINDING_GLOBAL_RENDER_PARAMETERS, 1);
 	memset(combined, 0, sizeof(*combined));
 
-	combined->environment.intensity = lighting->environment.intensity;
-	if (lighting->environment_radiance)
-		combined->environment.mipscale = float(lighting->environment_radiance->get_create_info().levels - 1);
-
 	if (lighting->volumetric_fog)
 	{
 		cmd.set_texture(0, BINDING_GLOBAL_VOLUMETRIC_FOG, lighting->volumetric_fog->get_view(), StockSampler::LinearClamp);
@@ -450,11 +441,6 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 	cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE,
 	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.gtx")->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
-
-	if (lighting->environment_radiance != nullptr)
-		cmd.set_texture(0, BINDING_GLOBAL_ENV_RADIANCE, *lighting->environment_radiance, Vulkan::StockSampler::TrilinearClamp);
-	if (lighting->environment_irradiance != nullptr)
-		cmd.set_texture(0, BINDING_GLOBAL_ENV_IRRADIANCE, *lighting->environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
 	if (lighting->shadows != nullptr)
 	{
@@ -691,8 +677,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 			defines.emplace_back("SUBGROUP_ARITHMETIC", 1);
 		}
 	}
-	if (light.environment_radiance && light.environment_irradiance)
-		defines.emplace_back("ENVIRONMENT", 1);
+
 	if (light.shadows)
 	{
 		defines.emplace_back("SHADOWS", 1);
@@ -714,11 +699,6 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	cmd.set_depth_test(true, false);
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 
-	if (light.environment_radiance)
-		cmd.set_texture(0, BINDING_GLOBAL_ENV_RADIANCE, *light.environment_radiance, Vulkan::StockSampler::LinearClamp);
-	if (light.environment_irradiance)
-		cmd.set_texture(0, BINDING_GLOBAL_ENV_IRRADIANCE, *light.environment_irradiance, Vulkan::StockSampler::LinearClamp);
-
 	cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE,
 	                GRANITE_COMMON_RENDERER_DATA()->brdf_tables.get_texture()->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
@@ -736,8 +716,8 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	struct DirectionalLightPush
 	{
 		alignas(16) vec4 inv_view_proj_col2;
-		alignas(16) vec4 color_env_intensity;
-		alignas(16) vec4 camera_pos_mipscale;
+		alignas(16) vec3 color;
+		alignas(16) vec3 camera_pos;
 		alignas(16) vec3 direction;
 		alignas(4) float cascade_log_bias;
 		alignas(16) vec3 camera_front;
@@ -755,15 +735,11 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 		ubo->transforms[i] = light.shadow.transforms[i];
 
 	push.inv_view_proj_col2 = context.get_render_parameters().inv_view_projection[2];
-	push.color_env_intensity = vec4(light.directional.color, light.environment.intensity);
+	push.color = light.directional.color;
 	push.direction = light.directional.direction;
 	push.cascade_log_bias = light.shadow.cascade_log_bias;
 
-	float mipscale = 0.0f;
-	if (light.environment_radiance)
-		mipscale = float(light.environment_radiance->get_create_info().levels - 1);
-
-	push.camera_pos_mipscale = vec4(context.get_render_parameters().camera_position, mipscale);
+	push.camera_pos = context.get_render_parameters().camera_position;
 	push.camera_front = context.get_render_parameters().camera_front;
 	push.inv_resolution.x = 1.0f / cmd.get_viewport().width;
 	push.inv_resolution.y = 1.0f / cmd.get_viewport().height;

@@ -58,9 +58,5 @@ void main()
 
     FragColor = compute_lighting(
 		base_color_ambient.rgb, N, mr.x, mr.y, base_color_ambient.a * base_ambient, 1.0,
-		pos, registers.camera_pos, registers.camera_front, registers.direction, registers.color
-#ifdef ENVIRONMENT
-		, registers.environment_intensity, registers.environment_mipscale
-#endif
-    );
+		pos, registers.camera_pos, registers.camera_front, registers.direction, registers.color);
 }

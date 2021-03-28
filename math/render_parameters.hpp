@@ -134,7 +134,6 @@ struct ClustererBindlessTransforms
 struct CombinedRenderParameters
 {
 	alignas(16) FogParameters fog;
-	alignas(16) EnvironmentParameters environment;
 	alignas(16) ShadowParameters shadow;
 	alignas(16) VolumetricFogParameters volumetric_fog;
 	alignas(16) DirectionalParameters directional;
@@ -149,11 +148,8 @@ struct LightingParameters
 	FogParameters fog = {};
 	DirectionalParameters directional;
 	ShadowParameters shadow;
-	EnvironmentParameters environment;
 	RefractionParameters refraction;
 
-	Vulkan::ImageView *environment_radiance = nullptr;
-	Vulkan::ImageView *environment_irradiance = nullptr;
 	Vulkan::ImageView *shadows = nullptr;
 	Vulkan::ImageView *ambient_occlusion = nullptr;
 	const LightClusterer *cluster = nullptr;

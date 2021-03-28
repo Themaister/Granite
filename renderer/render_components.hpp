@@ -30,6 +30,7 @@
 #include "abstract_renderable.hpp"
 #include "renderer_enums.hpp"
 #include "camera.hpp"
+#include "lights/lights.hpp"
 
 namespace Granite
 {
@@ -203,6 +204,12 @@ struct DirectionalLightComponent : ComponentBase
 	GRANITE_COMPONENT_TYPE_DECL(DirectionalLightComponent)
 	vec3 color;
 	vec3 direction;
+};
+
+struct VolumetricDiffuseLightComponent : ComponentBase
+{
+	GRANITE_COMPONENT_TYPE_DECL(VolumetricDiffuseLightComponent)
+	VolumetricDiffuseLight light;
 };
 
 struct AmbientLightComponent : ComponentBase

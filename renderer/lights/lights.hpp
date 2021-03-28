@@ -162,6 +162,16 @@ private:
 	PointTransform shadow_transform;
 };
 
+class VolumetricDiffuseLight
+{
+public:
+	void set_volume(Vulkan::ImageHandle handle);
+	const Vulkan::ImageView &get_volume_view() const;
+
+private:
+	Vulkan::ImageHandle volume;
+};
+
 vec2 spot_light_z_range(const RenderContext &context, const mat4 &model);
 vec2 point_light_z_range(const RenderContext &context, const vec3 &pos, float radius);
 }

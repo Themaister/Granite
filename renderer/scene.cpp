@@ -37,6 +37,7 @@ Scene::Scene()
 	  opaque(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, OpaqueComponent>()),
 	  transparent(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, TransparentComponent>()),
 	  positional_lights(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, PositionalLightComponent>()),
+	  volumetric_diffuse_lights(pool.get_component_group<RenderInfoComponent, VolumetricDiffuseLightComponent>()),
 	  static_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsStaticShadowComponent>()),
 	  dynamic_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
 	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
@@ -305,6 +306,23 @@ void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityL
 void Scene::gather_visible_positional_lights(const Frustum &frustum, PositionalLightList &list) const
 {
 	gather_positional_lights(frustum, list, positional_lights, 0, positional_lights.size());
+}
+
+void Scene::gather_visible_volumetric_diffuse_lights(const Frustum &frustum, VolumetricDiffuseLightList &list) const
+{
+	for (auto &o : volumetric_diffuse_lights)
+	{
+		auto *transform = get_component<RenderInfoComponent>(o);
+		auto &light = get_component<VolumetricDiffuseLightComponent>(o)->light;
+
+		if (transform->transform)
+		{
+			if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
+				list.push_back({ &light, transform });
+		}
+		else
+			list.push_back({ &light, transform });
+	}
 }
 
 void Scene::gather_visible_positional_lights_subset(const Frustum &frustum, VisibilityList &list,

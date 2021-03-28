@@ -1254,6 +1254,9 @@ void LightClusterer::refresh(const RenderContext &context_, TaskComposer &incomi
 	Threaded::scene_gather_positional_light_renderables_sorted(*scene, composer, context_,
 	                                                           light_sort_caches, MaxTasks);
 
+	visible_diffuse_lights.clear();
+	scene->gather_visible_volumetric_diffuse_lights(context_.get_visibility_frustum(), visible_diffuse_lights);
+
 	if (enable_bindless)
 	{
 		refresh_bindless(context_, composer);

@@ -60,6 +60,7 @@ public:
 	void gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_positional_lights(const Frustum &frustum, PositionalLightList &list) const;
+	void gather_visible_volumetric_diffuse_lights(const Frustum &frustum, VolumetricDiffuseLightList &list) const;
 
 	void gather_visible_opaque_renderables_subset(const Frustum &frustum, VisibilityList &list,
 	                                              unsigned index, unsigned num_indices) const;
@@ -234,6 +235,7 @@ private:
 	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, OpaqueComponent> &opaque;
 	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, TransparentComponent> &transparent;
 	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, PositionalLightComponent> &positional_lights;
+	const ComponentGroupVector<RenderInfoComponent, VolumetricDiffuseLightComponent> &volumetric_diffuse_lights;
 	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsStaticShadowComponent> &static_shadowing;
 	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent> &dynamic_shadowing;
 	const ComponentGroupVector<RenderPassComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent> &render_pass_shadowing;

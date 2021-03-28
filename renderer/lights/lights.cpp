@@ -605,6 +605,16 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
 	}
 }
 
+const Vulkan::ImageView &VolumetricDiffuseLight::get_volume_view() const
+{
+	return volume->get_view();
+}
+
+void VolumetricDiffuseLight::set_volume(Vulkan::ImageHandle vol)
+{
+	volume = std::move(vol);
+}
+
 vec2 point_light_z_range(const RenderContext &context, const vec3 &center, float radius)
 {
 	auto &pos = context.get_render_parameters().camera_position;

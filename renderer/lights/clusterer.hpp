@@ -117,6 +117,7 @@ private:
 
 	enum { MaxTasks = 4 };
 	PositionalLightList light_sort_caches[MaxTasks];
+	VolumetricDiffuseLightList visible_diffuse_lights;
 	RenderQueue internal_queue;
 
 	unsigned resolution_x = 64, resolution_y = 32, resolution_z = 16;

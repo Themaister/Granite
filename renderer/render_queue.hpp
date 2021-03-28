@@ -38,6 +38,7 @@ class ShaderSuite;
 class RenderContext;
 class AbstractRenderable;
 class PositionalLight;
+class VolumetricDiffuseLight;
 struct RenderInfoComponent;
 
 struct RenderableInfo
@@ -55,6 +56,13 @@ struct PositionalLightInfo
 };
 using VisibilityList = std::vector<RenderableInfo>;
 using PositionalLightList = std::vector<PositionalLightInfo>;
+
+struct VolumetricDiffuseLightInfo
+{
+	VolumetricDiffuseLight *volume;
+	const RenderInfoComponent *transform;
+};
+using VolumetricDiffuseLightList = std::vector<VolumetricDiffuseLightInfo>;
 
 enum class Queue : unsigned
 {

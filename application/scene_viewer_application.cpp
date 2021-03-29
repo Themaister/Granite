@@ -204,19 +204,12 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	{
 		auto &scene = scene_loader.get_scene();
-		auto entity = scene.create_entity();
-		entity->allocate_component<VolumetricDiffuseLightComponent>();
-		auto *transform = entity->allocate_component<RenderInfoComponent>();
-		auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
-
-		auto *bounded = entity->allocate_component<BoundedComponent>();
-		bounded->aabb = &VolumetricDiffuseLight::get_static_aabb();
-
 		auto node = scene.create_node();
-		node->transform.translation = vec3(-0.1f);
+		node->transform.scale = vec3(10.0f);
+		node->transform.translation = vec3(-0.1f, 5.0f, -1.0f);
 		node->invalidate_cached_transform();
-		transform->transform = &node->cached_transform;
-		timestamp->current_timestamp = node->get_timestamp_pointer();
+		scene.create_volumetric_diffuse_light(node.get());
+		scene.get_root_node()->add_child(std::move(node));
 	}
 
 	animation_system = scene_loader.consume_animation_system();

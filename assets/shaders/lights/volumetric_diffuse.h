@@ -8,9 +8,8 @@ layout(set = VOLUMETRIC_DIFFUSE_ATLAS_SET, binding = 0) uniform mediump texture3
 
 struct DiffuseVolumeParameters
 {
-	vec3 base_position;
+	vec4 world_to_texture[3];
 	float lo_tex_coord_x;
-	vec3 inv_extent;
 	float hi_tex_coord_x;
 };
 
@@ -37,7 +36,10 @@ mediump float weight_term(vec3 local_pos)
 
 mediump vec4 compute_volumetric_diffuse(int index, vec3 world_pos, mediump vec3 normal)
 {
-	vec3 local_pos = (world_pos - volumetric.volumes[index].base_position) * volumetric.volumes[index].inv_extent;
+	vec3 local_pos = vec3(
+			dot(vec4(world_pos, 1.0), volumetric.volumes[index].world_to_texture[0]),
+			dot(vec4(world_pos, 1.0), volumetric.volumes[index].world_to_texture[1]),
+			dot(vec4(world_pos, 1.0), volumetric.volumes[index].world_to_texture[2]));
 
 	mediump vec4 weighted_result;
 	if (all(greaterThan(local_pos, vec3(0.0))) && all(lessThan(local_pos, vec3(1.0))))

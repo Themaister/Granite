@@ -38,7 +38,7 @@ class ShaderSuite;
 class RenderContext;
 class AbstractRenderable;
 class PositionalLight;
-class VolumetricDiffuseLight;
+class VolumetricDiffuseLightComponent;
 struct RenderInfoComponent;
 
 struct RenderableInfo
@@ -59,7 +59,7 @@ using PositionalLightList = std::vector<PositionalLightInfo>;
 
 struct VolumetricDiffuseLightInfo
 {
-	VolumetricDiffuseLight *volume;
+	VolumetricDiffuseLightComponent *light;
 	const RenderInfoComponent *transform;
 };
 using VolumetricDiffuseLightList = std::vector<VolumetricDiffuseLightInfo>;

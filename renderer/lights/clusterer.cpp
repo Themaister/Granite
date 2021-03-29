@@ -1137,14 +1137,13 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 
 	for (uint32_t i = 0; i < bindless.volumetric.num_volumes; i++)
 	{
-		auto &light  = *visible_diffuse_lights[i].volume;
-		auto &transform = *visible_diffuse_lights[i].transform;
+		auto &light  = visible_diffuse_lights[i];
 		auto &volume = bindless.volumetric.volumes[i];
 
-		volume.base_position = transform.transform->world_transform[3].xyz();
-		volume.inv_extent = vec3(0.2f);
+		for (unsigned j = 0; j < 3; j++)
+			volume.world_to_texture[j] = light.light->world_to_texture[j];
 
-		float half_inv_width = (0.5f * 6.0f) / float(light.get_volume_view().get_image().get_width());
+		float half_inv_width = (0.5f * 6.0f) / float(light.light->light.get_volume_view().get_image().get_width());
 		volume.lo_tex_coord_x = half_inv_width;
 		volume.hi_tex_coord_x = 1.0f - half_inv_width;
 	}
@@ -1399,7 +1398,7 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 	}
 
 	for (unsigned i = 0; i < bindless.volumetric.num_volumes; i++)
-		bindless.descriptor_pool->set_texture(i + bindless.count, visible_diffuse_lights[i].volume->get_volume_view());
+		bindless.descriptor_pool->set_texture(i + bindless.count, visible_diffuse_lights[i].light->light.get_volume_view());
 }
 
 bool LightClusterer::bindless_light_is_point(unsigned index) const

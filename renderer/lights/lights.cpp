@@ -607,7 +607,7 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
 
 const AABB &VolumetricDiffuseLight::get_static_aabb()
 {
-	static AABB aabb(vec3(-1.0f, -1.0f, -1.0f), vec3(1.0f, 1.0f, 0.0f));
+	static AABB aabb(vec3(-0.5f), vec3(0.5f));
 	return aabb;
 }
 

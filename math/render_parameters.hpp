@@ -124,10 +124,10 @@ struct ClustererParametersBindless
 
 struct DiffuseVolumeParameters
 {
-	vec3 base_position;
+	vec4 world_to_texture[3];
 	float lo_tex_coord_x;
-	vec3 inv_extent;
 	float hi_tex_coord_x;
+	float padding[2];
 };
 
 #define CLUSTERER_MAX_VOLUMES 256

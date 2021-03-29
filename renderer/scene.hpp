@@ -213,6 +213,7 @@ public:
 
 	Entity *create_renderable(AbstractRenderableHandle renderable, Node *node);
 	Entity *create_light(const SceneFormats::LightInfo &light, Node *node);
+	Entity *create_volumetric_diffuse_light(Node *node);
 	Entity *create_entity();
 	void destroy_entity(Entity *entity);
 	void queue_destroy_entity(Entity *entity);
@@ -241,7 +242,7 @@ private:
 	const ComponentGroupVector<UnboundedComponent, RenderableComponent> &backgrounds;
 	const ComponentGroupVector<CameraComponent, CachedTransformComponent> &cameras;
 	const ComponentGroupVector<DirectionalLightComponent, CachedTransformComponent> &directional_lights;
-	const ComponentGroupVector<VolumetricDiffuseLightComponent, RenderInfoComponent> &volumetric_diffuse_lights;
+	const ComponentGroupVector<VolumetricDiffuseLightComponent, CachedSpatialTransformTimestampComponent, RenderInfoComponent> &volumetric_diffuse_lights;
 	const ComponentGroupVector<AmbientLightComponent> &ambient_lights;
 	const ComponentGroupVector<PerFrameUpdateComponent> &per_frame_updates;
 	const ComponentGroupVector<PerFrameUpdateTransformComponent, RenderInfoComponent> &per_frame_update_transforms;

@@ -43,7 +43,7 @@ Scene::Scene()
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
 	  cameras(pool.get_component_group<CameraComponent, CachedTransformComponent>()),
 	  directional_lights(pool.get_component_group<DirectionalLightComponent, CachedTransformComponent>()),
-	  volumetric_diffuse_lights(pool.get_component_group<VolumetricDiffuseLightComponent, RenderInfoComponent>()),
+	  volumetric_diffuse_lights(pool.get_component_group<VolumetricDiffuseLightComponent, CachedSpatialTransformTimestampComponent, RenderInfoComponent>()),
 	  ambient_lights(pool.get_component_group<AmbientLightComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
 	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, RenderInfoComponent>()),
@@ -313,15 +313,15 @@ void Scene::gather_visible_volumetric_diffuse_lights(const Frustum &frustum, Vol
 	for (auto &o : volumetric_diffuse_lights)
 	{
 		auto *transform = get_component<RenderInfoComponent>(o);
-		auto &light = get_component<VolumetricDiffuseLightComponent>(o)->light;
+		auto *light = get_component<VolumetricDiffuseLightComponent>(o);
 
 		if (transform->transform)
 		{
 			if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
-				list.push_back({ &light, transform });
+				list.push_back({ light, transform });
 		}
 		else
-			list.push_back({ &light, transform });
+			list.push_back({ light, transform });
 	}
 }
 
@@ -612,9 +612,21 @@ void Scene::update_transform_listener_components()
 	for (auto &light : volumetric_diffuse_lights)
 	{
 		VolumetricDiffuseLightComponent *l;
+		CachedSpatialTransformTimestampComponent *timestamp;
 		RenderInfoComponent *transform;
-		tie(l, transform) = light;
-		l->world_to_texture = inverse(transform->transform->world_transform);
+		tie(l, timestamp, transform) = light;
+
+		if (timestamp->last_timestamp != l->timestamp)
+		{
+			// This is a somewhat expensive operation, so timestamp it.
+			// We only expect this to run once since diffuse volumes really
+			// cannot freely move around the scene due to the semi-baked nature of it.
+			auto world_to_texture = translate(vec3(0.5f)) * inverse(transform->transform->world_transform);
+			world_to_texture = transpose(world_to_texture);
+			for (int i = 0; i < 3; i++)
+				l->world_to_texture[i] = world_to_texture[i];
+			l->timestamp = timestamp->last_timestamp;
+		}
 	}
 }
 
@@ -766,6 +778,28 @@ Entity *Scene::create_entity()
 }
 
 static std::atomic<uint64_t> transform_cookies;
+
+Entity *Scene::create_volumetric_diffuse_light(Node *node)
+{
+	Entity *entity = pool.create_entity();
+	entities.insert_front(entity);
+
+	/*auto *light =*/ entity->allocate_component<VolumetricDiffuseLightComponent>();
+	auto *transform = entity->allocate_component<RenderInfoComponent>();
+	auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
+
+	auto *bounded = entity->allocate_component<BoundedComponent>();
+	bounded->aabb = &VolumetricDiffuseLight::get_static_aabb();
+
+	if (node)
+	{
+		transform->transform = &node->cached_transform;
+		timestamp->current_timestamp = node->get_timestamp_pointer();
+	}
+	timestamp->cookie = transform_cookies.fetch_add(std::memory_order_relaxed);
+
+	return entity;
+}
 
 Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 {

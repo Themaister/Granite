@@ -1071,8 +1071,9 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 	char max_text[64];
 	sprintf(max_text, "Max: %10.3f ms", max_time * 1000.0f);
 
-	char latency_text[64];
-	sprintf(latency_text, "Latency: %10.3f ms", get_wsi().get_estimated_video_latency() * 1e3f);
+	char pos_text[256];
+	auto cam_pos = selected_camera->get_position();
+	snprintf(pos_text, sizeof(pos_text), "Pos: %.3f, %.3f, %.3f", cam_pos.x, cam_pos.y, cam_pos.z);
 
 	vec3 offset(5.0f, 5.0f, 0.0f);
 	vec2 size(cmd.get_viewport().width - 10.0f, cmd.get_viewport().height - 10.0f);
@@ -1085,7 +1086,7 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 	                          offset + vec3(0.0f, 20.0f, 0.0f), size - vec2(0.0f, 20.0f), color, alignment, 1.0f);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), max_text,
 	                          offset + vec3(0.0f, 40.0f, 0.0f), size - vec2(0.0f, 40.0f), color, alignment, 1.0f);
-	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), latency_text,
+	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), pos_text,
 	                          offset + vec3(0.0f, 60.0f, 0.0f), size - vec2(0.0f, 60.0f), color, alignment, 1.0f);
 
 	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];

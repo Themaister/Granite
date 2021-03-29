@@ -193,10 +193,14 @@ void scene_update_cached_transforms(Scene &scene, TaskComposer &composer, unsign
 	{
 		group.enqueue_task([&scene, num_tasks, i]() {
 			scene.update_cached_transforms_subset(i, num_tasks);
-			if (i == 0)
-				scene.update_transform_listener_components();
 		});
 	}
+
+	auto &listener_group = composer.begin_pipeline_stage();
+	listener_group.set_desc("parallel-update-transform-listeners");
+	listener_group.enqueue_task([&scene]() {
+		scene.update_transform_listener_components();
+	});
 }
 }
 }

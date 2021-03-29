@@ -621,10 +621,17 @@ void Scene::update_transform_listener_components()
 			// This is a somewhat expensive operation, so timestamp it.
 			// We only expect this to run once since diffuse volumes really
 			// cannot freely move around the scene due to the semi-baked nature of it.
-			auto world_to_texture = translate(vec3(0.5f)) * inverse(transform->transform->world_transform);
+			auto texture_to_world = transform->transform->world_transform * translate(vec3(-0.5f));
+			auto world_to_texture = inverse(texture_to_world);
+
 			world_to_texture = transpose(world_to_texture);
+			texture_to_world = transpose(texture_to_world);
+
 			for (int i = 0; i < 3; i++)
+			{
 				l->world_to_texture[i] = world_to_texture[i];
+				l->texture_to_world[i] = texture_to_world[i];
+			}
 			l->timestamp = timestamp->last_timestamp;
 		}
 	}

@@ -211,6 +211,7 @@ struct VolumetricDiffuseLightComponent : ComponentBase
 	GRANITE_COMPONENT_TYPE_DECL(VolumetricDiffuseLightComponent)
 	VolumetricDiffuseLight light;
 	vec4 world_to_texture[3];
+	vec4 texture_to_world[3];
 	uint32_t timestamp = 0;
 };
 

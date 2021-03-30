@@ -60,9 +60,10 @@ void RenderPassSceneRenderer::render_debug_probes(const Renderer &renderer, Vulk
 		auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
 
 		auto &view = light->light.get_volume_view();
-		unsigned width = view.get_image().get_width() / 6;
-		unsigned height = view.get_image().get_height();
-		unsigned depth = view.get_image().get_depth();
+		unsigned level = view.get_create_info().base_level;
+		unsigned width = view.get_image().get_width(level) / 6;
+		unsigned height = view.get_image().get_height(level);
+		unsigned depth = view.get_image().get_depth(level);
 
 		float radius = 0.2f;
 

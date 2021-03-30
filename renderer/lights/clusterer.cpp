@@ -1143,7 +1143,9 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 		for (unsigned j = 0; j < 3; j++)
 			volume.world_to_texture[j] = light.light->world_to_texture[j];
 
-		float half_inv_width = (0.5f * 6.0f) / float(light.light->light.get_volume_view().get_image().get_width());
+		auto &view = light.light->light.get_volume_view();
+		unsigned level = view.get_create_info().base_level;
+		float half_inv_width = (0.5f * 6.0f) / float(view.get_image().get_width(level));
 		volume.lo_tex_coord_x = half_inv_width;
 		volume.hi_tex_coord_x = 1.0f - half_inv_width;
 	}

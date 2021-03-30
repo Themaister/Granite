@@ -109,6 +109,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("ssao"))
 		config.ssao = doc["ssao"].GetBool();
 
+	if (doc.HasMember("debugProbes"))
+		config.debug_probes = doc["debugProbes"].GetBool();
+
 	if (doc.HasMember("directionalLightShadows"))
 		config.directional_light_shadows = doc["directionalLightShadows"].GetBool();
 
@@ -658,6 +661,10 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 		setup.flags |= SCENE_RENDERER_FORWARD_Z_PREPASS_BIT;
 	else if (config.forward_depth_prepass)
 		setup.flags |= SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT;
+
+	if (config.debug_probes)
+		setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
+
 	renderer->init(setup);
 
 	lighting_pass.set_render_pass_interface(std::move(renderer));
@@ -701,6 +708,9 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT;
 		if (!config.clustered_lights && config.deferred_clustered_stencil_culling)
 			setup.flags |= SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT;
+		if (config.debug_probes)
+			setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
+
 		renderer->init(setup);
 
 		gbuffer.set_render_pass_interface(std::move(renderer));

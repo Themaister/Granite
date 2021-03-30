@@ -132,6 +132,7 @@ private:
 		bool show_ui = true;
 		bool volumetric_fog = false;
 		bool ssao = true;
+		bool debug_probes = false;
 		PostAAType postaa_type = PostAAType::None;
 	};
 	Config config;

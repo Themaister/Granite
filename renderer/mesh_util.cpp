@@ -599,6 +599,86 @@ void SphereMesh::on_device_destroyed(const DeviceCreatedEvent &)
 	reset();
 }
 
+struct DebugProbeMeshInstanceInfo
+{
+	vec3 pos;
+	float radius;
+	vec3 tex_coord;
+};
+
+struct DebugProbeMeshInfo
+{
+	const Vulkan::ImageView *probe;
+	const Vulkan::Buffer *vbo;
+	const Vulkan::Buffer *ibo;
+	Vulkan::Program *program;
+	VkIndexType index_type;
+	uint32_t vbo_offset;
+	uint32_t vbo_stride;
+	VkFormat vbo_format;
+	uint32_t count;
+};
+
+static void debug_probe_mesh_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *data, unsigned num_instances)
+{
+	auto *info = static_cast<const DebugProbeMeshInfo *>(data->render_info);
+
+	cmd.set_program(info->program);
+	cmd.set_index_buffer(*info->ibo, 0, info->index_type);
+	cmd.set_texture(2, 0, *info->probe, StockSampler::NearestClamp);
+	cmd.set_vertex_attrib(0, 0, info->vbo_format, info->vbo_offset);
+	cmd.set_vertex_binding(0, *info->vbo, 0, info->vbo_stride);
+	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+	cmd.set_primitive_restart(true);
+
+	for (unsigned i = 0; i < num_instances; i++)
+	{
+		auto *instance_info = static_cast<const DebugProbeMeshInstanceInfo *>(data[i].instance_data);
+		*cmd.allocate_typed_constant_data<DebugProbeMeshInstanceInfo>(3, 0, 1) = *instance_info;
+		cmd.draw_indexed(info->count, 1, 0, 0, 0);
+	}
+}
+
+DebugProbeMesh::DebugProbeMesh()
+	: SphereMesh(10)
+{
+}
+
+void DebugProbeMesh::get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
+                                     RenderQueue &queue) const
+{
+	auto type = Queue::OpaqueEmissive;
+	auto *extra = static_cast<const DebugProbeMeshExtra *>(transform->extra_data);
+
+	Hasher h;
+	auto pipe_hash = h.get();
+	h.u64(extra->probe->get_cookie());
+	auto instance_key = h.get();
+	auto sorting_key = RenderInfo::get_sort_key(context, type, pipe_hash, instance_key, extra->pos);
+
+	auto *instance_data = queue.allocate_one<DebugProbeMeshInstanceInfo>();
+	auto *mesh_info = queue.push<DebugProbeMeshInfo>(type, instance_key, sorting_key,
+	                                                 debug_probe_mesh_render, instance_data);
+
+	instance_data->pos = extra->pos;
+	instance_data->tex_coord = extra->tex_coord;
+	instance_data->radius = extra->radius;
+
+	if (mesh_info)
+	{
+		mesh_info->vbo = vbo_position.get();
+		mesh_info->ibo = ibo.get();
+		mesh_info->index_type = index_type;
+		mesh_info->probe = extra->probe;
+		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::DebugProbe)].get_program(
+				DrawPipeline::Opaque, 1, MATERIAL_EMISSIVE_BIT, 0);
+		mesh_info->count = count;
+		mesh_info->vbo_format = attributes[ecast(MeshAttribute::Position)].format;
+		mesh_info->vbo_offset = attributes[ecast(MeshAttribute::Position)].offset;
+		mesh_info->vbo_stride = position_stride;
+	}
+}
+
 ConeMesh::ConeMesh(unsigned density_, float height_, float radius_)
 	: density(density_), height(height_), radius(radius_)
 {

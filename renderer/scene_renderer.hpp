@@ -47,7 +47,8 @@ enum SceneRendererFlagBits : uint32_t
 	SCENE_RENDERER_DEPTH_BIT = 1 << 11,
 	SCENE_RENDERER_DEPTH_STATIC_BIT = 1 << 12,
 	SCENE_RENDERER_DEPTH_DYNAMIC_BIT = 1 << 13,
-	SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT = 1 << 14
+	SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT = 1 << 14,
+	SCENE_RENDERER_DEBUG_PROBES_BIT = 1 << 15
 };
 using SceneRendererFlags = uint32_t;
 
@@ -83,5 +84,11 @@ protected:
 	void enqueue_prepare_render_pass(TaskComposer &composer,
 	                                 const Vulkan::RenderPassInfo &info, unsigned subpass,
 	                                 VkSubpassContents &contents) override;
+
+	void setup_debug_probes();
+	void render_debug_probes(const Renderer &renderer, Vulkan::CommandBuffer &cmd, RenderQueue &queue,
+	                         const RenderContext &context);
+	AbstractRenderableHandle debug_probe_mesh;
+	const ComponentGroupVector<VolumetricDiffuseLightComponent> *volumetric_diffuse_lights = nullptr;
 };
 }

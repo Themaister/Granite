@@ -24,5 +24,6 @@
 	"maxSpotLights": 32,
 	"maxPointLights": 32,
 	"volumetricFog": false,
-	"ssao": true
+	"ssao": true,
+	"debugProbes": false
 }

@@ -22,12 +22,76 @@
 
 #include "scene_renderer.hpp"
 #include "threaded_scene.hpp"
+#include "mesh_util.hpp"
 
 namespace Granite
 {
 void RenderPassSceneRenderer::init(const Setup &setup)
 {
 	setup_data = setup;
+	if (setup_data.flags & SCENE_RENDERER_DEBUG_PROBES_BIT)
+		setup_debug_probes();
+}
+
+void RenderPassSceneRenderer::setup_debug_probes()
+{
+	if (setup_data.scene)
+		volumetric_diffuse_lights = &setup_data.scene->get_entity_pool().get_component_group<VolumetricDiffuseLightComponent>();
+	debug_probe_mesh = Util::make_handle<DebugProbeMesh>();
+}
+
+void RenderPassSceneRenderer::render_debug_probes(const Renderer &renderer, Vulkan::CommandBuffer &cmd, RenderQueue &queue,
+                                                  const RenderContext &context)
+{
+	if (!volumetric_diffuse_lights)
+		return;
+
+	renderer.begin(queue);
+
+	VisibilityList visible;
+
+	DebugProbeMeshExtra extra = {};
+	RenderInfoComponent info = {};
+	info.extra_data = &extra;
+	RenderableInfo renderable = {};
+	renderable.renderable = debug_probe_mesh.get();
+	renderable.transform = &info;
+
+	for (auto &light_tuple : *volumetric_diffuse_lights)
+	{
+		auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
+
+		auto &view = light->light.get_volume_view();
+		unsigned width = view.get_image().get_width() / 6;
+		unsigned height = view.get_image().get_height();
+		unsigned depth = view.get_image().get_depth();
+
+		float radius = 0.2f;
+
+		for (unsigned z = 0; z < depth; z++)
+		{
+			for (unsigned y = 0; y < height; y++)
+			{
+				for (unsigned x = 0; x < width; x++)
+				{
+					extra.tex_coord.x = (float(x) + 0.5f) / float(width);
+					extra.tex_coord.y = (float(y) + 0.5f) / float(height);
+					extra.tex_coord.z = (float(z) + 0.5f) / float(depth);
+					extra.probe = &view;
+					extra.pos.x = dot(light->texture_to_world[0], vec4(extra.tex_coord, 1.0f));
+					extra.pos.y = dot(light->texture_to_world[1], vec4(extra.tex_coord, 1.0f));
+					extra.pos.z = dot(light->texture_to_world[2], vec4(extra.tex_coord, 1.0f));
+					extra.radius = radius;
+
+					visible.push_back(renderable);
+					queue.push_renderables(context, visible);
+					visible.clear();
+				}
+			}
+		}
+	}
+
+	renderer.flush(cmd, queue, context);
 }
 
 static Renderer::RendererOptionFlags convert_pcf_flags(SceneRendererFlags flags)
@@ -166,11 +230,28 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 			if (setup_data.flags & (SCENE_RENDERER_FORWARD_Z_PREPASS_BIT | SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT))
 				opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
 			suite->get_renderer(RendererSuite::Type::ForwardOpaque).flush(cmd, queue_per_task_opaque[0], *setup_data.context, opt);
+
+			if (setup_data.flags & SCENE_RENDERER_DEBUG_PROBES_BIT)
+			{
+				render_debug_probes(suite->get_renderer(RendererSuite::Type::ForwardOpaque), cmd,
+				                    queue_per_task_opaque[0],
+				                    *setup_data.context);
+			}
 		}
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
-		suite->get_renderer(RendererSuite::Type::Deferred).flush(cmd, queue_per_task_opaque[0], *setup_data.context, Renderer::SKIP_SORTING_BIT);
+	{
+		suite->get_renderer(RendererSuite::Type::Deferred).flush(cmd, queue_per_task_opaque[0], *setup_data.context,
+		                                                         Renderer::SKIP_SORTING_BIT);
+
+		if (setup_data.flags & SCENE_RENDERER_DEBUG_PROBES_BIT)
+		{
+			render_debug_probes(suite->get_renderer(RendererSuite::Type::Deferred), cmd,
+			                    queue_per_task_opaque[0],
+			                    *setup_data.context);
+		}
+	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT)
 		setup_data.deferred_lights->render_prepass_lights(cmd, queue_non_tasked, *setup_data.context);

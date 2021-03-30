@@ -198,6 +198,9 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 	auto &meshes = suite[ecast(RenderableType::Mesh)];
 	meshes.get_base_defines() = global_defines;
 	meshes.bake_base_defines();
+	auto &probes = suite[ecast(RenderableType::DebugProbe)];
+	probes.get_base_defines() = global_defines;
+	probes.bake_base_defines();
 	auto &ground = suite[ecast(RenderableType::Ground)];
 	ground.get_base_defines() = global_defines;
 	ground.bake_base_defines();
@@ -870,8 +873,7 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
                                             RendererType renderer,
                                             RenderableType drawable) const
 {
-	if (renderer == RendererType::GeneralDeferred ||
-	    renderer == RendererType::GeneralForward)
+	if (renderer == RendererType::GeneralDeferred || renderer == RendererType::GeneralForward)
 	{
 		switch (drawable)
 		{
@@ -881,6 +883,10 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 
 		case RenderableType::DebugMesh:
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/debug_mesh.vert", "builtin://shaders/debug_mesh.frag");
+			break;
+
+		case RenderableType::DebugProbe:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/debug_probe.vert", "builtin://shaders/debug_probe.frag");
 			break;
 
 		case RenderableType::Skybox:

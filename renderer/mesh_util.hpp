@@ -146,6 +146,23 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
 
+struct DebugProbeMeshExtra
+{
+	const Vulkan::ImageView *probe;
+	vec3 pos;
+	float radius;
+	vec3 tex_coord;
+};
+
+class DebugProbeMesh : public SphereMesh
+{
+public:
+	DebugProbeMesh();
+
+private:
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const override;
+};
+
 class ConeMesh : public GeneratedMesh, public EventHandler
 {
 public:

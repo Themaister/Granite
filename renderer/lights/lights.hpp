@@ -168,13 +168,16 @@ class VolumetricDiffuseLight : public EventHandler
 {
 public:
 	VolumetricDiffuseLight();
-	void set_volume(Vulkan::ImageHandle handle);
-	const Vulkan::ImageView &get_volume_view() const;
 
+	void set_volume(Vulkan::ImageHandle handle);
+	const Vulkan::ImageView *get_volume_view() const;
+	void set_resolution(uvec3 resolution);
+	uvec3 get_resolution() const;
 	static const AABB &get_static_aabb();
 
 private:
 	Vulkan::ImageHandle volume;
+	uvec3 resolution;
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
 };

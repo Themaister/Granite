@@ -148,12 +148,14 @@ struct PerFrameUpdateTransformComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(PerFrameUpdateTransformComponent)
 	PerFrameRefreshableTransform *refresh = nullptr;
+	int dependency_order = 0;
 };
 
 struct PerFrameUpdateComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(PerFrameUpdateComponent)
 	PerFrameRefreshable *refresh = nullptr;
+	int dependency_order = 0;
 };
 
 struct RenderInfoComponent : ComponentBase

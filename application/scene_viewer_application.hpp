@@ -37,6 +37,7 @@
 #include "lights/clusterer.hpp"
 #include "lights/volumetric_fog.hpp"
 #include "lights/deferred_lights.hpp"
+#include "lights/volumetric_diffuse.hpp"
 #include "camera_export.hpp"
 #include "post/aa.hpp"
 #include "post/temporal.hpp"
@@ -85,6 +86,7 @@ protected:
 
 	std::unique_ptr<LightClusterer> cluster;
 	std::unique_ptr<VolumetricFog> volumetric_fog;
+	std::unique_ptr<VolumetricDiffuseLightManager> volumetric_diffuse;
 	DeferredLights deferred_lights;
 	RenderQueue queue;
 

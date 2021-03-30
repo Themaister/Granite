@@ -604,16 +604,15 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
 		*point_info = info;
 	}
 }
-
 const AABB &VolumetricDiffuseLight::get_static_aabb()
 {
 	static AABB aabb(vec3(-0.5f), vec3(0.5f));
 	return aabb;
 }
 
-const Vulkan::ImageView &VolumetricDiffuseLight::get_volume_view() const
+const Vulkan::ImageView *VolumetricDiffuseLight::get_volume_view() const
 {
-	return volume->get_view();
+	return volume ? &volume->get_view() : nullptr;
 }
 
 void VolumetricDiffuseLight::set_volume(Vulkan::ImageHandle vol)
@@ -621,25 +620,24 @@ void VolumetricDiffuseLight::set_volume(Vulkan::ImageHandle vol)
 	volume = std::move(vol);
 }
 
-VolumetricDiffuseLight::VolumetricDiffuseLight()
+uvec3 VolumetricDiffuseLight::get_resolution() const
 {
-	EVENT_MANAGER_REGISTER_LATCH(VolumetricDiffuseLight, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
+	return resolution;
 }
 
-void VolumetricDiffuseLight::on_device_created(const Vulkan::DeviceCreatedEvent &e)
+void VolumetricDiffuseLight::set_resolution(uvec3 resolution_)
 {
-	auto &device = e.get_device();
-	auto info = ImageCreateInfo::immutable_3d_image(12, 2, 2, VK_FORMAT_R8G8B8A8_SRGB);
+	resolution = resolution_;
+}
 
-	const uint32_t data[] = {
-		0xffu, 0xffu, 0x1fu, 0x1fu, 0xff00u, 0xff00u, 0x1f00u, 0x1f00u, 0xff0000u, 0xff0000u, 0x1f0000u, 0x1f0000u,
-		0xffu, 0xffu, 0x1fu, 0x1fu, 0xff00u, 0xff00u, 0x1f00u, 0x1f00u, 0xff0000u, 0xff0000u, 0x1f0000u, 0x1f0000u,
-		0xffu, 0xffu, 0x1fu, 0x1fu, 0xff00u, 0xff00u, 0x1f00u, 0x1f00u, 0xff0000u, 0xff0000u, 0x1f0000u, 0x1f0000u,
-		0xffu, 0xffu, 0x1fu, 0x1fu, 0xff00u, 0xff00u, 0x1f00u, 0x1f00u, 0xff0000u, 0xff0000u, 0x1f0000u, 0x1f0000u,
-	};
+VolumetricDiffuseLight::VolumetricDiffuseLight()
+{
+	EVENT_MANAGER_REGISTER_LATCH(VolumetricDiffuseLight, on_device_created, on_device_destroyed,
+	                             Vulkan::DeviceCreatedEvent);
+}
 
-	const ImageInitialData initial = { data, 12, 2 };
-	volume = device.create_image(info, &initial);
+void VolumetricDiffuseLight::on_device_created(const Vulkan::DeviceCreatedEvent &)
+{
 }
 
 void VolumetricDiffuseLight::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)

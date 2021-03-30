@@ -211,7 +211,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		node->transform.scale = vec3(10.0f);
 		node->transform.translation = vec3(-0.1f, 5.0f, -1.0f);
 		node->invalidate_cached_transform();
-		scene.create_volumetric_diffuse_light(node.get());
+		scene.create_volumetric_diffuse_light(uvec3(8, 8, 8), node.get());
 		scene.get_root_node()->add_child(std::move(node));
 	}
 
@@ -321,6 +321,17 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 		if (config.directional_light_shadows)
 			volumetric_fog->add_texture_dependency("shadow-main");
+	}
+
+	{
+		volumetric_diffuse = make_unique<VolumetricDiffuseLightManager>();
+		volumetric_diffuse->set_scene(&scene_loader.get_scene());
+		volumetric_diffuse->set_render_suite(&renderer_suite);
+		auto entity = scene_loader.get_scene().create_entity();
+		auto *update = entity->allocate_component<PerFrameUpdateComponent>();
+		// Must come before clusterer since we're modifying volumetric light textures.
+		update->dependency_order = -1;
+		update->refresh = volumetric_diffuse.get();
 	}
 
 	if (config.deferred_clustered_stencil_culling)

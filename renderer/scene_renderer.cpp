@@ -58,25 +58,23 @@ void RenderPassSceneRenderer::render_debug_probes(const Renderer &renderer, Vulk
 	for (auto &light_tuple : *volumetric_diffuse_lights)
 	{
 		auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
+		auto *view = light->light.get_volume_view();
+		if (!view)
+			continue;
 
-		auto &view = light->light.get_volume_view();
-		unsigned level = view.get_create_info().base_level;
-		unsigned width = view.get_image().get_width(level) / 6;
-		unsigned height = view.get_image().get_height(level);
-		unsigned depth = view.get_image().get_depth(level);
-
+		uvec3 resolution = light->light.get_resolution();
 		float radius = 0.2f;
 
-		for (unsigned z = 0; z < depth; z++)
+		for (unsigned z = 0; z < resolution.z; z++)
 		{
-			for (unsigned y = 0; y < height; y++)
+			for (unsigned y = 0; y < resolution.y; y++)
 			{
-				for (unsigned x = 0; x < width; x++)
+				for (unsigned x = 0; x < resolution.x; x++)
 				{
-					extra.tex_coord.x = (float(x) + 0.5f) / float(width);
-					extra.tex_coord.y = (float(y) + 0.5f) / float(height);
-					extra.tex_coord.z = (float(z) + 0.5f) / float(depth);
-					extra.probe = &view;
+					extra.tex_coord.x = (float(x) + 0.5f) / float(resolution.x);
+					extra.tex_coord.y = (float(y) + 0.5f) / float(resolution.y);
+					extra.tex_coord.z = (float(z) + 0.5f) / float(resolution.z);
+					extra.probe = view;
 					extra.pos.x = dot(light->texture_to_world[0], vec4(extra.tex_coord, 1.0f));
 					extra.pos.y = dot(light->texture_to_world[1], vec4(extra.tex_coord, 1.0f));
 					extra.pos.z = dot(light->texture_to_world[2], vec4(extra.tex_coord, 1.0f));

@@ -243,10 +243,11 @@ void Scene::gather_visible_dynamic_shadow_renderables_subset(const Frustum &frus
 }
 
 static void gather_positional_lights(const Frustum &frustum, VisibilityList &list,
-                                     const std::vector<std::tuple<RenderInfoComponent *,
-	                                     RenderableComponent *,
-	                                     CachedSpatialTransformTimestampComponent *,
-	                                     PositionalLightComponent *>> &positional,
+                                     const ComponentGroupVector<
+		                                     RenderInfoComponent,
+		                                     RenderableComponent,
+		                                     CachedSpatialTransformTimestampComponent,
+		                                     PositionalLightComponent> &positional,
                                      size_t start_index, size_t end_index)
 {
 	for (size_t i = start_index; i < end_index; i++)
@@ -271,10 +272,10 @@ static void gather_positional_lights(const Frustum &frustum, VisibilityList &lis
 }
 
 static void gather_positional_lights(const Frustum &frustum, PositionalLightList &list,
-                                     const std::vector<std::tuple<RenderInfoComponent *,
-	                                     RenderableComponent *,
-	                                     CachedSpatialTransformTimestampComponent *,
-	                                     PositionalLightComponent *>> &positional,
+                                     const ComponentGroupVector<RenderInfoComponent,
+		                                     RenderableComponent,
+		                                     CachedSpatialTransformTimestampComponent,
+		                                     PositionalLightComponent> &positional,
                                      size_t start_index, size_t end_index)
 {
 	for (size_t i = start_index; i < end_index; i++)

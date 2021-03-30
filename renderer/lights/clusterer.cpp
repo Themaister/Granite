@@ -451,7 +451,7 @@ void LightClusterer::render_shadow_legacy(Vulkan::CommandBuffer &cmd, const Rend
 
 	auto &depth_renderer = get_shadow_renderer();
 	depth_renderer.begin(internal_queue);
-	internal_queue.push_depth_renderables(depth_context, visible);
+	internal_queue.push_depth_renderables(depth_context, visible.data(), visible.size());
 	internal_queue.sort();
 
 	render_shadow(cmd, depth_context, internal_queue,

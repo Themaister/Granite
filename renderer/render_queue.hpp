@@ -213,8 +213,8 @@ public:
 		return shader_suites;
 	}
 
-	void push_renderables(const RenderContext &context, const VisibilityList &visible);
-	void push_depth_renderables(const RenderContext &context, const VisibilityList &visible);
+	void push_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count);
+	void push_depth_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count);
 
 private:
 	void enqueue_queue_data(Queue queue, const RenderQueueData &data);

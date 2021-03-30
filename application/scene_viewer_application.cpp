@@ -567,7 +567,7 @@ void SceneViewerApplication::capture_environment_probe()
 		forward_renderer.set_mesh_renderer_options(forward_renderer.get_mesh_renderer_options() | config.pcf_flags);
 
 		forward_renderer.begin(queue);
-		queue.push_renderables(context, visible);
+		queue.push_renderables(context, visible.data(), visible.size());
 
 		Renderer::RendererOptionFlags opt = Renderer::FRONT_FACE_CLOCKWISE_BIT;
 		forward_renderer.flush(*cmd, queue, context, opt);

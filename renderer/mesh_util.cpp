@@ -1290,7 +1290,7 @@ void TexturePlane::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj
 	auto &renderer = renderer_suite->get_renderer(RendererSuite::Type::ForwardOpaque);
 	//renderer.set_mesh_renderer_options_from_lighting(lighting);
 	renderer.begin(internal_queue);
-	internal_queue.push_renderables(context, visible);
+	internal_queue.push_renderables(context, visible.data(), visible.size());
 	renderer.flush(cmd, internal_queue, context);
 }
 

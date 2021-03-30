@@ -48,8 +48,6 @@ void RenderPassSceneRenderer::render_debug_probes(const Renderer &renderer, Vulk
 
 	renderer.begin(queue);
 
-	VisibilityList visible;
-
 	DebugProbeMeshExtra extra = {};
 	RenderInfoComponent info = {};
 	info.extra_data = &extra;
@@ -83,9 +81,7 @@ void RenderPassSceneRenderer::render_debug_probes(const Renderer &renderer, Vulk
 					extra.pos.z = dot(light->texture_to_world[2], vec4(extra.tex_coord, 1.0f));
 					extra.radius = radius;
 
-					visible.push_back(renderable);
-					queue.push_renderables(context, visible);
-					visible.clear();
+					queue.push_renderables(context, &renderable, 1);
 				}
 			}
 		}

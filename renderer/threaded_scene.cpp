@@ -169,7 +169,7 @@ void compose_parallel_push_renderables(TaskComposer &composer, const RenderConte
 		for (unsigned i = 0; i < count; i++)
 		{
 			group.enqueue_task([i, &context, visibility, queues]() {
-				queues[i].push_renderables(context, visibility[i]);
+				queues[i].push_renderables(context, visibility[i].data(), visibility[i].size());
 			});
 		}
 	}

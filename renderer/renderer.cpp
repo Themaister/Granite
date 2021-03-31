@@ -580,10 +580,21 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	}
 }
 
-void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options, const FlushParameters *params) const
+void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue,
+                     const RenderContext &context, RendererFlushFlags options,
+                     const FlushParameters *params) const
 {
 	if ((options & SKIP_SORTING_BIT) == 0)
 		queue.sort();
+	flush_subset(cmd, queue, context, options | SKIP_SORTING_BIT, params, 0, 1);
+}
+
+void Renderer::flush(Vulkan::CommandBuffer &cmd, const RenderQueue &queue,
+                     const RenderContext &context, RendererFlushFlags options,
+                     const FlushParameters *params) const
+{
+	if ((options & SKIP_SORTING_BIT) == 0)
+		LOGE("SKIP_SORTING was not specified!\n");
 	flush_subset(cmd, queue, context, options | SKIP_SORTING_BIT, params, 0, 1);
 }
 

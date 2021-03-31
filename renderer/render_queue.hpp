@@ -43,7 +43,7 @@ struct RenderInfoComponent;
 
 struct RenderableInfo
 {
-	AbstractRenderable *renderable;
+	const AbstractRenderable *renderable;
 	const RenderInfoComponent *transform;
 	Util::Hash transform_hash;
 };

@@ -117,7 +117,11 @@ public:
 			uint8_t ref;
 		} stencil;
 	};
-	void flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options = 0, const FlushParameters *params = nullptr) const;
+	void flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context,
+	           RendererFlushFlags options = 0, const FlushParameters *params = nullptr) const;
+	// If queue is const, SKIP_SORTING must be set in options.
+	void flush(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,
+	           RendererFlushFlags options = 0, const FlushParameters *params = nullptr) const;
 	// Multi-threaded dispatch from a queue.
 	// queue is assumed to be sorted already.
 	void flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,

@@ -26,6 +26,8 @@
 
 namespace Vulkan
 {
+// FIXME: Also consider that we might have to flip X or Y w.r.t. dimensions,
+// but that only matters for partial rendering ...
 static inline bool surface_transform_swaps_xy(VkSurfaceTransformFlagBitsKHR transform)
 {
 	return (transform & (

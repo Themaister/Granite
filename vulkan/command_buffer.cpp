@@ -494,15 +494,19 @@ void CommandBuffer::init_viewport_scissor(const RenderPassInfo &info, const Fram
 	uint32_t fb_width = fb->get_width();
 	uint32_t fb_height = fb->get_height();
 
-	if (surface_transform_swaps_xy(current_framebuffer_surface_transform))
-		std::swap(fb_width, fb_height);
-
 	rect.offset.x = min(fb_width, uint32_t(rect.offset.x));
 	rect.offset.y = min(fb_height, uint32_t(rect.offset.y));
 	rect.extent.width = min(fb_width - rect.offset.x, rect.extent.width);
 	rect.extent.height = min(fb_height - rect.offset.y, rect.extent.height);
 
-	viewport = { 0.0f, 0.0f, float(fb_width), float(fb_height), 0.0f, 1.0f };
+	if (surface_transform_swaps_xy(current_framebuffer_surface_transform))
+		rect2d_swap_xy(rect);
+
+	viewport = {
+		float(rect.offset.x), float(rect.offset.y),
+		float(rect.extent.width), float(rect.extent.height),
+		0.0f, 1.0f
+	};
 	scissor = rect;
 }
 

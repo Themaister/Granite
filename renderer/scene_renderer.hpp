@@ -67,6 +67,12 @@ public:
 	void set_clear_color(const VkClearColorValue &value);
 	void set_extra_flush_flags(Renderer::RendererFlushFlags flags);
 
+	void build_render_pass(Vulkan::CommandBuffer &cmd) const;
+	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
+	void enqueue_prepare_render_pass(TaskComposer &composer,
+	                                 const Vulkan::RenderPassInfo &info, unsigned subpass,
+	                                 VkSubpassContents &contents) override;
+
 protected:
 	Setup setup_data = {};
 	VkClearColorValue clear_color_value = {};
@@ -79,17 +85,13 @@ protected:
 	RenderQueue queue_per_task_depth[MaxTasks];
 	RenderQueue queue_per_task_opaque[MaxTasks];
 	RenderQueue queue_per_task_transparent[MaxTasks];
-	RenderQueue queue_non_tasked;
+	mutable RenderQueue queue_non_tasked;
 
 	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
-	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
-	void enqueue_prepare_render_pass(TaskComposer &composer,
-	                                 const Vulkan::RenderPassInfo &info, unsigned subpass,
-	                                 VkSubpassContents &contents) override;
-
+	void build_render_pass_inner(Vulkan::CommandBuffer &cmd) const;
 	void setup_debug_probes();
 	void render_debug_probes(const Renderer &renderer, Vulkan::CommandBuffer &cmd, RenderQueue &queue,
-	                         const RenderContext &context);
+	                         const RenderContext &context) const;
 	AbstractRenderableHandle debug_probe_mesh;
 	const ComponentGroupVector<VolumetricDiffuseLightComponent> *volumetric_diffuse_lights = nullptr;
 };

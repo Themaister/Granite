@@ -620,6 +620,16 @@ void VolumetricDiffuseLight::set_volume(Vulkan::ImageHandle vol)
 	volume = std::move(vol);
 }
 
+const VolumetricDiffuseLight::GBuffer &VolumetricDiffuseLight::get_gbuffer() const
+{
+	return gbuffer;
+}
+
+void VolumetricDiffuseLight::set_probe_gbuffer(GBuffer gbuffer_)
+{
+	gbuffer = std::move(gbuffer_);
+}
+
 uvec3 VolumetricDiffuseLight::get_resolution() const
 {
 	return resolution;
@@ -643,6 +653,7 @@ void VolumetricDiffuseLight::on_device_created(const Vulkan::DeviceCreatedEvent 
 void VolumetricDiffuseLight::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 {
 	volume.reset();
+	gbuffer = {};
 }
 
 vec2 point_light_z_range(const RenderContext &context, const vec3 &center, float radius)

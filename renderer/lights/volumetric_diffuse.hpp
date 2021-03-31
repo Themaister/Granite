@@ -28,7 +28,7 @@
 #include "math.hpp"
 #include "aabb.hpp"
 #include "render_components.hpp"
-
+#include "thread_group.hpp"
 
 namespace Granite
 {
@@ -41,6 +41,11 @@ public:
 private:
 	void refresh(const RenderContext &context_, TaskComposer &composer) override;
 	const ComponentGroupVector<VolumetricDiffuseLightComponent> *volumetric_diffuse = nullptr;
+	Scene *scene = nullptr;
 	const RendererSuite *suite = nullptr;
+
+	TaskGroupHandle create_probe_gbuffer(TaskComposer &composer, TaskGroup &incoming,
+	                                     const RenderContext &context,
+	                                     VolumetricDiffuseLightComponent &light);
 };
 }

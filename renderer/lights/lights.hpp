@@ -171,12 +171,21 @@ public:
 
 	void set_volume(Vulkan::ImageHandle handle);
 	const Vulkan::ImageView *get_volume_view() const;
+
+	struct GBuffer
+	{
+		Vulkan::ImageHandle emissive, albedo, normal, pbr, depth;
+	};
+	void set_probe_gbuffer(GBuffer gbuffer);
+	const GBuffer &get_gbuffer() const;
+
 	void set_resolution(uvec3 resolution);
 	uvec3 get_resolution() const;
 	static const AABB &get_static_aabb();
 
 private:
 	Vulkan::ImageHandle volume;
+	GBuffer gbuffer;
 	uvec3 resolution;
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);

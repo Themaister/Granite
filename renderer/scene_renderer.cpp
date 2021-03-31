@@ -41,7 +41,7 @@ void RenderPassSceneRenderer::setup_debug_probes()
 }
 
 void RenderPassSceneRenderer::render_debug_probes(const Renderer &renderer, Vulkan::CommandBuffer &cmd, RenderQueue &queue,
-                                                  const RenderContext &context)
+                                                  const RenderContext &context) const
 {
 	if (!volumetric_diffuse_lights)
 		return;
@@ -216,7 +216,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 	}
 }
 
-void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
+void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd) const
 {
 	auto *suite = setup_data.suite;
 
@@ -239,7 +239,7 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 			if (setup_data.flags & SCENE_RENDERER_DEBUG_PROBES_BIT)
 			{
 				render_debug_probes(suite->get_renderer(RendererSuite::Type::ForwardOpaque), cmd,
-				                    queue_per_task_opaque[0],
+				                    queue_non_tasked,
 				                    *setup_data.context);
 			}
 		}
@@ -253,7 +253,7 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 		if (setup_data.flags & SCENE_RENDERER_DEBUG_PROBES_BIT)
 		{
 			render_debug_probes(suite->get_renderer(RendererSuite::Type::Deferred), cmd,
-			                    queue_per_task_opaque[0],
+			                    queue_non_tasked,
 			                    *setup_data.context);
 		}
 	}
@@ -283,6 +283,16 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 		suite->get_renderer(type).flush(cmd, queue_per_task_depth[0], *setup_data.context,
 		                                Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT | flush_flags);
 	}
+}
+
+void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd) const
+{
+	build_render_pass_inner(cmd);
+}
+
+void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
+{
+	build_render_pass_inner(cmd);
 }
 
 void RenderPassSceneRenderer::set_clear_color(const VkClearColorValue &value)

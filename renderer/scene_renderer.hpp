@@ -65,10 +65,12 @@ public:
 	};
 	void init(const Setup &setup);
 	void set_clear_color(const VkClearColorValue &value);
+	void set_extra_flush_flags(Renderer::RendererFlushFlags flags);
 
 protected:
 	Setup setup_data = {};
 	VkClearColorValue clear_color_value = {};
+	Renderer::RendererFlushFlags flush_flags = 0;
 
 	// These need to be per-thread, and thus are hoisted out as state in RenderPassSceneRenderer.
 	enum { MaxTasks = 4 };

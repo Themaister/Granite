@@ -131,25 +131,9 @@ TaskGroupHandle VolumetricDiffuseLightManager::light_probe_buffer(TaskGroupHandl
 		cmd->begin_region("probe-light");
 		uvec3 res = light.light.get_resolution();
 
-		if (!light.light.get_volume_view())
-		{
-			auto info = Vulkan::ImageCreateInfo::immutable_3d_image(6 * res.x, res.y, res.z, VK_FORMAT_R16G16B16A16_SFLOAT);
-			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-			info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-
-			auto image = device.create_image(info);
-			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-			                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-			                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
-			image->set_layout(Vulkan::Layout::General);
-			light.light.set_volume(std::move(image));
-		}
-		else
-		{
-			// TODO: replace with external render graph semaphores.
-			cmd->barrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-			             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0);
-		}
+		// TODO: replace with external render graph semaphores.
+		cmd->barrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+		             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0);
 
 		Push push = {};
 		push.patch_resolution = ProbeResolution / 2;
@@ -180,30 +164,32 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
                                                                     VolumetricDiffuseLightComponent &light)
 {
 	auto &device = context.get_device();
-	uvec3 res = light.light.get_resolution();
 
 	VolumetricDiffuseLight::GBuffer allocated_gbuffer;
 
-	auto info = Vulkan::ImageCreateInfo::render_target(ProbeResolution * res.x * 6, ProbeResolution * res.y * res.z, VK_FORMAT_R8G8B8A8_SRGB);
-	info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-	info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-	allocated_gbuffer.albedo = device.create_image(info);
+	uvec3 resolution = light.light.get_resolution();
+	auto gbuffer_info = Vulkan::ImageCreateInfo::render_target(ProbeResolution * resolution.x * 6,
+	                                                           ProbeResolution * resolution.y * resolution.z,
+	                                                           VK_FORMAT_R8G8B8A8_SRGB);
+	gbuffer_info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	gbuffer_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	allocated_gbuffer.albedo = device.create_image(gbuffer_info);
 
 	bool supports_32bpp =
 			device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32,
 			                                 VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
-	info.format = supports_32bpp ? VK_FORMAT_B10G11R11_UFLOAT_PACK32 : VK_FORMAT_R16G16B16A16_SFLOAT;
-	allocated_gbuffer.emissive = device.create_image(info);
+	gbuffer_info.format = supports_32bpp ? VK_FORMAT_B10G11R11_UFLOAT_PACK32 : VK_FORMAT_R16G16B16A16_SFLOAT;
+	allocated_gbuffer.emissive = device.create_image(gbuffer_info);
 
-	info.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-	allocated_gbuffer.normal = device.create_image(info);
+	gbuffer_info.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+	allocated_gbuffer.normal = device.create_image(gbuffer_info);
 
-	info.format = VK_FORMAT_R8G8_UNORM;
-	allocated_gbuffer.pbr = device.create_image(info);
+	gbuffer_info.format = VK_FORMAT_R8G8_UNORM;
+	allocated_gbuffer.pbr = device.create_image(gbuffer_info);
 
-	info.format = device.get_default_depth_stencil_format();
-	info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-	allocated_gbuffer.depth = device.create_image(info);
+	gbuffer_info.format = device.get_default_depth_stencil_format();
+	gbuffer_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	allocated_gbuffer.depth = device.create_image(gbuffer_info);
 
 	device.set_name(*allocated_gbuffer.emissive, "probe-emissive");
 	device.set_name(*allocated_gbuffer.albedo, "probe-albedo");
@@ -243,17 +229,17 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 	rp.color_attachments[3] = &gbuffer.pbr->get_view();
 	rp.depth_stencil = &gbuffer.depth->get_view();
 
-	for (unsigned z = 0; z < res.z; z++)
+	for (unsigned z = 0; z < resolution.z; z++)
 	{
-		for (unsigned y = 0; y < res.y; y++)
+		for (unsigned y = 0; y < resolution.y; y++)
 		{
-			for (unsigned x = 0; x < res.x; x++)
+			for (unsigned x = 0; x < resolution.x; x++)
 			{
 				for (unsigned face = 0; face < 6; face++)
 				{
 					auto &context_setup = probe_composer.begin_pipeline_stage();
-					context_setup.enqueue_task([x, y, z, face, res, shared_context, &light]() {
-						vec3 tex = (vec3(x, y, z) + 0.5f) / vec3(res);
+					context_setup.enqueue_task([x, y, z, face, resolution, shared_context, &light]() {
+						vec3 tex = (vec3(x, y, z) + 0.5f) / vec3(resolution);
 						vec3 center = vec3(
 								dot(light.texture_to_world[0], vec4(tex, 1.0f)),
 								dot(light.texture_to_world[1], vec4(tex, 1.0f)),
@@ -268,7 +254,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 					renderer->enqueue_prepare_render_pass(probe_composer, rp, 0, contents);
 
 					auto &task = probe_composer.begin_pipeline_stage();
-					task.enqueue_task([x, y, z, face, res, renderer, rp, &light, &device]() {
+					task.enqueue_task([x, y, z, face, renderer, rp, &light, &device]() {
 						if (face == 0)
 						{
 							// We're going to be consuming a fair bit of memory,
@@ -285,7 +271,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 
 						auto slice_rp = rp;
 						slice_rp.render_area.offset.x = (6 * x + face) * ProbeResolution;
-						slice_rp.render_area.offset.y = (z * res.y + y) * ProbeResolution;
+						slice_rp.render_area.offset.y = (z * light.light.get_resolution().y + y) * ProbeResolution;
 						slice_rp.render_area.extent.width = ProbeResolution;
 						slice_rp.render_area.extent.height = ProbeResolution;
 
@@ -304,6 +290,28 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 	task.enqueue_task([&device, &light]() {
 		auto cmd = device.request_command_buffer();
 		transition_gbuffer(*cmd, light.light.get_gbuffer(), TransitionMode::Read);
+		uvec3 res = light.light.get_resolution();
+
+		if (!light.light.get_volume_view())
+		{
+			auto info = Vulkan::ImageCreateInfo::immutable_3d_image(6 * res.x, res.y, res.z, VK_FORMAT_R16G16B16A16_SFLOAT);
+			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+			auto image = device.create_image(info);
+			image->set_layout(Vulkan::Layout::General);
+
+			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+			                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+			                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+			cmd->clear_image(*image, {});
+			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+			                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			                   VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+			light.light.set_volume(std::move(image));
+		}
+
 		device.submit(cmd);
 		device.next_frame_context();
 	});

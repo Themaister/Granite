@@ -35,7 +35,7 @@ void VolumetricDiffuseLightManager::set_scene(Scene *scene_)
 	volumetric_diffuse = &scene->get_entity_pool().get_component_group<VolumetricDiffuseLightComponent>();
 }
 
-void VolumetricDiffuseLightManager::set_render_suite(const RendererSuite *suite_)
+void VolumetricDiffuseLightManager::set_base_renderer(const RendererSuite *suite_)
 {
 	suite = suite_;
 }
@@ -106,12 +106,9 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 	                  dst_depth, dst_access_depth);
 }
 
-TaskGroupHandle VolumetricDiffuseLightManager::light_probe_buffer(TaskGroupHandle incoming,
-                                                                  const RenderContext &context,
-                                                                  VolumetricDiffuseLightComponent &light)
+void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cmd,
+                                                       VolumetricDiffuseLightComponent &light)
 {
-	auto &device = context.get_device();
-
 	struct Push
 	{
 		uint32_t patch_resolution;
@@ -119,44 +116,21 @@ TaskGroupHandle VolumetricDiffuseLightManager::light_probe_buffer(TaskGroupHandl
 		uint32_t num_iterations_per_patch;
 		float inv_patch_resolution;
 		float inv_patch_resolution2;
-	};
+	} push = {};
 
-	TaskComposer probe_composer(*incoming->get_thread_group());
-	probe_composer.set_incoming_task(std::move(incoming));
+	push.patch_resolution = ProbeResolution / 2;
+	push.face_resolution = ProbeResolution;
+	push.inv_patch_resolution = 1.0f / float(push.patch_resolution);
+	push.inv_patch_resolution2 = push.inv_patch_resolution * push.inv_patch_resolution;
+	push.num_iterations_per_patch = push.patch_resolution / 8;
 
-	auto &context_light = probe_composer.begin_pipeline_stage();
+	uvec3 res = light.light.get_resolution();
 
-	context_light.enqueue_task([&device, &light]() {
-		auto cmd = device.request_command_buffer();
-		cmd->begin_region("probe-light");
-		uvec3 res = light.light.get_resolution();
-
-		// TODO: replace with external render graph semaphores.
-		cmd->barrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-		             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0);
-
-		Push push = {};
-		push.patch_resolution = ProbeResolution / 2;
-		push.face_resolution = ProbeResolution;
-		push.inv_patch_resolution = 1.0f / float(push.patch_resolution);
-		push.inv_patch_resolution2 = push.inv_patch_resolution * push.inv_patch_resolution;
-		push.num_iterations_per_patch = push.patch_resolution / 8;
-
-		cmd->set_program("builtin://shaders/util/volumetric_hemisphere_integral.comp");
-		cmd->push_constants(&push, 0, sizeof(push));
-		cmd->set_texture(0, 0, light.light.get_gbuffer().albedo->get_view());
-		cmd->set_storage_texture(0, 1, *light.light.get_volume_view());
-		cmd->dispatch(res.x, res.y, res.z);
-
-		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		             VK_ACCESS_SHADER_READ_BIT);
-
-		cmd->end_region();
-		device.submit(cmd);
-	});
-
-	return probe_composer.get_outgoing_task();
+	cmd.set_program("builtin://shaders/util/volumetric_hemisphere_integral.comp");
+	cmd.push_constants(&push, 0, sizeof(push));
+	cmd.set_texture(0, 0, light.light.get_gbuffer().albedo->get_view());
+	cmd.set_storage_texture(0, 1, *light.light.get_volume_view());
+	cmd.dispatch(res.x, res.y, res.z);
 }
 
 TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer &composer, TaskGroup &incoming,
@@ -329,12 +303,39 @@ void VolumetricDiffuseLightManager::refresh(const RenderContext &context, TaskCo
 	{
 		auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
 
-		TaskGroupHandle task;
 		if (!light->light.get_gbuffer().emissive)
-			task = create_probe_gbuffer(composer, group, context, *light);
-
-		task = light_probe_buffer(task ? task : composer.get_pipeline_stage_dependency(), context, *light);
-		composer.get_thread_group().add_dependency(group, *task);
+		{
+			auto task = create_probe_gbuffer(composer, group, context, *light);
+			composer.get_thread_group().add_dependency(group, *task);
+		}
 	}
+}
+
+void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
+{
+	auto &light_pass = graph.add_pass("probe-light", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+	light_pass.add_proxy_output("probe-light-proxy");
+	light_pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+		for (auto &light_tuple : *volumetric_diffuse)
+		{
+			// TODO: Check visibility?
+			auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
+			light_probe_buffer(cmd, *light);
+		}
+	});
+}
+
+void VolumetricDiffuseLightManager::set_base_render_context(const RenderContext *context)
+{
+	base_render_context = context;
+}
+
+void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
+{
+	target.add_proxy_input("probe-light-proxy");
+}
+
+void VolumetricDiffuseLightManager::setup_render_pass_resources(RenderGraph &)
+{
 }
 }

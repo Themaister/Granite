@@ -325,11 +325,14 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	{
 		volumetric_diffuse = make_unique<VolumetricDiffuseLightManager>();
-		volumetric_diffuse->set_scene(&scene_loader.get_scene());
-		volumetric_diffuse->set_render_suite(&renderer_suite);
 		auto entity = scene_loader.get_scene().create_entity();
+
+		auto *rp = entity->allocate_component<RenderPassComponent>();
+		rp->creator = volumetric_diffuse.get();
+
 		auto *update = entity->allocate_component<PerFrameUpdateComponent>();
-		// Must come before clusterer since we're modifying volumetric light textures.
+		// Must come before clusterer since we're modifying volumetric light textures,
+		// which will affect clustering, since it writes new descriptors.
 		update->dependency_order = -1;
 		update->refresh = volumetric_diffuse.get();
 	}

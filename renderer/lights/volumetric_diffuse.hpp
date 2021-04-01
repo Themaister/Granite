@@ -32,24 +32,27 @@
 
 namespace Granite
 {
-class VolumetricDiffuseLightManager : public EventHandler, public PerFrameRefreshable
+class VolumetricDiffuseLightManager : public EventHandler, public PerFrameRefreshable, public RenderPassCreator
 {
-public:
-	void set_scene(Scene *scene);
-	void set_render_suite(const RendererSuite *suite);
-
 private:
 	void refresh(const RenderContext &context_, TaskComposer &composer) override;
 	const ComponentGroupVector<VolumetricDiffuseLightComponent> *volumetric_diffuse = nullptr;
 	Scene *scene = nullptr;
 	const RendererSuite *suite = nullptr;
+	const RenderContext *base_render_context = nullptr;
 
 	TaskGroupHandle create_probe_gbuffer(TaskComposer &composer, TaskGroup &incoming,
 	                                     const RenderContext &context,
 	                                     VolumetricDiffuseLightComponent &light);
 
-	TaskGroupHandle light_probe_buffer(TaskGroupHandle incoming,
-	                                   const RenderContext &context,
-	                                   VolumetricDiffuseLightComponent &light);
+	static void light_probe_buffer(Vulkan::CommandBuffer &cmd,
+	                               VolumetricDiffuseLightComponent &light);
+
+	void set_base_renderer(const RendererSuite *suite) override;
+	void set_base_render_context(const RenderContext *context) override;
+	void set_scene(Scene *scene) override;
+	void add_render_passes(RenderGraph &graph) override;
+	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
+	void setup_render_pass_resources(RenderGraph &graph) override;
 };
 }

@@ -10,8 +10,9 @@ struct VolumeCube
 	vec3 directions[6];
 };
 
-static vec3 sample_cube(const VolumeCube &cube, vec3 n)
+static vec3 sample_light(const VolumeCube &cube, vec3 n)
 {
+#if 0
 	vec3 n2 = n * n;
 	ivec3 index_offset = ivec3(lessThan(n, vec3(0.0f)));
 
@@ -21,6 +22,11 @@ static vec3 sample_cube(const VolumeCube &cube, vec3 n)
 
 	result *= 1.0f / pi<float>();
 	return result;
+#else
+	(void)cube;
+	const vec3 dir = normalize(vec3(0.0f, 1.0f, 1.0f));
+	return vec3(100.0f, 50.0f, 25.0f) * pow(clamp(dot(n, dir), 0.0f, 1.0f), 100.0f);
+#endif
 }
 
 mat3 integrate_patch(const VolumeCube &cube, vec3 pos_begin, vec3 pos_dx, vec3 pos_dy)
@@ -39,7 +45,7 @@ mat3 integrate_patch(const VolumeCube &cube, vec3 pos_begin, vec3 pos_dx, vec3 p
 			float area = (1.0f / float(Res * Res)) * inv_l * inv_l * inv_l;
 
 			n *= inv_l;
-			vec3 col = sample_cube(cube, n);
+			vec3 col = sample_light(cube, n);
 
 			vec3 hemisphere_area = abs(n) * area;
 			contribution_per_major_axis[0] += col * hemisphere_area.x;
@@ -114,6 +120,7 @@ static VolumeCube resample_cube(const VolumeCube &cube)
 		Util::for_each_bit(patch_mask_per_face[face], [&](unsigned bit) {
 			result.directions[face] += contributions[bit][face >> 1u];
 		});
+		result.directions[face] *= 1.0f / pi<float>();
 	}
 
 	return result;

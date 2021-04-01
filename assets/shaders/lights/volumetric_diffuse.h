@@ -77,6 +77,8 @@ mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal)
 
 	for (int i = 0; i < volumetric.num_volumes; i++)
 		diffuse_weight += compute_volumetric_diffuse(i, world_pos, normal);
+
+	// Already accounted for lambertian 1.0 / PI when creating the probe.
 	return diffuse_weight.rgb / max(diffuse_weight.a, 0.0001);
 }
 

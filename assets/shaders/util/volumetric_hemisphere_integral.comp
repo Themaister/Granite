@@ -34,7 +34,7 @@ mat3 sample_patch(ivec2 coord, vec3 pos)
     // A ~= dot(n', dz)
     // A ~= dot(n', [0, 0, (2 / (l * res)) * (2 / (l * res))])
     // A ~= 4.0 / (res^2 * l^3)
-    float area = registers.inv_patch_resolution * inv_l * inv_l * inv_l;
+    float area = registers.inv_patch_resolution2 * inv_l * inv_l * inv_l;
 
     vec3 color = texelFetch(uProbeLights, coord, 0).rgb;
 
@@ -116,7 +116,7 @@ void main()
                     }
                 }
 
-                shared_patch_contributions[gl_LocalInvocationIndex] = patch_contribution;
+                shared_colors[gl_LocalInvocationIndex] = patch_contribution;
 
 #define ITERATE(l) if (gl_LocalInvocationIndex < l) { shared_colors[gl_LocalInvocationIndex] += shared_colors[gl_LocalInvocationIndex + l]; }
 
@@ -144,9 +144,9 @@ void main()
     }
 
     // TODO: This will require dynamic subgroupShuffle. Might be best to do a hybrid kind of approach here ...
-    if (gl_LocalInvocationIndex < 6u)
+    uint face = gl_LocalInvocationIndex;
+    if (face < 6u)
     {
-        uint face = gl_LocalInvocationIndex;
         uint mask = patch_mask_per_face[face];
         vec3 total = vec3(0.0);
         while (mask != 0u)
@@ -157,6 +157,6 @@ void main()
         }
 
         total /= PI;
-        imageStore(uAmbient, ivec3(probe_index) + ivec3(gl_NumWorkGroups.x * face, 0, 0), vec4(total, 0.0));
+        imageStore(uAmbient, ivec3(probe_index) + ivec3(face * gl_NumWorkGroups.x, 0, 0), vec4(total, 0.0));
     }
 }

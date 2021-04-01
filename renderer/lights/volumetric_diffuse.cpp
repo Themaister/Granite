@@ -106,6 +106,75 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 	                  dst_depth, dst_access_depth);
 }
 
+TaskGroupHandle VolumetricDiffuseLightManager::light_probe_buffer(TaskGroupHandle incoming,
+                                                                  const RenderContext &context,
+                                                                  VolumetricDiffuseLightComponent &light)
+{
+	auto &device = context.get_device();
+
+	struct Push
+	{
+		uint32_t patch_resolution;
+		uint32_t face_resolution;
+		uint32_t num_iterations_per_patch;
+		float inv_patch_resolution;
+		float inv_patch_resolution2;
+	};
+
+	TaskComposer probe_composer(*incoming->get_thread_group());
+	probe_composer.set_incoming_task(std::move(incoming));
+
+	auto &context_light = probe_composer.begin_pipeline_stage();
+
+	context_light.enqueue_task([&device, &light]() {
+		auto cmd = device.request_command_buffer();
+		cmd->begin_region("probe-light");
+		uvec3 res = light.light.get_resolution();
+
+		if (!light.light.get_volume_view())
+		{
+			auto info = Vulkan::ImageCreateInfo::immutable_3d_image(6 * res.x, res.y, res.z, VK_FORMAT_R16G16B16A16_SFLOAT);
+			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+
+			auto image = device.create_image(info);
+			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+			                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+			                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+			image->set_layout(Vulkan::Layout::General);
+			light.light.set_volume(std::move(image));
+		}
+		else
+		{
+			// TODO: replace with external render graph semaphores.
+			cmd->barrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+			             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0);
+		}
+
+		Push push = {};
+		push.patch_resolution = ProbeResolution / 2;
+		push.face_resolution = ProbeResolution;
+		push.inv_patch_resolution = 1.0f / float(push.patch_resolution);
+		push.inv_patch_resolution2 = push.inv_patch_resolution * push.inv_patch_resolution;
+		push.num_iterations_per_patch = push.patch_resolution / 8;
+
+		cmd->set_program("builtin://shaders/util/volumetric_hemisphere_integral.comp");
+		cmd->push_constants(&push, 0, sizeof(push));
+		cmd->set_texture(0, 0, light.light.get_gbuffer().albedo->get_view());
+		cmd->set_storage_texture(0, 1, *light.light.get_volume_view());
+		cmd->dispatch(res.x, res.y, res.z);
+
+		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		             VK_ACCESS_SHADER_READ_BIT);
+
+		cmd->end_region();
+		device.submit(cmd);
+	});
+
+	return probe_composer.get_outgoing_task();
+}
+
 TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer &composer, TaskGroup &incoming,
                                                                     const RenderContext &context,
                                                                     VolumetricDiffuseLightComponent &light)
@@ -209,6 +278,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 						}
 
 						auto cmd = device.request_command_buffer();
+						cmd->begin_region("render-probe-gbuffer");
 
 						if (x == 0 && y == 0 && z == 0 && face == 0)
 							transition_gbuffer(*cmd, light.light.get_gbuffer(), TransitionMode::Discard);
@@ -222,6 +292,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 						cmd->begin_render_pass(slice_rp);
 						renderer->build_render_pass(*cmd);
 						cmd->end_render_pass();
+						cmd->end_region();
 						device.submit(cmd);
 					});
 				}
@@ -249,14 +320,13 @@ void VolumetricDiffuseLightManager::refresh(const RenderContext &context, TaskCo
 	for (auto &light_tuple : *volumetric_diffuse)
 	{
 		auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
-		if (light->light.get_volume_view())
-			continue;
 
+		TaskGroupHandle task;
 		if (!light->light.get_gbuffer().emissive)
-		{
-			auto task = create_probe_gbuffer(composer, group, context, *light);
-			composer.get_thread_group().add_dependency(group, *task);
-		}
+			task = create_probe_gbuffer(composer, group, context, *light);
+
+		task = light_probe_buffer(task ? task : composer.get_pipeline_stage_dependency(), context, *light);
+		composer.get_thread_group().add_dependency(group, *task);
 	}
 }
 }

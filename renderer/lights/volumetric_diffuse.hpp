@@ -47,5 +47,9 @@ private:
 	TaskGroupHandle create_probe_gbuffer(TaskComposer &composer, TaskGroup &incoming,
 	                                     const RenderContext &context,
 	                                     VolumetricDiffuseLightComponent &light);
+
+	TaskGroupHandle light_probe_buffer(TaskGroupHandle incoming,
+	                                   const RenderContext &context,
+	                                   VolumetricDiffuseLightComponent &light);
 };
 }

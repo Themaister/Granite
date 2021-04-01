@@ -295,6 +295,22 @@ RenderTextureResource &RenderPass::add_storage_texture_output(const std::string 
 	return res;
 }
 
+void RenderPass::add_proxy_output(const std::string &name)
+{
+	auto &res = graph.get_proxy_resource(name);
+	res.add_queue(queue);
+	res.written_in_pass(index);
+	proxy_outputs.push_back(&res);
+}
+
+void RenderPass::add_proxy_input(const std::string &name)
+{
+	auto &res = graph.get_proxy_resource(name);
+	res.add_queue(queue);
+	res.read_in_pass(index);
+	proxy_inputs.push_back(&res);
+}
+
 void RenderPass::add_fake_resource_write_alias(const std::string &from, const std::string &to)
 {
 	auto &from_res = graph.get_texture_resource(from);
@@ -428,6 +444,24 @@ RenderBufferResource &RenderGraph::get_buffer_resource(const std::string &name)
 		resources.back()->set_name(name);
 		resource_to_index[name] = index;
 		return static_cast<RenderBufferResource &>(*resources.back());
+	}
+}
+
+RenderResource &RenderGraph::get_proxy_resource(const std::string &name)
+{
+	auto itr = resource_to_index.find(name);
+	if (itr != end(resource_to_index))
+	{
+		assert(resources[itr->second]->get_type() == RenderResource::Type::Proxy);
+		return *resources[itr->second];
+	}
+	else
+	{
+		unsigned index = resources.size();
+		resources.emplace_back(new RenderResource(RenderResource::Type::Proxy, index));
+		resources.back()->set_name(name);
+		resource_to_index[name] = index;
+		return *resources.back();
 	}
 }
 
@@ -719,6 +753,19 @@ void RenderGraph::build_physical_resources()
 			}
 		}
 
+		for (auto *input : pass.get_proxy_inputs())
+		{
+			if (input->get_physical_index() == RenderResource::Unused)
+			{
+				ResourceDimensions dim = {};
+				dim.proxy = true;
+				physical_dimensions.push_back(dim);
+				input->set_physical_index(phys_index++);
+			}
+			else
+				physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
+		}
+
 		for (auto *output : pass.get_color_outputs())
 		{
 			if (output->get_physical_index() == RenderResource::Unused)
@@ -759,6 +806,19 @@ void RenderGraph::build_physical_resources()
 				physical_dimensions[output->get_physical_index()].queues |= output->get_used_queues();
 				physical_dimensions[output->get_physical_index()].buffer_info.usage |= output->get_buffer_usage();
 			}
+		}
+
+		for (auto *output : pass.get_proxy_outputs())
+		{
+			if (output->get_physical_index() == RenderResource::Unused)
+			{
+				ResourceDimensions dim = {};
+				dim.proxy = true;
+				physical_dimensions.push_back(dim);
+				output->set_physical_index(phys_index++);
+			}
+			else
+				physical_dimensions[output->get_physical_index()].queues |= output->get_used_queues();
 		}
 
 		for (auto *output : pass.get_transfer_outputs())
@@ -1840,7 +1900,8 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 	bool need_wait_semaphore = false;
 	auto &wait_semaphore = physical_graphics_queue ? event.wait_graphics_semaphore : event.wait_compute_semaphore;
 
-	if (physical_dimensions[barrier.resource_index].buffer_info.size)
+	auto &phys = physical_dimensions[barrier.resource_index];
+	if (phys.buffer_info.size || phys.proxy)
 	{
 		// Buffers.
 		bool need_sync = (event.to_flush_access != 0) || need_invalidate(barrier, event);
@@ -2548,6 +2609,10 @@ void RenderGraph::setup_attachments(Vulkan::Device &device_, Vulkan::ImageView *
 		}
 
 		auto &att = physical_dimensions[i];
+
+		if (att.proxy)
+			continue;
+
 		if (att.buffer_info.size != 0)
 		{
 			setup_physical_buffer(device_, i);
@@ -2633,6 +2698,9 @@ void RenderGraph::traverse_dependencies(const RenderPass &pass, unsigned stack_c
 
 	for (auto &input : pass.get_generic_texture_inputs())
 		depend_passes_recursive(pass, input.texture->get_write_passes(), stack_count, false, false, false);
+
+	for (auto &input : pass.get_proxy_inputs())
+		depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, false);
 
 	for (auto *input : pass.get_storage_inputs())
 	{
@@ -3293,6 +3361,22 @@ void RenderGraph::build_barriers()
 			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 		}
 
+		for (auto *input : pass.get_proxy_inputs())
+		{
+			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
+
+			// We will use semaphores to deal with these, skip access.
+
+			if ((pass.get_queue() & compute_queues) == 0)
+				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
+			else
+				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+
+			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+				throw logic_error("Layout mismatch.");
+			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
+		}
+
 		for (auto *input : pass.get_storage_texture_inputs())
 		{
 			if (!input)
@@ -3423,6 +3507,22 @@ void RenderGraph::build_barriers()
 		{
 			auto &barrier = get_flush_access(output->get_physical_index());
 			barrier.access |= VK_ACCESS_SHADER_WRITE_BIT;
+
+			if ((pass.get_queue() & compute_queues) == 0)
+				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
+			else
+				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+
+			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+				throw logic_error("Layout mismatch.");
+			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
+		}
+
+		for (auto *output : pass.get_proxy_outputs())
+		{
+			auto &barrier = get_flush_access(output->get_physical_index());
+
+			// We will use semaphores for these resources, no access.
 
 			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.

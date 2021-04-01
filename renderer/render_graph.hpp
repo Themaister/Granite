@@ -134,6 +134,7 @@ struct ResourceDimensions
 	bool transient = false;
 	bool unorm_srgb = false;
 	bool persistent = true;
+	bool proxy = false;
 	VkSurfaceTransformFlagBitsKHR transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	RenderGraphQueueFlags queues = 0;
 	VkImageUsageFlags image_usage = 0;
@@ -150,7 +151,8 @@ struct ResourceDimensions
 		       transient == other.transient &&
 		       persistent == other.persistent &&
 		       unorm_srgb == other.unorm_srgb &&
-		       transform == other.transform;
+		       transform == other.transform &&
+		       proxy == other.proxy;
 		// image_usage is deliberately not part of this test.
 		// queues is deliberately not part of this test.
 	}
@@ -162,6 +164,9 @@ struct ResourceDimensions
 
 	bool uses_semaphore() const
 	{
+		if (proxy)
+			return true;
+
 		// If more than one queue is used for a resource, we need to use semaphores.
 		auto physical_queues = queues;
 
@@ -179,7 +184,7 @@ struct ResourceDimensions
 
 	bool is_buffer_like() const
 	{
-		return is_storage_image() || (buffer_info.size != 0);
+		return is_storage_image() || (buffer_info.size != 0) || proxy;
 	}
 
 	std::string name;
@@ -191,7 +196,8 @@ public:
 	enum class Type
 	{
 		Buffer,
-		Texture
+		Texture,
+		Proxy
 	};
 
 	enum { Unused = ~0u };
@@ -432,6 +438,9 @@ public:
 	RenderBufferResource &add_index_buffer_input(const std::string &name);
 	RenderBufferResource &add_indirect_buffer_input(const std::string &name);
 
+	void add_proxy_output(const std::string &name);
+	void add_proxy_input(const std::string &name);
+
 	void add_fake_resource_write_alias(const std::string &from, const std::string &to);
 
 	void make_color_input_scaled(unsigned index_)
@@ -512,6 +521,16 @@ public:
 	const std::vector<AccessedBufferResource> &get_generic_buffer_inputs() const
 	{
 		return generic_buffer;
+	}
+
+	const std::vector<RenderResource *> &get_proxy_inputs() const
+	{
+		return proxy_inputs;
+	}
+
+	const std::vector<RenderResource *> &get_proxy_outputs() const
+	{
+		return proxy_outputs;
 	}
 
 	const std::vector<std::pair<RenderTextureResource *, RenderTextureResource *>> &get_fake_resource_aliases() const
@@ -661,6 +680,8 @@ private:
 	std::vector<RenderBufferResource *> transfer_outputs;
 	std::vector<AccessedTextureResource> generic_texture;
 	std::vector<AccessedBufferResource> generic_buffer;
+	std::vector<RenderResource *> proxy_inputs;
+	std::vector<RenderResource *> proxy_outputs;
 	RenderTextureResource *depth_stencil_input = nullptr;
 	RenderTextureResource *depth_stencil_output = nullptr;
 
@@ -711,6 +732,7 @@ public:
 
 	RenderTextureResource &get_texture_resource(const std::string &name);
 	RenderBufferResource &get_buffer_resource(const std::string &name);
+	RenderResource &get_proxy_resource(const std::string &name);
 
 	Vulkan::ImageView &get_physical_texture_resource(unsigned index)
 	{

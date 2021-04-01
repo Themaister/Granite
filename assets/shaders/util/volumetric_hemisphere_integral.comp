@@ -120,6 +120,7 @@ void main()
 
 #define ITERATE(l) if (gl_LocalInvocationIndex < l) { shared_colors[gl_LocalInvocationIndex] += shared_colors[gl_LocalInvocationIndex + l]; }
 
+                // TODO: We can use subgroup ops quite easily.
                 barrier();
                 ITERATE(32u)
                 barrier();
@@ -142,6 +143,7 @@ void main()
         }
     }
 
+    // TODO: This will require dynamic subgroupShuffle. Might be best to do a hybrid kind of approach here ...
     if (gl_LocalInvocationIndex < 6u)
     {
         uint face = gl_LocalInvocationIndex;

@@ -108,6 +108,8 @@ add_granite_offline_tool(ecs-test ecs_test.cpp)
 add_granite_offline_tool(simd-test simd_test.cpp)
 add_granite_offline_tool(imported-host imported_host.cpp)
 
+add_granite_offline_tool(hemisphere-integration-test hemisphere_integration.cpp)
+
 #add_granite_offline_tool(cooperative-task-test cooperative_task_test.cpp)
 add_granite_offline_tool(texture-decoder-test texture_decoder_test.cpp)
 

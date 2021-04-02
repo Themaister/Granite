@@ -330,9 +330,18 @@ void VolumetricDiffuseLightManager::set_base_render_context(const RenderContext 
 	base_render_context = context;
 }
 
-void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
+void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target)
 {
 	target.add_proxy_input("probe-light-proxy");
+
+	auto *light_pass = graph.find_pass("probe-light");
+	assert(light_pass);
+	if (graph.find_pass("clustering-bindless"))
+	{
+		light_pass->add_storage_read_only_input("cluster-bitmask");
+		light_pass->add_storage_read_only_input("cluster-range");
+		light_pass->add_storage_read_only_input("cluster-transforms");
+	}
 }
 
 void VolumetricDiffuseLightManager::setup_render_pass_resources(RenderGraph &)

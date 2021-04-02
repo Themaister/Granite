@@ -2181,7 +2181,7 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 		att.persistent = true;
 		att.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-		auto &pass = graph.add_pass("clustering", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+		auto &pass = graph.add_pass("clustering-bindless", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 
 		{
 			att.size = resolution_x * resolution_y * (MaxLightsBindless / 8);
@@ -2208,7 +2208,7 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 		att.persistent = true;
 		att.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-		auto &pass = graph.add_pass("clustering", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+		auto &pass = graph.add_pass("clustering-bindless", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 
 		{
 			att.size = resolution_x * resolution_y * (MaxLightsBindless / 8);

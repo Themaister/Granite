@@ -69,6 +69,19 @@ public:
 };
 using RenderPassInterfaceHandle = Util::IntrusivePtr<RenderPassInterface>;
 
+// An interface which manages external synchronization.
+// Used primarily by cluster shadow map rendering,
+// since its resource management is highly specific
+// and it makes more sense to use semaphores here,
+// rather than try to hack it to fit it into a render graph node.
+class RenderPassExternalLockInterface
+{
+public:
+	virtual ~RenderPassExternalLockInterface() = default;
+	virtual Vulkan::Semaphore external_acquire() = 0;
+	virtual void external_release(Vulkan::Semaphore semaphore) = 0;
+};
+
 enum SizeClass
 {
 	Absolute,
@@ -403,6 +416,12 @@ public:
 		RenderResource *proxy = nullptr;
 	};
 
+	struct AccessedExternalLockInterface
+	{
+		RenderPassExternalLockInterface *iface;
+		VkPipelineStageFlags stages;
+	};
+
 	RenderGraphQueueFlagBits get_queue() const
 	{
 		return queue;
@@ -417,6 +436,8 @@ public:
 	{
 		return index;
 	}
+
+	void add_external_lock(const std::string &name, VkPipelineStageFlags stages);
 
 	RenderTextureResource &set_depth_stencil_input(const std::string &name);
 	RenderTextureResource &set_depth_stencil_output(const std::string &name, const AttachmentInfo &info);
@@ -659,6 +680,11 @@ public:
 		return pass_name;
 	}
 
+	const std::vector<AccessedExternalLockInterface> &get_lock_interfaces() const
+	{
+		return lock_interfaces;
+	}
+
 private:
 	RenderGraph &graph;
 	unsigned index;
@@ -687,6 +713,7 @@ private:
 	std::vector<AccessedBufferResource> generic_buffer;
 	std::vector<AccessedProxyResource> proxy_inputs;
 	std::vector<AccessedProxyResource> proxy_outputs;
+	std::vector<AccessedExternalLockInterface> lock_interfaces;
 	RenderTextureResource *depth_stencil_input = nullptr;
 	RenderTextureResource *depth_stencil_output = nullptr;
 
@@ -714,6 +741,9 @@ public:
 		assert(device);
 		return *device;
 	}
+
+	void add_external_lock_interface(const std::string &name, RenderPassExternalLockInterface *iface);
+	RenderPassExternalLockInterface *find_external_lock_interface(const std::string &name) const;
 
 	RenderPass &add_pass(const std::string &name, RenderGraphQueueFlagBits queue);
 	RenderPass *find_pass(const std::string &name);
@@ -830,6 +860,7 @@ private:
 	std::vector<std::unique_ptr<RenderResource>> resources;
 	std::unordered_map<std::string, unsigned> pass_to_index;
 	std::unordered_map<std::string, unsigned> resource_to_index;
+	std::unordered_map<std::string, RenderPassExternalLockInterface *> external_lock_interfaces;
 	std::string backbuffer_source;
 
 	std::vector<unsigned> pass_stack;
@@ -994,6 +1025,8 @@ private:
 		Util::SmallVector<Vulkan::Semaphore> wait_semaphores;
 		Util::SmallVector<VkPipelineStageFlags> wait_semaphore_stages;
 
+		Util::SmallVector<RenderPass::AccessedExternalLockInterface> external_locks;
+
 		Vulkan::PipelineEvent signal_event;
 		VkPipelineStageFlags event_signal_stages = 0;
 
@@ -1024,6 +1057,7 @@ private:
 	void physical_pass_enqueue_compute_commands(const PhysicalPass &pass, PassSubmissionState &state);
 
 	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state, bool physical_graphics_queue);
+	void physical_pass_handle_external_acquire(const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_handle_signal(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassSubmissionState &state);
 	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state,

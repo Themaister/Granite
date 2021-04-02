@@ -386,6 +386,13 @@ RenderTextureResource &RenderPass::set_depth_stencil_output(const std::string &n
 	return res;
 }
 
+void RenderPass::add_external_lock(const std::string &name, VkPipelineStageFlags stages)
+{
+	auto *iface = graph.find_external_lock_interface(name);
+	if (iface)
+		lock_interfaces.push_back({ iface, stages });
+}
+
 RenderTextureResource &RenderPass::set_depth_stencil_input(const std::string &name)
 {
 	auto &res = graph.get_texture_resource(name);
@@ -1881,16 +1888,44 @@ void RenderGraph::PassSubmissionState::submit()
 
 	auto &device_ = cmd->get_device();
 
+	for (auto &lock : external_locks)
+	{
+		auto sem = lock.iface->external_acquire();
+		if (sem)
+		{
+			wait_semaphores.push_back(std::move(sem));
+			wait_semaphore_stages.push_back(lock.stages);
+		}
+	}
+
 	size_t num_semaphores = wait_semaphores.size();
 	for (size_t i = 0; i < num_semaphores; i++)
 		wait_for_semaphore_in_queue(device_, wait_semaphores[i], queue_type, wait_semaphore_stages[i]);
 
-	if (need_submission_semaphore)
+	if (need_submission_semaphore || !external_locks.empty())
 	{
-		Vulkan::Semaphore semaphores[2];
-		device_.submit(cmd, nullptr, 2, semaphores);
-		*proxy_semaphores[0] = std::move(*semaphores[0]);
-		*proxy_semaphores[1] = std::move(*semaphores[1]);
+		Vulkan::Semaphore semaphores[3];
+
+		uint32_t sem_count = 0;
+		if (need_submission_semaphore)
+			sem_count += 2;
+		if (!external_locks.empty())
+			sem_count += 1;
+
+		device_.submit(cmd, nullptr, sem_count, semaphores);
+
+		if (need_submission_semaphore)
+		{
+			*proxy_semaphores[0] = std::move(*semaphores[0]);
+			*proxy_semaphores[1] = std::move(*semaphores[1]);
+		}
+
+		if (!external_locks.empty())
+		{
+			auto &release_semaphore = semaphores[need_submission_semaphore ? 2 : 0];
+			for (auto &lock : external_locks)
+				lock.iface->external_release(release_semaphore);
+		}
 	}
 	else
 		device_.submit(cmd);
@@ -2249,6 +2284,17 @@ void RenderGraph::physical_pass_enqueue_compute_commands(const PhysicalPass &phy
 	}
 }
 
+void RenderGraph::physical_pass_handle_external_acquire(const PhysicalPass &physical_pass, PassSubmissionState &state)
+{
+	for (auto pass_index : physical_pass.passes)
+	{
+		auto &locks = passes[pass_index]->get_lock_interfaces();
+		for (auto &lock : locks)
+			if (lock.iface)
+				state.external_locks.push_back(lock);
+	}
+}
+
 void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
                                                     const PhysicalPass &physical_pass,
                                                     PassSubmissionState &state,
@@ -2265,6 +2311,8 @@ void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
 				device->get_physical_queue_type(state.queue_type) == Vulkan::CommandBuffer::Type::Generic;
 		physical_pass_handle_invalidate_barrier(barrier, state, physical_graphics);
 	}
+
+	physical_pass_handle_external_acquire(physical_pass, state);
 
 	physical_pass_handle_signal(device_, physical_pass, state);
 	for (auto &barrier : physical_pass.flush)
@@ -3652,12 +3700,27 @@ void RenderGraph::enable_timestamps(bool enable)
 	enabled_timestamps = enable;
 }
 
+void RenderGraph::add_external_lock_interface(const std::string &name, RenderPassExternalLockInterface *iface)
+{
+	external_lock_interfaces[name] = iface;
+}
+
+RenderPassExternalLockInterface *RenderGraph::find_external_lock_interface(const std::string &name) const
+{
+	auto itr = external_lock_interfaces.find(name);
+	if (itr != end(external_lock_interfaces))
+		return itr->second;
+	else
+		return nullptr;
+}
+
 void RenderGraph::reset()
 {
 	passes.clear();
 	resources.clear();
 	pass_to_index.clear();
 	resource_to_index.clear();
+	external_lock_interfaces.clear();
 	physical_passes.clear();
 	physical_dimensions.clear();
 	physical_attachments.clear();

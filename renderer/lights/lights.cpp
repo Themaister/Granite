@@ -664,6 +664,7 @@ void VolumetricDiffuseLight::on_device_created(const Vulkan::DeviceCreatedEvent 
 void VolumetricDiffuseLight::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 {
 	volume.reset();
+	prev_volume.reset();
 	gbuffer = {};
 }
 

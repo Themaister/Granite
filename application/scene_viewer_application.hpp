@@ -61,11 +61,13 @@ protected:
 
 	RenderContext context;
 	RenderContext depth_context;
+	RenderContext fallback_depth_context;
 
 	RendererSuite renderer_suite;
 	RendererSuite::Config renderer_suite_config;
 	FlatRenderer flat_renderer;
 	LightingParameters lighting;
+	LightingParameters fallback_lighting;
 	FPSCamera cam;
 	SceneLoader scene_loader;
 	std::unique_ptr<AnimationSystem> animation_system;
@@ -99,6 +101,7 @@ protected:
 	void add_main_pass_deferred(Vulkan::Device &device, const std::string &tag);
 
 	void add_shadow_pass(Vulkan::Device &device, const std::string &tag);
+	void add_shadow_pass_fallback(Vulkan::Device &device, const std::string &tag);
 
 	std::vector<RecordedCamera> recorded_cameras;
 
@@ -151,5 +154,6 @@ private:
 
 	RenderTextureResource *ssao_output = nullptr;
 	RenderTextureResource *shadows = nullptr;
+	RenderTextureResource *fallback_shadows = nullptr;
 };
 }

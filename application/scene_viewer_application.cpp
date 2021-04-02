@@ -208,15 +208,16 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	{
 		auto &scene = scene_loader.get_scene();
 		auto node = scene.create_node();
-		node->transform.scale = vec3(30.0f, 10.0f, 30.0f);
-		node->transform.translation = vec3(0.0f, 4.0f, 0.0f);
+		node->transform.scale = vec3(24.0f, 8.0f, 24.0f);
+		node->transform.translation = vec3(0.0f, 3.5f, 0.0f);
 		node->invalidate_cached_transform();
-		scene.create_volumetric_diffuse_light(uvec3(32, 8, 32), node.get());
+		scene.create_volumetric_diffuse_light(uvec3(24, 6, 24), node.get());
 		scene.get_root_node()->add_child(std::move(node));
 	}
 
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);
+	fallback_depth_context.set_lighting_parameters(&fallback_lighting);
 	cam.set_depth_range(0.1f, 1000.0f);
 
 	// Create a dummy background if there isn't any background.
@@ -335,6 +336,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		// which will affect clustering, since it writes new descriptors.
 		update->dependency_order = -1;
 		update->refresh = volumetric_diffuse.get();
+
+		volumetric_diffuse->set_fallback_render_context(&fallback_depth_context);
 	}
 
 	if (config.deferred_clustered_stencil_culling)
@@ -406,6 +409,7 @@ void SceneViewerApplication::on_device_created(const DeviceCreatedEvent &device)
 {
 	graph.set_device(&device.get_device());
 	context.set_device(&device.get_device());
+	fallback_depth_context.set_device(&device.get_device());
 }
 
 void SceneViewerApplication::on_device_destroyed(const DeviceCreatedEvent &)
@@ -789,6 +793,28 @@ void SceneViewerApplication::add_main_pass(Device &device, const std::string &ta
 	}
 }
 
+void SceneViewerApplication::add_shadow_pass_fallback(Vulkan::Device &, const std::string &tag)
+{
+	AttachmentInfo shadowmap;
+	shadowmap.format = VK_FORMAT_D16_UNORM;
+	shadowmap.size_class = SizeClass::Absolute;
+	shadowmap.size_x = 2048;
+	shadowmap.size_y = 2048;
+
+	auto &shadowpass = graph.add_pass(tagcat("shadow", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	fallback_shadows = &shadowpass.set_depth_stencil_output(tagcat("shadow", tag), shadowmap);
+
+	RenderPassSceneRenderer::Setup setup = {};
+	setup.scene = &scene_loader.get_scene();
+	setup.suite = &renderer_suite;
+	setup.flags = SCENE_RENDERER_DEPTH_BIT | SCENE_RENDERER_DEPTH_DYNAMIC_BIT | SCENE_RENDERER_FALLBACK_DEPTH_BIT;
+	setup.context = &fallback_depth_context;
+
+	auto handle = Util::make_handle<RenderPassSceneRenderer>();
+	handle->init(setup);
+	shadowpass.set_render_pass_interface(std::move(handle));
+}
+
 void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 {
 	AttachmentInfo shadowmap;
@@ -899,7 +925,10 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	scene_loader.get_scene().add_render_passes(graph);
 
 	if (config.directional_light_shadows)
+	{
 		add_shadow_pass(swap.get_device(), "main");
+		add_shadow_pass_fallback(swap.get_device(), "fallback");
+	}
 
 	add_main_pass(swap.get_device(), "main");
 
@@ -971,7 +1000,15 @@ void SceneViewerApplication::update_shadow_scene_aabb()
 void SceneViewerApplication::setup_shadow_map()
 {
 	mat4 view = mat4_cast(look_at(-selected_directional->direction, vec3(0.0f, 1.0f, 0.0f)));
-	AABB ortho_range_depth = shadow_scene_aabb.transform(view); // Just need this to determine Zmin/Zmax.
+	AABB ortho_range_depth = shadow_scene_aabb.transform(view);
+
+	// For fallback context, we render the entire scene bounds.
+	// This is not going to work well for large scenes, but oh well.
+	fallback_depth_context.set_camera(ortho(ortho_range_depth), view);
+	fallback_lighting.shadow.transforms[0] =
+			translate(vec3(0.5f, 0.5f, 0.0f)) *
+			scale(vec3(0.5f, 0.5f, 1.0f)) *
+			fallback_depth_context.get_render_parameters().view_projection;
 
 	// Project the scene AABB into the light and find our ortho ranges.
 	// This will serve as the culling bounding box.
@@ -1141,6 +1178,10 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	lighting.shadows = graph.maybe_get_physical_texture_resource(shadows);
 	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
+
+	fallback_lighting.shadows = graph.maybe_get_physical_texture_resource(fallback_shadows);
+	fallback_lighting.directional = lighting.directional;
+	fallback_lighting.cluster = lighting.cluster;
 
 	if (lighting.shadows)
 	{

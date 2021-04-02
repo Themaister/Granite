@@ -166,6 +166,7 @@ public:
 		ForwardOpaque = 0,
 		ForwardTransparent,
 		ShadowDepthDirectionalPCF,
+		ShadowDepthDirectionalFallbackPCF,
 		ShadowDepthPositionalPCF,
 		ShadowDepthDirectionalVSM,
 		ShadowDepthPositionalVSM,

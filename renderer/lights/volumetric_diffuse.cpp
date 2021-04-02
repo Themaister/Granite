@@ -153,7 +153,7 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 
 	uvec3 res = light.light.get_resolution();
 
-	auto flags = Renderer::get_mesh_renderer_options_from_lighting(*base_render_context->get_lighting_parameters());
+	auto flags = Renderer::get_mesh_renderer_options_from_lighting(*fallback_render_context->get_lighting_parameters());
 	flags &= ~(Renderer::VOLUMETRIC_FOG_ENABLE_BIT |
 	           Renderer::AMBIENT_OCCLUSION_BIT |
 	           Renderer::VOLUMETRIC_DIFFUSE_ENABLE_BIT);
@@ -375,20 +375,16 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 	auto &light_pass = graph.add_pass("probe-light", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 	light_pass.add_proxy_output("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	light_pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		Renderer::bind_global_parameters(cmd, *base_render_context);
-		Renderer::bind_lighting_parameters(cmd, *base_render_context);
+		Renderer::bind_global_parameters(cmd, *fallback_render_context);
+		Renderer::bind_lighting_parameters(cmd, *fallback_render_context);
 
 		struct GlobalTransform
 		{
 			mat4 inv_view_proj_for_face[6];
-			alignas(16) vec3 cam_pos;
-			alignas(16) vec3 cam_front;
 		};
 
 		auto *transforms = cmd.allocate_typed_constant_data<GlobalTransform>(3, 0, 1);
 		memcpy(transforms->inv_view_proj_for_face, inv_view_projections, sizeof(inv_view_projections));
-		transforms->cam_pos = base_render_context->get_render_parameters().camera_position;
-		transforms->cam_front = base_render_context->get_render_parameters().camera_front;
 
 		for (auto &light_tuple : *volumetric_diffuse)
 		{
@@ -397,11 +393,17 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 			light_probe_buffer(cmd, *light);
 		}
 	});
+
+	light_pass.add_texture_input("shadow-fallback");
 }
 
-void VolumetricDiffuseLightManager::set_base_render_context(const RenderContext *context)
+void VolumetricDiffuseLightManager::set_base_render_context(const RenderContext *)
 {
-	base_render_context = context;
+}
+
+void VolumetricDiffuseLightManager::set_fallback_render_context(const RenderContext *context)
+{
+	fallback_render_context = context;
 }
 
 void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target)
@@ -416,8 +418,8 @@ void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &
 		light_pass->add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	}
 
-	if (graph.find_pass("shadow-main"))
-		light_pass->add_texture_input("shadow-main");
+	if (graph.find_pass("shadow-fallback"))
+		light_pass->add_texture_input("shadow-fallback");
 }
 
 void VolumetricDiffuseLightManager::setup_render_pass_resources(RenderGraph &)

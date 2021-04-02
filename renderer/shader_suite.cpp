@@ -52,7 +52,7 @@ void ShaderSuite::bake_base_defines()
 	Hasher h;
 	for (auto &define : base_defines)
 	{
-		h.string(define.first.c_str());
+		h.string(define.first);
 		h.s32(define.second);
 	}
 	base_define_hash = h.get();

@@ -89,6 +89,7 @@ void RendererSuite::set_default_renderers()
 	set_renderer(Type::ForwardTransparent, Util::make_handle<Renderer>(RendererType::GeneralForward, nullptr));
 	set_renderer(Type::ShadowDepthPositionalPCF, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::ShadowDepthDirectionalPCF, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
+	set_renderer(Type::ShadowDepthDirectionalFallbackPCF, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::ShadowDepthDirectionalVSM, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::ShadowDepthPositionalVSM, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::PrepassDepth, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
@@ -99,6 +100,7 @@ void RendererSuite::update_mesh_rendering_options(const RenderContext &context, 
 {
 	get_renderer(Type::ShadowDepthDirectionalPCF).set_mesh_renderer_options(
 			config.cascaded_directional_shadows ? Renderer::MULTIVIEW_BIT : 0);
+	get_renderer(Type::ShadowDepthDirectionalFallbackPCF).set_mesh_renderer_options(0);
 	get_renderer(Type::ShadowDepthPositionalPCF).set_mesh_renderer_options(0);
 	get_renderer(Type::ShadowDepthDirectionalVSM).set_mesh_renderer_options(
 			(config.cascaded_directional_shadows ? Renderer::MULTIVIEW_BIT : 0) | Renderer::SHADOW_VSM_BIT);

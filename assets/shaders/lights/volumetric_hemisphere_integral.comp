@@ -26,8 +26,6 @@ layout(set = 2, binding = 5) uniform sampler3D uPrevAmbient;
 layout(set = 3, binding = 0) uniform Transforms
 {
     mat4 inv_view_proj_for_face[6];
-    vec3 cam_pos;
-    vec3 cam_front;
 } transforms;
 
 layout(set = 3, binding = 1) uniform PerProbe
@@ -97,8 +95,7 @@ mat3 sample_patch(ivec2 coord, vec3 pos, vec3 world_pos, bool do_lighting)
         vec3 normal = normalize(texelFetch(uProbeNormal, coord, 0).xyz * 2.0 - 1.0);
         color += albedo * (
             compute_feedback_diffuse(world_pos, normal) +
-            compute_irradiance_lighting(world_pos, transforms.cam_pos, transforms.cam_front,
-                                        normal, directional.direction, directional.color));
+            compute_irradiance_lighting(world_pos, normal, directional.direction, directional.color));
     }
 
     float l2 = dot(pos, pos);

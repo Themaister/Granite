@@ -5,16 +5,13 @@
 
 mediump vec3 compute_irradiance_lighting(
 		vec3 light_world_pos,
-		vec3 light_camera_pos,
-		mediump vec3 light_camera_front,
 		mediump vec3 light_normal,
 		mediump vec3 light_direction,
 		mediump vec3 light_color)
 {
 #ifdef SHADOWS
 	mediump float shadow_term = get_directional_shadow_term(
-			light_world_pos, light_camera_pos,
-			light_camera_front, light_direction);
+			light_world_pos, vec3(0.0), vec3(0.0), light_direction);
 #else
 	mediump const float shadow_term = 1.0;
 #endif

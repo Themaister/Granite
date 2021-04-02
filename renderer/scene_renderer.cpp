@@ -104,6 +104,20 @@ void RenderPassSceneRenderer::set_extra_flush_flags(Renderer::RendererFlushFlags
 	flush_flags = flags;
 }
 
+static RendererSuite::Type get_depth_renderer_type(SceneRendererFlags flags)
+{
+	if (flags & SCENE_RENDERER_FALLBACK_DEPTH_BIT)
+	{
+		return RendererSuite::Type::ShadowDepthDirectionalFallbackPCF;
+	}
+	else
+	{
+		return (flags & SCENE_RENDERER_SHADOW_VSM_BIT) != 0 ?
+		       RendererSuite::Type::ShadowDepthDirectionalVSM :
+		       RendererSuite::Type::ShadowDepthDirectionalPCF;
+	}
+}
+
 void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer, const Vulkan::RenderPassInfo &,
                                                           unsigned, VkSubpassContents &contents)
 {
@@ -125,9 +139,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 		}
 		else if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
 		{
-			auto type = (setup_data.flags & SCENE_RENDERER_SHADOW_VSM_BIT) != 0 ?
-			            RendererSuite::Type::ShadowDepthDirectionalVSM :
-			            RendererSuite::Type::ShadowDepthDirectionalPCF;
+			auto type = get_depth_renderer_type(setup_data.flags);
 			for (auto &queue : queue_per_task_depth)
 				suite->get_renderer(type).begin(queue);
 		}
@@ -277,9 +289,7 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 
 	if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
 	{
-		auto type = (setup_data.flags & SCENE_RENDERER_SHADOW_VSM_BIT) != 0 ?
-		            RendererSuite::Type::ShadowDepthDirectionalVSM :
-		            RendererSuite::Type::ShadowDepthDirectionalPCF;
+		auto type = get_depth_renderer_type(setup_data.flags);
 		suite->get_renderer(type).flush(cmd, queue_per_task_depth[0], *setup_data.context,
 		                                Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT | flush_flags);
 	}

@@ -32,17 +32,20 @@
 
 namespace Granite
 {
+class RenderTextureResource;
+
 class VolumetricDiffuseLightManager : public EventHandler, public PerFrameRefreshable, public RenderPassCreator
 {
 public:
 	VolumetricDiffuseLightManager();
+	void set_fallback_render_context(const RenderContext *context);
 
 private:
 	void refresh(const RenderContext &context_, TaskComposer &composer) override;
 	const ComponentGroupVector<VolumetricDiffuseLightComponent> *volumetric_diffuse = nullptr;
 	Scene *scene = nullptr;
 	const RendererSuite *suite = nullptr;
-	const RenderContext *base_render_context = nullptr;
+	const RenderContext *fallback_render_context = nullptr;
 
 	TaskGroupHandle create_probe_gbuffer(TaskComposer &composer, TaskGroup &incoming,
 	                                     const RenderContext &context,

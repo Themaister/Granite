@@ -4340,7 +4340,8 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 		return BindlessDescriptorPoolHandle{ nullptr };
 	}
 
-	auto *handle = handle_pool.bindless_descriptor_pool.allocate(this, allocator, pool);
+	auto *handle = handle_pool.bindless_descriptor_pool.allocate(this, allocator, pool,
+	                                                             num_sets, num_descriptors);
 	return BindlessDescriptorPoolHandle{ handle };
 }
 

@@ -95,11 +95,13 @@ class BindlessDescriptorPool : public Util::IntrusivePtrEnabled<BindlessDescript
 {
 public:
 	friend struct BindlessDescriptorPoolDeleter;
-	explicit BindlessDescriptorPool(Device *device, DescriptorSetAllocator *allocator, VkDescriptorPool pool);
+	explicit BindlessDescriptorPool(Device *device, DescriptorSetAllocator *allocator, VkDescriptorPool pool,
+	                                uint32_t total_sets, uint32_t total_descriptors);
 	~BindlessDescriptorPool();
 	void operator=(const BindlessDescriptorPool &) = delete;
 	BindlessDescriptorPool(const BindlessDescriptorPool &) = delete;
 
+	void reset();
 	bool allocate_descriptors(unsigned count);
 	VkDescriptorSet get_descriptor_set() const;
 
@@ -112,6 +114,11 @@ private:
 	DescriptorSetAllocator *allocator;
 	VkDescriptorPool desc_pool;
 	VkDescriptorSet desc_set = VK_NULL_HANDLE;
+
+	uint32_t allocated_sets = 0;
+	uint32_t total_sets = 0;
+	uint32_t allocated_descriptor_count = 0;
+	uint32_t total_descriptors = 0;
 
 	void set_texture(unsigned binding, VkImageView view, VkImageLayout layout);
 };
@@ -148,6 +155,7 @@ public:
 
 	VkDescriptorPool allocate_bindless_pool(unsigned num_sets, unsigned num_descriptors);
 	VkDescriptorSet allocate_bindless_set(VkDescriptorPool pool, unsigned num_descriptors);
+	void reset_bindless_pool(VkDescriptorPool pool);
 
 private:
 	struct DescriptorSetNode : Util::TemporaryHashmapEnabled<DescriptorSetNode>, Util::IntrusiveListEnabled<DescriptorSetNode>

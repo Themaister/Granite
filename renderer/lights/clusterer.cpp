@@ -1370,14 +1370,14 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 	}
 
 	if (!bindless.descriptor_pool)
-		bindless.descriptor_pool = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLightsBindless + CLUSTERER_MAX_VOLUMES);
+		bindless.descriptor_pool = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 256, MaxLightsBindless + CLUSTERER_MAX_VOLUMES);
 
 	unsigned total_lights = bindless.count + bindless.volumetric.num_volumes;
 	unsigned num_lights = std::max(1u, total_lights);
 
 	if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
 	{
-		bindless.descriptor_pool = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLightsBindless + CLUSTERER_MAX_VOLUMES);
+		bindless.descriptor_pool = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 256, MaxLightsBindless + CLUSTERER_MAX_VOLUMES);
 		if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
 			LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
 	}

@@ -509,6 +509,15 @@ RenderPass &RenderGraph::add_pass(const std::string &name, RenderGraphQueueFlagB
 	}
 }
 
+RenderPass *RenderGraph::find_pass(const std::string &name)
+{
+	auto itr = pass_to_index.find(name);
+	if (itr != end(pass_to_index))
+		return passes[itr->second].get();
+	else
+		return nullptr;
+}
+
 void RenderGraph::set_backbuffer_source(const std::string &name)
 {
 	backbuffer_source = name;

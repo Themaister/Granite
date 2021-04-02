@@ -711,6 +711,7 @@ public:
 	}
 
 	RenderPass &add_pass(const std::string &name, RenderGraphQueueFlagBits queue);
+	RenderPass *find_pass(const std::string &name);
 	void set_backbuffer_source(const std::string &name);
 	void set_backbuffer_dimensions(const ResourceDimensions &dim)
 	{

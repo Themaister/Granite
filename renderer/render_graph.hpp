@@ -398,6 +398,11 @@ public:
 		RenderBufferResource *buffer = nullptr;
 	};
 
+	struct AccessedProxyResource : AccessedResource
+	{
+		RenderResource *proxy = nullptr;
+	};
+
 	RenderGraphQueueFlagBits get_queue() const
 	{
 		return queue;
@@ -438,8 +443,8 @@ public:
 	RenderBufferResource &add_index_buffer_input(const std::string &name);
 	RenderBufferResource &add_indirect_buffer_input(const std::string &name);
 
-	void add_proxy_output(const std::string &name);
-	void add_proxy_input(const std::string &name);
+	void add_proxy_output(const std::string &name, VkPipelineStageFlags stages);
+	void add_proxy_input(const std::string &name, VkPipelineStageFlags stages);
 
 	void add_fake_resource_write_alias(const std::string &from, const std::string &to);
 
@@ -523,12 +528,12 @@ public:
 		return generic_buffer;
 	}
 
-	const std::vector<RenderResource *> &get_proxy_inputs() const
+	const std::vector<AccessedProxyResource> &get_proxy_inputs() const
 	{
 		return proxy_inputs;
 	}
 
-	const std::vector<RenderResource *> &get_proxy_outputs() const
+	const std::vector<AccessedProxyResource> &get_proxy_outputs() const
 	{
 		return proxy_outputs;
 	}
@@ -680,8 +685,8 @@ private:
 	std::vector<RenderBufferResource *> transfer_outputs;
 	std::vector<AccessedTextureResource> generic_texture;
 	std::vector<AccessedBufferResource> generic_buffer;
-	std::vector<RenderResource *> proxy_inputs;
-	std::vector<RenderResource *> proxy_outputs;
+	std::vector<AccessedProxyResource> proxy_inputs;
+	std::vector<AccessedProxyResource> proxy_outputs;
 	RenderTextureResource *depth_stencil_input = nullptr;
 	RenderTextureResource *depth_stencil_output = nullptr;
 

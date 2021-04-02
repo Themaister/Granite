@@ -295,20 +295,32 @@ RenderTextureResource &RenderPass::add_storage_texture_output(const std::string 
 	return res;
 }
 
-void RenderPass::add_proxy_output(const std::string &name)
+void RenderPass::add_proxy_output(const std::string &name, VkPipelineStageFlags stages)
 {
 	auto &res = graph.get_proxy_resource(name);
 	res.add_queue(queue);
 	res.written_in_pass(index);
-	proxy_outputs.push_back(&res);
+
+	assert(stages != 0);
+	AccessedProxyResource proxy;
+	proxy.proxy = &res;
+	proxy.layout = VK_IMAGE_LAYOUT_GENERAL;
+	proxy.stages = stages;
+	proxy_outputs.push_back(proxy);
 }
 
-void RenderPass::add_proxy_input(const std::string &name)
+void RenderPass::add_proxy_input(const std::string &name, VkPipelineStageFlags stages)
 {
 	auto &res = graph.get_proxy_resource(name);
 	res.add_queue(queue);
 	res.read_in_pass(index);
-	proxy_inputs.push_back(&res);
+
+	assert(stages != 0);
+	AccessedProxyResource proxy;
+	proxy.proxy = &res;
+	proxy.layout = VK_IMAGE_LAYOUT_GENERAL;
+	proxy.stages = stages;
+	proxy_inputs.push_back(proxy);
 }
 
 void RenderPass::add_fake_resource_write_alias(const std::string &from, const std::string &to)
@@ -762,17 +774,17 @@ void RenderGraph::build_physical_resources()
 			}
 		}
 
-		for (auto *input : pass.get_proxy_inputs())
+		for (auto &input : pass.get_proxy_inputs())
 		{
-			if (input->get_physical_index() == RenderResource::Unused)
+			if (input.proxy->get_physical_index() == RenderResource::Unused)
 			{
 				ResourceDimensions dim = {};
 				dim.proxy = true;
 				physical_dimensions.push_back(dim);
-				input->set_physical_index(phys_index++);
+				input.proxy->set_physical_index(phys_index++);
 			}
 			else
-				physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
+				physical_dimensions[input.proxy->get_physical_index()].queues |= input.proxy->get_used_queues();
 		}
 
 		for (auto *output : pass.get_color_outputs())
@@ -817,17 +829,17 @@ void RenderGraph::build_physical_resources()
 			}
 		}
 
-		for (auto *output : pass.get_proxy_outputs())
+		for (auto &output : pass.get_proxy_outputs())
 		{
-			if (output->get_physical_index() == RenderResource::Unused)
+			if (output.proxy->get_physical_index() == RenderResource::Unused)
 			{
 				ResourceDimensions dim = {};
 				dim.proxy = true;
 				physical_dimensions.push_back(dim);
-				output->set_physical_index(phys_index++);
+				output.proxy->set_physical_index(phys_index++);
 			}
 			else
-				physical_dimensions[output->get_physical_index()].queues |= output->get_used_queues();
+				physical_dimensions[output.proxy->get_physical_index()].queues |= output.proxy->get_used_queues();
 		}
 
 		for (auto *output : pass.get_transfer_outputs())
@@ -2709,7 +2721,7 @@ void RenderGraph::traverse_dependencies(const RenderPass &pass, unsigned stack_c
 		depend_passes_recursive(pass, input.texture->get_write_passes(), stack_count, false, false, false);
 
 	for (auto &input : pass.get_proxy_inputs())
-		depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, false);
+		depend_passes_recursive(pass, input.proxy->get_write_passes(), stack_count, false, false, false);
 
 	for (auto *input : pass.get_storage_inputs())
 	{
@@ -3370,20 +3382,16 @@ void RenderGraph::build_barriers()
 			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 		}
 
-		for (auto *input : pass.get_proxy_inputs())
+		for (auto &input : pass.get_proxy_inputs())
 		{
-			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
+			auto &barrier = get_invalidate_access(input.proxy->get_physical_index(), false);
 
-			// We will use semaphores to deal with these, skip access.
-
-			if ((pass.get_queue() & compute_queues) == 0)
-				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
-			else
-				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+			// We will use semaphores to deal with proxies, skip access.
+			barrier.stages |= input.stages;
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
+			barrier.layout = input.layout;
 		}
 
 		for (auto *input : pass.get_storage_texture_inputs())
@@ -3527,20 +3535,16 @@ void RenderGraph::build_barriers()
 			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 		}
 
-		for (auto *output : pass.get_proxy_outputs())
+		for (auto &output : pass.get_proxy_outputs())
 		{
-			auto &barrier = get_flush_access(output->get_physical_index());
+			auto &barrier = get_flush_access(output.proxy->get_physical_index());
 
-			// We will use semaphores for these resources, no access.
-
-			if ((pass.get_queue() & compute_queues) == 0)
-				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
-			else
-				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+			// We will use semaphores to deal with proxies, skip access.
+			barrier.stages |= output.stages;
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
+			barrier.layout = output.layout;
 		}
 
 		for (auto *output : pass.get_transfer_outputs())

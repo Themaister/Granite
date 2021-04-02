@@ -30,10 +30,14 @@
 #include "lru_cache.hpp"
 #include "threaded_scene.hpp"
 #include "render_context.hpp"
+#include "render_graph.hpp"
 
 namespace Granite
 {
-class LightClusterer : public RenderPassCreator, public EventHandler, public PerFrameRefreshable
+class LightClusterer : public RenderPassCreator,
+                       public EventHandler,
+                       public PerFrameRefreshable,
+                       public RenderPassExternalLockInterface
 {
 public:
 	LightClusterer();
@@ -256,8 +260,6 @@ private:
 
 		std::vector<uvec2> light_index_range;
 
-		VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-		VkPipelineStageFlags dst_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 		std::vector<VkImageMemoryBarrier> shadow_barriers;
 		std::vector<const Vulkan::Image *> shadow_images;
 		std::vector<ShadowTaskHandle> shadow_task_handles;
@@ -310,5 +312,10 @@ private:
 	bool bindless_light_is_point(unsigned index) const;
 
 	const Renderer &get_shadow_renderer() const;
+
+	Vulkan::Semaphore external_acquire() override;
+	void external_release(Vulkan::Semaphore sem) override;
+	Vulkan::Semaphore acquire_semaphore;
+	Util::SmallVector<Vulkan::Semaphore> release_semaphores;
 };
 }

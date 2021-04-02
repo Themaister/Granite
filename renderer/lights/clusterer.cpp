@@ -97,6 +97,7 @@ void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &t
 		target_.add_storage_read_only_input("cluster-bitmask");
 		target_.add_storage_read_only_input("cluster-range");
 		target_.add_storage_read_only_input("cluster-transforms");
+		target_.add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 	}
 	else
 	{
@@ -642,11 +643,16 @@ void LightClusterer::render_atlas_point(const RenderContext &context_)
 void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
-	bindless.src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-	bindless.dst_stage = vsm ?
-	                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT :
-	                     (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
 
+	auto stage = vsm ?
+	             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT :
+	             (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
+
+	for (auto &sem : release_semaphores)
+		if (sem->get_semaphore() && !sem->is_pending_wait())
+			cmd.get_device().add_wait_semaphore(CommandBuffer::Type::Generic, std::move(sem), stage, false);
+
+	release_semaphores.clear();
 	bindless.shadow_barriers.clear();
 	bindless.shadow_barriers.reserve(bindless.count);
 
@@ -702,8 +708,6 @@ void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 			info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 			image = cmd.get_device().create_image(info, nullptr);
 		}
-		else
-			bindless.src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 
 		bindless.handles[i]->set_shadow_transform_hash(current_transform_hash);
 		bindless.shadow_images[i] = image.get();
@@ -712,7 +716,7 @@ void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 
 	if (!bindless.shadow_barriers.empty())
 	{
-		cmd.barrier(bindless.src_stage, bindless.dst_stage,
+		cmd.barrier(stage, stage,
 		            0, nullptr,
 		            0, nullptr,
 		            bindless.shadow_barriers.size(), bindless.shadow_barriers.data());
@@ -730,15 +734,17 @@ void LightClusterer::end_bindless_barriers(Vulkan::CommandBuffer &cmd)
 			barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 		barrier.oldLayout = barrier.newLayout;
 		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		barrier.dstAccessMask = 0;
 	}
 
-	bindless.src_stage = vsm ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-	bindless.dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	auto src_stage = vsm ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+
+	// We use semaphores to handle sync, so don't do access masks.
+	auto dst_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 
 	if (!bindless.shadow_barriers.empty())
 	{
-		cmd.barrier(bindless.src_stage, bindless.dst_stage,
+		cmd.barrier(src_stage, dst_stage,
 		            0, nullptr,
 		            0, nullptr,
 		            bindless.shadow_barriers.size(), bindless.shadow_barriers.data());
@@ -1240,8 +1246,10 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 				cmd->begin_region("shadow-map-end-barriers");
 				end_bindless_barriers(*cmd);
 				cmd->end_region();
-				device.submit(cmd);
-				device.flush_frame();
+
+				acquire_semaphore.reset();
+				device.submit(cmd, nullptr, 1, &acquire_semaphore);
+
 				update_bindless_descriptors(device);
 			});
 		}
@@ -2300,7 +2308,10 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	if (enable_clustering)
 	{
 		if (enable_bindless)
+		{
 			add_render_passes_bindless(graph);
+			graph.add_external_lock_interface("bindless-shadowmaps", this);
+		}
 		else
 			add_render_passes_legacy(graph);
 	}
@@ -2309,5 +2320,15 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 void LightClusterer::set_base_renderer(const RendererSuite *suite)
 {
 	renderer_suite = suite;
+}
+
+Vulkan::Semaphore LightClusterer::external_acquire()
+{
+	return acquire_semaphore;
+}
+
+void LightClusterer::external_release(Vulkan::Semaphore sem)
+{
+	release_semaphores.push_back(std::move(sem));
 }
 }

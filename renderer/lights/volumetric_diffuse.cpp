@@ -341,6 +341,7 @@ void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &
 		light_pass->add_storage_read_only_input("cluster-bitmask");
 		light_pass->add_storage_read_only_input("cluster-range");
 		light_pass->add_storage_read_only_input("cluster-transforms");
+		light_pass->add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	}
 }
 

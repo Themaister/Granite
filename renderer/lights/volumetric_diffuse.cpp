@@ -136,11 +136,13 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	struct ProbeTransform
 	{
 		vec4 texture_to_world[3];
+		vec4 world_to_texture[3];
 		vec3 inv_resolution;
 	};
 
 	auto *probe_transform = cmd.allocate_typed_constant_data<ProbeTransform>(3, 1, 1);
 	memcpy(probe_transform->texture_to_world, light.texture_to_world, sizeof(light.texture_to_world));
+	memcpy(probe_transform->world_to_texture, light.world_to_texture, sizeof(light.world_to_texture));
 	probe_transform->inv_resolution = vec3(1.0f) / vec3(light.light.get_resolution());
 
 	push.patch_resolution = ProbeResolution / 2;
@@ -175,6 +177,7 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	cmd.set_texture(2, 2, light.light.get_gbuffer().albedo->get_view());
 	cmd.set_texture(2, 3, light.light.get_gbuffer().normal->get_view());
 	cmd.set_texture(2, 4, light.light.get_gbuffer().depth->get_view());
+	cmd.set_texture(2, 5, *light.light.get_prev_volume_view(), Vulkan::StockSampler::LinearClamp);
 	cmd.dispatch(res.x, res.y, res.z);
 }
 
@@ -318,17 +321,27 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 			info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 			auto image = device.create_image(info);
+			auto prev_image = device.create_image(info);
+			device.set_name(*image, "probe-light-1");
+			device.set_name(*prev_image, "probe-light-2");
 			image->set_layout(Vulkan::Layout::General);
+			prev_image->set_layout(Vulkan::Layout::General);
 
-			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-			                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-			                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
-			cmd->clear_image(*image, {});
-			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-			                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			                   VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
-			light.light.set_volume(std::move(image));
+			const auto clear = [](Vulkan::CommandBuffer &clear_cmd, Vulkan::Image &clear_image) {
+				clear_cmd.image_barrier(clear_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+				                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+				                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+				clear_cmd.clear_image(clear_image, {});
+				clear_cmd.image_barrier(clear_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+				                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+				                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+				                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+			};
+
+			clear(*cmd, *image);
+			clear(*cmd, *prev_image);
+
+			light.light.set_volumes(std::move(image), std::move(prev_image));
 		}
 
 		device.submit(cmd);
@@ -347,6 +360,7 @@ void VolumetricDiffuseLightManager::refresh(const RenderContext &context, TaskCo
 	for (auto &light_tuple : *volumetric_diffuse)
 	{
 		auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
+		light->light.swap_volumes();
 
 		if (!light->light.get_gbuffer().emissive)
 		{

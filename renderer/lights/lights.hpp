@@ -169,8 +169,9 @@ class VolumetricDiffuseLight : public EventHandler
 public:
 	VolumetricDiffuseLight();
 
-	void set_volume(Vulkan::ImageHandle handle);
+	void set_volumes(Vulkan::ImageHandle volume, Vulkan::ImageHandle prev_volume);
 	const Vulkan::ImageView *get_volume_view() const;
+	const Vulkan::ImageView *get_prev_volume_view() const;
 
 	struct GBuffer
 	{
@@ -183,8 +184,10 @@ public:
 	uvec3 get_resolution() const;
 	static const AABB &get_static_aabb();
 
+	void swap_volumes();
+
 private:
-	Vulkan::ImageHandle volume;
+	Vulkan::ImageHandle volume, prev_volume;
 	GBuffer gbuffer;
 	uvec3 resolution;
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);

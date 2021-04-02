@@ -615,9 +615,20 @@ const Vulkan::ImageView *VolumetricDiffuseLight::get_volume_view() const
 	return volume ? &volume->get_view() : nullptr;
 }
 
-void VolumetricDiffuseLight::set_volume(Vulkan::ImageHandle vol)
+const Vulkan::ImageView *VolumetricDiffuseLight::get_prev_volume_view() const
+{
+	return prev_volume ? &prev_volume->get_view() : nullptr;
+}
+
+void VolumetricDiffuseLight::swap_volumes()
+{
+	std::swap(volume, prev_volume);
+}
+
+void VolumetricDiffuseLight::set_volumes(Vulkan::ImageHandle vol, Vulkan::ImageHandle prev_vol)
 {
 	volume = std::move(vol);
+	prev_volume = std::move(prev_vol);
 }
 
 const VolumetricDiffuseLight::GBuffer &VolumetricDiffuseLight::get_gbuffer() const

@@ -21,6 +21,7 @@ layout(set = 2, binding = 1) uniform texture2D uProbeEmissive;
 layout(set = 2, binding = 2) uniform texture2D uProbeAlbedo;
 layout(set = 2, binding = 3) uniform texture2D uProbeNormal;
 layout(set = 2, binding = 4) uniform texture2D uProbeDepth;
+layout(set = 2, binding = 5) uniform sampler3D uPrevAmbient;
 
 layout(set = 3, binding = 0) uniform Transforms
 {
@@ -32,12 +33,59 @@ layout(set = 3, binding = 0) uniform Transforms
 layout(set = 3, binding = 1) uniform PerProbe
 {
     vec4 texture_to_world[3];
+    vec4 world_to_texture[3];
     vec3 inv_probe_resolution;
 };
 
 #ifndef PI
 #define PI 3.1415628
 #endif
+
+mediump float maximum3(mediump vec3 v)
+{
+    return max(max(v.x, v.y), v.z);
+}
+
+mediump float weight_term(vec3 local_pos)
+{
+    mediump float w = 0.5 - maximum3(abs(local_pos - 0.5));
+    return clamp(w * 20.0, 0.0, 0.9);
+}
+
+mediump vec3 compute_feedback_diffuse(vec3 world_pos, mediump vec3 normal)
+{
+    vec3 local_pos = vec3(
+            dot(vec4(world_pos, 1.0), world_to_texture[0]),
+            dot(vec4(world_pos, 1.0), world_to_texture[1]),
+            dot(vec4(world_pos, 1.0), world_to_texture[2]));
+
+    float lo_tex_coord = 0.5 * inv_probe_resolution.x;
+    float hi_tex_coord = 1.0 - lo_tex_coord;
+
+    mediump vec3 result;
+    if (all(greaterThan(local_pos, vec3(0.0))) && all(lessThan(local_pos, vec3(1.0))))
+    {
+        float base_tex_x = clamp(local_pos.x, lo_tex_coord, hi_tex_coord) / 6.0;
+
+        mediump vec3 normal2 = normal * normal;
+        vec3 normal_offsets = mix(vec3(0.0), vec3(1.0 / 6.0), lessThan(normal, vec3(0.0)));
+        float x_offset = base_tex_x + (0.0 / 3.0) + normal_offsets.x;
+        float y_offset = base_tex_x + (1.0 / 3.0) + normal_offsets.y;
+        float z_offset = base_tex_x + (2.0 / 3.0) + normal_offsets.z;
+
+        result =
+            normal2.x * textureLod(uPrevAmbient, vec3(x_offset, local_pos.yz), 0.0).rgb +
+            normal2.y * textureLod(uPrevAmbient, vec3(y_offset, local_pos.yz), 0.0).rgb +
+            normal2.z * textureLod(uPrevAmbient, vec3(z_offset, local_pos.yz), 0.0).rgb;
+
+        mediump float w = weight_term(local_pos);
+        result *= w;
+    }
+    else
+        result = vec3(0.0);
+
+    return result;
+}
 
 mat3 sample_patch(ivec2 coord, vec3 pos, vec3 world_pos, bool do_lighting)
 {
@@ -47,7 +95,10 @@ mat3 sample_patch(ivec2 coord, vec3 pos, vec3 world_pos, bool do_lighting)
     {
         vec3 albedo = texelFetch(uProbeAlbedo, coord, 0).rgb;
         vec3 normal = normalize(texelFetch(uProbeNormal, coord, 0).xyz * 2.0 - 1.0);
-        color += albedo * compute_irradiance_lighting(world_pos, transforms.cam_pos, transforms.cam_front, normal, directional.direction, directional.color);
+        color += albedo * (
+            compute_feedback_diffuse(world_pos, normal) +
+            compute_irradiance_lighting(world_pos, transforms.cam_pos, transforms.cam_front,
+                                        normal, directional.direction, directional.color));
     }
 
     float l2 = dot(pos, pos);

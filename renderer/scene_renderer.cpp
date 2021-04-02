@@ -63,7 +63,7 @@ void RenderPassSceneRenderer::render_debug_probes(const Renderer &renderer, Vulk
 			continue;
 
 		uvec3 resolution = light->light.get_resolution();
-		float radius = 0.2f;
+		float radius = 0.1f;
 
 		for (unsigned z = 0; z < resolution.z; z++)
 		{

@@ -26,9 +26,24 @@
 #include "task_composer.hpp"
 #include "render_context.hpp"
 #include "scene_renderer.hpp"
+#include "muglm/matrix_helper.hpp"
+#include "quirks.hpp"
 
 namespace Granite
 {
+static constexpr float ZNear = 0.1f;
+static constexpr float ZFar = 500.0f;
+
+VolumetricDiffuseLightManager::VolumetricDiffuseLightManager()
+{
+	for (unsigned face = 0; face < 6; face++)
+	{
+		mat4 proj, view;
+		compute_cube_render_transform(vec3(0.0f), face, proj, view, ZNear, ZFar);
+		inv_view_projections[face] = inverse(proj * view);
+	}
+}
+
 void VolumetricDiffuseLightManager::set_scene(Scene *scene_)
 {
 	scene = scene_;
@@ -118,6 +133,16 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 		float inv_patch_resolution2;
 	} push = {};
 
+	struct ProbeTransform
+	{
+		vec4 texture_to_world[3];
+		vec3 inv_resolution;
+	};
+
+	auto *probe_transform = cmd.allocate_typed_constant_data<ProbeTransform>(3, 1, 1);
+	memcpy(probe_transform->texture_to_world, light.texture_to_world, sizeof(light.texture_to_world));
+	probe_transform->inv_resolution = vec3(1.0f) / vec3(light.light.get_resolution());
+
 	push.patch_resolution = ProbeResolution / 2;
 	push.face_resolution = ProbeResolution;
 	push.inv_patch_resolution = 1.0f / float(push.patch_resolution);
@@ -126,10 +151,30 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 
 	uvec3 res = light.light.get_resolution();
 
-	cmd.set_program("builtin://shaders/util/volumetric_hemisphere_integral.comp");
+	auto flags = Renderer::get_mesh_renderer_options_from_lighting(*base_render_context->get_lighting_parameters());
+	flags &= ~(Renderer::VOLUMETRIC_FOG_ENABLE_BIT |
+	           Renderer::AMBIENT_OCCLUSION_BIT |
+	           Renderer::VOLUMETRIC_DIFFUSE_ENABLE_BIT);
+	auto defines = Renderer::build_defines_from_renderer_options(RendererType::GeneralForward, flags);
+
+	if (flags & Renderer::SHADOW_CASCADE_ENABLE_BIT)
+	{
+		auto &subgroup = cmd.get_device().get_device_features().subgroup_properties;
+		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
+		    !Vulkan::ImplementationQuirks::get().force_no_subgroups &&
+		    (subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0)
+		{
+			defines.emplace_back("SUBGROUP_ARITHMETIC", 1);
+		}
+	}
+
+	cmd.set_program("builtin://shaders/lights/volumetric_hemisphere_integral.comp", defines);
 	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.set_texture(0, 0, light.light.get_gbuffer().albedo->get_view());
-	cmd.set_storage_texture(0, 1, *light.light.get_volume_view());
+	cmd.set_storage_texture(2, 0, *light.light.get_volume_view());
+	cmd.set_texture(2, 1, light.light.get_gbuffer().emissive->get_view());
+	cmd.set_texture(2, 2, light.light.get_gbuffer().albedo->get_view());
+	cmd.set_texture(2, 3, light.light.get_gbuffer().normal->get_view());
+	cmd.set_texture(2, 4, light.light.get_gbuffer().depth->get_view());
 	cmd.dispatch(res.x, res.y, res.z);
 }
 
@@ -220,7 +265,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 								dot(light.texture_to_world[2], vec4(tex, 1.0f)));
 
 						mat4 proj, view;
-						compute_cube_render_transform(center, face, proj, view, 0.1f, 500.0f);
+						compute_cube_render_transform(center, face, proj, view, ZNear, ZFar);
 						shared_context->set_camera(proj, view);
 					});
 
@@ -316,6 +361,21 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 	auto &light_pass = graph.add_pass("probe-light", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 	light_pass.add_proxy_output("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	light_pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+		Renderer::bind_global_parameters(cmd, *base_render_context);
+		Renderer::bind_lighting_parameters(cmd, *base_render_context);
+
+		struct GlobalTransform
+		{
+			mat4 inv_view_proj_for_face[6];
+			alignas(16) vec3 cam_pos;
+			alignas(16) vec3 cam_front;
+		};
+
+		auto *transforms = cmd.allocate_typed_constant_data<GlobalTransform>(3, 0, 1);
+		memcpy(transforms->inv_view_proj_for_face, inv_view_projections, sizeof(inv_view_projections));
+		transforms->cam_pos = base_render_context->get_render_parameters().camera_position;
+		transforms->cam_front = base_render_context->get_render_parameters().camera_front;
+
 		for (auto &light_tuple : *volumetric_diffuse)
 		{
 			// TODO: Check visibility?
@@ -341,6 +401,9 @@ void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &
 		light_pass->add_storage_read_only_input("cluster-transforms");
 		light_pass->add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	}
+
+	if (graph.find_pass("shadow-main"))
+		light_pass->add_texture_input("shadow-main");
 }
 
 void VolumetricDiffuseLightManager::setup_render_pass_resources(RenderGraph &)

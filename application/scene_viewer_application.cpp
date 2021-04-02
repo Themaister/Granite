@@ -208,10 +208,10 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	{
 		auto &scene = scene_loader.get_scene();
 		auto node = scene.create_node();
-		node->transform.scale = vec3(10.0f);
-		node->transform.translation = vec3(-0.1f, 5.0f, -1.0f);
+		node->transform.scale = vec3(30.0f, 10.0f, 30.0f);
+		node->transform.translation = vec3(0.0f, 4.0f, 0.0f);
 		node->invalidate_cached_transform();
-		scene.create_volumetric_diffuse_light(uvec3(8, 8, 8), node.get());
+		scene.create_volumetric_diffuse_light(uvec3(32, 8, 32), node.get());
 		scene.get_root_node()->add_child(std::move(node));
 	}
 

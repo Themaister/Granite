@@ -2,6 +2,11 @@
 #extension GL_EXT_samplerless_texture_functions : require
 layout(local_size_x = 8, local_size_y = 8) in;
 
+#define CLUSTERER_NO_HELPER_INVOCATION
+#include "../inc/subgroup_extensions.h"
+#include "lighting_irradiance.h"
+#include "../inc/render_parameters.h"
+
 layout(push_constant) uniform Registers
 {
     int patch_resolution;
@@ -11,15 +16,40 @@ layout(push_constant) uniform Registers
     float inv_patch_resolution2;
 } registers;
 
-layout(set = 0, binding = 0) uniform texture2D uProbeLights;
-layout(rgba16f, set = 0, binding = 1) writeonly uniform image3D uAmbient;
+layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uAmbient;
+layout(set = 2, binding = 1) uniform texture2D uProbeEmissive;
+layout(set = 2, binding = 2) uniform texture2D uProbeAlbedo;
+layout(set = 2, binding = 3) uniform texture2D uProbeNormal;
+layout(set = 2, binding = 4) uniform texture2D uProbeDepth;
+
+layout(set = 3, binding = 0) uniform Transforms
+{
+    mat4 inv_view_proj_for_face[6];
+    vec3 cam_pos;
+    vec3 cam_front;
+} transforms;
+
+layout(set = 3, binding = 1) uniform PerProbe
+{
+    vec4 texture_to_world[3];
+    vec3 inv_probe_resolution;
+};
 
 #ifndef PI
 #define PI 3.1415628
 #endif
 
-mat3 sample_patch(ivec2 coord, vec3 pos)
+mat3 sample_patch(ivec2 coord, vec3 pos, vec3 world_pos, bool do_lighting)
 {
+    vec3 emissive = texelFetch(uProbeEmissive, coord, 0).rgb;
+    vec3 color = emissive;
+    if (do_lighting)
+    {
+        vec3 albedo = texelFetch(uProbeAlbedo, coord, 0).rgb;
+        vec3 normal = normalize(texelFetch(uProbeNormal, coord, 0).xyz * 2.0 - 1.0);
+        color += albedo * compute_irradiance_lighting(world_pos, transforms.cam_pos, transforms.cam_front, normal, directional.direction, directional.color);
+    }
+
     float l2 = dot(pos, pos);
     float inv_l = inversesqrt(l2);
 
@@ -35,8 +65,6 @@ mat3 sample_patch(ivec2 coord, vec3 pos)
     // A ~= dot(n', [0, 0, (2 / (l * res)) * (2 / (l * res))])
     // A ~= 4.0 / (res^2 * l^3)
     float area = registers.inv_patch_resolution2 * inv_l * inv_l * inv_l;
-
-    vec3 color = texelFetch(uProbeLights, coord, 0).rgb;
 
     vec3 n = pos * inv_l;
     vec3 hemisphere_area = abs(n) * area;
@@ -102,17 +130,26 @@ void main()
                         uvec2 patch_coord = uvec2(ix, iy) * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy;
                         vec2 xy = vec2(patch_coord) + 0.5;
                         vec2 uv = xy * registers.inv_patch_resolution;
-
-                        vec3 pos = base_dirs[face] +
-                            (float(patch_x - 1) + uv.x) * pos_du[face] +
-                            (float(patch_y - 1) + uv.y) * pos_dv[face];
+                        vec2 clip_xy = vec2(patch_x - 1, patch_y - 1) + uv;
+                        vec3 pos = base_dirs[face] + clip_xy.x * pos_du[face] + clip_xy.y * pos_dv[face];
 
                         int probe_x = 6 * int(probe_index.x) + face;
                         int probe_y = int(probe_index.z * gl_NumWorkGroups.y + probe_index.y);
                         ivec2 base_probe_coord = ivec2(probe_x, probe_y) * registers.face_resolution;
                         ivec2 tex_coord = base_probe_coord + ivec2(patch_coord);
 
-                        patch_contribution += sample_patch(tex_coord, pos);
+                        vec3 tex_space = (vec3(gl_WorkGroupID) + 0.5) * inv_probe_resolution;
+                        vec3 probe_pos = vec3(
+                            dot(texture_to_world[0], vec4(tex_space, 1.0)),
+                            dot(texture_to_world[1], vec4(tex_space, 1.0)),
+                            dot(texture_to_world[2], vec4(tex_space, 1.0)));
+
+                        float d = texelFetch(uProbeDepth, tex_coord, 0).x;
+                        vec4 clip = vec4(clip_xy, d, 1.0);
+                        vec4 world4 = transforms.inv_view_proj_for_face[face] * clip;
+                        vec3 world = world4.xyz / world4.w + probe_pos;
+
+                        patch_contribution += sample_patch(tex_coord, pos, world, d < 1.0);
                     }
                 }
 

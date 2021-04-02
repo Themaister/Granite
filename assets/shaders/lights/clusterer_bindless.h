@@ -111,6 +111,13 @@ mediump vec3 compute_cluster_light(
 	return result;
 }
 #else
+mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 normal)
+{
+	mediump vec3 result = vec3(0.0);
+	// TODO
+	return result;
+}
+
 mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 {
 	mediump vec3 result = vec3(0.0);

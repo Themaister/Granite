@@ -130,7 +130,7 @@ struct DiffuseVolumeParameters
 	float padding[2];
 };
 
-#define CLUSTERER_MAX_VOLUMES 256
+#define CLUSTERER_MAX_VOLUMES 128
 struct ClustererParametersVolumetric
 {
 	uint32_t bindless_index_offset;

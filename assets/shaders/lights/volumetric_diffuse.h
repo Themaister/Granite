@@ -13,7 +13,7 @@ struct DiffuseVolumeParameters
 	float hi_tex_coord_x;
 };
 
-const int CLUSTERER_MAX_VOLUMES = 256;
+const int CLUSTERER_MAX_VOLUMES = 128;
 
 layout(std140, set = 0, binding = BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_PARAMETERS) uniform VolumeParameters
 {

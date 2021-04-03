@@ -767,9 +767,11 @@ void LightClusterer::end_bindless_barriers(Vulkan::CommandBuffer &cmd)
 }
 
 LightClusterer::ShadowTaskContextSpotHandle
-LightClusterer::gather_bindless_spot_shadow_renderables(unsigned index, TaskComposer &composer)
+LightClusterer::gather_bindless_spot_shadow_renderables(unsigned index, TaskComposer &composer, bool requires_rendering)
 {
-	auto data = Util::make_handle<ShadowTaskContextSpot>();
+	ShadowTaskContextSpotHandle data;
+	if (requires_rendering)
+		data = Util::make_handle<ShadowTaskContextSpot>();
 
 	auto &setup_group = composer.begin_pipeline_stage();
 	setup_group.set_desc("clusterer-spot-setup");
@@ -792,28 +794,35 @@ LightClusterer::gather_bindless_spot_shadow_renderables(unsigned index, TaskComp
 		            translate(-light->position);
 		mat4 proj = projection(range * 2.0f, 1.0f, 0.005f / light->inv_radius, 1.0f / light->inv_radius);
 
-
 		*shadow = translate(vec3(0.5f, 0.5f, 0.0f)) *
 		          scale(vec3(0.5f, 0.5f, 1.0f)) *
 		          proj * view;
 
-		data->depth_context[0].set_camera(proj, view);
-		auto &depth_renderer = get_shadow_renderer();
-		for (auto &queue : data->queues[0])
-			depth_renderer.begin(queue);
+		if (data)
+		{
+			data->depth_context[0].set_camera(proj, view);
+			auto &depth_renderer = get_shadow_renderer();
+			for (auto &queue : data->queues[0])
+				depth_renderer.begin(queue);
+		}
 	});
 
-	Threaded::scene_gather_static_shadow_renderables(*scene, composer,
-	                                                 data->depth_context[0].get_visibility_frustum(),
-	                                                 data->visibility[0], data->hashes[0], MaxTasks);
+	if (requires_rendering)
+	{
+		Threaded::scene_gather_static_shadow_renderables(*scene, composer,
+		                                                 data->depth_context[0].get_visibility_frustum(),
+		                                                 data->visibility[0], data->hashes[0], MaxTasks);
+	}
 
 	return data;
 }
 
 LightClusterer::ShadowTaskContextPointHandle
-LightClusterer::gather_bindless_point_shadow_renderables(unsigned index, TaskComposer &composer)
+LightClusterer::gather_bindless_point_shadow_renderables(unsigned index, TaskComposer &composer, bool requires_rendering)
 {
-	auto data = Util::make_handle<ShadowTaskContextPoint>();
+	ShadowTaskContextPointHandle data;
+	if (requires_rendering)
+		data = Util::make_handle<ShadowTaskContextPoint>();
 
 	auto &setup_group = composer.begin_pipeline_stage();
 	setup_group.set_desc("clusterer-point-setup");
@@ -840,25 +849,32 @@ LightClusterer::gather_bindless_point_shadow_renderables(unsigned index, TaskCom
 		{
 			compute_cube_render_transform(light->position, face, proj, view,
 			                              0.005f / light->inv_radius, 1.0f / light->inv_radius);
-			data->depth_context[face].set_camera(proj, view);
-			auto &depth_renderer = get_shadow_renderer();
-			for (auto &queue : data->queues[face])
-				depth_renderer.begin(queue);
+
+			if (data)
+			{
+				data->depth_context[face].set_camera(proj, view);
+				auto &depth_renderer = get_shadow_renderer();
+				for (auto &queue : data->queues[face])
+					depth_renderer.begin(queue);
+			}
 		}
 	});
 
-	auto &per_face_stage = composer.begin_pipeline_stage();
-
-	for (unsigned face = 0; face < 6; face++)
+	if (requires_rendering)
 	{
-		TaskComposer face_composer(composer.get_thread_group());
-		face_composer.set_incoming_task(composer.get_pipeline_stage_dependency());
+		auto &per_face_stage = composer.begin_pipeline_stage();
 
-		Threaded::scene_gather_static_shadow_renderables(*scene, face_composer,
-		                                                 data->depth_context[face].get_visibility_frustum(),
-		                                                 data->visibility[face], data->hashes[face], MaxTasks);
+		for (unsigned face = 0; face < 6; face++)
+		{
+			TaskComposer face_composer(composer.get_thread_group());
+			face_composer.set_incoming_task(composer.get_pipeline_stage_dependency());
 
-		composer.get_thread_group().add_dependency(per_face_stage, *face_composer.get_outgoing_task());
+			Threaded::scene_gather_static_shadow_renderables(*scene, face_composer,
+			                                                 data->depth_context[face].get_visibility_frustum(),
+			                                                 data->visibility[face], data->hashes[face], MaxTasks);
+
+			composer.get_thread_group().add_dependency(per_face_stage, *face_composer.get_outgoing_task());
+		}
 	}
 
 	return data;
@@ -1272,6 +1288,7 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 				{
 					// Check for duplicates. Could probably just use a hashmap as well I guess ...
 					// We know there can only be duplicates across local / global sets, not internally.
+					bool requires_rendering = true;
 					if (i < bindless.parameters.num_lights)
 					{
 						auto *global_handles = bindless.handles + bindless.parameters.num_lights;
@@ -1279,23 +1296,19 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 						                        [light = bindless.handles[i]](const PositionalLight *global_light) {
 							                        return light == global_light;
 						                        });
-						if (itr != global_handles + bindless.global_transforms.num_lights)
-						{
-							bindless.shadow_task_handles.emplace_back();
-							continue;
-						}
+						requires_rendering = itr == global_handles + bindless.global_transforms.num_lights;
 					}
 
 					TaskComposer per_light_composer(thread_group);
 					if (bindless_light_is_point(i))
 					{
 						bindless.shadow_task_handles.emplace_back(
-								gather_bindless_point_shadow_renderables(i, per_light_composer));
+								gather_bindless_point_shadow_renderables(i, per_light_composer, requires_rendering));
 					}
 					else
 					{
 						bindless.shadow_task_handles.emplace_back(
-								gather_bindless_spot_shadow_renderables(i, per_light_composer));
+								gather_bindless_spot_shadow_renderables(i, per_light_composer, requires_rendering));
 					}
 					thread_group.add_dependency(*gather_indirect_task, *per_light_composer.get_outgoing_task());
 				}

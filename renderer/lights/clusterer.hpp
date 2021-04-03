@@ -313,8 +313,10 @@ private:
 	using ShadowTaskContextSpotHandle = Util::IntrusivePtr<ShadowTaskContextSpot>;
 	using ShadowTaskContextPointHandle = Util::IntrusivePtr<ShadowTaskContextPoint>;
 
-	ShadowTaskContextSpotHandle gather_bindless_spot_shadow_renderables(unsigned index, TaskComposer &composer);
-	ShadowTaskContextPointHandle gather_bindless_point_shadow_renderables(unsigned index, TaskComposer &composer);
+	ShadowTaskContextSpotHandle gather_bindless_spot_shadow_renderables(unsigned index, TaskComposer &composer,
+	                                                                    bool requires_rendering);
+	ShadowTaskContextPointHandle gather_bindless_point_shadow_renderables(unsigned index, TaskComposer &composer,
+	                                                                      bool requires_rendering);
 
 	void render_bindless_spot(Vulkan::Device &device, unsigned index, TaskComposer &composer);
 	void render_bindless_point(Vulkan::Device &device, unsigned index, TaskComposer &composer);

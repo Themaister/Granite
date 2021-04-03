@@ -37,6 +37,7 @@ Scene::Scene()
 	  opaque(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, OpaqueComponent>()),
 	  transparent(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, TransparentComponent>()),
 	  positional_lights(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, PositionalLightComponent>()),
+	  irradiance_affecting_positional_lights(pool.get_component_group<RenderInfoComponent, PositionalLightComponent, CachedSpatialTransformTimestampComponent, IrradianceAffectingComponent>()),
 	  static_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsStaticShadowComponent>()),
 	  dynamic_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
 	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
@@ -44,7 +45,6 @@ Scene::Scene()
 	  cameras(pool.get_component_group<CameraComponent, CachedTransformComponent>()),
 	  directional_lights(pool.get_component_group<DirectionalLightComponent, CachedTransformComponent>()),
 	  volumetric_diffuse_lights(pool.get_component_group<VolumetricDiffuseLightComponent, CachedSpatialTransformTimestampComponent, RenderInfoComponent>()),
-	  ambient_lights(pool.get_component_group<AmbientLightComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
 	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, RenderInfoComponent>()),
 	  environments(pool.get_component_group<EnvironmentComponent>()),
@@ -335,6 +335,21 @@ static void gather_positional_lights(const Frustum &frustum, PositionalLightList
 void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list) const
 {
 	gather_positional_lights(frustum, list, positional_lights, 0, positional_lights.size());
+}
+
+void Scene::gather_irradiance_affecting_positional_lights(PositionalLightList &list) const
+{
+	for (auto &light_tup : irradiance_affecting_positional_lights)
+	{
+		auto *transform = get_component<RenderInfoComponent>(light_tup);
+		auto *light = get_component<PositionalLightComponent>(light_tup)->light;
+		auto *timestamp = get_component<CachedSpatialTransformTimestampComponent>(light_tup);
+
+		Util::Hasher h;
+		h.u64(timestamp->cookie);
+		h.u32(timestamp->last_timestamp);
+		list.push_back({ light, transform, h.get() });
+	}
 }
 
 void Scene::gather_visible_positional_lights(const Frustum &frustum, PositionalLightList &list) const
@@ -859,13 +874,6 @@ Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 		auto *transform = entity->allocate_component<CachedTransformComponent>();
 		transform->transform = &node->cached_transform;
 		dir->color = light.color;
-		break;
-	}
-
-	case SceneFormats::LightInfo::Type::Ambient:
-	{
-		auto *ambient = entity->allocate_component<AmbientLightComponent>();
-		ambient->color = light.color;
 		break;
 	}
 

@@ -203,8 +203,7 @@ struct LightInfo
 	{
 		Directional,
 		Spot,
-		Point,
-		Ambient
+		Point
 	};
 
 	std::string name;

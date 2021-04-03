@@ -1269,8 +1269,6 @@ void Parser::parse(const string &original_path, const string &json)
 			info.type = LightInfo::Type::Spot;
 		else if (strcmp(type, "directional") == 0)
 			info.type = LightInfo::Type::Directional;
-		else if (strcmp(type, "ambient") == 0)
-			info.type = LightInfo::Type::Ambient;
 		else
 			throw logic_error("Invalid light type.");
 

@@ -222,12 +222,6 @@ struct VolumetricDiffuseLightComponent : ComponentBase
 	uint32_t timestamp = 0;
 };
 
-struct AmbientLightComponent : ComponentBase
-{
-	GRANITE_COMPONENT_TYPE_DECL(AmbientLightComponent)
-	vec3 color;
-};
-
 struct CastsStaticShadowComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(CastsStaticShadowComponent)

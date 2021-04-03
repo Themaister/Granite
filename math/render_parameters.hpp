@@ -84,12 +84,6 @@ struct ShadowParameters
 	float cascade_log_bias;
 };
 
-struct EnvironmentParameters
-{
-	float intensity;
-	float mipscale;
-};
-
 struct RefractionParameters
 {
 	alignas(16) vec3 falloff;

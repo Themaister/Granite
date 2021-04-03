@@ -73,6 +73,7 @@ public:
 
 	// Bindless clustering.
 	const ClustererParametersBindless &get_cluster_parameters_bindless() const;
+	const ClustererGlobalTransforms &get_cluster_global_transforms_bindless() const;
 	const Vulkan::Buffer *get_cluster_transform_buffer() const;
 	const Vulkan::Buffer *get_cluster_bitmask_buffer() const;
 	const Vulkan::Buffer *get_cluster_range_buffer() const;
@@ -89,6 +90,8 @@ public:
 	enum {
 		MaxLights = CLUSTERER_MAX_LIGHTS,
 		MaxLightsBindless = CLUSTERER_MAX_LIGHTS_BINDLESS,
+		MaxLightsGlobal = CLUSTERER_MAX_LIGHTS_GLOBAL,
+		MaxLightsVolume = CLUSTERER_MAX_VOLUMES,
 		ClusterHierarchies = 8,
 		ClusterPrepassDownsample = 4
 	};
@@ -112,6 +115,11 @@ private:
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void refresh(const RenderContext &context_, TaskComposer &composer) override;
 	void refresh_bindless(const RenderContext &context_, TaskComposer &composer);
+
+	template <typename Transforms>
+	unsigned scan_visible_positional_lights(const PositionalLightList &lights, Transforms &transforms,
+	                                        unsigned max_lights, unsigned handle_offset);
+
 	void refresh_bindless_prepare(const RenderContext &context_);
 	void refresh_legacy(const RenderContext &context_);
 
@@ -122,6 +130,7 @@ private:
 	enum { MaxTasks = 4 };
 	PositionalLightList light_sort_caches[MaxTasks];
 	VolumetricDiffuseLightList visible_diffuse_lights;
+	PositionalLightList existing_global_lights;
 	RenderQueue internal_queue;
 
 	unsigned resolution_x = 64, resolution_y = 32, resolution_z = 16;
@@ -239,12 +248,12 @@ private:
 	// Bindless
 	struct
 	{
-		unsigned count = 0;
 		ClustererParametersBindless parameters;
 		ClustererBindlessTransforms transforms;
+		ClustererGlobalTransforms global_transforms;
 		ClustererParametersVolumetric volumetric;
 
-		PositionalLight *handles[MaxLightsBindless] = {};
+		PositionalLight *handles[MaxLightsBindless + MaxLightsGlobal] = {};
 
 		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;
 		Util::LRUCache<Vulkan::ImageHandle> shadow_map_cache;

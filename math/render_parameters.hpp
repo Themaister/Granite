@@ -134,6 +134,8 @@ struct ClustererParametersVolumetric
 };
 
 #define CLUSTERER_MAX_LIGHTS_BINDLESS 4096
+#define CLUSTERER_MAX_LIGHTS_GLOBAL 32
+
 struct ClustererBindlessTransforms
 {
 	PositionalFragmentInfo lights[CLUSTERER_MAX_LIGHTS_BINDLESS];
@@ -141,6 +143,16 @@ struct ClustererBindlessTransforms
 	mat4 model[CLUSTERER_MAX_LIGHTS_BINDLESS];
 	uint32_t type_mask[CLUSTERER_MAX_LIGHTS_BINDLESS / 32];
 };
+
+struct ClustererGlobalTransforms
+{
+	alignas(16) PositionalFragmentInfo lights[CLUSTERER_MAX_LIGHTS_GLOBAL];
+	alignas(16) mat4 shadow[CLUSTERER_MAX_LIGHTS_GLOBAL];
+	alignas(16) uint32_t type_mask[CLUSTERER_MAX_LIGHTS_GLOBAL / 32];
+	uint32_t descriptor_offset;
+	uint32_t num_lights;
+};
+static_assert(sizeof(ClustererGlobalTransforms) <= Vulkan::VULKAN_MAX_UBO_SIZE, "Global transforms is too large.");
 
 struct CombinedRenderParameters
 {

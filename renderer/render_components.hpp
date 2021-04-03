@@ -201,6 +201,11 @@ struct PositionalLightComponent : ComponentBase
 	PositionalLight *light;
 };
 
+struct IrradianceAffectingComponent : ComponentBase
+{
+	GRANITE_COMPONENT_TYPE_DECL(IrradianceAffectingComponent)
+};
+
 struct DirectionalLightComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(DirectionalLightComponent)

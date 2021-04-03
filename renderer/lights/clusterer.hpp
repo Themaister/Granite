@@ -285,9 +285,10 @@ private:
 		Util::Hash hashes[Faces][MaxTasks];
 		RenderQueue queues[Faces][MaxTasks];
 
-		Util::Hash get_combined_hash() const
+		Util::Hash get_combined_hash(Util::Hash self_transform) const
 		{
 			Util::Hasher hasher;
+			hasher.u64(self_transform);
 			for (unsigned face = 0; face < Faces; face++)
 			{
 				Util::Hash h = 0;

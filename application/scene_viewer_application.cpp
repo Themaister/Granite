@@ -444,7 +444,8 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		node->transform.translation = pos;
 		node->transform.rotation = conjugate(look_at_arbitrary_up(selected_camera->get_front()));
 
-		scene.create_light(light, node.get());
+		auto *entity = scene.create_light(light, node.get());
+		entity->allocate_component<IrradianceAffectingComponent>();
 		break;
 	}
 

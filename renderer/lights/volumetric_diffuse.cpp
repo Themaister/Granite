@@ -246,7 +246,11 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 	setup.deferred_lights = nullptr;
 	setup.suite = suite;
 	setup.scene = scene;
-	auto renderers = create_cube_renderer(setup);
+
+	std::vector<std::shared_ptr<ContextRenderers>> slice_renderers;
+	slice_renderers.reserve(resolution.x);
+	for (unsigned x = 0; x < resolution.x; x++)
+		slice_renderers.push_back(create_cube_renderer(setup));
 
 	TaskComposer probe_composer(*incoming.get_thread_group());
 	probe_composer.set_incoming_task(composer.get_pipeline_stage_dependency());
@@ -266,13 +270,22 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 	rp.color_attachments[3] = &gbuffer.pbr->get_view();
 	rp.depth_stencil = &gbuffer.depth->get_view();
 
+	auto &discard_stage = probe_composer.begin_pipeline_stage();
+	discard_stage.enqueue_task([&device, &light]() {
+		auto cmd = device.request_command_buffer();
+		transition_gbuffer(*cmd, light.light.get_gbuffer(), TransitionMode::Discard);
+		device.submit(cmd);
+	});
+
 	for (unsigned z = 0; z < resolution.z; z++)
 	{
 		for (unsigned y = 0; y < resolution.y; y++)
 		{
+			auto &context_setup = probe_composer.begin_pipeline_stage();
+
 			for (unsigned x = 0; x < resolution.x; x++)
 			{
-				auto &context_setup = probe_composer.begin_pipeline_stage();
+				auto &renderers = slice_renderers[x];
 				for (unsigned face = 0; face < 6; face++)
 				{
 					context_setup.enqueue_task([x, y, z, face, resolution, renderers, &light]() {
@@ -287,9 +300,13 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 						renderers->contexts[face].set_camera(proj, view);
 					});
 				}
+			}
 
-				auto &prepare_stage = probe_composer.begin_pipeline_stage();
+			auto &prepare_stage = probe_composer.begin_pipeline_stage();
 
+			for (unsigned x = 0; x < resolution.x; x++)
+			{
+				auto &renderers = slice_renderers[x];
 				for (unsigned face = 0; face < 6; face++)
 				{
 					TaskComposer face_composer(probe_composer.get_thread_group());
@@ -298,18 +315,21 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 					renderers->renderers[face].enqueue_prepare_render_pass(face_composer, rp, 0, contents);
 					probe_composer.get_thread_group().add_dependency(prepare_stage, *face_composer.get_outgoing_task());
 				}
+			}
 
-				auto &task = probe_composer.begin_pipeline_stage();
-				task.enqueue_task([x, y, z, renderers, rp, &light, &device]() {
+			auto &render_task = probe_composer.begin_pipeline_stage();
+
+			for (unsigned x = 0; x < resolution.x; x++)
+			{
+				auto &renderers = slice_renderers[x];
+				render_task.enqueue_task([x, y, z, renderers, rp, &light, &device]() {
 					auto cmd = device.request_command_buffer();
 					cmd->begin_region("render-probe-gbuffer");
 
-					if (x == 0 && y == 0 && z == 0)
-						transition_gbuffer(*cmd, light.light.get_gbuffer(), TransitionMode::Discard);
-
 					auto slice_rp = rp;
 					slice_rp.render_area.offset.x = 6 * x * ProbeResolution;
-					slice_rp.render_area.offset.y = (z * light.light.get_resolution().y + y) * ProbeResolution;
+					slice_rp.render_area.offset.y =
+							(z * light.light.get_resolution().y + y) * ProbeResolution;
 					slice_rp.render_area.extent.width = ProbeResolution * 6;
 					slice_rp.render_area.extent.height = ProbeResolution;
 
@@ -332,13 +352,16 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 					cmd->end_render_pass();
 					cmd->end_region();
 					device.submit(cmd);
-
-					// We're going to be consuming a fair bit of memory,
-					// so make sure to pump frame contexts through.
-					// This code is not assumed to be hot (should be pre-baked).
-					device.next_frame_context();
 				});
 			}
+
+			auto &drain_task = probe_composer.begin_pipeline_stage();
+			drain_task.enqueue_task([&device]() {
+				// We're going to be consuming a fair bit of memory,
+				// so make sure to pump frame contexts through.
+				// This code is not assumed to be hot (should be pre-baked).
+				device.next_frame_context();
+			});
 		}
 	}
 

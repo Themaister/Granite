@@ -80,7 +80,7 @@ public:
 	VkDescriptorSet get_cluster_bindless_set() const;
 	bool clusterer_is_bindless() const;
 
-	const ClustererParametersVolumetric *get_cluster_volumetric_diffuse_data() const;
+	const ClustererParametersVolumetric &get_cluster_volumetric_diffuse_data() const;
 	size_t get_cluster_volumetric_diffuse_size() const;
 
 	void set_scene(Scene *scene) override;

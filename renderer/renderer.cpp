@@ -421,7 +421,7 @@ static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const Li
 
 		size_t size = cluster.get_cluster_volumetric_diffuse_size();
 		void *parameters = cmd.allocate_constant_data(0, BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_PARAMETERS, size);
-		memcpy(parameters, cluster.get_cluster_volumetric_diffuse_data(), size);
+		memcpy(parameters, &cluster.get_cluster_volumetric_diffuse_data(), size);
 	}
 }
 

@@ -1171,7 +1171,7 @@ unsigned LightClusterer::scan_visible_positional_lights(const PositionalLightLis
 			{
 				transforms.lights[index] = point.get_shader_info(transform->transform->world_transform);
 				set_point_model_transform(transforms, index);
-				bindless.transforms.type_mask[index >> 5] |= 1u << (index & 31u);
+				transforms.type_mask[index >> 5] |= 1u << (index & 31u);
 				bindless.handles[index + handle_offset] = &l;
 				bindless.light_transform_hashes.push_back(light.transform_hash);
 				index++;
@@ -1247,9 +1247,14 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 	}
 }
 
-const ClustererParametersVolumetric *LightClusterer::get_cluster_volumetric_diffuse_data() const
+const ClustererParametersVolumetric &LightClusterer::get_cluster_volumetric_diffuse_data() const
 {
-	return &bindless.volumetric;
+	return bindless.volumetric;
+}
+
+const ClustererGlobalTransforms &LightClusterer::get_cluster_global_transforms_bindless() const
+{
+	return bindless.global_transforms;
 }
 
 size_t LightClusterer::get_cluster_volumetric_diffuse_size() const

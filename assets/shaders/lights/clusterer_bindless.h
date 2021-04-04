@@ -111,12 +111,23 @@ mediump vec3 compute_cluster_light(
 	return result;
 }
 #else
+
+#ifdef CLUSTERER_GLOBAL
 mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 normal)
 {
 	mediump vec3 result = vec3(0.0);
-	// TODO
+	int count = cluster_global_transforms.num_lights;
+	uint type_mask = cluster_global_transforms.type_mask;
+	for (int i = 0; i < count; i++)
+	{
+		if ((type_mask & (1u << i)) != 0u)
+			result += compute_irradiance_point_light(i, normal, world_pos);
+		else
+			result += compute_irradiance_spot_light(i, normal, world_pos);
+	}
 	return result;
 }
+#endif
 
 mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 {

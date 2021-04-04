@@ -3,9 +3,18 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 
 #define CLUSTERER_NO_HELPER_INVOCATION
+#define CLUSTERER_GLOBAL
 #include "../inc/subgroup_extensions.h"
-#include "lighting_irradiance.h"
 #include "../inc/render_parameters.h"
+
+#include "clusterer_data.h"
+
+layout(set = 3, binding = 2) uniform ClusterTransforms
+{
+    ClustererGlobalTransforms cluster_global_transforms;
+};
+
+#include "lighting_irradiance.h"
 
 layout(push_constant) uniform Registers
 {
@@ -47,7 +56,7 @@ mediump float maximum3(mediump vec3 v)
 mediump float weight_term(vec3 local_pos)
 {
     mediump float w = 0.5 - maximum3(abs(local_pos - 0.5));
-    return clamp(w * 20.0, 0.0, 0.9);
+    return clamp(w * 20.0, 0.0, 0.95);
 }
 
 mediump vec3 compute_feedback_diffuse(vec3 world_pos, mediump vec3 normal)
@@ -184,7 +193,8 @@ void main()
                         int probe_x = 6 * int(probe_index.x) + face;
                         int probe_y = int(probe_index.z * gl_NumWorkGroups.y + probe_index.y);
                         ivec2 base_probe_coord = ivec2(probe_x, probe_y) * registers.face_resolution;
-                        ivec2 tex_coord = base_probe_coord + ivec2(patch_coord);
+                        ivec2 tex_coord = base_probe_coord + ivec2(patch_coord) +
+                            ivec2(patch_x, patch_y) * ivec2(registers.patch_resolution);
 
                         vec3 tex_space = (vec3(gl_WorkGroupID) + 0.5) * inv_probe_resolution;
                         vec3 probe_pos = vec3(

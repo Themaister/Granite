@@ -28,11 +28,12 @@
 #include "scene_renderer.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "quirks.hpp"
+#include "clusterer.hpp"
 
 namespace Granite
 {
 static constexpr float ZNear = 0.1f;
-static constexpr float ZFar = 500.0f;
+static constexpr float ZFar = 200.0f;
 
 VolumetricDiffuseLightManager::VolumetricDiffuseLightManager()
 {
@@ -370,6 +371,16 @@ void VolumetricDiffuseLightManager::refresh(const RenderContext &context, TaskCo
 	}
 }
 
+void VolumetricDiffuseLightManager::message(const std::string &, uint32_t, uint32_t x, uint32_t y, uint32_t z,
+                                            uint32_t word_count, const Vulkan::DebugChannelInterface::Word *words)
+{
+	LOGI("Probe: (%u, %u, %u)\n", x, y, z);
+	for (uint32_t i = 0; i < word_count; i++)
+	{
+		LOGI("  %f\n", words[i].f32);
+	}
+}
+
 void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 {
 	auto &light_pass = graph.add_pass("probe-light", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
@@ -377,6 +388,15 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 	light_pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		Renderer::bind_global_parameters(cmd, *fallback_render_context);
 		Renderer::bind_lighting_parameters(cmd, *fallback_render_context);
+
+		if (fallback_render_context->get_lighting_parameters() &&
+		    fallback_render_context->get_lighting_parameters()->cluster)
+		{
+			auto *global_transforms = cmd.allocate_typed_constant_data<ClustererGlobalTransforms>(3, 2, 1);
+			memcpy(global_transforms,
+			       &fallback_render_context->get_lighting_parameters()->cluster->get_cluster_global_transforms_bindless(),
+			       sizeof(*global_transforms));
+		}
 
 		struct GlobalTransform
 		{

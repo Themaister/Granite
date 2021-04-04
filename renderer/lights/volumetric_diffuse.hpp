@@ -29,12 +29,16 @@
 #include "aabb.hpp"
 #include "render_components.hpp"
 #include "thread_group.hpp"
+#include "device.hpp"
 
 namespace Granite
 {
 class RenderTextureResource;
 
-class VolumetricDiffuseLightManager : public EventHandler, public PerFrameRefreshable, public RenderPassCreator
+class VolumetricDiffuseLightManager : public EventHandler,
+                                      public PerFrameRefreshable,
+                                      public RenderPassCreator,
+                                      public Vulkan::DebugChannelInterface
 {
 public:
 	VolumetricDiffuseLightManager();
@@ -62,5 +66,8 @@ private:
 	void setup_render_pass_resources(RenderGraph &graph) override;
 
 	mat4 inv_view_projections[6];
+
+	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z,
+	             uint32_t word_count, const Vulkan::DebugChannelInterface::Word *words) override;
 };
 }

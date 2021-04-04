@@ -69,6 +69,7 @@ public:
 	void set_extra_flush_flags(Renderer::RendererFlushFlags flags);
 
 	void build_render_pass(Vulkan::CommandBuffer &cmd) const;
+	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
 	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
 	void enqueue_prepare_render_pass(TaskComposer &composer,
 	                                 const Vulkan::RenderPassInfo &info, unsigned subpass,
@@ -88,7 +89,6 @@ protected:
 	RenderQueue queue_per_task_transparent[MaxTasks];
 	mutable RenderQueue queue_non_tasked;
 
-	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
 	void build_render_pass_inner(Vulkan::CommandBuffer &cmd) const;
 	void setup_debug_probes();
 	void render_debug_probes(const Renderer &renderer, Vulkan::CommandBuffer &cmd, RenderQueue &queue,

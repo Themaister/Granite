@@ -182,6 +182,25 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	cmd.dispatch(res.x, res.y, res.z);
 }
 
+struct ContextRenderers
+{
+	RenderContext contexts[6];
+	RenderPassSceneRenderer renderers[6];
+};
+
+static std::shared_ptr<ContextRenderers> create_cube_renderer(const RenderPassSceneRenderer::Setup &base)
+{
+	auto renderers = std::make_shared<ContextRenderers>();
+	for (unsigned face = 0; face < 6; face++)
+	{
+		RenderPassSceneRenderer::Setup setup = base;
+		setup.context = &renderers->contexts[face];
+		renderers->renderers[face].init(setup);
+		renderers->renderers[face].set_extra_flush_flags(Renderer::FRONT_FACE_CLOCKWISE_BIT);
+	}
+	return renderers;
+}
+
 TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer &composer, TaskGroup &incoming,
                                                                     const RenderContext &context,
                                                                     VolumetricDiffuseLightComponent &light)
@@ -222,17 +241,12 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 
 	light.light.set_probe_gbuffer(std::move(allocated_gbuffer));
 
-	auto shared_context = std::make_shared<RenderContext>(context);
-
-	auto renderer = Util::make_handle<RenderPassSceneRenderer>();
 	RenderPassSceneRenderer::Setup setup = {};
-	setup.context = shared_context.get();
 	setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT;
 	setup.deferred_lights = nullptr;
 	setup.suite = suite;
 	setup.scene = scene;
-	renderer->init(setup);
-	renderer->set_extra_flush_flags(Renderer::FRONT_FACE_CLOCKWISE_BIT);
+	auto renderers = create_cube_renderer(setup);
 
 	TaskComposer probe_composer(*incoming.get_thread_group());
 	probe_composer.set_incoming_task(composer.get_pipeline_stage_dependency());
@@ -258,10 +272,10 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 		{
 			for (unsigned x = 0; x < resolution.x; x++)
 			{
+				auto &context_setup = probe_composer.begin_pipeline_stage();
 				for (unsigned face = 0; face < 6; face++)
 				{
-					auto &context_setup = probe_composer.begin_pipeline_stage();
-					context_setup.enqueue_task([x, y, z, face, resolution, shared_context, &light]() {
+					context_setup.enqueue_task([x, y, z, face, resolution, renderers, &light]() {
 						vec3 tex = (vec3(x, y, z) + 0.5f) / vec3(resolution);
 						vec3 center = vec3(
 								dot(light.texture_to_world[0], vec4(tex, 1.0f)),
@@ -270,41 +284,60 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 
 						mat4 proj, view;
 						compute_cube_render_transform(center, face, proj, view, ZNear, ZFar);
-						shared_context->set_camera(proj, view);
-					});
-
-					VkSubpassContents contents = VK_SUBPASS_CONTENTS_INLINE;
-					renderer->enqueue_prepare_render_pass(probe_composer, rp, 0, contents);
-
-					auto &task = probe_composer.begin_pipeline_stage();
-					task.enqueue_task([x, y, z, face, renderer, rp, &light, &device]() {
-						if (face == 0)
-						{
-							// We're going to be consuming a fair bit of memory,
-							// so make sure to pump frame contexts through.
-							// This code is not assumed to be hot (should be pre-baked).
-							device.next_frame_context();
-						}
-
-						auto cmd = device.request_command_buffer();
-						cmd->begin_region("render-probe-gbuffer");
-
-						if (x == 0 && y == 0 && z == 0 && face == 0)
-							transition_gbuffer(*cmd, light.light.get_gbuffer(), TransitionMode::Discard);
-
-						auto slice_rp = rp;
-						slice_rp.render_area.offset.x = (6 * x + face) * ProbeResolution;
-						slice_rp.render_area.offset.y = (z * light.light.get_resolution().y + y) * ProbeResolution;
-						slice_rp.render_area.extent.width = ProbeResolution;
-						slice_rp.render_area.extent.height = ProbeResolution;
-
-						cmd->begin_render_pass(slice_rp);
-						renderer->build_render_pass(*cmd);
-						cmd->end_render_pass();
-						cmd->end_region();
-						device.submit(cmd);
+						renderers->contexts[face].set_camera(proj, view);
 					});
 				}
+
+				auto &prepare_stage = probe_composer.begin_pipeline_stage();
+
+				for (unsigned face = 0; face < 6; face++)
+				{
+					TaskComposer face_composer(probe_composer.get_thread_group());
+					face_composer.set_incoming_task(probe_composer.get_pipeline_stage_dependency());
+					VkSubpassContents contents = VK_SUBPASS_CONTENTS_INLINE;
+					renderers->renderers[face].enqueue_prepare_render_pass(face_composer, rp, 0, contents);
+					probe_composer.get_thread_group().add_dependency(prepare_stage, *face_composer.get_outgoing_task());
+				}
+
+				auto &task = probe_composer.begin_pipeline_stage();
+				task.enqueue_task([x, y, z, renderers, rp, &light, &device]() {
+					auto cmd = device.request_command_buffer();
+					cmd->begin_region("render-probe-gbuffer");
+
+					if (x == 0 && y == 0 && z == 0)
+						transition_gbuffer(*cmd, light.light.get_gbuffer(), TransitionMode::Discard);
+
+					auto slice_rp = rp;
+					slice_rp.render_area.offset.x = 6 * x * ProbeResolution;
+					slice_rp.render_area.offset.y = (z * light.light.get_resolution().y + y) * ProbeResolution;
+					slice_rp.render_area.extent.width = ProbeResolution * 6;
+					slice_rp.render_area.extent.height = ProbeResolution;
+
+					cmd->begin_render_pass(slice_rp);
+					slice_rp.render_area.extent.width = ProbeResolution;
+
+					for (unsigned face = 0; face < 6; face++)
+					{
+						cmd->set_viewport({
+							float(slice_rp.render_area.offset.x),
+							float(slice_rp.render_area.offset.y),
+							float(slice_rp.render_area.extent.width),
+							float(slice_rp.render_area.extent.height),
+							0.0f, 1.0f,
+						});
+						cmd->set_scissor(slice_rp.render_area);
+						renderers->renderers[face].build_render_pass(*cmd);
+						slice_rp.render_area.offset.x += ProbeResolution;
+					}
+					cmd->end_render_pass();
+					cmd->end_region();
+					device.submit(cmd);
+
+					// We're going to be consuming a fair bit of memory,
+					// so make sure to pump frame contexts through.
+					// This code is not assumed to be hot (should be pre-baked).
+					device.next_frame_context();
+				});
 			}
 		}
 	}

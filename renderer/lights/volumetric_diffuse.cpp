@@ -183,7 +183,7 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	push.face_resolution = ProbeResolution;
 	push.inv_patch_resolution = 1.0f / float(push.patch_resolution);
 	push.inv_patch_resolution2 = push.inv_patch_resolution * push.inv_patch_resolution;
-	push.num_iterations_per_patch = push.patch_resolution / 8;
+	push.num_iterations_per_patch = push.patch_resolution / 4;
 
 	uvec3 res = light.light.get_resolution();
 

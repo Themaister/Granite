@@ -220,6 +220,7 @@ struct VolumetricDiffuseLightComponent : ComponentBase
 	vec4 world_to_texture[3];
 	vec4 texture_to_world[3];
 	uint32_t timestamp = 0;
+	uint32_t update_iteration = 0;
 };
 
 struct CastsStaticShadowComponent : ComponentBase

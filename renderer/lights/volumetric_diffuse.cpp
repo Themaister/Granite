@@ -34,6 +34,8 @@ namespace Granite
 {
 static constexpr float ZNear = 0.1f;
 static constexpr float ZFar = 200.0f;
+static constexpr unsigned NumProbeLayers = 16;
+static constexpr unsigned ProbeResolution = 16;
 
 VolumetricDiffuseLightManager::VolumetricDiffuseLightManager()
 {
@@ -55,8 +57,6 @@ void VolumetricDiffuseLightManager::set_base_renderer(const RendererSuite *suite
 {
 	suite = suite_;
 }
-
-static constexpr unsigned ProbeResolution = 32;
 
 enum class TransitionMode { Discard, Read };
 
@@ -122,11 +122,40 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 	                  dst_depth, dst_access_depth);
 }
 
+struct JitterTable
+{
+	JitterTable()
+	{
+		float pi = muglm::pi<float>();
+
+		for (unsigned i = 0; i < NumProbeLayers; i++)
+		{
+			float n = float(i + 1.0f);
+			float x = muglm::fract(pi * n * 0.5f) - 0.5f;
+			float y = muglm::fract(pi * n * n * 0.5f) - 0.5f;
+			float z = muglm::fract(pi * n * n * n * 0.5f) - 0.5f;
+
+			// Don't jitter too far to combat excessive bleed.
+			table[i] = 0.75f * vec3(x, y, z);
+		}
+	}
+
+	vec3 table[NumProbeLayers];
+};
+
+static vec3 layer_to_probe_jitter(unsigned layer)
+{
+	static JitterTable table;
+	return table.table[layer];
+}
+
 void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cmd,
                                                        VolumetricDiffuseLightComponent &light)
 {
 	struct Push
 	{
+		vec3 probe_pos_jitter;
+		uint32_t gbuffer_layer;
 		uint32_t patch_resolution;
 		uint32_t face_resolution;
 		uint32_t num_iterations_per_patch;
@@ -140,6 +169,10 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 		vec4 world_to_texture[3];
 		vec3 inv_resolution;
 	};
+
+	push.gbuffer_layer = light.update_iteration % NumProbeLayers;
+	push.probe_pos_jitter = layer_to_probe_jitter(push.gbuffer_layer);
+	light.update_iteration++;
 
 	auto *probe_transform = cmd.allocate_typed_constant_data<ProbeTransform>(3, 1, 1);
 	memcpy(probe_transform->texture_to_world, light.texture_to_world, sizeof(light.texture_to_world));
@@ -213,6 +246,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 	auto gbuffer_info = Vulkan::ImageCreateInfo::render_target(ProbeResolution * resolution.x * 6,
 	                                                           ProbeResolution * resolution.y * resolution.z,
 	                                                           VK_FORMAT_R8G8B8A8_SRGB);
+	gbuffer_info.layers = NumProbeLayers;
 	gbuffer_info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	gbuffer_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	allocated_gbuffer.albedo = device.create_image(gbuffer_info);
@@ -277,91 +311,99 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 		device.submit(cmd);
 	});
 
-	for (unsigned z = 0; z < resolution.z; z++)
+	for (unsigned layer = 0; layer < NumProbeLayers; layer++)
 	{
-		for (unsigned y = 0; y < resolution.y; y++)
+		for (unsigned z = 0; z < resolution.z; z++)
 		{
-			auto &context_setup = probe_composer.begin_pipeline_stage();
-
-			for (unsigned x = 0; x < resolution.x; x++)
+			for (unsigned y = 0; y < resolution.y; y++)
 			{
-				auto &renderers = slice_renderers[x];
-				for (unsigned face = 0; face < 6; face++)
+				auto &context_setup = probe_composer.begin_pipeline_stage();
+
+				for (unsigned x = 0; x < resolution.x; x++)
 				{
-					context_setup.enqueue_task([x, y, z, face, resolution, renderers, &light]() {
-						vec3 tex = (vec3(x, y, z) + 0.5f) / vec3(resolution);
-						vec3 center = vec3(
-								dot(light.texture_to_world[0], vec4(tex, 1.0f)),
-								dot(light.texture_to_world[1], vec4(tex, 1.0f)),
-								dot(light.texture_to_world[2], vec4(tex, 1.0f)));
-
-						mat4 proj, view;
-						compute_cube_render_transform(center, face, proj, view, ZNear, ZFar);
-						renderers->contexts[face].set_camera(proj, view);
-					});
-				}
-			}
-
-			auto &prepare_stage = probe_composer.begin_pipeline_stage();
-
-			for (unsigned x = 0; x < resolution.x; x++)
-			{
-				auto &renderers = slice_renderers[x];
-				for (unsigned face = 0; face < 6; face++)
-				{
-					TaskComposer face_composer(probe_composer.get_thread_group());
-					face_composer.set_incoming_task(probe_composer.get_pipeline_stage_dependency());
-					VkSubpassContents contents = VK_SUBPASS_CONTENTS_INLINE;
-					renderers->renderers[face].enqueue_prepare_render_pass(face_composer, rp, 0, contents);
-					probe_composer.get_thread_group().add_dependency(prepare_stage, *face_composer.get_outgoing_task());
-				}
-			}
-
-			auto &render_task = probe_composer.begin_pipeline_stage();
-
-			for (unsigned x = 0; x < resolution.x; x++)
-			{
-				auto &renderers = slice_renderers[x];
-				render_task.enqueue_task([x, y, z, renderers, rp, &light, &device]() {
-					auto cmd = device.request_command_buffer();
-					cmd->begin_region("render-probe-gbuffer");
-
-					auto slice_rp = rp;
-					slice_rp.render_area.offset.x = 6 * x * ProbeResolution;
-					slice_rp.render_area.offset.y =
-							(z * light.light.get_resolution().y + y) * ProbeResolution;
-					slice_rp.render_area.extent.width = ProbeResolution * 6;
-					slice_rp.render_area.extent.height = ProbeResolution;
-
-					cmd->begin_render_pass(slice_rp);
-					slice_rp.render_area.extent.width = ProbeResolution;
-
+					auto &renderers = slice_renderers[x];
 					for (unsigned face = 0; face < 6; face++)
 					{
-						cmd->set_viewport({
-							float(slice_rp.render_area.offset.x),
-							float(slice_rp.render_area.offset.y),
-							float(slice_rp.render_area.extent.width),
-							float(slice_rp.render_area.extent.height),
-							0.0f, 1.0f,
+						context_setup.enqueue_task([x, y, z, face, layer, resolution, renderers, &light]() {
+							vec3 tex = (vec3(x, y, z) + 0.5f + layer_to_probe_jitter(layer)) / vec3(resolution);
+							vec3 center = vec3(
+									dot(light.texture_to_world[0], vec4(tex, 1.0f)),
+									dot(light.texture_to_world[1], vec4(tex, 1.0f)),
+									dot(light.texture_to_world[2], vec4(tex, 1.0f)));
+
+							mat4 proj, view;
+							compute_cube_render_transform(center, face, proj, view, ZNear, ZFar);
+							renderers->contexts[face].set_camera(proj, view);
 						});
-						cmd->set_scissor(slice_rp.render_area);
-						renderers->renderers[face].build_render_pass(*cmd);
-						slice_rp.render_area.offset.x += ProbeResolution;
 					}
-					cmd->end_render_pass();
-					cmd->end_region();
-					device.submit(cmd);
+				}
+
+				auto &prepare_stage = probe_composer.begin_pipeline_stage();
+
+				for (unsigned x = 0; x < resolution.x; x++)
+				{
+					auto &renderers = slice_renderers[x];
+					for (unsigned face = 0; face < 6; face++)
+					{
+						TaskComposer face_composer(probe_composer.get_thread_group());
+						face_composer.set_incoming_task(probe_composer.get_pipeline_stage_dependency());
+						VkSubpassContents contents = VK_SUBPASS_CONTENTS_INLINE;
+						renderers->renderers[face].enqueue_prepare_render_pass(face_composer, rp, 0, contents);
+						probe_composer.get_thread_group().add_dependency(prepare_stage, *face_composer.get_outgoing_task());
+					}
+				}
+
+				auto &render_task = probe_composer.begin_pipeline_stage();
+
+				for (unsigned x = 0; x < resolution.x; x++)
+				{
+					auto &renderers = slice_renderers[x];
+					render_task.enqueue_task([x, y, z, layer, renderers, rp, &light, &device]() {
+						auto cmd = device.request_command_buffer();
+						cmd->begin_region("render-probe-gbuffer");
+
+						auto slice_rp = rp;
+						slice_rp.render_area.offset.x = 6 * x * ProbeResolution;
+						slice_rp.render_area.offset.y =
+								(z * light.light.get_resolution().y + y) * ProbeResolution;
+						slice_rp.render_area.extent.width = ProbeResolution * 6;
+						slice_rp.render_area.extent.height = ProbeResolution;
+						slice_rp.base_layer = layer;
+
+						cmd->begin_render_pass(slice_rp);
+						slice_rp.render_area.extent.width = ProbeResolution;
+
+						for (unsigned face = 0; face < 6; face++)
+						{
+							const VkViewport vp = {
+								float(slice_rp.render_area.offset.x),
+								float(slice_rp.render_area.offset.y),
+								float(slice_rp.render_area.extent.width),
+								float(slice_rp.render_area.extent.height),
+								0.0f, 1.0f,
+							};
+							cmd->set_viewport(vp);
+							cmd->set_scissor(slice_rp.render_area);
+							renderers->renderers[face].build_render_pass(*cmd);
+							slice_rp.render_area.offset.x += ProbeResolution;
+						}
+						cmd->end_render_pass();
+						cmd->end_region();
+						device.submit(cmd);
+
+						LOGI("Rendering gbuffer probe ... X = %u, Y = %u, Z = %u, layer = %u.\n",
+						     x, y, z, layer);
+					});
+				}
+
+				auto &drain_task = probe_composer.begin_pipeline_stage();
+				drain_task.enqueue_task([&device]() {
+					// We're going to be consuming a fair bit of memory,
+					// so make sure to pump frame contexts through.
+					// This code is not assumed to be hot (should be pre-baked).
+					device.next_frame_context();
 				});
 			}
-
-			auto &drain_task = probe_composer.begin_pipeline_stage();
-			drain_task.enqueue_task([&device]() {
-				// We're going to be consuming a fair bit of memory,
-				// so make sure to pump frame contexts through.
-				// This code is not assumed to be hot (should be pre-baked).
-				device.next_frame_context();
-			});
 		}
 	}
 

@@ -3295,10 +3295,10 @@ public:
 private:
 	bool create_render_target_views(const ImageCreateInfo &image_create_info, const VkImageViewCreateInfo &info)
 	{
-		rt_views.reserve(info.subresourceRange.layerCount);
-
 		if (info.viewType == VK_IMAGE_VIEW_TYPE_3D)
 			return true;
+
+		rt_views.reserve(info.subresourceRange.layerCount);
 
 		// If we have a render target, and non-trivial case (layers = 1, levels = 1),
 		// create an array of render targets which correspond to each layer (mip 0).
@@ -3340,19 +3340,6 @@ private:
 		{
 			if ((image_create_info.usage & ~VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0)
 			{
-				// Sanity check. Don't want to implement layered views for this.
-				if (info.subresourceRange.levelCount > 1)
-				{
-					LOGE("Cannot create depth stencil attachments with more than 1 mip level currently, and non-DS usage flags.\n");
-					return false;
-				}
-
-				if (info.subresourceRange.layerCount > 1)
-				{
-					LOGE("Cannot create layered depth stencil attachments with non-DS usage flags.\n");
-					return false;
-				}
-
 				auto view_info = info;
 
 				// We need this to be able to sample the texture, or otherwise use it as a non-pure DS attachment.

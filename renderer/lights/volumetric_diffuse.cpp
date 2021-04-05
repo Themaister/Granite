@@ -34,7 +34,7 @@ namespace Granite
 {
 static constexpr float ZNear = 0.1f;
 static constexpr float ZFar = 200.0f;
-static constexpr unsigned NumProbeLayers = 16;
+static constexpr unsigned NumProbeLayers = 4;
 static constexpr unsigned ProbeResolution = 8;
 
 VolumetricDiffuseLightManager::VolumetricDiffuseLightManager()
@@ -45,6 +45,11 @@ VolumetricDiffuseLightManager::VolumetricDiffuseLightManager()
 		compute_cube_render_transform(vec3(0.0f), face, proj, view, ZNear, ZFar);
 		inv_view_projections[face] = inverse(proj * view);
 	}
+
+	probe_pos_jitter[0] = vec4(-3.0f / 16.0f, +1.0f / 16.0f, +5.0f / 16.0f, 0.0f);
+	probe_pos_jitter[1] = vec4(+1.0f / 16.0f, -3.0f / 16.0f, +3.0f / 16.0f, 0.0f);
+	probe_pos_jitter[2] = vec4(-1.0f / 16.0f, +3.0f / 16.0f, -5.0f / 16.0f, 0.0f);
+	probe_pos_jitter[3] = vec4(+3.0f / 16.0f, -1.0f / 16.0f, -3.0f / 16.0f, 0.0f);
 }
 
 void VolumetricDiffuseLightManager::set_scene(Scene *scene_)
@@ -122,31 +127,9 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 	                  dst_depth, dst_access_depth);
 }
 
-struct JitterTable
+static unsigned layer_to_probe_jitter(unsigned layer, unsigned x, unsigned y)
 {
-	JitterTable()
-	{
-		float pi = muglm::pi<float>();
-
-		for (unsigned i = 0; i < NumProbeLayers; i++)
-		{
-			float n = float(i + 1.0f);
-			float x = muglm::fract(pi * n * 0.5f) - 0.5f;
-			float y = muglm::fract(pi * n * n * 0.5f) - 0.5f;
-			float z = muglm::fract(pi * n * n * n * 0.5f) - 0.5f;
-
-			// Don't jitter too far to combat excessive bleed.
-			table[i] = 0.75f * vec3(x, y, z);
-		}
-	}
-
-	vec3 table[NumProbeLayers];
-};
-
-static vec3 layer_to_probe_jitter(unsigned layer)
-{
-	static JitterTable table;
-	return table.table[layer];
+	return (layer + (y & 1) * 2 + (x & 1)) % NumProbeLayers;
 }
 
 void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cmd,
@@ -154,7 +137,6 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 {
 	struct Push
 	{
-		vec3 probe_pos_jitter;
 		uint32_t gbuffer_layer;
 		uint32_t patch_resolution;
 		uint32_t face_resolution;
@@ -170,7 +152,6 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	};
 
 	push.gbuffer_layer = light.update_iteration % NumProbeLayers;
-	push.probe_pos_jitter = layer_to_probe_jitter(push.gbuffer_layer);
 	light.update_iteration++;
 
 	auto *probe_transform = cmd.allocate_typed_constant_data<ProbeTransform>(3, 1, 1);
@@ -322,8 +303,8 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 					auto &renderers = slice_renderers[x];
 					for (unsigned face = 0; face < 6; face++)
 					{
-						context_setup.enqueue_task([x, y, z, face, layer, resolution, renderers, &light]() {
-							vec3 tex = (vec3(x, y, z) + 0.5f + layer_to_probe_jitter(layer)) / vec3(resolution);
+						context_setup.enqueue_task([this, x, y, z, face, layer, resolution, renderers, &light]() {
+							vec3 tex = (vec3(x, y, z) + 0.5f + probe_pos_jitter[layer_to_probe_jitter(layer, x, y)].xyz()) / vec3(resolution);
 							vec3 center = vec3(
 									dot(light.texture_to_world[0], vec4(tex, 1.0f)),
 									dot(light.texture_to_world[1], vec4(tex, 1.0f)),
@@ -497,10 +478,12 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 		struct GlobalTransform
 		{
 			mat4 inv_view_proj_for_face[6];
+			vec4 probe_pos_jitter[NumProbeLayers];
 		};
 
 		auto *transforms = cmd.allocate_typed_constant_data<GlobalTransform>(3, 0, 1);
 		memcpy(transforms->inv_view_proj_for_face, inv_view_projections, sizeof(inv_view_projections));
+		memcpy(transforms->probe_pos_jitter, probe_pos_jitter, sizeof(probe_pos_jitter));
 
 		for (auto &light_tuple : *volumetric_diffuse)
 		{

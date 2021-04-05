@@ -66,6 +66,7 @@ private:
 	void setup_render_pass_resources(RenderGraph &graph) override;
 
 	mat4 inv_view_projections[6];
+	vec4 probe_pos_jitter[4];
 
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z,
 	             uint32_t word_count, const Vulkan::DebugChannelInterface::Word *words) override;

@@ -18,13 +18,14 @@ layout(set = 3, binding = 2) uniform ClusterTransforms
 
 layout(push_constant) uniform Registers
 {
-    vec3 probe_pos_jitter;
     int gbuffer_layer;
     int patch_resolution;
     int face_resolution;
     float inv_patch_resolution;
     float inv_patch_resolution2;
 } registers;
+
+const int NumProbeLayers = 4;
 
 layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uAmbient;
 layout(set = 2, binding = 1) uniform texture2DArray uProbeEmissive;
@@ -36,6 +37,7 @@ layout(set = 2, binding = 5) uniform sampler3D uPrevAmbient;
 layout(set = 3, binding = 0) uniform Transforms
 {
     mat4 inv_view_proj_for_face[6];
+    vec3 probe_pos_jitter[NumProbeLayers];
 } transforms;
 
 layout(set = 3, binding = 1) uniform PerProbe
@@ -57,7 +59,16 @@ mediump float maximum3(mediump vec3 v)
 mediump float weight_term(vec3 local_pos)
 {
     mediump float w = 0.5 - maximum3(abs(local_pos - 0.5));
-    return clamp(w * 20.0, 0.0, 0.95);
+    return clamp(w * 64.0, 0.0, 1.0);
+}
+
+vec3 get_probe_jitter()
+{
+    return transforms.probe_pos_jitter[
+            (registers.gbuffer_layer +
+            (gl_WorkGroupID.x & 1u) +
+            (gl_WorkGroupID.y & 1u) * 2u) &
+            (NumProbeLayers - 1u)];
 }
 
 mediump vec3 compute_feedback_diffuse(vec3 world_pos, mediump vec3 normal)
@@ -103,7 +114,7 @@ mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
     {
         vec3 albedo = texelFetch(uProbeAlbedo, coord, 0).rgb;
         vec3 normal = normalize(texelFetch(uProbeNormal, coord, 0).xyz * 2.0 - 1.0);
-        color += albedo * (
+        color += min(albedo, vec3(0.95)) * (
             compute_feedback_diffuse(world_pos, normal) +
             compute_irradiance_lighting(world_pos, normal, directional.direction, directional.color));
     }
@@ -192,7 +203,7 @@ void main()
                 ivec2(patch_x, patch_y) * ivec2(registers.patch_resolution);
             ivec3 tex_coord_layer = ivec3(tex_coord, registers.gbuffer_layer);
 
-            vec3 tex_space = (vec3(gl_WorkGroupID) + 0.5 + registers.probe_pos_jitter) * inv_probe_resolution;
+            vec3 tex_space = (vec3(gl_WorkGroupID) + 0.5 + get_probe_jitter()) * inv_probe_resolution;
             vec3 probe_pos = vec3(
                 dot(texture_to_world[0], vec4(tex_space, 1.0)),
                 dot(texture_to_world[1], vec4(tex_space, 1.0)),
@@ -246,7 +257,7 @@ void main()
 
         vec3 old_total = texelFetch(uPrevAmbient, ambient_coord, 0).rgb;
         total /= PI;
-        total = mix(old_total, total, 0.05);
+        total = mix(old_total, total, 0.15);
         imageStore(uAmbient, ambient_coord, vec4(total, 0.0));
     }
 }

@@ -22,7 +22,6 @@ layout(push_constant) uniform Registers
     int gbuffer_layer;
     int patch_resolution;
     int face_resolution;
-    int num_iterations_per_patch;
     float inv_patch_resolution;
     float inv_patch_resolution2;
 } registers;
@@ -172,7 +171,6 @@ const uint patch_mask_per_face[6] = uint[](
 
 void main()
 {
-    uint num_patch_iterations = registers.num_iterations_per_patch;
     uvec3 probe_index = gl_WorkGroupID;
     int face = int(gl_LocalInvocationID.z);
 
@@ -180,47 +178,39 @@ void main()
     {
         for (int patch_x = 0; patch_x < 2; patch_x++)
         {
-            mat3 patch_contribution = mat3(0.0);
-            for (uint iy = 0; iy < num_patch_iterations; iy++)
-            {
-                for (int ix = 0; ix < num_patch_iterations; ix++)
-                {
-                    uvec2 patch_coord = uvec2(ix, iy) * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy;
-                    vec2 xy = vec2(patch_coord) + 0.5;
-                    vec2 uv = xy * registers.inv_patch_resolution;
-                    vec2 clip_xy = vec2(patch_x - 1, patch_y - 1) + uv;
-                    vec3 pos = base_dirs[face] + clip_xy.x * pos_du[face] + clip_xy.y * pos_dv[face];
+            uvec2 patch_coord = gl_LocalInvocationID.xy;
+            vec2 xy = vec2(patch_coord) + 0.5;
+            vec2 uv = xy * registers.inv_patch_resolution;
+            vec2 clip_xy = vec2(patch_x - 1, patch_y - 1) + uv;
+            vec3 pos = base_dirs[face] + clip_xy.x * pos_du[face] + clip_xy.y * pos_dv[face];
 
-                    int probe_x = 6 * int(probe_index.x) + face;
-                    int probe_y = int(probe_index.z * gl_NumWorkGroups.y + probe_index.y);
-                    ivec2 base_probe_coord = ivec2(probe_x, probe_y) * registers.face_resolution;
-                    ivec2 tex_coord =
-                        base_probe_coord + ivec2(patch_coord) +
-                        ivec2(patch_x, patch_y) * ivec2(registers.patch_resolution);
-                    ivec3 tex_coord_layer = ivec3(tex_coord, registers.gbuffer_layer);
+            int probe_x = 6 * int(probe_index.x) + face;
+            int probe_y = int(probe_index.z * gl_NumWorkGroups.y + probe_index.y);
+            ivec2 base_probe_coord = ivec2(probe_x, probe_y) * registers.face_resolution;
+            ivec2 tex_coord =
+                base_probe_coord + ivec2(patch_coord) +
+                ivec2(patch_x, patch_y) * ivec2(registers.patch_resolution);
+            ivec3 tex_coord_layer = ivec3(tex_coord, registers.gbuffer_layer);
 
-                    vec3 tex_space = (vec3(gl_WorkGroupID) + 0.5 + registers.probe_pos_jitter) * inv_probe_resolution;
-                    vec3 probe_pos = vec3(
-                        dot(texture_to_world[0], vec4(tex_space, 1.0)),
-                        dot(texture_to_world[1], vec4(tex_space, 1.0)),
-                        dot(texture_to_world[2], vec4(tex_space, 1.0)));
+            vec3 tex_space = (vec3(gl_WorkGroupID) + 0.5 + registers.probe_pos_jitter) * inv_probe_resolution;
+            vec3 probe_pos = vec3(
+                dot(texture_to_world[0], vec4(tex_space, 1.0)),
+                dot(texture_to_world[1], vec4(tex_space, 1.0)),
+                dot(texture_to_world[2], vec4(tex_space, 1.0)));
 
-                    float d = texelFetch(uProbeDepth, tex_coord_layer, 0).x;
-                    vec4 clip = vec4(clip_xy, d, 1.0);
-                    vec4 world4 = transforms.inv_view_proj_for_face[face] * clip;
-                    vec3 world = world4.xyz / world4.w + probe_pos;
+            float d = texelFetch(uProbeDepth, tex_coord_layer, 0).x;
+            vec4 clip = vec4(clip_xy, d, 1.0);
+            vec4 world4 = transforms.inv_view_proj_for_face[face] * clip;
+            vec3 world = world4.xyz / world4.w + probe_pos;
 
-                    patch_contribution += sample_patch(tex_coord_layer, pos, world, d < 1.0);
-                }
-            }
-
+            mat3 patch_contribution = sample_patch(tex_coord_layer, pos, world, d < 1.0);
             shared_colors[gl_LocalInvocationIndex] = patch_contribution;
 
-#define ITERATE(l) if ((gl_LocalInvocationIndex & 15u) < l) { \
-    shared_colors[gl_LocalInvocationIndex] += shared_colors[gl_LocalInvocationIndex + l]; \
-}
+#define ITERATE(l) \
+    if ((gl_LocalInvocationIndex & 15u) < l) { \
+        shared_colors[gl_LocalInvocationIndex] += shared_colors[gl_LocalInvocationIndex + l]; \
+    }
 
-            // TODO: We can use subgroup ops quite easily.
             barrier();
             ITERATE(8u)
             barrier();
@@ -240,7 +230,6 @@ void main()
         }
     }
 
-    // TODO: This will require dynamic subgroupShuffle. Might be best to do a hybrid kind of approach here ...
     face = int(gl_LocalInvocationIndex);
     if (face < 6)
     {

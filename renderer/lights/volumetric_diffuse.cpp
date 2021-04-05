@@ -35,7 +35,7 @@ namespace Granite
 static constexpr float ZNear = 0.1f;
 static constexpr float ZFar = 200.0f;
 static constexpr unsigned NumProbeLayers = 16;
-static constexpr unsigned ProbeResolution = 16;
+static constexpr unsigned ProbeResolution = 8;
 
 VolumetricDiffuseLightManager::VolumetricDiffuseLightManager()
 {
@@ -158,7 +158,6 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 		uint32_t gbuffer_layer;
 		uint32_t patch_resolution;
 		uint32_t face_resolution;
-		uint32_t num_iterations_per_patch;
 		float inv_patch_resolution;
 		float inv_patch_resolution2;
 	} push = {};
@@ -183,7 +182,6 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	push.face_resolution = ProbeResolution;
 	push.inv_patch_resolution = 1.0f / float(push.patch_resolution);
 	push.inv_patch_resolution2 = push.inv_patch_resolution * push.inv_patch_resolution;
-	push.num_iterations_per_patch = push.patch_resolution / 4;
 
 	uvec3 res = light.light.get_resolution();
 

@@ -1788,6 +1788,15 @@ void CommandBuffer::set_storage_texture(unsigned set, unsigned binding, const Im
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL), view.get_cookie());
 }
 
+void CommandBuffer::set_unorm_storage_texture(unsigned set, unsigned binding, const ImageView &view)
+{
+	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT);
+	auto unorm_view = view.get_unorm_view();
+	VK_ASSERT(unorm_view != VK_NULL_HANDLE);
+	set_texture(set, binding, unorm_view, unorm_view,
+	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL), view.get_cookie() | COOKIE_BIT_UNORM);
+}
+
 static void update_descriptor_set_legacy(Device &device, VkDescriptorSet desc_set,
                                          const DescriptorSetLayout &set_layout, const ResourceBinding *bindings)
 {

@@ -3203,29 +3203,53 @@ public:
 		case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
 			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
 				return false;
-			create_info.pNext = &conversion;
 			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
 			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P_3PLANE)];
+			conversion.pNext = create_info.pNext;
+			create_info.pNext = &conversion;
 			break;
 
 		case VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM:
 			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
 				return false;
-			create_info.pNext = &conversion;
 			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
 			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P_3PLANE)];
+			conversion.pNext = create_info.pNext;
+			create_info.pNext = &conversion;
 			break;
 
 		case VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM:
 			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
 				return false;
-			create_info.pNext = &conversion;
 			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
 			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P_3PLANE)];
+			conversion.pNext = create_info.pNext;
+			create_info.pNext = &conversion;
 			break;
 
 		default:
 			break;
+		}
+
+		return true;
+	}
+
+	bool setup_view_usage_info(VkImageViewCreateInfo &create_info, VkImageUsageFlags usage,
+	                           VkImageViewUsageCreateInfo &usage_info)
+	{
+		if (device->get_device_features().supports_maintenance_2)
+		{
+			usage_info.usage = usage;
+			usage_info.usage &= VK_IMAGE_USAGE_SAMPLED_BIT |
+			                    VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+			                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+			                    VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+
+			if (format_is_srgb(create_info.format))
+				usage_info.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+
+			usage_info.pNext = create_info.pNext;
+			create_info.pNext = &usage_info;
 		}
 
 		return true;
@@ -3245,6 +3269,7 @@ public:
 
 		VkImageViewCreateInfo default_view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 		VkSamplerYcbcrConversionInfo conversion_info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
+		VkImageViewUsageCreateInfo view_usage_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO };
 
 		if (!view_info)
 		{
@@ -3267,6 +3292,9 @@ public:
 		if (!setup_conversion_info(default_view_info, conversion_info))
 			return false;
 
+		if (!setup_view_usage_info(default_view_info, create_info.usage, view_usage_info))
+			return false;
+
 		if (!create_alt_views(create_info, *view_info))
 			return false;
 
@@ -3280,9 +3308,14 @@ public:
 		{
 			auto info = *view_info;
 
+			if (create_info.usage & VK_IMAGE_USAGE_STORAGE_BIT)
+				view_usage_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+
 			info.format = view_formats[0];
 			if (table.vkCreateImageView(vkdevice, &info, nullptr, &unorm_view) != VK_SUCCESS)
 				return false;
+
+			view_usage_info.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
 
 			info.format = view_formats[1];
 			if (table.vkCreateImageView(vkdevice, &info, nullptr, &srgb_view) != VK_SUCCESS)

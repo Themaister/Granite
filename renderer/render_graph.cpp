@@ -71,10 +71,8 @@ void RenderPassInterface::build_render_pass_separate_layer(Vulkan::CommandBuffer
 {
 }
 
-void RenderPassInterface::enqueue_prepare_render_pass(TaskComposer &, const Vulkan::RenderPassInfo &, unsigned,
-                                                      VkSubpassContents &contents)
+void RenderPassInterface::enqueue_prepare_render_pass(TaskComposer &)
 {
-	contents = VK_SUBPASS_CONTENTS_INLINE;
 }
 
 static const RenderGraphQueueFlags compute_queues = RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT |
@@ -2331,13 +2329,10 @@ void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
 	composer.set_incoming_task(incoming_composer.get_pipeline_stage_dependency());
 	composer.begin_pipeline_stage();
 
-	unsigned subpass_index = 0;
 	for (auto &pass : physical_pass.passes)
 	{
 		auto &subpass = *passes[pass];
-		subpass.enqueue_prepare_render_pass(composer, physical_pass.render_pass_info,
-		                                    subpass_index, state.subpass_contents[subpass_index]);
-		subpass_index++;
+		subpass.enqueue_prepare_render_pass(composer);
 	}
 
 	state.rendering_dependency = composer.get_outgoing_task();

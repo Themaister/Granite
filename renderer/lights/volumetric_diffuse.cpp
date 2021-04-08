@@ -398,10 +398,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 					{
 						TaskComposer face_composer(probe_composer.get_thread_group());
 						face_composer.set_incoming_task(probe_composer.get_pipeline_stage_dependency());
-						VkSubpassContents contents = VK_SUBPASS_CONTENTS_INLINE;
-
-						Vulkan::RenderPassInfo rp;
-						renderers->renderers[face].enqueue_prepare_render_pass(face_composer, rp, 0, contents);
+						renderers->renderers[face].enqueue_prepare_render_pass(face_composer);
 						probe_composer.get_thread_group().add_dependency(prepare_stage, *face_composer.get_outgoing_task());
 					}
 				}

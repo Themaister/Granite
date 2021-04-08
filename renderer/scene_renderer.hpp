@@ -71,9 +71,7 @@ public:
 	void build_render_pass(Vulkan::CommandBuffer &cmd) const;
 	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
 	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
-	void enqueue_prepare_render_pass(TaskComposer &composer,
-	                                 const Vulkan::RenderPassInfo &info, unsigned subpass,
-	                                 VkSubpassContents &contents) override;
+	void enqueue_prepare_render_pass(TaskComposer &composer) override;
 
 protected:
 	Setup setup_data = {};

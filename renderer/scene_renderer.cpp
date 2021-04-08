@@ -118,11 +118,8 @@ static RendererSuite::Type get_depth_renderer_type(SceneRendererFlags flags)
 	}
 }
 
-void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer, const Vulkan::RenderPassInfo &,
-                                                          unsigned, VkSubpassContents &contents)
+void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer)
 {
-	contents = VK_SUBPASS_CONTENTS_INLINE;
-
 	auto &setup_group = composer.begin_pipeline_stage();
 	setup_group.enqueue_task([this]() {
 		auto *suite = setup_data.suite;

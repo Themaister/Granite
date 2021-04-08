@@ -80,22 +80,60 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 	VkAccessFlags src_access_color, src_access_depth, dst_access_color, dst_access_depth;
 	VkImageLayout old_color, new_color, old_depth, new_depth;
 
+	bool compute = (gbuffer.emissive->get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0;
+
+	if (mode == TransitionMode::Read && compute)
+	{
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		return;
+	}
+
 	if (mode == TransitionMode::Discard)
 	{
-		src_color = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-		src_depth = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-		dst_color = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		dst_depth = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+		if (compute)
+		{
+			src_color = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			src_depth = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			dst_color = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+			dst_depth = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+		}
+		else
+		{
+			src_color = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+			src_depth = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+			dst_color = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			dst_depth = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+		}
 
 		src_access_color = 0;
 		src_access_depth = 0;
-		dst_access_color = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-		dst_access_depth = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+
+		if (compute)
+		{
+			dst_access_color = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+			dst_access_depth = dst_access_color;
+		}
+		else
+		{
+			dst_access_color = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+			dst_access_depth = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+			                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+		}
 
 		old_color = VK_IMAGE_LAYOUT_UNDEFINED;
 		old_depth = VK_IMAGE_LAYOUT_UNDEFINED;
-		new_color = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		new_depth = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+		if (compute)
+		{
+			new_color = VK_IMAGE_LAYOUT_GENERAL;
+			new_depth = VK_IMAGE_LAYOUT_GENERAL;
+		}
+		else
+		{
+			new_color = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			new_depth = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		}
 	}
 	else
 	{
@@ -198,9 +236,49 @@ struct ContextRenderers
 {
 	RenderContext contexts[6];
 	RenderPassSceneRenderer renderers[6];
+	VolumetricDiffuseLight::GBuffer gbuffer;
 };
 
-static std::shared_ptr<ContextRenderers> create_cube_renderer(const RenderPassSceneRenderer::Setup &base)
+static VolumetricDiffuseLight::GBuffer allocate_gbuffer(Vulkan::Device &device, unsigned width, unsigned height,
+                                                        unsigned layers, bool compute)
+{
+	VolumetricDiffuseLight::GBuffer allocated_gbuffer;
+	auto gbuffer_info = Vulkan::ImageCreateInfo::render_target(width, height, VK_FORMAT_R8G8B8A8_SRGB);
+	gbuffer_info.layers = layers;
+	gbuffer_info.usage = (compute ? VK_IMAGE_USAGE_STORAGE_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) |
+	                     VK_IMAGE_USAGE_SAMPLED_BIT;
+	gbuffer_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	gbuffer_info.flags = compute ? VK_IMAGE_CREATE_EXTENDED_USAGE_BIT : 0;
+	gbuffer_info.misc = Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
+	allocated_gbuffer.albedo = device.create_image(gbuffer_info);
+	gbuffer_info.flags = 0;
+	gbuffer_info.misc = 0;
+
+	gbuffer_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	allocated_gbuffer.emissive = device.create_image(gbuffer_info);
+
+	gbuffer_info.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+	allocated_gbuffer.normal = device.create_image(gbuffer_info);
+
+	gbuffer_info.format = VK_FORMAT_R8G8_UNORM;
+	allocated_gbuffer.pbr = device.create_image(gbuffer_info);
+
+	gbuffer_info.format = compute ? VK_FORMAT_R32_SFLOAT : device.get_default_depth_stencil_format();
+	gbuffer_info.usage = (compute ? VK_IMAGE_USAGE_STORAGE_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) |
+	                     VK_IMAGE_USAGE_SAMPLED_BIT;
+	allocated_gbuffer.depth = device.create_image(gbuffer_info);
+
+	device.set_name(*allocated_gbuffer.emissive, "probe-emissive");
+	device.set_name(*allocated_gbuffer.albedo, "probe-albedo");
+	device.set_name(*allocated_gbuffer.normal, "probe-normal");
+	device.set_name(*allocated_gbuffer.pbr, "probe-pbr");
+	device.set_name(*allocated_gbuffer.depth, "probe-depth");
+
+	return allocated_gbuffer;
+}
+
+static std::shared_ptr<ContextRenderers> create_cube_renderer(Vulkan::Device &device,
+                                                              const RenderPassSceneRenderer::Setup &base)
 {
 	auto renderers = std::make_shared<ContextRenderers>();
 	for (unsigned face = 0; face < 6; face++)
@@ -210,7 +288,43 @@ static std::shared_ptr<ContextRenderers> create_cube_renderer(const RenderPassSc
 		renderers->renderers[face].init(setup);
 		renderers->renderers[face].set_extra_flush_flags(Renderer::FRONT_FACE_CLOCKWISE_BIT);
 	}
+
+	renderers->gbuffer = allocate_gbuffer(device, ProbeResolution * 6, ProbeResolution, 1, false);
 	return renderers;
+}
+
+static void copy_gbuffer(Vulkan::CommandBuffer &cmd,
+                         const VolumetricDiffuseLight::GBuffer &dst, const VolumetricDiffuseLight::GBuffer &src,
+                         unsigned x, unsigned y, unsigned layer)
+{
+	struct Push
+	{
+		uint32_t x, y, layer;
+	} push = { x, y, layer };
+
+	cmd.set_program("builtin://shaders/lights/volumetric_gbuffer_copy.comp");
+
+	cmd.push_constants(&push, 0, sizeof(push));
+
+	cmd.set_storage_texture(0, 0, dst.emissive->get_view());
+	cmd.set_texture(0, 1, src.emissive->get_view());
+	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
+
+	cmd.set_unorm_storage_texture(0, 0, dst.albedo->get_view());
+	cmd.set_unorm_texture(0, 1, src.albedo->get_view());
+	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
+
+	cmd.set_storage_texture(0, 0, dst.normal->get_view());
+	cmd.set_texture(0, 1, src.normal->get_view());
+	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
+
+	cmd.set_storage_texture(0, 0, dst.pbr->get_view());
+	cmd.set_texture(0, 1, src.pbr->get_view());
+	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
+
+	cmd.set_storage_texture(0, 0, dst.depth->get_view());
+	cmd.set_texture(0, 1, src.depth->get_view());
+	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
 }
 
 TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer &composer, TaskGroup &incoming,
@@ -219,38 +333,11 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 {
 	auto &device = context.get_device();
 
-	VolumetricDiffuseLight::GBuffer allocated_gbuffer;
-
 	uvec3 resolution = light.light.get_resolution();
-	auto gbuffer_info = Vulkan::ImageCreateInfo::render_target(ProbeResolution * resolution.x * 6,
-	                                                           ProbeResolution * resolution.y * resolution.z,
-	                                                           VK_FORMAT_R8G8B8A8_SRGB);
-	gbuffer_info.layers = NumProbeLayers;
-	gbuffer_info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-	gbuffer_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-	allocated_gbuffer.albedo = device.create_image(gbuffer_info);
-
-	bool supports_32bpp =
-			device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32,
-			                                 VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
-	gbuffer_info.format = supports_32bpp ? VK_FORMAT_B10G11R11_UFLOAT_PACK32 : VK_FORMAT_R16G16B16A16_SFLOAT;
-	allocated_gbuffer.emissive = device.create_image(gbuffer_info);
-
-	gbuffer_info.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-	allocated_gbuffer.normal = device.create_image(gbuffer_info);
-
-	gbuffer_info.format = VK_FORMAT_R8G8_UNORM;
-	allocated_gbuffer.pbr = device.create_image(gbuffer_info);
-
-	gbuffer_info.format = device.get_default_depth_stencil_format();
-	gbuffer_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-	allocated_gbuffer.depth = device.create_image(gbuffer_info);
-
-	device.set_name(*allocated_gbuffer.emissive, "probe-emissive");
-	device.set_name(*allocated_gbuffer.albedo, "probe-albedo");
-	device.set_name(*allocated_gbuffer.normal, "probe-normal");
-	device.set_name(*allocated_gbuffer.pbr, "probe-pbr");
-	device.set_name(*allocated_gbuffer.depth, "probe-depth");
+	auto allocated_gbuffer = allocate_gbuffer(device, ProbeResolution * resolution.x * 6,
+	                                          ProbeResolution * resolution.y * resolution.z,
+	                                          NumProbeLayers,
+	                                          true);
 
 	light.light.set_probe_gbuffer(std::move(allocated_gbuffer));
 
@@ -263,25 +350,10 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 	std::vector<std::shared_ptr<ContextRenderers>> slice_renderers;
 	slice_renderers.reserve(resolution.x);
 	for (unsigned x = 0; x < resolution.x; x++)
-		slice_renderers.push_back(create_cube_renderer(setup));
+		slice_renderers.push_back(create_cube_renderer(device, setup));
 
 	TaskComposer probe_composer(*incoming.get_thread_group());
 	probe_composer.set_incoming_task(composer.get_pipeline_stage_dependency());
-
-	Vulkan::RenderPassInfo rp;
-	memset(rp.clear_color, 0, sizeof(rp.clear_color));
-	rp.clear_depth_stencil.depth = 1.0f;
-	rp.clear_depth_stencil.stencil = 0;
-	rp.clear_attachments = 0xf;
-	rp.store_attachments = 0xf;
-	rp.op_flags = Vulkan::RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT | Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
-	rp.num_color_attachments = 4;
-	auto &gbuffer = light.light.get_gbuffer();
-	rp.color_attachments[0] = &gbuffer.emissive->get_view();
-	rp.color_attachments[1] = &gbuffer.albedo->get_view();
-	rp.color_attachments[2] = &gbuffer.normal->get_view();
-	rp.color_attachments[3] = &gbuffer.pbr->get_view();
-	rp.depth_stencil = &gbuffer.depth->get_view();
 
 	auto &discard_stage = probe_composer.begin_pipeline_stage();
 	discard_stage.enqueue_task([&device, &light]() {
@@ -327,6 +399,8 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 						TaskComposer face_composer(probe_composer.get_thread_group());
 						face_composer.set_incoming_task(probe_composer.get_pipeline_stage_dependency());
 						VkSubpassContents contents = VK_SUBPASS_CONTENTS_INLINE;
+
+						Vulkan::RenderPassInfo rp;
 						renderers->renderers[face].enqueue_prepare_render_pass(face_composer, rp, 0, contents);
 						probe_composer.get_thread_group().add_dependency(prepare_stage, *face_composer.get_outgoing_task());
 					}
@@ -337,37 +411,56 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 				for (unsigned x = 0; x < resolution.x; x++)
 				{
 					auto &renderers = slice_renderers[x];
-					render_task.enqueue_task([x, y, z, layer, renderers, rp, &light, &device]() {
+					render_task.enqueue_task([x, y, z, layer, renderers, &light, &device]() {
 						auto cmd = device.request_command_buffer();
 						cmd->begin_region("render-probe-gbuffer");
+						transition_gbuffer(*cmd, renderers->gbuffer, TransitionMode::Discard);
 
-						auto slice_rp = rp;
-						slice_rp.render_area.offset.x = 6 * x * ProbeResolution;
-						slice_rp.render_area.offset.y =
-								(z * light.light.get_resolution().y + y) * ProbeResolution;
-						slice_rp.render_area.extent.width = ProbeResolution * 6;
-						slice_rp.render_area.extent.height = ProbeResolution;
-						slice_rp.base_layer = layer;
+						Vulkan::RenderPassInfo rp;
+						memset(rp.clear_color, 0, sizeof(rp.clear_color));
+						rp.clear_depth_stencil.depth = 1.0f;
+						rp.clear_depth_stencil.stencil = 0;
+						rp.clear_attachments = 0xf;
+						rp.store_attachments = 0xf;
+						rp.op_flags = Vulkan::RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT | Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
+						rp.num_color_attachments = 4;
 
-						cmd->begin_render_pass(slice_rp);
-						slice_rp.render_area.extent.width = ProbeResolution;
+						rp.render_area.offset.x = 0;
+						rp.render_area.offset.y = 0;
+						rp.render_area.extent.width = ProbeResolution * 6;
+						rp.render_area.extent.height = ProbeResolution;
+
+						auto &gbuffer = renderers->gbuffer;
+						rp.color_attachments[0] = &gbuffer.emissive->get_view();
+						rp.color_attachments[1] = &gbuffer.albedo->get_view();
+						rp.color_attachments[2] = &gbuffer.normal->get_view();
+						rp.color_attachments[3] = &gbuffer.pbr->get_view();
+						rp.depth_stencil = &gbuffer.depth->get_view();
+
+						cmd->begin_render_pass(rp);
+						rp.render_area.extent.width = ProbeResolution;
 
 						for (unsigned face = 0; face < 6; face++)
 						{
 							const VkViewport vp = {
-								float(slice_rp.render_area.offset.x),
-								float(slice_rp.render_area.offset.y),
-								float(slice_rp.render_area.extent.width),
-								float(slice_rp.render_area.extent.height),
+								float(rp.render_area.offset.x),
+								float(rp.render_area.offset.y),
+								float(rp.render_area.extent.width),
+								float(rp.render_area.extent.height),
 								0.0f, 1.0f,
 							};
 							cmd->set_viewport(vp);
-							cmd->set_scissor(slice_rp.render_area);
+							cmd->set_scissor(rp.render_area);
 							renderers->renderers[face].build_render_pass(*cmd);
-							slice_rp.render_area.offset.x += ProbeResolution;
+							rp.render_area.offset.x += ProbeResolution;
 						}
 						cmd->end_render_pass();
+						transition_gbuffer(*cmd, renderers->gbuffer, TransitionMode::Read);
 						cmd->end_region();
+
+						copy_gbuffer(*cmd, light.light.get_gbuffer(), renderers->gbuffer,
+						             x, z * light.light.get_resolution().y + y, layer);
+
 						device.submit(cmd);
 
 						LOGI("Rendering gbuffer probe ... X = %u, Y = %u, Z = %u, layer = %u.\n",

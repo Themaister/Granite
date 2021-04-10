@@ -40,12 +40,10 @@ static constexpr unsigned ProbeDownsamplingFactor = 16;
 
 VolumetricDiffuseLightManager::VolumetricDiffuseLightManager()
 {
-	for (unsigned face = 0; face < 6; face++)
-	{
-		mat4 proj, view;
-		compute_cube_render_transform(vec3(0.0f), face, proj, view, ZNear, ZFar);
-		inv_view_projections[face] = inverse(proj * view);
-	}
+	mat4 proj, view;
+	compute_cube_render_transform(vec3(0.0f), 0, proj, view, ZNear, ZFar);
+	mat2 inv_projection = inverse(mat2(proj[2].zw(), proj[3].zw()));
+	inv_projection_zw = vec4(inv_projection[0], inv_projection[1]);
 
 	probe_pos_jitter[0] = vec4(-3.0f / 16.0f, +1.0f / 16.0f, +5.0f / 16.0f, 0.0f);
 	probe_pos_jitter[1] = vec4(+1.0f / 16.0f, -3.0f / 16.0f, +3.0f / 16.0f, 0.0f);
@@ -268,7 +266,7 @@ static VolumetricDiffuseLight::GBuffer allocate_gbuffer(Vulkan::Device &device, 
 	gbuffer_info.format = VK_FORMAT_R8G8_UNORM;
 	allocated_gbuffer.pbr = device.create_image(gbuffer_info);
 
-	gbuffer_info.format = compute ? VK_FORMAT_R32_SFLOAT : device.get_default_depth_stencil_format();
+	gbuffer_info.format = compute ? VK_FORMAT_R16_SFLOAT : device.get_default_depth_stencil_format();
 	gbuffer_info.usage = (compute ? VK_IMAGE_USAGE_STORAGE_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) |
 	                     VK_IMAGE_USAGE_SAMPLED_BIT;
 	allocated_gbuffer.depth = device.create_image(gbuffer_info);
@@ -312,26 +310,34 @@ static void copy_gbuffer(Vulkan::CommandBuffer &cmd,
 	cmd.set_program("builtin://shaders/lights/volumetric_gbuffer_copy.comp");
 
 	cmd.push_constants(&push, 0, sizeof(push));
+	cmd.set_specialization_constant_mask(1);
 
 	cmd.set_storage_texture(0, 0, dst.emissive->get_view());
 	cmd.set_texture(0, 1, src.emissive->get_view());
+	cmd.set_specialization_constant(0, 0u);
 	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
 
 	cmd.set_unorm_storage_texture(0, 0, dst.albedo->get_view());
 	cmd.set_unorm_texture(0, 1, src.albedo->get_view());
+	cmd.set_specialization_constant(0, 0u);
 	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
 
 	cmd.set_storage_texture(0, 0, dst.normal->get_view());
 	cmd.set_texture(0, 1, src.normal->get_view());
+	cmd.set_specialization_constant(0, 0u);
 	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
 
 	cmd.set_storage_texture(0, 0, dst.pbr->get_view());
 	cmd.set_texture(0, 1, src.pbr->get_view());
+	cmd.set_specialization_constant(0, 0u);
 	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
 
 	cmd.set_storage_texture(0, 0, dst.depth->get_view());
 	cmd.set_texture(0, 1, src.depth->get_view());
+	cmd.set_specialization_constant(0, 1u);
 	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
+
+	cmd.set_specialization_constant_mask(0);
 }
 
 TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer &composer, TaskGroup &incoming,
@@ -426,7 +432,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 				for (unsigned x = 0; x < resolution.x; x++)
 				{
 					auto &renderers = slice_renderers[x];
-					render_task.enqueue_task([x, y, z, layer, renderers, &light, &device]() {
+					render_task.enqueue_task([this, x, y, z, layer, renderers, &light, &device]() {
 						auto cmd = device.request_command_buffer();
 						cmd->begin_region("render-probe-gbuffer");
 						transition_gbuffer(*cmd, renderers->gbuffer, TransitionMode::Discard);
@@ -473,6 +479,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 						transition_gbuffer(*cmd, renderers->gbuffer, TransitionMode::Read);
 						cmd->end_region();
 
+						*cmd->allocate_typed_constant_data<vec4>(0, 2, 1) = inv_projection_zw;
 						copy_gbuffer(*cmd, light.light.get_gbuffer(), renderers->gbuffer,
 						             x, z * light.light.get_resolution().y + y, layer);
 
@@ -616,12 +623,10 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 
 		struct GlobalTransform
 		{
-			mat4 inv_view_proj_for_face[6];
 			vec4 probe_pos_jitter[NumProbeLayers];
 		};
 
 		auto *transforms = cmd.allocate_typed_constant_data<GlobalTransform>(3, 0, 1);
-		memcpy(transforms->inv_view_proj_for_face, inv_view_projections, sizeof(inv_view_projections));
 		memcpy(transforms->probe_pos_jitter, probe_pos_jitter, sizeof(probe_pos_jitter));
 
 		for (auto &light_tuple : *volumetric_diffuse)

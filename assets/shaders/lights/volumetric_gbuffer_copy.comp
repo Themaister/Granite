@@ -12,7 +12,14 @@ layout(push_constant) uniform Registers
     uint probe_downsampling_factor;
 };
 
+layout(set = 0, binding = 2) uniform UBO
+{
+    vec4 inv_projection_zw;
+};
+
 #include "volumetric_probe_hash.h"
+
+layout(constant_id = 0) const bool DepthTransform = false;
 
 void main()
 {
@@ -21,5 +28,18 @@ void main()
     ivec3 probe_coord = ivec3(xy, position.z);
     vec4 v = texelFetch(uInput, ivec2(gl_GlobalInvocationID.xy * probe_downsampling_factor +
             volumetric_probe_hash(probe_coord, probe_downsampling_factor)), 0);
+
+    if (DepthTransform)
+    {
+        if (v.x < 1.0)
+        {
+            vec2 linear_depth2 = mat2(inv_projection_zw.xy, inv_projection_zw.zw) * vec2(v.x, 1.0);
+            float linear_depth = -linear_depth2.x / linear_depth2.y;
+            v.x = linear_depth;
+        }
+        else
+            v.x = 0.0;
+    }
+
     imageStore(uOutput, probe_coord, v);
 }

@@ -43,7 +43,6 @@ layout(set = 2, binding = 6) readonly buffer WorkList
 
 layout(set = 3, binding = 0) uniform Transforms
 {
-    mat4 inv_view_proj_for_face[6];
     vec3 probe_pos_jitter[NumProbeLayers];
 } transforms;
 
@@ -226,12 +225,10 @@ void main()
                 dot(texture_to_world[1], vec4(tex_space, 1.0)),
                 dot(texture_to_world[2], vec4(tex_space, 1.0)));
 
-            float d = texelFetch(uProbeDepth, tex_coord_layer, 0).x;
-            vec4 clip = vec4(clip_xy, d, 1.0);
-            vec4 world4 = transforms.inv_view_proj_for_face[face] * clip;
-            vec3 world = world4.xyz / world4.w + probe_pos;
+            float linear_d = texelFetch(uProbeDepth, tex_coord_layer, 0).x;
+            vec3 world = pos * linear_d + probe_pos;
 
-            mat3 patch_contribution = sample_patch(tex_coord_layer, pos, world, d < 1.0);
+            mat3 patch_contribution = sample_patch(tex_coord_layer, pos, world, linear_d != 0.0);
             shared_colors[gl_LocalInvocationIndex] = patch_contribution;
 
 #define ITERATE(l) \

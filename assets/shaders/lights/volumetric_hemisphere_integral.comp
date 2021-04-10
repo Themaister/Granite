@@ -8,6 +8,7 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 6) in;
 #include "../inc/render_parameters.h"
 
 #include "clusterer_data.h"
+#include "volumetric_probe_hash.h"
 
 layout(set = 3, binding = 2) uniform ClusterTransforms
 {
@@ -21,8 +22,9 @@ layout(push_constant) uniform Registers
     int gbuffer_layer;
     int patch_resolution;
     int face_resolution;
-    float inv_patch_resolution;
+    float inv_orig_patch_resolution;
     float inv_patch_resolution2;
+    uint hash_range;
 } registers;
 
 const int NumProbeLayers = 4;
@@ -190,18 +192,20 @@ void main()
         for (int patch_x = 0; patch_x < 2; patch_x++)
         {
             uvec2 patch_coord = gl_LocalInvocationID.xy;
-            vec2 xy = vec2(patch_coord) + 0.5;
-            vec2 uv = xy * registers.inv_patch_resolution;
-            vec2 clip_xy = vec2(patch_x - 1, patch_y - 1) + uv;
-            vec3 pos = base_dirs[face] + clip_xy.x * pos_du[face] + clip_xy.y * pos_dv[face];
 
             int probe_x = 6 * int(probe_index.x) + face;
             int probe_y = int(probe_index.z * gl_NumWorkGroups.y + probe_index.y);
             ivec2 base_probe_coord = ivec2(probe_x, probe_y) * registers.face_resolution;
-            ivec2 tex_coord =
-                base_probe_coord + ivec2(patch_coord) +
-                ivec2(patch_x, patch_y) * ivec2(registers.patch_resolution);
+            ivec2 tex_coord = base_probe_coord + ivec2(patch_coord) +
+                              ivec2(patch_x, patch_y) * ivec2(registers.patch_resolution);
             ivec3 tex_coord_layer = ivec3(tex_coord, registers.gbuffer_layer);
+
+            uvec2 hashed_offset = volumetric_probe_hash(tex_coord_layer, registers.hash_range);
+
+            vec2 xy = vec2(patch_coord * registers.hash_range + hashed_offset) + 0.5;
+            vec2 uv = xy * registers.inv_orig_patch_resolution;
+            vec2 clip_xy = vec2(patch_x - 1, patch_y - 1) + uv;
+            vec3 pos = base_dirs[face] + clip_xy.x * pos_du[face] + clip_xy.y * pos_dv[face];
 
             vec3 tex_space = (vec3(gl_WorkGroupID) + 0.5 + get_probe_jitter()) * inv_probe_resolution;
             vec3 probe_pos = vec3(

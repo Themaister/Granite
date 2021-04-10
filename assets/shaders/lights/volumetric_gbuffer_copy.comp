@@ -8,13 +8,18 @@ layout(set = 0, binding = 1) uniform texture2D uInput;
 layout(push_constant) uniform Registers
 {
     uvec3 position;
+    uint probe_resolution;
+    uint probe_downsampling_factor;
 };
 
-const uvec2 ProbeResolution = uvec2(8 * 6, 8);
+#include "volumetric_probe_hash.h"
 
 void main()
 {
-    uvec2 xy = position.xy * ProbeResolution + gl_GlobalInvocationID.xy;
-    vec4 v = texelFetch(uInput, ivec2(gl_GlobalInvocationID.xy), 0);
-    imageStore(uOutput, ivec3(xy, position.z), v);
+    uvec2 probe_resolution_2 = uvec2(probe_resolution * 6, probe_resolution);
+    uvec2 xy = position.xy * probe_resolution_2 + gl_GlobalInvocationID.xy;
+    ivec3 probe_coord = ivec3(xy, position.z);
+    vec4 v = texelFetch(uInput, ivec2(gl_GlobalInvocationID.xy * probe_downsampling_factor +
+            volumetric_probe_hash(probe_coord, probe_downsampling_factor)), 0);
+    imageStore(uOutput, probe_coord, v);
 }

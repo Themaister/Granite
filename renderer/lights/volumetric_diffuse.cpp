@@ -36,6 +36,7 @@ static constexpr float ZNear = 0.1f;
 static constexpr float ZFar = 200.0f;
 static constexpr unsigned NumProbeLayers = 4;
 static constexpr unsigned ProbeResolution = 8;
+static constexpr unsigned ProbeDownsamplingFactor = 8;
 
 VolumetricDiffuseLightManager::VolumetricDiffuseLightManager()
 {
@@ -178,8 +179,9 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 		uint32_t gbuffer_layer;
 		uint32_t patch_resolution;
 		uint32_t face_resolution;
-		float inv_patch_resolution;
+		float inv_orig_patch_resolution;
 		float inv_patch_resolution2;
+		uint32_t hash_range;
 	} push = {};
 
 	struct ProbeTransform
@@ -199,8 +201,10 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 
 	push.patch_resolution = ProbeResolution / 2;
 	push.face_resolution = ProbeResolution;
-	push.inv_patch_resolution = 1.0f / float(push.patch_resolution);
-	push.inv_patch_resolution2 = push.inv_patch_resolution * push.inv_patch_resolution;
+	push.inv_orig_patch_resolution = 1.0f / float(push.patch_resolution);
+	push.inv_patch_resolution2 = push.inv_orig_patch_resolution * push.inv_orig_patch_resolution;
+	push.inv_orig_patch_resolution *= 1.0f / float(ProbeDownsamplingFactor);
+	push.hash_range = ProbeDownsamplingFactor;
 
 	uvec3 res = light.light.get_resolution();
 
@@ -289,7 +293,9 @@ static std::shared_ptr<ContextRenderers> create_cube_renderer(Vulkan::Device &de
 		renderers->renderers[face].set_extra_flush_flags(Renderer::FRONT_FACE_CLOCKWISE_BIT);
 	}
 
-	renderers->gbuffer = allocate_gbuffer(device, ProbeResolution * 6, ProbeResolution, 1, false);
+	renderers->gbuffer = allocate_gbuffer(device, ProbeResolution * ProbeDownsamplingFactor * 6,
+	                                      ProbeResolution * ProbeDownsamplingFactor, 1,
+	                                      false);
 	return renderers;
 }
 
@@ -299,8 +305,8 @@ static void copy_gbuffer(Vulkan::CommandBuffer &cmd,
 {
 	struct Push
 	{
-		uint32_t x, y, layer;
-	} push = { x, y, layer };
+		uint32_t x, y, layer, res, downsampling;
+	} push = { x, y, layer, ProbeResolution, ProbeDownsamplingFactor };
 
 	cmd.set_program("builtin://shaders/lights/volumetric_gbuffer_copy.comp");
 
@@ -424,8 +430,8 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 
 						rp.render_area.offset.x = 0;
 						rp.render_area.offset.y = 0;
-						rp.render_area.extent.width = ProbeResolution * 6;
-						rp.render_area.extent.height = ProbeResolution;
+						rp.render_area.extent.width = ProbeDownsamplingFactor * ProbeResolution * 6;
+						rp.render_area.extent.height = ProbeDownsamplingFactor * ProbeResolution;
 
 						auto &gbuffer = renderers->gbuffer;
 						rp.color_attachments[0] = &gbuffer.emissive->get_view();
@@ -435,7 +441,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 						rp.depth_stencil = &gbuffer.depth->get_view();
 
 						cmd->begin_render_pass(rp);
-						rp.render_area.extent.width = ProbeResolution;
+						rp.render_area.extent.width = ProbeResolution * ProbeDownsamplingFactor;
 
 						for (unsigned face = 0; face < 6; face++)
 						{
@@ -449,7 +455,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 							cmd->set_viewport(vp);
 							cmd->set_scissor(rp.render_area);
 							renderers->renderers[face].build_render_pass(*cmd);
-							rp.render_area.offset.x += ProbeResolution;
+							rp.render_area.offset.x += ProbeResolution * ProbeDownsamplingFactor;
 						}
 						cmd->end_render_pass();
 						transition_gbuffer(*cmd, renderers->gbuffer, TransitionMode::Read);

@@ -36,7 +36,7 @@ static constexpr float ZNear = 0.1f;
 static constexpr float ZFar = 200.0f;
 static constexpr unsigned NumProbeLayers = 4;
 static constexpr unsigned ProbeResolution = 8;
-static constexpr unsigned ProbeDownsamplingFactor = 8;
+static constexpr unsigned ProbeDownsamplingFactor = 16;
 
 VolumetricDiffuseLightManager::VolumetricDiffuseLightManager()
 {

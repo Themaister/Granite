@@ -123,8 +123,8 @@ private:
 		bool directional_light_shadows = true;
 		bool directional_light_cascaded_shadows = true;
 		bool directional_light_shadows_vsm = false;
-		bool clustered_lights = false;
-		bool clustered_lights_bindless = false;
+		bool clustered_lights = true;
+		bool clustered_lights_bindless = true;
 		bool clustered_lights_shadows = true;
 		bool clustered_lights_shadows_vsm = false;
 		bool hdr_bloom = true;

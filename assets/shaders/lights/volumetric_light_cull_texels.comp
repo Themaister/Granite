@@ -1,0 +1,32 @@
+#version 450
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(set = 0, binding = 0) buffer Count
+{
+    uint atomic_count;
+};
+
+layout(set = 0, binding = 1) writeonly buffer WorkList
+{
+    uint work_list[];
+};
+
+layout(push_constant) uniform Registers
+{
+    uvec3 resolution;
+} registers;
+
+uint pack_work(uvec3 coord)
+{
+    return coord.x | (coord.y << 10u) | (coord.z << 20u);
+}
+
+void main()
+{
+    if (all(lessThan(gl_GlobalInvocationID, registers.resolution)))
+    {
+        // TODO: Actually cull.
+        uint offset = atomicAdd(atomic_count, 1u);
+        work_list[offset] = pack_work(gl_GlobalInvocationID);
+    }
+}

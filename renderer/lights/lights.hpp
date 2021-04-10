@@ -24,6 +24,7 @@
 
 #include "abstract_renderable.hpp"
 #include "image.hpp"
+#include "buffer.hpp"
 #include "light_info.hpp"
 #include "event.hpp"
 #include "application_wsi_events.hpp"
@@ -172,6 +173,10 @@ public:
 	void set_volumes(Vulkan::ImageHandle volume, Vulkan::ImageHandle prev_volume);
 	const Vulkan::ImageView *get_volume_view() const;
 	const Vulkan::ImageView *get_prev_volume_view() const;
+	const Vulkan::Buffer *get_atomic_buffer() const;
+	const Vulkan::Buffer *get_worklist_buffer() const;
+
+	void set_buffers(Vulkan::BufferHandle atomics, Vulkan::BufferHandle worklist);
 
 	struct GBuffer
 	{
@@ -188,6 +193,7 @@ public:
 
 private:
 	Vulkan::ImageHandle volume, prev_volume;
+	Vulkan::BufferHandle atomics, worklist;
 	GBuffer gbuffer;
 	uvec3 resolution;
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);

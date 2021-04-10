@@ -208,8 +208,6 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	push.inv_orig_patch_resolution *= 1.0f / float(ProbeDownsamplingFactor);
 	push.hash_range = ProbeDownsamplingFactor;
 
-	uvec3 res = light.light.get_resolution();
-
 	auto flags = Renderer::get_mesh_renderer_options_from_lighting(*fallback_render_context->get_lighting_parameters());
 	flags &= ~(Renderer::VOLUMETRIC_FOG_ENABLE_BIT |
 	           Renderer::AMBIENT_OCCLUSION_BIT |
@@ -235,7 +233,8 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	cmd.set_texture(2, 3, light.light.get_gbuffer().normal->get_view());
 	cmd.set_texture(2, 4, light.light.get_gbuffer().depth->get_view());
 	cmd.set_texture(2, 5, *light.light.get_prev_volume_view(), Vulkan::StockSampler::LinearClamp);
-	cmd.dispatch(res.x, res.y, res.z);
+	cmd.set_storage_buffer(2, 6, *light.light.get_worklist_buffer());
+	cmd.dispatch_indirect(*light.light.get_atomic_buffer(), 0);
 }
 
 struct ContextRenderers
@@ -348,6 +347,17 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 	                                          true);
 
 	light.light.set_probe_gbuffer(std::move(allocated_gbuffer));
+
+	Vulkan::BufferCreateInfo atomics_info = {};
+	atomics_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+	atomics_info.size = 16;
+	atomics_info.domain = Vulkan::BufferDomain::Device;
+
+	Vulkan::BufferCreateInfo list_info = {};
+	list_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	list_info.size = sizeof(uint32_t) * resolution.x * resolution.y * resolution.z;
+	list_info.domain = Vulkan::BufferDomain::Device;
+	light.light.set_buffers(device.create_buffer(atomics_info), device.create_buffer(list_info));
 
 	RenderPassSceneRenderer::Setup setup = {};
 	setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT;
@@ -561,6 +571,37 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 	auto &light_pass = graph.add_pass("probe-light", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 	light_pass.add_proxy_output("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	light_pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+		// Clear atomic counters to 0.
+		cmd.set_program("builtin://shaders/lights/volumetric_light_clear_atomic.comp");
+		for (auto &light_tuple : *volumetric_diffuse)
+		{
+			auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
+			cmd.set_storage_buffer(0, 0, *light->light.get_atomic_buffer());
+			cmd.dispatch(1, 1, 1);
+		}
+
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+
+		cmd.set_program("builtin://shaders/lights/volumetric_light_cull_texels.comp");
+
+		// Cull
+		for (auto &light_tuple : *volumetric_diffuse)
+		{
+			auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
+			cmd.set_storage_buffer(0, 0, *light->light.get_atomic_buffer());
+			cmd.set_storage_buffer(0, 1, *light->light.get_worklist_buffer());
+			uvec3 res = light->light.get_resolution();
+			cmd.push_constants(&res, 0, sizeof(res));
+			cmd.dispatch((res.x + 3) / 4, (res.y + 3) / 4, (res.z + 3) / 4);
+		}
+
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+		            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+
+		// Relight probes.
+
 		Renderer::bind_global_parameters(cmd, *fallback_render_context);
 		Renderer::bind_lighting_parameters(cmd, *fallback_render_context);
 
@@ -585,7 +626,6 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 
 		for (auto &light_tuple : *volumetric_diffuse)
 		{
-			// TODO: Check visibility?
 			auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
 			light_probe_buffer(cmd, *light);
 		}

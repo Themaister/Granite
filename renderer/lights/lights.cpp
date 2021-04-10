@@ -631,6 +631,22 @@ void VolumetricDiffuseLight::set_volumes(Vulkan::ImageHandle vol, Vulkan::ImageH
 	prev_volume = std::move(prev_vol);
 }
 
+void VolumetricDiffuseLight::set_buffers(Vulkan::BufferHandle atomics_, Vulkan::BufferHandle worklist_)
+{
+	atomics = std::move(atomics_);
+	worklist = std::move(worklist_);
+}
+
+const Vulkan::Buffer *VolumetricDiffuseLight::get_atomic_buffer() const
+{
+	return atomics.get();
+}
+
+const Vulkan::Buffer *VolumetricDiffuseLight::get_worklist_buffer() const
+{
+	return worklist.get();
+}
+
 const VolumetricDiffuseLight::GBuffer &VolumetricDiffuseLight::get_gbuffer() const
 {
 	return gbuffer;
@@ -665,6 +681,8 @@ void VolumetricDiffuseLight::on_device_destroyed(const Vulkan::DeviceCreatedEven
 {
 	volume.reset();
 	prev_volume.reset();
+	atomics.reset();
+	worklist.reset();
 	gbuffer = {};
 }
 

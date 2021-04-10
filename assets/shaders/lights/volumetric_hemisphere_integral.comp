@@ -36,6 +36,11 @@ layout(set = 2, binding = 3) uniform texture2DArray uProbeNormal;
 layout(set = 2, binding = 4) uniform texture2DArray uProbeDepth;
 layout(set = 2, binding = 5) uniform sampler3D uPrevAmbient;
 
+layout(set = 2, binding = 6) readonly buffer WorkList
+{
+    uint work_list[];
+};
+
 layout(set = 3, binding = 0) uniform Transforms
 {
     mat4 inv_view_proj_for_face[6];
@@ -65,12 +70,12 @@ mediump float weight_term(vec3 local_pos)
     return clamp(w * 64.0, 0.0, 1.0);
 }
 
-vec3 get_probe_jitter()
+vec3 get_probe_jitter(uvec2 probe_xy)
 {
     return transforms.probe_pos_jitter[
             (registers.gbuffer_layer +
-            (gl_WorkGroupID.x & 1u) +
-            (gl_WorkGroupID.y & 1u) * 2u) &
+            (probe_xy.x & 1u) +
+            (probe_xy.y & 1u) * 2u) &
             (NumProbeLayers - 1u)];
 }
 
@@ -183,9 +188,15 @@ const uint patch_mask_per_face[6] = uint[](
     (0xfu << 16) | M(0) | M(2) | M(5) | M(7) | M(10) | M(11) | M(12) | M(13),
     (0xfu << 20) | M(1) | M(3) | M(4) | M(6) | M(8) | M(9) | M(14) | M(15));
 
+uvec3 unpack_work(uint c)
+{
+    return (uvec3(c) >> uvec3(0, 10, 20)) & 0x3ffu;
+}
+
 void main()
 {
-    uvec3 probe_index = gl_WorkGroupID;
+    uvec3 probe_index = unpack_work(work_list[gl_WorkGroupID.x]);
+
     int face = int(gl_LocalInvocationID.z);
     uvec2 probe_size = probe_size_xy;
 
@@ -209,7 +220,7 @@ void main()
             vec2 clip_xy = vec2(patch_x - 1, patch_y - 1) + uv;
             vec3 pos = base_dirs[face] + clip_xy.x * pos_du[face] + clip_xy.y * pos_dv[face];
 
-            vec3 tex_space = (vec3(gl_WorkGroupID) + 0.5 + get_probe_jitter()) * inv_probe_resolution;
+            vec3 tex_space = (vec3(probe_index) + 0.5 + get_probe_jitter(probe_index.xy)) * inv_probe_resolution;
             vec3 probe_pos = vec3(
                 dot(texture_to_world[0], vec4(tex_space, 1.0)),
                 dot(texture_to_world[1], vec4(tex_space, 1.0)),

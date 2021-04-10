@@ -47,6 +47,7 @@ layout(set = 3, binding = 1) uniform PerProbe
     vec4 texture_to_world[3];
     vec4 world_to_texture[3];
     vec3 inv_probe_resolution;
+    uvec2 probe_size_xy;
 };
 
 #ifndef PI
@@ -186,6 +187,7 @@ void main()
 {
     uvec3 probe_index = gl_WorkGroupID;
     int face = int(gl_LocalInvocationID.z);
+    uvec2 probe_size = probe_size_xy;
 
     for (int patch_y = 0; patch_y < 2; patch_y++)
     {
@@ -194,7 +196,7 @@ void main()
             uvec2 patch_coord = gl_LocalInvocationID.xy;
 
             int probe_x = 6 * int(probe_index.x) + face;
-            int probe_y = int(probe_index.z * gl_NumWorkGroups.y + probe_index.y);
+            int probe_y = int(probe_index.z * probe_size.y + probe_index.y);
             ivec2 base_probe_coord = ivec2(probe_x, probe_y) * registers.face_resolution;
             ivec2 tex_coord = base_probe_coord + ivec2(patch_coord) +
                               ivec2(patch_x, patch_y) * ivec2(registers.patch_resolution);
@@ -257,7 +259,7 @@ void main()
             total += shared_patch_contributions[bit][face >> 1u];
         }
 
-        ivec3 ambient_coord = ivec3(probe_index) + ivec3(face * gl_NumWorkGroups.x, 0, 0);
+        ivec3 ambient_coord = ivec3(probe_index) + ivec3(face * probe_size.x, 0, 0);
 
         vec3 old_total = texelFetch(uPrevAmbient, ambient_coord, 0).rgb;
         total /= PI;

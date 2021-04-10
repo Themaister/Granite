@@ -186,9 +186,10 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 
 	struct ProbeTransform
 	{
-		vec4 texture_to_world[3];
-		vec4 world_to_texture[3];
-		vec3 inv_resolution;
+		alignas(16) vec4 texture_to_world[3];
+		alignas(16) vec4 world_to_texture[3];
+		alignas(16) vec3 inv_resolution;
+		alignas(8) uvec2 probe_size_xy;
 	};
 
 	push.gbuffer_layer = light.update_iteration % NumProbeLayers;
@@ -198,6 +199,7 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	memcpy(probe_transform->texture_to_world, light.texture_to_world, sizeof(light.texture_to_world));
 	memcpy(probe_transform->world_to_texture, light.world_to_texture, sizeof(light.world_to_texture));
 	probe_transform->inv_resolution = vec3(1.0f) / vec3(light.light.get_resolution());
+	probe_transform->probe_size_xy = light.light.get_resolution().xy();
 
 	push.patch_resolution = ProbeResolution / 2;
 	push.face_resolution = ProbeResolution;

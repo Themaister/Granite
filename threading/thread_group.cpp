@@ -204,10 +204,14 @@ void ThreadGroup::move_to_ready_tasks(const std::vector<Internal::Task *> &list)
 	for (auto &t : list)
 		ready_tasks.push(t);
 
-	if (list.size() > 1)
+	if (list.size() >= thread_group.size())
 		cond.notify_all();
 	else
-		cond.notify_one();
+	{
+		size_t count = list.size();
+		for (size_t i = 0; i < count; i++)
+			cond.notify_one();
+	}
 }
 
 void Internal::TaskGroupDeleter::operator()(TaskGroup *group)

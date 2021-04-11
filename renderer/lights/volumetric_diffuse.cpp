@@ -422,7 +422,7 @@ void VolumetricDiffuseLightManager::render_probe_gbuffer_slice(VolumetricDiffuse
 
 			device.submit(cmd);
 
-			if ((probe_render_count.fetch_add(1, std::memory_order_relaxed) & 15) == 15)
+			if ((probe_render_count.fetch_add(1, std::memory_order_relaxed) & 7) == 7)
 			{
 				// We're going to be consuming a fair bit of memory,
 				// so make sure to pump frame contexts through.

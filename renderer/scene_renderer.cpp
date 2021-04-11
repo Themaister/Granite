@@ -118,45 +118,103 @@ static RendererSuite::Type get_depth_renderer_type(SceneRendererFlags flags)
 	}
 }
 
+void RenderPassSceneRenderer::prepare_render_pass()
+{
+	prepare_setup_queues();
+
+	auto &visible = visible_per_task[0];
+	auto &visible_transparent = visible_per_task_transparent[0];
+	auto *context = setup_data.context;
+	auto &frustum = context->get_visibility_frustum();
+	auto *scene = setup_data.scene;
+
+	auto &queue_transparent = queue_per_task_transparent[0];
+	auto &queue_opaque = queue_per_task_opaque[0];
+	auto &queue_depth = queue_per_task_depth[0];
+
+	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
+	{
+		scene->gather_visible_render_pass_sinks(context->get_render_parameters().camera_position, visible);
+		scene->gather_visible_opaque_renderables(frustum, visible);
+
+		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+			queue_depth.push_renderables(*context, visible.data(), visible.size());
+
+		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
+		{
+			setup_data.scene->gather_unbounded_renderables(visible);
+			queue_opaque.push_renderables(*context, visible.data(), visible.size());
+		}
+	}
+
+	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
+	{
+		scene->gather_visible_render_pass_sinks(context->get_render_parameters().camera_position, visible);
+		scene->gather_unbounded_renderables(visible);
+		scene->gather_visible_opaque_renderables(frustum, visible);
+		queue_opaque.push_renderables(*context, visible.data(), visible.size());
+	}
+
+	if (setup_data.flags & SCENE_RENDERER_FORWARD_TRANSPARENT_BIT)
+	{
+		scene->gather_visible_transparent_renderables(frustum, visible_transparent);
+		queue_transparent.push_renderables(*context, visible_transparent.data(), visible_transparent.size());
+	}
+
+	if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
+	{
+		if (setup_data.flags & SCENE_RENDERER_DEPTH_DYNAMIC_BIT)
+			scene->gather_visible_dynamic_shadow_renderables(frustum, visible);
+		if (setup_data.flags & SCENE_RENDERER_DEPTH_STATIC_BIT)
+			scene->gather_visible_static_shadow_renderables(frustum, visible);
+		queue_depth.push_renderables(*context, visible.data(), visible.size());
+	}
+}
+
+void RenderPassSceneRenderer::prepare_setup_queues()
+{
+	auto *suite = setup_data.suite;
+	for (auto &visible : visible_per_task)
+		visible.clear();
+	for (auto &visible : visible_per_task_transparent)
+		visible.clear();
+
+	// Setup renderer options in main thread.
+	if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+	{
+		for (auto &queue : queue_per_task_depth)
+			suite->get_renderer(RendererSuite::Type::PrepassDepth).begin(queue);
+	}
+	else if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
+	{
+		auto type = get_depth_renderer_type(setup_data.flags);
+		for (auto &queue : queue_per_task_depth)
+			suite->get_renderer(type).begin(queue);
+	}
+
+	if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
+	{
+		for (auto &queue : queue_per_task_opaque)
+			suite->get_renderer(RendererSuite::Type::ForwardOpaque).begin(queue);
+	}
+	else if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
+	{
+		for (auto &queue : queue_per_task_opaque)
+			suite->get_renderer(RendererSuite::Type::Deferred).begin(queue);
+	}
+
+	if (setup_data.flags & SCENE_RENDERER_FORWARD_TRANSPARENT_BIT)
+	{
+		for (auto &queue : queue_per_task_transparent)
+			suite->get_renderer(RendererSuite::Type::ForwardTransparent).begin(queue);
+	}
+}
+
 void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer)
 {
 	auto &setup_group = composer.begin_pipeline_stage();
 	setup_group.enqueue_task([this]() {
-		auto *suite = setup_data.suite;
-		for (auto &visible : visible_per_task)
-			visible.clear();
-		for (auto &visible : visible_per_task_transparent)
-			visible.clear();
-
-		// Setup renderer options in main thread.
-		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
-		{
-			for (auto &queue : queue_per_task_depth)
-				suite->get_renderer(RendererSuite::Type::PrepassDepth).begin(queue);
-		}
-		else if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
-		{
-			auto type = get_depth_renderer_type(setup_data.flags);
-			for (auto &queue : queue_per_task_depth)
-				suite->get_renderer(type).begin(queue);
-		}
-
-		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
-		{
-			for (auto &queue : queue_per_task_opaque)
-				suite->get_renderer(RendererSuite::Type::ForwardOpaque).begin(queue);
-		}
-		else if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
-		{
-			for (auto &queue : queue_per_task_opaque)
-				suite->get_renderer(RendererSuite::Type::Deferred).begin(queue);
-		}
-
-		if (setup_data.flags & SCENE_RENDERER_FORWARD_TRANSPARENT_BIT)
-		{
-			for (auto &queue : queue_per_task_transparent)
-				suite->get_renderer(RendererSuite::Type::ForwardTransparent).begin(queue);
-		}
+		prepare_setup_queues();
 	});
 
 	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))

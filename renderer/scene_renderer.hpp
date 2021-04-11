@@ -73,6 +73,9 @@ public:
 	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
 	void enqueue_prepare_render_pass(TaskComposer &composer) override;
 
+	// An immediate version of enqueue_prepare_render_pass.
+	void prepare_render_pass();
+
 protected:
 	Setup setup_data = {};
 	VkClearColorValue clear_color_value = {};
@@ -93,5 +96,7 @@ protected:
 	                         const RenderContext &context) const;
 	AbstractRenderableHandle debug_probe_mesh;
 	const ComponentGroupVector<VolumetricDiffuseLightComponent> *volumetric_diffuse_lights = nullptr;
+
+	void prepare_setup_queues();
 };
 }

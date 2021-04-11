@@ -30,6 +30,7 @@
 #include "render_components.hpp"
 #include "thread_group.hpp"
 #include "device.hpp"
+#include "scene_renderer.hpp"
 
 namespace Granite
 {
@@ -54,6 +55,14 @@ private:
 	TaskGroupHandle create_probe_gbuffer(TaskComposer &composer, TaskGroup &incoming,
 	                                     const RenderContext &context,
 	                                     VolumetricDiffuseLightComponent &light);
+
+	struct ContextRenderers;
+	void render_probe_gbuffer_slice(VolumetricDiffuseLightComponent &light, Vulkan::Device &device,
+	                                ContextRenderers &renderers, unsigned z);
+	static void setup_cube_renderer(ContextRenderers &renderers,
+	                                Vulkan::Device &device,
+	                                const RenderPassSceneRenderer::Setup &base,
+	                                unsigned layers);
 
 	void light_probe_buffer(Vulkan::CommandBuffer &cmd,
 	                        VolumetricDiffuseLightComponent &light);

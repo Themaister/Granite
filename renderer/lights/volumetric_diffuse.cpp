@@ -25,7 +25,6 @@
 #include "scene.hpp"
 #include "task_composer.hpp"
 #include "render_context.hpp"
-#include "scene_renderer.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "quirks.hpp"
 #include "clusterer.hpp"
@@ -235,7 +234,7 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	cmd.dispatch_indirect(*light.light.get_atomic_buffer(), 0);
 }
 
-struct ContextRenderers
+struct VolumetricDiffuseLightManager::ContextRenderers
 {
 	RenderContext contexts[6];
 	RenderPassSceneRenderer renderers[6];
@@ -280,32 +279,32 @@ static VolumetricDiffuseLight::GBuffer allocate_gbuffer(Vulkan::Device &device, 
 	return allocated_gbuffer;
 }
 
-static std::shared_ptr<ContextRenderers> create_cube_renderer(Vulkan::Device &device,
-                                                              const RenderPassSceneRenderer::Setup &base)
+void VolumetricDiffuseLightManager::setup_cube_renderer(ContextRenderers &renderers,
+                                                        Vulkan::Device &device,
+                                                        const RenderPassSceneRenderer::Setup &base,
+                                                        unsigned layers)
 {
-	auto renderers = std::make_shared<ContextRenderers>();
 	for (unsigned face = 0; face < 6; face++)
 	{
 		RenderPassSceneRenderer::Setup setup = base;
-		setup.context = &renderers->contexts[face];
-		renderers->renderers[face].init(setup);
-		renderers->renderers[face].set_extra_flush_flags(Renderer::FRONT_FACE_CLOCKWISE_BIT);
+		setup.context = &renderers.contexts[face];
+		renderers.renderers[face].init(setup);
+		renderers.renderers[face].set_extra_flush_flags(Renderer::FRONT_FACE_CLOCKWISE_BIT);
 	}
 
-	renderers->gbuffer = allocate_gbuffer(device, ProbeResolution * ProbeDownsamplingFactor * 6,
-	                                      ProbeResolution * ProbeDownsamplingFactor, 1,
-	                                      false);
-	return renderers;
+	renderers.gbuffer = allocate_gbuffer(device, ProbeResolution * ProbeDownsamplingFactor * 6,
+	                                     ProbeResolution * ProbeDownsamplingFactor, layers,
+	                                     false);
 }
 
 static void copy_gbuffer(Vulkan::CommandBuffer &cmd,
                          const VolumetricDiffuseLight::GBuffer &dst, const VolumetricDiffuseLight::GBuffer &src,
-                         unsigned x, unsigned y, unsigned layer)
+                         unsigned resolution_x, unsigned y, unsigned layer)
 {
 	struct Push
 	{
-		uint32_t x, y, layer, res, downsampling;
-	} push = { x, y, layer, ProbeResolution, ProbeDownsamplingFactor };
+		uint32_t y, layer, res, downsampling;
+	} push = { y, layer, ProbeResolution, ProbeDownsamplingFactor };
 
 	cmd.set_program("builtin://shaders/lights/volumetric_gbuffer_copy.comp");
 
@@ -315,29 +314,130 @@ static void copy_gbuffer(Vulkan::CommandBuffer &cmd,
 	cmd.set_storage_texture(0, 0, dst.emissive->get_view());
 	cmd.set_texture(0, 1, src.emissive->get_view());
 	cmd.set_specialization_constant(0, 0u);
-	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
+	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, resolution_x);
 
 	cmd.set_unorm_storage_texture(0, 0, dst.albedo->get_view());
 	cmd.set_unorm_texture(0, 1, src.albedo->get_view());
 	cmd.set_specialization_constant(0, 0u);
-	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
+	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, resolution_x);
 
 	cmd.set_storage_texture(0, 0, dst.normal->get_view());
 	cmd.set_texture(0, 1, src.normal->get_view());
 	cmd.set_specialization_constant(0, 0u);
-	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
+	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, resolution_x);
 
 	cmd.set_storage_texture(0, 0, dst.pbr->get_view());
 	cmd.set_texture(0, 1, src.pbr->get_view());
 	cmd.set_specialization_constant(0, 0u);
-	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
+	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, resolution_x);
 
 	cmd.set_storage_texture(0, 0, dst.depth->get_view());
 	cmd.set_texture(0, 1, src.depth->get_view());
 	cmd.set_specialization_constant(0, 1u);
-	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, 1);
+	cmd.dispatch((6 * ProbeResolution) / 8, ProbeResolution / 8, resolution_x);
 
 	cmd.set_specialization_constant_mask(0);
+}
+
+static std::atomic_uint32_t probe_render_count;
+
+void VolumetricDiffuseLightManager::render_probe_gbuffer_slice(VolumetricDiffuseLightComponent &light,
+                                                               Vulkan::Device &device,
+                                                               ContextRenderers &renderers, unsigned z)
+{
+	auto resolution = light.light.get_resolution();
+
+	for (unsigned layer = 0; layer < NumProbeLayers; layer++)
+	{
+		for (unsigned y = 0; y < resolution.y; y++)
+		{
+			auto cmd = device.request_command_buffer();
+			transition_gbuffer(*cmd, renderers.gbuffer, TransitionMode::Discard);
+
+			Vulkan::RenderPassInfo rp;
+			memset(rp.clear_color, 0, sizeof(rp.clear_color));
+			rp.clear_depth_stencil.depth = 1.0f;
+			rp.clear_depth_stencil.stencil = 0;
+			rp.clear_attachments = 0xf;
+			rp.store_attachments = 0xf;
+			rp.op_flags = Vulkan::RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
+			              Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
+			rp.num_color_attachments = 4;
+
+			auto &gbuffer = renderers.gbuffer;
+			rp.color_attachments[0] = &gbuffer.emissive->get_view();
+			rp.color_attachments[1] = &gbuffer.albedo->get_view();
+			rp.color_attachments[2] = &gbuffer.normal->get_view();
+			rp.color_attachments[3] = &gbuffer.pbr->get_view();
+			rp.depth_stencil = &gbuffer.depth->get_view();
+
+			for (unsigned x = 0; x < resolution.x; x++)
+			{
+				for (unsigned face = 0; face < 6; face++)
+				{
+					vec3 tex = (vec3(x, y, z) + 0.5f + probe_pos_jitter[layer_to_probe_jitter(layer, x, y)].xyz()) / vec3(resolution);
+					vec3 center = vec3(
+							dot(light.texture_to_world[0], vec4(tex, 1.0f)),
+							dot(light.texture_to_world[1], vec4(tex, 1.0f)),
+							dot(light.texture_to_world[2], vec4(tex, 1.0f)));
+
+					mat4 proj, view;
+					compute_cube_render_transform(center, face, proj, view, ZNear, ZFar);
+					renderers.contexts[face].set_camera(proj, view);
+					renderers.renderers[face].prepare_render_pass();
+				}
+
+				cmd->begin_region("render-probe-gbuffer");
+
+				rp.render_area.offset.x = 0;
+				rp.render_area.offset.y = 0;
+				rp.render_area.extent.width = ProbeDownsamplingFactor * ProbeResolution * 6;
+				rp.render_area.extent.height = ProbeDownsamplingFactor * ProbeResolution;
+				rp.base_layer = x;
+
+				cmd->begin_render_pass(rp);
+				rp.render_area.extent.width = ProbeResolution * ProbeDownsamplingFactor;
+
+				for (unsigned face = 0; face < 6; face++)
+				{
+					const VkViewport vp = {
+						float(rp.render_area.offset.x),
+						float(rp.render_area.offset.y),
+						float(rp.render_area.extent.width),
+						float(rp.render_area.extent.height),
+						0.0f, 1.0f,
+					};
+					cmd->set_viewport(vp);
+					cmd->set_scissor(rp.render_area);
+					renderers.renderers[face].build_render_pass(*cmd);
+					rp.render_area.offset.x += ProbeResolution * ProbeDownsamplingFactor;
+				}
+				cmd->end_render_pass();
+				cmd->end_region();
+
+				LOGI("Rendering gbuffer probe ... X = %u, Y = %u, Z = %u, layer = %u.\n",
+				     x, y, z, layer);
+			}
+
+			transition_gbuffer(*cmd, renderers.gbuffer, TransitionMode::Read);
+
+			*cmd->allocate_typed_constant_data<vec4>(0, 2, 1) = inv_projection_zw;
+			copy_gbuffer(*cmd, light.light.get_gbuffer(), renderers.gbuffer,
+			             resolution.x, z * resolution.y + y, layer);
+
+			device.submit(cmd);
+
+			if ((probe_render_count.fetch_add(1, std::memory_order_relaxed) & 15) == 15)
+			{
+				// We're going to be consuming a fair bit of memory,
+				// so make sure to pump frame contexts through.
+				// This code is not assumed to be hot (should be pre-baked).
+				device.next_frame_context();
+			}
+		}
+	}
+
+	device.next_frame_context();
 }
 
 TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer &composer, TaskGroup &incoming,
@@ -371,11 +471,6 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 	setup.suite = suite;
 	setup.scene = scene;
 
-	std::vector<std::shared_ptr<ContextRenderers>> slice_renderers;
-	slice_renderers.reserve(resolution.x);
-	for (unsigned x = 0; x < resolution.x; x++)
-		slice_renderers.push_back(create_cube_renderer(device, setup));
-
 	TaskComposer probe_composer(*incoming.get_thread_group());
 	probe_composer.set_incoming_task(composer.get_pipeline_stage_dependency());
 
@@ -386,119 +481,16 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 		device.submit(cmd);
 	});
 
-	for (unsigned layer = 0; layer < NumProbeLayers; layer++)
+	auto &render_stage = probe_composer.begin_pipeline_stage();
+	render_stage.set_desc("probe-render-stage");
+
+	for (unsigned z = 0; z < resolution.z; z++)
 	{
-		for (unsigned z = 0; z < resolution.z; z++)
-		{
-			for (unsigned y = 0; y < resolution.y; y++)
-			{
-				auto &context_setup = probe_composer.begin_pipeline_stage();
-
-				for (unsigned x = 0; x < resolution.x; x++)
-				{
-					auto &renderers = slice_renderers[x];
-					for (unsigned face = 0; face < 6; face++)
-					{
-						context_setup.enqueue_task([this, x, y, z, face, layer, resolution, renderers, &light]() {
-							vec3 tex = (vec3(x, y, z) + 0.5f + probe_pos_jitter[layer_to_probe_jitter(layer, x, y)].xyz()) / vec3(resolution);
-							vec3 center = vec3(
-									dot(light.texture_to_world[0], vec4(tex, 1.0f)),
-									dot(light.texture_to_world[1], vec4(tex, 1.0f)),
-									dot(light.texture_to_world[2], vec4(tex, 1.0f)));
-
-							mat4 proj, view;
-							compute_cube_render_transform(center, face, proj, view, ZNear, ZFar);
-							renderers->contexts[face].set_camera(proj, view);
-						});
-					}
-				}
-
-				auto &prepare_stage = probe_composer.begin_pipeline_stage();
-
-				for (unsigned x = 0; x < resolution.x; x++)
-				{
-					auto &renderers = slice_renderers[x];
-					for (unsigned face = 0; face < 6; face++)
-					{
-						TaskComposer face_composer(probe_composer.get_thread_group());
-						face_composer.set_incoming_task(probe_composer.get_pipeline_stage_dependency());
-						renderers->renderers[face].enqueue_prepare_render_pass(face_composer);
-						probe_composer.get_thread_group().add_dependency(prepare_stage, *face_composer.get_outgoing_task());
-					}
-				}
-
-				auto &render_task = probe_composer.begin_pipeline_stage();
-
-				for (unsigned x = 0; x < resolution.x; x++)
-				{
-					auto &renderers = slice_renderers[x];
-					render_task.enqueue_task([this, x, y, z, layer, renderers, &light, &device]() {
-						auto cmd = device.request_command_buffer();
-						cmd->begin_region("render-probe-gbuffer");
-						transition_gbuffer(*cmd, renderers->gbuffer, TransitionMode::Discard);
-
-						Vulkan::RenderPassInfo rp;
-						memset(rp.clear_color, 0, sizeof(rp.clear_color));
-						rp.clear_depth_stencil.depth = 1.0f;
-						rp.clear_depth_stencil.stencil = 0;
-						rp.clear_attachments = 0xf;
-						rp.store_attachments = 0xf;
-						rp.op_flags = Vulkan::RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT | Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
-						rp.num_color_attachments = 4;
-
-						rp.render_area.offset.x = 0;
-						rp.render_area.offset.y = 0;
-						rp.render_area.extent.width = ProbeDownsamplingFactor * ProbeResolution * 6;
-						rp.render_area.extent.height = ProbeDownsamplingFactor * ProbeResolution;
-
-						auto &gbuffer = renderers->gbuffer;
-						rp.color_attachments[0] = &gbuffer.emissive->get_view();
-						rp.color_attachments[1] = &gbuffer.albedo->get_view();
-						rp.color_attachments[2] = &gbuffer.normal->get_view();
-						rp.color_attachments[3] = &gbuffer.pbr->get_view();
-						rp.depth_stencil = &gbuffer.depth->get_view();
-
-						cmd->begin_render_pass(rp);
-						rp.render_area.extent.width = ProbeResolution * ProbeDownsamplingFactor;
-
-						for (unsigned face = 0; face < 6; face++)
-						{
-							const VkViewport vp = {
-								float(rp.render_area.offset.x),
-								float(rp.render_area.offset.y),
-								float(rp.render_area.extent.width),
-								float(rp.render_area.extent.height),
-								0.0f, 1.0f,
-							};
-							cmd->set_viewport(vp);
-							cmd->set_scissor(rp.render_area);
-							renderers->renderers[face].build_render_pass(*cmd);
-							rp.render_area.offset.x += ProbeResolution * ProbeDownsamplingFactor;
-						}
-						cmd->end_render_pass();
-						transition_gbuffer(*cmd, renderers->gbuffer, TransitionMode::Read);
-						cmd->end_region();
-
-						*cmd->allocate_typed_constant_data<vec4>(0, 2, 1) = inv_projection_zw;
-						copy_gbuffer(*cmd, light.light.get_gbuffer(), renderers->gbuffer,
-						             x, z * light.light.get_resolution().y + y, layer);
-
-						device.submit(cmd);
-
-						LOGI("Rendering gbuffer probe ... X = %u, Y = %u, Z = %u, layer = %u.\n",
-						     x, y, z, layer);
-					});
-				}
-
-				auto &drain_task = probe_composer.begin_pipeline_stage();
-				drain_task.enqueue_task([&device]() {
-					// We're going to be consuming a fair bit of memory,
-					// so make sure to pump frame contexts through.
-					// This code is not assumed to be hot (should be pre-baked).
-					device.next_frame_context();
-				});
-			}
-		}
+		render_stage.enqueue_task([this, z, &light, setup, &device]() {
+			ContextRenderers renderers;
+			setup_cube_renderer(renderers, device, setup, light.light.get_resolution().x);
+			render_probe_gbuffer_slice(light, device, renderers, z);
+		});
 	}
 
 	auto &task = probe_composer.begin_pipeline_stage();

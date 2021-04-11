@@ -47,7 +47,7 @@ void TaskDeps::notify_dependees()
 	{
 		lock_guard<mutex> holder{cond_lock};
 		done = true;
-		cond.notify_one();
+		cond.notify_all();
 	}
 }
 
@@ -351,7 +351,7 @@ void ThreadGroup::thread_looper(unsigned index)
 			if (completed == total_tasks.load(memory_order_relaxed))
 			{
 				lock_guard<mutex> holder{wait_cond_lock};
-				wait_cond.notify_one();
+				wait_cond.notify_all();
 			}
 		}
 	}

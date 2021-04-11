@@ -2773,7 +2773,7 @@ void Device::decrement_frame_counter_nolock()
 	VK_ASSERT(lock.counter > 0);
 	lock.counter--;
 #ifdef GRANITE_VULKAN_MT
-	lock.cond.notify_one();
+	lock.cond.notify_all();
 #endif
 }
 

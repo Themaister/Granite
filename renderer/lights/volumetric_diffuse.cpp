@@ -236,8 +236,8 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 
 struct VolumetricDiffuseLightManager::ContextRenderers
 {
-	RenderContext contexts[6];
-	RenderPassSceneRenderer renderers[6];
+	RenderContext contexts;
+	RenderPassSceneRenderer renderers;
 	VolumetricDiffuseLight::GBuffer gbuffer;
 };
 
@@ -284,13 +284,10 @@ void VolumetricDiffuseLightManager::setup_cube_renderer(ContextRenderers &render
                                                         const RenderPassSceneRenderer::Setup &base,
                                                         unsigned layers)
 {
-	for (unsigned face = 0; face < 6; face++)
-	{
-		RenderPassSceneRenderer::Setup setup = base;
-		setup.context = &renderers.contexts[face];
-		renderers.renderers[face].init(setup);
-		renderers.renderers[face].set_extra_flush_flags(Renderer::FRONT_FACE_CLOCKWISE_BIT);
-	}
+	RenderPassSceneRenderer::Setup setup = base;
+	setup.context = &renderers.contexts;
+	renderers.renderers.init(setup);
+	renderers.renderers.set_extra_flush_flags(Renderer::FRONT_FACE_CLOCKWISE_BIT);
 
 	renderers.gbuffer = allocate_gbuffer(device, ProbeResolution * ProbeDownsamplingFactor * 6,
 	                                     ProbeResolution * ProbeDownsamplingFactor, layers,
@@ -373,20 +370,6 @@ void VolumetricDiffuseLightManager::render_probe_gbuffer_slice(VolumetricDiffuse
 
 			for (unsigned x = 0; x < resolution.x; x++)
 			{
-				for (unsigned face = 0; face < 6; face++)
-				{
-					vec3 tex = (vec3(x, y, z) + 0.5f + probe_pos_jitter[layer_to_probe_jitter(layer, x, y)].xyz()) / vec3(resolution);
-					vec3 center = vec3(
-							dot(light.texture_to_world[0], vec4(tex, 1.0f)),
-							dot(light.texture_to_world[1], vec4(tex, 1.0f)),
-							dot(light.texture_to_world[2], vec4(tex, 1.0f)));
-
-					mat4 proj, view;
-					compute_cube_render_transform(center, face, proj, view, ZNear, ZFar);
-					renderers.contexts[face].set_camera(proj, view);
-					renderers.renderers[face].prepare_render_pass();
-				}
-
 				cmd->begin_region("render-probe-gbuffer");
 
 				rp.render_area.offset.x = 0;
@@ -400,6 +383,17 @@ void VolumetricDiffuseLightManager::render_probe_gbuffer_slice(VolumetricDiffuse
 
 				for (unsigned face = 0; face < 6; face++)
 				{
+					vec3 tex = (vec3(x, y, z) + 0.5f + probe_pos_jitter[layer_to_probe_jitter(layer, x, y)].xyz()) / vec3(resolution);
+					vec3 center = vec3(
+							dot(light.texture_to_world[0], vec4(tex, 1.0f)),
+							dot(light.texture_to_world[1], vec4(tex, 1.0f)),
+							dot(light.texture_to_world[2], vec4(tex, 1.0f)));
+
+					mat4 proj, view;
+					compute_cube_render_transform(center, face, proj, view, ZNear, ZFar);
+					renderers.contexts.set_camera(proj, view);
+					renderers.renderers.prepare_render_pass();
+
 					const VkViewport vp = {
 						float(rp.render_area.offset.x),
 						float(rp.render_area.offset.y),
@@ -409,9 +403,10 @@ void VolumetricDiffuseLightManager::render_probe_gbuffer_slice(VolumetricDiffuse
 					};
 					cmd->set_viewport(vp);
 					cmd->set_scissor(rp.render_area);
-					renderers.renderers[face].build_render_pass(*cmd);
+					renderers.renderers.build_render_pass(*cmd);
 					rp.render_area.offset.x += ProbeResolution * ProbeDownsamplingFactor;
 				}
+
 				cmd->end_render_pass();
 				cmd->end_region();
 

@@ -208,19 +208,8 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	auto flags = Renderer::get_mesh_renderer_options_from_lighting(*fallback_render_context->get_lighting_parameters());
 	flags &= ~(Renderer::VOLUMETRIC_FOG_ENABLE_BIT |
 	           Renderer::AMBIENT_OCCLUSION_BIT |
-	           Renderer::VOLUMETRIC_DIFFUSE_ENABLE_BIT);
+	           Renderer::SHADOW_CASCADE_ENABLE_BIT);
 	auto defines = Renderer::build_defines_from_renderer_options(RendererType::GeneralForward, flags);
-
-	if (flags & Renderer::SHADOW_CASCADE_ENABLE_BIT)
-	{
-		auto &subgroup = cmd.get_device().get_device_features().subgroup_properties;
-		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
-		    !Vulkan::ImplementationQuirks::get().force_no_subgroups &&
-		    (subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0)
-		{
-			defines.emplace_back("SUBGROUP_ARITHMETIC", 1);
-		}
-	}
 
 	cmd.set_program("builtin://shaders/lights/volumetric_hemisphere_integral.comp", defines);
 	cmd.push_constants(&push, 0, sizeof(push));

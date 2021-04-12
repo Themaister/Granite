@@ -1500,7 +1500,7 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 	unsigned local_count = bindless.parameters.num_lights;
 	unsigned global_count = bindless.global_transforms.num_lights;
 	unsigned shadow_count = local_count + global_count;
-	unsigned total_lights = shadow_count + bindless.volumetric.num_volumes;
+	unsigned total_lights = shadow_count + bindless.volumetric.num_volumes * 2;
 	unsigned num_descriptors = std::max(1u, total_lights);
 
 	if (!bindless.descriptor_pool)
@@ -1535,7 +1535,16 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 	}
 
 	for (unsigned i = 0; i < bindless.volumetric.num_volumes; i++)
-		bindless.descriptor_pool->set_texture(i + shadow_count, *visible_diffuse_lights[i].light->light.get_volume_view());
+	{
+		bindless.descriptor_pool->set_texture(i + shadow_count,
+		                                      *visible_diffuse_lights[i].light->light.get_volume_view());
+	}
+
+	for (unsigned i = 0; i < bindless.volumetric.num_volumes; i++)
+	{
+		bindless.descriptor_pool->set_texture(i + shadow_count + bindless.volumetric.num_volumes,
+		                                      *visible_diffuse_lights[i].light->light.get_prev_volume_view());
+	}
 }
 
 bool LightClusterer::bindless_light_is_point(unsigned index) const

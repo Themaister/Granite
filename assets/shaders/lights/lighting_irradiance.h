@@ -29,6 +29,10 @@ mediump vec3 compute_irradiance_lighting(
 	in_light += compute_cluster_irradiance_light(light_world_pos, light_normal);
 #endif
 
+#ifdef VOLUMETRIC_DIFFUSE
+	in_light += compute_volumetric_diffuse(light_world_pos, light_normal);
+#endif
+
 	return in_light;
 }
 #endif

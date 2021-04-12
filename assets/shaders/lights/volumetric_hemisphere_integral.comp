@@ -1,14 +1,18 @@
 #version 450
 #extension GL_EXT_samplerless_texture_functions : require
+#extension GL_EXT_nonuniform_qualifier : require
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 6) in;
 
 #define CLUSTERER_NO_HELPER_INVOCATION
 #define CLUSTERER_GLOBAL
+#define VOLUMETRIC_DIFFUSE_PREV_TEXTURES
+#define VOLUMETRIC_DIFFUSE_ATLAS_SET 1
 #include "../inc/subgroup_extensions.h"
 #include "../inc/render_parameters.h"
 
 #include "clusterer_data.h"
 #include "volumetric_probe_hash.h"
+#include "volumetric_diffuse.h"
 
 layout(set = 3, binding = 2) uniform ClusterTransforms
 {
@@ -58,17 +62,6 @@ layout(set = 3, binding = 1) uniform PerProbe
 #define PI 3.1415628
 #endif
 
-mediump float maximum3(mediump vec3 v)
-{
-    return max(max(v.x, v.y), v.z);
-}
-
-mediump float weight_term(vec3 local_pos)
-{
-    mediump float w = 0.5 - maximum3(abs(local_pos - 0.5));
-    return clamp(w * 64.0, 0.0, 1.0);
-}
-
 vec3 get_probe_jitter(uvec2 probe_xy)
 {
     return transforms.probe_pos_jitter[
@@ -76,41 +69,6 @@ vec3 get_probe_jitter(uvec2 probe_xy)
             (probe_xy.x & 1u) +
             (probe_xy.y & 1u) * 2u) &
             (NumProbeLayers - 1u)];
-}
-
-mediump vec3 compute_feedback_diffuse(vec3 world_pos, mediump vec3 normal)
-{
-    vec3 local_pos = vec3(
-            dot(vec4(world_pos, 1.0), world_to_texture[0]),
-            dot(vec4(world_pos, 1.0), world_to_texture[1]),
-            dot(vec4(world_pos, 1.0), world_to_texture[2]));
-
-    float lo_tex_coord = 0.5 * inv_probe_resolution.x;
-    float hi_tex_coord = 1.0 - lo_tex_coord;
-
-    mediump vec3 result;
-    if (all(greaterThan(local_pos, vec3(0.0))) && all(lessThan(local_pos, vec3(1.0))))
-    {
-        float base_tex_x = clamp(local_pos.x, lo_tex_coord, hi_tex_coord) / 6.0;
-
-        mediump vec3 normal2 = normal * normal;
-        vec3 normal_offsets = mix(vec3(0.0), vec3(1.0 / 6.0), lessThan(normal, vec3(0.0)));
-        float x_offset = base_tex_x + (0.0 / 3.0) + normal_offsets.x;
-        float y_offset = base_tex_x + (1.0 / 3.0) + normal_offsets.y;
-        float z_offset = base_tex_x + (2.0 / 3.0) + normal_offsets.z;
-
-        result =
-            normal2.x * textureLod(uPrevAmbient, vec3(x_offset, local_pos.yz), 0.0).rgb +
-            normal2.y * textureLod(uPrevAmbient, vec3(y_offset, local_pos.yz), 0.0).rgb +
-            normal2.z * textureLod(uPrevAmbient, vec3(z_offset, local_pos.yz), 0.0).rgb;
-
-        mediump float w = weight_term(local_pos);
-        result *= w;
-    }
-    else
-        result = vec3(0.0);
-
-    return result;
 }
 
 mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
@@ -121,9 +79,9 @@ mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
     {
         vec3 albedo = texelFetch(uProbeAlbedo, coord, 0).rgb;
         vec3 normal = normalize(texelFetch(uProbeNormal, coord, 0).xyz * 2.0 - 1.0);
-        color += min(albedo, vec3(0.95)) * (
-            compute_feedback_diffuse(world_pos, normal) +
-            compute_irradiance_lighting(world_pos, normal, directional.direction, directional.color));
+        color += min(albedo, vec3(0.95)) * compute_irradiance_lighting(
+                world_pos, normal,
+                directional.direction, directional.color);
     }
 
     float l2 = dot(pos, pos);

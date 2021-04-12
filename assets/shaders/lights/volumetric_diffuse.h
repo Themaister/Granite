@@ -31,7 +31,7 @@ mediump float maximum3(mediump vec3 v)
 mediump float weight_term(vec3 local_pos)
 {
 	mediump float w = 0.5 - maximum3(abs(local_pos - 0.5));
-	return clamp(w * 20.0, 0.0, 1.0);
+	return clamp(w * 200.0, 0.0, 1.0);
 }
 
 mediump vec4 compute_volumetric_diffuse(int index, vec3 world_pos, mediump vec3 normal)
@@ -54,7 +54,12 @@ mediump vec4 compute_volumetric_diffuse(int index, vec3 world_pos, mediump vec3 
 		float y_offset = base_tex_x + (1.0 / 3.0) + normal_offsets.y;
 		float z_offset = base_tex_x + (2.0 / 3.0) + normal_offsets.z;
 
+#ifdef VOLUMETRIC_DIFFUSE_PREV_TEXTURES
+		int tex_index = index + volumetric.bindless_index_offset + volumetric.num_volumes;
+#else
 		int tex_index = index + volumetric.bindless_index_offset;
+#endif
+
 		mediump vec3 result =
 				normal2.x * textureLod(sampler3D(uVolumes[tex_index], LinearClampSampler), vec3(x_offset, local_pos.yz), 0.0).rgb +
 				normal2.y * textureLod(sampler3D(uVolumes[tex_index], LinearClampSampler), vec3(y_offset, local_pos.yz), 0.0).rgb +

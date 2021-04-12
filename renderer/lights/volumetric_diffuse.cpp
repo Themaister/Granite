@@ -577,18 +577,19 @@ void VolumetricDiffuseLightManager::cull_probe_buffer(Vulkan::CommandBuffer &cmd
 	cmd.set_storage_texture(0, 2, *light.light.get_volume_view());
 	cmd.set_texture(0, 3, *light.light.get_prev_volume_view());
 	uvec3 res = light.light.get_resolution();
-	cmd.push_constants(&res, 0, sizeof(res));
 
 	struct VolumeParameters
 	{
 		vec4 tex_to_world[3];
 		vec3 inv_resolution;
 		float radius;
+		uvec3 resolution;
+		uint32_t iteration;
 	};
 	auto *params = cmd.allocate_typed_constant_data<VolumeParameters>(1, 0, 1);
 	memcpy(params->tex_to_world, light.texture_to_world, sizeof(light.texture_to_world));
 
-	vec3 inv_resolution = vec3(1.0f) / vec3(light.light.get_resolution());
+	vec3 inv_resolution = vec3(1.0f) / vec3(res);
 	params->inv_resolution = inv_resolution;
 
 	vec3 radius;
@@ -600,6 +601,8 @@ void VolumetricDiffuseLightManager::cull_probe_buffer(Vulkan::CommandBuffer &cmd
 		                        light.texture_to_world[2][i]));
 	}
 	params->radius = length(radius);
+	params->resolution = res;
+	params->iteration = light.update_iteration;
 
 	memcpy(cmd.allocate_typed_constant_data<vec4>(1, 1, 6),
 	       base_render_context->get_visibility_frustum().get_planes(),

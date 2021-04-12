@@ -604,9 +604,15 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
 		*point_info = info;
 	}
 }
+
+float VolumetricDiffuseLight::get_guard_band_factor()
+{
+	return 0.95f;
+}
+
 const AABB &VolumetricDiffuseLight::get_static_aabb()
 {
-	static AABB aabb(vec3(-0.5f), vec3(0.5f));
+	static AABB aabb(vec3(-0.5f / get_guard_band_factor()), vec3(0.5f / get_guard_band_factor()));
 	return aabb;
 }
 

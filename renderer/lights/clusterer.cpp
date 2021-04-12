@@ -1231,7 +1231,7 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 
 	bindless.volumetric.bindless_index_offset = local_count + global_count;
 	bindless.volumetric.num_volumes = std::min<uint32_t>(visible_diffuse_lights.size(), CLUSTERER_MAX_VOLUMES);
-	bindless.volumetric.fallback_volume = muglm::floatToHalf(vec4(0.0001f, 0.0001f, 0.0001f, 0.001f));
+	bindless.volumetric.fallback_volume = muglm::floatToHalf(vec4(0.0001f, 0.0001f, 0.0001f, 0.01f));
 
 	for (uint32_t i = 0; i < bindless.volumetric.num_volumes; i++)
 	{
@@ -1244,6 +1244,10 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 		float half_inv_width = 0.5f / float(light.light->light.get_resolution().x);
 		volume.lo_tex_coord_x = half_inv_width;
 		volume.hi_tex_coord_x = 1.0f - half_inv_width;
+
+		// FIXME: Hardcoded for now.
+		volume.guard_band_factor = VolumetricDiffuseLight::get_guard_band_factor();
+		volume.guard_band_sharpen = 200.0f;
 	}
 }
 

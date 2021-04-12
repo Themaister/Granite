@@ -121,7 +121,8 @@ struct DiffuseVolumeParameters
 	vec4 world_to_texture[3];
 	float lo_tex_coord_x;
 	float hi_tex_coord_x;
-	float padding[2];
+	float guard_band_factor;
+	float guard_band_sharpen;
 };
 
 #define CLUSTERER_MAX_VOLUMES 128

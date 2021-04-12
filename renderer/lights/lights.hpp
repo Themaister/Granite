@@ -188,6 +188,7 @@ public:
 	void set_resolution(uvec3 resolution);
 	uvec3 get_resolution() const;
 	static const AABB &get_static_aabb();
+	static float get_guard_band_factor();
 
 	void swap_volumes();
 

@@ -11,6 +11,8 @@ struct DiffuseVolumeParameters
 	vec4 world_to_texture[3];
 	float lo_tex_coord_x;
 	float hi_tex_coord_x;
+	float guard_band_factor;
+	float guard_band_sharpen;
 };
 
 const int CLUSTERER_MAX_VOLUMES = 128;
@@ -28,10 +30,10 @@ mediump float maximum3(mediump vec3 v)
 	return max(max(v.x, v.y), v.z);
 }
 
-mediump float weight_term(vec3 local_pos)
+mediump float weight_term(vec3 local_pos, float factor, float sharpen)
 {
-	mediump float w = 0.5 - maximum3(abs(local_pos - 0.5));
-	return clamp(w * 200.0, 0.0, 1.0);
+	mediump float w = 0.5 - factor * maximum3(abs(local_pos - 0.5));
+	return clamp(w * sharpen, 0.0, 1.0);
 }
 
 mediump vec4 compute_volumetric_diffuse(int index, vec3 world_pos, mediump vec3 normal)
@@ -41,8 +43,12 @@ mediump vec4 compute_volumetric_diffuse(int index, vec3 world_pos, mediump vec3 
 			dot(vec4(world_pos, 1.0), volumetric.volumes[index].world_to_texture[1]),
 			dot(vec4(world_pos, 1.0), volumetric.volumes[index].world_to_texture[2]));
 
+	float factor = volumetric.volumes[index].guard_band_factor;
+	float sharpen = volumetric.volumes[index].guard_band_sharpen;
+	mediump float w = weight_term(local_pos, factor, sharpen);
+
 	mediump vec4 weighted_result;
-	if (all(greaterThan(local_pos, vec3(0.0))) && all(lessThan(local_pos, vec3(1.0))))
+	if (w > 0.0)
 	{
 		float base_tex_x = clamp(local_pos.x,
 				volumetric.volumes[index].lo_tex_coord_x,
@@ -65,7 +71,6 @@ mediump vec4 compute_volumetric_diffuse(int index, vec3 world_pos, mediump vec3 
 				normal2.y * textureLod(sampler3D(uVolumes[tex_index], LinearClampSampler), vec3(y_offset, local_pos.yz), 0.0).rgb +
 				normal2.z * textureLod(sampler3D(uVolumes[tex_index], LinearClampSampler), vec3(z_offset, local_pos.yz), 0.0).rgb;
 
-		mediump float w = weight_term(local_pos);
 		weighted_result = vec4(result * w, w);
 	}
 	else

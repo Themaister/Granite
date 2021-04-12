@@ -1246,7 +1246,7 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 		volume.hi_tex_coord_x = 1.0f - half_inv_width;
 
 		// FIXME: Hardcoded for now.
-		volume.guard_band_factor = VolumetricDiffuseLight::get_guard_band_factor();
+		volume.guard_band_factor = 1.0f / VolumetricDiffuseLight::get_guard_band_factor();
 		volume.guard_band_sharpen = 200.0f;
 	}
 }

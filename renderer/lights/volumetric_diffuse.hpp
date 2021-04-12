@@ -51,6 +51,7 @@ private:
 	Scene *scene = nullptr;
 	const RendererSuite *suite = nullptr;
 	const RenderContext *fallback_render_context = nullptr;
+	const RenderContext *base_render_context = nullptr;
 
 	TaskGroupHandle create_probe_gbuffer(TaskComposer &composer, TaskGroup &incoming,
 	                                     const RenderContext &context,

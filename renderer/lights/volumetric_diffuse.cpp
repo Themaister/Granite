@@ -585,8 +585,37 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 			auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
 			cmd.set_storage_buffer(0, 0, *light->light.get_atomic_buffer());
 			cmd.set_storage_buffer(0, 1, *light->light.get_worklist_buffer());
+			cmd.set_storage_texture(0, 2, *light->light.get_volume_view());
+			cmd.set_texture(0, 3, *light->light.get_prev_volume_view());
 			uvec3 res = light->light.get_resolution();
 			cmd.push_constants(&res, 0, sizeof(res));
+
+			struct VolumeParameters
+			{
+				vec4 tex_to_world[3];
+				vec3 inv_resolution;
+				float radius;
+			};
+			auto *params = cmd.allocate_typed_constant_data<VolumeParameters>(1, 0, 1);
+			memcpy(params->tex_to_world, light->texture_to_world, sizeof(light->texture_to_world));
+
+			vec3 inv_resolution = vec3(1.0f) / vec3(light->light.get_resolution());
+			params->inv_resolution = inv_resolution;
+
+			vec3 radius;
+			for (int i = 0; i < 3; i++)
+			{
+				radius[i] = inv_resolution[i] *
+				            length(vec3(light->texture_to_world[0][i],
+				                        light->texture_to_world[1][i],
+				                        light->texture_to_world[2][i]));
+			}
+			params->radius = length(radius);
+
+			memcpy(cmd.allocate_typed_constant_data<vec4>(1, 1, 6),
+			       base_render_context->get_visibility_frustum().get_planes(),
+			       6 * sizeof(vec4));
+
 			cmd.dispatch((res.x + 3) / 4, (res.y + 3) / 4, (res.z + 3) / 4);
 		}
 
@@ -626,8 +655,9 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 	light_pass.add_texture_input("shadow-fallback");
 }
 
-void VolumetricDiffuseLightManager::set_base_render_context(const RenderContext *)
+void VolumetricDiffuseLightManager::set_base_render_context(const RenderContext *context)
 {
+	base_render_context = context;
 }
 
 void VolumetricDiffuseLightManager::set_fallback_render_context(const RenderContext *context)

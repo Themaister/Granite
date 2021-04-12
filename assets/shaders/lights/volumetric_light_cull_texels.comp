@@ -1,4 +1,5 @@
 #version 450
+#extension GL_EXT_samplerless_texture_functions : require
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 layout(set = 0, binding = 0) buffer Count
@@ -9,6 +10,21 @@ layout(set = 0, binding = 0) buffer Count
 layout(set = 0, binding = 1) writeonly buffer WorkList
 {
     uint work_list[];
+};
+
+layout(rgba16f, set = 0, binding = 2) writeonly uniform image3D uOutput;
+layout(set = 0, binding = 3) uniform texture3D uInput;
+
+layout(set = 1, binding = 0) uniform Transforms
+{
+    vec4 tex_to_world[3];
+    vec3 inv_resolution;
+    float radius;
+};
+
+layout(set = 1, binding = 1) uniform Planes
+{
+    vec4 planes[6];
 };
 
 layout(push_constant) uniform Registers
@@ -25,8 +41,26 @@ void main()
 {
     if (all(lessThan(gl_GlobalInvocationID, registers.resolution)))
     {
-        // TODO: Actually cull.
-        uint offset = atomicAdd(atomic_count, 1u);
-        work_list[offset] = pack_work(gl_GlobalInvocationID);
+        float R = radius;
+        vec3 uvw = (vec3(gl_GlobalInvocationID) + 0.5) * inv_resolution;
+        vec3 world = vec3(
+            dot(tex_to_world[0], vec4(uvw, 1.0)),
+            dot(tex_to_world[1], vec4(uvw, 1.0)),
+            dot(tex_to_world[2], vec4(uvw, 1.0)));
+
+        bool outside = false;
+        for (int i = 0; !outside && i < 6; i++)
+            outside = dot(planes[i], vec4(world, 1.0)) < -R;
+
+        if (!outside)
+        {
+            uint offset = atomicAdd(atomic_count, 1u);
+            work_list[offset] = pack_work(gl_GlobalInvocationID);
+        }
+        else
+        {
+            imageStore(uOutput, ivec3(gl_GlobalInvocationID),
+                texelFetch(uInput, ivec3(gl_GlobalInvocationID), 0));
+        }
     }
 }

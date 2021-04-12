@@ -68,6 +68,9 @@ private:
 	void light_probe_buffer(Vulkan::CommandBuffer &cmd,
 	                        VolumetricDiffuseLightComponent &light);
 
+	void cull_probe_buffer(Vulkan::CommandBuffer &cmd,
+	                       VolumetricDiffuseLightComponent &light);
+
 	void set_base_renderer(const RendererSuite *suite) override;
 	void set_base_render_context(const RenderContext *context) override;
 	void set_scene(Scene *scene) override;

@@ -276,6 +276,15 @@ static VolumetricDiffuseLight::GBuffer allocate_gbuffer(Vulkan::Device &device, 
 	device.set_name(*allocated_gbuffer.pbr, "probe-pbr");
 	device.set_name(*allocated_gbuffer.depth, "probe-depth");
 
+	if (compute)
+	{
+		allocated_gbuffer.emissive->set_layout(Vulkan::Layout::General);
+		allocated_gbuffer.depth->set_layout(Vulkan::Layout::General);
+		allocated_gbuffer.albedo->set_layout(Vulkan::Layout::General);
+		allocated_gbuffer.normal->set_layout(Vulkan::Layout::General);
+		allocated_gbuffer.pbr->set_layout(Vulkan::Layout::General);
+	}
+
 	return allocated_gbuffer;
 }
 

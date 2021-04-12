@@ -626,6 +626,13 @@ const Vulkan::ImageView *VolumetricDiffuseLight::get_prev_volume_view() const
 	return prev_volume ? &prev_volume->get_view() : nullptr;
 }
 
+const Vulkan::ImageView *VolumetricDiffuseLight::get_accumulation_view(unsigned index) const
+{
+	if (index >= accums.size())
+		return nullptr;
+	return accums[index] ? &accums[index]->get_view() : nullptr;
+}
+
 void VolumetricDiffuseLight::swap_volumes()
 {
 	std::swap(volume, prev_volume);
@@ -635,6 +642,11 @@ void VolumetricDiffuseLight::set_volumes(Vulkan::ImageHandle vol, Vulkan::ImageH
 {
 	volume = std::move(vol);
 	prev_volume = std::move(prev_vol);
+}
+
+void VolumetricDiffuseLight::set_accumulation_volumes(Util::SmallVector<Vulkan::ImageHandle> accums_)
+{
+	accums = std::move(accums_);
 }
 
 void VolumetricDiffuseLight::set_buffers(Vulkan::BufferHandle atomics_, Vulkan::BufferHandle worklist_)
@@ -689,6 +701,7 @@ void VolumetricDiffuseLight::on_device_destroyed(const Vulkan::DeviceCreatedEven
 	prev_volume.reset();
 	atomics.reset();
 	worklist.reset();
+	accums.clear();
 	gbuffer = {};
 }
 

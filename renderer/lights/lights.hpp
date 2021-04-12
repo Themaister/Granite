@@ -171,8 +171,10 @@ public:
 	VolumetricDiffuseLight();
 
 	void set_volumes(Vulkan::ImageHandle volume, Vulkan::ImageHandle prev_volume);
+	void set_accumulation_volumes(Util::SmallVector<Vulkan::ImageHandle> accums);
 	const Vulkan::ImageView *get_volume_view() const;
 	const Vulkan::ImageView *get_prev_volume_view() const;
+	const Vulkan::ImageView *get_accumulation_view(unsigned index) const;
 	const Vulkan::Buffer *get_atomic_buffer() const;
 	const Vulkan::Buffer *get_worklist_buffer() const;
 
@@ -194,6 +196,7 @@ public:
 
 private:
 	Vulkan::ImageHandle volume, prev_volume;
+	Util::SmallVector<Vulkan::ImageHandle> accums;
 	Vulkan::BufferHandle atomics, worklist;
 	GBuffer gbuffer;
 	uvec3 resolution;

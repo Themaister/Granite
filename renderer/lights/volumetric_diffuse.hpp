@@ -68,6 +68,9 @@ private:
 	void light_probe_buffer(Vulkan::CommandBuffer &cmd,
 	                        VolumetricDiffuseLightComponent &light);
 
+	void average_probe_buffer(Vulkan::CommandBuffer &cmd,
+	                          VolumetricDiffuseLightComponent &light);
+
 	void cull_probe_buffer(Vulkan::CommandBuffer &cmd,
 	                       VolumetricDiffuseLightComponent &light);
 

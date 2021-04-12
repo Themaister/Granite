@@ -168,6 +168,21 @@ static unsigned layer_to_probe_jitter(unsigned layer, unsigned x, unsigned y)
 	return (layer + (y & 1) * 2 + (x & 1)) % NumProbeLayers;
 }
 
+void VolumetricDiffuseLightManager::average_probe_buffer(Vulkan::CommandBuffer &cmd,
+                                                         VolumetricDiffuseLightComponent &light)
+{
+	cmd.set_program("builtin://shaders/lights/volumetric_light_average.comp");
+	cmd.set_storage_texture(0, 0, *light.light.get_volume_view());
+	for (unsigned i = 0; i < NumProbeLayers; i++)
+		cmd.set_storage_texture(0, 1 + i, *light.light.get_accumulation_view(i));
+
+	uvec3 resolution = light.light.get_resolution();
+	resolution.x *= 6;
+	cmd.push_constants(&resolution, 0, sizeof(resolution));
+
+	cmd.dispatch((resolution.x + 3) / 4, (resolution.y + 3) / 4, (resolution.z + 3) / 4);
+}
+
 void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cmd,
                                                        VolumetricDiffuseLightComponent &light)
 {
@@ -213,13 +228,12 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 
 	cmd.set_program("builtin://shaders/lights/volumetric_hemisphere_integral.comp", defines);
 	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.set_storage_texture(2, 0, *light.light.get_volume_view());
+	cmd.set_storage_texture(2, 0, *light.light.get_accumulation_view(push.gbuffer_layer));
 	cmd.set_texture(2, 1, light.light.get_gbuffer().emissive->get_view());
 	cmd.set_texture(2, 2, light.light.get_gbuffer().albedo->get_view());
 	cmd.set_texture(2, 3, light.light.get_gbuffer().normal->get_view());
 	cmd.set_texture(2, 4, light.light.get_gbuffer().depth->get_view());
-	cmd.set_texture(2, 5, *light.light.get_prev_volume_view(), Vulkan::StockSampler::LinearClamp);
-	cmd.set_storage_buffer(2, 6, *light.light.get_worklist_buffer());
+	cmd.set_storage_buffer(2, 5, *light.light.get_worklist_buffer());
 	cmd.dispatch_indirect(*light.light.get_atomic_buffer(), 0);
 }
 
@@ -505,6 +519,17 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 			image->set_layout(Vulkan::Layout::General);
 			prev_image->set_layout(Vulkan::Layout::General);
 
+			Util::SmallVector<Vulkan::ImageHandle> layer_accums(NumProbeLayers);
+			{
+				unsigned counter = 0;
+				for (auto &layer : layer_accums)
+				{
+					layer = device.create_image(info);
+					device.set_name(*layer, (std::string("probe-accum-") + std::to_string(counter++)).c_str());
+					layer->set_layout(Vulkan::Layout::General);
+				}
+			}
+
 			const auto clear = [](Vulkan::CommandBuffer &clear_cmd, Vulkan::Image &clear_image) {
 				clear_cmd.image_barrier(clear_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
 				                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
@@ -518,8 +543,11 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 
 			clear(*cmd, *image);
 			clear(*cmd, *prev_image);
+			for (auto &layer : layer_accums)
+				clear(*cmd, *layer);
 
 			light.light.set_volumes(std::move(image), std::move(prev_image));
+			light.light.set_accumulation_volumes(std::move(layer_accums));
 		}
 
 		device.submit(cmd);
@@ -656,6 +684,15 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 		{
 			auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
 			light_probe_buffer(cmd, *light);
+		}
+
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+
+		for (auto &light_tuple : *volumetric_diffuse)
+		{
+			auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);
+			average_probe_buffer(cmd, *light);
 		}
 	});
 

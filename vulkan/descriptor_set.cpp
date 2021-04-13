@@ -78,11 +78,10 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 		unsigned pool_array_size;
 		if (array_size == DescriptorSetLayout::UNSIZED_ARRAY)
 		{
-			if (device->get_device_features().descriptor_indexing_features.descriptorBindingVariableDescriptorCount)
-				array_size = VULKAN_NUM_BINDINGS_BINDLESS_VARYING;
-			else
-				array_size = VULKAN_NUM_BINDINGS_BINDLESS;
+			array_size = VULKAN_NUM_BINDINGS_BINDLESS_VARYING;
 			pool_array_size = array_size;
+			if (!device->get_device_features().descriptor_indexing_features.descriptorBindingVariableDescriptorCount)
+				LOGW("Device does not support variable descriptor count.\n");
 		}
 		else
 			pool_array_size = array_size * VULKAN_NUM_SETS_PER_POOL;

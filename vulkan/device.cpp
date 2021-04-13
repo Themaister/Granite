@@ -4332,7 +4332,7 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
                                                                      unsigned num_sets, unsigned num_descriptors)
 {
 	if (!ext.supports_descriptor_indexing)
-		return BindlessDescriptorPoolHandle{ nullptr };
+		return BindlessDescriptorPoolHandle{nullptr};
 
 	DescriptorSetAllocator *allocator = nullptr;
 
@@ -4357,12 +4357,12 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 	if (!pool)
 	{
 		LOGE("Failed to allocate bindless pool.\n");
-		return BindlessDescriptorPoolHandle{ nullptr };
+		return BindlessDescriptorPoolHandle{nullptr};
 	}
 
 	auto *handle = handle_pool.bindless_descriptor_pool.allocate(this, allocator, pool,
 	                                                             num_sets, num_descriptors);
-	return BindlessDescriptorPoolHandle{ handle };
+	return BindlessDescriptorPoolHandle{handle};
 }
 
 void Device::fill_buffer_sharing_indices(VkBufferCreateInfo &info, uint32_t *sharing_indices)

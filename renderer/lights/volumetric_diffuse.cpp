@@ -716,10 +716,7 @@ void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &
 	auto *light_pass = graph.find_pass("probe-light");
 	assert(light_pass);
 	if (graph.find_pass("clustering-bindless"))
-	{
-		light_pass->add_storage_read_only_input("cluster-transforms");
 		light_pass->add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-	}
 
 	if (graph.find_pass("shadow-fallback"))
 		light_pass->add_texture_input("shadow-fallback");

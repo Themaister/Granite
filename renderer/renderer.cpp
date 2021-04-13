@@ -39,8 +39,9 @@ enum GlobalDescriptorSetBindings
 {
 	BINDING_GLOBAL_TRANSFORM = 0,
 	BINDING_GLOBAL_RENDER_PARAMETERS = 1,
-	BINDING_GLOBAL_ENV_RADIANCE = 2,
-	BINDING_GLOBAL_ENV_IRRADIANCE = 3,
+
+	BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_PARAMETERS = 2,
+
 	BINDING_GLOBAL_BRDF_TABLE = 4,
 	BINDING_GLOBAL_DIRECTIONAL_SHADOW = 5,
 	BINDING_GLOBAL_AMBIENT_OCCLUSION = 6,
@@ -88,6 +89,7 @@ void RendererSuite::set_default_renderers()
 	set_renderer(Type::ForwardTransparent, Util::make_handle<Renderer>(RendererType::GeneralForward, nullptr));
 	set_renderer(Type::ShadowDepthPositionalPCF, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::ShadowDepthDirectionalPCF, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
+	set_renderer(Type::ShadowDepthDirectionalFallbackPCF, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::ShadowDepthDirectionalVSM, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::ShadowDepthPositionalVSM, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::PrepassDepth, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
@@ -98,6 +100,7 @@ void RendererSuite::update_mesh_rendering_options(const RenderContext &context, 
 {
 	get_renderer(Type::ShadowDepthDirectionalPCF).set_mesh_renderer_options(
 			config.cascaded_directional_shadows ? Renderer::MULTIVIEW_BIT : 0);
+	get_renderer(Type::ShadowDepthDirectionalFallbackPCF).set_mesh_renderer_options(0);
 	get_renderer(Type::ShadowDepthPositionalPCF).set_mesh_renderer_options(0);
 	get_renderer(Type::ShadowDepthDirectionalVSM).set_mesh_renderer_options(
 			(config.cascaded_directional_shadows ? Renderer::MULTIVIEW_BIT : 0) | Renderer::SHADOW_VSM_BIT);
@@ -126,7 +129,7 @@ Renderer::Renderer(RendererType type_, const ShaderSuiteResolver *resolver_)
 	EVENT_MANAGER_REGISTER_LATCH(Renderer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 
 	if (type == RendererType::GeneralDeferred || type == RendererType::GeneralForward)
-		set_mesh_renderer_options(SHADOW_CASCADE_ENABLE_BIT | SHADOW_ENABLE_BIT | FOG_ENABLE_BIT | ENVIRONMENT_ENABLE_BIT);
+		set_mesh_renderer_options(SHADOW_CASCADE_ENABLE_BIT | SHADOW_ENABLE_BIT | FOG_ENABLE_BIT);
 	else
 		set_mesh_renderer_options(0);
 }
@@ -197,6 +200,9 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 	auto &meshes = suite[ecast(RenderableType::Mesh)];
 	meshes.get_base_defines() = global_defines;
 	meshes.bake_base_defines();
+	auto &probes = suite[ecast(RenderableType::DebugProbe)];
+	probes.get_base_defines() = global_defines;
+	probes.bake_base_defines();
 	auto &ground = suite[ecast(RenderableType::Ground)];
 	ground.get_base_defines() = global_defines;
 	ground.bake_base_defines();
@@ -249,12 +255,12 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 		global_defines.emplace_back("SHADOWS", 1);
 	if (flags & SHADOW_CASCADE_ENABLE_BIT)
 		global_defines.emplace_back("SHADOW_CASCADES", 1);
+	if (flags & VOLUMETRIC_DIFFUSE_ENABLE_BIT)
+		global_defines.emplace_back("VOLUMETRIC_DIFFUSE", 1);
 	if (flags & FOG_ENABLE_BIT)
 		global_defines.emplace_back("FOG", 1);
 	if (flags & VOLUMETRIC_FOG_ENABLE_BIT)
 		global_defines.emplace_back("VOLUMETRIC_FOG", 1);
-	if (flags & ENVIRONMENT_ENABLE_BIT)
-		global_defines.emplace_back("ENVIRONMENT", 1);
 	if (flags & REFRACTION_ENABLE_BIT)
 		global_defines.emplace_back("REFRACTION", 1);
 	if (flags & POSITIONAL_LIGHT_ENABLE_BIT)
@@ -295,8 +301,6 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(const LightingParameters &lighting)
 {
 	uint32_t flags = 0;
-	if (lighting.environment_irradiance && lighting.environment_radiance)
-		flags |= ENVIRONMENT_ENABLE_BIT;
 
 	if (lighting.shadows)
 	{
@@ -316,7 +320,7 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 	{
 		flags |= POSITIONAL_LIGHT_ENABLE_BIT;
 		if ((lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows()) ||
-		    (lighting.cluster->get_cluster_shadow_map_bindless_set() != VK_NULL_HANDLE))
+		    (lighting.cluster->get_cluster_bindless_set() != VK_NULL_HANDLE))
 		{
 			flags |= POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
 			if (lighting.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
@@ -327,6 +331,9 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 			flags |= POSITIONAL_LIGHT_CLUSTER_LIST_BIT;
 		if (lighting.cluster->clusterer_is_bindless())
 			flags |= POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT;
+
+		if (lighting.cluster->get_cluster_bindless_set())
+			flags |= VOLUMETRIC_DIFFUSE_ENABLE_BIT;
 	}
 
 	if (lighting.ambient_occlusion)
@@ -408,8 +415,14 @@ static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const Li
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_TRANSFORM, *cluster.get_cluster_transform_buffer());
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_BITMASK, *cluster.get_cluster_bitmask_buffer());
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_RANGE, *cluster.get_cluster_range_buffer());
-	if (cluster.get_cluster_shadow_map_bindless_set() != VK_NULL_HANDLE)
-		cmd.set_bindless(1, cluster.get_cluster_shadow_map_bindless_set());
+	if (cluster.get_cluster_bindless_set() != VK_NULL_HANDLE)
+	{
+		cmd.set_bindless(1, cluster.get_cluster_bindless_set());
+
+		size_t size = cluster.get_cluster_volumetric_diffuse_size();
+		void *parameters = cmd.allocate_constant_data(0, BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_PARAMETERS, size);
+		memcpy(parameters, &cluster.get_cluster_volumetric_diffuse_data(), size);
+	}
 }
 
 static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
@@ -427,10 +440,6 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 
 	auto *combined = cmd.allocate_typed_constant_data<CombinedRenderParameters>(0, BINDING_GLOBAL_RENDER_PARAMETERS, 1);
 	memset(combined, 0, sizeof(*combined));
-
-	combined->environment.intensity = lighting->environment.intensity;
-	if (lighting->environment_radiance)
-		combined->environment.mipscale = float(lighting->environment_radiance->get_create_info().levels - 1);
 
 	if (lighting->volumetric_fog)
 	{
@@ -450,11 +459,6 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 	cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE,
 	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.gtx")->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
-
-	if (lighting->environment_radiance != nullptr)
-		cmd.set_texture(0, BINDING_GLOBAL_ENV_RADIANCE, *lighting->environment_radiance, Vulkan::StockSampler::TrilinearClamp);
-	if (lighting->environment_irradiance != nullptr)
-		cmd.set_texture(0, BINDING_GLOBAL_ENV_IRRADIANCE, *lighting->environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
 	if (lighting->shadows != nullptr)
 	{
@@ -578,10 +582,21 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	}
 }
 
-void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options, const FlushParameters *params) const
+void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue,
+                     const RenderContext &context, RendererFlushFlags options,
+                     const FlushParameters *params) const
 {
 	if ((options & SKIP_SORTING_BIT) == 0)
 		queue.sort();
+	flush_subset(cmd, queue, context, options | SKIP_SORTING_BIT, params, 0, 1);
+}
+
+void Renderer::flush(Vulkan::CommandBuffer &cmd, const RenderQueue &queue,
+                     const RenderContext &context, RendererFlushFlags options,
+                     const FlushParameters *params) const
+{
+	if ((options & SKIP_SORTING_BIT) == 0)
+		LOGE("SKIP_SORTING was not specified!\n");
 	flush_subset(cmd, queue, context, options | SKIP_SORTING_BIT, params, 0, 1);
 }
 
@@ -691,8 +706,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 			defines.emplace_back("SUBGROUP_ARITHMETIC", 1);
 		}
 	}
-	if (light.environment_radiance && light.environment_irradiance)
-		defines.emplace_back("ENVIRONMENT", 1);
+
 	if (light.shadows)
 	{
 		defines.emplace_back("SHADOWS", 1);
@@ -706,6 +720,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 				defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
 		}
 	}
+
 	if (light.ambient_occlusion)
 		defines.emplace_back("AMBIENT_OCCLUSION", 1);
 
@@ -713,11 +728,6 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	cmd.set_program(variant->get_program());
 	cmd.set_depth_test(true, false);
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
-
-	if (light.environment_radiance)
-		cmd.set_texture(0, BINDING_GLOBAL_ENV_RADIANCE, *light.environment_radiance, Vulkan::StockSampler::LinearClamp);
-	if (light.environment_irradiance)
-		cmd.set_texture(0, BINDING_GLOBAL_ENV_IRRADIANCE, *light.environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
 	cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE,
 	                GRANITE_COMMON_RENDERER_DATA()->brdf_tables.get_texture()->get_image()->get_view(),
@@ -736,8 +746,8 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	struct DirectionalLightPush
 	{
 		alignas(16) vec4 inv_view_proj_col2;
-		alignas(16) vec4 color_env_intensity;
-		alignas(16) vec4 camera_pos_mipscale;
+		alignas(16) vec3 color;
+		alignas(16) vec3 camera_pos;
 		alignas(16) vec3 direction;
 		alignas(4) float cascade_log_bias;
 		alignas(16) vec3 camera_front;
@@ -755,15 +765,11 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 		ubo->transforms[i] = light.shadow.transforms[i];
 
 	push.inv_view_proj_col2 = context.get_render_parameters().inv_view_projection[2];
-	push.color_env_intensity = vec4(light.directional.color, light.environment.intensity);
+	push.color = light.directional.color;
 	push.direction = light.directional.direction;
 	push.cascade_log_bias = light.shadow.cascade_log_bias;
 
-	float mipscale = 0.0f;
-	if (light.environment_radiance)
-		mipscale = float(light.environment_radiance->get_create_info().levels - 1);
-
-	push.camera_pos_mipscale = vec4(context.get_render_parameters().camera_position, mipscale);
+	push.camera_pos = context.get_render_parameters().camera_position;
 	push.camera_front = context.get_render_parameters().camera_front;
 	push.inv_resolution.x = 1.0f / cmd.get_viewport().width;
 	push.inv_resolution.y = 1.0f / cmd.get_viewport().height;
@@ -789,7 +795,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 
 		vector<pair<string, int>> cluster_defines;
 		if (light.cluster->get_spot_light_shadows() ||
-		    light.cluster->get_cluster_shadow_map_bindless_set())
+		    light.cluster->get_cluster_bindless_set())
 		{
 			cluster_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
 			if (light.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
@@ -804,7 +810,15 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 		}
 
 		if (light.cluster->clusterer_is_bindless())
+		{
 			cluster_defines.emplace_back("CLUSTERER_BINDLESS", 1);
+			if (light.cluster->get_cluster_bindless_set())
+			{
+				cluster_defines.emplace_back("VOLUMETRIC_DIFFUSE", 1);
+				if (light.ambient_occlusion)
+					cluster_defines.emplace_back("AMBIENT_OCCLUSION", 1);
+			}
+		}
 		else if (light.cluster->get_cluster_list_buffer())
 			cluster_defines.emplace_back("CLUSTER_LIST", 1);
 
@@ -872,8 +886,7 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
                                             RendererType renderer,
                                             RenderableType drawable) const
 {
-	if (renderer == RendererType::GeneralDeferred ||
-	    renderer == RendererType::GeneralForward)
+	if (renderer == RendererType::GeneralDeferred || renderer == RendererType::GeneralForward)
 	{
 		switch (drawable)
 		{
@@ -883,6 +896,10 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 
 		case RenderableType::DebugMesh:
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/debug_mesh.vert", "builtin://shaders/debug_mesh.frag");
+			break;
+
+		case RenderableType::DebugProbe:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/debug_probe.vert", "builtin://shaders/debug_probe.frag");
 			break;
 
 		case RenderableType::Skybox:

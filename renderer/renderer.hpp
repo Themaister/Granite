@@ -60,7 +60,7 @@ public:
 		SHADOW_ENABLE_BIT = 1 << 0,
 		SHADOW_CASCADE_ENABLE_BIT = 1 << 1,
 		FOG_ENABLE_BIT = 1 << 2,
-		ENVIRONMENT_ENABLE_BIT = 1 << 3,
+		VOLUMETRIC_DIFFUSE_ENABLE_BIT = 1 << 3,
 		REFRACTION_ENABLE_BIT = 1 << 4,
 		POSITIONAL_LIGHT_ENABLE_BIT = 1 << 5,
 		POSITIONAL_LIGHT_SHADOW_ENABLE_BIT = 1 << 6,
@@ -117,7 +117,11 @@ public:
 			uint8_t ref;
 		} stencil;
 	};
-	void flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options = 0, const FlushParameters *params = nullptr) const;
+	void flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context,
+	           RendererFlushFlags options = 0, const FlushParameters *params = nullptr) const;
+	// If queue is const, SKIP_SORTING must be set in options.
+	void flush(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,
+	           RendererFlushFlags options = 0, const FlushParameters *params = nullptr) const;
 	// Multi-threaded dispatch from a queue.
 	// queue is assumed to be sorted already.
 	void flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,
@@ -162,6 +166,7 @@ public:
 		ForwardOpaque = 0,
 		ForwardTransparent,
 		ShadowDepthDirectionalPCF,
+		ShadowDepthDirectionalFallbackPCF,
 		ShadowDepthPositionalPCF,
 		ShadowDepthDirectionalVSM,
 		ShadowDepthPositionalVSM,

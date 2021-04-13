@@ -2173,10 +2173,6 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 			case LightInfo::Type::Directional:
 				l.AddMember("type", "directional", allocator);
 				break;
-
-			case LightInfo::Type::Ambient:
-				l.AddMember("type", "ambient", allocator);
-				break;
 			}
 
 			lights.PushBack(l, allocator);

@@ -1,0 +1,70 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(set = 0, binding = 0) buffer Count
+{
+    uint atomic_count;
+};
+
+layout(set = 0, binding = 1) writeonly buffer WorkList
+{
+    uint work_list[];
+};
+
+layout(rgba16f, set = 0, binding = 2) writeonly uniform image3D uOutput;
+layout(set = 0, binding = 3) uniform texture3D uInput;
+
+layout(set = 1, binding = 0) uniform Transforms
+{
+    vec4 tex_to_world[3];
+    vec3 inv_resolution;
+    float radius;
+    uvec3 resolution;
+    uint iteration;
+};
+
+layout(set = 1, binding = 1) uniform Planes
+{
+    vec4 planes[6];
+};
+
+uint pack_work(uvec3 coord)
+{
+    return coord.x | (coord.y << 10u) | (coord.z << 20u);
+}
+
+void main()
+{
+    uvec3 coord = gl_GlobalInvocationID;
+    if (all(lessThan(coord, resolution)))
+    {
+        float R = radius;
+        vec3 uvw = (vec3(coord) + 0.5) * inv_resolution;
+        vec3 world = vec3(
+            dot(tex_to_world[0], vec4(uvw, 1.0)),
+            dot(tex_to_world[1], vec4(uvw, 1.0)),
+            dot(tex_to_world[2], vec4(uvw, 1.0)));
+
+        bool outside = false;
+        for (int i = 0; !outside && i < 6; i++)
+            outside = dot(planes[i], vec4(world, 1.0)) < -R;
+
+        uint wrapped_texel =
+            (coord.x & 3u) +
+            (coord.y & 3u) * 4u +
+            (coord.z & 3u) * 16u;
+
+        // Divide by prime to actually hit all probe jitters.
+        wrapped_texel /= 5u;
+        bool promoted_texel = wrapped_texel == (iteration & 63u) / 5u;
+
+        if (!outside || promoted_texel)
+        {
+            uint offset = atomicAdd(atomic_count, 1u);
+            work_list[offset] = pack_work(coord);
+        }
+        else
+            imageStore(uOutput, ivec3(coord), texelFetch(uInput, ivec3(coord), 0));
+    }
+}

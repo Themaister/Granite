@@ -28,6 +28,7 @@ enum class RenderableType
 {
 	Mesh,
 	DebugMesh,
+	DebugProbe,
 	Skybox,
 	SkyCylinder,
 	Ground,

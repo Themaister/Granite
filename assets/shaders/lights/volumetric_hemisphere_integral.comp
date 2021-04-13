@@ -1,0 +1,231 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+#extension GL_EXT_nonuniform_qualifier : require
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 6) in;
+
+#define CLUSTERER_NO_HELPER_INVOCATION
+#define CLUSTERER_GLOBAL
+#define VOLUMETRIC_DIFFUSE_PREV_TEXTURES
+#define VOLUMETRIC_DIFFUSE_ATLAS_SET 1
+#include "../inc/subgroup_extensions.h"
+#include "../inc/render_parameters.h"
+
+#include "clusterer_data.h"
+#include "volumetric_probe_hash.h"
+#include "volumetric_diffuse.h"
+
+layout(set = 3, binding = 2) uniform ClusterTransforms
+{
+    ClustererGlobalTransforms cluster_global_transforms;
+};
+
+#include "lighting_irradiance.h"
+
+layout(push_constant) uniform Registers
+{
+    int gbuffer_layer;
+    int patch_resolution;
+    int face_resolution;
+    float inv_orig_patch_resolution;
+    float inv_patch_resolution2;
+    uint hash_range;
+} registers;
+
+const int NumProbeLayers = 4;
+
+layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uAmbient;
+layout(set = 2, binding = 1) uniform texture2DArray uProbeEmissive;
+layout(set = 2, binding = 2) uniform texture2DArray uProbeAlbedo;
+layout(set = 2, binding = 3) uniform texture2DArray uProbeNormal;
+layout(set = 2, binding = 4) uniform texture2DArray uProbeDepth;
+
+layout(set = 2, binding = 5) readonly buffer WorkList
+{
+    uint work_list[];
+};
+
+layout(set = 3, binding = 0) uniform Transforms
+{
+    vec3 probe_pos_jitter[NumProbeLayers];
+} transforms;
+
+layout(set = 3, binding = 1) uniform PerProbe
+{
+    vec4 texture_to_world[3];
+    vec4 world_to_texture[3];
+    vec3 inv_probe_resolution;
+    uvec2 probe_size_xy;
+};
+
+#ifndef PI
+#define PI 3.1415628
+#endif
+
+vec3 get_probe_jitter(uvec2 probe_xy)
+{
+    return transforms.probe_pos_jitter[
+            (registers.gbuffer_layer +
+            (probe_xy.x & 1u) +
+            (probe_xy.y & 1u) * 2u) &
+            (NumProbeLayers - 1u)];
+}
+
+mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
+{
+    vec3 emissive = texelFetch(uProbeEmissive, coord, 0).rgb;
+    vec3 color = emissive;
+    if (do_lighting)
+    {
+        vec3 albedo = texelFetch(uProbeAlbedo, coord, 0).rgb;
+        vec3 normal = normalize(texelFetch(uProbeNormal, coord, 0).xyz * 2.0 - 1.0);
+        color += min(albedo, vec3(0.95)) * compute_irradiance_lighting(
+                world_pos, normal,
+                directional.direction, directional.color);
+    }
+
+    float l2 = dot(pos, pos);
+    float inv_l = inversesqrt(l2);
+
+    // We have 4 patches per face, so it cancels out the 4.0 / (res * res) computation.
+    // Formula for area derived from estimating the area coverage of a cubemap texel
+    // when projected over sphere.
+    // n = [u, v, 1]
+    // l = length(n)
+    // n' = n / l
+    // A ~= dot(n', cross((n + du) / length(n + du) - n', (n + dv) / length(n + dv) - n')
+    // A ~= dot(n', cross(du / l, dv / l))
+    // A ~= dot(n', dz)
+    // A ~= dot(n', [0, 0, (2 / (l * res)) * (2 / (l * res))])
+    // A ~= 4.0 / (res^2 * l^3)
+    float area = registers.inv_patch_resolution2 * inv_l * inv_l * inv_l;
+
+    vec3 n = pos * inv_l;
+    vec3 hemisphere_area = abs(n) * area;
+
+    return mat3(
+        color * hemisphere_area.x,
+        color * hemisphere_area.y,
+        color * hemisphere_area.z);
+}
+
+shared mat3 shared_patch_contributions[6 * 2 * 2];
+shared mat3 shared_colors[gl_WorkGroupSize.x * gl_WorkGroupSize.y * gl_WorkGroupSize.z];
+
+const vec3 base_dirs[6] = vec3[](
+    vec3(1.0, 0.0, 0.0),
+    vec3(-1.0, 0.0, 0.0),
+    vec3(0.0, 1.0, 0.0),
+    vec3(0.0, -1.0, 0.0),
+    vec3(0.0, 0.0, 1.0),
+    vec3(0.0, 0.0, -1.0));
+
+const vec3 pos_du[6] = vec3[](
+    vec3(0.0, 0.0, -1.0),
+    vec3(0.0, 0.0, +1.0),
+    vec3(1.0, 0.0, 0.0),
+    vec3(1.0, 0.0, 0.0),
+    vec3(1.0, 0.0, 0.0),
+    vec3(-1.0, 0.0, 0.0));
+
+const vec3 pos_dv[6] = vec3[](
+    vec3(0.0, -1.0, 0.0),
+    vec3(0.0, -1.0, 0.0),
+    vec3(0.0, 0.0, +1.0),
+    vec3(0.0, 0.0, -1.0),
+    vec3(0.0, -1.0, 0.0),
+    vec3(0.0, -1.0, 0.0));
+
+#define M(b) (1u << (b))
+const uint patch_mask_per_face[6] = uint[](
+    (0xfu << 0) | M(9) | M(11) | M(13) | M(15) | M(17) | M(19) | M(20) | M(22),
+    (0xfu << 4) | M(8) | M(10) | M(12) | M(14) | M(16) | M(18) | M(21) | M(23),
+    (0xfu << 8) | M(0) | M(1) | M(4) | M(5) | M(20) | M(21) | M(16) | M(17),
+    (0xfu << 12) | M(2) | M(3) | M(6) | M(7) | M(18) | M(19) | M(22) | M(23),
+    (0xfu << 16) | M(0) | M(2) | M(5) | M(7) | M(10) | M(11) | M(12) | M(13),
+    (0xfu << 20) | M(1) | M(3) | M(4) | M(6) | M(8) | M(9) | M(14) | M(15));
+
+uvec3 unpack_work(uint c)
+{
+    return (uvec3(c) >> uvec3(0, 10, 20)) & 0x3ffu;
+}
+
+void main()
+{
+    uvec3 probe_index = unpack_work(work_list[gl_WorkGroupID.x]);
+
+    int face = int(gl_LocalInvocationID.z);
+    uvec2 probe_size = probe_size_xy;
+
+    for (int patch_y = 0; patch_y < 2; patch_y++)
+    {
+        for (int patch_x = 0; patch_x < 2; patch_x++)
+        {
+            uvec2 patch_coord = gl_LocalInvocationID.xy;
+
+            int probe_x = 6 * int(probe_index.x) + face;
+            int probe_y = int(probe_index.z * probe_size.y + probe_index.y);
+            ivec2 base_probe_coord = ivec2(probe_x, probe_y) * registers.face_resolution;
+            ivec2 tex_coord = base_probe_coord + ivec2(patch_coord) +
+                              ivec2(patch_x, patch_y) * ivec2(registers.patch_resolution);
+            ivec3 tex_coord_layer = ivec3(tex_coord, registers.gbuffer_layer);
+
+            uvec2 hashed_offset = volumetric_probe_hash(tex_coord_layer, registers.hash_range);
+
+            vec2 xy = vec2(patch_coord * registers.hash_range + hashed_offset) + 0.5;
+            vec2 uv = xy * registers.inv_orig_patch_resolution;
+            vec2 clip_xy = vec2(patch_x - 1, patch_y - 1) + uv;
+            vec3 pos = base_dirs[face] + clip_xy.x * pos_du[face] + clip_xy.y * pos_dv[face];
+
+            vec3 tex_space = (vec3(probe_index) + 0.5 + get_probe_jitter(probe_index.xy)) * inv_probe_resolution;
+            vec3 probe_pos = vec3(
+                dot(texture_to_world[0], vec4(tex_space, 1.0)),
+                dot(texture_to_world[1], vec4(tex_space, 1.0)),
+                dot(texture_to_world[2], vec4(tex_space, 1.0)));
+
+            float linear_d = texelFetch(uProbeDepth, tex_coord_layer, 0).x;
+            vec3 world = pos * linear_d + probe_pos;
+
+            mat3 patch_contribution = sample_patch(tex_coord_layer, pos, world, linear_d != 0.0);
+            shared_colors[gl_LocalInvocationIndex] = patch_contribution;
+
+#define ITERATE(l) \
+    if ((gl_LocalInvocationIndex & 15u) < l) { \
+        shared_colors[gl_LocalInvocationIndex] += shared_colors[gl_LocalInvocationIndex + l]; \
+    }
+
+            barrier();
+            ITERATE(8u)
+            barrier();
+            ITERATE(4u)
+            barrier();
+            ITERATE(2u)
+            barrier();
+            uint masked = gl_LocalInvocationIndex & 15u;
+            if (masked < 3u)
+            {
+                int patch_index = 4 * face + 2 * patch_y + patch_x;
+                shared_patch_contributions[patch_index][masked] =
+                    shared_colors[16 * face + 0][masked] +
+                    shared_colors[16 * face + 1][masked];
+            }
+            barrier();
+        }
+    }
+
+    face = int(gl_LocalInvocationIndex);
+    if (face < 6)
+    {
+        uint mask = patch_mask_per_face[face];
+        vec3 total = vec3(0.0);
+        while (mask != 0u)
+        {
+            int bit = findLSB(mask);
+            mask &= ~(1u << uint(bit));
+            total += shared_patch_contributions[bit][face >> 1u];
+        }
+
+        ivec3 ambient_coord = ivec3(probe_index) + ivec3(face * probe_size.x, 0, 0);
+        total /= PI;
+        imageStore(uAmbient, ambient_coord, vec4(total, 0.0));
+    }
+}

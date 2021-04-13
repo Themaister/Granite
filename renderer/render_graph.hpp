@@ -61,13 +61,24 @@ public:
 	virtual bool get_clear_depth_stencil(VkClearDepthStencilValue *value) const;
 	virtual bool get_clear_color(unsigned attachment, VkClearColorValue *value) const;
 
-	virtual void enqueue_prepare_render_pass(TaskComposer &composer,
-	                                         const Vulkan::RenderPassInfo &info, unsigned subpass,
-	                                         VkSubpassContents &subpass_contents);
+	virtual void enqueue_prepare_render_pass(TaskComposer &composer);
 	virtual void build_render_pass(Vulkan::CommandBuffer &cmd);
 	virtual void build_render_pass_separate_layer(Vulkan::CommandBuffer &cmd, unsigned layer);
 };
 using RenderPassInterfaceHandle = Util::IntrusivePtr<RenderPassInterface>;
+
+// An interface which manages external synchronization.
+// Used primarily by cluster shadow map rendering,
+// since its resource management is highly specific
+// and it makes more sense to use semaphores here,
+// rather than try to hack it to fit it into a render graph node.
+class RenderPassExternalLockInterface
+{
+public:
+	virtual ~RenderPassExternalLockInterface() = default;
+	virtual Vulkan::Semaphore external_acquire() = 0;
+	virtual void external_release(Vulkan::Semaphore semaphore) = 0;
+};
 
 enum SizeClass
 {
@@ -134,6 +145,7 @@ struct ResourceDimensions
 	bool transient = false;
 	bool unorm_srgb = false;
 	bool persistent = true;
+	bool proxy = false;
 	VkSurfaceTransformFlagBitsKHR transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	RenderGraphQueueFlags queues = 0;
 	VkImageUsageFlags image_usage = 0;
@@ -150,7 +162,8 @@ struct ResourceDimensions
 		       transient == other.transient &&
 		       persistent == other.persistent &&
 		       unorm_srgb == other.unorm_srgb &&
-		       transform == other.transform;
+		       transform == other.transform &&
+		       proxy == other.proxy;
 		// image_usage is deliberately not part of this test.
 		// queues is deliberately not part of this test.
 	}
@@ -162,6 +175,9 @@ struct ResourceDimensions
 
 	bool uses_semaphore() const
 	{
+		if (proxy)
+			return true;
+
 		// If more than one queue is used for a resource, we need to use semaphores.
 		auto physical_queues = queues;
 
@@ -179,7 +195,7 @@ struct ResourceDimensions
 
 	bool is_buffer_like() const
 	{
-		return is_storage_image() || (buffer_info.size != 0);
+		return is_storage_image() || (buffer_info.size != 0) || proxy;
 	}
 
 	std::string name;
@@ -191,7 +207,8 @@ public:
 	enum class Type
 	{
 		Buffer,
-		Texture
+		Texture,
+		Proxy
 	};
 
 	enum { Unused = ~0u };
@@ -392,6 +409,17 @@ public:
 		RenderBufferResource *buffer = nullptr;
 	};
 
+	struct AccessedProxyResource : AccessedResource
+	{
+		RenderResource *proxy = nullptr;
+	};
+
+	struct AccessedExternalLockInterface
+	{
+		RenderPassExternalLockInterface *iface;
+		VkPipelineStageFlags stages;
+	};
+
 	RenderGraphQueueFlagBits get_queue() const
 	{
 		return queue;
@@ -406,6 +434,8 @@ public:
 	{
 		return index;
 	}
+
+	void add_external_lock(const std::string &name, VkPipelineStageFlags stages);
 
 	RenderTextureResource &set_depth_stencil_input(const std::string &name);
 	RenderTextureResource &set_depth_stencil_output(const std::string &name, const AttachmentInfo &info);
@@ -431,6 +461,9 @@ public:
 	RenderBufferResource &add_vertex_buffer_input(const std::string &name);
 	RenderBufferResource &add_index_buffer_input(const std::string &name);
 	RenderBufferResource &add_indirect_buffer_input(const std::string &name);
+
+	void add_proxy_output(const std::string &name, VkPipelineStageFlags stages);
+	void add_proxy_input(const std::string &name, VkPipelineStageFlags stages);
 
 	void add_fake_resource_write_alias(const std::string &from, const std::string &to);
 
@@ -514,6 +547,16 @@ public:
 		return generic_buffer;
 	}
 
+	const std::vector<AccessedProxyResource> &get_proxy_inputs() const
+	{
+		return proxy_inputs;
+	}
+
+	const std::vector<AccessedProxyResource> &get_proxy_outputs() const
+	{
+		return proxy_outputs;
+	}
+
 	const std::vector<std::pair<RenderTextureResource *, RenderTextureResource *>> &get_fake_resource_aliases() const
 	{
 		return fake_resource_alias;
@@ -583,13 +626,10 @@ public:
 			return false;
 	}
 
-	void enqueue_prepare_render_pass(TaskComposer &composer, const Vulkan::RenderPassInfo &rp_info,
-	                                 unsigned subpass_index, VkSubpassContents &contents)
+	void enqueue_prepare_render_pass(TaskComposer &composer)
 	{
 		if (render_pass_handle)
-			render_pass_handle->enqueue_prepare_render_pass(composer, rp_info, subpass_index, contents);
-		else
-			contents = VK_SUBPASS_CONTENTS_INLINE;
+			render_pass_handle->enqueue_prepare_render_pass(composer);
 	}
 
 	void build_render_pass(Vulkan::CommandBuffer &cmd, unsigned layer)
@@ -635,6 +675,11 @@ public:
 		return pass_name;
 	}
 
+	const std::vector<AccessedExternalLockInterface> &get_lock_interfaces() const
+	{
+		return lock_interfaces;
+	}
+
 private:
 	RenderGraph &graph;
 	unsigned index;
@@ -661,6 +706,9 @@ private:
 	std::vector<RenderBufferResource *> transfer_outputs;
 	std::vector<AccessedTextureResource> generic_texture;
 	std::vector<AccessedBufferResource> generic_buffer;
+	std::vector<AccessedProxyResource> proxy_inputs;
+	std::vector<AccessedProxyResource> proxy_outputs;
+	std::vector<AccessedExternalLockInterface> lock_interfaces;
 	RenderTextureResource *depth_stencil_input = nullptr;
 	RenderTextureResource *depth_stencil_output = nullptr;
 
@@ -689,7 +737,11 @@ public:
 		return *device;
 	}
 
+	void add_external_lock_interface(const std::string &name, RenderPassExternalLockInterface *iface);
+	RenderPassExternalLockInterface *find_external_lock_interface(const std::string &name) const;
+
 	RenderPass &add_pass(const std::string &name, RenderGraphQueueFlagBits queue);
+	RenderPass *find_pass(const std::string &name);
 	void set_backbuffer_source(const std::string &name);
 	void set_backbuffer_dimensions(const ResourceDimensions &dim)
 	{
@@ -711,6 +763,7 @@ public:
 
 	RenderTextureResource &get_texture_resource(const std::string &name);
 	RenderBufferResource &get_buffer_resource(const std::string &name);
+	RenderResource &get_proxy_resource(const std::string &name);
 
 	Vulkan::ImageView &get_physical_texture_resource(unsigned index)
 	{
@@ -802,6 +855,7 @@ private:
 	std::vector<std::unique_ptr<RenderResource>> resources;
 	std::unordered_map<std::string, unsigned> pass_to_index;
 	std::unordered_map<std::string, unsigned> resource_to_index;
+	std::unordered_map<std::string, RenderPassExternalLockInterface *> external_lock_interfaces;
 	std::string backbuffer_source;
 
 	std::vector<unsigned> pass_stack;
@@ -966,6 +1020,8 @@ private:
 		Util::SmallVector<Vulkan::Semaphore> wait_semaphores;
 		Util::SmallVector<VkPipelineStageFlags> wait_semaphore_stages;
 
+		Util::SmallVector<RenderPass::AccessedExternalLockInterface> external_locks;
+
 		Vulkan::PipelineEvent signal_event;
 		VkPipelineStageFlags event_signal_stages = 0;
 
@@ -996,6 +1052,7 @@ private:
 	void physical_pass_enqueue_compute_commands(const PhysicalPass &pass, PassSubmissionState &state);
 
 	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state, bool physical_graphics_queue);
+	void physical_pass_handle_external_acquire(const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_handle_signal(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassSubmissionState &state);
 	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state,

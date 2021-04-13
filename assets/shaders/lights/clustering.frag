@@ -1,6 +1,7 @@
 #version 450
 
 #include "../inc/helper_invocation.h"
+#include "../inc/global_bindings.h"
 #include "clusterer.h"
 
 layout(input_attachment_index = 0, set = 3, binding = 0) uniform mediump subpassInput BaseColor;
@@ -17,6 +18,10 @@ layout(std430, push_constant) uniform Registers
     vec3 camera_pos;
     vec2 inv_resolution;
 } registers;
+
+#ifdef AMBIENT_OCCLUSION
+layout(set = 0, binding = BINDING_GLOBAL_AMBIENT_OCCLUSION) uniform mediump sampler2D uAmbientOcclusion;
+#endif
 
 void main()
 {
@@ -37,4 +42,16 @@ void main()
         , registers.inv_resolution
 #endif
     );
+
+#ifdef VOLUMETRIC_DIFFUSE
+#ifdef AMBIENT_OCCLUSION
+    mediump float ambient_term =
+            textureLod(uAmbientOcclusion, gl_FragCoord.xy * registers.inv_resolution, 0.0).x;
+#else
+    const mediump float ambient_term = 1.0;
+#endif
+    FragColor += base_color_ambient.rgb *
+            ((1.0 - mr.x) * base_color_ambient.a * ambient_term) *
+            compute_volumetric_diffuse(pos, N);
+#endif
 }

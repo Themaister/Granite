@@ -4,6 +4,11 @@
 #include "../inc/global_bindings.h"
 #define SPOT_LIGHT_SHADOW_ATLAS_SET 1
 #define POINT_LIGHT_SHADOW_ATLAS_SET 1
+#define VOLUMETRIC_DIFFUSE_ATLAS_SET 1
+
+#ifdef VOLUMETRIC_DIFFUSE
+#include "volumetric_diffuse.h"
+#endif
 
 layout(std140, set = 0, binding = BINDING_GLOBAL_CLUSTERER_PARAMETERS) uniform ClusterParameters
 {
@@ -106,6 +111,24 @@ mediump vec3 compute_cluster_light(
 	return result;
 }
 #else
+
+#ifdef CLUSTERER_GLOBAL
+mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 normal)
+{
+	mediump vec3 result = vec3(0.0);
+	int count = cluster_global_transforms.num_lights;
+	uint type_mask = cluster_global_transforms.type_mask;
+	for (int i = 0; i < count; i++)
+	{
+		if ((type_mask & (1u << i)) != 0u)
+			result += compute_irradiance_point_light(i, normal, world_pos);
+		else
+			result += compute_irradiance_spot_light(i, normal, world_pos);
+	}
+	return result;
+}
+#endif
+
 mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 {
 	mediump vec3 result = vec3(0.0);

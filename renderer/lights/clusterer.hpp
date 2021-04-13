@@ -30,10 +30,14 @@
 #include "lru_cache.hpp"
 #include "threaded_scene.hpp"
 #include "render_context.hpp"
+#include "render_graph.hpp"
 
 namespace Granite
 {
-class LightClusterer : public RenderPassCreator, public EventHandler, public PerFrameRefreshable
+class LightClusterer : public RenderPassCreator,
+                       public EventHandler,
+                       public PerFrameRefreshable,
+                       public RenderPassExternalLockInterface
 {
 public:
 	LightClusterer();
@@ -69,11 +73,15 @@ public:
 
 	// Bindless clustering.
 	const ClustererParametersBindless &get_cluster_parameters_bindless() const;
+	const ClustererGlobalTransforms &get_cluster_global_transforms_bindless() const;
 	const Vulkan::Buffer *get_cluster_transform_buffer() const;
 	const Vulkan::Buffer *get_cluster_bitmask_buffer() const;
 	const Vulkan::Buffer *get_cluster_range_buffer() const;
-	VkDescriptorSet get_cluster_shadow_map_bindless_set() const;
+	VkDescriptorSet get_cluster_bindless_set() const;
 	bool clusterer_is_bindless() const;
+
+	const ClustererParametersVolumetric &get_cluster_volumetric_diffuse_data() const;
+	size_t get_cluster_volumetric_diffuse_size() const;
 
 	void set_scene(Scene *scene) override;
 	void set_base_renderer(const RendererSuite *suite) override;
@@ -82,6 +90,8 @@ public:
 	enum {
 		MaxLights = CLUSTERER_MAX_LIGHTS,
 		MaxLightsBindless = CLUSTERER_MAX_LIGHTS_BINDLESS,
+		MaxLightsGlobal = CLUSTERER_MAX_LIGHTS_GLOBAL,
+		MaxLightsVolume = CLUSTERER_MAX_VOLUMES,
 		ClusterHierarchies = 8,
 		ClusterPrepassDownsample = 4
 	};
@@ -105,6 +115,11 @@ private:
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void refresh(const RenderContext &context_, TaskComposer &composer) override;
 	void refresh_bindless(const RenderContext &context_, TaskComposer &composer);
+
+	template <typename Transforms>
+	unsigned scan_visible_positional_lights(const PositionalLightList &lights, Transforms &transforms,
+	                                        unsigned max_lights, unsigned handle_offset);
+
 	void refresh_bindless_prepare(const RenderContext &context_);
 	void refresh_legacy(const RenderContext &context_);
 
@@ -114,6 +129,8 @@ private:
 
 	enum { MaxTasks = 4 };
 	PositionalLightList light_sort_caches[MaxTasks];
+	VolumetricDiffuseLightList visible_diffuse_lights;
+	PositionalLightList existing_global_lights;
 	RenderQueue internal_queue;
 
 	unsigned resolution_x = 64, resolution_y = 32, resolution_z = 16;
@@ -231,10 +248,12 @@ private:
 	// Bindless
 	struct
 	{
-		unsigned count = 0;
 		ClustererParametersBindless parameters;
 		ClustererBindlessTransforms transforms;
-		PositionalLight *handles[MaxLightsBindless] = {};
+		ClustererGlobalTransforms global_transforms;
+		ClustererParametersVolumetric volumetric;
+
+		PositionalLight *handles[MaxLightsBindless + MaxLightsGlobal] = {};
 
 		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;
 		Util::LRUCache<Vulkan::ImageHandle> shadow_map_cache;
@@ -250,8 +269,6 @@ private:
 
 		std::vector<uvec2> light_index_range;
 
-		VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-		VkPipelineStageFlags dst_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 		std::vector<VkImageMemoryBarrier> shadow_barriers;
 		std::vector<const Vulkan::Image *> shadow_images;
 		std::vector<ShadowTaskHandle> shadow_task_handles;
@@ -277,9 +294,10 @@ private:
 		Util::Hash hashes[Faces][MaxTasks];
 		RenderQueue queues[Faces][MaxTasks];
 
-		Util::Hash get_combined_hash() const
+		Util::Hash get_combined_hash(Util::Hash self_transform) const
 		{
 			Util::Hasher hasher;
+			hasher.u64(self_transform);
 			for (unsigned face = 0; face < Faces; face++)
 			{
 				Util::Hash h = 0;
@@ -295,8 +313,10 @@ private:
 	using ShadowTaskContextSpotHandle = Util::IntrusivePtr<ShadowTaskContextSpot>;
 	using ShadowTaskContextPointHandle = Util::IntrusivePtr<ShadowTaskContextPoint>;
 
-	ShadowTaskContextSpotHandle gather_bindless_spot_shadow_renderables(unsigned index, TaskComposer &composer);
-	ShadowTaskContextPointHandle gather_bindless_point_shadow_renderables(unsigned index, TaskComposer &composer);
+	ShadowTaskContextSpotHandle gather_bindless_spot_shadow_renderables(unsigned index, TaskComposer &composer,
+	                                                                    bool requires_rendering);
+	ShadowTaskContextPointHandle gather_bindless_point_shadow_renderables(unsigned index, TaskComposer &composer,
+	                                                                      bool requires_rendering);
 
 	void render_bindless_spot(Vulkan::Device &device, unsigned index, TaskComposer &composer);
 	void render_bindless_point(Vulkan::Device &device, unsigned index, TaskComposer &composer);
@@ -304,5 +324,10 @@ private:
 	bool bindless_light_is_point(unsigned index) const;
 
 	const Renderer &get_shadow_renderer() const;
+
+	Vulkan::Semaphore external_acquire() override;
+	void external_release(Vulkan::Semaphore sem) override;
+	Vulkan::Semaphore acquire_semaphore;
+	Util::SmallVector<Vulkan::Semaphore> release_semaphores;
 };
 }

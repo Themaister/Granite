@@ -25,7 +25,7 @@
 namespace Vulkan
 {
 constexpr unsigned VULKAN_NUM_DESCRIPTOR_SETS = 4;
-constexpr unsigned VULKAN_NUM_BINDINGS = 16;
+constexpr unsigned VULKAN_NUM_BINDINGS = 32;
 constexpr unsigned VULKAN_NUM_BINDINGS_BINDLESS_VARYING = 64 * 1024;
 constexpr unsigned VULKAN_NUM_BINDINGS_BINDLESS = 4 * 1024;
 constexpr unsigned VULKAN_NUM_ATTACHMENTS = 8;

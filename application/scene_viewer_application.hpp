@@ -37,6 +37,7 @@
 #include "lights/clusterer.hpp"
 #include "lights/volumetric_fog.hpp"
 #include "lights/deferred_lights.hpp"
+#include "lights/volumetric_diffuse.hpp"
 #include "camera_export.hpp"
 #include "post/aa.hpp"
 #include "post/temporal.hpp"
@@ -60,11 +61,13 @@ protected:
 
 	RenderContext context;
 	RenderContext depth_context;
+	RenderContext fallback_depth_context;
 
 	RendererSuite renderer_suite;
 	RendererSuite::Config renderer_suite_config;
 	FlatRenderer flat_renderer;
 	LightingParameters lighting;
+	LightingParameters fallback_lighting;
 	FPSCamera cam;
 	SceneLoader scene_loader;
 	std::unique_ptr<AnimationSystem> animation_system;
@@ -80,17 +83,12 @@ protected:
 	bool on_key_down(const KeyboardEvent &e);
 	RenderGraph graph;
 
-	Vulkan::Texture *reflection = nullptr;
-	Vulkan::Texture *irradiance = nullptr;
-
 	bool need_shadow_map_update = true;
-	std::string skydome_reflection;
-	std::string skydome_irradiance;
-	float skydome_intensity = 1.0f;
 	AABB shadow_scene_aabb;
 
 	std::unique_ptr<LightClusterer> cluster;
 	std::unique_ptr<VolumetricFog> volumetric_fog;
+	std::unique_ptr<VolumetricDiffuseLightManager> volumetric_diffuse;
 	DeferredLights deferred_lights;
 	RenderQueue queue;
 
@@ -103,6 +101,7 @@ protected:
 	void add_main_pass_deferred(Vulkan::Device &device, const std::string &tag);
 
 	void add_shadow_pass(Vulkan::Device &device, const std::string &tag);
+	void add_shadow_pass_fallback(Vulkan::Device &device, const std::string &tag);
 
 	std::vector<RecordedCamera> recorded_cameras;
 
@@ -124,8 +123,8 @@ private:
 		bool directional_light_shadows = true;
 		bool directional_light_cascaded_shadows = true;
 		bool directional_light_shadows_vsm = false;
-		bool clustered_lights = false;
-		bool clustered_lights_bindless = false;
+		bool clustered_lights = true;
+		bool clustered_lights_bindless = true;
 		bool clustered_lights_shadows = true;
 		bool clustered_lights_shadows_vsm = false;
 		bool hdr_bloom = true;
@@ -138,6 +137,7 @@ private:
 		bool show_ui = true;
 		bool volumetric_fog = false;
 		bool ssao = true;
+		bool debug_probes = false;
 		PostAAType postaa_type = PostAAType::None;
 	};
 	Config config;
@@ -154,5 +154,6 @@ private:
 
 	RenderTextureResource *ssao_output = nullptr;
 	RenderTextureResource *shadows = nullptr;
+	RenderTextureResource *fallback_shadows = nullptr;
 };
 }

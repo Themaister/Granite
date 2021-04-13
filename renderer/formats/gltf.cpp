@@ -1269,8 +1269,6 @@ void Parser::parse(const string &original_path, const string &json)
 			info.type = LightInfo::Type::Spot;
 		else if (strcmp(type, "directional") == 0)
 			info.type = LightInfo::Type::Directional;
-		else if (strcmp(type, "ambient") == 0)
-			info.type = LightInfo::Type::Ambient;
 		else
 			throw logic_error("Invalid light type.");
 
@@ -1304,29 +1302,13 @@ void Parser::parse(const string &original_path, const string &json)
 	};
 
 	const auto add_environment = [&](const Value &value) {
-		MaterialInfo::Texture cube, reflection, irradiance;
+		MaterialInfo::Texture cube;
 
 		if (value.HasMember("cubeTexture"))
 		{
 			auto index = json_textures[value["cubeTexture"].GetUint()].image_index;
 			cube = json_images[index];
 		}
-
-		if (value.HasMember("reflectionTexture"))
-		{
-			auto index = json_textures[value["reflectionTexture"].GetUint()].image_index;
-			reflection = json_images[index];
-		}
-
-		if (value.HasMember("irradianceTexture"))
-		{
-			auto index = json_textures[value["irradianceTexture"].GetUint()].image_index;
-			irradiance = json_images[index];
-		}
-
-		float intensity = 1.0f;
-		if (value.HasMember("intensity"))
-			intensity = value["intensity"].GetFloat();
 
 		vec3 fog_color = vec3(0.0f);
 		float fog_falloff = 1.0f;
@@ -1338,7 +1320,7 @@ void Parser::parse(const string &original_path, const string &json)
 		}
 
 		EnvironmentInfo::Fog fog = { fog_color, fog_falloff };
-		json_environments.push_back({ move(cube), move(reflection), move(irradiance), intensity, fog });
+		json_environments.push_back({ move(cube), fog });
 	};
 
 	if (doc.HasMember("cameras"))

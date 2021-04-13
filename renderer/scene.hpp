@@ -60,6 +60,8 @@ public:
 	void gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_positional_lights(const Frustum &frustum, PositionalLightList &list) const;
+	void gather_irradiance_affecting_positional_lights(PositionalLightList &list) const;
+	void gather_visible_volumetric_diffuse_lights(const Frustum &frustum, VolumetricDiffuseLightList &list) const;
 
 	void gather_visible_opaque_renderables_subset(const Frustum &frustum, VisibilityList &list,
 	                                              unsigned index, unsigned num_indices) const;
@@ -212,6 +214,7 @@ public:
 
 	Entity *create_renderable(AbstractRenderableHandle renderable, Node *node);
 	Entity *create_light(const SceneFormats::LightInfo &light, Node *node);
+	Entity *create_volumetric_diffuse_light(uvec3 resolution, Node *node);
 	Entity *create_entity();
 	void destroy_entity(Entity *entity);
 	void queue_destroy_entity(Entity *entity);
@@ -230,21 +233,72 @@ private:
 	Util::ObjectPool<Node> node_pool;
 	Util::ObjectPool<Node::Skinning> skinning_pool;
 	NodeHandle root_node;
-	const ComponentGroupVector<BoundedComponent, RenderInfoComponent, CachedSpatialTransformTimestampComponent> &spatials;
-	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, OpaqueComponent> &opaque;
-	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, TransparentComponent> &transparent;
-	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, PositionalLightComponent> &positional_lights;
-	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsStaticShadowComponent> &static_shadowing;
-	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent> &dynamic_shadowing;
-	const ComponentGroupVector<RenderPassComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent> &render_pass_shadowing;
-	const ComponentGroupVector<UnboundedComponent, RenderableComponent> &backgrounds;
-	const ComponentGroupVector<CameraComponent, CachedTransformComponent> &cameras;
-	const ComponentGroupVector<DirectionalLightComponent, CachedTransformComponent> &directional_lights;
-	const ComponentGroupVector<AmbientLightComponent> &ambient_lights;
+
+	// Sets up the default useful component groups up front.
+	const ComponentGroupVector<
+			BoundedComponent,
+			RenderInfoComponent,
+			CachedSpatialTransformTimestampComponent> &spatials;
+	const ComponentGroupVector<
+			RenderInfoComponent,
+			RenderableComponent,
+			CachedSpatialTransformTimestampComponent,
+			OpaqueComponent> &opaque;
+	const ComponentGroupVector<
+			RenderInfoComponent,
+			RenderableComponent,
+			CachedSpatialTransformTimestampComponent,
+			TransparentComponent> &transparent;
+	const ComponentGroupVector<
+			RenderInfoComponent,
+			RenderableComponent,
+			CachedSpatialTransformTimestampComponent,
+			PositionalLightComponent> &positional_lights;
+	const ComponentGroupVector<
+			RenderInfoComponent,
+			PositionalLightComponent,
+			CachedSpatialTransformTimestampComponent,
+			IrradianceAffectingComponent> &irradiance_affecting_positional_lights;
+	const ComponentGroupVector<
+			RenderInfoComponent,
+			RenderableComponent,
+			CachedSpatialTransformTimestampComponent,
+			CastsStaticShadowComponent> &static_shadowing;
+	const ComponentGroupVector<
+			RenderInfoComponent,
+			RenderableComponent,
+			CachedSpatialTransformTimestampComponent,
+			CastsDynamicShadowComponent> &dynamic_shadowing;
+	const ComponentGroupVector<
+			RenderPassComponent,
+			RenderableComponent,
+			CachedSpatialTransformTimestampComponent,
+			CastsDynamicShadowComponent> &render_pass_shadowing;
+	const ComponentGroupVector<
+			UnboundedComponent,
+			RenderableComponent> &backgrounds;
+	const ComponentGroupVector<
+			CameraComponent,
+			CachedTransformComponent> &cameras;
+	const ComponentGroupVector<
+			DirectionalLightComponent,
+			CachedTransformComponent> &directional_lights;
+	const ComponentGroupVector<
+			VolumetricDiffuseLightComponent,
+			CachedSpatialTransformTimestampComponent,
+			RenderInfoComponent> &volumetric_diffuse_lights;
+
 	const ComponentGroupVector<PerFrameUpdateComponent> &per_frame_updates;
-	const ComponentGroupVector<PerFrameUpdateTransformComponent, RenderInfoComponent> &per_frame_update_transforms;
+	const ComponentGroupVector<PerFrameUpdateTransformComponent,
+			RenderInfoComponent> &per_frame_update_transforms;
+	ComponentGroupVector<PerFrameUpdateComponent> per_frame_updates_sorted;
+	ComponentGroupVector<PerFrameUpdateTransformComponent,
+			RenderInfoComponent> per_frame_update_transforms_sorted;
+
 	const ComponentGroupVector<EnvironmentComponent> &environments;
-	const ComponentGroupVector<RenderPassSinkComponent, RenderableComponent, CullPlaneComponent> &render_pass_sinks;
+	const ComponentGroupVector<RenderPassSinkComponent,
+			RenderableComponent,
+			CullPlaneComponent> &render_pass_sinks;
 	const ComponentGroupVector<RenderPassComponent> &render_pass_creators;
 	Util::IntrusiveList<Entity> entities;
 	Util::IntrusiveList<Entity> queued_entities;

@@ -263,8 +263,9 @@ void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoC
 			textures |= MATERIAL_EMISSIVE_BIT;
 
 		fill_render_info(*mesh_info);
-		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs,
-		                                                                                        textures, material->shader_variant);
+		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(
+				material->pipeline, attrs,
+				textures, material->shader_variant);
 	}
 }
 

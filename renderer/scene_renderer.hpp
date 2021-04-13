@@ -47,7 +47,9 @@ enum SceneRendererFlagBits : uint32_t
 	SCENE_RENDERER_DEPTH_BIT = 1 << 11,
 	SCENE_RENDERER_DEPTH_STATIC_BIT = 1 << 12,
 	SCENE_RENDERER_DEPTH_DYNAMIC_BIT = 1 << 13,
-	SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT = 1 << 14
+	SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT = 1 << 14,
+	SCENE_RENDERER_DEBUG_PROBES_BIT = 1 << 15,
+	SCENE_RENDERER_FALLBACK_DEPTH_BIT = 1 << 16
 };
 using SceneRendererFlags = uint32_t;
 
@@ -64,10 +66,20 @@ public:
 	};
 	void init(const Setup &setup);
 	void set_clear_color(const VkClearColorValue &value);
+	void set_extra_flush_flags(Renderer::RendererFlushFlags flags);
+
+	void build_render_pass(Vulkan::CommandBuffer &cmd) const;
+	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
+	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
+	void enqueue_prepare_render_pass(TaskComposer &composer) override;
+
+	// An immediate version of enqueue_prepare_render_pass.
+	void prepare_render_pass();
 
 protected:
 	Setup setup_data = {};
 	VkClearColorValue clear_color_value = {};
+	Renderer::RendererFlushFlags flush_flags = 0;
 
 	// These need to be per-thread, and thus are hoisted out as state in RenderPassSceneRenderer.
 	enum { MaxTasks = 4 };
@@ -76,12 +88,15 @@ protected:
 	RenderQueue queue_per_task_depth[MaxTasks];
 	RenderQueue queue_per_task_opaque[MaxTasks];
 	RenderQueue queue_per_task_transparent[MaxTasks];
-	RenderQueue queue_non_tasked;
+	mutable RenderQueue queue_non_tasked;
 
-	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
-	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
-	void enqueue_prepare_render_pass(TaskComposer &composer,
-	                                 const Vulkan::RenderPassInfo &info, unsigned subpass,
-	                                 VkSubpassContents &contents) override;
+	void build_render_pass_inner(Vulkan::CommandBuffer &cmd) const;
+	void setup_debug_probes();
+	void render_debug_probes(const Renderer &renderer, Vulkan::CommandBuffer &cmd, RenderQueue &queue,
+	                         const RenderContext &context) const;
+	AbstractRenderableHandle debug_probe_mesh;
+	const ComponentGroupVector<VolumetricDiffuseLightComponent> *volumetric_diffuse_lights = nullptr;
+
+	void prepare_setup_queues();
 };
 }

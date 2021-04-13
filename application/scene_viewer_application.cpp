@@ -109,6 +109,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("ssao"))
 		config.ssao = doc["ssao"].GetBool();
 
+	if (doc.HasMember("debugProbes"))
+		config.debug_probes = doc["debugProbes"].GetBool();
+
 	if (doc.HasMember("directionalLightShadows"))
 		config.directional_light_shadows = doc["directionalLightShadows"].GetBool();
 
@@ -202,22 +205,20 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	// Why not. :D
 	//Ocean::add_to_scene(scene_loader.get_scene());
 
-	animation_system = scene_loader.consume_animation_system();
-	context.set_lighting_parameters(&lighting);
-	cam.set_depth_range(0.1f, 1000.0f);
-
-	auto &ibl = scene_loader.get_scene().get_entity_pool().get_component_group<IBLComponent>();
-	if (!ibl.empty())
 	{
-		auto *ibl_component = get_component<IBLComponent>(ibl.front());
-		skydome_reflection = ibl_component->reflection_path;
-		skydome_irradiance = ibl_component->irradiance_path;
-		skydome_intensity = ibl_component->intensity;
+		auto &scene = scene_loader.get_scene();
+		auto node = scene.create_node();
+		node->transform.scale = vec3(26.0f, 8.0f, 26.0f);
+		node->transform.translation = vec3(0.0f, 3.0f, 0.0f);
+		node->invalidate_cached_transform();
+		scene.create_volumetric_diffuse_light(uvec3(32, 8, 32), node.get());
+		scene.get_root_node()->add_child(std::move(node));
 	}
 
-	auto &skybox = scene_loader.get_scene().get_entity_pool().get_component_group<SkyboxComponent>();
-	for (auto &box : skybox)
-		get_component<SkyboxComponent>(box)->skybox->set_color_mod(vec3(skydome_intensity));
+	animation_system = scene_loader.consume_animation_system();
+	context.set_lighting_parameters(&lighting);
+	fallback_depth_context.set_lighting_parameters(&fallback_lighting);
+	cam.set_depth_range(0.1f, 1000.0f);
 
 	// Create a dummy background if there isn't any background.
 	if (scene_loader.get_scene().get_entity_pool().get_component_group<BackgroundComponent>().empty())
@@ -323,6 +324,22 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 			volumetric_fog->add_texture_dependency("shadow-main");
 	}
 
+	{
+		volumetric_diffuse = make_unique<VolumetricDiffuseLightManager>();
+		auto entity = scene_loader.get_scene().create_entity();
+
+		auto *rp = entity->allocate_component<RenderPassComponent>();
+		rp->creator = volumetric_diffuse.get();
+
+		auto *update = entity->allocate_component<PerFrameUpdateComponent>();
+		// Must come before clusterer since we're modifying volumetric light textures,
+		// which will affect clustering, since it writes new descriptors.
+		update->dependency_order = -1;
+		update->refresh = volumetric_diffuse.get();
+
+		volumetric_diffuse->set_fallback_render_context(&fallback_depth_context);
+	}
+
 	if (config.deferred_clustered_stencil_culling)
 	{
 		auto entity = scene_loader.get_scene().create_entity();
@@ -390,18 +407,13 @@ void SceneViewerApplication::rescale_scene(float radius)
 
 void SceneViewerApplication::on_device_created(const DeviceCreatedEvent &device)
 {
-	if (!skydome_reflection.empty())
-		reflection = device.get_device().get_texture_manager().request_texture(skydome_reflection);
-	if (!skydome_irradiance.empty())
-		irradiance = device.get_device().get_texture_manager().request_texture(skydome_irradiance);
 	graph.set_device(&device.get_device());
 	context.set_device(&device.get_device());
+	fallback_depth_context.set_device(&device.get_device());
 }
 
 void SceneViewerApplication::on_device_destroyed(const DeviceCreatedEvent &)
 {
-	reflection = nullptr;
-	irradiance = nullptr;
 	graph.set_device(nullptr);
 }
 
@@ -432,7 +444,8 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		node->transform.translation = pos;
 		node->transform.rotation = conjugate(look_at_arbitrary_up(selected_camera->get_front()));
 
-		scene.create_light(light, node.get());
+		auto *entity = scene.create_light(light, node.get());
+		entity->allocate_component<IrradianceAffectingComponent>();
 		break;
 	}
 
@@ -448,7 +461,8 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		light.color = vec3(10.0f);
 		node->transform.translation = pos;
 
-		scene.create_light(light, node.get());
+		auto *entity = scene.create_light(light, node.get());
+		entity->allocate_component<IrradianceAffectingComponent>();
 		break;
 	}
 
@@ -573,7 +587,7 @@ void SceneViewerApplication::capture_environment_probe()
 		forward_renderer.set_mesh_renderer_options(forward_renderer.get_mesh_renderer_options() | config.pcf_flags);
 
 		forward_renderer.begin(queue);
-		queue.push_renderables(context, visible);
+		queue.push_renderables(context, visible.data(), visible.size());
 
 		Renderer::RendererOptionFlags opt = Renderer::FRONT_FACE_CLOCKWISE_BIT;
 		forward_renderer.flush(*cmd, queue, context, opt);
@@ -667,6 +681,10 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 		setup.flags |= SCENE_RENDERER_FORWARD_Z_PREPASS_BIT;
 	else if (config.forward_depth_prepass)
 		setup.flags |= SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT;
+
+	if (config.debug_probes)
+		setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
+
 	renderer->init(setup);
 
 	lighting_pass.set_render_pass_interface(std::move(renderer));
@@ -710,6 +728,9 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT;
 		if (!config.clustered_lights && config.deferred_clustered_stencil_culling)
 			setup.flags |= SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT;
+		if (config.debug_probes)
+			setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
+
 		renderer->init(setup);
 
 		gbuffer.set_render_pass_interface(std::move(renderer));
@@ -772,6 +793,28 @@ void SceneViewerApplication::add_main_pass(Device &device, const std::string &ta
 	default:
 		break;
 	}
+}
+
+void SceneViewerApplication::add_shadow_pass_fallback(Vulkan::Device &, const std::string &tag)
+{
+	AttachmentInfo shadowmap;
+	shadowmap.format = VK_FORMAT_D16_UNORM;
+	shadowmap.size_class = SizeClass::Absolute;
+	shadowmap.size_x = 2048;
+	shadowmap.size_y = 2048;
+
+	auto &shadowpass = graph.add_pass(tagcat("shadow", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	fallback_shadows = &shadowpass.set_depth_stencil_output(tagcat("shadow", tag), shadowmap);
+
+	RenderPassSceneRenderer::Setup setup = {};
+	setup.scene = &scene_loader.get_scene();
+	setup.suite = &renderer_suite;
+	setup.flags = SCENE_RENDERER_DEPTH_BIT | SCENE_RENDERER_DEPTH_DYNAMIC_BIT | SCENE_RENDERER_FALLBACK_DEPTH_BIT;
+	setup.context = &fallback_depth_context;
+
+	auto handle = Util::make_handle<RenderPassSceneRenderer>();
+	handle->init(setup);
+	shadowpass.set_render_pass_interface(std::move(handle));
 }
 
 void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
@@ -884,7 +927,10 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	scene_loader.get_scene().add_render_passes(graph);
 
 	if (config.directional_light_shadows)
+	{
 		add_shadow_pass(swap.get_device(), "main");
+		add_shadow_pass_fallback(swap.get_device(), "fallback");
+	}
 
 	add_main_pass(swap.get_device(), "main");
 
@@ -956,7 +1002,15 @@ void SceneViewerApplication::update_shadow_scene_aabb()
 void SceneViewerApplication::setup_shadow_map()
 {
 	mat4 view = mat4_cast(look_at(-selected_directional->direction, vec3(0.0f, 1.0f, 0.0f)));
-	AABB ortho_range_depth = shadow_scene_aabb.transform(view); // Just need this to determine Zmin/Zmax.
+	AABB ortho_range_depth = shadow_scene_aabb.transform(view);
+
+	// For fallback context, we render the entire scene bounds.
+	// This is not going to work well for large scenes, but oh well.
+	fallback_depth_context.set_camera(ortho(ortho_range_depth), view);
+	fallback_lighting.shadow.transforms[0] =
+			translate(vec3(0.5f, 0.5f, 0.0f)) *
+			scale(vec3(0.5f, 0.5f, 1.0f)) *
+			fallback_depth_context.get_render_parameters().view_projection;
 
 	// Project the scene AABB into the light and find our ortho ranges.
 	// This will serve as the culling bounding box.
@@ -1043,11 +1097,6 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 
 	jitter.step(selected_camera->get_projection(), selected_camera->get_view());
 
-	if (reflection)
-		lighting.environment_radiance = &reflection->get_image()->get_view();
-	if (irradiance)
-		lighting.environment_irradiance = &irradiance->get_image()->get_view();
-	lighting.environment.intensity = skydome_intensity;
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 
 	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
@@ -1085,8 +1134,9 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 	char max_text[64];
 	sprintf(max_text, "Max: %10.3f ms", max_time * 1000.0f);
 
-	char latency_text[64];
-	sprintf(latency_text, "Latency: %10.3f ms", get_wsi().get_estimated_video_latency() * 1e3f);
+	char pos_text[256];
+	auto cam_pos = selected_camera->get_position();
+	snprintf(pos_text, sizeof(pos_text), "Pos: %.3f, %.3f, %.3f", cam_pos.x, cam_pos.y, cam_pos.z);
 
 	vec3 offset(5.0f, 5.0f, 0.0f);
 	vec2 size(cmd.get_viewport().width - 10.0f, cmd.get_viewport().height - 10.0f);
@@ -1099,7 +1149,7 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 	                          offset + vec3(0.0f, 20.0f, 0.0f), size - vec2(0.0f, 20.0f), color, alignment, 1.0f);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), max_text,
 	                          offset + vec3(0.0f, 40.0f, 0.0f), size - vec2(0.0f, 40.0f), color, alignment, 1.0f);
-	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), latency_text,
+	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), pos_text,
 	                          offset + vec3(0.0f, 60.0f, 0.0f), size - vec2(0.0f, 60.0f), color, alignment, 1.0f);
 
 	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
@@ -1130,6 +1180,10 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	lighting.shadows = graph.maybe_get_physical_texture_resource(shadows);
 	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
+
+	fallback_lighting.shadows = graph.maybe_get_physical_texture_resource(fallback_shadows);
+	fallback_lighting.directional = lighting.directional;
+	fallback_lighting.cluster = lighting.cluster;
 
 	if (lighting.shadows)
 	{

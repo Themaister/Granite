@@ -605,6 +605,106 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
 	}
 }
 
+float VolumetricDiffuseLight::get_guard_band_factor()
+{
+	return 1.10f;
+}
+
+const AABB &VolumetricDiffuseLight::get_static_aabb()
+{
+	static AABB aabb(vec3(-0.5f * get_guard_band_factor()), vec3(0.5f * get_guard_band_factor()));
+	return aabb;
+}
+
+const Vulkan::ImageView *VolumetricDiffuseLight::get_volume_view() const
+{
+	return volume ? &volume->get_view() : nullptr;
+}
+
+const Vulkan::ImageView *VolumetricDiffuseLight::get_prev_volume_view() const
+{
+	return prev_volume ? &prev_volume->get_view() : nullptr;
+}
+
+const Vulkan::ImageView *VolumetricDiffuseLight::get_accumulation_view(unsigned index) const
+{
+	if (index >= accums.size())
+		return nullptr;
+	return accums[index] ? &accums[index]->get_view() : nullptr;
+}
+
+void VolumetricDiffuseLight::swap_volumes()
+{
+	std::swap(volume, prev_volume);
+}
+
+void VolumetricDiffuseLight::set_volumes(Vulkan::ImageHandle vol, Vulkan::ImageHandle prev_vol)
+{
+	volume = std::move(vol);
+	prev_volume = std::move(prev_vol);
+}
+
+void VolumetricDiffuseLight::set_accumulation_volumes(Util::SmallVector<Vulkan::ImageHandle> accums_)
+{
+	accums = std::move(accums_);
+}
+
+void VolumetricDiffuseLight::set_buffers(Vulkan::BufferHandle atomics_, Vulkan::BufferHandle worklist_)
+{
+	atomics = std::move(atomics_);
+	worklist = std::move(worklist_);
+}
+
+const Vulkan::Buffer *VolumetricDiffuseLight::get_atomic_buffer() const
+{
+	return atomics.get();
+}
+
+const Vulkan::Buffer *VolumetricDiffuseLight::get_worklist_buffer() const
+{
+	return worklist.get();
+}
+
+const VolumetricDiffuseLight::GBuffer &VolumetricDiffuseLight::get_gbuffer() const
+{
+	return gbuffer;
+}
+
+void VolumetricDiffuseLight::set_probe_gbuffer(GBuffer gbuffer_)
+{
+	gbuffer = std::move(gbuffer_);
+}
+
+uvec3 VolumetricDiffuseLight::get_resolution() const
+{
+	return resolution;
+}
+
+void VolumetricDiffuseLight::set_resolution(uvec3 resolution_)
+{
+	resolution = resolution_;
+}
+
+VolumetricDiffuseLight::VolumetricDiffuseLight()
+{
+	EVENT_MANAGER_REGISTER_LATCH(VolumetricDiffuseLight, on_device_created, on_device_destroyed,
+	                             Vulkan::DeviceCreatedEvent);
+}
+
+void VolumetricDiffuseLight::on_device_created(const Vulkan::DeviceCreatedEvent &)
+{
+}
+
+void VolumetricDiffuseLight::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
+{
+	volume.reset();
+	prev_volume.reset();
+	atomics.reset();
+	worklist.reset();
+	accums.clear();
+	gbuffer = {};
+}
+
 vec2 point_light_z_range(const RenderContext &context, const vec3 &center, float radius)
 {
 	auto &pos = context.get_render_parameters().camera_position;

@@ -189,9 +189,6 @@ struct MaterialInfo
 struct EnvironmentInfo
 {
 	MaterialInfo::Texture cube;
-	MaterialInfo::Texture reflection;
-	MaterialInfo::Texture irradiance;
-	float intensity;
 
 	struct Fog
 	{
@@ -206,8 +203,7 @@ struct LightInfo
 	{
 		Directional,
 		Spot,
-		Point,
-		Ambient
+		Point
 	};
 
 	std::string name;

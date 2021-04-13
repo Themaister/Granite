@@ -5,8 +5,8 @@
 	"directionalLightShadowsVSM": false,
 	"PCFKernelWidth": 1,
 	"directionalLightShadowsCascaded": true,
-	"clusteredLights": false,
-	"clusteredLightsBindless": false,
+	"clusteredLights": true,
+	"clusteredLightsBindless": true,
 	"clusteredLightsShadows": true,
 	"clusteredLightsShadowsVSM": false,
 	"clusteredLightsShadowsResolution": 512,
@@ -24,5 +24,6 @@
 	"maxSpotLights": 32,
 	"maxPointLights": 32,
 	"volumetricFog": false,
-	"ssao": true
+	"ssao": true,
+	"debugProbes": false
 }

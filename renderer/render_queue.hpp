@@ -38,11 +38,12 @@ class ShaderSuite;
 class RenderContext;
 class AbstractRenderable;
 class PositionalLight;
+class VolumetricDiffuseLightComponent;
 struct RenderInfoComponent;
 
 struct RenderableInfo
 {
-	AbstractRenderable *renderable;
+	const AbstractRenderable *renderable;
 	const RenderInfoComponent *transform;
 	Util::Hash transform_hash;
 };
@@ -55,6 +56,13 @@ struct PositionalLightInfo
 };
 using VisibilityList = std::vector<RenderableInfo>;
 using PositionalLightList = std::vector<PositionalLightInfo>;
+
+struct VolumetricDiffuseLightInfo
+{
+	VolumetricDiffuseLightComponent *light;
+	const RenderInfoComponent *transform;
+};
+using VolumetricDiffuseLightList = std::vector<VolumetricDiffuseLightInfo>;
 
 enum class Queue : unsigned
 {
@@ -205,8 +213,8 @@ public:
 		return shader_suites;
 	}
 
-	void push_renderables(const RenderContext &context, const VisibilityList &visible);
-	void push_depth_renderables(const RenderContext &context, const VisibilityList &visible);
+	void push_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count);
+	void push_depth_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count);
 
 private:
 	void enqueue_queue_data(Queue queue, const RenderQueueData &data);

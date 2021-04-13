@@ -47,7 +47,7 @@ struct DescriptorSetLayout
 	uint32_t separate_image_mask = 0;
 	uint32_t fp_mask = 0;
 	uint32_t immutable_sampler_mask = 0;
-	uint64_t immutable_samplers = 0;
+	uint32_t immutable_samplers[(VULKAN_NUM_BINDINGS * 4) / 32] = {};
 	uint8_t array_size[VULKAN_NUM_BINDINGS] = {};
 	enum { UNSIZED_ARRAY = 0xff };
 };
@@ -62,12 +62,19 @@ static inline bool has_immutable_sampler(const DescriptorSetLayout &layout, unsi
 static inline StockSampler get_immutable_sampler(const DescriptorSetLayout &layout, unsigned binding)
 {
 	VK_ASSERT(has_immutable_sampler(layout, binding));
-	return static_cast<StockSampler>((layout.immutable_samplers >> (4 * binding)) & 0xf);
+
+	unsigned bit = 4 * binding;
+	unsigned word_offset = bit >> 5;
+	unsigned bit_offset = bit & 31;
+	return static_cast<StockSampler>((layout.immutable_samplers[word_offset] >> bit_offset) & 0xf);
 }
 
 static inline void set_immutable_sampler(DescriptorSetLayout &layout, unsigned binding, StockSampler sampler)
 {
-	layout.immutable_samplers |= uint64_t(sampler) << (4 * binding);
+	unsigned bit = 4 * binding;
+	unsigned word_offset = bit >> 5;
+	unsigned bit_offset = bit & 31;
+	layout.immutable_samplers[word_offset] |= uint32_t(sampler) << bit_offset;
 	layout.immutable_sampler_mask |= 1u << binding;
 }
 
@@ -88,11 +95,13 @@ class BindlessDescriptorPool : public Util::IntrusivePtrEnabled<BindlessDescript
 {
 public:
 	friend struct BindlessDescriptorPoolDeleter;
-	explicit BindlessDescriptorPool(Device *device, DescriptorSetAllocator *allocator, VkDescriptorPool pool);
+	explicit BindlessDescriptorPool(Device *device, DescriptorSetAllocator *allocator, VkDescriptorPool pool,
+	                                uint32_t total_sets, uint32_t total_descriptors);
 	~BindlessDescriptorPool();
 	void operator=(const BindlessDescriptorPool &) = delete;
 	BindlessDescriptorPool(const BindlessDescriptorPool &) = delete;
 
+	void reset();
 	bool allocate_descriptors(unsigned count);
 	VkDescriptorSet get_descriptor_set() const;
 
@@ -105,6 +114,11 @@ private:
 	DescriptorSetAllocator *allocator;
 	VkDescriptorPool desc_pool;
 	VkDescriptorSet desc_set = VK_NULL_HANDLE;
+
+	uint32_t allocated_sets = 0;
+	uint32_t total_sets = 0;
+	uint32_t allocated_descriptor_count = 0;
+	uint32_t total_descriptors = 0;
 
 	void set_texture(unsigned binding, VkImageView view, VkImageLayout layout);
 };
@@ -141,6 +155,7 @@ public:
 
 	VkDescriptorPool allocate_bindless_pool(unsigned num_sets, unsigned num_descriptors);
 	VkDescriptorSet allocate_bindless_set(VkDescriptorPool pool, unsigned num_descriptors);
+	void reset_bindless_pool(VkDescriptorPool pool);
 
 private:
 	struct DescriptorSetNode : Util::TemporaryHashmapEnabled<DescriptorSetNode>, Util::IntrusiveListEnabled<DescriptorSetNode>

@@ -24,7 +24,10 @@
 
 #include "abstract_renderable.hpp"
 #include "image.hpp"
+#include "buffer.hpp"
 #include "light_info.hpp"
+#include "event.hpp"
+#include "application_wsi_events.hpp"
 
 namespace Granite
 {
@@ -160,6 +163,45 @@ private:
 
 	const Vulkan::ImageView *shadow_atlas = nullptr;
 	PointTransform shadow_transform;
+};
+
+class VolumetricDiffuseLight : public EventHandler
+{
+public:
+	VolumetricDiffuseLight();
+
+	void set_volumes(Vulkan::ImageHandle volume, Vulkan::ImageHandle prev_volume);
+	void set_accumulation_volumes(Util::SmallVector<Vulkan::ImageHandle> accums);
+	const Vulkan::ImageView *get_volume_view() const;
+	const Vulkan::ImageView *get_prev_volume_view() const;
+	const Vulkan::ImageView *get_accumulation_view(unsigned index) const;
+	const Vulkan::Buffer *get_atomic_buffer() const;
+	const Vulkan::Buffer *get_worklist_buffer() const;
+
+	void set_buffers(Vulkan::BufferHandle atomics, Vulkan::BufferHandle worklist);
+
+	struct GBuffer
+	{
+		Vulkan::ImageHandle emissive, albedo, normal, pbr, depth;
+	};
+	void set_probe_gbuffer(GBuffer gbuffer);
+	const GBuffer &get_gbuffer() const;
+
+	void set_resolution(uvec3 resolution);
+	uvec3 get_resolution() const;
+	static const AABB &get_static_aabb();
+	static float get_guard_band_factor();
+
+	void swap_volumes();
+
+private:
+	Vulkan::ImageHandle volume, prev_volume;
+	Util::SmallVector<Vulkan::ImageHandle> accums;
+	Vulkan::BufferHandle atomics, worklist;
+	GBuffer gbuffer;
+	uvec3 resolution;
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
 };
 
 vec2 spot_light_z_range(const RenderContext &context, const mat4 &model);

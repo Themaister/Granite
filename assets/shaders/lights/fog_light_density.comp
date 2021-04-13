@@ -84,11 +84,7 @@ vec3 compute_inscatter_light(vec3 pos)
         global.camera_position,
         global.camera_front,
         directional.direction,
-        directional.color
-#ifdef ENVIRONMENT
-        , environment.intensity
-#endif
-    );
+        directional.color);
 }
 
 #ifdef FLOOR_LIGHTING

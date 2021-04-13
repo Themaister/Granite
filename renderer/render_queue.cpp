@@ -170,16 +170,16 @@ void *RenderQueue::allocate(size_t size, size_t alignment)
 	return data;
 }
 
-void RenderQueue::push_renderables(const RenderContext &context, const VisibilityList &visible)
+void RenderQueue::push_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count)
 {
-	for (auto &vis : visible)
-		vis.renderable->get_render_info(context, vis.transform, *this);
+	for (size_t i = 0; i < count; i++)
+		visible[i].renderable->get_render_info(context, visible[i].transform, *this);
 }
 
-void RenderQueue::push_depth_renderables(const RenderContext &context, const VisibilityList &visible)
+void RenderQueue::push_depth_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count)
 {
-	for (auto &vis : visible)
-		vis.renderable->get_depth_render_info(context, vis.transform, *this);
+	for (size_t i = 0; i < count; i++)
+		visible[i].renderable->get_depth_render_info(context, visible[i].transform, *this);
 }
 
 uint64_t RenderInfo::get_background_sort_key(Queue queue_type, Util::Hash pipeline_hash, Util::Hash draw_hash)

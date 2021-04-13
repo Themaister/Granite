@@ -336,6 +336,10 @@ void VolumetricFog::setup_render_pass_dependencies(RenderGraph &graph, RenderPas
 		floor.input_resource = &pass->add_texture_input(floor.input);
 	else
 		floor.input_resource = nullptr;
+
+	if (graph.find_pass("probe-light"))
+		pass->add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+	pass->add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 }
 
 void VolumetricFog::setup_render_pass_resources(RenderGraph &graph)

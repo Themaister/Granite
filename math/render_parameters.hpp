@@ -84,12 +84,6 @@ struct ShadowParameters
 	float cascade_log_bias;
 };
 
-struct EnvironmentParameters
-{
-	float intensity;
-	float mipscale;
-};
-
 struct RefractionParameters
 {
 	alignas(16) vec3 falloff;
@@ -122,7 +116,27 @@ struct ClustererParametersBindless
 	float z_scale;
 };
 
+struct DiffuseVolumeParameters
+{
+	vec4 world_to_texture[3];
+	float lo_tex_coord_x;
+	float hi_tex_coord_x;
+	float guard_band_factor;
+	float guard_band_sharpen;
+};
+
+#define CLUSTERER_MAX_VOLUMES 128
+struct ClustererParametersVolumetric
+{
+	uint32_t bindless_index_offset;
+	uint32_t num_volumes;
+	muglm::u16vec4 fallback_volume;
+	alignas(16) DiffuseVolumeParameters volumes[CLUSTERER_MAX_VOLUMES];
+};
+
 #define CLUSTERER_MAX_LIGHTS_BINDLESS 4096
+#define CLUSTERER_MAX_LIGHTS_GLOBAL 32
+
 struct ClustererBindlessTransforms
 {
 	PositionalFragmentInfo lights[CLUSTERER_MAX_LIGHTS_BINDLESS];
@@ -131,10 +145,19 @@ struct ClustererBindlessTransforms
 	uint32_t type_mask[CLUSTERER_MAX_LIGHTS_BINDLESS / 32];
 };
 
+struct ClustererGlobalTransforms
+{
+	alignas(16) PositionalFragmentInfo lights[CLUSTERER_MAX_LIGHTS_GLOBAL];
+	alignas(16) mat4 shadow[CLUSTERER_MAX_LIGHTS_GLOBAL];
+	alignas(16) uint32_t type_mask[CLUSTERER_MAX_LIGHTS_GLOBAL / 32];
+	uint32_t descriptor_offset;
+	uint32_t num_lights;
+};
+static_assert(sizeof(ClustererGlobalTransforms) <= Vulkan::VULKAN_MAX_UBO_SIZE, "Global transforms is too large.");
+
 struct CombinedRenderParameters
 {
 	alignas(16) FogParameters fog;
-	alignas(16) EnvironmentParameters environment;
 	alignas(16) ShadowParameters shadow;
 	alignas(16) VolumetricFogParameters volumetric_fog;
 	alignas(16) DirectionalParameters directional;
@@ -149,11 +172,8 @@ struct LightingParameters
 	FogParameters fog = {};
 	DirectionalParameters directional;
 	ShadowParameters shadow;
-	EnvironmentParameters environment;
 	RefractionParameters refraction;
 
-	Vulkan::ImageView *environment_radiance = nullptr;
-	Vulkan::ImageView *environment_irradiance = nullptr;
 	Vulkan::ImageView *shadows = nullptr;
 	Vulkan::ImageView *ambient_occlusion = nullptr;
 	const LightClusterer *cluster = nullptr;

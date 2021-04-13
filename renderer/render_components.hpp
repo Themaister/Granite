@@ -30,6 +30,7 @@
 #include "abstract_renderable.hpp"
 #include "renderer_enums.hpp"
 #include "camera.hpp"
+#include "lights/lights.hpp"
 
 namespace Granite
 {
@@ -83,20 +84,6 @@ struct EnvironmentComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(EnvironmentComponent)
 	FogParameters fog;
-};
-
-struct SkyboxComponent : ComponentBase
-{
-	GRANITE_COMPONENT_TYPE_DECL(SkyboxComponent)
-	Skybox *skybox;
-};
-
-struct IBLComponent : ComponentBase
-{
-	GRANITE_COMPONENT_TYPE_DECL(IBLComponent)
-	std::string reflection_path;
-	std::string irradiance_path;
-	float intensity;
 };
 
 struct RenderableComponent : ComponentBase
@@ -161,12 +148,14 @@ struct PerFrameUpdateTransformComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(PerFrameUpdateTransformComponent)
 	PerFrameRefreshableTransform *refresh = nullptr;
+	int dependency_order = 0;
 };
 
 struct PerFrameUpdateComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(PerFrameUpdateComponent)
 	PerFrameRefreshable *refresh = nullptr;
+	int dependency_order = 0;
 };
 
 struct RenderInfoComponent : ComponentBase
@@ -212,6 +201,11 @@ struct PositionalLightComponent : ComponentBase
 	PositionalLight *light;
 };
 
+struct IrradianceAffectingComponent : ComponentBase
+{
+	GRANITE_COMPONENT_TYPE_DECL(IrradianceAffectingComponent)
+};
+
 struct DirectionalLightComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(DirectionalLightComponent)
@@ -219,10 +213,14 @@ struct DirectionalLightComponent : ComponentBase
 	vec3 direction;
 };
 
-struct AmbientLightComponent : ComponentBase
+struct VolumetricDiffuseLightComponent : ComponentBase
 {
-	GRANITE_COMPONENT_TYPE_DECL(AmbientLightComponent)
-	vec3 color;
+	GRANITE_COMPONENT_TYPE_DECL(VolumetricDiffuseLightComponent)
+	VolumetricDiffuseLight light;
+	vec4 world_to_texture[3];
+	vec4 texture_to_world[3];
+	uint32_t timestamp = 0;
+	uint32_t update_iteration = 0;
 };
 
 struct CastsStaticShadowComponent : ComponentBase

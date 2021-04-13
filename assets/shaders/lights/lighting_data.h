@@ -3,12 +3,6 @@
 
 #include "../inc/global_bindings.h"
 
-struct EnvironmentParameters
-{
-	float intensity;
-	float mipscale;
-};
-
 struct FogParameters
 {
 	vec3 color;
@@ -50,7 +44,6 @@ struct ResolutionParameters
 layout(set = 0, binding = BINDING_GLOBAL_RENDER_PARAMETERS, std140) uniform LightingParameters
 {
 	FogParameters fog;
-	EnvironmentParameters environment;
 	ShadowParameters shadow;
 	VolumetricFogParameters volumetric_fog;
 	DirectionalParameters directional;

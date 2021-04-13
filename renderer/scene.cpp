@@ -37,13 +37,14 @@ Scene::Scene()
 	  opaque(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, OpaqueComponent>()),
 	  transparent(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, TransparentComponent>()),
 	  positional_lights(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, PositionalLightComponent>()),
+	  irradiance_affecting_positional_lights(pool.get_component_group<RenderInfoComponent, PositionalLightComponent, CachedSpatialTransformTimestampComponent, IrradianceAffectingComponent>()),
 	  static_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsStaticShadowComponent>()),
 	  dynamic_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
 	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
 	  cameras(pool.get_component_group<CameraComponent, CachedTransformComponent>()),
 	  directional_lights(pool.get_component_group<DirectionalLightComponent, CachedTransformComponent>()),
-	  ambient_lights(pool.get_component_group<AmbientLightComponent>()),
+	  volumetric_diffuse_lights(pool.get_component_group<VolumetricDiffuseLightComponent, CachedSpatialTransformTimestampComponent, RenderInfoComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
 	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, RenderInfoComponent>()),
 	  environments(pool.get_component_group<EnvironmentComponent>()),
@@ -132,21 +133,54 @@ void Scene::bind_render_graph_resources(RenderGraph &graph)
 
 void Scene::refresh_per_frame(const RenderContext &context, TaskComposer &composer)
 {
-	composer.begin_pipeline_stage();
+	per_frame_update_transforms_sorted = per_frame_update_transforms;
+	per_frame_updates_sorted = per_frame_updates;
 
-	for (auto &update : per_frame_update_transforms)
+	stable_sort(per_frame_update_transforms_sorted.begin(), per_frame_update_transforms_sorted.end(),
+	            [](auto &a, auto &b) -> bool {
+		            int order_a = get_component<PerFrameUpdateTransformComponent>(a)->dependency_order;
+		            int order_b = get_component<PerFrameUpdateTransformComponent>(b)->dependency_order;
+		            return order_a < order_b;
+	            });
+
+	stable_sort(per_frame_updates_sorted.begin(), per_frame_updates_sorted.end(),
+	            [](auto &a, auto &b) -> bool {
+		            int order_a = get_component<PerFrameUpdateComponent>(a)->dependency_order;
+		            int order_b = get_component<PerFrameUpdateComponent>(b)->dependency_order;
+		            return order_a < order_b;
+	            });
+
+	int dep = std::numeric_limits<int>::min();
+
+	for (auto &update : per_frame_update_transforms_sorted)
 	{
-		auto *refresh = get_component<PerFrameUpdateTransformComponent>(update)->refresh;
+		auto *comp = get_component<PerFrameUpdateTransformComponent>(update);
+		assert(comp->dependency_order != std::numeric_limits<int>::min());
+		if (comp->dependency_order != dep)
+		{
+			composer.begin_pipeline_stage();
+			dep = comp->dependency_order;
+		}
+
+		auto *refresh = comp->refresh;
 		auto *transform = get_component<RenderInfoComponent>(update);
 		if (refresh)
 			refresh->refresh(context, transform, composer);
 	}
 
-	composer.begin_pipeline_stage();
+	dep = std::numeric_limits<int>::min();
 
-	for (auto &update : per_frame_updates)
+	for (auto &update : per_frame_updates_sorted)
 	{
-		auto *refresh = get_component<PerFrameUpdateComponent>(update)->refresh;
+		auto *comp = get_component<PerFrameUpdateComponent>(update);
+		assert(comp->dependency_order != std::numeric_limits<int>::min());
+		if (comp->dependency_order != dep)
+		{
+			composer.begin_pipeline_stage();
+			dep = comp->dependency_order;
+		}
+
+		auto *refresh = comp->refresh;
 		if (refresh)
 			refresh->refresh(context, composer);
 	}
@@ -242,10 +276,11 @@ void Scene::gather_visible_dynamic_shadow_renderables_subset(const Frustum &frus
 }
 
 static void gather_positional_lights(const Frustum &frustum, VisibilityList &list,
-                                     const std::vector<std::tuple<RenderInfoComponent *,
-	                                     RenderableComponent *,
-	                                     CachedSpatialTransformTimestampComponent *,
-	                                     PositionalLightComponent *>> &positional,
+                                     const ComponentGroupVector<
+		                                     RenderInfoComponent,
+		                                     RenderableComponent,
+		                                     CachedSpatialTransformTimestampComponent,
+		                                     PositionalLightComponent> &positional,
                                      size_t start_index, size_t end_index)
 {
 	for (size_t i = start_index; i < end_index; i++)
@@ -270,10 +305,10 @@ static void gather_positional_lights(const Frustum &frustum, VisibilityList &lis
 }
 
 static void gather_positional_lights(const Frustum &frustum, PositionalLightList &list,
-                                     const std::vector<std::tuple<RenderInfoComponent *,
-	                                     RenderableComponent *,
-	                                     CachedSpatialTransformTimestampComponent *,
-	                                     PositionalLightComponent *>> &positional,
+                                     const ComponentGroupVector<RenderInfoComponent,
+		                                     RenderableComponent,
+		                                     CachedSpatialTransformTimestampComponent,
+		                                     PositionalLightComponent> &positional,
                                      size_t start_index, size_t end_index)
 {
 	for (size_t i = start_index; i < end_index; i++)
@@ -302,9 +337,44 @@ void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityL
 	gather_positional_lights(frustum, list, positional_lights, 0, positional_lights.size());
 }
 
+void Scene::gather_irradiance_affecting_positional_lights(PositionalLightList &list) const
+{
+	for (auto &light_tup : irradiance_affecting_positional_lights)
+	{
+		auto *transform = get_component<RenderInfoComponent>(light_tup);
+		auto *light = get_component<PositionalLightComponent>(light_tup)->light;
+		auto *timestamp = get_component<CachedSpatialTransformTimestampComponent>(light_tup);
+
+		Util::Hasher h;
+		h.u64(timestamp->cookie);
+		h.u32(timestamp->last_timestamp);
+		list.push_back({ light, transform, h.get() });
+	}
+}
+
 void Scene::gather_visible_positional_lights(const Frustum &frustum, PositionalLightList &list) const
 {
 	gather_positional_lights(frustum, list, positional_lights, 0, positional_lights.size());
+}
+
+void Scene::gather_visible_volumetric_diffuse_lights(const Frustum &frustum, VolumetricDiffuseLightList &list) const
+{
+	for (auto &o : volumetric_diffuse_lights)
+	{
+		auto *transform = get_component<RenderInfoComponent>(o);
+		auto *light = get_component<VolumetricDiffuseLightComponent>(o);
+
+		if (light->light.get_volume_view())
+		{
+			if (transform->transform)
+			{
+				if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
+					list.push_back({ light, transform });
+			}
+			else
+				list.push_back({ light, transform });
+		}
+	}
 }
 
 void Scene::gather_visible_positional_lights_subset(const Frustum &frustum, VisibilityList &list,
@@ -590,6 +660,33 @@ void Scene::update_transform_listener_components()
 		// v = [0, 0, 1, 0].
 		l->direction = normalize(transform->transform->world_transform[2].xyz());
 	}
+
+	for (auto &light : volumetric_diffuse_lights)
+	{
+		VolumetricDiffuseLightComponent *l;
+		CachedSpatialTransformTimestampComponent *timestamp;
+		RenderInfoComponent *transform;
+		tie(l, timestamp, transform) = light;
+
+		if (timestamp->last_timestamp != l->timestamp)
+		{
+			// This is a somewhat expensive operation, so timestamp it.
+			// We only expect this to run once since diffuse volumes really
+			// cannot freely move around the scene due to the semi-baked nature of it.
+			auto texture_to_world = transform->transform->world_transform * translate(vec3(-0.5f));
+			auto world_to_texture = inverse(texture_to_world);
+
+			world_to_texture = transpose(world_to_texture);
+			texture_to_world = transpose(texture_to_world);
+
+			for (int i = 0; i < 3; i++)
+			{
+				l->world_to_texture[i] = world_to_texture[i];
+				l->texture_to_world[i] = texture_to_world[i];
+			}
+			l->timestamp = timestamp->last_timestamp;
+		}
+	}
 }
 
 void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
@@ -741,6 +838,29 @@ Entity *Scene::create_entity()
 
 static std::atomic<uint64_t> transform_cookies;
 
+Entity *Scene::create_volumetric_diffuse_light(uvec3 resolution, Node *node)
+{
+	Entity *entity = pool.create_entity();
+	entities.insert_front(entity);
+
+	auto *light = entity->allocate_component<VolumetricDiffuseLightComponent>();
+	light->light.set_resolution(resolution);
+	auto *transform = entity->allocate_component<RenderInfoComponent>();
+	auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
+
+	auto *bounded = entity->allocate_component<BoundedComponent>();
+	bounded->aabb = &VolumetricDiffuseLight::get_static_aabb();
+
+	if (node)
+	{
+		transform->transform = &node->cached_transform;
+		timestamp->current_timestamp = node->get_timestamp_pointer();
+	}
+	timestamp->cookie = transform_cookies.fetch_add(std::memory_order_relaxed);
+
+	return entity;
+}
+
 Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 {
 	Entity *entity = pool.create_entity();
@@ -754,13 +874,6 @@ Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 		auto *transform = entity->allocate_component<CachedTransformComponent>();
 		transform->transform = &node->cached_transform;
 		dir->color = light.color;
-		break;
-	}
-
-	case SceneFormats::LightInfo::Type::Ambient:
-	{
-		auto *ambient = entity->allocate_component<AmbientLightComponent>();
-		ambient->color = light.color;
 		break;
 	}
 

@@ -100,7 +100,7 @@ void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderQue
 	for (unsigned cluster = 0; cluster < NumClusters; cluster++)
 	{
 		depth_renderer.begin(queue);
-		queue.push_depth_renderables(context, clusters[cluster]);
+		queue.push_depth_renderables(context, clusters[cluster].data(), clusters[cluster].size());
 		// FIXME: A little ugly.
 		Renderer::FlushParameters params = {};
 		params.stencil.compare_mask = 0xffu;
@@ -121,7 +121,7 @@ void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queu
 	if (enable_clustered_stencil)
 	{
 		deferred_renderer.begin(queue);
-		queue.push_renderables(context, clips);
+		queue.push_renderables(context, clips.data(), clips.size());
 		Renderer::FlushParameters params = {};
 		params.stencil.compare_mask = 1;
 		deferred_renderer.flush(cmd, queue, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT, &params);
@@ -129,7 +129,7 @@ void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queu
 		for (unsigned cluster = 0; cluster < NumClusters; cluster++)
 		{
 			deferred_renderer.begin(queue);
-			queue.push_renderables(context, clusters[cluster]);
+			queue.push_renderables(context, clusters[cluster].data(), clusters[cluster].size());
 			params.stencil.compare_mask = (2u << cluster) | 1u;
 			params.stencil.write_mask = 0;
 			params.stencil.ref = 2u << cluster;
@@ -141,7 +141,7 @@ void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queu
 		visible.clear();
 		scene->gather_visible_positional_lights(context.get_visibility_frustum(), visible);
 		deferred_renderer.begin(queue);
-		queue.push_renderables(context, visible);
+		queue.push_renderables(context, visible.data(), visible.size());
 		deferred_renderer.flush(cmd, queue, context);
 	}
 }

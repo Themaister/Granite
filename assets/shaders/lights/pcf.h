@@ -8,7 +8,7 @@
 #endif
 
 #ifdef CLUSTERER_BINDLESS
-layout(set = 0, binding = BINDING_GLOBAL_SHADOW_SAMPLER) uniform sampler LinearShadowSampler;
+#include "linear_shadow_sampler.h"
 #endif
 
 #define SAMPLE_PCF_BINDLESS(tex, index, uv, x, y) \

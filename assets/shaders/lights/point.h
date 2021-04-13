@@ -48,6 +48,9 @@ layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BI
 		#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[0].transform
 		#define POINT_SHADOW_SLICE(index) point_shadow.data[0].slice.x
 	#endif
+#elif defined(CLUSTERER_GLOBAL)
+	#define POINT_DATA(index) cluster_global_transforms.lights[index]
+	#define POINT_SHADOW_TRANSFORM(index) cluster_global_transforms.shadow[index][0]
 #elif defined(CLUSTERER_BINDLESS)
 	#define POINT_DATA(index) cluster_transforms.lights[index]
 	#define POINT_SHADOW_TRANSFORM(index) cluster_transforms.shadow[index][0]
@@ -91,6 +94,19 @@ mediump vec3 compute_point_color(int index, vec3 world_pos, out mediump vec3 lig
 			float shadow_ref = shadow_ref2.x / shadow_ref2.y;
 			mediump float shadow_falloff = texture(uPointShadowAtlas, vec4(light_dir_full, slice), shadow_ref);
 		#endif
+	#elif defined(CLUSTERER_GLOBAL)
+		#ifdef POSITIONAL_SHADOW_VSM
+			vec2 shadow_moments = textureLod(samplerCube(uPointShadowAtlas[index + cluster_global_transforms.desc_offset],
+												LinearClampSampler),
+									light_dir_full, 0.0).xy;
+			mediump float shadow_falloff = vsm(max_z, shadow_moments);
+		#else
+			vec2 shadow_ref2 = shadow_transform.zw - shadow_transform.xy * max_z;
+			float shadow_ref = shadow_ref2.x / shadow_ref2.y;
+			mediump float shadow_falloff = texture(samplerCubeShadow(uPointShadowAtlas[index + cluster_global_transforms.desc_offset],
+															LinearShadowSampler),
+										  vec4(light_dir_full, shadow_ref));
+		#endif
 	#else
 		#ifdef POSITIONAL_SHADOW_VSM
 			vec2 shadow_moments = textureLod(nonuniformEXT(samplerCube(uPointShadowAtlas[index], LinearClampSampler)), light_dir_full, 0.0).xy;
@@ -118,6 +134,18 @@ mediump vec3 compute_point_scatter_light(int index, vec3 world_pos, vec3 camera_
 	mediump vec3 point_color = compute_point_color(index, world_pos, light_dir);
 	float VoL = dot(normalize(camera_pos - world_pos), normalize(POINT_DATA(index).position - world_pos));
 	return point_color * point_scatter_phase_function(VoL);
+}
+
+mediump vec3 compute_irradiance_point_light(int index,
+                                            mediump vec3 material_normal,
+                                            vec3 world_pos)
+{
+	mediump vec3 light_dir;
+	mediump vec3 point_color = compute_point_color(index, world_pos, light_dir);
+	mediump vec3 L = light_dir;
+	mediump vec3 N = material_normal;
+	mediump float NoL = clamp(dot(N, L), 0.0, 1.0);
+	return point_color * NoL * (1.0 / PI);
 }
 
 mediump vec3 compute_point_light(int index,

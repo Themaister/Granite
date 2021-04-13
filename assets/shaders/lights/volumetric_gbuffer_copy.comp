@@ -1,0 +1,49 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0) writeonly uniform image2DArray uOutput;
+layout(set = 0, binding = 1) uniform texture2DArray uInput;
+
+layout(push_constant) uniform Registers
+{
+    uvec2 position_yz;
+    uint probe_resolution;
+    uint probe_downsampling_factor;
+};
+
+layout(set = 0, binding = 2) uniform UBO
+{
+    vec4 inv_projection_zw;
+};
+
+#include "volumetric_probe_hash.h"
+
+layout(constant_id = 0) const bool DepthTransform = false;
+
+void main()
+{
+    uvec3 position = uvec3(gl_WorkGroupID.z, position_yz);
+
+    uvec2 probe_resolution_2 = uvec2(probe_resolution * 6, probe_resolution);
+    uvec2 xy = position.xy * probe_resolution_2 + gl_GlobalInvocationID.xy;
+    ivec3 probe_coord = ivec3(xy, position.z);
+    vec4 v = texelFetch(uInput, ivec3(
+            gl_GlobalInvocationID.xy * probe_downsampling_factor +
+            volumetric_probe_hash(probe_coord, probe_downsampling_factor),
+            position.x), 0);
+
+    if (DepthTransform)
+    {
+        if (v.x < 1.0)
+        {
+            vec2 linear_depth2 = mat2(inv_projection_zw.xy, inv_projection_zw.zw) * vec2(v.x, 1.0);
+            float linear_depth = -linear_depth2.x / linear_depth2.y;
+            v.x = linear_depth;
+        }
+        else
+            v.x = 0.0;
+    }
+
+    imageStore(uOutput, probe_coord, v);
+}

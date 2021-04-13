@@ -178,6 +178,11 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 #endif
 }
 
+void DescriptorSetAllocator::reset_bindless_pool(VkDescriptorPool pool)
+{
+	table.vkResetDescriptorPool(device->get_device(), pool, 0);
+}
+
 VkDescriptorSet DescriptorSetAllocator::allocate_bindless_set(VkDescriptorPool pool, unsigned num_descriptors)
 {
 	if (!pool || !bindless)
@@ -324,8 +329,9 @@ DescriptorSetAllocator::~DescriptorSetAllocator()
 	clear();
 }
 
-BindlessDescriptorPool::BindlessDescriptorPool(Device *device_, DescriptorSetAllocator *allocator_, VkDescriptorPool pool)
-	: device(device_), allocator(allocator_), desc_pool(pool)
+BindlessDescriptorPool::BindlessDescriptorPool(Device *device_, DescriptorSetAllocator *allocator_,
+                                               VkDescriptorPool pool, uint32_t num_sets, uint32_t num_desc)
+	: device(device_), allocator(allocator_), desc_pool(pool), total_sets(num_sets), total_descriptors(num_desc)
 {
 }
 
@@ -345,8 +351,26 @@ VkDescriptorSet BindlessDescriptorPool::get_descriptor_set() const
 	return desc_set;
 }
 
+void BindlessDescriptorPool::reset()
+{
+	if (desc_pool != VK_NULL_HANDLE)
+		allocator->reset_bindless_pool(desc_pool);
+	desc_set = VK_NULL_HANDLE;
+	allocated_descriptor_count = 0;
+	allocated_sets = 0;
+}
+
 bool BindlessDescriptorPool::allocate_descriptors(unsigned count)
 {
+	// Not all drivers will exhaust the pool for us, so make sure we don't allocate more than expected.
+	if (allocated_sets == total_sets)
+		return false;
+	if (allocated_descriptor_count + count > total_descriptors)
+		return false;
+
+	allocated_descriptor_count += count;
+	allocated_sets++;
+
 	desc_set = allocator->allocate_bindless_set(desc_pool, count);
 	return desc_set != VK_NULL_HANDLE;
 }

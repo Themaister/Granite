@@ -1169,13 +1169,28 @@ void RenderGraph::build_render_pass_info()
 					rp.op_flags |= Vulkan::RENDER_PASS_OP_DEPTH_STENCIL_READ_ONLY_BIT |
 					               Vulkan::RENDER_PASS_OP_LOAD_DEPTH_STENCIL_BIT;
 
-					bool preserve_depth = false;
-					for (auto &read_pass : ds_input->get_read_passes())
+					auto current_physical_pass = unsigned(&physical_pass - physical_passes.data());
+
+					const auto check_preserve = [this, current_physical_pass](const RenderResource &tex) -> bool {
+						for (auto &read_pass : tex.get_read_passes())
+							if (passes[read_pass]->get_physical_pass_index() > current_physical_pass)
+								return true;
+						return false;
+					};
+
+					bool preserve_depth = check_preserve(*ds_input);
+					if (!preserve_depth)
 					{
-						if (passes[read_pass]->get_physical_pass_index() > unsigned(&physical_pass - physical_passes.data()))
+						for (auto &logical_pass : passes)
 						{
-							preserve_depth = true;
-							break;
+							for (auto &alias : logical_pass->get_fake_resource_aliases())
+							{
+								if (alias.first == ds_input && check_preserve(*alias.second))
+								{
+									preserve_depth = true;
+									break;
+								}
+							}
 						}
 					}
 

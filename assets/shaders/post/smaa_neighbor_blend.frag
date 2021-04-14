@@ -4,6 +4,7 @@ precision highp int;
 #define SMAA_INCLUDE_VS 0
 #define SMAA_INCLUDE_PS 1
 #include "smaa_common.h"
+#include "../inc/srgb.h"
 
 layout(set = 0, binding = 0) uniform sampler2D ColorTex;
 layout(set = 0, binding = 1) uniform sampler2D BlendTex;
@@ -15,4 +16,7 @@ layout(location = 0) out vec4 Color;
 void main()
 {
     Color = SMAANeighborhoodBlendingPS(vTex, vOffset, ColorTex, BlendTex);
+#if SMAA_TARGET_SRGB
+    Color.rgb = decode_srgb(Color.rgb);
+#endif
 }

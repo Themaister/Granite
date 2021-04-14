@@ -79,9 +79,13 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	smaa_weight_output.size_relative_name = input;
 	smaa_weight_output.format = VK_FORMAT_R8G8B8A8_UNORM;
 
-	AttachmentInfo smaa_output;
-	smaa_output.size_class = SizeClass::InputRelative;
-	smaa_output.size_relative_name = input;
+	AttachmentInfo smaa_output_final;
+	smaa_output_final.size_class = SizeClass::InputRelative;
+	smaa_output_final.size_relative_name = input;
+
+	AttachmentInfo smaa_output_alias = smaa_output_final;
+	smaa_output_alias.unorm_srgb_alias = true;
+	smaa_output_alias.format = VK_FORMAT_R8G8B8A8_UNORM;
 
 	AttachmentInfo smaa_depth;
 	smaa_depth.size_class = SizeClass::InputRelative;
@@ -113,7 +117,8 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	if (masked_edge)
 		smaa_weight.set_depth_stencil_input("smaa-mask");
 
-	smaa_blend.add_color_output(t2x_enable ? string("smaa-sample") : output, smaa_output);
+	smaa_blend.add_color_output(t2x_enable ? string("smaa-sample") : output,
+	                            t2x_enable ? smaa_output_alias : smaa_output_final);
 	auto &blend_input_res = smaa_blend.add_texture_input(input);
 	auto &blend_weight_res = smaa_blend.add_texture_input("smaa-weights");
 
@@ -162,7 +167,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad_depth(cmd,
 		                                                      "builtin://shaders/post/smaa_blend_weight.vert",
 		                                                      "builtin://shaders/post/smaa_blend_weight.frag",
-		                                                      edge, false, VK_COMPARE_OP_EQUAL,
+		                                                      edge, false, edge ? VK_COMPARE_OP_EQUAL : VK_COMPARE_OP_ALWAYS,
 		                                                      {
 				                                                      {"SMAA_SUBPIXEL_MODE", subpixel_mode},
 				                                                      {"SMAA_QUALITY",       q}
@@ -178,7 +183,10 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	smaa_blend.set_build_render_pass([&, q = smaa_quality](Vulkan::CommandBuffer &cmd) {
 		auto &input_image = graph.get_physical_texture_resource(blend_input_res);
 		auto &blend_image = graph.get_physical_texture_resource(blend_weight_res);
-		cmd.set_texture(0, 0, input_image, Vulkan::StockSampler::LinearClamp);
+
+		cmd.set_unorm_texture(0, 0, input_image);
+		cmd.set_sampler(0, 0, Vulkan::StockSampler::LinearClamp);
+
 		cmd.set_texture(0, 1, blend_image, Vulkan::StockSampler::LinearClamp);
 		vec4 rt_metrics(1.0f / input_image.get_image().get_create_info().width,
 		                1.0f / input_image.get_image().get_create_info().height,
@@ -187,16 +195,19 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 
 		cmd.push_constants(&rt_metrics, 0, sizeof(rt_metrics));
 
+		auto &output_image = graph.get_physical_texture_resource(smaa_blend.get_color_outputs()[0]->get_physical_index());
+		bool srgb = Vulkan::format_is_srgb(output_image.get_format());
+
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd,
 		                                                "builtin://shaders/post/smaa_neighbor_blend.vert",
 		                                                "builtin://shaders/post/smaa_neighbor_blend.frag",
-		                                                {{"SMAA_QUALITY", q}});
+		                                                {{"SMAA_QUALITY", q}, { "SMAA_TARGET_SRGB", srgb ? 1 : 0}});
 	});
 
 	if (t2x_enable)
 	{
 		auto &smaa_resolve = graph.add_pass("smaa-t2x-resolve", RenderGraph::get_default_post_graphics_queue());
-		smaa_resolve.add_color_output(output, smaa_output);
+		smaa_resolve.add_color_output(output, smaa_output_final);
 		auto &input_res = smaa_resolve.add_texture_input("smaa-sample");
 		auto &depth_res = smaa_resolve.add_texture_input(input_depth);
 		auto &history_res = smaa_resolve.add_history_input("smaa-sample");
@@ -213,7 +224,8 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 			auto *prev = graph.get_physical_history_texture_resource(history_res);
 			auto &depth = graph.get_physical_texture_resource(depth_res);
 
-			cmd.set_texture(0, 0, current, Vulkan::StockSampler::NearestClamp);
+			cmd.set_unorm_texture(0, 0, current);
+			cmd.set_sampler(0, 0, Vulkan::StockSampler::NearestClamp);
 			if (prev)
 			{
 				cmd.set_texture(0, 1, depth, Vulkan::StockSampler::NearestClamp);
@@ -239,11 +251,15 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 			push.inv_resolution_seed = vec2(1.0f / current.get_image().get_create_info().width,
 			                                1.0f / current.get_image().get_create_info().height);
 
+			auto &output_image = graph.get_physical_texture_resource(smaa_resolve.get_color_outputs()[0]->get_physical_index());
+			bool srgb = Vulkan::format_is_srgb(output_image.get_format());
+
 			cmd.push_constants(&push, 0, sizeof(push));
 			Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd,
 			                                                "builtin://shaders/quad.vert",
 			                                                "builtin://shaders/post/smaa_t2x_resolve.frag",
-			                                                {{"REPROJECTION_HISTORY", prev ? 1 : 0}});
+			                                                {{"REPROJECTION_HISTORY", prev ? 1 : 0},
+			                                                 {"SMAA_TARGET_SRGB", srgb ? 1 : 0}});
 		});
 	}
 }

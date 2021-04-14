@@ -7,6 +7,8 @@ precision highp int;
 #define REPROJECTION_CLAMP_HISTORY 1
 #define REPROJECTION_MOTION_VECTORS 0
 
+#include "../inc/srgb.h"
+
 layout(set = 0, binding = 0) uniform mediump sampler2D CurrentFrame;
 #if REPROJECTION_HISTORY
 layout(set = 0, binding = 1) uniform sampler2D CurrentDepth;
@@ -63,5 +65,9 @@ void main()
 #else
     Color = textureLod(CurrentFrame, vUV, 0.0).rgb;
     OutVariance = 0.0;
+#endif
+
+#if SMAA_TARGET_SRGB
+    Color.rgb = decode_srgb(Color.rgb);
 #endif
 }

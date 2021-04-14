@@ -2,6 +2,8 @@
 precision highp float;
 precision highp int;
 
+#include "../inc/srgb.h"
+
 const float FXAA_REDUCE_MIN = 1.0 / 128.0;
 const float FXAA_REDUCE_MUL = 1.0 / 8.0;
 const float FXAA_SPAN_MAX = 8.0;
@@ -56,8 +58,9 @@ void main()
         color = rgbB;
 
 #if FXAA_TARGET_SRGB
-    // We're writing to an sRGB target, so need to "encode" sRGB.
-    FragColor = color * color;
+    // We're writing to an sRGB target, so need to decode UNORM to sRGB
+    // (only to have it be converted back again to UNORM) ...
+    FragColor = decode_srgb(color);
 #else
     FragColor = color;
 #endif

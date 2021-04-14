@@ -972,6 +972,9 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 		ui_source = "post-aa-output";
 	}
 
+	if (config.resolution_scale < 1.0f && setup_after_post_chain_upscaling(graph, ui_source, "post-scale-output"))
+		ui_source = "post-scale-output";
+
 	if (config.show_ui)
 	{
 		auto &ui = graph.add_pass("ui", config.hdr_bloom || config.postaa_type != PostAAType::None ?

@@ -28,6 +28,44 @@
 
 namespace Granite
 {
+constexpr bool upscale_linear = true;
+
+bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &input, const std::string &output)
+{
+	auto &upscale = graph.add_pass(output, RenderGraph::get_default_post_graphics_queue());
+	AttachmentInfo info;
+	info.supports_prerotate = true;
+	auto &tex_out = upscale.add_color_output(output, info);
+
+	if (!upscale_linear)
+		graph.get_texture_resource(input).get_attachment_info().unorm_srgb_alias = true;
+
+	auto &tex = upscale.add_texture_input(input);
+
+	upscale.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+		auto &view = graph.get_physical_texture_resource(tex);
+		if (upscale_linear)
+			cmd.set_texture(0, 0, view);
+		else
+			cmd.set_unorm_texture(0, 0, view);
+		cmd.set_sampler(0, 0, Vulkan::StockSampler::NearestClamp);
+
+		auto width = float(view.get_image().get_width());
+		auto height = float(view.get_image().get_height());
+		vec4 params(width, height, 1.0f / width, 1.0f / height);
+		cmd.push_constants(&params, 0, sizeof(params));
+
+		bool srgb = !upscale_linear && Vulkan::format_is_srgb(graph.get_physical_texture_resource(tex_out).get_format());
+
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd,
+		                                                "builtin://shaders/quad.vert",
+		                                                "builtin://shaders/post/lanczos2.frag",
+		                                                {{ "TARGET_SRGB", srgb ? 1 : 0 }});
+	});
+
+	return true;
+}
+
 bool setup_before_post_chain_antialiasing(PostAAType type, RenderGraph &graph, TemporalJitter &jitter,
                                           const std::string &input, const std::string &input_depth,
                                           const std::string &output)

@@ -179,6 +179,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.postaa_type = string_to_post_antialiasing_type(aa);
 	}
 
+	if (doc.HasMember("resolutionScale"))
+		config.resolution_scale = doc["resolutionScale"].GetFloat();
+
 	if (doc.HasMember("maxSpotLights"))
 		config.max_spot_lights = doc["maxSpotLights"].GetUint();
 	if (doc.HasMember("maxPointLights"))
@@ -613,6 +616,11 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	AttachmentInfo color, depth;
 	depth.format = device.get_default_depth_format();
 
+	color.size_x = config.resolution_scale;
+	color.size_y = config.resolution_scale;
+	depth.size_x = config.resolution_scale;
+	depth.size_y = config.resolution_scale;
+
 	bool use_ssao = config.forward_depth_prepass && config.ssao && config.msaa == 1;
 
 	if (use_ssao)
@@ -705,6 +713,16 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		    (config.rt_fp16 || !supports_32bpp) ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	else
 		emissive.format = VK_FORMAT_UNDEFINED;
+
+	const auto set_scale = [&](AttachmentInfo &info) {
+		info.size_x = config.resolution_scale;
+		info.size_y = config.resolution_scale;
+	};
+	set_scale(emissive);
+	set_scale(albedo);
+	set_scale(normal);
+	set_scale(pbr);
+	set_scale(depth);
 
 	albedo.format = VK_FORMAT_R8G8B8A8_SRGB;
 	normal.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;

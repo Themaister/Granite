@@ -120,6 +120,7 @@ private:
 		unsigned max_point_lights = 32;
 
 		SceneRendererFlags pcf_flags = 0;
+		float resolution_scale = 1.0f;
 		bool directional_light_shadows = true;
 		bool directional_light_cascaded_shadows = true;
 		bool directional_light_shadows_vsm = false;

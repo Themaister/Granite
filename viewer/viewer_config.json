@@ -25,5 +25,6 @@
 	"maxPointLights": 32,
 	"volumetricFog": false,
 	"ssao": true,
-	"debugProbes": false
+	"debugProbes": false,
+	"resolutionScale": 1.0
 }

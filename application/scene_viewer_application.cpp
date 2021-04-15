@@ -971,8 +971,8 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 			setup_hdr_postprocess(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped", opts);
 	}
 
-	if (setup_after_post_chain_antialiasing(config.postaa_type, graph, jitter, ui_source, "depth-main",
-	                                        "post-aa-output"))
+	if (setup_after_post_chain_antialiasing(config.postaa_type, graph, jitter, config.resolution_scale,
+	                                        ui_source, "depth-main", "post-aa-output"))
 	{
 		ui_source = "post-aa-output";
 	}

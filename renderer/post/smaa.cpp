@@ -32,6 +32,7 @@ using namespace std;
 namespace Granite
 {
 void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
+                            float scaling_factor,
                             const string &input, const string &input_depth,
                             const string &output, SMAAPreset preset)
 {
@@ -61,7 +62,8 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	if (t2x_enable)
 	{
 		jitter.init(TemporalJitter::Type::SMAA_T2X,
-		            vec2(graph.get_backbuffer_dimensions().width, graph.get_backbuffer_dimensions().height));
+		            vec2(graph.get_backbuffer_dimensions().width,
+		                 graph.get_backbuffer_dimensions().height) * scaling_factor);
 	}
 	else
 		jitter.init(TemporalJitter::Type::None, vec2(1.0f));

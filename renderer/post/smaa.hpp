@@ -36,6 +36,7 @@ enum class SMAAPreset
 };
 
 void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
+                            float scaling_factor,
                             const std::string &input, const std::string &input_depth,
                             const std::string &output, SMAAPreset preset);
 }

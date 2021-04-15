@@ -88,6 +88,7 @@ bool setup_before_post_chain_antialiasing(PostAAType type, RenderGraph &graph, T
 }
 
 bool setup_after_post_chain_antialiasing(PostAAType type, RenderGraph &graph, TemporalJitter &jitter,
+                                         float scaling_factor,
                                          const std::string &input, const std::string &input_depth,
                                          const std::string &output)
 {
@@ -106,23 +107,23 @@ bool setup_after_post_chain_antialiasing(PostAAType type, RenderGraph &graph, Te
 		return true;
 
 	case PostAAType::SMAA_Low:
-		setup_smaa_postprocess(graph, jitter, input, input_depth, output, SMAAPreset::Low);
+		setup_smaa_postprocess(graph, jitter, scaling_factor, input, input_depth, output, SMAAPreset::Low);
 		return true;
 
 	case PostAAType::SMAA_Medium:
-		setup_smaa_postprocess(graph, jitter, input, input_depth, output, SMAAPreset::Medium);
+		setup_smaa_postprocess(graph, jitter, scaling_factor, input, input_depth, output, SMAAPreset::Medium);
 		return true;
 
 	case PostAAType::SMAA_High:
-		setup_smaa_postprocess(graph, jitter, input, input_depth, output, SMAAPreset::High);
+		setup_smaa_postprocess(graph, jitter, scaling_factor, input, input_depth, output, SMAAPreset::High);
 		return true;
 
 	case PostAAType::SMAA_Ultra:
-		setup_smaa_postprocess(graph, jitter, input, input_depth, output, SMAAPreset::Ultra);
+		setup_smaa_postprocess(graph, jitter, scaling_factor, input, input_depth, output, SMAAPreset::Ultra);
 		return true;
 
 	case PostAAType::SMAA_Ultra_T2X:
-		setup_smaa_postprocess(graph, jitter, input, input_depth, output, SMAAPreset::Ultra_T2X);
+		setup_smaa_postprocess(graph, jitter, scaling_factor, input, input_depth, output, SMAAPreset::Ultra_T2X);
 		return true;
 
 	default:

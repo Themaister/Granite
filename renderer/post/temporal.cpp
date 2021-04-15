@@ -25,6 +25,7 @@
 #include "enum_cast.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "simd.hpp"
 
 namespace Granite
 {
@@ -98,9 +99,12 @@ void TemporalJitter::init(Type type_, vec2 backbuffer_resolution)
 void TemporalJitter::step(const mat4 &proj, const mat4 &view)
 {
 	phase++;
-	saved_view_proj[get_jitter_phase()] = proj * view;
+
+	SIMD::mul(saved_view_proj[get_jitter_phase()], proj, view);
+	SIMD::mul(saved_jittered_projection, get_jitter_matrix(), proj);
+	SIMD::mul(saved_jittered_view_proj[get_jitter_phase()], get_jitter_matrix(), saved_view_proj[get_jitter_phase()]);
+
 	saved_inv_view_proj[get_jitter_phase()] = inverse(saved_view_proj[get_jitter_phase()]);
-	saved_jittered_view_proj[get_jitter_phase()] = get_jitter_matrix() * saved_view_proj[get_jitter_phase()];
 	saved_jittered_inv_view_proj[get_jitter_phase()] = inverse(saved_jittered_view_proj[get_jitter_phase()]);
 }
 
@@ -129,6 +133,11 @@ const mat4 &TemporalJitter::get_jitter_matrix() const
 	return jitter_table[get_jitter_phase()];
 }
 
+const mat4 &TemporalJitter::get_jittered_projection() const
+{
+	return saved_jittered_projection;
+}
+
 void TemporalJitter::reset()
 {
 	phase = 0;
@@ -144,12 +153,13 @@ unsigned TemporalJitter::get_unmasked_phase() const
 	return phase;
 }
 
-void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,
-                       const std::string &input_depth, const std::string &output, TAAQuality quality)
+void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, float scaling_factor,
+                       const std::string &input, const std::string &input_depth,
+                       const std::string &output, TAAQuality quality)
 {
 	jitter.init(TemporalJitter::Type::TAA_16Phase,
 	            vec2(graph.get_backbuffer_dimensions().width,
-	                 graph.get_backbuffer_dimensions().height));
+	                 graph.get_backbuffer_dimensions().height) * scaling_factor);
 
 	AttachmentInfo taa_output;
 	taa_output.size_class = SizeClass::InputRelative;

@@ -43,6 +43,7 @@ public:
 
 	void step(const mat4 &projection, const mat4 &view);
 	const mat4 &get_jitter_matrix() const;
+	const mat4 &get_jittered_projection() const;
 	const mat4 &get_history_view_proj(int frames) const;
 	const mat4 &get_history_inv_view_proj(int frames) const;
 	const mat4 &get_history_jittered_view_proj(int frames) const;
@@ -64,6 +65,7 @@ private:
 	mat4 saved_jittered_inv_view_proj[MaxJitterPhases];
 	mat4 saved_view_proj[MaxJitterPhases];
 	mat4 saved_inv_view_proj[MaxJitterPhases];
+	mat4 saved_jittered_projection;
 	Type type = Type::None;
 };
 
@@ -79,6 +81,7 @@ enum class TAAQuality
 	Extreme,
 	Nightmare
 };
-void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,
-                       const std::string &input_depth, const std::string &output, TAAQuality quality);
+void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, float scaling_factor,
+                       const std::string &input, const std::string &input_depth,
+                       const std::string &output, TAAQuality quality);
 }

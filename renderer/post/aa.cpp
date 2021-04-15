@@ -67,38 +67,24 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 }
 
 bool setup_before_post_chain_antialiasing(PostAAType type, RenderGraph &graph, TemporalJitter &jitter,
+                                          float scaling_factor,
                                           const std::string &input, const std::string &input_depth,
                                           const std::string &output)
 {
+	TAAQuality taa_quality;
 	switch (type)
 	{
-	case PostAAType::TAA_Low:
-		setup_taa_resolve(graph, jitter, input, input_depth, output, TAAQuality::Low);
-		return true;
-
-	case PostAAType::TAA_Medium:
-		setup_taa_resolve(graph, jitter, input, input_depth, output, TAAQuality::Medium);
-		return true;
-
-	case PostAAType::TAA_High:
-		setup_taa_resolve(graph, jitter, input, input_depth, output, TAAQuality::High);
-		return true;
-
-	case PostAAType::TAA_Ultra:
-		setup_taa_resolve(graph, jitter, input, input_depth, output, TAAQuality::Ultra);
-		return true;
-
-	case PostAAType::TAA_Extreme:
-		setup_taa_resolve(graph, jitter, input, input_depth, output, TAAQuality::Extreme);
-		return true;
-
-	case PostAAType::TAA_Nightmare:
-		setup_taa_resolve(graph, jitter, input, input_depth, output, TAAQuality::Nightmare);
-		return true;
-
-	default:
-		return false;
+	case PostAAType::TAA_Low: taa_quality = TAAQuality::Low; break;
+	case PostAAType::TAA_Medium: taa_quality = TAAQuality::Medium; break;
+	case PostAAType::TAA_High: taa_quality = TAAQuality::High; break;
+	case PostAAType::TAA_Ultra: taa_quality = TAAQuality::Ultra; break;
+	case PostAAType::TAA_Extreme: taa_quality = TAAQuality::Extreme; break;
+	case PostAAType::TAA_Nightmare: taa_quality = TAAQuality::Nightmare; break;
+	default: return false;
 	}
+
+	setup_taa_resolve(graph, jitter, scaling_factor, input, input_depth, output, taa_quality);
+	return true;
 }
 
 bool setup_after_post_chain_antialiasing(PostAAType type, RenderGraph &graph, TemporalJitter &jitter,

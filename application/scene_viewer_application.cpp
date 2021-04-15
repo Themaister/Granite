@@ -954,8 +954,8 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	if (config.hdr_bloom)
 	{
-		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type, graph, jitter, "HDR-main",
-		                                                     "depth-main", "HDR-resolved");
+		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type, graph, jitter, config.resolution_scale,
+		                                                     "HDR-main", "depth-main", "HDR-resolved");
 
 		HDROptions opts;
 		opts.dynamic_exposure = config.hdr_bloom_dynamic_exposure;
@@ -1117,11 +1117,11 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 	}
 
 	jitter.step(selected_camera->get_projection(), selected_camera->get_view());
+	context.set_camera(jitter.get_jittered_projection(), selected_camera->get_view());
 
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 
 	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
-	context.set_camera(*selected_camera);
 	scene.set_render_pass_data(&renderer_suite, &context);
 
 	lighting.directional.direction = selected_directional->direction;

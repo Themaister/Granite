@@ -106,7 +106,7 @@ void main()
 
     history_color = convert_input(history_color);
 
-    mediump float lerp_factor = 0.1;
+    mediump float lerp_factor = 1.0 / 16.0;
     #if REPROJECTION_CLAMP_HISTORY
         history_color = clamp_history_box(history_color, CurrentFrame, vUV, current);
         #if REPROJECTION_UNBIASED_LUMA

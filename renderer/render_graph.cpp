@@ -2174,12 +2174,9 @@ void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &ph
 				physical_pass.depth_clear_request.target);
 	}
 
-	Vulkan::QueryPoolHandle start_vertex, start_fragment, end_vertex, end_fragment;
+	Vulkan::QueryPoolHandle start_graphics, end_graphics;
 	if (enabled_timestamps)
-	{
-		start_vertex = cmd.write_timestamp(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
-		start_fragment = cmd.write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	}
+		start_graphics = cmd.write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 
 	VK_ASSERT(physical_pass.layers != ~0u);
 
@@ -2258,8 +2255,7 @@ void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &ph
 
 	if (enabled_timestamps)
 	{
-		end_vertex = cmd.write_timestamp(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
-		end_fragment = cmd.write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+		end_graphics = cmd.write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 		string name;
 		if (physical_pass.passes.size() == 1)
 			name = passes[physical_pass.passes.front()]->get_name();
@@ -2272,8 +2268,7 @@ void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &ph
 					name += " + ";
 			}
 		}
-		device->register_time_interval("geometry", std::move(start_vertex), std::move(end_vertex), name.c_str());
-		device->register_time_interval("fragment", std::move(start_fragment), std::move(end_fragment), name.c_str());
+		device->register_time_interval("graphics", std::move(start_graphics), std::move(end_graphics), name.c_str());
 	}
 	enqueue_mipmap_requests(cmd, physical_pass.mipmap_requests);
 }

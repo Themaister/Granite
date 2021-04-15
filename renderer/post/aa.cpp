@@ -29,18 +29,33 @@
 namespace Granite
 {
 constexpr bool upscale_linear = false;
+constexpr bool allow_external_upscale = true;
+constexpr bool allow_external_sharpen = true;
 
 bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &input, const std::string &output)
 {
-	auto &upscale = graph.add_pass(output, RenderGraph::get_default_post_graphics_queue());
-	AttachmentInfo info;
-	auto &tex_out = upscale.add_color_output(output, info);
+	auto &upscale = graph.add_pass(output + "-scale", RenderGraph::get_default_post_graphics_queue());
+	AttachmentInfo upscale_info;
 
 	auto *fs = GRANITE_FILESYSTEM();
 	FileStat s;
-	bool use_custom = fs->stat("assets://shaders/upscale.vert", s) && s.type == PathType::File &&
+	bool use_custom = allow_external_upscale &&
+	                  fs->stat("assets://shaders/upscale.vert", s) && s.type == PathType::File &&
 	                  fs->stat("assets://shaders/upscale.frag", s) && s.type == PathType::File;
-	info.supports_prerotate = !use_custom;
+
+	bool use_sharpen = allow_external_sharpen &&
+	                   fs->stat("assets://shaders/sharpen.vert", s) && s.type == PathType::File &&
+	                   fs->stat("assets://shaders/sharpen.frag", s) && s.type == PathType::File;
+
+	upscale_info.supports_prerotate = !use_custom;
+
+	if (use_sharpen)
+	{
+		upscale_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+		upscale_info.unorm_srgb_alias = true;
+	}
+
+	auto &upscale_tex_out = upscale.add_color_output(!use_sharpen ? output : (output + "-scale"), upscale_info);
 
 	if (!upscale_linear)
 		graph.get_texture_resource(input).get_attachment_info().unorm_srgb_alias = true;
@@ -65,7 +80,7 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 		height = cmd.get_viewport().height;
 		params[1] = vec4(width, height, 1.0f / width, 1.0f / height);
 
-		bool srgb = !upscale_linear && Vulkan::format_is_srgb(graph.get_physical_texture_resource(tex_out).get_format());
+		bool srgb = !upscale_linear && Vulkan::format_is_srgb(graph.get_physical_texture_resource(upscale_tex_out).get_format());
 
 		const char *vert = use_custom ? "assets://shaders/upscale.vert" : "builtin://shaders/quad.vert";
 		const char *frag = use_custom ? "assets://shaders/upscale.frag" : "builtin://shaders/post/lanczos2.frag";
@@ -73,6 +88,41 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, vert, frag,
 		                                                {{ "TARGET_SRGB", srgb ? 1 : 0 }});
 	});
+
+	if (use_sharpen)
+	{
+		AttachmentInfo sharpen_info;
+		sharpen_info.supports_prerotate = !use_custom;
+
+		auto &sharpen = graph.add_pass(output + "-sharpen", RenderGraph::get_default_post_graphics_queue());
+
+		auto &sharpen_tex_out = sharpen.add_color_output(output, sharpen_info);
+		auto &upscale_tex = sharpen.add_texture_input(output + "-scale");
+
+		sharpen.set_build_render_pass([&, use_custom](Vulkan::CommandBuffer &cmd) {
+			bool srgb = Vulkan::format_is_srgb(graph.get_physical_texture_resource(sharpen_tex_out).get_format());
+			auto &view = graph.get_physical_texture_resource(upscale_tex);
+			if (srgb)
+				cmd.set_srgb_texture(0, 0, view);
+			else
+				cmd.set_unorm_texture(0, 0, view);
+			cmd.set_sampler(0, 0, Vulkan::StockSampler::NearestClamp);
+
+			auto *params = cmd.allocate_typed_constant_data<vec4>(1, 0, 2);
+
+			auto width = float(view.get_image().get_width());
+			auto height = float(view.get_image().get_height());
+			params[0] = vec4(width, height, 1.0f / width, 1.0f / height);
+
+			width = cmd.get_viewport().width;
+			height = cmd.get_viewport().height;
+			params[1] = vec4(width, height, 1.0f / width, 1.0f / height);
+
+			const char *vert = "assets://shaders/sharpen.vert";
+			const char *frag = "assets://shaders/sharpen.frag";
+			Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, vert, frag);
+		});
+	}
 
 	return true;
 }

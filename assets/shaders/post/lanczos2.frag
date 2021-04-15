@@ -6,10 +6,12 @@ layout(location = 0) out vec4 FragColor;
 layout(location = 0) in vec2 vUV;
 layout(set = 0, binding = 0) uniform sampler2D uTex;
 
-layout(push_constant) uniform Registers
+layout(set = 1, binding = 0) uniform Registers
 {
     vec2 resolution;
     vec2 inv_resolution;
+    vec2 out_resolution;
+    vec2 inv_out_resolution;
 } registers;
 
 #define PI 3.1415628

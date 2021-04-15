@@ -28,7 +28,7 @@
 
 namespace Granite
 {
-constexpr bool upscale_linear = true;
+constexpr bool upscale_linear = false;
 
 bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &input, const std::string &output)
 {
@@ -37,12 +37,17 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 	info.supports_prerotate = true;
 	auto &tex_out = upscale.add_color_output(output, info);
 
+	auto *fs = GRANITE_FILESYSTEM();
+	FileStat s;
+	bool use_custom = fs->stat("assets://shaders/upscale.vert", s) && s.type == PathType::File &&
+	                  fs->stat("assets://shaders/upscale.frag", s) && s.type == PathType::File;
+
 	if (!upscale_linear)
 		graph.get_texture_resource(input).get_attachment_info().unorm_srgb_alias = true;
 
 	auto &tex = upscale.add_texture_input(input);
 
-	upscale.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+	upscale.set_build_render_pass([&, use_custom](Vulkan::CommandBuffer &cmd) {
 		auto &view = graph.get_physical_texture_resource(tex);
 		if (upscale_linear)
 			cmd.set_texture(0, 0, view);
@@ -50,16 +55,22 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 			cmd.set_unorm_texture(0, 0, view);
 		cmd.set_sampler(0, 0, Vulkan::StockSampler::NearestClamp);
 
+		auto *params = cmd.allocate_typed_constant_data<vec4>(1, 0, 2);
+
 		auto width = float(view.get_image().get_width());
 		auto height = float(view.get_image().get_height());
-		vec4 params(width, height, 1.0f / width, 1.0f / height);
-		cmd.push_constants(&params, 0, sizeof(params));
+		params[0] = vec4(width, height, 1.0f / width, 1.0f / height);
+
+		width = cmd.get_viewport().width;
+		height = cmd.get_viewport().height;
+		params[1] = vec4(width, height, 1.0f / width, 1.0f / height);
 
 		bool srgb = !upscale_linear && Vulkan::format_is_srgb(graph.get_physical_texture_resource(tex_out).get_format());
 
-		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd,
-		                                                "builtin://shaders/quad.vert",
-		                                                "builtin://shaders/post/lanczos2.frag",
+		const char *vert = use_custom ? "assets://shaders/upscale.vert" : "builtin://shaders/quad.vert";
+		const char *frag = use_custom ? "assets://shaders/upscale.frag" : "builtin://shaders/post/lanczos2.frag";
+
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, vert, frag,
 		                                                {{ "TARGET_SRGB", srgb ? 1 : 0 }});
 	});
 

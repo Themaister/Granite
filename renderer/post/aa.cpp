@@ -34,13 +34,13 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 {
 	auto &upscale = graph.add_pass(output, RenderGraph::get_default_post_graphics_queue());
 	AttachmentInfo info;
-	info.supports_prerotate = true;
 	auto &tex_out = upscale.add_color_output(output, info);
 
 	auto *fs = GRANITE_FILESYSTEM();
 	FileStat s;
 	bool use_custom = fs->stat("assets://shaders/upscale.vert", s) && s.type == PathType::File &&
 	                  fs->stat("assets://shaders/upscale.frag", s) && s.type == PathType::File;
+	info.supports_prerotate = !use_custom;
 
 	if (!upscale_linear)
 		graph.get_texture_resource(input).get_attachment_info().unorm_srgb_alias = true;

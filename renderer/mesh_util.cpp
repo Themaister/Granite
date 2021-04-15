@@ -1213,10 +1213,10 @@ static void texture_plane_render(CommandBuffer &cmd, const RenderQueueData *info
 		auto &info = *static_cast<const TexturePlaneInfo *>(infos[i].render_info);
 		cmd.set_program(info.program);
 		if (info.reflection)
-			cmd.set_texture(2, 0, *info.reflection, Vulkan::StockSampler::TrilinearClamp);
+			cmd.set_texture(2, 0, *info.reflection, Vulkan::StockSampler::DefaultGeometryFilterClamp);
 		if (info.refraction)
-			cmd.set_texture(2, 1, *info.refraction, Vulkan::StockSampler::TrilinearClamp);
-		cmd.set_texture(2, 2, *info.normal, Vulkan::StockSampler::TrilinearWrap);
+			cmd.set_texture(2, 1, *info.refraction, Vulkan::StockSampler::DefaultGeometryFilterClamp);
+		cmd.set_texture(2, 2, *info.normal, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 		CommandBufferUtil::set_quad_vertex_state(cmd);
 		cmd.set_cull_mode(VK_CULL_MODE_NONE);
 		cmd.push_constants(&info.push, 0, sizeof(info.push));

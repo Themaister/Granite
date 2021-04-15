@@ -42,6 +42,8 @@ enum class StockSampler
 	LinearYUV420P,
 	LinearYUV422P,
 	LinearYUV444P,
+	DefaultGeometryFilterClamp,
+	DefaultGeometryFilterWrap,
 	Count
 };
 

@@ -847,7 +847,7 @@ void Parser::parse(const string &original_path, const string &json)
 		if (value.HasMember("wrapT"))
 			wrap_t = value["wrapT"].GetUint();
 
-		Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
+		Vulkan::StockSampler sampler = Vulkan::StockSampler::DefaultGeometryFilterWrap;
 
 		struct Entry
 		{
@@ -855,10 +855,10 @@ void Parser::parse(const string &original_path, const string &json)
 			Vulkan::StockSampler sampler;
 		};
 		static const Entry entries[] = {
-			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, Vulkan::StockSampler::TrilinearWrap },
-			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, Vulkan::StockSampler::TrilinearClamp },
-			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, Vulkan::StockSampler::LinearWrap },
-			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, Vulkan::StockSampler::LinearClamp },
+			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, Vulkan::StockSampler::DefaultGeometryFilterWrap },
+			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, Vulkan::StockSampler::DefaultGeometryFilterClamp },
+			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, Vulkan::StockSampler::DefaultGeometryFilterWrap },
+			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, Vulkan::StockSampler::DefaultGeometryFilterClamp },
 			{ GL_REPEAT, GL_REPEAT, GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, Vulkan::StockSampler::NearestWrap },
 			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, Vulkan::StockSampler::NearestClamp },
 		};
@@ -878,7 +878,7 @@ void Parser::parse(const string &original_path, const string &json)
 	const auto add_texture = [&](const Value &value) {
 		auto &source = value["source"];
 
-		Vulkan::StockSampler stock_sampler = Vulkan::StockSampler::TrilinearWrap;
+		Vulkan::StockSampler stock_sampler = Vulkan::StockSampler::DefaultGeometryFilterWrap;
 		if (value.HasMember("sampler"))
 		{
 			auto &sampler = value["sampler"];

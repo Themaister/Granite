@@ -26,5 +26,6 @@
 	"volumetricFog": false,
 	"ssao": true,
 	"debugProbes": false,
-	"resolutionScale": 1.0
+	"resolutionScale": 1.0,
+	"lodBias": 0.0
 }

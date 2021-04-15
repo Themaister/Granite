@@ -182,6 +182,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("resolutionScale"))
 		config.resolution_scale = doc["resolutionScale"].GetFloat();
 
+	if (doc.HasMember("lodBias"))
+		config.lod_bias = doc["lodBias"].GetFloat();
+
 	if (doc.HasMember("maxSpotLights"))
 		config.max_spot_lights = doc["maxSpotLights"].GetUint();
 	if (doc.HasMember("maxPointLights"))
@@ -931,6 +934,8 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	graph.reset();
 	graph.set_device(&swap.get_device());
+
+	swap.get_device().configure_default_geometry_samplers(8.0f, config.lod_bias);
 
 	ResourceDimensions dim;
 	dim.width = swap.get_width();

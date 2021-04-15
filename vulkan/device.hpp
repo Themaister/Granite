@@ -423,6 +423,8 @@ public:
 		return system_handles;
 	}
 
+	void configure_default_geometry_samplers(float max_aniso, float lod_bias);
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -464,6 +466,8 @@ private:
 
 	DeviceFeatures ext;
 	void init_stock_samplers();
+	void init_stock_sampler(StockSampler sampler, float max_aniso, float lod_bias);
+	void init_ycbcr_stock_samplers();
 	void init_timeline_semaphores();
 	void init_bindless();
 	void deinit_timeline_semaphores();

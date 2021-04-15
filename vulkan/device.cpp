@@ -808,123 +808,160 @@ void Device::init_timeline_semaphores()
 		LOGE("Failed to create timeline sempahore.\n");
 }
 
-void Device::init_stock_samplers()
+void Device::init_ycbcr_stock_samplers()
 {
-	if (ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+	if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+		return;
+
+	for (auto &sampler : samplers_ycbcr)
 	{
-		for (auto &sampler : samplers_ycbcr)
-		{
-			if (sampler)
-				table->vkDestroySamplerYcbcrConversion(device, sampler, nullptr);
-			sampler = VK_NULL_HANDLE;
-		}
-
-		VkSamplerYcbcrConversionCreateInfo info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO };
-		info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
-		info.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
-		info.components = {
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-		};
-		info.chromaFilter = VK_FILTER_LINEAR;
-		info.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
-		info.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
-		info.forceExplicitReconstruction = VK_FALSE;
-
-		info.format = VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
-		table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
-		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P_3PLANE)]);
-
-		info.format = VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM;
-		table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
-		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P_3PLANE)]);
-
-		info.format = VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
-		table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
-		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P_3PLANE)]);
+		if (sampler)
+			table->vkDestroySamplerYcbcrConversion(device, sampler, nullptr);
+		sampler = VK_NULL_HANDLE;
 	}
 
+	VkSamplerYcbcrConversionCreateInfo info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO };
+	info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+	info.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
+	info.components = {
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+	};
+	info.chromaFilter = VK_FILTER_LINEAR;
+	info.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+	info.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+	info.forceExplicitReconstruction = VK_FALSE;
+
+	info.format = VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
+	table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
+	                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P_3PLANE)]);
+
+	info.format = VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM;
+	table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
+	                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P_3PLANE)]);
+
+	info.format = VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
+	table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
+	                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P_3PLANE)]);
+}
+
+void Device::configure_default_geometry_samplers(float max_aniso, float lod_bias)
+{
+	init_stock_sampler(StockSampler::DefaultGeometryFilterClamp, max_aniso, lod_bias);
+	init_stock_sampler(StockSampler::DefaultGeometryFilterWrap, max_aniso, lod_bias);
+}
+
+void Device::init_stock_sampler(StockSampler mode, float max_aniso, float lod_bias)
+{
 	SamplerCreateInfo info = {};
 	info.max_lod = VK_LOD_CLAMP_NONE;
 	info.max_anisotropy = 1.0f;
 
+	switch (mode)
+	{
+	case StockSampler::NearestShadow:
+	case StockSampler::LinearShadow:
+		info.compare_enable = true;
+		info.compare_op = VK_COMPARE_OP_LESS_OR_EQUAL;
+		break;
+
+	default:
+		info.compare_enable = false;
+		break;
+	}
+
+	switch (mode)
+	{
+	case StockSampler::TrilinearClamp:
+	case StockSampler::TrilinearWrap:
+	case StockSampler::DefaultGeometryFilterWrap:
+	case StockSampler::DefaultGeometryFilterClamp:
+		info.mipmap_mode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		break;
+
+	default:
+		info.mipmap_mode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+		break;
+	}
+
+	switch (mode)
+	{
+	case StockSampler::DefaultGeometryFilterClamp:
+	case StockSampler::DefaultGeometryFilterWrap:
+	case StockSampler::LinearClamp:
+	case StockSampler::LinearWrap:
+	case StockSampler::TrilinearClamp:
+	case StockSampler::TrilinearWrap:
+	case StockSampler::LinearShadow:
+	case StockSampler::LinearYUV420P:
+	case StockSampler::LinearYUV422P:
+	case StockSampler::LinearYUV444P:
+		info.mag_filter = VK_FILTER_LINEAR;
+		info.min_filter = VK_FILTER_LINEAR;
+		break;
+
+	default:
+		info.mag_filter = VK_FILTER_NEAREST;
+		info.min_filter = VK_FILTER_NEAREST;
+		break;
+	}
+
+	switch (mode)
+	{
+	default:
+	case StockSampler::DefaultGeometryFilterWrap:
+	case StockSampler::LinearWrap:
+	case StockSampler::NearestWrap:
+	case StockSampler::TrilinearWrap:
+		info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		break;
+
+	case StockSampler::DefaultGeometryFilterClamp:
+	case StockSampler::LinearClamp:
+	case StockSampler::NearestClamp:
+	case StockSampler::TrilinearClamp:
+	case StockSampler::NearestShadow:
+	case StockSampler::LinearShadow:
+	case StockSampler::LinearYUV420P:
+	case StockSampler::LinearYUV422P:
+	case StockSampler::LinearYUV444P:
+		info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		break;
+	}
+
+	switch (mode)
+	{
+	case StockSampler::DefaultGeometryFilterWrap:
+	case StockSampler::DefaultGeometryFilterClamp:
+		if (get_device_features().enabled_features.samplerAnisotropy)
+		{
+			info.anisotropy_enable = true;
+			info.max_anisotropy = std::min(max_aniso, get_gpu_properties().limits.maxSamplerAnisotropy);
+		}
+		info.mip_lod_bias = lod_bias;
+		break;
+
+	default:
+		break;
+	}
+
+	samplers[unsigned(mode)] = create_sampler(info, mode);
+}
+
+void Device::init_stock_samplers()
+{
+	init_ycbcr_stock_samplers();
+
 	for (unsigned i = 0; i < static_cast<unsigned>(StockSampler::Count); i++)
 	{
 		auto mode = static_cast<StockSampler>(i);
-
-		switch (mode)
-		{
-		case StockSampler::NearestShadow:
-		case StockSampler::LinearShadow:
-			info.compare_enable = true;
-			info.compare_op = VK_COMPARE_OP_LESS_OR_EQUAL;
-			break;
-
-		default:
-			info.compare_enable = false;
-			break;
-		}
-
-		switch (mode)
-		{
-		case StockSampler::TrilinearClamp:
-		case StockSampler::TrilinearWrap:
-			info.mipmap_mode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-			break;
-
-		default:
-			info.mipmap_mode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-			break;
-		}
-
-		switch (mode)
-		{
-		case StockSampler::LinearClamp:
-		case StockSampler::LinearWrap:
-		case StockSampler::TrilinearClamp:
-		case StockSampler::TrilinearWrap:
-		case StockSampler::LinearShadow:
-		case StockSampler::LinearYUV420P:
-		case StockSampler::LinearYUV422P:
-		case StockSampler::LinearYUV444P:
-			info.mag_filter = VK_FILTER_LINEAR;
-			info.min_filter = VK_FILTER_LINEAR;
-			break;
-
-		default:
-			info.mag_filter = VK_FILTER_NEAREST;
-			info.min_filter = VK_FILTER_NEAREST;
-			break;
-		}
-
-		switch (mode)
-		{
-		default:
-		case StockSampler::LinearWrap:
-		case StockSampler::NearestWrap:
-		case StockSampler::TrilinearWrap:
-			info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			break;
-
-		case StockSampler::LinearClamp:
-		case StockSampler::NearestClamp:
-		case StockSampler::TrilinearClamp:
-		case StockSampler::NearestShadow:
-		case StockSampler::LinearShadow:
-		case StockSampler::LinearYUV420P:
-		case StockSampler::LinearYUV422P:
-		case StockSampler::LinearYUV444P:
-			info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-			info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-			info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-			break;
-		}
-
-		samplers[i] = create_sampler(info, mode);
+		init_stock_sampler(mode, 8.0f, 0.0f);
 	}
 }
 

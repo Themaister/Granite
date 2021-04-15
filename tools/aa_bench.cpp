@@ -110,7 +110,7 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd);
 	});
 
-	if (setup_after_post_chain_antialiasing(type, graph, jitter,
+	if (setup_after_post_chain_antialiasing(type, graph, jitter, 1.0f,
 	                                        "tonemap", "depth-main", "post-aa-output"))
 		graph.set_backbuffer_source("post-aa-output");
 	else

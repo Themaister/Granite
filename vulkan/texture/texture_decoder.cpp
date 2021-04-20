@@ -400,46 +400,241 @@ static unsigned astc_value_range(const ASTCQuantizationMode &mode)
 	return value_range;
 }
 
-static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
+// In order to decode color endpoints, we need to convert available bits and number of values
+// into a format of (bits, trits, quints). A simple LUT texture is a reasonable approach for this.
+// Decoders are expected to have some form of LUT to deal with this ...
+static const ASTCQuantizationMode astc_quantization_modes[] = {
+	{ 8, 0, 0 },
+	{ 6, 1, 0 },
+	{ 5, 0, 1 },
+	{ 7, 0, 0 },
+	{ 5, 1, 0 },
+	{ 4, 0, 1 },
+	{ 6, 0, 0 },
+	{ 4, 1, 0 },
+	{ 3, 0, 1 },
+	{ 5, 0, 0 },
+	{ 3, 1, 0 },
+	{ 2, 0, 1 },
+	{ 4, 0, 0 },
+	{ 2, 1, 0 },
+	{ 1, 0, 1 },
+	{ 3, 0, 0 },
+	{ 1, 1, 0 },
+};
+
+constexpr size_t astc_num_quantization_modes = sizeof(astc_quantization_modes) / sizeof(astc_quantization_modes[0]);
+
+static const ASTCQuantizationMode astc_weight_modes[] = {
+	{ 0, 0, 0 }, // Invalid
+	{ 0, 0, 0 }, // Invalid
+	{ 1, 0, 0 },
+	{ 0, 1, 0 },
+	{ 2, 0, 0 },
+	{ 0, 0, 1 },
+	{ 1, 1, 0 },
+	{ 3, 0, 0 },
+	{ 0, 0, 0 }, // Invalid
+	{ 0, 0, 0 }, // Invalid
+	{ 1, 0, 1 },
+	{ 2, 1, 0 },
+	{ 4, 0, 0 },
+	{ 2, 0, 1 },
+	{ 3, 1, 0 },
+	{ 5, 0, 0 },
+};
+
+constexpr size_t astc_num_weight_modes = sizeof(astc_weight_modes) / sizeof(astc_weight_modes[0]);
+
+struct ASTCLutHolder
 {
-	// In order to decode color endpoints, we need to convert available bits and number of values
-	// into a format of (bits, trits, quints). A simple LUT texture is a reasonable approach for this.
-	// Decoders are expected to have some form of LUT to deal with this ...
-	static const ASTCQuantizationMode potential_modes[] = {
-		{ 8, 0, 0 },
-		{ 6, 1, 0 },
-		{ 5, 0, 1 },
-		{ 7, 0, 0 },
-		{ 5, 1, 0 },
-		{ 4, 0, 1 },
-		{ 6, 0, 0 },
-		{ 4, 1, 0 },
-		{ 3, 0, 1 },
-		{ 5, 0, 0 },
-		{ 3, 1, 0 },
-		{ 2, 0, 1 },
-		{ 4, 0, 0 },
-		{ 2, 1, 0 },
-		{ 1, 0, 1 },
-		{ 3, 0, 0 },
-		{ 1, 1, 0 },
+	ASTCLutHolder();
+
+	void init_color_endpoint();
+	void init_weight_luts();
+	void init_trits_quints();
+
+	struct
+	{
+		size_t unquant_offset = 0;
+		uint8_t unquant_lut[2048];
+		uint16_t lut[9][128][4];
+		size_t unquant_lut_offsets[astc_num_quantization_modes];
+	} color_endpoint;
+
+	struct
+	{
+		size_t unquant_offset = 0;
+		uint8_t unquant_lut[2048];
+		uint8_t lut[astc_num_weight_modes][4];
+	} weights;
+
+	struct
+	{
+		uint16_t trits_quints[256 + 128];
+	} integer;
+
+	struct PartitionTable
+	{
+		PartitionTable() = default;
+		PartitionTable(unsigned width, unsigned height);
+		std::vector<uint8_t> lut_buffer;
+		unsigned lut_width = 0;
+		unsigned lut_height = 0;
 	};
 
-	constexpr size_t num_modes = sizeof(potential_modes) / sizeof(potential_modes[0]);
-	size_t unquant_lut_offsets[num_modes];
-	size_t unquant_offset = 0;
+	std::mutex table_lock;
+	std::unordered_map<unsigned, PartitionTable> tables;
 
-	uint8_t unquant_lut[2048];
+	PartitionTable &get_partition_table(unsigned width, unsigned height);
+};
 
-	for (size_t i = 0; i < num_modes; i++)
+static uint32_t astc_hash52(uint32_t p)
+{
+	p ^= p >> 15; p -= p << 17; p += p << 7; p += p << 4;
+	p ^= p >>  5; p += p << 16; p ^= p >> 7; p ^= p >> 3;
+	p ^= p <<  6; p ^= p >> 17;
+	return p;
+}
+
+// Copy-paste from spec.
+static int astc_select_partition(int seed, int x, int y, int z, int partitioncount, bool small_block)
+{
+	if (small_block)
 	{
-		auto value_range = astc_value_range(potential_modes[i]);
-		unquant_lut_offsets[i] = unquant_offset;
-		build_astc_unquant_endpoint_lut(unquant_lut + unquant_offset, value_range, potential_modes[i]);
-		unquant_offset += value_range;
+		x <<= 1;
+		y <<= 1;
+		z <<= 1;
 	}
 
-	uint16_t lut[9][128][4];
+	seed += (partitioncount - 1) * 1024;
+	uint32_t rnum = astc_hash52(seed);
+	uint8_t seed1 = rnum & 0xF;
+	uint8_t seed2 = (rnum >> 4) & 0xF;
+	uint8_t seed3 = (rnum >> 8) & 0xF;
+	uint8_t seed4 = (rnum >> 12) & 0xF;
+	uint8_t seed5 = (rnum >> 16) & 0xF;
+	uint8_t seed6 = (rnum >> 20) & 0xF;
+	uint8_t seed7 = (rnum >> 24) & 0xF;
+	uint8_t seed8 = (rnum >> 28) & 0xF;
+	uint8_t seed9 = (rnum >> 18) & 0xF;
+	uint8_t seed10 = (rnum >> 22) & 0xF;
+	uint8_t seed11 = (rnum >> 26) & 0xF;
+	uint8_t seed12 = ((rnum >> 30) | (rnum << 2)) & 0xF;
+
+	seed1 *= seed1; seed2 *= seed2; seed3 *= seed3; seed4 *= seed4;
+	seed5 *= seed5; seed6 *= seed6; seed7 *= seed7; seed8 *= seed8;
+	seed9 *= seed9; seed10 *= seed10; seed11 *= seed11; seed12 *= seed12;
+
+	int sh1, sh2, sh3;
+	if (seed & 1)
+	{
+		sh1 = seed & 2 ? 4 : 5;
+		sh2 = partitioncount == 3 ? 6 : 5;
+	}
+	else
+	{
+		sh1 = partitioncount == 3 ? 6 : 5;
+		sh2 = seed & 2 ? 4 : 5;
+	}
+	sh3 = (seed & 0x10) ? sh1 : sh2;
+
+	seed1 >>= sh1; seed2 >>= sh2; seed3 >>= sh1; seed4 >>= sh2;
+	seed5 >>= sh1; seed6 >>= sh2; seed7 >>= sh1; seed8 >>= sh2;
+	seed9 >>= sh3; seed10 >>= sh3; seed11 >>= sh3; seed12 >>= sh3;
+
+	int a = seed1 * x + seed2 * y + seed11 * z + (rnum >> 14);
+	int b = seed3 * x + seed4 * y + seed12 * z + (rnum >> 10);
+	int c = seed5 * x + seed6 * y + seed9 * z + (rnum >> 6);
+	int d = seed7 * x + seed8 * y + seed10 * z + (rnum >> 2);
+
+	a &= 0x3f; b &= 0x3f; c &= 0x3f; d &= 0x3f;
+
+	if (partitioncount < 4)
+		d = 0;
+	if (partitioncount < 3)
+		c = 0;
+
+	if (a >= b && a >= c && a >= d)
+		return 0;
+	else if (b >= c && b >= d)
+		return 1;
+	else if (c >= d)
+		return 2;
+	else
+		return 3;
+}
+
+ASTCLutHolder::PartitionTable::PartitionTable(unsigned block_width, unsigned block_height)
+{
+	bool small_block = (block_width * block_height) < 31;
+
+	lut_width = block_width * 32;
+	lut_height = block_height * 32;
+	lut_buffer.resize(lut_width * lut_height);
+
+	for (unsigned seed_y = 0; seed_y < 32; seed_y++)
+	{
+		for (unsigned seed_x = 0; seed_x < 32; seed_x++)
+		{
+			unsigned seed = seed_y * 32 + seed_x;
+			for (unsigned block_y = 0; block_y < block_height; block_y++)
+			{
+				for (unsigned block_x = 0; block_x < block_width; block_x++)
+				{
+					int part2 = astc_select_partition(seed, block_x, block_y, 0, 2, small_block);
+					int part3 = astc_select_partition(seed, block_x, block_y, 0, 3, small_block);
+					int part4 = astc_select_partition(seed, block_x, block_y, 0, 4, small_block);
+					lut_buffer[(seed_y * block_height + block_y) * lut_width + (seed_x * block_width + block_x)] =
+							(part2 << 0) | (part3 << 2) | (part4 << 4);
+				}
+			}
+		}
+	}
+}
+
+ASTCLutHolder::PartitionTable &ASTCLutHolder::get_partition_table(unsigned width, unsigned height)
+{
+	std::lock_guard<std::mutex> holder{table_lock};
+	auto itr = tables.find(width * 16 + height);
+	if (itr != tables.end())
+	{
+		return itr->second;
+	}
+	else
+	{
+		auto &t = tables[width * 16 + height];
+		t = { width, height };
+		return t;
+	}
+}
+
+static ASTCLutHolder &get_astc_luts()
+{
+	static ASTCLutHolder holder;
+	return holder;
+}
+
+ASTCLutHolder::ASTCLutHolder()
+{
+	init_color_endpoint();
+	init_weight_luts();
+	init_trits_quints();
+}
+
+void ASTCLutHolder::init_color_endpoint()
+{
+	auto &unquant_lut = color_endpoint.unquant_lut;
+
+	for (size_t i = 0; i < astc_num_quantization_modes; i++)
+	{
+		auto value_range = astc_value_range(astc_quantization_modes[i]);
+		color_endpoint.unquant_lut_offsets[i] = color_endpoint.unquant_offset;
+		build_astc_unquant_endpoint_lut(unquant_lut + color_endpoint.unquant_offset, value_range, astc_quantization_modes[i]);
+		color_endpoint.unquant_offset += value_range;
+	}
+
+	auto &lut = color_endpoint.lut;
 
 	// We can have a maximum of 9 endpoint pairs, i.e. 18 endpoint values in total.
 	for (unsigned pairs_minus_1 = 0; pairs_minus_1 < 9; pairs_minus_1++)
@@ -447,7 +642,7 @@ static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
 		for (unsigned remaining = 0; remaining < 128; remaining++)
 		{
 			bool found_mode = false;
-			for (auto &mode : potential_modes)
+			for (auto &mode : astc_quantization_modes)
 			{
 				unsigned num_values = (pairs_minus_1 + 1) * 2;
 				unsigned total_bits = mode.bits * num_values +
@@ -460,7 +655,7 @@ static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
 					lut[pairs_minus_1][remaining][0] = mode.bits;
 					lut[pairs_minus_1][remaining][1] = mode.trits;
 					lut[pairs_minus_1][remaining][2] = mode.quints;
-					lut[pairs_minus_1][remaining][3] = unquant_lut_offsets[&mode - potential_modes];
+					lut[pairs_minus_1][remaining][3] = color_endpoint.unquant_lut_offsets[&mode - astc_quantization_modes];
 					break;
 				}
 			}
@@ -469,116 +664,32 @@ static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
 				memset(lut[pairs_minus_1][remaining], 0, sizeof(lut[pairs_minus_1][remaining]));
 		}
 	}
-
-	{
-		Vulkan::BufferCreateInfo info = {};
-		info.size = sizeof(lut);
-		info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
-		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-		auto lut_buffer = cmd.get_device().create_buffer(info, lut);
-
-		Vulkan::BufferViewCreateInfo view_info = {};
-		view_info.buffer = lut_buffer.get();
-		view_info.format = VK_FORMAT_R16G16B16A16_UINT;
-		view_info.range = sizeof(lut);
-		auto lut_view = cmd.get_device().create_buffer_view(view_info);
-		cmd.set_buffer_view(1, 0, *lut_view);
-	}
-
-	{
-		Vulkan::BufferCreateInfo info = {};
-		info.size = unquant_offset;
-		info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
-		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-		auto unquant_buffer = cmd.get_device().create_buffer(info, unquant_lut);
-
-		Vulkan::BufferViewCreateInfo view_info = {};
-		view_info.buffer = unquant_buffer.get();
-		view_info.format = VK_FORMAT_R8_UINT;
-		view_info.range = unquant_offset;
-
-		auto unquant_view = cmd.get_device().create_buffer_view(view_info);
-		cmd.set_buffer_view(1, 1, *unquant_view);
-	}
 }
 
-static void setup_astc_lut_weights(Vulkan::CommandBuffer &cmd)
+void ASTCLutHolder::init_weight_luts()
 {
-	static const ASTCQuantizationMode weight_modes[] = {
-		{ 0, 0, 0 }, // Invalid
-		{ 0, 0, 0 }, // Invalid
-		{ 1, 0, 0 },
-		{ 0, 1, 0 },
-		{ 2, 0, 0 },
-		{ 0, 0, 1 },
-		{ 1, 1, 0 },
-		{ 3, 0, 0 },
-		{ 0, 0, 0 }, // Invalid
-		{ 0, 0, 0 }, // Invalid
-		{ 1, 0, 1 },
-		{ 2, 1, 0 },
-		{ 4, 0, 0 },
-		{ 2, 0, 1 },
-		{ 3, 1, 0 },
-		{ 5, 0, 0 },
-	};
+	auto &lut = weights.lut;
+	auto &unquant_lut = weights.unquant_lut;
+	auto &unquant_offset = weights.unquant_offset;
 
-	constexpr size_t num_modes = sizeof(weight_modes) / sizeof(weight_modes[0]);
-	size_t unquant_offset = 0;
-	uint8_t unquant_lut[2048];
-
-	uint8_t lut[num_modes][4];
-
-	for (size_t i = 0; i < num_modes; i++)
+	for (size_t i = 0; i < astc_num_weight_modes; i++)
 	{
-		auto value_range = astc_value_range(weight_modes[i]);
-		lut[i][0] = weight_modes[i].bits;
-		lut[i][1] = weight_modes[i].trits;
-		lut[i][2] = weight_modes[i].quints;
+		auto value_range = astc_value_range(astc_weight_modes[i]);
+		lut[i][0] = astc_weight_modes[i].bits;
+		lut[i][1] = astc_weight_modes[i].trits;
+		lut[i][2] = astc_weight_modes[i].quints;
 		lut[i][3] = unquant_offset;
-		build_astc_unquant_weight_lut(unquant_lut + unquant_offset, value_range, weight_modes[i]);
+		build_astc_unquant_weight_lut(unquant_lut + unquant_offset, value_range, astc_weight_modes[i]);
 		unquant_offset += value_range;
 	}
 
 	assert(unquant_offset <= 256);
-
-	{
-		Vulkan::BufferCreateInfo info = {};
-		info.size = sizeof(lut);
-		info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
-		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-		auto lut_buffer = cmd.get_device().create_buffer(info, lut);
-
-		Vulkan::BufferViewCreateInfo view_info = {};
-		view_info.buffer = lut_buffer.get();
-		view_info.format = VK_FORMAT_R8G8B8A8_UINT;
-		view_info.range = sizeof(lut);
-		auto lut_view = cmd.get_device().create_buffer_view(view_info);
-		cmd.set_buffer_view(1, 2, *lut_view);
-	}
-
-	{
-		Vulkan::BufferCreateInfo info = {};
-		info.size = unquant_offset;
-		info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
-		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-		auto unquant_buffer = cmd.get_device().create_buffer(info, unquant_lut);
-
-		Vulkan::BufferViewCreateInfo view_info = {};
-		view_info.buffer = unquant_buffer.get();
-		view_info.format = VK_FORMAT_R8_UINT;
-		view_info.range = unquant_offset;
-
-		auto unquant_view = cmd.get_device().create_buffer_view(view_info);
-		cmd.set_buffer_view(1, 3, *unquant_view);
-	}
 }
 
-static void setup_astc_lut_trits_quints(Vulkan::CommandBuffer &cmd)
+void ASTCLutHolder::init_trits_quints()
 {
-	uint16_t trits_quints[256 + 128];
-
 	// From specification.
+	auto &trits_quints = integer.trits_quints;
 
 	for (unsigned T = 0; T < 256; T++)
 	{
@@ -663,130 +774,111 @@ static void setup_astc_lut_trits_quints(Vulkan::CommandBuffer &cmd)
 
 		trits_quints[256 + Q] = q0 | (q1 << 3) | (q2 << 6);
 	}
+}
+
+static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
+{
+	auto &luts = get_astc_luts();
+
+	{
+		Vulkan::BufferCreateInfo info = {};
+		info.size = sizeof(luts.color_endpoint.lut);
+		info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
+		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+		auto lut_buffer = cmd.get_device().create_buffer(info, luts.color_endpoint.lut);
+
+		Vulkan::BufferViewCreateInfo view_info = {};
+		view_info.buffer = lut_buffer.get();
+		view_info.format = VK_FORMAT_R16G16B16A16_UINT;
+		view_info.range = sizeof(luts.color_endpoint.lut);
+		auto lut_view = cmd.get_device().create_buffer_view(view_info);
+		cmd.set_buffer_view(1, 0, *lut_view);
+	}
+
+	{
+		Vulkan::BufferCreateInfo info = {};
+		info.size = luts.color_endpoint.unquant_offset;
+		info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
+		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+		auto unquant_buffer = cmd.get_device().create_buffer(info, luts.color_endpoint.unquant_lut);
+
+		Vulkan::BufferViewCreateInfo view_info = {};
+		view_info.buffer = unquant_buffer.get();
+		view_info.format = VK_FORMAT_R8_UINT;
+		view_info.range = luts.color_endpoint.unquant_offset;
+
+		auto unquant_view = cmd.get_device().create_buffer_view(view_info);
+		cmd.set_buffer_view(1, 1, *unquant_view);
+	}
+}
+
+static void setup_astc_lut_weights(Vulkan::CommandBuffer &cmd)
+{
+	auto &luts = get_astc_luts();
+
+	{
+		Vulkan::BufferCreateInfo info = {};
+		info.size = sizeof(luts.weights.lut);
+		info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
+		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+		auto lut_buffer = cmd.get_device().create_buffer(info, luts.weights.lut);
+
+		Vulkan::BufferViewCreateInfo view_info = {};
+		view_info.buffer = lut_buffer.get();
+		view_info.format = VK_FORMAT_R8G8B8A8_UINT;
+		view_info.range = sizeof(luts.weights.lut);
+		auto lut_view = cmd.get_device().create_buffer_view(view_info);
+		cmd.set_buffer_view(1, 2, *lut_view);
+	}
+
+	{
+		Vulkan::BufferCreateInfo info = {};
+		info.size = luts.weights.unquant_offset;
+		info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
+		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+		auto unquant_buffer = cmd.get_device().create_buffer(info, luts.weights.unquant_lut);
+
+		Vulkan::BufferViewCreateInfo view_info = {};
+		view_info.buffer = unquant_buffer.get();
+		view_info.format = VK_FORMAT_R8_UINT;
+		view_info.range = luts.weights.unquant_offset;
+
+		auto unquant_view = cmd.get_device().create_buffer_view(view_info);
+		cmd.set_buffer_view(1, 3, *unquant_view);
+	}
+}
+
+static void setup_astc_lut_trits_quints(Vulkan::CommandBuffer &cmd)
+{
+	auto &luts = get_astc_luts();
 
 	Vulkan::BufferCreateInfo info = {};
-	info.size = sizeof(trits_quints);
+	info.size = sizeof(luts.integer.trits_quints);
 	info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
 	info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-	auto lut_buffer = cmd.get_device().create_buffer(info, trits_quints);
+	auto lut_buffer = cmd.get_device().create_buffer(info, luts.integer.trits_quints);
 
 	Vulkan::BufferViewCreateInfo view_info = {};
 	view_info.buffer = lut_buffer.get();
 	view_info.format = VK_FORMAT_R16_UINT;
-	view_info.range = sizeof(trits_quints);
+	view_info.range = sizeof(luts.integer.trits_quints);
 	auto trits_quints_buffer = cmd.get_device().create_buffer_view(view_info);
 	cmd.set_buffer_view(1, 4, *trits_quints_buffer);
 }
 
-static uint32_t hash52(uint32_t p)
-{
-	p ^= p >> 15; p -= p << 17; p += p << 7; p += p << 4;
-	p ^= p >>  5; p += p << 16; p ^= p >> 7; p ^= p >> 3;
-	p ^= p <<  6; p ^= p >> 17;
-	return p;
-}
-
-// Copy-paste from spec.
-static int astc_select_partition(int seed, int x, int y, int z, int partitioncount, bool small_block)
-{
-	if (small_block)
-	{
-		x <<= 1;
-		y <<= 1;
-		z <<= 1;
-	}
-
-	seed += (partitioncount - 1) * 1024;
-	uint32_t rnum = hash52(seed);
-	uint8_t seed1 = rnum & 0xF;
-	uint8_t seed2 = (rnum >> 4) & 0xF;
-	uint8_t seed3 = (rnum >> 8) & 0xF;
-	uint8_t seed4 = (rnum >> 12) & 0xF;
-	uint8_t seed5 = (rnum >> 16) & 0xF;
-	uint8_t seed6 = (rnum >> 20) & 0xF;
-	uint8_t seed7 = (rnum >> 24) & 0xF;
-	uint8_t seed8 = (rnum >> 28) & 0xF;
-	uint8_t seed9 = (rnum >> 18) & 0xF;
-	uint8_t seed10 = (rnum >> 22) & 0xF;
-	uint8_t seed11 = (rnum >> 26) & 0xF;
-	uint8_t seed12 = ((rnum >> 30) | (rnum << 2)) & 0xF;
-
-	seed1 *= seed1; seed2 *= seed2; seed3 *= seed3; seed4 *= seed4;
-	seed5 *= seed5; seed6 *= seed6; seed7 *= seed7; seed8 *= seed8;
-	seed9 *= seed9; seed10 *= seed10; seed11 *= seed11; seed12 *= seed12;
-
-	int sh1, sh2, sh3;
-	if (seed & 1)
-	{
-		sh1 = seed & 2 ? 4 : 5;
-		sh2 = partitioncount == 3 ? 6 : 5;
-	}
-	else
-	{
-		sh1 = partitioncount == 3 ? 6 : 5;
-		sh2 = seed & 2 ? 4 : 5;
-	}
-	sh3 = (seed & 0x10) ? sh1 : sh2;
-
-	seed1 >>= sh1; seed2 >>= sh2; seed3 >>= sh1; seed4 >>= sh2;
-	seed5 >>= sh1; seed6 >>= sh2; seed7 >>= sh1; seed8 >>= sh2;
-	seed9 >>= sh3; seed10 >>= sh3; seed11 >>= sh3; seed12 >>= sh3;
-
-	int a = seed1 * x + seed2 * y + seed11 * z + (rnum >> 14);
-	int b = seed3 * x + seed4 * y + seed12 * z + (rnum >> 10);
-	int c = seed5 * x + seed6 * y + seed9 * z + (rnum >> 6);
-	int d = seed7 * x + seed8 * y + seed10 * z + (rnum >> 2);
-
-	a &= 0x3f; b &= 0x3f; c &= 0x3f; d &= 0x3f;
-
-	if (partitioncount < 4)
-		d = 0;
-	if (partitioncount < 3)
-		c = 0;
-
-	if (a >= b && a >= c && a >= d)
-		return 0;
-	else if (b >= c && b >= d)
-		return 1;
-	else if (c >= d)
-		return 2;
-	else
-		return 3;
-}
 
 static void setup_astc_lut_partition_table(Vulkan::CommandBuffer &cmd, VkFormat format)
 {
 	uint32_t block_width, block_height;
 	Vulkan::TextureFormatLayout::format_block_dim(format, block_width, block_height);
-	bool small_block = (block_width * block_height) < 31;
 
-	unsigned lut_width = block_width * 32;
-	unsigned lut_height = block_height * 32;
-	std::vector<uint8_t> lut_buffer(lut_width * lut_height);
+	auto &luts = get_astc_luts();
+	auto &table = luts.get_partition_table(block_width, block_height);
 
-	for (unsigned seed_y = 0; seed_y < 32; seed_y++)
-	{
-		for (unsigned seed_x = 0; seed_x < 32; seed_x++)
-		{
-			unsigned seed = seed_y * 32 + seed_x;
-			for (unsigned block_y = 0; block_y < block_height; block_y++)
-			{
-				for (unsigned block_x = 0; block_x < block_width; block_x++)
-				{
-					int part2 = astc_select_partition(seed, block_x, block_y, 0, 2, small_block);
-					int part3 = astc_select_partition(seed, block_x, block_y, 0, 3, small_block);
-					int part4 = astc_select_partition(seed, block_x, block_y, 0, 4, small_block);
-					lut_buffer[(seed_y * block_height + block_y) * lut_width + (seed_x * block_width + block_x)] =
-							(part2 << 0) | (part3 << 2) | (part4 << 4);
-				}
-			}
-		}
-	}
-
-	auto info = Vulkan::ImageCreateInfo::immutable_2d_image(lut_width, lut_height, VK_FORMAT_R8_UINT);
+	auto info = Vulkan::ImageCreateInfo::immutable_2d_image(table.lut_width, table.lut_height, VK_FORMAT_R8_UINT);
 	info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
 	Vulkan::ImageInitialData data = {};
-	data.data = lut_buffer.data();
+	data.data = table.lut_buffer.data();
 	auto lut_image = cmd.get_device().create_image(info, &data);
 	cmd.set_texture(1, 5, lut_image->get_view());
 }

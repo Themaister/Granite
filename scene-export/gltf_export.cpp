@@ -1226,16 +1226,20 @@ static VkFormat get_compression_format(TextureCompression compression, TextureMo
 		return VK_FORMAT_BC6H_UFLOAT_BLOCK;
 
 	case TextureCompression::ASTC4x4:
-		return srgb ? VK_FORMAT_ASTC_4x4_SRGB_BLOCK : VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+		return mode == TextureMode::HDR ? VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT :
+		       (srgb ? VK_FORMAT_ASTC_4x4_SRGB_BLOCK : VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
 
 	case TextureCompression::ASTC5x5:
-		return srgb ? VK_FORMAT_ASTC_5x5_SRGB_BLOCK : VK_FORMAT_ASTC_5x5_UNORM_BLOCK;
+		return mode == TextureMode::HDR ? VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT :
+		       (srgb ? VK_FORMAT_ASTC_5x5_SRGB_BLOCK : VK_FORMAT_ASTC_5x5_UNORM_BLOCK);
 
 	case TextureCompression::ASTC6x6:
-		return srgb ? VK_FORMAT_ASTC_6x6_SRGB_BLOCK : VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
+		return mode == TextureMode::HDR ? VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT :
+		       (srgb ? VK_FORMAT_ASTC_6x6_SRGB_BLOCK : VK_FORMAT_ASTC_6x6_UNORM_BLOCK);
 
 	case TextureCompression::ASTC8x8:
-		return srgb ? VK_FORMAT_ASTC_8x8_SRGB_BLOCK : VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
+		return mode == TextureMode::HDR ? VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK_EXT :
+		       (srgb ? VK_FORMAT_ASTC_8x8_SRGB_BLOCK : VK_FORMAT_ASTC_8x8_UNORM_BLOCK);
 
 	default:
 		return VK_FORMAT_UNDEFINED;

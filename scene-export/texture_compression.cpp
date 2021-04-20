@@ -81,26 +81,26 @@ VkFormat string_to_format(const string &s)
 		return VK_FORMAT_ASTC_4x4_SRGB_BLOCK;
 	else if (s == "astc_4x4_unorm")
 		return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
-	else if (s == "astc_4x4")
-		return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+	else if (s == "astc_4x4_float")
+		return VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT;
 	else if (s == "astc_5x5_srgb")
 		return VK_FORMAT_ASTC_5x5_SRGB_BLOCK;
 	else if (s == "astc_5x5_unorm")
 		return VK_FORMAT_ASTC_5x5_UNORM_BLOCK;
-	else if (s == "astc_5x5")
-		return VK_FORMAT_ASTC_5x5_UNORM_BLOCK;
+	else if (s == "astc_5x5_float")
+		return VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT;
 	else if (s == "astc_6x6_srgb")
 		return VK_FORMAT_ASTC_6x6_SRGB_BLOCK;
 	else if (s == "astc_6x6_unorm")
 		return VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
-	else if (s == "astc_6x6")
-		return VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
+	else if (s == "astc_6x6_float")
+		return VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT;
 	else if (s == "astc_8x8_srgb")
 		return VK_FORMAT_ASTC_8x8_SRGB_BLOCK;
 	else if (s == "astc_8x8_unorm")
 		return VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
-	else if (s == "astc_8x8")
-		return VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
+	else if (s == "astc_8x8_float")
+		return VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK_EXT;
 	else
 	{
 		LOGE("Unknown format: %s.\n", s.c_str());
@@ -378,45 +378,45 @@ void CompressorState::setup(const CompressorArguments &args)
 
 	case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
-		if (is_16bit_float())
-		{
-			if (!handle_astc_hdr_format(4, 4))
-				return;
-		}
-		else if (!handle_astc_ldr_format(4, 4))
+		if (!handle_astc_ldr_format(4, 4))
+			return;
+		break;
+
+	case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT:
+		if (!handle_astc_hdr_format(4, 4))
 			return;
 		break;
 
 	case VK_FORMAT_ASTC_5x5_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_5x5_SRGB_BLOCK:
-		if (is_16bit_float())
-		{
-			if (!handle_astc_hdr_format(5, 5))
-				return;
-		}
-		else if (!handle_astc_ldr_format(5, 5))
+		if (!handle_astc_ldr_format(5, 5))
+			return;
+		break;
+
+	case VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT:
+		if (!handle_astc_hdr_format(5, 5))
 			return;
 		break;
 
 	case VK_FORMAT_ASTC_6x6_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_6x6_SRGB_BLOCK:
-		if (is_16bit_float())
-		{
-			if (!handle_astc_hdr_format(6, 6))
-				return;
-		}
-		else if (!handle_astc_ldr_format(6, 6))
+		if (!handle_astc_ldr_format(6, 6))
+			return;
+		break;
+
+	case VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT:
+		if (!handle_astc_hdr_format(6, 6))
 			return;
 		break;
 
 	case VK_FORMAT_ASTC_8x8_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_8x8_SRGB_BLOCK:
-		if (is_16bit_float())
-		{
-			if (!handle_astc_hdr_format(8, 8))
-				return;
-		}
-		else if (!handle_astc_ldr_format(8, 8))
+		if (!handle_astc_ldr_format(8, 8))
+			return;
+		break;
+
+	case VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK_EXT:
+		if (!handle_astc_hdr_format(8, 8))
 			return;
 		break;
 
@@ -900,6 +900,15 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 					enqueue_compression_block_astc(compression_task, args, layer, level, args.mode);
 #endif
 				}
+				break;
+
+			case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT:
+			case VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT:
+			case VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT:
+			case VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK_EXT:
+#ifdef HAVE_ASTC_ENCODER
+				enqueue_compression_block_astc(compression_task, args, layer, level, args.mode);
+#endif
 				break;
 
 			case VK_FORMAT_R8G8B8A8_SRGB:

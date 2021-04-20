@@ -828,6 +828,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.performance_query_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_FEATURES_KHR };
 	ext.sampler_ycbcr_conversion_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES_KHR };
 	ext.memory_priority_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PRIORITY_FEATURES_EXT };
+	ext.astc_decode_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_FEATURES_EXT };
+	ext.astc_hdr_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES_EXT };
 	void **ppNext = &features.pNext;
 
 	bool has_pdf2 = ext.supports_physical_device_properties2 ||
@@ -948,6 +950,21 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		{
 			enabled_extensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
 			ext.supports_memory_budget = true;
+		}
+
+		if (has_extension(VK_EXT_ASTC_DECODE_MODE_EXTENSION_NAME))
+		{
+			ext.supports_astc_decode_mode = true;
+			enabled_extensions.push_back(VK_EXT_ASTC_DECODE_MODE_EXTENSION_NAME);
+			*ppNext = &ext.astc_decode_features;
+			ppNext = &ext.astc_decode_features.pNext;
+		}
+
+		if (has_extension(VK_EXT_TEXTURE_COMPRESSION_ASTC_HDR_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_EXT_TEXTURE_COMPRESSION_ASTC_HDR_EXTENSION_NAME);
+			*ppNext = &ext.astc_hdr_features;
+			ppNext = &ext.astc_hdr_features.pNext;
 		}
 	}
 

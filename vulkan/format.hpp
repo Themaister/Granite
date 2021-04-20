@@ -95,6 +95,37 @@ static inline FormatCompressionType format_compression_type(VkFormat format)
 	}
 }
 
+static inline bool format_is_compressed_hdr(VkFormat format)
+{
+	switch (format)
+	{
+#define astc_fmt(w, h) case VK_FORMAT_ASTC_##w##x##h##_SFLOAT_BLOCK_EXT
+	astc_fmt(4, 4):
+	astc_fmt(5, 4):
+	astc_fmt(5, 5):
+	astc_fmt(6, 5):
+	astc_fmt(6, 6):
+	astc_fmt(8, 5):
+	astc_fmt(8, 6):
+	astc_fmt(8, 8):
+	astc_fmt(10, 5):
+	astc_fmt(10, 6):
+	astc_fmt(10, 8):
+	astc_fmt(10, 10):
+	astc_fmt(12, 10):
+	astc_fmt(12, 12):
+#undef astc_fmt
+		return true;
+
+	case VK_FORMAT_BC6H_SFLOAT_BLOCK:
+	case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+		return true;
+
+	default:
+		return false;
+	}
+}
+
 static inline bool format_is_srgb(VkFormat format)
 {
 	switch (format)

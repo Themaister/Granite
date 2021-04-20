@@ -68,6 +68,7 @@ struct DeviceFeatures
 	bool supports_driver_properties = false;
 	bool supports_calibrated_timestamps = false;
 	bool supports_memory_budget = false;
+	bool supports_astc_decode_mode = false;
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
 	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};
@@ -90,6 +91,8 @@ struct DeviceFeatures
 	VkPhysicalDeviceSamplerYcbcrConversionFeaturesKHR sampler_ycbcr_conversion_features = {};
 	VkPhysicalDeviceDriverPropertiesKHR driver_properties = {};
 	VkPhysicalDeviceMemoryPriorityFeaturesEXT memory_priority_features = {};
+	VkPhysicalDeviceASTCDecodeFeaturesEXT astc_decode_features = {};
+	VkPhysicalDeviceTextureCompressionASTCHDRFeaturesEXT astc_hdr_features = {};
 };
 
 enum VendorID

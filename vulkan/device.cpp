@@ -3292,6 +3292,35 @@ public:
 		return true;
 	}
 
+	bool setup_astc_decode_mode_info(VkImageViewCreateInfo &create_info, VkImageViewASTCDecodeModeEXT &astc_info)
+	{
+		if (!device->get_device_features().supports_astc_decode_mode)
+			return true;
+
+		auto type = format_compression_type(create_info.format);
+		if (type != FormatCompressionType::ASTC)
+			return true;
+
+		if (format_is_srgb(create_info.format))
+			return true;
+
+		if (format_is_compressed_hdr(create_info.format))
+		{
+			if (device->get_device_features().astc_decode_features.decodeModeSharedExponent)
+				astc_info.decodeMode = VK_FORMAT_E5B9G9R9_UFLOAT_PACK32;
+			else
+				astc_info.decodeMode = VK_FORMAT_R16G16B16A16_SFLOAT;
+		}
+		else
+		{
+			astc_info.decodeMode = VK_FORMAT_R8G8B8A8_UNORM;
+		}
+
+		astc_info.pNext = create_info.pNext;
+		create_info.pNext = &astc_info;
+		return true;
+	}
+
 	bool create_default_views(const ImageCreateInfo &create_info, const VkImageViewCreateInfo *view_info,
 	                          bool create_unorm_srgb_views = false, const VkFormat *view_formats = nullptr)
 	{
@@ -3307,6 +3336,7 @@ public:
 		VkImageViewCreateInfo default_view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 		VkSamplerYcbcrConversionInfo conversion_info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
 		VkImageViewUsageCreateInfo view_usage_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO };
+		VkImageViewASTCDecodeModeEXT astc_decode_mode_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_ASTC_DECODE_MODE_EXT };
 
 		if (!view_info)
 		{
@@ -3330,6 +3360,9 @@ public:
 			return false;
 
 		if (!setup_view_usage_info(default_view_info, create_info.usage, view_usage_info))
+			return false;
+
+		if (!setup_astc_decode_mode_info(default_view_info, astc_decode_mode_info))
 			return false;
 
 		if (!create_alt_views(create_info, *view_info))

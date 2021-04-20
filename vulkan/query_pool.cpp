@@ -442,6 +442,14 @@ double TimestampInterval::get_time_per_iteration() const
 		return 0.0;
 }
 
+double TimestampInterval::get_time_per_accumulation() const
+{
+	if (total_accumulations)
+		return total_time / double(total_accumulations);
+	else
+		return 0.0;
+}
+
 const string &TimestampInterval::get_tag() const
 {
 	return tag;
@@ -472,6 +480,7 @@ void TimestampIntervalManager::log_simple()
 		LOGI("Timestamp tag report: %s\n", timestamp.get_tag().c_str());
 		if (timestamp.get_total_frame_iterations())
 		{
+			LOGI("  %.3f ms / iteration\n", 1000.0 * timestamp.get_time_per_accumulation());
 			LOGI("  %.3f ms / frame context\n", 1000.0 * timestamp.get_time_per_iteration());
 			LOGI("  %.3f iterations / frame context\n",
 			     double(timestamp.get_total_accumulations()) / double(timestamp.get_total_frame_iterations()));

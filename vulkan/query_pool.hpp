@@ -142,6 +142,7 @@ public:
 
 	void accumulate_time(double t);
 	double get_time_per_iteration() const;
+	double get_time_per_accumulation() const;
 	const std::string &get_tag() const;
 	void mark_end_of_frame_context();
 

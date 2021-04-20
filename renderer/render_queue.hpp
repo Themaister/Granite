@@ -38,7 +38,7 @@ class ShaderSuite;
 class RenderContext;
 class AbstractRenderable;
 class PositionalLight;
-class VolumetricDiffuseLightComponent;
+struct VolumetricDiffuseLightComponent;
 struct RenderInfoComponent;
 
 struct RenderableInfo

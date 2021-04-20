@@ -196,9 +196,11 @@ void CompressorState::setup(const CompressorArguments &args)
 		return layout.get_format() == VK_FORMAT_R8G8B8A8_UNORM;
 	};
 
+#ifdef HAVE_ASTC_ENCODER
 	const auto is_16bit_float = [&]() -> bool {
 		return layout.get_format() == VK_FORMAT_R16G16B16A16_SFLOAT;
 	};
+#endif
 
 	const auto handle_astc_ldr_format = [&](unsigned x, unsigned y) -> bool {
 		block_size_x = x;

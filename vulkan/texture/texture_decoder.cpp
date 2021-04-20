@@ -88,7 +88,7 @@ static VkFormat compressed_format_to_decoded_format(VkFormat format)
 	case VK_FORMAT_ASTC_10x10_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_12x10_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_12x12_UNORM_BLOCK:
-		return VK_FORMAT_R16G16B16A16_SFLOAT;
+		return VK_FORMAT_R8G8B8A8_UNORM;
 
 	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
 	case VK_FORMAT_ASTC_5x4_SRGB_BLOCK:
@@ -1027,7 +1027,7 @@ static void dispatch_kernel_bc6(Vulkan::CommandBuffer &cmd, uint32_t width, uint
 	cmd.dispatch(width, height, 1);
 }
 
-static void dispatch_kernel_astc(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t height, VkFormat format)
+static void dispatch_kernel_astc(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t height, VkFormat format, bool HDR)
 {
 	struct Push
 	{
@@ -1038,7 +1038,6 @@ static void dispatch_kernel_astc(Vulkan::CommandBuffer &cmd, uint32_t width, uin
 	push.width = width;
 	push.height = height;
 	bool srgb = Vulkan::format_is_srgb(format);
-	constexpr bool HDR_profile = true;
 
 	if (srgb)
 	{
@@ -1047,7 +1046,7 @@ static void dispatch_kernel_astc(Vulkan::CommandBuffer &cmd, uint32_t width, uin
 		push.error_color[2] = 0xff;
 		push.error_color[3] = 0xff;
 	}
-	else if (HDR_profile)
+	else if (HDR)
 	{
 		push.error_color[0] = 0xffff;
 		push.error_color[1] = 0xffff;
@@ -1069,7 +1068,7 @@ static void dispatch_kernel_astc(Vulkan::CommandBuffer &cmd, uint32_t width, uin
 	cmd.set_specialization_constant_mask(7);
 	cmd.set_specialization_constant(0, block_width);
 	cmd.set_specialization_constant(1, block_height);
-	cmd.set_specialization_constant(2, uint32_t(srgb));
+	cmd.set_specialization_constant(2, uint32_t(srgb || !HDR));
 
 	cmd.dispatch((width + 2 * block_width - 1) / (2 * block_width),
 	             (height + 2 * block_height - 1) / (2 * block_height),
@@ -1274,6 +1273,9 @@ static void dispatch_kernel(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t
 	case VK_FORMAT_ASTC_10x10_SRGB_BLOCK:
 	case VK_FORMAT_ASTC_12x10_SRGB_BLOCK:
 	case VK_FORMAT_ASTC_12x12_SRGB_BLOCK:
+		dispatch_kernel_astc(cmd, width, height, format, false);
+		break;
+
 	case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT:
 	case VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK_EXT:
 	case VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT:
@@ -1288,7 +1290,7 @@ static void dispatch_kernel(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t
 	case VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK_EXT:
 	case VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK_EXT:
 	case VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK_EXT:
-		dispatch_kernel_astc(cmd, width, height, format);
+		dispatch_kernel_astc(cmd, width, height, format, true);
 		break;
 
 	default:

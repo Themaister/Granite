@@ -477,7 +477,10 @@ void DeviceAllocator::free(uint32_t size, uint32_t memory_type, AllocationMode m
 	auto &heap = heaps[mem_props.memoryTypes[memory_type].heapIndex];
 
 	VK_ASSERT(mode != AllocationMode::Count);
+
 	heap.blocks.push_back({ memory, size, memory_type, mode });
+	if (memory_heap_is_budget_critical[mem_props.memoryTypes[memory_type].heapIndex])
+		heap.garbage_collect(device);
 }
 
 void DeviceAllocator::free_no_recycle(uint32_t size, uint32_t memory_type, VkDeviceMemory memory)

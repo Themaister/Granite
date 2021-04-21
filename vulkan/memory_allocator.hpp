@@ -389,6 +389,7 @@ private:
 	};
 
 	std::vector<Heap> heaps;
+	bool memory_heap_is_budget_critical[VK_MAX_MEMORY_HEAPS] = {};
 	void get_memory_budget_nolock(HeapBudget *heaps);
 };
 }

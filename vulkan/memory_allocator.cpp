@@ -387,6 +387,36 @@ void DeviceAllocator::init(Device *device_)
 
 	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
 	get_memory_budget(budgets);
+
+	// Figure out if we have a PCI-e BAR heap.
+	// We need to be very careful with our budget (usually 128 MiB out of 256 MiB) on these heaps
+	// since they can lead to instability if overused.
+	VkMemoryPropertyFlags combined_allowed_flags[VK_MAX_MEMORY_HEAPS] = {};
+	for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
+	{
+		uint32_t heap_index = mem_props.memoryTypes[i].heapIndex;
+		combined_allowed_flags[heap_index] |= mem_props.memoryTypes[i].propertyFlags;
+	}
+
+	bool has_host_only_heap = false;
+	VkDeviceSize host_heap_size = 0;
+	const VkMemoryPropertyFlags pinned_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+	                                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+	for (uint32_t i = 0; i < mem_props.memoryHeapCount; i++)
+	{
+		if ((combined_allowed_flags[i] & pinned_flags) == VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+		{
+			has_host_only_heap = true;
+			host_heap_size = (std::max)(host_heap_size, mem_props.memoryHeaps[i].size);
+		}
+	}
+
+	if (has_host_only_heap)
+	{
+		for (uint32_t i = 0; i < mem_props.memoryHeapCount; i++)
+			if ((combined_allowed_flags[i] & pinned_flags) == pinned_flags)
+				memory_heap_is_budget_critical[i] = true;
+	}
 }
 
 bool DeviceAllocator::allocate(uint32_t size, uint32_t alignment, AllocationMode mode, uint32_t memory_type,
@@ -619,16 +649,30 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMo
 	     double(budgets[heap_index].max_size) / double(1024 * 1024));
 #endif
 
+	const auto log_heap_index = [&]() {
+		LOGW("  Size: %u MiB.\n", unsigned(size / (1024 * 1024)));
+		LOGW("  Device usage: %u MiB.\n", unsigned(budgets[heap_index].device_usage / (1024 * 1024)));
+		LOGW("  Tracked usage: %u MiB.\n", unsigned(budgets[heap_index].tracked_usage / (1024 * 1024)));
+		LOGW("  Budget size: %u MiB.\n", unsigned(budgets[heap_index].budget_size / (1024 * 1024)));
+		LOGW("  Max size: %u MiB.\n", unsigned(budgets[heap_index].max_size / (1024 * 1024)));
+	};
+
 	// If we're going to blow out the budget, we should recycle a bit.
 	if (budgets[heap_index].device_usage + size >= budgets[heap_index].budget_size)
 	{
 		LOGW("Will exceed memory budget, cleaning up ...\n");
+		log_heap_index();
 		heap.garbage_collect(device);
 	}
 
 	get_memory_budget_nolock(budgets);
 	if (budgets[heap_index].device_usage + size >= budgets[heap_index].budget_size)
+	{
 		LOGW("Even after garbage collection, we will exceed budget ...\n");
+		if (memory_heap_is_budget_critical[heap_index])
+			return false;
+		log_heap_index();
+	}
 
 	VkMemoryAllocateInfo info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, size, memory_type };
 	VkMemoryDedicatedAllocateInfoKHR dedicated = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR };

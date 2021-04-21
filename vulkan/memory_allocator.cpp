@@ -414,8 +414,13 @@ void DeviceAllocator::init(Device *device_)
 	if (has_host_only_heap)
 	{
 		for (uint32_t i = 0; i < mem_props.memoryHeapCount; i++)
-			if ((combined_allowed_flags[i] & pinned_flags) == pinned_flags)
+		{
+			if ((combined_allowed_flags[i] & pinned_flags) == pinned_flags &&
+			    mem_props.memoryHeaps[i].size < host_heap_size)
+			{
 				memory_heap_is_budget_critical[i] = true;
+			}
+		}
 	}
 }
 

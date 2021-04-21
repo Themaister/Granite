@@ -587,7 +587,9 @@ void SceneViewerApplication::capture_environment_probe()
 		rp.color_attachments[0] = rt_view.get();
 		rp.store_attachments = 1;
 		rp.clear_attachments = 1;
-		rp.depth_stencil = &device.get_transient_attachment(512, 512, device.get_default_depth_format(), 0);
+
+		auto depth_att = device.get_transient_attachment(512, 512, device.get_default_depth_format(), 0);
+		rp.depth_stencil = &depth_att->get_view();
 		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
 		rp.clear_depth_stencil.depth = 1.0f;
 		rp.clear_depth_stencil.stencil = 0;

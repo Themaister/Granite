@@ -337,10 +337,14 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
 		rp.clear_attachments = 1 << 0;
 		rp.store_attachments = 1 << 1;
-		rp.color_attachments[0] = &cmd.get_device().get_transient_attachment(shadow_resolution, shadow_resolution, VK_FORMAT_R32G32_SFLOAT, 0, 4);
+
+		auto msaa_att = cmd.get_device().get_transient_attachment(shadow_resolution, shadow_resolution, VK_FORMAT_R32G32_SFLOAT, 0, 4);
+		auto depth_att = cmd.get_device().get_transient_attachment(shadow_resolution, shadow_resolution, VK_FORMAT_D16_UNORM, 0, 4);
+
+		rp.color_attachments[0] = &msaa_att->get_view();
 		rp.color_attachments[1] = &scratch_vsm_rt->get_view();
 		rp.num_color_attachments = 2;
-		rp.depth_stencil = &cmd.get_device().get_transient_attachment(shadow_resolution, shadow_resolution, VK_FORMAT_D16_UNORM, 0, 4);
+		rp.depth_stencil = &depth_att->get_view();
 		rp.clear_depth_stencil.depth = 1.0f;
 		rp.clear_depth_stencil.stencil = 0;
 

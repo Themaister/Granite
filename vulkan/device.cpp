@@ -4835,8 +4835,8 @@ const Framebuffer &Device::request_framebuffer(const RenderPassInfo &info)
 	return framebuffer_allocator.request_framebuffer(info);
 }
 
-ImageView &Device::get_transient_attachment(unsigned width, unsigned height, VkFormat format,
-                                            unsigned index, unsigned samples, unsigned layers)
+ImageHandle Device::get_transient_attachment(unsigned width, unsigned height, VkFormat format,
+                                             unsigned index, unsigned samples, unsigned layers)
 {
 	return transient_allocator.request_attachment(width, height, format, index, samples, layers);
 }
@@ -4886,18 +4886,20 @@ RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)
 	case SwapchainRenderPass::Depth:
 	{
 		info.op_flags |= RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
-		info.depth_stencil =
-		    &get_transient_attachment(wsi.swapchain[wsi.index]->get_create_info().width,
-		                              wsi.swapchain[wsi.index]->get_create_info().height, get_default_depth_format());
+		auto att = get_transient_attachment(wsi.swapchain[wsi.index]->get_create_info().width,
+		                                    wsi.swapchain[wsi.index]->get_create_info().height,
+		                                    get_default_depth_format());
+		info.depth_stencil = &att->get_view();
 		break;
 	}
 
 	case SwapchainRenderPass::DepthStencil:
 	{
 		info.op_flags |= RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
-		info.depth_stencil =
-		    &get_transient_attachment(wsi.swapchain[wsi.index]->get_create_info().width,
-		                              wsi.swapchain[wsi.index]->get_create_info().height, get_default_depth_stencil_format());
+		auto att = get_transient_attachment(wsi.swapchain[wsi.index]->get_create_info().width,
+		                                    wsi.swapchain[wsi.index]->get_create_info().height,
+		                                    get_default_depth_stencil_format());
+		info.depth_stencil = &att->get_view();
 		break;
 	}
 

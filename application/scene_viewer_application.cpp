@@ -191,6 +191,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.max_point_lights = doc["maxPointLights"].GetUint();
 	if (doc.HasMember("volumetricFog"))
 		config.volumetric_fog = doc["volumetricFog"].GetBool();
+	if (doc.HasMember("volumetricDiffuse"))
+		config.volumetric_diffuse = doc["volumetricDiffuse"].GetBool();
 }
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path,
@@ -337,6 +339,9 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 			volumetric_fog->add_texture_dependency("shadow-main");
 	}
 
+	if (config.clustered_lights &&
+	    config.clustered_lights_bindless &&
+	    config.volumetric_diffuse)
 	{
 		volumetric_diffuse = make_unique<VolumetricDiffuseLightManager>();
 		auto entity = scene_loader.get_scene().create_entity();
@@ -352,6 +357,9 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 		volumetric_diffuse->set_fallback_render_context(&fallback_depth_context);
 	}
+
+	if (cluster)
+		cluster->set_enable_volumetric_diffuse(config.volumetric_diffuse);
 
 	if (config.deferred_clustered_stencil_culling)
 	{

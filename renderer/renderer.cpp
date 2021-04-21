@@ -332,7 +332,7 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 		if (lighting.cluster->clusterer_is_bindless())
 			flags |= POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT;
 
-		if (lighting.cluster->get_cluster_bindless_set())
+		if (lighting.cluster->clusterer_has_volumetric_diffuse())
 			flags |= VOLUMETRIC_DIFFUSE_ENABLE_BIT;
 	}
 
@@ -721,8 +721,13 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 		}
 	}
 
-	if (light.ambient_occlusion)
-		defines.emplace_back("AMBIENT_OCCLUSION", 1);
+	bool cluster_volumetric_diffuse = light.cluster && light.cluster->clusterer_has_volumetric_diffuse();
+	if (!cluster_volumetric_diffuse)
+	{
+		defines.emplace_back("VOLUMETRIC_DIFFUSE_FALLBACK", 1);
+		if (light.ambient_occlusion)
+			defines.emplace_back("AMBIENT_OCCLUSION", 1);
+	}
 
 	auto *variant = program->register_variant(defines);
 	cmd.set_program(variant->get_program());
@@ -814,7 +819,8 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 			cluster_defines.emplace_back("CLUSTERER_BINDLESS", 1);
 			if (light.cluster->get_cluster_bindless_set())
 			{
-				cluster_defines.emplace_back("VOLUMETRIC_DIFFUSE", 1);
+				if (cluster_volumetric_diffuse)
+					cluster_defines.emplace_back("VOLUMETRIC_DIFFUSE", 1);
 				if (light.ambient_occlusion)
 					cluster_defines.emplace_back("AMBIENT_OCCLUSION", 1);
 			}

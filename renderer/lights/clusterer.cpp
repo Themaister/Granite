@@ -1279,8 +1279,20 @@ const ClustererGlobalTransforms &LightClusterer::get_cluster_global_transforms_b
 	return bindless.global_transforms;
 }
 
+void LightClusterer::set_enable_volumetric_diffuse(bool enable)
+{
+	enable_volumetric_diffuse = enable;
+}
+
+bool LightClusterer::clusterer_has_volumetric_diffuse() const
+{
+	return enable_volumetric_diffuse;
+}
+
 size_t LightClusterer::get_cluster_volumetric_diffuse_size() const
 {
+	if (!enable_volumetric_diffuse)
+		return 0;
 	return bindless.volumetric.num_volumes * sizeof(DiffuseVolumeParameters) + offsetof(ClustererParametersVolumetric, volumes);
 }
 
@@ -1410,9 +1422,13 @@ void LightClusterer::refresh(const RenderContext &context_, TaskComposer &incomi
 	composer.get_group().enqueue_task([this, &context_]() {
 		visible_diffuse_lights.clear();
 		existing_global_lights.clear();
-		scene->gather_visible_volumetric_diffuse_lights(context_.get_visibility_frustum(),
-		                                                visible_diffuse_lights);
-		scene->gather_irradiance_affecting_positional_lights(existing_global_lights);
+
+		if (enable_volumetric_diffuse)
+		{
+			scene->gather_visible_volumetric_diffuse_lights(context_.get_visibility_frustum(),
+			                                                visible_diffuse_lights);
+			scene->gather_irradiance_affecting_positional_lights(existing_global_lights);
+		}
 	});
 
 	if (enable_bindless)

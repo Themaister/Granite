@@ -80,6 +80,8 @@ public:
 	VkDescriptorSet get_cluster_bindless_set() const;
 	bool clusterer_is_bindless() const;
 
+	void set_enable_volumetric_diffuse(bool enable);
+	bool clusterer_has_volumetric_diffuse() const;
 	const ClustererParametersVolumetric &get_cluster_volumetric_diffuse_data() const;
 	size_t get_cluster_volumetric_diffuse_size() const;
 
@@ -191,6 +193,7 @@ private:
 	bool enable_clustering = true;
 	bool enable_bindless = false;
 	bool force_update_shadows = false;
+	bool enable_volumetric_diffuse = false;
 	ShadowType shadow_type = ShadowType::PCF;
 
 	struct CPUGlobalAccelState

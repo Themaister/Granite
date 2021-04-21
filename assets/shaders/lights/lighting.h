@@ -41,8 +41,12 @@ mediump vec3 compute_lighting(
 	mediump vec3 specref = light_color * NoL * shadow_term * cook_torrance_specular(N, H, NoL, NoV, specular_fresnel, roughness);
 	mediump vec3 diffref = light_color * NoL * shadow_term * (1.0 - specular_fresnel) * (1.0 / PI);
 
-#ifdef VOLUMETRIC_DIFFUSE
+#if !defined(LIGHTING_NO_AMBIENT)
+#if defined(VOLUMETRIC_DIFFUSE)
 	diffref += material_ambient_factor * compute_volumetric_diffuse(light_world_pos, material_normal);
+#else
+	diffref += material_ambient_factor * vec3(0.05);
+#endif
 #endif
 
 	mediump vec3 reflected_light = specref;

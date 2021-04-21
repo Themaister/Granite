@@ -26,6 +26,7 @@ layout(std430, push_constant) uniform Registers
 
 #define SHADOW_TRANSFORMS shadows.transforms
 #define SHADOW_CASCADE_LOG_BIAS registers.cascade_log_bias
+#define LIGHTING_NO_AMBIENT
 #include "lighting.h"
 
 layout(input_attachment_index = 0, set = 3, binding = 0) uniform mediump subpassInput BaseColor;
@@ -35,8 +36,6 @@ layout(input_attachment_index = 3, set = 3, binding = 3) uniform subpassInput De
 
 layout(location = 0) out mediump vec3 FragColor;
 layout(location = 0) in vec4 vClip;
-
-//#undef AMBIENT_OCCLUSION
 
 void main()
 {
@@ -59,4 +58,8 @@ void main()
     FragColor = compute_lighting(
 		base_color_ambient.rgb, N, mr.x, mr.y, base_color_ambient.a * base_ambient, 1.0,
 		pos, registers.camera_pos, registers.camera_front, registers.direction, registers.color);
+
+#ifdef VOLUMETRIC_DIFFUSE_FALLBACK
+    FragColor += base_ambient * base_color_ambient.rgb * vec3(0.05);
+#endif
 }

@@ -138,6 +138,7 @@ private:
 		bool rescale_scene = false;
 		bool show_ui = true;
 		bool volumetric_fog = false;
+		bool volumetric_diffuse = false;
 		bool ssao = true;
 		bool debug_probes = false;
 		PostAAType postaa_type = PostAAType::None;

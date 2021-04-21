@@ -1,11 +1,11 @@
 #ifndef CLUSTERER_DATA_H_
 #define CLUSTERER_DATA_H_
 
+#define CLUSTERER_MAX_LIGHTS_GLOBAL 32
 #ifdef CLUSTERER_BINDLESS
 #define CLUSTERER_MAX_LIGHTS 4096
-#define CLUSTERER_MAX_LIGHTS_GLOBAL 32
 #else
-#define CLUSTERER_MAX_LIGHTS 32
+#define CLUSTERER_MAX_LIGHTS CLUSTERER_MAX_LIGHTS_GLOBAL
 #endif
 
 struct PositionalLightInfo
@@ -44,15 +44,6 @@ struct ClustererBindlessTransforms
 	mat4 model[CLUSTERER_MAX_LIGHTS];
 	uint type_mask[CLUSTERER_MAX_LIGHTS / 32];
 };
-
-struct ClustererGlobalTransforms
-{
-	PositionalLightInfo lights[CLUSTERER_MAX_LIGHTS_GLOBAL];
-	mat4 shadow[CLUSTERER_MAX_LIGHTS_GLOBAL];
-	uint type_mask;
-	int desc_offset;
-	int num_lights;
-};
 #else
 struct PointShadowData
 {
@@ -69,5 +60,14 @@ struct ClustererParametersLegacy
 	PointShadowData point_shadow[CLUSTERER_MAX_LIGHTS];
 };
 #endif
+
+struct ClustererGlobalTransforms
+{
+	PositionalLightInfo lights[CLUSTERER_MAX_LIGHTS_GLOBAL];
+	mat4 shadow[CLUSTERER_MAX_LIGHTS_GLOBAL];
+	uint type_mask;
+	int desc_offset;
+	int num_lights;
+};
 
 #endif

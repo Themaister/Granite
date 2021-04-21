@@ -213,6 +213,13 @@ struct DirectionalLightComponent : ComponentBase
 	vec3 direction;
 };
 
+struct HemisphereLightComponent : ComponentBase
+{
+	GRANITE_COMPONENT_TYPE_DECL(HemisphereLightComponent)
+	vec3 y_zero;
+	vec3 y_up;
+};
+
 struct VolumetricDiffuseLightComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(VolumetricDiffuseLightComponent)

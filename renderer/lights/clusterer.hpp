@@ -126,6 +126,7 @@ private:
 	Scene *scene = nullptr;
 	const RenderContext *context = nullptr;
 	const ComponentGroupVector<PositionalLightComponent, RenderInfoComponent> *lights = nullptr;
+	const ComponentGroupVector<HemisphereLightComponent> *hemisphere_lights = nullptr;
 
 	enum { MaxTasks = 4 };
 	PositionalLightList light_sort_caches[MaxTasks];

@@ -266,6 +266,13 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	else
 		selected_directional = &default_directional_light;
 
+	{
+		auto hemi = scene_loader.get_scene().create_entity();
+		auto *l = hemi->allocate_component<HemisphereLightComponent>();
+		l->y_zero = vec3(0.1f);
+		l->y_up = vec3(1.0f, 0.8f, 0.7f);
+	}
+
 	if (config.clustered_lights_shadows || config.clustered_lights)
 	{
 		cluster = make_unique<LightClusterer>();

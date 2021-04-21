@@ -72,19 +72,26 @@ vec3 get_probe_jitter(uvec2 probe_xy)
 
 mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
 {
-    vec3 emissive = texelFetch(uProbeEmissive, coord, 0).rgb;
-    vec3 color = emissive;
+    float l2 = dot(pos, pos);
+    float inv_l = inversesqrt(l2);
+    vec3 n = pos * inv_l;
+    vec3 color;
+
     if (do_lighting)
     {
+        vec3 emissive = texelFetch(uProbeEmissive, coord, 0).rgb;
+        color = emissive;
         vec3 albedo = texelFetch(uProbeAlbedo, coord, 0).rgb;
         vec3 normal = normalize(texelFetch(uProbeNormal, coord, 0).xyz * 2.0 - 1.0);
         color += min(albedo, vec3(0.95)) * compute_irradiance_lighting(
                 world_pos, normal,
                 directional.direction, directional.color);
     }
-
-    float l2 = dot(pos, pos);
-    float inv_l = inversesqrt(l2);
+    else
+    {
+        // Emissive sky rendering is very dynamic, we cannot rely on gbuffer here.
+        color = mix(volumetric.sky_color_lo, volumetric.sky_color_hi, sqrt(clamp(n.y, 0.0, 1.0)));
+    }
 
     // We have 4 patches per face, so it cancels out the 4.0 / (res * res) computation.
     // Formula for area derived from estimating the area coverage of a cubemap texel
@@ -99,7 +106,6 @@ mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
     // A ~= 4.0 / (res^2 * l^3)
     float area = registers.inv_patch_resolution2 * inv_l * inv_l * inv_l;
 
-    vec3 n = pos * inv_l;
     vec3 hemisphere_area = abs(n) * area;
 
     return mat3(

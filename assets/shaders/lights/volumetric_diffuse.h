@@ -22,6 +22,8 @@ layout(std140, set = 0, binding = BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_PARAMETERS) 
 	int bindless_index_offset;
 	int num_volumes;
 	uvec2 fallback_volume_fp16;
+	vec3 sky_color_lo;
+	vec3 sky_color_hi;
 	DiffuseVolumeParameters volumes[CLUSTERER_MAX_VOLUMES];
 } volumetric;
 

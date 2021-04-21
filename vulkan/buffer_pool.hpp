@@ -78,6 +78,7 @@ public:
 	// Used for allocating UBOs, where we want to specify a fixed size for range,
 	// and we need to make sure we don't allocate beyond the block.
 	void set_spill_region_size(VkDeviceSize spill_size);
+	void set_max_retained_blocks(size_t max_blocks);
 
 	VkDeviceSize get_block_size() const
 	{
@@ -85,7 +86,7 @@ public:
 	}
 
 	BufferBlock request_block(VkDeviceSize minimum_size);
-	void recycle_block(BufferBlock &&block);
+	void recycle_block(BufferBlock &block);
 
 private:
 	Device *device = nullptr;
@@ -93,6 +94,7 @@ private:
 	VkDeviceSize alignment = 0;
 	VkDeviceSize spill_size = 0;
 	VkBufferUsageFlags usage = 0;
+	size_t max_retained_blocks = 0;
 	std::vector<BufferBlock> blocks;
 	BufferBlock allocate_block(VkDeviceSize size);
 	bool need_device_local = false;

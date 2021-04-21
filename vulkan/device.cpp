@@ -751,6 +751,11 @@ void Device::set_context(const Context &context)
 	                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 	                      false);
 
+	managers.vbo.set_max_retained_blocks(256);
+	managers.ibo.set_max_retained_blocks(256);
+	managers.ubo.set_max_retained_blocks(64);
+	managers.staging.set_max_retained_blocks(32);
+
 	graphics.performance_query_pool.init_device(this, graphics_queue_family_index);
 	if (graphics_queue_family_index != compute_queue_family_index)
 		compute.performance_query_pool.init_device(this, compute_queue_family_index);
@@ -974,7 +979,7 @@ static void request_block(Device &device, BufferBlock &block, VkDeviceSize size,
 	if (block.offset == 0)
 	{
 		if (block.size == pool.get_block_size())
-			pool.recycle_block(move(block));
+			pool.recycle_block(block);
 	}
 	else
 	{
@@ -2898,6 +2903,19 @@ void Device::PerFrame::begin()
 	// Free the debug channel buffers here, and they will immediately be recycled by the destroyed_buffers right below.
 	debug_channels.clear();
 
+	for (auto &block : vbo_blocks)
+		managers.vbo.recycle_block(block);
+	for (auto &block : ibo_blocks)
+		managers.ibo.recycle_block(block);
+	for (auto &block : ubo_blocks)
+		managers.ubo.recycle_block(block);
+	for (auto &block : staging_blocks)
+		managers.staging.recycle_block(block);
+	vbo_blocks.clear();
+	ibo_blocks.clear();
+	ubo_blocks.clear();
+	staging_blocks.clear();
+
 	for (auto &framebuffer : destroyed_framebuffers)
 		table.vkDestroyFramebuffer(vkdevice, framebuffer, nullptr);
 	for (auto &sampler : destroyed_samplers)
@@ -2927,19 +2945,6 @@ void Device::PerFrame::begin()
 		managers.event.recycle(event);
 	for (auto &alloc : allocations)
 		alloc.free_immediate(managers.memory);
-
-	for (auto &block : vbo_blocks)
-		managers.vbo.recycle_block(move(block));
-	for (auto &block : ibo_blocks)
-		managers.ibo.recycle_block(move(block));
-	for (auto &block : ubo_blocks)
-		managers.ubo.recycle_block(move(block));
-	for (auto &block : staging_blocks)
-		managers.staging.recycle_block(move(block));
-	vbo_blocks.clear();
-	ibo_blocks.clear();
-	ubo_blocks.clear();
-	staging_blocks.clear();
 
 	destroyed_framebuffers.clear();
 	destroyed_samplers.clear();

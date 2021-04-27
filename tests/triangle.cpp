@@ -32,29 +32,49 @@ using namespace Vulkan;
 
 struct TriangleApplication : Granite::Application, Granite::EventHandler
 {
-	void render_frame(double, double elapsed_time)
+	void render_frame(double, double)
 	{
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
 
 		auto cmd = device.request_command_buffer();
 
-		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly));
+		auto rt_info = ImageCreateInfo::render_target(1, 1, VK_FORMAT_R8G8B8A8_UNORM);
+		rt_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		rt_info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+		auto rt = device.create_image(rt_info);
+
+		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
+		rp.color_attachments[0] = &rt->get_view();
+
+		cmd->image_barrier(*rt, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+		cmd->begin_render_pass(rp);
 		cmd->set_program("assets://shaders/triangle.vert", "assets://shaders/triangle.frag");
 		cmd->set_opaque_state();
-		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+		cmd->set_front_face(VK_FRONT_FACE_COUNTER_CLOCKWISE);
+		cmd->set_cull_mode(VK_CULL_MODE_BACK_BIT);
 
-		vec2 vertices[] = {
-			vec2(-0.5f, -0.5f),
-			vec2(-0.5f, +0.5f),
-			vec2(+0.5f, -0.5f),
-		};
+		float snap = 1.0f / float(1u << device.get_gpu_properties().limits.subPixelPrecisionBits);
 
-		auto c = float(muglm::cos(elapsed_time * 2.0));
-		auto s = float(muglm::sin(elapsed_time * 2.0));
-		mat2 m{vec2(c, -s), vec2(s, c)};
+		vec2 vertices[3];
+		vertices[0] = vec2(0.5f - 2.0f * snap, 0.5f + 3.0f * snap);
+		vertices[1] = vec2(0.5f + 1.0f * snap, 0.5f - 1.0f * snap);
+		vertices[2] = vec2(0.5f - 2.0f * snap, 0.5f + 2.0f * snap);
+
+		const char *env = getenv("BIAS");
+		if (env)
+		{
+			LOGI("Applying bias.\n");
+			vertices[2] += vec2(0.49f * snap);
+		}
+		else
+			LOGI("Not applying bias.\n");
+
 		for (auto &v : vertices)
-			v = m * v;
+			v = 2.0f * v - 1.0f;
 
 		static const vec4 colors[] = {
 			vec4(1.0f, 0.0f, 0.0f, 1.0f),
@@ -70,10 +90,16 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 		cmd->set_vertex_attrib(1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 0);
 		cmd->draw(3);
 		cmd->end_render_pass();
+
+		cmd->image_barrier(*rt, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly));
+		cmd->set_texture(0, 0, rt->get_view(), StockSampler::NearestClamp);
+		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
+		cmd->end_render_pass();
 		device.submit(cmd);
 	}
-
-	ImageHandle render_target;
 };
 
 namespace Granite

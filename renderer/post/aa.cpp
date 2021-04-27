@@ -99,7 +99,7 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 		auto &sharpen_tex_out = sharpen.add_color_output(output, sharpen_info);
 		auto &upscale_tex = sharpen.add_texture_input(output + "-scale");
 
-		sharpen.set_build_render_pass([&, use_custom](Vulkan::CommandBuffer &cmd) {
+		sharpen.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 			bool srgb = Vulkan::format_is_srgb(graph.get_physical_texture_resource(sharpen_tex_out).get_format());
 			auto &view = graph.get_physical_texture_resource(upscale_tex);
 			if (srgb)

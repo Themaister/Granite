@@ -39,7 +39,14 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 
 		auto cmd = device.request_command_buffer();
 
-		auto rt_info = ImageCreateInfo::render_target(1, 1, VK_FORMAT_R8G8B8A8_UNORM);
+		constexpr unsigned WIDTH = 64;
+		constexpr unsigned HEIGHT = 64;
+		constexpr unsigned STRETCH_A = 1;
+		constexpr unsigned STRETCH_B = 2;
+		constexpr float STRETCH_A_F = float(STRETCH_A);
+		constexpr float STRETCH_B_F = float(STRETCH_B);
+
+		auto rt_info = ImageCreateInfo::render_target(WIDTH, HEIGHT, VK_FORMAT_R8G8B8A8_UNORM);
 		rt_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		rt_info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 		auto rt = device.create_image(rt_info);
@@ -60,9 +67,11 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 		float snap = 1.0f / float(1u << device.get_gpu_properties().limits.subPixelPrecisionBits);
 
 		vec2 vertices[3];
-		vertices[0] = vec2(0.5f - 2.0f * snap, 0.5f + 3.0f * snap);
-		vertices[1] = vec2(0.5f + 1.0f * snap, 0.5f - 1.0f * snap);
-		vertices[2] = vec2(0.5f - 2.0f * snap, 0.5f + 2.0f * snap);
+
+		// Window coordinates.
+		vertices[0] = vec2(1.5f - 2.0f * snap, 1.5f + 3.0f * snap);
+		vertices[1] = vec2(1.5f + STRETCH_A_F * snap, 1.5f - STRETCH_A_F * snap);
+		vertices[2] = vec2(1.5f - STRETCH_B_F * snap, 1.5f + STRETCH_B_F * snap);
 
 		const char *env = getenv("BIAS");
 		if (env)
@@ -73,8 +82,9 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 		else
 			LOGI("Not applying bias.\n");
 
+		// Convert to clip coordinates.
 		for (auto &v : vertices)
-			v = 2.0f * v - 1.0f;
+			v = 2.0f * (v / vec2(WIDTH, HEIGHT)) - 1.0f;
 
 		static const vec4 colors[] = {
 			vec4(1.0f, 0.0f, 0.0f, 1.0f),

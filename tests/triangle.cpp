@@ -41,8 +41,8 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 
 		constexpr unsigned WIDTH = 64;
 		constexpr unsigned HEIGHT = 64;
-		constexpr unsigned STRETCH_A = 1;
-		constexpr unsigned STRETCH_B = 2;
+		constexpr unsigned STRETCH_A = 1000;
+		constexpr unsigned STRETCH_B = 2000;
 		constexpr float STRETCH_A_F = float(STRETCH_A);
 		constexpr float STRETCH_B_F = float(STRETCH_B);
 
@@ -69,9 +69,9 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 		vec2 vertices[3];
 
 		// Window coordinates.
-		vertices[0] = vec2(1.5f - 2.0f * snap, 1.5f + 3.0f * snap);
-		vertices[1] = vec2(1.5f + STRETCH_A_F * snap, 1.5f - STRETCH_A_F * snap);
-		vertices[2] = vec2(1.5f - STRETCH_B_F * snap, 1.5f + STRETCH_B_F * snap);
+		vertices[0] = vec2(10.5f - 2.0f * snap, 10.5f + 3.0f * snap);
+		vertices[1] = vec2(10.5f + STRETCH_A_F * snap, 10.5f - STRETCH_A_F * snap);
+		vertices[2] = vec2(10.5f - STRETCH_B_F * snap, 10.5f + STRETCH_B_F * snap);
 
 		const char *env = getenv("BIAS");
 		if (env)

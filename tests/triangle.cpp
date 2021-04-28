@@ -41,8 +41,8 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 
 		constexpr unsigned WIDTH = 64;
 		constexpr unsigned HEIGHT = 64;
-		constexpr unsigned STRETCH_A = 400;
-		constexpr unsigned STRETCH_B = 600;
+		constexpr unsigned STRETCH_A = 1000;
+		constexpr unsigned STRETCH_B = 2000;
 		constexpr float STRETCH_A_F = float(STRETCH_A);
 		constexpr float STRETCH_B_F = float(STRETCH_B);
 		constexpr float RATIO = 8.0f;
@@ -83,12 +83,45 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 		else
 			LOGI("Not applying bias.\n");
 
-		float area = cross(vec3(vertices[1] - vertices[0], 0.0f), vec3(vertices[2] - vertices[0], 0.0f)).z;
-		LOGI("Area = %g\n", area);
 
 		// Convert to clip coordinates.
 		for (auto &v : vertices)
 			v = 2.0f * (v / vec2(WIDTH, HEIGHT)) - 1.0f;
+
+		float abx = vertices[1].x - vertices[0].x;
+		float aby = vertices[1].y - vertices[0].y;
+		float acx = vertices[2].x - vertices[0].x;
+		float acy = vertices[2].y - vertices[0].y;
+		float bcx = vertices[2].x - vertices[1].x;
+		float bcy = vertices[2].y - vertices[1].y;
+
+		// Compute the error term for area.
+		// A = abx * acy - acx * aby
+		// A' = abx' * acy' - acx' * aby'
+		// abx' = abx +/- error, where error is in range [-ex, ex]
+		// aby' = aby +/- error, where error is in range [-ey, ey]
+		// In clip-space, this represents the maximum rounding error, i.e. half a subpixel.
+		float ex = snap / float(WIDTH);
+		float ey = snap / float(HEIGHT);
+
+		float area = abx * acy - acx * aby;
+
+		// All vertex coordinates receive an error, i.e.:
+		// ax' = ax + [-ex, ex]
+		// ay' = ay + [-ey, ey]
+		// abx' = (bx + [-ex, ex]) - (ax + [-ex, ex])
+
+		float maximum_error =
+				muglm::abs(/*aby - acy*/ bcy) * ex + // error(ax), can freely select sign of ex to maximize error
+				muglm::abs(/*acx - abx*/ bcx) * ey + // error(ay)
+				muglm::abs(acy) * ex + // error(bx)
+				muglm::abs(acx) * ey + // error(by)
+				muglm::abs(aby) * ex + // error(cx)
+				muglm::abs(abx) * ey + // error(cy)
+				8.0f * ex * ey; // A vanishingly small error term that falls out of the error area.
+				// Select conservatively worst case for each sign.
+
+		LOGI("Area = %g +/- %g\n", area, maximum_error);
 
 		static const vec4 colors[] = {
 			vec4(1.0f, 0.0f, 0.0f, 1.0f),

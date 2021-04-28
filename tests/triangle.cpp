@@ -41,10 +41,11 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 
 		constexpr unsigned WIDTH = 64;
 		constexpr unsigned HEIGHT = 64;
-		constexpr unsigned STRETCH_A = 1000;
-		constexpr unsigned STRETCH_B = 2000;
+		constexpr unsigned STRETCH_A = 400;
+		constexpr unsigned STRETCH_B = 600;
 		constexpr float STRETCH_A_F = float(STRETCH_A);
 		constexpr float STRETCH_B_F = float(STRETCH_B);
+		constexpr float RATIO = 8.0f;
 
 		auto rt_info = ImageCreateInfo::render_target(WIDTH, HEIGHT, VK_FORMAT_R8G8B8A8_UNORM);
 		rt_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -69,9 +70,9 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 		vec2 vertices[3];
 
 		// Window coordinates.
-		vertices[0] = vec2(10.5f - 2.0f * snap, 10.5f + 3.0f * snap);
-		vertices[1] = vec2(10.5f + STRETCH_A_F * snap, 10.5f - STRETCH_A_F * snap);
-		vertices[2] = vec2(10.5f - STRETCH_B_F * snap, 10.5f + STRETCH_B_F * snap);
+		vertices[0] = vec2(10.5f - 2.0f * snap, 10.5f + (2.0f * RATIO + 1.0f) * snap);
+		vertices[1] = vec2(10.5f + STRETCH_A_F * snap, 10.5f - RATIO * STRETCH_A_F * snap);
+		vertices[2] = vec2(10.5f - STRETCH_B_F * snap, 10.5f + RATIO * STRETCH_B_F * snap);
 
 		const char *env = getenv("BIAS");
 		if (env)
@@ -81,6 +82,9 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 		}
 		else
 			LOGI("Not applying bias.\n");
+
+		float area = cross(vec3(vertices[1] - vertices[0], 0.0f), vec3(vertices[2] - vertices[0], 0.0f)).z;
+		LOGI("Area = %g\n", area);
 
 		// Convert to clip coordinates.
 		for (auto &v : vertices)

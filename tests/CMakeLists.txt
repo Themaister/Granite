@@ -116,6 +116,7 @@ if (NOT ANDROID)
 endif()
 
 add_granite_offline_tool(hemisphere-integration-test hemisphere_integration.cpp)
+add_granite_offline_tool(video video.cpp)
 
 #add_granite_offline_tool(cooperative-task-test cooperative_task_test.cpp)
 add_granite_offline_tool(texture-decoder-test texture_decoder_test.cpp)

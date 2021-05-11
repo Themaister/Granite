@@ -56,6 +56,10 @@ target_include_directories(granite-rapidjson INTERFACE
 add_library(granite-volk-headers INTERFACE)
 target_include_directories(granite-volk-headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/volk)
 target_include_directories(granite-volk-headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/khronos/vulkan-headers/include)
+if (GRANITE_VULKAN_BETA)
+    target_include_directories(granite-volk-headers INTERFACE
+            ${CMAKE_CURRENT_SOURCE_DIR}/khronos/vulkan-headers/include/vk_video)
+endif()
 
 # volk must be STATIC.
 add_library(granite-volk STATIC volk/volk.c volk/volk.h)
@@ -63,6 +67,9 @@ if (WIN32)
     target_compile_definitions(granite-volk PRIVATE VK_USE_PLATFORM_WIN32_KHR)
 else()
     target_link_libraries(granite-volk PRIVATE dl)
+endif()
+if (GRANITE_VULKAN_BETA)
+    target_compile_definitions(granite-volk PRIVATE VK_ENABLE_BETA_EXTENSIONS)
 endif()
 target_link_libraries(granite-volk PRIVATE granite-volk-headers)
 

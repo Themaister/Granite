@@ -168,20 +168,23 @@ bool WSI::init(unsigned num_thread_indices, const Context::SystemHandles &system
 	swapchain_aspect_ratio = platform->get_aspect_ratio();
 
 	VkBool32 supported = VK_FALSE;
-	if (vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(),
-	                                         context->get_graphics_queue_family(),
-	                                         surface, &supported) != VK_SUCCESS || !supported)
+	uint32_t queue_present_support = 0;
+
+	for (auto &index : context->get_queue_info().family_indices)
+	{
+		if (index != VK_QUEUE_FAMILY_IGNORED)
+		{
+			if (vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(), index, surface, &supported) == VK_SUCCESS &&
+			    supported)
+			{
+				queue_present_support |= 1u << index;
+			}
+		}
+	}
+
+	if ((queue_present_support & (1u << context->get_queue_info().family_indices[QUEUE_INDEX_GRAPHICS])) == 0)
 		return false;
 
-	uint32_t queue_present_support = 1u << context->get_graphics_queue_family();
-	if (vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(),
-	                                         context->get_compute_queue_family(),
-	                                         surface, &supported) == VK_SUCCESS && supported)
-		queue_present_support |= 1u << context->get_compute_queue_family();
-	if (vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(),
-	                                         context->get_transfer_queue_family(),
-	                                         surface, &supported) == VK_SUCCESS && supported)
-		queue_present_support |= 1u << context->get_transfer_queue_family();
 	device->set_swapchain_queue_family_support(queue_present_support);
 
 	if (!blocking_init_swapchain(width, height))

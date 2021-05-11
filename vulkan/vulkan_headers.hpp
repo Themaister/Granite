@@ -22,8 +22,12 @@
 
 #pragma once
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(VK_USE_PLATFORM_WIN32_KHR)
 #define VK_USE_PLATFORM_WIN32_KHR
+#endif
+
+#if defined(GRANITE_VULKAN_BETA) && !defined(VK_ENABLE_BETA_EXTENSIONS)
+#define VK_ENABLE_BETA_EXTENSIONS
 #endif
 
 #include "volk.h"

@@ -275,7 +275,7 @@ public:
 	                  Semaphore *semaphore = nullptr);
 	void submit_discard(CommandBufferHandle &cmd);
 	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
-	CommandBuffer::Type get_physical_queue_type(CommandBuffer::Type queue_type) const;
+	QueueIndices get_physical_queue_type(CommandBuffer::Type queue_type) const;
 	void register_time_interval(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,
 	                            std::string tag, std::string extra = {});
 
@@ -431,10 +431,7 @@ private:
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
 	const VolkDeviceTable *table = nullptr;
-	VkQueue graphics_queue = VK_NULL_HANDLE;
-	VkQueue compute_queue = VK_NULL_HANDLE;
-	VkQueue transfer_queue = VK_NULL_HANDLE;
-	uint32_t timestamp_valid_bits = 0;
+	QueueInfo queue_info;
 	unsigned num_thread_indices = 1;
 
 #ifdef GRANITE_VULKAN_MT
@@ -531,22 +528,17 @@ private:
 		unsigned frame_index;
 		const VolkDeviceTable &table;
 		Managers &managers;
-		std::vector<CommandPool> graphics_cmd_pool;
-		std::vector<CommandPool> compute_cmd_pool;
-		std::vector<CommandPool> transfer_cmd_pool;
+
+		std::vector<CommandPool> cmd_pools[QUEUE_INDEX_COUNT];
+		VkSemaphore timeline_semaphores[QUEUE_INDEX_COUNT] = {};
+		uint64_t timeline_fences[QUEUE_INDEX_COUNT] = {};
+
 		QueryPool query_pool;
 
 		std::vector<BufferBlock> vbo_blocks;
 		std::vector<BufferBlock> ibo_blocks;
 		std::vector<BufferBlock> ubo_blocks;
 		std::vector<BufferBlock> staging_blocks;
-
-		VkSemaphore graphics_timeline_semaphore;
-		VkSemaphore compute_timeline_semaphore;
-		VkSemaphore transfer_timeline_semaphore;
-		uint64_t timeline_fence_graphics = 0;
-		uint64_t timeline_fence_compute = 0;
-		uint64_t timeline_fence_transfer = 0;
 
 		std::vector<VkFence> wait_fences;
 		std::vector<VkFence> recycle_fences;
@@ -560,9 +552,7 @@ private:
 		std::vector<VkImage> destroyed_images;
 		std::vector<VkBuffer> destroyed_buffers;
 		std::vector<VkDescriptorPool> destroyed_descriptor_pools;
-		Util::SmallVector<CommandBufferHandle> graphics_submissions;
-		Util::SmallVector<CommandBufferHandle> compute_submissions;
-		Util::SmallVector<CommandBufferHandle> transfer_submissions;
+		Util::SmallVector<CommandBufferHandle> submissions[QUEUE_INDEX_COUNT];
 		std::vector<VkSemaphore> recycled_semaphores;
 		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
@@ -602,6 +592,7 @@ private:
 		unsigned index = 0;
 		bool consumed = false;
 	} wsi;
+	bool can_touch_swapchain_in_command_buffer(QueueIndices physical_type) const;
 
 	struct QueueData
 	{
@@ -612,7 +603,7 @@ private:
 		VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
 		uint64_t current_timeline = 0;
 		PerformanceQueryPool performance_query_pool;
-	} graphics, compute, transfer;
+	} queue_data[QUEUE_INDEX_COUNT];
 
 	struct InternalFence
 	{
@@ -629,7 +620,7 @@ private:
 		std::vector<BufferBlock> ubo;
 	} dma;
 
-	void submit_queue(CommandBuffer::Type type, InternalFence *fence,
+	void submit_queue(QueueIndices physical_type, InternalFence *fence,
 	                  unsigned semaphore_count = 0,
 	                  Semaphore *semaphore = nullptr,
 	                  int profiled_iteration = -1);
@@ -649,9 +640,6 @@ private:
 	}
 
 	unsigned frame_context_index = 0;
-	uint32_t graphics_queue_family_index = 0;
-	uint32_t compute_queue_family_index = 0;
-	uint32_t transfer_queue_family_index = 0;
 
 	uint32_t find_memory_type(BufferDomain domain, uint32_t mask) const;
 	uint32_t find_memory_type(ImageDomain domain, uint32_t mask) const;
@@ -679,20 +667,16 @@ private:
 	void init_pipeline_cache();
 	void flush_pipeline_cache();
 
-	CommandPool &get_command_pool(CommandBuffer::Type type, unsigned thread);
-	QueueData &get_queue_data(CommandBuffer::Type type);
-	VkQueue get_vk_queue(CommandBuffer::Type type) const;
-	PerformanceQueryPool &get_performance_query_pool(CommandBuffer::Type type);
-	Util::SmallVector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
+	PerformanceQueryPool &get_performance_query_pool(QueueIndices physical_type);
 	void clear_wait_semaphores();
 	void submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, bool flush);
 	PipelineEvent request_pipeline_event();
 
 	std::function<void ()> queue_lock_callback;
 	std::function<void ()> queue_unlock_callback;
-	void flush_frame(CommandBuffer::Type type);
+	void flush_frame(QueueIndices physical_type);
 	void sync_buffer_blocks();
-	void submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
+	void submit_empty_inner(QueueIndices type, InternalFence *fence,
 	                        unsigned semaphore_count,
 	                        Semaphore *semaphore);
 
@@ -737,10 +721,10 @@ private:
 	void submit_discard_nolock(CommandBufferHandle &cmd);
 	void submit_nolock(CommandBufferHandle cmd, Fence *fence,
 	                   unsigned semaphore_count, Semaphore *semaphore);
-	void submit_empty_nolock(CommandBuffer::Type type, Fence *fence,
+	void submit_empty_nolock(QueueIndices physical_type, Fence *fence,
 	                         unsigned semaphore_count,
 	                         Semaphore *semaphore, int profiling_iteration);
-	void add_wait_semaphore_nolock(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages,
+	void add_wait_semaphore_nolock(QueueIndices type, Semaphore semaphore, VkPipelineStageFlags stages,
 	                               bool flush);
 
 	void request_vertex_block_nolock(BufferBlock &block, VkDeviceSize size);

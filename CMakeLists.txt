@@ -41,6 +41,7 @@ option(GRANITE_VULKAN_THREAD_GROUP "Add thread group support to Vulkan backend."
 option(GRANITE_VULKAN_SPIRV_CROSS "Add reflection support to Vulkan backend." ON)
 option(GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER "Enable Vulkan GLSL runtime compiler." ON)
 option(GRANITE_VULKAN_MT "Make Vulkan backend thread-safe." ON)
+option(GRANITE_VULKAN_BETA "Enable provisional extension support." OFF)
 option(GRANITE_VULKAN_FOSSILIZE "Enable support for Fossilize." OFF)
 option(GRANITE_AUDIO "Enable Audio support." OFF)
 option(GRANITE_PLATFORM "Granite Platform" "GLFW")

@@ -2315,8 +2315,7 @@ void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
 	// Queue up invalidates and change layouts.
 	for (auto &barrier : physical_pass.invalidate)
 	{
-		bool physical_graphics =
-				device->get_physical_queue_type(state.queue_type) == Vulkan::CommandBuffer::Type::Generic;
+		bool physical_graphics = device->get_physical_queue_type(state.queue_type) == Vulkan::QUEUE_INDEX_GRAPHICS;
 		physical_pass_handle_invalidate_barrier(barrier, state, physical_graphics);
 	}
 
@@ -2406,7 +2405,7 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 	unsigned index = source_resource.get_physical_index();
 	auto &image = physical_attachments[index]->get_image();
 
-	auto &wait_semaphore = physical_queue_type == Vulkan::CommandBuffer::Type::Generic ?
+	auto &wait_semaphore = physical_queue_type == Vulkan::QUEUE_INDEX_GRAPHICS ?
 	                       physical_events[index].wait_graphics_semaphore : physical_events[index].wait_compute_semaphore;
 
 	auto target_layout = physical_dimensions[index].is_storage_image() ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

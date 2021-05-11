@@ -96,10 +96,10 @@ bool libretro_create_device(
 	vulkan_context->release_device();
 	context->gpu = vulkan_context->get_gpu();
 	context->device = vulkan_context->get_device();
-	context->presentation_queue = vulkan_context->get_graphics_queue();
-	context->presentation_queue_family_index = vulkan_context->get_graphics_queue_family();
-	context->queue = vulkan_context->get_graphics_queue();
-	context->queue_family_index = vulkan_context->get_graphics_queue_family();
+	context->presentation_queue = vulkan_context->get_queue_info().queues[Vulkan::QUEUE_INDEX_GRAPHICS];
+	context->presentation_queue_family_index = vulkan_context->get_queue_info().family_indices[Vulkan::QUEUE_INDEX_GRAPHICS];
+	context->queue = vulkan_context->get_queue_info().queues[Vulkan::QUEUE_INDEX_GRAPHICS];
+	context->queue_family_index = vulkan_context->get_queue_info().family_indices[Vulkan::QUEUE_INDEX_GRAPHICS];
 	return true;
 }
 

@@ -227,6 +227,13 @@ private:
 };
 using DeviceAllocationOwnerHandle = Util::IntrusivePtr<DeviceAllocationOwner>;
 
+struct MemoryAllocateInfo
+{
+	VkMemoryRequirements requirements = {};
+	VkMemoryPropertyFlags required_properties = 0;
+	AllocationMode mode = {};
+};
+
 struct MiniHeap : Util::IntrusiveListEnabled<MiniHeap>
 {
 	DeviceAllocation allocation;

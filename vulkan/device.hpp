@@ -307,6 +307,7 @@ public:
 	LinearHostImageHandle create_linear_host_image(const LinearHostImageCreateInfo &info);
 	YCbCrImageHandle create_ycbcr_image(const YCbCrImageCreateInfo &info);
 	DeviceAllocationOwnerHandle take_device_allocation_ownership(Image &image);
+	DeviceAllocationOwnerHandle allocate_memory(const MemoryAllocateInfo &info);
 
 	// Create staging buffers for images.
 	InitialImageBuffer create_image_staging_buffer(const ImageCreateInfo &info, const ImageInitialData *initial);
@@ -652,8 +653,9 @@ private:
 	uint32_t compute_queue_family_index = 0;
 	uint32_t transfer_queue_family_index = 0;
 
-	uint32_t find_memory_type(BufferDomain domain, uint32_t mask);
-	uint32_t find_memory_type(ImageDomain domain, uint32_t mask);
+	uint32_t find_memory_type(BufferDomain domain, uint32_t mask) const;
+	uint32_t find_memory_type(ImageDomain domain, uint32_t mask) const;
+	uint32_t find_memory_type(uint32_t required, uint32_t mask) const;
 	bool memory_type_is_device_optimal(uint32_t type) const;
 	bool memory_type_is_host_visible(uint32_t type) const;
 

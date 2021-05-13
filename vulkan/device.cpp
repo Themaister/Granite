@@ -3017,7 +3017,22 @@ Device::PerFrame::~PerFrame()
 	begin();
 }
 
-uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask)
+uint32_t Device::find_memory_type(uint32_t required, uint32_t mask) const
+{
+	for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
+	{
+		if ((1u << i) & mask)
+		{
+			uint32_t flags = mem_props.memoryTypes[i].propertyFlags;
+			if ((flags & required) == required)
+				return i;
+		}
+	}
+
+	return UINT32_MAX;
+}
+
+uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask) const
 {
 	uint32_t prio[3] = {};
 	switch (domain)
@@ -3065,21 +3080,15 @@ uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask)
 
 	for (auto &p : prio)
 	{
-		for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
-		{
-			if ((1u << i) & mask)
-			{
-				uint32_t flags = mem_props.memoryTypes[i].propertyFlags;
-				if ((flags & p) == p)
-					return i;
-			}
-		}
+		uint32_t index = find_memory_type(p, mask);
+		if (index != UINT32_MAX)
+			return index;
 	}
 
 	return UINT32_MAX;
 }
 
-uint32_t Device::find_memory_type(ImageDomain domain, uint32_t mask)
+uint32_t Device::find_memory_type(ImageDomain domain, uint32_t mask) const
 {
 	uint32_t desired = 0, fallback = 0;
 	switch (domain)
@@ -3105,25 +3114,13 @@ uint32_t Device::find_memory_type(ImageDomain domain, uint32_t mask)
 		break;
 	}
 
-	for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
-	{
-		if ((1u << i) & mask)
-		{
-			uint32_t flags = mem_props.memoryTypes[i].propertyFlags;
-			if ((flags & desired) == desired)
-				return i;
-		}
-	}
+	uint32_t index = find_memory_type(desired, mask);
+	if (index != UINT32_MAX)
+		return index;
 
-	for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
-	{
-		if ((1u << i) & mask)
-		{
-			uint32_t flags = mem_props.memoryTypes[i].propertyFlags;
-			if ((flags & fallback) == fallback)
-				return i;
-		}
-	}
+	index = find_memory_type(fallback, mask);
+	if (index != UINT32_MAX)
+		return index;
 
 	return UINT32_MAX;
 }
@@ -3750,6 +3747,18 @@ DeviceAllocationOwnerHandle Device::take_device_allocation_ownership(Image &imag
 		return DeviceAllocationOwnerHandle{};
 
 	return DeviceAllocationOwnerHandle(handle_pool.allocations.allocate(this, image.take_allocation_ownership()));
+}
+
+DeviceAllocationOwnerHandle Device::allocate_memory(const MemoryAllocateInfo &info)
+{
+	uint32_t index = find_memory_type(info.required_properties, info.requirements.memoryTypeBits);
+	if (index == UINT32_MAX)
+		return {};
+
+	DeviceAllocation alloc = {};
+	if (!managers.memory.allocate(info.requirements.size, info.requirements.alignment, info.mode, index, &alloc))
+		return {};
+	return DeviceAllocationOwnerHandle(handle_pool.allocations.allocate(this, alloc));
 }
 
 YCbCrImageHandle Device::create_ycbcr_image(const YCbCrImageCreateInfo &create_info)

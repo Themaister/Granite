@@ -47,6 +47,10 @@ if (GRANITE_VULKAN_MT)
     endif()
 endif()
 
+if (GRANITE_VULKAN_BETA)
+    target_compile_definitions(granite-vulkan PUBLIC GRANITE_VULKAN_BETA)
+endif()
+
 if (GRANITE_VULKAN_FOSSILIZE)
     target_compile_definitions(granite-vulkan PUBLIC GRANITE_VULKAN_FOSSILIZE)
     target_sources(granite-vulkan PRIVATE device_fossilize.cpp)

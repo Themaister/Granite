@@ -49,4 +49,13 @@ using VulkanCache = Util::IntrusiveHashMap<T>;
 template <typename T>
 using VulkanCacheReadWrite = Util::IntrusiveHashMap<T>;
 #endif
+
+enum QueueIndices
+{
+	QUEUE_INDEX_GRAPHICS,
+	QUEUE_INDEX_COMPUTE,
+	QUEUE_INDEX_TRANSFER,
+	QUEUE_INDEX_VIDEO_DECODE,
+	QUEUE_INDEX_COUNT
+};
 }

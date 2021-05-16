@@ -2466,7 +2466,7 @@ void CommandBuffer::end_threaded_recording()
 
 	if (has_profiling())
 	{
-		auto &query_pool = device->get_performance_query_pool(type);
+		auto &query_pool = device->get_performance_query_pool(device->get_physical_queue_type(type));
 		query_pool.end_command_buffer(cmd);
 	}
 

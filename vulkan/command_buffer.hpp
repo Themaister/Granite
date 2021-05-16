@@ -206,10 +206,11 @@ public:
 	friend struct CommandBufferDeleter;
 	enum class Type
 	{
-		Generic,
-		AsyncGraphics,
-		AsyncCompute,
-		AsyncTransfer,
+		Generic = QUEUE_INDEX_GRAPHICS,
+		AsyncCompute = QUEUE_INDEX_COMPUTE,
+		AsyncTransfer = QUEUE_INDEX_TRANSFER,
+		VideoDecode = QUEUE_INDEX_VIDEO_DECODE,
+		AsyncGraphics = QUEUE_INDEX_COUNT, // Aliases with either Generic or AsyncCompute queue
 		Count
 	};
 

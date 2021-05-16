@@ -24,6 +24,7 @@
 
 #include "vulkan_headers.hpp"
 #include "logging.hpp"
+#include "vulkan_common.hpp"
 #include <memory>
 #include <functional>
 
@@ -69,6 +70,10 @@ struct DeviceFeatures
 	bool supports_calibrated_timestamps = false;
 	bool supports_memory_budget = false;
 	bool supports_astc_decode_mode = false;
+	bool supports_sync2 = false;
+	bool supports_video_queue = false;
+	bool supports_video_decode_queue = false;
+	bool supports_video_decode_h264 = false;
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
 	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};
@@ -93,6 +98,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceMemoryPriorityFeaturesEXT memory_priority_features = {};
 	VkPhysicalDeviceASTCDecodeFeaturesEXT astc_decode_features = {};
 	VkPhysicalDeviceTextureCompressionASTCHDRFeaturesEXT astc_hdr_features = {};
+	VkPhysicalDeviceSynchronization2FeaturesKHR sync2_features = {};
 };
 
 enum VendorID
@@ -109,6 +115,14 @@ enum ContextCreationFlagBits
 	CONTEXT_CREATION_DISABLE_BINDLESS_BIT = 1 << 0
 };
 using ContextCreationFlags = uint32_t;
+
+struct QueueInfo
+{
+	QueueInfo();
+	VkQueue queues[QUEUE_INDEX_COUNT] = {};
+	uint32_t family_indices[QUEUE_INDEX_COUNT];
+	uint32_t timestamp_valid_bits = 0;
+};
 
 class Context
 {
@@ -144,19 +158,9 @@ public:
 		return device;
 	}
 
-	VkQueue get_graphics_queue() const
+	const QueueInfo &get_queue_info() const
 	{
-		return graphics_queue;
-	}
-
-	VkQueue get_compute_queue() const
-	{
-		return compute_queue;
-	}
-
-	VkQueue get_transfer_queue() const
-	{
-		return transfer_queue;
+		return queue_info;
 	}
 
 	const VkPhysicalDeviceProperties &get_gpu_props() const
@@ -167,26 +171,6 @@ public:
 	const VkPhysicalDeviceMemoryProperties &get_mem_props() const
 	{
 		return mem_props;
-	}
-
-	uint32_t get_graphics_queue_family() const
-	{
-		return graphics_queue_family;
-	}
-
-	uint32_t get_compute_queue_family() const
-	{
-		return compute_queue_family;
-	}
-
-	uint32_t get_transfer_queue_family() const
-	{
-		return transfer_queue_family;
-	}
-
-	uint32_t get_timestamp_valid_bits() const
-	{
-		return timestamp_valid_bits;
 	}
 
 	void release_instance()
@@ -251,13 +235,7 @@ private:
 	VkPhysicalDeviceProperties gpu_props = {};
 	VkPhysicalDeviceMemoryProperties mem_props = {};
 
-	VkQueue graphics_queue = VK_NULL_HANDLE;
-	VkQueue compute_queue = VK_NULL_HANDLE;
-	VkQueue transfer_queue = VK_NULL_HANDLE;
-	uint32_t graphics_queue_family = VK_QUEUE_FAMILY_IGNORED;
-	uint32_t compute_queue_family = VK_QUEUE_FAMILY_IGNORED;
-	uint32_t transfer_queue_family = VK_QUEUE_FAMILY_IGNORED;
-	uint32_t timestamp_valid_bits = 0;
+	QueueInfo queue_info;
 	unsigned num_thread_indices = 1;
 
 	bool create_instance(const char **instance_ext, uint32_t instance_ext_count);

@@ -137,12 +137,14 @@ bool Context::init_from_instance_and_device(VkInstance instance_, VkPhysicalDevi
 	device = device_;
 	instance = instance_;
 	gpu = gpu_;
-	graphics_queue = queue_;
-	compute_queue = queue_;
-	transfer_queue = queue_;
-	graphics_queue_family = queue_family_;
-	compute_queue_family = queue_family_;
-	transfer_queue_family = queue_family_;
+
+	queue_info = {};
+	queue_info.queues[QUEUE_INDEX_GRAPHICS] = queue_;
+	queue_info.queues[QUEUE_INDEX_COMPUTE] = queue_;
+	queue_info.queues[QUEUE_INDEX_TRANSFER] = queue_;
+	queue_info.family_indices[QUEUE_INDEX_GRAPHICS] = queue_family_;
+	queue_info.family_indices[QUEUE_INDEX_COMPUTE] = queue_family_;
+	queue_info.family_indices[QUEUE_INDEX_TRANSFER] = queue_family_;
 	owned_instance = false;
 	owned_device = true;
 
@@ -473,6 +475,12 @@ static unsigned device_score(VkPhysicalDevice &gpu)
 	}
 }
 
+QueueInfo::QueueInfo()
+{
+	for (auto &index : family_indices)
+		index = VK_QUEUE_FAMILY_IGNORED;
+}
+
 bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const char **required_device_extensions,
                             unsigned num_required_device_extensions, const char **required_device_layers,
                             unsigned num_required_device_layers, const VkPhysicalDeviceFeatures *required_features,
@@ -581,19 +589,52 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		LOGI("GPU supports Vulkan 1.0.\n");
 	}
 
-	uint32_t queue_family_count;
-	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_family_count, nullptr);
-	Util::SmallVector<VkQueueFamilyProperties> queue_props(queue_family_count);
-	Util::SmallVector<uint32_t> queue_offsets(queue_family_count);
-	Util::SmallVector<Util::SmallVector<float, 3>> queue_priorities(queue_family_count);
-	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_family_count, queue_props.data());
+	uint32_t queue_family_count = 0;
+	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
+		vkGetPhysicalDeviceQueueFamilyProperties2(gpu, &queue_family_count, nullptr);
+	else if (ext.supports_physical_device_properties2)
+		vkGetPhysicalDeviceQueueFamilyProperties2KHR(gpu, &queue_family_count, nullptr);
+	else
+		vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_family_count, nullptr);
 
-	graphics_queue_family = VK_QUEUE_FAMILY_IGNORED;
-	compute_queue_family = VK_QUEUE_FAMILY_IGNORED;
-	transfer_queue_family = VK_QUEUE_FAMILY_IGNORED;
-	uint32_t graphics_queue_index = 0;
-	uint32_t compute_queue_index = 0;
-	uint32_t transfer_queue_index = 0;
+	Util::SmallVector<VkQueueFamilyProperties> queue_props(queue_family_count);
+	Util::SmallVector<VkQueueFamilyProperties2> queue_props2(queue_family_count);
+
+#ifdef GRANITE_VULKAN_BETA
+	Util::SmallVector<VkVideoQueueFamilyProperties2KHR> video_queue_props2(queue_family_count);
+
+	if (has_extension(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME))
+		ext.supports_video_queue = true;
+#endif
+
+	for (uint32_t i = 0; i < queue_family_count; i++)
+	{
+		queue_props2[i].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
+#ifdef GRANITE_VULKAN_BETA
+		if (ext.supports_video_queue)
+		{
+			queue_props2[i].pNext = &video_queue_props2[i];
+			video_queue_props2[i].sType = VK_STRUCTURE_TYPE_VIDEO_QUEUE_FAMILY_PROPERTIES_2_KHR;
+		}
+#endif
+	}
+
+	Util::SmallVector<uint32_t> queue_offsets(queue_family_count);
+	Util::SmallVector<Util::SmallVector<float, QUEUE_INDEX_COUNT>> queue_priorities(queue_family_count);
+
+	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
+		vkGetPhysicalDeviceQueueFamilyProperties2(gpu, &queue_family_count, queue_props2.data());
+	else if (ext.supports_physical_device_properties2)
+		vkGetPhysicalDeviceQueueFamilyProperties2KHR(gpu, &queue_family_count, queue_props2.data());
+	else
+		vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_family_count, queue_props.data());
+
+	if ((ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device) || ext.supports_physical_device_properties2)
+		for (uint32_t i = 0; i < queue_family_count; i++)
+			queue_props[i] = queue_props2[i].queueFamilyProperties;
+
+	queue_info = {};
+	uint32_t queue_indices[QUEUE_INDEX_COUNT] = {};
 
 	const auto find_vacant_queue = [&](uint32_t &family, uint32_t &index,
 	                                   VkQueueFlags required, VkQueueFlags ignore_flags,
@@ -624,7 +665,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		return false;
 	};
 
-	if (!find_vacant_queue(graphics_queue_family, graphics_queue_index,
+	if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_GRAPHICS],
+	                       queue_indices[QUEUE_INDEX_GRAPHICS],
 	                       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0, 0.5f))
 	{
 		LOGE("Could not find suitable graphics queue.\n");
@@ -632,31 +674,43 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	}
 
 	// XXX: This assumes timestamp valid bits is the same for all queue types.
-	timestamp_valid_bits = queue_props[graphics_queue_family].timestampValidBits;
+	queue_info.timestamp_valid_bits = queue_props[queue_info.family_indices[QUEUE_INDEX_GRAPHICS]].timestampValidBits;
 
 	// Prefer another graphics queue since we can do async graphics that way.
 	// The compute queue is to be treated as high priority since we also do async graphics on it.
-	if (!find_vacant_queue(compute_queue_family, compute_queue_index,
+	if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_COMPUTE], queue_indices[QUEUE_INDEX_COMPUTE],
 	                       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0, 1.0f) &&
-	    !find_vacant_queue(compute_queue_family, compute_queue_index,
+	    !find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_COMPUTE], queue_indices[QUEUE_INDEX_COMPUTE],
 	                       VK_QUEUE_COMPUTE_BIT, 0, 1.0f))
 	{
 		// Fallback to the graphics queue if we must.
-		compute_queue_family = graphics_queue_family;
-		compute_queue_index = graphics_queue_index;
+		queue_info.family_indices[QUEUE_INDEX_COMPUTE] = queue_info.family_indices[QUEUE_INDEX_GRAPHICS];
+		queue_indices[QUEUE_INDEX_COMPUTE] = queue_indices[QUEUE_INDEX_GRAPHICS];
 	}
 
 	// For transfer, try to find a queue which only supports transfer, e.g. DMA queue.
 	// If not, fallback to a dedicated compute queue.
 	// Finally, fallback to same queue as compute.
-	if (!find_vacant_queue(transfer_queue_family, transfer_queue_index,
+	if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_TRANSFER], queue_indices[QUEUE_INDEX_TRANSFER],
 	                       VK_QUEUE_TRANSFER_BIT, VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0.5f) &&
-	    !find_vacant_queue(transfer_queue_family, transfer_queue_index,
+	    !find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_TRANSFER], queue_indices[QUEUE_INDEX_TRANSFER],
 	                       VK_QUEUE_COMPUTE_BIT, VK_QUEUE_GRAPHICS_BIT, 0.5f))
 	{
-		transfer_queue_family = compute_queue_family;
-		transfer_queue_index = compute_queue_index;
+		queue_info.family_indices[QUEUE_INDEX_TRANSFER] = queue_info.family_indices[QUEUE_INDEX_COMPUTE];
+		queue_indices[QUEUE_INDEX_TRANSFER] = queue_indices[QUEUE_INDEX_COMPUTE];
 	}
+
+#ifdef GRANITE_VULKAN_BETA
+	if (ext.supports_video_queue)
+	{
+		if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE], queue_indices[QUEUE_INDEX_VIDEO_DECODE],
+		                       VK_QUEUE_VIDEO_DECODE_BIT_KHR, 0, 0.5f))
+		{
+			queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE] = VK_QUEUE_FAMILY_IGNORED;
+			queue_indices[QUEUE_INDEX_VIDEO_DECODE] = UINT32_MAX;
+		}
+	}
+#endif
 
 	VkDeviceCreateInfo device_info = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 
@@ -812,6 +866,32 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ext.supports_conservative_rasterization = true;
 	}
 
+#ifdef GRANITE_VULKAN_BETA
+	if (has_extension(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME);
+		ext.supports_video_queue = true;
+
+		if (has_extension(VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME);
+			ext.supports_video_decode_queue = true;
+
+			if (has_extension(VK_EXT_VIDEO_DECODE_H264_EXTENSION_NAME))
+			{
+				enabled_extensions.push_back(VK_EXT_VIDEO_DECODE_H264_EXTENSION_NAME);
+
+				if (queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE] != VK_QUEUE_FAMILY_IGNORED)
+				{
+					ext.supports_video_decode_h264 =
+							(video_queue_props2[queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE]].videoCodecOperations &
+							 VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_EXT) != 0;
+				}
+			}
+		}
+	}
+#endif
+
 	VkPhysicalDeviceFeatures2KHR features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR };
 	ext.storage_8bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR };
 	ext.storage_16bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR };
@@ -830,6 +910,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.memory_priority_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PRIORITY_FEATURES_EXT };
 	ext.astc_decode_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_FEATURES_EXT };
 	ext.astc_hdr_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES_EXT };
+	ext.sync2_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR };
 	void **ppNext = &features.pNext;
 
 	bool has_pdf2 = ext.supports_physical_device_properties2 ||
@@ -965,6 +1046,14 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			enabled_extensions.push_back(VK_EXT_TEXTURE_COMPRESSION_ASTC_HDR_EXTENSION_NAME);
 			*ppNext = &ext.astc_hdr_features;
 			ppNext = &ext.astc_hdr_features.pNext;
+		}
+
+		if (has_extension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME))
+		{
+			ext.supports_sync2 = true;
+			enabled_extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+			*ppNext = &ext.sync2_features;
+			ppNext = &ext.sync2_features.pNext;
 		}
 	}
 
@@ -1104,14 +1193,25 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		return false;
 
 	volkLoadDeviceTable(&device_table, device);
-	device_table.vkGetDeviceQueue(device, graphics_queue_family, graphics_queue_index, &graphics_queue);
-	device_table.vkGetDeviceQueue(device, compute_queue_family, compute_queue_index, &compute_queue);
-	device_table.vkGetDeviceQueue(device, transfer_queue_family, transfer_queue_index, &transfer_queue);
+
+	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
+	{
+		if (queue_info.family_indices[i] != VK_QUEUE_FAMILY_IGNORED)
+		{
+			device_table.vkGetDeviceQueue(device, queue_info.family_indices[i], queue_indices[i],
+			                              &queue_info.queues[i]);
+		}
+		else
+		{
+			queue_info.queues[i] = VK_NULL_HANDLE;
+		}
+	}
 
 #ifdef VULKAN_DEBUG
-	LOGI("Graphics queue: family %u, index %u.\n", graphics_queue_family, graphics_queue_index);
-	LOGI("Compute queue: family %u, index %u.\n", compute_queue_family, compute_queue_index);
-	LOGI("Transfer queue: family %u, index %u.\n", transfer_queue_family, transfer_queue_index);
+	static const char *family_names[QUEUE_INDEX_COUNT] = { "Graphics", "Compute", "Transfer", "Video decode" };
+	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
+		if (queue_info.family_indices[i] != VK_QUEUE_FAMILY_IGNORED)
+			LOGI("%s queue: family %u, index %u.\n", family_names[i], queue_info.family_indices[i], queue_indices[i]);
 #endif
 
 	check_descriptor_indexing_features();

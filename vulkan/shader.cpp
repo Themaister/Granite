@@ -32,7 +32,27 @@ using namespace Util;
 
 namespace Vulkan
 {
-PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourceLayout &layout_)
+void ImmutableSamplerBank::hash(Util::Hasher &h, const ImmutableSamplerBank *sampler_bank)
+{
+	if (sampler_bank)
+	{
+		for (auto &set : sampler_bank->samplers)
+		{
+			for (auto *binding : set)
+			{
+				if (binding)
+					h.u64(binding->get_hash());
+				else
+					h.u32(0);
+			}
+		}
+	}
+	else
+		h.u32(0);
+}
+
+PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourceLayout &layout_,
+                               const ImmutableSamplerBank *immutable_samplers)
 	: IntrusiveHashMapEnabled<PipelineLayout>(hash)
 	, device(device_)
 	, layout(layout_)
@@ -41,7 +61,8 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourc
 	unsigned num_sets = 0;
 	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
 	{
-		set_allocators[i] = device->request_descriptor_set_allocator(layout.sets[i], layout.stages_for_bindings[i]);
+		set_allocators[i] = device->request_descriptor_set_allocator(layout.sets[i], layout.stages_for_bindings[i],
+		                                                             immutable_samplers ? immutable_samplers->samplers[i] : nullptr);
 		layouts[i] = set_allocators[i]->get_layout();
 		if (layout.descriptor_set_mask & (1u << i))
 			num_sets = i + 1;
@@ -253,36 +274,6 @@ const char *Shader::stage_to_name(ShaderStage stage)
 	}
 }
 
-static bool get_stock_sampler(StockSampler &sampler, const string &name)
-{
-	if (name.find("NearestClamp") != string::npos)
-		sampler = StockSampler::NearestClamp;
-	else if (name.find("LinearClamp") != string::npos)
-		sampler = StockSampler::LinearClamp;
-	else if (name.find("TrilinearClamp") != string::npos)
-		sampler = StockSampler::TrilinearClamp;
-	else if (name.find("NearestWrap") != string::npos)
-		sampler = StockSampler::NearestWrap;
-	else if (name.find("LinearWrap") != string::npos)
-		sampler = StockSampler::LinearWrap;
-	else if (name.find("TrilinearWrap") != string::npos)
-		sampler = StockSampler::TrilinearWrap;
-	else if (name.find("NearestShadow") != string::npos)
-		sampler = StockSampler::NearestShadow;
-	else if (name.find("LinearShadow") != string::npos)
-		sampler = StockSampler::LinearShadow;
-	else if (name.find("LinearYUV420P") != string::npos)
-		sampler = StockSampler::LinearYUV420P;
-	else if (name.find("LinearYUV422P") != string::npos)
-		sampler = StockSampler::LinearYUV422P;
-	else if (name.find("LinearYUV444P") != string::npos)
-		sampler = StockSampler::LinearYUV444P;
-	else
-		return false;
-
-	return true;
-}
-
 // Implicitly also checks for endian issues.
 static const uint16_t reflection_magic[] = { 'G', 'R', 'A', ResourceLayout::Version };
 
@@ -295,6 +286,11 @@ bool ResourceLayout::serialize(uint8_t *data, size_t size) const
 {
 	if (size != serialization_size())
 		return false;
+
+	// Cannot serialize externally defined immutable samplers.
+	for (auto &set : sets)
+		if (set.immutable_sampler_mask != 0)
+			return false;
 
 	memcpy(data, reflection_magic, sizeof(reflection_magic));
 	memcpy(data + sizeof(reflection_magic), this, sizeof(*this));
@@ -377,19 +373,6 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
 			layout.sets[set].fp_mask |= 1u << binding;
 
-		const string &name = image.name;
-		StockSampler sampler;
-		if (type.image.dim != spv::DimBuffer && get_stock_sampler(sampler, name))
-		{
-			if (has_immutable_sampler(layout.sets[set], binding))
-			{
-				if (sampler != get_immutable_sampler(layout.sets[set], binding))
-					LOGE("Immutable sampler mismatch detected!\n");
-			}
-			else
-				set_immutable_sampler(layout.sets[set], binding, sampler);
-		}
-
 		update_array_info(layout, type, set, binding);
 	}
 
@@ -427,20 +410,6 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
 		layout.sets[set].sampler_mask |= 1u << binding;
-
-		const string &name = image.name;
-		StockSampler sampler;
-		if (get_stock_sampler(sampler, name))
-		{
-			if (has_immutable_sampler(layout.sets[set], binding))
-			{
-				if (sampler != get_immutable_sampler(layout.sets[set], binding))
-					LOGE("Immutable sampler mismatch detected!\n");
-			}
-			else
-				set_immutable_sampler(layout.sets[set], binding, sampler);
-		}
-
 		update_array_info(layout, compiler.get_type(image.type_id), set, binding);
 	}
 
@@ -516,7 +485,8 @@ bool Shader::reflect_resource_layout(ResourceLayout &, const uint32_t *, size_t)
 }
 #endif
 
-Shader::Shader(Hash hash, Device *device_, const uint32_t *data, size_t size, const ResourceLayout *resource_layout)
+Shader::Shader(Hash hash, Device *device_, const uint32_t *data, size_t size,
+               const ResourceLayout *resource_layout, const ImmutableSamplerBank *sampler_bank)
 	: IntrusiveHashMapEnabled<Shader>(hash)
 	, device(device_)
 {
@@ -541,6 +511,17 @@ Shader::Shader(Hash hash, Device *device_, const uint32_t *data, size_t size, co
 	else if (!reflect_resource_layout(layout, data, size))
 		LOGE("Failed to reflect resource layout.\n");
 #endif
+
+	if (sampler_bank)
+		immutable_sampler_bank = *sampler_bank;
+
+	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
+	{
+		for_each_bit(layout.sets[set].sampler_mask | layout.sets[set].sampled_image_mask, [&](unsigned binding) {
+			if (sampler_bank && sampler_bank->samplers[set][binding])
+				layout.sets[set].immutable_sampler_mask |= 1u << binding;
+		});
+	}
 
 	if (layout.bindless_set_mask != 0 && !device->get_device_features().supports_descriptor_indexing)
 		LOGE("Sufficient features for descriptor indexing is not supported on this device.\n");

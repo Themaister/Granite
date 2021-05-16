@@ -58,29 +58,41 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 			LOGE("YCbCr sampling not supported!\n");
 			std::terminate();
 		}
-#if 0
-		YCbCrImageCreateInfo info;
-		info.format = YCbCrFormat::YUV420P_3PLANE;
-		info.width = 16;
-		info.height = 16;
-		ycbcr_image = e.get_device().create_ycbcr_image(info);
-#else
+
+		VkSamplerYcbcrConversionCreateInfo conv = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO };
+		conv.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+		conv.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
+		conv.chromaFilter = VK_FILTER_LINEAR;
+		conv.xChromaOffset = VK_CHROMA_LOCATION_COSITED_EVEN;
+		conv.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+		conv.format = VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
+		conv.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		conv.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		conv.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		conv.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+		conv.forceExplicitReconstruction = VK_FALSE;
+		ycbcr = e.get_device().request_immutable_ycbcr_conversion(conv);
+
+		SamplerCreateInfo samp = {};
+		samp.mag_filter = VK_FILTER_LINEAR;
+		samp.min_filter = VK_FILTER_LINEAR;
+		samp.mipmap_mode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+		samp.address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		samp.address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		samp.address_mode_w = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		sampler = e.get_device().request_immutable_sampler(samp, ycbcr);
+
 		ImageCreateInfo info = ImageCreateInfo::immutable_2d_image(width, height, VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM);
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		info.ycbcr_conversion = ycbcr;
 		ycbcr_image = e.get_device().create_image(info);
-#endif
 
 		if (!ycbcr_image)
 		{
 			LOGE("Failed to create YCbCr image!\n");
 			std::terminate();
 		}
-
-		auto cmd = e.get_device().request_command_buffer();
-
-
-		e.get_device().submit(cmd);
 	}
 
 	void on_device_destroyed(const DeviceCreatedEvent &)
@@ -102,28 +114,6 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		if (file_offset + required_size > file_size)
 			file_offset = 0;
 
-#if 0
-		cmd->image_barrier(ycbcr_image->get_ycbcr_image(), VK_IMAGE_LAYOUT_UNDEFINED,
-		                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
-
-		// Should be gray.
-		VkClearValue clear_value = {};
-		clear_value.color.float32[0] = 1.0f;
-		cmd->clear_image(ycbcr_image->get_plane_image(0), clear_value);
-
-		clear_value.color.float32[0] = 0.5f;
-		cmd->clear_image(ycbcr_image->get_plane_image(1), clear_value);
-
-		clear_value.color.float32[0] = 0.5f;
-		cmd->clear_image(ycbcr_image->get_plane_image(2), clear_value);
-
-		cmd->image_barrier(ycbcr_image->get_ycbcr_image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-#else
 		cmd->image_barrier(*ycbcr_image, VK_IMAGE_LAYOUT_UNDEFINED,
 		                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
@@ -155,16 +145,22 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-#endif
 
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
+		rp.clear_color[0].float32[0] = 0.2f;
 		cmd->begin_render_pass(rp);
-#if 0
-		cmd->set_texture(0, 0, ycbcr_image->get_ycbcr_image().get_view());
-#else
+
+		cmd->set_quad_state();
+		CommandBufferUtil::set_fullscreen_quad_vertex_state(*cmd);
+		auto *program = device.get_shader_manager().register_graphics("builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
+
+		ImmutableSamplerBank immutable_bank = {};
+		immutable_bank.samplers[0][0] = sampler;
+		auto *variant = program->register_variant({}, &immutable_bank);
+
+		cmd->set_program(variant->get_program());
 		cmd->set_texture(0, 0, ycbcr_image->get_view());
-#endif
-		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "assets://shaders/yuv420p-sample.frag");
+		CommandBufferUtil::draw_fullscreen_quad(*cmd);
 		cmd->end_render_pass();
 		device.submit(cmd);
 	}
@@ -178,11 +174,9 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 	size_t file_size = 0;
 	const uint8_t *file_mapped = nullptr;
 
-#if 0
-	YCbCrImageHandle ycbcr_image;
-#else
 	ImageHandle ycbcr_image;
-#endif
+	const ImmutableYcbcrConversion *ycbcr = nullptr;
+	const ImmutableSampler *sampler = nullptr;
 };
 
 namespace Granite

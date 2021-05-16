@@ -80,7 +80,8 @@ bool ShaderTemplate::init()
 	return true;
 }
 
-const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vector<std::pair<std::string, int>> *defines)
+const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vector<std::pair<std::string, int>> *defines,
+                                                                const ImmutableSamplerBank *sampler_bank)
 {
 	Hasher h;
 	if (defines)
@@ -91,6 +92,8 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 			h.s32(define.second);
 		}
 	}
+
+	ImmutableSamplerBank::hash(h, sampler_bank);
 
 	auto hash = h.get();
 	h.u64(path_hash);
@@ -128,6 +131,9 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 		variant->instance++;
 		if (defines)
 			variant->defines = *defines;
+
+		if (sampler_bank)
+			variant->sampler_bank.reset(new ImmutableSamplerBank(*sampler_bank));
 
 		ret = variants.insert_yield(hash, variant);
 	}
@@ -229,7 +235,8 @@ Vulkan::Program *ShaderProgramVariant::get_program_compute()
 		}
 		else
 		{
-			new_program = device->request_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
+			new_program = device->request_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t),
+			                                      nullptr, comp->sampler_bank ? comp->sampler_bank.get() : nullptr);
 			auto spirv_hash = new_program->get_shader(ShaderStage::Compute)->get_hash();
 			cache.emplace_replace(comp->hash, spirv_hash);
 		}
@@ -280,7 +287,8 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 			vert_shader = device->request_shader_by_hash(vert->spirv_hash);
 		else
 		{
-			vert_shader = device->request_shader(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t));
+			vert_shader = device->request_shader(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t),
+			                                     nullptr, vert->sampler_bank ? vert->sampler_bank.get() : nullptr);
 			cache.emplace_replace(vert->hash, vert_shader->get_hash());
 		}
 
@@ -288,7 +296,8 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 			frag_shader = device->request_shader_by_hash(frag->spirv_hash);
 		else
 		{
-			frag_shader = device->request_shader(frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
+			frag_shader = device->request_shader(frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t),
+			                                     nullptr, frag->sampler_bank ? frag->sampler_bank.get() : nullptr);
 			cache.emplace_replace(frag->hash, frag_shader->get_hash());
 		}
 
@@ -323,7 +332,8 @@ Vulkan::Program *ShaderProgramVariant::get_program()
 		return nullptr;
 }
 
-ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pair<std::string, int>> &defines)
+ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pair<std::string, int>> &defines,
+                                                      const ImmutableSamplerBank *sampler_bank)
 {
 	Hasher h;
 	for (auto &define : defines)
@@ -331,6 +341,8 @@ ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pai
 		h.string(define.first);
 		h.s32(define.second);
 	}
+
+	ImmutableSamplerBank::hash(h, sampler_bank);
 
 	auto hash = h.get();
 
@@ -341,7 +353,7 @@ ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pai
 
 	for (unsigned i = 0; i < static_cast<unsigned>(Vulkan::ShaderStage::Count); i++)
 		if (stages[i])
-			new_variant->stages[i] = stages[i]->register_variant(&defines);
+			new_variant->stages[i] = stages[i]->register_variant(&defines, sampler_bank);
 
 	// Make sure it's compiled correctly.
 	new_variant->get_program();

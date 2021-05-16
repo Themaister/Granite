@@ -56,7 +56,10 @@ enum GlobalDescriptorSetBindings
 
 	BINDING_GLOBAL_CLUSTER_TRANSFORM = 9,
 	BINDING_GLOBAL_CLUSTER_BITMASK = 10,
-	BINDING_GLOBAL_CLUSTER_RANGE = 11
+	BINDING_GLOBAL_CLUSTER_RANGE = 11,
+
+	BINDING_GLOBAL_LINEAR_SAMPLER = 14,
+	BINDING_GLOBAL_SHADOW_SAMPLER = 15
 };
 
 namespace Granite
@@ -441,6 +444,9 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 	auto *combined = cmd.allocate_typed_constant_data<CombinedRenderParameters>(0, BINDING_GLOBAL_RENDER_PARAMETERS, 1);
 	memset(combined, 0, sizeof(*combined));
 
+	cmd.set_sampler(0, BINDING_GLOBAL_LINEAR_SAMPLER, StockSampler::LinearClamp);
+	cmd.set_sampler(0, BINDING_GLOBAL_SHADOW_SAMPLER, StockSampler::LinearShadow);
+
 	if (lighting->volumetric_fog)
 	{
 		cmd.set_texture(0, BINDING_GLOBAL_VOLUMETRIC_FOG, lighting->volumetric_fog->get_view(), StockSampler::LinearClamp);
@@ -686,6 +692,9 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
 	cmd.set_blend_op(VK_BLEND_OP_ADD);
 	CommandBufferUtil::set_fullscreen_quad_vertex_state(cmd);
+
+	cmd.set_sampler(0, BINDING_GLOBAL_LINEAR_SAMPLER, StockSampler::LinearClamp);
+	cmd.set_sampler(0, BINDING_GLOBAL_SHADOW_SAMPLER, StockSampler::LinearShadow);
 
 	auto &device = cmd.get_device();
 	auto *program = device.get_shader_manager().register_graphics("builtin://shaders/lights/directional.vert",

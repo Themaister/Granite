@@ -39,9 +39,6 @@ enum class StockSampler
 	TrilinearWrap,
 	NearestShadow,
 	LinearShadow,
-	LinearYUV420P,
-	LinearYUV422P,
-	LinearYUV444P,
 	DefaultGeometryFilterClamp,
 	DefaultGeometryFilterWrap,
 	Count
@@ -89,13 +86,60 @@ public:
 		return create_info;
 	}
 
+	static VkSamplerCreateInfo fill_vk_sampler_info(const SamplerCreateInfo &sampler_info);
+
 private:
 	friend class Util::ObjectPool<Sampler>;
-	Sampler(Device *device, VkSampler sampler, const SamplerCreateInfo &info);
+	Sampler(Device *device, VkSampler sampler, const SamplerCreateInfo &info, bool immutable);
 
 	Device *device;
 	VkSampler sampler;
 	SamplerCreateInfo create_info;
+	bool immutable;
 };
 using SamplerHandle = Util::IntrusivePtr<Sampler>;
+
+class ImmutableYcbcrConversion : public HashedObject<ImmutableYcbcrConversion>
+{
+public:
+	ImmutableYcbcrConversion(Util::Hash hash, Device *device,
+	                         const VkSamplerYcbcrConversionCreateInfo &info);
+	~ImmutableYcbcrConversion();
+	void operator=(const ImmutableYcbcrConversion &) = delete;
+	ImmutableYcbcrConversion(const ImmutableYcbcrConversion &) = delete;
+
+	VkSamplerYcbcrConversion get_conversion() const
+	{
+		return conversion;
+	}
+
+private:
+	Device *device;
+	VkSamplerYcbcrConversion conversion = VK_NULL_HANDLE;
+};
+
+class ImmutableSampler : public HashedObject<ImmutableSampler>
+{
+public:
+	ImmutableSampler(Util::Hash hash, Device *device,
+	                 const SamplerCreateInfo &info,
+	                 const ImmutableYcbcrConversion *ycbcr);
+	void operator=(const ImmutableSampler &) = delete;
+	ImmutableSampler(const ImmutableSampler &) = delete;
+
+	const Sampler &get_sampler() const
+	{
+		return *sampler;
+	}
+
+	VkSamplerYcbcrConversion get_ycbcr_conversion() const
+	{
+		return ycbcr ? ycbcr->get_conversion() : VK_NULL_HANDLE;
+	}
+
+private:
+	Device *device;
+	const ImmutableYcbcrConversion *ycbcr;
+	SamplerHandle sampler;
+};
 }

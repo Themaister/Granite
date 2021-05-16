@@ -87,7 +87,6 @@ struct HandlePool
 {
 	VulkanObjectPool<Buffer> buffers;
 	VulkanObjectPool<Image> images;
-	VulkanObjectPool<YCbCrImage> ycbcr_images;
 	VulkanObjectPool<LinearHostImage> linear_images;
 	VulkanObjectPool<ImageView> image_views;
 	VulkanObjectPool<BufferView> buffer_views;
@@ -178,6 +177,7 @@ public:
 	friend struct FenceHolderDeleter;
 	friend class Sampler;
 	friend struct SamplerDeleter;
+	friend class ImmutableSampler;
 	friend class Buffer;
 	friend struct BufferDeleter;
 	friend class BufferView;
@@ -280,15 +280,22 @@ public:
 	                            std::string tag, std::string extra = {});
 
 	// Request shaders and programs. These objects are owned by the Device.
-	Shader *request_shader(const uint32_t *code, size_t size, const ResourceLayout *layout = nullptr);
+	Shader *request_shader(const uint32_t *code, size_t size,
+	                       const ResourceLayout *layout = nullptr,
+	                       const ImmutableSamplerBank *sampler_bank = nullptr);
 	Shader *request_shader_by_hash(Util::Hash hash);
 	Program *request_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
 	                         size_t fragment_size,
 	                         const ResourceLayout *vertex_layout = nullptr,
 	                         const ResourceLayout *fragment_layout = nullptr);
-	Program *request_program(const uint32_t *compute_data, size_t compute_size, const ResourceLayout *layout = nullptr);
+	Program *request_program(const uint32_t *compute_data, size_t compute_size,
+	                         const ResourceLayout *layout = nullptr,
+	                         const ImmutableSamplerBank *sampler_bank = nullptr);
 	Program *request_program(Shader *vertex, Shader *fragment);
 	Program *request_program(Shader *compute);
+
+	const ImmutableYcbcrConversion *request_immutable_ycbcr_conversion(const VkSamplerYcbcrConversionCreateInfo &info);
+	const ImmutableSampler *request_immutable_sampler(const SamplerCreateInfo &info, const ImmutableYcbcrConversion *ycbcr);
 
 	// Map and unmap buffer objects.
 	void *map_host_buffer(const Buffer &buffer, MemoryAccessFlags access);
@@ -305,7 +312,6 @@ public:
 	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial = nullptr);
 	ImageHandle create_image_from_staging_buffer(const ImageCreateInfo &info, const InitialImageBuffer *buffer);
 	LinearHostImageHandle create_linear_host_image(const LinearHostImageCreateInfo &info);
-	YCbCrImageHandle create_ycbcr_image(const YCbCrImageCreateInfo &info);
 	DeviceAllocationOwnerHandle take_device_allocation_ownership(Image &image);
 	DeviceAllocationOwnerHandle allocate_memory(const MemoryAllocateInfo &info);
 
@@ -454,8 +460,11 @@ private:
 	Semaphore consume_release_semaphore();
 	VkQueue get_current_present_queue() const;
 
-	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout);
-	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout, const uint32_t *stages_for_sets);
+	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout,
+	                                        const ImmutableSamplerBank *immutable_samplers);
+	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout,
+	                                                         const uint32_t *stages_for_sets,
+	                                                         const ImmutableSampler * const *immutable_samplers);
 	const Framebuffer &request_framebuffer(const RenderPassInfo &info);
 	const RenderPass &request_render_pass(const RenderPassInfo &info, bool compatible);
 
@@ -465,7 +474,6 @@ private:
 	DeviceFeatures ext;
 	void init_stock_samplers();
 	void init_stock_sampler(StockSampler sampler, float max_aniso, float lod_bias);
-	void init_ycbcr_stock_samplers();
 	void init_timeline_semaphores();
 	void init_bindless();
 	void deinit_timeline_semaphores();
@@ -647,14 +655,15 @@ private:
 	bool memory_type_is_device_optimal(uint32_t type) const;
 	bool memory_type_is_host_visible(uint32_t type) const;
 
-	SamplerHandle samplers[static_cast<unsigned>(StockSampler::Count)];
-	VkSamplerYcbcrConversion samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::Count)] = {};
+	const ImmutableSampler *samplers[static_cast<unsigned>(StockSampler::Count)] = {};
 
 	VulkanCache<PipelineLayout> pipeline_layouts;
 	VulkanCache<DescriptorSetAllocator> descriptor_set_allocators;
 	VulkanCache<RenderPass> render_passes;
 	VulkanCache<Shader> shaders;
 	VulkanCache<Program> programs;
+	VulkanCache<ImmutableSampler> immutable_samplers;
+	VulkanCache<ImmutableYcbcrConversion> immutable_ycbcr_conversions;
 
 	DescriptorSetAllocator *bindless_sampled_image_allocator_fp = nullptr;
 	DescriptorSetAllocator *bindless_sampled_image_allocator_integer = nullptr;
@@ -663,7 +672,6 @@ private:
 	TransientAttachmentAllocator transient_allocator;
 	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
 
-	SamplerHandle create_sampler(const SamplerCreateInfo &info, StockSampler sampler);
 	void init_pipeline_cache();
 	void flush_pipeline_cache();
 

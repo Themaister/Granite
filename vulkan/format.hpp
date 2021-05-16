@@ -255,14 +255,6 @@ static inline VkDeviceSize format_get_layer_size(VkFormat format, VkImageAspectF
 	return size;
 }
 
-enum class YCbCrFormat
-{
-	YUV420P_3PLANE,
-	YUV444P_3PLANE,
-	YUV422P_3PLANE,
-	Count
-};
-
 static inline unsigned format_ycbcr_num_planes(VkFormat format)
 {
 	switch (format)
@@ -293,20 +285,6 @@ static inline unsigned format_ycbcr_num_planes(VkFormat format)
 
 	default:
 		return 1;
-	}
-}
-
-static inline unsigned format_ycbcr_num_planes(YCbCrFormat format)
-{
-	switch (format)
-	{
-	case YCbCrFormat::YUV420P_3PLANE:
-	case YCbCrFormat::YUV422P_3PLANE:
-	case YCbCrFormat::YUV444P_3PLANE:
-		return 3;
-
-	default:
-		return 0;
 	}
 }
 
@@ -352,51 +330,4 @@ static inline void format_ycbcr_downsample_dimensions(VkFormat format, VkImageAs
 	}
 #undef fmt
 }
-
-static inline unsigned format_ycbcr_downsample_ratio_log2(YCbCrFormat format, unsigned dim, unsigned plane)
-{
-	switch (format)
-	{
-	case YCbCrFormat::YUV420P_3PLANE:
-		return plane > 0 ? 1 : 0;
-	case YCbCrFormat::YUV422P_3PLANE:
-		return plane > 0 && dim == 0 ? 1 : 0;
-
-	default:
-		return 0;
-	}
-}
-
-static inline VkFormat format_ycbcr_plane_vk_format(YCbCrFormat format, unsigned plane)
-{
-	switch (format)
-	{
-	case YCbCrFormat::YUV420P_3PLANE:
-		return VK_FORMAT_R8_UNORM;
-	case YCbCrFormat::YUV422P_3PLANE:
-		return plane > 0 ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM;
-	case YCbCrFormat::YUV444P_3PLANE:
-		return VK_FORMAT_R8_UNORM;
-
-	default:
-		return VK_FORMAT_UNDEFINED;
-	}
-}
-
-static inline VkFormat format_ycbcr_planar_vk_format(YCbCrFormat format)
-{
-	switch (format)
-	{
-	case YCbCrFormat::YUV420P_3PLANE:
-		return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
-	case YCbCrFormat::YUV422P_3PLANE:
-		return VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM;
-	case YCbCrFormat::YUV444P_3PLANE:
-		return VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
-
-	default:
-		return VK_FORMAT_UNDEFINED;
-	}
-}
-
 }

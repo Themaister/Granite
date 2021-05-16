@@ -61,10 +61,12 @@ public:
 		Util::Hash spirv_hash = 0;
 		std::vector<uint32_t> spirv;
 		std::vector<std::pair<std::string, int>> defines;
+		std::unique_ptr<ImmutableSamplerBank> sampler_bank;
 		unsigned instance = 0;
 	};
 
-	const Variant *register_variant(const std::vector<std::pair<std::string, int>> *defines = nullptr);
+	const Variant *register_variant(const std::vector<std::pair<std::string, int>> *defines = nullptr,
+	                                const ImmutableSamplerBank *sampler_bank = nullptr);
 	void recompile();
 	void register_dependencies(ShaderManager &manager);
 
@@ -124,7 +126,8 @@ public:
 	}
 
 	void set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader);
-	ShaderProgramVariant *register_variant(const std::vector<std::pair<std::string, int>> &defines);
+	ShaderProgramVariant *register_variant(const std::vector<std::pair<std::string, int>> &defines,
+	                                       const ImmutableSamplerBank *sampler_bank = nullptr);
 
 private:
 	Device *device;

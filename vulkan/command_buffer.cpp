@@ -2047,7 +2047,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 		for (unsigned i = 0; i < array_size; i++)
 		{
 			h.u64(bindings.cookies[set][binding + i]);
-			if (!has_immutable_sampler(set_layout, binding + i))
+			if ((set_layout.immutable_sampler_mask & (1u << (binding + i))) == 0)
 			{
 				h.u64(bindings.secondary_cookies[set][binding + i]);
 				VK_ASSERT(bindings.bindings[set][binding + i].image.fp.sampler != VK_NULL_HANDLE);

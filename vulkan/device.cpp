@@ -291,15 +291,18 @@ void Device::unmap_host_buffer(const Buffer &buffer, MemoryAccessFlags access, V
 	managers.memory.unmap_memory(buffer.get_allocation(), access, offset, length);
 }
 
-Shader *Device::request_shader(const uint32_t *data, size_t size, const ResourceLayout *layout)
+Shader *Device::request_shader(const uint32_t *data, size_t size,
+                               const ResourceLayout *layout,
+                               const ImmutableSamplerBank *sampler_bank)
 {
 	Util::Hasher hasher;
 	hasher.data(data, size);
+	ImmutableSamplerBank::hash(hasher, sampler_bank);
 
 	auto hash = hasher.get();
 	auto *ret = shaders.find(hash);
 	if (!ret)
-		ret = shaders.emplace_yield(hash, hash, this, data, size, layout);
+		ret = shaders.emplace_yield(hash, hash, this, data, size, layout, sampler_bank);
 	return ret;
 }
 
@@ -324,12 +327,13 @@ Program *Device::request_program(Vulkan::Shader *compute_shader)
 }
 
 Program *Device::request_program(const uint32_t *compute_data, size_t compute_size,
-                                 const ResourceLayout *layout)
+                                 const ResourceLayout *layout,
+                                 const ImmutableSamplerBank *sampler_bank)
 {
 	if (!compute_size)
 		return nullptr;
 
-	auto *compute_shader = request_shader(compute_data, compute_size, layout);
+	auto *compute_shader = request_shader(compute_data, compute_size, layout, sampler_bank);
 	return request_program(compute_shader);
 }
 
@@ -362,7 +366,8 @@ Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size
 	return request_program(vertex, fragment);
 }
 
-PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &layout)
+PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &layout,
+                                                const ImmutableSamplerBank *sampler_bank)
 {
 	Hasher h;
 	h.data(reinterpret_cast<const uint32_t *>(layout.sets), sizeof(layout.sets));
@@ -372,24 +377,36 @@ PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &la
 	h.data(layout.spec_constant_mask, sizeof(layout.spec_constant_mask));
 	h.u32(layout.attribute_mask);
 	h.u32(layout.render_target_mask);
+	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
+	{
+		Util::for_each_bit(layout.sets[set].immutable_sampler_mask, [&](unsigned bit) {
+			VK_ASSERT(sampler_bank && sampler_bank->samplers[set][bit]);
+			h.u64(sampler_bank->samplers[set][bit]->get_hash());
+		});
+	}
 
 	auto hash = h.get();
 	auto *ret = pipeline_layouts.find(hash);
 	if (!ret)
-		ret = pipeline_layouts.emplace_yield(hash, hash, this, layout);
+		ret = pipeline_layouts.emplace_yield(hash, hash, this, layout, sampler_bank);
 	return ret;
 }
 
-DescriptorSetAllocator *Device::request_descriptor_set_allocator(const DescriptorSetLayout &layout, const uint32_t *stages_for_bindings)
+DescriptorSetAllocator *Device::request_descriptor_set_allocator(const DescriptorSetLayout &layout, const uint32_t *stages_for_bindings,
+                                                                 const ImmutableSampler * const *immutable_samplers_)
 {
 	Hasher h;
 	h.data(reinterpret_cast<const uint32_t *>(&layout), sizeof(layout));
 	h.data(stages_for_bindings, sizeof(uint32_t) * VULKAN_NUM_BINDINGS);
+	Util::for_each_bit(layout.immutable_sampler_mask, [&](unsigned bit) {
+		VK_ASSERT(immutable_samplers_ && immutable_samplers_[bit]);
+		h.u64(immutable_samplers_[bit]->get_hash());
+	});
 	auto hash = h.get();
 
 	auto *ret = descriptor_set_allocators.find(hash);
 	if (!ret)
-		ret = descriptor_set_allocators.emplace_yield(hash, hash, this, layout, stages_for_bindings);
+		ret = descriptor_set_allocators.emplace_yield(hash, hash, this, layout, stages_for_bindings, immutable_samplers_);
 	return ret;
 }
 
@@ -401,6 +418,7 @@ void Device::bake_program(Program &program)
 	if (program.get_shader(ShaderStage::Fragment))
 		layout.render_target_mask = program.get_shader(ShaderStage::Fragment)->get_layout().output_mask;
 
+	ImmutableSamplerBank ext_immutable_samplers = {};
 	layout.descriptor_set_mask = 0;
 
 	for (unsigned i = 0; i < static_cast<unsigned>(ShaderStage::Count); i++)
@@ -412,6 +430,8 @@ void Device::bake_program(Program &program)
 		uint32_t stage_mask = 1u << i;
 
 		auto &shader_layout = shader->get_layout();
+		auto &immutable_bank = shader->get_immutable_sampler_bank();
+
 		for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
 		{
 			layout.sets[set].sampled_image_mask |= shader_layout.sets[set].sampled_image_mask;
@@ -424,17 +444,20 @@ void Device::bake_program(Program &program)
 			layout.sets[set].separate_image_mask |= shader_layout.sets[set].separate_image_mask;
 			layout.sets[set].fp_mask |= shader_layout.sets[set].fp_mask;
 
-			for_each_bit(shader_layout.sets[set].immutable_sampler_mask, [&](uint32_t binding) {
-				StockSampler sampler = get_immutable_sampler(shader_layout.sets[set], binding);
+			auto immutable_mask = shader_layout.sets[set].immutable_sampler_mask;
+			layout.sets[set].immutable_sampler_mask |= immutable_mask;
 
-				// Do we already have an immutable sampler? Make sure it matches the layout.
-				if (has_immutable_sampler(layout.sets[set], binding))
+			for_each_bit(immutable_mask, [&](uint32_t binding) {
+				if (ext_immutable_samplers.samplers[set][binding] &&
+				    immutable_bank.samplers[set][binding] != ext_immutable_samplers.samplers[set][binding])
 				{
-					if (sampler != get_immutable_sampler(layout.sets[set], binding))
-						LOGE("Immutable sampler mismatch detected!\n");
+					LOGE("Immutable sampler mismatch detected!\n");
 				}
-
-				set_immutable_sampler(layout.sets[set], binding, sampler);
+				else
+				{
+					VK_ASSERT(immutable_bank.samplers[set][binding]);
+					ext_immutable_samplers.samplers[set][binding] = immutable_bank.samplers[set][binding];
+				}
 			});
 
 			uint32_t active_binds =
@@ -519,7 +542,7 @@ void Device::bake_program(Program &program)
 	h.u32(layout.push_constant_range.stageFlags);
 	h.u32(layout.push_constant_range.size);
 	layout.push_constant_layout_hash = h.get();
-	program.set_pipeline_layout(request_pipeline_layout(layout));
+	program.set_pipeline_layout(request_pipeline_layout(layout, &ext_immutable_samplers));
 }
 
 bool Device::init_pipeline_cache(const uint8_t *data, size_t size)
@@ -808,9 +831,9 @@ void Device::init_bindless()
 
 	layout.separate_image_mask = 1;
 	uint32_t stages_for_sets[VULKAN_NUM_BINDINGS] = { VK_SHADER_STAGE_ALL };
-	bindless_sampled_image_allocator_integer = request_descriptor_set_allocator(layout, stages_for_sets);
+	bindless_sampled_image_allocator_integer = request_descriptor_set_allocator(layout, stages_for_sets, nullptr);
 	layout.fp_mask = 1;
-	bindless_sampled_image_allocator_fp = request_descriptor_set_allocator(layout, stages_for_sets);
+	bindless_sampled_image_allocator_fp = request_descriptor_set_allocator(layout, stages_for_sets, nullptr);
 }
 
 void Device::init_timeline_semaphores()
@@ -827,45 +850,6 @@ void Device::init_timeline_semaphores()
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
 		if (table->vkCreateSemaphore(device, &info, nullptr, &queue_data[i].timeline_semaphore) != VK_SUCCESS)
 			LOGE("Failed to create timeline semaphore.\n");
-}
-
-void Device::init_ycbcr_stock_samplers()
-{
-	if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
-		return;
-
-	for (auto &sampler : samplers_ycbcr)
-	{
-		if (sampler)
-			table->vkDestroySamplerYcbcrConversion(device, sampler, nullptr);
-		sampler = VK_NULL_HANDLE;
-	}
-
-	VkSamplerYcbcrConversionCreateInfo info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO };
-	info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
-	info.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
-	info.components = {
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-	};
-	info.chromaFilter = VK_FILTER_LINEAR;
-	info.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
-	info.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
-	info.forceExplicitReconstruction = VK_FALSE;
-
-	info.format = VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
-	table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
-	                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P_3PLANE)]);
-
-	info.format = VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM;
-	table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
-	                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P_3PLANE)]);
-
-	info.format = VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
-	table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
-	                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P_3PLANE)]);
 }
 
 void Device::configure_default_geometry_samplers(float max_aniso, float lod_bias)
@@ -916,9 +900,6 @@ void Device::init_stock_sampler(StockSampler mode, float max_aniso, float lod_bi
 	case StockSampler::TrilinearClamp:
 	case StockSampler::TrilinearWrap:
 	case StockSampler::LinearShadow:
-	case StockSampler::LinearYUV420P:
-	case StockSampler::LinearYUV422P:
-	case StockSampler::LinearYUV444P:
 		info.mag_filter = VK_FILTER_LINEAR;
 		info.min_filter = VK_FILTER_LINEAR;
 		break;
@@ -947,9 +928,6 @@ void Device::init_stock_sampler(StockSampler mode, float max_aniso, float lod_bi
 	case StockSampler::TrilinearClamp:
 	case StockSampler::NearestShadow:
 	case StockSampler::LinearShadow:
-	case StockSampler::LinearYUV420P:
-	case StockSampler::LinearYUV422P:
-	case StockSampler::LinearYUV444P:
 		info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 		info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 		info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -972,13 +950,11 @@ void Device::init_stock_sampler(StockSampler mode, float max_aniso, float lod_bi
 		break;
 	}
 
-	samplers[unsigned(mode)] = create_sampler(info, mode);
+	samplers[unsigned(mode)] = request_immutable_sampler(info, nullptr);
 }
 
 void Device::init_stock_samplers()
 {
-	init_ycbcr_stock_samplers();
-
 	for (unsigned i = 0; i < static_cast<unsigned>(StockSampler::Count); i++)
 	{
 		auto mode = static_cast<StockSampler>(i);
@@ -1921,7 +1897,7 @@ VkQueue Device::get_current_present_queue() const
 
 const Sampler &Device::get_stock_sampler(StockSampler sampler) const
 {
-	return *samplers[static_cast<unsigned>(sampler)];
+	return samplers[static_cast<unsigned>(sampler)]->get_sampler();
 }
 
 bool Device::swapchain_touched() const
@@ -1955,12 +1931,6 @@ Device::~Device()
 
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
-	for (auto &sampler : samplers)
-		sampler.reset();
-
-	for (auto &sampler : samplers_ycbcr)
-		if (sampler)
-			table->vkDestroySamplerYcbcrConversion(device, sampler, nullptr);
 
 	deinit_timeline_semaphores();
 }
@@ -2364,6 +2334,8 @@ void Device::promote_read_write_caches_to_read_only()
 	for (auto &program : programs.get_read_only())
 		program.promote_read_write_to_read_only();
 	render_passes.move_to_read_only();
+	immutable_samplers.move_to_read_only();
+	immutable_ycbcr_conversions.move_to_read_only();
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	shader_manager.promote_read_write_caches_to_read_only();
 #endif
@@ -2997,46 +2969,25 @@ public:
 		return default_view_type;
 	}
 
-	bool setup_conversion_info(VkImageViewCreateInfo &create_info, VkSamplerYcbcrConversionInfo &conversion)
+	bool setup_conversion_info(VkImageViewCreateInfo &create_info,
+	                           VkSamplerYcbcrConversionInfo &conversion,
+	                           const ImmutableYcbcrConversion *ycbcr_conversion) const
 	{
-		switch (create_info.format)
+		if (ycbcr_conversion)
 		{
-		case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
 			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
 				return false;
 			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
-			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P_3PLANE)];
+			conversion.conversion = ycbcr_conversion->get_conversion();
 			conversion.pNext = create_info.pNext;
 			create_info.pNext = &conversion;
-			break;
-
-		case VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM:
-			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
-				return false;
-			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
-			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P_3PLANE)];
-			conversion.pNext = create_info.pNext;
-			create_info.pNext = &conversion;
-			break;
-
-		case VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM:
-			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
-				return false;
-			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
-			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P_3PLANE)];
-			conversion.pNext = create_info.pNext;
-			create_info.pNext = &conversion;
-			break;
-
-		default:
-			break;
 		}
 
 		return true;
 	}
 
 	bool setup_view_usage_info(VkImageViewCreateInfo &create_info, VkImageUsageFlags usage,
-	                           VkImageViewUsageCreateInfo &usage_info)
+	                           VkImageViewUsageCreateInfo &usage_info) const
 	{
 		if (device->get_device_features().supports_maintenance_2)
 		{
@@ -3056,7 +3007,7 @@ public:
 		return true;
 	}
 
-	bool setup_astc_decode_mode_info(VkImageViewCreateInfo &create_info, VkImageViewASTCDecodeModeEXT &astc_info)
+	bool setup_astc_decode_mode_info(VkImageViewCreateInfo &create_info, VkImageViewASTCDecodeModeEXT &astc_info) const
 	{
 		if (!device->get_device_features().supports_astc_decode_mode)
 			return true;
@@ -3120,7 +3071,7 @@ public:
 			default_view_info = *view_info;
 
 		view_info = &default_view_info;
-		if (!setup_conversion_info(default_view_info, conversion_info))
+		if (!setup_conversion_info(default_view_info, conversion_info, create_info.ycbcr_conversion))
 			return false;
 
 		if (!setup_view_usage_info(default_view_info, create_info.usage, view_usage_info))
@@ -3521,80 +3472,6 @@ DeviceAllocationOwnerHandle Device::allocate_memory(const MemoryAllocateInfo &in
 	if (!managers.memory.allocate(info.requirements.size, info.requirements.alignment, info.mode, index, &alloc))
 		return {};
 	return DeviceAllocationOwnerHandle(handle_pool.allocations.allocate(this, alloc));
-}
-
-YCbCrImageHandle Device::create_ycbcr_image(const YCbCrImageCreateInfo &create_info)
-{
-	if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
-		return YCbCrImageHandle(nullptr);
-
-	VkFormatProperties format_properties = {};
-	get_format_properties(format_ycbcr_planar_vk_format(create_info.format), &format_properties);
-
-	if ((format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT) == 0)
-	{
-		LOGE("YCbCr format does not support DISJOINT_BIT.\n");
-		return YCbCrImageHandle(nullptr);
-	}
-
-	if ((format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT) == 0)
-	{
-		LOGE("YCbCr format does not support MIDPOINT_CHROMA_SAMPLES_BIT.\n");
-		return YCbCrImageHandle(nullptr);
-	}
-
-	if ((format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT) == 0)
-	{
-		LOGE("YCbCr format does not support YCBCR_CONVERSION_LINEAR_FILTER_BIT.\n");
-		return YCbCrImageHandle(nullptr);
-	}
-
-	ImageHandle ycbcr_image;
-	ImageHandle plane_handles[3];
-	unsigned num_planes = format_ycbcr_num_planes(create_info.format);
-
-	for (unsigned i = 0; i < num_planes; i++)
-	{
-		ImageCreateInfo plane_info = ImageCreateInfo::immutable_2d_image(
-				create_info.width,
-				create_info.height,
-				format_ycbcr_plane_vk_format(create_info.format, i));
-		plane_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-		plane_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-		plane_info.width >>= format_ycbcr_downsample_ratio_log2(create_info.format, 0, i);
-		plane_info.height >>= format_ycbcr_downsample_ratio_log2(create_info.format, 1, i);
-		plane_info.flags = VK_IMAGE_CREATE_ALIAS_BIT; // Will alias directly over the YCbCr image.
-		plane_info.misc = IMAGE_MISC_FORCE_NO_DEDICATED_BIT;
-		plane_handles[i] = create_image(plane_info);
-		if (!plane_handles[i])
-		{
-			LOGE("Failed to create plane image.\n");
-			return YCbCrImageHandle(nullptr);
-		}
-	}
-
-	ImageCreateInfo ycbcr_info = ImageCreateInfo::immutable_2d_image(
-			create_info.width,
-			create_info.height,
-			format_ycbcr_planar_vk_format(create_info.format));
-	ycbcr_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-	ycbcr_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-	ycbcr_info.flags = VK_IMAGE_CREATE_DISJOINT_BIT | VK_IMAGE_CREATE_ALIAS_BIT;
-	ycbcr_info.misc = IMAGE_MISC_FORCE_NO_DEDICATED_BIT;
-
-	const DeviceAllocation *allocations[3];
-	for (unsigned i = 0; i < num_planes; i++)
-		allocations[i] = &plane_handles[i]->get_allocation();
-	ycbcr_info.memory_aliases = allocations;
-	ycbcr_info.num_memory_aliases = num_planes;
-
-	ycbcr_image = create_image(ycbcr_info);
-	if (!ycbcr_image)
-		return YCbCrImageHandle(nullptr);
-
-	YCbCrImageHandle handle(handle_pool.ycbcr_images.allocate(this, create_info.format, ycbcr_image, plane_handles, num_planes));
-	return handle;
 }
 
 void Device::get_memory_budget(HeapBudget *budget)
@@ -4114,82 +3991,68 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	return handle;
 }
 
-static VkSamplerCreateInfo fill_vk_sampler_info(const SamplerCreateInfo &sampler_info)
+const ImmutableSampler *Device::request_immutable_sampler(const SamplerCreateInfo &sampler_info,
+                                                          const ImmutableYcbcrConversion *ycbcr)
 {
-	VkSamplerCreateInfo info = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	auto info = Sampler::fill_vk_sampler_info(sampler_info);
+	Util::Hasher h;
 
-	info.magFilter = sampler_info.mag_filter;
-	info.minFilter = sampler_info.min_filter;
-	info.mipmapMode = sampler_info.mipmap_mode;
-	info.addressModeU = sampler_info.address_mode_u;
-	info.addressModeV = sampler_info.address_mode_v;
-	info.addressModeW = sampler_info.address_mode_w;
-	info.mipLodBias = sampler_info.mip_lod_bias;
-	info.anisotropyEnable = sampler_info.anisotropy_enable;
-	info.maxAnisotropy = sampler_info.max_anisotropy;
-	info.compareEnable = sampler_info.compare_enable;
-	info.compareOp = sampler_info.compare_op;
-	info.minLod = sampler_info.min_lod;
-	info.maxLod = sampler_info.max_lod;
-	info.borderColor = sampler_info.border_color;
-	info.unnormalizedCoordinates = sampler_info.unnormalized_coordinates;
-	return info;
+	h.u32(info.flags);
+	h.u32(info.addressModeU);
+	h.u32(info.addressModeV);
+	h.u32(info.addressModeW);
+	h.u32(info.minFilter);
+	h.u32(info.magFilter);
+	h.u32(info.mipmapMode);
+	h.f32(info.minLod);
+	h.f32(info.maxLod);
+	h.f32(info.mipLodBias);
+	h.u32(info.compareEnable);
+	h.u32(info.compareOp);
+	h.u32(info.anisotropyEnable);
+	h.f32(info.maxAnisotropy);
+	h.u32(info.borderColor);
+	h.u32(info.unnormalizedCoordinates);
+	if (ycbcr)
+		h.u64(ycbcr->get_hash());
+	else
+		h.u32(0);
+
+	auto *sampler = immutable_samplers.find(h.get());
+	if (!sampler)
+		sampler = immutable_samplers.emplace_yield(h.get(), h.get(), this, sampler_info, ycbcr);
+	return sampler;
 }
 
-SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info, StockSampler stock_sampler)
+const ImmutableYcbcrConversion *Device::request_immutable_ycbcr_conversion(
+		const VkSamplerYcbcrConversionCreateInfo &info)
 {
-	auto info = fill_vk_sampler_info(sampler_info);
-	VkSampler sampler;
+	Util::Hasher h;
+	h.u32(info.forceExplicitReconstruction);
+	h.u32(info.format);
+	h.u32(info.chromaFilter);
+	h.u32(info.components.r);
+	h.u32(info.components.g);
+	h.u32(info.components.b);
+	h.u32(info.components.a);
+	h.u32(info.xChromaOffset);
+	h.u32(info.yChromaOffset);
+	h.u32(info.ycbcrModel);
+	h.u32(info.ycbcrRange);
 
-	VkSamplerYcbcrConversionInfo conversion_info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
-
-	switch (stock_sampler)
-	{
-	case StockSampler::LinearYUV420P:
-		if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
-			return SamplerHandle(nullptr);
-		info.pNext = &conversion_info;
-		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P_3PLANE)];
-		break;
-
-	case StockSampler::LinearYUV422P:
-		if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
-			return SamplerHandle(nullptr);
-		info.pNext = &conversion_info;
-		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P_3PLANE)];
-		break;
-
-	case StockSampler::LinearYUV444P:
-		if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
-			return SamplerHandle(nullptr);
-		info.pNext = &conversion_info;
-		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P_3PLANE)];
-		break;
-
-	default:
-		info.pNext = nullptr;
-		break;
-	}
-
-	if (table->vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
-		return SamplerHandle(nullptr);
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	register_sampler(sampler, Fossilize::Hash(stock_sampler) | 0x10000, info);
-#else
-	(void)stock_sampler;
-#endif
-	SamplerHandle handle(handle_pool.samplers.allocate(this, sampler, sampler_info));
-	handle->set_internal_sync_object();
-	return handle;
+	auto *sampler = immutable_ycbcr_conversions.find(h.get());
+	if (!sampler)
+		sampler = immutable_ycbcr_conversions.emplace_yield(h.get(), h.get(), this, info);
+	return sampler;
 }
 
 SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)
 {
-	auto info = fill_vk_sampler_info(sampler_info);
+	auto info = Sampler::fill_vk_sampler_info(sampler_info);
 	VkSampler sampler;
 	if (table->vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
 		return SamplerHandle(nullptr);
-	return SamplerHandle(handle_pool.samplers.allocate(this, sampler, sampler_info));
+	return SamplerHandle(handle_pool.samplers.allocate(this, sampler, sampler_info, false));
 }
 
 BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessResourceType type,

@@ -58,13 +58,13 @@ struct ResourceLayout
 	uint32_t push_constant_size = 0;
 	uint32_t spec_constant_mask = 0;
 	uint32_t bindless_set_mask = 0;
-	enum { Version = 1 };
+	enum { Version = 2 };
 
 	bool unserialize(const uint8_t *data, size_t size);
 	bool serialize(uint8_t *data, size_t size) const;
 	static size_t serialization_size();
 };
-static_assert(sizeof(DescriptorSetLayout) % 8 == 0, "Size of DescriptorSetLayout does not align to 64 bytes.");
+static_assert(sizeof(DescriptorSetLayout) % 8 == 0, "Size of DescriptorSetLayout does not align to 64 bits.");
 
 struct CombinedResourceLayout
 {
@@ -103,10 +103,17 @@ struct ResourceBindings
 	uint8_t push_constant_data[VULKAN_PUSH_CONSTANT_SIZE];
 };
 
+struct ImmutableSamplerBank
+{
+	const ImmutableSampler *samplers[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
+	static void hash(Util::Hasher &h, const ImmutableSamplerBank *bank);
+};
+
 class PipelineLayout : public HashedObject<PipelineLayout>
 {
 public:
-	PipelineLayout(Util::Hash hash, Device *device, const CombinedResourceLayout &layout);
+	PipelineLayout(Util::Hash hash, Device *device, const CombinedResourceLayout &layout,
+	               const ImmutableSamplerBank *sampler_bank);
 	~PipelineLayout();
 
 	const CombinedResourceLayout &get_resource_layout() const
@@ -141,13 +148,19 @@ private:
 class Shader : public HashedObject<Shader>
 {
 public:
-	Shader(Util::Hash hash, Device *device, const uint32_t *data, size_t size,
-	       const ResourceLayout *layout = nullptr);
+	Shader(Util::Hash binding, Device *device, const uint32_t *data, size_t size,
+	       const ResourceLayout *layout = nullptr,
+	       const ImmutableSamplerBank *sampler_bank = nullptr);
 	~Shader();
 
 	const ResourceLayout &get_layout() const
 	{
 		return layout;
+	}
+
+	const ImmutableSamplerBank &get_immutable_sampler_bank() const
+	{
+		return immutable_sampler_bank;
 	}
 
 	VkShaderModule get_module() const
@@ -163,6 +176,7 @@ private:
 	Device *device;
 	VkShaderModule module = VK_NULL_HANDLE;
 	ResourceLayout layout;
+	ImmutableSamplerBank immutable_sampler_bank;
 };
 
 class Program : public HashedObject<Program>, public InternalSyncEnabled

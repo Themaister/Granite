@@ -146,47 +146,6 @@ Image::~Image()
 	}
 }
 
-YCbCrImage::YCbCrImage(Device *device_, YCbCrFormat format_, ImageHandle image_, const ImageHandle *planes_, unsigned num_planes_)
-	: device(device_), format(format_), num_planes(num_planes_)
-{
-	VK_ASSERT(num_planes <= 3);
-	image = std::move(image_);
-	image->set_internal_sync_object();
-	image->get_view().set_internal_sync_object();
-
-	for (unsigned i = 0; i < num_planes; i++)
-	{
-		planes[i] = planes_[i];
-		planes[i]->set_internal_sync_object();
-		planes[i]->get_view().set_internal_sync_object();
-	}
-}
-
-YCbCrImage::~YCbCrImage()
-{
-}
-
-Image &YCbCrImage::get_ycbcr_image()
-{
-	return *image;
-}
-
-Image &YCbCrImage::get_plane_image(unsigned plane)
-{
-	VK_ASSERT(plane < num_planes);
-	return *planes[plane];
-}
-
-unsigned YCbCrImage::get_num_planes() const
-{
-	return num_planes;
-}
-
-YCbCrFormat YCbCrImage::get_ycbcr_format() const
-{
-	return format;
-}
-
 const Buffer &LinearHostImage::get_host_visible_buffer() const
 {
 	return *cpu_image;
@@ -259,11 +218,6 @@ void ImageViewDeleter::operator()(ImageView *view)
 void ImageDeleter::operator()(Image *image)
 {
 	image->device->handle_pool.images.free(image);
-}
-
-void ImageDeleter::operator()(YCbCrImage *image)
-{
-	image->device->handle_pool.ycbcr_images.free(image);
 }
 
 void LinearHostImageDeleter::operator()(LinearHostImage *image)

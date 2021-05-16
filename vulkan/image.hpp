@@ -330,6 +330,7 @@ struct ImageCreateInfo
 	const DeviceAllocation **memory_aliases = nullptr;
 	unsigned num_memory_aliases = 0;
 	const ImmutableYcbcrConversion *ycbcr_conversion = nullptr;
+	void *pnext = nullptr;
 
 	static ImageCreateInfo immutable_image(const TextureFormatLayout &layout)
 	{

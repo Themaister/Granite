@@ -79,6 +79,14 @@ static const QueueIndices queue_flush_order[] = {
 	QUEUE_INDEX_COMPUTE
 };
 
+#ifdef GRANITE_VULKAN_BETA
+static constexpr VkImageUsageFlags vk_video_image_usage_flags =
+		VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR | VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR | VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR |
+		VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR | VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR | VK_IMAGE_USAGE_VIDEO_ENCODE_DST_BIT_KHR;
+#else
+static constexpr VkImageUsageFlags vk_video_image_usage_flags = 0;
+#endif
+
 Device::Device()
     : framebuffer_allocator(this)
     , transient_allocator(this)
@@ -3042,7 +3050,8 @@ public:
 		VkDevice vkdevice = device->get_device();
 
 		if ((create_info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-		                          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) == 0)
+		                          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
+		                          vk_video_image_usage_flags)) == 0)
 		{
 			LOGE("Cannot create image view unless certain usage flags are present.\n");
 			return false;
@@ -3289,10 +3298,12 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 	info.usage = create_info.usage;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.flags = create_info.flags;
+	info.pNext = create_info.pnext;
 	VK_ASSERT(create_info.domain != ImageDomain::Transient);
 
 	VkExternalMemoryImageCreateInfoKHR externalInfo = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO_KHR };
 	externalInfo.handleTypes = handle_type;
+	externalInfo.pNext = info.pNext;
 	info.pNext = &externalInfo;
 
 	VK_ASSERT(image_format_is_supported(create_info.format, image_usage_to_features(info.usage), info.tiling));
@@ -3645,6 +3656,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	info.mipLevels = create_info.levels;
 	info.arrayLayers = create_info.layers;
 	info.samples = create_info.samples;
+	info.pNext = create_info.pnext;
 
 	if (create_info.domain == ImageDomain::LinearHostCached || create_info.domain == ImageDomain::LinearHost)
 	{
@@ -3682,7 +3694,10 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		{
 			create_unorm_srgb_views = true;
 			if (ext.supports_image_format_list)
+			{
+				format_info.pNext = info.pNext;
 				info.pNext = &format_info;
+			}
 		}
 	}
 
@@ -3797,7 +3812,8 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	tmpinfo.levels = info.mipLevels;
 
 	bool has_view = (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-	                               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) != 0 &&
+	                               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
+	                               vk_video_image_usage_flags)) != 0 &&
 	                (create_info.misc & IMAGE_MISC_NO_DEFAULT_VIEWS_BIT) == 0;
 
 	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;

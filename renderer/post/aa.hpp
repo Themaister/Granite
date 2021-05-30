@@ -40,9 +40,6 @@ enum class PostAAType
 	TAA_Low,
 	TAA_Medium,
 	TAA_High,
-	TAA_Ultra,
-	TAA_Extreme,
-	TAA_Nightmare,
 	None
 };
 

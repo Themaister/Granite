@@ -1,77 +1,32 @@
 #ifndef REPROJECTION_H_
 #define REPROJECTION_H_
 
-#ifndef REPROJECTION_HDR
-#define REPROJECTION_HDR 1
-#endif
-#ifndef REPROJECTION_YCgCo
-#define REPROJECTION_YCgCo 1
-#endif
+#include "reprojection_color_space.h"
 
 #define REPROJECTION_CLAMP_METHOD_AABB 0
 #define REPROJECTION_CLAMP_METHOD_CLAMP 1
+
 #ifndef REPROJECTION_CLAMP_METHOD
 #define REPROJECTION_CLAMP_METHOD REPROJECTION_CLAMP_METHOD_AABB
-#endif
-
-#ifndef REPROJECTION_VARIANCE_CLIPPING
-#define REPROJECTION_VARIANCE_CLIPPING 1
 #endif
 
 #define NEIGHBOR_METHOD_5TAP_CROSS 0
 #define NEIGHBOR_METHOD_5TAP_DIAMOND 1
 #define NEIGHBOR_METHOD_3x3 2
 #define NEIGHBOR_METHOD_ROUNDED_CORNER 3
-#define NEIGHBOR_METHOD_ROUNDED_CORNER_VARIANCE 4
-#define NEIGHBOR_METHOD_VARIANCE 5
+#define NEIGHBOR_METHOD_VARIANCE 4
+
 #ifndef NEIGHBOR_METHOD
-#define NEIGHBOR_METHOD NEIGHBOR_METHOD_ROUNDED_CORNER_VARIANCE
+#define NEIGHBOR_METHOD NEIGHBOR_METHOD_VARIANCE
 #endif
 
 #define NEAREST_METHOD_5TAP_CROSS 0
 #define NEAREST_METHOD_5TAP_DIAMOND 1
 #define NEAREST_METHOD_3x3 2
+
 #ifndef NEAREST_METHOD
 #define NEAREST_METHOD NEAREST_METHOD_3x3
 #endif
-
-// max3 based tonemapper.
-mediump float RCP(mediump float v)
-{
-    return 1.0 / v;
-}
-
-mediump float Max3(mediump float x, mediump float y, mediump float z)
-{
-    return max(x, max(y, z));
-}
-
-mediump vec3 Tonemap(mediump vec3 c)
-{
-    return c * RCP(Max3(c.r, c.g, c.b) + 1.0);
-}
-
-mediump vec3 TonemapInvert(mediump vec3 c)
-{
-    return c * RCP(1.0 - Max3(c.r, c.g, c.b));
-}
-
-mediump vec3 RGB_to_YCgCo(mediump vec3 c)
-{
-    return vec3(
-        0.25 * c.r + 0.5 * c.g + 0.25 * c.b,
-        0.5 * c.g - 0.25 * c.r - 0.25 * c.b,
-        0.5 * c.r - 0.5 * c.b);
-}
-
-mediump vec3 YCgCo_to_RGB(mediump vec3 c)
-{
-    mediump float tmp = c.x - c.y;
-    return vec3(tmp + c.z, c.x + c.y, tmp - c.z);
-    // c.x - c.y + c.z = [0.25, 0.5, 0.25] - [-0.25, 0.5, -0.25] + [0.5, 0.0, -0.5] = [1.0, 0.0, 0.0]
-    // c.x + c.y       = [0.25, 0.5, 0.25] + [-0.25, 0.5, -0.25]                    = [0.0, 1.0, 0.0]
-    // c.x - c.y - c.z = [0.25, 0.5, 0.25] - [-0.25, 0.5, -0.25] - [0.5, 0.0, -0.5] = [0.0, 0.0, 1.0]
-}
 
 mediump vec3 clamp_box(mediump vec3 color, mediump vec3 lo, mediump vec3 hi)
 {
@@ -113,33 +68,7 @@ mediump vec3 clamp_history4(
     return clamp_box(color, lo, hi);
 }
 
-mediump vec3 convert_input(mediump vec3 color)
-{
-#if REPROJECTION_HDR && REPROJECTION_YCgCo
-    return RGB_to_YCgCo(Tonemap(color));
-#elif REPROJECTION_HDR
-    return Tonemap(color);
-#elif REPROJECTION_YCgCo
-    return RGB_to_YCgCo(color);
-#else
-    return color;
-#endif
-}
-
-#define SAMPLE_CURRENT(tex, uv, x, y) convert_input(textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb)
-
-mediump vec3 convert_to_output(mediump vec3 color)
-{
-#if REPROJECTION_HDR && REPROJECTION_YCgCo
-    return TonemapInvert(clamp(YCgCo_to_RGB(color), 0.0, 0.999));
-#elif REPROJECTION_HDR
-    return TonemapInvert(color);
-#elif REPROJECTION_YCgCo
-    return YCgCo_to_RGB(color);
-#else
-    return color;
-#endif
-}
+#define SAMPLE_CURRENT(tex, uv, x, y) HDRColorSpaceToTAA(textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb)
 
 #if NEIGHBOR_METHOD == NEIGHBOR_METHOD_5TAP_CROSS
 	#define NEED_CROSS 1
@@ -165,12 +94,6 @@ mediump vec3 convert_to_output(mediump vec3 color)
 	#define NEED_MINMAX 1
 	#define NEED_CORNER_ROUNDING 1
 	#define NEED_VARIANCE 0
-#elif NEIGHBOR_METHOD == NEIGHBOR_METHOD_ROUNDED_CORNER_VARIANCE
-	#define NEED_CROSS 1
-	#define NEED_DIAMOND 1
-	#define NEED_MINMAX 1
-	#define NEED_CORNER_ROUNDING 1
-	#define NEED_VARIANCE 1
 #elif NEIGHBOR_METHOD == NEIGHBOR_METHOD_VARIANCE
 	#define NEED_CROSS 1
 	#define NEED_DIAMOND 1
@@ -196,6 +119,7 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
     mediump vec3 c21 = SAMPLE_CURRENT(Current, UV, +1, 0);
     mediump vec3 c10 = SAMPLE_CURRENT(Current, UV, 0, -1);
     mediump vec3 c12 = SAMPLE_CURRENT(Current, UV, 0, +1);
+#if NEED_MINMAX
     lo = min(lo, c01);
     lo = min(lo, c21);
     lo = min(lo, c10);
@@ -204,6 +128,7 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
     hi = max(hi, c21);
     hi = max(hi, c10);
     hi = max(hi, c12);
+#endif
 #endif
 
 #if NEED_CORNER_ROUNDING
@@ -216,6 +141,7 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
     mediump vec3 c22 = SAMPLE_CURRENT(Current, UV, +1, +1);
     mediump vec3 c02 = SAMPLE_CURRENT(Current, UV, -1, +1);
     mediump vec3 c20 = SAMPLE_CURRENT(Current, UV, +1, -1);
+#if NEED_MINMAX
     lo = min(lo, c00);
     lo = min(lo, c22);
     lo = min(lo, c02);
@@ -225,6 +151,7 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
     hi = max(hi, c02);
     hi = max(hi, c20);
 #endif
+#endif
 
 #if NEED_CORNER_ROUNDING
 	lo = 0.5 * (corner_lo + lo);
@@ -232,20 +159,23 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
 #endif
 
 #if NEED_VARIANCE
-    vec3 m1 = (c00 + c01 + c02 + c10 + c11 + c12 + c20 + c21 + c22) / 9.0;
-    vec3 m2 =
-        c00 * c00 + c01 * c01 + c02 * c02 +
-        c10 * c10 + c11 * c11 + c12 * c12 +
-        c20 * c20 + c21 * c21 + c22 * c22;
-    vec3 sigma = sqrt(max(m2 / 9.0 - m1 * m1, 0.0));
-    const float gamma = 1.0;
-	#if NEED_MINMAX
-		lo = max(lo, m1 - gamma * sigma);
-		hi = min(hi, m1 + gamma * sigma);
-	#else
-		mediump vec3 lo = m1 - gamma * sigma;
-		mediump vec3 hi = m1 + gamma * sigma;
-	#endif
+    mediump vec3 m1 = (
+        c00 + 2.0 * c01 + c02 +
+        2.0 * c10 + 4.0 * c11 + 2.0 * c12 +
+        c20 + 2.0 * c21 + c22) / 16.0;
+    mediump vec3 m2 =
+        c00 * c00 + 2.0 * c01 * c01 + c02 * c02 +
+        2.0 * c10 * c10 + 4.0 * c11 * c11 + 2.0 * c12 * c12 +
+        c20 * c20 + 2.0 * c21 * c21 + c22 * c22;
+    mediump vec3 sigma = sqrt(max(m2 / 16.0 - m1 * m1, 0.0));
+    const mediump float gamma = 1.25;
+    #if NEED_MINMAX
+        lo = max(lo, m1 - gamma * sigma);
+        hi = min(hi, m1 + gamma * sigma);
+    #else
+        mediump vec3 lo = m1 - gamma * sigma;
+        mediump vec3 hi = m1 + gamma * sigma;
+    #endif
 #endif
 
     return clamp_box(history_color, lo, hi);
@@ -253,11 +183,7 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
 
 mediump float luminance(mediump vec3 color)
 {
-#if REPROJECTION_YCgCo
     return color.x;
-#else
-	return dot(color, vec3(0.29, 0.60, 0.11));
-#endif
 }
 
 mediump float unbiased_luma_weight(mediump vec3 history, mediump vec3 current)

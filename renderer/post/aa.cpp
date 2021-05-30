@@ -138,9 +138,6 @@ bool setup_before_post_chain_antialiasing(PostAAType type, RenderGraph &graph, T
 	case PostAAType::TAA_Low: taa_quality = TAAQuality::Low; break;
 	case PostAAType::TAA_Medium: taa_quality = TAAQuality::Medium; break;
 	case PostAAType::TAA_High: taa_quality = TAAQuality::High; break;
-	case PostAAType::TAA_Ultra: taa_quality = TAAQuality::Ultra; break;
-	case PostAAType::TAA_Extreme: taa_quality = TAAQuality::Extreme; break;
-	case PostAAType::TAA_Nightmare: taa_quality = TAAQuality::Nightmare; break;
 	default: return false;
 	}
 
@@ -214,12 +211,6 @@ PostAAType string_to_post_antialiasing_type(const char *type)
 		return PostAAType::TAA_Medium;
 	else if (strcmp(type, "taaHigh") == 0)
 		return PostAAType::TAA_High;
-	else if (strcmp(type, "taaUltra") == 0)
-		return PostAAType::TAA_Ultra;
-	else if (strcmp(type, "taaExtreme") == 0)
-		return PostAAType::TAA_Extreme;
-	else if (strcmp(type, "taaNightmare") == 0)
-		return PostAAType::TAA_Nightmare;
 	else if (strcmp(type, "none") == 0)
 		return PostAAType::None;
 	else

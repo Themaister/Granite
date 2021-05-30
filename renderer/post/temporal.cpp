@@ -164,7 +164,12 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, float scaling
 	AttachmentInfo taa_output;
 	taa_output.size_class = SizeClass::InputRelative;
 	taa_output.size_relative_name = input;
-	taa_output.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	taa_output.format = graph.get_device().image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32,
+	                                                                 VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) ?
+	                    VK_FORMAT_B10G11R11_UFLOAT_PACK32 : VK_FORMAT_R16G16B16A16_SFLOAT;
+
+	AttachmentInfo taa_history = taa_output;
+	taa_history.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 
 #define TAA_MOTION_VECTORS 0
 
@@ -205,12 +210,13 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, float scaling
 
 	auto &resolve = graph.add_pass("taa-resolve", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	resolve.add_color_output(output, taa_output);
+	resolve.add_color_output(output + "-history", taa_history);
 	auto &input_res = resolve.add_texture_input(input);
 	auto &input_depth_res = resolve.add_texture_input(input_depth);
 #if TAA_MOTION_VECTORS
 	resolve.add_texture_input("taa-mvs");
 #endif
-	auto &history = resolve.add_history_input(output);
+	auto &history = resolve.add_history_input(output + "-history");
 
 	resolve.set_build_render_pass([&, q = Util::ecast(quality)](Vulkan::CommandBuffer &cmd) {
 		auto &image = graph.get_physical_texture_resource(input_res);

@@ -76,10 +76,7 @@ enum class TAAQuality
 {
 	Low,
 	Medium,
-	High,
-	Ultra,
-	Extreme,
-	Nightmare
+	High
 };
 void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, float scaling_factor,
                        const std::string &input, const std::string &input_depth,

@@ -75,7 +75,8 @@ mediump vec3 compute_spot_color(int index, PositionalLightInfo spot, vec3 world_
 	light_dir = normalize(light_dir_full);
 	mediump float light_dist = max(MIN_SPOT_DIST, length(light_dir_full));
 	mediump float cone_angle = dot(normalize(world_pos - light_pos), light_primary_direction);
-	mediump float cone_falloff = clamp(cone_angle * spot.spot_scale + spot.spot_bias, 0.0, 1.0);
+	mediump vec2 spot_scale_bias = unpackHalf2x16(spot.spot_scale_bias);
+	mediump float cone_falloff = clamp(cone_angle * spot_scale_bias.x + spot_scale_bias.y, 0.0, 1.0);
 	cone_falloff *= cone_falloff;
 	cone_falloff *= 1.0 - smoothstep(0.9, 1.0, light_dist * spot.inv_radius);
 

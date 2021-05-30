@@ -155,9 +155,8 @@ mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 norma
 
 			PositionalLightInfo scalar_light;
 			scalar_light.color = subgroupShuffle(light_info.color, bit_index);
-			scalar_light.spot_scale = subgroupShuffle(light_info.spot_scale, bit_index);
+			scalar_light.spot_scale_bias = subgroupShuffle(light_info.spot_scale_bias, bit_index);
 			scalar_light.position = subgroupShuffle(light_info.position, bit_index);
-			scalar_light.spot_bias = subgroupShuffle(light_info.spot_bias, bit_index);
 			scalar_light.direction = subgroupShuffle(light_info.direction, bit_index);
 			scalar_light.inv_radius = subgroupShuffle(light_info.inv_radius, bit_index);
 			int index = subgroupShuffle(current_index, bit_index);

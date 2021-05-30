@@ -11,9 +11,9 @@
 struct PositionalLightInfo
 {
 	mediump vec3 color;
-	mediump float spot_scale;
+	uint spot_scale_bias;
 	vec3 position;
-	mediump float spot_bias;
+	uint padding;
 	mediump vec3 direction;
 	mediump float inv_radius;
 };

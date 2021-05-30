@@ -120,9 +120,9 @@ PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
 
 	return {
 		color * (scale_factor * scale_factor),
-		spot_scale,
+		floatToHalf(vec2(spot_scale, spot_bias)),
 		transform[3].xyz(),
-		spot_bias,
+		{},
 		-normalize(transform[2].xyz()),
 		1.0f / max_range,
 	};
@@ -491,9 +491,9 @@ PositionalFragmentInfo PointLight::get_shader_info(const mat4 &transform) const
 
 	return {
 		color * (scale_factor * scale_factor),
-		0.0f,
+		{},
 		transform[3].xyz(),
-		0.0f,
+		{},
 		normalize(transform[2].xyz()),
 		1.0f / max_range,
 	};

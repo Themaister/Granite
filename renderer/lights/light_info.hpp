@@ -35,9 +35,9 @@ struct PointTransform
 struct PositionalFragmentInfo
 {
 	vec3 color;
-	float spot_scale;
+	u16vec2 spot_scale_bias;
 	vec3 position;
-	float spot_bias;
+	u16vec2 padding;
 	vec3 direction;
 	float inv_radius;
 };

@@ -90,7 +90,7 @@ mediump vec3 compute_cluster_light(
 			int index = 32 * i + bit_index;
 			if ((type_mask & (1 << bit_index)) != 0)
 			{
-				result += compute_point_light(index, material_base_color, material_normal,
+				result += compute_point_light(index, POINT_DATA(index), material_base_color, material_normal,
 						material_metallic, material_roughness, world_pos, camera_pos);
 #ifdef CLUSTERING_DEBUG
 				result += vec3(0.1, 0.0, 0.0);
@@ -98,7 +98,7 @@ mediump vec3 compute_cluster_light(
 			}
 			else
 			{
-				result += compute_spot_light(index, material_base_color, material_normal,
+				result += compute_spot_light(index, SPOT_DATA(index), material_base_color, material_normal,
 						material_metallic, material_roughness, world_pos, camera_pos);
 #ifdef CLUSTERING_DEBUG
 				result += vec3(0.0, 0.1, 0.0);
@@ -118,13 +118,65 @@ mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 norma
 	mediump vec3 result = vec3(0.0);
 	int count = cluster_global_transforms.num_lights;
 	uint type_mask = cluster_global_transforms.type_mask;
+
+#ifdef CLUSTERING_WAVE_UNIFORM
+	vec3 aabb_lo = subgroupMin(world_pos);
+	vec3 aabb_hi = subgroupMax(world_pos);
+	vec3 aabb_radius3 = 0.5 * (aabb_hi - aabb_lo);
+	float aabb_radius = subgroupBroadcastFirst(length(aabb_radius3));
+	vec3 aabb_center = subgroupBroadcastFirst(0.5 * (aabb_lo + aabb_hi));
+	uvec4 ballot = subgroupBallot(true);
+	int active_lanes = int(subgroupBallotBitCount(ballot));
+	int bit_offset = int(subgroupBallotExclusiveBitCount(ballot));
+
+	// Wave uniform loop
+	for (int i = 0; i < count; i += active_lanes)
+	{
+		int current_index = i + bit_offset;
+		PositionalLightInfo light_info;
+
+		bool active_volume = false;
+		if (current_index < count)
+		{
+			// SPOT_DATA == POINT_DATA for bindless.
+			light_info = SPOT_DATA(i);
+			float radius = 1.0 / light_info.inv_radius;
+			float shortest_distance = length(light_info.position - aabb_center);
+			// Treats spot lights as points, garbage culling, but probably good enough in practice.
+			active_volume = shortest_distance < (radius + aabb_radius);
+		}
+
+		uvec4 active_ballot = subgroupBallot(active_volume);
+		// Wave uniform loop
+		while (any(notEqual(active_ballot, uvec4(0u))))
+		{
+			uint bit_index = subgroupBallotFindLSB(active_ballot);
+			active_ballot &= subgroupBallot(bit_index != gl_SubgroupInvocationID);
+
+			PositionalLightInfo scalar_light;
+			scalar_light.color = subgroupShuffle(light_info.color, bit_index);
+			scalar_light.spot_scale = subgroupShuffle(light_info.spot_scale, bit_index);
+			scalar_light.position = subgroupShuffle(light_info.position, bit_index);
+			scalar_light.spot_bias = subgroupShuffle(light_info.spot_bias, bit_index);
+			scalar_light.direction = subgroupShuffle(light_info.direction, bit_index);
+			scalar_light.inv_radius = subgroupShuffle(light_info.inv_radius, bit_index);
+			int index = subgroupShuffle(current_index, bit_index);
+
+			if ((type_mask & (1u << i)) != 0u)
+				result += compute_irradiance_point_light(index, scalar_light, normal, world_pos);
+			else
+				result += compute_irradiance_spot_light(index, scalar_light, normal, world_pos);
+		}
+	}
+#else
 	for (int i = 0; i < count; i++)
 	{
 		if ((type_mask & (1u << i)) != 0u)
-			result += compute_irradiance_point_light(i, normal, world_pos);
+			result += compute_irradiance_point_light(i, POINT_DATA(i), normal, world_pos);
 		else
-			result += compute_irradiance_spot_light(i, normal, world_pos);
+			result += compute_irradiance_spot_light(i, SPOT_DATA(i), normal, world_pos);
 	}
+#endif
 	return result;
 }
 #endif

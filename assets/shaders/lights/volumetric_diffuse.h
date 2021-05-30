@@ -98,12 +98,15 @@ mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal)
 	for (int i = 0; i < volumetric.num_volumes; i += active_lanes)
 	{
 		int current_index = i + bit_offset;
-		DiffuseVolumeParameters volume = volumetric.volumes[current_index];
+		DiffuseVolumeParameters volume;
 
 		// Test by intersecting AABBs.
 		bool active_volume = false;
 		if (current_index < volumetric.num_volumes)
+		{
+			volume = volumetric.volumes[current_index];
 			active_volume = all(greaterThan(aabb_hi, volume.world_lo.xyz)) && all(lessThan(aabb_lo, volume.world_hi.xyz));
+		}
 		uvec4 active_ballot = subgroupBallot(active_volume);
 
 		// Wave uniform loop

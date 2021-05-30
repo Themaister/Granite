@@ -150,14 +150,14 @@ mediump vec3 compute_cluster_light(
 
 	for (uint i = 0u; i < spot_count; i++)
 	{
-		result += compute_spot_light(cluster_list.elements[spot_start + i],
+		result += compute_spot_light(cluster_list.elements[spot_start + i], SPOT_DATA(spot_start + i),
 			material_base_color, material_normal,
 			material_metallic, material_roughness, world_pos, camera_pos);
 	}
 
 	for (uint i = 0u; i < point_count; i++)
 	{
-		result += compute_point_light(cluster_list.elements[point_start + i],
+		result += compute_point_light(cluster_list.elements[point_start + i], POINT_DATA(point_start + i),
 			material_base_color, material_normal,
 			material_metallic, material_roughness, world_pos, camera_pos);
 	}
@@ -186,7 +186,7 @@ mediump vec3 compute_cluster_light(
 	while (bits_x != 0u)
 	{
 		int index = findLSB(bits_x);
-		result += compute_spot_light(index, material_base_color, material_normal,
+		result += compute_spot_light(index, SPOT_DATA(index), material_base_color, material_normal,
 				material_metallic, material_roughness, world_pos, camera_pos);
 		bits_x ^= 1u << uint(index);
 	}
@@ -200,7 +200,7 @@ mediump vec3 compute_cluster_light(
 	while (bits_y != 0u)
 	{
 		int index = findLSB(bits_y);
-		result += compute_point_light(index, material_base_color, material_normal,
+		result += compute_point_light(index, POINT_DATA(index), material_base_color, material_normal,
 				material_metallic, material_roughness, world_pos, camera_pos);
 		bits_y ^= 1u << uint(index);
 	}

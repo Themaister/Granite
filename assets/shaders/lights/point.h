@@ -68,15 +68,15 @@ mediump float point_scatter_phase_function(mediump float VoL)
 
 const float MIN_POINT_DIST = 0.1;
 
-mediump vec3 compute_point_color(int index, vec3 world_pos, out mediump vec3 light_dir)
+mediump vec3 compute_point_color(int index, PositionalLightInfo point, vec3 world_pos, out mediump vec3 light_dir)
 {
-	vec3 light_pos = POINT_DATA(index).position;
+	vec3 light_pos = point.position;
 	vec3 light_dir_full = world_pos - light_pos;
 	light_dir = normalize(-light_dir_full);
 
 	mediump vec3 point_color;
 	mediump float light_dist = max(MIN_POINT_DIST, length(light_dir_full));
-	mediump float static_falloff = 1.0 - smoothstep(0.9, 1.0, light_dist * POINT_DATA(index).inv_radius);
+	mediump float static_falloff = 1.0 - smoothstep(0.9, 1.0, light_dist * point.inv_radius);
 
 	if (static_falloff > 0.0)
 	{
@@ -120,7 +120,7 @@ mediump vec3 compute_point_color(int index, vec3 world_pos, out mediump vec3 lig
 #else
 		const float shadow_falloff = 1.0;
 #endif
-		point_color = POINT_DATA(index).color * (shadow_falloff * static_falloff) / (light_dist * light_dist);
+		point_color = point.color * (shadow_falloff * static_falloff) / (light_dist * light_dist);
 	}
 	else
 		point_color = vec3(0.0);
@@ -131,24 +131,24 @@ mediump vec3 compute_point_color(int index, vec3 world_pos, out mediump vec3 lig
 mediump vec3 compute_point_scatter_light(int index, vec3 world_pos, vec3 camera_pos)
 {
 	mediump vec3 light_dir;
-	mediump vec3 point_color = compute_point_color(index, world_pos, light_dir);
+	mediump vec3 point_color = compute_point_color(index, POINT_DATA(index), world_pos, light_dir);
 	float VoL = dot(normalize(camera_pos - world_pos), normalize(POINT_DATA(index).position - world_pos));
 	return point_color * point_scatter_phase_function(VoL);
 }
 
-mediump vec3 compute_irradiance_point_light(int index,
+mediump vec3 compute_irradiance_point_light(int index, PositionalLightInfo point,
                                             mediump vec3 material_normal,
                                             vec3 world_pos)
 {
 	mediump vec3 light_dir;
-	mediump vec3 point_color = compute_point_color(index, world_pos, light_dir);
+	mediump vec3 point_color = compute_point_color(index, point, world_pos, light_dir);
 	mediump vec3 L = light_dir;
 	mediump vec3 N = material_normal;
 	mediump float NoL = clamp(dot(N, L), 0.0, 1.0);
 	return point_color * NoL * (1.0 / PI);
 }
 
-mediump vec3 compute_point_light(int index,
+mediump vec3 compute_point_light(int index, PositionalLightInfo point,
                          mediump vec3 material_base_color,
                          mediump vec3 material_normal,
                          mediump float material_metallic,
@@ -156,7 +156,7 @@ mediump vec3 compute_point_light(int index,
                          vec3 world_pos, vec3 camera_pos)
 {
 	mediump vec3 light_dir;
-	mediump vec3 point_color = compute_point_color(index, world_pos, light_dir);
+	mediump vec3 point_color = compute_point_color(index, point, world_pos, light_dir);
 
 #ifdef POINT_LIGHT_EARLY_OUT
 	if (all(equal(point_color, vec3(0.0))))

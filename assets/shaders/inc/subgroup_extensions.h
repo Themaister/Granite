@@ -25,4 +25,8 @@
 #extension GL_KHR_shader_subgroup_arithmetic : require
 #endif
 
+#ifdef SUBGROUP_SHUFFLE
+#extension GL_KHR_shader_subgroup_shuffle : require
+#endif
+
 #endif

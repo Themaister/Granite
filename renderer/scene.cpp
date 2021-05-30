@@ -684,6 +684,8 @@ void Scene::update_transform_listener_components()
 				l->world_to_texture[i] = world_to_texture[i];
 				l->texture_to_world[i] = texture_to_world[i];
 			}
+			l->world_lo = transform->world_aabb.get_minimum4();
+			l->world_hi = transform->world_aabb.get_maximum4();
 			l->timestamp = timestamp->last_timestamp;
 		}
 	}

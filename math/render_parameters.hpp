@@ -119,6 +119,8 @@ struct ClustererParametersBindless
 struct DiffuseVolumeParameters
 {
 	vec4 world_to_texture[3];
+	vec4 world_lo;
+	vec4 world_hi;
 	float lo_tex_coord_x;
 	float hi_tex_coord_x;
 	float guard_band_factor;

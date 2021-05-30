@@ -182,7 +182,8 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 		// Try to enable wave-optimizations.
 		static const VkSubgroupFeatureFlags required_subgroup =
 				VK_SUBGROUP_FEATURE_BALLOT_BIT |
-				VK_SUBGROUP_FEATURE_ARITHMETIC_BIT;
+				VK_SUBGROUP_FEATURE_ARITHMETIC_BIT |
+				VK_SUBGROUP_FEATURE_SHUFFLE_BIT;
 
 		auto &subgroup = cmd.get_device().get_device_features().subgroup_properties;
 		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&

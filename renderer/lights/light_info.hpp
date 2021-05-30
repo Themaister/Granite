@@ -37,7 +37,7 @@ struct PositionalFragmentInfo
 	vec3 color;
 	u16vec2 spot_scale_bias;
 	vec3 position;
-	u16vec2 padding;
+	u16vec2 offset_radius;
 	vec3 direction;
 	float inv_radius;
 };

@@ -118,11 +118,32 @@ PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
 	float spot_scale = 1.0f / max(0.001f, inner_cone - outer_cone);
 	float spot_bias = -outer_cone * spot_scale;
 
+	// Simplified version of Frustum::get_bounding_sphere, where N = 0.
+	// Compute tan^2(outer_angle) = sin^2(x) / cos^2(x) here.
+	// x^2 == f^2 + (R - x)^2 =>
+	// x^2 == F + R^2 - 2Rx + x^2 =>
+	// x = (F + R^2) / 2R =>
+	// x = 0.5 * (tan^2(angle) * R + R) =>
+	// x = 0.5 * (tan^2(angle) + 1) * R
+	float tan2 = (1.0f - outer_cone * outer_cone) / (outer_cone * outer_cone);
+	float center_distance = ((tan2 + 1.0f) * max_range) * 0.5f;
+	float spot_offset, spot_radius;
+	if (center_distance < max_range)
+	{
+		spot_offset = center_distance;
+		spot_radius = center_distance;
+	}
+	else
+	{
+		spot_offset = max_range;
+		spot_radius = muglm::sqrt(tan2) * max_range;
+	}
+
 	return {
 		color * (scale_factor * scale_factor),
 		floatToHalf(vec2(spot_scale, spot_bias)),
 		transform[3].xyz(),
-		{},
+		floatToHalf(vec2(spot_offset, spot_radius)),
 		-normalize(transform[2].xyz()),
 		1.0f / max_range,
 	};
@@ -493,7 +514,7 @@ PositionalFragmentInfo PointLight::get_shader_info(const mat4 &transform) const
 		color * (scale_factor * scale_factor),
 		{},
 		transform[3].xyz(),
-		{},
+		floatToHalf(vec2(0.0f, max_range)),
 		normalize(transform[2].xyz()),
 		1.0f / max_range,
 	};

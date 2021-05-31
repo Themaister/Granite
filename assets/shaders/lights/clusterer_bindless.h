@@ -139,9 +139,10 @@ mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 norma
 		if (current_index < count)
 		{
 			// SPOT_DATA == POINT_DATA for bindless.
-			light_info = SPOT_DATA(i);
-			float radius = 1.0 / light_info.inv_radius;
-			float shortest_distance = length(light_info.position - aabb_center);
+			light_info = SPOT_DATA(current_index);
+			vec2 offset_radius = unpackHalf2x16(light_info.offset_radius);
+			float radius = offset_radius.y;
+			float shortest_distance = length(light_info.position + light_info.direction * offset_radius.x - aabb_center);
 			// Treats spot lights as points, garbage culling, but probably good enough in practice.
 			active_volume = shortest_distance < (radius + aabb_radius);
 		}
@@ -161,7 +162,7 @@ mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 norma
 			scalar_light.inv_radius = subgroupShuffle(light_info.inv_radius, bit_index);
 			int index = subgroupShuffle(current_index, bit_index);
 
-			if ((type_mask & (1u << i)) != 0u)
+			if ((type_mask & (1u << index)) != 0u)
 				result += compute_irradiance_point_light(index, scalar_light, normal, world_pos);
 			else
 				result += compute_irradiance_spot_light(index, scalar_light, normal, world_pos);

@@ -13,7 +13,7 @@ struct PositionalLightInfo
 	mediump vec3 color;
 	uint spot_scale_bias;
 	vec3 position;
-	uint padding;
+	uint offset_radius;
 	mediump vec3 direction;
 	mediump float inv_radius;
 };

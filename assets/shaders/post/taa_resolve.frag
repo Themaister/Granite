@@ -60,17 +60,21 @@ void main()
         vec4 clip = vec4(2.0 * vUV - 1.0, depth, 1.0);
         vec4 reproj_pos = registers.reproj * clip;
         vec2 oldUV = reproj_pos.xy / reproj_pos.w;
+        vec2 MV = vUV - oldUV;
         #if REPROJECTION_CUBIC_HISTORY
             mediump vec3 history_color = sample_catmull_rom(PreviousFrame, oldUV, registers.rt_metrics);
         #else
-            mediump vec3 history_color = textureProjLod(PreviousFrame, reproj_pos.xyw, 0.0).rgb;
+            mediump vec3 history_color = textureLod(PreviousFrame, oldUV, 0.0).rgb;
         #endif
     #endif
 
-    history_color = clamp(history_color, vec3(0.0, -1.0, -1.0), vec3(1.0));
+    mediump float MV_length = length(MV);
+    mediump float MV_fast = min(MV_length * 50.0, 1.0);
+    mediump float gamma = mix(1.5, 0.5, MV_fast);
 
-    mediump float lerp_factor = unbiased_luma_weight(history_color, current) / 16.0;
-    history_color = clamp_history_box(history_color, CurrentFrame, vUV, current);
+    history_color = clamp(history_color, vec3(0.0, -1.0, -1.0), vec3(1.0));
+    mediump float lerp_factor = (1.0 + 2.0 * MV_fast) / 16.0;
+    history_color = clamp_history_box(history_color, CurrentFrame, vUV, current, gamma);
 
     mediump vec3 out_color = mix(history_color, current, lerp_factor);
     HistoryColor = out_color;

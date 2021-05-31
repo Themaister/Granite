@@ -107,7 +107,8 @@ mediump vec3 clamp_history4(
 mediump vec3 clamp_history_box(mediump vec3 history_color,
                                mediump sampler2D Current,
                                vec2 UV,
-                               mediump vec3 c11)
+                               mediump vec3 c11,
+                               mediump float gamma)
 {
 #if NEED_MINMAX
 	mediump vec3 lo = c11;
@@ -159,16 +160,16 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
 #endif
 
 #if NEED_VARIANCE
-    mediump vec3 m1 = (
+    vec3 m1 = (
         c00 + 2.0 * c01 + c02 +
         2.0 * c10 + 4.0 * c11 + 2.0 * c12 +
         c20 + 2.0 * c21 + c22) / 16.0;
-    mediump vec3 m2 =
+    vec3 m2 =
         c00 * c00 + 2.0 * c01 * c01 + c02 * c02 +
         2.0 * c10 * c10 + 4.0 * c11 * c11 + 2.0 * c12 * c12 +
         c20 * c20 + 2.0 * c21 * c21 + c22 * c22;
-    mediump vec3 sigma = sqrt(max(m2 / 16.0 - m1 * m1, 0.0));
-    const mediump float gamma = 1.25;
+    vec3 variance = max(m2 / 16.0 - m1 * m1, 0.0);
+    mediump vec3 sigma = sqrt(variance);
     #if NEED_MINMAX
         lo = max(lo, m1 - gamma * sigma);
         hi = min(hi, m1 + gamma * sigma);
@@ -179,21 +180,6 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
 #endif
 
     return clamp_box(history_color, lo, hi);
-}
-
-mediump float luminance(mediump vec3 color)
-{
-    return color.x;
-}
-
-mediump float unbiased_luma_weight(mediump vec3 history, mediump vec3 current)
-{
-	// Adjust lerp factor.
-	mediump float clamped_luma = luminance(history);
-	mediump float current_luma = luminance(current);
-	mediump float diff = abs(current_luma - clamped_luma) / max(current_luma, max(clamped_luma, 0.001));
-	diff = 1.0 - diff;
-	return 0.99 * diff * diff + 0.01;
 }
 
 float sample_nearest_depth_box(sampler2D Depth, vec2 UV, vec2 inv_resolution)

@@ -70,7 +70,7 @@ void main()
 
     mediump float MV_length = length(MV);
     mediump float MV_fast = min(MV_length * 50.0, 1.0);
-    mediump float gamma = mix(2.5, 0.5, MV_fast);
+    mediump float gamma = mix(1.5, 0.5, MV_fast);
 
     history_color = clamp(history_color, vec3(0.0, -1.0, -1.0), vec3(1.0));
     mediump float lerp_factor = (1.0 + 2.0 * MV_fast) / 16.0;

@@ -302,7 +302,7 @@ bool WSI::begin_frame()
 	LOGI("Waited for vacant frame context for %.3f ms.\n", (next_frame_end - next_frame_start) * 1e-6);
 #endif
 
-	if (swapchain == VK_NULL_HANDLE || platform->should_resize())
+	if (swapchain == VK_NULL_HANDLE || platform->should_resize() || swapchain_is_suboptimal)
 	{
 		update_framebuffer(platform->get_surface_width(), platform->get_surface_height());
 		platform->acknowledge_resize();
@@ -348,7 +348,7 @@ bool WSI::begin_frame()
 			result = VK_SUCCESS;
 #endif
 
-		if (result == VK_SUCCESS && fence)
+		if ((result >= 0) && fence)
 			fence->wait();
 
 		if (result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
@@ -361,7 +361,15 @@ bool WSI::begin_frame()
 		LOGI("vkAcquireNextImageKHR took %.3f ms.\n", (acquire_end - acquire_start) * 1e-6);
 #endif
 
-		if (result == VK_SUCCESS)
+		if (result == VK_SUBOPTIMAL_KHR)
+		{
+#ifdef VULKAN_DEBUG
+			LOGI("AcquireNextImageKHR is suboptimal, will recreate.\n");
+#endif
+			swapchain_is_suboptimal = true;
+		}
+
+		if (result >= 0)
 		{
 			has_acquired_swapchain_index = true;
 			acquire->signal_external();
@@ -383,8 +391,7 @@ bool WSI::begin_frame()
 
 			device->set_acquire_semaphore(swapchain_index, acquire);
 		}
-		else if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR ||
-		         result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
+		else if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
 		{
 			VK_ASSERT(swapchain_width != 0);
 			VK_ASSERT(swapchain_height != 0);
@@ -393,7 +400,8 @@ bool WSI::begin_frame()
 
 			if (!blocking_init_swapchain(swapchain_width, swapchain_height))
 				return false;
-			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format, swapchain_current_prerotate,
+			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height,
+			                       swapchain_format, swapchain_current_prerotate,
 			                       current_extra_usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 		}
 		else
@@ -480,7 +488,15 @@ bool WSI::end_frame()
 		LOGI("vkQueuePresentKHR took %.3f ms.\n", (present_end - present_start) * 1e-6);
 #endif
 
-		if (overall != VK_SUCCESS || result != VK_SUCCESS)
+		if (overall == VK_SUBOPTIMAL_KHR || result == VK_SUBOPTIMAL_KHR)
+		{
+#ifdef VULKAN_DEBUG
+			LOGI("QueuePresent is suboptimal, will recreate.\n");
+#endif
+			swapchain_is_suboptimal = true;
+		}
+
+		if (overall < 0 || result < 0)
 		{
 			LOGE("vkQueuePresentKHR failed.\n");
 			tear_down_swapchain();
@@ -1035,6 +1051,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	swapchain_width = swapchain_size.width;
 	swapchain_height = swapchain_size.height;
 	swapchain_format = surface_format.format;
+	swapchain_is_suboptimal = false;
 
 	LOGI("Created swapchain %u x %u (fmt: %u, transform: %u).\n", swapchain_width, swapchain_height,
 	     unsigned(swapchain_format), unsigned(swapchain_current_prerotate));

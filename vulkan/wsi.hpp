@@ -200,6 +200,7 @@ private:
 	PresentMode present_mode = PresentMode::SyncToVBlank;
 	VkImageUsageFlags current_extra_usage = 0;
 	VkImageUsageFlags extra_usage = 0;
+	bool swapchain_is_suboptimal = false;
 
 	enum class SwapchainError
 	{

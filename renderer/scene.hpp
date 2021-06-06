@@ -51,7 +51,7 @@ public:
 
 	void update_all_transforms();
 	void update_transform_tree();
-	//void update_transform_tree(TaskComposer &composer);
+	void update_transform_tree(TaskComposer &composer);
 	void update_transform_listener_components();
 	void update_cached_transforms_subset(unsigned index, unsigned num_indices);
 	size_t get_cached_transforms_count() const;
@@ -314,18 +314,19 @@ private:
 	Util::IntrusiveList<Entity> queued_entities;
 	void destroy_entities(Util::IntrusiveList<Entity> &entity_list);
 
-	static void update_transform_tree_node(Node &node, const mat4 &transform);
-
 	void update_cached_transforms_range(size_t start_index, size_t end_index);
 
 	// New transform update system:
 	enum { MaxNodeHierarchyLevels = 32 };
 	void push_pending_node_update(Node *node);
-	void distribute_per_level_updates();
+	void distribute_per_level_updates(TaskGroup *group);
 	void distribute_update_to_level(Node *update, unsigned level);
-	void perform_per_level_updates(unsigned level);
+	void perform_per_level_updates(unsigned level, TaskGroup *group);
 	Util::AtomicAppendBuffer<Node *, 8> pending_node_updates;
 	Util::AtomicAppendBuffer<Node *, 8> pending_node_updates_skin;
 	Util::AtomicAppendBuffer<Node *, 8> pending_node_update_per_level[MaxNodeHierarchyLevels];
+	std::atomic_uint32_t pending_hierarchy_level_mask;
+
+	void update_transform_tree(TaskComposer *composer);
 };
 }

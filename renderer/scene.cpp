@@ -51,6 +51,7 @@ Scene::Scene()
 	  render_pass_sinks(pool.get_component_group<RenderPassSinkComponent, RenderableComponent, CullPlaneComponent>()),
 	  render_pass_creators(pool.get_component_group<RenderPassComponent>())
 {
+	pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
 }
 
 Scene::~Scene()
@@ -459,17 +460,6 @@ static void update_skinning(Scene::Node &node)
 
 static const mat4 identity_transform(1.0f);
 
-void Scene::update_transform_tree_node(Node &node, const mat4 &transform)
-{
-	compute_model_transform(node.cached_transform.world_transform,
-	                        node.transform.scale, node.transform.rotation, node.transform.translation,
-	                        transform);
-
-	//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
-	node.update_timestamp();
-	node.clear_pending_update_no_atomic();
-}
-
 size_t Scene::get_cached_transforms_count() const
 {
 	return spatials.size();
@@ -489,21 +479,108 @@ void Scene::update_all_transforms()
 	update_cached_transforms_range(0, spatials.size());
 }
 
+static void perform_update_skinning(Scene::Node * const *updates, size_t count)
+{
+	for (size_t i = 0; i < count; i++)
+	{
+		auto *update = updates[i];
+		update_skinning(*update);
+	}
+}
+
+void Scene::update_transform_tree(TaskComposer *composer)
+{
+	if (composer)
+	{
+		auto &group = composer->begin_pipeline_stage();
+		group.set_desc("distribute-per-level-updates");
+		distribute_per_level_updates(&group);
+	}
+	else
+		distribute_per_level_updates(nullptr);
+
+	TaskGroupHandle perform_indirect_task;
+	if (composer)
+	{
+		auto &thread_group = composer->get_thread_group();
+		auto &group = composer->begin_pipeline_stage();
+		group.set_desc("dispatch-per-level-updates");
+		perform_indirect_task = thread_group.create_task();
+		group.enqueue_task([&, perform_indirect_task]() mutable {
+			uint32_t mask = pending_hierarchy_level_mask.load(std::memory_order_relaxed);
+			if (!mask)
+				return;
+			uint32_t num_pending_levels = 32 - leading_zeroes(mask);
+
+			TaskComposer stage_composer(thread_group);
+			for (unsigned level = 0, count = num_pending_levels; level < count; level++)
+			{
+				auto &level_group = stage_composer.begin_pipeline_stage();
+				level_group.set_desc("perform-per-level-update");
+				perform_per_level_updates(level, &level_group);
+			}
+			thread_group.add_dependency(*perform_indirect_task, *stage_composer.get_outgoing_task());
+		});
+	}
+	else
+	{
+		uint32_t mask = pending_hierarchy_level_mask.load(std::memory_order_relaxed);
+		if (mask)
+		{
+			uint32_t num_pending_levels = 32 - leading_zeroes(mask);
+			for (unsigned level = 0, count = num_pending_levels; level < count; level++)
+				perform_per_level_updates(level, nullptr);
+		}
+	}
+
+	if (composer)
+	{
+		auto &thread_group = composer->get_thread_group();
+		auto &group = composer->begin_pipeline_stage();
+		group.set_desc("perform-update-skinning");
+		thread_group.add_dependency(group, *perform_indirect_task);
+
+		pending_node_updates_skin.for_each_ranged([this, &group](Node *const *updates, size_t count) {
+			group.enqueue_task([=]() {
+				perform_update_skinning(updates, count);
+			});
+		});
+	}
+	else
+	{
+		pending_node_updates_skin.for_each_ranged([this](Node *const *updates, size_t count) {
+			perform_update_skinning(updates, count);
+		});
+	}
+
+	if (composer)
+	{
+		composer->begin_pipeline_stage().enqueue_task([this]() {
+			pending_node_updates.clear();
+			for (auto &l : pending_node_update_per_level)
+				l.clear();
+			pending_node_updates_skin.clear();
+			pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
+		});
+	}
+	else
+	{
+		pending_node_updates.clear();
+		for (auto &l : pending_node_update_per_level)
+			l.clear();
+		pending_node_updates_skin.clear();
+		pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
+	}
+}
+
 void Scene::update_transform_tree()
 {
-	distribute_per_level_updates();
+	update_transform_tree(nullptr);
+}
 
-	for (unsigned level = 0; level < MaxNodeHierarchyLevels; level++)
-		perform_per_level_updates(level);
-
-	pending_node_updates_skin.for_each_ranged([this](Node * const *updates, size_t count) {
-		for (size_t i = 0; i < count; i++)
-		{
-			auto *update = updates[i];
-			update_skinning(*update);
-		}
-	});
-	pending_node_updates_skin.clear();
+void Scene::update_transform_tree(TaskComposer &composer)
+{
+	update_transform_tree(&composer);
 }
 
 void Scene::update_transform_listener_components()
@@ -625,6 +702,7 @@ void Scene::distribute_update_to_level(Node *update, unsigned level)
 	}
 
 	pending_node_update_per_level[level].push(update);
+	pending_hierarchy_level_mask.fetch_or(1u << level, std::memory_order_relaxed);
 
 	level++;
 	auto &children = update->get_children();
@@ -639,31 +717,72 @@ void Scene::distribute_update_to_level(Node *update, unsigned level)
 	}
 }
 
-void Scene::distribute_per_level_updates()
+void Scene::distribute_per_level_updates(TaskGroup *group)
 {
-	pending_node_updates.for_each_ranged([this](Node * const *updates, size_t count) {
-		for (size_t i = 0; i < count; i++)
-		{
-			auto *update = updates[i];
-			unsigned level = update->get_dirty_transform_depth();
-			distribute_update_to_level(update, level);
-		}
-	});
-	pending_node_updates.clear();
+	if (group)
+	{
+		pending_node_updates.for_each_ranged([this, group](Node *const *updates, size_t count) {
+			group->enqueue_task([=]() {
+				for (size_t i = 0; i < count; i++)
+				{
+					auto *update = updates[i];
+					unsigned level = update->get_dirty_transform_depth();
+					distribute_update_to_level(update, level);
+				}
+			});
+		});
+	}
+	else
+	{
+		pending_node_updates.for_each_ranged([this](Node *const *updates, size_t count) {
+			for (size_t i = 0; i < count; i++)
+			{
+				auto *update = updates[i];
+				unsigned level = update->get_dirty_transform_depth();
+				distribute_update_to_level(update, level);
+			}
+		});
+	}
 }
 
-void Scene::perform_per_level_updates(unsigned level)
+static void update_transform_tree_node(Scene::Node &node, const mat4 &transform)
 {
-	pending_node_update_per_level[level].for_each_ranged([](Node * const *updates, size_t count) {
-		for (size_t i = 0; i < count; i++)
-		{
-			auto *update = updates[i];
-			auto *parent = update->get_parent();
-			auto &transform = parent ? parent->cached_transform.world_transform : identity_transform;
-			update_transform_tree_node(*update, transform);
-		}
-	});
-	pending_node_update_per_level[level].clear();
+	compute_model_transform(node.cached_transform.world_transform,
+	                        node.transform.scale, node.transform.rotation, node.transform.translation,
+	                        transform);
+
+	//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
+	node.update_timestamp();
+	node.clear_pending_update_no_atomic();
+}
+
+static void perform_updates(Scene::Node * const *updates, size_t count)
+{
+	for (size_t i = 0; i < count; i++)
+	{
+		auto *update = updates[i];
+		auto *parent = update->get_parent();
+		auto &transform = parent ? parent->cached_transform.world_transform : identity_transform;
+		update_transform_tree_node(*update, transform);
+	}
+}
+
+void Scene::perform_per_level_updates(unsigned level, TaskGroup *group)
+{
+	if (group)
+	{
+		pending_node_update_per_level[level].for_each_ranged([group](Node *const *updates, size_t count) {
+			group->enqueue_task([=]() {
+				perform_updates(updates, count);
+			});
+		});
+	}
+	else
+	{
+		pending_node_update_per_level[level].for_each_ranged([](Node *const *updates, size_t count) {
+			perform_updates(updates, count);
+		});
+	}
 }
 
 Scene::NodeHandle Scene::create_node()

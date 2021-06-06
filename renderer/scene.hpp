@@ -28,6 +28,7 @@
 #include "scene_formats.hpp"
 #include "no_init_pod.hpp"
 #include "thread_group.hpp"
+#include "atomic_append_buffer.hpp"
 #include <atomic>
 
 namespace Granite
@@ -308,7 +309,6 @@ private:
 	void destroy_entities(Util::IntrusiveList<Entity> &entity_list);
 
 	static void update_transform_tree_node(Node &node, const mat4 &transform);
-	static void update_skinning(Node &node);
 
 	void update_cached_transforms_range(size_t start_index, size_t end_index);
 
@@ -318,8 +318,8 @@ private:
 	void distribute_per_level_updates();
 	void distribute_update_to_level(Node *update, unsigned level);
 	void perform_per_level_updates(unsigned level);
-	std::vector<Node *> pending_node_updates;
-	std::vector<Node *> pending_node_update_per_level[MaxNodeHierarchyLevels];
-	std::mutex pending_node_update_lock;
+	Util::AtomicAppendBuffer<Node *, 8> pending_node_updates;
+	Util::AtomicAppendBuffer<Node *, 8> pending_node_updates_skin;
+	Util::AtomicAppendBuffer<Node *, 8> pending_node_update_per_level[MaxNodeHierarchyLevels];
 };
 }

@@ -438,19 +438,19 @@ static void log_node_transforms(const Scene::Node &node)
 }
 #endif
 
-void Scene::update_skinning(Node &node)
+static void update_skinning(Scene::Node &node)
 {
-	auto *skin = node.get_skin();
-	if (skin && !skin->cached_skin_transform.bone_world_transforms.empty())
+	auto &skin = *node.get_skin();
+	if (!skin.cached_skin_transform.bone_world_transforms.empty())
 	{
-		auto len = skin->skin.size();
-		assert(skin->skin.size() == skin->cached_skin_transform.bone_world_transforms.size());
+		auto len = skin.skin.size();
+		assert(skin.skin.size() == skin.cached_skin_transform.bone_world_transforms.size());
 		//assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_normal_transforms.size());
 		for (size_t i = 0; i < len; i++)
 		{
-			SIMD::mul(skin->cached_skin_transform.bone_world_transforms[i],
-			          skin->cached_skin[i]->world_transform,
-			          skin->inverse_bind_poses[i]);
+			SIMD::mul(skin.cached_skin_transform.bone_world_transforms[i],
+			          skin.cached_skin[i]->world_transform,
+			          skin.inverse_bind_poses[i]);
 			//node.cached_skin_transform.bone_normal_transforms[i] = node.get_skin().cached_skin[i]->normal_transform;
 		}
 		//log_node_transforms(node);
@@ -466,7 +466,6 @@ void Scene::update_transform_tree_node(Node &node, const mat4 &transform)
 	                        transform);
 
 	//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
-	update_skinning(node);
 	node.update_timestamp();
 	node.clear_pending_update_no_atomic();
 }
@@ -493,8 +492,18 @@ void Scene::update_all_transforms()
 void Scene::update_transform_tree()
 {
 	distribute_per_level_updates();
+
 	for (unsigned level = 0; level < MaxNodeHierarchyLevels; level++)
 		perform_per_level_updates(level);
+
+	pending_node_updates_skin.for_each_ranged([this](Node * const *updates, size_t count) {
+		for (size_t i = 0; i < count; i++)
+		{
+			auto *update = updates[i];
+			update_skinning(*update);
+		}
+	});
+	pending_node_updates_skin.clear();
 }
 
 void Scene::update_transform_listener_components()
@@ -585,8 +594,9 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 
 void Scene::push_pending_node_update(Node *node)
 {
-	std::lock_guard<std::mutex> holder{pending_node_update_lock};
-	pending_node_updates.push_back(node);
+	pending_node_updates.push(node);
+	if (node->get_skin())
+		pending_node_updates_skin.push(node);
 }
 
 unsigned Scene::Node::get_dirty_transform_depth() const
@@ -611,34 +621,46 @@ void Scene::distribute_update_to_level(Node *update, unsigned level)
 	assert(level < MaxNodeHierarchyLevels);
 	if (level < MaxNodeHierarchyLevels)
 	{
-		pending_node_update_per_level[level].push_back(update);
+		pending_node_update_per_level[level].push(update);
 
 		level++;
 		auto &children = update->get_children();
 		for (auto &child : children)
+		{
 			if (!child->test_and_set_pending_update_no_atomic())
+			{
 				distribute_update_to_level(child.get(), level);
+				if (child->get_skin())
+					pending_node_updates_skin.push(child.get());
+			}
+		}
 	}
 }
 
 void Scene::distribute_per_level_updates()
 {
-	for (auto *update : pending_node_updates)
-	{
-		unsigned level = update->get_dirty_transform_depth();
-		distribute_update_to_level(update, level);
-	}
+	pending_node_updates.for_each_ranged([this](Node * const *updates, size_t count) {
+		for (size_t i = 0; i < count; i++)
+		{
+			auto *update = updates[i];
+			unsigned level = update->get_dirty_transform_depth();
+			distribute_update_to_level(update, level);
+		}
+	});
 	pending_node_updates.clear();
 }
 
 void Scene::perform_per_level_updates(unsigned level)
 {
-	for (auto *update : pending_node_update_per_level[level])
-	{
-		auto *parent = update->get_parent();
-		auto &transform = parent ? parent->cached_transform.world_transform : identity_transform;
-		update_transform_tree_node(*update, transform);
-	}
+	pending_node_update_per_level[level].for_each_ranged([](Node * const *updates, size_t count) {
+		for (size_t i = 0; i < count; i++)
+		{
+			auto *update = updates[i];
+			auto *parent = update->get_parent();
+			auto &transform = parent ? parent->cached_transform.world_transform : identity_transform;
+			update_transform_tree_node(*update, transform);
+		}
+	});
 	pending_node_update_per_level[level].clear();
 }
 

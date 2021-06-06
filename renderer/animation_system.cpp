@@ -423,32 +423,32 @@ void AnimationSystem::animate(double frame_time, double elapsed_time)
 	{
 		bool complete = false;
 
-		float offset;
+		double offset;
 		if (itr->relative_timing)
 		{
 			itr->start_time += frame_time;
-			offset = float(itr->start_time);
+			offset = itr->start_time;
 		}
 		else
 		{
-			offset = float(elapsed_time - itr->start_time);
+			offset = elapsed_time - itr->start_time;
 		}
 
 		if (!itr->repeating && offset >= itr->animation.get_length())
 			complete = true;
 
 		if (itr->repeating)
-			offset = mod(offset, itr->animation.get_length());
+			offset = mod(offset, double(itr->animation.get_length()));
 
 		if (itr->animation.is_skinned())
 		{
 			auto *node = itr->skinned_node;
-			itr->animation.animate(node->get_skin()->skin.data(), node->get_skin()->skin.size(), offset);
+			itr->animation.animate(node->get_skin()->skin.data(), node->get_skin()->skin.size(), float(offset));
 			node->invalidate_cached_transform();
 		}
 		else
 		{
-			itr->animation.animate(itr->channel_transforms.data(), itr->channel_transforms.size(), offset);
+			itr->animation.animate(itr->channel_transforms.data(), itr->channel_transforms.size(), float(offset));
 			for (auto *node : itr->channel_nodes)
 				node->invalidate_cached_transform();
 		}

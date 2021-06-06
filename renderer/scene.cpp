@@ -618,21 +618,23 @@ unsigned Scene::Node::get_dirty_transform_depth() const
 
 void Scene::distribute_update_to_level(Node *update, unsigned level)
 {
-	assert(level < MaxNodeHierarchyLevels);
-	if (level < MaxNodeHierarchyLevels)
+	if (level >= MaxNodeHierarchyLevels)
 	{
-		pending_node_update_per_level[level].push(update);
+		LOGE("distribute_update_to_level: Level %u is out of range.\n", level);
+		return;
+	}
 
-		level++;
-		auto &children = update->get_children();
-		for (auto &child : children)
+	pending_node_update_per_level[level].push(update);
+
+	level++;
+	auto &children = update->get_children();
+	for (auto &child : children)
+	{
+		if (!child->test_and_set_pending_update_no_atomic())
 		{
-			if (!child->test_and_set_pending_update_no_atomic())
-			{
-				distribute_update_to_level(child.get(), level);
-				if (child->get_skin())
-					pending_node_updates_skin.push(child.get());
-			}
+			distribute_update_to_level(child.get(), level);
+			if (child->get_skin())
+				pending_node_updates_skin.push(child.get());
 		}
 	}
 }

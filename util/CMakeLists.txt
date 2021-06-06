@@ -24,6 +24,7 @@ add_granite_internal_lib(granite-util
         cli_parser.cpp cli_parser.hpp
         dynamic_library.cpp dynamic_library.hpp
         generational_handle.hpp
+        atomic_append_buffer.hpp
         lru_cache.hpp
         message_queue.hpp message_queue.cpp
         no_init_pod.hpp)

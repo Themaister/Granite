@@ -1131,9 +1131,10 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 
 	animation_system->animate(frame_time, elapsed_time);
 
+	scene.update_transform_tree();
 	{
 		TaskComposer update_composer(composer.get_thread_group());
-		scene.update_transform_tree(update_composer);
+		//scene.update_transform_tree(update_composer);
 		Threaded::scene_update_cached_transforms(scene, update_composer, 64);
 		update_composer.get_outgoing_task()->wait();
 	}

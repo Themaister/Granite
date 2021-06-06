@@ -108,6 +108,8 @@ public:
 	public:
 		explicit Node(Scene *parent_)
 			: parent_scene(parent_)
+			, transform(*parent_scene->transform_pool.allocate())
+			, cached_transform(*parent_scene->cached_transform_pool.allocate())
 		{
 			node_is_pending_update.store(false, std::memory_order_relaxed);
 			invalidate_cached_transform();
@@ -118,11 +120,13 @@ public:
 		{
 			if (skinning)
 				parent_scene->skinning_pool.free(skinning);
+			parent_scene->transform_pool.free(&transform);
+			parent_scene->cached_transform_pool.free(&cached_transform);
 		}
 
 		Scene *parent_scene;
-		Transform transform;
-		CachedTransform cached_transform;
+		Transform &transform;
+		CachedTransform &cached_transform;
 
 		void invalidate_cached_transform();
 		void add_child(Util::IntrusivePtr<Node> node);
@@ -234,8 +238,10 @@ public:
 
 private:
 	EntityPool pool;
-	Util::ObjectPool<Node> node_pool;
 	Util::ObjectPool<Node::Skinning> skinning_pool;
+	Util::ObjectPool<Transform> transform_pool;
+	Util::ObjectPool<CachedTransform> cached_transform_pool;
+	Util::ObjectPool<Node> node_pool;
 	NodeHandle root_node;
 
 	// Sets up the default useful component groups up front.

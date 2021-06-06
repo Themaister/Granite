@@ -27,6 +27,7 @@
 #include "generational_handle.hpp"
 #include "intrusive_hash_map.hpp"
 #include "intrusive_list.hpp"
+#include "small_vector.hpp"
 #include <vector>
 
 namespace Granite
@@ -102,8 +103,8 @@ private:
 	struct AnimationState : Util::IntrusiveListEnabled<AnimationState>
 	{
 		AnimationState(const AnimationUnrolled &anim,
-		               std::vector<Transform *> channel_transforms_,
-		               std::vector<Scene::Node *> channel_nodes_,
+		               Util::SmallVector<Transform *> channel_transforms_,
+		               Util::SmallVector<Scene::Node *> channel_nodes_,
 		               double start_time_);
 
 		AnimationState(const AnimationUnrolled &anim,
@@ -112,8 +113,8 @@ private:
 
 		Scene::Node *skinned_node = nullptr;
 		AnimationStateID id = 0;
-		std::vector<Transform *> channel_transforms;
-		std::vector<Scene::Node *> channel_nodes;
+		Util::SmallVector<Transform *> channel_transforms;
+		Util::SmallVector<Scene::Node *> channel_nodes;
 		const AnimationUnrolled &animation;
 		double start_time = 0.0;
 		bool repeating = false;

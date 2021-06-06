@@ -270,8 +270,8 @@ AnimationStateID AnimationSystem::start_animation(Scene::Node &node, Granite::An
 			return 0;
 		}
 
-		std::vector<Transform *> target_transforms = { &node.transform };
-		std::vector<Scene::Node *> nodes = { &node };
+		Util::SmallVector<Transform *> target_transforms = { &node.transform };
+		Util::SmallVector<Scene::Node *> nodes = { &node };
 		id = animation_state_pool.emplace(*animation, move(target_transforms), move(nodes), start_time);
 	}
 
@@ -333,8 +333,8 @@ void AnimationSystem::set_fixed_pose_multi(Scene::NodeHandle *nodes, unsigned nu
 	}
 
 	// Not very efficient.
-	std::vector<Transform *> target_transforms;
-	std::vector<Scene::Node *> target_nodes;
+	Util::SmallVector<Transform *> target_transforms;
+	Util::SmallVector<Scene::Node *> target_nodes;
 	target_transforms.reserve(animation->get_num_channels());
 	target_nodes.reserve(animation->get_num_channels());
 
@@ -370,8 +370,8 @@ AnimationStateID AnimationSystem::start_animation_multi(Scene::NodeHandle *nodes
 		return 0;
 	}
 
-	std::vector<Transform *> target_transforms;
-	std::vector<Scene::Node *> target_nodes;
+	Util::SmallVector<Transform *> target_transforms;
+	Util::SmallVector<Scene::Node *> target_nodes;
 	target_transforms.reserve(animation->get_num_channels());
 	target_nodes.reserve(animation->get_num_channels());
 
@@ -467,13 +467,13 @@ void AnimationSystem::animate(double frame_time, double elapsed_time)
 }
 
 AnimationSystem::AnimationState::AnimationState(const AnimationUnrolled &anim,
-                                                std::vector<Transform *> channel_transforms_,
-                                                std::vector<Scene::Node *> channel_nodes_,
+                                                Util::SmallVector<Transform *> channel_transforms_,
+                                                Util::SmallVector<Scene::Node *> channel_nodes_,
                                                 double start_time_)
-		: channel_transforms(std::move(channel_transforms_)),
-		  channel_nodes(std::move(channel_nodes_)),
-		  animation(anim),
-		  start_time(start_time_)
+	: channel_transforms(std::move(channel_transforms_)),
+	  channel_nodes(std::move(channel_nodes_)),
+	  animation(anim),
+	  start_time(start_time_)
 {
 }
 

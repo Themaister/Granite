@@ -26,8 +26,9 @@
 #include "scene_formats.hpp"
 #include "generational_handle.hpp"
 #include "intrusive_hash_map.hpp"
-#include "intrusive_list.hpp"
+#include "unordered_array.hpp"
 #include "small_vector.hpp"
+#include "atomic_append_buffer.hpp"
 #include <vector>
 
 namespace Granite
@@ -100,7 +101,7 @@ public:
 	void set_completion_callback(AnimationStateID id, std::function<void ()> cb);
 
 private:
-	struct AnimationState : Util::IntrusiveListEnabled<AnimationState>
+	struct AnimationState : Util::IntrusiveUnorderedArrayEnabled
 	{
 		AnimationState(const AnimationUnrolled &anim,
 		               Util::SmallVector<Transform *> channel_transforms_,
@@ -126,6 +127,7 @@ private:
 	Util::GenerationalHandlePool<AnimationUnrolled> animation_pool;
 	Util::IntrusiveHashMap<Util::IntrusivePODWrapper<AnimationID>> animation_map;
 	Util::GenerationalHandlePool<AnimationState> animation_state_pool;
-	Util::IntrusiveList<AnimationState> active_animation;
+	Util::IntrusiveUnorderedArray<AnimationState> active_animation;
+	Util::AtomicAppendBuffer<AnimationState *> garbage_collect_animations;
 };
 }

@@ -490,11 +490,18 @@ static void perform_update_skinning(Scene::Node * const *updates, size_t count)
 
 void Scene::update_transform_tree(TaskComposer *composer)
 {
+	TaskGroupHandle distribute_indirect_task;
 	if (composer)
 	{
 		auto &group = composer->begin_pipeline_stage();
+		auto &thread_group = composer->get_thread_group();
 		group.set_desc("distribute-per-level-updates");
-		distribute_per_level_updates(&group);
+		distribute_indirect_task = composer->get_thread_group().create_task();
+		group.enqueue_task([this, &thread_group, distribute_indirect_task]() mutable {
+			auto indirect_group = thread_group.create_task();
+			distribute_per_level_updates(indirect_group.get());
+			thread_group.add_dependency(*distribute_indirect_task, *indirect_group);
+		});
 	}
 	else
 		distribute_per_level_updates(nullptr);
@@ -504,6 +511,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 	{
 		auto &thread_group = composer->get_thread_group();
 		auto &group = composer->begin_pipeline_stage();
+		thread_group.add_dependency(group, *distribute_indirect_task);
 		group.set_desc("dispatch-per-level-updates");
 		perform_indirect_task = thread_group.create_task();
 		group.enqueue_task([&, perform_indirect_task]() mutable {
@@ -533,17 +541,23 @@ void Scene::update_transform_tree(TaskComposer *composer)
 		}
 	}
 
+	TaskGroupHandle skinning_indirect_task;
 	if (composer)
 	{
 		auto &thread_group = composer->get_thread_group();
 		auto &group = composer->begin_pipeline_stage();
 		group.set_desc("perform-update-skinning");
+		skinning_indirect_task = thread_group.create_task();
 		thread_group.add_dependency(group, *perform_indirect_task);
 
-		pending_node_updates_skin.for_each_ranged([this, &group](Node *const *updates, size_t count) {
-			group.enqueue_task([=]() {
-				perform_update_skinning(updates, count);
+		group.enqueue_task([this, skinning_indirect_task, &thread_group]() mutable {
+			auto skin_group = thread_group.create_task();
+			pending_node_updates_skin.for_each_ranged([&g = *skin_group](Node *const *updates, size_t count) {
+				g.enqueue_task([=]() {
+					perform_update_skinning(updates, count);
+				});
 			});
+			thread_group.add_dependency(*skinning_indirect_task, *skin_group);
 		});
 	}
 	else
@@ -555,7 +569,10 @@ void Scene::update_transform_tree(TaskComposer *composer)
 
 	if (composer)
 	{
-		composer->begin_pipeline_stage().enqueue_task([this]() {
+		auto &thread_group = composer->get_thread_group();
+		auto &clear_task = composer->begin_pipeline_stage();
+		thread_group.add_dependency(clear_task, *skinning_indirect_task);
+		clear_task.enqueue_task([this]() {
 			pending_node_updates.clear();
 			for (auto &l : pending_node_update_per_level)
 				l.clear();
@@ -672,8 +689,6 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 void Scene::push_pending_node_update(Node *node)
 {
 	pending_node_updates.push(node);
-	if (node->get_skin())
-		pending_node_updates_skin.push(node);
 }
 
 unsigned Scene::Node::get_dirty_transform_depth() const
@@ -703,18 +718,14 @@ void Scene::distribute_update_to_level(Node *update, unsigned level)
 
 	pending_node_update_per_level[level].push(update);
 	pending_hierarchy_level_mask.fetch_or(1u << level, std::memory_order_relaxed);
+	if (update->get_skin())
+		pending_node_updates_skin.push(update);
 
 	level++;
 	auto &children = update->get_children();
 	for (auto &child : children)
-	{
 		if (!child->test_and_set_pending_update_no_atomic())
-		{
 			distribute_update_to_level(child.get(), level);
-			if (child->get_skin())
-				pending_node_updates_skin.push(child.get());
-		}
-	}
 }
 
 void Scene::distribute_per_level_updates(TaskGroup *group)

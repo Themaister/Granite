@@ -83,6 +83,7 @@ class AnimationSystem
 {
 public:
 	void animate(double frame_time, double elapsed_time);
+	void animate(TaskComposer &composer, double frame_time, double elapsed_time);
 	void set_fixed_pose(Scene::Node &node, AnimationID id, float offset) const;
 	void set_fixed_pose_multi(Scene::NodeHandle *nodes, unsigned num_nodes, AnimationID id, float offset) const;
 
@@ -129,5 +130,8 @@ private:
 	Util::GenerationalHandlePool<AnimationState> animation_state_pool;
 	Util::IntrusiveUnorderedArray<AnimationState> active_animation;
 	Util::AtomicAppendBuffer<AnimationState *> garbage_collect_animations;
+
+	void update(AnimationState *state, double frame_time, double elapsed_time);
+	void garbage_collect();
 };
 }

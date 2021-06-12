@@ -196,7 +196,7 @@ void ThreadGroup::add_dependency(TaskGroup &dependee, TaskGroup &dependency)
 	dependee.deps->dependency_count.fetch_add(1, memory_order_relaxed);
 }
 
-void ThreadGroup::move_to_ready_tasks(const std::vector<Internal::Task *> &list)
+void ThreadGroup::move_to_ready_tasks(const Util::SmallVector<Internal::Task *> &list)
 {
 	lock_guard<mutex> holder{cond_lock};
 	total_tasks.fetch_add(list.size(), memory_order_relaxed);
@@ -339,6 +339,11 @@ void ThreadGroup::thread_looper(unsigned index)
 			task->func();
 			if (e)
 				timeline_trace_file->end_event(e);
+
+			///
+			//if (*task->deps->desc != '\0')
+			//	LOGI("Running task: %s\n", task->deps->desc);
+			///
 		}
 
 		task->deps->task_completed();

@@ -35,6 +35,7 @@
 #include "intrusive.hpp"
 #include "timeline_trace_file.hpp"
 #include "global_managers.hpp"
+#include "small_vector.hpp"
 
 namespace Granite
 {
@@ -78,10 +79,10 @@ struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::Mul
 	}
 
 	ThreadGroup *group;
-	std::vector<Util::IntrusivePtr<TaskDeps>> pending;
+	Util::SmallVector<Util::IntrusivePtr<TaskDeps>> pending;
 	std::atomic_uint count;
 
-	std::vector<Task *> pending_tasks;
+	Util::SmallVector<Task *> pending_tasks;
 	TaskSignal *signal = nullptr;
 	std::atomic_uint dependency_count;
 
@@ -156,7 +157,7 @@ public:
 	TaskGroupHandle create_task(std::function<void ()> func);
 	TaskGroupHandle create_task();
 
-	void move_to_ready_tasks(const std::vector<Internal::Task *> &list);
+	void move_to_ready_tasks(const Util::SmallVector<Internal::Task *> &list);
 
 	void add_dependency(TaskGroup &dependee, TaskGroup &dependency);
 

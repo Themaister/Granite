@@ -490,31 +490,23 @@ static void perform_update_skinning(Scene::Node * const *updates, size_t count)
 
 void Scene::update_transform_tree(TaskComposer *composer)
 {
-	TaskGroupHandle distribute_indirect_task;
 	if (composer)
 	{
 		auto &group = composer->begin_pipeline_stage();
-		auto &thread_group = composer->get_thread_group();
 		group.set_desc("distribute-per-level-updates");
-		distribute_indirect_task = composer->get_thread_group().create_task();
-		group.enqueue_task([this, &thread_group, distribute_indirect_task]() mutable {
-			auto indirect_group = thread_group.create_task();
-			distribute_per_level_updates(indirect_group.get());
-			thread_group.add_dependency(*distribute_indirect_task, *indirect_group);
+		group.enqueue_task([this, h = composer->get_indirect_handle()]() mutable {
+			distribute_per_level_updates(h.get());
 		});
 	}
 	else
 		distribute_per_level_updates(nullptr);
 
-	TaskGroupHandle perform_indirect_task;
 	if (composer)
 	{
 		auto &thread_group = composer->get_thread_group();
 		auto &group = composer->begin_pipeline_stage();
-		thread_group.add_dependency(group, *distribute_indirect_task);
 		group.set_desc("dispatch-per-level-updates");
-		perform_indirect_task = thread_group.create_task();
-		group.enqueue_task([&, perform_indirect_task]() mutable {
+		group.enqueue_task([&, h = composer->get_indirect_handle()]() mutable {
 			uint32_t mask = pending_hierarchy_level_mask.load(std::memory_order_relaxed);
 			if (!mask)
 				return;
@@ -527,7 +519,8 @@ void Scene::update_transform_tree(TaskComposer *composer)
 				level_group.set_desc("perform-per-level-update");
 				perform_per_level_updates(level, &level_group);
 			}
-			thread_group.add_dependency(*perform_indirect_task, *stage_composer.get_outgoing_task());
+			stage_composer.signal_task_on_completion(*h);
+			h->flush();
 		});
 	}
 	else
@@ -541,23 +534,17 @@ void Scene::update_transform_tree(TaskComposer *composer)
 		}
 	}
 
-	TaskGroupHandle skinning_indirect_task;
 	if (composer)
 	{
-		auto &thread_group = composer->get_thread_group();
 		auto &group = composer->begin_pipeline_stage();
 		group.set_desc("perform-update-skinning");
-		skinning_indirect_task = thread_group.create_task();
-		thread_group.add_dependency(group, *perform_indirect_task);
 
-		group.enqueue_task([this, skinning_indirect_task, &thread_group]() mutable {
-			auto skin_group = thread_group.create_task();
-			pending_node_updates_skin.for_each_ranged([&g = *skin_group](Node *const *updates, size_t count) {
-				g.enqueue_task([=]() {
+		group.enqueue_task([this, h = composer->get_indirect_handle()]() mutable {
+			pending_node_updates_skin.for_each_ranged([&](Node *const *updates, size_t count) {
+				h->enqueue_task([=]() {
 					perform_update_skinning(updates, count);
 				});
 			});
-			thread_group.add_dependency(*skinning_indirect_task, *skin_group);
 		});
 	}
 	else
@@ -569,9 +556,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 
 	if (composer)
 	{
-		auto &thread_group = composer->get_thread_group();
 		auto &clear_task = composer->begin_pipeline_stage();
-		thread_group.add_dependency(clear_task, *skinning_indirect_task);
 		clear_task.enqueue_task([this]() {
 			pending_node_updates.clear();
 			for (auto &l : pending_node_update_per_level)

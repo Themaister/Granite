@@ -1264,7 +1264,10 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 
 	if (file)
 		e = file->begin_event("render-frame-wait");
-	composer.get_outgoing_task()->wait();
+
+	auto final = composer.get_outgoing_task();
+	final->wait();
+
 	if (e)
 		file->end_event(e);
 

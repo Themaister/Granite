@@ -46,7 +46,7 @@ public:
 	// As long as the indirect handle is kept alive in child tasks, the next pipeline stage will not begin.
 	TaskGroupHandle get_indirect_handle();
 
-	void signal_task_on_completion(TaskGroup &task);
+	void add_outgoing_dependency(TaskGroup &task);
 
 private:
 	ThreadGroup &group;

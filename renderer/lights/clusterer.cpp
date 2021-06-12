@@ -1321,11 +1321,10 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 
 	if (enable_shadows)
 	{
-		auto gather_indirect_task = thread_group.create_task();
 		{
 			auto &group = composer.begin_pipeline_stage();
 			group.set_desc("clusterer-bindless-setup");
-			group.enqueue_task([this, gather_indirect_task, &thread_group]() mutable {
+			group.enqueue_task([this, gather_indirect_task = composer.get_indirect_handle(), &thread_group]() mutable {
 				unsigned count = bindless.parameters.num_lights + bindless.global_transforms.num_lights;
 
 				// Gather renderables and compute the visiblity hash.
@@ -1355,18 +1354,16 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 						bindless.shadow_task_handles.emplace_back(
 								gather_bindless_spot_shadow_renderables(i, per_light_composer, requires_rendering));
 					}
-					thread_group.add_dependency(*gather_indirect_task, *per_light_composer.get_outgoing_task());
+					per_light_composer.add_outgoing_dependency(*gather_indirect_task);
 				}
 			});
 		}
 
 		// Submit barriers from UNDEFINED -> COLOR/DEPTH.
-		auto indirect_task = thread_group.create_task();
 		{
 			auto &group = composer.begin_pipeline_stage();
-			thread_group.add_dependency(group, *gather_indirect_task);
 
-			group.enqueue_task([this, &device, indirect_task, &thread_group]() mutable {
+			group.enqueue_task([this, &device, indirect_task = composer.get_indirect_handle(), &thread_group]() mutable {
 				auto cmd = device.request_command_buffer();
 				cmd->begin_region("shadow-map-begin-barriers");
 				begin_bindless_barriers(*cmd);
@@ -1386,7 +1383,7 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 						render_bindless_point(device, i, per_light_composer);
 					else
 						render_bindless_spot(device, i, per_light_composer);
-					thread_group.add_dependency(*indirect_task, *per_light_composer.get_outgoing_task());
+					per_light_composer.add_outgoing_dependency(*indirect_task);
 				}
 			});
 		}
@@ -1394,7 +1391,6 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 		// Submit barriers from COLOR/DEPTH -> SHADER_READ_ONLY
 		{
 			auto &group = composer.begin_pipeline_stage();
-			composer.get_thread_group().add_dependency(group, *indirect_task);
 			group.enqueue_task([this, &device]() {
 				auto cmd = device.request_command_buffer();
 				cmd->begin_region("shadow-map-end-barriers");

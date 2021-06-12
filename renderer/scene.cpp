@@ -519,7 +519,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 				level_group.set_desc("perform-per-level-update");
 				perform_per_level_updates(level, &level_group);
 			}
-			stage_composer.signal_task_on_completion(*h);
+			stage_composer.add_outgoing_dependency(*h);
 			h->flush();
 		});
 	}

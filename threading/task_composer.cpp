@@ -84,7 +84,7 @@ ThreadGroup &TaskComposer::get_thread_group()
 	return group;
 }
 
-void TaskComposer::signal_task_on_completion(TaskGroup &task)
+void TaskComposer::add_outgoing_dependency(TaskGroup &task)
 {
 	group.add_dependency(task, *get_outgoing_task());
 }

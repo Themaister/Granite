@@ -35,14 +35,23 @@ public:
 	void set_incoming_task(TaskGroupHandle group);
 	TaskGroup &begin_pipeline_stage();
 	TaskGroup &get_group();
+
+	// Returns a waitable handle that can be waited on.
 	TaskGroupHandle get_outgoing_task();
 	TaskGroupHandle get_pipeline_stage_dependency();
 	ThreadGroup &get_thread_group();
+
+	// If an indirect handle is called, the next pipeline stage will implicitly depend
+	// on the indirect handle. This is useful if a pipeline stage will spawn tasks on its own.
+	// As long as the indirect handle is kept alive in child tasks, the next pipeline stage will not begin.
+	TaskGroupHandle get_indirect_handle();
+
+	void signal_task_on_completion(TaskGroup &task);
 
 private:
 	ThreadGroup &group;
 	TaskGroupHandle current;
 	TaskGroupHandle incoming_deps;
+	TaskGroupHandle next_stage_deps;
 };
-
 }

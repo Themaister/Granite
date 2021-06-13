@@ -72,7 +72,7 @@ TaskGroupHandle TaskComposer::get_pipeline_stage_dependency()
 	return incoming_deps;
 }
 
-TaskGroupHandle TaskComposer::get_indirect_handle()
+TaskGroupHandle TaskComposer::get_deferred_enqueue_handle()
 {
 	if (!next_stage_deps)
 		next_stage_deps = group.create_task();

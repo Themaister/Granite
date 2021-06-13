@@ -41,10 +41,12 @@ public:
 	TaskGroupHandle get_pipeline_stage_dependency();
 	ThreadGroup &get_thread_group();
 
-	// If an indirect handle is called, the next pipeline stage will implicitly depend
-	// on the indirect handle. This is useful if a pipeline stage will spawn tasks on its own.
-	// As long as the indirect handle is kept alive in child tasks, the next pipeline stage will not begin.
-	TaskGroupHandle get_indirect_handle();
+	// If this is called, the next pipeline stage will implicitly depend
+	// on the task returned. This is useful if a pipeline stage will spawn tasks on its own,
+	// which can only be known at the time of task execution.
+	// As long as the enqueue handle is kept alive in child tasks,
+	// the next pipeline stage will not begin.
+	TaskGroupHandle get_deferred_enqueue_handle();
 
 	void add_outgoing_dependency(TaskGroup &task);
 

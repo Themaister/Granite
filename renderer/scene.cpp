@@ -494,7 +494,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 	{
 		auto &group = composer->begin_pipeline_stage();
 		group.set_desc("distribute-per-level-updates");
-		group.enqueue_task([this, h = composer->get_indirect_handle()]() mutable {
+		group.enqueue_task([this, h = composer->get_deferred_enqueue_handle()]() mutable {
 			distribute_per_level_updates(h.get());
 		});
 	}
@@ -506,7 +506,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 		auto &thread_group = composer->get_thread_group();
 		auto &group = composer->begin_pipeline_stage();
 		group.set_desc("dispatch-per-level-updates");
-		group.enqueue_task([&, h = composer->get_indirect_handle()]() mutable {
+		group.enqueue_task([&, h = composer->get_deferred_enqueue_handle()]() mutable {
 			uint32_t mask = pending_hierarchy_level_mask.load(std::memory_order_relaxed);
 			if (!mask)
 				return;
@@ -539,7 +539,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 		auto &group = composer->begin_pipeline_stage();
 		group.set_desc("perform-update-skinning");
 
-		group.enqueue_task([this, h = composer->get_indirect_handle()]() mutable {
+		group.enqueue_task([this, h = composer->get_deferred_enqueue_handle()]() mutable {
 			pending_node_updates_skin.for_each_ranged([&](Node *const *updates, size_t count) {
 				h->enqueue_task([=]() {
 					perform_update_skinning(updates, count);

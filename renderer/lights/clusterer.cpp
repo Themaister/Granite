@@ -1324,7 +1324,7 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 		{
 			auto &group = composer.begin_pipeline_stage();
 			group.set_desc("clusterer-bindless-setup");
-			group.enqueue_task([this, gather_indirect_task = composer.get_indirect_handle(), &thread_group]() mutable {
+			group.enqueue_task([this, gather_indirect_task = composer.get_deferred_enqueue_handle(), &thread_group]() mutable {
 				unsigned count = bindless.parameters.num_lights + bindless.global_transforms.num_lights;
 
 				// Gather renderables and compute the visiblity hash.
@@ -1363,7 +1363,7 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 		{
 			auto &group = composer.begin_pipeline_stage();
 
-			group.enqueue_task([this, &device, indirect_task = composer.get_indirect_handle(), &thread_group]() mutable {
+			group.enqueue_task([this, &device, indirect_task = composer.get_deferred_enqueue_handle(), &thread_group]() mutable {
 				auto cmd = device.request_command_buffer();
 				cmd->begin_region("shadow-map-begin-barriers");
 				begin_bindless_barriers(*cmd);

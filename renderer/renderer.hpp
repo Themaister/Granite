@@ -171,6 +171,7 @@ public:
 		ShadowDepthDirectionalVSM,
 		ShadowDepthPositionalVSM,
 		PrepassDepth,
+		MotionVector,
 		Deferred,
 		Count
 	};

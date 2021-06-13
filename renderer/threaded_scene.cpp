@@ -41,6 +41,19 @@ void scene_gather_opaque_renderables(const Scene &scene, TaskComposer &composer,
 	}
 }
 
+void scene_gather_motion_vector_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
+                                            VisibilityList *lists, unsigned num_tasks)
+{
+	auto &group = composer.begin_pipeline_stage();
+	group.set_desc("gather-motion-vector-renderables");
+	for (unsigned i = 0; i < num_tasks; i++)
+	{
+		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {
+			scene.gather_visible_motion_vector_renderables_subset(frustum, lists[i], i, num_tasks);
+		});
+	}
+}
+
 void scene_gather_transparent_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                           VisibilityList *lists, unsigned num_tasks)
 {

@@ -320,6 +320,15 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 		}
 	}
 
+	if (setup_data.flags & SCENE_RENDERER_MOTION_VECTOR_BIT)
+	{
+		Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT |
+		                                    Renderer::DEPTH_STENCIL_READ_ONLY_BIT |
+		                                    Renderer::DEPTH_TEST_EQUAL_BIT |
+		                                    flush_flags;
+		suite->get_renderer(RendererSuite::Type::MotionVector).flush(cmd, queue_per_task_opaque[0], *setup_data.context, opt);
+	}
+
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
 	{
 		suite->get_renderer(RendererSuite::Type::Deferred).flush(cmd, queue_per_task_opaque[0], *setup_data.context,

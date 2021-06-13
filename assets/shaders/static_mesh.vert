@@ -41,6 +41,7 @@ layout(location = 0) in highp vec3 Position;
 
 #if defined(RENDERER_MOTION_VECTOR)
     layout(location = 0) out highp vec3 vOldClip;
+    layout(location = 1) out highp vec3 vNewClip;
 #endif
 
 #if HAVE_BONE_INDEX
@@ -118,7 +119,9 @@ void main()
     vec3 World = WorldTransform * vec4(Position, 1.0);
 
 #if defined(RENDERER_MOTION_VECTOR)
-    vOldClip = (global.unjittered_prev_view_projection * (MODEL_VIEW_TRANSFORM(Prev) * vec4(Position, 1.0))).xyw;
+    vec3 OldWorld = MODEL_VIEW_TRANSFORM(Prev) * vec4(Position, 1.0);
+    vOldClip = (global.unjittered_prev_view_projection * vec4(OldWorld, 1.0)).xyw;
+    vNewClip = (global.unjittered_view_projection * vec4(World, 1.0)).xyw;
 #endif
 
 #if defined(MULTIVIEW) && MULTIVIEW

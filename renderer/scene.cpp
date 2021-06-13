@@ -444,6 +444,8 @@ static void update_skinning(Scene::Node &node)
 	auto &skin = *node.get_skin();
 	if (!skin.cached_skin_transform.bone_world_transforms.empty())
 	{
+		skin.prev_cached_skin_transform = skin.cached_skin_transform;
+
 		auto len = skin.skin.size();
 		assert(skin.skin.size() == skin.cached_skin_transform.bone_world_transforms.size());
 		//assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_normal_transforms.size());
@@ -648,7 +650,10 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 		CachedSpatialTransformTimestampComponent *timestamp;
 		tie(aabb, cached_transform, timestamp) = s;
 
-		if (timestamp->last_timestamp != *timestamp->current_timestamp)
+		uint64_t new_timestamp = *timestamp->current_timestamp;
+		bool modified_timestamp = timestamp->last_timestamp != new_timestamp;
+
+		if (modified_timestamp)
 		{
 			if (cached_transform->transform)
 			{
@@ -666,8 +671,12 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 					                     cached_transform->transform->world_transform);
 				}
 			}
-			timestamp->last_timestamp = *timestamp->current_timestamp;
+
+			timestamp->last_timestamp = new_timestamp;
 		}
+
+		// The first update won't have valid prev transforms.
+		cached_transform->requires_motion_vectors = modified_timestamp && new_timestamp >= 2;
 	}
 }
 
@@ -743,6 +752,7 @@ void Scene::distribute_per_level_updates(TaskGroup *group)
 
 static void update_transform_tree_node(Scene::Node &node, const mat4 &transform)
 {
+	node.prev_cached_transform = node.cached_transform;
 	compute_model_transform(node.cached_transform.world_transform,
 	                        node.transform.scale, node.transform.rotation, node.transform.translation,
 	                        transform);
@@ -816,6 +826,7 @@ Scene::NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 	node->set_skin(skinning_pool.allocate());
 	auto &node_skin = *node->get_skin();
 	node_skin.cached_skin_transform.bone_world_transforms.resize(skin.joint_transforms.size());
+	node_skin.prev_cached_skin_transform.bone_world_transforms.resize(skin.joint_transforms.size());
 	//node->cached_skin_transform.bone_normal_transforms.resize(skin.joint_transforms.size());
 
 	node_skin.skin.reserve(skin.joint_transforms.size());
@@ -979,10 +990,14 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 		if (node)
 		{
 			transform->transform = &node->cached_transform;
+			transform->prev_transform = &node->prev_cached_transform;
 			timestamp->current_timestamp = node->get_timestamp_pointer();
 
 			if (node->get_skin() && !node->get_skin()->cached_skin.empty())
+			{
 				transform->skin_transform = &node->get_skin()->cached_skin_transform;
+				transform->prev_skin_transform = &node->get_skin()->prev_cached_skin_transform;
+			}
 		}
 		auto *bounded = entity->allocate_component<BoundedComponent>();
 		bounded->aabb = renderable->get_static_aabb();

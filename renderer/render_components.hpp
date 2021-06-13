@@ -165,6 +165,12 @@ struct RenderInfoComponent : ComponentBase
 	CachedTransform *transform = nullptr;
 	CachedSkinTransform *skin_transform = nullptr;
 
+	CachedTransform *prev_transform = nullptr;
+	CachedSkinTransform *prev_skin_transform = nullptr;
+
+	// If set, the transform changed last frame and motion vectors will need to be rendered explicitly.
+	bool requires_motion_vectors = false;
+
 	// Can be used to pass non-spatial transform related data to an AbstractRenderable,
 	// e.g. per instance material information.
 	const void *extra_data = nullptr;

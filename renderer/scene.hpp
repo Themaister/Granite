@@ -110,6 +110,7 @@ public:
 			: parent_scene(parent_)
 			, transform(*parent_scene->transform_pool.allocate())
 			, cached_transform(*parent_scene->cached_transform_pool.allocate())
+			, prev_cached_transform(*parent_scene->cached_transform_pool.allocate())
 		{
 			node_is_pending_update.store(false, std::memory_order_relaxed);
 			invalidate_cached_transform();
@@ -122,11 +123,13 @@ public:
 				parent_scene->skinning_pool.free(skinning);
 			parent_scene->transform_pool.free(&transform);
 			parent_scene->cached_transform_pool.free(&cached_transform);
+			parent_scene->cached_transform_pool.free(&prev_cached_transform);
 		}
 
 		Scene *parent_scene;
 		Transform &transform;
 		CachedTransform &cached_transform;
+		CachedTransform &prev_cached_transform;
 
 		void invalidate_cached_transform();
 		void add_child(Util::IntrusivePtr<Node> node);
@@ -151,6 +154,7 @@ public:
 		struct Skinning
 		{
 			CachedSkinTransform cached_skin_transform;
+			CachedSkinTransform prev_cached_skin_transform;
 			std::vector<const CachedTransform *> cached_skin;
 			std::vector<Transform *> skin;
 			std::vector<mat4> inverse_bind_poses;

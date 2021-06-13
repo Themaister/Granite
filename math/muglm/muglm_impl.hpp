@@ -743,6 +743,7 @@ MUGLM_VECTORIZED_FUNC1(sqrt)
 
 // floor
 inline float floor(float v) { return std::floor(v); }
+inline double floor(double v) { return std::floor(v); }
 MUGLM_VECTORIZED_FUNC1(floor)
 
 // fract
@@ -759,6 +760,7 @@ MUGLM_VECTORIZED_FUNC1(round)
 
 // mod
 inline float mod(float x, float y) { return x - y * floor(x / y); }
+inline double mod(double x, double y) { return x - y * floor(x / y); }
 MUGLM_VECTORIZED_FUNC2(mod)
 
 // abs

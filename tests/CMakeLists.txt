@@ -107,6 +107,8 @@ add_granite_offline_tool(lru-cache-test lru_cache_test.cpp)
 add_granite_offline_tool(ecs-test ecs_test.cpp)
 add_granite_offline_tool(simd-test simd_test.cpp)
 add_granite_offline_tool(imported-host imported_host.cpp)
+add_granite_offline_tool(atomic-append-buffer-test atomic_append_buffer_test.cpp)
+add_granite_offline_tool(unordered-array-test unordered_array_test.cpp)
 
 add_granite_offline_tool(hemisphere-integration-test hemisphere_integration.cpp)
 

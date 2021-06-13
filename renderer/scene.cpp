@@ -51,7 +51,7 @@ Scene::Scene()
 	  render_pass_sinks(pool.get_component_group<RenderPassSinkComponent, RenderableComponent, CullPlaneComponent>()),
 	  render_pass_creators(pool.get_component_group<RenderPassComponent>())
 {
-
+	pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
 }
 
 Scene::~Scene()
@@ -439,12 +439,12 @@ static void log_node_transforms(const Scene::Node &node)
 }
 #endif
 
-void Scene::update_skinning(Node &node)
+static void update_skinning(Scene::Node &node)
 {
-	if (node.get_skin() && !node.get_skin()->cached_skin_transform.bone_world_transforms.empty())
+	auto &skin = *node.get_skin();
+	if (!skin.cached_skin_transform.bone_world_transforms.empty())
 	{
-		auto &skin = *node.get_skin();
-		auto len = node.get_skin()->skin.size();
+		auto len = skin.skin.size();
 		assert(skin.skin.size() == skin.cached_skin_transform.bone_world_transforms.size());
 		//assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_normal_transforms.size());
 		for (size_t i = 0; i < len; i++)
@@ -458,161 +458,7 @@ void Scene::update_skinning(Node &node)
 	}
 }
 
-void Scene::dispatch_collect_children(TraversalState *state)
-{
-	size_t count = state->pending_count;
-
-	// If we have a lot of child nodes, they will be farmed out to separate traversal states.
-	// The spill-over will be collected, and sub-batches will be dispatched from that, etc.
-
-	Node *children[TraversalState::BatchSize];
-	size_t unbatched_child_count = 0;
-
-	for (size_t i = 0; i < count; i++)
-	{
-		NodeUpdateState update_state;
-		Node *pending;
-
-		if (state->single_parent)
-		{
-			pending = state->pending_list[i].get();
-			update_state = update_node_state(*pending, state->single_parent_is_dirty);
-			if (update_state.self)
-				update_transform_tree_node(*pending, *state->single_parent_transform);
-		}
-		else
-		{
-			pending = state->pending[i];
-			update_state = update_node_state(*pending, state->parent_is_dirty[i]);
-			if (update_state.self)
-				update_transform_tree_node(*pending, *state->parent_transforms[i]);
-		}
-
-		if (!update_state.children)
-			continue;
-
-		bool parent_is_dirty = update_state.self;
-
-		auto *input_childs = pending->get_children().data();
-		size_t child_count = pending->get_children().size();
-		const mat4 *transform = &pending->cached_transform.world_transform;
-
-		size_t derived_batch_count = child_count / TraversalState::BatchSize;
-
-		for (size_t batch = 0; batch < derived_batch_count; batch++)
-		{
-			auto *child_state = traversal_state_pool.allocate();
-			child_state->traversal_done_dependency = state->traversal_done_dependency;
-			child_state->traversal_done_dependency->add_flush_dependency();
-			child_state->group = state->group;
-			child_state->pending_count = TraversalState::BatchSize;
-
-			child_state->pending_list = &input_childs[batch * TraversalState::BatchSize];
-			child_state->single_parent = true;
-			child_state->single_parent_transform = transform;
-			child_state->single_parent_is_dirty = parent_is_dirty;
-
-			dispatch_per_node_work(child_state);
-		}
-
-		for (size_t j = derived_batch_count * TraversalState::BatchSize; j < child_count; j++)
-		{
-			children[unbatched_child_count] = input_childs[j].get();
-			state->parent_is_dirty[unbatched_child_count] = parent_is_dirty;
-			state->parent_transforms[unbatched_child_count] = transform;
-			unbatched_child_count++;
-
-			if (unbatched_child_count == TraversalState::BatchSize)
-			{
-				auto *child_state = traversal_state_pool.allocate();
-				child_state->traversal_done_dependency = state->traversal_done_dependency;
-				child_state->traversal_done_dependency->add_flush_dependency();
-				child_state->group = state->group;
-				child_state->pending_count = TraversalState::BatchSize;
-
-				memcpy(child_state->pending, children, sizeof(children));
-				memcpy(child_state->parent_is_dirty, state->parent_is_dirty, sizeof(state->parent_is_dirty));
-				memcpy(child_state->parent_transforms, state->parent_transforms, sizeof(state->parent_transforms));
-
-				dispatch_per_node_work(child_state);
-				unbatched_child_count = 0;
-			}
-		}
-	}
-
-	state->pending_count = unbatched_child_count;
-	memcpy(state->pending, children, unbatched_child_count * sizeof(*children));
-}
-
-TaskGroupHandle Scene::dispatch_per_node_work(TraversalState *state)
-{
-	auto dispatcher_task = state->group->create_task([this, state]() {
-		while (state->pending_count != 0)
-			dispatch_collect_children(state);
-		state->traversal_done_dependency->release_flush_dependency();
-		traversal_state_pool.free(state);
-	});
-	dispatcher_task->set_desc("parallel-node-transform-update");
-	return dispatcher_task;
-}
-
 static const mat4 identity_transform(1.0f);
-
-void Scene::update_transform_tree(TaskComposer &composer)
-{
-	if (!root_node)
-		return;
-
-	auto &group = composer.begin_pipeline_stage();
-
-	auto traversal = traversal_state_pool.allocate();
-	traversal->traversal_done_dependency = composer.get_thread_group().create_task();
-	traversal->pending_count = 1;
-	traversal->pending[0] = root_node.get();
-	traversal->parent_is_dirty[0] = false;
-	traversal->parent_transforms[0] = &identity_transform;
-	traversal->group = &composer.get_thread_group();
-	traversal->traversal_done_dependency->add_flush_dependency();
-	auto dispatch = dispatch_per_node_work(traversal);
-
-	if (auto dep = composer.get_pipeline_stage_dependency())
-		composer.get_thread_group().add_dependency(*dispatch, *dep);
-	composer.get_thread_group().add_dependency(group, *traversal->traversal_done_dependency);
-}
-
-Scene::NodeUpdateState Scene::update_node_state(Node &node, bool parent_is_dirty)
-{
-	bool transform_dirty = node.get_and_clear_transform_dirty() || parent_is_dirty;
-	bool child_transforms_dirty = node.get_and_clear_child_transform_dirty() || transform_dirty;
-	return { transform_dirty, child_transforms_dirty };
-}
-
-void Scene::update_transform_tree_node(Node &node, const mat4 &transform)
-{
-	compute_model_transform(node.cached_transform.world_transform,
-	                        node.transform.scale, node.transform.rotation, node.transform.translation,
-	                        transform);
-
-	if (auto *skinning = node.get_skin())
-		for (auto &child : skinning->skeletons)
-			update_transform_tree(*child, node.cached_transform.world_transform, true);
-
-	//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
-	update_skinning(node);
-	node.update_timestamp();
-}
-
-void Scene::update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty)
-{
-	auto state = update_node_state(node, parent_is_dirty);
-
-	if (state.self)
-		update_transform_tree_node(node, transform);
-
-	if (state.children)
-		for (auto &child : node.get_children())
-			update_transform_tree(*child, node.cached_transform.world_transform, state.self);
-}
 
 size_t Scene::get_cached_transforms_count() const
 {
@@ -633,10 +479,110 @@ void Scene::update_all_transforms()
 	update_cached_transforms_range(0, spatials.size());
 }
 
+static void perform_update_skinning(Scene::Node * const *updates, size_t count)
+{
+	for (size_t i = 0; i < count; i++)
+	{
+		auto *update = updates[i];
+		update_skinning(*update);
+	}
+}
+
+void Scene::update_transform_tree(TaskComposer *composer)
+{
+	if (composer)
+	{
+		auto &group = composer->begin_pipeline_stage();
+		group.set_desc("distribute-per-level-updates");
+		group.enqueue_task([this, h = composer->get_deferred_enqueue_handle()]() mutable {
+			distribute_per_level_updates(h.get());
+		});
+	}
+	else
+		distribute_per_level_updates(nullptr);
+
+	if (composer)
+	{
+		auto &thread_group = composer->get_thread_group();
+		auto &group = composer->begin_pipeline_stage();
+		group.set_desc("dispatch-per-level-updates");
+		group.enqueue_task([&, h = composer->get_deferred_enqueue_handle()]() mutable {
+			uint32_t mask = pending_hierarchy_level_mask.load(std::memory_order_relaxed);
+			if (!mask)
+				return;
+			uint32_t num_pending_levels = 32 - leading_zeroes(mask);
+
+			TaskComposer stage_composer(thread_group);
+			for (unsigned level = 0, count = num_pending_levels; level < count; level++)
+			{
+				auto &level_group = stage_composer.begin_pipeline_stage();
+				level_group.set_desc("perform-per-level-update");
+				perform_per_level_updates(level, &level_group);
+			}
+			stage_composer.add_outgoing_dependency(*h);
+			h->flush();
+		});
+	}
+	else
+	{
+		uint32_t mask = pending_hierarchy_level_mask.load(std::memory_order_relaxed);
+		if (mask)
+		{
+			uint32_t num_pending_levels = 32 - leading_zeroes(mask);
+			for (unsigned level = 0, count = num_pending_levels; level < count; level++)
+				perform_per_level_updates(level, nullptr);
+		}
+	}
+
+	if (composer)
+	{
+		auto &group = composer->begin_pipeline_stage();
+		group.set_desc("perform-update-skinning");
+
+		group.enqueue_task([this, h = composer->get_deferred_enqueue_handle()]() mutable {
+			pending_node_updates_skin.for_each_ranged([&](Node *const *updates, size_t count) {
+				h->enqueue_task([=]() {
+					perform_update_skinning(updates, count);
+				});
+			});
+		});
+	}
+	else
+	{
+		pending_node_updates_skin.for_each_ranged([this](Node *const *updates, size_t count) {
+			perform_update_skinning(updates, count);
+		});
+	}
+
+	if (composer)
+	{
+		auto &clear_task = composer->begin_pipeline_stage();
+		clear_task.enqueue_task([this]() {
+			pending_node_updates.clear();
+			for (auto &l : pending_node_update_per_level)
+				l.clear();
+			pending_node_updates_skin.clear();
+			pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
+		});
+	}
+	else
+	{
+		pending_node_updates.clear();
+		for (auto &l : pending_node_update_per_level)
+			l.clear();
+		pending_node_updates_skin.clear();
+		pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
+	}
+}
+
 void Scene::update_transform_tree()
 {
-	if (root_node)
-		update_transform_tree(*root_node, mat4(1.0f), false);
+	update_transform_tree(nullptr);
+}
+
+void Scene::update_transform_tree(TaskComposer &composer)
+{
+	update_transform_tree(&composer);
 }
 
 void Scene::update_transform_listener_components()
@@ -725,6 +671,116 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 	}
 }
 
+void Scene::push_pending_node_update(Node *node)
+{
+	pending_node_updates.push(node);
+}
+
+unsigned Scene::Node::get_dirty_transform_depth() const
+{
+	unsigned level_candidate = 0;
+	unsigned level = 0;
+
+	auto *node = this;
+	while (node->parent)
+	{
+		level++;
+		if (node->parent->node_is_pending_update.load(std::memory_order_relaxed))
+			level_candidate = level;
+		node = node->parent;
+	}
+
+	return level_candidate;
+}
+
+void Scene::distribute_update_to_level(Node *update, unsigned level)
+{
+	if (level >= MaxNodeHierarchyLevels)
+	{
+		LOGE("distribute_update_to_level: Level %u is out of range.\n", level);
+		return;
+	}
+
+	pending_node_update_per_level[level].push(update);
+	pending_hierarchy_level_mask.fetch_or(1u << level, std::memory_order_relaxed);
+	if (update->get_skin())
+		pending_node_updates_skin.push(update);
+
+	level++;
+	auto &children = update->get_children();
+	for (auto &child : children)
+		if (!child->test_and_set_pending_update_no_atomic())
+			distribute_update_to_level(child.get(), level);
+}
+
+void Scene::distribute_per_level_updates(TaskGroup *group)
+{
+	if (group)
+	{
+		pending_node_updates.for_each_ranged([this, group](Node *const *updates, size_t count) {
+			group->enqueue_task([=]() {
+				for (size_t i = 0; i < count; i++)
+				{
+					auto *update = updates[i];
+					unsigned level = update->get_dirty_transform_depth();
+					distribute_update_to_level(update, level);
+				}
+			});
+		});
+	}
+	else
+	{
+		pending_node_updates.for_each_ranged([this](Node *const *updates, size_t count) {
+			for (size_t i = 0; i < count; i++)
+			{
+				auto *update = updates[i];
+				unsigned level = update->get_dirty_transform_depth();
+				distribute_update_to_level(update, level);
+			}
+		});
+	}
+}
+
+static void update_transform_tree_node(Scene::Node &node, const mat4 &transform)
+{
+	compute_model_transform(node.cached_transform.world_transform,
+	                        node.transform.scale, node.transform.rotation, node.transform.translation,
+	                        transform);
+
+	//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
+	node.update_timestamp();
+	node.clear_pending_update_no_atomic();
+}
+
+static void perform_updates(Scene::Node * const *updates, size_t count)
+{
+	for (size_t i = 0; i < count; i++)
+	{
+		auto *update = updates[i];
+		auto *parent = update->get_parent();
+		auto &transform = parent ? parent->cached_transform.world_transform : identity_transform;
+		update_transform_tree_node(*update, transform);
+	}
+}
+
+void Scene::perform_per_level_updates(unsigned level, TaskGroup *group)
+{
+	if (group)
+	{
+		pending_node_update_per_level[level].for_each_ranged([group](Node *const *updates, size_t count) {
+			group->enqueue_task([=]() {
+				perform_updates(updates, count);
+			});
+		});
+	}
+	else
+	{
+		pending_node_update_per_level[level].for_each_ranged([](Node *const *updates, size_t count) {
+			perform_updates(updates, count);
+		});
+	}
+}
+
 Scene::NodeHandle Scene::create_node()
 {
 	return Scene::NodeHandle(node_pool.allocate(this));
@@ -737,7 +793,7 @@ void Scene::NodeDeleter::operator()(Node *node)
 
 static void add_bone(Scene::NodeHandle *bones, uint32_t parent, const SceneFormats::Skin::Bone &bone)
 {
-	bones[parent]->get_skin()->skeletons.push_back(bones[bone.index]);
+	bones[parent]->add_child(bones[bone.index]);
 	for (auto &child : bone.children)
 		add_bone(bones, bone.index, child);
 }
@@ -774,7 +830,7 @@ Scene::NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 
 	for (auto &skeleton : skin.skeletons)
 	{
-		node->get_skin()->skeletons.push_back(bones[skeleton.index]);
+		node->add_child(bones[skeleton.index]);
 		for (auto &child : skeleton.children)
 			add_bone(bones.data(), skeleton.index, child);
 	}
@@ -788,9 +844,6 @@ void Scene::Node::add_child(NodeHandle node)
 	assert(this != node.get());
 	assert(node->parent == nullptr);
 	node->parent = this;
-
-	// Force parents to be notified.
-	node->cached_transform_dirty = false;
 	node->invalidate_cached_transform();
 	children.push_back(node);
 }
@@ -800,9 +853,6 @@ Scene::NodeHandle Scene::Node::remove_child(Node *node)
 	assert(node->parent == this);
 	node->parent = nullptr;
 	auto handle = node->reference_from_this();
-
-	// Force parents to be notified.
-	node->cached_transform_dirty = false;
 	node->invalidate_cached_transform();
 
 	auto itr = remove_if(begin(children), end(children), [&](const NodeHandle &h) {
@@ -823,12 +873,9 @@ Scene::NodeHandle Scene::Node::remove_node_from_hierarchy(Node *node)
 
 void Scene::Node::invalidate_cached_transform()
 {
-	if (!cached_transform_dirty)
-	{
-		cached_transform_dirty = true;
-		for (auto *p = parent; p && !p->any_child_transform_dirty; p = p->parent)
-			p->any_child_transform_dirty = true;
-	}
+	// Order does not matter. We will synchronize where we actually read from this.
+	if (!node_is_pending_update.exchange(true, std::memory_order_relaxed))
+		parent_scene->push_pending_node_update(this);
 }
 
 Entity *Scene::create_entity()

@@ -24,7 +24,9 @@ add_granite_internal_lib(granite-util
         cli_parser.cpp cli_parser.hpp
         dynamic_library.cpp dynamic_library.hpp
         generational_handle.hpp
+        atomic_append_buffer.hpp
         lru_cache.hpp
+        unordered_array.hpp
         message_queue.hpp message_queue.cpp
         no_init_pod.hpp)
 target_include_directories(granite-util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

@@ -39,10 +39,12 @@ TaskGroup &TaskComposer::begin_pipeline_stage()
 	auto new_group = group.create_task();
 	auto new_deps = group.create_task();
 	if (current)
-	{
-		group.add_dependency(*new_group, *current);
 		group.add_dependency(*new_deps, *current);
-	}
+	if (next_stage_deps)
+		group.add_dependency(*new_deps, *next_stage_deps);
+	next_stage_deps.reset();
+	group.add_dependency(*new_group, *new_deps);
+
 	current = std::move(new_group);
 	incoming_deps = std::move(new_deps);
 	return *current;
@@ -59,7 +61,10 @@ TaskGroup &TaskComposer::get_group()
 TaskGroupHandle TaskComposer::get_outgoing_task()
 {
 	begin_pipeline_stage();
-	return current;
+	auto ret = std::move(incoming_deps);
+	incoming_deps = {};
+	current = {};
+	return ret;
 }
 
 TaskGroupHandle TaskComposer::get_pipeline_stage_dependency()
@@ -67,8 +72,20 @@ TaskGroupHandle TaskComposer::get_pipeline_stage_dependency()
 	return incoming_deps;
 }
 
+TaskGroupHandle TaskComposer::get_deferred_enqueue_handle()
+{
+	if (!next_stage_deps)
+		next_stage_deps = group.create_task();
+	return next_stage_deps;
+}
+
 ThreadGroup &TaskComposer::get_thread_group()
 {
 	return group;
+}
+
+void TaskComposer::add_outgoing_dependency(TaskGroup &task)
+{
+	group.add_dependency(task, *get_outgoing_task());
 }
 }

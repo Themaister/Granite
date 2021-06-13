@@ -35,14 +35,25 @@ public:
 	void set_incoming_task(TaskGroupHandle group);
 	TaskGroup &begin_pipeline_stage();
 	TaskGroup &get_group();
+
+	// Returns a waitable handle that can be waited on.
 	TaskGroupHandle get_outgoing_task();
 	TaskGroupHandle get_pipeline_stage_dependency();
 	ThreadGroup &get_thread_group();
+
+	// If this is called, the next pipeline stage will implicitly depend
+	// on the task returned. This is useful if a pipeline stage will spawn tasks on its own,
+	// which can only be known at the time of task execution.
+	// As long as the enqueue handle is kept alive in child tasks,
+	// the next pipeline stage will not begin.
+	TaskGroupHandle get_deferred_enqueue_handle();
+
+	void add_outgoing_dependency(TaskGroup &task);
 
 private:
 	ThreadGroup &group;
 	TaskGroupHandle current;
 	TaskGroupHandle incoming_deps;
+	TaskGroupHandle next_stage_deps;
 };
-
 }

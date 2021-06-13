@@ -1126,29 +1126,33 @@ void SceneViewerApplication::setup_shadow_map()
 
 void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_time, double elapsed_time)
 {
-	last_frame_times[last_frame_index++ & FrameWindowSizeMask] = float(frame_time);
 	auto &scene = scene_loader.get_scene();
 
-	animation_system->animate(frame_time, elapsed_time);
+	animation_system->animate(composer, frame_time, elapsed_time);
+	scene.update_transform_tree(composer);
+	Threaded::scene_update_cached_transforms(scene, composer, 64);
 
-	{
-		TaskComposer update_composer(composer.get_thread_group());
-		scene.update_transform_tree(update_composer);
-		Threaded::scene_update_cached_transforms(scene, update_composer, 64);
-		update_composer.get_outgoing_task()->wait();
-	}
+	// Perform updates which depend on node transforms.
+	auto &updates = composer.begin_pipeline_stage();
+	updates.set_desc("scene-updates");
+	updates.enqueue_task([this, need_update = need_shadow_map_update]() {
+		jitter.step(selected_camera->get_projection(), selected_camera->get_view());
+		context.set_camera(jitter.get_jittered_projection(), selected_camera->get_view());
 
-	jitter.step(selected_camera->get_projection(), selected_camera->get_view());
-	context.set_camera(jitter.get_jittered_projection(), selected_camera->get_view());
+		lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 
-	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
+		lighting.directional.direction = selected_directional->direction;
+		lighting.directional.color = selected_directional->color;
 
-	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
-	scene.set_render_pass_data(&renderer_suite, &context);
+		if (lighting.shadows)
+		{
+			if (need_update)
+				update_shadow_scene_aabb();
+			setup_shadow_map();
+		}
+	});
 
-	lighting.directional.direction = selected_directional->direction;
-	lighting.directional.color = selected_directional->color;
-
+	need_shadow_map_update = false;
 	scene.refresh_per_frame(context, composer);
 }
 
@@ -1218,7 +1222,23 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 {
 	auto &wsi = get_wsi();
 	auto &device = wsi.get_device();
+	graph.enqueue_render_passes(device, composer);
+}
+
+void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
+{
+	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
+	TaskComposer composer(*GRANITE_THREAD_GROUP());
+
+	Util::TimelineTraceFile::Event *e = nullptr;
+
+	// Set up handles before we kick of task graph.
+	auto &device = get_wsi().get_device();
 	auto &scene = scene_loader.get_scene();
+
+	last_frame_times[last_frame_index++ & FrameWindowSizeMask] = float(frame_time);
+	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
+	scene_loader.get_scene().set_render_pass_data(&renderer_suite, &context);
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	lighting.shadows = graph.maybe_get_physical_texture_resource(shadows);
@@ -1228,24 +1248,7 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 	fallback_lighting.directional = lighting.directional;
 	fallback_lighting.cluster = lighting.cluster;
 
-	if (lighting.shadows)
-	{
-		if (need_shadow_map_update)
-			update_shadow_scene_aabb();
-		setup_shadow_map();
-	}
-
 	scene.bind_render_graph_resources(graph);
-	graph.enqueue_render_passes(device, composer);
-	need_shadow_map_update = false;
-}
-
-void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
-{
-	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
-	TaskComposer composer(*GRANITE_THREAD_GROUP());
-
-	Util::TimelineTraceFile::Event *e = nullptr;
 
 	if (file)
 		e = file->begin_event("update-scene-enqueue");
@@ -1261,7 +1264,10 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 
 	if (file)
 		e = file->begin_event("render-frame-wait");
-	composer.get_outgoing_task()->wait();
+
+	auto final = composer.get_outgoing_task();
+	final->wait();
+
 	if (e)
 		file->end_event(e);
 

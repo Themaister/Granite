@@ -28,6 +28,8 @@
 #include "scene_formats.hpp"
 #include "no_init_pod.hpp"
 #include "thread_group.hpp"
+#include "atomic_append_buffer.hpp"
+#include <atomic>
 
 namespace Granite
 {
@@ -106,35 +108,42 @@ public:
 	public:
 		explicit Node(Scene *parent_)
 			: parent_scene(parent_)
+			, transform(*parent_scene->transform_pool.allocate())
+			, cached_transform(*parent_scene->cached_transform_pool.allocate())
 		{
+			node_is_pending_update.store(false, std::memory_order_relaxed);
+			invalidate_cached_transform();
+			assert(node_is_pending_update.is_lock_free());
 		}
 
 		~Node()
 		{
 			if (skinning)
 				parent_scene->skinning_pool.free(skinning);
+			parent_scene->transform_pool.free(&transform);
+			parent_scene->cached_transform_pool.free(&cached_transform);
 		}
 
 		Scene *parent_scene;
-		Transform transform;
-		CachedTransform cached_transform;
+		Transform &transform;
+		CachedTransform &cached_transform;
 
 		void invalidate_cached_transform();
 		void add_child(Util::IntrusivePtr<Node> node);
 		Util::IntrusivePtr<Node> remove_child(Node *node);
 		static Util::IntrusivePtr<Node> remove_node_from_hierarchy(Node *node);
 
-		const std::vector<Util::IntrusivePtr<Node>> &get_children() const
+		inline const std::vector<Util::IntrusivePtr<Node>> &get_children() const
 		{
 			return children;
 		}
 
-		std::vector<Util::IntrusivePtr<Node>> &get_children()
+		inline std::vector<Util::IntrusivePtr<Node>> &get_children()
 		{
 			return children;
 		}
 
-		Node *get_parent() const
+		inline Node *get_parent() const
 		{
 			return parent;
 		}
@@ -145,7 +154,6 @@ public:
 			std::vector<const CachedTransform *> cached_skin;
 			std::vector<Transform *> skin;
 			std::vector<mat4> inverse_bind_poses;
-			std::vector<Util::IntrusivePtr<Node>> skeletons;
 			Util::Hash skin_compat = 0;
 		};
 
@@ -161,28 +169,29 @@ public:
 			return skinning;
 		}
 
-		inline bool get_and_clear_child_transform_dirty()
-		{
-			auto ret = any_child_transform_dirty;
-			any_child_transform_dirty = false;
-			return ret;
-		}
-
-		inline bool get_and_clear_transform_dirty()
-		{
-			auto ret = cached_transform_dirty;
-			cached_transform_dirty = false;
-			return ret;
-		}
-
-		void update_timestamp()
+		inline void update_timestamp()
 		{
 			timestamp++;
 		}
 
-		const uint32_t *get_timestamp_pointer() const
+		inline const uint32_t *get_timestamp_pointer() const
 		{
 			return &timestamp;
+		}
+
+		unsigned get_dirty_transform_depth() const;
+
+		inline bool test_and_set_pending_update_no_atomic()
+		{
+			bool value = node_is_pending_update.load(std::memory_order_relaxed);
+			if (!value)
+				node_is_pending_update.store(true, std::memory_order_relaxed);
+			return value;
+		}
+
+		inline void clear_pending_update_no_atomic()
+		{
+			node_is_pending_update.store(false, std::memory_order_relaxed);
 		}
 
 	private:
@@ -190,8 +199,7 @@ public:
 		Skinning *skinning = nullptr;
 		Node *parent = nullptr;
 		uint32_t timestamp = 0;
-		bool any_child_transform_dirty = true;
-		bool cached_transform_dirty = true;
+		std::atomic<bool> node_is_pending_update;
 	};
 	using NodeHandle = Util::IntrusivePtr<Node>;
 	NodeHandle create_node();
@@ -230,8 +238,10 @@ public:
 
 private:
 	EntityPool pool;
-	Util::ObjectPool<Node> node_pool;
 	Util::ObjectPool<Node::Skinning> skinning_pool;
+	Util::ObjectPool<Transform> transform_pool;
+	Util::ObjectPool<CachedTransform> cached_transform_pool;
+	Util::ObjectPool<Node> node_pool;
 	NodeHandle root_node;
 
 	// Sets up the default useful component groups up front.
@@ -304,36 +314,19 @@ private:
 	Util::IntrusiveList<Entity> queued_entities;
 	void destroy_entities(Util::IntrusiveList<Entity> &entity_list);
 
-	static void update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty);
-	static void update_transform_tree_node(Node &node, const mat4 &transform);
-	static void update_skinning(Node &node);
-	struct NodeUpdateState
-	{
-		bool self;
-		bool children;
-	};
-	static NodeUpdateState update_node_state(Node &node, bool parent_is_dirty);
-
-	struct TraversalState
-	{
-		enum { BatchSize = 1024 };
-		TraversalState() = default;
-
-		Node *pending[BatchSize];
-		const mat4 *parent_transforms[BatchSize];
-		bool parent_is_dirty[BatchSize];
-		TaskGroupHandle traversal_done_dependency;
-		size_t pending_count = 0;
-		ThreadGroup *group = nullptr;
-		const mat4 *single_parent_transform = nullptr;
-		Util::IntrusivePtr<Node> *pending_list = nullptr;
-		bool single_parent_is_dirty = false;
-		bool single_parent = false;
-	};
-	Util::ThreadSafeObjectPool<TraversalState> traversal_state_pool;
-	void dispatch_collect_children(TraversalState *state);
-	TaskGroupHandle dispatch_per_node_work(TraversalState *state);
-
 	void update_cached_transforms_range(size_t start_index, size_t end_index);
+
+	// New transform update system:
+	enum { MaxNodeHierarchyLevels = 32 };
+	void push_pending_node_update(Node *node);
+	void distribute_per_level_updates(TaskGroup *group);
+	void distribute_update_to_level(Node *update, unsigned level);
+	void perform_per_level_updates(unsigned level, TaskGroup *group);
+	Util::AtomicAppendBuffer<Node *, 8> pending_node_updates;
+	Util::AtomicAppendBuffer<Node *, 8> pending_node_updates_skin;
+	Util::AtomicAppendBuffer<Node *, 8> pending_node_update_per_level[MaxNodeHierarchyLevels];
+	std::atomic_uint32_t pending_hierarchy_level_mask;
+
+	void update_transform_tree(TaskComposer *composer);
 };
 }

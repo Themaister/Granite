@@ -26,7 +26,9 @@
 #include "scene_formats.hpp"
 #include "generational_handle.hpp"
 #include "intrusive_hash_map.hpp"
-#include "intrusive_list.hpp"
+#include "unordered_array.hpp"
+#include "small_vector.hpp"
+#include "atomic_append_buffer.hpp"
 #include <vector>
 
 namespace Granite
@@ -81,6 +83,7 @@ class AnimationSystem
 {
 public:
 	void animate(double frame_time, double elapsed_time);
+	void animate(TaskComposer &composer, double frame_time, double elapsed_time);
 	void set_fixed_pose(Scene::Node &node, AnimationID id, float offset) const;
 	void set_fixed_pose_multi(Scene::NodeHandle *nodes, unsigned num_nodes, AnimationID id, float offset) const;
 
@@ -99,11 +102,11 @@ public:
 	void set_completion_callback(AnimationStateID id, std::function<void ()> cb);
 
 private:
-	struct AnimationState : Util::IntrusiveListEnabled<AnimationState>
+	struct AnimationState : Util::IntrusiveUnorderedArrayEnabled
 	{
 		AnimationState(const AnimationUnrolled &anim,
-		               std::vector<Transform *> channel_transforms_,
-		               std::vector<Scene::Node *> channel_nodes_,
+		               Util::SmallVector<Transform *> channel_transforms_,
+		               Util::SmallVector<Scene::Node *> channel_nodes_,
 		               double start_time_);
 
 		AnimationState(const AnimationUnrolled &anim,
@@ -112,8 +115,8 @@ private:
 
 		Scene::Node *skinned_node = nullptr;
 		AnimationStateID id = 0;
-		std::vector<Transform *> channel_transforms;
-		std::vector<Scene::Node *> channel_nodes;
+		Util::SmallVector<Transform *> channel_transforms;
+		Util::SmallVector<Scene::Node *> channel_nodes;
 		const AnimationUnrolled &animation;
 		double start_time = 0.0;
 		bool repeating = false;
@@ -125,6 +128,10 @@ private:
 	Util::GenerationalHandlePool<AnimationUnrolled> animation_pool;
 	Util::IntrusiveHashMap<Util::IntrusivePODWrapper<AnimationID>> animation_map;
 	Util::GenerationalHandlePool<AnimationState> animation_state_pool;
-	Util::IntrusiveList<AnimationState> active_animation;
+	Util::IntrusiveUnorderedArray<AnimationState> active_animation;
+	Util::AtomicAppendBuffer<AnimationState *> garbage_collect_animations;
+
+	void update(AnimationState *state, double frame_time, double elapsed_time);
+	void garbage_collect();
 };
 }

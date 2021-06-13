@@ -21,6 +21,7 @@
  */
 
 #include "animation_system.hpp"
+#include "task_composer.hpp"
 
 using namespace std;
 
@@ -270,14 +271,14 @@ AnimationStateID AnimationSystem::start_animation(Scene::Node &node, Granite::An
 			return 0;
 		}
 
-		std::vector<Transform *> target_transforms = { &node.transform };
-		std::vector<Scene::Node *> nodes = { &node };
+		Util::SmallVector<Transform *> target_transforms = { &node.transform };
+		Util::SmallVector<Scene::Node *> nodes = { &node };
 		id = animation_state_pool.emplace(*animation, move(target_transforms), move(nodes), start_time);
 	}
 
 	auto *state = &animation_state_pool.get(id);
 	state->id = id;
-	active_animation.insert_front(state);
+	active_animation.add(state);
 	return id;
 }
 
@@ -333,8 +334,8 @@ void AnimationSystem::set_fixed_pose_multi(Scene::NodeHandle *nodes, unsigned nu
 	}
 
 	// Not very efficient.
-	std::vector<Transform *> target_transforms;
-	std::vector<Scene::Node *> target_nodes;
+	Util::SmallVector<Transform *> target_transforms;
+	Util::SmallVector<Scene::Node *> target_nodes;
 	target_transforms.reserve(animation->get_num_channels());
 	target_nodes.reserve(animation->get_num_channels());
 
@@ -370,8 +371,8 @@ AnimationStateID AnimationSystem::start_animation_multi(Scene::NodeHandle *nodes
 		return 0;
 	}
 
-	std::vector<Transform *> target_transforms;
-	std::vector<Scene::Node *> target_nodes;
+	Util::SmallVector<Transform *> target_transforms;
+	Util::SmallVector<Scene::Node *> target_nodes;
 	target_transforms.reserve(animation->get_num_channels());
 	target_nodes.reserve(animation->get_num_channels());
 
@@ -391,7 +392,7 @@ AnimationStateID AnimationSystem::start_animation_multi(Scene::NodeHandle *nodes
 	auto id = animation_state_pool.emplace(*animation, move(target_transforms), move(target_nodes), start_time);
 	auto *state = &animation_state_pool.get(id);
 	state->id = id;
-	active_animation.insert_front(state);
+	active_animation.add(state);
 	return id;
 }
 
@@ -416,64 +417,103 @@ void AnimationSystem::set_relative_timing(Granite::AnimationStateID id, bool ena
 		state->relative_timing = enable;
 }
 
-void AnimationSystem::animate(double frame_time, double elapsed_time)
+void AnimationSystem::update(AnimationState *anim, double frame_time, double elapsed_time)
 {
-	auto itr = active_animation.begin();
-	while (itr != active_animation.end())
+	bool complete = false;
+
+	double offset;
+	if (anim->relative_timing)
 	{
-		bool complete = false;
+		anim->start_time += frame_time;
+		offset = anim->start_time;
+	}
+	else
+	{
+		offset = elapsed_time - anim->start_time;
+	}
 
-		float offset;
-		if (itr->relative_timing)
-		{
-			itr->start_time += frame_time;
-			offset = float(itr->start_time);
-		}
-		else
-		{
-			offset = float(elapsed_time - itr->start_time);
-		}
+	if (!anim->repeating && offset >= anim->animation.get_length())
+		complete = true;
 
-		if (!itr->repeating && offset >= itr->animation.get_length())
-			complete = true;
+	if (anim->repeating)
+		offset = mod(offset, double(anim->animation.get_length()));
 
-		if (itr->repeating)
-			offset = mod(offset, itr->animation.get_length());
-
-		if (itr->animation.is_skinned())
-		{
-			auto *node = itr->skinned_node;
-			itr->animation.animate(node->get_skin()->skin.data(), node->get_skin()->skin.size(), offset);
+	if (anim->animation.is_skinned())
+	{
+		auto *node = anim->skinned_node;
+		anim->animation.animate(node->get_skin()->skin.data(), node->get_skin()->skin.size(), float(offset));
+		node->invalidate_cached_transform();
+	}
+	else
+	{
+		anim->animation.animate(anim->channel_transforms.data(), anim->channel_transforms.size(), float(offset));
+		for (auto *node : anim->channel_nodes)
 			node->invalidate_cached_transform();
-		}
-		else
-		{
-			itr->animation.animate(itr->channel_transforms.data(), itr->channel_transforms.size(), offset);
-			for (auto *node : itr->channel_nodes)
-				node->invalidate_cached_transform();
-		}
+	}
 
-		if (complete)
+	if (complete)
+		garbage_collect_animations.push(anim);
+}
+
+void AnimationSystem::garbage_collect()
+{
+	// Cleanup task.
+	garbage_collect_animations.for_each_ranged([&](AnimationState * const *states, size_t count) {
+		for (size_t i = 0; i < count; i++)
 		{
-			auto *state = itr.get();
-			itr = active_animation.erase(itr);
+			auto *state = states[i];
 			if (state->cb)
 				state->cb();
+			active_animation.erase(state);
 			animation_state_pool.remove(state->id);
 		}
-		else
-			++itr;
+	});
+	garbage_collect_animations.clear();
+}
+
+void AnimationSystem::animate(double frame_time, double elapsed_time)
+{
+	// TODO: Run multithreaded.
+	for (auto *anim : active_animation)
+		update(anim, frame_time, elapsed_time);
+
+	garbage_collect();
+}
+
+void AnimationSystem::animate(TaskComposer &composer, double frame_time, double elapsed_time)
+{
+	auto &group = composer.begin_pipeline_stage();
+	group.set_desc("animation-update");
+	size_t count = active_animation.size();
+	constexpr size_t per_batch = 32;
+	for (size_t i = 0; i < count; i += per_batch)
+	{
+		group.enqueue_task([=]() {
+			auto itr = active_animation.begin() + i;
+			auto end_itr = itr + std::min(per_batch, count - i);
+			while (itr != end_itr)
+			{
+				update(*itr, frame_time, elapsed_time);
+				++itr;
+			}
+		});
 	}
+
+	auto &cleanup = composer.begin_pipeline_stage();
+	cleanup.set_desc("animation-cleanup");
+	cleanup.enqueue_task([this]() {
+		garbage_collect();
+	});
 }
 
 AnimationSystem::AnimationState::AnimationState(const AnimationUnrolled &anim,
-                                                std::vector<Transform *> channel_transforms_,
-                                                std::vector<Scene::Node *> channel_nodes_,
+                                                Util::SmallVector<Transform *> channel_transforms_,
+                                                Util::SmallVector<Scene::Node *> channel_nodes_,
                                                 double start_time_)
-		: channel_transforms(std::move(channel_transforms_)),
-		  channel_nodes(std::move(channel_nodes_)),
-		  animation(anim),
-		  start_time(start_time_)
+	: channel_transforms(std::move(channel_transforms_)),
+	  channel_nodes(std::move(channel_nodes_)),
+	  animation(anim),
+	  start_time(start_time_)
 {
 }
 

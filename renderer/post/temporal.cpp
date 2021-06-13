@@ -155,6 +155,7 @@ unsigned TemporalJitter::get_unmasked_phase() const
 
 void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, float scaling_factor,
                        const std::string &input, const std::string &input_depth,
+                       const std::string &input_mv,
                        const std::string &output, TAAQuality quality)
 {
 	jitter.init(TemporalJitter::Type::TAA_16Phase,
@@ -171,59 +172,18 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, float scaling
 	AttachmentInfo taa_history = taa_output;
 	taa_history.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 
-#define TAA_MOTION_VECTORS 0
-
-#if TAA_MOTION_VECTORS
-	AttachmentInfo mv_output;
-	mv_output.size_class = SizeClass::InputRelative;
-	mv_output.size_relative_name = input;
-	mv_output.format = VK_FORMAT_R16G16_SFLOAT;
-
-	auto &mvs = graph.add_pass("taa-motion-vectors", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	mvs.add_color_output("taa-mvs", mv_output);
-	mvs.set_depth_stencil_input(input_depth);
-	mvs.add_attachment_input(input_depth);
-
-	mvs.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-		cmd.set_input_attachments(0, 0);
-
-		struct Push
-		{
-			mat4 reproj;
-		};
-		Push push;
-
-		push.reproj =
-				translate(vec3(0.5f, 0.5f, 0.0f)) *
-				scale(vec3(0.5f, 0.5f, 1.0f)) *
-				jitter.get_history_view_proj(1) *
-				jitter.get_history_inv_view_proj(0);
-
-		cmd.push_constants(&push, 0, sizeof(push));
-		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd,
-		                                     "builtin://shaders/quad.vert",
-		                                     "builtin://shaders/post/depth_to_motion_vectors.frag");
-
-		// Technically, we should also render dynamic objects where appropriate, some day, some day ...
-	});
-#endif
-
 	auto &resolve = graph.add_pass("taa-resolve", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	resolve.add_color_output(output, taa_output);
 	resolve.add_color_output(output + "-history", taa_history);
 	auto &input_res = resolve.add_texture_input(input);
+	auto &input_res_mv = resolve.add_texture_input(input_mv);
 	auto &input_depth_res = resolve.add_texture_input(input_depth);
-#if TAA_MOTION_VECTORS
-	resolve.add_texture_input("taa-mvs");
-#endif
 	auto &history = resolve.add_history_input(output + "-history");
 
 	resolve.set_build_render_pass([&, q = Util::ecast(quality)](Vulkan::CommandBuffer &cmd) {
 		auto &image = graph.get_physical_texture_resource(input_res);
+		auto &image_mv = graph.get_physical_texture_resource(input_res_mv);
 		auto &depth = graph.get_physical_texture_resource(input_depth_res);
-#if TAA_MOTION_VECTORS
-		auto &mvs = graph.get_physical_texture_resource(resolve.get_texture_inputs()[2]->get_physical_index());
-#endif
 		auto *prev = graph.get_physical_history_texture_resource(history);
 
 		struct Push
@@ -248,11 +208,9 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, float scaling
 
 		cmd.set_texture(0, 0, image, Vulkan::StockSampler::NearestClamp);
 		cmd.set_texture(0, 1, depth, Vulkan::StockSampler::NearestClamp);
+		cmd.set_texture(0, 2, image_mv, Vulkan::StockSampler::NearestClamp);
 		if (prev)
-			cmd.set_texture(0, 2, *prev, Vulkan::StockSampler::LinearClamp);
-#if TAA_MOTION_VECTORS
-		cmd.set_texture(0, 3, mvs, Vulkan::StockSampler::NearestClamp);
-#endif
+			cmd.set_texture(0, 3, *prev, Vulkan::StockSampler::LinearClamp);
 
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd,
 		                                                "builtin://shaders/quad.vert",

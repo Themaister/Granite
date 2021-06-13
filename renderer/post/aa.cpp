@@ -129,7 +129,9 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 
 bool setup_before_post_chain_antialiasing(PostAAType type, RenderGraph &graph, TemporalJitter &jitter,
                                           float scaling_factor,
-                                          const std::string &input, const std::string &input_depth,
+                                          const std::string &input,
+                                          const std::string &input_depth,
+                                          const std::string &input_mv,
                                           const std::string &output)
 {
 	TAAQuality taa_quality;
@@ -141,7 +143,7 @@ bool setup_before_post_chain_antialiasing(PostAAType type, RenderGraph &graph, T
 	default: return false;
 	}
 
-	setup_taa_resolve(graph, jitter, scaling_factor, input, input_depth, output, taa_quality);
+	setup_taa_resolve(graph, jitter, scaling_factor, input, input_depth, input_mv, output, taa_quality);
 	return true;
 }
 

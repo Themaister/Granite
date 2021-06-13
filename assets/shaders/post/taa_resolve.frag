@@ -21,15 +21,11 @@ precision highp int;
 #error "Unknown TAA quality."
 #endif
 
-#define REPROJECTION_MOTION_VECTORS 0
-
 layout(set = 0, binding = 0) uniform mediump sampler2D CurrentFrame;
 #if REPROJECTION_HISTORY
 layout(set = 0, binding = 1) uniform sampler2D CurrentDepth;
-layout(set = 0, binding = 2) uniform mediump sampler2D PreviousFrame;
-#if REPROJECTION_MOTION_VECTORS
-layout(set = 0, binding = 3) uniform sampler2D MVs;
-#endif
+layout(set = 0, binding = 2) uniform sampler2D MVs;
+layout(set = 0, binding = 3) uniform mediump sampler2D PreviousFrame;
 #endif
 
 #include "reprojection.h"
@@ -48,27 +44,28 @@ void main()
 {
     mediump vec3 current = SAMPLE_CURRENT(CurrentFrame, vUV, 0, 0);
 #if REPROJECTION_HISTORY
-    #if REPROJECTION_MOTION_VECTORS
-        vec2 MV = sample_nearest_velocity(CurrentDepth, MVs, vUV, registers.rt_metrics.xy);
-        #if REPROJECTION_CUBIC_HISTORY
-            mediump vec3 history_color = sample_catmull_rom(PreviousFrame, vUV - MV, registers.rt_metrics);
-        #else
-            mediump vec3 history_color = textureLod(PreviousFrame, vUV - MV, 0.0).rgb;
-        #endif
-    #else
-        float depth = sample_nearest_depth_box(CurrentDepth, vUV, registers.rt_metrics.xy);
+    vec3 MV_d = sample_nearest_velocity(CurrentDepth, MVs, vUV, registers.rt_metrics.xy);
+    vec2 oldUV;
+
+    if (all(equal(MV_d.xy, vec2(0.0))))
+    {
+        // Closest depth sample did not have explicit motion, reproject from camera.
+        float depth = MV_d.z;
         vec4 clip = vec4(2.0 * vUV - 1.0, depth, 1.0);
         vec4 reproj_pos = registers.reproj * clip;
-        vec2 oldUV = reproj_pos.xy / reproj_pos.w;
-        vec2 MV = vUV - oldUV;
-        #if REPROJECTION_CUBIC_HISTORY
-            mediump vec3 history_color = sample_catmull_rom(PreviousFrame, oldUV, registers.rt_metrics);
-        #else
-            mediump vec3 history_color = textureLod(PreviousFrame, oldUV, 0.0).rgb;
-        #endif
+        oldUV = reproj_pos.xy / reproj_pos.w;
+        MV_d.xy = vUV - oldUV;
+    }
+    else
+        oldUV = vUV - MV_d.xy;
+
+    #if REPROJECTION_CUBIC_HISTORY
+        mediump vec3 history_color = sample_catmull_rom(PreviousFrame, oldUV, registers.rt_metrics);
+    #else
+        mediump vec3 history_color = textureLod(PreviousFrame, oldUV, 0.0).rgb;
     #endif
 
-    mediump float MV_length = length(MV);
+    mediump float MV_length = length(MV_d.xy);
     mediump float MV_fast = min(MV_length * 50.0, 1.0);
     mediump float gamma = mix(1.5, 0.5, MV_fast);
 

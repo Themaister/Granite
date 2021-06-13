@@ -1,20 +1,19 @@
 #version 450
 
-#include "lights/lighting_data.h"
-
 layout(location = 0) out vec2 MV;
 layout(location = 0) in vec3 vOldClip;
+layout(location = 1) in vec3 vNewClip;
 
 void main()
 {
-    if (vOldClip.w <= 0.00001)
+    if (vOldClip.z <= 0.00001)
     {
         MV = vec2(0.0);
     }
     else
     {
-        vec2 UV = gl_FragCoord.xy * resolution.inv_resolution;
-        vec2 old_window_pos = 0.5 * (vOldClip.xy / vOldClip.w) + 0.5;
-        MV = UV - old_window_pos;
+        vec2 UV = vNewClip.xy / vNewClip.z;
+        vec2 oldUV = vOldClip.xy / vOldClip.z;
+        MV = 0.5 * (UV - oldUV);
     }
 }

@@ -182,6 +182,12 @@ void RenderQueue::push_depth_renderables(const RenderContext &context, const Ren
 		visible[i].renderable->get_depth_render_info(context, visible[i].transform, *this);
 }
 
+void RenderQueue::push_motion_vector_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count)
+{
+	for (size_t i = 0; i < count; i++)
+		visible[i].renderable->get_motion_vector_render_info(context, visible[i].transform, *this);
+}
+
 uint64_t RenderInfo::get_background_sort_key(Queue queue_type, Util::Hash pipeline_hash, Util::Hash draw_hash)
 {
 	pipeline_hash &= 0xffff0000u;

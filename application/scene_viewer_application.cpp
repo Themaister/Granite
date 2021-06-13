@@ -1138,6 +1138,8 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 	updates.enqueue_task([this, need_update = need_shadow_map_update]() {
 		jitter.step(selected_camera->get_projection(), selected_camera->get_view());
 		context.set_camera(jitter.get_jittered_projection(), selected_camera->get_view());
+		context.set_motion_vector_projections(jitter.get_history_view_proj(0),
+		                                      jitter.get_history_view_proj(1));
 
 		lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 

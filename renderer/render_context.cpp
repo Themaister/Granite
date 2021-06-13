@@ -39,6 +39,13 @@ void RenderContext::set_shadow_cascades(const mat4 cascades[NumShadowCascades])
 		camera.multiview_view_projection[i] = cascades[i];
 }
 
+void RenderContext::set_motion_vector_projections(const mat4 &unjittered_view_projection,
+                                                  const mat4 &unjittered_prev_view_projection)
+{
+	camera.unjittered_view_projection = unjittered_view_projection;
+	camera.unjittered_prev_view_projection = unjittered_prev_view_projection;
+}
+
 void RenderContext::set_device(Device *device_)
 {
 	device = device_;

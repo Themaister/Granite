@@ -57,6 +57,7 @@ public:
 	size_t get_cached_transforms_count() const;
 
 	void gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list) const;
+	void gather_visible_motion_vector_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_static_shadow_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list) const;
@@ -67,6 +68,8 @@ public:
 
 	void gather_visible_opaque_renderables_subset(const Frustum &frustum, VisibilityList &list,
 	                                              unsigned index, unsigned num_indices) const;
+	void gather_visible_motion_vector_renderables_subset(const Frustum &frustum, VisibilityList &list,
+	                                                     unsigned index, unsigned num_indices) const;
 	void gather_visible_transparent_renderables_subset(const Frustum &frustum, VisibilityList &list,
 	                                                   unsigned index, unsigned num_indices) const;
 	void gather_visible_static_shadow_renderables_subset(const Frustum &frustum, VisibilityList &list,
@@ -79,6 +82,7 @@ public:
 	                                             unsigned index, unsigned num_indices) const;
 
 	size_t get_opaque_renderables_count() const;
+	size_t get_motion_vector_renderables_count() const;
 	size_t get_transparent_renderables_count() const;
 	size_t get_static_shadow_renderables_count() const;
 	size_t get_dynamic_shadow_renderables_count() const;

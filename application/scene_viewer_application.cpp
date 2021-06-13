@@ -995,7 +995,12 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	}
 
 	add_main_pass(swap.get_device(), "main");
-	add_mv_pass("main", "depth-main");
+	if (config.postaa_type == PostAAType::TAA_Low ||
+	    config.postaa_type == PostAAType::TAA_Medium ||
+	    config.postaa_type == PostAAType::TAA_High)
+	{
+		add_mv_pass("main", "depth-main");
+	}
 
 	if (config.hdr_bloom)
 	{

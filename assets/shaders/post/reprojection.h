@@ -215,7 +215,7 @@ float sample_nearest_depth_box(sampler2D Depth, vec2 UV, vec2 inv_resolution)
 #endif
 }
 
-vec2 sample_nearest_velocity(sampler2D Depth, sampler2D MVs, vec2 UV, vec2 inv_resolution)
+vec3 sample_nearest_velocity(sampler2D Depth, sampler2D MVs, vec2 UV, vec2 inv_resolution)
 {
 #if NEAREST_METHOD == NEAREST_METHOD_5TAP_CROSS
     vec2 ShiftUV = UV - 0.5 * inv_resolution;
@@ -233,8 +233,8 @@ vec2 sample_nearest_velocity(sampler2D Depth, sampler2D MVs, vec2 UV, vec2 inv_r
     if (depth_quad0.y < d) { mv = vec2(mvx_quad0.y, mvy_quad0.y); d = depth_quad0.y; }
     if (depth_quad0.z < d) { mv = vec2(mvx_quad0.z, mvy_quad0.z); d = depth_quad0.z; }
     if (depth_quad1.x < d) { mv = vec2(mvx_quad1.x, mvy_quad1.x); d = depth_quad1.x; }
-    if (depth_quad1.y < d) { mv = vec2(mvx_quad1.y, mvy_quad1.y);                    }
-    return mv;
+    if (depth_quad1.y < d) { mv = vec2(mvx_quad1.y, mvy_quad1.y); d = depth_quad1.y; }
+    return vec3(mv, d);
 #elif NEAREST_METHOD == NEAREST_METHOD_5TAP_DIAMOND
     float d = textureLod(Depth, UV, 0.0).x;
     float d0 = textureLodOffset(Depth, UV, 0.0, ivec2(-1, -1)).x;
@@ -251,8 +251,8 @@ vec2 sample_nearest_velocity(sampler2D Depth, sampler2D MVs, vec2 UV, vec2 inv_r
     if (d0 < d) { mv = mv0; d = d0; }
     if (d1 < d) { mv = mv1; d = d1; }
     if (d2 < d) { mv = mv2; d = d2; }
-    if (d3 < d) { mv = mv3;         }
-    return mv;
+    if (d3 < d) { mv = mv3; d = d3; }
+    return vec3(mv, d);
 #elif NEAREST_METHOD == NEAREST_METHOD_3x3
     vec2 mv = textureLodOffset(MVs, UV, 0.0, ivec2(1)).xy;
     float d = textureLodOffset(Depth, UV, 0.0, ivec2(1)).x;
@@ -277,8 +277,8 @@ vec2 sample_nearest_velocity(sampler2D Depth, sampler2D MVs, vec2 UV, vec2 inv_r
     if (quad1.x < d) { mv = vec2(mvx_quad1.x, mvy_quad1.x); d = quad1.x; }
     if (quad1.y < d) { mv = vec2(mvx_quad1.y, mvy_quad1.y); d = quad1.y; }
     if (quad2.x < d) { mv = vec2(mvx_quad2.x, mvy_quad2.x); d = quad2.x; }
-    if (quad2.y < d) { mv = vec2(mvx_quad2.y, mvy_quad2.y);              }
-    return mv;
+    if (quad2.y < d) { mv = vec2(mvx_quad2.y, mvy_quad2.y); d = quad2.y; }
+	return vec3(mv, d);
 #endif
 }
 

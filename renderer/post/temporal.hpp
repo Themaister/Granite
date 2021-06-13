@@ -79,6 +79,6 @@ enum class TAAQuality
 	High
 };
 void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, float scaling_factor,
-                       const std::string &input, const std::string &input_depth,
+                       const std::string &input, const std::string &input_depth, const std::string &input_mv,
                        const std::string &output, TAAQuality quality);
 }

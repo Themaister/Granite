@@ -42,7 +42,8 @@ enum class DrawPipeline : unsigned
 
 enum RenderableFlagBits
 {
-	RENDERABLE_FORCE_VISIBLE_BIT = 1 << 0
+	RENDERABLE_FORCE_VISIBLE_BIT = 1 << 0,
+	RENDERABLE_IMPLICIT_MOTION_BIT = 1 << 1
 };
 using RenderableFlags = uint32_t;
 

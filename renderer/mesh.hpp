@@ -67,6 +67,7 @@ struct MeshAttributeLayout
 struct StaticMeshVertex
 {
 	mat4 Model;
+	mat4 *PrevModel = nullptr;
 	//mat4 Normal;
 	enum
 	{
@@ -104,6 +105,7 @@ struct StaticMeshInstanceInfo
 struct SkinnedMeshInstanceInfo
 {
 	mat4 *world_transforms = nullptr;
+	mat4 *prev_world_transforms = nullptr;
 	//mat4 *normal_transforms = nullptr;
 	uint32_t num_bones = 0;
 };
@@ -168,6 +170,8 @@ struct StaticMesh : AbstractRenderable
 
 	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
+	void get_motion_vector_render_info(const RenderContext &context, const RenderInfoComponent *transform,
+	                                   RenderQueue &queue) const override;
 
 	DrawPipeline get_mesh_draw_pipeline() const override
 	{
@@ -191,11 +195,20 @@ private:
 	{
 		return &static_aabb;
 	}
+
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
+	                     RenderQueue &queue, bool mv) const;
 };
 
 struct SkinnedMesh : public StaticMesh
 {
 	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
+	void get_motion_vector_render_info(const RenderContext &context, const RenderInfoComponent *transform,
+	                                   RenderQueue &queue) const override;
+
+private:
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
+	                     RenderQueue &queue, bool mv) const;
 };
 }

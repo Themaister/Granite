@@ -950,12 +950,15 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 			break;
 		}
 	}
-	else if (renderer == RendererType::DepthOnly)
+	else if (renderer == RendererType::DepthOnly || renderer == RendererType::MotionVector)
 	{
 		switch (drawable)
 		{
 		case RenderableType::Mesh:
-			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/static_mesh.vert", "builtin://shaders/static_mesh_depth.frag");
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/static_mesh.vert",
+			                    renderer == RendererType::DepthOnly ?
+			                    "builtin://shaders/static_mesh_depth.frag" :
+			                    "builtin://shaders/static_mesh_mv.frag");
 			break;
 
 		case RenderableType::Ground:

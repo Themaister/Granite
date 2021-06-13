@@ -145,9 +145,16 @@ void static_mesh_render(CommandBuffer &cmd, const RenderQueueData *infos, unsign
 	{
 		to_render = min<unsigned>(StaticMeshVertex::max_instances, instances - i);
 
-		auto *vertex_data = static_cast<StaticMeshVertex *>(cmd.allocate_constant_data(3, 0, to_render * sizeof(StaticMeshVertex)));
+		auto *vertex_data = cmd.allocate_typed_constant_data<mat4>(3, 0, to_render);
 		for (unsigned j = 0; j < to_render; j++)
-			vertex_data[j] = static_cast<const StaticMeshInstanceInfo *>(infos[i + j].instance_data)->vertex;
+			vertex_data[j] = static_cast<const StaticMeshInstanceInfo *>(infos[i + j].instance_data)->vertex.Model;
+
+		if (static_cast<const StaticMeshInstanceInfo *>(infos[i].instance_data)->vertex.PrevModel)
+		{
+			vertex_data = cmd.allocate_typed_constant_data<mat4>(3, 2, to_render);
+			for (unsigned j = 0; j < to_render; j++)
+				vertex_data[j] = *static_cast<const StaticMeshInstanceInfo *>(infos[i + j].instance_data)->vertex.PrevModel;
+		}
 
 		if (info->ibo)
 			cmd.draw_indexed(info->count, to_render, info->ibo_offset, info->vertex_offset, 0);
@@ -164,10 +171,16 @@ void skinned_mesh_render(CommandBuffer &cmd, const RenderQueueData *infos, unsig
 	for (unsigned i = 0; i < instances; i++)
 	{
 		auto &info = *static_cast<const SkinnedMeshInstanceInfo *>(infos[i].instance_data);
-		auto *world_transforms = static_cast<mat4 *>(cmd.allocate_constant_data(3, 1, sizeof(mat4) * info.num_bones));
+		auto *world_transforms = cmd.allocate_typed_constant_data<mat4>(3, 1, info.num_bones);
 		//auto *normal_transforms = static_cast<mat4 *>(cmd.allocate_constant_data(3, 2, sizeof(mat4) * info.num_bones));
 		memcpy(world_transforms, info.world_transforms, sizeof(mat4) * info.num_bones);
 		//memcpy(normal_transforms, info.normal_transforms, sizeof(mat4) * info.num_bones);
+
+		if (info.prev_world_transforms)
+		{
+			world_transforms = cmd.allocate_typed_constant_data<mat4>(3, 3, info.num_bones);
+			memcpy(world_transforms, info.prev_world_transforms, sizeof(mat4) * info.num_bones);
+		}
 
 		if (static_info->ibo)
 			cmd.draw_indexed(static_info->count, 1, static_info->ibo_offset, static_info->vertex_offset, 0);
@@ -222,7 +235,7 @@ static Queue material_to_queue(const Material &mat)
 		return Queue::Opaque;
 }
 
-void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const
+void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue, bool mv) const
 {
 	auto type = material_to_queue(*material);
 	uint32_t attrs = 0;
@@ -246,6 +259,11 @@ void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoC
 	auto *t = transform->transform;
 	auto *instance_data = queue.allocate_one<StaticMeshInstanceInfo>();
 	instance_data->vertex.Model = t->world_transform;
+	if (mv)
+	{
+		instance_data->vertex.PrevModel = queue.allocate_one<mat4>();
+		*instance_data->vertex.PrevModel = transform->prev_transform->world_transform;
+	}
 	//instance_data->vertex.Normal = t->normal_transform;
 
 	auto *mesh_info = queue.push<StaticMeshInfo>(type, instance_key, sorting_key,
@@ -269,7 +287,19 @@ void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoC
 	}
 }
 
-void SkinnedMesh::get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const
+void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
+                                 RenderQueue &queue) const
+{
+	get_render_info(context, transform, queue, false);
+}
+
+void StaticMesh::get_motion_vector_render_info(const RenderContext &context, const RenderInfoComponent *transform,
+                                               RenderQueue &queue) const
+{
+	get_render_info(context, transform, queue, true);
+}
+
+void SkinnedMesh::get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue, bool mv) const
 {
 	auto type = material_to_queue(*material);
 	uint32_t attrs = 0;
@@ -305,6 +335,12 @@ void SkinnedMesh::get_render_info(const RenderContext &context, const RenderInfo
 	memcpy(instance_data->world_transforms, transform->skin_transform->bone_world_transforms.data(), num_bones * sizeof(mat4));
 	//memcpy(instance_data->normal_transforms, transform->skin_transform->bone_normal_transforms.data(), num_bones * sizeof(mat4));
 
+	if (mv)
+	{
+		instance_data->prev_world_transforms = queue.allocate_many<mat4>(num_bones);
+		memcpy(instance_data->prev_world_transforms, transform->prev_skin_transform->bone_world_transforms.data(), num_bones * sizeof(mat4));
+	}
+
 	auto *mesh_info = queue.push<StaticMeshInfo>(type, instance_key, sorting_key,
 	                                             RenderFunctions::skinned_mesh_render,
 	                                             instance_data);
@@ -315,6 +351,18 @@ void SkinnedMesh::get_render_info(const RenderContext &context, const RenderInfo
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs,
 		                                                                                        textures, material->shader_variant);
 	}
+}
+
+void SkinnedMesh::get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
+                                  RenderQueue &queue) const
+{
+	get_render_info(context, transform, queue, false);
+}
+
+void SkinnedMesh::get_motion_vector_render_info(const RenderContext &context, const RenderInfoComponent *transform,
+                                                RenderQueue &queue) const
+{
+	get_render_info(context, transform, queue, true);
 }
 
 void StaticMesh::reset()

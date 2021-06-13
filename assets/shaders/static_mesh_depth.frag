@@ -20,7 +20,7 @@ layout(location = 1) in highp vec2 vUV;
 layout(set = 2, binding = 0) uniform mediump sampler2D uBaseColormap;
 #endif
 
-#ifdef ALPHA_TEST_ALPHA_TO_COVERAGE
+#if defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
 layout(location = 0) out highp vec4 FragColor;
 #elif defined(SHADOW_RESOLVE_VSM)
 layout(location = 0) out highp vec2 VSM;

@@ -58,6 +58,11 @@ public:
 		return get_render_info(context, transform, queue);
 	}
 
+	virtual void get_motion_vector_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const
+	{
+		return get_render_info(context, transform, queue);
+	}
+
 	virtual void get_sprite_render_info(const SpriteTransformInfo &, RenderQueue &) const
 	{
 	}

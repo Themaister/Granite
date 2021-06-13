@@ -103,14 +103,11 @@ private:
 	void erase_offset(size_t offset)
 	{
 		assert(offset < ts.size());
-		if (offset == ts.size())
+		auto &current = ts[offset];
+		if (&current != &ts.back())
 		{
-			ts[offset]->unordered_array_offset = size_t(-1);
-		}
-		else
-		{
-			std::swap(ts[offset], ts.back());
-			ts[offset]->unordered_array_offset = offset;
+			std::swap(current, ts.back());
+			current->unordered_array_offset = offset;
 		}
 		ts.pop_back();
 	}

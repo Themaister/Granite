@@ -49,7 +49,7 @@ int main()
 		return EXIT_FAILURE;
 
 	static const int removal_indices[] = {
-		10, 192, 1000, 14, 15, 0, 1, 80,
+		1023, 10, 192, 1000, 14, 15, 0, 1, 80,
 	};
 
 	for (auto remove_index : removal_indices)
@@ -61,11 +61,11 @@ int main()
 			return EXIT_FAILURE;
 	}
 
-	if (foo.size() != 1024 - 8)
+	if (foo.size() != 1024 - 9)
 		return EXIT_FAILURE;
 
 	foo.garbage_collect_if([&](Foo *value) -> bool {
-		if (value->get_value() == 20 || value->get_value() == 1023 || value->get_value() == 40)
+		if (value->get_value() == 20 || value->get_value() == 1022 || value->get_value() == 40)
 		{
 			expected_sum -= value->get_value();
 			foo_pool.free(value);
@@ -75,7 +75,7 @@ int main()
 			return false;
 	});
 
-	if (foo.size() != 1024 - 8 - 3)
+	if (foo.size() != 1024 - 9 - 3)
 		return EXIT_FAILURE;
 
 	if (expected_sum != sum_values())

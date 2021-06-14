@@ -631,6 +631,28 @@ static inline string tagcat(const std::string &a, const std::string &b)
 	return a + "-" + b;
 }
 
+void SceneViewerApplication::add_mv_pass(const std::string &tag, const std::string &depth)
+{
+	AttachmentInfo mv;
+	mv.size_class = SizeClass::InputRelative;
+	mv.size_relative_name = depth;
+	mv.format = VK_FORMAT_R16G16_SFLOAT;
+
+	auto &mv_pass = graph.add_pass(tagcat("mv", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	mv_pass.set_depth_stencil_input(depth);
+	mv_pass.add_color_output(tagcat("mv", tag), mv);
+
+	auto renderer = Util::make_handle<RenderPassSceneRenderer>();
+	RenderPassSceneRenderer::Setup setup = {};
+	setup.scene = &scene_loader.get_scene();
+	setup.context = &context;
+	setup.suite = &renderer_suite;
+	setup.flags = SCENE_RENDERER_MOTION_VECTOR_BIT;
+	renderer->init(setup);
+
+	mv_pass.set_render_pass_interface(std::move(renderer));
+}
+
 void SceneViewerApplication::add_main_pass_forward(Device &device, const std::string &tag)
 {
 	AttachmentInfo color, depth;
@@ -973,11 +995,17 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	}
 
 	add_main_pass(swap.get_device(), "main");
+	if (config.postaa_type == PostAAType::TAA_Low ||
+	    config.postaa_type == PostAAType::TAA_Medium ||
+	    config.postaa_type == PostAAType::TAA_High)
+	{
+		add_mv_pass("main", "depth-main");
+	}
 
 	if (config.hdr_bloom)
 	{
 		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type, graph, jitter, config.resolution_scale,
-		                                                     "HDR-main", "depth-main", "HDR-resolved");
+		                                                     "HDR-main", "depth-main", "mv-main", "HDR-resolved");
 
 		HDROptions opts;
 		opts.dynamic_exposure = config.hdr_bloom_dynamic_exposure;
@@ -1138,6 +1166,7 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 	updates.enqueue_task([this, need_update = need_shadow_map_update]() {
 		jitter.step(selected_camera->get_projection(), selected_camera->get_view());
 		context.set_camera(jitter.get_jittered_projection(), selected_camera->get_view());
+		context.set_motion_vector_projections(jitter);
 
 		lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 

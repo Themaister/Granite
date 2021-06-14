@@ -94,7 +94,7 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 	bool resolved = setup_before_post_chain_antialiasing(type,
 	                                                     graph, jitter,
 	                                                     1.0f,
-	                                                     "HDR-main", "depth-main", "HDR-resolved");
+	                                                     "HDR-main", "depth-main", "", "HDR-resolved");
 
 	auto &tonemap = graph.add_pass("tonemap", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	tonemap.add_color_output("tonemap", swapchain_output);

@@ -8,32 +8,40 @@
 
 layout(location = 0) in highp vec3 Position;
 
-#ifndef RENDERER_DEPTH
-layout(location = 0) out highp vec3 vPos;
-#endif
-
-#ifdef RENDERER_DEPTH
+#if defined(RENDERER_DEPTH)
     #if HAVE_UV && defined(ALPHA_TEST)
         layout(location = 1) in highp vec2 UV;
         layout(location = 1) out highp vec2 vUV;
     #endif
-#else
+#elif !defined(RENDERER_MOTION_VECTOR)
     #if HAVE_UV
         layout(location = 1) in highp vec2 UV;
         layout(location = 1) out highp vec2 vUV;
     #endif
 #endif
 
-#ifndef RENDERER_DEPTH
-#if HAVE_NORMAL
-layout(location = 2) in mediump vec3 Normal;
-layout(location = 2) out mediump vec3 vNormal;
+#if !defined(RENDERER_DEPTH) && !defined(RENDERER_MOTION_VECTOR)
+    layout(location = 0) out highp vec3 vPos;
+
+    #if HAVE_NORMAL
+    layout(location = 2) in mediump vec3 Normal;
+    layout(location = 2) out mediump vec3 vNormal;
+    #endif
+
+    #if HAVE_TANGENT
+    layout(location = 3) in mediump vec4 Tangent;
+    layout(location = 3) out mediump vec4 vTangent;
+    #endif
+
+    #if HAVE_VERTEX_COLOR
+    layout(location = 6) in mediump vec4 VertexColor;
+    layout(location = 4) out mediump vec4 vColor;
+    #endif
 #endif
 
-#if HAVE_TANGENT
-layout(location = 3) in mediump vec4 Tangent;
-layout(location = 3) out mediump vec4 vTangent;
-#endif
+#if defined(RENDERER_MOTION_VECTOR)
+    layout(location = 0) out highp vec3 vOldClip;
+    layout(location = 1) out highp vec3 vNewClip;
 #endif
 
 #if HAVE_BONE_INDEX
@@ -44,16 +52,18 @@ layout(location = 4) in mediump uvec4 BoneIndices;
 layout(location = 5) in mediump vec4 BoneWeights;
 #endif
 
-#if HAVE_VERTEX_COLOR
-layout(location = 6) in mediump vec4 VertexColor;
-layout(location = 4) out mediump vec4 vColor;
-#endif
-
 #if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
 layout(std140, set = 3, binding = 1) uniform BonesWorld
 {
-    mat4 BoneWorldTransforms[256];
+    mat4 CurrentBoneWorldTransforms[256];
 };
+
+#if defined(RENDERER_MOTION_VECTOR)
+layout(std140, set = 3, binding = 3) uniform BonesWorldPrev
+{
+    mat4 PrevBoneWorldTransforms[256];
+};
+#endif
 #else
 struct StaticMeshInfo
 {
@@ -62,50 +72,57 @@ struct StaticMeshInfo
 
 layout(set = 3, binding = 0, std140) uniform PerVertexData
 {
-    StaticMeshInfo infos[256];
+    StaticMeshInfo CurrentInfos[256];
 };
+
+#if defined(RENDERER_MOTION_VECTOR)
+layout(set = 3, binding = 2, std140) uniform PerVertexDataPrev
+{
+    StaticMeshInfo PrevInfos[256];
+};
+#endif
 #endif
 
 invariant gl_Position;
 
+#if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
+#define MODEL_VIEW_TRANSFORM(prefix) \
+    mat4x3( \
+        prefix##BoneWorldTransforms[BoneIndices.x][0].xyz * BoneWeights.x + \
+        prefix##BoneWorldTransforms[BoneIndices.y][0].xyz * BoneWeights.y + \
+        prefix##BoneWorldTransforms[BoneIndices.z][0].xyz * BoneWeights.z + \
+        prefix##BoneWorldTransforms[BoneIndices.w][0].xyz * BoneWeights.w, \
+        prefix##BoneWorldTransforms[BoneIndices.x][1].xyz * BoneWeights.x + \
+        prefix##BoneWorldTransforms[BoneIndices.y][1].xyz * BoneWeights.y + \
+        prefix##BoneWorldTransforms[BoneIndices.z][1].xyz * BoneWeights.z + \
+        prefix##BoneWorldTransforms[BoneIndices.w][1].xyz * BoneWeights.w, \
+        prefix##BoneWorldTransforms[BoneIndices.x][2].xyz * BoneWeights.x + \
+        prefix##BoneWorldTransforms[BoneIndices.y][2].xyz * BoneWeights.y + \
+        prefix##BoneWorldTransforms[BoneIndices.z][2].xyz * BoneWeights.z + \
+        prefix##BoneWorldTransforms[BoneIndices.w][2].xyz * BoneWeights.w, \
+        prefix##BoneWorldTransforms[BoneIndices.x][3].xyz * BoneWeights.x + \
+        prefix##BoneWorldTransforms[BoneIndices.y][3].xyz * BoneWeights.y + \
+        prefix##BoneWorldTransforms[BoneIndices.z][3].xyz * BoneWeights.z + \
+        prefix##BoneWorldTransforms[BoneIndices.w][3].xyz * BoneWeights.w)
+#else
+#define MODEL_VIEW_TRANSFORM(prefix) \
+    mat4x3( \
+        prefix##Infos[gl_InstanceIndex].Model[0].xyz, \
+        prefix##Infos[gl_InstanceIndex].Model[1].xyz, \
+        prefix##Infos[gl_InstanceIndex].Model[2].xyz, \
+        prefix##Infos[gl_InstanceIndex].Model[3].xyz)
+#endif
+
 void main()
 {
-#if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
-    vec3 world_col0 =
-        BoneWorldTransforms[BoneIndices.x][0].xyz * BoneWeights.x +
-        BoneWorldTransforms[BoneIndices.y][0].xyz * BoneWeights.y +
-        BoneWorldTransforms[BoneIndices.z][0].xyz * BoneWeights.z +
-        BoneWorldTransforms[BoneIndices.w][0].xyz * BoneWeights.w;
+    mat4x3 WorldTransform = MODEL_VIEW_TRANSFORM(Current);
+    vec3 World = WorldTransform * vec4(Position, 1.0);
 
-    vec3 world_col1 =
-        BoneWorldTransforms[BoneIndices.x][1].xyz * BoneWeights.x +
-        BoneWorldTransforms[BoneIndices.y][1].xyz * BoneWeights.y +
-        BoneWorldTransforms[BoneIndices.z][1].xyz * BoneWeights.z +
-        BoneWorldTransforms[BoneIndices.w][1].xyz * BoneWeights.w;
-
-    vec3 world_col2 =
-        BoneWorldTransforms[BoneIndices.x][2].xyz * BoneWeights.x +
-        BoneWorldTransforms[BoneIndices.y][2].xyz * BoneWeights.y +
-        BoneWorldTransforms[BoneIndices.z][2].xyz * BoneWeights.z +
-        BoneWorldTransforms[BoneIndices.w][2].xyz * BoneWeights.w;
-
-    vec3 world_col3 =
-        BoneWorldTransforms[BoneIndices.x][3].xyz * BoneWeights.x +
-        BoneWorldTransforms[BoneIndices.y][3].xyz * BoneWeights.y +
-        BoneWorldTransforms[BoneIndices.z][3].xyz * BoneWeights.z +
-        BoneWorldTransforms[BoneIndices.w][3].xyz * BoneWeights.w;
-
-#else
-    vec3 world_col0 = infos[gl_InstanceIndex].Model[0].xyz;
-    vec3 world_col1 = infos[gl_InstanceIndex].Model[1].xyz;
-    vec3 world_col2 = infos[gl_InstanceIndex].Model[2].xyz;
-    vec3 world_col3 = infos[gl_InstanceIndex].Model[3].xyz;
+#if defined(RENDERER_MOTION_VECTOR)
+    vec3 OldWorld = MODEL_VIEW_TRANSFORM(Prev) * vec4(Position, 1.0);
+    vOldClip = (global.unjittered_prev_view_projection * vec4(OldWorld, 1.0)).xyw;
+    vNewClip = (global.unjittered_view_projection * vec4(World, 1.0)).xyw;
 #endif
-    vec3 World =
-        world_col0 * Position.x +
-        world_col1 * Position.y +
-        world_col2 * Position.z +
-        world_col3;
 
 #if defined(MULTIVIEW) && MULTIVIEW
     gl_Position = global.multiview_view_projection[gl_ViewIndex] * vec4(World, 1.0);
@@ -113,38 +130,35 @@ void main()
     gl_Position = global.view_projection * vec4(World, 1.0);
 #endif
 
-#ifndef RENDERER_DEPTH
+#if !defined(RENDERER_DEPTH) && !defined(RENDERER_MOTION_VECTOR)
     vPos = World;
-#endif
-
-#ifndef RENDERER_DEPTH
-#if HAVE_NORMAL
-    mat3 NormalTransform = mat3(world_col0, world_col1, world_col2);
-    #if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
-        vNormal = normalize(NormalTransform * Normal);
-        #if HAVE_TANGENT
-            vTangent = vec4(normalize(NormalTransform * Tangent.xyz), Tangent.w);
-        #endif
-    #else
-        vNormal = normalize(NormalTransform * Normal);
-        #if HAVE_TANGENT
-            vTangent = vec4(normalize(NormalTransform * Tangent.xyz), Tangent.w);
+    #if HAVE_NORMAL
+        mat3 NormalTransform = mat3(WorldTransform[0], WorldTransform[1], WorldTransform[2]);
+        #if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
+            vNormal = normalize(NormalTransform * Normal);
+            #if HAVE_TANGENT
+                vTangent = vec4(normalize(NormalTransform * Tangent.xyz), Tangent.w);
+            #endif
+        #else
+            vNormal = normalize(NormalTransform * Normal);
+            #if HAVE_TANGENT
+                vTangent = vec4(normalize(NormalTransform * Tangent.xyz), Tangent.w);
+            #endif
         #endif
     #endif
-#endif
+
+    #if HAVE_VERTEX_COLOR
+        vColor = VertexColor;
+    #endif
 #endif
 
-#ifdef RENDERER_DEPTH
+#if defined(RENDERER_DEPTH)
     #if HAVE_UV && defined(ALPHA_TEST)
         vUV = UV;
     #endif
-#else
+#elif !defined(RENDERER_MOTION_VECTOR)
     #if HAVE_UV
         vUV = UV;
     #endif
-#endif
-
-#if HAVE_VERTEX_COLOR
-    vColor = VertexColor;
 #endif
 }

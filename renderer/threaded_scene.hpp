@@ -35,6 +35,8 @@ namespace Threaded
 {
 void scene_gather_opaque_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                      VisibilityList *lists, unsigned num_tasks);
+void scene_gather_motion_vector_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
+                                            VisibilityList *lists, unsigned num_tasks);
 void scene_gather_transparent_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                           VisibilityList *lists, unsigned num_tasks);
 void scene_gather_static_shadow_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
@@ -48,8 +50,15 @@ void scene_gather_positional_light_renderables(const Scene &scene, TaskComposer 
 void scene_gather_positional_light_renderables_sorted(const Scene &scene, TaskComposer &composer, const RenderContext &context,
                                                       PositionalLightList *lists, unsigned num_tasks);
 
+enum class PushType
+{
+	Normal,
+	Depth,
+	MotionVector
+};
 void compose_parallel_push_renderables(TaskComposer &composer, const RenderContext &context,
-                                       RenderQueue *queues, VisibilityList *visibility, unsigned count);
+                                       RenderQueue *queues, VisibilityList *visibility, unsigned count,
+                                       PushType type);
 
 void scene_update_cached_transforms(Scene &scene, TaskComposer &composer, unsigned num_tasks);
 }

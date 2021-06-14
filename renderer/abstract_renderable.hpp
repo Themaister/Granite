@@ -42,7 +42,8 @@ enum class DrawPipeline : unsigned
 
 enum RenderableFlagBits
 {
-	RENDERABLE_FORCE_VISIBLE_BIT = 1 << 0
+	RENDERABLE_FORCE_VISIBLE_BIT = 1 << 0,
+	RENDERABLE_IMPLICIT_MOTION_BIT = 1 << 1
 };
 using RenderableFlags = uint32_t;
 
@@ -53,6 +54,11 @@ public:
 	virtual void get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const = 0;
 
 	virtual void get_depth_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const
+	{
+		return get_render_info(context, transform, queue);
+	}
+
+	virtual void get_motion_vector_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const
 	{
 		return get_render_info(context, transform, queue);
 	}

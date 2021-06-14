@@ -21,6 +21,7 @@
  */
 
 #include "render_context.hpp"
+#include "post/temporal.hpp"
 #include "muglm/matrix_helper.hpp"
 
 using namespace std;
@@ -37,6 +38,13 @@ void RenderContext::set_shadow_cascades(const mat4 cascades[NumShadowCascades])
 {
 	for (unsigned i = 0; i < NumShadowCascades; i++)
 		camera.multiview_view_projection[i] = cascades[i];
+}
+
+void RenderContext::set_motion_vector_projections(const TemporalJitter &jitter)
+{
+	camera.unjittered_view_projection = jitter.get_history_view_proj(0);
+	camera.unjittered_inv_view_projection = jitter.get_history_inv_view_proj(0);
+	camera.unjittered_prev_view_projection = jitter.get_history_view_proj(1);
 }
 
 void RenderContext::set_device(Device *device_)

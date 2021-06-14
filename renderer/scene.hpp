@@ -57,6 +57,7 @@ public:
 	size_t get_cached_transforms_count() const;
 
 	void gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list) const;
+	void gather_visible_motion_vector_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_static_shadow_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list) const;
@@ -67,6 +68,8 @@ public:
 
 	void gather_visible_opaque_renderables_subset(const Frustum &frustum, VisibilityList &list,
 	                                              unsigned index, unsigned num_indices) const;
+	void gather_visible_motion_vector_renderables_subset(const Frustum &frustum, VisibilityList &list,
+	                                                     unsigned index, unsigned num_indices) const;
 	void gather_visible_transparent_renderables_subset(const Frustum &frustum, VisibilityList &list,
 	                                                   unsigned index, unsigned num_indices) const;
 	void gather_visible_static_shadow_renderables_subset(const Frustum &frustum, VisibilityList &list,
@@ -79,6 +82,7 @@ public:
 	                                             unsigned index, unsigned num_indices) const;
 
 	size_t get_opaque_renderables_count() const;
+	size_t get_motion_vector_renderables_count() const;
 	size_t get_transparent_renderables_count() const;
 	size_t get_static_shadow_renderables_count() const;
 	size_t get_dynamic_shadow_renderables_count() const;
@@ -110,6 +114,7 @@ public:
 			: parent_scene(parent_)
 			, transform(*parent_scene->transform_pool.allocate())
 			, cached_transform(*parent_scene->cached_transform_pool.allocate())
+			, prev_cached_transform(*parent_scene->cached_transform_pool.allocate())
 		{
 			node_is_pending_update.store(false, std::memory_order_relaxed);
 			invalidate_cached_transform();
@@ -122,11 +127,13 @@ public:
 				parent_scene->skinning_pool.free(skinning);
 			parent_scene->transform_pool.free(&transform);
 			parent_scene->cached_transform_pool.free(&cached_transform);
+			parent_scene->cached_transform_pool.free(&prev_cached_transform);
 		}
 
 		Scene *parent_scene;
 		Transform &transform;
 		CachedTransform &cached_transform;
+		CachedTransform &prev_cached_transform;
 
 		void invalidate_cached_transform();
 		void add_child(Util::IntrusivePtr<Node> node);
@@ -151,6 +158,7 @@ public:
 		struct Skinning
 		{
 			CachedSkinTransform cached_skin_transform;
+			CachedSkinTransform prev_cached_skin_transform;
 			std::vector<const CachedTransform *> cached_skin;
 			std::vector<Transform *> skin;
 			std::vector<mat4> inverse_bind_poses;

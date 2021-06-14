@@ -41,6 +41,19 @@ void scene_gather_opaque_renderables(const Scene &scene, TaskComposer &composer,
 	}
 }
 
+void scene_gather_motion_vector_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
+                                            VisibilityList *lists, unsigned num_tasks)
+{
+	auto &group = composer.begin_pipeline_stage();
+	group.set_desc("gather-motion-vector-renderables");
+	for (unsigned i = 0; i < num_tasks; i++)
+	{
+		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {
+			scene.gather_visible_motion_vector_renderables_subset(frustum, lists[i], i, num_tasks);
+		});
+	}
+}
+
 void scene_gather_transparent_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                           VisibilityList *lists, unsigned num_tasks)
 {
@@ -161,15 +174,29 @@ void scene_gather_positional_light_renderables_sorted(const Scene &scene, TaskCo
 }
 
 void compose_parallel_push_renderables(TaskComposer &composer, const RenderContext &context,
-                                       RenderQueue *queues, VisibilityList *visibility, unsigned count)
+                                       RenderQueue *queues, VisibilityList *visibility, unsigned count,
+                                       PushType type)
 {
 	{
 		auto &group = composer.begin_pipeline_stage();
 		group.set_desc("parallel-push-renderables");
 		for (unsigned i = 0; i < count; i++)
 		{
-			group.enqueue_task([i, &context, visibility, queues]() {
-				queues[i].push_renderables(context, visibility[i].data(), visibility[i].size());
+			group.enqueue_task([i, &context, visibility, queues, type]() {
+				switch (type)
+				{
+				default:
+					queues[i].push_renderables(context, visibility[i].data(), visibility[i].size());
+					break;
+
+				case PushType::Depth:
+					queues[i].push_depth_renderables(context, visibility[i].data(), visibility[i].size());
+					break;
+
+				case PushType::MotionVector:
+					queues[i].push_motion_vector_renderables(context, visibility[i].data(), visibility[i].size());
+					break;
+				}
 			});
 		}
 	}

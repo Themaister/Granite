@@ -177,14 +177,21 @@ public:
 	T *allocate_one()
 	{
 		static_assert(std::is_trivially_destructible<T>::value, "Type is not trivially destructible!");
-		return static_cast<T *>(allocate(sizeof(T), alignof(T)));
+		auto *t = static_cast<T *>(allocate(sizeof(T), alignof(T)));
+		if (t)
+			new (t) T();
+		return t;
 	}
 
 	template <typename T>
 	T *allocate_many(size_t n)
 	{
 		static_assert(std::is_trivially_destructible<T>::value, "Type is not trivially destructible!");
-		return static_cast<T *>(allocate(sizeof(T) * n, alignof(T)));
+		auto *t = static_cast<T *>(allocate(sizeof(T) * n, alignof(T)));
+		if (t)
+			for (size_t i = 0; i < n; i++)
+				new (&t[i]) T();
+		return t;
 	}
 
 	void combine_render_info(const RenderQueue &queue);
@@ -215,6 +222,7 @@ public:
 
 	void push_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count);
 	void push_depth_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count);
+	void push_motion_vector_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count);
 
 private:
 	void enqueue_queue_data(Queue queue, const RenderQueueData &data);

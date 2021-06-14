@@ -65,15 +65,20 @@ Scene::~Scene()
 	destroy_entities(queued_entities);
 }
 
-template <typename T>
+template <typename T, typename Func>
 static void gather_visible_renderables(const Frustum &frustum, VisibilityList &list, const T &objects,
-                                       size_t begin_index, size_t end_index)
+                                       size_t begin_index, size_t end_index, const Func &filter_func)
 {
 	for (size_t i = begin_index; i < end_index; i++)
 	{
 		auto &o = objects[i];
 		auto *transform = get_component<RenderInfoComponent>(o);
+
 		auto *renderable = get_component<RenderableComponent>(o);
+		auto flags = renderable->renderable->flags;
+		if (!filter_func(transform, flags))
+			continue;
+
 		auto *timestamp = get_component<CachedSpatialTransformTimestampComponent>(o);
 
 		Util::Hasher h;
@@ -82,7 +87,7 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 
 		if (transform->transform)
 		{
-			if ((renderable->renderable->flags & RENDERABLE_FORCE_VISIBLE_BIT) != 0 ||
+			if ((flags & RENDERABLE_FORCE_VISIBLE_BIT) != 0 ||
 			    SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
 			{
 				list.push_back({ renderable->renderable.get(), transform, h.get() });
@@ -217,9 +222,23 @@ void Scene::gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityL
 	}
 }
 
+static bool filter_true(const RenderInfoComponent *, RenderableFlags)
+{
+	return true;
+}
+
 void Scene::gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list) const
 {
-	gather_visible_renderables(frustum, list, opaque, 0, opaque.size());
+	gather_visible_renderables(frustum, list, opaque, 0, opaque.size(), filter_true);
+}
+
+void Scene::gather_visible_motion_vector_renderables(const Frustum &frustum, VisibilityList &list) const
+{
+	gather_visible_renderables(frustum, list, opaque, 0, opaque.size(),
+	                           [](const RenderInfoComponent *info, RenderableFlags flags) {
+		                           return (flags & RENDERABLE_IMPLICIT_MOTION_BIT) == 0 &&
+		                                  info->requires_motion_vectors;
+	                           });
 }
 
 void Scene::gather_visible_opaque_renderables_subset(const Frustum &frustum, VisibilityList &list,
@@ -227,17 +246,29 @@ void Scene::gather_visible_opaque_renderables_subset(const Frustum &frustum, Vis
 {
 	size_t start_index = (index * opaque.size()) / num_indices;
 	size_t end_index = ((index + 1) * opaque.size()) / num_indices;
-	gather_visible_renderables(frustum, list, opaque, start_index, end_index);
+	gather_visible_renderables(frustum, list, opaque, start_index, end_index, filter_true);
+}
+
+void Scene::gather_visible_motion_vector_renderables_subset(const Frustum &frustum, VisibilityList &list,
+                                                            unsigned index, unsigned num_indices) const
+{
+	size_t start_index = (index * opaque.size()) / num_indices;
+	size_t end_index = ((index + 1) * opaque.size()) / num_indices;
+	gather_visible_renderables(frustum, list, opaque, start_index, end_index,
+	                           [](const RenderInfoComponent *info, RenderableFlags flags) {
+		                           return (flags & RENDERABLE_IMPLICIT_MOTION_BIT) == 0 &&
+		                                  info->requires_motion_vectors;
+	                           });
 }
 
 void Scene::gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list) const
 {
-	gather_visible_renderables(frustum, list, transparent, 0, transparent.size());
+	gather_visible_renderables(frustum, list, transparent, 0, transparent.size(), filter_true);
 }
 
 void Scene::gather_visible_static_shadow_renderables(const Frustum &frustum, VisibilityList &list) const
 {
-	gather_visible_renderables(frustum, list, static_shadowing, 0, static_shadowing.size());
+	gather_visible_renderables(frustum, list, static_shadowing, 0, static_shadowing.size(), filter_true);
 }
 
 void Scene::gather_visible_transparent_renderables_subset(const Frustum &frustum, VisibilityList &list,
@@ -245,7 +276,7 @@ void Scene::gather_visible_transparent_renderables_subset(const Frustum &frustum
 {
 	size_t start_index = (index * transparent.size()) / num_indices;
 	size_t end_index = ((index + 1) * transparent.size()) / num_indices;
-	gather_visible_renderables(frustum, list, transparent, start_index, end_index);
+	gather_visible_renderables(frustum, list, transparent, start_index, end_index, filter_true);
 }
 
 void Scene::gather_visible_static_shadow_renderables_subset(const Frustum &frustum, VisibilityList &list,
@@ -253,12 +284,12 @@ void Scene::gather_visible_static_shadow_renderables_subset(const Frustum &frust
 {
 	size_t start_index = (index * static_shadowing.size()) / num_indices;
 	size_t end_index = ((index + 1) * static_shadowing.size()) / num_indices;
-	gather_visible_renderables(frustum, list, static_shadowing, start_index, end_index);
+	gather_visible_renderables(frustum, list, static_shadowing, start_index, end_index, filter_true);
 }
 
 void Scene::gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list) const
 {
-	gather_visible_renderables(frustum, list, dynamic_shadowing, 0, dynamic_shadowing.size());
+	gather_visible_renderables(frustum, list, dynamic_shadowing, 0, dynamic_shadowing.size(), filter_true);
 	for (auto &object : render_pass_shadowing)
 		list.push_back({ get_component<RenderableComponent>(object)->renderable.get(), nullptr });
 }
@@ -268,7 +299,7 @@ void Scene::gather_visible_dynamic_shadow_renderables_subset(const Frustum &frus
 {
 	size_t start_index = (index * dynamic_shadowing.size()) / num_indices;
 	size_t end_index = ((index + 1) * dynamic_shadowing.size()) / num_indices;
-	gather_visible_renderables(frustum, list, dynamic_shadowing, start_index, end_index);
+	gather_visible_renderables(frustum, list, dynamic_shadowing, start_index, end_index, filter_true);
 
 	if (index == 0)
 		for (auto &object : render_pass_shadowing)
@@ -398,6 +429,13 @@ size_t Scene::get_opaque_renderables_count() const
 	return opaque.size();
 }
 
+size_t Scene::get_motion_vector_renderables_count() const
+{
+	// We might want separate MotionVector components, but for now we only select
+	// objects which actually had motion applied to them anyways.
+	return opaque.size();
+}
+
 size_t Scene::get_transparent_renderables_count() const
 {
 	return transparent.size();
@@ -444,6 +482,8 @@ static void update_skinning(Scene::Node &node)
 	auto &skin = *node.get_skin();
 	if (!skin.cached_skin_transform.bone_world_transforms.empty())
 	{
+		skin.prev_cached_skin_transform = skin.cached_skin_transform;
+
 		auto len = skin.skin.size();
 		assert(skin.skin.size() == skin.cached_skin_transform.bone_world_transforms.size());
 		//assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_normal_transforms.size());
@@ -648,7 +688,10 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 		CachedSpatialTransformTimestampComponent *timestamp;
 		tie(aabb, cached_transform, timestamp) = s;
 
-		if (timestamp->last_timestamp != *timestamp->current_timestamp)
+		uint64_t new_timestamp = *timestamp->current_timestamp;
+		bool modified_timestamp = timestamp->last_timestamp != new_timestamp;
+
+		if (modified_timestamp)
 		{
 			if (cached_transform->transform)
 			{
@@ -666,8 +709,12 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 					                     cached_transform->transform->world_transform);
 				}
 			}
-			timestamp->last_timestamp = *timestamp->current_timestamp;
+
+			timestamp->last_timestamp = new_timestamp;
 		}
+
+		// The first update won't have valid prev transforms.
+		cached_transform->requires_motion_vectors = modified_timestamp && new_timestamp >= 2;
 	}
 }
 
@@ -743,6 +790,7 @@ void Scene::distribute_per_level_updates(TaskGroup *group)
 
 static void update_transform_tree_node(Scene::Node &node, const mat4 &transform)
 {
+	node.prev_cached_transform = node.cached_transform;
 	compute_model_transform(node.cached_transform.world_transform,
 	                        node.transform.scale, node.transform.rotation, node.transform.translation,
 	                        transform);
@@ -816,6 +864,7 @@ Scene::NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 	node->set_skin(skinning_pool.allocate());
 	auto &node_skin = *node->get_skin();
 	node_skin.cached_skin_transform.bone_world_transforms.resize(skin.joint_transforms.size());
+	node_skin.prev_cached_skin_transform.bone_world_transforms.resize(skin.joint_transforms.size());
 	//node->cached_skin_transform.bone_normal_transforms.resize(skin.joint_transforms.size());
 
 	node_skin.skin.reserve(skin.joint_transforms.size());
@@ -979,10 +1028,14 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 		if (node)
 		{
 			transform->transform = &node->cached_transform;
+			transform->prev_transform = &node->prev_cached_transform;
 			timestamp->current_timestamp = node->get_timestamp_pointer();
 
 			if (node->get_skin() && !node->get_skin()->cached_skin.empty())
+			{
 				transform->skin_transform = &node->get_skin()->cached_skin_transform;
+				transform->prev_skin_transform = &node->get_skin()->prev_cached_skin_transform;
+			}
 		}
 		auto *bounded = entity->allocate_component<BoundedComponent>();
 		bounded->aabb = renderable->get_static_aabb();

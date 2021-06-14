@@ -46,6 +46,7 @@ enum class PostAAType
 bool setup_before_post_chain_antialiasing(PostAAType type, RenderGraph &graph, TemporalJitter &jitter,
                                           float scaling_factor,
                                           const std::string &input, const std::string &input_depth,
+                                          const std::string &input_mv,
                                           const std::string &output);
 bool setup_after_post_chain_antialiasing(PostAAType type, RenderGraph &graph, TemporalJitter &jitter,
                                          float scaling_factor,

@@ -96,6 +96,7 @@ void RendererSuite::set_default_renderers()
 	set_renderer(Type::ShadowDepthDirectionalVSM, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::ShadowDepthPositionalVSM, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::PrepassDepth, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
+	set_renderer(Type::MotionVector, Util::make_handle<Renderer>(RendererType::MotionVector, nullptr));
 	set_renderer(Type::Deferred, Util::make_handle<Renderer>(RendererType::GeneralDeferred, nullptr));
 }
 
@@ -110,6 +111,7 @@ void RendererSuite::update_mesh_rendering_options(const RenderContext &context, 
 	get_renderer(Type::ShadowDepthPositionalVSM).set_mesh_renderer_options(
 			Renderer::POSITIONAL_LIGHT_SHADOW_VSM_BIT);
 	get_renderer(Type::PrepassDepth).set_mesh_renderer_options(0);
+	get_renderer(Type::MotionVector).set_mesh_renderer_options(0);
 
 	Renderer::RendererOptionFlags pcf_flags = 0;
 	if (config.pcf_width == 5)
@@ -149,6 +151,9 @@ static const char *renderer_to_define(RendererType type)
 
 	case RendererType::DepthOnly:
 		return "RENDERER_DEPTH";
+
+	case RendererType::MotionVector:
+		return "RENDERER_MOTION_VECTOR";
 
 	default:
 		break;
@@ -945,12 +950,15 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 			break;
 		}
 	}
-	else if (renderer == RendererType::DepthOnly)
+	else if (renderer == RendererType::DepthOnly || renderer == RendererType::MotionVector)
 	{
 		switch (drawable)
 		{
 		case RenderableType::Mesh:
-			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/static_mesh.vert", "builtin://shaders/static_mesh_depth.frag");
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/static_mesh.vert",
+			                    renderer == RendererType::DepthOnly ?
+			                    "builtin://shaders/static_mesh_depth.frag" :
+			                    "builtin://shaders/static_mesh_mv.frag");
 			break;
 
 		case RenderableType::Ground:

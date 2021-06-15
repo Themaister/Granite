@@ -800,7 +800,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroupHandle &compressio
 		preset = ASTCENC_PRE_FAST;
 
 	if (astcenc_config_init(profile, block_size_x, block_size_y, 1,
-	                        preset, flags, state->config) != ASTCENC_SUCCESS)
+	                        preset, flags, &state->config) != ASTCENC_SUCCESS)
 	{
 		LOGE("Failed to initialize ASTC encoder config.\n");
 		return;
@@ -815,7 +815,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroupHandle &compressio
 	auto num_threads = muglm::max(1u, group->get_num_threads() / 4);
 
 	astcenc_context *context = nullptr;
-	if (astcenc_context_alloc(state->config, num_threads, &context) != ASTCENC_SUCCESS)
+	if (astcenc_context_alloc(&state->config, num_threads, &context) != ASTCENC_SUCCESS)
 	{
 		LOGE("Failed to allocate ASTC encoding context.\n");
 		return;
@@ -844,7 +844,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroupHandle &compressio
 	for (unsigned i = 0; i < num_threads; i++)
 	{
 		compression_task->enqueue_task([this, state, i, swiz]() {
-			if (astcenc_compress_image(state->context.get(), state->image, swiz,
+			if (astcenc_compress_image(state->context.get(), &state->image, &swiz,
 					static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
 					output->get_layout().get_layer_size(state->level), i) != ASTCENC_SUCCESS)
 			{

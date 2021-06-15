@@ -250,10 +250,11 @@ static BufferHandle decode_astc_cpu(Device &device, const TextureFormatLayout &l
 	uint32_t block_width, block_height;
 	TextureFormatLayout::format_block_dim(layout.get_format(), block_width, block_height);
 	bool srgb = Vulkan::format_is_srgb(readback_format);
-	astcenc_config_init(srgb ? ASTCENC_PRF_LDR_SRGB : ASTCENC_PRF_HDR, block_width, block_height, 1, ASTCENC_PRE_FAST, 0, config);
+	astcenc_config_init(srgb ? ASTCENC_PRF_LDR_SRGB : ASTCENC_PRF_HDR, block_width, block_height, 1,
+	                    ASTCENC_PRE_FAST, 0, &config);
 
 	astcenc_context *ctx = nullptr;
-	if (astcenc_context_alloc(config, 1, &ctx) != ASTCENC_SUCCESS)
+	if (astcenc_context_alloc(&config, 1, &ctx) != ASTCENC_SUCCESS)
 		return {};
 
 	astcenc_image image = {};
@@ -282,12 +283,9 @@ static BufferHandle decode_astc_cpu(Device &device, const TextureFormatLayout &l
 		image.data_type = ASTCENC_TYPE_F16;
 	}
 
+	astcenc_swizzle swz = { ASTCENC_SWZ_R, ASTCENC_SWZ_G, ASTCENC_SWZ_B, ASTCENC_SWZ_A };
 	if (astcenc_decompress_image(ctx, static_cast<const uint8_t *>(layout.data()),
-	                             layout.get_layer_size(0), image, {
-		                             ASTCENC_SWZ_R,
-		                             ASTCENC_SWZ_G,
-		                             ASTCENC_SWZ_B,
-		                             ASTCENC_SWZ_A }) != ASTCENC_SUCCESS)
+	                             layout.get_layer_size(0), &image, &swz, 0) != ASTCENC_SUCCESS)
 	{
 		buffer.reset();
 	}

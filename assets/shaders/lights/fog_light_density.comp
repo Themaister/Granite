@@ -58,9 +58,52 @@ mediump float compute_fog_density(int index, FogRegionParameters region, vec3 wo
 mediump float compute_fog_density(vec3 world_pos)
 {
     mediump float density = 0.0;
+
+#ifdef CLUSTERING_WAVE_UNIFORM
+    vec3 aabb_lo = subgroupMin(world_pos);
+    vec3 aabb_hi = subgroupMax(world_pos);
+    uvec4 ballot = subgroupBallot(true);
+    int active_lanes = int(subgroupBallotBitCount(ballot));
+    int bit_offset = int(subgroupBallotExclusiveBitCount(ballot));
+
+    // Wave uniform loop
+    for (int i = 0; i < fog_regions.num_regions; i += active_lanes)
+    {
+        int current_index = i + bit_offset;
+        FogRegionParameters region;
+
+        // Test by intersecting AABBs.
+        bool active_region = false;
+        if (current_index < fog_regions.num_regions)
+        {
+            region = fog_regions.regions[current_index];
+            active_region = all(greaterThan(aabb_hi, region.world_lo.xyz)) && all(lessThan(aabb_lo, region.world_hi.xyz));
+        }
+        uvec4 active_ballot = subgroupBallot(active_region);
+
+        // Wave uniform loop
+        while (any(notEqual(active_ballot, uvec4(0u))))
+        {
+            uint bit_index = subgroupBallotFindLSB(active_ballot);
+            active_ballot &= subgroupBallot(bit_index != gl_SubgroupInvocationID);
+
+            FogRegionParameters scalar_region;
+
+            // Wave uniform lane index.
+            scalar_region.world_to_texture[0] = subgroupShuffle(region.world_to_texture[0], bit_index);
+            scalar_region.world_to_texture[1] = subgroupShuffle(region.world_to_texture[1], bit_index);
+            scalar_region.world_to_texture[2] = subgroupShuffle(region.world_to_texture[2], bit_index);
+
+            // Extract the bindless index.
+            int index = subgroupShuffle(current_index, bit_index);
+            density += compute_fog_density(index, scalar_region, world_pos);
+        }
+    }
+#else
     // Naive path.
     for (int i = 0; i < fog_regions.num_regions; i++)
         density += compute_fog_density(i, fog_regions.regions[i], world_pos);
+#endif
     return density;
 }
 #else

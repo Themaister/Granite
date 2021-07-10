@@ -399,7 +399,9 @@ void DeviceAllocator::init(Device *device_)
 	}
 
 	bool has_host_only_heap = false;
+	bool has_device_only_heap = false;
 	VkDeviceSize host_heap_size = 0;
+	VkDeviceSize device_heap_size = 0;
 	const VkMemoryPropertyFlags pinned_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
 	                                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 	for (uint32_t i = 0; i < mem_props.memoryHeapCount; i++)
@@ -409,14 +411,22 @@ void DeviceAllocator::init(Device *device_)
 			has_host_only_heap = true;
 			host_heap_size = (std::max)(host_heap_size, mem_props.memoryHeaps[i].size);
 		}
+		else if ((combined_allowed_flags[i] & pinned_flags) == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+		{
+			has_device_only_heap = true;
+			device_heap_size = (std::max)(device_heap_size, mem_props.memoryHeaps[i].size);
+		}
 	}
 
-	if (has_host_only_heap)
+	// If we have ReBAR enabled, we generally won't find DEVICE only and HOST only heaps.
+	// Budget criticalness should only be considered if we have the default small BAR heap (256 MiB).
+	if (has_host_only_heap && has_device_only_heap)
 	{
 		for (uint32_t i = 0; i < mem_props.memoryHeapCount; i++)
 		{
 			if ((combined_allowed_flags[i] & pinned_flags) == pinned_flags &&
-			    mem_props.memoryHeaps[i].size < host_heap_size)
+			    mem_props.memoryHeaps[i].size < host_heap_size &&
+			    mem_props.memoryHeaps[i].size < device_heap_size)
 			{
 				memory_heap_is_budget_critical[i] = true;
 			}

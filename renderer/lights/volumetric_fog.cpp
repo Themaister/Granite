@@ -60,9 +60,26 @@ void VolumetricFogRegion::on_device_destroyed(const Vulkan::DeviceCreatedEvent &
 
 void VolumetricFogRegion::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 {
-	auto info = Vulkan::ImageCreateInfo::immutable_3d_image(1, 1, 1, VK_FORMAT_R8_UNORM);
-	const uint8_t one = 0xff;
-	Vulkan::ImageInitialData initial = { &one, 0, 0 };
+	auto info = Vulkan::ImageCreateInfo::immutable_3d_image(32, 32, 32, VK_FORMAT_R8_UNORM);
+
+	std::vector<uint8_t> density(32 * 32 * 32);
+	for (unsigned z = 0; z < 32; z++)
+	{
+		for (unsigned y = 0; y < 32; y++)
+		{
+			for (unsigned x = 0; x < 32; x++)
+			{
+				float fx = float(x) / 32.0f;
+				float fy = float(y) / 32.0f;
+				float fz = float(z) / 32.0f;
+				float d = 0.5f + 2.0f * (sin(fx * 16.0f) + cos(fy * 8.5f) + sin(fz * 7.9f));
+				density[z * 32 * 32 + y * 32 + x] = uint8_t(clamp(d * 255.0f, 0.0f, 255.0f));
+			}
+		}
+	}
+
+	const uint8_t *data = density.data();
+	Vulkan::ImageInitialData initial = { data, 0, 0 };
 	handle = e.get_device().create_image(info, &initial);
 }
 

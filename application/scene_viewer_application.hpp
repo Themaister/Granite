@@ -139,6 +139,7 @@ private:
 		bool rescale_scene = false;
 		bool show_ui = true;
 		bool volumetric_fog = false;
+		bool volumetric_fog_regions = true;
 		bool volumetric_diffuse = false;
 		bool ssao = true;
 		bool debug_probes = false;

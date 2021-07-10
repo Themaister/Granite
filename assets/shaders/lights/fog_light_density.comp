@@ -48,10 +48,13 @@ mediump float compute_fog_density(int index, FogRegionParameters region, vec3 wo
         dot(vec4(world_pos, 1.0), region.world_to_texture[1]),
         dot(vec4(world_pos, 1.0), region.world_to_texture[2]));
 
-    mediump float density =
+    mediump float density = fade_coeff(local_pos);
+    if (density > 0.0)
+    {
+        density *=
             textureLod(nonuniformEXT(sampler3D(uFogVolumes[index + fog_regions.bindless_index_offset], LinearClampSampler)),
             local_pos, 0.0).x;
-    density *= fade_coeff(local_pos);
+    }
     return density;
 }
 

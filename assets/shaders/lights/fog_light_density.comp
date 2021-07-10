@@ -38,7 +38,7 @@ layout(set = 1, binding = 0) uniform texture3D uFogVolumes[];
 mediump float fade_coeff(vec3 local_pos)
 {
     vec3 x = abs(local_pos - 0.5);
-    return clamp(64.0 * (0.5 - max(max(x.x, x.y), x.z)), 0.0, 1.0);
+    return clamp(8.0 * (0.5 - max(max(x.x, x.y), x.z)), 0.0, 1.0);
 }
 
 mediump float compute_fog_density(int index, FogRegionParameters region, vec3 world_pos)

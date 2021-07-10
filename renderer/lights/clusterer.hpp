@@ -31,6 +31,7 @@
 #include "threaded_scene.hpp"
 #include "render_context.hpp"
 #include "render_graph.hpp"
+#include "descriptor_set.hpp"
 
 namespace Granite
 {
@@ -89,7 +90,8 @@ public:
 	void set_base_renderer(const RendererSuite *suite) override;
 	void set_base_render_context(const RenderContext *context) override;
 
-	enum {
+	enum
+	{
 		MaxLights = CLUSTERER_MAX_LIGHTS,
 		MaxLightsBindless = CLUSTERER_MAX_LIGHTS_BINDLESS,
 		MaxLightsGlobal = CLUSTERER_MAX_LIGHTS_GLOBAL,
@@ -259,7 +261,8 @@ private:
 
 		PositionalLight *handles[MaxLightsBindless + MaxLightsGlobal] = {};
 
-		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;
+		Vulkan::BindlessAllocator allocator;
+
 		Util::LRUCache<Vulkan::ImageHandle> shadow_map_cache;
 
 		const Vulkan::Buffer *bitmask_buffer = nullptr;

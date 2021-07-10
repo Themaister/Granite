@@ -416,4 +416,69 @@ void BindlessDescriptorPoolDeleter::operator()(BindlessDescriptorPool *pool)
 {
 	pool->device->handle_pool.bindless_descriptor_pool.free(pool);
 }
+
+unsigned BindlessAllocator::push(const ImageView &view)
+{
+	auto ret = unsigned(views.size());
+	views.push_back(&view);
+	if (views.size() > VULKAN_NUM_BINDINGS_BINDLESS_VARYING)
+	{
+		LOGE("Exceeding maximum number of bindless resources per set (%u >= %u).\n",
+		     unsigned(views.size()), VULKAN_NUM_BINDINGS_BINDLESS_VARYING);
+	}
+	return ret;
+}
+
+void BindlessAllocator::begin()
+{
+	views.clear();
+}
+
+unsigned BindlessAllocator::get_next_offset() const
+{
+	return unsigned(views.size());
+}
+
+void BindlessAllocator::reserve_max_resources_per_pool(unsigned set_count, unsigned descriptor_count)
+{
+	max_sets_per_pool = std::max(max_sets_per_pool, set_count);
+	max_descriptors_per_pool = std::max(max_descriptors_per_pool, descriptor_count);
+	views.reserve(max_descriptors_per_pool);
+}
+
+void BindlessAllocator::set_bindless_resource_type(BindlessResourceType type)
+{
+	resource_type = type;
+}
+
+VkDescriptorSet BindlessAllocator::commit(Device &device)
+{
+	max_sets_per_pool = std::max(1u, max_sets_per_pool);
+	max_descriptors_per_pool = std::max<unsigned>(views.size(), max_descriptors_per_pool);
+	max_descriptors_per_pool = std::max<unsigned>(1u, max_descriptors_per_pool);
+	max_descriptors_per_pool = std::min(max_descriptors_per_pool, VULKAN_NUM_BINDINGS_BINDLESS_VARYING);
+	unsigned to_allocate = std::max<unsigned>(views.size(), 1u);
+
+	if (!descriptor_pool)
+	{
+		descriptor_pool = device.create_bindless_descriptor_pool(
+				resource_type, max_sets_per_pool, max_descriptors_per_pool);
+	}
+
+	if (!descriptor_pool->allocate_descriptors(to_allocate))
+	{
+		descriptor_pool = device.create_bindless_descriptor_pool(
+				resource_type, max_sets_per_pool, max_descriptors_per_pool);
+
+		if (!descriptor_pool->allocate_descriptors(to_allocate))
+		{
+			LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
+			return VK_NULL_HANDLE;
+		}
+	}
+
+	for (size_t i = 0, n = views.size(); i < n; i++)
+		descriptor_pool->set_texture(i, *views[i]);
+	return descriptor_pool->get_descriptor_set();
+}
 }

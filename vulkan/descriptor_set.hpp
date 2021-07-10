@@ -159,4 +159,24 @@ private:
 	std::vector<VkDescriptorPoolSize> pool_size;
 	bool bindless = false;
 };
+
+class BindlessAllocator
+{
+public:
+	void reserve_max_resources_per_pool(unsigned set_count, unsigned descriptor_count);
+	void set_bindless_resource_type(BindlessResourceType type);
+
+	void begin();
+	unsigned push(const ImageView &view);
+	VkDescriptorSet commit(Device &device);
+
+	unsigned get_next_offset() const;
+
+private:
+	BindlessDescriptorPoolHandle descriptor_pool;
+	unsigned max_sets_per_pool = 0;
+	unsigned max_descriptors_per_pool = 0;
+	BindlessResourceType resource_type = BindlessResourceType::ImageFP;
+	std::vector<const ImageView *> views;
+};
 }

@@ -46,6 +46,11 @@ LightClusterer::LightClusterer()
 		legacy.points.index_remap[i] = i;
 		legacy.spots.index_remap[i] = i;
 	}
+
+	bindless.allocator.reserve_max_resources_per_pool(256, MaxLightsBindless +
+	                                                       MaxLightsGlobal +
+	                                                       MaxLightsVolume * 2);
+	bindless.allocator.set_bindless_resource_type(BindlessResourceType::ImageFP);
 }
 
 void LightClusterer::on_device_created(const Vulkan::DeviceCreatedEvent &e)
@@ -1236,7 +1241,6 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 	if (total_pruned)
 		LOGI("Clusterer pruned a total of %llu bytes.\n", static_cast<unsigned long long>(total_pruned));
 
-	bindless.volumetric.bindless_index_offset = local_count + global_count;
 	bindless.volumetric.num_volumes = std::min<uint32_t>(visible_diffuse_lights.size(), CLUSTERER_MAX_VOLUMES);
 	bindless.volumetric.fallback_volume = muglm::floatToHalf(vec4(0.0001f, 0.0001f, 0.0001f, 0.01f));
 
@@ -1542,29 +1546,8 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 	unsigned local_count = bindless.parameters.num_lights;
 	unsigned global_count = bindless.global_transforms.num_lights;
 	unsigned shadow_count = local_count + global_count;
-	unsigned total_lights = shadow_count + bindless.volumetric.num_volumes * 2;
-	unsigned num_descriptors = std::max(1u, total_lights);
 
-	if (!bindless.descriptor_pool)
-	{
-		bindless.descriptor_pool = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 256,
-		                                                                  MaxLightsBindless + MaxLightsVolume +
-		                                                                  MaxLightsGlobal);
-	}
-
-	if (!bindless.descriptor_pool->allocate_descriptors(num_descriptors))
-	{
-		bindless.descriptor_pool = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 256,
-		                                                                  MaxLightsBindless + MaxLightsVolume +
-		                                                                  MaxLightsGlobal);
-		if (!bindless.descriptor_pool->allocate_descriptors(num_descriptors))
-			LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
-	}
-
-	bindless.desc_set = bindless.descriptor_pool->get_descriptor_set();
-
-	if (!total_lights)
-		return;
+	bindless.allocator.begin();
 
 	if (enable_shadows)
 	{
@@ -1572,21 +1555,18 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 		{
 			auto *image = bindless.shadow_map_cache.find_and_mark_as_recent(bindless.handles[i]->get_cookie());
 			assert(image);
-			bindless.descriptor_pool->set_texture(i, (*image)->get_view());
+			bindless.allocator.push((*image)->get_view());
 		}
 	}
 
-	for (unsigned i = 0; i < bindless.volumetric.num_volumes; i++)
-	{
-		bindless.descriptor_pool->set_texture(i + shadow_count,
-		                                      *visible_diffuse_lights[i].light->light.get_volume_view());
-	}
+	bindless.volumetric.bindless_index_offset = bindless.allocator.get_next_offset();
 
 	for (unsigned i = 0; i < bindless.volumetric.num_volumes; i++)
-	{
-		bindless.descriptor_pool->set_texture(i + shadow_count + bindless.volumetric.num_volumes,
-		                                      *visible_diffuse_lights[i].light->light.get_prev_volume_view());
-	}
+		bindless.allocator.push(*visible_diffuse_lights[i].light->light.get_volume_view());
+	for (unsigned i = 0; i < bindless.volumetric.num_volumes; i++)
+		bindless.allocator.push(*visible_diffuse_lights[i].light->light.get_prev_volume_view());
+
+	bindless.desc_set = bindless.allocator.commit(device);
 }
 
 bool LightClusterer::bindless_light_is_point(unsigned index) const

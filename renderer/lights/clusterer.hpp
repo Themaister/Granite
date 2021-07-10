@@ -86,6 +86,11 @@ public:
 	const ClustererParametersVolumetric &get_cluster_volumetric_diffuse_data() const;
 	size_t get_cluster_volumetric_diffuse_size() const;
 
+	void set_enable_volumetric_fog(bool enable);
+	bool clusterer_has_volumetric_fog() const;
+	const ClustererParametersFogRegions &get_cluster_volumetric_fog_data() const;
+	size_t get_cluster_volumetric_fog_size() const;
+
 	void set_scene(Scene *scene) override;
 	void set_base_renderer(const RendererSuite *suite) override;
 	void set_base_render_context(const RenderContext *context) override;
@@ -96,6 +101,7 @@ public:
 		MaxLightsBindless = CLUSTERER_MAX_LIGHTS_BINDLESS,
 		MaxLightsGlobal = CLUSTERER_MAX_LIGHTS_GLOBAL,
 		MaxLightsVolume = CLUSTERER_MAX_VOLUMES,
+		MaxFogRegions = CLUSTERER_MAX_FOG_REGIONS,
 		ClusterHierarchies = 8,
 		ClusterPrepassDownsample = 4
 	};
@@ -135,6 +141,7 @@ private:
 	enum { MaxTasks = 4 };
 	PositionalLightList light_sort_caches[MaxTasks];
 	VolumetricDiffuseLightList visible_diffuse_lights;
+	VolumetricFogRegionList visible_fog_regions;
 	PositionalLightList existing_global_lights;
 	RenderQueue internal_queue;
 
@@ -196,6 +203,7 @@ private:
 	bool enable_bindless = false;
 	bool force_update_shadows = false;
 	bool enable_volumetric_diffuse = false;
+	bool enable_volumetric_fog = false;
 	ShadowType shadow_type = ShadowType::PCF;
 
 	struct CPUGlobalAccelState
@@ -258,6 +266,7 @@ private:
 		ClustererBindlessTransforms transforms;
 		ClustererGlobalTransforms global_transforms;
 		ClustererParametersVolumetric volumetric;
+		ClustererParametersFogRegions fog_regions;
 
 		PositionalLight *handles[MaxLightsBindless + MaxLightsGlobal] = {};
 

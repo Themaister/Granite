@@ -49,7 +49,8 @@ LightClusterer::LightClusterer()
 
 	bindless.allocator.reserve_max_resources_per_pool(256, MaxLightsBindless +
 	                                                       MaxLightsGlobal +
-	                                                       MaxLightsVolume * 2);
+	                                                       MaxLightsVolume * 2 +
+	                                                       MaxFogRegions);
 	bindless.allocator.set_bindless_resource_type(BindlessResourceType::ImageFP);
 }
 
@@ -64,8 +65,8 @@ void LightClusterer::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 {
 	legacy.program = nullptr;
-	legacy.inherit_variant = 0;
-	legacy.cull_variant = 0;
+	legacy.inherit_variant = nullptr;
+	legacy.cull_variant = nullptr;
 
 	legacy.spots.atlas.reset();
 	legacy.points.atlas.reset();
@@ -1279,11 +1280,28 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 		volume.guard_band_factor = 1.0f / VolumetricDiffuseLight::get_guard_band_factor();
 		volume.guard_band_sharpen = 200.0f;
 	}
+
+	bindless.fog_regions.num_regions = std::min<uint32_t>(visible_fog_regions.size(), CLUSTERER_MAX_FOG_REGIONS);
+	for (uint32_t i = 0; i < bindless.fog_regions.num_regions; i++)
+	{
+		auto &fog = visible_fog_regions[i];
+		auto &region = bindless.fog_regions.regions[i];
+
+		for (unsigned j = 0; j < 3; j++)
+			region.world_to_texture[j] = fog.region->world_to_texture[j];
+		region.world_lo = fog.region->world_lo;
+		region.world_hi = fog.region->world_hi;
+	}
 }
 
 const ClustererParametersVolumetric &LightClusterer::get_cluster_volumetric_diffuse_data() const
 {
 	return bindless.volumetric;
+}
+
+const ClustererParametersFogRegions &LightClusterer::get_cluster_volumetric_fog_data() const
+{
+	return bindless.fog_regions;
 }
 
 const ClustererGlobalTransforms &LightClusterer::get_cluster_global_transforms_bindless() const
@@ -1296,16 +1314,37 @@ void LightClusterer::set_enable_volumetric_diffuse(bool enable)
 	enable_volumetric_diffuse = enable;
 }
 
+void LightClusterer::set_enable_volumetric_fog(bool enable)
+{
+	enable_volumetric_fog = enable;
+}
+
 bool LightClusterer::clusterer_has_volumetric_diffuse() const
 {
 	return enable_volumetric_diffuse;
+}
+
+bool LightClusterer::clusterer_has_volumetric_fog() const
+{
+	return enable_volumetric_fog;
 }
 
 size_t LightClusterer::get_cluster_volumetric_diffuse_size() const
 {
 	if (!enable_volumetric_diffuse)
 		return 0;
-	return bindless.volumetric.num_volumes * sizeof(DiffuseVolumeParameters) + offsetof(ClustererParametersVolumetric, volumes);
+
+	return bindless.volumetric.num_volumes * sizeof(DiffuseVolumeParameters) +
+	       offsetof(ClustererParametersVolumetric, volumes);
+}
+
+size_t LightClusterer::get_cluster_volumetric_fog_size() const
+{
+	if (!enable_volumetric_fog)
+		return 0;
+
+	return bindless.fog_regions.num_regions * sizeof(FogRegionParameters) +
+	       offsetof(ClustererParametersFogRegions, regions);
 }
 
 void LightClusterer::refresh_bindless(const RenderContext &context_, TaskComposer &composer)
@@ -1429,6 +1468,7 @@ void LightClusterer::refresh(const RenderContext &context_, TaskComposer &incomi
 
 	composer.get_group().enqueue_task([this, &context_]() {
 		visible_diffuse_lights.clear();
+		visible_fog_regions.clear();
 		existing_global_lights.clear();
 
 		if (enable_volumetric_diffuse)
@@ -1436,6 +1476,12 @@ void LightClusterer::refresh(const RenderContext &context_, TaskComposer &incomi
 			scene->gather_visible_volumetric_diffuse_lights(context_.get_visibility_frustum(),
 			                                                visible_diffuse_lights);
 			scene->gather_irradiance_affecting_positional_lights(existing_global_lights);
+		}
+
+		if (enable_volumetric_fog)
+		{
+			scene->gather_visible_volumetric_fog_regions(context_.get_visibility_frustum(),
+														 visible_fog_regions);
 		}
 	});
 
@@ -1565,6 +1611,10 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 		bindless.allocator.push(*visible_diffuse_lights[i].light->light.get_volume_view());
 	for (unsigned i = 0; i < bindless.volumetric.num_volumes; i++)
 		bindless.allocator.push(*visible_diffuse_lights[i].light->light.get_prev_volume_view());
+
+	bindless.fog_regions.bindless_index_offset = bindless.allocator.get_next_offset();
+	for (unsigned i = 0; i < bindless.fog_regions.num_regions; i++)
+		bindless.allocator.push(*visible_fog_regions[i].region->region.get_volume_view());
 
 	bindless.desc_set = bindless.allocator.commit(device);
 }

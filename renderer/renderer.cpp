@@ -41,6 +41,7 @@ enum GlobalDescriptorSetBindings
 	BINDING_GLOBAL_RENDER_PARAMETERS = 1,
 
 	BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_PARAMETERS = 2,
+	BINDING_GLOBAL_VOLUMETRIC_FOG_PARAMETERS = 3,
 
 	BINDING_GLOBAL_BRDF_TABLE = 4,
 	BINDING_GLOBAL_DIRECTIONAL_SHADOW = 5,
@@ -428,9 +429,19 @@ static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const Li
 	{
 		cmd.set_bindless(1, cluster.get_cluster_bindless_set());
 
-		size_t size = cluster.get_cluster_volumetric_diffuse_size();
-		void *parameters = cmd.allocate_constant_data(0, BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_PARAMETERS, size);
-		memcpy(parameters, &cluster.get_cluster_volumetric_diffuse_data(), size);
+		if (cluster.clusterer_has_volumetric_diffuse())
+		{
+			size_t size = cluster.get_cluster_volumetric_diffuse_size();
+			void *parameters = cmd.allocate_constant_data(0, BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_PARAMETERS, size);
+			memcpy(parameters, &cluster.get_cluster_volumetric_diffuse_data(), size);
+		}
+
+		if (cluster.clusterer_has_volumetric_fog())
+		{
+			size_t size = cluster.get_cluster_volumetric_fog_size();
+			void *parameters = cmd.allocate_constant_data(0, BINDING_GLOBAL_VOLUMETRIC_FOG_PARAMETERS, size);
+			memcpy(parameters, &cluster.get_cluster_volumetric_fog_data(), size);
+		}
 	}
 }
 

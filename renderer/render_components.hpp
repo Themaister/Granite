@@ -31,6 +31,7 @@
 #include "renderer_enums.hpp"
 #include "camera.hpp"
 #include "lights/lights.hpp"
+#include "lights/volumetric_fog_region.hpp"
 
 namespace Granite
 {
@@ -236,6 +237,15 @@ struct VolumetricDiffuseLightComponent : ComponentBase
 	vec4 world_hi;
 	uint32_t timestamp = 0;
 	uint32_t update_iteration = 0;
+};
+
+struct VolumetricFogRegionComponent : ComponentBase
+{
+	GRANITE_COMPONENT_TYPE_DECL(VolumetricFogRegionComponent)
+	VolumetricFogRegion region;
+	vec4 world_to_texture[3];
+	vec4 world_lo;
+	vec4 world_hi;
 };
 
 struct CastsStaticShadowComponent : ComponentBase

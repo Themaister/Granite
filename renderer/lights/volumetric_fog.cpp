@@ -21,6 +21,7 @@
  */
 
 #include "volumetric_fog.hpp"
+#include "volumetric_fog_region.hpp"
 #include "render_graph.hpp"
 #include "render_context.hpp"
 #include <random>
@@ -31,6 +32,34 @@ using namespace std;
 
 namespace Granite
 {
+VolumetricFogRegion::VolumetricFogRegion()
+{
+	EVENT_MANAGER_REGISTER_LATCH(VolumetricFogRegion, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+}
+
+void VolumetricFogRegion::set_volume(Vulkan::ImageHandle handle_)
+{
+	handle = std::move(handle_);
+}
+
+const Vulkan::ImageView *VolumetricFogRegion::get_volume_view() const
+{
+	return handle ? &handle->get_view() : nullptr;
+}
+
+void VolumetricFogRegion::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
+{
+	handle.reset();
+}
+
+void VolumetricFogRegion::on_device_created(const Vulkan::DeviceCreatedEvent &e)
+{
+	auto info = Vulkan::ImageCreateInfo::immutable_2d_image(1, 1, VK_FORMAT_R8_UNORM);
+	const uint8_t one = 0xff;
+	Vulkan::ImageInitialData initial = { &one, 0, 0 };
+	handle = e.get_device().create_image(info, &initial);
+}
+
 VolumetricFog::VolumetricFog()
 {
 	set_z_range(z_range);

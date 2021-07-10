@@ -45,6 +45,7 @@ Scene::Scene()
 	  cameras(pool.get_component_group<CameraComponent, CachedTransformComponent>()),
 	  directional_lights(pool.get_component_group<DirectionalLightComponent, CachedTransformComponent>()),
 	  volumetric_diffuse_lights(pool.get_component_group<VolumetricDiffuseLightComponent, CachedSpatialTransformTimestampComponent, RenderInfoComponent>()),
+	  volumetric_fog_regions(pool.get_component_group<VolumetricFogRegionComponent, CachedSpatialTransformTimestampComponent, RenderInfoComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
 	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, RenderInfoComponent>()),
 	  environments(pool.get_component_group<EnvironmentComponent>()),
@@ -404,6 +405,26 @@ void Scene::gather_visible_volumetric_diffuse_lights(const Frustum &frustum, Vol
 			}
 			else
 				list.push_back({ light, transform });
+		}
+	}
+}
+
+void Scene::gather_visible_volumetric_fog_regions(const Frustum &frustum, VolumetricFogRegionList &list) const
+{
+	for (auto &o : volumetric_fog_regions)
+	{
+		auto *transform = get_component<RenderInfoComponent>(o);
+		auto *region = get_component<VolumetricFogRegionComponent>(o);
+
+		if (region->region.get_volume_view())
+		{
+			if (transform->transform)
+			{
+				if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
+					list.push_back({ region, transform });
+			}
+			else
+				list.push_back({ region, transform });
 		}
 	}
 }

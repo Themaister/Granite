@@ -47,6 +47,12 @@ const Vulkan::ImageView *VolumetricFogRegion::get_volume_view() const
 	return handle ? &handle->get_view() : nullptr;
 }
 
+const AABB &VolumetricFogRegion::get_static_aabb()
+{
+	static AABB aabb(vec3(-0.5f), vec3(0.5f));
+	return aabb;
+}
+
 void VolumetricFogRegion::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 {
 	handle.reset();
@@ -54,7 +60,7 @@ void VolumetricFogRegion::on_device_destroyed(const Vulkan::DeviceCreatedEvent &
 
 void VolumetricFogRegion::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 {
-	auto info = Vulkan::ImageCreateInfo::immutable_2d_image(1, 1, VK_FORMAT_R8_UNORM);
+	auto info = Vulkan::ImageCreateInfo::immutable_3d_image(1, 1, 1, VK_FORMAT_R8_UNORM);
 	const uint8_t one = 0xff;
 	Vulkan::ImageInitialData initial = { &one, 0, 0 };
 	handle = e.get_device().create_image(info, &initial);
@@ -156,7 +162,8 @@ void VolumetricFog::build_density(CommandBuffer &cmd, ImageView &fog_density, fl
 	             (fog_density.get_image().get_depth() + 3) / 4);
 }
 
-void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_density, ImageView &fog_density, ImageView &fog_density_low_freq,
+void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_density,
+										//ImageView &fog_density, ImageView &fog_density_low_freq,
                                         ImageView *light_density_history)
 {
 	struct Push
@@ -206,7 +213,9 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 				context->get_render_parameters().inv_projection[3].zw());
 	}
 
-	if (flags & Renderer::POSITIONAL_LIGHT_ENABLE_BIT)
+	if ((flags & Renderer::POSITIONAL_LIGHT_ENABLE_BIT) ||
+	    (context->get_lighting_parameters()->cluster &&
+	     context->get_lighting_parameters()->cluster->clusterer_has_volumetric_fog()))
 	{
 		// Try to enable wave-optimizations.
 		static const VkSubgroupFeatureFlags required_subgroup =
@@ -243,6 +252,12 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 		*cmd.allocate_typed_constant_data<FloorLighting>(2, 8, 1) = floor.info;
 	}
 
+	if (context->get_lighting_parameters()->cluster &&
+	    context->get_lighting_parameters()->cluster->clusterer_has_volumetric_fog())
+	{
+		defines.emplace_back("FOG_REGIONS", 1);
+	}
+
 	cmd.set_program("builtin://shaders/lights/fog_light_density.comp", defines);
 	Renderer::bind_global_parameters(cmd, *context);
 	Renderer::bind_lighting_parameters(cmd, *context);
@@ -253,8 +268,8 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 	       slice_extents,
 	       sizeof(float) * depth);
 	cmd.set_texture(2, 2, dither_lut->get_view(), StockSampler::NearestWrap);
-	cmd.set_texture(2, 3, fog_density, StockSampler::LinearWrap);
-	cmd.set_texture(2, 4, fog_density_low_freq, StockSampler::LinearWrap);
+	//cmd.set_texture(2, 3, fog_density, StockSampler::LinearWrap);
+	//cmd.set_texture(2, 4, fog_density_low_freq, StockSampler::LinearWrap);
 
 	cmd.dispatch((width + 3) / 4, (height + 3) / 4, (depth + 3) / 4);
 }
@@ -309,23 +324,28 @@ void VolumetricFog::add_render_passes(RenderGraph &graph)
 	pass = &graph.add_pass("volumetric-fog", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 
 	auto &in_scatter_volume = pass->add_storage_texture_output("volumetric-fog-inscatter", volume);
-	auto &density_volume = pass->add_storage_texture_output("volumetric-fog-density", density);
-	auto &density_volume_low_freq = pass->add_storage_texture_output("volumetric-fog-density-low-freq", density);
+	//auto &density_volume = pass->add_storage_texture_output("volumetric-fog-density", density);
+	//auto &density_volume_low_freq = pass->add_storage_texture_output("volumetric-fog-density-low-freq", density);
 	fog_volume = &pass->add_storage_texture_output("volumetric-fog-output", volume);
 	pass->add_history_input("volumetric-fog-inscatter");
 
 	pass->set_build_render_pass([&](CommandBuffer &cmd) {
-		auto &d = graph.get_physical_texture_resource(density_volume);
-		auto &d_low = graph.get_physical_texture_resource(density_volume_low_freq);
 		auto &l = graph.get_physical_texture_resource(in_scatter_volume);
 		auto &f = graph.get_physical_texture_resource(*fog_volume);
 		auto *l_history = graph.get_physical_history_texture_resource(in_scatter_volume);
 
-		build_density(cmd, d, 1.0f);
-		build_density(cmd, d_low, 0.25f);
-		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		build_light_density(cmd, l, d, d_low, l_history);
+		//auto &d = graph.get_physical_texture_resource(density_volume);
+		//auto &d_low = graph.get_physical_texture_resource(density_volume_low_freq);
+		//build_density(cmd, d, 1.0f);
+		//build_density(cmd, d_low, 0.25f);
+
+		//cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		//            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		build_light_density(cmd, l,
+#if 0
+				d, d_low,
+#endif
+                            l_history);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		build_fog(cmd, f, l);

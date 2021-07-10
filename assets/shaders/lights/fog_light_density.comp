@@ -2,14 +2,72 @@
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 #define CLUSTERER_NO_HELPER_INVOCATION
+#ifdef FOG_REGIONS
+#extension GL_EXT_nonuniform_qualifier : require
+#include "linear_clamp_sampler.h"
+#endif
 
 #include "../inc/subgroup_extensions.h"
 #include "volumetric_fog.h"
 #include "lighting_scatter.h"
 #include "../inc/render_parameters.h"
+#include "../inc/global_bindings.h"
 
 #ifndef TEMPORAL_REPROJECTION
 #define TEMPORAL_REPROJECTION 0
+#endif
+
+#ifdef FOG_REGIONS
+const int CLUSTERER_MAX_FOG_REGIONS = 128;
+struct FogRegionParameters
+{
+    vec4 world_to_texture[3];
+    vec4 world_lo;
+    vec4 world_hi;
+};
+
+layout(std140, set = 0, binding = BINDING_GLOBAL_VOLUMETRIC_FOG_PARAMETERS) uniform FogRegions
+{
+    int bindless_index_offset;
+    int num_regions;
+    FogRegionParameters regions[CLUSTERER_MAX_FOG_REGIONS];
+} fog_regions;
+
+layout(set = 1, binding = 0) uniform texture3D uFogVolumes[];
+
+mediump float fade_coeff(vec3 local_pos)
+{
+    vec3 x = abs(local_pos - 0.5);
+    return clamp(64.0 * (0.5 - max(max(x.x, x.y), x.z)), 0.0, 1.0);
+}
+
+mediump float compute_fog_density(int index, FogRegionParameters region, vec3 world_pos)
+{
+    vec3 local_pos = vec3(
+        dot(vec4(world_pos, 1.0), region.world_to_texture[0]),
+        dot(vec4(world_pos, 1.0), region.world_to_texture[1]),
+        dot(vec4(world_pos, 1.0), region.world_to_texture[2]));
+
+    mediump float density =
+            textureLod(nonuniformEXT(sampler3D(uFogVolumes[index + fog_regions.bindless_index_offset], LinearClampSampler)),
+            local_pos, 0.0).x;
+    density *= fade_coeff(local_pos);
+    return density;
+}
+
+mediump float compute_fog_density(vec3 world_pos)
+{
+    mediump float density = 0.0;
+    // Naive path.
+    for (int i = 0; i < fog_regions.num_regions; i++)
+        density += compute_fog_density(i, fog_regions.regions[i], world_pos);
+    return density;
+}
+#else
+mediump float compute_fog_density(vec3 pos)
+{
+    return 0.1;
+}
 #endif
 
 layout(push_constant, std430) uniform Registers
@@ -31,14 +89,14 @@ float to_clip_z(float world_z)
     return zw.x / zw.y;
 }
 
-layout(constant_id = 0) const float POSITION_MOD = 0.4;
-layout(constant_id = 1) const float POSITION_MOD_LOW_FREQ = 0.0922556;
+//layout(constant_id = 0) const float POSITION_MOD = 0.4;
+//layout(constant_id = 1) const float POSITION_MOD_LOW_FREQ = 0.0922556;
 
 layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uLightDensity;
 layout(set = 2, binding = 2) uniform mediump sampler3D uDitherLUT;
 
-layout(set = 2, binding = 3) uniform mediump sampler3D uFogDensity;
-layout(set = 2, binding = 4) uniform mediump sampler3D uFogDensityLowFreq;
+//layout(set = 2, binding = 3) uniform mediump sampler3D uFogDensity;
+//layout(set = 2, binding = 4) uniform mediump sampler3D uFogDensityLowFreq;
 
 layout(std140, set = 2, binding = 1) uniform BlockExtents
 {
@@ -149,8 +207,9 @@ void main()
 
     vec3 pos = get_world_position(uvw);
 
-    mediump float fog_density = textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x +
-                                0.5 * textureLod(uFogDensityLowFreq, (pos + 1.0) * POSITION_MOD_LOW_FREQ, 0.0).x;
+    //mediump float fog_density = textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x +
+    //                            0.5 * textureLod(uFogDensityLowFreq, (pos + 1.0) * POSITION_MOD_LOW_FREQ, 0.0).x;
+    mediump float fog_density = compute_fog_density(pos);
 
     mediump float albedo = get_fog_albedo(uvw) * fog_density;
     mediump vec3 in_scatter_light = registers.in_scatter_strength * compute_inscatter_light(pos);

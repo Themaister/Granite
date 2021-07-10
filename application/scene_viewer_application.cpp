@@ -223,6 +223,36 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		scene.get_root_node()->add_child(std::move(node));
 	}
 
+	{
+		auto &scene = scene_loader.get_scene();
+		auto node = scene.create_node();
+		node->transform.scale = vec3(2.0f, 2.0f, 2.0f);
+		node->transform.translation = vec3(0.0f, 3.0f, 0.0f);
+		node->invalidate_cached_transform();
+		scene.create_volumetric_fog_region(node.get());
+		scene.get_root_node()->add_child(std::move(node));
+	}
+
+	{
+		auto &scene = scene_loader.get_scene();
+		auto node = scene.create_node();
+		node->transform.scale = vec3(2.0f, 2.0f, 2.0f);
+		node->transform.translation = vec3(-6.0f, 3.0f, 0.0f);
+		node->invalidate_cached_transform();
+		scene.create_volumetric_fog_region(node.get());
+		scene.get_root_node()->add_child(std::move(node));
+	}
+
+	{
+		auto &scene = scene_loader.get_scene();
+		auto node = scene.create_node();
+		node->transform.scale = vec3(2.0f, 2.0f, 2.0f);
+		node->transform.translation = vec3(+6.0f, 3.0f, 0.0f);
+		node->invalidate_cached_transform();
+		scene.create_volumetric_fog_region(node.get());
+		scene.get_root_node()->add_child(std::move(node));
+	}
+
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);
 	fallback_depth_context.set_lighting_parameters(&fallback_lighting);
@@ -301,6 +331,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		cluster->set_enable_clustering(config.clustered_lights);
 		cluster->set_enable_bindless(config.clustered_lights_bindless);
 		cluster->set_shadow_resolution(config.clustered_lights_shadow_resolution);
+		cluster->set_enable_volumetric_fog(true);
 
 		if (config.clustered_lights_shadows_vsm)
 			cluster->set_shadow_type(LightClusterer::ShadowType::VSM);

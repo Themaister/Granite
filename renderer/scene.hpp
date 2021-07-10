@@ -232,6 +232,7 @@ public:
 	Entity *create_renderable(AbstractRenderableHandle renderable, Node *node);
 	Entity *create_light(const SceneFormats::LightInfo &light, Node *node);
 	Entity *create_volumetric_diffuse_light(uvec3 resolution, Node *node);
+	Entity *create_volumetric_fog_region(Node *node);
 	Entity *create_entity();
 	void destroy_entity(Entity *entity);
 	void queue_destroy_entity(Entity *entity);

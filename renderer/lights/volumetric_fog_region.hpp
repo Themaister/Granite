@@ -36,6 +36,8 @@ public:
 	void set_volume(Vulkan::ImageHandle handle);
 	const Vulkan::ImageView *get_volume_view() const;
 
+	static const AABB &get_static_aabb();
+
 private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);

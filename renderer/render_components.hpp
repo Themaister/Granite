@@ -246,6 +246,7 @@ struct VolumetricFogRegionComponent : ComponentBase
 	vec4 world_to_texture[3];
 	vec4 world_lo;
 	vec4 world_hi;
+	uint32_t timestamp = 0;
 };
 
 struct CastsStaticShadowComponent : ComponentBase

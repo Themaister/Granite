@@ -696,6 +696,29 @@ void Scene::update_transform_listener_components()
 			l->timestamp = timestamp->last_timestamp;
 		}
 	}
+
+	for (auto &region : volumetric_fog_regions)
+	{
+		VolumetricFogRegionComponent *r;
+		CachedSpatialTransformTimestampComponent *timestamp;
+		RenderInfoComponent *transform;
+		tie(r, timestamp, transform) = region;
+
+		if (timestamp->last_timestamp != r->timestamp)
+		{
+			// This is a somewhat expensive operation, so timestamp it.
+			auto texture_to_world = transform->transform->world_transform * translate(vec3(-0.5f));
+			auto world_to_texture = inverse(texture_to_world);
+
+			world_to_texture = transpose(world_to_texture);
+
+			for (int i = 0; i < 3; i++)
+				r->world_to_texture[i] = world_to_texture[i];
+			r->world_lo = transform->world_aabb.get_minimum4();
+			r->world_hi = transform->world_aabb.get_maximum4();
+			r->timestamp = timestamp->last_timestamp;
+		}
+	}
 }
 
 void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
@@ -969,6 +992,28 @@ Entity *Scene::create_volumetric_diffuse_light(uvec3 resolution, Node *node)
 
 	auto *bounded = entity->allocate_component<BoundedComponent>();
 	bounded->aabb = &VolumetricDiffuseLight::get_static_aabb();
+
+	if (node)
+	{
+		transform->transform = &node->cached_transform;
+		timestamp->current_timestamp = node->get_timestamp_pointer();
+	}
+	timestamp->cookie = transform_cookies.fetch_add(std::memory_order_relaxed);
+
+	return entity;
+}
+
+Entity *Scene::create_volumetric_fog_region(Node *node)
+{
+	Entity *entity = pool.create_entity();
+	entities.insert_front(entity);
+
+	entity->allocate_component<VolumetricFogRegionComponent>();
+	auto *transform = entity->allocate_component<RenderInfoComponent>();
+	auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
+
+	auto *bounded = entity->allocate_component<BoundedComponent>();
+	bounded->aabb = &VolumetricFogRegion::get_static_aabb();
 
 	if (node)
 	{

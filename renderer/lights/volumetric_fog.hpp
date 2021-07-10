@@ -107,8 +107,8 @@ private:
 	void build_density(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &fog_density, float freq_mod);
 	void build_light_density(Vulkan::CommandBuffer &cmd,
 	                         Vulkan::ImageView &light_density,
-	                         Vulkan::ImageView &fog_density,
-	                         Vulkan::ImageView &fog_density_low_freq,
+	                         //Vulkan::ImageView &fog_density,
+	                         //Vulkan::ImageView &fog_density_low_freq,
 	                         Vulkan::ImageView *light_density_history);
 	void build_fog(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &fog, Vulkan::ImageView &light);
 

@@ -432,8 +432,10 @@ void VolumetricDiffuseLightManager::render_probe_gbuffer_slice(VolumetricDiffuse
 				cmd->end_render_pass();
 				cmd->end_region();
 
+#ifdef VULKAN_DEBUG
 				LOGI("Rendering gbuffer probe ... X = %u, Y = %u, Z = %u, layer = %u.\n",
 				     x, y, z, layer);
+#endif
 			}
 
 			transition_gbuffer(*cmd, renderers.gbuffer, TransitionMode::Read);

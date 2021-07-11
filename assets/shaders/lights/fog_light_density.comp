@@ -1,6 +1,8 @@
 #version 450
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
+#extension GL_EXT_samplerless_texture_functions : require
+
 #define CLUSTERER_NO_HELPER_INVOCATION
 #ifdef FOG_REGIONS
 #extension GL_EXT_nonuniform_qualifier : require
@@ -121,7 +123,7 @@ layout(push_constant, std430) uniform Registers
     mat4 inv_view_projection;
     vec4 z_transform;
     uvec3 count;
-    float dither_offset;
+    int dither_offset;
     vec3 inv_resolution;
     float in_scatter_strength;
     vec2 xy_scale;
@@ -139,7 +141,7 @@ float to_clip_z(float world_z)
 //layout(constant_id = 1) const float POSITION_MOD_LOW_FREQ = 0.0922556;
 
 layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uLightDensity;
-layout(set = 2, binding = 2) uniform mediump sampler3D uDitherLUT;
+layout(set = 2, binding = 2) uniform mediump texture3D uDitherLUT;
 
 //layout(set = 2, binding = 3) uniform mediump sampler3D uFogDensity;
 //layout(set = 2, binding = 4) uniform mediump sampler3D uFogDensityLowFreq;
@@ -238,13 +240,13 @@ void main()
                 float old_world_z = to_world_z(old_ndc.z);
                 float tex_z = volumetric_fog_world_to_texture_z(old_world_z, registers.slice_z_log2_scale);
                 old_in_scatter_light_albedo = textureLod(uOldLightDensity, vec3(0.5 * old_ndc.xy + 0.5, tex_z), 0.0);
-                w = 1.0 / 20.0;
+                w = 1.0 / 32.0;
             }
         }
     }
 #endif
 
-    vec3 dither = textureLod(uDitherLUT, 4.0 * (vec3(gl_GlobalInvocationID) + registers.dither_offset + 0.5) * registers.inv_resolution, 0.0).xyz;
+    vec3 dither = texelFetch(uDitherLUT, ivec3(gl_GlobalInvocationID.xy, registers.dither_offset), 0).xyz;
     dither.x -= 0.5;
     dither.y -= 0.5;
     dither.z = -dither.z;

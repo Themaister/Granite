@@ -212,48 +212,25 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	// Why not. :D
 	//Ocean::add_to_scene(scene_loader.get_scene());
+	{
+		auto &scene = scene_loader.get_scene();
+		auto node = scene.create_node();
+		node->transform.scale = vec3(26.0f, 8.0f, 26.0f);
+		node->transform.translation = vec3(0.0f, 3.0f, 0.0f);
+		node->invalidate_cached_transform();
+		scene.create_volumetric_diffuse_light(uvec3(32, 8, 32), node.get());
+		scene.get_root_node()->add_child(std::move(node));
+	}
 
 	if (config.volumetric_fog_regions && config.volumetric_fog)
 	{
-		{
-			auto &scene = scene_loader.get_scene();
-			auto node = scene.create_node();
-			node->transform.scale = vec3(26.0f, 8.0f, 26.0f);
-			node->transform.translation = vec3(0.0f, 3.0f, 0.0f);
-			node->invalidate_cached_transform();
-			scene.create_volumetric_diffuse_light(uvec3(32, 8, 32), node.get());
-			scene.get_root_node()->add_child(std::move(node));
-		}
-
-		{
-			auto &scene = scene_loader.get_scene();
-			auto node = scene.create_node();
-			node->transform.scale = vec3(20.0f);
-			node->transform.translation = vec3(0.0f, 3.0f, 0.0f);
-			node->invalidate_cached_transform();
-			scene.create_volumetric_fog_region(node.get());
-			scene.get_root_node()->add_child(std::move(node));
-		}
-
-		{
-			auto &scene = scene_loader.get_scene();
-			auto node = scene.create_node();
-			node->transform.scale = vec3(2.0f);
-			node->transform.translation = vec3(-6.0f, 3.0f, 0.0f);
-			node->invalidate_cached_transform();
-			scene.create_volumetric_fog_region(node.get());
-			scene.get_root_node()->add_child(std::move(node));
-		}
-
-		{
-			auto &scene = scene_loader.get_scene();
-			auto node = scene.create_node();
-			node->transform.scale = vec3(1.0f);
-			node->transform.translation = vec3(+6.0f, 3.0f, 0.0f);
-			node->invalidate_cached_transform();
-			scene.create_volumetric_fog_region(node.get());
-			scene.get_root_node()->add_child(std::move(node));
-		}
+		auto &scene = scene_loader.get_scene();
+		auto node = scene.create_node();
+		node->transform.scale = vec3(40.0f);
+		node->transform.translation = vec3(0.0f, 20.0f, 0.0f);
+		node->invalidate_cached_transform();
+		scene.create_volumetric_fog_region(node.get());
+		scene.get_root_node()->add_child(std::move(node));
 	}
 
 	animation_system = scene_loader.consume_animation_system();

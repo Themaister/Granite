@@ -28,7 +28,7 @@ mediump vec3 compute_scatter_lighting(
 	mediump vec3 in_scatter = light_color * (directional_scatter_phase_function(VoL) * shadow_term);
 
 #ifdef VOLUMETRIC_DIFFUSE
-	in_scatter += compute_volumetric_diffuse(light_world_pos, normalize(light_world_pos - light_camera_pos));
+	in_scatter += compute_volumetric_diffuse(light_world_pos, normalize(light_world_pos - light_camera_pos), true);
 #endif
 
 #ifdef POSITIONAL_LIGHTS

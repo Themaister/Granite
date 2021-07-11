@@ -76,15 +76,18 @@ mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
     vec3 n = pos * inv_l;
     vec3 color;
 
+    // All lanes need to participate since we do subgroup based culling.
+    mediump vec3 normal = normalize(texelFetch(uProbeNormal, coord, 0).xyz * 2.0 - 1.0);
+    mediump vec3 irradiance_light = compute_irradiance_lighting(
+            world_pos, normal,
+            directional.direction, directional.color, do_lighting);
+
     if (do_lighting)
     {
         vec3 emissive = texelFetch(uProbeEmissive, coord, 0).rgb;
         color = emissive;
-        vec3 albedo = texelFetch(uProbeAlbedo, coord, 0).rgb;
-        vec3 normal = normalize(texelFetch(uProbeNormal, coord, 0).xyz * 2.0 - 1.0);
-        color += min(albedo, vec3(0.95)) * compute_irradiance_lighting(
-                world_pos, normal,
-                directional.direction, directional.color);
+        mediump vec3 albedo = texelFetch(uProbeAlbedo, coord, 0).rgb;
+        color += min(albedo, vec3(0.95)) * irradiance_light;
     }
     else
     {

@@ -52,6 +52,6 @@ void main()
 #endif
     FragColor += base_color_ambient.rgb *
             ((1.0 - mr.x) * base_color_ambient.a * ambient_term) *
-            compute_volumetric_diffuse(pos, N);
+            compute_volumetric_diffuse(pos, N, true);
 #endif
 }

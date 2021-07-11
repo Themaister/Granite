@@ -228,8 +228,6 @@ void main()
 {
     uvec3 local_coord = (uvec3(gl_LocalInvocationIndex) >> uvec3(0, 2, 4)) & 3u;
     uvec3 global_coord = gl_WorkGroupID * 4u + local_coord;
-    if (any(greaterThanEqual(global_coord, registers.count)))
-        return;
 
     vec3 uvw = (vec3(global_coord) + 0.5) * registers.inv_resolution;
 
@@ -279,5 +277,6 @@ void main()
     albedo = clamp(albedo, 0.0, 10000.0);
 #endif
 
-    imageStore(uLightDensity, ivec3(global_coord), vec4(in_scatter_light, albedo));
+    if (all(lessThan(global_coord, registers.count)))
+        imageStore(uLightDensity, ivec3(global_coord), vec4(in_scatter_light, albedo));
 }

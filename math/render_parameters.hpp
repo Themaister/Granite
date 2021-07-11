@@ -142,6 +142,21 @@ struct ClustererParametersVolumetric
 	alignas(16) DiffuseVolumeParameters volumes[CLUSTERER_MAX_VOLUMES];
 };
 
+struct FogRegionParameters
+{
+	vec4 world_to_texture[3];
+	vec4 world_lo;
+	vec4 world_hi;
+};
+
+#define CLUSTERER_MAX_FOG_REGIONS 128
+struct ClustererParametersFogRegions
+{
+	uint32_t bindless_index_offset;
+	uint32_t num_regions;
+	alignas(16) FogRegionParameters regions[CLUSTERER_MAX_FOG_REGIONS];
+};
+
 #define CLUSTERER_MAX_LIGHTS_BINDLESS 4096
 #define CLUSTERER_MAX_LIGHTS_GLOBAL 32
 

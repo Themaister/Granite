@@ -1481,7 +1481,7 @@ void LightClusterer::refresh(const RenderContext &context_, TaskComposer &incomi
 		if (enable_volumetric_fog)
 		{
 			scene->gather_visible_volumetric_fog_regions(context_.get_visibility_frustum(),
-														 visible_fog_regions);
+			                                             visible_fog_regions);
 		}
 	});
 

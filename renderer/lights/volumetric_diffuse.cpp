@@ -226,6 +226,16 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	           Renderer::SHADOW_CASCADE_ENABLE_BIT);
 	auto defines = Renderer::build_defines_from_renderer_options(RendererType::GeneralForward, flags);
 
+	Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
+#if 0
+	if (cmd.get_device().supports_subgroup_size_log2(true, 2, 7))
+	{
+		defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);
+		cmd.set_subgroup_size_log2(true, 2, 7);
+		cmd.enable_subgroup_size_control(true);
+	}
+#endif
+
 	cmd.set_program("builtin://shaders/lights/volumetric_hemisphere_integral.comp", defines);
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.set_storage_texture(2, 0, *light.light.get_accumulation_view(push.gbuffer_layer));
@@ -422,8 +432,10 @@ void VolumetricDiffuseLightManager::render_probe_gbuffer_slice(VolumetricDiffuse
 				cmd->end_render_pass();
 				cmd->end_region();
 
+#ifdef VULKAN_DEBUG
 				LOGI("Rendering gbuffer probe ... X = %u, Y = %u, Z = %u, layer = %u.\n",
 				     x, y, z, layer);
+#endif
 			}
 
 			transition_gbuffer(*cmd, renderers.gbuffer, TransitionMode::Read);

@@ -4834,4 +4834,41 @@ void Device::end_renderdoc_capture()
 }
 #endif
 
+bool Device::supports_subgroup_size_log2(bool subgroup_full_group, uint8_t subgroup_minimum_size_log2,
+                                         uint8_t subgroup_maximum_size_log2) const
+{
+	if (ImplementationQuirks::get().force_no_subgroup_size_control)
+		return false;
+
+	if (!ext.subgroup_size_control_features.subgroupSizeControl)
+		return false;
+	if (subgroup_full_group && !ext.subgroup_size_control_features.computeFullSubgroups)
+		return false;
+
+	uint32_t min_subgroups = 1u << subgroup_minimum_size_log2;
+	uint32_t max_subgroups = 1u << subgroup_maximum_size_log2;
+
+	bool full_range = min_subgroups <= ext.subgroup_size_control_properties.minSubgroupSize &&
+	                  max_subgroups >= ext.subgroup_size_control_properties.maxSubgroupSize;
+
+	// We can use VARYING size.
+	if (full_range)
+		return true;
+
+	if (min_subgroups > ext.subgroup_size_control_properties.maxSubgroupSize ||
+	    max_subgroups < ext.subgroup_size_control_properties.minSubgroupSize)
+	{
+		// No overlap in requested subgroup size and available subgroup size.
+		return false;
+	}
+
+	// We need requiredSubgroupSizeStages support here.
+	return (ext.subgroup_size_control_properties.requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0;
+}
+
+static ImplementationQuirks implementation_quirks;
+ImplementationQuirks &ImplementationQuirks::get()
+{
+	return implementation_quirks;
+}
 }

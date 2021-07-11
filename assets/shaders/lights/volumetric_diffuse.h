@@ -81,18 +81,25 @@ mediump vec4 compute_volumetric_diffuse(int index, DiffuseVolumeParameters volum
 	return weighted_result;
 }
 
-mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal)
+mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal, bool active_lane)
 {
 	mediump vec4 diffuse_weight = vec4(
 			unpackHalf2x16(volumetric.fallback_volume_fp16.x),
 			unpackHalf2x16(volumetric.fallback_volume_fp16.y));
 
-#ifdef CLUSTERING_WAVE_UNIFORM
-	vec3 aabb_lo = subgroupMin(world_pos);
-	vec3 aabb_hi = subgroupMax(world_pos);
+#if defined(SUBGROUP_ARITHMETIC) && defined(SUBGROUP_BALLOT) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
+	const float FLT_BIG = 1e38;
+	vec3 aabb_lo = subgroupMin(active_lane ? world_pos : vec3(FLT_BIG));
+	vec3 aabb_hi = subgroupMax(active_lane ? world_pos : vec3(-FLT_BIG));
+
+#if defined(SUBGROUP_COMPUTE_FULL)
+	int active_lanes = int(gl_SubgroupSize);
+	int bit_offset = int(gl_SubgroupInvocationID);
+#else
 	uvec4 ballot = subgroupBallot(true);
 	int active_lanes = int(subgroupBallotBitCount(ballot));
 	int bit_offset = int(subgroupBallotExclusiveBitCount(ballot));
+#endif
 
 	// Wave uniform loop
 	for (int i = 0; i < volumetric.num_volumes; i += active_lanes)
@@ -112,12 +119,18 @@ mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal)
 		// Wave uniform loop
 		while (any(notEqual(active_ballot, uvec4(0u))))
 		{
-			uint bit_index = subgroupBallotFindLSB(active_ballot);
+			int bit_index = int(subgroupBallotFindLSB(active_ballot));
 			active_ballot &= subgroupBallot(bit_index != gl_SubgroupInvocationID);
 
-			DiffuseVolumeParameters scalar_volume;
+#if defined(SUBGROUP_COMPUTE_FULL)
+			int index = i + bit_index;
+#else
+			int index = subgroupShuffle(current_index, bit_index);
+#endif
 
 			// Wave uniform lane index.
+#if defined(SUBGROUP_SHUFFLE)
+			DiffuseVolumeParameters scalar_volume;
 			scalar_volume.world_to_texture[0] = subgroupShuffle(volume.world_to_texture[0], bit_index);
 			scalar_volume.world_to_texture[1] = subgroupShuffle(volume.world_to_texture[1], bit_index);
 			scalar_volume.world_to_texture[2] = subgroupShuffle(volume.world_to_texture[2], bit_index);
@@ -125,16 +138,18 @@ mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal)
 			scalar_volume.hi_tex_coord_x = subgroupShuffle(volume.hi_tex_coord_x, bit_index);
 			scalar_volume.guard_band_factor = subgroupShuffle(volume.guard_band_factor, bit_index);
 			scalar_volume.guard_band_sharpen = subgroupShuffle(volume.guard_band_sharpen, bit_index);
+#elif defined(SUBGROUP_COMPUTE_FULL)
+			DiffuseVolumeParameters scalar_volume = volumetric.volumes[i + bit_index];
+#endif
 
-			// Extract the bindless index.
-			int index = subgroupShuffle(current_index, bit_index);
 			diffuse_weight += compute_volumetric_diffuse(index, scalar_volume, world_pos, normal);
 		}
 	}
 #else
 	// Naive path.
-	for (int i = 0; i < volumetric.num_volumes; i++)
-		diffuse_weight += compute_volumetric_diffuse(i, volumetric.volumes[i], world_pos, normal);
+	if (active)
+		for (int i = 0; i < volumetric.num_volumes; i++)
+			diffuse_weight += compute_volumetric_diffuse(i, volumetric.volumes[i], world_pos, normal);
 #endif
 
 	// Already accounted for lambertian 1.0 / PI when creating the probe.

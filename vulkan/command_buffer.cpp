@@ -743,24 +743,17 @@ VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredP
 
 	if (compile.static_state.state.subgroup_control_size)
 	{
-		auto &features = device->get_device_features();
-
-		if (!features.subgroup_size_control_features.subgroupSizeControl)
+		if (!device->supports_subgroup_size_log2(compile.static_state.state.subgroup_full_group,
+		                                         compile.static_state.state.subgroup_minimum_size_log2,
+		                                         compile.static_state.state.subgroup_maximum_size_log2))
 		{
-			LOGE("Device does not support subgroup size control.\n");
+			LOGE("Subgroup size configuration not supported.\n");
 			return VK_NULL_HANDLE;
 		}
+		auto &features = device->get_device_features();
 
 		if (compile.static_state.state.subgroup_full_group)
-		{
-			if (!features.subgroup_size_control_features.computeFullSubgroups)
-			{
-				LOGE("Device does not support full subgroups.\n");
-				return VK_NULL_HANDLE;
-			}
-
 			info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
-		}
 
 		uint32_t min_subgroups = 1u << compile.static_state.state.subgroup_minimum_size_log2;
 		uint32_t max_subgroups = 1u << compile.static_state.state.subgroup_maximum_size_log2;
@@ -778,19 +771,6 @@ VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredP
 				subgroup_size_info.requiredSubgroupSize = min_subgroups;
 
 			info.stage.pNext = &subgroup_size_info;
-
-			if (subgroup_size_info.requiredSubgroupSize < features.subgroup_size_control_properties.minSubgroupSize ||
-			    subgroup_size_info.requiredSubgroupSize > features.subgroup_size_control_properties.maxSubgroupSize)
-			{
-				LOGE("Requested subgroup size is out of range.\n");
-				return VK_NULL_HANDLE;
-			}
-
-			if ((features.subgroup_size_control_properties.requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT) == 0)
-			{
-				LOGE("Cannot request specific subgroup size in compute.\n");
-				return VK_NULL_HANDLE;
-			}
 		}
 	}
 
@@ -1081,7 +1061,7 @@ void CommandBuffer::update_hash_compute_pipeline(DeferredPipelineCompile &compil
 		h.s32(1);
 		h.u32(compile.static_state.state.subgroup_minimum_size_log2);
 		h.u32(compile.static_state.state.subgroup_maximum_size_log2);
-		h.s32(compile.static_state.state.subgroup_full_group);
+		h.u32(compile.static_state.state.subgroup_full_group);
 	}
 	else
 		h.s32(0);

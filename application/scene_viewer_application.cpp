@@ -78,6 +78,10 @@ void SceneViewerApplication::read_quirks(const std::string &path)
 		ImplementationQuirks::get().render_graph_force_single_queue = doc["renderGraphForceSingleQueue"].GetBool();
 	if (doc.HasMember("forceNoSubgroups"))
 		ImplementationQuirks::get().force_no_subgroups = doc["forceNoSubgroups"].GetBool();
+	if (doc.HasMember("forceNoSubgroupShuffle"))
+		ImplementationQuirks::get().force_no_subgroup_shuffle = doc["forceNoSubgroupShuffle"].GetBool();
+	if (doc.HasMember("forceNoSubgroupSizeControl"))
+		ImplementationQuirks::get().force_no_subgroup_size_control = doc["forceNoSubgroupSizeControl"].GetBool();
 }
 
 void SceneViewerApplication::read_config(const std::string &path)

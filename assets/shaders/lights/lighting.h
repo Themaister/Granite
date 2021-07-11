@@ -43,7 +43,7 @@ mediump vec3 compute_lighting(
 
 #if !defined(LIGHTING_NO_AMBIENT)
 #if defined(VOLUMETRIC_DIFFUSE)
-	diffref += material_ambient_factor * compute_volumetric_diffuse(light_world_pos, material_normal);
+	diffref += material_ambient_factor * compute_volumetric_diffuse(light_world_pos, material_normal, true);
 #else
 	diffref += material_ambient_factor * vec3(0.05);
 #endif

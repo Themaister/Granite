@@ -11,7 +11,7 @@ mediump vec3 compute_irradiance_lighting(
 		vec3 light_world_pos,
 		mediump vec3 light_normal,
 		mediump vec3 light_direction,
-		mediump vec3 light_color)
+		mediump vec3 light_color, bool active_lane)
 {
 #ifdef SHADOWS
 	mediump float shadow_term = get_directional_shadow_term(
@@ -30,7 +30,7 @@ mediump vec3 compute_irradiance_lighting(
 #endif
 
 #ifdef VOLUMETRIC_DIFFUSE
-	in_light += compute_volumetric_diffuse(light_world_pos, light_normal);
+	in_light += compute_volumetric_diffuse(light_world_pos, light_normal, active_lane);
 #endif
 
 	return in_light;

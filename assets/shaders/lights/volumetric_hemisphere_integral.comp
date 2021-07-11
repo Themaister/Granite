@@ -3,14 +3,9 @@
 #extension GL_EXT_nonuniform_qualifier : require
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 6) in;
 
-#define CLUSTERER_NO_HELPER_INVOCATION
 #define CLUSTERER_GLOBAL
 #define VOLUMETRIC_DIFFUSE_PREV_TEXTURES
 #define VOLUMETRIC_DIFFUSE_ATLAS_SET 1
-#define SUBGROUP_SHUFFLE
-#define SUBGROUP_ARITHMETIC
-#define SUBGROUP_BALLOT
-#define CLUSTERING_WAVE_UNIFORM
 #include "../inc/subgroup_extensions.h"
 #include "../inc/render_parameters.h"
 
@@ -81,15 +76,18 @@ mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
     vec3 n = pos * inv_l;
     vec3 color;
 
+    // All lanes need to participate since we do subgroup based culling.
+    mediump vec3 normal = normalize(texelFetch(uProbeNormal, coord, 0).xyz * 2.0 - 1.0);
+    mediump vec3 irradiance_light = compute_irradiance_lighting(
+            world_pos, normal,
+            directional.direction, directional.color, do_lighting);
+
     if (do_lighting)
     {
         vec3 emissive = texelFetch(uProbeEmissive, coord, 0).rgb;
         color = emissive;
-        vec3 albedo = texelFetch(uProbeAlbedo, coord, 0).rgb;
-        vec3 normal = normalize(texelFetch(uProbeNormal, coord, 0).xyz * 2.0 - 1.0);
-        color += min(albedo, vec3(0.95)) * compute_irradiance_lighting(
-                world_pos, normal,
-                directional.direction, directional.color);
+        mediump vec3 albedo = texelFetch(uProbeAlbedo, coord, 0).rgb;
+        color += min(albedo, vec3(0.95)) * irradiance_light;
     }
     else
     {

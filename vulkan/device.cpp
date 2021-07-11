@@ -4837,6 +4837,9 @@ void Device::end_renderdoc_capture()
 bool Device::supports_subgroup_size_log2(bool subgroup_full_group, uint8_t subgroup_minimum_size_log2,
                                          uint8_t subgroup_maximum_size_log2) const
 {
+	if (ImplementationQuirks::get().force_no_subgroup_size_control)
+		return false;
+
 	if (!ext.subgroup_size_control_features.subgroupSizeControl)
 		return false;
 	if (subgroup_full_group && !ext.subgroup_size_control_features.computeFullSubgroups)

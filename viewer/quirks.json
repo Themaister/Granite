@@ -9,5 +9,7 @@
 	"stagingNeedDeviceLocal" : false,
 	"useAsyncComputePost": true,
 	"renderGraphForceSingleQueue" : false,
-	"forceNoSubgroups" : false
+	"forceNoSubgroups" : false,
+	"forceNoSubgroupShuffle" : false,
+	"forceNoSubgroupSizeControl" : false
 }

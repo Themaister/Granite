@@ -190,8 +190,10 @@ void Renderer::add_subgroup_defines(Vulkan::Device &device, std::vector<std::pai
 			defines.emplace_back("SUBGROUP_VOTE", 1);
 		if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0)
 			defines.emplace_back("SUBGROUP_ARITHMETIC", 1);
-		if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_SHUFFLE_BIT) != 0)
-			defines.emplace_back("SUBGROUP_SHUFFLE", 1);
+
+		if (!ImplementationQuirks::get().force_no_subgroup_shuffle)
+			if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_SHUFFLE_BIT) != 0)
+				defines.emplace_back("SUBGROUP_SHUFFLE", 1);
 
 		if (stage == VK_SHADER_STAGE_FRAGMENT_BIT)
 			defines.emplace_back("SUBGROUP_FRAGMENT", 1);

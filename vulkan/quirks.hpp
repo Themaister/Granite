@@ -37,6 +37,8 @@ struct ImplementationQuirks
 	bool use_async_compute_post = true;
 	bool render_graph_force_single_queue = false;
 	bool force_no_subgroups = false;
+	bool force_no_subgroup_shuffle = false;
+	bool force_no_subgroup_size_control = false;
 
 	static ImplementationQuirks &get();
 };

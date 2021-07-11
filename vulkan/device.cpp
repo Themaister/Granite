@@ -4862,4 +4862,10 @@ bool Device::supports_subgroup_size_log2(bool subgroup_full_group, uint8_t subgr
 	// We need requiredSubgroupSizeStages support here.
 	return (ext.subgroup_size_control_properties.requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0;
 }
+
+static ImplementationQuirks implementation_quirks;
+ImplementationQuirks &ImplementationQuirks::get()
+{
+	return implementation_quirks;
+}
 }

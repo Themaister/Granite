@@ -38,11 +38,7 @@ struct ImplementationQuirks
 	bool render_graph_force_single_queue = false;
 	bool force_no_subgroups = false;
 
-	static ImplementationQuirks &get()
-	{
-		static ImplementationQuirks quirks;
-		return quirks;
-	}
+	static ImplementationQuirks &get();
 };
 
 struct ImplementationWorkarounds

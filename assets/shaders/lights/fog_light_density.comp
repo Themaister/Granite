@@ -137,14 +137,8 @@ float to_clip_z(float world_z)
     return zw.x / zw.y;
 }
 
-//layout(constant_id = 0) const float POSITION_MOD = 0.4;
-//layout(constant_id = 1) const float POSITION_MOD_LOW_FREQ = 0.0922556;
-
 layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uLightDensity;
 layout(set = 2, binding = 2) uniform mediump texture3D uDitherLUT;
-
-//layout(set = 2, binding = 3) uniform mediump sampler3D uFogDensity;
-//layout(set = 2, binding = 4) uniform mediump sampler3D uFogDensityLowFreq;
 
 layout(std140, set = 2, binding = 1) uniform BlockExtents
 {
@@ -255,10 +249,7 @@ void main()
 
     vec3 pos = get_world_position(uvw);
 
-    //mediump float fog_density = textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x +
-    //                            0.5 * textureLod(uFogDensityLowFreq, (pos + 1.0) * POSITION_MOD_LOW_FREQ, 0.0).x;
     mediump float fog_density = compute_fog_density(pos);
-
     mediump float albedo = get_fog_albedo(uvw) * fog_density;
     mediump vec3 in_scatter_light = registers.in_scatter_strength * compute_inscatter_light(pos);
 

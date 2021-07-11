@@ -72,7 +72,6 @@ private:
 	std::vector<std::string> buffer_dependencies;
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
-	bool on_frame_tick(const FrameTickEvent &e);
 	Vulkan::ImageHandle dither_lut;
 
 	struct
@@ -88,7 +87,6 @@ private:
 	unsigned depth = 64;
 	float z_range = 80.0f;
 	float slice_z_log2_scale;
-	float mod_time = 0.0f;
 	float density_mod = 0.5f;
 	float inscatter_mod = 0.25f;
 
@@ -104,7 +102,6 @@ private:
 	RenderTextureResource *fog_volume = nullptr;
 	RenderPass *pass = nullptr;
 
-	void build_density(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &fog_density, float freq_mod);
 	void build_light_density(Vulkan::CommandBuffer &cmd,
 	                         Vulkan::ImageView &light_density,
 	                         //Vulkan::ImageView &fog_density,

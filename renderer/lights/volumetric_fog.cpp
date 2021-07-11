@@ -72,14 +72,6 @@ VolumetricFog::VolumetricFog()
 {
 	set_z_range(z_range);
 	EVENT_MANAGER_REGISTER_LATCH(VolumetricFog, on_device_created, on_device_destroyed, DeviceCreatedEvent);
-	EVENT_MANAGER_REGISTER(VolumetricFog, on_frame_tick, FrameTickEvent);
-}
-
-bool VolumetricFog::on_frame_tick(const FrameTickEvent &e)
-{
-	const double period = 10.0;
-	mod_time = float(fmod(e.get_elapsed_time(), period));
-	return true;
 }
 
 void VolumetricFog::on_device_created(const DeviceCreatedEvent &)
@@ -129,43 +121,7 @@ void VolumetricFog::compute_slice_extents()
 	}
 }
 
-void VolumetricFog::build_density(CommandBuffer &cmd, ImageView &fog_density, float freq_mod)
-{
-	struct Push
-	{
-		alignas(16) mat4 inv_view_projection;
-		alignas(16) vec4 z_transform;
-		alignas(16) uvec3 count;
-		alignas(4) float t;
-		alignas(16) vec3 inv_resolution;
-		alignas(4) float freq;
-	} push;
-	push.inv_view_projection = context->get_render_parameters().inv_view_projection;
-	push.z_transform = vec4(context->get_render_parameters().projection[2].zw(),
-	                        context->get_render_parameters().projection[3].zw());
-	push.count = uvec3(width, height, depth);
-	push.t = mod_time;
-	push.count = uvec3(
-			fog_density.get_image().get_width(),
-			fog_density.get_image().get_height(),
-			fog_density.get_image().get_depth());
-	push.inv_resolution = vec3(
-			1.0f / fog_density.get_image().get_width(),
-			1.0f / fog_density.get_image().get_height(),
-			1.0f / fog_density.get_image().get_depth());
-	push.freq = 10.0f * freq_mod;
-
-	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.set_storage_texture(2, 0, fog_density);
-
-	cmd.set_program("builtin://shaders/lights/fog_density_simplex.comp");
-	cmd.dispatch((fog_density.get_image().get_width() + 3) / 4,
-	             (fog_density.get_image().get_height() + 3) / 4,
-	             (fog_density.get_image().get_depth() + 3) / 4);
-}
-
 void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_density,
-										//ImageView &fog_density, ImageView &fog_density_low_freq,
                                         ImageView *light_density_history)
 {
 	struct Push
@@ -270,8 +226,6 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 	       slice_extents,
 	       sizeof(float) * depth);
 	cmd.set_texture(2, 2, dither_lut->get_view(), StockSampler::NearestWrap);
-	//cmd.set_texture(2, 3, fog_density, StockSampler::LinearWrap);
-	//cmd.set_texture(2, 4, fog_density_low_freq, StockSampler::LinearWrap);
 
 	cmd.dispatch((width + 3) / 4, (height + 3) / 4, (depth + 3) / 4);
 }
@@ -307,14 +261,6 @@ void VolumetricFog::add_render_passes(RenderGraph &graph)
 	compute_slice_extents();
 	dither_lut.reset();
 
-	AttachmentInfo density;
-	density.size_x = 32.0f;
-	density.size_y = 32.0f;
-	density.size_z = 32.0f;
-	density.format = VK_FORMAT_R16_SFLOAT;
-	density.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
-	density.size_class = SizeClass::Absolute;
-
 	AttachmentInfo volume;
 	volume.size_x = float(width);
 	volume.size_y = float(height);
@@ -326,8 +272,6 @@ void VolumetricFog::add_render_passes(RenderGraph &graph)
 	pass = &graph.add_pass("volumetric-fog", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 
 	auto &in_scatter_volume = pass->add_storage_texture_output("volumetric-fog-inscatter", volume);
-	//auto &density_volume = pass->add_storage_texture_output("volumetric-fog-density", density);
-	//auto &density_volume_low_freq = pass->add_storage_texture_output("volumetric-fog-density-low-freq", density);
 	fog_volume = &pass->add_storage_texture_output("volumetric-fog-output", volume);
 	pass->add_history_input("volumetric-fog-inscatter");
 
@@ -336,18 +280,7 @@ void VolumetricFog::add_render_passes(RenderGraph &graph)
 		auto &f = graph.get_physical_texture_resource(*fog_volume);
 		auto *l_history = graph.get_physical_history_texture_resource(in_scatter_volume);
 
-		//auto &d = graph.get_physical_texture_resource(density_volume);
-		//auto &d_low = graph.get_physical_texture_resource(density_volume_low_freq);
-		//build_density(cmd, d, 1.0f);
-		//build_density(cmd, d_low, 0.25f);
-
-		//cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		//            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		build_light_density(cmd, l,
-#if 0
-				d, d_low,
-#endif
-                            l_history);
+		build_light_density(cmd, l, l_history);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		build_fog(cmd, f, l);
@@ -409,6 +342,7 @@ void VolumetricFog::set_scene(Scene *)
 
 void VolumetricFog::build_dither_lut(Device &device)
 {
+	// TODO: Blue noise?
 	auto info = ImageCreateInfo::immutable_3d_image(width, height, NumDitherIterations, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
 
 	mt19937 rnd(42);

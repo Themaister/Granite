@@ -60,7 +60,7 @@ vec3 to_cluster_pos(vec3 world_pos)
 	return cluster_pos;
 }
 
-#ifdef CLUSTERER_NO_HELPER_INVOCATION
+#if defined(SUBGROUP_COMPUTE)
 mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 {
 	vec3 cluster_pos = to_cluster_pos(world_pos);
@@ -93,7 +93,7 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 	return result;
 #endif
 
-#ifdef CLUSTERING_WAVE_UNIFORM
+#ifdef SUBGROUP_ARITHMETIC
 	// Make cluster mask wave uniform for some load optimizations! :D
 	uint bits_x = subgroupOr(bits.x);
 #else
@@ -107,7 +107,7 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 		bits_x ^= 1u << uint(index);
 	}
 
-#ifdef CLUSTERING_WAVE_UNIFORM
+#ifdef SUBGROUP_ARITHMETIC
 	// Make cluster mask wave uniform for some load optimizations! :D
 	uint bits_y = subgroupOr(bits.y);
 #else
@@ -124,7 +124,7 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 
 	return result;
 }
-#else
+#elif defined(SUBGROUP_FRAGMENT)
 mediump vec3 compute_cluster_light(
 		mediump vec3 material_base_color,
 		mediump vec3 material_normal,
@@ -162,7 +162,7 @@ mediump vec3 compute_cluster_light(
 			material_metallic, material_roughness, world_pos, camera_pos);
 	}
 #else
-#if defined(CLUSTERING_WAVE_UNIFORM)
+#if defined(SUBGROUP_ARITHMETIC)
 	uvec2 bits = uvec2(0u);
 	if (!is_helper_invocation())
 		bits = textureLod(uCluster, cluster_pos, 0.0).xy;
@@ -176,7 +176,7 @@ mediump vec3 compute_cluster_light(
 	return result;
 #endif
 
-#ifdef CLUSTERING_WAVE_UNIFORM
+#ifdef SUBGROUP_ARITHMETIC
 	// Make cluster mask wave uniform for some UBO load optimizations! :D
 	uint bits_x = subgroupOr(bits.x);
 #else
@@ -191,7 +191,7 @@ mediump vec3 compute_cluster_light(
 		bits_x ^= 1u << uint(index);
 	}
 
-#ifdef CLUSTERING_WAVE_UNIFORM
+#ifdef SUBGROUP_ARITHMETIC
 	uint bits_y = subgroupOr(bits.y);
 #else
 	uint bits_y = bits.y;

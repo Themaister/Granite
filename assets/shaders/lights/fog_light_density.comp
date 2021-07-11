@@ -1,15 +1,14 @@
 #version 450
-layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+layout(local_size_x = 64) in;
 
 #extension GL_EXT_samplerless_texture_functions : require
 
-#define CLUSTERER_NO_HELPER_INVOCATION
+#include "../inc/subgroup_extensions.h"
 #ifdef FOG_REGIONS
 #extension GL_EXT_nonuniform_qualifier : require
 #include "linear_clamp_sampler.h"
 #endif
 
-#include "../inc/subgroup_extensions.h"
 #include "volumetric_fog.h"
 #include "lighting_scatter.h"
 #include "../inc/render_parameters.h"
@@ -64,12 +63,18 @@ mediump float compute_fog_density(vec3 world_pos)
 {
     mediump float density = 0.0;
 
-#ifdef CLUSTERING_WAVE_UNIFORM
+#if defined(SUBGROUP_ARITHMETIC) && defined(SUBGROUP_BALLOT) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
     vec3 aabb_lo = subgroupMin(world_pos);
     vec3 aabb_hi = subgroupMax(world_pos);
+
+#if defined(SUBGROUP_COMPUTE_FULL)
+    int active_lanes = int(gl_SubgroupSize);
+    int bit_offset = int(gl_SubgroupInvocationID);
+#else
     uvec4 ballot = subgroupBallot(true);
     int active_lanes = int(subgroupBallotBitCount(ballot));
     int bit_offset = int(subgroupBallotExclusiveBitCount(ballot));
+#endif
 
     // Wave uniform loop
     for (int i = 0; i < fog_regions.num_regions; i += active_lanes)
@@ -89,18 +94,25 @@ mediump float compute_fog_density(vec3 world_pos)
         // Wave uniform loop
         while (any(notEqual(active_ballot, uvec4(0u))))
         {
-            uint bit_index = subgroupBallotFindLSB(active_ballot);
+            int bit_index = int(subgroupBallotFindLSB(active_ballot));
             active_ballot &= subgroupBallot(bit_index != gl_SubgroupInvocationID);
 
-            FogRegionParameters scalar_region;
+#if defined(SUBGROUP_COMPUTE_FULL)
+            int index = i + bit_index;
+#else
+            int index = subgroupShuffle(current_index, bit_index);
+#endif
 
+#if defined(SUBGROUP_SHUFFLE)
             // Wave uniform lane index.
+            FogRegionParameters scalar_region;
             scalar_region.world_to_texture[0] = subgroupShuffle(region.world_to_texture[0], bit_index);
             scalar_region.world_to_texture[1] = subgroupShuffle(region.world_to_texture[1], bit_index);
             scalar_region.world_to_texture[2] = subgroupShuffle(region.world_to_texture[2], bit_index);
+#elif defined(SUBGROUP_COMPUTE_FULL)
+            FogRegionParameters scalar_region = fog_regions.regions[index];
+#endif
 
-            // Extract the bindless index.
-            int index = subgroupShuffle(current_index, bit_index);
             density += compute_fog_density(index, scalar_region, world_pos);
         }
     }
@@ -214,10 +226,12 @@ mediump vec3 compute_floor_inscatter_light(vec3 pos)
 
 void main()
 {
-    if (any(greaterThanEqual(gl_GlobalInvocationID, registers.count)))
+    uvec3 local_coord = (uvec3(gl_LocalInvocationIndex) >> uvec3(0, 2, 4)) & 3u;
+    uvec3 global_coord = gl_WorkGroupID * 4u + local_coord;
+    if (any(greaterThanEqual(global_coord, registers.count)))
         return;
 
-    vec3 uvw = (vec3(gl_GlobalInvocationID) + 0.5) * registers.inv_resolution;
+    vec3 uvw = (vec3(global_coord) + 0.5) * registers.inv_resolution;
 
 #if TEMPORAL_REPROJECTION
     mediump vec4 old_in_scatter_light_albedo = vec4(0.0);
@@ -240,7 +254,7 @@ void main()
     }
 #endif
 
-    vec3 dither = texelFetch(uDitherLUT, ivec3(gl_GlobalInvocationID.xy, registers.dither_offset), 0).xyz;
+    vec3 dither = texelFetch(uDitherLUT, ivec3(global_coord.xy, registers.dither_offset), 0).xyz;
     dither.x -= 0.5;
     dither.y -= 0.5;
     dither.z = -dither.z;
@@ -265,5 +279,5 @@ void main()
     albedo = clamp(albedo, 0.0, 10000.0);
 #endif
 
-    imageStore(uLightDensity, ivec3(gl_GlobalInvocationID), vec4(in_scatter_light, albedo));
+    imageStore(uLightDensity, ivec3(global_coord), vec4(in_scatter_light, albedo));
 }

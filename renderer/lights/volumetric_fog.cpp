@@ -171,33 +171,16 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 				context->get_render_parameters().inv_projection[3].zw());
 	}
 
-	if ((flags & Renderer::POSITIONAL_LIGHT_ENABLE_BIT) ||
+	if ((flags & (Renderer::POSITIONAL_LIGHT_ENABLE_BIT | Renderer::SHADOW_CASCADE_ENABLE_BIT)) ||
 	    (context->get_lighting_parameters()->cluster &&
 	     context->get_lighting_parameters()->cluster->clusterer_has_volumetric_fog()))
 	{
-		// Try to enable wave-optimizations.
-		static const VkSubgroupFeatureFlags required_subgroup =
-				VK_SUBGROUP_FEATURE_BALLOT_BIT |
-				VK_SUBGROUP_FEATURE_ARITHMETIC_BIT |
-				VK_SUBGROUP_FEATURE_SHUFFLE_BIT;
-
-		auto &subgroup = cmd.get_device().get_device_features().subgroup_properties;
-		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
-		    !ImplementationQuirks::get().force_no_subgroups &&
-		    (subgroup.supportedOperations & required_subgroup) == required_subgroup)
+		Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
+		if (cmd.get_device().supports_subgroup_size_log2(true, 2, 6))
 		{
-			defines.emplace_back("CLUSTERING_WAVE_UNIFORM", 1);
-		}
-	}
-
-	if (flags & Renderer::SHADOW_CASCADE_ENABLE_BIT)
-	{
-		auto &subgroup = cmd.get_device().get_device_features().subgroup_properties;
-		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
-		    !ImplementationQuirks::get().force_no_subgroups &&
-		    (subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0)
-		{
-			defines.emplace_back("SUBGROUP_ARITHMETIC", 1);
+			defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);
+			cmd.set_subgroup_size_log2(true, 2, 6);
+			cmd.enable_subgroup_size_control(true);
 		}
 	}
 
@@ -228,6 +211,7 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 	cmd.set_texture(2, 2, dither_lut->get_view(), StockSampler::NearestWrap);
 
 	cmd.dispatch((width + 3) / 4, (height + 3) / 4, (depth + 3) / 4);
+	cmd.enable_subgroup_size_control(false);
 }
 
 void VolumetricFog::set_floor_lighting(const std::string &input, const FloorLighting &info)

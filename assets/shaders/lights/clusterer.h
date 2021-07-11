@@ -1,16 +1,11 @@
 #ifndef CLUSTERER_H_
 #define CLUSTERER_H_
 
-#ifdef CLUSTERING_WAVE_UNIFORM
-#extension GL_KHR_shader_subgroup_arithmetic : require
-#extension GL_KHR_shader_subgroup_ballot : require
-#extension GL_KHR_shader_subgroup_shuffle : require
-#endif
-
 #ifdef CLUSTERER_BINDLESS
 #extension GL_EXT_nonuniform_qualifier : require
 #endif
 
+#include "../inc/subgroup_extensions.h"
 #include "clusterer_data.h"
 
 #ifdef CLUSTERER_BINDLESS

@@ -46,7 +46,7 @@ uint cluster_mask_range(uint mask, uvec2 range, uint start_index)
 	return mask & uint(range_mask);
 }
 
-#ifndef CLUSTERER_NO_HELPER_INVOCATION
+#if defined(SUBGROUP_FRAGMENT)
 mediump vec3 compute_cluster_light(
 		mediump vec3 material_base_color,
 		mediump vec3 material_normal,
@@ -67,7 +67,7 @@ mediump vec3 compute_cluster_light(
 	z_index = clamp(z_index, 0, cluster.z_max_index);
 	uvec2 z_range = cluster_range[z_index];
 
-#ifdef CLUSTERING_WAVE_UNIFORM
+#ifdef SUBGROUP_ARITHMETIC
 	int z_start = int(subgroupMin(z_range.x) >> 5u);
 	int z_end = int(subgroupMax(z_range.y) >> 5u);
 #else
@@ -79,7 +79,7 @@ mediump vec3 compute_cluster_light(
 	{
 		uint mask = cluster_bitmask[cluster_base + i];
 		mask = cluster_mask_range(mask, z_range, 32u * i);
-#ifdef CLUSTERING_WAVE_UNIFORM
+#ifdef SUBGROUP_ARITHMETIC
 		mask = subgroupOr(mask);
 #endif
 
@@ -110,7 +110,8 @@ mediump vec3 compute_cluster_light(
 
 	return result;
 }
-#else
+
+#elif defined(SUBGROUP_COMPUTE)
 
 #ifdef CLUSTERER_GLOBAL
 mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 normal)
@@ -119,15 +120,21 @@ mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 norma
 	int count = cluster_global_transforms.num_lights;
 	uint type_mask = cluster_global_transforms.type_mask;
 
-#ifdef CLUSTERING_WAVE_UNIFORM
+#if defined(SUBGROUP_ARITHMETIC) && defined(SUBGROUP_BALLOT) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
 	vec3 aabb_lo = subgroupMin(world_pos);
 	vec3 aabb_hi = subgroupMax(world_pos);
 	vec3 aabb_radius3 = 0.5 * (aabb_hi - aabb_lo);
 	float aabb_radius = subgroupBroadcastFirst(length(aabb_radius3));
 	vec3 aabb_center = subgroupBroadcastFirst(0.5 * (aabb_lo + aabb_hi));
+
+#if defined(SUBGROUP_COMPUTE_FULL)
+	int active_lanes = int(gl_SubgroupSize);
+	int bit_offset = int(gl_SubgroupInvocationID);
+#else
 	uvec4 ballot = subgroupBallot(true);
 	int active_lanes = int(subgroupBallotBitCount(ballot));
 	int bit_offset = int(subgroupBallotExclusiveBitCount(ballot));
+#endif
 
 	// Wave uniform loop
 	for (int i = 0; i < count; i += active_lanes)
@@ -151,16 +158,25 @@ mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 norma
 		// Wave uniform loop
 		while (any(notEqual(active_ballot, uvec4(0u))))
 		{
-			uint bit_index = subgroupBallotFindLSB(active_ballot);
+			int bit_index = int(subgroupBallotFindLSB(active_ballot));
 			active_ballot &= subgroupBallot(bit_index != gl_SubgroupInvocationID);
 
+#if defined(SUBGROUP_COMPUTE_FULL)
+			int index = i + bit_index;
+#else
+			int index = subgroupShuffle(current_index, bit_index);
+#endif
+
+#if defined(SUBGROUP_SHUFFLE)
 			PositionalLightInfo scalar_light;
 			scalar_light.color = subgroupShuffle(light_info.color, bit_index);
 			scalar_light.spot_scale_bias = subgroupShuffle(light_info.spot_scale_bias, bit_index);
 			scalar_light.position = subgroupShuffle(light_info.position, bit_index);
 			scalar_light.direction = subgroupShuffle(light_info.direction, bit_index);
 			scalar_light.inv_radius = subgroupShuffle(light_info.inv_radius, bit_index);
-			int index = subgroupShuffle(current_index, bit_index);
+#elif defined(SUBGROUP_COMPUTE_FULL)
+			PositionalLightInfo scalar_light = SPOT_DATA(index);
+#endif
 
 			if ((type_mask & (1u << index)) != 0u)
 				result += compute_irradiance_point_light(index, scalar_light, normal, world_pos);
@@ -199,7 +215,7 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 	z_index = clamp(z_index, 0, cluster.z_max_index);
 	uvec2 z_range = cluster_range[z_index];
 
-#ifdef CLUSTERING_WAVE_UNIFORM
+#ifdef SUBGROUP_ARITHMETIC
 	int z_start = int(subgroupMin(z_range.x) >> 5u);
 	int z_end = int(subgroupMax(z_range.y) >> 5u);
 #else
@@ -211,7 +227,7 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 	{
 		uint mask = cluster_bitmask[cluster_base + i];
 		mask = cluster_mask_range(mask, z_range, 32u * i);
-#ifdef CLUSTERING_WAVE_UNIFORM
+#ifdef SUBGROUP_ARITHMETIC
 		mask = subgroupOr(mask);
 #endif
 

@@ -100,6 +100,8 @@ public:
 			RendererType type, RendererOptionFlags flags);
 	static void bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
 	static void bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
+	static void add_subgroup_defines(Vulkan::Device &device, std::vector<std::pair<std::string, int>> &defines,
+	                                 VkShaderStageFlagBits stage);
 
 	RendererOptionFlags get_mesh_renderer_options() const;
 

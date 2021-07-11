@@ -2049,16 +2049,12 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 
 	constexpr VkSubgroupFeatureFlags required = VK_SUBGROUP_FEATURE_BALLOT_BIT | VK_SUBGROUP_FEATURE_BASIC_BIT;
 
-	if (features.subgroup_size_control_features.subgroupSizeControl &&
-	    features.subgroup_size_control_features.computeFullSubgroups &&
-	    (features.subgroup_properties.supportedOperations & required) == required &&
+	if ((features.subgroup_properties.supportedOperations & required) == required &&
 	    (features.subgroup_properties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0)
 	{
 		// Our desired range is either 32 threads or 64 threads, 32 threads is preferred.
 
-		if (features.subgroup_size_control_properties.minSubgroupSize <= 32 &&
-		    features.subgroup_size_control_properties.maxSubgroupSize >= 32 &&
-		    (features.subgroup_size_control_properties.requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0)
+		if (cmd.get_device().supports_subgroup_size_log2(true, 5, 5))
 		{
 			// We can lock in 32 thread subgroups!
 			cmd.enable_subgroup_size_control(true);
@@ -2069,8 +2065,7 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 			tile_height = 4;
 			use_subgroups = true;
 		}
-		else if (features.subgroup_size_control_properties.minSubgroupSize >= 32 &&
-		         features.subgroup_size_control_properties.maxSubgroupSize <= 64)
+		else if (cmd.get_device().supports_subgroup_size_log2(true, 5, 6))
 		{
 			// We can use varying size, 32 or 64 sizes need to be handled.
 			cmd.enable_subgroup_size_control(true);

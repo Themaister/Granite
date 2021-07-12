@@ -51,6 +51,13 @@ CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCa
 	set_opaque_state();
 	memset(&pipeline_state.static_state, 0, sizeof(pipeline_state.static_state));
 	memset(&bindings, 0, sizeof(bindings));
+
+	// Set up extra state which PSO creation depends on implicitly.
+	// This needs to affect hashing to make Fossilize path behave as expected.
+	auto &features = device->get_device_features();
+	pipeline_state.subgroup_size_tag =
+			(features.subgroup_size_control_properties.minSubgroupSize << 0) |
+			(features.subgroup_size_control_properties.maxSubgroupSize << 8);
 }
 
 CommandBuffer::~CommandBuffer()
@@ -1062,6 +1069,9 @@ void CommandBuffer::update_hash_compute_pipeline(DeferredPipelineCompile &compil
 		h.u32(compile.static_state.state.subgroup_minimum_size_log2);
 		h.u32(compile.static_state.state.subgroup_maximum_size_log2);
 		h.u32(compile.static_state.state.subgroup_full_group);
+		// Required for Fossilize since we don't know exactly how to lower these requirements to a PSO
+		// without knowing some device state.
+		h.u32(compile.subgroup_size_tag);
 	}
 	else
 		h.s32(0);

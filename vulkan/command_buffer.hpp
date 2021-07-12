@@ -191,6 +191,7 @@ struct DeferredPipelineCompile
 	unsigned subpass_index;
 	Util::Hash hash;
 	VkPipelineCache cache;
+	uint32_t subgroup_size_tag;
 };
 
 class CommandBuffer;

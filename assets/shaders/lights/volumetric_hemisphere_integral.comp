@@ -253,7 +253,7 @@ void main()
 #endif
     }
 
-#if !defined(CLUSTER_ADD)
+#if defined(CLUSTER_ADD)
     barrier();
 #endif
 

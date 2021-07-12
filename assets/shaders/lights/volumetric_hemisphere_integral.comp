@@ -1,7 +1,7 @@
 #version 450
 #extension GL_EXT_samplerless_texture_functions : require
 #extension GL_EXT_nonuniform_qualifier : require
-layout(local_size_x = 4, local_size_y = 4, local_size_z = 6) in;
+layout(local_size_x = 64) in;
 
 #define CLUSTERER_GLOBAL
 #define VOLUMETRIC_DIFFUSE_PREV_TEXTURES
@@ -23,9 +23,8 @@ layout(set = 3, binding = 2) uniform ClusterTransforms
 layout(push_constant) uniform Registers
 {
     int gbuffer_layer;
-    int patch_resolution;
     int face_resolution;
-    float inv_orig_patch_resolution;
+    float inv_orig_face_resolution;
     float inv_patch_resolution2;
     uint hash_range;
 } registers;
@@ -117,7 +116,14 @@ mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
 }
 
 shared mat3 shared_patch_contributions[6 * 2 * 2];
-shared mat3 shared_colors[gl_WorkGroupSize.x * gl_WorkGroupSize.y * gl_WorkGroupSize.z];
+
+#if defined(SUBGROUP_COMPUTE_FULL) && defined(SUBGROUP_CLUSTERED)
+#define CLUSTER_ADD
+#endif
+
+#if !defined(CLUSTER_ADD)
+shared mat3 shared_colors[gl_WorkGroupSize.x];
+#endif
 
 const vec3 base_dirs[6] = vec3[](
     vec3(1.0, 0.0, 0.0),
@@ -157,70 +163,101 @@ uvec3 unpack_work(uint c)
     return (uvec3(c) >> uvec3(0, 10, 20)) & 0x3ffu;
 }
 
+ivec2 interleave_coord(uint index)
+{
+    // Ensure that groups of 4x4 pixels group together.
+    uint lo_x = bitfieldExtract(index, 0, 2);
+    uint lo_y = bitfieldExtract(index, 2, 2);
+    uint hi_x = bitfieldExtract(index, 4, 1) << 2u;
+    uint hi_y = bitfieldExtract(index, 5, 1) << 2u;
+    return ivec2(lo_x | hi_x, lo_y | hi_y);
+}
+
 void main()
 {
     uvec3 probe_index = unpack_work(work_list[gl_WorkGroupID.x]);
+    ivec2 probe_size = ivec2(probe_size_xy);
 
-    int face = int(gl_LocalInvocationID.z);
-    uvec2 probe_size = probe_size_xy;
+#if defined(SUBGROUP_COMPUTE_FULL)
+    int local_index = int(gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID);
+#else
+    int local_index = int(gl_LocalInvocationIndex);
+#endif
 
-    for (int patch_y = 0; patch_y < 2; patch_y++)
+    ivec2 patch_coord = interleave_coord(local_index);
+
+    for (int face = 0; face < 6; face++)
     {
-        for (int patch_x = 0; patch_x < 2; patch_x++)
+        int probe_x = 6 * int(probe_index.x) + face;
+        int probe_y = int(probe_index.z * probe_size.y + probe_index.y);
+        ivec2 base_probe_coord = ivec2(probe_x, probe_y) * registers.face_resolution;
+        ivec2 tex_coord = base_probe_coord + patch_coord;
+        ivec3 tex_coord_layer = ivec3(tex_coord, registers.gbuffer_layer);
+
+        uvec2 hashed_offset = volumetric_probe_hash(tex_coord_layer, registers.hash_range);
+
+        vec2 xy = vec2(patch_coord * registers.hash_range + hashed_offset) + 0.5;
+        vec2 uv = xy * registers.inv_orig_face_resolution;
+        vec2 clip_xy = 2.0 * uv - 1.0;
+        vec3 pos = base_dirs[face] + clip_xy.x * pos_du[face] + clip_xy.y * pos_dv[face];
+
+        vec3 tex_space = (vec3(probe_index) + 0.5 + get_probe_jitter(probe_index.xy)) * inv_probe_resolution;
+        vec3 probe_pos = vec3(
+            dot(texture_to_world[0], vec4(tex_space, 1.0)),
+            dot(texture_to_world[1], vec4(tex_space, 1.0)),
+            dot(texture_to_world[2], vec4(tex_space, 1.0)));
+
+        float linear_d = texelFetch(uProbeDepth, tex_coord_layer, 0).x;
+        vec3 world = pos * linear_d + probe_pos;
+
+        mat3 patch_contribution = sample_patch(tex_coord_layer, pos, world, linear_d != 0.0);
+
+#if defined(CLUSTER_ADD)
+        mat3 summed_contributions = mat3(
+            subgroupClusteredAdd(patch_contribution[0], 16),
+            subgroupClusteredAdd(patch_contribution[1], 16),
+            subgroupClusteredAdd(patch_contribution[2], 16));
+
+        int masked = local_index & 15;
+        if (masked == 0)
         {
-            uvec2 patch_coord = gl_LocalInvocationID.xy;
-
-            int probe_x = 6 * int(probe_index.x) + face;
-            int probe_y = int(probe_index.z * probe_size.y + probe_index.y);
-            ivec2 base_probe_coord = ivec2(probe_x, probe_y) * registers.face_resolution;
-            ivec2 tex_coord = base_probe_coord + ivec2(patch_coord) +
-                              ivec2(patch_x, patch_y) * ivec2(registers.patch_resolution);
-            ivec3 tex_coord_layer = ivec3(tex_coord, registers.gbuffer_layer);
-
-            uvec2 hashed_offset = volumetric_probe_hash(tex_coord_layer, registers.hash_range);
-
-            vec2 xy = vec2(patch_coord * registers.hash_range + hashed_offset) + 0.5;
-            vec2 uv = xy * registers.inv_orig_patch_resolution;
-            vec2 clip_xy = vec2(patch_x - 1, patch_y - 1) + uv;
-            vec3 pos = base_dirs[face] + clip_xy.x * pos_du[face] + clip_xy.y * pos_dv[face];
-
-            vec3 tex_space = (vec3(probe_index) + 0.5 + get_probe_jitter(probe_index.xy)) * inv_probe_resolution;
-            vec3 probe_pos = vec3(
-                dot(texture_to_world[0], vec4(tex_space, 1.0)),
-                dot(texture_to_world[1], vec4(tex_space, 1.0)),
-                dot(texture_to_world[2], vec4(tex_space, 1.0)));
-
-            float linear_d = texelFetch(uProbeDepth, tex_coord_layer, 0).x;
-            vec3 world = pos * linear_d + probe_pos;
-
-            mat3 patch_contribution = sample_patch(tex_coord_layer, pos, world, linear_d != 0.0);
-            shared_colors[gl_LocalInvocationIndex] = patch_contribution;
+            int patch_index = local_index >> 4;
+            int shared_patch_index = 4 * face + patch_index;
+            shared_patch_contributions[shared_patch_index] = summed_contributions;
+        }
+#else
+        shared_colors[local_index] = patch_contribution;
 
 #define ITERATE(l) \
-    if ((gl_LocalInvocationIndex & 15u) < l) { \
-        shared_colors[gl_LocalInvocationIndex] += shared_colors[gl_LocalInvocationIndex + l]; \
+    if ((local_index & 15) < l) { \
+        shared_colors[local_index] += shared_colors[local_index + l]; \
     }
 
-            barrier();
-            ITERATE(8u)
-            barrier();
-            ITERATE(4u)
-            barrier();
-            ITERATE(2u)
-            barrier();
-            uint masked = gl_LocalInvocationIndex & 15u;
-            if (masked < 3u)
-            {
-                int patch_index = 4 * face + 2 * patch_y + patch_x;
-                shared_patch_contributions[patch_index][masked] =
-                    shared_colors[16 * face + 0][masked] +
-                    shared_colors[16 * face + 1][masked];
-            }
-            barrier();
+        barrier();
+        ITERATE(8)
+        barrier();
+        ITERATE(4)
+        barrier();
+        ITERATE(2)
+        barrier();
+        int masked = local_index & 15;
+        if (masked < 3)
+        {
+            int patch_index = local_index >> 4;
+            int shared_patch_index = 4 * face + patch_index;
+            shared_patch_contributions[shared_patch_index][masked] =
+                shared_colors[16 * patch_index + 0][masked] +
+                shared_colors[16 * patch_index + 1][masked];
         }
+        barrier();
+#endif
     }
 
-    face = int(gl_LocalInvocationIndex);
+#if !defined(CLUSTER_ADD)
+    barrier();
+#endif
+
+    int face = local_index;
     if (face < 6)
     {
         uint mask = patch_mask_per_face[face];

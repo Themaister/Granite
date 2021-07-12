@@ -34,7 +34,12 @@ namespace Granite
 static constexpr float ZNear = 0.1f;
 static constexpr float ZFar = 200.0f;
 static constexpr unsigned NumProbeLayers = 4;
+
+// Works well with 8x8 workgroup. Each partial face is 4x4,
+// which fits well with clustered add per quadrant,
+// and even Intel iGPU can work well here with SIMD16.
 static constexpr unsigned ProbeResolution = 8;
+
 static constexpr unsigned ProbeDownsamplingFactor = 16;
 
 VolumetricDiffuseLightManager::VolumetricDiffuseLightManager()
@@ -189,9 +194,8 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	struct Push
 	{
 		uint32_t gbuffer_layer;
-		uint32_t patch_resolution;
 		uint32_t face_resolution;
-		float inv_orig_patch_resolution;
+		float inv_orig_face_resolution;
 		float inv_patch_resolution2;
 		uint32_t hash_range;
 	} push = {};
@@ -213,11 +217,10 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	probe_transform->inv_resolution = vec3(1.0f) / vec3(light.light.get_resolution());
 	probe_transform->probe_size_xy = light.light.get_resolution().xy();
 
-	push.patch_resolution = ProbeResolution / 2;
 	push.face_resolution = ProbeResolution;
-	push.inv_orig_patch_resolution = 1.0f / float(push.patch_resolution);
-	push.inv_patch_resolution2 = push.inv_orig_patch_resolution * push.inv_orig_patch_resolution;
-	push.inv_orig_patch_resolution *= 1.0f / float(ProbeDownsamplingFactor);
+	push.inv_orig_face_resolution = 1.0f / float(ProbeResolution * ProbeDownsamplingFactor);
+	float inv_patch_resolution = 2.0f / float(ProbeResolution);
+	push.inv_patch_resolution2 = inv_patch_resolution * inv_patch_resolution;
 	push.hash_range = ProbeDownsamplingFactor;
 
 	auto flags = Renderer::get_mesh_renderer_options_from_lighting(*fallback_render_context->get_lighting_parameters());
@@ -227,16 +230,17 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	auto defines = Renderer::build_defines_from_renderer_options(RendererType::GeneralForward, flags);
 
 	Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
-#if 0
-	if (cmd.get_device().supports_subgroup_size_log2(true, 2, 7))
+
+	// Need at least SIMD16 to ensure that we can use ClusteredAdd without having to go through shared memory.
+	if (cmd.get_device().supports_subgroup_size_log2(true, 4, 6))
 	{
 		defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);
-		cmd.set_subgroup_size_log2(true, 2, 7);
+		cmd.set_subgroup_size_log2(true, 4, 6);
 		cmd.enable_subgroup_size_control(true);
 	}
-#endif
 
 	cmd.set_program("builtin://shaders/lights/volumetric_hemisphere_integral.comp", defines);
+
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.set_storage_texture(2, 0, *light.light.get_accumulation_view(push.gbuffer_layer));
 	cmd.set_texture(2, 1, light.light.get_gbuffer().emissive->get_view());

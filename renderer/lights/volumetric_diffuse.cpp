@@ -249,6 +249,7 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	cmd.set_texture(2, 4, light.light.get_gbuffer().depth->get_view());
 	cmd.set_storage_buffer(2, 5, *light.light.get_worklist_buffer());
 	cmd.dispatch_indirect(*light.light.get_atomic_buffer(), 0);
+	cmd.enable_subgroup_size_control(false);
 }
 
 struct VolumetricDiffuseLightManager::ContextRenderers

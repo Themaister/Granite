@@ -1,0 +1,73 @@
+#version 450
+layout(local_size_x = 128) in;
+
+shared mat3 shared_data[128];
+
+layout(set = 0, binding = 0) readonly buffer Inputs
+{
+    float inputs[];
+};
+
+layout(set = 0, binding = 1) writeonly buffer Outputs
+{
+    float outputs[];
+};
+
+const uvec2 indices[] = uvec2[](uvec2(0, 2), uvec2(0, 1), uvec2(1, 0));
+
+mat3 load_matrix(uint index)
+{
+    index *= 9;
+    return mat3(
+        vec3(inputs[index], inputs[index + 1], inputs[index + 2]),
+        vec3(inputs[index + 3], inputs[index + 4], inputs[index + 5]),
+        vec3(inputs[index + 6], inputs[index + 7], inputs[index + 8]));
+}
+
+void store_matrix(mat3 v)
+{
+    outputs[0] = v[0][0];
+    outputs[1] = v[0][1];
+    outputs[2] = v[0][2];
+
+    outputs[3] = v[1][0];
+    outputs[4] = v[1][1];
+    outputs[5] = v[1][2];
+
+    outputs[6] = v[2][0];
+    outputs[7] = v[2][1];
+    outputs[8] = v[2][2];
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    shared_data[gl_LocalInvocationIndex] = load_matrix(index);
+    barrier();
+    if (gl_LocalInvocationIndex < 64)
+        shared_data[gl_LocalInvocationIndex] += shared_data[gl_LocalInvocationIndex + 64];
+    barrier();
+    if (gl_LocalInvocationIndex < 32)
+        shared_data[gl_LocalInvocationIndex] += shared_data[gl_LocalInvocationIndex + 32];
+    barrier();
+    if (gl_LocalInvocationIndex < 16)
+        shared_data[gl_LocalInvocationIndex] += shared_data[gl_LocalInvocationIndex + 16];
+    barrier();
+    if (gl_LocalInvocationIndex < 8)
+        shared_data[gl_LocalInvocationIndex] += shared_data[gl_LocalInvocationIndex + 8];
+    barrier();
+    if (gl_LocalInvocationIndex < 4)
+        shared_data[gl_LocalInvocationIndex] += shared_data[gl_LocalInvocationIndex + 4];
+    barrier();
+    if (gl_LocalInvocationIndex < 2)
+        shared_data[gl_LocalInvocationIndex] += shared_data[gl_LocalInvocationIndex + 2];
+    barrier();
+    if (gl_LocalInvocationIndex < 3)
+    {
+        uvec2 i = indices[gl_LocalInvocationIndex];
+        vec3 d = shared_data[i.x][i.y];
+        outputs[3 * gl_LocalInvocationIndex + 0] = d.x;
+        outputs[3 * gl_LocalInvocationIndex + 1] = d.y;
+        outputs[3 * gl_LocalInvocationIndex + 2] = d.z;
+    }
+}

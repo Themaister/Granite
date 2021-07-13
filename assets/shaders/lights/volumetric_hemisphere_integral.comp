@@ -115,14 +115,14 @@ mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
         color * hemisphere_area.z);
 }
 
-shared mat3 shared_patch_contributions[6 * 2 * 2];
+shared vec3 shared_patch_contributions[6 * 2 * 2][3];
 
 #if defined(SUBGROUP_COMPUTE_FULL) && defined(SUBGROUP_CLUSTERED)
 #define CLUSTER_ADD
 #endif
 
 #if !defined(CLUSTER_ADD)
-shared mat3 shared_colors[gl_WorkGroupSize.x];
+shared vec3 shared_colors[gl_WorkGroupSize.x][3];
 #endif
 
 const vec3 base_dirs[6] = vec3[](
@@ -213,24 +213,29 @@ void main()
         mat3 patch_contribution = sample_patch(tex_coord_layer, pos, world, linear_d != 0.0);
 
 #if defined(CLUSTER_ADD)
-        mat3 summed_contributions = mat3(
-            subgroupClusteredAdd(patch_contribution[0], 16),
-            subgroupClusteredAdd(patch_contribution[1], 16),
-            subgroupClusteredAdd(patch_contribution[2], 16));
+        vec3 summed_contributions0 = subgroupClusteredAdd(patch_contribution[0], 16);
+        vec3 summed_contributions1 = subgroupClusteredAdd(patch_contribution[1], 16);
+        vec3 summed_contributions2 = subgroupClusteredAdd(patch_contribution[2], 16);
 
         int masked = local_index & 15;
         if (masked == 0)
         {
             int patch_index = local_index >> 4;
             int shared_patch_index = 4 * face + patch_index;
-            shared_patch_contributions[shared_patch_index] = summed_contributions;
+            shared_patch_contributions[shared_patch_index][0] = summed_contributions0;
+            shared_patch_contributions[shared_patch_index][1] = summed_contributions1;
+            shared_patch_contributions[shared_patch_index][2] = summed_contributions2;
         }
 #else
-        shared_colors[local_index] = patch_contribution;
+        shared_colors[local_index][0] = patch_contribution[0];
+        shared_colors[local_index][1] = patch_contribution[1];
+        shared_colors[local_index][2] = patch_contribution[2];
 
 #define ITERATE(l) \
     if ((local_index & 15) < l) { \
-        shared_colors[local_index] += shared_colors[local_index + l]; \
+        shared_colors[local_index][0] += shared_colors[local_index + l][0]; \
+        shared_colors[local_index][1] += shared_colors[local_index + l][1]; \
+        shared_colors[local_index][2] += shared_colors[local_index + l][2]; \
     }
 
         barrier();

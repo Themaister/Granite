@@ -28,5 +28,6 @@
 	"ssao": true,
 	"debugProbes": false,
 	"resolutionScale": 1.0,
+	"resolutionScaleSharpen": true,
 	"lodBias": 0.0
 }

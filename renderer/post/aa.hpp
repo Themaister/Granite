@@ -53,7 +53,7 @@ bool setup_after_post_chain_antialiasing(PostAAType type, RenderGraph &graph, Te
                                          const std::string &input, const std::string &input_depth,
                                          const std::string &output);
 
-bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &input, const std::string &output);
+bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &input, const std::string &output, bool use_sharpen);
 
 PostAAType string_to_post_antialiasing_type(const char *type);
 }

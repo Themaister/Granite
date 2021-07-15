@@ -24,75 +24,111 @@
 #include "temporal.hpp"
 #include "fxaa.hpp"
 #include "smaa.hpp"
+#include "muglm/muglm_impl.hpp"
 #include <string.h>
 
 namespace Granite
 {
-constexpr bool upscale_linear = false;
-constexpr bool allow_external_upscale = true;
-constexpr bool allow_external_sharpen = true;
+// Rip impl out of the headers since there's a lot of weird warnings that I can't be arsed to work around.
+static void FsrEasuCon(
+		float *con0,
+		float *con1,
+		float *con2,
+		float *con3,
+		float inputViewportInPixelsX,
+		float inputViewportInPixelsY,
+		float inputSizeInPixelsX,
+		float inputSizeInPixelsY,
+		float outputSizeInPixelsX,
+		float outputSizeInPixelsY)
+{
+	// Output integer position to a pixel position in viewport.
+	con0[0] = inputViewportInPixelsX / outputSizeInPixelsX;
+	con0[1] = inputViewportInPixelsY / outputSizeInPixelsY;
+	con0[2] = 0.5f * inputViewportInPixelsX / outputSizeInPixelsX - 0.5f;
+	con0[3] = 0.5f * inputViewportInPixelsY / outputSizeInPixelsY - 0.5f;
+	con1[0] = 1.0f / inputSizeInPixelsX;
+	con1[1] = 1.0f / inputSizeInPixelsY;
+	con1[2] = 1.0f / inputSizeInPixelsX;
+	con1[3] = -1.0f / inputSizeInPixelsY;
+	con2[0] = -1.0f / inputSizeInPixelsX;
+	con2[1] = 2.0f / inputSizeInPixelsY;
+	con2[2] = 1.0f / inputSizeInPixelsX;
+	con2[3] = 2.0f / inputSizeInPixelsY;
+	con3[0] = 0.0f / inputSizeInPixelsX;
+	con3[1] = 4.0f / inputSizeInPixelsY;
+	con3[2] = con3[3] = 0.0f;
+}
 
-bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &input, const std::string &output)
+static void FsrRcasCon(float *con, float sharpness)
+{
+	sharpness = muglm::exp2(-sharpness);
+	uint32_t half = floatToHalf(sharpness);
+	con[0] = sharpness;
+	uint32_t halves = half | (half << 16);
+	memcpy(&con[1], &halves, sizeof(halves));
+	con[2] = 0.0f;
+	con[3] = 0.0f;
+}
+
+bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &input, const std::string &output, bool use_sharpen)
 {
 	auto &upscale = graph.add_pass(output + "-scale", RenderGraph::get_default_post_graphics_queue());
 	AttachmentInfo upscale_info;
 
-	auto *fs = GRANITE_FILESYSTEM();
-	FileStat s;
-	bool use_custom = allow_external_upscale &&
-	                  fs->stat("assets://shaders/upscale.vert", s) && s.type == PathType::File &&
-	                  fs->stat("assets://shaders/upscale.frag", s) && s.type == PathType::File;
+	upscale_info.supports_prerotate = !use_sharpen;
+	upscale_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+	upscale_info.unorm_srgb_alias = use_sharpen;
 
-	bool use_sharpen = allow_external_sharpen &&
-	                   fs->stat("assets://shaders/sharpen.vert", s) && s.type == PathType::File &&
-	                   fs->stat("assets://shaders/sharpen.frag", s) && s.type == PathType::File;
-
-	upscale_info.supports_prerotate = !use_custom;
-
-	if (use_sharpen)
-	{
-		upscale_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-		upscale_info.unorm_srgb_alias = true;
-	}
-
-	auto &upscale_tex_out = upscale.add_color_output(!use_sharpen ? output : (output + "-scale"), upscale_info);
-
-	if (!upscale_linear)
-		graph.get_texture_resource(input).get_attachment_info().unorm_srgb_alias = true;
-
+	auto &upscale_tex_out = upscale.add_color_output(use_sharpen ? (output + "-scale") : output, upscale_info);
 	auto &tex = upscale.add_texture_input(input);
+	graph.get_texture_resource(input).get_attachment_info().unorm_srgb_alias = true;
 
-	upscale.set_build_render_pass([&, use_custom](Vulkan::CommandBuffer &cmd) {
+	upscale.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 		auto &view = graph.get_physical_texture_resource(tex);
-		if (upscale_linear)
-			cmd.set_texture(0, 0, view);
-		else
-			cmd.set_unorm_texture(0, 0, view);
+		cmd.set_unorm_texture(0, 0, view);
 		cmd.set_sampler(0, 0, Vulkan::StockSampler::NearestClamp);
 
-		auto *params = cmd.allocate_typed_constant_data<vec4>(1, 0, 2);
+		struct Constants
+		{
+			float params[4][4];
+		} constants;
+
+		struct Push
+		{
+			float width, height;
+		} push;
 
 		auto width = float(view.get_image().get_width());
 		auto height = float(view.get_image().get_height());
-		params[0] = vec4(width, height, 1.0f / width, 1.0f / height);
+		auto *params = cmd.allocate_typed_constant_data<Constants>(1, 0, 1);
+		FsrEasuCon(constants.params[0], constants.params[1], constants.params[2], constants.params[3],
+		           width, height, width, height, cmd.get_viewport().width, cmd.get_viewport().height);
+		*params = constants;
 
-		width = cmd.get_viewport().width;
-		height = cmd.get_viewport().height;
-		params[1] = vec4(width, height, 1.0f / width, 1.0f / height);
+		push.width = cmd.get_viewport().width;
+		push.height = cmd.get_viewport().height;
+		cmd.push_constants(&push, 0, sizeof(push));
 
-		bool srgb = !upscale_linear && Vulkan::format_is_srgb(graph.get_physical_texture_resource(upscale_tex_out).get_format());
+		bool srgb = Vulkan::format_is_srgb(graph.get_physical_texture_resource(upscale_tex_out).get_format());
+		const char *vert = "builtin://shaders/post/ffx-fsr/upscale.vert";
+		const char *frag = "builtin://shaders/post/ffx-fsr/upscale.frag";
 
-		const char *vert = use_custom ? "assets://shaders/upscale.vert" : "builtin://shaders/quad.vert";
-		const char *frag = use_custom ? "assets://shaders/upscale.frag" : "builtin://shaders/post/lanczos2.frag";
+		bool fp16 = cmd.get_device().get_device_features().float16_int8_features.shaderFloat16;
+
+		// Fow now, the FP16 output is bugged.
+		if (cmd.get_device().get_device_features().driver_properties.driverID == VK_DRIVER_ID_MESA_RADV)
+			fp16 = false;
 
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, vert, frag,
-		                                                {{ "TARGET_SRGB", srgb ? 1 : 0 }});
+		                                                {{ "TARGET_SRGB", srgb ? 1 : 0 },
+		                                                 {"FP16", fp16 ? 1 : 0 }});
 	});
 
 	if (use_sharpen)
 	{
 		AttachmentInfo sharpen_info;
-		sharpen_info.supports_prerotate = !use_custom;
+		sharpen_info.supports_prerotate = true;
 
 		auto &sharpen = graph.add_pass(output + "-sharpen", RenderGraph::get_default_post_graphics_queue());
 
@@ -108,18 +144,30 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 				cmd.set_unorm_texture(0, 0, view);
 			cmd.set_sampler(0, 0, Vulkan::StockSampler::NearestClamp);
 
-			auto *params = cmd.allocate_typed_constant_data<vec4>(1, 0, 2);
+			struct Constants
+			{
+				float params[4];
+				int32_t range[4];
+			} constants;
 
-			auto width = float(view.get_image().get_width());
-			auto height = float(view.get_image().get_height());
-			params[0] = vec4(width, height, 1.0f / width, 1.0f / height);
+			FsrRcasCon(constants.params, 0.5f);
+			constants.range[0] = 0;
+			constants.range[1] = 0;
+			constants.range[2] = view.get_image().get_width() - 1;
+			constants.range[3] = view.get_image().get_height() - 1;
+			auto *params = cmd.allocate_typed_constant_data<Constants>(1, 0, 1);
+			*params = constants;
 
-			width = cmd.get_viewport().width;
-			height = cmd.get_viewport().height;
-			params[1] = vec4(width, height, 1.0f / width, 1.0f / height);
+			struct Push
+			{
+				float width, height;
+			} push;
+			push.width = cmd.get_viewport().width;
+			push.height = cmd.get_viewport().height;
+			cmd.push_constants(&push, 0, sizeof(push));
 
-			const char *vert = "assets://shaders/sharpen.vert";
-			const char *frag = "assets://shaders/sharpen.frag";
+			const char *vert = "builtin://shaders/post/ffx-fsr/sharpen.vert";
+			const char *frag = "builtin://shaders/post/ffx-fsr/sharpen.frag";
 			Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, vert, frag);
 		});
 	}

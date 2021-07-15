@@ -113,8 +113,16 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 		bool srgb = Vulkan::format_is_srgb(graph.get_physical_texture_resource(upscale_tex_out).get_format());
 		const char *vert = "builtin://shaders/post/ffx-fsr/upscale.vert";
 		const char *frag = "builtin://shaders/post/ffx-fsr/upscale.frag";
+
+		bool fp16 = cmd.get_device().get_device_features().float16_int8_features.shaderFloat16;
+
+		// Fow now, the FP16 output is bugged.
+		if (cmd.get_device().get_device_features().driver_properties.driverID == VK_DRIVER_ID_MESA_RADV)
+			fp16 = false;
+
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, vert, frag,
-		                                                {{ "TARGET_SRGB", srgb ? 1 : 0 }});
+		                                                {{ "TARGET_SRGB", srgb ? 1 : 0 },
+		                                                 {"FP16", fp16 ? 1 : 0 }});
 	});
 
 	if (use_sharpen)

@@ -2,12 +2,22 @@
 
 #define A_GLSL 1
 #define A_GPU 1
-#define FSR_EASU_F 1
 
 layout(set = 0, binding = 0) uniform sampler2D uTex;
+
+#if FP16
+#define FSR_EASU_H 1
+#define A_HALF 1
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+f16vec4 FsrEasuRH(vec2 p) { return f16vec4(textureGather(uTex, p, 0)); }
+f16vec4 FsrEasuGH(vec2 p) { return f16vec4(textureGather(uTex, p, 1)); }
+f16vec4 FsrEasuBH(vec2 p) { return f16vec4(textureGather(uTex, p, 2)); }
+#else
+#define FSR_EASU_F 1
 vec4 FsrEasuRF(vec2 p) { return textureGather(uTex, p, 0); }
 vec4 FsrEasuGF(vec2 p) { return textureGather(uTex, p, 1); }
 vec4 FsrEasuBF(vec2 p) { return textureGather(uTex, p, 2); }
+#endif
 
 #include "ffx_a.h"
 #include "ffx_fsr1.h"
@@ -27,7 +37,11 @@ layout(set = 1, binding = 0) uniform Params
 void main()
 {
 	vec3 color;
+#if FP16
+	FsrEasuH(color, uvec2(vUV), param0, param1, param2, param3);
+#else
 	FsrEasuF(color, uvec2(vUV), param0, param1, param2, param3);
+#endif
 
 #if TARGET_SRGB
 	color = decode_srgb(color);

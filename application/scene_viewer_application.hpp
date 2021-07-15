@@ -122,6 +122,7 @@ private:
 
 		SceneRendererFlags pcf_flags = 0;
 		float resolution_scale = 1.0f;
+		bool resolution_scale_sharpen = true;
 		float lod_bias = 0.0f;
 		bool directional_light_shadows = true;
 		bool directional_light_cascaded_shadows = true;

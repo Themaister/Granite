@@ -185,6 +185,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 
 	if (doc.HasMember("resolutionScale"))
 		config.resolution_scale = doc["resolutionScale"].GetFloat();
+	if (doc.HasMember("resolutionScaleSharpen"))
+		config.resolution_scale_sharpen = doc["resolutionScaleSharpen"].GetBool();
 
 	if (doc.HasMember("lodBias"))
 		config.lod_bias = doc["lodBias"].GetFloat();
@@ -1037,8 +1039,12 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 		ui_source = "post-aa-output";
 	}
 
-	if (config.resolution_scale < 1.0f && setup_after_post_chain_upscaling(graph, ui_source, "post-scale-output"))
+	if (config.resolution_scale < 1.0f &&
+	    setup_after_post_chain_upscaling(graph, ui_source, "post-scale-output",
+	                                     config.resolution_scale_sharpen))
+	{
 		ui_source = "post-scale-output";
+	}
 
 	if (config.show_ui)
 	{

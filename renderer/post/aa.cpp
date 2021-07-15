@@ -147,9 +147,14 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 			struct Constants
 			{
 				float params[4];
+				int32_t range[4];
 			} constants;
 
 			FsrRcasCon(constants.params, 0.5f);
+			constants.range[0] = 0;
+			constants.range[1] = 0;
+			constants.range[2] = view.get_image().get_width() - 1;
+			constants.range[3] = view.get_image().get_height() - 1;
 			auto *params = cmd.allocate_typed_constant_data<Constants>(1, 0, 1);
 			*params = constants;
 

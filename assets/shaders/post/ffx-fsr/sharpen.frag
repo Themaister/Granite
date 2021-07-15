@@ -5,7 +5,14 @@
 #define FSR_RCAS_F 1
 
 layout(set = 0, binding = 0) uniform sampler2D uTex;
-vec4 FsrRcasLoadF(ivec2 p) { return texelFetch(uTex, p, 0); }
+
+layout(set = 1, binding = 0) uniform UBO
+{
+	uvec4 param0;
+	ivec4 range;
+};
+
+vec4 FsrRcasLoadF(ivec2 p) { return texelFetch(uTex, clamp(p, range.xy, range.zw), 0); }
 void FsrRcasInputF(inout float r, inout float g, inout float b) {}
 
 #include "ffx_a.h"
@@ -13,11 +20,6 @@ void FsrRcasInputF(inout float r, inout float g, inout float b) {}
 
 layout(location = 0) out vec4 FragColor;
 layout(location = 0) in vec2 vUV;
-
-layout(set = 1, binding = 0) uniform UBO
-{
-	uvec4 param0;
-};
 
 void main()
 {

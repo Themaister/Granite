@@ -610,7 +610,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 	}
 	else
 	{
-		pending_node_updates_skin.for_each_ranged([this](Node *const *updates, size_t count) {
+		pending_node_updates_skin.for_each_ranged([](Node *const *updates, size_t count) {
 			perform_update_skinning(updates, count);
 		});
 	}

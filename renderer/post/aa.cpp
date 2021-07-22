@@ -251,6 +251,9 @@ bool setup_after_post_chain_antialiasing(PostAAType type, RenderGraph &graph, Te
 
 PostAAType string_to_post_antialiasing_type(const char *type)
 {
+	if (!type)
+		return PostAAType::None;
+
 	if (strcmp(type, "fxaa") == 0)
 		return PostAAType::FXAA;
 	else if (strcmp(type, "fxaa2phase") == 0)

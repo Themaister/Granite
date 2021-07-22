@@ -13,12 +13,13 @@ using namespace Vulkan;
 class AABenchApplication : public Application, public EventHandler
 {
 public:
-	AABenchApplication(const std::string &input0, const std::string &input1, const char *method);
+	AABenchApplication(const std::string &input0, const std::string &input1, const char *method, float scale);
 	void render_frame(double, double) override;
 
 private:
 	std::string input_path0;
 	std::string input_path1;
+	float scale;
 	PostAAType type;
 	void on_device_created(const DeviceCreatedEvent &e);
 	void on_device_destroyed(const DeviceCreatedEvent &e);
@@ -32,8 +33,8 @@ private:
 	unsigned input_index = 0;
 };
 
-AABenchApplication::AABenchApplication(const std::string &input0, const std::string &input1, const char *method)
-	: input_path0(input0), input_path1(input1)
+AABenchApplication::AABenchApplication(const std::string &input0, const std::string &input1, const char *method, float scale_)
+	: input_path0(input0), input_path1(input1), scale(scale_)
 {
 	type = string_to_post_antialiasing_type(method);
 
@@ -72,15 +73,30 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 	AttachmentInfo main_depth;
 	main_depth.format = swap.get_device().get_default_depth_format();
 
+	main_output.size_x = scale;
+	main_output.size_y = scale;
+	main_depth.size_x = scale;
+	main_depth.size_y = scale;
+
 	AttachmentInfo swapchain_output;
 
 	auto &pass = graph.add_pass("main", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	pass.add_color_output("HDR-main", main_output);
 	pass.set_depth_stencil_output("depth-main", main_depth);
+	pass.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
+		if (value)
+			memset(value, 0, sizeof(*value));
+		return true;
+	});
 	pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-		cmd.set_texture(0, 0, images[(input_index++) & 1]->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
-		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
-		                                                "builtin://shaders/blit.frag", {});
+		auto *img = images[(input_index++) & 1];
+		if (img)
+		{
+			cmd.set_texture(0, 0, img->get_image()->get_view(),
+			                Vulkan::StockSampler::LinearClamp);
+			Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
+			                                                "builtin://shaders/blit.frag", {});
+		}
 	});
 	pass.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
 		if (value)
@@ -93,7 +109,7 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 
 	bool resolved = setup_before_post_chain_antialiasing(type,
 	                                                     graph, jitter,
-	                                                     1.0f,
+	                                                     scale,
 	                                                     "HDR-main", "depth-main", "", "HDR-resolved");
 
 	auto &tonemap = graph.add_pass("tonemap", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
@@ -105,16 +121,25 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 
 		Vulkan::CommandBufferUtil::setup_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
 		                                                 "builtin://shaders/blit.frag", {});
-		cmd.set_specialization_constant_mask(1);
-		cmd.set_specialization_constant(0, float((input_index % 3) + 1) / 3.0f);
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd);
 	});
 
-	if (setup_after_post_chain_antialiasing(type, graph, jitter, 1.0f,
+	const char *backbuffer_source;
+
+	if (setup_after_post_chain_antialiasing(type, graph, jitter, scale,
 	                                        "tonemap", "depth-main", "post-aa-output"))
-		graph.set_backbuffer_source("post-aa-output");
+		backbuffer_source = "post-aa-output";
 	else
-		graph.set_backbuffer_source("tonemap");
+		backbuffer_source = "tonemap";
+
+	if (scale < 1.0f)
+	{
+		setup_after_post_chain_upscaling(graph, backbuffer_source, "fidelityfx-fsr", true);
+		backbuffer_source = "fidelityfx-fsr";
+	}
+
+	graph.set_backbuffer_source(backbuffer_source);
+	graph.enable_timestamps(true);
 
 	graph.bake();
 	graph.log();
@@ -122,12 +147,13 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 }
 
 void AABenchApplication::on_swapchain_destroyed(const SwapchainParameterEvent &)
-{}
+{
+}
 
 void AABenchApplication::on_device_created(const DeviceCreatedEvent &e)
 {
-	images[0] = e.get_device().get_texture_manager().request_texture(input_path0);
-	images[1] = e.get_device().get_texture_manager().request_texture(input_path1);
+	images[0] = input_path0.empty() ? nullptr : e.get_device().get_texture_manager().request_texture(input_path0);
+	images[1] = input_path1.empty() ? nullptr : e.get_device().get_texture_manager().request_texture(input_path1);
 	graph.set_device(&e.get_device());
 }
 
@@ -150,6 +176,7 @@ Application *application_create(int argc, char **argv)
 	const char *aa_method = nullptr;
 	std::string input_image0;
 	std::string input_image1;
+	float scale = 1.0f;
 
 #ifdef ANDROID
 	input_image0 = "assets://image0.png";
@@ -159,20 +186,15 @@ Application *application_create(int argc, char **argv)
 	CLICallbacks cbs;
 	cbs.add("--aa-method", [&](CLIParser &parser) { aa_method = parser.next_string(); });
 	cbs.add("--input-images", [&](CLIParser &parser) { input_image0 = parser.next_string(); input_image1 = parser.next_string(); });
+	cbs.add("--scale", [&](CLIParser &parser) { scale = float(parser.next_double()); });
 
 	CLIParser parser(std::move(cbs), argc - 1, argv + 1);
 	if (!parser.parse())
 		return nullptr;
 
-	if (input_image0.empty() || input_image1.empty())
-	{
-		LOGE("Need path to input images.\n");
-		return nullptr;
-	}
-
 	try
 	{
-		auto *app = new AABenchApplication(input_image0, input_image1, aa_method);
+		auto *app = new AABenchApplication(input_image0, input_image1, aa_method, scale);
 		return app;
 	}
 	catch (const std::exception &e)

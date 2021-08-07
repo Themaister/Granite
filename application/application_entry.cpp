@@ -22,7 +22,12 @@
 
 #include "application.hpp"
 #include "filesystem.hpp"
-#ifdef _WIN32
+
+#if defined(_WIN32) && !defined(APPLICATION_ENTRY_HEADLESS)
+#define USE_WINMAIN
+#endif
+
+#ifdef USE_WINMAIN
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
@@ -46,13 +51,13 @@ void application_setup_default_filesystem(const char *default_asset_directory)
 }
 }
 
-#ifdef _WIN32
+#ifdef USE_WINMAIN
 int CALLBACK WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #else
 int main(int argc, char *argv[])
 #endif
 {
-#ifdef _WIN32
+#ifdef USE_WINMAIN
 	int argc;
 	wchar_t **wide_argv = CommandLineToArgvW(GetCommandLineW(), &argc);
 	std::vector<char *> argv_buffer(argc + 1);

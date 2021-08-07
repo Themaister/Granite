@@ -274,11 +274,7 @@ function(add_granite_application TARGET_NAME)
 endfunction()
 
 function(add_granite_headless_application TARGET_NAME)
-    if (WIN32)
-        add_executable(${TARGET_NAME} WIN32 ${ARGN})
-    else()
-        add_executable(${TARGET_NAME} ${ARGN})
-    endif()
+    add_executable(${TARGET_NAME} ${ARGN})
 
     target_compile_options(${TARGET_NAME} PRIVATE ${GRANITE_CXX_FLAGS})
     if (GRANITE_SANITIZE_ADDRESS OR GRANITE_SANITIZE_THREADS OR GRANITE_SANITIZE_MEMORY)

@@ -911,6 +911,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.astc_decode_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_FEATURES_EXT };
 	ext.astc_hdr_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES_EXT };
 	ext.sync2_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR };
+	ext.present_id_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR };
+	ext.present_wait_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR };
 	void **ppNext = &features.pNext;
 
 	bool has_pdf2 = ext.supports_physical_device_properties2 ||
@@ -1054,6 +1056,28 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			enabled_extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
 			*ppNext = &ext.sync2_features;
 			ppNext = &ext.sync2_features.pNext;
+		}
+
+		for (unsigned i = 0; i < num_required_device_extensions; i++)
+		{
+			if (strcmp(required_device_extensions[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
+			{
+				if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
+				{
+					enabled_extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+					*ppNext = &ext.present_id_features;
+					ppNext = &ext.present_id_features.pNext;
+				}
+
+				if (has_extension(VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
+				{
+					enabled_extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+					*ppNext = &ext.present_wait_features;
+					ppNext = &ext.present_wait_features.pNext;
+				}
+
+				break;
+			}
 		}
 	}
 

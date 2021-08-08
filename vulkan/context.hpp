@@ -99,6 +99,8 @@ struct DeviceFeatures
 	VkPhysicalDeviceASTCDecodeFeaturesEXT astc_decode_features = {};
 	VkPhysicalDeviceTextureCompressionASTCHDRFeaturesEXT astc_hdr_features = {};
 	VkPhysicalDeviceSynchronization2FeaturesKHR sync2_features = {};
+	VkPhysicalDevicePresentIdFeaturesKHR present_id_features = {};
+	VkPhysicalDevicePresentWaitFeaturesKHR present_wait_features = {};
 };
 
 enum VendorID

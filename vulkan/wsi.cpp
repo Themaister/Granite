@@ -224,9 +224,15 @@ void WSI::tear_down_swapchain()
 	drain_swapchain();
 
 	if (swapchain != VK_NULL_HANDLE)
+	{
+		if (device->get_device_features().present_wait_features.presentWait)
+			table->vkWaitForPresentKHR(context->get_device(), swapchain, present_last_id, UINT64_MAX);
 		table->vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
+	}
 	swapchain = VK_NULL_HANDLE;
 	has_acquired_swapchain_index = false;
+	present_id = 0;
+	present_last_id = 0;
 }
 
 void WSI::deinit_surface_and_swapchain()
@@ -452,12 +458,23 @@ bool WSI::end_frame()
 
 		VkPresentTimeGOOGLE present_time;
 		VkPresentTimesInfoGOOGLE present_timing = { VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE };
-		present_timing.swapchainCount = 1;
-		present_timing.pTimes = &present_time;
 
 		if (using_display_timing && timing.fill_present_info_timing(present_time))
 		{
+			present_timing.swapchainCount = 1;
+			present_timing.pTimes = &present_time;
+			present_timing.pNext = info.pNext;
 			info.pNext = &present_timing;
+		}
+
+		VkPresentIdKHR present_id_info = { VK_STRUCTURE_TYPE_PRESENT_ID_KHR };
+		if (device->get_device_features().present_id_features.presentId)
+		{
+			present_id_info.swapchainCount = 1;
+			present_id_info.pPresentIds = &present_id;
+			present_id++;
+			present_id_info.pNext = info.pNext;
+			info.pNext = &present_id_info;
 		}
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
@@ -487,6 +504,27 @@ bool WSI::end_frame()
 		auto present_end = Util::get_current_time_nsecs();
 		LOGI("vkQueuePresentKHR took %.3f ms.\n", (present_end - present_start) * 1e-6);
 #endif
+
+		if ((result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) &&
+		    present_id > present_frame_latency &&
+		    device->get_device_features().present_wait_features.presentWait)
+		{
+			present_last_id = present_id;
+			uint64_t target = present_id - present_frame_latency;
+			if (present_last_id < target)
+				target = present_last_id;
+#ifdef VULKAN_WSI_TIMING_DEBUG
+			auto begin_wait = Util::get_current_time_nsecs();
+#endif
+			VkResult wait_result = table->vkWaitForPresentKHR(context->get_device(), swapchain,
+			                                                  target, UINT64_MAX);
+			if (wait_result != VK_SUCCESS)
+				LOGE("vkWaitForPresentKHR failed, vr %d.\n", wait_result);
+#ifdef VULKAN_WSI_TIMING_DEBUG
+			auto end_wait = Util::get_current_time_nsecs();
+			LOGI("WaitForPresentKHR took %.3f ms.\n", 1e-6 * double(end_wait - begin_wait));
+#endif
+		}
 
 		if (overall == VK_SUBOPTIMAL_KHR || result == VK_SUBOPTIMAL_KHR)
 		{
@@ -1006,6 +1044,9 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	info.clipped = VK_TRUE;
 	info.oldSwapchain = old_swapchain;
 
+	if (device->get_device_features().present_wait_features.presentWait && old_swapchain != VK_NULL_HANDLE)
+		table->vkWaitForPresentKHR(context->get_device(), old_swapchain, present_last_id, UINT64_MAX);
+
 #ifdef _WIN32
 	if (device->get_device_features().supports_full_screen_exclusive)
 		info.pNext = &exclusive_info;
@@ -1015,6 +1056,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	if (old_swapchain != VK_NULL_HANDLE)
 		table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
+	present_id = 0;
+	present_last_id = 0;
 
 #ifdef _WIN32
 	if (use_application_controlled_exclusive_fullscreen)

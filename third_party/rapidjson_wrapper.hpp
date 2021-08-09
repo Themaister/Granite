@@ -27,6 +27,10 @@
 #define RAPIDJSON_HAS_STDSTRING 1
 #endif
 
+#ifndef RAPIDJSON_PARSE_DEFAULT_FLAGS
+#define RAPIDJSON_PARSE_DEFAULT_FLAGS (kParseIterativeFlag)
+#endif
+
 #include <exception>
 #undef RAPIDJSON_ASSERT
 #define RAPIDJSON_ASSERT(x) do { \

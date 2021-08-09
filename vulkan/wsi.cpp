@@ -38,6 +38,20 @@ WSI::WSI()
 		if (!frame_limiter.begin_interval_ns(1000000ull * period_ms))
 			LOGE("Failed to begin timer.\n");
 	}
+
+	// With frame latency of 1, we get the ideal latency where
+	// we present, and then wait for the previous present to complete.
+	// Once this unblocks, it means that the present we just queued up is scheduled to complete next vblank,
+	// and the next frame to be recorded will have to be ready in 2 frames.
+	// This is ideal, since worst case for full performance, we will have a pipeline of CPU -> GPU,
+	// where CPU can spend 1 frame's worth of time, and GPU can spend one frame's worth of time.
+	// For mobile, opt for 2 frames of latency, since TBDR likes deeper pipelines and we can absorb more
+	// surfaceflinger jank.
+#ifdef ANDROID
+	present_frame_latency = 2;
+#else
+	present_frame_latency = 1;
+#endif
 }
 
 void WSIPlatform::set_window_title(const string &)
@@ -505,6 +519,9 @@ bool WSI::end_frame()
 		LOGI("vkQueuePresentKHR took %.3f ms.\n", (present_end - present_start) * 1e-6);
 #endif
 
+		// The presentID only seems to get updated if QueuePresent returns success.
+		// This makes sense I guess. Record the latest present ID which was successfully presented
+		// so we don't risk deadlock.
 		if ((result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) &&
 		    present_id > present_frame_latency &&
 		    device->get_device_features().present_wait_features.presentWait)
@@ -516,8 +533,11 @@ bool WSI::end_frame()
 #ifdef VULKAN_WSI_TIMING_DEBUG
 			auto begin_wait = Util::get_current_time_nsecs();
 #endif
+			auto wait_ts = device->write_calibrated_timestamp();
 			VkResult wait_result = table->vkWaitForPresentKHR(context->get_device(), swapchain,
 			                                                  target, UINT64_MAX);
+			device->register_time_interval("WSI", std::move(wait_ts),
+			                               device->write_calibrated_timestamp(), "wait_frame_latency");
 			if (wait_result != VK_SUCCESS)
 				LOGE("vkWaitForPresentKHR failed, vr %d.\n", wait_result);
 #ifdef VULKAN_WSI_TIMING_DEBUG

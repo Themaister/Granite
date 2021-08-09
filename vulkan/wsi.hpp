@@ -236,7 +236,7 @@ private:
 
 	uint64_t present_id = 0;
 	uint64_t present_last_id = 0;
-	unsigned present_frame_latency = 2;
+	unsigned present_frame_latency = 0;
 
 	WSITiming timing;
 	Util::FrameLimiter frame_limiter;

@@ -1352,15 +1352,14 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 	auto &device = context_.get_device();
 	auto &thread_group = composer.get_thread_group();
 
-	bindless.shadow_task_handles.clear();
-	bindless.shadow_task_handles.reserve(bindless.parameters.num_lights + bindless.global_transforms.num_lights);
-
 	// Single task, prepare the lights.
 	{
 		auto &group = composer.begin_pipeline_stage();
 		group.set_desc("clusterer-bindless-prepare");
 		group.enqueue_task([this, &context_]() {
+			bindless.shadow_task_handles.clear();
 			refresh_bindless_prepare(context_);
+			bindless.shadow_task_handles.reserve(bindless.parameters.num_lights + bindless.global_transforms.num_lights);
 		});
 	}
 

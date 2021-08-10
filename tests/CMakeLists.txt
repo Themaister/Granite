@@ -109,6 +109,10 @@ add_granite_offline_tool(simd-test simd_test.cpp)
 add_granite_offline_tool(imported-host imported_host.cpp)
 add_granite_offline_tool(atomic-append-buffer-test atomic_append_buffer_test.cpp)
 add_granite_offline_tool(unordered-array-test unordered_array_test.cpp)
+add_granite_offline_tool(z-binning-test z_binning_test.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(z-binning-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
 
 add_granite_offline_tool(hemisphere-integration-test hemisphere_integration.cpp)
 

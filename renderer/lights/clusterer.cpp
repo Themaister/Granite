@@ -1664,7 +1664,7 @@ void LightClusterer::update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd
 		bindless.light_index_range.push_back(uvec2(~0u, 0u));
 
 	BufferCreateInfo info;
-	info.domain = BufferDomain::Host;
+	info.domain = BufferDomain::LinkedDeviceHost;
 	info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	info.size = bindless.light_index_range.size() * sizeof(uvec2);
 	auto buffer = cmd.get_device().create_buffer(info, bindless.light_index_range.data());

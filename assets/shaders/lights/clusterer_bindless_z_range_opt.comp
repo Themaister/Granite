@@ -13,6 +13,34 @@ layout(set = 0, binding = 1, std430) writeonly buffer LightRange
     uvec2 light_ranges[];
 };
 
+// The problem we're trying to solve here is that we are given N lights (or any volumetric thing really).
+// These volumes have a range in Z, which we quantize into slices, and we can represent this extent as [Zmin, Zmax].
+// What we want to compute for each Z slice is the minimum and maximum volume indices which intersect a given slice.
+// Essentially, we need to convert the entire system from
+// "which slices do my lights intersect" to
+// "which lights does my slice intersect".
+// Naively, the algorithm looks like:
+// foreach z in range(num_z_slices):
+//   lo = UINT_MAX
+//   hi = 0
+//   foreach light in range(num_lights):
+//     if z >= light_range[light].min_z and z <= light_range[light].max_z:
+//       # Can early out if we iterate from front and back separately for lo and hi.
+//       lo = min(lo, light)
+//       hi = max(hi, light)
+// This is O(n^2) in the worst case, but we can lower the constant factor by a ton to the point where it's more than fast enough
+// for worst case performance.
+// The main building block of this optimization is the 128-wide workgroup.
+// - 128 Z slices will test against 128 volumes.
+// - Each volume generates a 128-bit bitmask which represents intersection against the 128 Z slices under consideration.
+//   - Intersecting 128 Z slices is O(1), see build_intersection_bitmask().
+// - Since we have 128 volumes, we now have a 128x128 bit-matrix which represents all intersections.
+// - The trick is to transpose this matrix, this is done in two stages.
+// - We write to shared memory with a transpose by subdividing the matrix in 4x4 units of 32x32 bits each.
+// - The final 32x32 transpose is done with subgroup operations with subgroupShuffleXor proving to be quite handy.
+// - Once we have transposed, we can scan through 128 contiguous bits and compute lo/hi.
+// - For more than 128 volumes, we iterate through N / 128 chunks.
+
 // Bit-matrix transpose in SIMD is a solved problem.
 // From https://gist.github.com/raphlinus/59a7ab6a134828f5afdad8fcdaeb3388
 // https://gist.github.com/bzm3r/a888c3f8a3255379941cd7003608e25a

@@ -11,7 +11,7 @@ static BufferHandle create_ssbo(Device &device, const void *data, size_t size)
 {
 	BufferCreateInfo info = {};
 	info.size = size;
-	info.domain = BufferDomain::CachedHost;
+	info.domain = BufferDomain::Device;
 	info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	return device.create_buffer(info, data);
 }
@@ -31,28 +31,36 @@ static int main_inner()
 	constexpr VkSubgroupFeatureFlags required =
 	    VK_SUBGROUP_FEATURE_SHUFFLE_BIT |
 	    VK_SUBGROUP_FEATURE_BASIC_BIT;
-	if ((features.subgroup_properties.supportedOperations & required) != required)
-		return EXIT_FAILURE;
-	if (!device.supports_subgroup_size_log2(true, 5, 7))
-		return EXIT_FAILURE;
+
+	constexpr bool UseOptimized = true;
+	bool support_optimized =
+	    UseOptimized &&
+		(features.subgroup_properties.supportedOperations & required) == required &&
+		device.supports_subgroup_size_log2(true, 5, 7);
 
 	auto cmd = device.request_command_buffer();
-	cmd->set_program("assets://shaders/bit_transpose.comp");
-	cmd->set_subgroup_size_log2(true, 5, 7);
-	cmd->enable_subgroup_size_control(true);
 
-	constexpr unsigned NumInputs = 180;
-	constexpr unsigned NumRanges = 200;
+	if (support_optimized)
+	{
+		LOGI("Testing optimized shader.\n");
+		cmd->set_program("builtin://shaders/lights/clusterer_bindless_z_range_opt.comp");
+		cmd->set_subgroup_size_log2(true, 5, 7);
+		cmd->enable_subgroup_size_control(true);
+	}
+	else
+	{
+		LOGI("Testing naive shader.\n");
+		cmd->set_program("builtin://shaders/lights/clusterer_bindless_z_range.comp");
+	}
 
-	uvec2 inputs[NumInputs] = {};
+	constexpr unsigned NumInputs = 4 * 1024;
+	constexpr unsigned NumRanges = 4 * 1024;
+
+	std::vector<uvec2> inputs(NumInputs);
 	for (auto &i : inputs)
 		i = uvec2(1000000000, 0);
-	inputs[40] = uvec2(189, 190);
-	inputs[170] = uvec2(190, 193);
-	inputs[171] = uvec2(191, 194);
-	inputs[172] = uvec2(192, 195);
 
-	auto input_buffer = create_ssbo(device, inputs, sizeof(uvec2) * NumInputs);
+	auto input_buffer = create_ssbo(device, inputs.data(), sizeof(uvec2) * NumInputs);
 	auto output_buffer = create_ssbo(device, nullptr, sizeof(uvec2) * NumRanges);
 	cmd->set_storage_buffer(0, 0, *input_buffer);
 	cmd->set_storage_buffer(0, 1, *output_buffer);
@@ -68,20 +76,24 @@ static int main_inner()
 	push.num_ranges = NumRanges;
 	cmd->push_constants(&push, 0, sizeof(push));
 
-	cmd->dispatch((NumRanges + 127) / 128, 1, 1);
-	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+	constexpr unsigned NumIterations = 1000;
+	auto begin_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+	for (unsigned i = 0; i < NumIterations; i++)
+	{
+		if (support_optimized)
+			cmd->dispatch((NumRanges + 127) / 128, 1, 1);
+		else
+			cmd->dispatch((NumRanges + 63) / 64, 1, 1);
 
-	Fence fence;
-	device.submit(cmd, &fence);
-	fence->wait();
+		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT);
+	}
+	auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-	auto *output_data = static_cast<const uvec2 *>(device.map_host_buffer(*output_buffer, MEMORY_ACCESS_READ_BIT));
-	for (uint32_t i = 0; i < NumRanges; i++)
-		LOGI("Output %03u = [%u, %u]\n", i, output_data[i].x, output_data[i].y);
-	for (uint32_t i = 0; i < NumInputs; i++)
-		LOGI("Input %03u = [%u, %u]\n", i, inputs[i].x, inputs[i].y);
-	device.unmap_host_buffer(*output_buffer, MEMORY_ACCESS_READ_BIT);
+	device.submit(cmd);
+	device.wait_idle();
+	double t = device.convert_device_timestamp_delta(begin_ts->get_timestamp_ticks(), end_ts->get_timestamp_ticks());
+	LOGI("Time per iteration: %.3f ms.\n", 1000.0 * t / double(NumIterations));
 
 	return EXIT_SUCCESS;
 }

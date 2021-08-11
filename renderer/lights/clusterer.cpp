@@ -1669,7 +1669,6 @@ void LightClusterer::update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd
 	info.size = bindless.light_index_range.size() * sizeof(uvec2);
 	auto buffer = cmd.get_device().create_buffer(info, bindless.light_index_range.data());
 
-	cmd.set_program("builtin://shaders/lights/clusterer_bindless_z_range.comp");
 	cmd.set_storage_buffer(0, 0, *buffer);
 	cmd.set_storage_buffer(0, 1, *bindless.range_buffer);
 
@@ -1677,11 +1676,33 @@ void LightClusterer::update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd
 
 	struct Registers
 	{
-		uint num_lights;
+		uint32_t num_lights;
+		uint32_t num_lights_128;
+		uint32_t num_ranges;
 	} push;
 	push.num_lights = bindless.parameters.num_lights;
+	push.num_lights_128 = (push.num_lights + 127) / 128;
+	push.num_ranges = resolution_z;
 	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.dispatch(resolution_z / 64, 1, 1);
+
+	auto &features = cmd.get_device().get_device_features();
+	constexpr VkSubgroupFeatureFlags required =
+		VK_SUBGROUP_FEATURE_SHUFFLE_BIT |
+		VK_SUBGROUP_FEATURE_BASIC_BIT;
+	if ((features.subgroup_properties.supportedOperations & required) == required &&
+	    cmd.get_device().supports_subgroup_size_log2(true, 5, 7))
+	{
+		cmd.set_program("builtin://shaders/lights/clusterer_bindless_z_range_opt.comp");
+		cmd.set_subgroup_size_log2(true, 5, 7);
+		cmd.enable_subgroup_size_control(true);
+		cmd.dispatch((resolution_z + 127) / 128, 1, 1);
+		cmd.enable_subgroup_size_control(false);
+	}
+	else
+	{
+		cmd.set_program("builtin://shaders/lights/clusterer_bindless_z_range.comp");
+		cmd.dispatch(resolution_z / 64, 1, 1);
+	}
 }
 
 void LightClusterer::update_bindless_range_buffer_cpu(Vulkan::CommandBuffer &cmd)

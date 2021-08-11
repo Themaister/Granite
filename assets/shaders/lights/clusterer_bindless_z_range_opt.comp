@@ -1,0 +1,181 @@
+#version 450
+#extension GL_KHR_shader_subgroup_shuffle : require
+#extension GL_KHR_shader_subgroup_basic : require
+layout(local_size_x = 128) in;
+
+layout(set = 0, binding = 0, std430) readonly buffer ZRangesPerLight
+{
+    uvec2 z_ranges[];
+};
+
+layout(set = 0, binding = 1, std430) writeonly buffer LightRange
+{
+    uvec2 light_ranges[];
+};
+
+// The problem we're trying to solve here is that we are given N lights (or any volumetric thing really).
+// These volumes have a range in Z, which we quantize into slices, and we can represent this extent as [Zmin, Zmax].
+// What we want to compute for each Z slice is the minimum and maximum volume indices which intersect a given slice.
+// Essentially, we need to convert the entire system from
+// "which slices do my lights intersect" to
+// "which lights does my slice intersect".
+// Naively, the algorithm looks like:
+// foreach z in range(num_z_slices):
+//   lo = UINT_MAX
+//   hi = 0
+//   foreach light in range(num_lights):
+//     if z >= light_range[light].min_z and z <= light_range[light].max_z:
+//       # Can early out if we iterate from front and back separately for lo and hi.
+//       lo = min(lo, light)
+//       hi = max(hi, light)
+// This is O(n^2) in the worst case, but we can lower the constant factor by a ton to the point where it's more than fast enough
+// for worst case performance.
+// The main building block of this optimization is the 128-wide workgroup.
+// - 128 Z slices will test against 128 volumes.
+// - Each volume generates a 128-bit bitmask which represents intersection against the 128 Z slices under consideration.
+//   - Intersecting 128 Z slices is O(1), see build_intersection_bitmask().
+// - Since we have 128 volumes, we now have a 128x128 bit-matrix which represents all intersections.
+// - The trick is to transpose this matrix, this is done in two stages.
+// - We write to shared memory with a transpose by subdividing the matrix in 4x4 units of 32x32 bits each.
+// - The final 32x32 transpose is done with subgroup operations with subgroupShuffleXor proving to be quite handy.
+// - Once we have transposed, we can scan through 128 contiguous bits and compute lo/hi.
+// - For more than 128 volumes, we iterate through N / 128 chunks.
+
+// Bit-matrix transpose in SIMD is a solved problem.
+// From https://gist.github.com/raphlinus/59a7ab6a134828f5afdad8fcdaeb3388
+// https://gist.github.com/bzm3r/a888c3f8a3255379941cd7003608e25a
+// which appears to be a GPU adaption of the Hacker's Delight algorithm.
+// Hierarchically transpose 16x16 blocks, then 8x8 blocks, and so on.
+// Transposing columns is accomplished with ShuffleXor, and rows with bit shifts.
+// Have to make this a macro since subgroupShuffleXor takes a compile time constant.
+#define SHUFFLE_PASS(a, mimm, s) { \
+    uvec4 b = subgroupShuffleXor(a, s); \
+    uint m = mimm; \
+    uvec4 c; \
+    if ((gl_SubgroupInvocationID & s) == 0u) { \
+        c = b << s; \
+    } else { \
+        m = ~m; \
+        c = b >> s; \
+    } \
+    a = (a & m) | (c & ~m); \
+}
+
+uvec4 bit_transpose_4x32(uvec4 v)
+{
+    SHUFFLE_PASS(v, 0xffffu, 16);
+    SHUFFLE_PASS(v, 0xff00ffu, 8);
+    SHUFFLE_PASS(v, 0xf0f0f0fu, 4);
+    SHUFFLE_PASS(v, 0x33333333u, 2);
+    SHUFFLE_PASS(v, 0x55555555u, 1);
+    return v;
+}
+
+shared uint shared_bank[4 * gl_WorkGroupSize.x];
+
+void write_shared_transposed(uint index, uvec4 values)
+{
+    uint sub_index_y = index & 31u;
+    uint base_index_y = index >> 5u;
+    base_index_y += 4 * sub_index_y;
+
+    shared_bank[0 * gl_WorkGroupSize.x + base_index_y] = values.x;
+    shared_bank[1 * gl_WorkGroupSize.x + base_index_y] = values.y;
+    shared_bank[2 * gl_WorkGroupSize.x + base_index_y] = values.z;
+    shared_bank[3 * gl_WorkGroupSize.x + base_index_y] = values.w;
+}
+
+uvec4 read_shared_column(uint index)
+{
+    uint offset = index * 4;
+    return uvec4(
+        shared_bank[offset + 0],
+        shared_bank[offset + 1],
+        shared_bank[offset + 2],
+        shared_bank[offset + 3]);
+}
+
+uvec4 build_intersection_bitmask(uint index, uvec2 range)
+{
+    uvec4 indices = index + uvec4(0, 32, 64, 96);
+    ivec4 shamt;
+
+    shamt = max(ivec4(range.x - indices), ivec4(0));
+    uvec4 lo_mask = uvec4(~0u) << shamt;
+    lo_mask = mix(lo_mask, uvec4(0), greaterThanEqual(shamt, ivec4(32)));
+
+    shamt = max(ivec4(indices - (range.y - 31)), ivec4(0));
+    uvec4 hi_mask = uvec4(~0u) >> shamt;
+    hi_mask = mix(hi_mask, uvec4(0), greaterThanEqual(shamt, ivec4(32)));
+    return lo_mask & hi_mask;
+}
+
+uint min4(uvec4 v)
+{
+    uvec2 a = min(v.xy, v.zw);
+    return min(a.x, a.y);
+}
+
+uint max4(uvec4 v)
+{
+    uvec2 a = max(v.xy, v.zw);
+    return max(a.x, a.y);
+}
+
+uvec2 get_bitrange(int input_offset, uvec4 range)
+{
+    ivec4 lsb = findLSB(range);
+    ivec4 msb = findMSB(range);
+    bvec4 zero_mask = equal(range, uvec4(0));
+    lsb = mix(lsb + input_offset + ivec4(0, 32, 64, 96), ivec4(-1), zero_mask);
+    msb = mix(msb + input_offset + ivec4(0, 32, 64, 96), ivec4(0), zero_mask);
+    return uvec2(min4(lsb), max4(msb));
+}
+
+layout(push_constant, std430) uniform Registers
+{
+    int num_lights;
+    int num_lights_128;
+    uint num_ranges;
+};
+
+void main()
+{
+    uint local_index = gl_SubgroupInvocationID + gl_SubgroupID * gl_SubgroupSize;
+    uint base_index = gl_WorkGroupID.x * gl_WorkGroupSize.x;
+    uint global_index = base_index + local_index;
+
+    uvec2 range = uvec2(~0u, 0u);
+    for (int i = 0; i < num_lights_128; i++)
+    {
+        uint input_base_index = gl_WorkGroupSize.x * i;
+        uint input_index = input_base_index + local_index;
+
+        uvec4 d4;
+        if (input_index < num_lights)
+            d4 = build_intersection_bitmask(base_index, z_ranges[input_index]);
+        else
+            d4 = uvec4(0u);
+
+        if (i > 0)
+        {
+            // Need another barrier to avoid write-after-read hazard in next iteration.
+            barrier();
+        }
+
+        // 128x128 bit matrix is computed here.
+        // Scatter write so that we get a 4x4 transpose,
+        // which then lets us transpose 16 32x32 bit matrices afterwards.
+        write_shared_transposed(local_index, d4);
+        barrier();
+        d4 = read_shared_column(local_index);
+        d4 = bit_transpose_4x32(d4);
+
+        uvec2 chunk_range = get_bitrange(int(input_base_index), d4);
+        range.x = min(chunk_range.x, range.x);
+        range.y = max(chunk_range.y, range.y);
+    }
+
+    if (global_index < num_ranges)
+        light_ranges[global_index] = range;
+}

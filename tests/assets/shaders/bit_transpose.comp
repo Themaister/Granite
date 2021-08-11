@@ -5,12 +5,12 @@ layout(local_size_x = 128) in;
 
 layout(set = 0, binding = 0) readonly buffer Inputs
 {
-    uvec4 inputs[];
+    uvec2 inputs[];
 };
 
 layout(set = 0, binding = 1) writeonly buffer Outputs
 {
-    uvec4 outputs[];
+    uvec2 outputs[];
 };
 
 // Bit-matrix transpose in SIMD is a solved problem.
@@ -67,18 +67,87 @@ uvec4 read_shared_column(uint index)
         shared_bank[offset + 3]);
 }
 
+uvec4 build_intersection_bitmask(uint index, uvec2 range)
+{
+    uvec4 indices = index + uvec4(0, 32, 64, 96);
+    ivec4 shamt;
+
+    shamt = max(ivec4(range.x - indices), ivec4(0));
+    uvec4 lo_mask = uvec4(~0u) << shamt;
+    lo_mask = mix(lo_mask, uvec4(0), greaterThanEqual(shamt, ivec4(32)));
+
+    shamt = max(ivec4(indices - (range.y - 31)), ivec4(0));
+    uvec4 hi_mask = uvec4(~0u) >> shamt;
+    hi_mask = mix(hi_mask, uvec4(0), greaterThanEqual(shamt, ivec4(32)));
+    return lo_mask & hi_mask;
+}
+
+uint min4(uvec4 v)
+{
+    uvec2 a = min(v.xy, v.zw);
+    return min(a.x, a.y);
+}
+
+uint max4(uvec4 v)
+{
+    uvec2 a = max(v.xy, v.zw);
+    return max(a.x, a.y);
+}
+
+uvec2 get_bitrange(int input_offset, uvec4 range)
+{
+    ivec4 lsb = findLSB(range);
+    ivec4 msb = findMSB(range);
+    bvec4 zero_mask = equal(range, uvec4(0));
+    lsb = mix(lsb + input_offset + ivec4(0, 32, 64, 96), ivec4(-1), zero_mask);
+    msb = mix(msb + input_offset + ivec4(0, 32, 64, 96), ivec4(0), zero_mask);
+    return uvec2(min4(lsb), max4(msb));
+}
+
+layout(push_constant, std430) uniform Registers
+{
+    int num_inputs;
+    int num_inputs_128;
+    uint num_ranges;
+};
+
 void main()
 {
-    uint index = gl_SubgroupInvocationID + gl_SubgroupID * gl_SubgroupSize;
-    uvec4 d4 = inputs[index];
+    uint local_index = gl_SubgroupInvocationID + gl_SubgroupID * gl_SubgroupSize;
+    uint base_index = gl_WorkGroupID.x * gl_WorkGroupSize.x;
+    uint global_index = base_index + local_index;
 
-    // 128x128 bit matrix is computed here.
-    // Scatter write so that we get a 4x4 transpose,
-    // which then lets us transpose 16 32x32 bit matrices afterwards.
-    write_shared_transposed(index, d4);
-    barrier();
-    d4 = read_shared_column(index);
-    d4 = bit_transpose_4x32(d4);
+    uvec2 range = uvec2(~0u, 0u);
+    for (int i = 0; i < num_inputs_128; i++)
+    {
+        uint input_base_index = gl_WorkGroupSize.x * i;
+        uint input_index = input_base_index + local_index;
 
-    outputs[index] = d4;
+        uvec4 d4;
+        if (input_index < num_inputs)
+            d4 = build_intersection_bitmask(base_index, inputs[input_index]);
+        else
+            d4 = uvec4(0u);
+
+        if (i > 0)
+        {
+            // Need another barrier to avoid write-after-read hazard in next iteration.
+            barrier();
+        }
+
+        // 128x128 bit matrix is computed here.
+        // Scatter write so that we get a 4x4 transpose,
+        // which then lets us transpose 16 32x32 bit matrices afterwards.
+        write_shared_transposed(local_index, d4);
+        barrier();
+        d4 = read_shared_column(local_index);
+        d4 = bit_transpose_4x32(d4);
+
+        uvec2 chunk_range = get_bitrange(int(input_base_index), d4);
+        range.x = min(chunk_range.x, range.x);
+        range.y = max(chunk_range.y, range.y);
+    }
+
+    if (global_index < num_ranges)
+        outputs[global_index] = range;
 }

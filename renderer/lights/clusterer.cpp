@@ -1215,6 +1215,9 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 
 	bindless.parameters.num_lights = local_count;
 	bindless.parameters.num_lights_32 = (bindless.parameters.num_lights + 31) / 32;
+	bindless.parameters.num_decals = 0;
+	bindless.parameters.num_decals_32 = (bindless.parameters.num_decals + 31) / 32;
+	bindless.parameters.decals_texture_offset = 0;
 
 	bindless.global_transforms.num_lights = global_count;
 	bindless.global_transforms.descriptor_offset = local_count;

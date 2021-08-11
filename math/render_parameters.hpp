@@ -116,6 +116,9 @@ struct ClustererParametersBindless
 
 	uint32_t num_lights;
 	uint32_t num_lights_32;
+	uint32_t num_decals;
+	uint32_t num_decals_32;
+	uint32_t decals_texture_offset;
 	uint32_t z_max_index;
 	float z_scale;
 };
@@ -158,7 +161,13 @@ struct ClustererParametersFogRegions
 };
 
 #define CLUSTERER_MAX_LIGHTS_BINDLESS 4096
+#define CLUSTERER_MAX_DECALS_BINDLESS 4096
 #define CLUSTERER_MAX_LIGHTS_GLOBAL 32
+
+struct BindlessDecalTransform
+{
+	vec4 world_to_texture[3];
+};
 
 struct ClustererBindlessTransforms
 {
@@ -166,6 +175,7 @@ struct ClustererBindlessTransforms
 	mat4 shadow[CLUSTERER_MAX_LIGHTS_BINDLESS];
 	mat4 model[CLUSTERER_MAX_LIGHTS_BINDLESS];
 	uint32_t type_mask[CLUSTERER_MAX_LIGHTS_BINDLESS / 32];
+	BindlessDecalTransform decals[CLUSTERER_MAX_DECALS_BINDLESS];
 };
 
 struct ClustererGlobalTransforms

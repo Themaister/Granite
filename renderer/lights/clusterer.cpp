@@ -50,8 +50,7 @@ LightClusterer::LightClusterer()
 	bindless.allocator.reserve_max_resources_per_pool(256, MaxLightsBindless +
 	                                                       MaxLightsGlobal +
 	                                                       MaxLightsVolume * 2 +
-	                                                       MaxFogRegions +
-	                                                       MaxDecals);
+	                                                       MaxFogRegions + MaxDecalsBindless);
 	bindless.allocator.set_bindless_resource_type(BindlessResourceType::ImageFP);
 }
 
@@ -124,6 +123,8 @@ void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
 	{
 		bindless.bitmask_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-bitmask"));
 		bindless.range_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-range"));
+		bindless.bitmask_buffer_decal = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-bitmask-decal"));
+		bindless.range_buffer_decal = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-range-decal"));
 		bindless.transforms_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-transforms"));
 
 		if (!ImplementationQuirks::get().clustering_force_cpu)
@@ -2493,11 +2494,14 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 		{
 			att.size = resolution_x * resolution_y * (MaxLightsBindless / 8);
 			pass.add_storage_output("cluster-bitmask", att);
+			att.size = resolution_x * resolution_y * (MaxDecalsBindless / 8);
+			pass.add_storage_output("cluster-bitmask-decal", att);
 		}
 
 		{
 			att.size = resolution_z * sizeof(ivec2);
 			pass.add_storage_output("cluster-range", att);
+			pass.add_storage_output("cluster-range-decal", att);
 		}
 
 		{

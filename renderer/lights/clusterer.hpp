@@ -102,7 +102,7 @@ public:
 		MaxLightsGlobal = CLUSTERER_MAX_LIGHTS_GLOBAL,
 		MaxLightsVolume = CLUSTERER_MAX_VOLUMES,
 		MaxFogRegions = CLUSTERER_MAX_FOG_REGIONS,
-		MaxDecals = CLUSTERER_MAX_DECALS_BINDLESS,
+		MaxDecalsBindless = CLUSTERER_MAX_DECALS_BINDLESS,
 		ClusterHierarchies = 8,
 		ClusterPrepassDownsample = 4
 	};
@@ -278,6 +278,8 @@ private:
 
 		const Vulkan::Buffer *bitmask_buffer = nullptr;
 		const Vulkan::Buffer *range_buffer = nullptr;
+		const Vulkan::Buffer *bitmask_buffer_decal = nullptr;
+		const Vulkan::Buffer *range_buffer_decal = nullptr;
 		const Vulkan::Buffer *transforms_buffer = nullptr;
 
 		const Vulkan::Buffer *transformed_spots = nullptr;

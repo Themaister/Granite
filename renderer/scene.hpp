@@ -65,6 +65,7 @@ public:
 	void gather_visible_positional_lights(const Frustum &frustum, PositionalLightList &list) const;
 	void gather_irradiance_affecting_positional_lights(PositionalLightList &list) const;
 	void gather_visible_volumetric_diffuse_lights(const Frustum &frustum, VolumetricDiffuseLightList &list) const;
+	void gather_visible_volumetric_decals(const Frustum &frustum, VolumetricDecalList &list) const;
 	void gather_visible_volumetric_fog_regions(const Frustum &frustum, VolumetricFogRegionList &list) const;
 
 	void gather_visible_opaque_renderables_subset(const Frustum &frustum, VisibilityList &list,
@@ -233,6 +234,7 @@ public:
 	Entity *create_light(const SceneFormats::LightInfo &light, Node *node);
 	Entity *create_volumetric_diffuse_light(uvec3 resolution, Node *node);
 	Entity *create_volumetric_fog_region(Node *node);
+	Entity *create_volumetric_decal(Node *node);
 	Entity *create_entity();
 	void destroy_entity(Entity *entity);
 	void queue_destroy_entity(Entity *entity);
@@ -311,6 +313,10 @@ private:
 			VolumetricFogRegionComponent,
 			CachedSpatialTransformTimestampComponent,
 			RenderInfoComponent> &volumetric_fog_regions;
+	const ComponentGroupVector<
+			VolumetricDecalComponent,
+			CachedSpatialTransformTimestampComponent,
+			RenderInfoComponent> &volumetric_decals;
 
 	const ComponentGroupVector<PerFrameUpdateComponent> &per_frame_updates;
 	const ComponentGroupVector<PerFrameUpdateTransformComponent,

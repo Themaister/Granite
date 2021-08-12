@@ -102,6 +102,7 @@ public:
 		MaxLightsGlobal = CLUSTERER_MAX_LIGHTS_GLOBAL,
 		MaxLightsVolume = CLUSTERER_MAX_VOLUMES,
 		MaxFogRegions = CLUSTERER_MAX_FOG_REGIONS,
+		MaxDecals = CLUSTERER_MAX_DECALS_BINDLESS,
 		ClusterHierarchies = 8,
 		ClusterPrepassDownsample = 4
 	};
@@ -142,6 +143,7 @@ private:
 	PositionalLightList light_sort_caches[MaxTasks];
 	VolumetricDiffuseLightList visible_diffuse_lights;
 	VolumetricFogRegionList visible_fog_regions;
+	VolumetricDecalList visible_decals;
 	PositionalLightList existing_global_lights;
 	RenderQueue internal_queue;
 

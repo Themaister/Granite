@@ -46,6 +46,7 @@ Scene::Scene()
 	  directional_lights(pool.get_component_group<DirectionalLightComponent, CachedTransformComponent>()),
 	  volumetric_diffuse_lights(pool.get_component_group<VolumetricDiffuseLightComponent, CachedSpatialTransformTimestampComponent, RenderInfoComponent>()),
 	  volumetric_fog_regions(pool.get_component_group<VolumetricFogRegionComponent, CachedSpatialTransformTimestampComponent, RenderInfoComponent>()),
+	  volumetric_decals(pool.get_component_group<VolumetricDecalComponent, CachedSpatialTransformTimestampComponent, RenderInfoComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
 	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, RenderInfoComponent>()),
 	  environments(pool.get_component_group<EnvironmentComponent>()),
@@ -409,6 +410,26 @@ void Scene::gather_visible_volumetric_diffuse_lights(const Frustum &frustum, Vol
 	}
 }
 
+void Scene::gather_visible_volumetric_decals(const Frustum &frustum, VolumetricDecalList &list) const
+{
+	for (auto &o : volumetric_decals)
+	{
+		auto *transform = get_component<RenderInfoComponent>(o);
+		auto *decal = get_component<VolumetricDecalComponent>(o);
+
+		if (decal->decal.get_decal_view())
+		{
+			if (transform->transform)
+			{
+				if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
+					list.push_back({ decal, transform });
+			}
+			else
+				list.push_back({ decal, transform });
+		}
+	}
+}
+
 void Scene::gather_visible_volumetric_fog_regions(const Frustum &frustum, VolumetricFogRegionList &list) const
 {
 	for (auto &o : volumetric_fog_regions)
@@ -719,6 +740,30 @@ void Scene::update_transform_listener_components()
 			r->timestamp = timestamp->last_timestamp;
 		}
 	}
+
+	for (auto &decal : volumetric_decals)
+	{
+		VolumetricDecalComponent *d;
+		CachedSpatialTransformTimestampComponent *timestamp;
+		RenderInfoComponent *transform;
+		tie(d, timestamp, transform) = decal;
+		if (timestamp->last_timestamp != d->timestamp)
+		{
+			// This is a somewhat expensive operation, so timestamp it.
+			auto texture_to_world = transform->transform->world_transform * translate(vec3(-0.5f));
+			auto world_to_texture = inverse(texture_to_world);
+
+			world_to_texture = transpose(world_to_texture);
+			texture_to_world = transpose(texture_to_world);
+
+			for (int i = 0; i < 3; i++)
+			{
+				d->world_to_texture[i] = world_to_texture[i];
+				d->texture_to_world[i] = texture_to_world[i];
+			}
+			d->timestamp = timestamp->last_timestamp;
+		}
+	}
 }
 
 void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
@@ -1014,6 +1059,28 @@ Entity *Scene::create_volumetric_fog_region(Node *node)
 
 	auto *bounded = entity->allocate_component<BoundedComponent>();
 	bounded->aabb = &VolumetricFogRegion::get_static_aabb();
+
+	if (node)
+	{
+		transform->transform = &node->cached_transform;
+		timestamp->current_timestamp = node->get_timestamp_pointer();
+	}
+	timestamp->cookie = transform_cookies.fetch_add(std::memory_order_relaxed);
+
+	return entity;
+}
+
+Entity *Scene::create_volumetric_decal(Node *node)
+{
+	Entity *entity = pool.create_entity();
+	entities.insert_front(entity);
+
+	entity->allocate_component<VolumetricDecalComponent>();
+	auto *transform = entity->allocate_component<RenderInfoComponent>();
+	auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
+
+	auto *bounded = entity->allocate_component<BoundedComponent>();
+	bounded->aabb = &VolumetricDecal::get_static_aabb();
 
 	if (node)
 	{

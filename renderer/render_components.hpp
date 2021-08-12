@@ -32,6 +32,7 @@
 #include "camera.hpp"
 #include "lights/lights.hpp"
 #include "lights/volumetric_fog_region.hpp"
+#include "lights/decal_volume.hpp"
 
 namespace Granite
 {
@@ -246,6 +247,15 @@ struct VolumetricFogRegionComponent : ComponentBase
 	vec4 world_to_texture[3];
 	vec4 world_lo;
 	vec4 world_hi;
+	uint32_t timestamp = 0;
+};
+
+struct VolumetricDecalComponent : ComponentBase
+{
+	GRANITE_COMPONENT_TYPE_DECL(VolumetricDecalComponent)
+	VolumetricDecal decal;
+	vec4 world_to_texture[3];
+	vec4 texture_to_world[3];
 	uint32_t timestamp = 0;
 };
 

@@ -122,9 +122,8 @@ void RendererSuite::update_mesh_rendering_options(const RenderContext &context, 
 	else if (config.pcf_width == 3)
 		pcf_flags |= Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT;
 
-	get_renderer(Type::Deferred).set_mesh_renderer_options(pcf_flags);
-
 	auto opts = Renderer::get_mesh_renderer_options_from_lighting(*context.get_lighting_parameters());
+	get_renderer(Type::Deferred).set_mesh_renderer_options(pcf_flags | (opts & Renderer::POSITIONAL_DECALS_BIT));
 	get_renderer(Type::ForwardOpaque).set_mesh_renderer_options(
 			opts | pcf_flags | (config.forward_z_prepass ? Renderer::ALPHA_TEST_DISABLE_BIT : 0));
 	opts &= ~Renderer::AMBIENT_OCCLUSION_BIT;
@@ -465,7 +464,8 @@ static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightCluste
 void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
 {
 	auto *lighting = context.get_lighting_parameters();
-	assert(lighting);
+	if (!lighting)
+		return;
 
 	auto *combined = cmd.allocate_typed_constant_data<CombinedRenderParameters>(0, BINDING_GLOBAL_RENDER_PARAMETERS, 1);
 	memset(combined, 0, sizeof(*combined));
@@ -535,8 +535,7 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	else
 	{
 		bind_global_parameters(cmd, context);
-		if (type == RendererType::GeneralForward)
-			bind_lighting_parameters(cmd, context);
+		bind_lighting_parameters(cmd, context);
 	}
 
 	cmd.set_opaque_state();

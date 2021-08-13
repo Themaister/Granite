@@ -1058,6 +1058,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			ppNext = &ext.sync2_features.pNext;
 		}
 
+		// Validation layers don't fully support present_id/wait yet.
+		// Ignore this extension for now.
+#ifndef VULKAN_DEBUG
 		for (unsigned i = 0; i < num_required_device_extensions; i++)
 		{
 			if (strcmp(required_device_extensions[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
@@ -1079,6 +1082,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 				break;
 			}
 		}
+#endif
 	}
 
 	if (ext.supports_vulkan_11_device && ext.supports_vulkan_11_instance)

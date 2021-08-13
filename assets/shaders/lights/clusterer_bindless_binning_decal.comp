@@ -1,0 +1,143 @@
+#version 450
+
+#if SUBGROUPS
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+layout(local_size_x_id = 0) in;
+#else
+layout(local_size_x = 32) in;
+#endif
+
+#define CLUSTERER_BINDLESS
+#include "clusterer_data.h"
+
+layout(std140, set = 1, binding = 0) uniform ClustererParameters
+{
+    ClustererParametersBindless parameters;
+};
+
+layout(std140, set = 2, binding = 0) readonly buffer Transforms
+{
+    mat4 mvps[];
+};
+
+layout(std430, set = 0, binding = 0) writeonly buffer Bitmask
+{
+    uint bitmask[];
+};
+
+bool test_decal(vec2 uv, vec2 uv_stride, vec4 screen_bb)
+{
+    return all(bvec4(greaterThan(uv + uv_stride, screen_bb.xy), lessThan(uv, screen_bb.zw)));
+}
+
+#if !SUBGROUPS
+shared uint shared_mask;
+#endif
+
+vec4 compute_decal_screen_bb(uint decal_index)
+{
+    mat4 transform = mvps[decal_index];
+    vec4 bb = vec4(1.0, 1.0, -1.0, -1.0);
+    float lo_w = 1.0;
+    float hi_w = -1.0;
+
+#define update_bb(clip) { \
+    lo_w = min(lo_w, clip.w); \
+    hi_w = max(hi_w, clip.w); \
+    vec2 projected = clip.xy / clip.w; \
+    bb.xy = min(bb.xy, projected); \
+    bb.zw = max(bb.zw, projected); \
+}
+
+    vec4 corner0 = transform * vec4(-0.5, -0.5, -0.5, 1.0); update_bb(corner0);
+    vec4 corner1 = corner0 + transform[0]; update_bb(corner1);
+    vec4 corner2 = corner0 + transform[1]; update_bb(corner2);
+    vec4 corner3 = corner1 + transform[1]; update_bb(corner3);
+    vec4 corner4 = corner0 + transform[2]; update_bb(corner4);
+    vec4 corner5 = corner1 + transform[2]; update_bb(corner5);
+    vec4 corner6 = corner2 + transform[2]; update_bb(corner6);
+    vec4 corner7 = corner3 + transform[2]; update_bb(corner7);
+
+    if (hi_w <= 0.0)
+        bb = vec4(-10.0);
+    else if (lo_w <= 0.0)
+        bb = vec4(-1.0, -1.0, 1.0, 1.0);
+
+    return bb;
+}
+
+void main()
+{
+#if SUBGROUPS
+    uvec2 TILE_SIZE = uvec2(8u, gl_SubgroupSize >> 3u);
+    uint local_index = gl_SubgroupInvocationID;
+
+    uvec2 tile = gl_WorkGroupID.yz;
+    tile.y = tile.y * gl_NumSubgroups + gl_SubgroupID;
+
+    uint chunk_index = gl_WorkGroupID.x;
+
+    vec2 tile_uv = 2.0 * vec2(tile * TILE_SIZE) * parameters.inv_resolution_xy - 1.0;
+    vec2 tile_uv_stride = (2.0 * vec2(TILE_SIZE)) * parameters.inv_resolution_xy;
+
+    uint decal_index = 32u * chunk_index + local_index;
+
+    vec4 screen_bb = vec4(1.0, 1.0, -1.0, -1.0);
+    if (decal_index < parameters.num_decals)
+        screen_bb = compute_decal_screen_bb(decal_index);
+
+    bool passed;
+    if (local_index < 32u)
+        passed = test_decal(tile_uv, tile_uv_stride, screen_bb);
+    else
+        passed = false;
+
+    uint ballot = subgroupBallot(passed).x;
+
+    uvec2 pixel = tile * TILE_SIZE + uvec2(local_index & 7u, local_index >> 3u);
+    vec2 uv = 2.0 * vec2(pixel) * parameters.inv_resolution_xy - 1.0;
+    vec2 uv_stride = 2.0 * parameters.inv_resolution_xy;
+    uint pixel_mask = 0u;
+
+    while (ballot != 0u)
+    {
+        int lsb = findLSB(ballot);
+        ballot &= ~uint(1 << lsb);
+        vec4 scalar_screen_bb = subgroupShuffle(screen_bb, lsb);
+        passed = test_decal(uv, uv_stride, scalar_screen_bb);
+        if (passed)
+            pixel_mask |= uint(1 << lsb);
+    }
+
+    uint linear_coord = pixel.y * parameters.resolution_xy.x + pixel.x;
+    uint base_index = linear_coord * parameters.num_decals_32;
+    bitmask[base_index + chunk_index] = pixel_mask;
+#else
+    uvec2 pixel = gl_WorkGroupID.yz;
+    uint linear_coord = pixel.y * parameters.resolution_xy.x + pixel.x;
+    uint base_index = linear_coord * parameters.num_decals_32;
+    uint chunk_index = gl_WorkGroupID.x;
+    uint local_index = gl_LocalInvocationIndex;
+
+    if (local_index == 0u)
+        shared_mask = 0u;
+
+    vec2 uv = 2.0 * vec2(pixel) * parameters.inv_resolution_xy - 1.0;
+    vec2 uv_stride = 2.0 * parameters.inv_resolution_xy;
+
+    barrier();
+
+    uint decal_index = chunk_index * 32u + local_index;
+    if (decal_index < parameters.num_decals)
+    {
+        vec4 screen_bb = compute_decal_screen_bb(decal_index);
+        if (test_decal(uv, uv_stride, screen_bb))
+            atomicOr(shared_mask, 1u << local_index);
+    }
+
+    barrier();
+    if (local_index == 0u)
+        bitmask[base_index + chunk_index] = shared_mask;
+#endif
+}

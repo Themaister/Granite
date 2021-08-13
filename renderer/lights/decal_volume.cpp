@@ -22,6 +22,7 @@
 
 #include "decal_volume.hpp"
 #include "device.hpp"
+#include <random>
 
 namespace Granite
 {
@@ -30,14 +31,9 @@ VolumetricDecal::VolumetricDecal()
 	EVENT_MANAGER_REGISTER_LATCH(VolumetricDecal, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
 }
 
-void VolumetricDecal::set_decal(Vulkan::ImageHandle handle_)
-{
-	handle = std::move(handle_);
-}
-
 const Vulkan::ImageView *VolumetricDecal::get_decal_view() const
 {
-	return handle ? &handle->get_view() : nullptr;
+	return tex ? &tex->get_image()->get_view() : nullptr;
 }
 
 const AABB &VolumetricDecal::get_static_aabb()
@@ -48,15 +44,11 @@ const AABB &VolumetricDecal::get_static_aabb()
 
 void VolumetricDecal::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 {
-	handle.reset();
+	tex = nullptr;
 }
 
 void VolumetricDecal::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 {
-	auto info = Vulkan::ImageCreateInfo::immutable_3d_image(1, 1, 1, VK_FORMAT_R8_UNORM);
-	const uint8_t one = 0x0f;
-	Vulkan::ImageInitialData initial = { &one, 0, 0 };
-	handle = e.get_device().create_image(info, &initial);
+	tex = e.get_device().get_texture_manager().request_texture("builtin://textures/decal.png", VK_FORMAT_R8G8B8A8_SRGB);
 }
-
 }

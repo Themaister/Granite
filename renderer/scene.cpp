@@ -750,7 +750,7 @@ void Scene::update_transform_listener_components()
 		if (timestamp->last_timestamp != d->timestamp)
 		{
 			// This is a somewhat expensive operation, so timestamp it.
-			auto texture_to_world = transform->transform->world_transform * translate(vec3(-0.5f));
+			auto texture_to_world = transform->transform->world_transform;
 			auto world_to_texture = inverse(texture_to_world);
 
 			world_to_texture = transpose(world_to_texture);

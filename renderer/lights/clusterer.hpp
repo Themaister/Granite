@@ -78,6 +78,8 @@ public:
 	const Vulkan::Buffer *get_cluster_transform_buffer() const;
 	const Vulkan::Buffer *get_cluster_bitmask_buffer() const;
 	const Vulkan::Buffer *get_cluster_range_buffer() const;
+	const Vulkan::Buffer *get_cluster_bitmask_decal_buffer() const;
+	const Vulkan::Buffer *get_cluster_range_decal_buffer() const;
 	VkDescriptorSet get_cluster_bindless_set() const;
 	bool clusterer_is_bindless() const;
 
@@ -287,7 +289,7 @@ private:
 
 		VkDescriptorSet desc_set = VK_NULL_HANDLE;
 
-		std::vector<uvec2> light_index_range;
+		std::vector<uvec2> volume_index_range;
 
 		std::vector<VkImageMemoryBarrier> shadow_barriers;
 		std::vector<const Vulkan::Image *> shadow_images;
@@ -299,12 +301,18 @@ private:
 	void update_bindless_data(Vulkan::CommandBuffer &cmd);
 	void update_bindless_range_buffer_cpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd);
+	void update_bindless_range_buffer_decal_gpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_cpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd);
+	void update_bindless_mask_buffer_decal_gpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_spot(uint32_t *masks, unsigned index);
 	void update_bindless_mask_buffer_point(uint32_t *masks, unsigned index);
 	void begin_bindless_barriers(Vulkan::CommandBuffer &cmd);
 	void end_bindless_barriers(Vulkan::CommandBuffer &cmd);
+
+	void update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd, const Vulkan::Buffer &range_buffer,
+	                                      const std::vector<uvec2> &index_range);
+	uvec2 compute_uint_range(vec2 range) const;
 
 	template <unsigned Faces, unsigned MaxTasks>
 	struct ShadowTaskContext : ShadowTaskBase

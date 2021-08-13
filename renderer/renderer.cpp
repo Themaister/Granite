@@ -289,6 +289,8 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 		global_defines.emplace_back("CLUSTER_LIST", 1);
 	if (flags & POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT)
 		global_defines.emplace_back("CLUSTERER_BINDLESS", 1);
+	if (flags & POSITIONAL_DECALS_BIT)
+		global_defines.emplace_back("CLUSTERER_DECALS", 1);
 
 	if (flags & SHADOW_VSM_BIT)
 		global_defines.emplace_back("DIRECTIONAL_SHADOW_VSM", 1);
@@ -348,7 +350,11 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 		if (lighting.cluster->get_cluster_list_buffer())
 			flags |= POSITIONAL_LIGHT_CLUSTER_LIST_BIT;
 		if (lighting.cluster->clusterer_is_bindless())
+		{
 			flags |= POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT;
+			if (lighting.cluster->get_cluster_bitmask_decal_buffer() && lighting.cluster->get_cluster_range_decal_buffer())
+				flags |= POSITIONAL_DECALS_BIT;
+		}
 
 		if (lighting.cluster->clusterer_has_volumetric_diffuse())
 			flags |= VOLUMETRIC_DIFFUSE_ENABLE_BIT;
@@ -433,6 +439,9 @@ static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const Li
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_TRANSFORM, *cluster.get_cluster_transform_buffer());
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_BITMASK, *cluster.get_cluster_bitmask_buffer());
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_RANGE, *cluster.get_cluster_range_buffer());
+	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_BITMASK_DECAL, *cluster.get_cluster_bitmask_decal_buffer());
+	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_RANGE_DECAL, *cluster.get_cluster_range_decal_buffer());
+
 	if (cluster.get_cluster_bindless_set() != VK_NULL_HANDLE)
 	{
 		cmd.set_bindless(1, cluster.get_cluster_bindless_set());

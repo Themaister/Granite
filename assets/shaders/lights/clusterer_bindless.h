@@ -1,7 +1,8 @@
 #ifndef CLUSTERER_BINDLESS_H_
 #define CLUSTERER_BINDLESS_H_
 
-#include "../inc/global_bindings.h"
+#include "clusterer_bindless_buffers.h"
+
 #define SPOT_LIGHT_SHADOW_ATLAS_SET 1
 #define POINT_LIGHT_SHADOW_ATLAS_SET 1
 #define VOLUMETRIC_DIFFUSE_ATLAS_SET 1
@@ -9,16 +10,6 @@
 #ifdef VOLUMETRIC_DIFFUSE
 #include "volumetric_diffuse.h"
 #endif
-
-layout(std140, set = 0, binding = BINDING_GLOBAL_CLUSTERER_PARAMETERS) uniform ClusterParameters
-{
-	ClustererParametersBindless cluster;
-};
-
-layout(std430, set = 0, binding = BINDING_GLOBAL_CLUSTER_TRANSFORM) readonly buffer ClustererData
-{
-	ClustererBindlessTransforms cluster_transforms;
-};
 
 layout(std430, set = 0, binding = BINDING_GLOBAL_CLUSTER_BITMASK) readonly buffer ClustererBitmasks
 {
@@ -33,18 +24,6 @@ layout(std430, set = 0, binding = BINDING_GLOBAL_CLUSTER_RANGE) readonly buffer 
 #include "spot.h"
 #include "point.h"
 //#define CLUSTERING_DEBUG
-
-uint cluster_mask_range(uint mask, uvec2 range, uint start_index)
-{
-	range.x = clamp(range.x, start_index, start_index + 32u);
-	range.y = clamp(range.y + 1u, range.x, start_index + 32u);
-
-	uint num_bits = range.y - range.x;
-	uint range_mask = num_bits == 32 ?
-		0xffffffffu :
-		((1u << num_bits) - 1u) << (range.x - start_index);
-	return mask & uint(range_mask);
-}
 
 #if defined(SUBGROUP_FRAGMENT)
 mediump vec3 compute_cluster_light(

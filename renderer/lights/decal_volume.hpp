@@ -23,7 +23,7 @@
 #pragma once
 
 #include "event.hpp"
-#include "image.hpp"
+#include "texture_manager.hpp"
 #include "application_wsi_events.hpp"
 #include "aabb.hpp"
 
@@ -34,14 +34,12 @@ class VolumetricDecal : public EventHandler
 public:
 	VolumetricDecal();
 
-	void set_decal(Vulkan::ImageHandle handle);
 	const Vulkan::ImageView *get_decal_view() const;
-
 	static const AABB &get_static_aabb();
 
 private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
-	Vulkan::ImageHandle handle;
+	Vulkan::Texture *tex = nullptr;
 };
 }

@@ -239,6 +239,21 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		scene.get_root_node()->add_child(std::move(node));
 	}
 
+	for (int z = -8; z <= 8; z++)
+	{
+		for (int x = -8; x <= 8; x++)
+		{
+			auto &scene = scene_loader.get_scene();
+			auto node = scene.create_node();
+			node->transform.scale = vec3(1.0f);
+			node->transform.translation = vec3(2.0f * x, 0.4f, 2.0f * z);
+			node->transform.rotation = angleAxis(half_pi<float>(), vec3(1.0f, 0.0f, 0.0f));
+			node->invalidate_cached_transform();
+			scene.create_volumetric_decal(node.get());
+			scene.get_root_node()->add_child(std::move(node));
+		}
+	}
+
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);
 	fallback_depth_context.set_lighting_parameters(&fallback_lighting);

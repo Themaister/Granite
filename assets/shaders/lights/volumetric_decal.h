@@ -20,7 +20,7 @@ layout(std430, set = 0, binding = BINDING_GLOBAL_CLUSTER_RANGE_DECAL) readonly b
 };
 
 layout(set = 1, binding = 0) uniform texture2D TexDecals[];
-#include "linear_clamp_sampler.h"
+#include "linear_geometry_sampler.h"
 #include "lighting_data.h"
 
 void apply_volumetric_decals(inout mediump vec4 base_color,
@@ -70,7 +70,7 @@ void apply_volumetric_decals(inout mediump vec4 base_color,
 			mediump vec4 decal_color;
 			// Ideally, quad any.
 			if (subgroupAny(in_range))
-				decal_color = texture(nonuniformEXT(sampler2D(TexDecals[cluster.decals_texture_offset + index], LinearClampSampler)), uvw.xy + 0.5);
+				decal_color = texture(nonuniformEXT(sampler2D(TexDecals[cluster.decals_texture_offset + index], LinearGeometrySampler)), uvw.xy + 0.5);
 
 			if (in_range)
 				base_color = mix(base_color, decal_color, decal_color.a);

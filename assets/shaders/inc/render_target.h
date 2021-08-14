@@ -5,6 +5,10 @@
 #define RENDERER_DEFERRED
 #endif
 
+#ifdef CLUSTERER_DECALS
+#include "../lights/volumetric_decal.h"
+#endif
+
 #if defined(RENDERER_DEFERRED)
 #if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE
 layout(location = 0) out mediump vec3 Emissive;
@@ -17,6 +21,10 @@ void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump 
         mediump float metallic, mediump float roughness,
         mediump float ambient, vec3 pos)
 {
+#ifdef CLUSTERER_DECALS
+	apply_volumetric_decals(base_color, pos);
+#endif
+
 #if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE
     Emissive = emissive;
 #endif
@@ -34,6 +42,10 @@ layout(location = 0) out mediump vec4 Color;
 void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump vec3 normal,
         mediump float metallic, mediump float roughness, mediump float ambient, vec3 pos)
 {
+#ifdef CLUSTERER_DECALS
+	apply_volumetric_decals(base_color, pos);
+#endif
+
 #ifdef AMBIENT_OCCLUSION
     ambient *= textureLod(uAmbientOcclusion, gl_FragCoord.xy * resolution.inv_resolution, 0.0).x;
 #endif

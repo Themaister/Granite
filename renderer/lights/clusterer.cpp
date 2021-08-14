@@ -50,7 +50,7 @@ LightClusterer::LightClusterer()
 	bindless.allocator.reserve_max_resources_per_pool(256, MaxLightsBindless +
 	                                                       MaxLightsGlobal +
 	                                                       MaxLightsVolume * 2 +
-	                                                       MaxFogRegions);
+	                                                       MaxFogRegions + MaxDecalsBindless);
 	bindless.allocator.set_bindless_resource_type(BindlessResourceType::ImageFP);
 }
 
@@ -123,6 +123,8 @@ void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
 	{
 		bindless.bitmask_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-bitmask"));
 		bindless.range_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-range"));
+		bindless.bitmask_buffer_decal = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-bitmask-decal"));
+		bindless.range_buffer_decal = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-range-decal"));
 		bindless.transforms_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-transforms"));
 
 		if (!ImplementationQuirks::get().clustering_force_cpu)
@@ -197,6 +199,26 @@ const Vulkan::Buffer *LightClusterer::get_cluster_bitmask_buffer() const
 const Vulkan::Buffer *LightClusterer::get_cluster_range_buffer() const
 {
 	return bindless.range_buffer;
+}
+
+const Vulkan::Buffer *LightClusterer::get_cluster_bitmask_decal_buffer() const
+{
+	return bindless.bitmask_buffer_decal;
+}
+
+const Vulkan::Buffer *LightClusterer::get_cluster_range_decal_buffer() const
+{
+	return bindless.range_buffer_decal;
+}
+
+bool LightClusterer::clusterer_has_volumetric_decals() const
+{
+	return enable_volumetric_decals;
+}
+
+void LightClusterer::set_enable_volumetric_decals(bool enable)
+{
+	enable_volumetric_decals = enable;
 }
 
 VkDescriptorSet LightClusterer::get_cluster_bindless_set() const
@@ -1215,6 +1237,7 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 
 	bindless.parameters.num_lights = local_count;
 	bindless.parameters.num_lights_32 = (bindless.parameters.num_lights + 31) / 32;
+	bindless.parameters.decals_texture_offset = 0;
 
 	bindless.global_transforms.num_lights = global_count;
 	bindless.global_transforms.descriptor_offset = local_count;
@@ -1292,6 +1315,19 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 		region.world_lo = fog.region->world_lo;
 		region.world_hi = fog.region->world_hi;
 	}
+
+	bindless.parameters.num_decals = std::min<uint32_t>(visible_decals.size(), CLUSTERER_MAX_DECALS_BINDLESS);
+	bindless.parameters.num_decals_32 = (bindless.parameters.num_decals + 31) / 32;
+	if (enable_volumetric_decals)
+	{
+		for (uint32_t i = 0; i < bindless.parameters.num_decals; i++)
+		{
+			auto &decal = visible_decals[i];
+			auto &region = bindless.transforms.decals[i];
+			for (unsigned j = 0; j < 3; j++)
+				region.world_to_texture[j] = decal.decal->world_to_texture[j];
+		}
+	}
 }
 
 const ClustererParametersVolumetric &LightClusterer::get_cluster_volumetric_diffuse_data() const
@@ -1359,95 +1395,107 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 		group.enqueue_task([this, &context_]() {
 			bindless.shadow_task_handles.clear();
 			refresh_bindless_prepare(context_);
-			bindless.shadow_task_handles.reserve(bindless.parameters.num_lights + bindless.global_transforms.num_lights);
+			if (enable_shadows)
+				bindless.shadow_task_handles.reserve(bindless.parameters.num_lights + bindless.global_transforms.num_lights);
 		});
 	}
 
 	if (enable_shadows)
 	{
-		{
-			auto &group = composer.begin_pipeline_stage();
-			group.set_desc("clusterer-bindless-setup");
-			group.enqueue_task([this, gather_indirect_task = composer.get_deferred_enqueue_handle(), &thread_group]() mutable {
-				unsigned count = bindless.parameters.num_lights + bindless.global_transforms.num_lights;
+		auto &group = composer.begin_pipeline_stage();
+		group.set_desc("clusterer-bindless-setup");
+		group.enqueue_task([this, gather_indirect_task = composer.get_deferred_enqueue_handle(), &thread_group]() mutable {
+			unsigned count = bindless.parameters.num_lights + bindless.global_transforms.num_lights;
 
-				// Gather renderables and compute the visiblity hash.
-				for (unsigned i = 0; i < count; i++)
+			// Gather renderables and compute the visiblity hash.
+			for (unsigned i = 0; i < count; i++)
+			{
+				// Check for duplicates. Could probably just use a hashmap as well I guess ...
+				// We know there can only be duplicates across local / global sets, not internally.
+				bool requires_rendering = true;
+				if (i < bindless.parameters.num_lights)
 				{
-					// Check for duplicates. Could probably just use a hashmap as well I guess ...
-					// We know there can only be duplicates across local / global sets, not internally.
-					bool requires_rendering = true;
-					if (i < bindless.parameters.num_lights)
-					{
-						auto *global_handles = bindless.handles + bindless.parameters.num_lights;
-						auto itr = std::find_if(global_handles, global_handles + bindless.global_transforms.num_lights,
-						                        [light = bindless.handles[i]](const PositionalLight *global_light) {
-							                        return light == global_light;
-						                        });
-						requires_rendering = itr == global_handles + bindless.global_transforms.num_lights;
-					}
-
-					TaskComposer per_light_composer(thread_group);
-					if (bindless_light_is_point(i))
-					{
-						bindless.shadow_task_handles.emplace_back(
-								gather_bindless_point_shadow_renderables(i, per_light_composer, requires_rendering));
-					}
-					else
-					{
-						bindless.shadow_task_handles.emplace_back(
-								gather_bindless_spot_shadow_renderables(i, per_light_composer, requires_rendering));
-					}
-					per_light_composer.add_outgoing_dependency(*gather_indirect_task);
+					auto *global_handles = bindless.handles + bindless.parameters.num_lights;
+					auto itr = std::find_if(global_handles, global_handles + bindless.global_transforms.num_lights,
+											[light = bindless.handles[i]](const PositionalLight *global_light) {
+												return light == global_light;
+											});
+					requires_rendering = itr == global_handles + bindless.global_transforms.num_lights;
 				}
-			});
-		}
 
-		// Submit barriers from UNDEFINED -> COLOR/DEPTH.
-		{
-			auto &group = composer.begin_pipeline_stage();
-
-			group.enqueue_task([this, &device, indirect_task = composer.get_deferred_enqueue_handle(), &thread_group]() mutable {
-				auto cmd = device.request_command_buffer();
-				cmd->begin_region("shadow-map-begin-barriers");
-				begin_bindless_barriers(*cmd);
-				cmd->end_region();
-				device.submit(cmd);
-
-				unsigned count = bindless.parameters.num_lights + bindless.global_transforms.num_lights;
-
-				// Run all shadow map renderings in parallel in separate composers.
-				for (unsigned i = 0; i < count; i++)
+				TaskComposer per_light_composer(thread_group);
+				if (bindless_light_is_point(i))
 				{
-					if (!bindless.shadow_images[i])
-						continue;
-
-					TaskComposer per_light_composer(thread_group);
-					if (bindless_light_is_point(i))
-						render_bindless_point(device, i, per_light_composer);
-					else
-						render_bindless_spot(device, i, per_light_composer);
-					per_light_composer.add_outgoing_dependency(*indirect_task);
+					bindless.shadow_task_handles.emplace_back(
+							gather_bindless_point_shadow_renderables(i, per_light_composer, requires_rendering));
 				}
-			});
-		}
+				else
+				{
+					bindless.shadow_task_handles.emplace_back(
+							gather_bindless_spot_shadow_renderables(i, per_light_composer, requires_rendering));
+				}
+				per_light_composer.add_outgoing_dependency(*gather_indirect_task);
+			}
+		});
+	}
 
-		// Submit barriers from COLOR/DEPTH -> SHADER_READ_ONLY
-		{
-			auto &group = composer.begin_pipeline_stage();
-			group.enqueue_task([this, &device]() {
+	// Submit barriers from UNDEFINED -> COLOR/DEPTH.
+	if (enable_shadows)
+	{
+		auto &group = composer.begin_pipeline_stage();
+
+		group.enqueue_task([this, &device, indirect_task = composer.get_deferred_enqueue_handle(), &thread_group]() mutable {
+			auto cmd = device.request_command_buffer();
+			cmd->begin_region("shadow-map-begin-barriers");
+			begin_bindless_barriers(*cmd);
+			cmd->end_region();
+			device.submit(cmd);
+
+			unsigned count = bindless.parameters.num_lights + bindless.global_transforms.num_lights;
+
+			// Run all shadow map renderings in parallel in separate composers.
+			for (unsigned i = 0; i < count; i++)
+			{
+				if (!bindless.shadow_images[i])
+					continue;
+
+				TaskComposer per_light_composer(thread_group);
+				if (bindless_light_is_point(i))
+					render_bindless_point(device, i, per_light_composer);
+				else
+					render_bindless_spot(device, i, per_light_composer);
+				per_light_composer.add_outgoing_dependency(*indirect_task);
+			}
+		});
+	}
+
+	// Submit barriers from COLOR/DEPTH -> SHADER_READ_ONLY
+	{
+		auto &group = composer.begin_pipeline_stage();
+		group.enqueue_task([this, &device]() {
+			if (enable_shadows)
+			{
 				auto cmd = device.request_command_buffer();
 				cmd->begin_region("shadow-map-end-barriers");
 				end_bindless_barriers(*cmd);
 				cmd->end_region();
 
-				acquire_semaphore.reset();
 				device.submit(cmd, nullptr, 1, &acquire_semaphore);
+			}
 
-				update_bindless_descriptors(device);
-			});
-		}
+			acquire_semaphore.reset();
+			update_bindless_descriptors(device);
+		});
 	}
+}
+
+static void sort_decals(VolumetricDecalList &list, const vec3 &front)
+{
+	std::sort(list.begin(), list.end(), [&front](const VolumetricDecalInfo &a, const VolumetricDecalInfo &b) -> bool {
+		float a_dist = dot(front, a.transform->world_aabb.get_center());
+		float b_dist = dot(front, b.transform->world_aabb.get_center());
+		return a_dist < b_dist;
+	});
 }
 
 void LightClusterer::refresh(const RenderContext &context_, TaskComposer &incoming_composer)
@@ -1468,6 +1516,7 @@ void LightClusterer::refresh(const RenderContext &context_, TaskComposer &incomi
 	composer.get_group().enqueue_task([this, &context_]() {
 		visible_diffuse_lights.clear();
 		visible_fog_regions.clear();
+		visible_decals.clear();
 		existing_global_lights.clear();
 
 		if (enable_volumetric_diffuse)
@@ -1481,6 +1530,12 @@ void LightClusterer::refresh(const RenderContext &context_, TaskComposer &incomi
 		{
 			scene->gather_visible_volumetric_fog_regions(context_.get_visibility_frustum(),
 			                                             visible_fog_regions);
+		}
+
+		if (enable_volumetric_decals)
+		{
+			scene->gather_visible_volumetric_decals(context_.get_visibility_frustum(), visible_decals);
+			sort_decals(visible_decals, context_.get_render_parameters().camera_front);
 		}
 	});
 
@@ -1578,6 +1633,13 @@ void LightClusterer::update_bindless_data(Vulkan::CommandBuffer &cmd)
 	                         bindless.parameters.num_lights_32 * sizeof(bindless.transforms.type_mask[0])),
 	       bindless.transforms.type_mask,
 	       bindless.parameters.num_lights_32 * sizeof(bindless.transforms.type_mask[0]));
+
+	if (enable_volumetric_decals)
+	{
+		memcpy(cmd.update_buffer(*bindless.transforms_buffer, offsetof(ClustererBindlessTransforms, decals),
+		                         bindless.parameters.num_decals * sizeof(bindless.transforms.decals[0])),
+		       bindless.transforms.decals, bindless.parameters.num_decals * sizeof(bindless.transforms.decals[0]));
+	}
 }
 
 void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
@@ -1615,6 +1677,13 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 	for (unsigned i = 0; i < bindless.fog_regions.num_regions; i++)
 		bindless.allocator.push(*visible_fog_regions[i].region->region.get_volume_view());
 
+	if (enable_volumetric_decals)
+	{
+		bindless.parameters.decals_texture_offset = bindless.allocator.get_next_offset();
+		for (unsigned i = 0; i < bindless.parameters.num_decals; i++)
+			bindless.allocator.push(*visible_decals[i].decal->decal.get_decal_view());
+	}
+
 	bindless.desc_set = bindless.allocator.commit(device);
 }
 
@@ -1629,59 +1698,40 @@ bool LightClusterer::bindless_light_is_point(unsigned index) const
 		return (bindless.transforms.type_mask[index >> 5] & (1u << (index & 31))) != 0;
 }
 
-void LightClusterer::update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd)
+uvec2 LightClusterer::compute_uint_range(vec2 range) const
 {
-	uint32_t count = bindless.parameters.num_lights;
-	bindless.light_index_range.resize(count);
+	range = range * (float(resolution_z) / context->get_render_parameters().z_far);
+	if (range.y < 0.0f)
+		return uvec2(0xffffffffu, 0u);
+	range.x = muglm::max(range.x, 0.0f);
 
-	const auto compute_uint_range = [&](vec2 range) -> uvec2 {
-		range = range * (float(resolution_z) / context->get_render_parameters().z_far);
-		if (range.y < 0.0f)
-			return uvec2(0xffffffffu, 0u);
-		range.x = muglm::max(range.x, 0.0f);
+	uvec2 urange(range);
+	urange.y = muglm::min(urange.y, resolution_z - 1);
+	return urange;
+}
 
-		uvec2 urange(range);
-		urange.y = muglm::min(urange.y, resolution_z - 1);
-		return urange;
-	};
-
-	for (unsigned i = 0; i < count; i++)
-	{
-		vec2 range;
-		if (bindless_light_is_point(i))
-		{
-			range = point_light_z_range(*context, bindless.transforms.lights[i].position,
-			                            1.0f / bindless.transforms.lights[i].inv_radius);
-		}
-		else
-			range = spot_light_z_range(*context, bindless.transforms.model[i]);
-
-		bindless.light_index_range[i] = compute_uint_range(range);
-	}
-
-	// Still need to run this algorithm to make sure we get a cleared out Z-range buffer.
-	if (bindless.light_index_range.empty())
-		bindless.light_index_range.push_back(uvec2(~0u, 0u));
-
+void LightClusterer::update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd, const Vulkan::Buffer &range_buffer,
+                                                      const std::vector<uvec2> &index_range)
+{
 	BufferCreateInfo info;
 	info.domain = BufferDomain::LinkedDeviceHost;
 	info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	info.size = bindless.light_index_range.size() * sizeof(uvec2);
-	auto buffer = cmd.get_device().create_buffer(info, bindless.light_index_range.data());
+	info.size = index_range.size() * sizeof(uvec2);
+	auto buffer = cmd.get_device().create_buffer(info, index_range.data());
 
 	cmd.set_storage_buffer(0, 0, *buffer);
-	cmd.set_storage_buffer(0, 1, *bindless.range_buffer);
+	cmd.set_storage_buffer(0, 1, range_buffer);
 
 	assert((resolution_z & 63) == 0);
 
 	struct Registers
 	{
-		uint32_t num_lights;
-		uint32_t num_lights_128;
+		uint32_t num_volumes;
+		uint32_t num_volumes_128;
 		uint32_t num_ranges;
 	} push;
-	push.num_lights = bindless.parameters.num_lights;
-	push.num_lights_128 = (push.num_lights + 127) / 128;
+	push.num_volumes = uint32_t(index_range.size());
+	push.num_volumes_128 = (push.num_volumes + 127) / 128;
 	push.num_ranges = resolution_z;
 	cmd.push_constants(&push, 0, sizeof(push));
 
@@ -1705,12 +1755,81 @@ void LightClusterer::update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd
 	}
 }
 
+void LightClusterer::update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd)
+{
+	uint32_t count = bindless.parameters.num_lights;
+	bindless.volume_index_range.resize(count);
+
+	for (unsigned i = 0; i < count; i++)
+	{
+		vec2 range;
+		if (bindless_light_is_point(i))
+		{
+			range = point_light_z_range(*context, bindless.transforms.lights[i].position,
+			                            1.0f / bindless.transforms.lights[i].inv_radius);
+		}
+		else
+			range = spot_light_z_range(*context, bindless.transforms.model[i]);
+
+		bindless.volume_index_range[i] = compute_uint_range(range);
+	}
+
+	// Still need to run this algorithm to make sure we get a cleared out Z-range buffer.
+	if (bindless.volume_index_range.empty())
+		bindless.volume_index_range.push_back(uvec2(~0u, 0u));
+
+	update_bindless_range_buffer_gpu(cmd, *bindless.range_buffer, bindless.volume_index_range);
+}
+
+static vec2 decal_z_range(const RenderContext &context, const mat4 &transform)
+{
+	float lo = std::numeric_limits<float>::infinity();
+	float hi = -lo;
+
+	auto &pos = context.get_render_parameters().camera_position;
+	auto &front = context.get_render_parameters().camera_front;
+	auto &aabb = VolumetricDecal::get_static_aabb();
+
+	// Not the most efficient approach ever ... :V
+	for (unsigned i = 0; i < 8; i++)
+	{
+		vec4 world_space;
+		vec4 texel_space = vec4(aabb.get_corner(i), 1.0f);
+		SIMD::mul(world_space, transform, texel_space);
+		float z = dot(world_space.xyz() - pos, front);
+		lo = std::min(lo, z);
+		hi = std::max(hi, z);
+	}
+
+	return vec2(lo, hi);
+}
+
+void LightClusterer::update_bindless_range_buffer_decal_gpu(Vulkan::CommandBuffer &cmd)
+{
+	if (!enable_volumetric_decals)
+		return;
+	uint32_t count = bindless.parameters.num_decals;
+	bindless.volume_index_range.resize(count);
+
+	for (unsigned i = 0; i < count; i++)
+	{
+		vec2 range = decal_z_range(*context, visible_decals[i].transform->transform->world_transform);
+		bindless.volume_index_range[i] = compute_uint_range(range);
+	}
+
+	// Still need to run this algorithm to make sure we get a cleared out Z-range buffer.
+	if (bindless.volume_index_range.empty())
+		bindless.volume_index_range.push_back(uvec2(~0u, 0u));
+
+	update_bindless_range_buffer_gpu(cmd, *bindless.range_buffer_decal, bindless.volume_index_range);
+}
+
 void LightClusterer::update_bindless_range_buffer_cpu(Vulkan::CommandBuffer &cmd)
 {
 	uint32_t count = bindless.parameters.num_lights;
 
-	bindless.light_index_range.resize(resolution_z);
-	for (auto &range : bindless.light_index_range)
+	bindless.volume_index_range.resize(resolution_z);
+	for (auto &range : bindless.volume_index_range)
 		range = uvec2(0xffffffff, 0);
 
 	// PERF: We can certainly be smarter here with some scan algorithm trickery.
@@ -1725,7 +1844,7 @@ void LightClusterer::update_bindless_range_buffer_cpu(Vulkan::CommandBuffer &cmd
 
 		for (unsigned x = urange.x; x <= urange.y; x++)
 		{
-			auto &index_range = bindless.light_index_range[x];
+			auto &index_range = bindless.volume_index_range[x];
 			index_range.x = muglm::min(index_range.x, index);
 			index_range.y = muglm::max(index_range.y, index);
 		}
@@ -1746,7 +1865,7 @@ void LightClusterer::update_bindless_range_buffer_cpu(Vulkan::CommandBuffer &cmd
 	}
 
 	auto *ranges = static_cast<uvec2 *>(cmd.update_buffer(*bindless.range_buffer, 0, bindless.range_buffer->get_create_info().size));
-	memcpy(ranges, bindless.light_index_range.data(), resolution_z * sizeof(ivec2));
+	memcpy(ranges, bindless.volume_index_range.data(), resolution_z * sizeof(ivec2));
 }
 
 static vec2 project_sphere_flat(float view_xy, float view_z, float radius)
@@ -2003,14 +2122,83 @@ void LightClusterer::update_bindless_mask_buffer_cpu(Vulkan::CommandBuffer &cmd)
 	}
 }
 
+void LightClusterer::update_bindless_mask_buffer_decal_gpu(Vulkan::CommandBuffer &cmd)
+{
+	uint32_t count = bindless.parameters.num_decals;
+	if (count == 0 || !enable_volumetric_decals)
+		return;
+
+	cmd.set_storage_buffer(0, 0, *bindless.bitmask_buffer_decal);
+	*cmd.allocate_typed_constant_data<ClustererParametersBindless>(1, 0, 1) = bindless.parameters;
+
+	Vulkan::BufferCreateInfo info = {};
+	info.size = count * sizeof(mat4);
+	info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
+	auto mvps = cmd.get_device().create_buffer(info);
+	auto *mapped_mvps = static_cast<mat4 *>(cmd.get_device().map_host_buffer(*mvps, MEMORY_ACCESS_WRITE_BIT));
+	for (uint32_t i = 0; i < count; i++)
+	{
+		SIMD::mul(mapped_mvps[i], context->get_render_parameters().view_projection,
+		          visible_decals[i].transform->transform->world_transform);
+	}
+	cmd.get_device().unmap_host_buffer(*mvps, MEMORY_ACCESS_WRITE_BIT);
+	cmd.set_storage_buffer(2, 0, *mvps);
+
+	assert((resolution_x & 7) == 0);
+	assert((resolution_y & 7) == 0);
+
+	bool use_subgroups = false;
+	auto &features = cmd.get_device().get_device_features();
+	unsigned tile_width = 1;
+	unsigned tile_height = 1;
+
+	constexpr VkSubgroupFeatureFlags required = VK_SUBGROUP_FEATURE_BALLOT_BIT | VK_SUBGROUP_FEATURE_BASIC_BIT |
+	                                            VK_SUBGROUP_FEATURE_SHUFFLE_BIT;
+
+	if ((features.subgroup_properties.supportedOperations & required) == required &&
+	    (features.subgroup_properties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0)
+	{
+		// Our desired range is either 32 threads or 64 threads, 32 threads is preferred.
+
+		if (cmd.get_device().supports_subgroup_size_log2(true, 5, 5))
+		{
+			// We can lock in 32 thread subgroups!
+			cmd.enable_subgroup_size_control(true);
+			cmd.set_subgroup_size_log2(true, 5, 5);
+			cmd.set_specialization_constant_mask(1);
+			cmd.set_specialization_constant(0, 32);
+			tile_width = 8;
+			tile_height = 4;
+			use_subgroups = true;
+		}
+		else if (cmd.get_device().supports_subgroup_size_log2(true, 5, 6))
+		{
+			// We can use varying size, 32 or 64 sizes need to be handled.
+			cmd.enable_subgroup_size_control(true);
+			cmd.set_subgroup_size_log2(true, 5, 6);
+			cmd.set_specialization_constant_mask(1);
+			cmd.set_specialization_constant(0, 64);
+			tile_width = 8;
+			tile_height = 8;
+			use_subgroups = true;
+		}
+	}
+
+	cmd.set_program("builtin://shaders/lights/clusterer_bindless_binning_decal.comp", {{ "SUBGROUPS", use_subgroups ? 1 : 0 }});
+	cmd.dispatch(bindless.parameters.num_decals_32,
+	             resolution_x / tile_width,
+	             resolution_y / tile_height);
+
+	cmd.set_specialization_constant_mask(0);
+	cmd.enable_subgroup_size_control(false);
+}
+
 void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 {
 	uint32_t local_count = bindless.parameters.num_lights;
 	if (local_count == 0)
 		return;
-
-	cmd.barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
 	cmd.set_storage_buffer(0, 0, *bindless.transforms_buffer);
 	cmd.set_storage_buffer(0, 1, *bindless.transformed_spots);
@@ -2117,8 +2305,12 @@ void LightClusterer::build_cluster_bindless_cpu(Vulkan::CommandBuffer &cmd)
 void LightClusterer::build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd)
 {
 	update_bindless_data(cmd);
+	cmd.barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 	update_bindless_mask_buffer_gpu(cmd);
+	update_bindless_mask_buffer_decal_gpu(cmd);
 	update_bindless_range_buffer_gpu(cmd);
+	update_bindless_range_buffer_decal_gpu(cmd);
 }
 
 void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view)
@@ -2457,11 +2649,14 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 		{
 			att.size = resolution_x * resolution_y * (MaxLightsBindless / 8);
 			pass.add_storage_output("cluster-bitmask", att);
+			att.size = resolution_x * resolution_y * (MaxDecalsBindless / 8);
+			pass.add_storage_output("cluster-bitmask-decal", att);
 		}
 
 		{
 			att.size = resolution_z * sizeof(ivec2);
 			pass.add_storage_output("cluster-range", att);
+			pass.add_storage_output("cluster-range-decal", att);
 		}
 
 		{

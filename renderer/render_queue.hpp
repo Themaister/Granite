@@ -40,6 +40,7 @@ class AbstractRenderable;
 class PositionalLight;
 struct VolumetricDiffuseLightComponent;
 struct VolumetricFogRegionComponent;
+struct VolumetricDecalComponent;
 struct RenderInfoComponent;
 
 struct RenderableInfo
@@ -71,6 +72,13 @@ struct VolumetricFogRegionInfo
 	const RenderInfoComponent *transform;
 };
 using VolumetricFogRegionList = std::vector<VolumetricFogRegionInfo>;
+
+struct VolumetricDecalInfo
+{
+	VolumetricDecalComponent *decal;
+	const RenderInfoComponent *transform;
+};
+using VolumetricDecalList = std::vector<VolumetricDecalInfo>;
 
 enum class Queue : unsigned
 {

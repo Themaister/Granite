@@ -91,6 +91,11 @@ public:
 	const ClustererParametersFogRegions &get_cluster_volumetric_fog_data() const;
 	size_t get_cluster_volumetric_fog_size() const;
 
+	void set_enable_volumetric_decals(bool enable);
+	bool clusterer_has_volumetric_decals() const;
+	const Vulkan::Buffer *get_cluster_bitmask_decal_buffer() const;
+	const Vulkan::Buffer *get_cluster_range_decal_buffer() const;
+
 	void set_scene(Scene *scene) override;
 	void set_base_renderer(const RendererSuite *suite) override;
 	void set_base_render_context(const RenderContext *context) override;
@@ -102,6 +107,7 @@ public:
 		MaxLightsGlobal = CLUSTERER_MAX_LIGHTS_GLOBAL,
 		MaxLightsVolume = CLUSTERER_MAX_VOLUMES,
 		MaxFogRegions = CLUSTERER_MAX_FOG_REGIONS,
+		MaxDecalsBindless = CLUSTERER_MAX_DECALS_BINDLESS,
 		ClusterHierarchies = 8,
 		ClusterPrepassDownsample = 4
 	};
@@ -142,6 +148,7 @@ private:
 	PositionalLightList light_sort_caches[MaxTasks];
 	VolumetricDiffuseLightList visible_diffuse_lights;
 	VolumetricFogRegionList visible_fog_regions;
+	VolumetricDecalList visible_decals;
 	PositionalLightList existing_global_lights;
 	RenderQueue internal_queue;
 
@@ -204,6 +211,7 @@ private:
 	bool force_update_shadows = false;
 	bool enable_volumetric_diffuse = false;
 	bool enable_volumetric_fog = false;
+	bool enable_volumetric_decals = false;
 	ShadowType shadow_type = ShadowType::PCF;
 
 	struct CPUGlobalAccelState
@@ -276,6 +284,8 @@ private:
 
 		const Vulkan::Buffer *bitmask_buffer = nullptr;
 		const Vulkan::Buffer *range_buffer = nullptr;
+		const Vulkan::Buffer *bitmask_buffer_decal = nullptr;
+		const Vulkan::Buffer *range_buffer_decal = nullptr;
 		const Vulkan::Buffer *transforms_buffer = nullptr;
 
 		const Vulkan::Buffer *transformed_spots = nullptr;
@@ -283,7 +293,7 @@ private:
 
 		VkDescriptorSet desc_set = VK_NULL_HANDLE;
 
-		std::vector<uvec2> light_index_range;
+		std::vector<uvec2> volume_index_range;
 
 		std::vector<VkImageMemoryBarrier> shadow_barriers;
 		std::vector<const Vulkan::Image *> shadow_images;
@@ -295,12 +305,18 @@ private:
 	void update_bindless_data(Vulkan::CommandBuffer &cmd);
 	void update_bindless_range_buffer_cpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd);
+	void update_bindless_range_buffer_decal_gpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_cpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd);
+	void update_bindless_mask_buffer_decal_gpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_spot(uint32_t *masks, unsigned index);
 	void update_bindless_mask_buffer_point(uint32_t *masks, unsigned index);
 	void begin_bindless_barriers(Vulkan::CommandBuffer &cmd);
 	void end_bindless_barriers(Vulkan::CommandBuffer &cmd);
+
+	void update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd, const Vulkan::Buffer &range_buffer,
+	                                      const std::vector<uvec2> &index_range);
+	uvec2 compute_uint_range(vec2 range) const;
 
 	template <unsigned Faces, unsigned MaxTasks>
 	struct ShadowTaskContext : ShadowTaskBase

@@ -58,9 +58,12 @@ enum GlobalDescriptorSetBindings
 	BINDING_GLOBAL_CLUSTER_TRANSFORM = 9,
 	BINDING_GLOBAL_CLUSTER_BITMASK = 10,
 	BINDING_GLOBAL_CLUSTER_RANGE = 11,
+	BINDING_GLOBAL_CLUSTER_BITMASK_DECAL = 12,
+	BINDING_GLOBAL_CLUSTER_RANGE_DECAL = 13,
 
 	BINDING_GLOBAL_LINEAR_SAMPLER = 14,
-	BINDING_GLOBAL_SHADOW_SAMPLER = 15
+	BINDING_GLOBAL_SHADOW_SAMPLER = 15,
+	BINDING_GLOBAL_GEOMETRY_SAMPLER = 16,
 };
 
 namespace Granite
@@ -120,9 +123,8 @@ void RendererSuite::update_mesh_rendering_options(const RenderContext &context, 
 	else if (config.pcf_width == 3)
 		pcf_flags |= Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT;
 
-	get_renderer(Type::Deferred).set_mesh_renderer_options(pcf_flags);
-
 	auto opts = Renderer::get_mesh_renderer_options_from_lighting(*context.get_lighting_parameters());
+	get_renderer(Type::Deferred).set_mesh_renderer_options(pcf_flags | (opts & Renderer::POSITIONAL_DECALS_BIT));
 	get_renderer(Type::ForwardOpaque).set_mesh_renderer_options(
 			opts | pcf_flags | (config.forward_z_prepass ? Renderer::ALPHA_TEST_DISABLE_BIT : 0));
 	opts &= ~Renderer::AMBIENT_OCCLUSION_BIT;
@@ -288,6 +290,8 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 		global_defines.emplace_back("CLUSTER_LIST", 1);
 	if (flags & POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT)
 		global_defines.emplace_back("CLUSTERER_BINDLESS", 1);
+	if (flags & POSITIONAL_DECALS_BIT)
+		global_defines.emplace_back("CLUSTERER_DECALS", 1);
 
 	if (flags & SHADOW_VSM_BIT)
 		global_defines.emplace_back("DIRECTIONAL_SHADOW_VSM", 1);
@@ -347,7 +351,11 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 		if (lighting.cluster->get_cluster_list_buffer())
 			flags |= POSITIONAL_LIGHT_CLUSTER_LIST_BIT;
 		if (lighting.cluster->clusterer_is_bindless())
+		{
 			flags |= POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT;
+			if (lighting.cluster->clusterer_has_volumetric_decals())
+				flags |= POSITIONAL_DECALS_BIT;
+		}
 
 		if (lighting.cluster->clusterer_has_volumetric_diffuse())
 			flags |= VOLUMETRIC_DIFFUSE_ENABLE_BIT;
@@ -432,6 +440,12 @@ static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const Li
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_TRANSFORM, *cluster.get_cluster_transform_buffer());
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_BITMASK, *cluster.get_cluster_bitmask_buffer());
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_RANGE, *cluster.get_cluster_range_buffer());
+	if (cluster.clusterer_has_volumetric_decals())
+	{
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_BITMASK_DECAL, *cluster.get_cluster_bitmask_decal_buffer());
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_RANGE_DECAL, *cluster.get_cluster_range_decal_buffer());
+	}
+
 	if (cluster.get_cluster_bindless_set() != VK_NULL_HANDLE)
 	{
 		cmd.set_bindless(1, cluster.get_cluster_bindless_set());
@@ -463,13 +477,15 @@ static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightCluste
 void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
 {
 	auto *lighting = context.get_lighting_parameters();
-	assert(lighting);
+	if (!lighting)
+		return;
 
 	auto *combined = cmd.allocate_typed_constant_data<CombinedRenderParameters>(0, BINDING_GLOBAL_RENDER_PARAMETERS, 1);
 	memset(combined, 0, sizeof(*combined));
 
 	cmd.set_sampler(0, BINDING_GLOBAL_LINEAR_SAMPLER, StockSampler::LinearClamp);
 	cmd.set_sampler(0, BINDING_GLOBAL_SHADOW_SAMPLER, StockSampler::LinearShadow);
+	cmd.set_sampler(0, BINDING_GLOBAL_GEOMETRY_SAMPLER, StockSampler::DefaultGeometryFilterClamp);
 
 	if (lighting->volumetric_fog)
 	{
@@ -533,8 +549,7 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	else
 	{
 		bind_global_parameters(cmd, context);
-		if (type == RendererType::GeneralForward)
-			bind_lighting_parameters(cmd, context);
+		bind_lighting_parameters(cmd, context);
 	}
 
 	cmd.set_opaque_state();

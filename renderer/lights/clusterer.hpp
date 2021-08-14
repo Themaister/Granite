@@ -78,8 +78,6 @@ public:
 	const Vulkan::Buffer *get_cluster_transform_buffer() const;
 	const Vulkan::Buffer *get_cluster_bitmask_buffer() const;
 	const Vulkan::Buffer *get_cluster_range_buffer() const;
-	const Vulkan::Buffer *get_cluster_bitmask_decal_buffer() const;
-	const Vulkan::Buffer *get_cluster_range_decal_buffer() const;
 	VkDescriptorSet get_cluster_bindless_set() const;
 	bool clusterer_is_bindless() const;
 
@@ -92,6 +90,11 @@ public:
 	bool clusterer_has_volumetric_fog() const;
 	const ClustererParametersFogRegions &get_cluster_volumetric_fog_data() const;
 	size_t get_cluster_volumetric_fog_size() const;
+
+	void set_enable_volumetric_decals(bool enable);
+	bool clusterer_has_volumetric_decals() const;
+	const Vulkan::Buffer *get_cluster_bitmask_decal_buffer() const;
+	const Vulkan::Buffer *get_cluster_range_decal_buffer() const;
 
 	void set_scene(Scene *scene) override;
 	void set_base_renderer(const RendererSuite *suite) override;
@@ -208,6 +211,7 @@ private:
 	bool force_update_shadows = false;
 	bool enable_volumetric_diffuse = false;
 	bool enable_volumetric_fog = false;
+	bool enable_volumetric_decals = false;
 	ShadowType shadow_type = ShadowType::PCF;
 
 	struct CPUGlobalAccelState

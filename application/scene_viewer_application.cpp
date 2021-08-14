@@ -391,7 +391,10 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	}
 
 	if (cluster)
+	{
 		cluster->set_enable_volumetric_diffuse(config.volumetric_diffuse);
+		cluster->set_enable_volumetric_decals(true);
+	}
 
 	if (config.deferred_clustered_stencil_culling)
 	{

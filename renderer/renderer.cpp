@@ -352,7 +352,7 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 		if (lighting.cluster->clusterer_is_bindless())
 		{
 			flags |= POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT;
-			if (lighting.cluster->get_cluster_bitmask_decal_buffer() && lighting.cluster->get_cluster_range_decal_buffer())
+			if (lighting.cluster->clusterer_has_volumetric_decals())
 				flags |= POSITIONAL_DECALS_BIT;
 		}
 
@@ -439,8 +439,11 @@ static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const Li
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_TRANSFORM, *cluster.get_cluster_transform_buffer());
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_BITMASK, *cluster.get_cluster_bitmask_buffer());
 	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_RANGE, *cluster.get_cluster_range_buffer());
-	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_BITMASK_DECAL, *cluster.get_cluster_bitmask_decal_buffer());
-	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_RANGE_DECAL, *cluster.get_cluster_range_decal_buffer());
+	if (cluster.clusterer_has_volumetric_decals())
+	{
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_BITMASK_DECAL, *cluster.get_cluster_bitmask_decal_buffer());
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_RANGE_DECAL, *cluster.get_cluster_range_decal_buffer());
+	}
 
 	if (cluster.get_cluster_bindless_set() != VK_NULL_HANDLE)
 	{

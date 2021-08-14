@@ -211,6 +211,16 @@ const Vulkan::Buffer *LightClusterer::get_cluster_range_decal_buffer() const
 	return bindless.range_buffer_decal;
 }
 
+bool LightClusterer::clusterer_has_volumetric_decals() const
+{
+	return enable_volumetric_decals;
+}
+
+void LightClusterer::set_enable_volumetric_decals(bool enable)
+{
+	enable_volumetric_decals = enable;
+}
+
 VkDescriptorSet LightClusterer::get_cluster_bindless_set() const
 {
 	return bindless.desc_set;
@@ -1308,12 +1318,15 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 
 	bindless.parameters.num_decals = std::min<uint32_t>(visible_decals.size(), CLUSTERER_MAX_DECALS_BINDLESS);
 	bindless.parameters.num_decals_32 = (bindless.parameters.num_decals + 31) / 32;
-	for (uint32_t i = 0; i < bindless.parameters.num_decals; i++)
+	if (enable_volumetric_decals)
 	{
-		auto &decal = visible_decals[i];
-		auto &region = bindless.transforms.decals[i];
-		for (unsigned j = 0; j < 3; j++)
-			region.world_to_texture[j] = decal.decal->world_to_texture[j];
+		for (uint32_t i = 0; i < bindless.parameters.num_decals; i++)
+		{
+			auto &decal = visible_decals[i];
+			auto &region = bindless.transforms.decals[i];
+			for (unsigned j = 0; j < 3; j++)
+				region.world_to_texture[j] = decal.decal->world_to_texture[j];
+		}
 	}
 }
 
@@ -1519,8 +1532,11 @@ void LightClusterer::refresh(const RenderContext &context_, TaskComposer &incomi
 			                                             visible_fog_regions);
 		}
 
-		scene->gather_visible_volumetric_decals(context_.get_visibility_frustum(), visible_decals);
-		sort_decals(visible_decals, context_.get_render_parameters().camera_front);
+		if (enable_volumetric_decals)
+		{
+			scene->gather_visible_volumetric_decals(context_.get_visibility_frustum(), visible_decals);
+			sort_decals(visible_decals, context_.get_render_parameters().camera_front);
+		}
 	});
 
 	if (enable_bindless)
@@ -1618,9 +1634,12 @@ void LightClusterer::update_bindless_data(Vulkan::CommandBuffer &cmd)
 	       bindless.transforms.type_mask,
 	       bindless.parameters.num_lights_32 * sizeof(bindless.transforms.type_mask[0]));
 
-	memcpy(cmd.update_buffer(*bindless.transforms_buffer, offsetof(ClustererBindlessTransforms, decals),
-	                         bindless.parameters.num_decals * sizeof(bindless.transforms.decals[0])),
-	       bindless.transforms.decals, bindless.parameters.num_decals * sizeof(bindless.transforms.decals[0]));
+	if (enable_volumetric_decals)
+	{
+		memcpy(cmd.update_buffer(*bindless.transforms_buffer, offsetof(ClustererBindlessTransforms, decals),
+		                         bindless.parameters.num_decals * sizeof(bindless.transforms.decals[0])),
+		       bindless.transforms.decals, bindless.parameters.num_decals * sizeof(bindless.transforms.decals[0]));
+	}
 }
 
 void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
@@ -1658,9 +1677,12 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 	for (unsigned i = 0; i < bindless.fog_regions.num_regions; i++)
 		bindless.allocator.push(*visible_fog_regions[i].region->region.get_volume_view());
 
-	bindless.parameters.decals_texture_offset = bindless.allocator.get_next_offset();
-	for (unsigned i = 0; i < bindless.parameters.num_decals; i++)
-		bindless.allocator.push(*visible_decals[i].decal->decal.get_decal_view());
+	if (enable_volumetric_decals)
+	{
+		bindless.parameters.decals_texture_offset = bindless.allocator.get_next_offset();
+		for (unsigned i = 0; i < bindless.parameters.num_decals; i++)
+			bindless.allocator.push(*visible_decals[i].decal->decal.get_decal_view());
+	}
 
 	bindless.desc_set = bindless.allocator.commit(device);
 }
@@ -1784,6 +1806,8 @@ static vec2 decal_z_range(const RenderContext &context, const mat4 &transform)
 
 void LightClusterer::update_bindless_range_buffer_decal_gpu(Vulkan::CommandBuffer &cmd)
 {
+	if (!enable_volumetric_decals)
+		return;
 	uint32_t count = bindless.parameters.num_decals;
 	bindless.volume_index_range.resize(count);
 
@@ -2101,7 +2125,7 @@ void LightClusterer::update_bindless_mask_buffer_cpu(Vulkan::CommandBuffer &cmd)
 void LightClusterer::update_bindless_mask_buffer_decal_gpu(Vulkan::CommandBuffer &cmd)
 {
 	uint32_t count = bindless.parameters.num_decals;
-	if (count == 0)
+	if (count == 0 || !enable_volumetric_decals)
 		return;
 
 	cmd.set_storage_buffer(0, 0, *bindless.bitmask_buffer_decal);

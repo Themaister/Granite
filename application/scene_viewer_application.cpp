@@ -239,6 +239,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		scene.get_root_node()->add_child(std::move(node));
 	}
 
+#if 0
 	for (int z = -8; z <= 8; z++)
 	{
 		for (int x = -8; x <= 8; x++)
@@ -253,6 +254,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 			scene.get_root_node()->add_child(std::move(node));
 		}
 	}
+#endif
 
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);
@@ -393,7 +395,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	if (cluster)
 	{
 		cluster->set_enable_volumetric_diffuse(config.volumetric_diffuse);
-		cluster->set_enable_volumetric_decals(true);
+		cluster->set_enable_volumetric_decals(false);
 	}
 
 	if (config.deferred_clustered_stencil_culling)

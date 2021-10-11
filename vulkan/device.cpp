@@ -4147,7 +4147,7 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	}
 
 	VkExternalMemoryBufferCreateInfo external_info = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO_KHR };
-	external_info.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+	external_info.handleTypes = type;
 
 	VkMemoryHostPointerPropertiesEXT host_pointer_props = { VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT };
 	if (table->vkGetMemoryHostPointerPropertiesEXT(device, type, host_buffer, &host_pointer_props) != VK_SUCCESS)
@@ -4175,6 +4175,8 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	// Weird workaround for latest AMD Windows drivers which sets memoryTypeBits to 0 when using the external handle type.
 	if (!reqs.memoryTypeBits)
 		reqs.memoryTypeBits = ~0u;
+
+	auto plain_reqs = reqs;
 	reqs.memoryTypeBits &= host_pointer_props.memoryTypeBits;
 
 	if (reqs.memoryTypeBits == 0)
@@ -4185,6 +4187,19 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	}
 
 	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
+
+	if (memory_type == UINT32_MAX)
+	{
+		// Weird workaround for Intel Windows where the only memory type is DEVICE_LOCAL
+		// with no HOST_VISIBLE (!?!?!).
+		// However, it appears to work just fine to allocate with other memory types as well ...
+		// Oh well.
+
+		// Ignore host_pointer_props.
+		reqs = plain_reqs;
+		memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
+	}
+
 	if (memory_type == UINT32_MAX)
 	{
 		LOGE("Failed to find memory type.\n");

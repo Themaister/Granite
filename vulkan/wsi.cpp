@@ -30,15 +30,6 @@ namespace Vulkan
 {
 WSI::WSI()
 {
-	const char *frame_time_ms = getenv("GRANITE_FRAME_TIME_MS");
-	if (frame_time_ms)
-	{
-		auto period_ms = atol(frame_time_ms);
-		LOGI("Limiting frame time to %ld ms.\n", period_ms);
-		if (!frame_limiter.begin_interval_ns(1000000ull * period_ms))
-			LOGE("Failed to begin timer.\n");
-	}
-
 	// With frame latency of 1, we get the ideal latency where
 	// we present, and then wait for the previous present to complete.
 	// Once this unblocks, it means that the present we just queued up is scheduled to complete next vblank,
@@ -435,9 +426,6 @@ bool WSI::begin_frame()
 bool WSI::end_frame()
 {
 	device->end_frame_context();
-
-	if (frame_limiter.is_active())
-		frame_limiter.wait_interval();
 
 	// Take ownership of the release semaphore so that the external user can use it.
 	if (frame_is_external)

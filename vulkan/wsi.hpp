@@ -239,7 +239,6 @@ private:
 	unsigned present_frame_latency = 0;
 
 	WSITiming timing;
-	Util::FrameLimiter frame_limiter;
 
 	void tear_down_swapchain();
 	void drain_swapchain();

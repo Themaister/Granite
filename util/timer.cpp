@@ -23,14 +23,10 @@
 #include "timer.hpp"
 
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
 #include <time.h>
-#endif
-
-#ifdef __linux__
-#include <sys/timerfd.h>
-#include <unistd.h>
 #endif
 
 namespace Util
@@ -102,11 +98,6 @@ struct QPCFreq
 } static static_qpc_freq;
 #endif
 
-#if !defined(_WIN32) && !defined(CLOCK_MONOTONIC_RAW)
-#warning "CLOCK_MONOTONIC_RAW is not defined?"
-#define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC
-#endif
-
 int64_t get_current_time_nsecs()
 {
 #ifdef _WIN32
@@ -131,124 +122,5 @@ double Timer::end()
 {
 	auto nt = get_current_time_nsecs();
 	return double(nt - t) * 1e-9;
-}
-
-struct FrameLimiter::Impl
-{
-#ifdef _WIN32
-	HANDLE timer_handle = nullptr;
-#else
-	int timer_fd = -1;
-#endif
-
-	bool begin_interval_ns(uint64_t ns)
-	{
-#ifdef _WIN32
-		if (!timer_handle)
-		{
-			timer_handle = CreateWaitableTimerA(nullptr, FALSE, nullptr);
-			if (timer_handle)
-				timeBeginPeriod(1);
-		}
-
-		if (!timer_handle)
-			return false;
-
-		LARGE_INTEGER due_time;
-		due_time.QuadPart = -int64_t(ns) / 100;
-		if (!SetWaitableTimer(timer_handle, &due_time, ns / 1000000,
-		                      nullptr, nullptr, FALSE))
-		{
-			CloseHandle(timer_handle);
-			timer_handle = nullptr;
-			return false;
-		}
-
-		return true;
-#elif defined(__linux__)
-		if (timer_fd < 0)
-			timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
-
-		if (timer_fd >= 0)
-		{
-			itimerspec timerspec = {};
-			timerspec.it_value.tv_nsec = ns % (1000 * 1000 * 1000);
-			timerspec.it_value.tv_sec = ns / (1000 * 1000 * 1000);
-			timerspec.it_interval = timerspec.it_value;
-			if (timerfd_settime(timer_fd, TFD_TIMER_CANCEL_ON_SET, &timerspec, nullptr) < 0)
-			{
-				close(timer_fd);
-				timer_fd = -1;
-			}
-		}
-
-		return timer_fd >= 0;
-#else
-		return false;
-#endif
-	}
-
-	bool wait_interval()
-	{
-#ifdef _WIN32
-		if (!timer_handle)
-			return false;
-		return WaitForSingleObject(timer_handle, INFINITE) == WAIT_OBJECT_0;
-#elif defined(__linux__)
-		if (timer_fd < 0)
-			return false;
-		uint64_t expirations = 0;
-		return ::read(timer_fd, &expirations, sizeof(expirations)) > 0;
-#else
-		return false;
-#endif
-	}
-
-	bool is_active() const
-	{
-#if defined(_WIN32)
-		return timer_handle != nullptr;
-#else
-		return timer_fd >= 0;
-#endif
-	}
-
-	~Impl()
-	{
-#ifdef _WIN32
-		if (timer_handle)
-		{
-			CloseHandle(timer_handle);
-			timeEndPeriod(1);
-		}
-#else
-		if (timer_fd >= 0)
-			::close(timer_fd);
-#endif
-	}
-};
-
-FrameLimiter::FrameLimiter()
-{
-	impl.reset(new Impl);
-}
-
-FrameLimiter::~FrameLimiter()
-{
-}
-
-bool FrameLimiter::is_active() const
-{
-	return impl->is_active();
-}
-
-bool FrameLimiter::begin_interval_ns(uint64_t ns)
-{
-	return impl->begin_interval_ns(ns);
-}
-
-bool FrameLimiter::wait_interval()
-{
-	return impl->wait_interval();
 }
 }

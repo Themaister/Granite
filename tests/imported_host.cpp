@@ -28,21 +28,15 @@
 
 using namespace Vulkan;
 
-int main(int argc, char **argv)
+static uint8_t *align_ptr(uint8_t *ptr, size_t align)
 {
-	if (argc != 2)
-		return EXIT_FAILURE;
+	return reinterpret_cast<uint8_t *>((reinterpret_cast<uintptr_t>(ptr) + align - 1) & ~uintptr_t(align - 1));
+}
 
+int main()
+{
 	Granite::Global::init();
 	if (!Context::init_loader(nullptr))
-		return EXIT_FAILURE;
-
-	auto file = GRANITE_FILESYSTEM()->open(argv[1], Granite::FileMode::ReadOnly);
-	if (!file)
-		return EXIT_FAILURE;
-
-	void *mapped = file->map();
-	if (!mapped)
 		return EXIT_FAILURE;
 
 	Context ctx;
@@ -58,11 +52,15 @@ int main(int argc, char **argv)
 	Device device;
 	device.set_context(ctx);
 
+	auto align = device.get_device_features().host_memory_properties.minImportedHostPointerAlignment;
+	std::vector<uint8_t> import_buffer(align * 2);
+	uint8_t *ptr = align_ptr(import_buffer.data(), align);
+
 	BufferCreateInfo info = {};
 	info.domain = BufferDomain::CachedHost;
-	info.size = file->get_size();
+	info.size = align;
 	info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	auto buffer = device.create_imported_host_buffer(info, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT, mapped);
+	auto buffer = device.create_imported_host_buffer(info, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT, ptr);
 
 	if (!buffer)
 		return EXIT_FAILURE;
@@ -72,14 +70,18 @@ int main(int argc, char **argv)
 
 	auto cmd = device.request_command_buffer();
 	cmd->copy_buffer(*dst_buffer, *buffer);
+
+	memset(ptr, 0xab, align);
 	device.submit(cmd);
 	device.wait_idle();
 
 	auto *dst_mapped = device.map_host_buffer(*dst_buffer, MEMORY_ACCESS_READ_BIT);
-	if (memcmp(dst_mapped, mapped, 4096) != 0)
+	if (memcmp(dst_mapped, ptr, align) != 0)
 	{
 		LOGE("Failure!\n");
 		return EXIT_FAILURE;
 	}
+	else
+		LOGI(":3\n");
 	device.unmap_host_buffer(*dst_buffer, MEMORY_ACCESS_READ_BIT);
 }

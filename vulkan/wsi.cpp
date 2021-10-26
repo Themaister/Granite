@@ -511,27 +511,30 @@ bool WSI::end_frame()
 		// This makes sense I guess. Record the latest present ID which was successfully presented
 		// so we don't risk deadlock.
 		if ((result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) &&
-		    present_id > present_frame_latency &&
 		    device->get_device_features().present_wait_features.presentWait)
 		{
+			if (present_id > present_frame_latency)
+			{
+				uint64_t target = present_id - present_frame_latency;
+				// In case there are weird gaps which present IDs got a successful present.
+				if (target > present_last_id)
+					target = present_last_id;
+#ifdef VULKAN_WSI_TIMING_DEBUG
+				auto begin_wait = Util::get_current_time_nsecs();
+#endif
+				auto wait_ts = device->write_calibrated_timestamp();
+				VkResult wait_result = table->vkWaitForPresentKHR(context->get_device(), swapchain,
+				                                                  target, UINT64_MAX);
+				device->register_time_interval("WSI", std::move(wait_ts),
+				                               device->write_calibrated_timestamp(), "wait_frame_latency");
+				if (wait_result != VK_SUCCESS)
+					LOGE("vkWaitForPresentKHR failed, vr %d.\n", wait_result);
+#ifdef VULKAN_WSI_TIMING_DEBUG
+				auto end_wait = Util::get_current_time_nsecs();
+				LOGI("WaitForPresentKHR took %.3f ms.\n", 1e-6 * double(end_wait - begin_wait));
+#endif
+			}
 			present_last_id = present_id;
-			uint64_t target = present_id - present_frame_latency;
-			if (present_last_id < target)
-				target = present_last_id;
-#ifdef VULKAN_WSI_TIMING_DEBUG
-			auto begin_wait = Util::get_current_time_nsecs();
-#endif
-			auto wait_ts = device->write_calibrated_timestamp();
-			VkResult wait_result = table->vkWaitForPresentKHR(context->get_device(), swapchain,
-			                                                  target, UINT64_MAX);
-			device->register_time_interval("WSI", std::move(wait_ts),
-			                               device->write_calibrated_timestamp(), "wait_frame_latency");
-			if (wait_result != VK_SUCCESS)
-				LOGE("vkWaitForPresentKHR failed, vr %d.\n", wait_result);
-#ifdef VULKAN_WSI_TIMING_DEBUG
-			auto end_wait = Util::get_current_time_nsecs();
-			LOGI("WaitForPresentKHR took %.3f ms.\n", 1e-6 * double(end_wait - begin_wait));
-#endif
 		}
 
 		if (overall == VK_SUBOPTIMAL_KHR || result == VK_SUBOPTIMAL_KHR)

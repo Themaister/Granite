@@ -83,11 +83,13 @@ public:
 
 	virtual void block_until_wsi_forward_progress(Vulkan::WSI &wsi)
 	{
+		get_frame_timer().enter_idle();
 		while (!resize && alive(wsi))
 		{
 			poll_input();
 			std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		}
+		get_frame_timer().leave_idle();
 	}
 
 	Util::FrameTimer &get_frame_timer()

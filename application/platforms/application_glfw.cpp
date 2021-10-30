@@ -149,8 +149,10 @@ public:
 
 	void block_until_wsi_forward_progress(Vulkan::WSI &wsi) override
 	{
+		get_frame_timer().enter_idle();
 		while (!resize && alive(wsi))
 			process_events_async_thread_blocking();
+		get_frame_timer().leave_idle();
 	}
 
 	void notify_resize(unsigned width_, unsigned height_)

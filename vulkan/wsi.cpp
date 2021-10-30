@@ -419,7 +419,7 @@ bool WSI::begin_frame()
 		{
 			return false;
 		}
-	} while (result != VK_SUCCESS);
+	} while (result < 0);
 	return true;
 }
 

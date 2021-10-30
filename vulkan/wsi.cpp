@@ -314,10 +314,7 @@ bool WSI::begin_frame()
 #endif
 
 	if (swapchain == VK_NULL_HANDLE || platform->should_resize() || swapchain_is_suboptimal)
-	{
 		update_framebuffer(platform->get_surface_width(), platform->get_surface_height());
-		platform->acknowledge_resize();
-	}
 
 	if (swapchain == VK_NULL_HANDLE)
 	{
@@ -585,6 +582,8 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 			                       current_extra_usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 		}
 	}
+
+	platform->notify_current_swapchain_dimensions(swapchain_width, swapchain_height);
 }
 
 void WSI::set_present_mode(PresentMode mode)
@@ -650,6 +649,10 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 	{
 		swapchain_aspect_ratio = platform->get_aspect_ratio();
 		err = init_swapchain(width, height);
+
+		if (err != SwapchainError::None)
+			platform->notify_current_swapchain_dimensions(0, 0);
+
 		if (err == SwapchainError::Error)
 		{
 			if (++retry_counter > 3)
@@ -660,6 +663,8 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 		}
 		else if (err == SwapchainError::NoSurface && platform->alive(*this))
 		{
+			// TODO: For GLFW and async thread mechanism,
+			// could make this into a blocking wait instead of busy sleeping.
 			platform->poll_input();
 			this_thread::sleep_for(chrono::milliseconds(10));
 		}

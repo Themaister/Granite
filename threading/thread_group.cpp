@@ -118,6 +118,12 @@ TaskGroup::~TaskGroup()
 		flush();
 }
 
+void ThreadGroup::set_async_main_thread_name()
+{
+	Util::set_current_thread_name("MainAsyncThread");
+	Util::TimelineTraceFile::set_tid("main-async");
+}
+
 static void set_main_thread_name()
 {
 	Util::set_current_thread_name("MainThread");

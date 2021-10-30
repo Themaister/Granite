@@ -29,6 +29,8 @@
 #include "wsi_timing.hpp"
 #include <memory>
 #include <vector>
+#include <thread>
+#include <chrono>
 
 namespace Vulkan
 {
@@ -77,6 +79,15 @@ public:
 	virtual bool has_external_swapchain()
 	{
 		return false;
+	}
+
+	virtual void block_until_wsi_forward_progress(Vulkan::WSI &wsi)
+	{
+		while (!resize && alive(wsi))
+		{
+			poll_input();
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
 	}
 
 	Util::FrameTimer &get_frame_timer()

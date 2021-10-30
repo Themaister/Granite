@@ -147,6 +147,12 @@ public:
 			glfwDestroyWindow(window);
 	}
 
+	void block_until_wsi_forward_progress(Vulkan::WSI &wsi) override
+	{
+		while (!resize && alive(wsi))
+			process_events_async_thread_blocking();
+	}
+
 	void notify_resize(unsigned width_, unsigned height_)
 	{
 		uint64_t current_resize_timestamp = swapchain_dimension_update_timestamp;
@@ -354,6 +360,11 @@ private:
 	void process_events_async_thread()
 	{
 		process_events_for_list(task_list_async, false);
+	}
+
+	void process_events_async_thread_blocking()
+	{
+		process_events_for_list(task_list_async, true);
 	}
 
 	template <typename Op>

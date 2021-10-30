@@ -661,12 +661,11 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 			// Try to not reuse the swapchain.
 			tear_down_swapchain();
 		}
-		else if (err == SwapchainError::NoSurface && platform->alive(*this))
+		else if (err == SwapchainError::NoSurface)
 		{
-			// TODO: For GLFW and async thread mechanism,
-			// could make this into a blocking wait instead of busy sleeping.
-			platform->poll_input();
-			this_thread::sleep_for(chrono::milliseconds(10));
+			LOGW("WSI cannot make forward progress due to minimization, blocking ...\n");
+			platform->block_until_wsi_forward_progress(*this);
+			LOGW("Woke up!\n");
 		}
 	} while (err != SwapchainError::None);
 

@@ -78,8 +78,8 @@ public:
 private:
 	Vulkan::Device *device = nullptr;
 	const Scene *scene = nullptr;
+	const LightingParameters *lighting = nullptr;
 	RenderParameters camera;
-	const LightingParameters *lighting;
 	Frustum frustum;
 };
 }

@@ -22,9 +22,6 @@
 
 #include "wsi.hpp"
 #include "quirks.hpp"
-#include <thread>
-
-using namespace std;
 
 namespace Vulkan
 {
@@ -45,7 +42,7 @@ WSI::WSI()
 #endif
 }
 
-void WSIPlatform::set_window_title(const string &)
+void WSIPlatform::set_window_title(const std::string &)
 {
 }
 
@@ -54,7 +51,7 @@ uintptr_t WSIPlatform::get_fullscreen_monitor()
 	return 0;
 }
 
-void WSI::set_window_title(const string &title)
+void WSI::set_window_title(const std::string &title)
 {
 	if (platform)
 		platform->set_window_title(title);
@@ -102,7 +99,7 @@ float WSI::get_estimated_video_latency()
 	}
 }
 
-bool WSI::init_external_context(unique_ptr<Context> fresh_context)
+bool WSI::init_external_context(std::unique_ptr<Context> fresh_context)
 {
 	context = move(fresh_context);
 
@@ -115,13 +112,13 @@ bool WSI::init_external_context(unique_ptr<Context> fresh_context)
 	return true;
 }
 
-bool WSI::init_external_swapchain(vector<ImageHandle> swapchain_images_)
+bool WSI::init_external_swapchain(std::vector<ImageHandle> swapchain_images_)
 {
 	swapchain_width = platform->get_surface_width();
 	swapchain_height = platform->get_surface_height();
 	swapchain_aspect_ratio = platform->get_aspect_ratio();
 
-	external_swapchain_images = move(swapchain_images_);
+	external_swapchain_images = std::move(swapchain_images_);
 
 	swapchain_width = external_swapchain_images.front()->get_width();
 	swapchain_height = external_swapchain_images.front()->get_height();
@@ -256,7 +253,7 @@ void WSI::deinit_surface_and_swapchain()
 void WSI::set_external_frame(unsigned index, Semaphore acquire_semaphore, double frame_time)
 {
 	external_frame_index = index;
-	external_acquire = move(acquire_semaphore);
+	external_acquire = std::move(acquire_semaphore);
 	frame_is_external = true;
 	external_frame_time = frame_time;
 }
@@ -291,7 +288,7 @@ bool WSI::begin_frame_external()
 Semaphore WSI::consume_external_release_semaphore()
 {
 	Semaphore sem;
-	swap(external_release, sem);
+	std::swap(external_release, sem);
 	return sem;
 }
 
@@ -817,14 +814,14 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		return SwapchainError::NoSurface;
 
 	uint32_t format_count;
-	vector<VkSurfaceFormatKHR> formats;
+	std::vector<VkSurfaceFormatKHR> formats;
 
 	if (use_surface_info)
 	{
 		if (vkGetPhysicalDeviceSurfaceFormats2KHR(gpu, &surface_info, &format_count, nullptr) != VK_SUCCESS)
 			return SwapchainError::Error;
 
-		vector<VkSurfaceFormat2KHR> formats2(format_count);
+		std::vector<VkSurfaceFormat2KHR> formats2(format_count);
 
 		for (auto &f : formats2)
 		{
@@ -942,7 +939,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	if ((swapchain_aspect_ratio > 1.0f && target_aspect_ratio < 1.0f) ||
 	    (swapchain_aspect_ratio < 1.0f && target_aspect_ratio > 1.0f))
 	{
-		swap(width, height);
+		std::swap(width, height);
 	}
 
 	// If we are using pre-rotate of 90 or 270 degrees, we need to flip width and height again.
@@ -951,18 +948,18 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	     VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR |
 	     VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR))
 	{
-		swap(width, height);
+		std::swap(width, height);
 	}
 
 	// Clamp the target width, height to boundaries.
 	swapchain_size.width =
-	    max(min(width, surface_properties.maxImageExtent.width), surface_properties.minImageExtent.width);
+	    std::max(std::min(width, surface_properties.maxImageExtent.width), surface_properties.minImageExtent.width);
 	swapchain_size.height =
-	    max(min(height, surface_properties.maxImageExtent.height), surface_properties.minImageExtent.height);
+	    std::max(std::min(height, surface_properties.maxImageExtent.height), surface_properties.minImageExtent.height);
 
 	uint32_t num_present_modes;
 
-	vector<VkPresentModeKHR> present_modes;
+	std::vector<VkPresentModeKHR> present_modes;
 
 #ifdef _WIN32
 	if (use_surface_info && device->get_device_features().supports_full_screen_exclusive)

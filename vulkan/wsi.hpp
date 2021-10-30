@@ -29,6 +29,8 @@
 #include "wsi_timing.hpp"
 #include <memory>
 #include <vector>
+#include <thread>
+#include <chrono>
 
 namespace Vulkan
 {
@@ -56,9 +58,12 @@ public:
 		return resize;
 	}
 
-	void acknowledge_resize()
+	virtual void notify_current_swapchain_dimensions(unsigned width, unsigned height)
 	{
 		resize = false;
+		current_swapchain_width = width;
+		current_swapchain_height = height;
+		swapchain_dimension_update_timestamp++;
 	}
 
 	virtual uint32_t get_surface_width() = 0;
@@ -74,6 +79,17 @@ public:
 	virtual bool has_external_swapchain()
 	{
 		return false;
+	}
+
+	virtual void block_until_wsi_forward_progress(Vulkan::WSI &wsi)
+	{
+		get_frame_timer().enter_idle();
+		while (!resize && alive(wsi))
+		{
+			poll_input();
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+		get_frame_timer().leave_idle();
 	}
 
 	Util::FrameTimer &get_frame_timer()
@@ -102,6 +118,9 @@ public:
 	virtual uintptr_t get_fullscreen_monitor();
 
 protected:
+	unsigned current_swapchain_width = 0;
+	unsigned current_swapchain_height = 0;
+	uint64_t swapchain_dimension_update_timestamp = 0;
 	bool resize = false;
 
 private:

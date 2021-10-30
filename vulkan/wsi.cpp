@@ -22,9 +22,6 @@
 
 #include "wsi.hpp"
 #include "quirks.hpp"
-#include <thread>
-
-using namespace std;
 
 namespace Vulkan
 {
@@ -45,7 +42,7 @@ WSI::WSI()
 #endif
 }
 
-void WSIPlatform::set_window_title(const string &)
+void WSIPlatform::set_window_title(const std::string &)
 {
 }
 
@@ -54,7 +51,7 @@ uintptr_t WSIPlatform::get_fullscreen_monitor()
 	return 0;
 }
 
-void WSI::set_window_title(const string &title)
+void WSI::set_window_title(const std::string &title)
 {
 	if (platform)
 		platform->set_window_title(title);
@@ -102,7 +99,7 @@ float WSI::get_estimated_video_latency()
 	}
 }
 
-bool WSI::init_external_context(unique_ptr<Context> fresh_context)
+bool WSI::init_external_context(std::unique_ptr<Context> fresh_context)
 {
 	context = move(fresh_context);
 
@@ -115,13 +112,13 @@ bool WSI::init_external_context(unique_ptr<Context> fresh_context)
 	return true;
 }
 
-bool WSI::init_external_swapchain(vector<ImageHandle> swapchain_images_)
+bool WSI::init_external_swapchain(std::vector<ImageHandle> swapchain_images_)
 {
 	swapchain_width = platform->get_surface_width();
 	swapchain_height = platform->get_surface_height();
 	swapchain_aspect_ratio = platform->get_aspect_ratio();
 
-	external_swapchain_images = move(swapchain_images_);
+	external_swapchain_images = std::move(swapchain_images_);
 
 	swapchain_width = external_swapchain_images.front()->get_width();
 	swapchain_height = external_swapchain_images.front()->get_height();
@@ -256,7 +253,7 @@ void WSI::deinit_surface_and_swapchain()
 void WSI::set_external_frame(unsigned index, Semaphore acquire_semaphore, double frame_time)
 {
 	external_frame_index = index;
-	external_acquire = move(acquire_semaphore);
+	external_acquire = std::move(acquire_semaphore);
 	frame_is_external = true;
 	external_frame_time = frame_time;
 }
@@ -291,7 +288,7 @@ bool WSI::begin_frame_external()
 Semaphore WSI::consume_external_release_semaphore()
 {
 	Semaphore sem;
-	swap(external_release, sem);
+	std::swap(external_release, sem);
 	return sem;
 }
 
@@ -314,10 +311,7 @@ bool WSI::begin_frame()
 #endif
 
 	if (swapchain == VK_NULL_HANDLE || platform->should_resize() || swapchain_is_suboptimal)
-	{
 		update_framebuffer(platform->get_surface_width(), platform->get_surface_height());
-		platform->acknowledge_resize();
-	}
 
 	if (swapchain == VK_NULL_HANDLE)
 	{
@@ -419,7 +413,7 @@ bool WSI::begin_frame()
 		{
 			return false;
 		}
-	} while (result != VK_SUCCESS);
+	} while (result < 0);
 	return true;
 }
 
@@ -585,6 +579,8 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 			                       current_extra_usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 		}
 	}
+
+	platform->notify_current_swapchain_dimensions(swapchain_width, swapchain_height);
 }
 
 void WSI::set_present_mode(PresentMode mode)
@@ -650,6 +646,10 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 	{
 		swapchain_aspect_ratio = platform->get_aspect_ratio();
 		err = init_swapchain(width, height);
+
+		if (err != SwapchainError::None)
+			platform->notify_current_swapchain_dimensions(0, 0);
+
 		if (err == SwapchainError::Error)
 		{
 			if (++retry_counter > 3)
@@ -658,10 +658,11 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 			// Try to not reuse the swapchain.
 			tear_down_swapchain();
 		}
-		else if (err == SwapchainError::NoSurface && platform->alive(*this))
+		else if (err == SwapchainError::NoSurface)
 		{
-			platform->poll_input();
-			this_thread::sleep_for(chrono::milliseconds(10));
+			LOGW("WSI cannot make forward progress due to minimization, blocking ...\n");
+			platform->block_until_wsi_forward_progress(*this);
+			LOGW("Woke up!\n");
 		}
 	} while (err != SwapchainError::None);
 
@@ -813,14 +814,14 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		return SwapchainError::NoSurface;
 
 	uint32_t format_count;
-	vector<VkSurfaceFormatKHR> formats;
+	std::vector<VkSurfaceFormatKHR> formats;
 
 	if (use_surface_info)
 	{
 		if (vkGetPhysicalDeviceSurfaceFormats2KHR(gpu, &surface_info, &format_count, nullptr) != VK_SUCCESS)
 			return SwapchainError::Error;
 
-		vector<VkSurfaceFormat2KHR> formats2(format_count);
+		std::vector<VkSurfaceFormat2KHR> formats2(format_count);
 
 		for (auto &f : formats2)
 		{
@@ -938,7 +939,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	if ((swapchain_aspect_ratio > 1.0f && target_aspect_ratio < 1.0f) ||
 	    (swapchain_aspect_ratio < 1.0f && target_aspect_ratio > 1.0f))
 	{
-		swap(width, height);
+		std::swap(width, height);
 	}
 
 	// If we are using pre-rotate of 90 or 270 degrees, we need to flip width and height again.
@@ -947,18 +948,18 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	     VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR |
 	     VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR))
 	{
-		swap(width, height);
+		std::swap(width, height);
 	}
 
 	// Clamp the target width, height to boundaries.
 	swapchain_size.width =
-	    max(min(width, surface_properties.maxImageExtent.width), surface_properties.minImageExtent.width);
+	    std::max(std::min(width, surface_properties.maxImageExtent.width), surface_properties.minImageExtent.width);
 	swapchain_size.height =
-	    max(min(height, surface_properties.maxImageExtent.height), surface_properties.minImageExtent.height);
+	    std::max(std::min(height, surface_properties.maxImageExtent.height), surface_properties.minImageExtent.height);
 
 	uint32_t num_present_modes;
 
-	vector<VkPresentModeKHR> present_modes;
+	std::vector<VkPresentModeKHR> present_modes;
 
 #ifdef _WIN32
 	if (use_surface_info && device->get_device_features().supports_full_screen_exclusive)

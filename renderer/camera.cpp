@@ -220,8 +220,8 @@ bool FPSCamera::on_mouse_move(const MouseMoveEvent &m)
 
 	auto dx = float(m.get_delta_x());
 	auto dy = float(m.get_delta_y());
-	quat pitch = angleAxis(dy * 0.02f, vec3(1.0f, 0.0f, 0.0f));
-	quat yaw = angleAxis(dx * 0.02f, vec3(0.0f, 1.0f, 0.0f));
+	quat pitch = angleAxis(dy * 0.005f, vec3(1.0f, 0.0f, 0.0f));
+	quat yaw = angleAxis(dx * 0.005f, vec3(0.0f, 1.0f, 0.0f));
 	rotation = normalize(pitch * rotation * yaw);
 
 	return true;

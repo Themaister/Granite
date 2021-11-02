@@ -1,45 +1,45 @@
 [submodule "third_party/spirv-cross"]
 	path = third_party/spirv-cross
-	url = git://github.com/KhronosGroup/SPIRV-Cross
+	url = https://github.com/KhronosGroup/SPIRV-Cross
 [submodule "third_party/shaderc"]
 	path = third_party/shaderc
-	url = git://github.com/google/shaderc.git
+	url = https://github.com/google/shaderc.git
 [submodule "third_party/glslang"]
 	path = third_party/glslang
-	url = git://github.com/KhronosGroup/glslang.git
+	url = https://github.com/KhronosGroup/glslang.git
 [submodule "third_party/spirv-tools"]
 	path = third_party/spirv-tools
-	url = git://github.com/KhronosGroup/SPIRV-Tools
+	url = https://github.com/KhronosGroup/SPIRV-Tools
 [submodule "third_party/spirv-headers"]
 	path = third_party/spirv-headers
-	url = git://github.com/KhronosGroup/SPIRV-Headers
+	url = https://github.com/KhronosGroup/SPIRV-Headers
 [submodule "third_party/glfw"]
 	path = third_party/glfw
-	url = git://github.com/glfw/glfw
+	url = https://github.com/glfw/glfw
 [submodule "third_party/rapidjson"]
 	path = third_party/rapidjson
-	url = git://github.com/miloyip/rapidjson
+	url = https://github.com/miloyip/rapidjson
 [submodule "third_party/stb/stb"]
 	path = third_party/stb/stb
-	url = git://github.com/nothings/stb
+	url = https://github.com/nothings/stb
 [submodule "third_party/astc-encoder"]
 	path = third_party/astc-encoder
-	url = git://github.com/ARM-software/astc-encoder
+	url = https://github.com/ARM-software/astc-encoder
 [submodule "third_party/fossilize"]
 	path = third_party/fossilize
-	url = git://github.com/ValveSoftware/Fossilize
+	url = https://github.com/ValveSoftware/Fossilize
 [submodule "third_party/volk"]
 	path = third_party/volk
-	url = git://github.com/zeux/volk
+	url = https://github.com/zeux/volk
 [submodule "third_party/meshoptimizer"]
 	path = third_party/meshoptimizer
-	url = git://github.com/zeux/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer
 [submodule "third_party/muFFT"]
 	path = third_party/muFFT
-	url = git://github.com/Themaister/muFFT
+	url = https://github.com/Themaister/muFFT
 [submodule "third_party/oboe"]
 	path = third_party/oboe
-	url = git://github.com/google/oboe
+	url = https://github.com/google/oboe
 [submodule "third_party/khronos/vulkan-headers"]
 	path = third_party/khronos/vulkan-headers
-	url = git://github.com/KhronosGroup/Vulkan-Headers
+	url = https://github.com/KhronosGroup/Vulkan-Headers

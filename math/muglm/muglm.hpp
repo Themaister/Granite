@@ -123,14 +123,14 @@ struct tvec3
 		z = T(u.z);
 	}
 
-	inline tvec3(const tvec2<T> &a, float b) noexcept
+	inline tvec3(const tvec2<T> &a, T b) noexcept
 	{
 		x = a.x;
 		y = a.y;
 		z = b;
 	}
 
-	inline tvec3(float a, const tvec2<T> &b) noexcept
+	inline tvec3(T a, const tvec2<T> &b) noexcept
 	{
 		x = a;
 		y = b.x;
@@ -314,7 +314,7 @@ struct tvec4
 		w = b.y;
 	}
 
-	inline tvec4(const tvec3<T> &a, float b) noexcept
+	inline tvec4(const tvec3<T> &a, T b) noexcept
 	{
 		x = a.x;
 		y = a.y;
@@ -322,7 +322,7 @@ struct tvec4
 		w = b;
 	}
 
-	inline tvec4(float a, const tvec3<T> &b) noexcept
+	inline tvec4(T a, const tvec3<T> &b) noexcept
 	{
 		x = a;
 		y = b.x;
@@ -330,7 +330,7 @@ struct tvec4
 		w = b.z;
 	}
 
-	inline tvec4(const tvec2<T> &a, float b, float c) noexcept
+	inline tvec4(const tvec2<T> &a, T b, T c) noexcept
 	{
 		x = a.x;
 		y = a.y;
@@ -338,7 +338,7 @@ struct tvec4
 		w = c;
 	}
 
-	inline tvec4(float a, const tvec2<T> &b, float c) noexcept
+	inline tvec4(T a, const tvec2<T> &b, T c) noexcept
 	{
 		x = a;
 		y = b.x;
@@ -346,7 +346,7 @@ struct tvec4
 		w = c;
 	}
 
-	inline tvec4(float a, float b, const tvec2<T> &c) noexcept
+	inline tvec4(T a, T b, const tvec2<T> &c) noexcept
 	{
 		x = a;
 		y = b;

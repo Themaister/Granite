@@ -43,6 +43,8 @@ private:
 	int fd = -1;
 	void *mapped = nullptr;
 	size_t size = 0;
+	std::string rename_from_on_close;
+	std::string rename_to_on_close;
 };
 
 class OSFilesystem : public FilesystemBackend

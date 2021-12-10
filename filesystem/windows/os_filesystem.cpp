@@ -26,8 +26,7 @@
 #include <stdexcept>
 #include <sys/stat.h>
 #include <sys/types.h>
-
-using namespace std;
+#include <atomic>
 
 namespace Granite
 {
@@ -69,12 +68,12 @@ MappedFile *MappedFile::open(const std::string &path, Granite::FileMode mode)
 		return file;
 }
 
-bool MappedFile::init(const string &path, FileMode mode)
+static std::atomic<uint32_t> global_transaction_counter;
+
+bool MappedFile::init(const std::string &path, FileMode mode)
 {
 	DWORD access = 0;
 	DWORD disposition = 0;
-
-	auto wpath = Path::to_utf16(path);
 
 	switch (mode)
 	{
@@ -95,6 +94,7 @@ bool MappedFile::init(const string &path, FileMode mode)
 		break;
 
 	case FileMode::WriteOnly:
+	case FileMode::WriteOnlyTransactional:
 		if (!ensure_directory(path))
 		{
 			LOGE("MappedFile failed to create directory.\n");
@@ -106,10 +106,26 @@ bool MappedFile::init(const string &path, FileMode mode)
 		break;
 	}
 
+	if (mode == FileMode::WriteOnlyTransactional)
+	{
+		// Use atomic file rename to ensure that a file is written atomically.
+		rename_to_on_close = path;
+		rename_from_on_close =
+				path + ".tmp." +
+				std::to_string(GetCurrentProcessId()) + "." +
+				std::to_string(global_transaction_counter.fetch_add(1, std::memory_order_relaxed));
+	}
+
+	auto wpath = Path::to_utf16(rename_from_on_close.empty() ? path : rename_from_on_close);
+
 	file = CreateFileW(wpath.c_str(), access, FILE_SHARE_READ, nullptr, disposition,
 	                   FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, INVALID_HANDLE_VALUE);
 	if (file == INVALID_HANDLE_VALUE)
+	{
+		rename_to_on_close.clear();
+		rename_from_on_close.clear();
 		return false;
+	}
 
 	if (mode != FileMode::WriteOnly)
 	{
@@ -181,6 +197,23 @@ MappedFile::~MappedFile()
 	unmap();
 	if (file != INVALID_HANDLE_VALUE)
 		CloseHandle(file);
+
+	if (!rename_from_on_close.empty() && !rename_to_on_close.empty())
+	{
+		auto to_w16 = Path::to_utf16(rename_to_on_close);
+		auto from_w16 = Path::to_utf16(rename_from_on_close);
+		DWORD code = S_OK;
+
+		if (!MoveFileW(from_w16.c_str(), to_w16.c_str()))
+		{
+			code = GetLastError();
+			if (code == ERROR_ALREADY_EXISTS && !ReplaceFileW(to_w16.c_str(), from_w16.c_str(), nullptr, 0, nullptr, nullptr))
+				code = GetLastError();
+		}
+
+		if (FAILED(code))
+			LOGE("Failed to rename file %s -> %s (0x%lx).\n", rename_from_on_close.c_str(), rename_to_on_close.c_str(), code);
+	}
 }
 
 OSFilesystem::OSFilesystem(const std::string &base_)
@@ -198,14 +231,14 @@ OSFilesystem::~OSFilesystem()
 	}
 }
 
-string OSFilesystem::get_filesystem_path(const string &path)
+std::string OSFilesystem::get_filesystem_path(const std::string &path)
 {
 	return Path::join(base, path);
 }
 
-unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
+std::unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
 {
-	return unique_ptr<File>(MappedFile::open(Path::join(base, path), mode));
+	return std::unique_ptr<File>(MappedFile::open(Path::join(base, path), mode));
 }
 
 void OSFilesystem::poll_notifications()
@@ -293,7 +326,7 @@ void OSFilesystem::kick_async(Handler &handler)
 	}
 }
 
-FileNotifyHandle OSFilesystem::install_notification(const string &path, function<void(const FileNotifyInfo &)> func)
+FileNotifyHandle OSFilesystem::install_notification(const std::string &path, std::function<void(const FileNotifyInfo &)> func)
 {
 	FileStat s = {};
 	if (!stat(path, s))
@@ -332,15 +365,15 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path, function
 	handler.handle = handle;
 	handler.event = event;
 	auto &h = handlers[handle_id];
-	h = move(handler);
+	h = std::move(handler);
 	kick_async(h);
 
 	return handle_id;
 }
 
-vector<ListEntry> OSFilesystem::list(const string &path)
+std::vector<ListEntry> OSFilesystem::list(const std::string &path)
 {
-	vector<ListEntry> entries;
+	std::vector<ListEntry> entries;
 	WIN32_FIND_DATAW result;
 	auto joined = Path::to_utf16(Path::join(base, path));
 
@@ -359,7 +392,7 @@ vector<ListEntry> OSFilesystem::list(const string &path)
 			entry.type = PathType::Special;
 
 		entry.path = Path::join(path, Path::to_utf8(result.cFileName));
-		entries.push_back(move(entry));
+		entries.push_back(std::move(entry));
 	} while (FindNextFileW(handle, &result));
 
 	CloseHandle(handle);

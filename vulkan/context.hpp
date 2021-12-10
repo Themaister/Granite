@@ -74,6 +74,7 @@ struct DeviceFeatures
 	bool supports_video_queue = false;
 	bool supports_video_decode_queue = false;
 	bool supports_video_decode_h264 = false;
+	bool supports_pipeline_creation_cache_control = false;
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
 	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};
@@ -101,6 +102,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceSynchronization2FeaturesKHR sync2_features = {};
 	VkPhysicalDevicePresentIdFeaturesKHR present_id_features = {};
 	VkPhysicalDevicePresentWaitFeaturesKHR present_wait_features = {};
+	VkPhysicalDevicePipelineCreationCacheControlFeaturesEXT pipeline_creation_cache_control_features = {};
 };
 
 enum VendorID

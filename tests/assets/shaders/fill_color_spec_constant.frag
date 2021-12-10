@@ -7,8 +7,8 @@ layout(push_constant, std430) uniform Registers
     uint value;
 } registers;
 
-layout(constant_id = 0) const uint USE_SPEC_CONSTANT = 0u;
-layout(constant_id = 1) const uint VALUE = 0u;
+layout(constant_id = 1) const uint USE_SPEC_CONSTANT = 0u;
+layout(constant_id = 2) const uint VALUE = 0u;
 
 void main()
 {

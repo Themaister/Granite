@@ -46,9 +46,9 @@ struct AsyncSpecConstantApplication : Granite::Application, Granite::EventHandle
 		CommandBufferUtil::setup_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "assets://shaders/fill_color_spec_constant.frag");
 
 		uint32_t value = frame_count >> 8;
-		cmd->set_specialization_constant_mask(3);
-		cmd->set_specialization_constant(0, 1);
-		cmd->set_specialization_constant(1, value);
+		cmd->set_specialization_constant_mask(3 << 1);
+		cmd->set_specialization_constant(1, 1);
+		cmd->set_specialization_constant(2, value);
 		cmd->push_constants(&value, 0, sizeof(value));
 
 		// If we have the specialized shader already, go ahead, otherwise, queue up a compile to specialize the pipeline.

@@ -664,8 +664,10 @@ public:
 	void end_debug_channel();
 
 	void extract_pipeline_state(DeferredPipelineCompile &compile) const;
-	static VkPipeline build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile);
-	static VkPipeline build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile);
+	static VkPipeline build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile,
+	                                          bool synchronous = true);
+	static VkPipeline build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile,
+	                                         bool synchronous = true);
 
 	bool flush_pipeline_state_without_blocking();
 

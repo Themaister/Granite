@@ -709,8 +709,16 @@ void CommandBuffer::end_render_pass()
 	begin_compute();
 }
 
-VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile)
+VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile, bool synchronous)
 {
+	// If we don't have pipeline creation cache control feature,
+	// we must assume compilation can be synchronous.
+	if (!synchronous &&
+	    !device->get_device_features().pipeline_creation_cache_control_features.pipelineCreationCacheControl)
+	{
+		return VK_NULL_HANDLE;
+	}
+
 	auto &shader = *compile.program->get_shader(ShaderStage::Compute);
 	VkComputePipelineCreateInfo info = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
 	info.layout = compile.program->get_pipeline_layout()->get_layout();
@@ -781,18 +789,26 @@ VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredP
 		}
 	}
 
-	VkPipeline compute_pipeline;
+	VkPipeline compute_pipeline = VK_NULL_HANDLE;
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	device->register_compute_pipeline(compile.hash, info);
 #endif
 
 #ifdef VULKAN_DEBUG
-	LOGI("Creating compute pipeline.\n");
+	if (synchronous)
+		LOGI("Creating compute pipeline.\n");
 #endif
 	auto &table = device->get_device_table();
-	if (table.vkCreateComputePipelines(device->get_device(), compile.cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
+
+	if (!synchronous)
+		info.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_EXT;
+
+	VkResult vr = table.vkCreateComputePipelines(device->get_device(), compile.cache, 1, &info, nullptr, &compute_pipeline);
+
+	if (vr != VK_SUCCESS || compute_pipeline == VK_NULL_HANDLE)
 	{
-		LOGE("Failed to create compute pipeline!\n");
+		if (vr < 0)
+			LOGE("Failed to create compute pipeline!\n");
 		return VK_NULL_HANDLE;
 	}
 
@@ -821,8 +837,16 @@ void CommandBuffer::extract_pipeline_state(DeferredPipelineCompile &compile) con
 	}
 }
 
-VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile)
+VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile, bool synchronous)
 {
+	// If we don't have pipeline creation cache control feature,
+	// we must assume compilation can be synchronous.
+	if (!synchronous &&
+	    !device->get_device_features().pipeline_creation_cache_control_features.pipelineCreationCacheControl)
+	{
+		return VK_NULL_HANDLE;
+	}
+
 	// Viewport state
 	VkPipelineViewportStateCreateInfo vp = { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
 	vp.viewportCount = 1;
@@ -1017,19 +1041,25 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const Deferred
 	pipe.pStages = stages;
 	pipe.stageCount = num_stages;
 
-	VkPipeline pipeline;
+	VkPipeline pipeline = VK_NULL_HANDLE;
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	device->register_graphics_pipeline(compile.hash, pipe);
 #endif
 
 #ifdef VULKAN_DEBUG
-	LOGI("Creating graphics pipeline.\n");
+	if (synchronous)
+		LOGI("Creating graphics pipeline.\n");
 #endif
 	auto &table = device->get_device_table();
+
+	if (!synchronous)
+		pipe.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_EXT;
+
 	VkResult res = table.vkCreateGraphicsPipelines(device->get_device(), compile.cache, 1, &pipe, nullptr, &pipeline);
-	if (res != VK_SUCCESS)
+	if (res != VK_SUCCESS || pipeline == VK_NULL_HANDLE)
 	{
-		LOGE("Failed to create graphics pipeline!\n");
+		if (res < 0)
+			LOGE("Failed to create graphics pipeline!\n");
 		return VK_NULL_HANDLE;
 	}
 
@@ -1043,9 +1073,8 @@ bool CommandBuffer::flush_compute_pipeline(bool synchronous)
 {
 	update_hash_compute_pipeline(pipeline_state);
 	current_pipeline = pipeline_state.program->get_pipeline(pipeline_state.hash);
-	if (current_pipeline == VK_NULL_HANDLE && synchronous)
-		current_pipeline = build_compute_pipeline(device, pipeline_state);
-
+	if (current_pipeline == VK_NULL_HANDLE)
+		current_pipeline = build_compute_pipeline(device, pipeline_state, synchronous);
 	return current_pipeline != VK_NULL_HANDLE;
 }
 
@@ -1131,10 +1160,8 @@ bool CommandBuffer::flush_graphics_pipeline(bool synchronous)
 {
 	update_hash_graphics_pipeline(pipeline_state, active_vbos);
 	current_pipeline = pipeline_state.program->get_pipeline(pipeline_state.hash);
-
-	if (current_pipeline == VK_NULL_HANDLE && synchronous)
-		current_pipeline = build_graphics_pipeline(device, pipeline_state);
-
+	if (current_pipeline == VK_NULL_HANDLE)
+		current_pipeline = build_graphics_pipeline(device, pipeline_state, synchronous);
 	return current_pipeline != VK_NULL_HANDLE;
 }
 

@@ -759,6 +759,7 @@ void Device::set_context(const Context &context)
 	mem_props = context.get_mem_props();
 	gpu_props = context.get_gpu_props();
 	ext = context.get_enabled_device_features();
+	system_handles = context.get_system_handles();
 
 	init_workarounds();
 
@@ -821,7 +822,6 @@ void Device::set_context(const Context &context)
 	init_shader_manager_cache();
 #endif
 
-	system_handles = context.get_system_handles();
 	if (system_handles.timeline_trace_file)
 		init_calibrated_timestamps();
 }

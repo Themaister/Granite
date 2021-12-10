@@ -34,6 +34,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <atomic>
 #ifdef __linux__
 #include <sys/inotify.h>
 #endif
@@ -42,7 +43,6 @@ using namespace std;
 
 namespace Granite
 {
-
 static bool ensure_directory_inner(const std::string &path)
 {
 	if (Path::is_root_path(path))
@@ -77,6 +77,8 @@ MMapFile *MMapFile::open(const std::string &path, FileMode mode)
 		return file;
 }
 
+static std::atomic<uint32_t> global_transaction_counter;
+
 bool MMapFile::init(const std::string &path, FileMode mode)
 {
 	int modeflags = 0;
@@ -87,6 +89,7 @@ bool MMapFile::init(const std::string &path, FileMode mode)
 		break;
 
 	case FileMode::WriteOnly:
+	case FileMode::WriteOnlyTransactional:
 		if (!ensure_directory(path))
 		{
 			LOGE("MMapFile failed to create directory.\n");
@@ -105,13 +108,32 @@ bool MMapFile::init(const std::string &path, FileMode mode)
 		break;
 	}
 
-	fd = ::open(path.c_str(), modeflags, 0640);
+	const char *open_path = path.c_str();
+
+	if (mode == FileMode::WriteOnlyTransactional)
+	{
+		// Use atomic file rename to ensure that a file is written atomically.
+		rename_to_on_close = path;
+		rename_from_on_close =
+				path + ".tmp." +
+				std::to_string(getpid()) + "." +
+				std::to_string(global_transaction_counter.fetch_add(1, std::memory_order_relaxed));
+		open_path = rename_from_on_close.c_str();
+	}
+
+	fd = ::open(open_path, modeflags, 0640);
 	if (fd < 0)
+	{
+		rename_to_on_close.clear();
+		rename_from_on_close.clear();
 		return false;
+	}
 
 	if (!reopen())
 	{
 		close(fd);
+		rename_to_on_close.clear();
+		rename_from_on_close.clear();
 		return false;
 	}
 
@@ -179,6 +201,13 @@ MMapFile::~MMapFile()
 	unmap();
 	if (fd >= 0)
 		close(fd);
+
+	if (!rename_from_on_close.empty() && !rename_to_on_close.empty())
+	{
+		int ret = rename(rename_from_on_close.c_str(), rename_to_on_close.c_str());
+		if (ret != 0)
+			LOGE("Failed to rename file %s -> %s.\n", rename_from_on_close.c_str(), rename_to_on_close.c_str());
+	}
 }
 
 OSFilesystem::OSFilesystem(const std::string &base_)

@@ -51,6 +51,10 @@ bool StdioFile::init(const std::string &path, FileMode mode_)
 	case FileMode::WriteOnly:
 		filemode = "wb";
 		break;
+
+	case FileMode::WriteOnlyTransactional:
+		LOGE("WriteOnlyTransactional not supported on stdio files.\n");
+		return false;
 	}
 
 	file = fopen(path.c_str(), filemode);
@@ -262,7 +266,7 @@ bool Filesystem::read_file_to_string(const std::string &path, std::string &str)
 
 bool Filesystem::write_buffer_to_file(const std::string &path, const void *data, size_t size)
 {
-	auto file = open(path, FileMode::WriteOnly);
+	auto file = open(path, FileMode::WriteOnlyTransactional);
 	if (!file)
 		return false;
 

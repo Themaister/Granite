@@ -87,7 +87,8 @@ enum class FileMode
 {
 	ReadOnly,
 	WriteOnly,
-	ReadWrite
+	ReadWrite,
+	WriteOnlyTransactional
 };
 
 class StdioFile : public File

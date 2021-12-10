@@ -580,7 +580,8 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 		}
 	}
 
-	platform->notify_current_swapchain_dimensions(swapchain_width, swapchain_height);
+	if (platform)
+		platform->notify_current_swapchain_dimensions(swapchain_width, swapchain_height);
 }
 
 void WSI::set_present_mode(PresentMode mode)

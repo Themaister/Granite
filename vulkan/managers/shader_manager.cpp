@@ -562,7 +562,7 @@ bool ShaderManager::save_shader_cache(const string &path)
 	PrettyWriter<StringBuffer> writer(buffer);
 	doc.Accept(writer);
 
-	auto file = device->get_system_handles().filesystem->open(path, Granite::FileMode::WriteOnly);
+	auto file = device->get_system_handles().filesystem->open(path, Granite::FileMode::WriteOnlyTransactional);
 	if (!file)
 	{
 		LOGE("Failed to open %s for writing.\n", path.c_str());

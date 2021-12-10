@@ -244,7 +244,7 @@ void Device::flush_pipeline_state()
 		return;
 	}
 
-	auto file = Granite::Global::filesystem()->open("cache://pipelines.json", Granite::FileMode::WriteOnly);
+	auto file = Granite::Global::filesystem()->open("cache://pipelines.json", Granite::FileMode::WriteOnlyTransactional);
 	if (file)
 	{
 		auto *data = static_cast<uint8_t *>(file->map_write(serialized_size));

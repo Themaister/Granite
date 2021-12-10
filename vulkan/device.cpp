@@ -672,7 +672,7 @@ void Device::flush_pipeline_cache()
 	}
 
 	auto file = system_handles.filesystem->open(Util::join("cache://pipeline_cache_", get_pipeline_cache_string(), ".bin"),
-	                                            Granite::FileMode::WriteOnly);
+	                                            Granite::FileMode::WriteOnlyTransactional);
 	if (!file)
 	{
 		LOGE("Failed to get pipeline cache data.\n");

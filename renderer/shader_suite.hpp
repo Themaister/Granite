@@ -33,7 +33,11 @@ class ShaderSuite
 public:
 	void init_graphics(Vulkan::ShaderManager *manager, const std::string &vertex, const std::string &fragment);
 	void init_compute(Vulkan::ShaderManager *manager, const std::string &compute);
+
+	// Kinda obsolete, prefer DrawPipelineCoverage variant.
 	Vulkan::Program *get_program(DrawPipeline pipeline, uint32_t attribute_mask, uint32_t texture_mask, uint32_t variant_id = 0);
+
+	Vulkan::Program *get_program(DrawPipelineCoverage coverage, uint32_t attribute_mask, uint32_t texture_mask, uint32_t variant_id = 0);
 
 	std::vector<std::pair<std::string, int>> &get_base_defines()
 	{
@@ -43,11 +47,32 @@ public:
 	void bake_base_defines();
 	void promote_read_write_cache_to_read_only();
 
+	// A variant signature key is essentially a signature of all unique renderable types.
+	struct VariantSignatureKey
+	{
+		DrawPipelineCoverage coverage;
+		uint32_t attribute_mask;
+		uint32_t texture_mask;
+		uint32_t variant_id;
+	};
+
+	struct VariantSignature : Util::IntrusiveHashMapEnabled<VariantSignature>
+	{
+		explicit VariantSignature(const VariantSignatureKey &key_) : key(key_) {}
+		VariantSignatureKey key;
+	};
+
+	// Can be used for serialization, and the variant map can be pre-warmed using known signatures.
+	const Util::ThreadSafeIntrusiveHashMap<VariantSignature> &get_variant_signatures() const;
+
 private:
 	Util::Hash base_define_hash = 0;
 	Vulkan::ShaderManager *manager = nullptr;
 	Vulkan::ShaderProgram *program = nullptr;
 	Util::ThreadSafeIntrusiveHashMapReadCached<Util::IntrusivePODWrapper<Vulkan::ShaderProgramVariant *>> variants;
 	std::vector<std::pair<std::string, int>> base_defines;
+
+	Util::ThreadSafeIntrusiveHashMap<VariantSignature> variant_signature_cache;
+	void register_variant_signature(const VariantSignatureKey &key);
 };
 }

@@ -218,17 +218,22 @@ public:
 		load_count = 0;
 	}
 
-	typename IntrusiveList<T>::Iterator begin()
+	typename IntrusiveList<T>::Iterator begin() const
 	{
 		return list.begin();
 	}
 
-	typename IntrusiveList<T>::Iterator end()
+	typename IntrusiveList<T>::Iterator end() const
 	{
 		return list.end();
 	}
 
 	IntrusiveList<T> &inner_list()
+	{
+		return list;
+	}
+
+	const IntrusiveList<T> &inner_list() const
 	{
 		return list;
 	}
@@ -409,17 +414,22 @@ public:
 		return value;
 	}
 
-	typename IntrusiveList<T>::Iterator begin()
+	typename IntrusiveList<T>::Iterator begin() const
 	{
 		return hashmap.begin();
 	}
 
-	typename IntrusiveList<T>::Iterator end()
+	typename IntrusiveList<T>::Iterator end() const
 	{
 		return hashmap.end();
 	}
 
 	IntrusiveHashMap &get_thread_unsafe()
+	{
+		return *this;
+	}
+
+	const IntrusiveHashMap &get_thread_unsafe() const
 	{
 		return *this;
 	}
@@ -542,6 +552,11 @@ public:
 	}
 
 	IntrusiveHashMap<T> &get_thread_unsafe()
+	{
+		return hashmap;
+	}
+
+	const IntrusiveHashMap<T> &get_thread_unsafe() const
 	{
 		return hashmap;
 	}

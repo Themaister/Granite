@@ -139,6 +139,8 @@ public:
 
 	void promote_read_write_cache_to_read_only();
 
+	ShaderSuite *get_shader_suites();
+
 protected:
 	mutable ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
@@ -179,6 +181,8 @@ public:
 		Count
 	};
 
+	enum { CacheVersion = 1 };
+
 	void set_renderer(Type type, RendererHandle handle);
 	void set_default_renderers();
 
@@ -196,8 +200,21 @@ public:
 	const Renderer &get_renderer(Type type) const;
 	void promote_read_write_cache_to_read_only();
 
+	void register_variants_from_cache();
+	bool load_variant_cache(const std::string &path);
+	bool save_variant_cache(const std::string &path);
+
 private:
 	RendererHandle handles[Util::ecast(Type::Count)];
+
+	struct Variant
+	{
+		Type renderer_suite_type;
+		RenderableType renderable_type;
+		ShaderSuite::VariantSignatureKey key;
+	};
+	std::vector<Variant> variants;
+	Util::Hash current_config_hash = 0;
 };
 
 class DeferredLightRenderer

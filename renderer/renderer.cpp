@@ -29,6 +29,7 @@
 #include "render_parameters.hpp"
 #include "global_managers.hpp"
 #include "common_renderer_data.hpp"
+#include "rapidjson_wrapper.hpp"
 #include <string.h>
 
 using namespace Vulkan;
@@ -124,11 +125,156 @@ void RendererSuite::update_mesh_rendering_options(const RenderContext &context, 
 		pcf_flags |= Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT;
 
 	auto opts = Renderer::get_mesh_renderer_options_from_lighting(*context.get_lighting_parameters());
+
+	Util::Hasher h;
+	h.u32(opts);
+	h.u32(config.pcf_width);
+	h.u32(uint32_t(config.directional_light_vsm));
+	h.u32(uint32_t(config.forward_z_prepass));
+	h.u32(uint32_t(config.cascaded_directional_shadows));
+	Util::Hash config_hash = h.get();
+
 	get_renderer(Type::Deferred).set_mesh_renderer_options(pcf_flags | (opts & Renderer::POSITIONAL_DECALS_BIT));
 	get_renderer(Type::ForwardOpaque).set_mesh_renderer_options(
 			opts | pcf_flags | (config.forward_z_prepass ? Renderer::ALPHA_TEST_DISABLE_BIT : 0));
 	opts &= ~Renderer::AMBIENT_OCCLUSION_BIT;
 	get_renderer(Type::ForwardTransparent).set_mesh_renderer_options(opts | pcf_flags);
+
+	if (config_hash != current_config_hash)
+	{
+		register_variants_from_cache();
+		current_config_hash = config_hash;
+		promote_read_write_cache_to_read_only();
+	}
+}
+
+bool RendererSuite::load_variant_cache(const std::string &path)
+{
+	using namespace rapidjson;
+	std::string json;
+
+	if (!GRANITE_FILESYSTEM()->read_file_to_string(path, json))
+		return false;
+
+	Document doc;
+	doc.Parse(json);
+	if (doc.HasParseError())
+	{
+		LOGE("Failed to parse variant cache format!\n");
+		return false;
+	}
+
+	if (!doc.HasMember("rendererSuiteCacheVersion"))
+	{
+		LOGE("Could not find rendererSuiteCacheVersion member.\n");
+		return false;
+	}
+
+	unsigned version = doc["rendererSuiteCacheVersion"].GetUint();
+	if (version != CacheVersion)
+	{
+		LOGE("Mismatch in renderer suite cache version, %u != %u.\n", version, CacheVersion);
+		return false;
+	}
+
+	auto &maps = doc["variants"];
+	for (auto itr = maps.Begin(); itr != maps.End(); ++itr)
+	{
+		auto &value = *itr;
+		Variant variant = {};
+		variant.renderer_suite_type = static_cast<RendererSuite::Type>(value["rendererSuiteType"].GetUint());
+		variant.renderable_type = static_cast<RenderableType>(value["renderableType"].GetUint());
+		variant.key.coverage = static_cast<DrawPipelineCoverage>(value["coverage"].GetUint());
+		variant.key.attribute_mask = value["attributeMask"].GetUint();
+		variant.key.texture_mask = value["textureMask"].GetUint();
+		variant.key.variant_id = value["variantId"].GetUint();
+		variants.push_back(variant);
+	}
+
+	LOGI("Loaded variant cache from %s.\n", path.c_str());
+	return true;
+}
+
+bool RendererSuite::save_variant_cache(const std::string &path)
+{
+	using namespace rapidjson;
+	Document doc;
+	doc.SetObject();
+	auto &allocator = doc.GetAllocator();
+
+	doc.AddMember("rendererSuiteCacheVersion", uint32_t(CacheVersion), allocator);
+
+	Value variants_array(kArrayType);
+
+	for (unsigned suite_type = 0; suite_type < Util::ecast(RendererSuite::Type::Count); suite_type++)
+	{
+		for (unsigned renderable_type = 0; renderable_type < Util::ecast(RenderableType::Count); renderable_type++)
+		{
+			auto &suite = handles[suite_type]->get_shader_suites()[renderable_type];
+			auto &signatures = suite.get_variant_signatures().get_thread_unsafe();
+			for (auto &key : signatures)
+			{
+				Value variant(kObjectType);
+				variant.AddMember("rendererSuiteType", suite_type, allocator);
+				variant.AddMember("renderableType", renderable_type, allocator);
+				variant.AddMember("coverage", uint32_t(key.key.coverage), allocator);
+				variant.AddMember("attributeMask", uint32_t(key.key.attribute_mask), allocator);
+				variant.AddMember("textureMask", uint32_t(key.key.texture_mask), allocator);
+				variant.AddMember("variantId", uint32_t(key.key.variant_id), allocator);
+				variants_array.PushBack(variant, allocator);
+			}
+		}
+	}
+
+	doc.AddMember("variants", variants_array, allocator);
+
+	StringBuffer buffer;
+	PrettyWriter<StringBuffer> writer(buffer);
+	doc.Accept(writer);
+
+	auto file = GRANITE_FILESYSTEM()->open(path, Granite::FileMode::WriteOnlyTransactional);
+	if (!file)
+	{
+		LOGE("Failed to open %s for writing.\n", path.c_str());
+		return false;
+	}
+
+	void *mapped = file->map_write(buffer.GetSize());
+	if (!mapped)
+	{
+		LOGE("Failed to map buffer %s for writing.\n", path.c_str());
+		return false;
+	}
+
+	memcpy(mapped, buffer.GetString(), buffer.GetSize());
+	file->unmap();
+
+	LOGI("Saved variant cache to %s.\n", path.c_str());
+	return true;
+}
+
+void RendererSuite::register_variants_from_cache()
+{
+	if (variants.empty())
+		return;
+
+	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
+	Util::TimelineTraceFile::Event *e = nullptr;
+	if (file)
+		file->begin_event("renderer-suite-warm-variants");
+
+	for (auto &variant : variants)
+	{
+		auto *suites = handles[Util::ecast(variant.renderer_suite_type)]->get_shader_suites();
+		auto &suite = suites[Util::ecast(variant.renderable_type)];
+		suite.get_program(variant.key.coverage, variant.key.attribute_mask,
+		                  variant.key.texture_mask, variant.key.variant_id);
+	}
+
+	if (e)
+		file->end_event(e);
+
+	LOGI("Warmed cached variants.\n");
 }
 
 Renderer::Renderer(RendererType type_, const ShaderSuiteResolver *resolver_)
@@ -140,6 +286,11 @@ Renderer::Renderer(RendererType type_, const ShaderSuiteResolver *resolver_)
 		set_mesh_renderer_options(SHADOW_CASCADE_ENABLE_BIT | SHADOW_ENABLE_BIT | FOG_ENABLE_BIT);
 	else
 		set_mesh_renderer_options(0);
+}
+
+ShaderSuite *Renderer::get_shader_suites()
+{
+	return suite;
 }
 
 static const char *renderer_to_define(RendererType type)

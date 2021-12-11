@@ -265,6 +265,20 @@ public:
 		*this = std::move(other);
 	}
 
+	T *release() &
+	{
+		T *ret = data;
+		data = nullptr;
+		return ret;
+	}
+
+	T *release() &&
+	{
+		T *ret = data;
+		data = nullptr;
+		return ret;
+	}
+
 private:
 	T *data = nullptr;
 };

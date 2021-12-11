@@ -24,7 +24,10 @@
 #include "compiler.hpp"
 #endif
 #include "shader_manager.hpp"
-#include "path.hpp"
+
+// Disambiguate path.hpp
+#include "../path/path.hpp"
+
 #include "device.hpp"
 #include "rapidjson_wrapper.hpp"
 #include <algorithm>

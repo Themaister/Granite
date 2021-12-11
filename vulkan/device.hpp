@@ -797,13 +797,14 @@ private:
 	{
 		std::unordered_map<VkShaderModule, Shader *> shader_map;
 		std::unordered_map<VkRenderPass, RenderPass *> render_pass_map;
+		const Fossilize::FeatureFilter *feature_filter = nullptr;
 #ifdef GRANITE_VULKAN_MT
 		// Need to forward-declare the type, avoid the ref-counted wrapper.
 		Granite::TaskGroup *pipeline_group = nullptr;
 #endif
 	} replayer_state;
 
-	void init_pipeline_state();
+	void init_pipeline_state(const Fossilize::FeatureFilter &filter);
 	void flush_pipeline_state();
 #endif
 

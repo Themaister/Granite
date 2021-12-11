@@ -46,6 +46,13 @@ set(FOSSILIZE_CLI OFF CACHE BOOL "Fossilize CLI." FORCE)
 set(FOSSILIZE_TESTS OFF CACHE BOOL "Fossilize tests." FORCE)
 if (GRANITE_VULKAN_FOSSILIZE)
     add_subdirectory(fossilize EXCLUDE_FROM_ALL)
+    add_library(fossilize-feature-filter STATIC
+            fossilize/cli/fossilize_feature_filter.hpp
+            fossilize/cli/fossilize_feature_filter.cpp)
+    target_include_directories(fossilize-feature-filter
+            PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/fossilize
+            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/spirv-headers/include/spirv/unified1)
+    target_link_libraries(fossilize-feature-filter PUBLIC granite-volk-headers)
 endif()
 
 add_library(granite-rapidjson INTERFACE)

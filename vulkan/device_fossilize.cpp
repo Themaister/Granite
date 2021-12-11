@@ -74,6 +74,9 @@ void Device::register_render_pass(VkRenderPass render_pass, Fossilize::Hash hash
 
 bool Device::enqueue_create_shader_module(Fossilize::Hash hash, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
 {
+	if (!replayer_state.feature_filter->shader_module_is_supported(create_info))
+		return false;
+
 	auto *ret = shaders.emplace_yield(hash, hash, this, create_info->pCode, create_info->codeSize);
 	*module = ret->get_module();
 	replayer_state.shader_map[*module] = ret;
@@ -152,6 +155,9 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash,
                                               const VkGraphicsPipelineCreateInfo *create_info,
                                               VkPipeline *pipeline)
 {
+	if (!replayer_state.feature_filter->graphics_pipeline_is_supported(create_info))
+		return false;
+
 #ifdef GRANITE_VULKAN_MT
 	if (!replayer_state.pipeline_group && get_system_handles().thread_group)
 		replayer_state.pipeline_group = get_system_handles().thread_group->create_task().release();
@@ -180,6 +186,9 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash,
                                              const VkComputePipelineCreateInfo *create_info,
                                              VkPipeline *pipeline)
 {
+	if (!replayer_state.feature_filter->compute_pipeline_is_supported(create_info))
+		return false;
+
 #ifdef GRANITE_VULKAN_MT
 	if (!replayer_state.pipeline_group && get_system_handles().thread_group)
 		replayer_state.pipeline_group = get_system_handles().thread_group->create_task().release();
@@ -208,6 +217,9 @@ bool Device::enqueue_create_render_pass(Fossilize::Hash hash,
                                         const VkRenderPassCreateInfo *create_info,
                                         VkRenderPass *render_pass)
 {
+	if (!replayer_state.feature_filter->render_pass_is_supported(create_info))
+		return false;
+
 	auto *ret = render_passes.emplace_yield(hash, hash, this, *create_info);
 	*render_pass = ret->get_render_pass();
 	replayer_state.render_pass_map[*render_pass] = ret;
@@ -246,8 +258,9 @@ bool Device::enqueue_create_pipeline_layout(Fossilize::Hash, const VkPipelineLay
 	return true;
 }
 
-void Device::init_pipeline_state()
+void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 {
+	replayer_state.feature_filter = &filter;
 	state_recorder.init_recording_thread(nullptr);
 	if (!get_system_handles().filesystem)
 		return;

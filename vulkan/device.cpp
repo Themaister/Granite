@@ -796,7 +796,7 @@ void Device::set_context(const Context &context)
 	}
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	init_pipeline_state();
+	init_pipeline_state(context.get_feature_filter());
 #endif
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	init_shader_manager_cache();

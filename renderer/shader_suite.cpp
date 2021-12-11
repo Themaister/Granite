@@ -99,11 +99,7 @@ Vulkan::Program *ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attrib
 			defines.emplace_back(join("VARIANT_BIT_", bit), 1);
 		});
 
-		if (manager->get_device()->get_workarounds().broken_color_write_mask)
-			defines.emplace_back("HAVE_EMISSIVE", 1);
-		else
-			defines.emplace_back("HAVE_EMISSIVE", !!(texture_mask & MATERIAL_EMISSIVE_BIT));
-
+		defines.emplace_back("HAVE_EMISSIVE", !!(texture_mask & MATERIAL_EMISSIVE_BIT));
 		defines.emplace_back("HAVE_EMISSIVE_REFRACTION", !!(texture_mask & MATERIAL_EMISSIVE_REFRACTION_BIT));
 		defines.emplace_back("HAVE_EMISSIVE_REFLECTION", !!(texture_mask & MATERIAL_EMISSIVE_REFLECTION_BIT));
 		defines.emplace_back("HAVE_POSITION", !!(attribute_mask & MESH_ATTRIBUTE_POSITION_BIT));

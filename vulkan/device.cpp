@@ -700,36 +700,16 @@ void Device::init_workarounds()
 
 #ifdef __APPLE__
 	// Events are not supported in MoltenVK.
+	// TODO: Use VK_KHR_portability_subset to determine this.
 	workarounds.emulate_event_as_pipeline_barrier = true;
 	LOGW("Emulating events as pipeline barriers on Metal emulation.\n");
 #else
-	if (gpu_props.vendorID == VENDOR_ID_NVIDIA &&
-#ifdef _WIN32
-	    VK_VERSION_MAJOR(gpu_props.driverVersion) < 417)
-#else
-	    VK_VERSION_MAJOR(gpu_props.driverVersion) < 415)
-#endif
-	{
-		workarounds.force_store_in_render_pass = true;
-		LOGW("Detected workaround for render pass STORE_OP_STORE.\n");
-	}
-
-	if (gpu_props.vendorID == VENDOR_ID_QCOM)
-	{
-		// Apparently, we need to use STORE_OP_STORE in all render passes no matter what ...
-		workarounds.force_store_in_render_pass = true;
-		workarounds.broken_color_write_mask = true;
-		LOGW("Detected workaround for render pass STORE_OP_STORE.\n");
-		LOGW("Detected workaround for broken color write masks.\n");
-	}
-
-	// UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL stalls, so need to acquire async.
 	if (gpu_props.vendorID == VENDOR_ID_ARM)
 	{
 		LOGW("Workaround applied: Emulating events as pipeline barriers.\n");
 		LOGW("Workaround applied: Optimize ALL_GRAPHICS_BIT barriers.\n");
 
-		// All performance related workarounds.
+		// Both are performance related workarounds.
 		workarounds.emulate_event_as_pipeline_barrier = true;
 		workarounds.optimize_all_graphics_barrier = true;
 

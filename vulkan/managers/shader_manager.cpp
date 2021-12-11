@@ -30,6 +30,7 @@
 
 #include "device.hpp"
 #include "rapidjson_wrapper.hpp"
+#include "timeline_trace_file.hpp"
 #include <algorithm>
 #include <cstring>
 
@@ -113,8 +114,33 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 			if (compiler)
 			{
+#ifdef VULKAN_DEBUG
+				std::string hash_debug_str;
+				if (defines)
+				{
+					for (auto &def : *defines)
+					{
+						hash_debug_str += "\n";
+						hash_debug_str += "   ";
+						hash_debug_str += def.first;
+						hash_debug_str += " = ";
+						hash_debug_str += std::to_string(def.second);
+					}
+					hash_debug_str += ".";
+				}
+				LOGI("Compiling shader: %s%s\n", path.c_str(), hash_debug_str.c_str());
+#endif
+
 				std::string error_message;
+
+				Util::TimelineTraceFile::Event *e = nullptr;
+				auto *trace_file = device->get_system_handles().timeline_trace_file;
+				if (trace_file)
+					e = trace_file->begin_event("glsl-compile");
 				variant->spirv = compiler->compile(error_message, defines);
+				if (e)
+					trace_file->end_event(e);
+
 				if (variant->spirv.empty())
 				{
 					LOGE("Shader error:\n%s\n", error_message.c_str());

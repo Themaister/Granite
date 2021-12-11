@@ -333,7 +333,9 @@ unique_ptr<GLFFT::Program> FFTInterface::compile_compute_shader(const char *sour
 		shader = device->request_shader(spirv.data(), spirv.size() * sizeof(uint32_t));
 
 		// Register this mapping for next time, hopefully ... :)
-		device->get_shader_manager().register_shader_hash_from_variant_hash(hash, shader->get_hash());
+		Vulkan::ResourceLayout layout;
+		Vulkan::Shader::reflect_resource_layout(layout, spirv.data(), spirv.size() * sizeof(uint32_t));
+		device->get_shader_manager().register_shader_from_variant_hash(hash, shader->get_hash(), layout);
 	}
 
 	Vulkan::Program *program = device->request_program(shader);

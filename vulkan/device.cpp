@@ -795,11 +795,12 @@ void Device::set_context(const Context &context)
 			queue_data[i].performance_query_pool.init_device(this, queue_info.family_indices[i]);
 	}
 
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	init_pipeline_state(context.get_feature_filter());
-#endif
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	init_shader_manager_cache();
+#endif
+
+#ifdef GRANITE_VULKAN_FOSSILIZE
+	init_pipeline_state(context.get_feature_filter());
 #endif
 
 	if (system_handles.timeline_trace_file)
@@ -4797,9 +4798,8 @@ ShaderManager &Device::get_shader_manager()
 #ifdef GRANITE_VULKAN_FILESYSTEM
 void Device::init_shader_manager_cache()
 {
-	//if (!shader_manager.load_shader_cache("assets://shader_cache.json"))
-	//	shader_manager.load_shader_cache("cache://shader_cache.json");
-	shader_manager.load_shader_cache("assets://shader_cache.json");
+	if (!shader_manager.load_shader_cache("assets://shader_cache.json"))
+		shader_manager.load_shader_cache("cache://shader_cache.json");
 }
 
 void Device::flush_shader_manager_cache()

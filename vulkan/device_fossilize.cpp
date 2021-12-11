@@ -77,7 +77,16 @@ bool Device::enqueue_create_shader_module(Fossilize::Hash hash, const VkShaderMo
 	if (!replayer_state.feature_filter->shader_module_is_supported(create_info))
 		return false;
 
-	auto *ret = shaders.emplace_yield(hash, hash, this, create_info->pCode, create_info->codeSize);
+	ResourceLayout layout;
+	Shader *ret;
+
+	// If we know the resource layout already, just reuse that. Avoids spinning up SPIRV-Cross reflection
+	// and allows us to not even build it for release builds.
+	if (shader_manager.get_resource_layout_by_shader_hash(hash, layout))
+		ret = shaders.emplace_yield(hash, hash, this, create_info->pCode, create_info->codeSize, &layout);
+	else
+		ret = shaders.emplace_yield(hash, hash, this, create_info->pCode, create_info->codeSize);
+
 	*module = ret->get_module();
 	replayer_state.shader_map[*module] = ret;
 	return true;

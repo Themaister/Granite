@@ -111,13 +111,12 @@ private:
 class ShaderProgramVariant : public Util::IntrusiveHashMapEnabled<ShaderProgramVariant>
 {
 public:
-	ShaderProgramVariant(Device *device, MetaCache &cache);
+	explicit ShaderProgramVariant(Device *device);
 	Vulkan::Program *get_program();
 
 private:
 	friend class ShaderProgram;
 	Device *device;
-	MetaCache &cache;
 	const ShaderTemplateVariant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	std::atomic<unsigned> shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)];
 	std::atomic<Vulkan::Program *> program;
@@ -132,14 +131,14 @@ private:
 class ShaderProgram : public Util::IntrusiveHashMapEnabled<ShaderProgram>
 {
 public:
-	ShaderProgram(Device *device_, MetaCache &cache_, ShaderTemplate *compute)
-		: device(device_), cache(cache_)
+	ShaderProgram(Device *device_, ShaderTemplate *compute)
+		: device(device_)
 	{
 		set_stage(Vulkan::ShaderStage::Compute, compute);
 	}
 
-	ShaderProgram(Device *device_, MetaCache &cache_, ShaderTemplate *vert, ShaderTemplate *frag)
-		: device(device_), cache(cache_)
+	ShaderProgram(Device *device_, ShaderTemplate *vert, ShaderTemplate *frag)
+		: device(device_)
 	{
 		set_stage(Vulkan::ShaderStage::Vertex, vert);
 		set_stage(Vulkan::ShaderStage::Fragment, frag);
@@ -151,7 +150,6 @@ public:
 
 private:
 	Device *device;
-	MetaCache &cache;
 	ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	VulkanCacheReadWrite<ShaderProgramVariant> variant_cache;
 };

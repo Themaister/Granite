@@ -265,8 +265,8 @@ void ShaderProgram::set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader)
 	VK_ASSERT(variant_cache.begin() == variant_cache.end());
 }
 
-ShaderProgramVariant::ShaderProgramVariant(Device *device_, MetaCache &cache_)
-	: device(device_), cache(cache_)
+ShaderProgramVariant::ShaderProgramVariant(Device *device_)
+	: device(device_)
 {
 	for (auto &inst : shader_instance)
 		inst.store(0, std::memory_order_relaxed);
@@ -411,7 +411,7 @@ ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pai
 	if (auto *variant = variant_cache.find(hash))
 		return variant;
 
-	auto *new_variant = variant_cache.allocate(device, cache);
+	auto *new_variant = variant_cache.allocate(device);
 
 	for (unsigned i = 0; i < static_cast<unsigned>(Vulkan::ShaderStage::Count); i++)
 		if (stages[i])
@@ -436,7 +436,7 @@ ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 
 	auto *ret = programs.find(hash);
 	if (!ret)
-		ret = programs.emplace_yield(hash, device, meta_cache, tmpl);
+		ret = programs.emplace_yield(hash, device, tmpl);
 	return ret;
 }
 
@@ -482,7 +482,7 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const
 
 	auto *ret = programs.find(hash);
 	if (!ret)
-		ret = programs.emplace_yield(hash, device, meta_cache, vert_tmpl, frag_tmpl);
+		ret = programs.emplace_yield(hash, device, vert_tmpl, frag_tmpl);
 	return ret;
 }
 

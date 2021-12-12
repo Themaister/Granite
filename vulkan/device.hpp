@@ -69,7 +69,7 @@ class TimelineTraceFile;
 
 namespace Granite
 {
-class TaskGroup;
+struct TaskGroup;
 }
 
 namespace Vulkan

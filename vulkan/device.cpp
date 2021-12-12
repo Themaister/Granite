@@ -591,14 +591,6 @@ bool Device::init_pipeline_cache(const uint8_t *data, size_t size)
 	return table->vkCreatePipelineCache(device, &info, nullptr, &pipeline_cache) == VK_SUCCESS;
 }
 
-static inline char to_hex(uint8_t v)
-{
-	if (v < 10)
-		return char('0' + v);
-	else
-		return char('a' + (v - 10));
-}
-
 void Device::init_pipeline_cache()
 {
 #ifdef GRANITE_VULKAN_FILESYSTEM

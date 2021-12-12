@@ -42,7 +42,7 @@ option(GRANITE_VULKAN_SPIRV_CROSS "Add reflection support to Vulkan backend." ON
 option(GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER "Enable Vulkan GLSL runtime compiler." ON)
 option(GRANITE_VULKAN_MT "Make Vulkan backend thread-safe." ON)
 option(GRANITE_VULKAN_BETA "Enable provisional extension support." OFF)
-option(GRANITE_VULKAN_FOSSILIZE "Enable support for Fossilize." OFF)
+option(GRANITE_VULKAN_FOSSILIZE "Enable support for Fossilize." ON)
 option(GRANITE_AUDIO "Enable Audio support." OFF)
 option(GRANITE_PLATFORM "Granite Platform" "GLFW")
 option(GRANITE_HIDDEN "Declare symbols as hidden by default. Useful if you build Granite as a static library and you link to it in your shared library." OFF)

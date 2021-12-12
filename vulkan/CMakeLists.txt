@@ -54,7 +54,7 @@ endif()
 if (GRANITE_VULKAN_FOSSILIZE)
     target_compile_definitions(granite-vulkan PUBLIC GRANITE_VULKAN_FOSSILIZE)
     target_sources(granite-vulkan PRIVATE device_fossilize.cpp)
-    target_link_libraries(granite-vulkan PUBLIC fossilize fossilize-feature-filter)
+    target_link_libraries(granite-vulkan PUBLIC fossilize)
 endif()
 
 if (GRANITE_VULKAN_FILESYSTEM)

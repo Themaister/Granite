@@ -359,6 +359,10 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 {
 	Compiler compiler(data, size / sizeof(uint32_t));
 
+#ifdef VULKAN_DEBUG
+	LOGI("Reflecting shader layout.\n");
+#endif
+
 	auto resources = compiler.get_shader_resources();
 	for (auto &image : resources.sampled_images)
 	{

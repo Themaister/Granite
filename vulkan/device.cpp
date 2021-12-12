@@ -303,11 +303,7 @@ Shader *Device::request_shader(const uint32_t *data, size_t size,
                                const ResourceLayout *layout,
                                const ImmutableSamplerBank *sampler_bank)
 {
-	Util::Hasher hasher;
-	hasher.data(data, size);
-	ImmutableSamplerBank::hash(hasher, sampler_bank);
-
-	auto hash = hasher.get();
+	auto hash = Shader::hash(data, size, sampler_bank);
 	auto *ret = shaders.find(hash);
 	if (!ret)
 		ret = shaders.emplace_yield(hash, hash, this, data, size, layout, sampler_bank);

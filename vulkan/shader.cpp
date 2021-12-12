@@ -355,6 +355,14 @@ static void update_array_info(ResourceLayout &layout, const SPIRType &type, unsi
 	}
 }
 
+Util::Hash Shader::hash(const uint32_t *data, size_t size, const ImmutableSamplerBank *sampler_bank)
+{
+	Util::Hasher hasher;
+	hasher.data(data, size);
+	ImmutableSamplerBank::hash(hasher, sampler_bank);
+	return hasher.get();
+}
+
 bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *data, size_t size)
 {
 	Compiler compiler(data, size / sizeof(uint32_t));

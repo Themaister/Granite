@@ -552,9 +552,10 @@ void Device::bake_program(Program &program)
 bool Device::init_pipeline_cache(const uint8_t *data, size_t size)
 {
 	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
+	static const auto hash_size = sizeof(Util::Hash);
 
 	VkPipelineCacheCreateInfo info = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
-	if (!data || size < uuid_size)
+	if (!data || size < uuid_size + hash_size)
 	{
 		LOGI("Creating a fresh pipeline cache.\n");
 	}
@@ -564,9 +565,24 @@ bool Device::init_pipeline_cache(const uint8_t *data, size_t size)
 	}
 	else
 	{
-		info.initialDataSize = size - uuid_size;
-		info.pInitialData = data + uuid_size;
-		LOGI("Initializing pipeline cache.\n");
+		Util::Hash reference_hash;
+		memcpy(&reference_hash, data + uuid_size, sizeof(reference_hash));
+
+		info.initialDataSize = size - uuid_size - hash_size;
+		data += uuid_size + hash_size;
+		info.pInitialData = data;
+
+		Util::Hasher h;
+		h.data(data, info.initialDataSize);
+
+		if (h.get() == reference_hash)
+			LOGI("Initializing pipeline cache.\n");
+		else
+		{
+			LOGW("Pipeline cache is corrupt, creating a fresh cache.\n");
+			info.pInitialData = nullptr;
+			info.initialDataSize = 0;
+		}
 	}
 
 	if (pipeline_cache != VK_NULL_HANDLE)
@@ -583,27 +599,12 @@ static inline char to_hex(uint8_t v)
 		return char('a' + (v - 10));
 }
 
-string Device::get_pipeline_cache_string() const
-{
-	string res;
-	res.reserve(sizeof(gpu_props.pipelineCacheUUID) * 2);
-
-	for (auto &c : gpu_props.pipelineCacheUUID)
-	{
-		res += to_hex(uint8_t((c >> 4) & 0xf));
-		res += to_hex(uint8_t(c & 0xf));
-	}
-
-	return res;
-}
-
 void Device::init_pipeline_cache()
 {
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	if (!system_handles.filesystem)
 		return;
-	auto file = system_handles.filesystem->open(Util::join("cache://pipeline_cache_", get_pipeline_cache_string(), ".bin"),
-	                                            Granite::FileMode::ReadOnly);
+	auto file = system_handles.filesystem->open("cache://pipeline_cache.bin", Granite::FileMode::ReadOnly);
 	if (file)
 	{
 		auto size = file->get_size();
@@ -622,6 +623,7 @@ size_t Device::get_pipeline_cache_size()
 		return 0;
 
 	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
+	static const auto hash_size = sizeof(Util::Hash);
 	size_t size = 0;
 	if (table->vkGetPipelineCacheData(device, pipeline_cache, &size, nullptr) != VK_SUCCESS)
 	{
@@ -629,7 +631,7 @@ size_t Device::get_pipeline_cache_size()
 		return 0;
 	}
 
-	return size + uuid_size;
+	return size + uuid_size + hash_size;
 }
 
 bool Device::get_pipeline_cache_data(uint8_t *data, size_t size)
@@ -638,18 +640,26 @@ bool Device::get_pipeline_cache_data(uint8_t *data, size_t size)
 		return false;
 
 	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
-	if (size < uuid_size)
+	static const auto hash_size = sizeof(Util::Hash);
+	if (size < uuid_size + hash_size)
 		return false;
 
-	size -= uuid_size;
+	auto *hash_data = data + uuid_size;
+
+	size -= uuid_size + hash_size;
 	memcpy(data, gpu_props.pipelineCacheUUID, uuid_size);
-	data += uuid_size;
+	data = hash_data + hash_size;
 
 	if (table->vkGetPipelineCacheData(device, pipeline_cache, &size, data) != VK_SUCCESS)
 	{
 		LOGE("Failed to get pipeline cache data.\n");
 		return false;
 	}
+
+	Util::Hasher h;
+	h.data(data, size);
+	auto blob_hash = h.get();
+	memcpy(hash_data, &blob_hash, sizeof(blob_hash));
 
 	return true;
 }
@@ -667,8 +677,10 @@ void Device::flush_pipeline_cache()
 		return;
 	}
 
-	auto file = system_handles.filesystem->open(Util::join("cache://pipeline_cache_", get_pipeline_cache_string(), ".bin"),
-	                                            Granite::FileMode::WriteOnlyTransactional);
+	auto file = system_handles.filesystem->open(
+			"cache://pipeline_cache.bin",
+			Granite::FileMode::WriteOnlyTransactional);
+
 	if (!file)
 	{
 		LOGE("Failed to get pipeline cache data.\n");

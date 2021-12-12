@@ -768,8 +768,6 @@ private:
 	TextureManager texture_manager;
 #endif
 
-	std::string get_pipeline_cache_string() const;
-
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	Fossilize::StateRecorder state_recorder;
 	bool enqueue_create_sampler(Fossilize::Hash hash, const VkSamplerCreateInfo *create_info, VkSampler *sampler) override;

@@ -21,7 +21,7 @@
  */
 
 #include "tmx_parser.hpp"
-#include "path.hpp"
+#include "path_utils.hpp"
 #include "filesystem.hpp"
 #include "rapidjson_wrapper.hpp"
 #include "texture_files.hpp"

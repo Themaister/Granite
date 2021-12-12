@@ -24,10 +24,7 @@
 #include "compiler.hpp"
 #endif
 #include "shader_manager.hpp"
-
-// Disambiguate path.hpp
-#include "../path/path.hpp"
-
+#include "path_utils.hpp"
 #include "device.hpp"
 #include "rapidjson_wrapper.hpp"
 #include "timeline_trace_file.hpp"

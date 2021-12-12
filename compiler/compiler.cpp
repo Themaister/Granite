@@ -22,7 +22,7 @@
 
 #include "compiler.hpp"
 #include "shaderc/shaderc.hpp"
-#include "path.hpp"
+#include "path_utils.hpp"
 #include "logging.hpp"
 #include "string_helpers.hpp"
 

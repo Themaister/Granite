@@ -21,7 +21,7 @@
  */
 
 #include "fs-netfs.hpp"
-#include "path.hpp"
+#include "path_utils.hpp"
 #include "logging.hpp"
 #include <assert.h>
 #include <queue>

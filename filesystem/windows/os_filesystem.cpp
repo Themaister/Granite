@@ -21,7 +21,7 @@
  */
 
 #include "os_filesystem.hpp"
-#include "path.hpp"
+#include "path_utils.hpp"
 #include "logging.hpp"
 #include <stdexcept>
 #include <sys/stat.h>

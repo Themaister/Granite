@@ -44,18 +44,31 @@ add_subdirectory(libco EXCLUDE_FROM_ALL)
 
 set(FOSSILIZE_CLI OFF CACHE BOOL "Fossilize CLI." FORCE)
 set(FOSSILIZE_TESTS OFF CACHE BOOL "Fossilize tests." FORCE)
-if (GRANITE_VULKAN_FOSSILIZE)
-    add_subdirectory(fossilize EXCLUDE_FROM_ALL)
-endif()
 
 add_library(granite-rapidjson INTERFACE)
 target_include_directories(granite-rapidjson INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include)
 
+if (GRANITE_VULKAN_FOSSILIZE)
+    # Some issues with Android build with missing shm_. Compile exactly what we need for now.
+    add_library(fossilize STATIC
+            fossilize/fossilize.hpp fossilize/fossilize.cpp
+            fossilize/varint.hpp fossilize/varint.cpp
+            fossilize/fossilize_application_filter.hpp fossilize/fossilize_application_filter.cpp
+            fossilize/path.hpp fossilize/path.cpp
+            fossilize/cli/fossilize_feature_filter.hpp fossilize/cli/fossilize_feature_filter.cpp)
+    target_include_directories(fossilize
+            PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/fossilize
+            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/spirv-headers/include/spirv/unified1)
+    target_link_libraries(fossilize PUBLIC granite-volk-headers PRIVATE granite-rapidjson)
+endif()
+
 add_library(granite-volk-headers INTERFACE)
 target_include_directories(granite-volk-headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/volk)
-target_include_directories(granite-volk-headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/khronos/vulkan-headers/include)
+target_include_directories(granite-volk-headers INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/khronos/vulkan-headers/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/khronos/vulkan-headers/include/vulkan)
 if (GRANITE_VULKAN_BETA)
     target_include_directories(granite-volk-headers INTERFACE
             ${CMAKE_CURRENT_SOURCE_DIR}/khronos/vulkan-headers/include/vk_video)

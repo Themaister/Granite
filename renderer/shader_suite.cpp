@@ -63,7 +63,23 @@ void ShaderSuite::promote_read_write_cache_to_read_only()
 	variants.move_to_read_only();
 }
 
-Vulkan::Program *ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attribute_mask,
+const Util::ThreadSafeIntrusiveHashMap<ShaderSuite::VariantSignature> &
+ShaderSuite::get_variant_signatures() const
+{
+	return variant_signature_cache;
+}
+
+void ShaderSuite::register_variant_signature(const VariantSignatureKey &key)
+{
+	Hasher h;
+	h.u32(ecast(key.coverage));
+	h.u32(key.attribute_mask);
+	h.u32(key.texture_mask);
+	h.u32(key.variant_id);
+	variant_signature_cache.emplace_yield(h.get(), key);
+}
+
+Vulkan::Program *ShaderSuite::get_program(DrawPipelineCoverage coverage, uint32_t attribute_mask,
                                           uint32_t texture_mask, uint32_t variant_id)
 {
 	if (!program)
@@ -75,35 +91,34 @@ Vulkan::Program *ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attrib
 	Hasher h;
 	assert(base_define_hash != 0);
 	h.u64(base_define_hash);
-	h.u32(pipeline == DrawPipeline::AlphaTest);
+	h.u32(ecast(coverage));
 	h.u32(attribute_mask);
 	h.u32(texture_mask);
 	h.u32(variant_id);
 
 	auto hash = h.get();
 	auto *variant = variants.find(hash);
+
 	if (!variant)
 	{
-		vector<pair<string, int>> defines = base_defines;
-		switch (pipeline)
-		{
-		case DrawPipeline::AlphaTest:
-			defines.emplace_back("ALPHA_TEST", 1);
-			break;
+		// Only need to emplace if the first case misses,
+		// since the signature key is a subset of the full key.
+		VariantSignatureKey signature = {};
+		signature.coverage = coverage;
+		signature.attribute_mask = attribute_mask;
+		signature.texture_mask = texture_mask;
+		signature.variant_id = variant_id;
+		register_variant_signature(signature);
 
-		default:
-			break;
-		}
+		vector<pair<string, int>> defines = base_defines;
+		if (coverage == DrawPipelineCoverage::Modifies)
+			defines.emplace_back("ALPHA_TEST", 1);
 
 		for_each_bit(variant_id, [&](unsigned bit) {
 			defines.emplace_back(join("VARIANT_BIT_", bit), 1);
 		});
 
-		if (manager->get_device()->get_workarounds().broken_color_write_mask)
-			defines.emplace_back("HAVE_EMISSIVE", 1);
-		else
-			defines.emplace_back("HAVE_EMISSIVE", !!(texture_mask & MATERIAL_EMISSIVE_BIT));
-
+		defines.emplace_back("HAVE_EMISSIVE", !!(texture_mask & MATERIAL_EMISSIVE_BIT));
 		defines.emplace_back("HAVE_EMISSIVE_REFRACTION", !!(texture_mask & MATERIAL_EMISSIVE_REFRACTION_BIT));
 		defines.emplace_back("HAVE_EMISSIVE_REFLECTION", !!(texture_mask & MATERIAL_EMISSIVE_REFLECTION_BIT));
 		defines.emplace_back("HAVE_POSITION", !!(attribute_mask & MESH_ATTRIBUTE_POSITION_BIT));
@@ -131,4 +146,11 @@ Vulkan::Program *ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attrib
 	return variant->get()->get_program();
 }
 
+Vulkan::Program *ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attribute_mask,
+                                          uint32_t texture_mask, uint32_t variant_id)
+{
+	return get_program(pipeline == DrawPipeline::AlphaTest ?
+	                   DrawPipelineCoverage::Modifies : DrawPipelineCoverage::Full,
+	                   attribute_mask, texture_mask, variant_id);
+}
 }

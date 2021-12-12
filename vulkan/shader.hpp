@@ -169,8 +169,8 @@ public:
 	}
 
 	static bool reflect_resource_layout(ResourceLayout &layout, const uint32_t *spirv_data, size_t spirv_size);
-
 	static const char *stage_to_name(ShaderStage stage);
+	static Util::Hash hash(const uint32_t *data, size_t size, const ImmutableSamplerBank *sampler_bank);
 
 private:
 	Device *device;

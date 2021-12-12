@@ -3167,6 +3167,12 @@ void RenderGraph::build_physical_barriers()
 		return flags;
 	};
 
+	const auto flush_stage_to_invalidate = [](VkPipelineStageFlags flags) -> VkPipelineStageFlags {
+		if (flags & VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT)
+			flags |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+		return flags;
+	};
+
 	struct ResourceState
 	{
 		VkImageLayout initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -3293,7 +3299,7 @@ void RenderGraph::build_physical_barriers()
 					else
 					{
 						res.initial_layout = flush.layout;
-						res.invalidated_stages = flush.stages;
+						res.invalidated_stages = flush_stage_to_invalidate(flush.stages);
 						res.invalidated_types = flush_access_to_invalidate(flush.access);
 					}
 

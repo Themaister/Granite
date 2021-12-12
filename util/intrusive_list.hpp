@@ -113,17 +113,17 @@ public:
 		IntrusiveListEnabled<T> *node = nullptr;
 	};
 
-	Iterator begin()
+	Iterator begin() const
 	{
 		return Iterator(head);
 	}
 
-	Iterator rbegin()
+	Iterator rbegin() const
 	{
 		return Iterator(tail);
 	}
 
-	Iterator end()
+	Iterator end() const
 	{
 		return Iterator();
 	}

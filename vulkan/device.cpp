@@ -303,11 +303,7 @@ Shader *Device::request_shader(const uint32_t *data, size_t size,
                                const ResourceLayout *layout,
                                const ImmutableSamplerBank *sampler_bank)
 {
-	Util::Hasher hasher;
-	hasher.data(data, size);
-	ImmutableSamplerBank::hash(hasher, sampler_bank);
-
-	auto hash = hasher.get();
+	auto hash = Shader::hash(data, size, sampler_bank);
 	auto *ret = shaders.find(hash);
 	if (!ret)
 		ret = shaders.emplace_yield(hash, hash, this, data, size, layout, sampler_bank);
@@ -556,9 +552,10 @@ void Device::bake_program(Program &program)
 bool Device::init_pipeline_cache(const uint8_t *data, size_t size)
 {
 	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
+	static const auto hash_size = sizeof(Util::Hash);
 
 	VkPipelineCacheCreateInfo info = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
-	if (!data || size < uuid_size)
+	if (!data || size < uuid_size + hash_size)
 	{
 		LOGI("Creating a fresh pipeline cache.\n");
 	}
@@ -568,9 +565,24 @@ bool Device::init_pipeline_cache(const uint8_t *data, size_t size)
 	}
 	else
 	{
-		info.initialDataSize = size - uuid_size;
-		info.pInitialData = data + uuid_size;
-		LOGI("Initializing pipeline cache.\n");
+		Util::Hash reference_hash;
+		memcpy(&reference_hash, data + uuid_size, sizeof(reference_hash));
+
+		info.initialDataSize = size - uuid_size - hash_size;
+		data += uuid_size + hash_size;
+		info.pInitialData = data;
+
+		Util::Hasher h;
+		h.data(data, info.initialDataSize);
+
+		if (h.get() == reference_hash)
+			LOGI("Initializing pipeline cache.\n");
+		else
+		{
+			LOGW("Pipeline cache is corrupt, creating a fresh cache.\n");
+			info.pInitialData = nullptr;
+			info.initialDataSize = 0;
+		}
 	}
 
 	if (pipeline_cache != VK_NULL_HANDLE)
@@ -579,35 +591,12 @@ bool Device::init_pipeline_cache(const uint8_t *data, size_t size)
 	return table->vkCreatePipelineCache(device, &info, nullptr, &pipeline_cache) == VK_SUCCESS;
 }
 
-static inline char to_hex(uint8_t v)
-{
-	if (v < 10)
-		return char('0' + v);
-	else
-		return char('a' + (v - 10));
-}
-
-string Device::get_pipeline_cache_string() const
-{
-	string res;
-	res.reserve(sizeof(gpu_props.pipelineCacheUUID) * 2);
-
-	for (auto &c : gpu_props.pipelineCacheUUID)
-	{
-		res += to_hex(uint8_t((c >> 4) & 0xf));
-		res += to_hex(uint8_t(c & 0xf));
-	}
-
-	return res;
-}
-
 void Device::init_pipeline_cache()
 {
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	if (!system_handles.filesystem)
 		return;
-	auto file = system_handles.filesystem->open(Util::join("cache://pipeline_cache_", get_pipeline_cache_string(), ".bin"),
-	                                            Granite::FileMode::ReadOnly);
+	auto file = system_handles.filesystem->open("cache://pipeline_cache.bin", Granite::FileMode::ReadOnly);
 	if (file)
 	{
 		auto size = file->get_size();
@@ -626,6 +615,7 @@ size_t Device::get_pipeline_cache_size()
 		return 0;
 
 	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
+	static const auto hash_size = sizeof(Util::Hash);
 	size_t size = 0;
 	if (table->vkGetPipelineCacheData(device, pipeline_cache, &size, nullptr) != VK_SUCCESS)
 	{
@@ -633,7 +623,7 @@ size_t Device::get_pipeline_cache_size()
 		return 0;
 	}
 
-	return size + uuid_size;
+	return size + uuid_size + hash_size;
 }
 
 bool Device::get_pipeline_cache_data(uint8_t *data, size_t size)
@@ -642,18 +632,26 @@ bool Device::get_pipeline_cache_data(uint8_t *data, size_t size)
 		return false;
 
 	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
-	if (size < uuid_size)
+	static const auto hash_size = sizeof(Util::Hash);
+	if (size < uuid_size + hash_size)
 		return false;
 
-	size -= uuid_size;
+	auto *hash_data = data + uuid_size;
+
+	size -= uuid_size + hash_size;
 	memcpy(data, gpu_props.pipelineCacheUUID, uuid_size);
-	data += uuid_size;
+	data = hash_data + hash_size;
 
 	if (table->vkGetPipelineCacheData(device, pipeline_cache, &size, data) != VK_SUCCESS)
 	{
 		LOGE("Failed to get pipeline cache data.\n");
 		return false;
 	}
+
+	Util::Hasher h;
+	h.data(data, size);
+	auto blob_hash = h.get();
+	memcpy(hash_data, &blob_hash, sizeof(blob_hash));
 
 	return true;
 }
@@ -671,8 +669,10 @@ void Device::flush_pipeline_cache()
 		return;
 	}
 
-	auto file = system_handles.filesystem->open(Util::join("cache://pipeline_cache_", get_pipeline_cache_string(), ".bin"),
-	                                            Granite::FileMode::WriteOnlyTransactional);
+	auto file = system_handles.filesystem->open(
+			"cache://pipeline_cache.bin",
+			Granite::FileMode::WriteOnlyTransactional);
+
 	if (!file)
 	{
 		LOGE("Failed to get pipeline cache data.\n");
@@ -700,36 +700,16 @@ void Device::init_workarounds()
 
 #ifdef __APPLE__
 	// Events are not supported in MoltenVK.
+	// TODO: Use VK_KHR_portability_subset to determine this.
 	workarounds.emulate_event_as_pipeline_barrier = true;
 	LOGW("Emulating events as pipeline barriers on Metal emulation.\n");
 #else
-	if (gpu_props.vendorID == VENDOR_ID_NVIDIA &&
-#ifdef _WIN32
-	    VK_VERSION_MAJOR(gpu_props.driverVersion) < 417)
-#else
-	    VK_VERSION_MAJOR(gpu_props.driverVersion) < 415)
-#endif
-	{
-		workarounds.force_store_in_render_pass = true;
-		LOGW("Detected workaround for render pass STORE_OP_STORE.\n");
-	}
-
-	if (gpu_props.vendorID == VENDOR_ID_QCOM)
-	{
-		// Apparently, we need to use STORE_OP_STORE in all render passes no matter what ...
-		workarounds.force_store_in_render_pass = true;
-		workarounds.broken_color_write_mask = true;
-		LOGW("Detected workaround for render pass STORE_OP_STORE.\n");
-		LOGW("Detected workaround for broken color write masks.\n");
-	}
-
-	// UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL stalls, so need to acquire async.
 	if (gpu_props.vendorID == VENDOR_ID_ARM)
 	{
 		LOGW("Workaround applied: Emulating events as pipeline barriers.\n");
 		LOGW("Workaround applied: Optimize ALL_GRAPHICS_BIT barriers.\n");
 
-		// All performance related workarounds.
+		// Both are performance related workarounds.
 		workarounds.emulate_event_as_pipeline_barrier = true;
 		workarounds.optimize_all_graphics_barrier = true;
 
@@ -815,11 +795,12 @@ void Device::set_context(const Context &context)
 			queue_data[i].performance_query_pool.init_device(this, queue_info.family_indices[i]);
 	}
 
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	init_pipeline_state();
-#endif
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	init_shader_manager_cache();
+#endif
+
+#ifdef GRANITE_VULKAN_FOSSILIZE
+	init_pipeline_state(context.get_feature_filter());
 #endif
 
 	if (system_handles.timeline_trace_file)
@@ -4817,9 +4798,8 @@ ShaderManager &Device::get_shader_manager()
 #ifdef GRANITE_VULKAN_FILESYSTEM
 void Device::init_shader_manager_cache()
 {
-	//if (!shader_manager.load_shader_cache("assets://shader_cache.json"))
-	//	shader_manager.load_shader_cache("cache://shader_cache.json");
-	shader_manager.load_shader_cache("assets://shader_cache.json");
+	if (!shader_manager.load_shader_cache("assets://shader_cache.json"))
+		shader_manager.load_shader_cache("cache://shader_cache.json");
 }
 
 void Device::flush_shader_manager_cache()

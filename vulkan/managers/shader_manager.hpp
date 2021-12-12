@@ -42,31 +42,49 @@ class GLSLCompiler;
 
 namespace Vulkan
 {
-using PrecomputedShaderCache = VulkanCacheReadWrite<Util::IntrusivePODWrapper<Util::Hash>>;
+struct ShaderTemplateVariant;
+struct PrecomputedMeta : Util::IntrusiveHashMapEnabled<PrecomputedMeta>
+{
+	PrecomputedMeta(Util::Hash source_hash_, Util::Hash shader_hash_)
+		: source_hash(source_hash_), shader_hash(shader_hash_)
+	{
+	}
+	Util::Hash source_hash;
+	Util::Hash shader_hash;
+};
+using PrecomputedShaderCache = VulkanCacheReadWrite<PrecomputedMeta>;
+using ReflectionCache = VulkanCacheReadWrite<Util::IntrusivePODWrapper<ResourceLayout>>;
+
+struct MetaCache
+{
+	PrecomputedShaderCache variant_to_shader;
+	ReflectionCache shader_to_layout;
+};
 
 class ShaderManager;
 class Device;
+
+struct ShaderTemplateVariant : public Util::IntrusiveHashMapEnabled<ShaderTemplateVariant>
+{
+	Util::Hash hash = 0;
+	Util::Hash spirv_hash = 0;
+	std::vector<uint32_t> spirv;
+	std::vector<std::pair<std::string, int>> defines;
+	std::unique_ptr<ImmutableSamplerBank> sampler_bank;
+	unsigned instance = 0;
+};
+
 class ShaderTemplate : public Util::IntrusiveHashMapEnabled<ShaderTemplate>
 {
 public:
-	ShaderTemplate(Device *device, const std::string &shader_path, PrecomputedShaderCache &cache, Util::Hash path_hash,
-	               const std::vector<std::string> &include_directories);
+	ShaderTemplate(Device *device, const std::string &shader_path, MetaCache &cache,
+	               Util::Hash path_hash, const std::vector<std::string> &include_directories);
 	~ShaderTemplate();
 
 	bool init();
 
-	struct Variant : public Util::IntrusiveHashMapEnabled<Variant>
-	{
-		Util::Hash hash = 0;
-		Util::Hash spirv_hash = 0;
-		std::vector<uint32_t> spirv;
-		std::vector<std::pair<std::string, int>> defines;
-		std::unique_ptr<ImmutableSamplerBank> sampler_bank;
-		unsigned instance = 0;
-	};
-
-	const Variant *register_variant(const std::vector<std::pair<std::string, int>> *defines = nullptr,
-	                                const ImmutableSamplerBank *sampler_bank = nullptr);
+	const ShaderTemplateVariant *register_variant(const std::vector<std::pair<std::string, int>> *defines = nullptr,
+	                                              const ImmutableSamplerBank *sampler_bank = nullptr);
 	void recompile();
 	void register_dependencies(ShaderManager &manager);
 
@@ -78,27 +96,28 @@ public:
 private:
 	Device *device;
 	std::string path;
-	PrecomputedShaderCache &cache;
+	MetaCache &cache;
 	Util::Hash path_hash = 0;
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	std::unique_ptr<Granite::GLSLCompiler> compiler;
 	const std::vector<std::string> &include_directories;
-	void recompile_variant(Variant &variant);
+	void recompile_variant(ShaderTemplateVariant &variant);
+	void update_variant_cache(const ShaderTemplateVariant &variant);
+	Util::Hash source_hash = 0;
 #endif
-	VulkanCache<Variant> variants;
+	VulkanCache<ShaderTemplateVariant> variants;
 };
 
 class ShaderProgramVariant : public Util::IntrusiveHashMapEnabled<ShaderProgramVariant>
 {
 public:
-	ShaderProgramVariant(Device *device, PrecomputedShaderCache &cache);
+	explicit ShaderProgramVariant(Device *device);
 	Vulkan::Program *get_program();
 
 private:
 	friend class ShaderProgram;
 	Device *device;
-	PrecomputedShaderCache &cache;
-	const ShaderTemplate::Variant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
+	const ShaderTemplateVariant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	std::atomic<unsigned> shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)];
 	std::atomic<Vulkan::Program *> program;
 #ifdef GRANITE_VULKAN_MT
@@ -112,14 +131,14 @@ private:
 class ShaderProgram : public Util::IntrusiveHashMapEnabled<ShaderProgram>
 {
 public:
-	ShaderProgram(Device *device_, PrecomputedShaderCache &cache_, ShaderTemplate *compute)
-		: device(device_), cache(cache_)
+	ShaderProgram(Device *device_, ShaderTemplate *compute)
+		: device(device_)
 	{
 		set_stage(Vulkan::ShaderStage::Compute, compute);
 	}
 
-	ShaderProgram(Device *device_, PrecomputedShaderCache &cache_, ShaderTemplate *vert, ShaderTemplate *frag)
-		: device(device_), cache(cache_)
+	ShaderProgram(Device *device_, ShaderTemplate *vert, ShaderTemplate *frag)
+		: device(device_)
 	{
 		set_stage(Vulkan::ShaderStage::Vertex, vert);
 		set_stage(Vulkan::ShaderStage::Fragment, frag);
@@ -131,7 +150,6 @@ public:
 
 private:
 	Device *device;
-	PrecomputedShaderCache &cache;
 	ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	VulkanCacheReadWrite<ShaderProgramVariant> variant_cache;
 };
@@ -158,8 +176,10 @@ public:
 	void register_dependency_nolock(ShaderTemplate *shader, const std::string &dependency);
 #endif
 
-	bool get_shader_hash_by_variant_hash(Util::Hash variant_hash, Util::Hash &shader_hash);
-	void register_shader_hash_from_variant_hash(Util::Hash variant_hash, Util::Hash shader_hash);
+	bool get_shader_hash_by_variant_hash(Util::Hash variant_hash, Util::Hash &shader_hash) const;
+	bool get_resource_layout_by_shader_hash(Util::Hash shader_hash, ResourceLayout &layout) const;
+	void register_shader_from_variant_hash(Util::Hash variant_hash, Util::Hash source_hash,
+	                                       Util::Hash shader_hash, const ResourceLayout &layout);
 
 	Device *get_device()
 	{
@@ -171,7 +191,7 @@ public:
 private:
 	Device *device;
 
-	PrecomputedShaderCache shader_cache;
+	MetaCache meta_cache;
 	VulkanCache<ShaderTemplate> shaders;
 	VulkanCache<ShaderProgram> programs;
 	std::vector<std::string> include_directories;

@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include "small_vector.hpp"
 #include "global_managers.hpp"
+#include "hash.hpp"
 
 namespace Granite
 {
@@ -74,6 +75,7 @@ public:
 	bool set_source_from_file(const std::string &path);
 	bool set_source_from_file_multistage(const std::string &path);
 	bool preprocess();
+	Util::Hash get_source_hash() const;
 
 	std::vector<uint32_t> compile(std::string &error_message, const std::vector<std::pair<std::string, int>> *defines = nullptr) const;
 

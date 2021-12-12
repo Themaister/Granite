@@ -20,7 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "path.hpp"
+#include "path_utils.hpp"
 #include "cli_parser.hpp"
 #include "compiler.hpp"
 #include "filesystem.hpp"

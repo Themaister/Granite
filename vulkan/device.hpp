@@ -57,7 +57,6 @@
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 #include "fossilize.hpp"
-#include "thread_group.hpp"
 #endif
 
 #include "quirks.hpp"
@@ -66,6 +65,11 @@
 namespace Util
 {
 class TimelineTraceFile;
+}
+
+namespace Granite
+{
+struct TaskGroup;
 }
 
 namespace Vulkan
@@ -764,8 +768,6 @@ private:
 	TextureManager texture_manager;
 #endif
 
-	std::string get_pipeline_cache_string() const;
-
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	Fossilize::StateRecorder state_recorder;
 	bool enqueue_create_sampler(Fossilize::Hash hash, const VkSamplerCreateInfo *create_info, VkSampler *sampler) override;
@@ -773,8 +775,10 @@ private:
 	bool enqueue_create_pipeline_layout(Fossilize::Hash hash, const VkPipelineLayoutCreateInfo *create_info, VkPipelineLayout *layout) override;
 	bool enqueue_create_shader_module(Fossilize::Hash hash, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module) override;
 	bool enqueue_create_render_pass(Fossilize::Hash hash, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass) override;
+	bool enqueue_create_render_pass2(Fossilize::Hash hash, const VkRenderPassCreateInfo2 *create_info, VkRenderPass *render_pass) override;
 	bool enqueue_create_compute_pipeline(Fossilize::Hash hash, const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline) override;
 	bool enqueue_create_graphics_pipeline(Fossilize::Hash hash, const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline) override;
+	bool enqueue_create_raytracing_pipeline(Fossilize::Hash hash, const VkRayTracingPipelineCreateInfoKHR *create_info, VkPipeline *pipeline) override;
 	void notify_replayed_resources_for_type() override;
 	VkPipeline fossilize_create_graphics_pipeline(Fossilize::Hash hash, VkGraphicsPipelineCreateInfo &info);
 	VkPipeline fossilize_create_compute_pipeline(Fossilize::Hash hash, VkComputePipelineCreateInfo &info);
@@ -785,18 +789,20 @@ private:
 	void register_descriptor_set_layout(VkDescriptorSetLayout layout, Fossilize::Hash hash, const VkDescriptorSetLayoutCreateInfo &info);
 	void register_pipeline_layout(VkPipelineLayout layout, Fossilize::Hash hash, const VkPipelineLayoutCreateInfo &info);
 	void register_shader_module(VkShaderModule module, Fossilize::Hash hash, const VkShaderModuleCreateInfo &info);
-	void register_sampler(VkSampler sampler, Fossilize::Hash hash, const VkSamplerCreateInfo &info);
+	//void register_sampler(VkSampler sampler, Fossilize::Hash hash, const VkSamplerCreateInfo &info);
 
 	struct
 	{
 		std::unordered_map<VkShaderModule, Shader *> shader_map;
 		std::unordered_map<VkRenderPass, RenderPass *> render_pass_map;
+		const Fossilize::FeatureFilter *feature_filter = nullptr;
 #ifdef GRANITE_VULKAN_MT
-		Granite::TaskGroupHandle pipeline_group;
+		// Need to forward-declare the type, avoid the ref-counted wrapper.
+		Granite::TaskGroup *pipeline_group = nullptr;
 #endif
 	} replayer_state;
 
-	void init_pipeline_state();
+	void init_pipeline_state(const Fossilize::FeatureFilter &filter);
 	void flush_pipeline_state();
 #endif
 

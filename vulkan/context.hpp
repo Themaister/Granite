@@ -28,6 +28,10 @@
 #include <memory>
 #include <functional>
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
+#include "cli/fossilize_feature_filter.hpp"
+#endif
+
 namespace Util
 {
 class TimelineTraceFile;
@@ -103,6 +107,7 @@ struct DeviceFeatures
 	VkPhysicalDevicePresentIdFeaturesKHR present_id_features = {};
 	VkPhysicalDevicePresentWaitFeaturesKHR present_wait_features = {};
 	VkPhysicalDevicePipelineCreationCacheControlFeaturesEXT pipeline_creation_cache_control_features = {};
+	VkPhysicalDeviceMultiviewProperties multiview_properties = {};
 };
 
 enum VendorID
@@ -129,6 +134,9 @@ struct QueueInfo
 };
 
 class Context
+#ifdef GRANITE_VULKAN_FOSSILIZE
+		: public Fossilize::DeviceQueryInterface
+#endif
 {
 public:
 	bool init_instance_and_device(const char **instance_ext, uint32_t instance_ext_count, const char **device_ext, uint32_t device_ext_count,
@@ -229,6 +237,13 @@ public:
 		return handles;
 	}
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
+	const Fossilize::FeatureFilter &get_feature_filter() const
+	{
+		return feature_filter;
+	}
+#endif
+
 private:
 	VkDevice device = VK_NULL_HANDLE;
 	VkInstance instance = VK_NULL_HANDLE;
@@ -260,5 +275,10 @@ private:
 	void destroy();
 	void check_descriptor_indexing_features();
 	bool force_no_validation = false;
+
+#ifdef GRANITE_VULKAN_FOSSILIZE
+	Fossilize::FeatureFilter feature_filter;
+	bool format_is_supported(VkFormat format, VkFormatFeatureFlags features) override;
+#endif
 };
 }

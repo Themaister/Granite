@@ -205,6 +205,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
                                                const std::string &quirks_path)
 {
 	renderer_suite.set_default_renderers();
+	if (!renderer_suite.load_variant_cache("assets://renderer_suite_variants.json"))
+		renderer_suite.load_variant_cache("cache://renderer_suite_variants.json");
 
 	if (!config_path.empty())
 		read_config(config_path);
@@ -438,6 +440,7 @@ SceneViewerApplication::~SceneViewerApplication()
 {
 	export_lights();
 	export_cameras();
+	renderer_suite.save_variant_cache("cache://renderer_suite_variants.json");
 }
 
 void SceneViewerApplication::loop_animations()
@@ -1341,7 +1344,6 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	if (e)
 		file->end_event(e);
 
-	renderer_suite.promote_read_write_cache_to_read_only();
 	get_wsi().get_device().promote_read_write_caches_to_read_only();
 }
 

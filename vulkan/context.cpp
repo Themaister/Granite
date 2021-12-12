@@ -1176,6 +1176,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.descriptor_indexing_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT };
 	ext.conservative_rasterization_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT };
 	ext.driver_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR };
+	ext.multiview_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES };
 	VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
 	ppNext = &props.pNext;
 
@@ -1206,6 +1207,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ppNext = &ext.conservative_rasterization_properties.pNext;
 	}
 
+	if (ext.multiview_features.multiview)
+	{
+		*ppNext = &ext.multiview_properties;
+		ppNext = &ext.multiview_properties.pNext;
+	}
+
 	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device &&
 	    has_extension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME))
 	{
@@ -1228,6 +1235,15 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 
 	if (vkCreateDevice(gpu, &device_info, nullptr, &device) != VK_SUCCESS)
 		return false;
+
+#ifdef GRANITE_VULKAN_FOSSILIZE
+	feature_filter.init(
+			(ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device ?
+			 VK_API_VERSION_1_1 : VK_API_VERSION_1_0),
+			enabled_extensions.data(), device_info.enabledExtensionCount,
+			&features, &props);
+	feature_filter.set_device_query_interface(this);
+#endif
 
 	volkLoadDeviceTable(&device_table, device);
 
@@ -1267,4 +1283,17 @@ void Context::check_descriptor_indexing_features()
 		ext.supports_descriptor_indexing = true;
 	}
 }
+
+#ifdef GRANITE_VULKAN_FOSSILIZE
+bool Context::format_is_supported(VkFormat format, VkFormatFeatureFlags features)
+{
+	if (gpu == VK_NULL_HANDLE)
+		return false;
+
+	VkFormatProperties props;
+	vkGetPhysicalDeviceFormatProperties(gpu, format, &props);
+	auto supported = props.bufferFeatures | props.linearTilingFeatures | props.optimalTilingFeatures;
+	return (supported & features) == features;
+}
+#endif
 }

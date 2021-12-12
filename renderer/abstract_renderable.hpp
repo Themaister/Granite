@@ -40,6 +40,12 @@ enum class DrawPipeline : unsigned
 	AlphaBlend,
 };
 
+enum class DrawPipelineCoverage : unsigned
+{
+	Full,
+	Modifies
+};
+
 enum RenderableFlagBits
 {
 	RENDERABLE_FORCE_VISIBLE_BIT = 1 << 0,

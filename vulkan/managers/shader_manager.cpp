@@ -78,6 +78,7 @@ bool ShaderTemplate::init()
 		compiler.reset();
 		return false;
 	}
+	source_hash = compiler->get_source_hash();
 #else
 	(void)include_directories;
 #endif
@@ -85,8 +86,8 @@ bool ShaderTemplate::init()
 	return true;
 }
 
-const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vector<std::pair<std::string, int>> *defines,
-                                                                const ImmutableSamplerBank *sampler_bank)
+const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<std::pair<std::string, int>> *defines,
+                                                              const ImmutableSamplerBank *sampler_bank)
 {
 	Hasher h;
 	if (defines)
@@ -111,10 +112,18 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 		variant->hash = complete_hash;
 		auto *precompiled_spirv = cache.variant_to_shader.find(complete_hash);
 
-		if (precompiled_spirv && !device->request_shader_by_hash(precompiled_spirv->get()))
+		if (precompiled_spirv)
 		{
-			LOGW("Got precompiled SPIR-V hash for variant, but it does not exist, is Fossilize archive incomplete?\n");
-			precompiled_spirv = nullptr;
+			if (!device->request_shader_by_hash(precompiled_spirv->shader_hash))
+			{
+				LOGW("Got precompiled SPIR-V hash for variant, but it does not exist, is Fossilize archive incomplete?\n");
+				precompiled_spirv = nullptr;
+			}
+			else if (source_hash != precompiled_spirv->source_hash)
+			{
+				LOGW("Source hash is invalidated for %s, recompiling.\n", path.c_str());
+				precompiled_spirv = nullptr;
+			}
 		}
 
 		if (!precompiled_spirv)
@@ -155,6 +164,7 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 					variants.free(variant);
 					return nullptr;
 				}
+				update_variant_cache(*variant);
 			}
 			else
 				return nullptr;
@@ -165,7 +175,7 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 #endif
 		}
 		else
-			variant->spirv_hash = precompiled_spirv->get();
+			variant->spirv_hash = precompiled_spirv->shader_hash;
 
 		variant->instance++;
 		if (defines)
@@ -180,7 +190,7 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 }
 
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
-void ShaderTemplate::recompile_variant(Variant &variant)
+void ShaderTemplate::recompile_variant(ShaderTemplateVariant &variant)
 {
 	std::string error_message;
 	auto newspirv = compiler->compile(error_message, &variant.defines);
@@ -194,6 +204,22 @@ void ShaderTemplate::recompile_variant(Variant &variant)
 
 	variant.spirv = move(newspirv);
 	variant.instance++;
+	update_variant_cache(variant);
+}
+
+void ShaderTemplate::update_variant_cache(const ShaderTemplateVariant &variant)
+{
+	if (variant.spirv.empty())
+		return;
+
+	auto shader_hash = Shader::hash(variant.spirv.data(),
+	                                variant.spirv.size() * sizeof(uint32_t),
+	                                variant.sampler_bank.get());
+
+	ResourceLayout layout;
+	Shader::reflect_resource_layout(layout, variant.spirv.data(), variant.spirv.size() * sizeof(uint32_t));
+	cache.variant_to_shader.emplace_replace(variant.hash, source_hash, shader_hash);
+	cache.shader_to_layout.emplace_yield(shader_hash, layout);
 }
 
 void ShaderTemplate::recompile()
@@ -213,6 +239,7 @@ void ShaderTemplate::recompile()
 		return;
 	}
 	compiler = move(newcompiler);
+	source_hash = compiler->get_source_hash();
 
 #ifdef GRANITE_VULKAN_MT
 	for (auto &variant : variants.get_read_only())
@@ -276,9 +303,6 @@ Vulkan::Program *ShaderProgramVariant::get_program_compute()
 		{
 			new_program = device->request_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t),
 			                                      nullptr, comp->sampler_bank ? comp->sampler_bank.get() : nullptr);
-			auto spirv_hash = new_program->get_shader(ShaderStage::Compute)->get_hash();
-			cache.variant_to_shader.emplace_replace(comp->hash, spirv_hash);
-			cache.shader_to_layout.emplace_yield(spirv_hash, new_program->get_shader(ShaderStage::Compute)->get_layout());
 		}
 
 		program.store(new_program, std::memory_order_relaxed);
@@ -329,8 +353,6 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 		{
 			vert_shader = device->request_shader(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t),
 			                                     nullptr, vert->sampler_bank ? vert->sampler_bank.get() : nullptr);
-			cache.variant_to_shader.emplace_replace(vert->hash, vert_shader->get_hash());
-			cache.shader_to_layout.emplace_yield(vert_shader->get_hash(), vert_shader->get_layout());
 		}
 
 		if (frag->spirv.empty())
@@ -339,8 +361,6 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 		{
 			frag_shader = device->request_shader(frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t),
 			                                     nullptr, frag->sampler_bank ? frag->sampler_bank.get() : nullptr);
-			cache.variant_to_shader.emplace_replace(frag->hash, frag_shader->get_hash());
-			cache.shader_to_layout.emplace_yield(frag_shader->get_hash(), frag_shader->get_layout());
 		}
 
 		auto *new_program = device->request_program(vert_shader, frag_shader);
@@ -526,10 +546,11 @@ void ShaderManager::add_directory_watch(const std::string &source)
 #endif
 
 void ShaderManager::register_shader_from_variant_hash(Hash variant_hash,
+                                                      Hash source_hash,
                                                       Hash shader_hash,
                                                       const ResourceLayout &layout)
 {
-	meta_cache.variant_to_shader.emplace_replace(variant_hash, shader_hash);
+	meta_cache.variant_to_shader.emplace_replace(variant_hash, source_hash, shader_hash);
 	meta_cache.shader_to_layout.emplace_replace(shader_hash, layout);
 }
 
@@ -538,7 +559,7 @@ bool ShaderManager::get_shader_hash_by_variant_hash(Hash variant_hash, Hash &sha
 	auto *shader = meta_cache.variant_to_shader.find(variant_hash);
 	if (shader)
 	{
-		shader_hash = shader->get();
+		shader_hash = shader->shader_hash;
 		return true;
 	}
 	else
@@ -676,8 +697,9 @@ bool ShaderManager::load_shader_cache(const string &path)
 
 		Util::Hash variant_hash = value["variant"].GetUint64();
 		Util::Hash spirv_hash = value["spirvHash"].GetUint64();
+		Util::Hash source_hash = value["sourceHash"].GetUint64();
 		ResourceLayout layout = parse_resource_layout(value["layout"]);
-		meta_cache.variant_to_shader.emplace_replace(variant_hash, spirv_hash);
+		meta_cache.variant_to_shader.emplace_replace(variant_hash, source_hash, spirv_hash);
 		meta_cache.shader_to_layout.emplace_replace(spirv_hash, layout);
 	}
 
@@ -702,10 +724,11 @@ bool ShaderManager::save_shader_cache(const string &path)
 	{
 		Value map_entry(kObjectType);
 		map_entry.AddMember("variant", entry.get_hash(), allocator);
-		map_entry.AddMember("spirvHash", entry.get(), allocator);
+		map_entry.AddMember("spirvHash", entry.shader_hash, allocator);
+		map_entry.AddMember("sourceHash", entry.source_hash, allocator);
 
 		ResourceLayout layout;
-		if (get_resource_layout_by_shader_hash(entry.get(), layout))
+		if (get_resource_layout_by_shader_hash(entry.shader_hash, layout))
 		{
 			Value layout_obj = serialize_resource_layout(layout, allocator);
 			map_entry.AddMember("layout", layout_obj, allocator);

@@ -42,7 +42,17 @@ class GLSLCompiler;
 
 namespace Vulkan
 {
-using PrecomputedShaderCache = VulkanCacheReadWrite<Util::IntrusivePODWrapper<Util::Hash>>;
+struct ShaderTemplateVariant;
+struct PrecomputedMeta : Util::IntrusiveHashMapEnabled<PrecomputedMeta>
+{
+	PrecomputedMeta(Util::Hash source_hash_, Util::Hash shader_hash_)
+		: source_hash(source_hash_), shader_hash(shader_hash_)
+	{
+	}
+	Util::Hash source_hash;
+	Util::Hash shader_hash;
+};
+using PrecomputedShaderCache = VulkanCacheReadWrite<PrecomputedMeta>;
 using ReflectionCache = VulkanCacheReadWrite<Util::IntrusivePODWrapper<ResourceLayout>>;
 
 struct MetaCache
@@ -53,6 +63,17 @@ struct MetaCache
 
 class ShaderManager;
 class Device;
+
+struct ShaderTemplateVariant : public Util::IntrusiveHashMapEnabled<ShaderTemplateVariant>
+{
+	Util::Hash hash = 0;
+	Util::Hash spirv_hash = 0;
+	std::vector<uint32_t> spirv;
+	std::vector<std::pair<std::string, int>> defines;
+	std::unique_ptr<ImmutableSamplerBank> sampler_bank;
+	unsigned instance = 0;
+};
+
 class ShaderTemplate : public Util::IntrusiveHashMapEnabled<ShaderTemplate>
 {
 public:
@@ -62,18 +83,8 @@ public:
 
 	bool init();
 
-	struct Variant : public Util::IntrusiveHashMapEnabled<Variant>
-	{
-		Util::Hash hash = 0;
-		Util::Hash spirv_hash = 0;
-		std::vector<uint32_t> spirv;
-		std::vector<std::pair<std::string, int>> defines;
-		std::unique_ptr<ImmutableSamplerBank> sampler_bank;
-		unsigned instance = 0;
-	};
-
-	const Variant *register_variant(const std::vector<std::pair<std::string, int>> *defines = nullptr,
-	                                const ImmutableSamplerBank *sampler_bank = nullptr);
+	const ShaderTemplateVariant *register_variant(const std::vector<std::pair<std::string, int>> *defines = nullptr,
+	                                              const ImmutableSamplerBank *sampler_bank = nullptr);
 	void recompile();
 	void register_dependencies(ShaderManager &manager);
 
@@ -90,9 +101,11 @@ private:
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	std::unique_ptr<Granite::GLSLCompiler> compiler;
 	const std::vector<std::string> &include_directories;
-	void recompile_variant(Variant &variant);
+	void recompile_variant(ShaderTemplateVariant &variant);
+	void update_variant_cache(const ShaderTemplateVariant &variant);
+	Util::Hash source_hash = 0;
 #endif
-	VulkanCache<Variant> variants;
+	VulkanCache<ShaderTemplateVariant> variants;
 };
 
 class ShaderProgramVariant : public Util::IntrusiveHashMapEnabled<ShaderProgramVariant>
@@ -105,7 +118,7 @@ private:
 	friend class ShaderProgram;
 	Device *device;
 	MetaCache &cache;
-	const ShaderTemplate::Variant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
+	const ShaderTemplateVariant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	std::atomic<unsigned> shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)];
 	std::atomic<Vulkan::Program *> program;
 #ifdef GRANITE_VULKAN_MT
@@ -167,7 +180,7 @@ public:
 
 	bool get_shader_hash_by_variant_hash(Util::Hash variant_hash, Util::Hash &shader_hash) const;
 	bool get_resource_layout_by_shader_hash(Util::Hash shader_hash, ResourceLayout &layout) const;
-	void register_shader_from_variant_hash(Util::Hash variant_hash,
+	void register_shader_from_variant_hash(Util::Hash variant_hash, Util::Hash source_hash,
 	                                       Util::Hash shader_hash, const ResourceLayout &layout);
 
 	Device *get_device()

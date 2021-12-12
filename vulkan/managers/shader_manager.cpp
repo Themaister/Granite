@@ -111,6 +111,12 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 		variant->hash = complete_hash;
 		auto *precompiled_spirv = cache.variant_to_shader.find(complete_hash);
 
+		if (precompiled_spirv && !device->request_shader_by_hash(precompiled_spirv->get()))
+		{
+			LOGW("Got precompiled SPIR-V hash for variant, but it does not exist, is Fossilize archive incomplete?\n");
+			precompiled_spirv = nullptr;
+		}
+
 		if (!precompiled_spirv)
 		{
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER

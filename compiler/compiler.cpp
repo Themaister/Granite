@@ -232,6 +232,18 @@ bool GLSLCompiler::preprocess()
 	return ret;
 }
 
+Util::Hash GLSLCompiler::get_source_hash() const
+{
+	Util::Hasher h;
+	for (auto &section : preprocessed_sections)
+	{
+		h.u32(uint32_t(section.stage));
+		h.string(section.source);
+	}
+	h.string(preprocessed_source);
+	return h.get();
+}
+
 vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const vector<pair<string, int>> *defines) const
 {
 	shaderc::Compiler compiler;

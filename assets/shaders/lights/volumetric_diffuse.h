@@ -87,7 +87,7 @@ mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal, boo
 			unpackHalf2x16(volumetric.fallback_volume_fp16.x),
 			unpackHalf2x16(volumetric.fallback_volume_fp16.y));
 
-#if defined(SUBGROUP_ARITHMETIC) && defined(SUBGROUP_BALLOT) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
+#if defined(SUBGROUP_OPS) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
 	const float FLT_BIG = 1e38;
 	vec3 aabb_lo = subgroupMin(active_lane ? world_pos : vec3(FLT_BIG));
 	vec3 aabb_hi = subgroupMax(active_lane ? world_pos : vec3(-FLT_BIG));

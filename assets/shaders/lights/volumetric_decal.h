@@ -37,7 +37,7 @@ void apply_volumetric_decals(inout mediump vec4 base_color,
 	z_index = clamp(z_index, 0, cluster.z_max_index);
 	uvec2 z_range = cluster_range_decal[z_index];
 
-#ifdef SUBGROUP_ARITHMETIC
+#ifdef SUBGROUP_OPS
 	int z_start = int(subgroupMin(z_range.x) >> 5u);
 	int z_end = int(subgroupMax(z_range.y) >> 5u);
 #else
@@ -49,7 +49,7 @@ void apply_volumetric_decals(inout mediump vec4 base_color,
 	{
 		uint mask = cluster_bitmask_decal[cluster_base + i];
 		mask = cluster_mask_range(mask, z_range, 32u * i);
-#ifdef SUBGROUP_ARITHMETIC
+#ifdef SUBGROUP_OPS
 		mask = subgroupOr(mask);
 #endif
 

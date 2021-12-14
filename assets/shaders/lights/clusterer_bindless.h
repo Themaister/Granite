@@ -46,7 +46,7 @@ mediump vec3 compute_cluster_light(
 	z_index = clamp(z_index, 0, cluster.z_max_index);
 	uvec2 z_range = cluster_range[z_index];
 
-#ifdef SUBGROUP_ARITHMETIC
+#ifdef SUBGROUP_OPS
 	int z_start = int(subgroupMin(z_range.x) >> 5u);
 	int z_end = int(subgroupMax(z_range.y) >> 5u);
 #else
@@ -58,7 +58,7 @@ mediump vec3 compute_cluster_light(
 	{
 		uint mask = cluster_bitmask[cluster_base + i];
 		mask = cluster_mask_range(mask, z_range, 32u * i);
-#ifdef SUBGROUP_ARITHMETIC
+#ifdef SUBGROUP_OPS
 		mask = subgroupOr(mask);
 #endif
 
@@ -99,7 +99,7 @@ mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 norma
 	int count = cluster_global_transforms.num_lights;
 	uint type_mask = cluster_global_transforms.type_mask;
 
-#if defined(SUBGROUP_ARITHMETIC) && defined(SUBGROUP_BALLOT) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
+#if defined(SUBGROUP_OPS) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
 	vec3 aabb_lo = subgroupMin(world_pos);
 	vec3 aabb_hi = subgroupMax(world_pos);
 	vec3 aabb_radius3 = 0.5 * (aabb_hi - aabb_lo);
@@ -194,7 +194,7 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 	z_index = clamp(z_index, 0, cluster.z_max_index);
 	uvec2 z_range = cluster_range[z_index];
 
-#ifdef SUBGROUP_ARITHMETIC
+#ifdef SUBGROUP_OPS
 	int z_start = int(subgroupMin(z_range.x) >> 5u);
 	int z_end = int(subgroupMax(z_range.y) >> 5u);
 #else
@@ -206,7 +206,7 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 	{
 		uint mask = cluster_bitmask[cluster_base + i];
 		mask = cluster_mask_range(mask, z_range, 32u * i);
-#ifdef SUBGROUP_ARITHMETIC
+#ifdef SUBGROUP_OPS
 		mask = subgroupOr(mask);
 #endif
 

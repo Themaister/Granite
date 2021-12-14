@@ -51,7 +51,7 @@ void compute_shadow_cascade(out vec3 clip_near, out vec3 clip_far,
 	else if (shadow_lerp == 0.0)
 		layer_far = layer_near;
 
-#if defined(SUBGROUP_ARITHMETIC)
+#if defined(SUBGROUP_OPS)
 	mediump int wave_minimum_layer = subgroupMin(layer_near);
 	mediump int wave_maximum_layer = subgroupMax(layer_far);
 	for (mediump int i = wave_minimum_layer; i <= wave_maximum_layer; i++)

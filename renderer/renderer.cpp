@@ -325,24 +325,19 @@ void Renderer::add_subgroup_defines(Vulkan::Device &device, std::vector<std::pai
 	    !ImplementationQuirks::get().force_no_subgroups &&
 	    subgroup.subgroupSize >= 4)
 	{
-		if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_BASIC_BIT) != 0)
-			defines.emplace_back("SUBGROUP_BASIC", 1);
-		if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_CLUSTERED_BIT) != 0)
-			defines.emplace_back("SUBGROUP_CLUSTERED", 1);
+		const VkSubgroupFeatureFlags quad_required =
+				(stage & (VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT)) != 0 ?
+				VK_SUBGROUP_FEATURE_QUAD_BIT : 0;
+		const VkSubgroupFeatureFlags required =
+				VK_SUBGROUP_FEATURE_BASIC_BIT |
+				VK_SUBGROUP_FEATURE_CLUSTERED_BIT |
+				quad_required |
+				VK_SUBGROUP_FEATURE_BALLOT_BIT |
+				VK_SUBGROUP_FEATURE_VOTE_BIT |
+				VK_SUBGROUP_FEATURE_ARITHMETIC_BIT;
 
-		if ((stage & (VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT)) != 0 ||
-		    subgroup.quadOperationsInAllStages)
-		{
-			if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_QUAD_BIT) != 0)
-				defines.emplace_back("SUBGROUP_QUAD", 1);
-		}
-
-		if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_BALLOT_BIT) != 0)
-			defines.emplace_back("SUBGROUP_BALLOT", 1);
-		if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_VOTE_BIT) != 0)
-			defines.emplace_back("SUBGROUP_VOTE", 1);
-		if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0)
-			defines.emplace_back("SUBGROUP_ARITHMETIC", 1);
+		if ((subgroup.supportedOperations & required) == required)
+			defines.emplace_back("SUBGROUP_OPS", 1);
 
 		if (!ImplementationQuirks::get().force_no_subgroup_shuffle)
 			if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_SHUFFLE_BIT) != 0)
@@ -902,7 +897,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 		    !ImplementationQuirks::get().force_no_subgroups)
 		{
 			// For cascaded shadows.
-			defines.emplace_back("SUBGROUP_ARITHMETIC", 1);
+			defines.emplace_back("SUBGROUP_OPS", 1);
 		}
 	}
 

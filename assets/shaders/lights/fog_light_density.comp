@@ -63,7 +63,7 @@ mediump float compute_fog_density(vec3 world_pos)
 {
     mediump float density = 0.0;
 
-#if defined(SUBGROUP_ARITHMETIC) && defined(SUBGROUP_BALLOT) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
+#if defined(SUBGROUP_OPS) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
     vec3 aabb_lo = subgroupMin(world_pos);
     vec3 aabb_hi = subgroupMax(world_pos);
 

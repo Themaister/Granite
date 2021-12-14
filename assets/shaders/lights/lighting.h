@@ -61,16 +61,23 @@ mediump vec3 compute_lighting(
 	mediump vec3 lighting = reflected_light + diffuse_light;
 
 #ifdef POSITIONAL_LIGHTS
-	lighting += compute_cluster_light(
-		material_base_color,
-		material_normal,
-		material_metallic,
-		material_roughness,
-		light_world_pos, light_camera_pos
-#ifdef CLUSTERER_BINDLESS
-		, resolution.inv_resolution
+	// Here, not letting helper lanes participate is more of an optimization
+	// since we restrict the range we need to iterate over, but that's it.
+#if defined(HAS_IS_HELPER_INVOCATION)
+	if (!is_helper_invocation())
 #endif
+	{
+		lighting += compute_cluster_light(
+				material_base_color,
+				material_normal,
+				material_metallic,
+				material_roughness,
+				light_world_pos, light_camera_pos
+				#ifdef CLUSTERER_BINDLESS
+				, resolution.inv_resolution
+				#endif
 		);
+	}
 #endif
 
 	return lighting;

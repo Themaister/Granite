@@ -50,8 +50,16 @@ void main()
 #else
     const mediump float ambient_term = 1.0;
 #endif
-    FragColor += base_color_ambient.rgb *
-            ((1.0 - mr.x) * base_color_ambient.a * ambient_term) *
-            compute_volumetric_diffuse(pos, N, true);
+#ifdef HAS_IS_HELPER_INVOCATION
+    if (!is_helper_invocation())
+#endif
+    {
+        // Do not let helper lanes participate here since we need guarantees on which
+        // lanes participate in ballots and such.
+        // Generally, for this deferred one, helper lanes will not appear, but to be pendantic ...
+        FragColor += base_color_ambient.rgb *
+                ((1.0 - mr.x) * base_color_ambient.a * ambient_term) *
+                compute_volumetric_diffuse(pos, N, true);
+    }
 #endif
 }

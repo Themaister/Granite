@@ -43,7 +43,14 @@ mediump vec3 compute_lighting(
 
 #if !defined(LIGHTING_NO_AMBIENT)
 #if defined(VOLUMETRIC_DIFFUSE)
-	diffref += material_ambient_factor * compute_volumetric_diffuse(light_world_pos, material_normal, true);
+#if defined(HAS_IS_HELPER_INVOCATION)
+	// Do not let helper lanes participate here since we need guarantees on which
+	// lanes participate in ballots and such.
+	if (!is_helper_invocation())
+#endif
+	{
+		diffref += material_ambient_factor * compute_volumetric_diffuse(light_world_pos, material_normal, true);
+	}
 #else
 	diffref += material_ambient_factor * vec3(0.05);
 #endif

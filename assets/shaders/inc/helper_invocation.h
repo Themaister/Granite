@@ -14,4 +14,6 @@ bool is_helper_invocation()
 #endif
 }
 
+#define HAS_IS_HELPER_INVOCATION
+
 #endif

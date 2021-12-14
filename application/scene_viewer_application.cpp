@@ -101,7 +101,8 @@ void SceneViewerApplication::read_lights()
 			node->transform.rotation = conjugate(look_at_arbitrary_up(vec3(
 					dir[0].GetFloat(), dir[1].GetFloat(), dir[2].GetFloat())));
 			scene.get_root_node()->add_child(node);
-			scene.create_light(info, node.get());
+			auto entity = scene.create_light(info, node.get());
+			entity->allocate_component<IrradianceAffectingComponent>();
 		}
 	}
 
@@ -122,7 +123,8 @@ void SceneViewerApplication::read_lights()
 			for (int i = 0; i < 3; i++)
 				node->transform.translation[i] = point["position"][i].GetFloat();
 			scene.get_root_node()->add_child(node);
-			scene.create_light(info, node.get());
+			auto entity = scene.create_light(info, node.get());
+			entity->allocate_component<IrradianceAffectingComponent>();
 		}
 	}
 }

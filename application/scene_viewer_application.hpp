@@ -109,6 +109,8 @@ protected:
 private:
 	void read_config(const std::string &path);
 	void read_quirks(const std::string &path);
+	void read_lights();
+
 	struct Config
 	{
 		RendererType renderer_type = RendererType::GeneralDeferred;

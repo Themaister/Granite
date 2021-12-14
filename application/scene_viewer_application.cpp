@@ -44,6 +44,89 @@ static vec3 light_direction()
 	return normalize(vec3(0.5f, 1.2f, 0.8f));
 }
 
+void SceneViewerApplication::read_lights()
+{
+	string json;
+	if (!GRANITE_FILESYSTEM()->read_file_to_string("cache://lights.json", json))
+	{
+		LOGE("Failed to read quirks file. Assuming defaults.\n");
+		return;
+	}
+
+	auto &scene = scene_loader.get_scene();
+	rapidjson::Document doc;
+	doc.Parse(json);
+
+	if (doc.HasMember("directional"))
+	{
+		auto &dir = doc["directional"];
+		auto &dir_lights = scene.get_entity_pool().get_component_group<DirectionalLightComponent>();
+		DirectionalLightComponent *comp;
+
+		if (dir_lights.empty())
+		{
+			auto light = scene.create_entity();
+			comp = light->allocate_component<DirectionalLightComponent>();
+		}
+		else
+			comp = get_component<DirectionalLightComponent>(dir_lights.front());
+
+		for (int i = 0; i < 3; i++)
+		{
+			comp->direction[i] = -dir["direction"][i].GetFloat();
+			comp->color[i] = dir["color"][i].GetFloat();
+		}
+	}
+
+	if (doc.HasMember("spot"))
+	{
+		auto &spots = doc["spot"];
+		for (auto itr = spots.Begin(); itr != spots.End(); ++itr)
+		{
+			auto &spot = *itr;
+			SceneFormats::LightInfo info;
+			info.type = SceneFormats::LightInfo::Type::Spot;
+			info.inner_cone = spot["innerCone"].GetFloat();
+			info.outer_cone = spot["outerCone"].GetFloat();
+			for (int i = 0; i < 3; i++)
+				info.color[i] = spot["color"][i].GetFloat();
+			if (spot.HasMember("range"))
+				info.range = spot["range"].GetFloat();
+
+			auto node = scene.create_node();
+			for (int i = 0; i < 3; i++)
+				node->transform.translation[i] = spot["position"][i].GetFloat();
+
+			auto &dir = spot["direction"];
+			node->transform.rotation = conjugate(look_at_arbitrary_up(vec3(
+					dir[0].GetFloat(), dir[1].GetFloat(), dir[2].GetFloat())));
+			scene.get_root_node()->add_child(node);
+			scene.create_light(info, node.get());
+		}
+	}
+
+	if (doc.HasMember("point"))
+	{
+		auto &points = doc["point"];
+		for (auto itr = points.Begin(); itr != points.End(); ++itr)
+		{
+			auto &point = *itr;
+			SceneFormats::LightInfo info;
+			info.type = SceneFormats::LightInfo::Type::Point;
+			for (int i = 0; i < 3; i++)
+				info.color[i] = point["color"][i].GetFloat();
+			if (point.HasMember("range"))
+				info.range = point["range"].GetFloat();
+
+			auto node = scene.create_node();
+			for (int i = 0; i < 3; i++)
+				node->transform.translation[i] = point["position"][i].GetFloat();
+			scene.get_root_node()->add_child(node);
+			scene.create_light(info, node.get());
+		}
+	}
+}
+
 void SceneViewerApplication::read_quirks(const std::string &path)
 {
 	string json;
@@ -212,11 +295,11 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		read_config(config_path);
 	if (!quirks_path.empty())
 		read_quirks(quirks_path);
-
 	renderer_suite_config.cascaded_directional_shadows = config.directional_light_cascaded_shadows;
 	renderer_suite_config.directional_light_vsm = config.directional_light_shadows_vsm;
 
 	scene_loader.load_scene(path);
+	read_lights();
 
 	// Why not. :D
 	//Ocean::add_to_scene(scene_loader.get_scene());

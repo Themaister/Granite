@@ -67,14 +67,13 @@ public:
 		POSITIONAL_LIGHT_CLUSTER_LIST_BIT = 1 << 7,
 		SHADOW_VSM_BIT = 1 << 8,
 		POSITIONAL_LIGHT_SHADOW_VSM_BIT = 1 << 9,
-		SHADOW_PCF_KERNEL_WIDTH_3_BIT = 1 << 10,
-		SHADOW_PCF_KERNEL_WIDTH_5_BIT = 1 << 11,
-		VOLUMETRIC_FOG_ENABLE_BIT = 1 << 12,
-		ALPHA_TEST_DISABLE_BIT = 1 << 13,
-		POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT = 1 << 14,
-		MULTIVIEW_BIT = 1 << 15,
-		AMBIENT_OCCLUSION_BIT = 1 << 16,
-		POSITIONAL_DECALS_BIT = 1 << 17
+		SHADOW_PCF_KERNEL_WIDE_BIT = 1 << 10,
+		VOLUMETRIC_FOG_ENABLE_BIT = 1 << 11,
+		ALPHA_TEST_DISABLE_BIT = 1 << 12,
+		POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT = 1 << 13,
+		MULTIVIEW_BIT = 1 << 14,
+		AMBIENT_OCCLUSION_BIT = 1 << 15,
+		POSITIONAL_DECALS_BIT = 1 << 16
 	};
 	using RendererOptionFlags = uint32_t;
 
@@ -188,7 +187,7 @@ public:
 
 	struct Config
 	{
-		unsigned pcf_width = 1;
+		bool pcf_wide = false;
 		bool directional_light_vsm = false;
 		bool forward_z_prepass = false;
 		bool cascaded_directional_shadows = false;

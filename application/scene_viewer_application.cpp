@@ -210,21 +210,14 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("directionalLightShadowsVSM"))
 		config.directional_light_shadows_vsm = doc["directionalLightShadowsVSM"].GetBool();
 
-	if (doc.HasMember("PCFKernelWidth"))
+	if (doc.HasMember("PCFKernelWide"))
 	{
-		unsigned width = doc["PCFKernelWidth"].GetUint();
-		if (width == 5)
-			config.pcf_flags = SCENE_RENDERER_SHADOW_PCF_5X_BIT;
-		else if (width == 3)
-			config.pcf_flags = SCENE_RENDERER_SHADOW_PCF_3X_BIT;
-		else if (width == 1)
-			config.pcf_flags = 0;
+		bool wide = doc["PCFKernelWide"].GetBool();
+		if (wide)
+			config.pcf_flags = SCENE_RENDERER_SHADOW_PCF_WIDE_BIT;
 		else
-		{
 			config.pcf_flags = 0;
-			LOGE("Invalid PCFKernelWidth, assuming default of 1.\n");
-		}
-		renderer_suite_config.pcf_width = width;
+		renderer_suite_config.pcf_wide = wide;
 	}
 	if (doc.HasMember("clusteredLights"))
 		config.clustered_lights = doc["clusteredLights"].GetBool();

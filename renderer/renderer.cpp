@@ -119,16 +119,14 @@ void RendererSuite::update_mesh_rendering_options(const RenderContext &context, 
 	get_renderer(Type::MotionVector).set_mesh_renderer_options(0);
 
 	Renderer::RendererOptionFlags pcf_flags = 0;
-	if (config.pcf_width == 5)
-		pcf_flags |= Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT;
-	else if (config.pcf_width == 3)
-		pcf_flags |= Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT;
+	if (config.pcf_wide)
+		pcf_flags |= Renderer::SHADOW_PCF_KERNEL_WIDE_BIT;
 
 	auto opts = Renderer::get_mesh_renderer_options_from_lighting(*context.get_lighting_parameters());
 
 	Util::Hasher h;
 	h.u32(opts);
-	h.u32(config.pcf_width);
+	h.u32(uint32_t(config.pcf_wide));
 	h.u32(uint32_t(config.directional_light_vsm));
 	h.u32(uint32_t(config.forward_z_prepass));
 	h.u32(uint32_t(config.cascaded_directional_shadows));
@@ -446,10 +444,8 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 	if (flags & (POSITIONAL_LIGHT_SHADOW_VSM_BIT | SHADOW_VSM_BIT))
 		global_defines.emplace_back("SHADOW_RESOLVE_VSM", 1);
 
-	if (flags & SHADOW_PCF_KERNEL_WIDTH_5_BIT)
-		global_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 5);
-	else if (flags & SHADOW_PCF_KERNEL_WIDTH_3_BIT)
-		global_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
+	if (flags & SHADOW_PCF_KERNEL_WIDE_BIT)
+		global_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDE", 1);
 
 	if (flags & ALPHA_TEST_DISABLE_BIT)
 		global_defines.emplace_back("ALPHA_TEST_DISABLE", 1);
@@ -906,13 +902,8 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 		defines.emplace_back("SHADOWS", 1);
 		if (!format_has_depth_or_stencil_aspect(light.shadows->get_format()))
 			defines.emplace_back("DIRECTIONAL_SHADOW_VSM", 1);
-		else
-		{
-			if (flags & Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT)
-				defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 5);
-			else if (flags & Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT)
-				defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
-		}
+		else if (flags & Renderer::SHADOW_PCF_KERNEL_WIDE_BIT)
+			defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDE", 1);
 	}
 
 	bool cluster_volumetric_diffuse = light.cluster && light.cluster->clusterer_has_volumetric_diffuse();
@@ -999,13 +990,8 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 			cluster_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
 			if (light.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
 				cluster_defines.emplace_back("POSITIONAL_SHADOW_VSM", 1);
-			else
-			{
-				if (flags & Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT)
-					cluster_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 5);
-				else if (flags & Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT)
-					cluster_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
-			}
+			else if (flags & Renderer::SHADOW_PCF_KERNEL_WIDE_BIT)
+				cluster_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDE", 1);
 		}
 
 		if (light.cluster->clusterer_is_bindless())

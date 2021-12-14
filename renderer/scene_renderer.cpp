@@ -91,10 +91,8 @@ void RenderPassSceneRenderer::render_debug_probes(const Renderer &renderer, Vulk
 
 static Renderer::RendererOptionFlags convert_pcf_flags(SceneRendererFlags flags)
 {
-	if (flags & SCENE_RENDERER_SHADOW_PCF_3X_BIT)
-		return Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT;
-	else if (flags & SCENE_RENDERER_SHADOW_PCF_5X_BIT)
-		return Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT;
+	if (flags & SCENE_RENDERER_SHADOW_PCF_WIDE_BIT)
+		return Renderer::SHADOW_PCF_KERNEL_WIDE_BIT;
 	else
 		return 0;
 }

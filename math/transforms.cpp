@@ -273,19 +273,51 @@ static quat quat_bisect(const quat &p, const quat &q)
 	return quat(normalize(p.as_vec4() + q.as_vec4()));
 }
 
-static quat quat_double(const quat &p, const quat &q)
+static quat quat_mirror(const quat &p, const quat &q)
 {
-	quat pq = p * q;
-	return quat(2.0f * (pq * q).as_vec4() - p.as_vec4());
+	float pq = dot(p.as_vec4(), q.as_vec4());
+	return quat((2.0f * pq) * q.as_vec4() - p.as_vec4());
+}
+
+static quat quat_log(const quat &q)
+{
+	vec3 v = q.as_vec4().xyz();
+	float ac = acos(q.w);
+	if (ac > 0.9999f)
+		return quat(0.0f, 0.0f, 0.0f, 0.0f);
+	else
+		return quat(0.0f, normalize(v) * ac);
+}
+
+static quat quat_exp(const quat &q)
+{
+	vec4 v4 = q.as_vec4();
+	float l = dot(v4, v4);
+	if (l < 0.00000001f)
+		return quat(1.0f, 0.0f, 0.0f, 0.0f);
+	else
+	{
+		float vlen = length(v4.xyz());
+		vec3 v = normalize(v4.xyz()) * sin(vlen);
+		return quat(cos(vlen), v);
+	}
 }
 
 static quat compute_inner_control_point(const std::vector<vec4> &values, unsigned index)
 {
-	quat q0 = quat(values[index ? (index - 1) : 0]);
+	quat q0 = quat(values[max(int(index) - 1, 0)]);
 	quat q1 = quat(values[index]);
 	quat q2 = quat(values[min<unsigned>(index + 1, values.size() - 1)]);
-	quat cp = quat_bisect(quat_double(q0, q1), q2);
+#if 0
+
+	quat dbl = quat_mirror(q0, q1);
+	quat cp = quat_bisect(dbl, q2);
 	return cp;
+#else
+	quat inv_q1 = conjugate(q1);
+	quat exp_value = quat_exp(quat(-0.25f * (quat_log(inv_q1 * q2).as_vec4() + quat_log(inv_q1 * q0).as_vec4())));
+	return q1 * exp_value;
+#endif
 }
 
 quat SphericalSampler::sample_squad(unsigned index, float l, float) const
@@ -300,13 +332,17 @@ quat SphericalSampler::sample_squad(unsigned index, float l, float) const
 
 	quat cp0 = compute_inner_control_point(values, index);
 	quat cp1 = compute_inner_control_point(values, index + 1);
-	cp1 = quat_double(cp1, q1);
+	//cp1 = quat_mirror(cp1, q1);
 
+#if 0
 	quat l0 = slerp_no_invert(q0, cp0, l);
 	quat l1 = slerp_no_invert(cp0, cp1, l);
 	quat l2 = slerp_no_invert(cp1, q1, l);
 	quat ll0 = slerp_no_invert(l0, l1, l);
 	quat ll1 = slerp_no_invert(l1, l2, l);
 	return slerp_no_invert(ll0, ll1, l);
+#else
+	return slerp_no_invert(slerp_no_invert(q0, q1, l), slerp_no_invert(cp0, cp1, l), 2.0f * l * (1.0f - l));
+#endif
 }
 }

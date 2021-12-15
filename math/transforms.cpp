@@ -225,7 +225,7 @@ vec3 PositionalSampler::sample(unsigned index, float l, float) const
 }
 
 template <typename T>
-T compute_cubic_spline(const std::vector<T> &values, unsigned index, float t, float dt)
+static T compute_cubic_spline(const std::vector<T> &values, unsigned index, float t, float dt)
 {
 	assert(3 * index + 4 < values.size());
 	T p0 = values[3 * index + 1];

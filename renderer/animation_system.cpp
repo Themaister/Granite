@@ -208,6 +208,15 @@ AnimationUnrolled::AnimationUnrolled(const SceneFormats::Animation &animation, f
 			channel_mask[index] |= ROTATION_BIT;
 			break;
 
+		case SceneFormats::AnimationChannel::Type::ImplicitSquadRotation:
+			key_frames_rotation[index].resize(num_samples);
+			resample_channel(key_frames_rotation[index].data(), num_samples, c,
+			                 [&c](unsigned i, float t, float dt) {
+				                 return c.spherical.sample_squad(i, t, dt);
+			                 }, inv_frame_rate);
+			channel_mask[index] |= ROTATION_BIT;
+			break;
+
 		case SceneFormats::AnimationChannel::Type::Rotation:
 			key_frames_rotation[index].resize(num_samples);
 			resample_channel(key_frames_rotation[index].data(), num_samples, c,

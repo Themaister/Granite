@@ -51,7 +51,13 @@ struct AnimationChannel
 		Scale,
 		CubicTranslation,
 		CubicRotation,
-		CubicScale
+		CubicScale,
+
+		// Very slow to evaluate directly. Only suitable for AnimationUnrolled.
+		// Automatically generates implicit inner quats as required per sample.
+		// Timestamps should be evenly spaced,
+		// otherwise we lose first order continuity.
+		ImplicitSquadRotation
 	};
 	Type type;
 

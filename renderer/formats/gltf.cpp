@@ -546,7 +546,7 @@ void Parser::extract_attribute(std::vector<vec3> &attributes, const Accessor &ac
 	if (accessor.type != ScalarType::Float32)
 		throw logic_error("Attribute is not Float32.");
 	if (accessor.components != 3)
-		throw logic_error("Attribute is not single component.");
+		throw logic_error("Attribute is not vec3 component.");
 
 	auto &view = json_views[accessor.view];
 	auto &buffer = json_buffers[view.buffer_index];
@@ -563,7 +563,7 @@ void Parser::extract_attribute(std::vector<vec4> &attributes, const Accessor &ac
 	if (accessor.type != ScalarType::Float32)
 		throw logic_error("Attribute is not Float32.");
 	if (accessor.components != 4)
-		throw logic_error("Attribute is not single component.");
+		throw logic_error("Attribute is not vec4 component.");
 
 	auto &view = json_views[accessor.view];
 	auto &buffer = json_buffers[view.buffer_index];
@@ -1461,6 +1461,16 @@ void Parser::parse(const string &original_path, const string &json)
 				{
 					channel.type = AnimationChannel::Type::CubicScale;
 					extract_attribute(channel.positional.values, *sampler);
+				}
+				else
+					throw logic_error("Invalid target for animation.");
+			}
+			else if (strcmp(interpolation, "GRANITE_IMPLICIT_SQUAD") == 0)
+			{
+				if (!strcmp(target, "rotation"))
+				{
+					channel.type = AnimationChannel::Type::ImplicitSquadRotation;
+					extract_attribute(channel.spherical.values, *sampler);
 				}
 				else
 					throw logic_error("Invalid target for animation.");

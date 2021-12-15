@@ -122,7 +122,7 @@ private:
 		unsigned max_spot_lights = 32;
 		unsigned max_point_lights = 32;
 
-		SceneRendererFlags pcf_flags = 0;
+		SceneRendererFlags pcf_flags = SCENE_RENDERER_SHADOW_PCF_WIDE_BIT;
 		float resolution_scale = 1.0f;
 		bool resolution_scale_sharpen = true;
 		float lod_bias = 0.0f;

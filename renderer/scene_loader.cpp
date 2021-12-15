@@ -204,16 +204,15 @@ void SceneLoader::load_animation(const std::string &path, SceneFormats::Animatio
 
 	if (doc.HasMember("rotation"))
 	{
-		SlerpSampler slerp;
+		SphericalSampler slerp;
 		auto &rotations = doc["rotation"];
 		for (auto itr = rotations.Begin(); itr != rotations.End(); ++itr)
 		{
 			auto &value = *itr;
-			float x = value[0].GetFloat();
-			float y = value[1].GetFloat();
-			float z = value[2].GetFloat();
-			float w = value[3].GetFloat();
-			slerp.values.push_back(normalize(quat(w, x, y, z)));
+			vec4 v;
+			for (int i = 0; i < 4; i++)
+				v[i] = value[i].GetFloat();
+			slerp.values.push_back(normalize(v));
 		}
 
 		channel.type = SceneFormats::AnimationChannel::Type::Rotation;
@@ -224,7 +223,7 @@ void SceneLoader::load_animation(const std::string &path, SceneFormats::Animatio
 
 	if (doc.HasMember("translation"))
 	{
-		LinearSampler linear;
+		PositionalSampler positional;
 		auto &rotations = doc["translation"];
 		for (auto itr = rotations.Begin(); itr != rotations.End(); ++itr)
 		{
@@ -232,18 +231,18 @@ void SceneLoader::load_animation(const std::string &path, SceneFormats::Animatio
 			float x = value[0].GetFloat();
 			float y = value[1].GetFloat();
 			float z = value[2].GetFloat();
-			linear.values.push_back(vec3(x, y, z));
+			positional.values.emplace_back(x, y, z);
 		}
 
 		channel.type = SceneFormats::AnimationChannel::Type::Translation;
-		channel.linear = move(linear);
+		channel.positional = move(positional);
 		channel.timestamps = timestamp_values;
 		animation.channels.push_back(move(channel));
 	}
 
 	if (doc.HasMember("scale"))
 	{
-		LinearSampler linear;
+		PositionalSampler positional;
 		auto &rotations = doc["scale"];
 		for (auto itr = rotations.Begin(); itr != rotations.End(); ++itr)
 		{
@@ -251,11 +250,11 @@ void SceneLoader::load_animation(const std::string &path, SceneFormats::Animatio
 			float x = value[0].GetFloat();
 			float y = value[1].GetFloat();
 			float z = value[2].GetFloat();
-			linear.values.push_back(vec3(x, y, z));
+			positional.values.emplace_back(x, y, z);
 		}
 
 		channel.type = SceneFormats::AnimationChannel::Type::Scale;
-		channel.linear = move(linear);
+		channel.positional = move(positional);
 		channel.timestamps = timestamp_values;
 		animation.channels.push_back(move(channel));
 	}
@@ -439,11 +438,11 @@ Scene::NodeHandle SceneLoader::parse_scene_format(const std::string &path, const
 
 				SceneFormats::AnimationChannel channel;
 				channel.type = SceneFormats::AnimationChannel::Type::Rotation;
-				channel.spherical.values.push_back(angleAxis(0.00f * 2.0f * pi<float>(), direction));
-				channel.spherical.values.push_back(angleAxis(0.25f * 2.0f * pi<float>(), direction));
-				channel.spherical.values.push_back(angleAxis(0.50f * 2.0f * pi<float>(), direction));
-				channel.spherical.values.push_back(angleAxis(0.75f * 2.0f * pi<float>(), direction));
-				channel.spherical.values.push_back(angleAxis(1.00f * 2.0f * pi<float>(), direction));
+				channel.spherical.values.push_back(angleAxis(0.00f * 2.0f * pi<float>(), direction).as_vec4());
+				channel.spherical.values.push_back(angleAxis(0.25f * 2.0f * pi<float>(), direction).as_vec4());
+				channel.spherical.values.push_back(angleAxis(0.50f * 2.0f * pi<float>(), direction).as_vec4());
+				channel.spherical.values.push_back(angleAxis(0.75f * 2.0f * pi<float>(), direction).as_vec4());
+				channel.spherical.values.push_back(angleAxis(1.00f * 2.0f * pi<float>(), direction).as_vec4());
 
 				channel.timestamps.push_back(0.00f * time_for_rotation);
 				channel.timestamps.push_back(0.25f * time_for_rotation);

@@ -242,10 +242,10 @@ int main(int argc, char *argv[])
 				auto &t = c["position"];
 				auto &d = c["direction"];
 				auto &u = c["up"];
-				animation.channels[0].linear.values.emplace_back(t[0].GetFloat(), t[1].GetFloat(), t[2].GetFloat());
+				animation.channels[0].positional.values.emplace_back(t[0].GetFloat(), t[1].GetFloat(), t[2].GetFloat());
 				quat rot = conjugate(look_at(vec3(d[0].GetFloat(), d[1].GetFloat(), d[2].GetFloat()),
 				                             vec3(u[0].GetFloat(), u[1].GetFloat(), u[2].GetFloat())));
-				animation.channels[1].spherical.values.push_back(rot);
+				animation.channels[1].spherical.values.push_back(rot.as_vec4());
 
 				for (auto &chan : animation.channels)
 					chan.timestamps.push_back(timestamp);

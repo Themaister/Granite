@@ -216,7 +216,7 @@ void compute_cube_render_transform(vec3 center, unsigned face, mat4 &proj, mat4 
 	proj = scale(vec3(-1.0f, 1.0f, 1.0f)) * projection(0.5f * pi<float>(), 1.0f, znear, zfar);
 }
 
-vec3 LinearSampler::sample(unsigned index, float l, float) const
+vec3 PositionalSampler::sample(unsigned index, float l, float) const
 {
 	if (l == 0.0f)
 		return values[index];
@@ -224,21 +224,19 @@ vec3 LinearSampler::sample(unsigned index, float l, float) const
 	return mix(values[index], values[index + 1], l);
 }
 
-quat SlerpSampler::sample(unsigned index, float l, float) const
+template <typename T>
+T compute_cubic_spline(const std::vector<T> &values, unsigned index, float t, float dt)
 {
-	if (l == 0.0f)
-		return values[index];
-	assert(index + 1 < values.size());
-	return slerp(values[index], values[index + 1], l);
-}
+	assert(3 * index + 4 < values.size());
+	T p0 = values[3 * index + 1];
 
-vec3 CubicSampler::sample(unsigned index, float t, float dt) const
-{
-	assert(index + 1 < values.size());
-	vec3 p0 = values[3 * index + 1];
-	vec3 m0 = dt * values[3 * index + 2];
-	vec3 m1 = dt * values[3 * index + 3];
-	vec3 p1 = values[3 * index + 4];
+	// For t == 0.0f, the result must be exactly on the point as specified by glTF.
+	if (t == 0.0f)
+		return p0;
+
+	T m0 = dt * values[3 * index + 2];
+	T m1 = dt * values[3 * index + 3];
+	T p1 = values[3 * index + 4];
 
 	float t2 = t * t;
 	float t3 = t2 * t;
@@ -247,5 +245,24 @@ vec3 CubicSampler::sample(unsigned index, float t, float dt) const
 	       (t3 - 2.0f * t2 + t) * m0 +
 	       (-2.0f * t3 + 3.0f * t2) * p1 +
 	       (t3 - t2) * m1;
+}
+
+vec3 PositionalSampler::sample_spline(unsigned index, float t, float dt) const
+{
+	return compute_cubic_spline(values, index, t, dt);
+}
+
+quat SphericalSampler::sample(unsigned index, float l, float) const
+{
+	if (l == 0.0f)
+		return quat(values[index]);
+	assert(index + 1 < values.size());
+	return slerp(quat(values[index]), quat(values[index + 1]), l);
+}
+
+quat SphericalSampler::sample_spline(unsigned index, float t, float dt) const
+{
+	// CUBICSPLINE for quaternion is defined as simple vec4 interpolation with normalization.
+	return normalize(quat(compute_cubic_spline(values, index, t, dt)));
 }
 }

@@ -27,8 +27,8 @@ using namespace std;
 
 namespace Granite
 {
-template <typename T, typename Sampler>
-static void resample_channel(T *resampled, size_t count, const SceneFormats::AnimationChannel &channel, const Sampler &sampler, float inv_frame_rate)
+template <typename T, typename Op>
+static void resample_channel(T *resampled, size_t count, const SceneFormats::AnimationChannel &channel, const Op &op, float inv_frame_rate)
 {
 	for (size_t i = 0; i < count; i++)
 	{
@@ -37,7 +37,7 @@ static void resample_channel(T *resampled, size_t count, const SceneFormats::Ani
 		float phase;
 		float dt;
 		channel.get_index_phase(t, index, phase, dt);
-		resampled[i] = sampler.sample(index, phase, dt);
+		resampled[i] = op(index, phase, dt);
 	}
 }
 
@@ -112,7 +112,8 @@ void AnimationUnrolled::animate(Transform *const *transforms, unsigned num_trans
 
 void AnimationUnrolled::animate_single(Transform &t, unsigned channel, int lo, int hi, float l) const
 {
-	// The animations should be sampled at such a high rate that doing slerp for rotation is irrelevant.
+	// The animations should be resampled at such a high rate in runtime (e.g. 60 fps)
+	// that doing slerp for rotation is irrelevant.
 	auto mask = channel_mask[channel];
 	if (mask & ROTATION_BIT)
 		t.rotation = normalize(quat(mix(key_frames_rotation[channel][lo].as_vec4(), key_frames_rotation[channel][hi].as_vec4(), l)));
@@ -137,7 +138,7 @@ AnimationUnrolled::AnimationUnrolled(const SceneFormats::Animation &animation, f
 	for (auto &c : animation.channels)
 		total_length = muglm::max(total_length, c.get_length());
 
-	num_samples = unsigned(muglm::ceil(total_length * key_frame_rate));
+	num_samples = unsigned(muglm::floor(total_length * key_frame_rate)) + 1;
 	length = total_length;
 
 	skinning = animation.skinning;
@@ -165,31 +166,55 @@ AnimationUnrolled::AnimationUnrolled(const SceneFormats::Animation &animation, f
 		{
 		case SceneFormats::AnimationChannel::Type::CubicScale:
 			key_frames_scale[index].resize(num_samples);
-			resample_channel(key_frames_scale[index].data(), num_samples, c, c.cubic, inv_frame_rate);
+			resample_channel(key_frames_scale[index].data(), num_samples, c,
+			                 [&c](unsigned i, float t, float dt) {
+				                 return c.positional.sample_spline(i, t, dt);
+			                 }, inv_frame_rate);
 			channel_mask[index] |= SCALE_BIT;
 			break;
 
 		case SceneFormats::AnimationChannel::Type::Scale:
 			key_frames_scale[index].resize(num_samples);
-			resample_channel(key_frames_scale[index].data(), num_samples, c, c.linear, inv_frame_rate);
+			resample_channel(key_frames_scale[index].data(), num_samples, c,
+			                 [&c](unsigned i, float t, float dt) {
+				                 return c.positional.sample(i, t, dt);
+			                 }, inv_frame_rate);
 			channel_mask[index] |= SCALE_BIT;
 			break;
 
 		case SceneFormats::AnimationChannel::Type::CubicTranslation:
 			key_frames_translation[index].resize(num_samples);
-			resample_channel(key_frames_translation[index].data(), num_samples, c, c.cubic, inv_frame_rate);
+			resample_channel(key_frames_translation[index].data(), num_samples, c,
+			                 [&c](unsigned i, float t, float dt) {
+				                 return c.positional.sample_spline(i, t, dt);
+			                 }, inv_frame_rate);
 			channel_mask[index] |= TRANSLATION_BIT;
 			break;
 
 		case SceneFormats::AnimationChannel::Type::Translation:
 			key_frames_translation[index].resize(num_samples);
-			resample_channel(key_frames_translation[index].data(), num_samples, c, c.linear, inv_frame_rate);
+			resample_channel(key_frames_translation[index].data(), num_samples, c,
+			                 [&c](unsigned i, float t, float dt) {
+				                 return c.positional.sample(i, t, dt);
+			                 }, inv_frame_rate);
 			channel_mask[index] |= TRANSLATION_BIT;
+			break;
+
+		case SceneFormats::AnimationChannel::Type::CubicRotation:
+			key_frames_rotation[index].resize(num_samples);
+			resample_channel(key_frames_rotation[index].data(), num_samples, c,
+			                 [&c](unsigned i, float t, float dt) {
+				                 return c.spherical.sample_spline(i, t, dt);
+			                 }, inv_frame_rate);
+			channel_mask[index] |= ROTATION_BIT;
 			break;
 
 		case SceneFormats::AnimationChannel::Type::Rotation:
 			key_frames_rotation[index].resize(num_samples);
-			resample_channel(key_frames_rotation[index].data(), num_samples, c, c.spherical, inv_frame_rate);
+			resample_channel(key_frames_rotation[index].data(), num_samples, c,
+			                 [&c](unsigned i, float t, float dt) {
+				                 return c.spherical.sample(i, t, dt);
+			                 }, inv_frame_rate);
 			channel_mask[index] |= ROTATION_BIT;
 			break;
 		}

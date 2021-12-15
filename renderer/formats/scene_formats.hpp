@@ -50,14 +50,14 @@ struct AnimationChannel
 		Rotation,
 		Scale,
 		CubicTranslation,
+		CubicRotation,
 		CubicScale
 	};
 	Type type;
 
 	std::vector<float> timestamps;
-	LinearSampler linear;
-	SlerpSampler spherical;
-	CubicSampler cubic;
+	PositionalSampler positional;
+	SphericalSampler spherical;
 
 	uint32_t joint_index;
 	bool joint = false;

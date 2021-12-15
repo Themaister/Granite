@@ -53,21 +53,17 @@ mat4 ortho(const AABB &aabb);
 
 void compute_cube_render_transform(vec3 center, unsigned face, mat4 &projection, mat4 &view, float znear, float zfar);
 
-struct LinearSampler
+struct PositionalSampler
 {
 	std::vector<vec3> values;
 	vec3 sample(unsigned index, float l, float dt) const;
+	vec3 sample_spline(unsigned index, float l, float dt) const;
 };
 
-struct CubicSampler
+struct SphericalSampler
 {
-	std::vector<vec3> values;
-	vec3 sample(unsigned index, float l, float dt) const;
-};
-
-struct SlerpSampler
-{
-	std::vector<quat> values;
+	std::vector<vec4> values;
 	quat sample(unsigned index, float l, float dt) const;
+	quat sample_spline(unsigned index, float l, float dt) const;
 };
 }

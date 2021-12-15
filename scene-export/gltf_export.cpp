@@ -1141,39 +1141,36 @@ void RemapState::emit_animations(ArrayView<const Animation> animation_list)
 			switch (channel.type)
 			{
 			case AnimationChannel::Type::Rotation:
-				chan.path = "rotation";
+			case AnimationChannel::Type::CubicRotation:
 				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.spherical.values.data()),
-				                          channel.spherical.values.size() * sizeof(quat) });
+				                          channel.spherical.values.size() * sizeof(vec4) });
 				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32A32_SFLOAT, 0,
 				                              channel.spherical.values.size());
 				break;
+
+			default:
+				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.positional.values.data()),
+				                          channel.positional.values.size() * sizeof(vec3) });
+				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
+				                              channel.positional.values.size());
+				break;
+			}
+
+			switch (channel.type)
+			{
+			case AnimationChannel::Type::Rotation:
+			case AnimationChannel::Type::CubicRotation:
+				chan.path = "rotation";
+				break;
+
+			case AnimationChannel::Type::Translation:
 			case AnimationChannel::Type::CubicTranslation:
 				chan.path = "translation";
-				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.cubic.values.data()),
-				                          channel.cubic.values.size() * sizeof(vec3) });
-				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
-				                              channel.cubic.values.size());
 				break;
-			case AnimationChannel::Type::Translation:
-				chan.path = "translation";
-				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.linear.values.data()),
-				                          channel.linear.values.size() * sizeof(vec3) });
-				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
-				                              channel.linear.values.size());
-				break;
+
+			case AnimationChannel::Type::Scale:
 			case AnimationChannel::Type::CubicScale:
 				chan.path = "scale";
-				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.cubic.values.data()),
-				                          channel.cubic.values.size() * sizeof(vec3) });
-				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
-				                              channel.cubic.values.size());
-				break;
-			case AnimationChannel::Type::Scale:
-				chan.path = "scale";
-				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.linear.values.data()),
-				                          channel.linear.values.size() * sizeof(vec3) });
-				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
-				                              channel.linear.values.size());
 				break;
 			}
 
@@ -1181,7 +1178,20 @@ void RemapState::emit_animations(ArrayView<const Animation> animation_list)
 			chan.sampler = sampler_index;
 
 			EmittedAnimation::Sampler samp;
-			samp.interpolation = "LINEAR";
+
+			switch (channel.type)
+			{
+			case AnimationChannel::Type::CubicTranslation:
+			case AnimationChannel::Type::CubicRotation:
+			case AnimationChannel::Type::CubicScale:
+				samp.interpolation = "CUBICSPLINE";
+				break;
+
+			default:
+				samp.interpolation = "LINEAR";
+				break;
+			}
+
 			samp.timestamp_accessor = timestamp_accessor;
 			samp.data_accessor = data_accessor;
 

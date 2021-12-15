@@ -558,7 +558,7 @@ void Parser::extract_attribute(std::vector<vec3> &attributes, const Accessor &ac
 	}
 }
 
-void Parser::extract_attribute(std::vector<quat> &attributes, const Accessor &accessor)
+void Parser::extract_attribute(std::vector<vec4> &attributes, const Accessor &accessor)
 {
 	if (accessor.type != ScalarType::Float32)
 		throw logic_error("Attribute is not Float32.");
@@ -571,7 +571,7 @@ void Parser::extract_attribute(std::vector<quat> &attributes, const Accessor &ac
 	{
 		uint32_t offset = view.offset + accessor.offset + i * accessor.stride;
 		const auto *data = reinterpret_cast<const float *>(&buffer[offset]);
-		attributes.push_back(normalize(quat(data[3], data[0], data[1], data[2])));
+		attributes.push_back(normalize(vec4(data[0], data[1], data[2], data[3])));
 	}
 }
 
@@ -1430,7 +1430,7 @@ void Parser::parse(const string &original_path, const string &json)
 				if (!strcmp(target, "translation"))
 				{
 					channel.type = AnimationChannel::Type::Translation;
-					extract_attribute(channel.linear.values, *sampler);
+					extract_attribute(channel.positional.values, *sampler);
 				}
 				else if (!strcmp(target, "rotation"))
 				{
@@ -1440,7 +1440,7 @@ void Parser::parse(const string &original_path, const string &json)
 				else if (!strcmp(target, "scale"))
 				{
 					channel.type = AnimationChannel::Type::Scale;
-					extract_attribute(channel.linear.values, *sampler);
+					extract_attribute(channel.positional.values, *sampler);
 				}
 				else
 					throw logic_error("Invalid target for animation.");
@@ -1450,12 +1450,17 @@ void Parser::parse(const string &original_path, const string &json)
 				if (!strcmp(target, "translation"))
 				{
 					channel.type = AnimationChannel::Type::CubicTranslation;
-					extract_attribute(channel.cubic.values, *sampler);
+					extract_attribute(channel.positional.values, *sampler);
+				}
+				else if (!strcmp(target, "rotation"))
+				{
+					channel.type = AnimationChannel::Type::CubicRotation;
+					extract_attribute(channel.spherical.values, *sampler);
 				}
 				else if (!strcmp(target, "scale"))
 				{
 					channel.type = AnimationChannel::Type::CubicScale;
-					extract_attribute(channel.cubic.values, *sampler);
+					extract_attribute(channel.positional.values, *sampler);
 				}
 				else
 					throw logic_error("Invalid target for animation.");

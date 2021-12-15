@@ -955,7 +955,7 @@ inline quat slerp(const quat &x, const quat &y, float l)
 		cos_theta = -cos_theta;
 	}
 
-	if (cos_theta > 0.999f)
+	if (cos_theta > 0.95f)
 		return quat(mix(x.as_vec4(), z.as_vec4(), l));
 
 	float angle = acos(cos_theta);
@@ -963,6 +963,20 @@ inline quat slerp(const quat &x, const quat &y, float l)
 	auto &vz = z.as_vec4();
 	auto &vx = x.as_vec4();
 	auto res = (sin((1.0f - l) * angle) * vx + sin(l * angle) * vz) / sin(angle);
+	return quat(res);
+}
+
+inline quat slerp_no_invert(const quat &x, const quat &y, float l)
+{
+	float cos_theta = dot(x.as_vec4(), y.as_vec4());
+	if (cos_theta > 0.95f)
+		return quat(mix(x.as_vec4(), y.as_vec4(), l));
+
+	float angle = acos(cos_theta);
+
+	auto &vy = y.as_vec4();
+	auto &vx = x.as_vec4();
+	auto res = (sin((1.0f - l) * angle) * vx + sin(l * angle) * vy) / sin(angle);
 	return quat(res);
 }
 

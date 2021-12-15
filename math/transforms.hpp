@@ -65,5 +65,6 @@ struct SphericalSampler
 	std::vector<vec4> values;
 	quat sample(unsigned index, float l, float dt) const;
 	quat sample_spline(unsigned index, float l, float dt) const;
+	quat sample_squad(unsigned index, float l, float dt) const;
 };
 }

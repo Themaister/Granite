@@ -265,4 +265,48 @@ quat SphericalSampler::sample_spline(unsigned index, float t, float dt) const
 	// CUBICSPLINE for quaternion is defined as simple vec4 interpolation with normalization.
 	return normalize(quat(compute_cubic_spline(values, index, t, dt)));
 }
+
+// From Shoemake (1985), Bezier by recursive slerps.
+// Slow implementation, only used for precomputing a high frame rate animation clip.
+static quat quat_bisect(const quat &p, const quat &q)
+{
+	return quat(normalize(p.as_vec4() + q.as_vec4()));
+}
+
+static quat quat_double(const quat &p, const quat &q)
+{
+	quat pq = p * q;
+	return quat(2.0f * (pq * q).as_vec4() - p.as_vec4());
+}
+
+static quat compute_inner_control_point(const std::vector<vec4> &values, unsigned index)
+{
+	quat q0 = quat(values[index ? (index - 1) : 0]);
+	quat q1 = quat(values[index]);
+	quat q2 = quat(values[min<unsigned>(index + 1, values.size() - 1)]);
+	quat cp = quat_bisect(quat_double(q0, q1), q2);
+	return cp;
+}
+
+quat SphericalSampler::sample_squad(unsigned index, float l, float) const
+{
+	if (l == 0.0f)
+		return quat(values[index]);
+
+	assert(index + 1 < values.size());
+
+	quat q0 = quat(values[index]);
+	quat q1 = quat(values[index + 1]);
+
+	quat cp0 = compute_inner_control_point(values, index);
+	quat cp1 = compute_inner_control_point(values, index + 1);
+	cp1 = quat_double(cp1, q1);
+
+	quat l0 = slerp_no_invert(q0, cp0, l);
+	quat l1 = slerp_no_invert(cp0, cp1, l);
+	quat l2 = slerp_no_invert(cp1, q1, l);
+	quat ll0 = slerp_no_invert(l0, l1, l);
+	quat ll1 = slerp_no_invert(l1, l2, l);
+	return slerp_no_invert(ll0, ll1, l);
+}
 }

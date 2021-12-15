@@ -56,6 +56,7 @@ static void print_help()
 	LOGI("[--threads <num threads>]\n");
 	LOGI("[--fog-color R G B] [--fog-falloff falloff]\n");
 	LOGI("[--extra-lights lights.json]\n");
+	LOGI("[--extra-cameras cameras.json]\n");
 	LOGI("[--texcomp-quality <1 (fast) - 5 (slow)>] input.gltf\n");
 	LOGI("[--animate-cameras]\n");
 	LOGI("[--optimize-meshes]\n");
@@ -202,7 +203,7 @@ int main(int argc, char *argv[])
 		string json;
 		if (!GRANITE_FILESYSTEM()->read_file_to_string(extra_cameras, json))
 		{
-			LOGE("Failed to read config file for lights.\n");
+			LOGE("Failed to read config file for cameras.\n");
 			return 1;
 		}
 
@@ -214,6 +215,12 @@ int main(int argc, char *argv[])
 		if (animate_cameras)
 		{
 			animations = parser.get_animations();
+
+			if (doc["cameras"].Size() == 0)
+			{
+				LOGE("Cameras array is empty.\n");
+				return 1;
+			}
 
 			// Add one camera, which will be animated by a single animating node transform.
 			SceneFormats::CameraInfo camera;
@@ -230,7 +237,7 @@ int main(int argc, char *argv[])
 
 			animation.channels.resize(2);
 			animation.channels[0].type = SceneFormats::AnimationChannel::Type::Translation;
-			animation.channels[1].type = SceneFormats::AnimationChannel::Type::Rotation;
+			animation.channels[1].type = SceneFormats::AnimationChannel::Type::ImplicitSquadRotation;
 			animation.channels[0].node_index = nodes.size();
 			animation.channels[1].node_index = nodes.size();
 

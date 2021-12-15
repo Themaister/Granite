@@ -966,6 +966,20 @@ inline quat slerp(const quat &x, const quat &y, float l)
 	return quat(res);
 }
 
+inline quat slerp_no_invert(const quat &x, const quat &y, float l)
+{
+	float cos_theta = dot(x.as_vec4(), y.as_vec4());
+	if (cos_theta > 0.999f)
+		return normalize(quat(mix(x.as_vec4(), y.as_vec4(), l)));
+
+	float angle = acos(cos_theta);
+
+	auto &vy = y.as_vec4();
+	auto &vx = x.as_vec4();
+	auto res = (sin((1.0f - l) * angle) * vx + sin(l * angle) * vy) / sin(angle);
+	return quat(res);
+}
+
 inline quat angleAxis(float angle, const vec3 &axis)
 {
 	return quat(cos(0.5f * angle), sin(0.5f * angle) * normalize(axis));

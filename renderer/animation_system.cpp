@@ -547,5 +547,4 @@ AnimationSystem::AnimationState::AnimationState(const Granite::AnimationUnrolled
 		: skinned_node(node), animation(anim), start_time(start_time_)
 {
 }
-
 }

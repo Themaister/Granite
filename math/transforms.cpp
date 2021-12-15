@@ -265,4 +265,80 @@ quat SphericalSampler::sample_spline(unsigned index, float t, float dt) const
 	// CUBICSPLINE for quaternion is defined as simple vec4 interpolation with normalization.
 	return normalize(quat(compute_cubic_spline(values, index, t, dt)));
 }
+
+static vec3 quat_log(const quat &q)
+{
+	if (abs(q.w) > 0.9999f)
+		return vec3(0.0f);
+	else
+		return normalize(q.as_vec4().xyz()) * acos(q.w);
+}
+
+static quat quat_exp(const vec3 &q)
+{
+	float l = dot(q, q);
+	if (l < 0.000001f)
+	{
+		return quat(1.0f, 0.0f, 0.0f, 0.0f);
+	}
+	else
+	{
+		float vlen = length(q);
+		vec3 v = normalize(q) * sin(vlen);
+		return quat(cos(vlen), v);
+	}
+}
+
+static quat compute_inner_control_point(const std::vector<vec4> &values, unsigned index)
+{
+	quat q0 = quat(values[max(int(index) - 1, 0)]);
+	quat q1 = quat(values[index]);
+	quat q2 = quat(values[min<unsigned>(index + 1, values.size() - 1)]);
+
+	// This is almost gibberish, as this is just copy-pastaed from various implementations
+	// found on the interwebs.
+	// From studying it in greater detail,
+	// the basic gist is that quaternion log and exp are used to
+	// decompose what should be a series of multiplications (quat rotations) into additions, since
+	// ln(a * b) = ln(a) + ln(b), and exp(ln(a)) = a.
+
+	// ln(q) means encoding a vec3 where the length encodes theta, and direction encodes direction.
+	// Summing ln(a) + ln(b) will therefore "add" the addition together, similar to how one
+	// would add torque vectors in physics. The exp must then re-encode the vector-magnitude encoding
+	// back to normal quaternion form.
+
+	// In this domain we can average rotations, and go back again to a normal quaternion with exp.
+	// inv_q1 * q2 and inv_q1 * q0 both do some form of "differential" of the rotations.
+	// q12 and q10 estimate first derivative at the control points.
+	// q12 and q10 have opposing signs,
+	// so the sum of the logs is therefore seen as instantaneous acceleration at the q1.
+
+	// quat_log() breaks down if q.w goes negative it seems, so that explains some shenanigans
+	// where some docs say that this only works for "normal" interpolation scenarios.
+	// Probably more than good enough for us though.
+
+	quat inv_q1 = conjugate(q1);
+	quat q12 = inv_q1 * q2;
+	quat q10 = inv_q1 * q0;
+	vec3 q12_log = quat_log(q12);
+	vec3 q10_log = quat_log(q10);
+	quat exp_value = quat_exp(-0.25f * (q12_log + q10_log));
+	return q1 * exp_value;
+}
+
+quat SphericalSampler::sample_squad(unsigned index, float l, float) const
+{
+	if (l == 0.0f)
+		return quat(values[index]);
+
+	assert(index + 1 < values.size());
+
+	quat q0 = quat(values[index]);
+	quat q1 = quat(values[index + 1]);
+
+	quat cp0 = compute_inner_control_point(values, index);
+	quat cp1 = compute_inner_control_point(values, index + 1);
+
+	return slerp_no_invert(slerp_no_invert(q0, q1, l), slerp_no_invert(cp0, cp1, l), 2.0f * l * (1.0f - l));
+}
 }

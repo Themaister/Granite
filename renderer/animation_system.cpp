@@ -49,7 +49,7 @@ unsigned AnimationUnrolled::find_or_allocate_index(uint32_t node_index)
 	else
 	{
 		auto index = unsigned(multi_node_indices.size());
-		multi_node_indices.push_back(index);
+		multi_node_indices.push_back(node_index);
 		return index;
 	}
 }
@@ -61,7 +61,6 @@ void AnimationUnrolled::reserve_num_clips(unsigned count)
 		key_frames_rotation.resize(count);
 		key_frames_translation.resize(count);
 		key_frames_scale.resize(count);
-		multi_node_indices.resize(count);
 		multi_node_indices.resize(count);
 		channel_mask.resize(count);
 	}

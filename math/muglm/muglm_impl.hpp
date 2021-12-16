@@ -956,7 +956,7 @@ inline quat slerp(const quat &x, const quat &y, float l)
 	}
 
 	if (cos_theta > 0.999f)
-		return quat(mix(x.as_vec4(), z.as_vec4(), l));
+		return normalize(quat(mix(x.as_vec4(), z.as_vec4(), l)));
 
 	float angle = acos(cos_theta);
 

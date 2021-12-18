@@ -220,6 +220,9 @@ vec3 PositionalSampler::sample(unsigned index, float l) const
 {
 	if (l == 0.0f)
 		return values[index];
+	else if (l == 1.0f)
+		return values[index + 1];
+
 	assert(index + 1 < values.size());
 	return mix(values[index], values[index + 1], l);
 }
@@ -229,14 +232,16 @@ static T compute_cubic_spline(const std::vector<T> &values, unsigned index, floa
 {
 	assert(3 * index + 4 < values.size());
 	T p0 = values[3 * index + 1];
+	T p1 = values[3 * index + 4];
 
 	// For t == 0.0f, the result must be exactly on the point as specified by glTF.
 	if (t == 0.0f)
 		return p0;
+	else if (t == 1.0f)
+		return p1;
 
 	T m0 = dt * values[3 * index + 2];
 	T m1 = dt * values[3 * index + 3];
-	T p1 = values[3 * index + 4];
 
 	float t2 = t * t;
 	float t3 = t2 * t;
@@ -256,6 +261,9 @@ quat SphericalSampler::sample(unsigned index, float l) const
 {
 	if (l == 0.0f)
 		return quat(values[index]);
+	else if (l == 1.0f)
+		return quat(values[index + 1]);
+
 	assert(index + 1 < values.size());
 	return slerp(quat(values[index]), quat(values[index + 1]), l);
 }
@@ -268,10 +276,12 @@ quat SphericalSampler::sample_spline(unsigned index, float t, float dt) const
 
 quat SphericalSampler::sample_squad(unsigned index, float l) const
 {
-	if (l == 0.0f)
-		return quat(values[index]);
-
 	assert(3 * index + 4 < values.size());
+
+	if (l == 0.0f)
+		return quat(values[3 * index + 1]);
+	else if (l == 1.0f)
+		return quat(values[3 * index + 4]);
 
 	quat q0 = quat(values[3 * index + 1]);
 	quat cp0 = quat(values[3 * index + 2]);

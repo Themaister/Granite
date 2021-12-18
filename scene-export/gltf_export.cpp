@@ -1142,7 +1142,7 @@ void RemapState::emit_animations(ArrayView<const Animation> animation_list)
 			{
 			case AnimationChannel::Type::Rotation:
 			case AnimationChannel::Type::CubicRotation:
-			case AnimationChannel::Type::ImplicitSquadRotation:
+			case AnimationChannel::Type::Squad:
 				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.spherical.values.data()),
 				                          channel.spherical.values.size() * sizeof(vec4) });
 				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32A32_SFLOAT, 0,
@@ -1161,7 +1161,7 @@ void RemapState::emit_animations(ArrayView<const Animation> animation_list)
 			{
 			case AnimationChannel::Type::Rotation:
 			case AnimationChannel::Type::CubicRotation:
-			case AnimationChannel::Type::ImplicitSquadRotation:
+			case AnimationChannel::Type::Squad:
 				chan.path = "rotation";
 				break;
 
@@ -1189,9 +1189,9 @@ void RemapState::emit_animations(ArrayView<const Animation> animation_list)
 				samp.interpolation = "CUBICSPLINE";
 				break;
 
-			case AnimationChannel::Type::ImplicitSquadRotation:
+			case AnimationChannel::Type::Squad:
 				// For internal use.
-				samp.interpolation = "GRANITE_IMPLICIT_SQUAD";
+				samp.interpolation = "SQUAD";
 				break;
 
 			default:

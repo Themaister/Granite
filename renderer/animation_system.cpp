@@ -175,8 +175,8 @@ AnimationUnrolled::AnimationUnrolled(const SceneFormats::Animation &animation, f
 		case SceneFormats::AnimationChannel::Type::Scale:
 			key_frames_scale[index].resize(num_samples);
 			resample_channel(key_frames_scale[index].data(), num_samples, c,
-			                 [&c](unsigned i, float t, float dt) {
-				                 return c.positional.sample(i, t, dt);
+			                 [&c](unsigned i, float t, float) {
+				                 return c.positional.sample(i, t);
 			                 }, inv_frame_rate);
 			channel_mask[index] |= SCALE_BIT;
 			break;
@@ -193,8 +193,8 @@ AnimationUnrolled::AnimationUnrolled(const SceneFormats::Animation &animation, f
 		case SceneFormats::AnimationChannel::Type::Translation:
 			key_frames_translation[index].resize(num_samples);
 			resample_channel(key_frames_translation[index].data(), num_samples, c,
-			                 [&c](unsigned i, float t, float dt) {
-				                 return c.positional.sample(i, t, dt);
+			                 [&c](unsigned i, float t, float) {
+				                 return c.positional.sample(i, t);
 			                 }, inv_frame_rate);
 			channel_mask[index] |= TRANSLATION_BIT;
 			break;
@@ -208,11 +208,11 @@ AnimationUnrolled::AnimationUnrolled(const SceneFormats::Animation &animation, f
 			channel_mask[index] |= ROTATION_BIT;
 			break;
 
-		case SceneFormats::AnimationChannel::Type::ImplicitSquadRotation:
+		case SceneFormats::AnimationChannel::Type::Squad:
 			key_frames_rotation[index].resize(num_samples);
 			resample_channel(key_frames_rotation[index].data(), num_samples, c,
-			                 [&c](unsigned i, float t, float dt) {
-				                 return c.spherical.sample_squad(i, t, dt);
+			                 [&c](unsigned i, float t, float) {
+				                 return c.spherical.sample_squad(i, t);
 			                 }, inv_frame_rate);
 			channel_mask[index] |= ROTATION_BIT;
 			break;
@@ -220,8 +220,8 @@ AnimationUnrolled::AnimationUnrolled(const SceneFormats::Animation &animation, f
 		case SceneFormats::AnimationChannel::Type::Rotation:
 			key_frames_rotation[index].resize(num_samples);
 			resample_channel(key_frames_rotation[index].data(), num_samples, c,
-			                 [&c](unsigned i, float t, float dt) {
-				                 return c.spherical.sample(i, t, dt);
+			                 [&c](unsigned i, float t, float) {
+				                 return c.spherical.sample(i, t);
 			                 }, inv_frame_rate);
 			channel_mask[index] |= ROTATION_BIT;
 			break;

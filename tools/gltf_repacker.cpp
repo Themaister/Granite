@@ -237,7 +237,7 @@ int main(int argc, char *argv[])
 
 			animation.channels.resize(2);
 			animation.channels[0].type = SceneFormats::AnimationChannel::Type::Translation;
-			animation.channels[1].type = SceneFormats::AnimationChannel::Type::ImplicitSquadRotation;
+			animation.channels[1].type = SceneFormats::AnimationChannel::Type::Rotation;
 			animation.channels[0].node_index = nodes.size();
 			animation.channels[1].node_index = nodes.size();
 
@@ -258,6 +258,9 @@ int main(int argc, char *argv[])
 					chan.timestamps.push_back(timestamp);
 				timestamp += 1.0f;
 			}
+
+			animation.channels[0] = animation.channels[0].build_smooth_rail_animation(0.5f);
+			animation.channels[1] = animation.channels[1].build_smooth_rail_animation(0.0f);
 
 			animation.name = "Camera";
 			animations.push_back(move(animation));

@@ -1005,4 +1005,26 @@ inline vec3 rotateZ(const vec3 &v, float angle)
 	return angleAxis(angle, vec3(0.0f, 0.0f, 1.0f)) * v;
 }
 
+inline vec3 quat_log(const quat &q)
+{
+	if (abs(q.w) > 0.9999f)
+		return vec3(0.0f);
+	else
+		return normalize(q.as_vec4().xyz()) * acos(q.w);
+}
+
+inline quat quat_exp(const vec3 &q)
+{
+	float l = dot(q, q);
+	if (l < 0.000001f)
+	{
+		return quat(1.0f, 0.0f, 0.0f, 0.0f);
+	}
+	else
+	{
+		float vlen = length(q);
+		vec3 v = normalize(q) * sin(vlen);
+		return quat(cos(vlen), v);
+	}
+}
 }

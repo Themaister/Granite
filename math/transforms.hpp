@@ -56,15 +56,17 @@ void compute_cube_render_transform(vec3 center, unsigned face, mat4 &projection,
 struct PositionalSampler
 {
 	std::vector<vec3> values;
-	vec3 sample(unsigned index, float l, float dt) const;
+	vec3 sample(unsigned index, float l) const;
 	vec3 sample_spline(unsigned index, float l, float dt) const;
 };
 
 struct SphericalSampler
 {
 	std::vector<vec4> values;
-	quat sample(unsigned index, float l, float dt) const;
+	quat sample(unsigned index, float l) const;
 	quat sample_spline(unsigned index, float l, float dt) const;
-	quat sample_squad(unsigned index, float l, float dt) const;
+	quat sample_squad(unsigned index, float l) const;
 };
+
+quat compute_inner_control_point(const quat &q0, const quat &q1, const quat &q2);
 }

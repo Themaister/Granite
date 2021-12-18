@@ -1465,11 +1465,11 @@ void Parser::parse(const string &original_path, const string &json)
 				else
 					throw logic_error("Invalid target for animation.");
 			}
-			else if (strcmp(interpolation, "GRANITE_IMPLICIT_SQUAD") == 0)
+			else if (strcmp(interpolation, "SQUAD") == 0)
 			{
 				if (!strcmp(target, "rotation"))
 				{
-					channel.type = AnimationChannel::Type::ImplicitSquadRotation;
+					channel.type = AnimationChannel::Type::Squad;
 					extract_attribute(channel.spherical.values, *sampler);
 				}
 				else

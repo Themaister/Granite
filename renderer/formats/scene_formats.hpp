@@ -52,12 +52,7 @@ struct AnimationChannel
 		CubicTranslation,
 		CubicRotation,
 		CubicScale,
-
-		// Very slow to evaluate directly. Only suitable for AnimationUnrolled.
-		// Automatically generates implicit inner quats as required per sample.
-		// Timestamps should be evenly spaced,
-		// otherwise we lose first order continuity.
-		ImplicitSquadRotation
+		Squad
 	};
 	Type type;
 
@@ -99,6 +94,13 @@ struct AnimationChannel
 			dt = timestamps[index + 1] - timestamps[index];
 		}
 	}
+
+	// Intended for use when the input channel is linearly interpolated.
+	// Creates a cubic/squad animation which smooths out the corners of the animation.
+	// Sharpness determines how smooth the animation becomes. With 0, everything is fully cubic,
+	// and 1 is fully linear, with something in-between, a fraction of a segment is linear, which then turns into
+	// a cubic formulation when getting close to a corner.
+	AnimationChannel build_smooth_rail_animation(float sharpness) const;
 };
 
 struct Animation

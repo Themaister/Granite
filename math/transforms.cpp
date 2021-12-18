@@ -216,7 +216,7 @@ void compute_cube_render_transform(vec3 center, unsigned face, mat4 &proj, mat4 
 	proj = scale(vec3(-1.0f, 1.0f, 1.0f)) * projection(0.5f * pi<float>(), 1.0f, znear, zfar);
 }
 
-vec3 PositionalSampler::sample(unsigned index, float l, float) const
+vec3 PositionalSampler::sample(unsigned index, float l) const
 {
 	if (l == 0.0f)
 		return values[index];
@@ -252,7 +252,7 @@ vec3 PositionalSampler::sample_spline(unsigned index, float t, float dt) const
 	return compute_cubic_spline(values, index, t, dt);
 }
 
-quat SphericalSampler::sample(unsigned index, float l, float) const
+quat SphericalSampler::sample(unsigned index, float l) const
 {
 	if (l == 0.0f)
 		return quat(values[index]);
@@ -266,35 +266,23 @@ quat SphericalSampler::sample_spline(unsigned index, float t, float dt) const
 	return normalize(quat(compute_cubic_spline(values, index, t, dt)));
 }
 
-static vec3 quat_log(const quat &q)
+quat SphericalSampler::sample_squad(unsigned index, float l) const
 {
-	if (abs(q.w) > 0.9999f)
-		return vec3(0.0f);
-	else
-		return normalize(q.as_vec4().xyz()) * acos(q.w);
+	if (l == 0.0f)
+		return quat(values[index]);
+
+	assert(3 * index + 4 < values.size());
+
+	quat q0 = quat(values[3 * index + 1]);
+	quat cp0 = quat(values[3 * index + 2]);
+	quat cp1 = quat(values[3 * index + 3]);
+	quat q1 = quat(values[3 * index + 4]);
+
+	return slerp_no_invert(slerp_no_invert(q0, q1, l), slerp_no_invert(cp0, cp1, l), 2.0f * l * (1.0f - l));
 }
 
-static quat quat_exp(const vec3 &q)
+quat compute_inner_control_point(const quat &q0, const quat &q1, const quat &q2)
 {
-	float l = dot(q, q);
-	if (l < 0.000001f)
-	{
-		return quat(1.0f, 0.0f, 0.0f, 0.0f);
-	}
-	else
-	{
-		float vlen = length(q);
-		vec3 v = normalize(q) * sin(vlen);
-		return quat(cos(vlen), v);
-	}
-}
-
-static quat compute_inner_control_point(const std::vector<vec4> &values, unsigned index)
-{
-	quat q0 = quat(values[max(int(index) - 1, 0)]);
-	quat q1 = quat(values[index]);
-	quat q2 = quat(values[min<unsigned>(index + 1, values.size() - 1)]);
-
 	// This is almost gibberish, as this is just copy-pastaed from various implementations
 	// found on the interwebs.
 	// From studying it in greater detail,
@@ -324,21 +312,5 @@ static quat compute_inner_control_point(const std::vector<vec4> &values, unsigne
 	vec3 q10_log = quat_log(q10);
 	quat exp_value = quat_exp(-0.25f * (q12_log + q10_log));
 	return q1 * exp_value;
-}
-
-quat SphericalSampler::sample_squad(unsigned index, float l, float) const
-{
-	if (l == 0.0f)
-		return quat(values[index]);
-
-	assert(index + 1 < values.size());
-
-	quat q0 = quat(values[index]);
-	quat q1 = quat(values[index + 1]);
-
-	quat cp0 = compute_inner_control_point(values, index);
-	quat cp1 = compute_inner_control_point(values, index + 1);
-
-	return slerp_no_invert(slerp_no_invert(q0, q1, l), slerp_no_invert(cp0, cp1, l), 2.0f * l * (1.0f - l));
 }
 }

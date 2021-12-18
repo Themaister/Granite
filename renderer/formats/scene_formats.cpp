@@ -638,5 +638,211 @@ bool extract_collision_mesh(CollisionMesh &col, const Mesh &mesh)
 
 	return true;
 }
+
+static std::vector<float> build_smooth_rail_animation_timestamps(const std::vector<float> &timestamps,
+                                                                 float sharpness)
+{
+	if (sharpness < 0.001f)
+		return timestamps;
+
+	std::vector<float> new_linear_timestamps;
+	float offset = 0.5f - sharpness * 0.5f;
+	new_linear_timestamps.reserve((timestamps.size() - 2) * 3);
+
+	for (size_t i = 0, n = timestamps.size(); i < n; i++)
+	{
+		if (i == 0 || i + 1 == n)
+			new_linear_timestamps.push_back(timestamps[i]);
+		else
+		{
+			new_linear_timestamps.push_back(mix(timestamps[i], timestamps[i - 1], offset));
+			new_linear_timestamps.push_back(timestamps[i]);
+			new_linear_timestamps.push_back(mix(timestamps[i], timestamps[i + 1], offset));
+		}
+	}
+
+	return new_linear_timestamps;
+}
+
+static void copy_base_parameters(AnimationChannel &out_channel, const AnimationChannel &in_channel)
+{
+	out_channel.joint = in_channel.joint;
+	out_channel.joint_index = in_channel.joint_index;
+	out_channel.node_index = in_channel.node_index;
+
+	switch (in_channel.type)
+	{
+	case SceneFormats::AnimationChannel::Type::Translation:
+		out_channel.type = SceneFormats::AnimationChannel::Type::CubicTranslation;
+		break;
+
+	case SceneFormats::AnimationChannel::Type::Scale:
+		out_channel.type = SceneFormats::AnimationChannel::Type::CubicScale;
+		break;
+
+	case SceneFormats::AnimationChannel::Type::Rotation:
+		out_channel.type = SceneFormats::AnimationChannel::Type::Squad;
+		break;
+
+	default:
+		LOGE("Invalid input type.\n");
+		break;
+	}
+}
+
+static SceneFormats::AnimationChannel build_smooth_rail_animation_positional(
+		const SceneFormats::AnimationChannel &channel, float sharpness)
+{
+	// Do nothing for identity transforms.
+	if (sharpness > 0.999f || channel.timestamps.size() < 2)
+		return channel;
+
+	AnimationChannel new_channel;
+	copy_base_parameters(new_channel, channel);
+
+	std::vector<float> new_linear_timestamps;
+	std::vector<vec3> new_linear_values;
+	std::vector<vec3> new_spline_values;
+
+	new_linear_timestamps = build_smooth_rail_animation_timestamps(channel.timestamps, sharpness);
+	new_linear_values.reserve(new_linear_timestamps.size());
+
+	for (auto t : new_linear_timestamps)
+	{
+		unsigned index;
+		float phase;
+		float dt;
+		channel.get_index_phase(t, index, phase, dt);
+		new_linear_values.push_back(channel.positional.sample(index, phase));
+	}
+
+	new_spline_values.reserve(new_linear_values.size() * 3);
+
+	// Compute desired tangents at the control points.
+	for (size_t i = 0, n = new_linear_timestamps.size(); i < n; i++)
+	{
+		vec3 tangent;
+		if (i == 0)
+		{
+			float t0 = new_linear_timestamps[i];
+			float t1 = new_linear_timestamps[i + 1];
+			vec3 v0 = new_linear_values[i];
+			vec3 v1 = new_linear_values[i + 1];
+			tangent = (v1 - v0) / (t1 - t0);
+		}
+		else if (i + 1 == n)
+		{
+			float t0 = new_linear_timestamps[i - 1];
+			float t1 = new_linear_timestamps[i];
+			vec3 v0 = new_linear_values[i - 1];
+			vec3 v1 = new_linear_values[i];
+			tangent = (v1 - v0) / (t1 - t0);
+		}
+		else
+		{
+			float t0 = new_linear_timestamps[i - 1];
+			float t1 = new_linear_timestamps[i + 1];
+			vec3 v0 = new_linear_values[i - 1];
+			vec3 v1 = new_linear_values[i + 1];
+			tangent = (v1 - v0) / (t1 - t0);
+		}
+
+		new_spline_values.push_back(tangent);
+		new_spline_values.push_back(new_linear_values[i]);
+		new_spline_values.push_back(tangent);
+	}
+
+	new_channel.timestamps = std::move(new_linear_timestamps);
+	new_channel.positional.values = std::move(new_spline_values);
+	return new_channel;
+}
+
+static AnimationChannel build_smooth_rail_animation_spherical(const AnimationChannel &channel, float sharpness)
+{
+	// Do nothing for identity transforms.
+	if (sharpness > 0.999f || channel.timestamps.size() < 2)
+		return channel;
+
+	AnimationChannel new_channel;
+	copy_base_parameters(new_channel, channel);
+
+	std::vector<float> new_linear_timestamps;
+	std::vector<quat> new_linear_values;
+	std::vector<vec4> new_spline_values;
+
+	new_linear_timestamps = build_smooth_rail_animation_timestamps(channel.timestamps, sharpness);
+	new_linear_values.reserve(new_linear_timestamps.size());
+
+	for (auto t : new_linear_timestamps)
+	{
+		unsigned index;
+		float phase;
+		float dt;
+		channel.get_index_phase(t, index, phase, dt);
+		new_linear_values.push_back(channel.spherical.sample(index, phase));
+	}
+
+	new_spline_values.reserve(new_linear_values.size() * 3);
+
+	for (size_t i = 1, n = new_linear_timestamps.size(); i < n; i++)
+	{
+		// Ensure that neighboring quaternions have minimum difference, otherwise, we might end up with
+		// broken animations when we try to lerp.
+		auto &q0 = new_linear_values[i - 1];
+		auto &q1 = new_linear_values[i];
+		if (dot(q0.as_vec4(), q1.as_vec4()) < 0)
+			q1 = quat(-q1.as_vec4());
+	}
+
+	// Compute desired tangents at the control points.
+	for (size_t i = 0, n = new_linear_timestamps.size(); i < n; i++)
+	{
+		quat cp;
+		if (i == 0)
+		{
+			quat q0 = new_linear_values[i];
+			quat q1 = new_linear_values[i + 1];
+			cp = compute_inner_control_point(q0, q0, q1);
+		}
+		else if (i + 1 == n)
+		{
+			quat q0 = new_linear_values[i - 1];
+			quat q1 = new_linear_values[i];
+			cp = compute_inner_control_point(q0, q1, q1);
+		}
+		else
+		{
+			quat q0 = new_linear_values[i - 1];
+			quat q1 = new_linear_values[i];
+			quat q2 = new_linear_values[i + 1];
+			cp = compute_inner_control_point(q0, q1, q2);
+		}
+
+		new_spline_values.push_back(cp.as_vec4());
+		new_spline_values.push_back(new_linear_values[i].as_vec4());
+		new_spline_values.push_back(cp.as_vec4());
+	}
+
+	new_channel.timestamps = std::move(new_linear_timestamps);
+	new_channel.spherical.values = std::move(new_spline_values);
+	return new_channel;
+}
+
+AnimationChannel AnimationChannel::build_smooth_rail_animation(float sharpness) const
+{
+	switch (type)
+	{
+	case SceneFormats::AnimationChannel::Type::Scale:
+	case SceneFormats::AnimationChannel::Type::Translation:
+		return build_smooth_rail_animation_positional(*this, sharpness);
+
+	case SceneFormats::AnimationChannel::Type::Rotation:
+		return build_smooth_rail_animation_spherical(*this, sharpness);
+
+	default:
+		LOGE("Invalid input channel type.\n");
+		return {};
+	}
+}
 }
 }

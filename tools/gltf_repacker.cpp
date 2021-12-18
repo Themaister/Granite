@@ -59,6 +59,8 @@ static void print_help()
 	LOGI("[--extra-cameras cameras.json]\n");
 	LOGI("[--texcomp-quality <1 (fast) - 5 (slow)>] input.gltf\n");
 	LOGI("[--animate-cameras]\n");
+	LOGI("[--animate-cameras-speed <speed>]\n");
+	LOGI("[--animate-cameras-sharpness <sharp>]\n");
 	LOGI("[--optimize-meshes]\n");
 	LOGI("[--stripify-meshes]\n");
 	LOGI("[--quantize-attributes]\n");
@@ -86,6 +88,8 @@ int main(int argc, char *argv[])
 	bool animate_cameras = false;
 	bool flip_tangent_w = false;
 	bool renormalize_normals = false;
+	float animate_cameras_speed = 1.0f;
+	float animate_cameras_sharpness = 0.0f;
 
 	CLICallbacks cbs;
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
@@ -101,6 +105,8 @@ int main(int argc, char *argv[])
 	cbs.add("--extra-cameras", [&](CLIParser &parser) { extra_cameras = parser.next_string(); });
 	cbs.add("--scale", [&](CLIParser &parser) { scale = parser.next_double(); });
 	cbs.add("--animate-cameras", [&](CLIParser &) { animate_cameras = true; });
+	cbs.add("--animate-cameras-speed", [&](CLIParser &parser) { animate_cameras_speed = float(parser.next_double()); });
+	cbs.add("--animate-cameras-sharpness", [&](CLIParser &parser) { animate_cameras_sharpness = float(parser.next_double()); });
 	cbs.add("--flip-tangent-w", [&](CLIParser &) { flip_tangent_w = true; });
 	cbs.add("--renormalize-normals", [&](CLIParser &) { renormalize_normals = true; });
 	cbs.add("--gltf", [&](CLIParser &) { options.gltf = true; });
@@ -254,12 +260,18 @@ int main(int argc, char *argv[])
 				                             vec3(u[0].GetFloat(), u[1].GetFloat(), u[2].GetFloat())));
 				animation.channels[1].spherical.values.push_back(rot.as_vec4());
 
+				// Attempt to run the track at somewhat constant speed.
+				// Don't attempt to take curved path into account, that's kinda overkill.
+				auto &pos_values = animation.channels[0].positional.values;
+				const vec3 &position = pos_values.back();
+				const vec3 &last_position = pos_values.size() == 1 ? position : pos_values[pos_values.size() - 2];
+				timestamp += distance(last_position, position) / animate_cameras_speed;
+
 				for (auto &chan : animation.channels)
 					chan.timestamps.push_back(timestamp);
-				timestamp += 1.0f;
 			}
 
-			animation.channels[0] = animation.channels[0].build_smooth_rail_animation(0.5f);
+			animation.channels[0] = animation.channels[0].build_smooth_rail_animation(animate_cameras_sharpness);
 			animation.channels[1] = animation.channels[1].build_smooth_rail_animation(0.0f);
 
 			animation.name = "Camera";

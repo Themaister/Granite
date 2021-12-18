@@ -23,6 +23,11 @@
 #include "application.hpp"
 #include "filesystem.hpp"
 
+//#define USE_FP_EXCEPTIONS
+#ifdef USE_FP_EXCEPTIONS
+#include <fenv.h>
+#endif
+
 #if defined(_WIN32) && !defined(APPLICATION_ENTRY_HEADLESS)
 #define USE_WINMAIN
 #endif
@@ -57,6 +62,10 @@ int CALLBACK WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 int main(int argc, char *argv[])
 #endif
 {
+#ifdef USE_FP_EXCEPTIONS
+	feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+#endif
+
 #ifdef USE_WINMAIN
 	int argc;
 	wchar_t **wide_argv = CommandLineToArgvW(GetCommandLineW(), &argc);

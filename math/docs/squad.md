@@ -327,7 +327,13 @@ quat delta_k = inv_q1 * q2; // q2 - q1
 quat delta_k_minus1 = inv_q1 * q0; // q0 - q1 = -(q1 - q0)
 vec3 delta_k_log = quat_log(delta_k);
 vec3 delta_k_minus1_log = quat_log(delta_k_minus1);
-vec3 delta = 0.25f * dt1 * (delta_k_log / dt1 + delta_k_minus1_log / dt0);
+
+// We sample velocity at the center of the segment when taking the difference.
+// Future sample is at t = +1/2 dt
+// Past sample is at t = -1/2 dt
+float segment_time = 0.5f * (dt0 + dt1);
+vec3 absolute_accel = (delta_k_log / dt1 + delta_k_minus1_log / dt0) / segment_time;
+vec3 delta = (0.25f * dt1 * dt1) * absolute_accel;
 ```
 
 ```
@@ -393,7 +399,7 @@ Perfect result. As expected.
 
 #### Uneven timestamps
 Key frames placed at t = {0, 1.0, 1.8, 2.1, 2.9, 3.0, 4.2, 4.3, 5.0, 6.0}.\
-Average error: 0.011691\
+Average error: 0.008141\
 Continuous first derivative, discontinuous second derivative.
 
 ### Cubic
@@ -407,7 +413,7 @@ Continuous first derivative, discontinuous second derivative.
 
 #### Uneven timestamps
 Key frames placed at t = {0, 0.5, 0.9, 1.1, 1.4, 1.5, 2.1, 2.2, 2.5, 3.0}.\
-Average error: 0.0163\
+Average error: 0.008285\
 Continuous first derivative, discontinuous second derivative.
 
 ### Summary

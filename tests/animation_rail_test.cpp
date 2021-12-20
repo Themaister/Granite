@@ -105,7 +105,12 @@ static double compute_inner_control_point_delta(double q0, double q1, double q2,
 {
 	double delta_k = q2 - q1;
 	double delta_k_minus1 = q0 - q1;
-	double delta = 0.25f * dt1 * (delta_k / dt1 + delta_k_minus1 / dt0);
+	double segment_time = 0.5 * (dt0 + dt1);
+	// We sample velocity at the center of the segment when taking the difference.
+	// Future sample is at t = +1/2 dt
+	// Past sample is at t = -1/2 dt
+	double absolute_accel = (delta_k / dt1 + delta_k_minus1 / dt0) * segment_time;
+	double delta = 0.25f * dt1 * dt1 * absolute_accel;
 	return delta;
 }
 
@@ -134,22 +139,13 @@ static double eval_squad(const std::vector<double> &timestamps, const std::vecto
 static void test_squad_spline()
 {
 	const auto reference_value = [](double t) {
-		return 0.5 * t - 0.25 * t * t + 0.25 * t * t * t;
+		return 0.5 * t - 0.25 * t * t;
 	};
 
 	std::vector<double> values;
 	std::vector<double> timestamps;
 #if 1
-	timestamps.push_back(0.0);
-	timestamps.push_back(0.5);
-	timestamps.push_back(0.9);
-	timestamps.push_back(1.3);
-	timestamps.push_back(1.7);
-	timestamps.push_back(2.1);
-	timestamps.push_back(2.4);
-	timestamps.push_back(2.6);
-	timestamps.push_back(2.8);
-	timestamps.push_back(3.0);
+	timestamps = {0, 1.0, 1.8, 2.1, 2.9, 3.0, 4.2, 4.3, 5.0, 6.0};
 #else
 	timestamps.push_back(0.0);
 	timestamps.push_back(0.5);

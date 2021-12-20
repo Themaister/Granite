@@ -331,7 +331,13 @@ vec3 compute_inner_control_point_delta(const quat &q0, const quat &q1, const qua
 	quat delta_k_minus1 = inv_q1 * q0; // q0 - q1 = -(q1 - q0)
 	vec3 delta_k_log = quat_log(delta_k);
 	vec3 delta_k_minus1_log = quat_log(delta_k_minus1);
-	vec3 delta = 0.25f * dt1 * (delta_k_log / dt1 + delta_k_minus1_log / dt0);
+
+	// We sample velocity at the center of the segment when taking the difference.
+	// Future sample is at t = +1/2 dt
+	// Past sample is at t = -1/2 dt
+	float segment_time = 0.5f * (dt0 + dt1);
+	vec3 absolute_accel = (delta_k_log / dt1 + delta_k_minus1_log / dt0) / segment_time;
+	vec3 delta = (0.25f * dt1 * dt1) * absolute_accel;
 	return delta;
 }
 }

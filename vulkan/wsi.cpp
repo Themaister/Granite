@@ -227,7 +227,7 @@ void WSI::tear_down_swapchain()
 
 	if (swapchain != VK_NULL_HANDLE)
 	{
-		if (device->get_device_features().present_wait_features.presentWait)
+		if (device->get_device_features().present_wait_features.presentWait && present_last_id)
 			table->vkWaitForPresentKHR(context->get_device(), swapchain, present_last_id, UINT64_MAX);
 		table->vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
 	}

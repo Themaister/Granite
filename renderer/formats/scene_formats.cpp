@@ -769,6 +769,7 @@ static AnimationChannel build_smooth_rail_animation_spherical(const AnimationCha
 	std::vector<float> new_linear_timestamps;
 	std::vector<quat> new_linear_values;
 	std::vector<vec4> new_spline_values;
+	std::vector<vec3> tmp_spline_deltas;
 
 	new_linear_timestamps = build_smooth_rail_animation_timestamps(channel.timestamps, sharpness);
 	new_linear_values.reserve(new_linear_timestamps.size());
@@ -783,6 +784,7 @@ static AnimationChannel build_smooth_rail_animation_spherical(const AnimationCha
 	}
 
 	new_spline_values.reserve(new_linear_values.size() * 3);
+	tmp_spline_deltas.reserve(new_linear_timestamps.size());
 
 	for (size_t i = 1, n = new_linear_timestamps.size(); i < n; i++)
 	{
@@ -797,30 +799,69 @@ static AnimationChannel build_smooth_rail_animation_spherical(const AnimationCha
 	// Compute desired tangents at the control points.
 	for (size_t i = 0, n = new_linear_timestamps.size(); i < n; i++)
 	{
-		quat cp;
+		vec3 delta;
 		if (i == 0)
 		{
 			quat q0 = new_linear_values[i];
 			quat q1 = new_linear_values[i + 1];
-			cp = compute_inner_control_point(q0, q0, q1);
+			float dt = new_linear_timestamps[i + 1] - new_linear_timestamps[i];
+			delta = compute_inner_control_point_delta(q0, q0, q1, dt, dt);
 		}
 		else if (i + 1 == n)
 		{
 			quat q0 = new_linear_values[i - 1];
 			quat q1 = new_linear_values[i];
-			cp = compute_inner_control_point(q0, q1, q1);
+			float dt = new_linear_timestamps[i] - new_linear_timestamps[i - 1];
+			delta = compute_inner_control_point_delta(q0, q1, q1, dt, dt);
 		}
 		else
 		{
 			quat q0 = new_linear_values[i - 1];
 			quat q1 = new_linear_values[i];
 			quat q2 = new_linear_values[i + 1];
-			cp = compute_inner_control_point(q0, q1, q2);
+			float dt0 = new_linear_timestamps[i] - new_linear_timestamps[i - 1];
+			float dt1 = new_linear_timestamps[i + 1] - new_linear_timestamps[i];
+			delta = compute_inner_control_point_delta(q0, q1, q2, dt0, dt1);
 		}
 
-		new_spline_values.push_back(cp.as_vec4());
-		new_spline_values.push_back(new_linear_values[i].as_vec4());
-		new_spline_values.push_back(cp.as_vec4());
+		tmp_spline_deltas.push_back(delta);
+	}
+
+	for (size_t i = 0, n = new_linear_timestamps.size(); i < n; i++)
+	{
+		if (i > 0)
+		{
+			// Adjust the inner control points such that velocities remain continuous,
+			// even with non-uniform spacing of timestamps.
+			// Adjust the incoming inner control point based on the outgoing control point.
+			vec3 outgoing = tmp_spline_deltas[i];
+
+			float dt0 = new_linear_timestamps[i] - new_linear_timestamps[i - 1];
+			float dt1 = i + 1 < n ? (new_linear_timestamps[i + 1] - new_linear_timestamps[i]) : dt0;
+			float t_ratio = dt0 / dt1;
+
+			const quat &q0 = new_linear_values[i - 1];
+			const quat &q1 = new_linear_values[i];
+			const quat &q2 = i + 1 < n ? new_linear_values[i + 1] : q1;
+
+			quat q12 = conjugate(q1) * q2;
+			quat q10 = conjugate(q1) * q0;
+			vec3 delta_q12 = quat_log(q12);
+			vec3 delta_q10 = quat_log(q10);
+
+			vec3 incoming = 0.5f * (t_ratio * delta_q12 + delta_q10) - t_ratio * outgoing;
+
+			new_spline_values.push_back(compute_inner_control_point(new_linear_values[i], incoming).as_vec4());
+			new_spline_values.push_back(new_linear_values[i].as_vec4());
+			new_spline_values.push_back(compute_inner_control_point(new_linear_values[i], outgoing).as_vec4());
+		}
+		else
+		{
+			quat completed = compute_inner_control_point(new_linear_values[i], tmp_spline_deltas[i]);
+			new_spline_values.push_back(completed.as_vec4());
+			new_spline_values.push_back(new_linear_values[i].as_vec4());
+			new_spline_values.push_back(completed.as_vec4());
+		}
 	}
 
 	new_channel.timestamps = std::move(new_linear_timestamps);

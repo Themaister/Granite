@@ -274,6 +274,8 @@ quat SphericalSampler::sample_spline(unsigned index, float t, float dt) const
 	return normalize(quat(compute_cubic_spline(values, index, t, dt)));
 }
 
+// See math/docs/squad.md for more detail and derivation.
+
 quat SphericalSampler::sample_squad(unsigned index, float l) const
 {
 	assert(3 * index + 4 < values.size());
@@ -291,7 +293,13 @@ quat SphericalSampler::sample_squad(unsigned index, float l) const
 	return slerp_no_invert(slerp_no_invert(q0, q1, l), slerp_no_invert(cp0, cp1, l), 2.0f * l * (1.0f - l));
 }
 
-quat compute_inner_control_point(const quat &q0, const quat &q1, const quat &q2)
+quat compute_inner_control_point(const quat &q, const vec3 &delta)
+{
+	return q * quat_exp(-delta);
+}
+
+vec3 compute_inner_control_point_delta(const quat &q0, const quat &q1, const quat &q2,
+                                       float dt0, float dt1)
 {
 	// This is almost gibberish, as this is just copy-pastaed from various implementations
 	// found on the interwebs.
@@ -315,12 +323,15 @@ quat compute_inner_control_point(const quat &q0, const quat &q1, const quat &q2)
 	// where some docs say that this only works for "normal" interpolation scenarios.
 	// Probably more than good enough for us though.
 
+	// Weigh the deltas so that they compute absolute velocity and acceleration.
+	// Rescale back to spline time domain after.
+
 	quat inv_q1 = conjugate(q1);
-	quat q12 = inv_q1 * q2;
-	quat q10 = inv_q1 * q0;
-	vec3 q12_log = quat_log(q12);
-	vec3 q10_log = quat_log(q10);
-	quat exp_value = quat_exp(-0.25f * (q12_log + q10_log));
-	return q1 * exp_value;
+	quat delta_k = inv_q1 * q2; // q2 - q1
+	quat delta_k_minus1 = inv_q1 * q0; // q0 - q1 = -(q1 - q0)
+	vec3 delta_k_log = quat_log(delta_k);
+	vec3 delta_k_minus1_log = quat_log(delta_k_minus1);
+	vec3 delta = 0.25f * dt1 * (delta_k_log / dt1 + delta_k_minus1_log / dt0);
+	return delta;
 }
 }

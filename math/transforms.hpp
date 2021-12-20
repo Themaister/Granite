@@ -68,5 +68,10 @@ struct SphericalSampler
 	quat sample_squad(unsigned index, float l) const;
 };
 
-quat compute_inner_control_point(const quat &q0, const quat &q1, const quat &q2);
+// Compute control points for q1.
+// dt0 is delta time between q0 and q1.
+// dt1 is delta time between q1 and q2.
+vec3 compute_inner_control_point_delta(const quat &q0, const quat &q1, const quat &q2,
+                                       float dt0, float dt1);
+quat compute_inner_control_point(const quat &q, const vec3 &delta);
 }

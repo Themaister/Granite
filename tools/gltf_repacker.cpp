@@ -263,16 +263,23 @@ int main(int argc, char *argv[])
 				// Attempt to run the track at somewhat constant speed.
 				// Don't attempt to take curved path into account, that's kinda overkill.
 				auto &pos_values = animation.channels[0].positional.values;
+				auto &rot_values = animation.channels[1].spherical.values;
 				const vec3 &position = pos_values.back();
 				const vec3 &last_position = pos_values.size() == 1 ? position : pos_values[pos_values.size() - 2];
-				timestamp += distance(last_position, position) / animate_cameras_speed;
+				const vec4 &rotation = rot_values.back();
+				const vec4 &last_rotation = rot_values.size() == 1 ? rotation : rot_values[rot_values.size() - 2];
+
+				float translation = distance(last_position, position);
+				// Shortest path.
+				float half_angle = muglm::acos(abs(dot(rotation, last_rotation)));
+				timestamp += muglm::max(muglm::max(translation, half_angle), 0.0001f) / animate_cameras_speed;
 
 				for (auto &chan : animation.channels)
 					chan.timestamps.push_back(timestamp);
 			}
 
 			animation.channels[0] = animation.channels[0].build_smooth_rail_animation(animate_cameras_sharpness);
-			animation.channels[1] = animation.channels[1].build_smooth_rail_animation(0.0f);
+			animation.channels[1] = animation.channels[1].build_smooth_rail_animation(animate_cameras_sharpness);
 
 			animation.name = "Camera";
 			animations.push_back(move(animation));

@@ -60,6 +60,19 @@ Application *application_create(int argc, char **argv)
 		return nullptr;
 	}
 
+	Granite::FileStat s = {};
+	if (config.empty() && GRANITE_FILESYSTEM()->stat("assets://config.json", s) && s.type == Granite::PathType::File)
+	{
+		LOGI("Using default config from assets.\n");
+		config = "assets://config.json";
+	}
+
+	if (quirks.empty() && GRANITE_FILESYSTEM()->stat("assets://quirks.json", s) && s.type == Granite::PathType::File)
+	{
+		LOGI("Using default quirks from assets.\n");
+		quirks = "assets://quirks.json";
+	}
+
 	try
 	{
 		auto *app = new SceneViewerApplication(path, config, quirks);

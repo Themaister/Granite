@@ -222,6 +222,7 @@ struct ParseState
 
 	ReferenceInfo references[MaxReference];
 	unsigned num_references = 0;
+	NALUnitType last_slice_type = NALUnitType::EndOfSequence;
 };
 
 static void parse_scaling_list(BitStream &stream, uint8_t *scaling, unsigned size, bool &use_default)
@@ -786,6 +787,8 @@ static bool parse_nal(const uint8_t *ptr, size_t size, ParseState &parse_state)
 		break;
 	}
 
+	parse_state.last_slice_type = NALUnitType(nal_unit_type);
+
 	return true;
 }
 
@@ -819,6 +822,9 @@ int main(int argc, char **argv)
 
 	ParseState parse_state;
 
+	const void *idr_slice_data = nullptr;
+	size_t idr_slice_size = 0;
+
 	while (mapped_size)
 	{
 		if (!find_start_code(mapped_file, mapped_size, &zero_byte))
@@ -849,10 +855,17 @@ int main(int argc, char **argv)
 			LOGE("Failed to parse NAL.\n");
 			return EXIT_FAILURE;
 		}
+
+		if (parse_state.last_slice_type == NALUnitType::IDRSlice)
+		{
+			idr_slice_data = packet;
+			idr_slice_size = packet_size;
+			break;
+		}
 	}
 
 #if 1
-	if (parse_state.sps_valid[0] && parse_state.pps_valid[0])
+	if (idr_slice_size)
 	{
 		auto &pps = parse_state.pps[0];
 		auto &sps = parse_state.sps[0];
@@ -1047,10 +1060,33 @@ int main(int argc, char **argv)
 			picture_resource[i].codedExtent.height = dbp_images[i]->get_height();
 			picture_resource[i].imageViewBinding = dbp_images[i]->get_view().get_view();
 		}
+
 		begin_coding_info.pReferenceSlots = reference_slots.data();
 		table.vkCmdBeginVideoCodingKHR(vk_cmd, &begin_coding_info);
 
 		VkVideoDecodeInfoKHR decode_info = { VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR };
+		decode_info.codedExtent.width = 1920;
+		decode_info.codedExtent.height = 1080;
+		decode_info.dstPictureResource.sType = VK_STRUCTURE_TYPE_VIDEO_PICTURE_RESOURCE_KHR;
+		decode_info.dstPictureResource.codedExtent = { 1920, 1080 };
+		decode_info.dstPictureResource.imageViewBinding = dbp_images[0]->get_view().get_view();
+
+		Vulkan::BufferCreateInfo decode_buffer_info = {};
+		decode_buffer_info.usage = VK_BUFFER_USAGE_VIDEO_DECODE_DST_BIT_KHR;
+		decode_buffer_info.domain = Vulkan::BufferDomain::Host;
+		decode_buffer_info.size = idr_slice_size;
+		Vulkan::BufferHandle decode_buffer = device.create_buffer(decode_buffer_info, idr_slice_data);
+		decode_info.srcBuffer = decode_buffer->get_buffer();
+		decode_info.srcBufferOffset = 0;
+		decode_info.srcBufferRange = idr_slice_size;
+
+		VkVideoReferenceSlotKHR setup_slot = { VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_KHR };
+		setup_slot.slotIndex = -1;
+		setup_slot.pPictureResource = &picture_resource[0];
+		decode_info.pSetupReferenceSlot = &setup_slot;
+		decode_info.pReferenceSlots = reference_slots.data();
+		decode_info.referenceSlotCount = uint32_t(reference_slots.size());
+
 		table.vkCmdDecodeVideoKHR(vk_cmd, &decode_info);
 
 		VkVideoEndCodingInfoKHR end_coding_info = { VK_STRUCTURE_TYPE_VIDEO_END_CODING_INFO_KHR };

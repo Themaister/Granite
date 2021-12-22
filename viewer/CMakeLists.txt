@@ -21,5 +21,11 @@ if (GRANITE_BULLET)
     endif()
 endif()
 
-#install_assets(gltf-viewer ${CMAKE_CURRENT_SOURCE_DIR}/assets ${CMAKE_CURRENT_SOURCE_DIR}/../assets/app)
-#install_assets(gltf-viewer ${CMAKE_CURRENT_SOURCE_DIR}/../app/assets/builtin ${CMAKE_CURRENT_SOURCE_DIR}/../assets)
+option(GRANITE_VIEWER_INSTALL "Install Granite viewer and assets." OFF)
+
+if (GRANITE_VIEWER_INSTALL)
+    granite_install_executable(gltf-viewer)
+    granite_install_executable(gltf-viewer-headless)
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../assets DESTINATION ${CMAKE_INSTALL_BINDIR}/builtin)
+endif()

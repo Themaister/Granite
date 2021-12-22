@@ -2984,7 +2984,8 @@ public:
 			usage_info.usage &= VK_IMAGE_USAGE_SAMPLED_BIT |
 			                    VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
 			                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-			                    VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+			                    VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
+			                    vk_video_image_usage_flags;
 
 			if (format_is_srgb(create_info.format))
 				usage_info.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;

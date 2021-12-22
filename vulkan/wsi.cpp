@@ -1057,8 +1057,11 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	info.clipped = VK_TRUE;
 	info.oldSwapchain = old_swapchain;
 
-	if (device->get_device_features().present_wait_features.presentWait && old_swapchain != VK_NULL_HANDLE)
+	if (device->get_device_features().present_wait_features.presentWait &&
+	    old_swapchain != VK_NULL_HANDLE && present_last_id)
+	{
 		table->vkWaitForPresentKHR(context->get_device(), old_swapchain, present_last_id, UINT64_MAX);
+	}
 
 #ifdef _WIN32
 	if (device->get_device_features().supports_full_screen_exclusive)

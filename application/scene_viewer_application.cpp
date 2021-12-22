@@ -47,11 +47,8 @@ static vec3 light_direction()
 void SceneViewerApplication::read_lights()
 {
 	string json;
-	if (!GRANITE_FILESYSTEM()->read_file_to_string("cache://lights.json", json))
-	{
-		LOGE("Failed to read quirks file. Assuming defaults.\n");
+	if (!GRANITE_FILESYSTEM()->read_file_to_string("assets://lights.json", json))
 		return;
-	}
 
 	auto &scene = scene_loader.get_scene();
 	rapidjson::Document doc;

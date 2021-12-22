@@ -191,6 +191,8 @@ struct SPS
 	StdVideoH264SequenceParameterSet sps;
 	StdVideoH264ScalingLists scaling_lists;
 	StdVideoH264SequenceParameterSetVui vui;
+	int32_t offsets[256];
+	StdVideoH264HrdParameters hrd;
 };
 
 struct PPS
@@ -276,7 +278,7 @@ static bool parse_sps(BitStream &stream, ParseState &state)
 		return false;
 	new_sps.level_idc = StdVideoH264Level(stream.u(8));
 	new_sps.seq_parameter_set_id = stream.ue();
-	new_sps.chroma_format_idc = std_video_h264_chroma_format_idc_420;
+	new_sps.chroma_format_idc = STD_VIDEO_H264_CHROMA_FORMAT_IDC_420;
 
 	auto &sps_data = state.sps[new_sps.seq_parameter_set_id];
 	sps_data = {};
@@ -289,14 +291,13 @@ static bool parse_sps(BitStream &stream, ParseState &state)
 
 	switch (sps.profile_idc)
 	{
-	case std_video_h264_profile_idc_high:
-	case std_video_h264_profile_idc_high_444_predictive:
+	case STD_VIDEO_H264_PROFILE_IDC_HIGH:
+	case STD_VIDEO_H264_PROFILE_IDC_HIGH_444_PREDICTIVE:
 	{
 		sps.chroma_format_idc = StdVideoH264ChromaFormatIdc(stream.ue());
 
-		// Spec says separate_colour_plane_flag though? ...
-		if (sps.chroma_format_idc == std_video_h264_chroma_format_idc_444)
-			sps.flags.residual_colour_transform_flag = stream.u();
+		if (sps.chroma_format_idc == STD_VIDEO_H264_CHROMA_FORMAT_IDC_444)
+			sps.flags.separate_colour_plane_flag = stream.u();
 
 		sps.bit_depth_luma_minus8 = stream.ue();
 		sps.bit_depth_chroma_minus8 = stream.ue();
@@ -306,7 +307,7 @@ static bool parse_sps(BitStream &stream, ParseState &state)
 		if (seq_scaling_matrix_present_flag)
 		{
 			sps.pScalingLists = &scaling_lists;
-			for (unsigned i = 0; i < (sps.chroma_format_idc != std_video_h264_chroma_format_idc_444 ? 8 : 12); i++)
+			for (unsigned i = 0; i < (sps.chroma_format_idc != STD_VIDEO_H264_CHROMA_FORMAT_IDC_444 ? 8 : 12); i++)
 			{
 				bool present = stream.u();
 				scaling_lists.scaling_list_present_mask |= present << i;
@@ -326,8 +327,8 @@ static bool parse_sps(BitStream &stream, ParseState &state)
 		break;
 	}
 
-	case std_video_h264_profile_idc_baseline:
-	case std_video_h264_profile_idc_main:
+	case STD_VIDEO_H264_PROFILE_IDC_BASELINE:
+	case STD_VIDEO_H264_PROFILE_IDC_MAIN:
 		break;
 
 	default:
@@ -337,18 +338,19 @@ static bool parse_sps(BitStream &stream, ParseState &state)
 
 	sps.log2_max_frame_num_minus4 = stream.ue();
 	sps.pic_order_cnt_type = StdVideoH264PocType(stream.ue());
-	if (sps.pic_order_cnt_type == std_video_h264_poc_type_0)
+	if (sps.pic_order_cnt_type == STD_VIDEO_H264_POC_TYPE_0)
 	{
 		sps.log2_max_pic_order_cnt_lsb_minus4 = stream.ue();
 	}
-	else if (sps.pic_order_cnt_type == std_video_h264_poc_type_1)
+	else if (sps.pic_order_cnt_type == STD_VIDEO_H264_POC_TYPE_1)
 	{
 		sps.flags.delta_pic_order_always_zero_flag = stream.u();
 		sps.offset_for_non_ref_pic = stream.se();
 		sps.offset_for_top_to_bottom_field = stream.se();
 		sps.num_ref_frames_in_pic_order_cnt_cycle = stream.ue();
+		sps.pOffsetForRefFrame = sps_data.offsets;
 		for (unsigned i = 0; i < sps.num_ref_frames_in_pic_order_cnt_cycle; i++)
-			sps.offset_for_ref_frame[i] = stream.se();
+			sps_data.offsets[i] = stream.se();
 	}
 	sps.max_num_ref_frames = stream.ue();
 	sps.flags.gaps_in_frame_num_value_allowed_flag = stream.u();
@@ -375,7 +377,7 @@ static bool parse_sps(BitStream &stream, ParseState &state)
 		if (vui.flags.aspect_ratio_info_present_flag)
 		{
 			vui.aspect_ratio_idc = StdVideoH264AspectRatioIdc(stream.u(8));
-			if (vui.aspect_ratio_idc == std_video_h264_aspect_ratio_idc_extended_sar)
+			if (vui.aspect_ratio_idc == STD_VIDEO_H264_ASPECT_RATIO_IDC_EXTENDED_SAR)
 			{
 				vui.sar_width = stream.u(16);
 				vui.sar_height = stream.u(16);
@@ -419,11 +421,17 @@ static bool parse_sps(BitStream &stream, ParseState &state)
 
 		vui.flags.nal_hrd_parameters_present_flag = stream.u();
 		if (vui.flags.nal_hrd_parameters_present_flag)
-			parse_hrd_parameters(stream, vui.hrd_parameters);
+		{
+			vui.pHrdParameters = &sps_data.hrd;
+			parse_hrd_parameters(stream, *vui.pHrdParameters);
+		}
 
 		vui.flags.vcl_hrd_parameters_present_flag = stream.u();
 		if (vui.flags.vcl_hrd_parameters_present_flag)
-			parse_hrd_parameters(stream, vui.hrd_parameters);
+		{
+			vui.pHrdParameters = &sps_data.hrd;
+			parse_hrd_parameters(stream, *vui.pHrdParameters);
+		}
 
 		if (vui.flags.nal_hrd_parameters_present_flag || vui.flags.vcl_hrd_parameters_present_flag)
 		{
@@ -439,7 +447,7 @@ static bool parse_sps(BitStream &stream, ParseState &state)
 			/*auto max_bits_per_mb_denom =*/ stream.ue();
 			/*auto log2_max_mv_length_horizontal =*/ stream.ue();
 			/*auto log2_max_mv_length_vertical =*/ stream.ue();
-			vui.num_reorder_frames = stream.ue();
+			vui.max_num_reorder_frames = stream.ue();
 			vui.max_dec_frame_buffering = stream.ue();
 		}
 	}
@@ -509,8 +517,8 @@ static bool parse_pps(BitStream &stream, ParseState &state)
 	pps.num_ref_idx_l0_default_active_minus1 = stream.ue();
 	pps.num_ref_idx_l1_default_active_minus1 = stream.ue();
 	pps.flags.weighted_pred_flag = stream.u();
-	pps.weighted_bipred_idc = StdVideoH264WeightedBiPredIdc(stream.u(2));
-	pps.flags.weighted_bipred_idc_flag = pps.weighted_bipred_idc != std_video_h264_invalid_weighted_b_slices_prediction_idc;
+	pps.weighted_bipred_idc = StdVideoH264WeightedBipredIdc(stream.u(2));
+	pps.flags.weighted_bipred_idc_flag = pps.weighted_bipred_idc != STD_VIDEO_H264_WEIGHTED_BIPRED_IDC_INVALID;
 	pps.pic_init_qp_minus26 = stream.se();
 	pps.pic_init_qs_minus26 = stream.se();
 	pps.chroma_qp_index_offset = stream.se();
@@ -520,8 +528,8 @@ static bool parse_pps(BitStream &stream, ParseState &state)
 	if (stream.more_data())
 	{
 		pps.flags.transform_8x8_mode_flag = stream.u();
-		pps.flags.scaling_matrix_present_flag = stream.u();
-		if (pps.flags.scaling_matrix_present_flag)
+		pps.flags.pic_scaling_matrix_present_flag = stream.u();
+		if (pps.flags.pic_scaling_matrix_present_flag)
 		{
 			for (unsigned i = 0; i < 6u + 2u * pps.flags.transform_8x8_mode_flag; i++)
 			{
@@ -569,7 +577,7 @@ static bool update_poc(BitStream &stream, ParseState &parse, const SPS &sps, con
 					   StdVideoDecodeH264PictureInfo &pic)
 {
 	auto poc_type = sps.sps.pic_order_cnt_type;
-	if (poc_type == std_video_h264_poc_type_0)
+	if (poc_type == STD_VIDEO_H264_POC_TYPE_0)
 	{
 		int32_t pic_order_cnt_lsb = stream.u(sps.sps.log2_max_pic_order_cnt_lsb_minus4 + 4);
 		// What is the default for delta_pic_order_cnt_bottom?
@@ -685,7 +693,7 @@ static bool parse_slice_header(BitStream &stream, ParseState &state, bool idr, b
 	auto &pps = state.pps[pic_parameter_set_id];
 	auto &sps = state.sps[pps.pps.seq_parameter_set_id];
 
-	if (sps.sps.flags.residual_colour_transform_flag)
+	if (sps.sps.flags.separate_colour_plane_flag)
 	{
 		/*auto color_plane_id =*/ stream.u(2);
 	}
@@ -843,9 +851,12 @@ int main(int argc, char **argv)
 		}
 	}
 
-#if 0
-	//if (parse_state.has_sps && parse_state.has_pps)
+#if 1
+	if (parse_state.sps_valid[0] && parse_state.pps_valid[0])
 	{
+		auto &pps = parse_state.pps[0];
+		auto &sps = parse_state.sps[0];
+
 		VkDevice vk_device = device.get_device();
 		auto &table = device.get_device_table();
 
@@ -860,13 +871,17 @@ int main(int argc, char **argv)
 		video_profile.videoCodecOperation = VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_EXT;
 
 		VkVideoDecodeH264ProfileEXT h264_profile = { VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_PROFILE_EXT };
-		h264_profile.fieldLayout = VK_VIDEO_DECODE_H264_PROGRESSIVE_PICTURES_ONLY_EXT;
-		h264_profile.stdProfileIdc = parse_state.sps.sps.profile_idc;
+		h264_profile.pictureLayout = VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_PROGRESSIVE_EXT;
+		h264_profile.stdProfileIdc = sps.sps.profile_idc;
 		video_profile.pNext = &h264_profile;
 
 		auto gpa = Vulkan::Context::get_instance_proc_addr();
-		auto vkGetPhysicalDeviceVideoCapabilitiesKHR = (PFN_vkGetPhysicalDeviceVideoCapabilitiesKHR)gpa(context.get_instance(), "vkGetPhysicalDeviceVideoCapabilitiesKHR");
-		auto vkGetPhysicalDeviceVideoFormatPropertiesKHR = (PFN_vkGetPhysicalDeviceVideoFormatPropertiesKHR)gpa(context.get_instance(), "vkGetPhysicalDeviceVideoFormatPropertiesKHR");
+		auto vkGetPhysicalDeviceVideoCapabilitiesKHR = (PFN_vkGetPhysicalDeviceVideoCapabilitiesKHR)gpa(
+				context.get_instance(),
+				"vkGetPhysicalDeviceVideoCapabilitiesKHR");
+		auto vkGetPhysicalDeviceVideoFormatPropertiesKHR = (PFN_vkGetPhysicalDeviceVideoFormatPropertiesKHR)gpa(
+				context.get_instance(),
+				"vkGetPhysicalDeviceVideoFormatPropertiesKHR");
 
 		auto res = vkGetPhysicalDeviceVideoCapabilitiesKHR(device.get_physical_device(), &video_profile, &video_caps);
 		if (res != VK_SUCCESS)
@@ -899,11 +914,11 @@ int main(int argc, char **argv)
 		conversion_info.chromaFilter = VK_FILTER_LINEAR;
 		auto *ycbcr = device.request_immutable_ycbcr_conversion(conversion_info);
 
-		std::vector<Vulkan::ImageHandle> dbp_images(parse_state.sps.sps.max_num_ref_frames);
+		std::vector<Vulkan::ImageHandle> dbp_images(sps.sps.max_num_ref_frames);
 		Vulkan::ImageCreateInfo dbp_image_info = {};
 		dbp_image_info.type = VK_IMAGE_TYPE_2D;
-		dbp_image_info.width = (parse_state.sps.sps.pic_width_in_mbs_minus1 + 1) * 16;
-		dbp_image_info.height = (parse_state.sps.sps.pic_height_in_map_units_minus1 + 1) * 16;
+		dbp_image_info.width = (sps.sps.pic_width_in_mbs_minus1 + 1) * 16;
+		dbp_image_info.height = (sps.sps.pic_height_in_map_units_minus1 + 1) * 16;
 		dbp_image_info.depth = 1;
 		dbp_image_info.levels = 1;
 		dbp_image_info.layers = 1;
@@ -927,8 +942,8 @@ int main(int argc, char **argv)
 		session_info.pictureFormat = format_properties[0].format;
 		session_info.referencePicturesFormat = format_properties[0].format;
 		session_info.queueFamilyIndex = context.get_queue_info().family_indices[Vulkan::QUEUE_INDEX_VIDEO_DECODE];
-		session_info.maxReferencePicturesActiveCount = parse_state.sps.sps.max_num_ref_frames;
-		session_info.maxReferencePicturesSlotsCount = parse_state.sps.sps.max_num_ref_frames;
+		session_info.maxReferencePicturesActiveCount = sps.sps.max_num_ref_frames;
+		session_info.maxReferencePicturesSlotsCount = sps.sps.max_num_ref_frames;
 		session_info.flags = VK_VIDEO_SESSION_CREATE_DEFAULT_KHR;
 
 		VkVideoDecodeH264SessionCreateInfoEXT h264_decode_session_info = { VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_SESSION_CREATE_INFO_EXT };
@@ -996,8 +1011,8 @@ int main(int argc, char **argv)
 		h264_session_parameters.pParametersAddInfo = &param_add_info;
 		param_add_info.ppsStdCount = 1;
 		param_add_info.spsStdCount = 1;
-		param_add_info.pPpsStd = &parse_state.pps.pps;
-		param_add_info.pSpsStd = &parse_state.sps.sps;
+		param_add_info.pPpsStd = &pps.pps;
+		param_add_info.pSpsStd = &sps.sps;
 
 		VkVideoSessionParametersKHR video_session_parameters;
 		res = table.vkCreateVideoSessionParametersKHR(vk_device, &session_param_create_info, nullptr, &video_session_parameters);
@@ -1009,8 +1024,8 @@ int main(int argc, char **argv)
 		VkVideoBeginCodingInfoKHR begin_coding_info = { VK_STRUCTURE_TYPE_VIDEO_BEGIN_CODING_INFO_KHR };
 		begin_coding_info.videoSession = video_session;
 		begin_coding_info.videoSessionParameters = video_session_parameters;
-		begin_coding_info.codecQualityPreset = VK_VIDEO_CODING_QUALITY_PRESET_DEFAULT_BIT_KHR;
-		begin_coding_info.referenceSlotCount = parse_state.sps.sps.max_num_ref_frames;
+		begin_coding_info.codecQualityPreset = VK_VIDEO_CODING_QUALITY_PRESET_NORMAL_BIT_KHR;
+		begin_coding_info.referenceSlotCount = sps.sps.max_num_ref_frames;
 		Util::SmallVector<VkVideoReferenceSlotKHR> reference_slots(begin_coding_info.referenceSlotCount);
 		Util::SmallVector<VkVideoDecodeH264DpbSlotInfoEXT> h264_slots(begin_coding_info.referenceSlotCount);
 		Util::SmallVector<VkVideoPictureResourceKHR> picture_resource(begin_coding_info.referenceSlotCount);
@@ -1020,12 +1035,12 @@ int main(int argc, char **argv)
 		for (unsigned i = 0; i < begin_coding_info.referenceSlotCount; i++)
 		{
 			reference_slots[i].sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_KHR;
-			reference_slots[i].slotIndex = i;
+			reference_slots[i].slotIndex = int8_t(i);
 			reference_slots[i].pPictureResource = &picture_resource[i];
 
 			h264_slots[i].sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_DPB_SLOT_INFO_EXT;
 			h264_slots[i].pStdReferenceInfo = &ref_info;
-			reference_slots[i].pNext = &h264_slots;
+			reference_slots[i].pNext = &h264_slots[i];
 
 			picture_resource[i].sType = VK_STRUCTURE_TYPE_VIDEO_PICTURE_RESOURCE_KHR;
 			picture_resource[i].codedExtent.width = dbp_images[i]->get_width();

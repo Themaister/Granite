@@ -596,6 +596,7 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 
 		p->wait_threads();
 		app->get_wsi().get_device().wait_idle();
+		app->get_wsi().get_device().timestamp_log_reset();
 
 		auto start_time = get_current_time_nsecs();
 		unsigned rendered_frames = 0;
@@ -615,6 +616,17 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		app->get_wsi().get_device().wait_idle();
 		auto end_time = get_current_time_nsecs();
 
+		struct Report
+		{
+			std::string tag;
+			TimestampIntervalReport report;
+		};
+		std::vector<Report> reports;
+		app->get_wsi().get_device().timestamp_log([&](const std::string &tag, const TimestampIntervalReport &report) {
+			reports.push_back({ tag, report });
+		});
+		app->get_wsi().get_device().timestamp_log_reset();
+
 #ifdef HAVE_GRANITE_AUDIO
 		Global::stop_audio_system();
 #endif
@@ -633,6 +645,20 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 				doc.AddMember("averageFrameTimeUs", usec, allocator);
 				doc.AddMember("gpu", StringRef(app->get_wsi().get_context().get_gpu_props().deviceName), allocator);
 				doc.AddMember("driverVersion", app->get_wsi().get_context().get_gpu_props().driverVersion, allocator);
+
+				if (!reports.empty())
+				{
+					Value report_objs(kObjectType);
+					for (auto &rep : reports)
+					{
+						Value report_obj(kObjectType);
+						report_obj.AddMember("timePerAccumulationUs", 1e6 * rep.report.time_per_accumulation, allocator);
+						report_obj.AddMember("timePerFrameContextUs", 1e6 * rep.report.time_per_frame_context, allocator);
+						report_obj.AddMember("accumulationsPerFrameContext", rep.report.accumulations_per_frame_context, allocator);
+						report_objs.AddMember(StringRef(rep.tag), report_obj, allocator);
+					}
+					doc.AddMember("performance", report_objs, allocator);
+				}
 
 				StringBuffer buffer;
 				PrettyWriter<StringBuffer> writer(buffer);

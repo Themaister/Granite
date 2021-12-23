@@ -32,12 +32,15 @@ def run_test(sweep, config, iterations, stat_file):
         parsed = json.loads(json_data)
         gpu = parsed['gpu']
         version = parsed['driverVersion']
+        perf = parsed['performance'] if 'performance' in parsed else None
 
     avg, stddev = compute_stddev(config_results)
-    return avg, stddev, gpu, version
+    return avg, stddev, gpu, version, perf
 
 def map_result_to_json(result, width, height, gpu, version):
-    return { 'config': result[0], 'avg': result[1], 'stdev': result[2], 'width': width, 'height': height, 'gpu': gpu, 'version': version }
+    return { 'config': result[0], 'avg': result[1], 'stdev': result[2],
+            'width': width, 'height': height, 'gpu': gpu, 'version': version,
+            'performance': {} if result[3] is None else result[3] }
 
 def main():
     parser = argparse.ArgumentParser(description = 'Script for running automated performance tests.')
@@ -101,9 +104,9 @@ def main():
             sweep.append('--png-reference-path')
             sweep.append(os.path.join(args.png_result_dir, base_config + '.png'))
 
-        avg, stddev, gpu, version = run_test(sweep, base_config, iterations, stat_file)
+        avg, stddev, gpu, version, perf = run_test(sweep, base_config, iterations, stat_file)
 
-        results.append((base_config, avg, stddev))
+        results.append((base_config, avg, stddev, perf))
 
     for res in results:
         print(res)

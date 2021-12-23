@@ -1,7 +1,7 @@
 add_granite_internal_lib(granite-application
         application.hpp
         application.cpp
-        platforms/application_headless.cpp platforms/hw_counters/hw_counter_interface.h)
+        platforms/application_headless.cpp)
 
 target_link_libraries(granite-application PUBLIC
         granite-vulkan

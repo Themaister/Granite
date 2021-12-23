@@ -246,9 +246,6 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("renderTargetFp16"))
 		config.rt_fp16 = doc["renderTargetFp16"].GetBool();
 
-	if (doc.HasMember("timestamps"))
-		config.timestamps = doc["timestamps"].GetBool();
-
 	if (doc.HasMember("rescaleScene"))
 		config.rescale_scene = doc["rescaleScene"].GetBool();
 
@@ -266,10 +263,6 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("lodBias"))
 		config.lod_bias = doc["lodBias"].GetFloat();
 
-	if (doc.HasMember("maxSpotLights"))
-		config.max_spot_lights = doc["maxSpotLights"].GetUint();
-	if (doc.HasMember("maxPointLights"))
-		config.max_point_lights = doc["maxPointLights"].GetUint();
 	if (doc.HasMember("volumetricFog"))
 		config.volumetric_fog = doc["volumetricFog"].GetBool();
 	if (doc.HasMember("volumetricDiffuse"))
@@ -277,7 +270,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 }
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path,
-                                               const std::string &quirks_path)
+                                               const std::string &quirks_path, const CLIConfig &cli_config_)
+	: cli_config(cli_config_)
 {
 	renderer_suite.set_default_renderers();
 	if (!renderer_suite.load_variant_cache("assets://renderer_suite_variants.json"))
@@ -405,8 +399,6 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 			cluster->set_base_render_context(&context);
 		}
 
-		cluster->set_max_spot_lights(config.max_spot_lights);
-		cluster->set_max_point_lights(config.max_point_lights);
 		cluster->set_enable_shadows(config.clustered_lights_shadows);
 		cluster->set_enable_clustering(config.clustered_lights);
 		cluster->set_enable_bindless(config.clustered_lights_bindless);
@@ -486,7 +478,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	context.set_camera(*selected_camera);
 
-	graph.enable_timestamps(config.timestamps);
+	graph.enable_timestamps(cli_config.timestamp);
 
 	if (config.rescale_scene)
 		rescale_scene(10.0f);

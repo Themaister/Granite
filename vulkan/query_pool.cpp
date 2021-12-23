@@ -455,6 +455,13 @@ const string &TimestampInterval::get_tag() const
 	return tag;
 }
 
+void TimestampInterval::reset()
+{
+	total_time = 0.0;
+	total_accumulations = 0;
+	total_frame_iterations = 0;
+}
+
 TimestampInterval::TimestampInterval(string tag_)
 	: tag(move(tag_))
 {
@@ -473,17 +480,35 @@ void TimestampIntervalManager::mark_end_of_frame_context()
 		timestamp.mark_end_of_frame_context();
 }
 
-void TimestampIntervalManager::log_simple()
+void TimestampIntervalManager::reset()
+{
+	for (auto &timestamp : timestamps)
+		timestamp.reset();
+}
+
+void TimestampIntervalManager::log_simple(const TimestampIntervalReportCallback &func) const
 {
 	for (auto &timestamp : timestamps)
 	{
-		LOGI("Timestamp tag report: %s\n", timestamp.get_tag().c_str());
 		if (timestamp.get_total_frame_iterations())
 		{
-			LOGI("  %.3f ms / iteration\n", 1000.0 * timestamp.get_time_per_accumulation());
-			LOGI("  %.3f ms / frame context\n", 1000.0 * timestamp.get_time_per_iteration());
-			LOGI("  %.3f iterations / frame context\n",
-			     double(timestamp.get_total_accumulations()) / double(timestamp.get_total_frame_iterations()));
+			TimestampIntervalReport report = {};
+			report.time_per_accumulation = timestamp.get_time_per_accumulation();
+			report.time_per_frame_context = timestamp.get_time_per_iteration();
+			report.accumulations_per_frame_context =
+					double(timestamp.get_total_accumulations()) / double(timestamp.get_total_frame_iterations());
+
+			if (func)
+			{
+				func(timestamp.get_tag(), report);
+			}
+			else
+			{
+				LOGI("Timestamp tag report: %s\n", timestamp.get_tag().c_str());
+				LOGI("  %.3f ms / iteration\n", 1000.0 * report.time_per_accumulation);
+				LOGI("  %.3f ms / frame context\n", 1000.0 * report.time_per_frame_context);
+				LOGI("  %.3f iterations / frame context\n", report.accumulations_per_frame_context);
+			}
 		}
 	}
 }

@@ -4862,6 +4862,21 @@ bool Device::supports_subgroup_size_log2(bool subgroup_full_group, uint8_t subgr
 	return (ext.subgroup_size_control_properties.requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0;
 }
 
+const QueueInfo &Device::get_queue_info() const
+{
+	return queue_info;
+}
+
+void Device::timestamp_log_reset()
+{
+	managers.timestamps.reset();
+}
+
+void Device::timestamp_log(const TimestampIntervalReportCallback &cb) const
+{
+	managers.timestamps.log_simple(cb);
+}
+
 static ImplementationQuirks implementation_quirks;
 ImplementationQuirks &ImplementationQuirks::get()
 {

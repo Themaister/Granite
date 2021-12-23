@@ -49,7 +49,13 @@ class TaskComposer;
 class SceneViewerApplication : public Application, public EventHandler
 {
 public:
-	SceneViewerApplication(const std::string &path, const std::string &config_path, const std::string &quirks_path);
+	struct CLIConfig
+	{
+		bool timestamp = false;
+	};
+	SceneViewerApplication(const std::string &path,
+	                       const std::string &config_path, const std::string &quirks_path,
+	                       const CLIConfig &cli_config);
 	~SceneViewerApplication();
 	void render_frame(double frame_time, double elapsed_time) override;
 	void rescale_scene(float radius);
@@ -119,9 +125,6 @@ private:
 		unsigned clustered_lights_shadow_resolution = 512;
 		int camera_index = -1;
 
-		unsigned max_spot_lights = 32;
-		unsigned max_point_lights = 32;
-
 		SceneRendererFlags pcf_flags = SCENE_RENDERER_SHADOW_PCF_WIDE_BIT;
 		float resolution_scale = 1.0f;
 		bool resolution_scale_sharpen = true;
@@ -138,7 +141,6 @@ private:
 		bool forward_depth_prepass = false;
 		bool deferred_clustered_stencil_culling = true;
 		bool rt_fp16 = false;
-		bool timestamps = false;
 		bool rescale_scene = false;
 		bool show_ui = true;
 		bool volumetric_fog = false;
@@ -149,6 +151,7 @@ private:
 		PostAAType postaa_type = PostAAType::None;
 	};
 	Config config;
+	CLIConfig cli_config;
 
 	void export_lights();
 	void export_cameras();

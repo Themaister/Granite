@@ -33,8 +33,6 @@
 #include "rapidjson_wrapper.hpp"
 #include <limits.h>
 #include <cmath>
-#include "dynamic_library.hpp"
-#include "hw_counters/hw_counter_interface.h"
 #include "thread_group.hpp"
 #include "global_managers_init.hpp"
 
@@ -144,8 +142,6 @@ public:
 	~WSIPlatformHeadless() override
 	{
 		release_resources();
-		if (hw_counter_handle)
-			hw_counter_iface.destroy(hw_counter_handle);
 	}
 
 	void release_resources() override
@@ -180,7 +176,7 @@ public:
 
 	void enable_png_readback(string base_path)
 	{
-		png_readback = base_path;
+		png_readback = std::move(base_path);
 	}
 
 	vector<const char *> get_instance_extensions() override
@@ -267,8 +263,6 @@ public:
 		auto info = ImageCreateInfo::render_target(width, height, VK_FORMAT_R8G8B8A8_SRGB);
 		info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
-		            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
 
 		BufferCreateInfo readback = {};
 		readback.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -284,8 +278,10 @@ public:
 			readback_fence.push_back({});
 		}
 
+		// Target present layouts to be more accurate for timing in case PRESENT_SRC forces decompress,
+		// and also makes sure pipeline caches are valid w.r.t render passes.
 		for (auto &swap : swapchain_images)
-			swap->set_swapchain_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+			swap->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 		wsi.init_external_swapchain(swapchain_images);
 		return true;
@@ -304,26 +300,64 @@ public:
 		worker_threads[frame_index]->wait();
 	}
 
-	void wait_workers()
-	{
-		for (auto &worker : worker_threads)
-			worker->wait();
-	}
-
 	void end_frame()
 	{
 		auto &wsi = app->get_wsi();
 		auto &device = wsi.get_device();
 		auto release_semaphore = wsi.consume_external_release_semaphore();
+		auto &queue_info = device.get_queue_info();
+		unsigned generic_queue_family = queue_info.family_indices[device.get_physical_queue_type(CommandBuffer::Type::AsyncGraphics)];
+		unsigned transfer_queue_family = queue_info.family_indices[device.get_physical_queue_type(CommandBuffer::Type::AsyncTransfer)];
+		bool require_family_transfer = generic_queue_family != transfer_queue_family &&
+		                               (release_semaphore && release_semaphore->get_semaphore() != VK_NULL_HANDLE) &&
+		                               (next_readback_cb || !png_readback.empty());
+
+		VkImageMemoryBarrier ownership = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+		if (require_family_transfer)
+		{
+			ownership.image = swapchain_images[frame_index]->get_image();
+			ownership.srcAccessMask = 0;
+			ownership.dstAccessMask = 0;
+			ownership.srcQueueFamilyIndex = generic_queue_family;
+			ownership.dstQueueFamilyIndex = transfer_queue_family;
+			ownership.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			ownership.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+			ownership.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+			ownership.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			ownership.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+			device.add_wait_semaphore(CommandBuffer::Type::AsyncGraphics, release_semaphore,
+			                          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, true);
+			auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncGraphics);
+			cmd->barrier(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, nullptr,
+			             0, nullptr, 1, &ownership);
+			release_semaphore.reset();
+			device.submit(cmd, nullptr, 1, &release_semaphore);
+		}
+
+		ownership.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
 		if (release_semaphore && release_semaphore->get_semaphore() != VK_NULL_HANDLE)
 		{
-			if (next_readback_cb)
+			if (next_readback_cb || !png_readback.empty())
 			{
 				device.add_wait_semaphore(CommandBuffer::Type::AsyncTransfer, release_semaphore,
 				                          VK_PIPELINE_STAGE_TRANSFER_BIT, true);
 
 				auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncTransfer);
+
+				if (require_family_transfer)
+				{
+					cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, nullptr,
+					             0, nullptr, 1, &ownership);
+				}
+				else
+				{
+					cmd->image_barrier(*swapchain_images[frame_index],
+					                   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+					                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+					                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+				}
 
 				cmd->copy_image_to_buffer(*readback_buffers[frame_index], *swapchain_images[frame_index],
 				                          0, {}, {width, height, 1},
@@ -334,36 +368,26 @@ public:
 
 				device.submit(cmd, &readback_fence[frame_index], 1, &acquire_semaphore[frame_index]);
 
-				worker_threads[frame_index]->set_work([cb = next_readback_cb, index = frame_index]() {
-					cb(index);
-				});
-				next_readback_cb = {};
-			}
-			else if (!png_readback.empty())
-			{
-				device.add_wait_semaphore(CommandBuffer::Type::AsyncTransfer, release_semaphore,
-				                          VK_PIPELINE_STAGE_TRANSFER_BIT, true);
-
-				auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncTransfer);
-
-				cmd->copy_image_to_buffer(*readback_buffers[frame_index], *swapchain_images[frame_index],
-				                          0, {}, {width, height, 1},
-				                          0, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
-
-				cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-				             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
-
-				device.submit(cmd, &readback_fence[frame_index], 1, &acquire_semaphore[frame_index]);
-
-				worker_threads[frame_index]->set_work([this, index = frame_index, frame = this->frames]() {
-					dump_frame(frame, index);
-				});
+				if (next_readback_cb)
+				{
+					worker_threads[frame_index]->set_work([cb = next_readback_cb, index = frame_index]() {
+						cb(index);
+					});
+					next_readback_cb = {};
+				}
+				else
+				{
+					worker_threads[frame_index]->set_work([this, index = frame_index, frame = this->frames]() {
+						dump_frame(frame, index);
+					});
+				}
 			}
 			else
 			{
 				acquire_semaphore[frame_index] = release_semaphore;
 			}
 		}
+
 		release_semaphore.reset();
 		frame_index = (frame_index + 1) % SwapchainImages;
 		frames++;
@@ -392,43 +416,6 @@ public:
 	{
 		for (auto &thread : worker_threads)
 			thread->wait();
-	}
-
-	void setup_hw_counter_lib(const char *path)
-	{
-		hw_counter_lib = DynamicLibrary(path);
-		if (!hw_counter_lib)
-		{
-			LOGE("Failed to load HW counter library.\n");
-			return;
-		}
-
-		auto *get_iface = hw_counter_lib.get_symbol<get_hw_counter_interface_t>("get_hw_counter_interface");
-		if (!get_iface)
-		{
-			LOGE("Count not find symbol for HW counter interface!\n");
-			return;
-		}
-
-		if (!get_iface(&hw_counter_iface))
-		{
-			LOGE("Failed to get HW counter interface!\n");
-			return;
-		}
-
-		hw_counter_handle = hw_counter_iface.create();
-		if (!hw_counter_handle)
-		{
-			LOGE("Failed to create HW counter handle!\n");
-			return;
-		}
-	}
-
-	bool get_counters(hw_counter &counter)
-	{
-		if (!hw_counter_handle)
-			return false;
-		return hw_counter_iface.wait_sample(hw_counter_handle, &counter);
 	}
 
 private:
@@ -471,11 +458,7 @@ private:
 	}
 
 	Application *app = nullptr;
-	DynamicLibrary hw_counter_lib;
-	hw_counter_interface hw_counter_iface;
-	hw_counter_handle_t *hw_counter_handle = nullptr;
 };
-
 }
 
 static void print_help()
@@ -483,7 +466,7 @@ static void print_help()
 	LOGI("[--png-path <path>] [--stat <output.json>]\n"
 	     "[--audio-dump <sample rate> <data path (fp32 interleaved stereo raw)>]\n"
 	     "[--fs-assets <path>] [--fs-cache <path>] [--fs-builtin <path>]\n"
-	     "[--png-reference-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>] [--hw-counter-lib <lib>].\n");
+	     "[--png-reference-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>].\n");
 }
 
 namespace Granite
@@ -501,7 +484,6 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		string assets;
 		string cache;
 		string builtin;
-		string hw_counter_lib;
 		unsigned max_frames = UINT_MAX;
 		unsigned width = 1280;
 		unsigned height = 720;
@@ -530,7 +512,6 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		print_help();
 		parser.end();
 	});
-	cbs.add("--hw-counter-lib", [&](CLIParser &parser) { args.hw_counter_lib = parser.next_string(); });
 	cbs.add("--audio-dump", [&](CLIParser &parser)
 	{
 		args.sample_rate = parser.next_double();
@@ -588,9 +569,6 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 
 		auto *p = platform.get();
 
-		if (!args.hw_counter_lib.empty())
-			p->setup_hw_counter_lib(args.hw_counter_lib.c_str());
-
 		if (!app->init_wsi(move(platform)))
 			return 1;
 
@@ -619,9 +597,6 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		p->wait_threads();
 		app->get_wsi().get_device().wait_idle();
 
-		hw_counter start_counter, end_counter;
-		bool has_start_counters = p->get_counters(start_counter);
-
 		auto start_time = get_current_time_nsecs();
 		unsigned rendered_frames = 0;
 		while (app->poll())
@@ -638,9 +613,6 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 
 		p->wait_threads();
 		app->get_wsi().get_device().wait_idle();
-
-		bool has_end_counters = p->get_counters(end_counter);
-
 		auto end_time = get_current_time_nsecs();
 
 #ifdef HAVE_GRANITE_AUDIO
@@ -662,21 +634,8 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 				doc.AddMember("gpu", StringRef(app->get_wsi().get_context().get_gpu_props().deviceName), allocator);
 				doc.AddMember("driverVersion", app->get_wsi().get_context().get_gpu_props().driverVersion, allocator);
 
-				if (has_start_counters && has_end_counters)
-				{
-					doc.AddMember("gpuCycles", (end_counter.gpu_cycles - start_counter.gpu_cycles) / rendered_frames,
-					              allocator);
-					doc.AddMember("bandwidthRead",
-					              (end_counter.bandwidth_read - start_counter.bandwidth_read) / rendered_frames,
-					              allocator);
-					doc.AddMember("bandwidthWrite",
-					              (end_counter.bandwidth_write - start_counter.bandwidth_write) / rendered_frames,
-					              allocator);
-				}
-
 				StringBuffer buffer;
 				PrettyWriter<StringBuffer> writer(buffer);
-				//Writer<StringBuffer> writer(buffer);
 				doc.Accept(writer);
 
 				if (!GRANITE_FILESYSTEM()->write_string_to_file(args.stat, buffer.GetString()))

@@ -440,6 +440,8 @@ public:
 	                                 uint8_t subgroup_minimum_size_log2,
 	                                 uint8_t subgroup_maximum_size_log2) const;
 
+	const QueueInfo &get_queue_info() const;
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;

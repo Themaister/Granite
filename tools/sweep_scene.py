@@ -70,6 +70,9 @@ def main():
     parser.add_argument('--results',
                         help = 'Store results JSON',
                         type = str)
+    parser.add_argument('--timestamp',
+                        help = 'Measure per pass timestamps',
+                        action = 'store_true')
 
     args = parser.parse_args()
 
@@ -90,6 +93,8 @@ def main():
             '--width', str(args.width),
             '--height', str(args.height),
             '--stat', stat_file]
+    if args.timestamp:
+        base_sweep.append('--timestamp')
 
     results = []
     iterations = args.iterations if args.iterations is not None else 1

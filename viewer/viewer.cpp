@@ -35,6 +35,7 @@ Application *application_create(int argc, char **argv)
 
 	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
+	SceneViewerApplication::CLIConfig cli_config = {};
 	std::string config;
 	std::string quirks;
 	std::string path;
@@ -48,6 +49,7 @@ Application *application_create(int argc, char **argv)
 	CLICallbacks cbs;
 	cbs.add("--config", [&](CLIParser &parser) { config = parser.next_string(); });
 	cbs.add("--quirks", [&](CLIParser &parser) { quirks = parser.next_string(); });
+	cbs.add("--timestamp", [&](CLIParser &) { cli_config.timestamp = true; });
 	cbs.default_handler = [&](const char *arg) { path = arg; };
 
 	CLIParser parser(std::move(cbs), argc - 1, argv + 1);
@@ -75,7 +77,7 @@ Application *application_create(int argc, char **argv)
 
 	try
 	{
-		auto *app = new SceneViewerApplication(path, config, quirks);
+		auto *app = new SceneViewerApplication(path, config, quirks, cli_config);
 		app->loop_animations();
 		return app;
 	}

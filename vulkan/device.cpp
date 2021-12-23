@@ -4867,6 +4867,16 @@ const QueueInfo &Device::get_queue_info() const
 	return queue_info;
 }
 
+void Device::timestamp_log_reset()
+{
+	managers.timestamps.reset();
+}
+
+void Device::timestamp_log(const TimestampIntervalReportCallback &cb) const
+{
+	managers.timestamps.log_simple(cb);
+}
+
 static ImplementationQuirks implementation_quirks;
 ImplementationQuirks &ImplementationQuirks::get()
 {

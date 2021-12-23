@@ -442,6 +442,9 @@ public:
 
 	const QueueInfo &get_queue_info() const;
 
+	void timestamp_log_reset();
+	void timestamp_log(const TimestampIntervalReportCallback &cb) const;
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;

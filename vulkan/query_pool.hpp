@@ -25,6 +25,7 @@
 #include "vulkan_headers.hpp"
 #include "vulkan_common.hpp"
 #include "object_pool.hpp"
+#include <functional>
 
 namespace Vulkan
 {
@@ -149,6 +150,7 @@ public:
 	double get_total_time() const;
 	uint64_t get_total_frame_iterations() const;
 	uint64_t get_total_accumulations() const;
+	void reset();
 
 private:
 	std::string tag;
@@ -157,13 +159,22 @@ private:
 	uint64_t total_accumulations = 0;
 };
 
+struct TimestampIntervalReport
+{
+	double time_per_accumulation;
+	double time_per_frame_context;
+	double accumulations_per_frame_context;
+};
+
+using TimestampIntervalReportCallback = std::function<void (const std::string &, const TimestampIntervalReport &)>;
+
 class TimestampIntervalManager
 {
 public:
 	TimestampInterval *get_timestamp_tag(const char *tag);
 	void mark_end_of_frame_context();
-
-	void log_simple();
+	void reset();
+	void log_simple(const TimestampIntervalReportCallback &func = {}) const;
 
 private:
 	Util::IntrusiveHashMap<TimestampInterval> timestamps;

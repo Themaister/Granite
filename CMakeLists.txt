@@ -54,6 +54,7 @@ option(GRANITE_BULLET "Enable Bullet support." OFF)
 option(GRANITE_RENDERDOC_CAPTURE "Enable support for RenderDoc capture from API." ON)
 option(GRANITE_INSTALL_TARGETS "Add install targets." ON)
 option(GRANITE_INSTALL_EXE_TARGETS "Add executable install targets." OFF)
+option(GRANITE_FFMPEG "Enable FFmpeg." OFF)
 
 if (NOT GRANITE_PLATFORM)
     set(GRANITE_PLATFORM "GLFW")
@@ -352,6 +353,9 @@ endfunction()
 
 add_subdirectory(tests)
 add_subdirectory(viewer)
+if (GRANITE_FFMPEG)
+    add_subdirectory(video)
+endif()
 
 if (GRANITE_TOOLS)
     add_subdirectory(tools)

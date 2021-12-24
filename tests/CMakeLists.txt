@@ -142,4 +142,9 @@ if (GRANITE_AUDIO)
     target_link_libraries(resampler-test PRIVATE granite-audio)
 endif()
 
+if (GRANITE_FFMPEG)
+    add_granite_offline_tool(video-encode-test video_encode_test.cpp)
+    target_link_libraries(video-encode-test PRIVATE granite-video)
+endif()
+
 add_granite_offline_tool(linkage-test linkage_test.cpp)

@@ -254,7 +254,9 @@ public:
 		context->set_system_handles(system_handles);
 
 		context->set_num_thread_indices(GRANITE_THREAD_GROUP()->get_num_threads() + 1);
-		if (!context->init_instance_and_device(nullptr, 0, nullptr, 0))
+		const char *khr_surface = VK_KHR_SURFACE_EXTENSION_NAME;
+		const char *khr_swapchain = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+		if (!context->init_instance_and_device(&khr_surface, 1, &khr_swapchain, 1))
 			return false;
 		wsi.init_external_context(move(context));
 

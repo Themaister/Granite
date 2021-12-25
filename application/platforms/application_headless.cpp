@@ -635,7 +635,7 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 			p->end_frame();
 			if (!args.video_encode_path.empty() || !args.png_path.empty())
 			{
-				LOGE("   Queued frame %u (Total time = %.3f ms).\n", rendered_frames,
+				LOGI("   Queued frame %u (Total time = %.3f ms).\n", rendered_frames,
 				     1e-6 * double(get_current_time_nsecs() - start_time));
 			}
 			rendered_frames++;

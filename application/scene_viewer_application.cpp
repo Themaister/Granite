@@ -240,9 +240,6 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("shadowMapResolution"))
 		config.shadow_map_resolution = doc["shadowMapResolution"].GetFloat();
 
-	if (doc.HasMember("cameraIndex"))
-		config.camera_index = doc["cameraIndex"].GetInt();
-
 	if (doc.HasMember("renderTargetFp16"))
 		config.rt_fp16 = doc["renderTargetFp16"].GetBool();
 
@@ -351,13 +348,13 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	// Pick a camera to show.
 	selected_camera = &cam;
 
-	if (config.camera_index >= 0)
+	if (cli_config.camera_index >= 0)
 	{
 		auto &scene_cameras = scene_loader.get_scene().get_entity_pool().get_component_group<CameraComponent>();
 		if (!scene_cameras.empty())
 		{
-			if (unsigned(config.camera_index) < scene_cameras.size())
-				selected_camera = &get_component<CameraComponent>(scene_cameras[config.camera_index])->camera;
+			if (unsigned(cli_config.camera_index) < scene_cameras.size())
+				selected_camera = &get_component<CameraComponent>(scene_cameras[cli_config.camera_index])->camera;
 			else
 				LOGE("Camera index is out of bounds, using normal camera.");
 		}

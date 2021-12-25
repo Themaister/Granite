@@ -820,4 +820,31 @@ private:
 	bool allocate_image_memory(DeviceAllocation *allocation, const ImageCreateInfo &info,
 	                           VkImage image, VkImageTiling tiling);
 };
+
+// A fairly complex helper used for async queue readbacks.
+// Typically used for things like headless backend which emulates WSI through readbacks + encode.
+struct OwnershipTransferInfo
+{
+	CommandBuffer::Type old_queue;
+	CommandBuffer::Type new_queue;
+	VkImageLayout old_image_layout;
+	VkImageLayout new_image_layout;
+	VkPipelineStageFlags dst_pipeline_stage;
+	VkAccessFlags dst_access;
+};
+
+// For an image which was last accessed in old_queue, requests a command buffer
+// for new_queue. Commands will be enqueued as necessary in new_queue to ensure that a complete ownership
+// transfer has taken place.
+// If queue family for old_queue differs from new_queue, a release barrier is enqueued in old_queue.
+// In new_queue we perform either an acquire barrier or a simple pipeline barrier to change layout if required.
+// If semaphore is a valid handle, it will be waited on in either old_queue to perform release barrier
+// or new_queue depending on what is required.
+// If the image uses CONCURRENT sharing mode, acquire/release barriers are skipped.
+CommandBufferHandle request_command_buffer_with_ownership_transfer(
+		Device &device,
+		const Vulkan::Image &image,
+		const OwnershipTransferInfo &info,
+		const Vulkan::Semaphore &semaphore);
+
 }

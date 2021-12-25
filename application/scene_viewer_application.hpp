@@ -52,6 +52,7 @@ public:
 	struct CLIConfig
 	{
 		bool timestamp = false;
+		int camera_index = -1;
 	};
 	SceneViewerApplication(const std::string &path,
 	                       const std::string &config_path, const std::string &quirks_path,
@@ -123,7 +124,6 @@ private:
 		unsigned msaa = 1;
 		float shadow_map_resolution = 2048.0f;
 		unsigned clustered_lights_shadow_resolution = 512;
-		int camera_index = -1;
 
 		SceneRendererFlags pcf_flags = SCENE_RENDERER_SHADOW_PCF_WIDE_BIT;
 		float resolution_scale = 1.0f;

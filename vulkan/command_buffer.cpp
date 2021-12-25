@@ -338,6 +338,18 @@ void CommandBuffer::image_barrier(const Image &image, VkImageLayout old_layout, 
 	table.vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 }
 
+void CommandBuffer::buffer_barriers(VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
+                                    unsigned buffer_barriers, const VkBufferMemoryBarrier *buffers)
+{
+	barrier(src_stages, dst_stages, 0, nullptr, buffer_barriers, buffers, 0, nullptr);
+}
+
+void CommandBuffer::image_barriers(VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
+                                   unsigned image_barriers, const VkImageMemoryBarrier *images)
+{
+	barrier(src_stages, dst_stages, 0, nullptr, 0, nullptr, image_barriers, images);
+}
+
 void CommandBuffer::barrier_prepare_generate_mipmap(const Image &image, VkImageLayout base_level_layout,
                                                     VkPipelineStageFlags src_stage, VkAccessFlags src_access,
                                                     bool need_top_level_barrier)

@@ -73,6 +73,10 @@ def main():
     parser.add_argument('--timestamp',
                         help = 'Measure per pass timestamps',
                         action = 'store_true')
+    parser.add_argument('--camera-index',
+                        type = int,
+                        default = -1,
+                        help = 'Camera index')
 
     args = parser.parse_args()
 
@@ -95,6 +99,9 @@ def main():
             '--stat', stat_file]
     if args.timestamp:
         base_sweep.append('--timestamp')
+    if args.camera_index >= 0:
+        base_sweep.append('--camera-index')
+        base_sweep.append(str(args.camera_index))
 
     results = []
     iterations = args.iterations if args.iterations is not None else 1

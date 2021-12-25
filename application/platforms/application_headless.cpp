@@ -35,6 +35,11 @@
 #include <cmath>
 #include "thread_group.hpp"
 #include "global_managers_init.hpp"
+#include "thread_latch.hpp"
+
+#ifdef HAVE_GRANITE_FFMPEG
+#include "ffmpeg.hpp"
+#endif
 
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
@@ -179,6 +184,14 @@ public:
 		png_readback = std::move(base_path);
 	}
 
+	void enable_video_encode(string path)
+	{
+		video_encode_path = std::move(path);
+#ifndef HAVE_GRANITE_FFMPEG
+		LOGE("HAVE_GRANITE_FFMPEG is not defined. Video encode not supported.\n");
+#endif
+	}
+
 	vector<const char *> get_instance_extensions() override
 	{
 		return {};
@@ -254,7 +267,9 @@ public:
 		context->set_system_handles(system_handles);
 
 		context->set_num_thread_indices(GRANITE_THREAD_GROUP()->get_num_threads() + 1);
-		if (!context->init_instance_and_device(nullptr, 0, nullptr, 0))
+		const char *khr_surface = VK_KHR_SURFACE_EXTENSION_NAME;
+		const char *khr_swapchain = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+		if (!context->init_instance_and_device(&khr_surface, 1, &khr_swapchain, 1))
 			return false;
 		wsi.init_external_context(move(context));
 
@@ -283,6 +298,25 @@ public:
 		for (auto &swap : swapchain_images)
 			swap->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
+#ifdef HAVE_GRANITE_FFMPEG
+		if (!video_encode_path.empty())
+		{
+			VideoEncoder::Options enc_opts = {};
+			enc_opts.width = width;
+			enc_opts.height = height;
+
+			double frame_rate = std::round(1.0 / time_step);
+			enc_opts.frame_timebase.num = 1;
+			enc_opts.frame_timebase.den = int(frame_rate);
+
+			if (!encoder.init(&device, video_encode_path.c_str(), enc_opts))
+			{
+				LOGE("Failed to initialize encoder.\n");
+				video_encode_path.clear();
+			}
+		}
+#endif
+
 		wsi.init_external_swapchain(swapchain_images);
 		return true;
 	}
@@ -305,59 +339,20 @@ public:
 		auto &wsi = app->get_wsi();
 		auto &device = wsi.get_device();
 		auto release_semaphore = wsi.consume_external_release_semaphore();
-		auto &queue_info = device.get_queue_info();
-		unsigned generic_queue_family = queue_info.family_indices[device.get_physical_queue_type(CommandBuffer::Type::AsyncGraphics)];
-		unsigned transfer_queue_family = queue_info.family_indices[device.get_physical_queue_type(CommandBuffer::Type::AsyncTransfer)];
-		bool require_family_transfer = generic_queue_family != transfer_queue_family &&
-		                               (release_semaphore && release_semaphore->get_semaphore() != VK_NULL_HANDLE) &&
-		                               (next_readback_cb || !png_readback.empty());
-
-		VkImageMemoryBarrier ownership = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-		if (require_family_transfer)
-		{
-			ownership.image = swapchain_images[frame_index]->get_image();
-			ownership.srcAccessMask = 0;
-			ownership.dstAccessMask = 0;
-			ownership.srcQueueFamilyIndex = generic_queue_family;
-			ownership.dstQueueFamilyIndex = transfer_queue_family;
-			ownership.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			ownership.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-			ownership.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-			ownership.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-			ownership.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-
-			device.add_wait_semaphore(CommandBuffer::Type::AsyncGraphics, release_semaphore,
-			                          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, true);
-			auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncGraphics);
-			cmd->barrier(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, nullptr,
-			             0, nullptr, 1, &ownership);
-			release_semaphore.reset();
-			device.submit(cmd, nullptr, 1, &release_semaphore);
-		}
-
-		ownership.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
 		if (release_semaphore && release_semaphore->get_semaphore() != VK_NULL_HANDLE)
 		{
 			if (next_readback_cb || !png_readback.empty())
 			{
-				device.add_wait_semaphore(CommandBuffer::Type::AsyncTransfer, release_semaphore,
-				                          VK_PIPELINE_STAGE_TRANSFER_BIT, true);
-
-				auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncTransfer);
-
-				if (require_family_transfer)
-				{
-					cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, nullptr,
-					             0, nullptr, 1, &ownership);
-				}
-				else
-				{
-					cmd->image_barrier(*swapchain_images[frame_index],
-					                   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-					                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-					                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-				}
+				OwnershipTransferInfo transfer_info = {};
+				transfer_info.old_queue = CommandBuffer::Type::AsyncGraphics;
+				transfer_info.new_queue = CommandBuffer::Type::AsyncTransfer;
+				transfer_info.old_image_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+				transfer_info.new_image_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+				transfer_info.dst_pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+				transfer_info.dst_access = VK_ACCESS_TRANSFER_READ_BIT;
+				auto cmd = request_command_buffer_with_ownership_transfer(device, *swapchain_images[frame_index],
+				                                                          transfer_info, release_semaphore);
 
 				cmd->copy_image_to_buffer(*readback_buffers[frame_index], *swapchain_images[frame_index],
 				                          0, {}, {width, height, 1},
@@ -366,12 +361,15 @@ public:
 				cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 				             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
+				thread_latches[frame_index].wait_latch_cleared();
 				device.submit(cmd, &readback_fence[frame_index], 1, &acquire_semaphore[frame_index]);
+				thread_latches[frame_index].set_latch();
 
 				if (next_readback_cb)
 				{
-					worker_threads[frame_index]->set_work([cb = next_readback_cb, index = frame_index]() {
+					worker_threads[frame_index]->set_work([this, cb = next_readback_cb, index = frame_index]() {
 						cb(index);
+						thread_latches[index].clear_latch();
 					});
 					next_readback_cb = {};
 				}
@@ -379,9 +377,23 @@ public:
 				{
 					worker_threads[frame_index]->set_work([this, index = frame_index, frame = this->frames]() {
 						dump_frame(frame, index);
+						thread_latches[index].clear_latch();
 					});
 				}
 			}
+#ifdef HAVE_GRANITE_FFMPEG
+			else if (!video_encode_path.empty())
+			{
+				acquire_semaphore[frame_index].reset();
+				if (!encoder.push_frame(*swapchain_images[frame_index], VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				                        Vulkan::CommandBuffer::Type::AsyncGraphics,
+				                        release_semaphore, acquire_semaphore[frame_index]))
+				{
+					LOGE("Failed to push frame to encoder.\n");
+					video_encode_path.clear();
+				}
+			}
+#endif
 			else
 			{
 				acquire_semaphore[frame_index] = release_semaphore;
@@ -416,6 +428,9 @@ public:
 	{
 		for (auto &thread : worker_threads)
 			thread->wait();
+#ifdef HAVE_GRANITE_FFMPEG
+		encoder.drain();
+#endif
 	}
 
 private:
@@ -426,6 +441,7 @@ private:
 	unsigned frame_index = 0;
 	double time_step = 0.01;
 	string png_readback;
+	string video_encode_path;
 	enum { SwapchainImages = 4 };
 
 	vector<ImageHandle> swapchain_images;
@@ -434,6 +450,11 @@ private:
 	vector<Fence> readback_fence;
 	vector<unique_ptr<FrameWorker>> worker_threads;
 	std::function<void (unsigned)> next_readback_cb;
+	ThreadLatch thread_latches[SwapchainImages];
+
+#ifdef HAVE_GRANITE_FFMPEG
+	VideoEncoder encoder;
+#endif
 
 	void dump_frame(unsigned frame, unsigned index)
 	{
@@ -466,6 +487,7 @@ static void print_help()
 	LOGI("[--png-path <path>] [--stat <output.json>]\n"
 	     "[--audio-dump <sample rate> <data path (fp32 interleaved stereo raw)>]\n"
 	     "[--fs-assets <path>] [--fs-cache <path>] [--fs-builtin <path>]\n"
+	     "[--video-encode-path <path>]\n"
 	     "[--png-reference-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>].\n");
 }
 
@@ -479,6 +501,7 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 	struct Args
 	{
 		string png_path;
+		string video_encode_path;
 		string png_reference_path;
 		string stat;
 		string assets;
@@ -503,6 +526,7 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 	cbs.add("--time-step", [&](CLIParser &parser) { args.time_step = parser.next_double(); });
 	cbs.add("--png-path", [&](CLIParser &parser) { args.png_path = parser.next_string(); });
 	cbs.add("--png-reference-path", [&](CLIParser &parser) { args.png_reference_path = parser.next_string(); });
+	cbs.add("--video-encode-path", [&](CLIParser &parser) { args.video_encode_path = parser.next_string(); });
 	cbs.add("--fs-assets", [&](CLIParser &parser) { args.assets = parser.next_string(); });
 	cbs.add("--fs-builtin", [&](CLIParser &parser) { args.builtin = parser.next_string(); });
 	cbs.add("--fs-cache", [&](CLIParser &parser) { args.cache = parser.next_string(); });
@@ -574,6 +598,8 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 
 		if (!args.png_path.empty())
 			p->enable_png_readback(args.png_path);
+		if (!args.video_encode_path.empty())
+			p->enable_video_encode(args.video_encode_path);
 		p->set_max_frames(args.max_frames);
 		p->set_time_step(args.time_step);
 		p->init_headless(app.get());
@@ -598,6 +624,8 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		app->get_wsi().get_device().wait_idle();
 		app->get_wsi().get_device().timestamp_log_reset();
 
+		LOGI("=== Begin run ===\n");
+
 		auto start_time = get_current_time_nsecs();
 		unsigned rendered_frames = 0;
 		while (app->poll())
@@ -605,12 +633,19 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 			p->begin_frame();
 			app->run_frame();
 			p->end_frame();
+			if (!args.video_encode_path.empty() || !args.png_path.empty())
+			{
+				LOGE("   Queued frame %u (Total time = %.3f ms).\n", rendered_frames,
+				     1e-6 * double(get_current_time_nsecs() - start_time));
+			}
 			rendered_frames++;
 #ifdef HAVE_GRANITE_AUDIO
 			if (audio_dumper)
 				audio_dumper->frame();
 #endif
 		}
+
+		LOGI("=== End run ===\n");
 
 		p->wait_threads();
 		app->get_wsi().get_device().wait_idle();

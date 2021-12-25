@@ -149,6 +149,7 @@ VideoEncoder::Impl::Frame &VideoEncoder::Impl::enqueue_buffer_readback(
 	unsigned aligned_width = (width + 63) & ~63;
 	unsigned pix_size = Vulkan::TextureFormatLayout::format_block_size(image.get_format(), VK_IMAGE_ASPECT_COLOR_BIT);
 	frame.stride = int(pix_size * aligned_width);
+
 	Vulkan::BufferCreateInfo buf;
 	buf.size = aligned_width * height * pix_size;
 	buf.domain = Vulkan::BufferDomain::CachedHost;
@@ -157,55 +158,24 @@ VideoEncoder::Impl::Frame &VideoEncoder::Impl::enqueue_buffer_readback(
 	if (!frame.buffer || frame.buffer->get_create_info().size != buf.size)
 		frame.buffer = device->create_buffer(buf);
 
-	unsigned input_family =
-			device->get_queue_info().family_indices[device->get_physical_queue_type(type)];
-	unsigned transfer_family =
-			device->get_queue_info().family_indices[device->get_physical_queue_type(Vulkan::CommandBuffer::Type::AsyncTransfer)];
-	bool image_is_concurrent = (image.get_create_info().misc & Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT) != 0;
-	bool need_ownership_transfer = input_family != transfer_family && !image_is_concurrent;
+	Vulkan::OwnershipTransferInfo transfer_info = {};
+	transfer_info.old_queue = type;
+	transfer_info.new_queue = Vulkan::CommandBuffer::Type::AsyncTransfer;
+	transfer_info.old_image_layout = layout;
+	transfer_info.new_image_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	transfer_info.dst_pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	transfer_info.dst_access = VK_ACCESS_TRANSFER_READ_BIT;
 
-	VkImageMemoryBarrier ownership = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-	ownership.image = image.get_image();
-	ownership.srcAccessMask = 0;
-	ownership.dstAccessMask = 0;
-	ownership.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	ownership.subresourceRange.levelCount = 1;
-	ownership.subresourceRange.layerCount = 1;
-	ownership.oldLayout = layout;
-	ownership.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	auto transfer_cmd = Vulkan::request_command_buffer_with_ownership_transfer(
+			*device, image, transfer_info, semaphore);
 
-	if (need_ownership_transfer)
-	{
-		ownership.srcQueueFamilyIndex = input_family;
-		ownership.dstQueueFamilyIndex = transfer_family;
-
-		device->add_wait_semaphore(type, semaphore, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, true);
-		auto release_cmd = device->request_command_buffer(type);
-		release_cmd->barrier(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-							 0, nullptr, 0, nullptr, 1, &ownership);
-		device->submit(release_cmd, nullptr, 1, &release_semaphore);
-		device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncTransfer, release_semaphore, VK_PIPELINE_STAGE_TRANSFER_BIT, true);
-		release_semaphore.reset();
-	}
-	else
-	{
-		ownership.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		ownership.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncTransfer, semaphore,
-		                           VK_PIPELINE_STAGE_TRANSFER_BIT, true);
-	}
-
-	// Ownership transfers may perform writes, so make those operations visible.
-	ownership.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
-	auto transfer_cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
-	transfer_cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-						  0, nullptr, 0, nullptr, 1, &ownership);
 	transfer_cmd->copy_image_to_buffer(*frame.buffer, image, 0, {}, { width, height, 1, },
 	                                   aligned_width, height,
 	                                   { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
+
 	transfer_cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 						  VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+
 	device->submit(transfer_cmd, &frame.fence, 1, &release_semaphore);
 	return frame;
 }

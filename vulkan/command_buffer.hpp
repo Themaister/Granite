@@ -315,6 +315,11 @@ public:
 	                   VkPipelineStageFlags src_stage, VkAccessFlags src_access, VkPipelineStageFlags dst_stage,
 	                   VkAccessFlags dst_access);
 
+	void buffer_barriers(VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
+	                     unsigned buffer_barriers, const VkBufferMemoryBarrier *buffers);
+	void image_barriers(VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
+	                    unsigned image_barriers, const VkImageMemoryBarrier *images);
+
 	void blit_image(const Image &dst,
 	                const Image &src,
 	                const VkOffset3D &dst_offset0, const VkOffset3D &dst_extent,

@@ -4877,6 +4877,72 @@ void Device::timestamp_log(const TimestampIntervalReportCallback &cb) const
 	managers.timestamps.log_simple(cb);
 }
 
+CommandBufferHandle request_command_buffer_with_ownership_transfer(
+		Device &device,
+		const Vulkan::Image &image,
+		const OwnershipTransferInfo &info,
+		const Vulkan::Semaphore &semaphore)
+{
+	auto &queue_info = device.get_queue_info();
+	unsigned old_family = queue_info.family_indices[device.get_physical_queue_type(info.old_queue)];
+	unsigned new_family = queue_info.family_indices[device.get_physical_queue_type(info.new_queue)];
+	bool image_is_concurrent = (image.get_create_info().misc &
+	                            (Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
+	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
+	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
+	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT)) != 0;
+	bool need_ownership_transfer = old_family != new_family && !image_is_concurrent;
+
+	VkImageMemoryBarrier ownership = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+	ownership.image = image.get_image();
+	ownership.srcAccessMask = 0;
+	ownership.dstAccessMask = 0;
+	ownership.subresourceRange.aspectMask = format_to_aspect_mask(image.get_format());
+	ownership.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+	ownership.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+	ownership.oldLayout = info.old_image_layout;
+	ownership.newLayout = info.new_image_layout;
+
+	if (need_ownership_transfer)
+	{
+		ownership.srcQueueFamilyIndex = old_family;
+		ownership.dstQueueFamilyIndex = new_family;
+
+		if (semaphore)
+			device.add_wait_semaphore(info.old_queue, semaphore, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, true);
+		auto release_cmd = device.request_command_buffer(info.old_queue);
+
+		release_cmd->image_barriers(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+		                            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+		                            1, &ownership);
+
+		Semaphore sem;
+		device.submit(release_cmd, nullptr, 1, &sem);
+		device.add_wait_semaphore(info.new_queue, sem, info.dst_pipeline_stage, true);
+	}
+	else
+	{
+		ownership.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		ownership.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		if (semaphore)
+			device.add_wait_semaphore(info.new_queue, semaphore, info.dst_pipeline_stage, true);
+	}
+
+	// Ownership transfers may perform writes, so make those operations visible.
+	// If we require neither layout transition nor ownership transfer,
+	// visibility is ensured by semaphores.
+	bool need_dst_barrier = need_ownership_transfer || info.old_image_layout != info.new_image_layout;
+
+	auto acquire_cmd = device.request_command_buffer(info.new_queue);
+	if (need_dst_barrier)
+	{
+		ownership.dstAccessMask = info.dst_access;
+		acquire_cmd->image_barriers(info.dst_pipeline_stage, info.dst_pipeline_stage, 1, &ownership);
+	}
+
+	return acquire_cmd;
+}
+
 static ImplementationQuirks implementation_quirks;
 ImplementationQuirks &ImplementationQuirks::get()
 {

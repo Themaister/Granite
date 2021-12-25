@@ -616,11 +616,11 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 			rendered_frames++;
 		}
 
-		LOGI("=== End run ===\n");
-
 		p->wait_threads();
 		app->get_wsi().get_device().wait_idle();
 		auto end_time = get_current_time_nsecs();
+
+		LOGI("=== End run ===\n");
 
 		struct Report
 		{

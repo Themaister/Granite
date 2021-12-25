@@ -4,10 +4,19 @@
 #include "math.hpp"
 #include "muglm/muglm_impl.hpp"
 
+#ifdef HAVE_GRANITE_AUDIO
+#include "audio_interface.hpp"
+#include "audio_mixer.hpp"
+#include "vorbis_stream.hpp"
+#endif
+#include "global_managers_init.hpp"
+
 using namespace Granite;
 
 int main()
 {
+	Global::init(Global::MANAGER_FEATURE_DEFAULT_BITS, 1);
+
 	VideoEncoder::Options options = {};
 	options.width = 640;
 	options.height = 480;
@@ -22,6 +31,20 @@ int main()
 	device.set_context(ctx);
 
 	VideoEncoder encoder;
+#ifdef HAVE_GRANITE_AUDIO
+	auto *dump_mixer = new Audio::Mixer;
+	auto *audio_dump = new Audio::DumpBackend(dump_mixer, 44100.0f, 2, 256);
+	Global::install_audio_system(audio_dump, dump_mixer);
+	encoder.set_audio_source(audio_dump);
+	Global::start_audio_system();
+
+	auto *stream = Audio::create_vorbis_stream("/tmp/test.ogg");
+	if (stream)
+		dump_mixer->add_mixer_stream(stream);
+	else
+		LOGE("Failed to open /tmp/test.ogg.\n");
+#endif
+
 	if (!encoder.init(&device, "/tmp/test.mkv", options))
 	{
 		LOGE("Failed to init codec.\n");
@@ -87,4 +110,10 @@ int main()
 	}
 
 	encoder.drain();
+
+#ifdef HAVE_GRANITE_AUDIO
+	Global::stop_audio_system();
+#endif
+
+	Global::deinit();
 }

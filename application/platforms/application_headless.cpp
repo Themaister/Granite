@@ -309,6 +309,15 @@ public:
 			enc_opts.frame_timebase.num = 1;
 			enc_opts.frame_timebase.den = int(frame_rate);
 
+#ifdef HAVE_GRANITE_AUDIO
+			auto *mixer = new Audio::Mixer;
+			auto *audio_dumper = new Audio::DumpBackend(
+					mixer, 48000.0f, 2,
+					unsigned(std::ceil(48000.0f / frame_rate)));
+			Global::install_audio_system(audio_dumper, mixer);
+			encoder.set_audio_source(audio_dumper);
+#endif
+
 			if (!encoder.init(&device, video_encode_path.c_str(), enc_opts))
 			{
 				LOGE("Failed to initialize encoder.\n");
@@ -485,7 +494,6 @@ private:
 static void print_help()
 {
 	LOGI("[--png-path <path>] [--stat <output.json>]\n"
-	     "[--audio-dump <sample rate> <data path (fp32 interleaved stereo raw)>]\n"
 	     "[--fs-assets <path>] [--fs-cache <path>] [--fs-builtin <path>]\n"
 	     "[--video-encode-path <path>]\n"
 	     "[--png-reference-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>].\n");
@@ -511,9 +519,6 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		unsigned width = 1280;
 		unsigned height = 720;
 		double time_step = 0.01;
-		double sample_rate = 44100.0;
-		string audio_output;
-		bool audio_dump = false;
 	} args;
 
 	std::vector<char *> filtered_argv;
@@ -536,12 +541,6 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		print_help();
 		parser.end();
 	});
-	cbs.add("--audio-dump", [&](CLIParser &parser)
-	{
-		args.sample_rate = parser.next_double();
-		args.audio_output = parser.next_string();
-		args.audio_dump = true;
-	});
 	cbs.default_handler = [&](const char *arg) { filtered_argv.push_back(const_cast<char *>(arg)); };
 	cbs.error_handler = [&]() { print_help(); };
 	CLIParser parser(move(cbs), argc - 1, argv + 1);
@@ -561,26 +560,6 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		GRANITE_FILESYSTEM()->register_protocol("builtin", make_unique<OSFilesystem>(args.builtin));
 	if (!args.cache.empty())
 		GRANITE_FILESYSTEM()->register_protocol("cache", make_unique<OSFilesystem>(args.cache));
-
-#ifdef HAVE_GRANITE_AUDIO
-	Audio::DumpBackend *audio_dumper = nullptr;
-	if (args.audio_dump)
-	{
-		if (args.max_frames != UINT_MAX)
-		{
-			auto *mixer = new Audio::Mixer;
-			audio_dumper = new Audio::DumpBackend(mixer, args.audio_output,
-			                                      float(args.sample_rate), 2,
-			                                      unsigned(std::round(args.sample_rate * args.time_step)),
-			                                      args.max_frames + 1);
-			Global::install_audio_system(audio_dumper, mixer);
-		}
-		else
-		{
-			LOGI("Need to use --frames to dump audio.\n");
-		}
-	}
-#endif
 
 	auto app = unique_ptr<Application>(
 			create_application(int(filtered_argv.size() - 1), filtered_argv.data()));
@@ -614,10 +593,6 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 			p->begin_frame();
 			app->run_frame();
 			p->end_frame();
-#ifdef HAVE_GRANITE_AUDIO
-			if (audio_dumper)
-				audio_dumper->frame();
-#endif
 		}
 
 		p->wait_threads();
@@ -635,21 +610,17 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 			p->end_frame();
 			if (!args.video_encode_path.empty() || !args.png_path.empty())
 			{
-				LOGE("   Queued frame %u (Total time = %.3f ms).\n", rendered_frames,
+				LOGI("   Queued frame %u (Total time = %.3f ms).\n", rendered_frames,
 				     1e-6 * double(get_current_time_nsecs() - start_time));
 			}
 			rendered_frames++;
-#ifdef HAVE_GRANITE_AUDIO
-			if (audio_dumper)
-				audio_dumper->frame();
-#endif
 		}
-
-		LOGI("=== End run ===\n");
 
 		p->wait_threads();
 		app->get_wsi().get_device().wait_idle();
 		auto end_time = get_current_time_nsecs();
+
+		LOGI("=== End run ===\n");
 
 		struct Report
 		{
@@ -661,10 +632,6 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 			reports.push_back({ tag, report });
 		});
 		app->get_wsi().get_device().timestamp_log_reset();
-
-#ifdef HAVE_GRANITE_AUDIO
-		Global::stop_audio_system();
-#endif
 
 		if (rendered_frames)
 		{
@@ -710,13 +677,14 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 			p->begin_frame();
 			app->run_frame();
 			p->end_frame();
-#ifdef HAVE_GRANITE_AUDIO
-			if (audio_dumper)
-				audio_dumper->frame();
-#endif
 		}
 
 		p->wait_threads();
+
+#ifdef HAVE_GRANITE_AUDIO
+		Global::stop_audio_system();
+#endif
+
 		app.reset();
 		Granite::Global::deinit();
 		return 0;

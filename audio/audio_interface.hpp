@@ -25,6 +25,7 @@
 #include <memory>
 #include <string>
 #include <stddef.h>
+#include <stdint.h>
 #include "global_managers.hpp"
 
 namespace Granite
@@ -75,11 +76,12 @@ Backend *create_default_audio_backend(BackendCallback *callback, float target_sa
 class DumpBackend : public Backend
 {
 public:
-	DumpBackend(BackendCallback *callback_, const std::string &path,
-	            float target_sample_rate, unsigned target_channels,
-	            unsigned frames_per_tick, unsigned frames);
+	DumpBackend(BackendCallback *callback_, float target_sample_rate,
+	            unsigned target_channels, unsigned frames_per_tick);
 	~DumpBackend();
-	void frame();
+
+	void drain_interleaved_s16(int16_t *data, size_t frames);
+	unsigned get_frames_per_tick() const;
 
 	const char *get_backend_name() override;
 	float get_sample_rate() override;

@@ -9,5 +9,5 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
 add_granite_internal_lib(granite-video ffmpeg.cpp ffmpeg.hpp)
 target_link_libraries(granite-video
         PUBLIC granite-vulkan
-        PRIVATE PkgConfig::LIBAV)
+        PRIVATE PkgConfig::LIBAV granite-threading)
 target_include_directories(granite-video PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

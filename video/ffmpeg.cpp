@@ -31,8 +31,10 @@ extern "C"
 
 #include "ffmpeg.hpp"
 #include "logging.hpp"
+#include "thread_latch.hpp"
 #include <condition_variable>
 #include <mutex>
+#include <thread>
 
 namespace Granite
 {
@@ -61,17 +63,14 @@ struct VideoEncoder::Impl
 	{
 		Vulkan::BufferHandle buffer;
 		Vulkan::Fence fence;
+		ThreadLatch latch;
 		int stride = 0;
-
-		std::condition_variable cond;
-		std::mutex lock;
-		bool working = false;
 	};
 	Frame frames[NumFrames];
 	unsigned frame_index = 0;
-	int64_t pts = 0;
+	std::thread thr;
 
-	Frame &enqueue_buffer_readback(
+	bool enqueue_buffer_readback(
 			const Vulkan::Image &image, VkImageLayout layout,
 			Vulkan::CommandBuffer::Type type,
 			const Vulkan::Semaphore &semaphore,
@@ -79,16 +78,14 @@ struct VideoEncoder::Impl
 
 	bool drain_packets();
 	void drain();
+	void thread_main();
 };
 
 void VideoEncoder::Impl::drain()
 {
 	for (auto &frame : frames)
 	{
-		std::unique_lock<std::mutex> holder{frame.lock};
-		frame.cond.wait(holder, [&]() {
-			return !frame.working;
-		});
+		frame.latch.wait_latch_cleared();
 		frame.buffer.reset();
 		frame.fence.reset();
 	}
@@ -123,12 +120,18 @@ void VideoEncoder::Impl::drain_codec()
 
 VideoEncoder::Impl::~Impl()
 {
+	for (auto &frame : frames)
+		frame.latch.kill_latch();
+
+	if (thr.joinable())
+		thr.join();
+
 	drain_codec();
 	if (av_codec_ctx)
 		avcodec_free_context(&av_codec_ctx);
 }
 
-VideoEncoder::Impl::Frame &VideoEncoder::Impl::enqueue_buffer_readback(
+bool VideoEncoder::Impl::enqueue_buffer_readback(
 		const Vulkan::Image &image, VkImageLayout layout,
 		Vulkan::CommandBuffer::Type type,
 		const Vulkan::Semaphore &semaphore,
@@ -137,11 +140,10 @@ VideoEncoder::Impl::Frame &VideoEncoder::Impl::enqueue_buffer_readback(
 	frame_index = (frame_index + 1) % NumFrames;
 	auto &frame = frames[frame_index];
 
+	if (!frame.latch.wait_latch_cleared())
 	{
-		std::unique_lock<std::mutex> holder{frame.lock};
-		frame.cond.wait(holder, [&]() {
-			return !frame.working;
-		});
+		LOGE("Encoding thread died ...\n");
+		return false;
 	}
 
 	unsigned width = image.get_width();
@@ -177,7 +179,8 @@ VideoEncoder::Impl::Frame &VideoEncoder::Impl::enqueue_buffer_readback(
 						  VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 	device->submit(transfer_cmd, &frame.fence, 1, &release_semaphore);
-	return frame;
+	frame.latch.set_latch();
+	return true;
 }
 
 bool VideoEncoder::Impl::drain_packets()
@@ -191,7 +194,7 @@ bool VideoEncoder::Impl::drain_packets()
 		else if (ret < 0)
 		{
 			LOGE("Error encoding frame: %d\n", ret);
-			return false;
+			break;
 		}
 
 		av_packet_rescale_ts(av_packet, av_codec_ctx->time_base, av_stream->time_base);
@@ -200,11 +203,67 @@ bool VideoEncoder::Impl::drain_packets()
 		if (ret < 0)
 		{
 			LOGE("Failed to write packet: %d\n", ret);
-			return false;
+			break;
 		}
 	}
 
-	return ret == 0 || ret == AVERROR_EOF;
+	return ret == 0 || ret == AVERROR_EOF || ret == AVERROR(EAGAIN);
+}
+
+void VideoEncoder::Impl::thread_main()
+{
+	unsigned index = 0;
+	int64_t pts = 0;
+
+	for (;;)
+	{
+		index = (index + 1) % NumFrames;
+		auto &frame = frames[index];
+		if (!frame.latch.wait_latch_set())
+			break;
+
+		int ret;
+		if ((ret = av_frame_make_writable(av_frame)) < 0)
+		{
+			LOGE("Failed to make frame writable: %d.\n", ret);
+			frame.latch.kill_latch();
+			break;
+		}
+
+		if (frame.fence)
+		{
+			frame.fence->wait();
+			frame.fence.reset();
+		}
+
+		const uint8_t *src_slices[4] = {
+			static_cast<const uint8_t *>(device->map_host_buffer(*frame.buffer, Vulkan::MEMORY_ACCESS_READ_BIT)),
+		};
+
+		const int linesizes[4] = { frame.stride };
+
+		sws_scale(sws_ctx, src_slices, linesizes,
+		          0, int(options.height),
+		          av_frame->data, av_frame->linesize);
+		av_frame->pts = pts++;
+
+		device->unmap_host_buffer(*frame.buffer, Vulkan::MEMORY_ACCESS_READ_BIT);
+		frame.latch.clear_latch();
+
+		ret = avcodec_send_frame(av_codec_ctx, av_frame);
+		if (ret < 0)
+		{
+			LOGE("Failed to send packet to codec: %d\n", ret);
+			frame.latch.kill_latch();
+			break;
+		}
+
+		if (!drain_packets())
+		{
+			frame.latch.kill_latch();
+			break;
+		}
+	}
 }
 
 bool VideoEncoder::Impl::push_frame(const Vulkan::Image &image, VkImageLayout layout,
@@ -215,43 +274,7 @@ bool VideoEncoder::Impl::push_frame(const Vulkan::Image &image, VkImageLayout la
 	if (image.get_width() != options.width || image.get_height() != options.height)
 		return false;
 
-	auto &frame = enqueue_buffer_readback(image, layout, type, semaphore, release_semaphore);
-
-	// Move this part to encoder thread.
-	int ret;
-	if ((ret = av_frame_make_writable(av_frame)))
-	{
-		LOGE("Failed to make frame writable: %d.\n", ret);
-		return false;
-	}
-
-	if (frame.fence)
-	{
-		frame.fence->wait();
-		frame.fence.reset();
-	}
-
-	const uint8_t *src_slices[4] = {
-		static_cast<const uint8_t *>(device->map_host_buffer(*frame.buffer, Vulkan::MEMORY_ACCESS_READ_BIT)),
-	};
-
-	const int linesizes[4] = { frame.stride };
-
-	sws_scale(sws_ctx, src_slices, linesizes,
-	          0, int(options.height),
-	          av_frame->data, av_frame->linesize);
-	av_frame->pts = pts++;
-
-	device->unmap_host_buffer(*frame.buffer, Vulkan::MEMORY_ACCESS_READ_BIT);
-
-	ret = avcodec_send_frame(av_codec_ctx, av_frame);
-	if (ret < 0)
-	{
-		LOGE("Failed to send packet to codec: %d\n", ret);
-		return false;
-	}
-
-	return drain_packets();
+	return enqueue_buffer_readback(image, layout, type, semaphore, release_semaphore);
 }
 
 bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const Options &options_)
@@ -344,6 +367,7 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	                         nullptr, nullptr, nullptr);
 
 	av_packet = av_packet_alloc();
+	thr = std::thread(&Impl::thread_main, this);
 
 	return true;
 }

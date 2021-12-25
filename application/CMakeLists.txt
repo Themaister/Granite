@@ -3,6 +3,10 @@ add_granite_internal_lib(granite-application
         application.cpp
         platforms/application_headless.cpp)
 
+if (GRANITE_FFMPEG)
+    target_link_libraries(granite-application PRIVATE granite-video)
+endif()
+
 target_link_libraries(granite-application PUBLIC
         granite-vulkan
         granite-event

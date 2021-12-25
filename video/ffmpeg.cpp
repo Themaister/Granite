@@ -322,7 +322,7 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		av_codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
 	AVDictionary *opts = nullptr;
-	av_dict_set_int(&opts, "crf", 25, 0);
+	av_dict_set_int(&opts, "crf", 18, 0);
 	av_dict_set(&opts, "preset", "fast", 0);
 	ret = avcodec_open2(av_codec_ctx, codec, &opts);
 	av_dict_free(&opts);

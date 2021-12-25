@@ -35,6 +35,11 @@
 #include <cmath>
 #include "thread_group.hpp"
 #include "global_managers_init.hpp"
+#include "thread_latch.hpp"
+
+#ifdef HAVE_GRANITE_FFMPEG
+#include "ffmpeg.hpp"
+#endif
 
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
@@ -179,6 +184,14 @@ public:
 		png_readback = std::move(base_path);
 	}
 
+	void enable_video_encode(string path)
+	{
+		video_encode_path = std::move(path);
+#ifndef HAVE_GRANITE_FFMPEG
+		LOGE("HAVE_GRANITE_FFMPEG is not defined. Video encode not supported.\n");
+#endif
+	}
+
 	vector<const char *> get_instance_extensions() override
 	{
 		return {};
@@ -285,6 +298,25 @@ public:
 		for (auto &swap : swapchain_images)
 			swap->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
+#ifdef HAVE_GRANITE_FFMPEG
+		if (!video_encode_path.empty())
+		{
+			VideoEncoder::Options enc_opts = {};
+			enc_opts.width = width;
+			enc_opts.height = height;
+
+			double frame_rate = std::round(1.0 / time_step);
+			enc_opts.frame_timebase.num = 1;
+			enc_opts.frame_timebase.den = int(frame_rate);
+
+			if (!encoder.init(&device, video_encode_path.c_str(), enc_opts))
+			{
+				LOGE("Failed to initialize encoder.\n");
+				video_encode_path.clear();
+			}
+		}
+#endif
+
 		wsi.init_external_swapchain(swapchain_images);
 		return true;
 	}
@@ -329,12 +361,15 @@ public:
 				cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 				             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
+				thread_latches[frame_index].wait_latch_cleared();
 				device.submit(cmd, &readback_fence[frame_index], 1, &acquire_semaphore[frame_index]);
+				thread_latches[frame_index].set_latch();
 
 				if (next_readback_cb)
 				{
-					worker_threads[frame_index]->set_work([cb = next_readback_cb, index = frame_index]() {
+					worker_threads[frame_index]->set_work([this, cb = next_readback_cb, index = frame_index]() {
 						cb(index);
+						thread_latches[index].clear_latch();
 					});
 					next_readback_cb = {};
 				}
@@ -342,9 +377,23 @@ public:
 				{
 					worker_threads[frame_index]->set_work([this, index = frame_index, frame = this->frames]() {
 						dump_frame(frame, index);
+						thread_latches[index].clear_latch();
 					});
 				}
 			}
+#ifdef HAVE_GRANITE_FFMPEG
+			else if (!video_encode_path.empty())
+			{
+				acquire_semaphore[frame_index].reset();
+				if (!encoder.push_frame(*swapchain_images[frame_index], VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				                        Vulkan::CommandBuffer::Type::AsyncGraphics,
+				                        release_semaphore, acquire_semaphore[frame_index]))
+				{
+					LOGE("Failed to push frame to encoder.\n");
+					video_encode_path.clear();
+				}
+			}
+#endif
 			else
 			{
 				acquire_semaphore[frame_index] = release_semaphore;
@@ -379,6 +428,9 @@ public:
 	{
 		for (auto &thread : worker_threads)
 			thread->wait();
+#ifdef HAVE_GRANITE_FFMPEG
+		encoder.drain();
+#endif
 	}
 
 private:
@@ -389,6 +441,7 @@ private:
 	unsigned frame_index = 0;
 	double time_step = 0.01;
 	string png_readback;
+	string video_encode_path;
 	enum { SwapchainImages = 4 };
 
 	vector<ImageHandle> swapchain_images;
@@ -397,6 +450,11 @@ private:
 	vector<Fence> readback_fence;
 	vector<unique_ptr<FrameWorker>> worker_threads;
 	std::function<void (unsigned)> next_readback_cb;
+	ThreadLatch thread_latches[SwapchainImages];
+
+#ifdef HAVE_GRANITE_FFMPEG
+	VideoEncoder encoder;
+#endif
 
 	void dump_frame(unsigned frame, unsigned index)
 	{
@@ -429,6 +487,7 @@ static void print_help()
 	LOGI("[--png-path <path>] [--stat <output.json>]\n"
 	     "[--audio-dump <sample rate> <data path (fp32 interleaved stereo raw)>]\n"
 	     "[--fs-assets <path>] [--fs-cache <path>] [--fs-builtin <path>]\n"
+	     "[--video-encode-path <path>]\n"
 	     "[--png-reference-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>].\n");
 }
 
@@ -442,6 +501,7 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 	struct Args
 	{
 		string png_path;
+		string video_encode_path;
 		string png_reference_path;
 		string stat;
 		string assets;
@@ -466,6 +526,7 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 	cbs.add("--time-step", [&](CLIParser &parser) { args.time_step = parser.next_double(); });
 	cbs.add("--png-path", [&](CLIParser &parser) { args.png_path = parser.next_string(); });
 	cbs.add("--png-reference-path", [&](CLIParser &parser) { args.png_reference_path = parser.next_string(); });
+	cbs.add("--video-encode-path", [&](CLIParser &parser) { args.video_encode_path = parser.next_string(); });
 	cbs.add("--fs-assets", [&](CLIParser &parser) { args.assets = parser.next_string(); });
 	cbs.add("--fs-builtin", [&](CLIParser &parser) { args.builtin = parser.next_string(); });
 	cbs.add("--fs-cache", [&](CLIParser &parser) { args.cache = parser.next_string(); });
@@ -537,6 +598,8 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 
 		if (!args.png_path.empty())
 			p->enable_png_readback(args.png_path);
+		if (!args.video_encode_path.empty())
+			p->enable_video_encode(args.video_encode_path);
 		p->set_max_frames(args.max_frames);
 		p->set_time_step(args.time_step);
 		p->init_headless(app.get());

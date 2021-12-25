@@ -14,7 +14,6 @@
 	"hdrBloomDynamicExposure": true,
 	"forwardDepthPrepass" : false,
 	"shadowMapResolution": 2048,
-	"cameraIndex": -1,
 	"renderTargetFp16": false,
 	"rescaleScene": false,
 	"deferredClusteredStencilCulling": true,

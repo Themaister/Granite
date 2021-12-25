@@ -307,59 +307,20 @@ public:
 		auto &wsi = app->get_wsi();
 		auto &device = wsi.get_device();
 		auto release_semaphore = wsi.consume_external_release_semaphore();
-		auto &queue_info = device.get_queue_info();
-		unsigned generic_queue_family = queue_info.family_indices[device.get_physical_queue_type(CommandBuffer::Type::AsyncGraphics)];
-		unsigned transfer_queue_family = queue_info.family_indices[device.get_physical_queue_type(CommandBuffer::Type::AsyncTransfer)];
-		bool require_family_transfer = generic_queue_family != transfer_queue_family &&
-		                               (release_semaphore && release_semaphore->get_semaphore() != VK_NULL_HANDLE) &&
-		                               (next_readback_cb || !png_readback.empty());
-
-		VkImageMemoryBarrier ownership = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-		if (require_family_transfer)
-		{
-			ownership.image = swapchain_images[frame_index]->get_image();
-			ownership.srcAccessMask = 0;
-			ownership.dstAccessMask = 0;
-			ownership.srcQueueFamilyIndex = generic_queue_family;
-			ownership.dstQueueFamilyIndex = transfer_queue_family;
-			ownership.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			ownership.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-			ownership.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-			ownership.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-			ownership.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-
-			device.add_wait_semaphore(CommandBuffer::Type::AsyncGraphics, release_semaphore,
-			                          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, true);
-			auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncGraphics);
-			cmd->barrier(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, nullptr,
-			             0, nullptr, 1, &ownership);
-			release_semaphore.reset();
-			device.submit(cmd, nullptr, 1, &release_semaphore);
-		}
-
-		ownership.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
 		if (release_semaphore && release_semaphore->get_semaphore() != VK_NULL_HANDLE)
 		{
 			if (next_readback_cb || !png_readback.empty())
 			{
-				device.add_wait_semaphore(CommandBuffer::Type::AsyncTransfer, release_semaphore,
-				                          VK_PIPELINE_STAGE_TRANSFER_BIT, true);
-
-				auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncTransfer);
-
-				if (require_family_transfer)
-				{
-					cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, nullptr,
-					             0, nullptr, 1, &ownership);
-				}
-				else
-				{
-					cmd->image_barrier(*swapchain_images[frame_index],
-					                   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-					                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-					                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-				}
+				OwnershipTransferInfo transfer_info = {};
+				transfer_info.old_queue = CommandBuffer::Type::AsyncGraphics;
+				transfer_info.new_queue = CommandBuffer::Type::AsyncTransfer;
+				transfer_info.old_image_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+				transfer_info.new_image_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+				transfer_info.dst_pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+				transfer_info.dst_access = VK_ACCESS_TRANSFER_READ_BIT;
+				auto cmd = request_command_buffer_with_ownership_transfer(device, *swapchain_images[frame_index],
+				                                                          transfer_info, release_semaphore);
 
 				cmd->copy_image_to_buffer(*readback_buffers[frame_index], *swapchain_images[frame_index],
 				                          0, {}, {width, height, 1},

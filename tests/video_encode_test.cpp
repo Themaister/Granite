@@ -1,6 +1,8 @@
 #include "ffmpeg.hpp"
 #include "context.hpp"
 #include "device.hpp"
+#include "math.hpp"
+#include "muglm/muglm_impl.hpp"
 
 using namespace Granite;
 
@@ -61,6 +63,17 @@ int main()
 		rp.clear_color[0].float32[1] = 0.2f;
 		rp.clear_color[0].float32[2] = 0.1f;
 		cmd->begin_render_pass(rp);
+
+		VkClearValue value = {};
+		VkClearRect rect = {};
+		value.color.float32[0] = 0.2f;
+		value.color.float32[1] = 0.4f;
+		value.color.float32[2] = 0.7f;
+		rect.layerCount = 1;
+		float x = 320.0f + 40.0f * cos(float(i) / 100.0f);
+		float y = 240.0f + 40.0f * sin(float(i) / 100.0f);
+		rect.rect = {{int(x), int(y)}, {50, 40}};
+		cmd->clear_quad(0, rect, value);
 		cmd->end_render_pass();
 
 		Vulkan::Semaphore sem;

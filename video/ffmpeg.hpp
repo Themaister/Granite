@@ -27,6 +27,11 @@
 
 namespace Granite
 {
+namespace Audio
+{
+class DumpBackend;
+}
+
 class VideoEncoder
 {
 public:
@@ -45,6 +50,8 @@ public:
 		unsigned height;
 		Timebase frame_timebase;
 	};
+
+	void set_audio_source(Audio::DumpBackend *backend);
 
 	bool init(Vulkan::Device *device, const char *path, const Options &options);
 	bool push_frame(const Vulkan::Image &image, VkImageLayout layout,

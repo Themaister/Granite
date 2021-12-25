@@ -95,11 +95,6 @@ Backend *create_default_audio_backend(BackendCallback *callback, float target_sa
 
 struct DumpBackend::Impl
 {
-	std::string path;
-
-	std::unique_ptr<File> file;
-	float *mapped = nullptr;
-
 	std::vector<float> mix_buffers[Backend::MaxAudioChannels];
 	float *mix_buffers_ptr[Backend::MaxAudioChannels] = {};
 
@@ -107,18 +102,15 @@ struct DumpBackend::Impl
 	unsigned target_channels = 0;
 	unsigned frames_per_tick = 0;
 	unsigned frames = 0;
-	unsigned frame_offset = 0;
 };
 
-DumpBackend::DumpBackend(BackendCallback *callback_, const std::string &path, float target_sample_rate,
-                         unsigned target_channels, unsigned frames_per_tick, unsigned frames)
+DumpBackend::DumpBackend(BackendCallback *callback_, float target_sample_rate,
+                         unsigned target_channels, unsigned frames_per_tick)
 	: Backend(callback_)
 {
 	impl.reset(new Impl);
-	impl->path = path;
 	impl->target_sample_rate = target_sample_rate;
 	impl->target_channels = target_channels;
-	impl->frames = frames;
 	impl->frames_per_tick = frames_per_tick;
 
 	if (callback)
@@ -138,28 +130,34 @@ DumpBackend::~DumpBackend()
 {
 }
 
-void DumpBackend::frame()
+unsigned DumpBackend::get_frames_per_tick() const
 {
-	if ((impl->frame_offset < impl->frames) && impl->mapped)
+	return impl->frames_per_tick;
+}
+
+void DumpBackend::drain_interleaved_s16(int16_t *data, size_t frames)
+{
+	size_t mixed_frames = 0;
+	while (mixed_frames < frames)
 	{
-		callback->mix_samples(impl->mix_buffers_ptr, impl->frames_per_tick);
+		size_t to_mix = std::min<size_t>(frames - mixed_frames, impl->frames_per_tick);
+		callback->mix_samples(impl->mix_buffers_ptr, to_mix);
 
 		if (impl->target_channels == 2)
 		{
-			DSP::interleave_stereo_f32(impl->mapped, impl->mix_buffers_ptr[0], impl->mix_buffers_ptr[1], impl->frames_per_tick);
-			impl->mapped += impl->frames_per_tick * impl->target_channels;
+			DSP::interleave_stereo_f32_i16(data, impl->mix_buffers_ptr[0], impl->mix_buffers_ptr[1], to_mix);
+			data += to_mix * impl->target_channels;
 		}
 		else
 		{
 			unsigned channels = impl->target_channels;
-			size_t frames_per_tick = impl->frames_per_tick;
-			for (size_t f = 0; f < frames_per_tick; f++)
+			for (size_t f = 0; f < to_mix; f++)
 				for (unsigned c = 0; c < channels; c++)
-					*impl->mapped++ = impl->mix_buffers_ptr[c][f];
+					*data++ = DSP::f32_to_i16(impl->mix_buffers_ptr[c][f]);
 		}
-	}
 
-	impl->frame_offset++;
+		mixed_frames += to_mix;
+	}
 }
 
 bool DumpBackend::start()
@@ -170,22 +168,6 @@ bool DumpBackend::start()
 		return false;
 	}
 
-	size_t target_size = impl->frames * impl->frames_per_tick * impl->target_channels * sizeof(float);
-
-	impl->file = GRANITE_FILESYSTEM()->open(impl->path, Granite::FileMode::WriteOnly);
-	if (!impl->file)
-	{
-		LOGE("Failed to open dump file for writing.\n");
-		return false;
-	}
-
-	impl->mapped = static_cast<float *>(impl->file->map_write(target_size));
-	if (!impl->mapped)
-	{
-		LOGE("Failed to map dump file for writing.\n");
-		return false;
-	}
-
 	if (callback)
 		callback->on_backend_start();
 	return true;
@@ -193,14 +175,6 @@ bool DumpBackend::start()
 
 bool DumpBackend::stop()
 {
-	if (impl->file && impl->mapped)
-	{
-		impl->file->unmap();
-		impl->mapped = nullptr;
-		impl->frame_offset = 0;
-	}
-
-	impl->file.reset();
 	if (callback)
 		callback->on_backend_stop();
 	return true;

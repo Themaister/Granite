@@ -624,6 +624,8 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		app->get_wsi().get_device().wait_idle();
 		app->get_wsi().get_device().timestamp_log_reset();
 
+		LOGI("=== Begin run ===\n");
+
 		auto start_time = get_current_time_nsecs();
 		unsigned rendered_frames = 0;
 		while (app->poll())
@@ -631,12 +633,19 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 			p->begin_frame();
 			app->run_frame();
 			p->end_frame();
+			if (!args.video_encode_path.empty() || !args.png_path.empty())
+			{
+				LOGE("   Queued frame %u (Total time = %.3f ms).\n", rendered_frames,
+				     1e-6 * double(get_current_time_nsecs() - start_time));
+			}
 			rendered_frames++;
 #ifdef HAVE_GRANITE_AUDIO
 			if (audio_dumper)
 				audio_dumper->frame();
 #endif
 		}
+
+		LOGI("=== End run ===\n");
 
 		p->wait_threads();
 		app->get_wsi().get_device().wait_idle();

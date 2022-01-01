@@ -2,6 +2,9 @@
 precision highp float;
 precision highp int;
 
+#if defined(RENDERER_FORWARD)
+#include "../inc/subgroup_extensions.h"
+#endif
 #include "../inc/render_target.h"
 
 layout(location = 0) in vec3 vPos;

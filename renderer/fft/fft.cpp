@@ -697,7 +697,6 @@ void FFT::Impl::execute(CommandBuffer &cmd, const Resource &dst, const Resource 
 
 FFT::FFT()
 {
-	impl.reset(new Impl);
 }
 
 FFT::~FFT()
@@ -712,11 +711,14 @@ void FFT::release()
 
 bool FFT::plan(Device *device, const Options &options)
 {
+	impl.reset(new Impl);
 	return impl->plan(device, options);
 }
 
 void FFT::execute(CommandBuffer &cmd, const Resource &dst, const Resource &src)
 {
+	if (!impl)
+		return;
 	impl->execute(cmd, dst, src);
 }
 }

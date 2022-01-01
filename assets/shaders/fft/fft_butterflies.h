@@ -21,29 +21,29 @@
 
 #include "fft_common.h"
 
-void butterfly(inout vec2 a, inout vec2 b, vec2 w)
+void butterfly(inout cfloat a, inout cfloat b, cfloat w)
 {
-	vec2 t = cmul(b, w);
+	cfloat t = cmul(b, w);
 	b = a - t;
 	a = a + t;
 }
 
-void butterfly_p1(inout vec2 a, inout vec2 b)
+void butterfly_p1(inout cfloat a, inout cfloat b)
 {
-	vec2 t = b;
+	cfloat t = b;
 	b = a - t;
 	a = a + t;
 }
 
-void butterfly_p1_dir_j(inout vec2 a, inout vec2 b)
+void butterfly_p1_dir_j(inout cfloat a, inout cfloat b)
 {
-	vec2 t = b;
-	b = vec2(-PI_DIR_MULT, PI_DIR_MULT) * (a.yx - t.yx);
+	cfloat t = b;
+	b = cfloat(-PI_DIR_MULT, PI_DIR_MULT) * (a.yx - t.yx);
 	a = a + t;
 }
 
 // FFT4
-void FFT4_p1(inout vec2 a, inout vec2 b, inout vec2 c, inout vec2 d)
+void FFT4_p1(inout cfloat a, inout cfloat b, inout cfloat c, inout cfloat d)
 {
 	butterfly_p1(a, b);
 	butterfly_p1_dir_j(c, d);
@@ -51,20 +51,22 @@ void FFT4_p1(inout vec2 a, inout vec2 b, inout vec2 c, inout vec2 d)
 	butterfly_p1(b, d);
 }
 
-void FFT4(inout vec2 a, inout vec2 b, inout vec2 c, inout vec2 d, uint k, uint p)
+void FFT4(inout cfloat a, inout cfloat b, inout cfloat c, inout cfloat d,
+          uint k, uint p)
 {
-	vec2 w = twiddle(k, p);
+	cfloat w = twiddle(k, p);
 	butterfly(a, b, w);
 	butterfly(c, d, w);
 
-	vec2 w0 = twiddle(k, 2u * p);
-	vec2 w1 = cmul_dir_j(w0);
+	cfloat w0 = twiddle(k, 2u * p);
+	cfloat w1 = cmul_dir_j(w0);
 	butterfly(a, c, w0);
 	butterfly(b, d, w1);
 }
 
 // FFT8
-void FFT8_p1(inout vec2 a, inout vec2 b, inout vec2 c, inout vec2 d, inout vec2 e, inout vec2 f, inout vec2 g, inout vec2 h)
+void FFT8_p1(inout cfloat a, inout cfloat b, inout cfloat c, inout cfloat d,
+             inout cfloat e, inout cfloat f, inout cfloat g, inout cfloat h)
 {
 	butterfly_p1(a, b);
 	butterfly_p1_dir_j(c, d);
@@ -82,26 +84,28 @@ void FFT8_p1(inout vec2 a, inout vec2 b, inout vec2 c, inout vec2 d, inout vec2 
 	butterfly(d, h, TWIDDLE_3_8);
 }
 
-void FFT8(inout vec2 a, inout vec2 b, inout vec2 c, inout vec2 d, inout vec2 e, inout vec2 f, inout vec2 g, inout vec2 h, uint k, uint p)
+void FFT8(inout cfloat a, inout cfloat b, inout cfloat c, inout cfloat d,
+          inout cfloat e, inout cfloat f, inout cfloat g, inout cfloat h,
+          uint k, uint p)
 {
-	vec2 w = twiddle(k, p);
+	cfloat w = twiddle(k, p);
 	butterfly(a, b, w);
 	butterfly(c, d, w);
 	butterfly(e, f, w);
 	butterfly(g, h, w);
 
-	vec2 w0 = twiddle(k, 2u * p);
-	vec2 w1 = cmul_dir_j(w0);
+	cfloat w0 = twiddle(k, 2u * p);
+	cfloat w1 = cmul_dir_j(w0);
 
 	butterfly(a, c, w0);
 	butterfly(b, d, w1);
 	butterfly(e, g, w0);
 	butterfly(f, h, w1);
 
-	vec2 W0 = twiddle(k, 4u * p);
-	vec2 W1 = cmul(W0, TWIDDLE_1_8);
-	vec2 W2 = cmul_dir_j(W0);
-	vec2 W3 = cmul_dir_j(W1);
+	cfloat W0 = twiddle(k, 4u * p);
+	cfloat W1 = cmul(W0, TWIDDLE_1_8);
+	cfloat W2 = cmul_dir_j(W0);
+	cfloat W3 = cmul_dir_j(W1);
 
 	butterfly(a, e, W0);
 	butterfly(b, f, W1);

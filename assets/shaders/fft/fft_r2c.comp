@@ -17,14 +17,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "fft_data_type_extensions.h"
 layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
 
 #include "fft_common.h"
 
-vec2 r2c_twiddle(uint i, uint p)
+cfloat r2c_twiddle(uint i, uint p)
 {
-    vec2 w = twiddle(i, p);
-    return vec2(w.y, -w.x);
+    cfloat w = twiddle(i, p);
+    return cfloat(w.y, -w.x);
 }
 
 void main()
@@ -47,17 +48,17 @@ void main()
 
     if (index == 0u)
     {
-        vec2 x = fft_input.data[input_buffer_index];
-        fft_output.data[output_buffer_index] = vec2(x.x + x.y, 0.0);
-        fft_output.data[output_buffer_index + constants.element_stride] = vec2(x.x - x.y, 0.0);
+        cfloat x = decode(fft_input.data[input_buffer_index]);
+        fft_output.data[output_buffer_index] = encode(cfloat(x.x + x.y, 0.0));
+        fft_output.data[output_buffer_index + constants.element_stride] = encode(cfloat(x.x - x.y, 0.0));
     }
     else
     {
-        vec2 a = fft_input.data[input_buffer_index + index];
-        vec2 b = fft_input.data[input_buffer_index + constants.element_stride - index];
-        b = vec2(b.x, -b.y);
-        vec2 fe = a + b;
-        vec2 fo = cmul(a - b, r2c_twiddle(index, constants.p));
-        fft_output.data[output_buffer_index + index] = 0.5 * (fe + fo);
+        cfloat a = decode(fft_input.data[input_buffer_index + index]);
+        cfloat b = decode(fft_input.data[input_buffer_index + constants.element_stride - index]);
+        b = cfloat(b.x, -b.y);
+        cfloat fe = a + b;
+        cfloat fo = cmul(a - b, r2c_twiddle(index, constants.p));
+        fft_output.data[output_buffer_index + index] = encode(cfloat(0.5) * (fe + fo));
     }
 }

@@ -39,6 +39,12 @@ static void fill_random_inputs(vec2 *data, unsigned N)
 	}
 }
 
+static void quantize_inputs(u16vec2 *outputs, const vec2 *inputs, unsigned N)
+{
+	for (unsigned i = 0; i < N; i++)
+		outputs[i] = floatToHalf(inputs[i]);
+}
+
 static void fill_random_inputs(float *data, unsigned N)
 {
 	std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
@@ -51,24 +57,17 @@ static bool validate_outputs(const float *a, const float *b, unsigned N)
 {
 	double power = 0.0;
 	double squared_error = 0.0;
-	float max_delta = 0.0001f * float(N);
 
 	for (unsigned i = 0; i < N; i++)
 	{
 		power += a[i] * a[i];
 		float diff = b[i] - a[i];
-		// Detect NaNs as well.
-		if (!(abs(diff) < max_delta))
-		{
-			LOGE("Found odd delta for data[%u], ref = (%f), value = (%f)\n", i, a[i], b[i]);
-			return false;
-		}
 		squared_error += diff * diff;
 	}
 
 	power /= N;
 	squared_error /= N;
-	if (squared_error > 1e-10 * power)
+	if (std::isnan(squared_error) || squared_error > 1e-10 * power)
 	{
 		LOGE("Error! N = %u, SNR = %f dB.\n", N, 10.0 * log10(power / squared_error));
 		return false;
@@ -81,26 +80,17 @@ static bool validate_outputs(const vec2 *a, const vec2 *b, unsigned N)
 {
 	double power = 0.0;
 	double squared_error = 0.0;
-	float max_delta = 0.0001f * float(N);
 
 	for (unsigned i = 0; i < N; i++)
 	{
 		power += dot(a[i], a[i]);
 		vec2 diff = b[i] - a[i];
-		// Detect NaNs as well.
-		if (!(abs(diff.x) < max_delta) || !(abs(diff.y) < max_delta))
-		{
-			LOGE("Found odd delta for data[%u], ref = (%f, %f), value = (%f, %f)\n",
-			     i, a[i].x, a[i].y, b[i].x, b[i].y);
-			return false;
-		}
-
 		squared_error += dot(diff, diff);
 	}
 
 	power /= N;
 	squared_error /= N;
-	if (squared_error > 1e-10 * power)
+	if (std::isnan(squared_error) || (squared_error > 1e-10 * power))
 	{
 		LOGE("Error! N = %u, SNR = %f dB.\n", N, 10.0 * log10(power / squared_error));
 		return false;
@@ -109,9 +99,37 @@ static bool validate_outputs(const vec2 *a, const vec2 *b, unsigned N)
 		return true;
 }
 
-static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny, FFT::Mode mode, unsigned batch_count,
+static bool validate_outputs_fp16(const vec2 *a, const u16vec2 *b, unsigned N)
+{
+	double power = 0.0;
+	double squared_error = 0.0;
+
+	for (unsigned i = 0; i < N; i++)
+	{
+		vec2 a_value = a[i];
+		vec2 b_value = halfToFloat(b[i]);
+		power += dot(a_value, a_value);
+		vec2 diff = b_value - a_value;
+		squared_error += dot(diff, diff);
+	}
+
+	power /= N;
+	squared_error /= N;
+	if (std::isnan(squared_error) || squared_error > 5e-4 * power)
+	{
+		LOGE("Error! N = %u, SNR = %f dB.\n", N, 10.0 * log10(power / squared_error));
+		return false;
+	}
+	else
+		return true;
+}
+
+static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny,
+                        FFT::Mode mode, FFT::DataType data_type, unsigned batch_count,
                         bool texture_input, bool texture_output)
 {
+	bool fp16 = data_type == FFT::DataType::FP16;
+
 	FFT fft;
 	FFT::Options options = {};
 	options.Nx = Nx;
@@ -119,6 +137,7 @@ static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny, FFT::Mode mode
 	options.Nz = batch_count;
 	options.dimensions = 2;
 	options.mode = mode;
+	options.data_type = data_type;
 	options.input_resource = texture_input ? FFT::ResourceType::Texture : FFT::ResourceType::Buffer;
 	options.output_resource = texture_output ? FFT::ResourceType::Texture : FFT::ResourceType::Buffer;
 	if (!fft.plan(&device, options))
@@ -149,15 +168,22 @@ static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny, FFT::Mode mode
 		}
 	}
 
+	auto *input_data_fp16 = static_cast<u16vec2 *>(mufft_alloc(Nx * Ny * batch_count * sizeof(u16vec2) / input_divider));
+	if (fp16)
+		quantize_inputs(input_data_fp16, input_data, Nx * Ny * batch_count / input_divider);
+
 	BufferCreateInfo buffer_info = {};
 	buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	buffer_info.domain = BufferDomain::CachedHost;
 
-	buffer_info.size = Nx * Ny * batch_count * sizeof(vec2) / input_divider;
+	buffer_info.size = Nx * Ny * batch_count * (fp16 ? sizeof(u16vec2) : sizeof(vec2)) / input_divider;
 	buffer_info.usage = texture_input ? VK_BUFFER_USAGE_TRANSFER_SRC_BIT : VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	auto input_buffer = device.create_buffer(buffer_info, input_data);
+	auto input_buffer = device.create_buffer(buffer_info,
+	                                         fp16 ?
+	                                         static_cast<const void *>(input_data_fp16) :
+	                                         static_cast<const void *>(input_data));
 	device.set_name(*input_buffer, "input-buffer");
-	buffer_info.size = Nx * Ny * batch_count * sizeof(vec2) / output_divider;
+	buffer_info.size = Nx * Ny * batch_count * (fp16 ? sizeof(u16vec2) : sizeof(vec2)) / output_divider;
 	buffer_info.usage = texture_output ? VK_BUFFER_USAGE_TRANSFER_DST_BIT : VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	auto output_buffer = device.create_buffer(buffer_info, nullptr);
 	device.set_name(*output_buffer, "output-buffer");
@@ -165,12 +191,16 @@ static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny, FFT::Mode mode
 	ImageHandle input_texture;
 	ImageHandle output_texture;
 	ImageCreateInfo image_info = ImageCreateInfo::render_target(Nx, Ny, VK_FORMAT_UNDEFINED);
-	image_info.format = mode == FFT::Mode::RealToComplex ? VK_FORMAT_R32_SFLOAT : VK_FORMAT_R32G32_SFLOAT;
+	image_info.format = mode == FFT::Mode::RealToComplex ?
+	                    (fp16 ? VK_FORMAT_R16_SFLOAT : VK_FORMAT_R32_SFLOAT) :
+	                    (fp16 ? VK_FORMAT_R16G16_SFLOAT : VK_FORMAT_R32G32_SFLOAT);
 	image_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	if (texture_input)
 		input_texture = device.create_image(image_info);
-	image_info.format = mode == FFT::Mode::ComplexToReal ? VK_FORMAT_R32_SFLOAT : VK_FORMAT_R32G32_SFLOAT;
+	image_info.format = mode == FFT::Mode::ComplexToReal ?
+	                    (fp16 ? VK_FORMAT_R16_SFLOAT : VK_FORMAT_R32_SFLOAT) :
+	                    (fp16 ? VK_FORMAT_R16G16_SFLOAT : VK_FORMAT_R32G32_SFLOAT);
 	image_info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
 	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	if (texture_output)
@@ -179,9 +209,12 @@ static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny, FFT::Mode mode
 	for (unsigned i = 0; i < batch_count; i++)
 		mufft_execute_plan_2d(plan_2d, output_data + i * Nx * Ny / output_divider, input_data + i * Nx * Ny / input_divider);
 
-	//bool has_rdoc = Device::init_renderdoc_capture();
-	//if (has_rdoc)
-	//	device.begin_renderdoc_capture();
+#define RDOC 0
+#if RDOC
+	bool has_rdoc = Device::init_renderdoc_capture();
+	if (has_rdoc)
+		device.begin_renderdoc_capture();
+#endif
 
 	auto cmd = device.request_command_buffer();
 	FFT::Resource dst = {};
@@ -250,11 +283,15 @@ static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny, FFT::Mode mode
 	}
 
 	device.submit(cmd);
-	//if (has_rdoc)
-	//	device.end_renderdoc_capture();
+#if RDOC
+	if (has_rdoc)
+		device.end_renderdoc_capture();
+#endif
 	device.wait_idle();
 
-	auto *mapped_data = static_cast<const vec2 *>(device.map_host_buffer(*output_buffer, MEMORY_ACCESS_READ_BIT));
+	const void *mapped_data = device.map_host_buffer(*output_buffer, MEMORY_ACCESS_READ_BIT);
+	auto *mapped_data_fp32 = static_cast<const vec2 *>(mapped_data);
+	auto *mapped_data_fp16 = static_cast<const u16vec2 *>(mapped_data);
 
 	unsigned complex_outputs = Nx;
 	if (mode == FFT::Mode::RealToComplex)
@@ -264,16 +301,30 @@ static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny, FFT::Mode mode
 
 	for (unsigned i = 0; i < Ny * batch_count; i++)
 	{
-		if (!validate_outputs(output_data + i * Nx / output_divider,
-		                      mapped_data + i * Nx / output_divider,
-		                      complex_outputs))
+		if (fp16)
 		{
-			LOGE("Failed at i = %u.\n", i);
-			return false;
+			if (!validate_outputs_fp16(output_data + i * Nx / output_divider,
+			                           mapped_data_fp16 + i * Nx / output_divider,
+			                           complex_outputs))
+			{
+				LOGE("Failed at i = %u.\n", i);
+				return false;
+			}
+		}
+		else
+		{
+			if (!validate_outputs(output_data + i * Nx / output_divider,
+			                      mapped_data_fp32 + i * Nx / output_divider,
+			                      complex_outputs))
+			{
+				LOGE("Failed at i = %u.\n", i);
+				return false;
+			}
 		}
 	}
 
 	mufft_free(input_data);
+	mufft_free(input_data_fp16);
 	mufft_free(output_data);
 	mufft_free_plan_2d(plan_2d);
 
@@ -514,10 +565,17 @@ int main()
 		for (unsigned Nx = 4; Nx <= 8 * 1024; Nx *= 2)
 		{
 			LOGI("Testing 2D C2C (Forward) (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ForwardComplexToComplex, 1, false, false))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ForwardComplexToComplex, FFT::DataType::FP32, 1, false, false))
 				return 1;
 			LOGI("Testing 2D C2C (Inverse) (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::InverseComplexToComplex, 1, false, false))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::InverseComplexToComplex, FFT::DataType::FP32, 1, false, false))
+				return 1;
+
+			LOGI("Testing 2D C2C (FP16) (Forward) (Nx = %u, Ny = %u).\n", Nx, Ny);
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ForwardComplexToComplex, FFT::DataType::FP16, 1, false, false))
+				return 1;
+			LOGI("Testing 2D C2C (FP16) (Inverse) (Nx = %u, Ny = %u).\n", Nx, Ny);
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::InverseComplexToComplex, FFT::DataType::FP16, 1, false, false))
 				return 1;
 		}
 	}
@@ -537,10 +595,17 @@ int main()
 		for (unsigned Nx = 8; Nx <= 8 * 1024; Nx *= 2)
 		{
 			LOGI("Testing 2D R2C (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::RealToComplex, 1, false, false))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::RealToComplex, FFT::DataType::FP32, 1, false, false))
 				return 1;
 			LOGI("Testing 2D C2R (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ComplexToReal, 1, false, false))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ComplexToReal, FFT::DataType::FP32, 1, false, false))
+				return 1;
+
+			LOGI("Testing 2D R2C (FP16) (Nx = %u, Ny = %u).\n", Nx, Ny);
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::RealToComplex, FFT::DataType::FP16, 1, false, false))
+				return 1;
+			LOGI("Testing 2D C2R (FP16) (Nx = %u, Ny = %u).\n", Nx, Ny);
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ComplexToReal, FFT::DataType::FP16, 1, false, false))
 				return 1;
 		}
 	}
@@ -550,23 +615,36 @@ int main()
 		for (unsigned Nx = 8; Nx <= 1024; Nx *= 2)
 		{
 			LOGI("Testing 2D R2C batched (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::RealToComplex, 7, false, false))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::RealToComplex, FFT::DataType::FP32, 7, false, false))
 				return 1;
 			LOGI("Testing 2D C2R batched (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ComplexToReal, 6, false, false))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ComplexToReal, FFT::DataType::FP32, 6, false, false))
 				return 1;
 
 			LOGI("Testing 2D R2C input texture (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::RealToComplex, 1, true, false))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::RealToComplex, FFT::DataType::FP32, 1, true, false))
 				return 1;
 			LOGI("Testing 2D R2C output texture (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::RealToComplex, 1, false, true))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::RealToComplex, FFT::DataType::FP32, 1, false, true))
 				return 1;
 			LOGI("Testing 2D C2R input texture (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ComplexToReal, 1, true, false))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ComplexToReal, FFT::DataType::FP32, 1, true, false))
 				return 1;
 			LOGI("Testing 2D C2R output texture (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ComplexToReal, 1, false, true))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ComplexToReal, FFT::DataType::FP32, 1, false, true))
+				return 1;
+
+			LOGI("Testing 2D R2C (FP16) input texture (Nx = %u, Ny = %u).\n", Nx, Ny);
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::RealToComplex, FFT::DataType::FP16, 1, true, false))
+				return 1;
+			LOGI("Testing 2D R2C (FP16) output texture (Nx = %u, Ny = %u).\n", Nx, Ny);
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::RealToComplex, FFT::DataType::FP16, 1, false, true))
+				return 1;
+			LOGI("Testing 2D C2R (FP16) input texture (Nx = %u, Ny = %u).\n", Nx, Ny);
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ComplexToReal, FFT::DataType::FP16, 1, true, false))
+				return 1;
+			LOGI("Testing 2D C2R (FP16) output texture (Nx = %u, Ny = %u).\n", Nx, Ny);
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ComplexToReal, FFT::DataType::FP16, 1, false, true))
 				return 1;
 		}
 	}
@@ -576,20 +654,30 @@ int main()
 		for (unsigned Nx = 4; Nx <= 1024; Nx *= 2)
 		{
 			LOGI("Testing 2D C2C Image output (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::InverseComplexToComplex, 1, false, true))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::InverseComplexToComplex, FFT::DataType::FP32, 1, false, true))
 				return 1;
 			LOGI("Testing 2D C2C Image input (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ForwardComplexToComplex, 1, true, false))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ForwardComplexToComplex, FFT::DataType::FP32, 1, true, false))
 				return 1;
 			LOGI("Testing 2D C2C Image input + output (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ForwardComplexToComplex, 1, true, true))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ForwardComplexToComplex, FFT::DataType::FP32, 1, true, true))
+				return 1;
+
+			LOGI("Testing 2D C2C (FP16) Image output (Nx = %u, Ny = %u).\n", Nx, Ny);
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::InverseComplexToComplex, FFT::DataType::FP16, 1, false, true))
+				return 1;
+			LOGI("Testing 2D C2C (FP16) Image input (Nx = %u, Ny = %u).\n", Nx, Ny);
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ForwardComplexToComplex, FFT::DataType::FP16, 1, true, false))
+				return 1;
+			LOGI("Testing 2D C2C (FP16) Image input + output (Nx = %u, Ny = %u).\n", Nx, Ny);
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ForwardComplexToComplex, FFT::DataType::FP16, 1, true, true))
 				return 1;
 
 			LOGI("Testing 2D C2C Batched (Forward) (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::InverseComplexToComplex, 9, false, false))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::InverseComplexToComplex, FFT::DataType::FP32, 9, false, false))
 				return 1;
 			LOGI("Testing 2D C2C Batched (Inverse) (Nx = %u, Ny = %u).\n", Nx, Ny);
-			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ForwardComplexToComplex, 14, false, false))
+			if (!test_fft_2d(device, Nx, Ny, FFT::Mode::ForwardComplexToComplex, FFT::DataType::FP32, 14, false, false))
 				return 1;
 		}
 	}

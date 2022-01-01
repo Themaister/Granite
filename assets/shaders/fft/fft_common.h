@@ -24,7 +24,7 @@ layout(set = 0, binding = 0) uniform sampler2D fft_input;
 #else
 layout(set = 0, binding = 0) readonly buffer FFTInput
 {
-	vec2 data[];
+	cfloat_data data[];
 } fft_input;
 #endif
 
@@ -33,13 +33,13 @@ layout(set = 0, binding = 1) writeonly uniform image2D fft_output;
 #else
 layout(set = 0, binding = 1) writeonly buffer FFTOutput
 {
-	vec2 data[];
+	cfloat_data data[];
 } fft_output;
 #endif
 
 layout(set = 0, binding = 2) readonly buffer Twiddles
 {
-	vec2 data[];
+	cfloat_data data[];
 } twiddles;
 
 layout(set = 0, binding = 3) uniform Constants
@@ -55,8 +55,8 @@ layout(set = 0, binding = 3) uniform Constants
 #if defined(FFT_INPUT_TEXTURE) || defined(FFT_OUTPUT_TEXTURE)
 layout(set = 0, binding = 4) uniform TextureConstants
 {
-    vec2 offset;
-    vec2 scale;
+    highp vec2 offset;
+    highp vec2 scale;
     ivec2 store_offset;
 } texture_constants;
 #endif
@@ -64,9 +64,8 @@ layout(set = 0, binding = 4) uniform TextureConstants
 layout(constant_id = 3) const float PI_DIR_MULT = -1.0;
 const float PI = 3.14159265359;
 const float SQRT_1_2 = 0.70710678118;
-#define PI_DIR (PI * PI_DIR_MULT)
-#define TWIDDLE_1_8 vec2(SQRT_1_2, SQRT_1_2 * PI_DIR_MULT)
-#define TWIDDLE_3_8 vec2(-SQRT_1_2, SQRT_1_2 * PI_DIR_MULT)
+#define TWIDDLE_1_8 cfloat(SQRT_1_2, SQRT_1_2 * PI_DIR_MULT)
+#define TWIDDLE_3_8 cfloat(-SQRT_1_2, SQRT_1_2 * PI_DIR_MULT)
 
 const int DIMENSION_1D = 0;
 const int DIMENSION_2D = 1;
@@ -88,24 +87,24 @@ const bool DISPATCH_3D = ((RADIX_CTL >> 18u) & 1u) != 0u;
 const bool RADIX_R2C = ((RADIX_CTL >> 19u) & 1u) != 0u;
 const bool RADIX_C2R = ((RADIX_CTL >> 20u) & 1u) != 0u;
 
-vec2 twiddle(uint i, uint p)
+cfloat twiddle(uint i, uint p)
 {
-	return twiddles.data[i + p];
+	return decode(twiddles.data[i + p]);
 }
 
-vec2 cmul(vec2 a, vec2 b)
+cfloat cmul(cfloat a, cfloat b)
 {
-	vec2 r3 = a.yx;
-	vec2 r1 = b.xx;
-	vec2 R0 = a * r1;
-	vec2 r2 = b.yy;
-	vec2 R1 = r2 * r3;
-	return R0 + vec2(-R1.x, R1.y);
+	cfloat r3 = a.yx;
+	cfloat r1 = b.xx;
+	cfloat R0 = a * r1;
+	cfloat r2 = b.yy;
+	cfloat R1 = r2 * r3;
+	return R0 + cfloat(-R1.x, R1.y);
 }
 
-vec2 cmul_dir_j(vec2 v)
+cfloat cmul_dir_j(cfloat v)
 {
-	return vec2(-v.y, v.x) * PI_DIR_MULT;
+	return cfloat(-v.y, v.x) * cfloat(PI_DIR_MULT);
 }
 
 #endif

@@ -88,6 +88,7 @@ struct FFT::Impl
 	                        unsigned dim) const;
 	void optimize_multi_fft_resolve(unsigned &multi_fft_x, unsigned &multi_fft_y) const;
 	bool has_real_complex_resolve() const;
+	const char *get_fp16_define() const;
 };
 
 static bool is_pow2(unsigned x)
@@ -95,12 +96,22 @@ static bool is_pow2(unsigned x)
 	return (x & (x - 1)) == 0;
 }
 
-static BufferHandle build_twiddle_buffer(Device &device, int dir, int N)
+static BufferHandle build_twiddle_buffer(Device &device, int dir, int N, FFT::DataType data_type)
 {
 	std::vector<vec2> values;
-	values.reserve(N);
+	std::vector<u16vec2> values_fp16;
 
-	values.emplace_back(0.0f);
+	if (data_type == FFT::DataType::FP32)
+	{
+		values.reserve(N);
+		values.emplace_back(0.0f);
+	}
+	else
+	{
+		values_fp16.reserve(N);
+		values_fp16.emplace_back(0);
+	}
+
 	for (int n = 1; n < N; n *= 2)
 	{
 		for (int i = 0; i < n; i++)
@@ -108,15 +119,25 @@ static BufferHandle build_twiddle_buffer(Device &device, int dir, int N)
 			double theta = muglm::pi<double>() * double(dir) * (double(i) / double(n));
 			double c = muglm::cos(theta);
 			double s = muglm::sin(theta);
-			values.emplace_back(vec2(float(c), float(s)));
+
+			if (data_type == FFT::DataType::FP32)
+				values.emplace_back(float(c), float(s));
+			else
+				values_fp16.push_back(floatToHalf(vec2(float(c), float(s))));
 		}
 	}
 
+	const void *data;
+	if (data_type == FFT::DataType::FP32)
+		data = values.data();
+	else
+		data = values_fp16.data();
+
 	BufferCreateInfo info = {};
-	info.size = values.size() * sizeof(vec2);
+	info.size = N * (data_type == FFT::DataType::FP32 ? sizeof(vec2) : sizeof(u16vec2));
 	info.domain = BufferDomain::Device;
 	info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	auto buf = device.create_buffer(info, values.data());
+	auto buf = device.create_buffer(info, data);
 	device.set_name(*buf, "twiddle-buffer");
 	return buf;
 }
@@ -236,6 +257,17 @@ void FFT::Impl::optimize_multi_fft_resolve(unsigned &multi_fft_x, unsigned &mult
 	}
 }
 
+const char *FFT::Impl::get_fp16_define() const
+{
+	if (device->get_device_features().float16_int8_features.shaderFloat16 &&
+	    device->get_device_features().storage_16bit_features.storageBuffer16BitAccess)
+	{
+		return "FFT_FULL_FP16";
+	}
+	else
+		return "FFT_DATA_FP16";
+}
+
 void FFT::Impl::add_complex_to_real_pass(unsigned offset)
 {
 	auto &iter = iterations[offset];
@@ -264,7 +296,11 @@ void FFT::Impl::add_complex_to_real_pass(unsigned offset)
 	iter.ubo.output_layer_stride = options.Nx * options.Ny;
 
 	auto *prog = device->get_shader_manager().register_compute("builtin://shaders/fft/fft_c2r.comp");
-	iter.variant = prog->register_variant({});
+
+	std::vector<std::pair<std::string, int>> defines;
+	if (options.data_type == DataType::FP16)
+		defines.emplace_back(get_fp16_define(), 1);
+	iter.variant = prog->register_variant(defines);
 
 #if 0
 	LOGI("Iteration C2R:\n");
@@ -302,7 +338,11 @@ void FFT::Impl::add_real_to_complex_pass(unsigned p, unsigned offset)
 	iter.ubo.p = p;
 
 	auto *prog = device->get_shader_manager().register_compute("builtin://shaders/fft/fft_r2c.comp");
-	iter.variant = prog->register_variant({});
+
+	std::vector<std::pair<std::string, int>> defines;
+	if (options.data_type == DataType::FP16)
+		defines.emplace_back(get_fp16_define(), 1);
+	iter.variant = prog->register_variant(defines);
 
 #if 0
 	LOGI("Iteration R2C:\n");
@@ -400,6 +440,8 @@ void FFT::Impl::add_passes(const std::vector<unsigned> &split_iterations, unsign
 			defines.emplace_back("FFT_INPUT_TEXTURE", 1);
 		if (offset + 1 == iterations.size() && options.output_resource == ResourceType::Texture)
 			defines.emplace_back("FFT_OUTPUT_TEXTURE", 1);
+		if (options.data_type == DataType::FP16)
+			defines.emplace_back(get_fp16_define(), 1);
 
 		iter.variant = prog->register_variant(defines);
 
@@ -443,7 +485,7 @@ void FFT::Impl::init_twiddle_buffer()
 		max_n = options.Nz;
 
 	int dir = mode_to_direction(options.mode);
-	twiddle_buffer = build_twiddle_buffer(*device, dir, int(max_n));
+	twiddle_buffer = build_twiddle_buffer(*device, dir, int(max_n), options.data_type);
 }
 
 void FFT::Impl::init_tmp_buffer()
@@ -460,8 +502,8 @@ void FFT::Impl::init_tmp_buffer()
 	tmp_buffer = device->create_buffer(info);
 	device->set_name(*tmp_buffer, "tmp-buffer");
 
-	// We cannot use output buffer as a temporary buffer with Stockham autosort, so need
-	// to ping-pong in two buffers.
+	// We cannot use output buffer as a temporary buffer with Stockham autosort,
+	// so need to ping-pong in two buffers.
 	// ComplexToReal requires a larger temp buffer while transforming vertically.
 	if (options.output_resource == ResourceType::Texture ||
 	    (options.mode == Mode::ComplexToReal && options.dimensions > 1))
@@ -629,8 +671,10 @@ void FFT::Impl::execute_iteration(CommandBuffer &cmd, const Resource &dst, const
 			texture_ubo.scale[j] = src.image.input_scale[j];
 			texture_ubo.storage_offset[j] = dst.image.output_offset[j];
 		}
+
 		if (options.mode == Mode::RealToComplex)
 			texture_ubo.scale[0] *= 2.0f;
+
 		memcpy(cmd.allocate_typed_constant_data<TextureUBO>(0, 4, 1), &texture_ubo, sizeof(texture_ubo));
 	}
 	cmd.dispatch(iter.dispatch_x, iter.dispatch_y, iter.dispatch_z);

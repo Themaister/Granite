@@ -17,14 +17,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "fft_data_type_extensions.h"
 layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
 
 #include "fft_common.h"
 
-vec2 c2r_twiddle(uint i, uint p)
+cfloat c2r_twiddle(uint i, uint p)
 {
-    vec2 w = twiddle(i, p);
-    return vec2(-w.y, w.x);
+    cfloat w = twiddle(i, p);
+    return cfloat(-w.y, w.x);
 }
 
 void main()
@@ -45,11 +46,11 @@ void main()
         output_buffer_index += gl_WorkGroupID.z * constants.output_layer_stride;
     }
 
-    vec2 a = fft_input.data[input_buffer_index + index];
-    vec2 b = fft_input.data[input_buffer_index + constants.element_stride - index];
-    b = vec2(b.x, -b.y);
-    vec2 even = a + b;
-    vec2 odd = cmul(a - b, c2r_twiddle(index, constants.element_stride));
+    cfloat a = decode(fft_input.data[input_buffer_index + index]);
+    cfloat b = decode(fft_input.data[input_buffer_index + constants.element_stride - index]);
+    b = cfloat(b.x, -b.y);
+    cfloat even = a + b;
+    cfloat odd = cmul(a - b, c2r_twiddle(index, constants.element_stride));
 
-    fft_output.data[output_buffer_index + index] = even + odd;
+    fft_output.data[output_buffer_index + index] = encode(even + odd);
 }

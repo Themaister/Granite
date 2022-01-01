@@ -1,4 +1,5 @@
 #version 450
+#pragma optimize off
 /* Copyright (c) 2015-2022 Hans-Kristian Arntzen
  *
  * Permission is hereby granted, free of charge,
@@ -17,14 +18,21 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "fft_data_type_extensions.h"
 layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
 
 #include "fft_butterflies.h"
 
 // Add 1 to stride get ideal banked shared memory access patterns.
 const int RADIX_STRIDE = RADIX_COMPOSITE + 1;
+
+// Banking is generally on 32-bit values.
+#if defined(FFT_FULL_FP16) || defined(FFT_DATA_FP16)
+shared cfloat_data shared_buffer[gl_WorkGroupSize.x * gl_WorkGroupSize.y * RADIX_STRIDE];
+#else
 shared float shared_buffer_x[gl_WorkGroupSize.x * gl_WorkGroupSize.y * RADIX_STRIDE];
 shared float shared_buffer_y[gl_WorkGroupSize.x * gl_WorkGroupSize.y * RADIX_STRIDE];
+#endif
 
 uint get_shared_slice_offset()
 {
@@ -33,10 +41,16 @@ uint get_shared_slice_offset()
 }
 
 void store_shared(uint stride, uint offset,
-    vec2 a, vec2 b, vec2 c, vec2 d)
+    cfloat a, cfloat b, cfloat c, cfloat d)
 {
     uint shared_offset = get_shared_slice_offset() + offset;
 
+#if defined(FFT_FULL_FP16) || defined(FFT_DATA_FP16)
+    shared_buffer[shared_offset + 0u * stride] = encode(a);
+    shared_buffer[shared_offset + 1u * stride] = encode(b);
+    shared_buffer[shared_offset + 2u * stride] = encode(c);
+    shared_buffer[shared_offset + 3u * stride] = encode(d);
+#else
     shared_buffer_x[shared_offset + 0u * stride] = a.x;
     shared_buffer_x[shared_offset + 1u * stride] = b.x;
     shared_buffer_x[shared_offset + 2u * stride] = c.x;
@@ -46,14 +60,25 @@ void store_shared(uint stride, uint offset,
     shared_buffer_y[shared_offset + 1u * stride] = b.y;
     shared_buffer_y[shared_offset + 2u * stride] = c.y;
     shared_buffer_y[shared_offset + 3u * stride] = d.y;
+#endif
 }
 
 void store_shared(uint stride, uint offset,
-    vec2 a, vec2 b, vec2 c, vec2 d,
-    vec2 e, vec2 f, vec2 g, vec2 h)
+    cfloat a, cfloat b, cfloat c, cfloat d,
+    cfloat e, cfloat f, cfloat g, cfloat h)
 {
     uint shared_offset = get_shared_slice_offset() + offset;
 
+#if defined(FFT_FULL_FP16) || defined(FFT_DATA_FP16)
+    shared_buffer[shared_offset + 0u * stride] = encode(a);
+    shared_buffer[shared_offset + 1u * stride] = encode(b);
+    shared_buffer[shared_offset + 2u * stride] = encode(c);
+    shared_buffer[shared_offset + 3u * stride] = encode(d);
+    shared_buffer[shared_offset + 4u * stride] = encode(e);
+    shared_buffer[shared_offset + 5u * stride] = encode(f);
+    shared_buffer[shared_offset + 6u * stride] = encode(g);
+    shared_buffer[shared_offset + 7u * stride] = encode(h);
+#else
     shared_buffer_x[shared_offset + 0u * stride] = a.x;
     shared_buffer_x[shared_offset + 1u * stride] = b.x;
     shared_buffer_x[shared_offset + 2u * stride] = c.x;
@@ -71,13 +96,20 @@ void store_shared(uint stride, uint offset,
     shared_buffer_y[shared_offset + 5u * stride] = f.y;
     shared_buffer_y[shared_offset + 6u * stride] = g.y;
     shared_buffer_y[shared_offset + 7u * stride] = h.y;
+#endif
 }
 
 void load_shared(uint stride, uint offset,
-    out vec2 a, out vec2 b, out vec2 c, out vec2 d)
+    out cfloat a, out cfloat b, out cfloat c, out cfloat d)
 {
     uint shared_offset = get_shared_slice_offset() + offset;
 
+#if defined(FFT_FULL_FP16) || defined(FFT_DATA_FP16)
+    a = decode(shared_buffer[shared_offset + 0u * stride]);
+    b = decode(shared_buffer[shared_offset + 1u * stride]);
+    c = decode(shared_buffer[shared_offset + 2u * stride]);
+    d = decode(shared_buffer[shared_offset + 3u * stride]);
+#else
     a.x = shared_buffer_x[shared_offset + 0u * stride];
     b.x = shared_buffer_x[shared_offset + 1u * stride];
     c.x = shared_buffer_x[shared_offset + 2u * stride];
@@ -87,14 +119,25 @@ void load_shared(uint stride, uint offset,
     b.y = shared_buffer_y[shared_offset + 1u * stride];
     c.y = shared_buffer_y[shared_offset + 2u * stride];
     d.y = shared_buffer_y[shared_offset + 3u * stride];
+#endif
 }
 
 void load_shared(uint stride, uint offset,
-    out vec2 a, out vec2 b, out vec2 c, out vec2 d,
-    out vec2 e, out vec2 f, out vec2 g, out vec2 h)
+    out cfloat a, out cfloat b, out cfloat c, out cfloat d,
+    out cfloat e, out cfloat f, out cfloat g, out cfloat h)
 {
     uint shared_offset = get_shared_slice_offset() + offset;
 
+#if defined(FFT_FULL_FP16) || defined(FFT_DATA_FP16)
+    a = decode(shared_buffer[shared_offset + 0u * stride]);
+    b = decode(shared_buffer[shared_offset + 1u * stride]);
+    c = decode(shared_buffer[shared_offset + 2u * stride]);
+    d = decode(shared_buffer[shared_offset + 3u * stride]);
+    e = decode(shared_buffer[shared_offset + 4u * stride]);
+    f = decode(shared_buffer[shared_offset + 5u * stride]);
+    g = decode(shared_buffer[shared_offset + 6u * stride]);
+    h = decode(shared_buffer[shared_offset + 7u * stride]);
+#else
     a.x = shared_buffer_x[shared_offset + 0u * stride];
     b.x = shared_buffer_x[shared_offset + 1u * stride];
     c.x = shared_buffer_x[shared_offset + 2u * stride];
@@ -112,6 +155,7 @@ void load_shared(uint stride, uint offset,
     f.y = shared_buffer_y[shared_offset + 5u * stride];
     g.y = shared_buffer_y[shared_offset + 6u * stride];
     h.y = shared_buffer_y[shared_offset + 7u * stride];
+#endif
 }
 
 uint get_msb_reversed()
@@ -129,7 +173,7 @@ uint get_msb_reversed()
 }
 
 #ifdef FFT_INPUT_TEXTURE
-void get_uv_scale(out vec2 uv, out vec2 element_scale)
+void get_uv_scale(out highp vec2 uv, out highp vec2 element_scale)
 {
     uint msb_reversed = get_msb_reversed();
     uint element_stride = constants.element_stride;
@@ -169,91 +213,91 @@ void get_index_element_stride(out uint index, out uint element_stride)
 }
 #endif
 
-void load_inputs(out vec2 a, out vec2 b, out vec2 c, out vec2 d)
+void load_inputs(out cfloat a, out cfloat b, out cfloat c, out cfloat d)
 {
 #ifdef FFT_INPUT_TEXTURE
-    vec2 uv, element_scale;
+    highp vec2 uv, element_scale;
     get_uv_scale(uv, element_scale);
 
     if (RADIX_R2C)
     {
-        a.x = textureLod(fft_input, uv + 0.0 * element_scale, 0.0).x;
-        a.y = textureLodOffset(fft_input, uv + 0.0 * element_scale, 0.0, ivec2(1, 0)).x;
-        b.x = textureLod(fft_input, uv + 2.0 * element_scale, 0.0).x;
-        b.y = textureLodOffset(fft_input, uv + 2.0 * element_scale, 0.0, ivec2(1, 0)).x;
-        c.x = textureLod(fft_input, uv + 1.0 * element_scale, 0.0).x;
-        c.y = textureLodOffset(fft_input, uv + 1.0 * element_scale, 0.0, ivec2(1, 0)).x;
-        d.x = textureLod(fft_input, uv + 3.0 * element_scale, 0.0).x;
-        d.y = textureLodOffset(fft_input, uv + 3.0 * element_scale, 0.0, ivec2(1, 0)).x;
+        a.x = cfloat_scalar(textureLod(fft_input, uv + 0.0 * element_scale, 0.0).x);
+        a.y = cfloat_scalar(textureLodOffset(fft_input, uv + 0.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        b.x = cfloat_scalar(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).x);
+        b.y = cfloat_scalar(textureLodOffset(fft_input, uv + 2.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        c.x = cfloat_scalar(textureLod(fft_input, uv + 1.0 * element_scale, 0.0).x);
+        c.y = cfloat_scalar(textureLodOffset(fft_input, uv + 1.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        d.x = cfloat_scalar(textureLod(fft_input, uv + 3.0 * element_scale, 0.0).x);
+        d.y = cfloat_scalar(textureLodOffset(fft_input, uv + 3.0 * element_scale, 0.0, ivec2(1, 0)).x);
     }
     else
     {
-        a = textureLod(fft_input, uv + 0.0 * element_scale, 0.0).xy;
-        b = textureLod(fft_input, uv + 2.0 * element_scale, 0.0).xy;
-        c = textureLod(fft_input, uv + 1.0 * element_scale, 0.0).xy;
-        d = textureLod(fft_input, uv + 3.0 * element_scale, 0.0).xy;
+        a = cfloat(textureLod(fft_input, uv + 0.0 * element_scale, 0.0).xy);
+        b = cfloat(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).xy);
+        c = cfloat(textureLod(fft_input, uv + 1.0 * element_scale, 0.0).xy);
+        d = cfloat(textureLod(fft_input, uv + 3.0 * element_scale, 0.0).xy);
     }
 #else
     uint index, element_stride;
     get_index_element_stride(index, element_stride);
 
-    a = fft_input.data[index + 0 * element_stride];
-    b = fft_input.data[index + 2 * element_stride];
-    c = fft_input.data[index + 1 * element_stride];
-    d = fft_input.data[index + 3 * element_stride];
+    a = decode(fft_input.data[index + 0 * element_stride]);
+    b = decode(fft_input.data[index + 2 * element_stride]);
+    c = decode(fft_input.data[index + 1 * element_stride]);
+    d = decode(fft_input.data[index + 3 * element_stride]);
 #endif
 }
 
 void load_inputs(
-    out vec2 a, out vec2 b, out vec2 c, out vec2 d,
-    out vec2 e, out vec2 f, out vec2 g, out vec2 h)
+    out cfloat a, out cfloat b, out cfloat c, out cfloat d,
+    out cfloat e, out cfloat f, out cfloat g, out cfloat h)
 {
 #ifdef FFT_INPUT_TEXTURE
-    vec2 uv, element_scale;
+    highp vec2 uv, element_scale;
     get_uv_scale(uv, element_scale);
 
     if (RADIX_R2C)
     {
-        a.x = textureLod(fft_input, uv + 0.0 * element_scale, 0.0).x;
-        a.y = textureLodOffset(fft_input, uv + 0.0 * element_scale, 0.0, ivec2(1, 0)).x;
-        b.x = textureLod(fft_input, uv + 4.0 * element_scale, 0.0).x;
-        b.y = textureLodOffset(fft_input, uv + 4.0 * element_scale, 0.0, ivec2(1, 0)).x;
-        c.x = textureLod(fft_input, uv + 2.0 * element_scale, 0.0).x;
-        c.y = textureLodOffset(fft_input, uv + 2.0 * element_scale, 0.0, ivec2(1, 0)).x;
-        d.x = textureLod(fft_input, uv + 6.0 * element_scale, 0.0).x;
-        d.y = textureLodOffset(fft_input, uv + 6.0 * element_scale, 0.0, ivec2(1, 0)).x;
-        e.x = textureLod(fft_input, uv + 1.0 * element_scale, 0.0).x;
-        e.y = textureLodOffset(fft_input, uv + 1.0 * element_scale, 0.0, ivec2(1, 0)).x;
-        f.x = textureLod(fft_input, uv + 5.0 * element_scale, 0.0).x;
-        f.y = textureLodOffset(fft_input, uv + 5.0 * element_scale, 0.0, ivec2(1, 0)).x;
-        g.x = textureLod(fft_input, uv + 3.0 * element_scale, 0.0).x;
-        g.y = textureLodOffset(fft_input, uv + 3.0 * element_scale, 0.0, ivec2(1, 0)).x;
-        h.x = textureLod(fft_input, uv + 7.0 * element_scale, 0.0).x;
-        h.y = textureLodOffset(fft_input, uv + 7.0 * element_scale, 0.0, ivec2(1, 0)).x;
+        a.x = cfloat_scalar(textureLod(fft_input, uv + 0.0 * element_scale, 0.0).x);
+        a.y = cfloat_scalar(textureLodOffset(fft_input, uv + 0.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        b.x = cfloat_scalar(textureLod(fft_input, uv + 4.0 * element_scale, 0.0).x);
+        b.y = cfloat_scalar(textureLodOffset(fft_input, uv + 4.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        c.x = cfloat_scalar(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).x);
+        c.y = cfloat_scalar(textureLodOffset(fft_input, uv + 2.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        d.x = cfloat_scalar(textureLod(fft_input, uv + 6.0 * element_scale, 0.0).x);
+        d.y = cfloat_scalar(textureLodOffset(fft_input, uv + 6.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        e.x = cfloat_scalar(textureLod(fft_input, uv + 1.0 * element_scale, 0.0).x);
+        e.y = cfloat_scalar(textureLodOffset(fft_input, uv + 1.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        f.x = cfloat_scalar(textureLod(fft_input, uv + 5.0 * element_scale, 0.0).x);
+        f.y = cfloat_scalar(textureLodOffset(fft_input, uv + 5.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        g.x = cfloat_scalar(textureLod(fft_input, uv + 3.0 * element_scale, 0.0).x);
+        g.y = cfloat_scalar(textureLodOffset(fft_input, uv + 3.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        h.x = cfloat_scalar(textureLod(fft_input, uv + 7.0 * element_scale, 0.0).x);
+        h.y = cfloat_scalar(textureLodOffset(fft_input, uv + 7.0 * element_scale, 0.0, ivec2(1, 0)).x);
     }
     else
     {
-        a = textureLod(fft_input, uv + 0.0 * element_scale, 0.0).xy;
-        b = textureLod(fft_input, uv + 4.0 * element_scale, 0.0).xy;
-        c = textureLod(fft_input, uv + 2.0 * element_scale, 0.0).xy;
-        d = textureLod(fft_input, uv + 6.0 * element_scale, 0.0).xy;
-        e = textureLod(fft_input, uv + 1.0 * element_scale, 0.0).xy;
-        f = textureLod(fft_input, uv + 5.0 * element_scale, 0.0).xy;
-        g = textureLod(fft_input, uv + 3.0 * element_scale, 0.0).xy;
-        h = textureLod(fft_input, uv + 7.0 * element_scale, 0.0).xy;
+        a = cfloat(textureLod(fft_input, uv + 0.0 * element_scale, 0.0).xy);
+        b = cfloat(textureLod(fft_input, uv + 4.0 * element_scale, 0.0).xy);
+        c = cfloat(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).xy);
+        d = cfloat(textureLod(fft_input, uv + 6.0 * element_scale, 0.0).xy);
+        e = cfloat(textureLod(fft_input, uv + 1.0 * element_scale, 0.0).xy);
+        f = cfloat(textureLod(fft_input, uv + 5.0 * element_scale, 0.0).xy);
+        g = cfloat(textureLod(fft_input, uv + 3.0 * element_scale, 0.0).xy);
+        h = cfloat(textureLod(fft_input, uv + 7.0 * element_scale, 0.0).xy);
     }
 #else
     uint index, element_stride;
     get_index_element_stride(index, element_stride);
 
-    a = fft_input.data[index + 0 * element_stride];
-    b = fft_input.data[index + 4 * element_stride];
-    c = fft_input.data[index + 2 * element_stride];
-    d = fft_input.data[index + 6 * element_stride];
-    e = fft_input.data[index + 1 * element_stride];
-    f = fft_input.data[index + 5 * element_stride];
-    g = fft_input.data[index + 3 * element_stride];
-    h = fft_input.data[index + 7 * element_stride];
+    a = decode(fft_input.data[index + 0 * element_stride]);
+    b = decode(fft_input.data[index + 4 * element_stride]);
+    c = decode(fft_input.data[index + 2 * element_stride]);
+    d = decode(fft_input.data[index + 6 * element_stride]);
+    e = decode(fft_input.data[index + 1 * element_stride]);
+    f = decode(fft_input.data[index + 5 * element_stride]);
+    g = decode(fft_input.data[index + 3 * element_stride]);
+    h = decode(fft_input.data[index + 7 * element_stride]);
 #endif
 }
 
@@ -276,7 +320,7 @@ uint get_twiddle_phase()
     return get_principal_axis_index() & (constants.p - 1u);
 }
 
-void store_global(uint index, vec2 v)
+void store_global(uint index, cfloat v)
 {
 #ifdef FFT_OUTPUT_TEXTURE
     ivec2 coord;
@@ -316,13 +360,13 @@ void store_global(uint index, vec2 v)
         index += gl_GlobalInvocationID.y * constants.output_row_stride;
     }
 
-    fft_output.data[index] = v;
+    fft_output.data[index] = encode(v);
 #endif
 }
 
 void store_outputs(uint twiddle_phase,
     uint stride, uint offset,
-    vec2 a, vec2 b, vec2 c, vec2 d)
+    cfloat a, cfloat b, cfloat c, cfloat d)
 {
     uint p = constants.p;
     uint principal_index = get_principal_axis_index();
@@ -336,8 +380,8 @@ void store_outputs(uint twiddle_phase,
 
 void store_outputs(uint twiddle_phase,
     uint stride, uint offset,
-    vec2 a, vec2 b, vec2 c, vec2 d,
-    vec2 e, vec2 f, vec2 g, vec2 h)
+    cfloat a, cfloat b, cfloat c, cfloat d,
+    cfloat e, cfloat f, cfloat g, cfloat h)
 {
     uint p = constants.p;
     uint principal_index = get_principal_axis_index();
@@ -377,7 +421,7 @@ void main()
     uint twiddle_phase = get_twiddle_phase();
     uint p = constants.p;
 
-    vec2 a, b, c, d, e, f, g, h;
+    cfloat a, b, c, d, e, f, g, h;
 
     if (RADIX_FIRST == 4)
     {

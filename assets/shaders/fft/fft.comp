@@ -1,0 +1,481 @@
+#version 450
+/* Copyright (c) 2015-2022 Hans-Kristian Arntzen
+ *
+ * Permission is hereby granted, free of charge,
+ * to any person obtaining a copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+#include "fft_butterflies.h"
+
+// Add 1 to stride get ideal banked shared memory access patterns.
+const int RADIX_STRIDE = RADIX_COMPOSITE + 1;
+shared float shared_buffer_x[gl_WorkGroupSize.x * gl_WorkGroupSize.y * RADIX_STRIDE];
+shared float shared_buffer_y[gl_WorkGroupSize.x * gl_WorkGroupSize.y * RADIX_STRIDE];
+
+uint get_shared_slice_offset()
+{
+    uint slice_index = gl_LocalInvocationID.y * gl_WorkGroupSize.x + gl_LocalInvocationID.x;
+    return RADIX_STRIDE * slice_index;
+}
+
+void store_shared(uint stride, uint offset,
+    vec2 a, vec2 b, vec2 c, vec2 d)
+{
+    uint shared_offset = get_shared_slice_offset() + offset;
+
+    shared_buffer_x[shared_offset + 0u * stride] = a.x;
+    shared_buffer_x[shared_offset + 1u * stride] = b.x;
+    shared_buffer_x[shared_offset + 2u * stride] = c.x;
+    shared_buffer_x[shared_offset + 3u * stride] = d.x;
+
+    shared_buffer_y[shared_offset + 0u * stride] = a.y;
+    shared_buffer_y[shared_offset + 1u * stride] = b.y;
+    shared_buffer_y[shared_offset + 2u * stride] = c.y;
+    shared_buffer_y[shared_offset + 3u * stride] = d.y;
+}
+
+void store_shared(uint stride, uint offset,
+    vec2 a, vec2 b, vec2 c, vec2 d,
+    vec2 e, vec2 f, vec2 g, vec2 h)
+{
+    uint shared_offset = get_shared_slice_offset() + offset;
+
+    shared_buffer_x[shared_offset + 0u * stride] = a.x;
+    shared_buffer_x[shared_offset + 1u * stride] = b.x;
+    shared_buffer_x[shared_offset + 2u * stride] = c.x;
+    shared_buffer_x[shared_offset + 3u * stride] = d.x;
+    shared_buffer_x[shared_offset + 4u * stride] = e.x;
+    shared_buffer_x[shared_offset + 5u * stride] = f.x;
+    shared_buffer_x[shared_offset + 6u * stride] = g.x;
+    shared_buffer_x[shared_offset + 7u * stride] = h.x;
+
+    shared_buffer_y[shared_offset + 0u * stride] = a.y;
+    shared_buffer_y[shared_offset + 1u * stride] = b.y;
+    shared_buffer_y[shared_offset + 2u * stride] = c.y;
+    shared_buffer_y[shared_offset + 3u * stride] = d.y;
+    shared_buffer_y[shared_offset + 4u * stride] = e.y;
+    shared_buffer_y[shared_offset + 5u * stride] = f.y;
+    shared_buffer_y[shared_offset + 6u * stride] = g.y;
+    shared_buffer_y[shared_offset + 7u * stride] = h.y;
+}
+
+void load_shared(uint stride, uint offset,
+    out vec2 a, out vec2 b, out vec2 c, out vec2 d)
+{
+    uint shared_offset = get_shared_slice_offset() + offset;
+
+    a.x = shared_buffer_x[shared_offset + 0u * stride];
+    b.x = shared_buffer_x[shared_offset + 1u * stride];
+    c.x = shared_buffer_x[shared_offset + 2u * stride];
+    d.x = shared_buffer_x[shared_offset + 3u * stride];
+
+    a.y = shared_buffer_y[shared_offset + 0u * stride];
+    b.y = shared_buffer_y[shared_offset + 1u * stride];
+    c.y = shared_buffer_y[shared_offset + 2u * stride];
+    d.y = shared_buffer_y[shared_offset + 3u * stride];
+}
+
+void load_shared(uint stride, uint offset,
+    out vec2 a, out vec2 b, out vec2 c, out vec2 d,
+    out vec2 e, out vec2 f, out vec2 g, out vec2 h)
+{
+    uint shared_offset = get_shared_slice_offset() + offset;
+
+    a.x = shared_buffer_x[shared_offset + 0u * stride];
+    b.x = shared_buffer_x[shared_offset + 1u * stride];
+    c.x = shared_buffer_x[shared_offset + 2u * stride];
+    d.x = shared_buffer_x[shared_offset + 3u * stride];
+    e.x = shared_buffer_x[shared_offset + 4u * stride];
+    f.x = shared_buffer_x[shared_offset + 5u * stride];
+    g.x = shared_buffer_x[shared_offset + 6u * stride];
+    h.x = shared_buffer_x[shared_offset + 7u * stride];
+
+    a.y = shared_buffer_y[shared_offset + 0u * stride];
+    b.y = shared_buffer_y[shared_offset + 1u * stride];
+    c.y = shared_buffer_y[shared_offset + 2u * stride];
+    d.y = shared_buffer_y[shared_offset + 3u * stride];
+    e.y = shared_buffer_y[shared_offset + 4u * stride];
+    f.y = shared_buffer_y[shared_offset + 5u * stride];
+    g.y = shared_buffer_y[shared_offset + 6u * stride];
+    h.y = shared_buffer_y[shared_offset + 7u * stride];
+}
+
+uint get_msb_reversed()
+{
+    uint msb = gl_LocalInvocationID.z;
+    uint msb_reversed;
+
+    const int secondaries_log2 = RADIX_SECOND_LOG2 + RADIX_THIRD_LOG2;
+    if (secondaries_log2 > 1)
+        msb_reversed = bitfieldReverse(msb) >> (32 - secondaries_log2);
+    else
+        msb_reversed = msb;
+
+    return msb_reversed;
+}
+
+#ifdef FFT_INPUT_TEXTURE
+void get_uv_scale(out vec2 uv, out vec2 element_scale)
+{
+    uint msb_reversed = get_msb_reversed();
+    uint element_stride = constants.element_stride;
+    uv = vec2(gl_GlobalInvocationID.xy) * texture_constants.scale + texture_constants.offset;
+    element_scale = vec2(0.0);
+
+    if (RADIX_DIMENSION == DIMENSION_1D)
+    {
+        element_scale.x = float(RADIX_SECOND * RADIX_THIRD * element_stride) * texture_constants.scale.x;
+        uv.x += float(msb_reversed * element_stride) * texture_constants.scale.x;
+    }
+    else if (RADIX_DIMENSION == DIMENSION_2D)
+    {
+        element_scale.y = float(RADIX_SECOND * RADIX_THIRD * element_stride) * texture_constants.scale.y;
+        uv.y += float(msb_reversed * element_stride) * texture_constants.scale.y;
+    }
+}
+#else
+void get_index_element_stride(out uint index, out uint element_stride)
+{
+    uint msb_reversed = get_msb_reversed();
+    index = gl_GlobalInvocationID.x;
+    element_stride = constants.element_stride;
+
+    if (DISPATCH_2D)
+        index += gl_GlobalInvocationID.y * constants.input_row_stride;
+    if (DISPATCH_3D)
+        index += gl_WorkGroupID.z * constants.input_layer_stride;
+
+    if (RADIX_DIMENSION == DIMENSION_2D)
+        element_stride *= constants.input_row_stride;
+    if (RADIX_DIMENSION == DIMENSION_3D)
+        element_stride *= constants.input_layer_stride;
+
+    index += msb_reversed * element_stride;
+    element_stride *= RADIX_SECOND * RADIX_THIRD;
+}
+#endif
+
+void load_inputs(out vec2 a, out vec2 b, out vec2 c, out vec2 d)
+{
+#ifdef FFT_INPUT_TEXTURE
+    vec2 uv, element_scale;
+    get_uv_scale(uv, element_scale);
+
+    if (RADIX_R2C)
+    {
+        a.x = textureLod(fft_input, uv + 0.0 * element_scale, 0.0).x;
+        a.y = textureLodOffset(fft_input, uv + 0.0 * element_scale, 0.0, ivec2(1, 0)).x;
+        b.x = textureLod(fft_input, uv + 2.0 * element_scale, 0.0).x;
+        b.y = textureLodOffset(fft_input, uv + 2.0 * element_scale, 0.0, ivec2(1, 0)).x;
+        c.x = textureLod(fft_input, uv + 1.0 * element_scale, 0.0).x;
+        c.y = textureLodOffset(fft_input, uv + 1.0 * element_scale, 0.0, ivec2(1, 0)).x;
+        d.x = textureLod(fft_input, uv + 3.0 * element_scale, 0.0).x;
+        d.y = textureLodOffset(fft_input, uv + 3.0 * element_scale, 0.0, ivec2(1, 0)).x;
+    }
+    else
+    {
+        a = textureLod(fft_input, uv + 0.0 * element_scale, 0.0).xy;
+        b = textureLod(fft_input, uv + 2.0 * element_scale, 0.0).xy;
+        c = textureLod(fft_input, uv + 1.0 * element_scale, 0.0).xy;
+        d = textureLod(fft_input, uv + 3.0 * element_scale, 0.0).xy;
+    }
+#else
+    uint index, element_stride;
+    get_index_element_stride(index, element_stride);
+
+    a = fft_input.data[index + 0 * element_stride];
+    b = fft_input.data[index + 2 * element_stride];
+    c = fft_input.data[index + 1 * element_stride];
+    d = fft_input.data[index + 3 * element_stride];
+#endif
+}
+
+void load_inputs(
+    out vec2 a, out vec2 b, out vec2 c, out vec2 d,
+    out vec2 e, out vec2 f, out vec2 g, out vec2 h)
+{
+#ifdef FFT_INPUT_TEXTURE
+    vec2 uv, element_scale;
+    get_uv_scale(uv, element_scale);
+
+    if (RADIX_R2C)
+    {
+        a.x = textureLod(fft_input, uv + 0.0 * element_scale, 0.0).x;
+        a.y = textureLodOffset(fft_input, uv + 0.0 * element_scale, 0.0, ivec2(1, 0)).x;
+        b.x = textureLod(fft_input, uv + 4.0 * element_scale, 0.0).x;
+        b.y = textureLodOffset(fft_input, uv + 4.0 * element_scale, 0.0, ivec2(1, 0)).x;
+        c.x = textureLod(fft_input, uv + 2.0 * element_scale, 0.0).x;
+        c.y = textureLodOffset(fft_input, uv + 2.0 * element_scale, 0.0, ivec2(1, 0)).x;
+        d.x = textureLod(fft_input, uv + 6.0 * element_scale, 0.0).x;
+        d.y = textureLodOffset(fft_input, uv + 6.0 * element_scale, 0.0, ivec2(1, 0)).x;
+        e.x = textureLod(fft_input, uv + 1.0 * element_scale, 0.0).x;
+        e.y = textureLodOffset(fft_input, uv + 1.0 * element_scale, 0.0, ivec2(1, 0)).x;
+        f.x = textureLod(fft_input, uv + 5.0 * element_scale, 0.0).x;
+        f.y = textureLodOffset(fft_input, uv + 5.0 * element_scale, 0.0, ivec2(1, 0)).x;
+        g.x = textureLod(fft_input, uv + 3.0 * element_scale, 0.0).x;
+        g.y = textureLodOffset(fft_input, uv + 3.0 * element_scale, 0.0, ivec2(1, 0)).x;
+        h.x = textureLod(fft_input, uv + 7.0 * element_scale, 0.0).x;
+        h.y = textureLodOffset(fft_input, uv + 7.0 * element_scale, 0.0, ivec2(1, 0)).x;
+    }
+    else
+    {
+        a = textureLod(fft_input, uv + 0.0 * element_scale, 0.0).xy;
+        b = textureLod(fft_input, uv + 4.0 * element_scale, 0.0).xy;
+        c = textureLod(fft_input, uv + 2.0 * element_scale, 0.0).xy;
+        d = textureLod(fft_input, uv + 6.0 * element_scale, 0.0).xy;
+        e = textureLod(fft_input, uv + 1.0 * element_scale, 0.0).xy;
+        f = textureLod(fft_input, uv + 5.0 * element_scale, 0.0).xy;
+        g = textureLod(fft_input, uv + 3.0 * element_scale, 0.0).xy;
+        h = textureLod(fft_input, uv + 7.0 * element_scale, 0.0).xy;
+    }
+#else
+    uint index, element_stride;
+    get_index_element_stride(index, element_stride);
+
+    a = fft_input.data[index + 0 * element_stride];
+    b = fft_input.data[index + 4 * element_stride];
+    c = fft_input.data[index + 2 * element_stride];
+    d = fft_input.data[index + 6 * element_stride];
+    e = fft_input.data[index + 1 * element_stride];
+    f = fft_input.data[index + 5 * element_stride];
+    g = fft_input.data[index + 3 * element_stride];
+    h = fft_input.data[index + 7 * element_stride];
+#endif
+}
+
+uint get_principal_axis_index()
+{
+    uint index;
+
+    if (RADIX_DIMENSION == DIMENSION_1D)
+        index = gl_GlobalInvocationID.x;
+    else if (RADIX_DIMENSION == DIMENSION_2D)
+        index = gl_GlobalInvocationID.y;
+    else
+        index = gl_WorkGroupID.z;
+
+    return index;
+}
+
+uint get_twiddle_phase()
+{
+    return get_principal_axis_index() & (constants.p - 1u);
+}
+
+void store_global(uint index, vec2 v)
+{
+#ifdef FFT_OUTPUT_TEXTURE
+    ivec2 coord;
+    if (RADIX_DIMENSION == DIMENSION_1D)
+        coord = ivec2(index, gl_GlobalInvocationID.y);
+    else if (RADIX_DIMENSION == DIMENSION_2D)
+        coord = ivec2(gl_GlobalInvocationID.x, index);
+
+    if (RADIX_C2R)
+    {
+        coord = ivec2(2, 1) * coord + texture_constants.store_offset;
+        imageStore(fft_output, coord, vec4(v.x, 0.0, 0.0, 0.0));
+        coord.x += 1;
+        imageStore(fft_output, coord, vec4(v.y, 0.0, 0.0, 0.0));
+    }
+    else
+        imageStore(fft_output, coord + texture_constants.store_offset, vec4(v, 0.0, 0.0));
+#else
+    if (RADIX_DIMENSION == DIMENSION_1D)
+    {
+        if (DISPATCH_2D)
+            index += gl_GlobalInvocationID.y * constants.output_row_stride;
+        if (DISPATCH_3D)
+            index += gl_WorkGroupID.z * constants.output_layer_stride;
+    }
+    else if (RADIX_DIMENSION == DIMENSION_2D)
+    {
+        index *= constants.output_row_stride;
+        index += gl_GlobalInvocationID.x;
+        if (DISPATCH_3D)
+            index += gl_WorkGroupID.z * constants.output_layer_stride;
+    }
+    else
+    {
+        index *= constants.output_layer_stride;
+        index += gl_GlobalInvocationID.x;
+        index += gl_GlobalInvocationID.y * constants.output_row_stride;
+    }
+
+    fft_output.data[index] = v;
+#endif
+}
+
+void store_outputs(uint twiddle_phase,
+    uint stride, uint offset,
+    vec2 a, vec2 b, vec2 c, vec2 d)
+{
+    uint p = constants.p;
+    uint principal_index = get_principal_axis_index();
+    uint principal_output_index = ((principal_index - twiddle_phase) * RADIX_COMPOSITE) + twiddle_phase;
+
+    store_global(principal_output_index + (0u * stride + offset) * p, a);
+    store_global(principal_output_index + (1u * stride + offset) * p, b);
+    store_global(principal_output_index + (2u * stride + offset) * p, c);
+    store_global(principal_output_index + (3u * stride + offset) * p, d);
+}
+
+void store_outputs(uint twiddle_phase,
+    uint stride, uint offset,
+    vec2 a, vec2 b, vec2 c, vec2 d,
+    vec2 e, vec2 f, vec2 g, vec2 h)
+{
+    uint p = constants.p;
+    uint principal_index = get_principal_axis_index();
+    uint principal_output_index = ((principal_index - twiddle_phase) * RADIX_COMPOSITE) + twiddle_phase;
+
+    store_global(principal_output_index + (0u * stride + offset) * p, a);
+    store_global(principal_output_index + (1u * stride + offset) * p, b);
+    store_global(principal_output_index + (2u * stride + offset) * p, c);
+    store_global(principal_output_index + (3u * stride + offset) * p, d);
+    store_global(principal_output_index + (4u * stride + offset) * p, e);
+    store_global(principal_output_index + (5u * stride + offset) * p, f);
+    store_global(principal_output_index + (6u * stride + offset) * p, g);
+    store_global(principal_output_index + (7u * stride + offset) * p, h);
+}
+
+void main()
+{
+    // Each dispatch consists of N / radix FFTs.
+
+    // With Stockham autosort method we implicitly perform bit reverse.
+    // The msb log2(RADIX) bits are accessed for a given FFT.
+    // Element stride is essentially N / radix for 1D.
+    // Adjacent threads in the workgroup work on different FFTs, which allows us to get excellent
+    // coalesced load-stores. The downside is that we cannot host massive FFTs easily in shared memory.
+
+    // In order to perform a larger composite FFT (16, 32 or 64),
+    // more threads join the fun.
+    // In a stockham sort we have buffer index bits organized as:
+    // [top bits][inner][p].
+
+    // We compute the fft_index = [inner][p] by looking at all values in bitreverse([top bits]).
+    // The total bit pattern should get reversed through many iterations, and the new output indices are:
+    // [inner][bitreverse(top bits)][p].
+    // p' = [bitreverse(top bits)][p] in new iteration.
+
+    uint msb = gl_LocalInvocationID.z;
+    uint twiddle_phase = get_twiddle_phase();
+    uint p = constants.p;
+
+    vec2 a, b, c, d, e, f, g, h;
+
+    if (RADIX_FIRST == 4)
+    {
+        // Implicitly reverse bits. When working on a larger fft, we should access msb * 4 + {0, 1, 2, 3}, but we
+        // have to bitreverse all of this, so it is more like {0, 2, 1, 3} << msb_bits + bitreverse(msb) instead.
+        load_inputs(a, b, c, d);
+
+        if (P_FIRST)
+            FFT4_p1(a, b, c, d);
+        else
+            FFT4(a, b, c, d, twiddle_phase, p);
+
+        if (RADIX_SECOND > 1)
+            store_shared(1, msb * RADIX_FIRST, a, b, c, d);
+        else
+            store_outputs(twiddle_phase, 1, 0, a, b, c, d);
+    }
+    else if (RADIX_FIRST == 8)
+    {
+        load_inputs(a, b, c, d, e, f, g, h);
+
+        if (P_FIRST)
+            FFT8_p1(a, b, c, d, e, f, g, h);
+        else
+            FFT8(a, b, c, d, e, f, g, h, twiddle_phase, p);
+
+        if (RADIX_SECOND > 1)
+            store_shared(1, msb * RADIX_FIRST, a, b, c, d, e, f, g, h);
+        else
+            store_outputs(twiddle_phase, 1, 0, a, b, c, d, e, f, g, h);
+    }
+
+    if (RADIX_SECOND > 1)
+    {
+        barrier();
+
+        uint msb_lo = msb & (RADIX_SECOND - 1u);
+        uint msb_hi = msb >> RADIX_SECOND_LOG2;
+
+        // Low msb bits here work on the second radix pass.
+        // High msb bits here work on completely different blocks in parallel.
+
+        // RADIX_SECOND must be less or equal to RADIX_FIRST.
+        if (RADIX_SECOND == 4)
+        {
+            const int iteration_count = RADIX_FIRST / RADIX_SECOND;
+
+            for (int i = 0; i < iteration_count; i++)
+            {
+                // In the second iteration we only have 4 parallel threads working, so each thread needs to do
+                // 2x FFT4s.
+                load_shared(RADIX_FIRST, msb_lo + msb_hi * RADIX_FIRST * RADIX_SECOND, a, b, c, d);
+                FFT4(a, b, c, d, twiddle_phase + p * msb_lo, RADIX_FIRST * p);
+
+                if (RADIX_THIRD > 1)
+                    store_shared(RADIX_FIRST, msb_lo + msb_hi * RADIX_FIRST * RADIX_SECOND, a, b, c, d);
+                else
+                    store_outputs(twiddle_phase, RADIX_FIRST, msb_lo, a, b, c, d);
+
+                msb_lo += RADIX_SECOND;
+            }
+        }
+        else if (RADIX_SECOND == 8)
+        {
+            load_shared(RADIX_FIRST, msb_lo + msb_hi * RADIX_FIRST * RADIX_SECOND, a, b, c, d, e, f, g, h);
+            FFT8(a, b, c, d, e, f, g, h, twiddle_phase + p * msb_lo, RADIX_FIRST * p);
+
+            if (RADIX_THIRD > 1)
+                store_shared(RADIX_FIRST, msb_lo + msb_hi * RADIX_FIRST * RADIX_SECOND, a, b, c, d, e, f, g, h);
+            else
+                store_outputs(twiddle_phase, RADIX_FIRST, msb_lo, a, b, c, d, e, f, g, h);
+        }
+    }
+
+    if (RADIX_THIRD > 1)
+    {
+        barrier();
+
+        // RADIX_THIRD must be less or equal to RADIX_FIRST.
+        if (RADIX_THIRD == 4)
+        {
+            const int iteration_count = (RADIX_FIRST * RADIX_SECOND) / (RADIX_SECOND * RADIX_THIRD);
+
+            for (int i = 0; i < iteration_count; i++)
+            {
+                // In the second iteration we only have 4 parallel threads working, so each thread needs to do
+                // 2x FFT4s.
+                load_shared(RADIX_FIRST * RADIX_SECOND, msb, a, b, c, d);
+                FFT4(a, b, c, d, twiddle_phase + p * msb, RADIX_FIRST * RADIX_SECOND * p);
+                store_outputs(twiddle_phase, RADIX_FIRST * RADIX_SECOND, msb, a, b, c, d);
+                msb += RADIX_SECOND * RADIX_THIRD;
+            }
+        }
+        else if (RADIX_THIRD == 8)
+        {
+            load_shared(RADIX_FIRST * RADIX_SECOND, msb, a, b, c, d, e, f, g, h);
+            FFT8(a, b, c, d, e, f, g, h, twiddle_phase + p * msb, RADIX_FIRST * RADIX_SECOND * p);
+            store_outputs(twiddle_phase, RADIX_FIRST * RADIX_SECOND, msb, a, b, c, d, e, f, g, h);
+        }
+    }
+}

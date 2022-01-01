@@ -58,6 +58,7 @@ target_link_libraries(granite-renderer PUBLIC
 if (GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER)
     target_sources(granite-renderer PRIVATE
             ocean.hpp ocean.cpp
+            fft/fft.cpp fft/fft.hpp
             fft/glfft.cpp
             fft/glfft.hpp
             fft/glfft_common.hpp

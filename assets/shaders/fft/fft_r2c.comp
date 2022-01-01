@@ -1,0 +1,63 @@
+#version 450
+/* Copyright (c) 2015-2022 Hans-Kristian Arntzen
+ *
+ * Permission is hereby granted, free of charge,
+ * to any person obtaining a copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+#include "fft_common.h"
+
+vec2 r2c_twiddle(uint i, uint p)
+{
+    vec2 w = twiddle(i, p);
+    return vec2(w.y, -w.x);
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    uint input_buffer_index = 0u;
+    uint output_buffer_index = 0u;
+
+    if (DISPATCH_2D)
+    {
+        input_buffer_index += gl_GlobalInvocationID.y * constants.input_row_stride;
+        output_buffer_index += gl_GlobalInvocationID.y * constants.output_row_stride;
+    }
+
+    if (DISPATCH_3D)
+    {
+        input_buffer_index += gl_WorkGroupID.z * constants.input_layer_stride;
+        output_buffer_index += gl_WorkGroupID.z * constants.output_layer_stride;
+    }
+
+    if (index == 0u)
+    {
+        vec2 x = fft_input.data[input_buffer_index];
+        fft_output.data[output_buffer_index] = vec2(x.x + x.y, 0.0);
+        fft_output.data[output_buffer_index + constants.element_stride] = vec2(x.x - x.y, 0.0);
+    }
+    else
+    {
+        vec2 a = fft_input.data[input_buffer_index + index];
+        vec2 b = fft_input.data[input_buffer_index + constants.element_stride - index];
+        b = vec2(b.x, -b.y);
+        vec2 fe = a + b;
+        vec2 fo = cmul(a - b, r2c_twiddle(index, constants.p));
+        fft_output.data[output_buffer_index + index] = 0.5 * (fe + fo);
+    }
+}

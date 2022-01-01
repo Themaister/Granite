@@ -721,4 +721,18 @@ void FFT::execute(CommandBuffer &cmd, const Resource &dst, const Resource &src)
 		return;
 	impl->execute(cmd, dst, src);
 }
+
+void FFT::execute_iteration(CommandBuffer &cmd, const Resource &dst, const Resource &src, unsigned iteration)
+{
+	if (!impl)
+		return;
+	return impl->execute_iteration(cmd, dst, src, iteration);
+}
+
+unsigned FFT::get_num_iterations() const
+{
+	if (!impl)
+		return 0;
+	return unsigned(impl->iterations.size());
+}
 }

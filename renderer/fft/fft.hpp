@@ -91,6 +91,8 @@ public:
 
 	bool plan(Vulkan::Device *device, const Options &options);
 	void execute(Vulkan::CommandBuffer &cmd, const Resource &dst, const Resource &src);
+	void execute_iteration(Vulkan::CommandBuffer &cmd, const Resource &dst, const Resource &src, unsigned iteration);
+	unsigned get_num_iterations() const;
 	void release();
 
 private:

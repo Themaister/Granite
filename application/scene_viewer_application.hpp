@@ -52,6 +52,7 @@ public:
 	struct CLIConfig
 	{
 		bool timestamp = false;
+		bool ocean = false;
 		int camera_index = -1;
 	};
 	SceneViewerApplication(const std::string &path,

@@ -29,7 +29,7 @@
 #include "task_composer.hpp"
 #include "thread_group.hpp"
 #include "utils/image_utils.hpp"
-//#include "ocean.hpp"
+#include "ocean.hpp"
 #include <float.h>
 #include <stdexcept>
 
@@ -284,8 +284,9 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	scene_loader.load_scene(path);
 	read_lights();
 
-	// Why not. :D
-	//Ocean::add_to_scene(scene_loader.get_scene());
+	if (cli_config.ocean)
+		Ocean::add_to_scene(scene_loader.get_scene());
+
 	{
 		auto &scene = scene_loader.get_scene();
 		auto node = scene.create_node();

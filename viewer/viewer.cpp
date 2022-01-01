@@ -51,6 +51,7 @@ Application *application_create(int argc, char **argv)
 	cbs.add("--quirks", [&](CLIParser &parser) { quirks = parser.next_string(); });
 	cbs.add("--timestamp", [&](CLIParser &) { cli_config.timestamp = true; });
 	cbs.add("--camera-index", [&](CLIParser &parser) { cli_config.camera_index = int(parser.next_uint()); });
+	cbs.add("--ocean", [&](CLIParser &) { cli_config.ocean = true; });
 	cbs.default_handler = [&](const char *arg) { path = arg; };
 
 	CLIParser parser(std::move(cbs), argc - 1, argv + 1);

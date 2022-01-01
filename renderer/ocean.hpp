@@ -25,8 +25,7 @@
 #include "abstract_renderable.hpp"
 #include "scene.hpp"
 #include "application_wsi_events.hpp"
-#include "fft/glfft.hpp"
-#include "glfft_granite_interface.hpp"
+#include "fft/fft.hpp"
 #include "application_events.hpp"
 #include <vector>
 
@@ -86,11 +85,9 @@ private:
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
 	bool on_frame_tick(const FrameTickEvent &e);
-	std::unique_ptr<GLFFT::FFT> height_fft;
-	std::unique_ptr<GLFFT::FFT> normal_fft;
-	std::unique_ptr<GLFFT::FFT> displacement_fft;
-	FFTInterface fft_iface;
-	FFTDeferredCommandBuffer deferred_cmd;
+	FFT height_fft;
+	FFT normal_fft;
+	FFT displacement_fft;
 
 	float frequency_bands[FrequencyBands];
 	bool freq_band_modulation = false;

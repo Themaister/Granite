@@ -165,20 +165,30 @@ void Ocean::set_scene(Scene *)
 {
 }
 
-void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
+void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target, RenderPassCreator::DependencyFlags dep_flags)
 {
-	target.add_indirect_buffer_input("ocean-lod-counter");
-	target.add_uniform_input("ocean-lod-data", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
-	target.add_texture_input("ocean-lods", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+	if ((dep_flags & RenderPassCreator::GEOMETRY_BIT) != 0)
+	{
+		target.add_indirect_buffer_input("ocean-lod-counter");
+		target.add_uniform_input("ocean-lod-data", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+		target.add_texture_input("ocean-lods", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+		target.add_texture_input("ocean-height-displacement-output", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+	}
 
-	target.add_texture_input("ocean-height-displacement-output", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
-	target.add_texture_input("ocean-gradient-jacobian-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-	target.add_texture_input("ocean-normal-fft-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+	if ((dep_flags & RenderPassCreator::MATERIAL_BIT) != 0)
+	{
+		target.add_texture_input("ocean-gradient-jacobian-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+		target.add_texture_input("ocean-normal-fft-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
-	if (!config.refraction.input.empty() && config.refraction.input_is_render_graph)
-		refraction_resource = &target.add_texture_input(config.refraction.input);
-	else
-		refraction_resource = nullptr;
+		if (!config.refraction.input.empty() && config.refraction.input_is_render_graph)
+			refraction_resource = &target.add_texture_input(config.refraction.input);
+		else
+			refraction_resource = nullptr;
+	}
+}
+
+void Ocean::setup_render_pass_dependencies(RenderGraph &)
+{
 }
 
 void Ocean::setup_render_pass_resources(RenderGraph &graph_)

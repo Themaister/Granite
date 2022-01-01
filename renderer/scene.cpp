@@ -109,12 +109,22 @@ void Scene::add_render_passes(RenderGraph &graph)
 	}
 }
 
-void Scene::add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pass)
+void Scene::add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pass,
+                                         RenderPassCreator::DependencyFlags dep_flags)
 {
 	for (auto &pass : render_pass_creators)
 	{
 		auto *rpass = get_component<RenderPassComponent>(pass)->creator;
-		rpass->setup_render_pass_dependencies(graph, main_pass);
+		rpass->setup_render_pass_dependencies(graph, main_pass, dep_flags);
+	}
+}
+
+void Scene::add_render_pass_dependencies(RenderGraph &graph)
+{
+	for (auto &pass : render_pass_creators)
+	{
+		auto *rpass = get_component<RenderPassComponent>(pass)->creator;
+		rpass->setup_render_pass_dependencies(graph);
 	}
 }
 

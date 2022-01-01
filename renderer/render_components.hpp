@@ -102,11 +102,25 @@ struct CameraComponent : ComponentBase
 
 struct RenderPassCreator
 {
+	enum DependencyBits
+	{
+		// A pass only requires geometry, e.g. a depth prepass.
+		GEOMETRY_BIT = 1 << 0,
+		// G-buffer or Forward.
+		MATERIAL_BIT = 1 << 1,
+		// Deferred lights or Forward.
+		LIGHTING_BIT = 1 << 2
+	};
+	using DependencyFlags = uint32_t;
+
 	virtual ~RenderPassCreator() = default;
 	virtual void add_render_passes(RenderGraph &graph) = 0;
 	virtual void set_base_renderer(const RendererSuite *suite) = 0;
 	virtual void set_base_render_context(const RenderContext *context) = 0;
-	virtual void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) = 0;
+	virtual void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target, DependencyFlags dep_flags) = 0;
+	// Called once (and only once) to set up any dependencies not directly tied to core render passes.
+	// Called right before we bake the graph so all passes have been added to the graph.
+	virtual void setup_render_pass_dependencies(RenderGraph &graph) = 0;
 	virtual void setup_render_pass_resources(RenderGraph &graph) = 0;
 	virtual void set_scene(Scene *scene) = 0;
 };

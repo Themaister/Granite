@@ -783,6 +783,7 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 
 		// TODO: Find a good way to let the prepass renderer share renderer with opaque / transparent passes.
 		prepass_depth.set_render_pass_interface(std::move(renderer));
+		scene_loader.get_scene().add_render_pass_dependencies(graph, prepass_depth, RenderPassCreator::GEOMETRY_BIT);
 		setup_ssao_naive(graph, context, tagcat("ssao-output", tag), tagcat("depth-transient", tag), "");
 	}
 
@@ -846,7 +847,10 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	shadows = nullptr;
 	if (config.directional_light_shadows)
 		shadows = &lighting_pass.add_texture_input("shadow-main");
-	scene_loader.get_scene().add_render_pass_dependencies(graph, lighting_pass);
+	scene_loader.get_scene().add_render_pass_dependencies(graph, lighting_pass,
+	                                                      RenderPassCreator::LIGHTING_BIT |
+	                                                      RenderPassCreator::GEOMETRY_BIT |
+	                                                      RenderPassCreator::MATERIAL_BIT);
 }
 
 void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::string &tag)
@@ -939,7 +943,11 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	if (config.directional_light_shadows)
 		shadows = &lighting_pass.add_texture_input("shadow-main");
 
-	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
+	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer,
+	                                                      RenderPassCreator::GEOMETRY_BIT |
+	                                                      RenderPassCreator::MATERIAL_BIT);
+	scene_loader.get_scene().add_render_pass_dependencies(graph, lighting_pass,
+	                                                      RenderPassCreator::LIGHTING_BIT);
 }
 
 void SceneViewerApplication::add_main_pass(Device &device, const std::string &tag)
@@ -1154,6 +1162,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	else
 		graph.set_backbuffer_source(ui_source);
 
+	scene_loader.get_scene().add_render_pass_dependencies(graph);
 	graph.bake();
 	//graph.log();
 	graph.install_physical_buffers(move(physical_buffers));

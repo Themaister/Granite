@@ -1258,12 +1258,20 @@ void TexturePlane::setup_render_pass_resources(RenderGraph &graph)
 		refraction = &graph.get_physical_texture_resource(graph.get_texture_resource(refraction_name).get_physical_index());
 }
 
-void TexturePlane::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
+void TexturePlane::setup_render_pass_dependencies(RenderGraph &, RenderPass &target,
+                                                  RenderPassCreator::DependencyFlags dep_type)
 {
-	if (need_reflection)
-		target.add_texture_input(reflection_name);
-	if (need_refraction)
-		target.add_texture_input(refraction_name);
+	if ((dep_type & RenderPassCreator::MATERIAL_BIT) != 0)
+	{
+		if (need_reflection)
+			target.add_texture_input(reflection_name);
+		if (need_refraction)
+			target.add_texture_input(refraction_name);
+	}
+}
+
+void TexturePlane::setup_render_pass_dependencies(RenderGraph &)
+{
 }
 
 void TexturePlane::set_scene(Scene *scene_)

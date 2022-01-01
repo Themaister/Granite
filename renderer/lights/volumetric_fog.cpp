@@ -290,9 +290,15 @@ void VolumetricFog::set_base_render_context(const RenderContext *context_)
 	context = context_;
 }
 
-void VolumetricFog::setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target)
+void VolumetricFog::setup_render_pass_dependencies(RenderGraph &, RenderPass &target,
+                                                   RenderPassCreator::DependencyFlags dep_flags)
 {
-	target.add_texture_input("volumetric-fog-output");
+	if ((dep_flags & RenderPassCreator::LIGHTING_BIT) != 0)
+		target.add_texture_input("volumetric-fog-output");
+}
+
+void VolumetricFog::setup_render_pass_dependencies(RenderGraph &graph)
+{
 	for (auto &dep : texture_dependencies)
 		pass->add_texture_input(dep);
 	for (auto &dep : buffer_dependencies)

@@ -91,7 +91,9 @@ private:
 	float inscatter_mod = 0.25f;
 
 	void add_render_passes(RenderGraph &graph) override;
-	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
+	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target,
+	                                    RenderPassCreator::DependencyFlags dep_type) override;
+	void setup_render_pass_dependencies(RenderGraph &graph) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void set_base_renderer(const RendererSuite *) override;
 	void set_base_render_context(const RenderContext *context) override;

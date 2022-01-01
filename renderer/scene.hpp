@@ -96,7 +96,9 @@ public:
 	EntityPool &get_entity_pool();
 
 	void add_render_passes(RenderGraph &graph);
-	void add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pass);
+	void add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pass,
+	                                  RenderPassCreator::DependencyFlags dep_flags);
+	void add_render_pass_dependencies(RenderGraph &graph);
 	void set_render_pass_data(const RendererSuite *suite, const RenderContext *context);
 	void bind_render_graph_resources(RenderGraph &graph);
 

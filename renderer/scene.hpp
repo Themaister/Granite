@@ -92,6 +92,7 @@ public:
 
 	void gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityList &list) const;
 	void gather_unbounded_renderables(VisibilityList &list) const;
+	void gather_opaque_floating_renderables(VisibilityList &list) const;
 	EnvironmentComponent *get_environment() const;
 	EntityPool &get_entity_pool();
 
@@ -301,6 +302,9 @@ private:
 	const ComponentGroupVector<
 			UnboundedComponent,
 			RenderableComponent> &backgrounds;
+	const ComponentGroupVector<
+			OpaqueFloatingComponent,
+			RenderableComponent> &opaque_floating;
 	const ComponentGroupVector<
 			CameraComponent,
 			CachedTransformComponent> &cameras;

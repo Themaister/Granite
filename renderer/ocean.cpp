@@ -89,8 +89,7 @@ Ocean::Handles Ocean::add_to_scene(Scene &scene, const OceanConfig &config)
 	auto *renderable = handles.entity->allocate_component<RenderableComponent>();
 	renderable->renderable = ocean;
 
-	handles.entity->allocate_component<OpaqueComponent>();
-	handles.entity->allocate_component<UnboundedComponent>();
+	handles.entity->allocate_component<OpaqueFloatingComponent>();
 	handles.ocean = ocean.get();
 
 	return handles;

@@ -212,6 +212,11 @@ struct OpaqueComponent : ComponentBase
 	GRANITE_COMPONENT_TYPE_DECL(OpaqueComponent)
 };
 
+struct OpaqueFloatingComponent : ComponentBase
+{
+	GRANITE_COMPONENT_TYPE_DECL(OpaqueFloatingComponent)
+};
+
 struct TransparentComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(TransparentComponent)

@@ -588,6 +588,11 @@ public:
 		}
 	}
 
+	inline void set_specialization_constant(unsigned index, bool value)
+	{
+		set_specialization_constant(index, uint32_t(value));
+	}
+
 	void set_surface_transform_specialization_constants(unsigned base_index);
 
 	inline void enable_subgroup_size_control(bool subgroup_control_size)

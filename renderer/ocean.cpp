@@ -768,12 +768,12 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 		cmd.push_constants(&ocean_info.data, 0, sizeof(ocean_info.data));
 		cmd.set_texture(2, 0, *ocean_info.heightmap, Vulkan::StockSampler::LinearWrap);
 		cmd.set_texture(2, 1, *ocean_info.lod_map, Vulkan::StockSampler::LinearWrap);
-		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::TrilinearWrap);
-		cmd.set_texture(2, 3, *ocean_info.normal, Vulkan::StockSampler::TrilinearWrap);
+		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::DefaultGeometryFilterWrap);
+		cmd.set_texture(2, 3, *ocean_info.normal, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 
 		if (ocean_info.refraction)
 		{
-			cmd.set_texture(2, 4, *ocean_info.refraction, Vulkan::StockSampler::TrilinearWrap);
+			cmd.set_texture(2, 4, *ocean_info.refraction, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 			*cmd.allocate_typed_constant_data<RefractionData>(2, 5, 1) = ocean_info.refraction_data;
 		}
 

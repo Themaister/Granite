@@ -1,5 +1,8 @@
 #version 450
+
+// Weird NV compiler bug when the SPIR-V is optimized. Works fine on Intel ANV, so ... *shrug*
 #pragma optimize off
+
 /* Copyright (c) 2015-2022 Hans-Kristian Arntzen
  *
  * Permission is hereby granted, free of charge,
@@ -407,17 +410,21 @@ void main()
     // The msb log2(RADIX) bits are accessed for a given FFT.
     // Element stride is essentially N / radix for 1D.
     // Adjacent threads in the workgroup work on different FFTs, which allows us to get excellent
-    // coalesced load-stores. The downside is that we cannot host massive FFTs easily in shared memory.
+    // coalesced load-stores given large enough X/Y workgroup sizes.
+    // The downside is that we cannot host massive FFTs easily in shared memory, but in general
+    // our use cases are mostly modest FFT sizes in any given dimensions.
 
-    // In order to perform a larger composite FFT (16, 32 or 64),
-    // more threads join the fun.
+    // In order to perform a larger composite FFT (16 up to 512) more threads join the fun.
     // In a stockham sort we have buffer index bits organized as:
-    // [top bits][inner][p].
+    // [top bits][inner bits][p bits].
 
-    // We compute the fft_index = [inner][p] by looking at all values in bitreverse([top bits]).
+    // We compute the fft_index = [inner bits][p bits] by looking at all values in bitreverse([top bits]).
     // The total bit pattern should get reversed through many iterations, and the new output indices are:
     // [inner][bitreverse(top bits)][p].
     // p' = [bitreverse(top bits)][p] in new iteration.
+
+    // For shared memory, the memory layout looks just like a normal bit-reversed DIT scheme with small
+    // butterflies which become larger and larger.
 
     uint msb = gl_LocalInvocationID.z;
     uint twiddle_phase = get_twiddle_phase();

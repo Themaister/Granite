@@ -28,6 +28,11 @@ cfloat r2c_twiddle(uint i, uint p)
     return cfloat(w.y, -w.x);
 }
 
+// In R2C, we run this pass after a complex N / 2 1D transform.
+// The assumption is that we have a FFT(even) + FFT(j * odd).
+// Through conjugate symmetry, we can recover the even and odds and do a single radix-2 pass to make a full FFT.
+// Only store N / 2 + 1 outputs per row.
+
 void main()
 {
     uint index = gl_GlobalInvocationID.x;

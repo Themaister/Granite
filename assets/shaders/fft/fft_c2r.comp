@@ -28,6 +28,9 @@ cfloat c2r_twiddle(uint i, uint p)
     return cfloat(-w.y, w.x);
 }
 
+// Similar to R2C, except in reverse. Reads N / 2 + 1 elements per row and emits a N / 2 complex input for
+// N / 2 FFT.
+
 void main()
 {
     uint index = gl_GlobalInvocationID.x;

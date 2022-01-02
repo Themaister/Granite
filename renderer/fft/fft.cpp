@@ -91,11 +91,6 @@ struct FFT::Impl
 	const char *get_fp16_define() const;
 };
 
-static bool is_pow2(unsigned x)
-{
-	return (x & (x - 1)) == 0;
-}
-
 static BufferHandle build_twiddle_buffer(Device &device, int dir, int N, FFT::DataType data_type)
 {
 	std::vector<vec2> values;
@@ -540,7 +535,7 @@ bool FFT::Impl::plan(Device *device_, const Options &options_)
 
 	constexpr unsigned lowest_fft_radix = 4;
 
-	if (!is_pow2(options.Nx))
+	if (!Util::is_pow2(options.Nx))
 		return false;
 	if (options.Nx < lowest_fft_radix)
 		return false;
@@ -548,7 +543,7 @@ bool FFT::Impl::plan(Device *device_, const Options &options_)
 
 	if (options.dimensions >= 2)
 	{
-		if (!is_pow2(options.Ny))
+		if (!Util::is_pow2(options.Ny))
 			return false;
 		if (options.Ny < lowest_fft_radix)
 			return false;
@@ -557,7 +552,7 @@ bool FFT::Impl::plan(Device *device_, const Options &options_)
 
 	if (options.dimensions >= 3)
 	{
-		if (!is_pow2(options.Nz))
+		if (!Util::is_pow2(options.Nz))
 			return false;
 		if (options.Nz < lowest_fft_radix)
 			return false;
@@ -672,6 +667,7 @@ void FFT::Impl::execute_iteration(CommandBuffer &cmd, const Resource &dst, const
 			texture_ubo.storage_offset[j] = dst.image.output_offset[j];
 		}
 
+		// We stride in terms of complex elements for R2C transforms. Simplifies shader logic a lot.
 		if (options.mode == Mode::RealToComplex)
 			texture_ubo.scale[0] *= 2.0f;
 

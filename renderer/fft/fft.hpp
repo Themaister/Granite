@@ -61,6 +61,7 @@ public:
 		ResourceType output_resource = ResourceType::Buffer;
 		Mode mode = Mode::ForwardComplexToComplex;
 		DataType data_type = DataType::FP32;
+		// If Ny or Nz are larger than 1 and dimensions is smaller than 2 or 3 respectively, we get batched FFTs.
 		unsigned dimensions = 1;
 	};
 
@@ -69,7 +70,15 @@ public:
 		const Vulkan::Buffer *buffer;
 		VkDeviceSize offset;
 		VkDeviceSize size;
+		// Strides are expressed in number of elements in the appropriate data type.
+		// For real inputs or outputs, number of elements are treated as number of scalars,
+		// otherwise, number of complex numbers.
+		// For FP16 C2R or R2C transforms, a real buffer must have a stride divisible by 2 since
+		// we only load store in terms of whole complex numbers.
+		// Usually equal to Options::Nx.
 		uint32_t row_stride;
+		// Distance in elements between 3D slices.
+		// Usually equal to Options::Nx * Options::Ny.
 		uint32_t layer_stride;
 	};
 

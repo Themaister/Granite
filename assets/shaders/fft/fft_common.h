@@ -45,10 +45,10 @@ layout(set = 0, binding = 2) readonly buffer Twiddles
 layout(set = 0, binding = 3) uniform Constants
 {
 	uint element_stride; // N / RADIX_COMPOSITE
-	uint input_row_stride; // For 2D
-	uint input_layer_stride; // For 3D
-	uint output_row_stride; // For 2D
-	uint output_layer_stride; // For 3D
+	uint input_row_stride;
+	uint input_layer_stride;
+	uint output_row_stride;
+	uint output_layer_stride;
 	uint p;
 } constants;
 

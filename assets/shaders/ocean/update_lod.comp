@@ -23,7 +23,7 @@ void main()
     vec3 dist = registers.camera_pos - vec3(center_pos.x, 0.0, center_pos.y);
     float dist_sqr = dot(dist, dist);
 
-    float lod = 0.5 * log2(dist_sqr + 8.0) - 2.0;
+    float lod = 0.5 * log2(dist_sqr + 8.0) - 3.0;
 
     lod = clamp(lod, 0.0, registers.max_lod);
     ivec2 image_coord = (id + registers.image_offset) & (registers.num_threads - 1);

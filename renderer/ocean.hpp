@@ -38,12 +38,12 @@ static constexpr unsigned MaxOceanLayers = 4;
 
 struct OceanConfig
 {
-	unsigned fft_resolution = 512;
+	unsigned fft_resolution = 1024;
 	unsigned displacement_downsample = 1;
-	unsigned grid_count = 32;
+	unsigned grid_count = 64;
 	unsigned grid_resolution = 128;
 
-	vec2 ocean_size = vec2(512.0f);
+	vec2 ocean_size = vec2(1024.0f);
 	vec2 wind_velocity = vec2(10.0f, 5.0f);
 	float normal_mod = 7.3f;
 	float amplitude = 0.2f;

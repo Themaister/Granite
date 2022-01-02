@@ -127,7 +127,9 @@ private:
 	void add_render_passes_legacy(RenderGraph &graph);
 	void add_render_passes_bindless(RenderGraph &graph);
 
-	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
+	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target,
+	                                    RenderPassCreator::DependencyFlags dep_flags) override;
+	void setup_render_pass_dependencies(RenderGraph &graph) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void refresh(const RenderContext &context_, TaskComposer &composer) override;
 	void refresh_bindless(const RenderContext &context_, TaskComposer &composer);

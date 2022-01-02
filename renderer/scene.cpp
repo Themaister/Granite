@@ -42,6 +42,7 @@ Scene::Scene()
 	  dynamic_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
 	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
+	  opaque_floating(pool.get_component_group<OpaqueFloatingComponent, RenderableComponent>()),
 	  cameras(pool.get_component_group<CameraComponent, CachedTransformComponent>()),
 	  directional_lights(pool.get_component_group<DirectionalLightComponent, CachedTransformComponent>()),
 	  volumetric_diffuse_lights(pool.get_component_group<VolumetricDiffuseLightComponent, CachedSpatialTransformTimestampComponent, RenderInfoComponent>()),
@@ -109,12 +110,22 @@ void Scene::add_render_passes(RenderGraph &graph)
 	}
 }
 
-void Scene::add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pass)
+void Scene::add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pass,
+                                         RenderPassCreator::DependencyFlags dep_flags)
 {
 	for (auto &pass : render_pass_creators)
 	{
 		auto *rpass = get_component<RenderPassComponent>(pass)->creator;
-		rpass->setup_render_pass_dependencies(graph, main_pass);
+		rpass->setup_render_pass_dependencies(graph, main_pass, dep_flags);
+	}
+}
+
+void Scene::add_render_pass_dependencies(RenderGraph &graph)
+{
+	for (auto &pass : render_pass_creators)
+	{
+		auto *rpass = get_component<RenderPassComponent>(pass)->creator;
+		rpass->setup_render_pass_dependencies(graph);
 	}
 }
 
@@ -211,6 +222,12 @@ EntityPool &Scene::get_entity_pool()
 void Scene::gather_unbounded_renderables(VisibilityList &list) const
 {
 	for (auto &background : backgrounds)
+		list.push_back({ get_component<RenderableComponent>(background)->renderable.get(), nullptr });
+}
+
+void Scene::gather_opaque_floating_renderables(VisibilityList &list) const
+{
+	for (auto &background : opaque_floating)
 		list.push_back({ get_component<RenderableComponent>(background)->renderable.get(), nullptr });
 }
 

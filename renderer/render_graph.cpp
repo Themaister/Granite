@@ -388,7 +388,18 @@ void RenderPass::add_external_lock(const std::string &name, VkPipelineStageFlags
 {
 	auto *iface = graph.find_external_lock_interface(name);
 	if (iface)
+	{
+		for (auto &lock : lock_interfaces)
+		{
+			if (lock.iface == iface)
+			{
+				lock.stages |= stages;
+				return;
+			}
+		}
+
 		lock_interfaces.push_back({ iface, stages });
+	}
 }
 
 RenderTextureResource &RenderPass::set_depth_stencil_input(const std::string &name)

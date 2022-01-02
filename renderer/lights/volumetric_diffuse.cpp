@@ -726,10 +726,15 @@ void VolumetricDiffuseLightManager::set_fallback_render_context(const RenderCont
 	fallback_render_context = context;
 }
 
-void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target)
+void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &, RenderPass &target,
+                                                                   RenderPassCreator::DependencyFlags dep_flags)
 {
-	target.add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+	if ((dep_flags & RenderPassCreator::LIGHTING_BIT) != 0)
+		target.add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+}
 
+void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &graph)
+{
 	auto *light_pass = graph.find_pass("probe-light");
 	assert(light_pass);
 	if (graph.find_pass("clustering-bindless"))

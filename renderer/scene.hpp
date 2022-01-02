@@ -92,11 +92,14 @@ public:
 
 	void gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityList &list) const;
 	void gather_unbounded_renderables(VisibilityList &list) const;
+	void gather_opaque_floating_renderables(VisibilityList &list) const;
 	EnvironmentComponent *get_environment() const;
 	EntityPool &get_entity_pool();
 
 	void add_render_passes(RenderGraph &graph);
-	void add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pass);
+	void add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pass,
+	                                  RenderPassCreator::DependencyFlags dep_flags);
+	void add_render_pass_dependencies(RenderGraph &graph);
 	void set_render_pass_data(const RendererSuite *suite, const RenderContext *context);
 	void bind_render_graph_resources(RenderGraph &graph);
 
@@ -299,6 +302,9 @@ private:
 	const ComponentGroupVector<
 			UnboundedComponent,
 			RenderableComponent> &backgrounds;
+	const ComponentGroupVector<
+			OpaqueFloatingComponent,
+			RenderableComponent> &opaque_floating;
 	const ComponentGroupVector<
 			CameraComponent,
 			CachedTransformComponent> &cameras;

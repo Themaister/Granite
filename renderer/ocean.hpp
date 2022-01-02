@@ -25,8 +25,7 @@
 #include "abstract_renderable.hpp"
 #include "scene.hpp"
 #include "application_wsi_events.hpp"
-#include "fft/glfft.hpp"
-#include "glfft_granite_interface.hpp"
+#include "fft/fft.hpp"
 #include "application_events.hpp"
 #include <vector>
 
@@ -86,11 +85,9 @@ private:
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
 	bool on_frame_tick(const FrameTickEvent &e);
-	std::unique_ptr<GLFFT::FFT> height_fft;
-	std::unique_ptr<GLFFT::FFT> normal_fft;
-	std::unique_ptr<GLFFT::FFT> displacement_fft;
-	FFTInterface fft_iface;
-	FFTDeferredCommandBuffer deferred_cmd;
+	FFT height_fft;
+	FFT normal_fft;
+	FFT displacement_fft;
 
 	float frequency_bands[FrequencyBands];
 	bool freq_band_modulation = false;
@@ -111,8 +108,9 @@ private:
 	void add_render_passes(RenderGraph &graph) override;
 	void set_base_renderer(const RendererSuite *suite) override;
 	void set_base_render_context(const RenderContext *context) override;
-	void setup_render_pass_dependencies(RenderGraph &graph,
-	                                    RenderPass &target) override;
+	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target,
+	                                    RenderPassCreator::DependencyFlags dep_type) override;
+	void setup_render_pass_dependencies(RenderGraph &graph) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void set_scene(Scene *scene) override;
 

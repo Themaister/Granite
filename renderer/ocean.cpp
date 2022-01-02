@@ -20,7 +20,6 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "fft/glfft_granite_interface.hpp"
 #include "ocean.hpp"
 #include "device.hpp"
 #include "renderer.hpp"
@@ -89,8 +88,7 @@ Ocean::Handles Ocean::add_to_scene(Scene &scene, const OceanConfig &config)
 	auto *renderable = handles.entity->allocate_component<RenderableComponent>();
 	renderable->renderable = ocean;
 
-	handles.entity->allocate_component<OpaqueComponent>();
-	handles.entity->allocate_component<UnboundedComponent>();
+	handles.entity->allocate_component<OpaqueFloatingComponent>();
 	handles.ocean = ocean.get();
 
 	return handles;
@@ -104,40 +102,26 @@ bool Ocean::on_frame_tick(const Granite::FrameTickEvent &e)
 
 void Ocean::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 {
-	fft_iface = FFTInterface(&e.get_device());
-	GLFFT::FFTOptions options = {};
-	options.type.fp16 = true;
-	options.type.input_fp16 = true;
-	options.type.output_fp16 = true;
+	FFT::Options options = {};
+	options.data_type = FFT::DataType::FP16;
+	options.dimensions = 2;
+	options.input_resource = FFT::ResourceType::Buffer;
+	options.output_resource = FFT::ResourceType::Texture;
 
-	options.performance =
-			GLFFT::FFTWisdom::get_static_performance_options_from_renderer(&fft_iface);
+	options.mode = FFT::Mode::ComplexToReal;
+	options.Nx = config.fft_resolution;
+	options.Ny = config.fft_resolution;
+	if (!height_fft.plan(&e.get_device(), options))
+		LOGE("Failed to plan FFT!\n");
 
-	Util::Timer timer;
-	timer.start();
+	options.mode = FFT::Mode::InverseComplexToComplex;
+	if (!normal_fft.plan(&e.get_device(), options))
+		LOGE("Failed to plan FFT!\n");
 
-	auto cache = make_shared<GLFFT::ProgramCache>();
-
-	height_fft.reset(new GLFFT::FFT(&fft_iface,
-	                                config.fft_resolution, config.fft_resolution,
-	                                GLFFT::ComplexToReal, GLFFT::Inverse,
-	                                GLFFT::SSBO, GLFFT::ImageReal,
-	                                cache, options));
-
-	displacement_fft.reset(new GLFFT::FFT(&fft_iface,
-	                                      config.fft_resolution >> config.displacement_downsample,
-	                                      config.fft_resolution >> config.displacement_downsample,
-	                                      GLFFT::ComplexToComplex, GLFFT::Inverse,
-	                                      GLFFT::SSBO, GLFFT::Image,
-	                                      cache, options));
-
-	normal_fft.reset(new GLFFT::FFT(&fft_iface,
-	                                config.fft_resolution, config.fft_resolution,
-	                                GLFFT::ComplexToComplex, GLFFT::Inverse,
-	                                GLFFT::SSBO, GLFFT::Image,
-	                                cache, options));
-
-	LOGI("Creating GLFFT took %.3f ms!\n", timer.end() * 1000.0);
+	options.Nx = config.fft_resolution >> config.displacement_downsample;
+	options.Ny = config.fft_resolution >> config.displacement_downsample;
+	if (!displacement_fft.plan(&e.get_device(), options))
+		LOGE("Failed to plan FFT!\n");
 
 	build_buffers(e.get_device());
 	init_distributions(e.get_device());
@@ -149,9 +133,9 @@ void Ocean::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	fragment_mip_views.clear();
 	normal_mip_views.clear();
 
-	height_fft.reset();
-	normal_fft.reset();
-	displacement_fft.reset();
+	height_fft.release();
+	normal_fft.release();
+	displacement_fft.release();
 	distribution_buffer.reset();
 	distribution_buffer_displacement.reset();
 	distribution_buffer_normal.reset();
@@ -179,20 +163,30 @@ void Ocean::set_scene(Scene *)
 {
 }
 
-void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
+void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target, RenderPassCreator::DependencyFlags dep_flags)
 {
-	target.add_indirect_buffer_input("ocean-lod-counter");
-	target.add_uniform_input("ocean-lod-data", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
-	target.add_texture_input("ocean-lods", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+	if ((dep_flags & RenderPassCreator::GEOMETRY_BIT) != 0)
+	{
+		target.add_indirect_buffer_input("ocean-lod-counter");
+		target.add_uniform_input("ocean-lod-data", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+		target.add_texture_input("ocean-lods", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+		target.add_texture_input("ocean-height-displacement-output", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+	}
 
-	target.add_texture_input("ocean-height-displacement-output", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
-	target.add_texture_input("ocean-gradient-jacobian-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-	target.add_texture_input("ocean-normal-fft-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+	if ((dep_flags & RenderPassCreator::MATERIAL_BIT) != 0)
+	{
+		target.add_texture_input("ocean-gradient-jacobian-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+		target.add_texture_input("ocean-normal-fft-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
-	if (!config.refraction.input.empty() && config.refraction.input_is_render_graph)
-		refraction_resource = &target.add_texture_input(config.refraction.input);
-	else
-		refraction_resource = nullptr;
+		if (!config.refraction.input.empty() && config.refraction.input_is_render_graph)
+			refraction_resource = &target.add_texture_input(config.refraction.input);
+		else
+			refraction_resource = nullptr;
+	}
+}
+
+void Ocean::setup_render_pass_dependencies(RenderGraph &)
+{
 }
 
 void Ocean::setup_render_pass_resources(RenderGraph &graph_)
@@ -239,24 +233,6 @@ void Ocean::setup_render_pass_resources(RenderGraph &graph_)
 			view.base_level = i;
 			normal_mip_views.push_back(graph_.get_device().create_image_view(view));
 		}
-
-		// Prebuild the FFT commands and sort so we can avoid most barriers.
-		deferred_cmd.reset();
-
-		deferred_cmd.reset_command_counter();
-		FFTTexture height_output(&graph_.get_physical_texture_resource(*height_fft_output));
-		FFTBuffer height_input(&graph_.get_physical_buffer_resource(*height_fft_input));
-		height_fft->process(&deferred_cmd, &height_output, &height_input);
-
-		deferred_cmd.reset_command_counter();
-		FFTTexture normal_output(normal_mip_views.front().get());
-		FFTBuffer normal_input(&graph_.get_physical_buffer_resource(*normal_fft_input));
-		normal_fft->process(&deferred_cmd, &normal_output, &normal_input);
-
-		deferred_cmd.reset_command_counter();
-		FFTTexture displacement_output(&graph_.get_physical_texture_resource(*displacement_fft_output));
-		FFTBuffer displacement_input(&graph_.get_physical_buffer_resource(*displacement_fft_input));
-		displacement_fft->process(&deferred_cmd, &displacement_output, &displacement_input);
 	}
 
 	refraction = nullptr;
@@ -463,7 +439,48 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 
 void Ocean::compute_fft(Vulkan::CommandBuffer &cmd)
 {
-	deferred_cmd.build(cmd);
+	unsigned num_iterations = (std::max)((std::max)(height_fft.get_num_iterations(),
+	                                                normal_fft.get_num_iterations()),
+	                                     displacement_fft.get_num_iterations());
+
+	for (unsigned i = 0; i < num_iterations; i++)
+	{
+		if (i < displacement_fft.get_num_iterations())
+		{
+			FFT::Resource src = {}, dst = {};
+			src.buffer.buffer = &graph->get_physical_buffer_resource(*displacement_fft_input);
+			src.buffer.offset = 0;
+			src.buffer.size = src.buffer.buffer->get_create_info().size;
+			src.buffer.row_stride = config.fft_resolution >> config.displacement_downsample;
+			dst.image.view = &graph->get_physical_texture_resource(*displacement_fft_output);
+			displacement_fft.execute_iteration(cmd, dst, src, i);
+		}
+
+		if (i < height_fft.get_num_iterations())
+		{
+			FFT::Resource src = {}, dst = {};
+			src.buffer.buffer = &graph->get_physical_buffer_resource(*height_fft_input);
+			src.buffer.offset = 0;
+			src.buffer.size = src.buffer.buffer->get_create_info().size;
+			src.buffer.row_stride = config.fft_resolution;
+			dst.image.view = &graph->get_physical_texture_resource(*height_fft_output);
+			height_fft.execute_iteration(cmd, dst, src, i);
+		}
+
+		if (i < normal_fft.get_num_iterations())
+		{
+			FFT::Resource src = {}, dst = {};
+			src.buffer.buffer = &graph->get_physical_buffer_resource(*normal_fft_input);
+			src.buffer.offset = 0;
+			src.buffer.size = src.buffer.buffer->get_create_info().size;
+			src.buffer.row_stride = config.fft_resolution;
+			dst.image.view = normal_mip_views.front().get();
+			normal_fft.execute_iteration(cmd, dst, src, i);
+		}
+
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	}
 }
 
 void Ocean::bake_maps(Vulkan::CommandBuffer &cmd)
@@ -759,12 +776,12 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 		cmd.push_constants(&ocean_info.data, 0, sizeof(ocean_info.data));
 		cmd.set_texture(2, 0, *ocean_info.heightmap, Vulkan::StockSampler::LinearWrap);
 		cmd.set_texture(2, 1, *ocean_info.lod_map, Vulkan::StockSampler::LinearWrap);
-		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::TrilinearWrap);
-		cmd.set_texture(2, 3, *ocean_info.normal, Vulkan::StockSampler::TrilinearWrap);
+		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::DefaultGeometryFilterWrap);
+		cmd.set_texture(2, 3, *ocean_info.normal, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 
 		if (ocean_info.refraction)
 		{
-			cmd.set_texture(2, 4, *ocean_info.refraction, Vulkan::StockSampler::TrilinearWrap);
+			cmd.set_texture(2, 4, *ocean_info.refraction, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 			*cmd.allocate_typed_constant_data<RefractionData>(2, 5, 1) = ocean_info.refraction_data;
 		}
 

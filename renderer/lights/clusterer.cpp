@@ -96,20 +96,27 @@ void LightClusterer::set_shadow_resolution(unsigned res)
 	shadow_resolution = res;
 }
 
-void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &target_)
+void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &target_,
+                                                    RenderPassCreator::DependencyFlags dep_flags)
 {
-	// TODO: Other passes might want this?
-	if (enable_bindless)
+	if ((dep_flags & RenderPassCreator::LIGHTING_BIT) != 0)
 	{
-		target_.add_storage_read_only_input("cluster-bitmask");
-		target_.add_storage_read_only_input("cluster-range");
-		target_.add_storage_read_only_input("cluster-transforms");
-		target_.add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+		if (enable_bindless)
+		{
+			target_.add_storage_read_only_input("cluster-bitmask");
+			target_.add_storage_read_only_input("cluster-range");
+			target_.add_storage_read_only_input("cluster-transforms");
+			target_.add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+		}
+		else
+		{
+			target_.add_texture_input("light-cluster");
+		}
 	}
-	else
-	{
-		target_.add_texture_input("light-cluster");
-	}
+}
+
+void LightClusterer::setup_render_pass_dependencies(RenderGraph &)
+{
 }
 
 void LightClusterer::set_base_render_context(const RenderContext *context_)

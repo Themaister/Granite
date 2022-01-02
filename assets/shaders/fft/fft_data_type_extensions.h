@@ -1,4 +1,4 @@
-/* Copyright (C) 2015-2019 Hans-Kristian Arntzen <maister@archlinux.us>
+/* Copyright (c) 2015-2022 Hans-Kristian Arntzen
  *
  * Permission is hereby granted, free of charge,
  * to any person obtaining a copy of this software and associated documentation files (the "Software"),
@@ -16,29 +16,33 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
+#ifndef FFT_DATA_TYPE_EXTENSIONS_H_
+#define FFT_DATA_TYPE_EXTENSIONS_H_
 
-#include "glfft_interface.hpp"
-#include <functional>
+#if defined(FFT_FULL_FP16)
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#define cfloat f16vec2
+#define cfloat_scalar float16_t
+#define cfloat_data f16vec2
+#define decode(x) x
+#define encode(x) x
+precision mediump sampler2D;
+precision mediump image2D;
+#elif defined(FFT_DATA_FP16)
+#define cfloat vec2
+#define cfloat_scalar float
+#define cfloat_data uint
+#define decode(x) unpackHalf2x16(x)
+#define encode(x) packHalf2x16(x)
+precision mediump float;
+precision mediump sampler2D;
+precision mediump image2D;
+#else
+#define cfloat vec2
+#define cfloat_scalar float
+#define cfloat_data vec2
+#define decode(x) x
+#define encode(x) x
+#endif
 
-namespace GLFFT
-{
-namespace Internal
-{
-struct TestSuiteArguments
-{
-	unsigned test_id_min = 0;
-	unsigned test_id_max = 0;
-	bool exhaustive = true;
-	bool throw_on_fail = false;
-	double min_snr_fp16 = 50.0;
-	double min_snr_fp32 = 100.0;
-	double epsilon_fp16 = 1e-3;
-	double epsilon_fp32 = 1e-6;
-};
-
-void run_test_suite(Context *context, const TestSuiteArguments &args);
-} // namespace Internal
-
-int cli_main(Context *context, int argc, char *argv[]);
-} // namespace GLFFT
+#endif

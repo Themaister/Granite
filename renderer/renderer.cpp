@@ -1120,6 +1120,10 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/ground.vert", "builtin://shaders/dummy_depth.frag");
 			break;
 
+		case RenderableType::Ocean:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/ocean/ocean.vert", "builtin://shaders/dummy_depth.frag");
+			break;
+
 		case RenderableType::TexturePlane:
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/texture_plane.vert", "builtin://shaders/dummy_depth.frag");
 			break;

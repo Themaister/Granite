@@ -20,7 +20,6 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "fft/glfft_granite_interface.hpp"
 #include "ocean.hpp"
 #include "device.hpp"
 #include "renderer.hpp"

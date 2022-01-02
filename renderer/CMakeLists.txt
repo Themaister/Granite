@@ -37,6 +37,8 @@ add_granite_internal_lib(granite-renderer
         formats/gltf.hpp formats/gltf.cpp
         scene_loader.cpp scene_loader.hpp
         mesh_manager.cpp mesh_manager.hpp
+        ocean.hpp ocean.cpp
+        fft/fft.cpp fft/fft.hpp
         sprite.cpp sprite.hpp
         common_renderer_data.cpp common_renderer_data.hpp
         cpu_rasterizer.cpp cpu_rasterizer.hpp
@@ -54,18 +56,3 @@ target_link_libraries(granite-renderer PUBLIC
         granite-application-global
         granite-threading
         PRIVATE granite-mikktspace meshoptimizer granite-rapidjson granite-stb)
-
-if (GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER)
-    target_sources(granite-renderer PRIVATE
-            ocean.hpp ocean.cpp
-            fft/fft.cpp fft/fft.hpp
-            fft/glfft.cpp
-            fft/glfft.hpp
-            fft/glfft_common.hpp
-            fft/glfft_interface.hpp
-            fft/glfft_granite_interface.hpp
-            fft/glfft_granite_interface.cpp
-            fft/glfft_wisdom.cpp
-            fft/glfft_wisdom.hpp)
-    target_link_libraries(granite-renderer PRIVATE granite-compiler)
-endif()

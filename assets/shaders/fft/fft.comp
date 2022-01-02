@@ -227,18 +227,18 @@ void load_inputs(out cfloat a, out cfloat b, out cfloat c, out cfloat d)
         highp vec2 uv_odd = uv + vec2(0.5 * texture_constants.scale.x, 0.0);
         a.x = cfloat_scalar(textureLod(fft_input, uv + 0.0 * element_scale, 0.0).x);
         a.y = cfloat_scalar(textureLod(fft_input, uv_odd + 0.0 * element_scale, 0.0).x);
-        b.x = cfloat_scalar(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).x);
-        b.y = cfloat_scalar(textureLod(fft_input, uv_odd + 2.0 * element_scale, 0.0).x);
         c.x = cfloat_scalar(textureLod(fft_input, uv + 1.0 * element_scale, 0.0).x);
         c.y = cfloat_scalar(textureLod(fft_input, uv_odd + 1.0 * element_scale, 0.0).x);
+        b.x = cfloat_scalar(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).x);
+        b.y = cfloat_scalar(textureLod(fft_input, uv_odd + 2.0 * element_scale, 0.0).x);
         d.x = cfloat_scalar(textureLod(fft_input, uv + 3.0 * element_scale, 0.0).x);
         d.y = cfloat_scalar(textureLod(fft_input, uv_odd + 3.0 * element_scale, 0.0).x);
     }
     else
     {
         a = cfloat(textureLod(fft_input, uv + 0.0 * element_scale, 0.0).xy);
-        b = cfloat(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).xy);
         c = cfloat(textureLod(fft_input, uv + 1.0 * element_scale, 0.0).xy);
+        b = cfloat(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).xy);
         d = cfloat(textureLod(fft_input, uv + 3.0 * element_scale, 0.0).xy);
     }
 #else
@@ -246,8 +246,8 @@ void load_inputs(out cfloat a, out cfloat b, out cfloat c, out cfloat d)
     get_index_element_stride(index, element_stride);
 
     a = decode(fft_input.data[index + 0 * element_stride]);
-    b = decode(fft_input.data[index + 2 * element_stride]);
     c = decode(fft_input.data[index + 1 * element_stride]);
+    b = decode(fft_input.data[index + 2 * element_stride]);
     d = decode(fft_input.data[index + 3 * element_stride]);
 #endif
 }
@@ -265,30 +265,30 @@ void load_inputs(
         highp vec2 uv_odd = uv + vec2(0.5 * texture_constants.scale.x, 0.0);
         a.x = cfloat_scalar(textureLod(fft_input, uv + 0.0 * element_scale, 0.0).x);
         a.y = cfloat_scalar(textureLod(fft_input, uv_odd + 0.0 * element_scale, 0.0).x);
-        b.x = cfloat_scalar(textureLod(fft_input, uv + 4.0 * element_scale, 0.0).x);
-        b.y = cfloat_scalar(textureLod(fft_input, uv_odd + 4.0 * element_scale, 0.0).x);
-        c.x = cfloat_scalar(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).x);
-        c.y = cfloat_scalar(textureLod(fft_input, uv_odd + 2.0 * element_scale, 0.0).x);
-        d.x = cfloat_scalar(textureLod(fft_input, uv + 6.0 * element_scale, 0.0).x);
-        d.y = cfloat_scalar(textureLod(fft_input, uv_odd + 6.0 * element_scale, 0.0).x);
         e.x = cfloat_scalar(textureLod(fft_input, uv + 1.0 * element_scale, 0.0).x);
         e.y = cfloat_scalar(textureLod(fft_input, uv_odd + 1.0 * element_scale, 0.0).x);
-        f.x = cfloat_scalar(textureLod(fft_input, uv + 5.0 * element_scale, 0.0).x);
-        f.y = cfloat_scalar(textureLod(fft_input, uv_odd + 5.0 * element_scale, 0.0).x);
+        c.x = cfloat_scalar(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).x);
+        c.y = cfloat_scalar(textureLod(fft_input, uv_odd + 2.0 * element_scale, 0.0).x);
         g.x = cfloat_scalar(textureLod(fft_input, uv + 3.0 * element_scale, 0.0).x);
         g.y = cfloat_scalar(textureLod(fft_input, uv_odd + 3.0 * element_scale, 0.0).x);
+        b.x = cfloat_scalar(textureLod(fft_input, uv + 4.0 * element_scale, 0.0).x);
+        b.y = cfloat_scalar(textureLod(fft_input, uv_odd + 4.0 * element_scale, 0.0).x);
+        f.x = cfloat_scalar(textureLod(fft_input, uv + 5.0 * element_scale, 0.0).x);
+        f.y = cfloat_scalar(textureLod(fft_input, uv_odd + 5.0 * element_scale, 0.0).x);
+        d.x = cfloat_scalar(textureLod(fft_input, uv + 6.0 * element_scale, 0.0).x);
+        d.y = cfloat_scalar(textureLod(fft_input, uv_odd + 6.0 * element_scale, 0.0).x);
         h.x = cfloat_scalar(textureLod(fft_input, uv + 7.0 * element_scale, 0.0).x);
         h.y = cfloat_scalar(textureLod(fft_input, uv_odd + 7.0 * element_scale, 0.0).x);
     }
     else
     {
         a = cfloat(textureLod(fft_input, uv + 0.0 * element_scale, 0.0).xy);
-        b = cfloat(textureLod(fft_input, uv + 4.0 * element_scale, 0.0).xy);
-        c = cfloat(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).xy);
-        d = cfloat(textureLod(fft_input, uv + 6.0 * element_scale, 0.0).xy);
         e = cfloat(textureLod(fft_input, uv + 1.0 * element_scale, 0.0).xy);
-        f = cfloat(textureLod(fft_input, uv + 5.0 * element_scale, 0.0).xy);
+        c = cfloat(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).xy);
         g = cfloat(textureLod(fft_input, uv + 3.0 * element_scale, 0.0).xy);
+        b = cfloat(textureLod(fft_input, uv + 4.0 * element_scale, 0.0).xy);
+        f = cfloat(textureLod(fft_input, uv + 5.0 * element_scale, 0.0).xy);
+        d = cfloat(textureLod(fft_input, uv + 6.0 * element_scale, 0.0).xy);
         h = cfloat(textureLod(fft_input, uv + 7.0 * element_scale, 0.0).xy);
     }
 #else
@@ -296,12 +296,12 @@ void load_inputs(
     get_index_element_stride(index, element_stride);
 
     a = decode(fft_input.data[index + 0 * element_stride]);
-    b = decode(fft_input.data[index + 4 * element_stride]);
-    c = decode(fft_input.data[index + 2 * element_stride]);
-    d = decode(fft_input.data[index + 6 * element_stride]);
     e = decode(fft_input.data[index + 1 * element_stride]);
-    f = decode(fft_input.data[index + 5 * element_stride]);
+    c = decode(fft_input.data[index + 2 * element_stride]);
     g = decode(fft_input.data[index + 3 * element_stride]);
+    b = decode(fft_input.data[index + 4 * element_stride]);
+    f = decode(fft_input.data[index + 5 * element_stride]);
+    d = decode(fft_input.data[index + 6 * element_stride]);
     h = decode(fft_input.data[index + 7 * element_stride]);
 #endif
 }

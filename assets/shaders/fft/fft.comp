@@ -221,14 +221,15 @@ void load_inputs(out cfloat a, out cfloat b, out cfloat c, out cfloat d)
 
     if (RADIX_R2C)
     {
+        highp vec2 uv_odd = uv + vec2(0.5 * texture_constants.scale.x, 0.0);
         a.x = cfloat_scalar(textureLod(fft_input, uv + 0.0 * element_scale, 0.0).x);
-        a.y = cfloat_scalar(textureLodOffset(fft_input, uv + 0.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        a.y = cfloat_scalar(textureLod(fft_input, uv_odd + 0.0 * element_scale, 0.0).x);
         b.x = cfloat_scalar(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).x);
-        b.y = cfloat_scalar(textureLodOffset(fft_input, uv + 2.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        b.y = cfloat_scalar(textureLod(fft_input, uv_odd + 2.0 * element_scale, 0.0).x);
         c.x = cfloat_scalar(textureLod(fft_input, uv + 1.0 * element_scale, 0.0).x);
-        c.y = cfloat_scalar(textureLodOffset(fft_input, uv + 1.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        c.y = cfloat_scalar(textureLod(fft_input, uv_odd + 1.0 * element_scale, 0.0).x);
         d.x = cfloat_scalar(textureLod(fft_input, uv + 3.0 * element_scale, 0.0).x);
-        d.y = cfloat_scalar(textureLodOffset(fft_input, uv + 3.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        d.y = cfloat_scalar(textureLod(fft_input, uv_odd + 3.0 * element_scale, 0.0).x);
     }
     else
     {
@@ -258,22 +259,23 @@ void load_inputs(
 
     if (RADIX_R2C)
     {
+        highp vec2 uv_odd = uv + vec2(0.5 * texture_constants.scale.x, 0.0);
         a.x = cfloat_scalar(textureLod(fft_input, uv + 0.0 * element_scale, 0.0).x);
-        a.y = cfloat_scalar(textureLodOffset(fft_input, uv + 0.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        a.y = cfloat_scalar(textureLod(fft_input, uv_odd + 0.0 * element_scale, 0.0).x);
         b.x = cfloat_scalar(textureLod(fft_input, uv + 4.0 * element_scale, 0.0).x);
-        b.y = cfloat_scalar(textureLodOffset(fft_input, uv + 4.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        b.y = cfloat_scalar(textureLod(fft_input, uv_odd + 4.0 * element_scale, 0.0).x);
         c.x = cfloat_scalar(textureLod(fft_input, uv + 2.0 * element_scale, 0.0).x);
-        c.y = cfloat_scalar(textureLodOffset(fft_input, uv + 2.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        c.y = cfloat_scalar(textureLod(fft_input, uv_odd + 2.0 * element_scale, 0.0).x);
         d.x = cfloat_scalar(textureLod(fft_input, uv + 6.0 * element_scale, 0.0).x);
-        d.y = cfloat_scalar(textureLodOffset(fft_input, uv + 6.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        d.y = cfloat_scalar(textureLod(fft_input, uv_odd + 6.0 * element_scale, 0.0).x);
         e.x = cfloat_scalar(textureLod(fft_input, uv + 1.0 * element_scale, 0.0).x);
-        e.y = cfloat_scalar(textureLodOffset(fft_input, uv + 1.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        e.y = cfloat_scalar(textureLod(fft_input, uv_odd + 1.0 * element_scale, 0.0).x);
         f.x = cfloat_scalar(textureLod(fft_input, uv + 5.0 * element_scale, 0.0).x);
-        f.y = cfloat_scalar(textureLodOffset(fft_input, uv + 5.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        f.y = cfloat_scalar(textureLod(fft_input, uv_odd + 5.0 * element_scale, 0.0).x);
         g.x = cfloat_scalar(textureLod(fft_input, uv + 3.0 * element_scale, 0.0).x);
-        g.y = cfloat_scalar(textureLodOffset(fft_input, uv + 3.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        g.y = cfloat_scalar(textureLod(fft_input, uv_odd + 3.0 * element_scale, 0.0).x);
         h.x = cfloat_scalar(textureLod(fft_input, uv + 7.0 * element_scale, 0.0).x);
-        h.y = cfloat_scalar(textureLodOffset(fft_input, uv + 7.0 * element_scale, 0.0, ivec2(1, 0)).x);
+        h.y = cfloat_scalar(textureLod(fft_input, uv_odd + 7.0 * element_scale, 0.0).x);
     }
     else
     {

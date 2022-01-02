@@ -93,6 +93,12 @@ inline void for_each_bit_range(uint32_t value, const T &func)
 	}
 }
 
+template <typename T>
+inline bool is_pow2(T value)
+{
+	return (value & (value - T(1))) == T(0);
+}
+
 inline uint32_t next_pow2(uint32_t v)
 {
 	v--;

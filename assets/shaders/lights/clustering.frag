@@ -57,9 +57,11 @@ void main()
         // Do not let helper lanes participate here since we need guarantees on which
         // lanes participate in ballots and such.
         // Generally, for this deferred one, helper lanes will not appear, but to be pendantic ...
-        FragColor += base_color_ambient.rgb *
-                ((1.0 - mr.x) * base_color_ambient.a * ambient_term) *
-                compute_volumetric_diffuse(pos, N, true);
+        mediump vec3 V = normalize(registers.camera_pos - pos);
+        mediump float NoV = clamp(dot(N, V), 0.0, 1.0);
+        FragColor += base_color_ambient.a * compute_volumetric_diffuse_directional(
+                pos, N, V, NoV,
+                base_color_ambient.rgb, mr.x, mr.y);
     }
 #endif
 }

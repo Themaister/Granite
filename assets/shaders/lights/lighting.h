@@ -41,6 +41,10 @@ mediump vec3 compute_lighting(
 	mediump vec3 specref = light_color * NoL * shadow_term * cook_torrance_specular(N, H, NoL, NoV, specular_fresnel, roughness);
 	mediump vec3 diffref = light_color * NoL * shadow_term * (1.0 - specular_fresnel) * (1.0 / PI);
 
+	mediump vec3 reflected_light = specref;
+	mediump vec3 diffuse_light = diffref * material_base_color * (1.0 - material_metallic);
+	mediump vec3 lighting = reflected_light + diffuse_light;
+
 #if !defined(LIGHTING_NO_AMBIENT)
 #if defined(VOLUMETRIC_DIFFUSE)
 #if defined(HAS_IS_HELPER_INVOCATION)
@@ -49,16 +53,14 @@ mediump vec3 compute_lighting(
 	if (!is_helper_invocation())
 #endif
 	{
-		diffref += material_ambient_factor * compute_volumetric_diffuse(light_world_pos, material_normal, true);
+		lighting += material_ambient_factor * compute_volumetric_diffuse_directional(
+			light_world_pos, N, V, NoV,
+			material_base_color, material_metallic, material_roughness);
 	}
 #else
-	diffref += material_ambient_factor * vec3(0.05);
+	lighting += material_base_color * vec3(0.05 * (1.0 - material_metallic) * material_ambient_factor);
 #endif
 #endif
-
-	mediump vec3 reflected_light = specref;
-	mediump vec3 diffuse_light = diffref * material_base_color * (1.0 - material_metallic);
-	mediump vec3 lighting = reflected_light + diffuse_light;
 
 #ifdef POSITIONAL_LIGHTS
 	// Here, not letting helper lanes participate is more of an optimization

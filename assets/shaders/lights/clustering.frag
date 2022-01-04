@@ -1,7 +1,13 @@
 #version 450
 
+#ifdef VOLUMETRIC_DIFFUSE
+#define HAVE_BRDF_LUT
+layout(set = 0, binding = BINDING_GLOBAL_BRDF_TABLE) uniform mediump sampler2D uBRDFLut;
+#endif
+
 #include "../inc/helper_invocation.h"
 #include "../inc/global_bindings.h"
+
 #include "clusterer.h"
 
 layout(input_attachment_index = 0, set = 3, binding = 0) uniform mediump subpassInput BaseColor;

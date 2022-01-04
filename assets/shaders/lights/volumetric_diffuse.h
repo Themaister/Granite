@@ -157,6 +157,7 @@ mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal, boo
 	return diffuse_weight.rgb / max(diffuse_weight.a, 0.0001);
 }
 
+#ifdef HAVE_BRDF_LUT
 mediump vec3 compute_volumetric_diffuse_directional(
 	vec3 pos, mediump vec3 N, mediump vec3 V, mediump float NoV,
 	mediump vec3 base_color,
@@ -165,28 +166,19 @@ mediump vec3 compute_volumetric_diffuse_directional(
 {
 	// Super hacky "IBL" implementation. Just here so that metallic surfaces also can get *some*
 	// lighting contribution since we don't have mipmapped GGX specular cubemaps available in GI.
-	// For metallic surfaces, we mostly receive reflection from specular only sources, so
-	// we hack in a modified hemisphere lookup which can be biased towards the R vector.
-	// Similarly, we have weights for the diffuse contribution and specular contribution.
 
-	// The most significant case where specular reflections matter is metallic + smooth.
-	// All color we see is strongly correlated with reflections.
-	// For very rough surfaces, fresnel isn't really a thing at grazing angles.
-	mediump float R_contribution = (1.0 - 0.7 * roughness) * (0.05 + 0.40 * metallic);
-	mediump vec3 R = reflect(-V, N);
-	mediump vec3 modified_N = normalize(mix(N, R, R_contribution));
-
-	// Intended to be some kind of ratio selecting how much of the reflections we expect to be from specular.
-	mediump float pseudo_fresnel = (1.0 - NoV) * clamp(0.6 + metallic - 0.5 * roughness, 0.0, 1.0);
-	pseudo_fresnel *= pseudo_fresnel;
-	pseudo_fresnel *= pseudo_fresnel;
-	pseudo_fresnel *= R_contribution;
 	mediump vec3 F0 = compute_F0(base_color, metallic);
-	mediump vec3 pseudo_fresnel_colored = mix(F0, vec3(1.0), pseudo_fresnel);
-	mediump vec3 diffuse_base = (1.0 - metallic) * (1.0 - pseudo_fresnel_colored);
+	mediump vec3 F = fresnel_ibl(F0, NoV, roughness);
+	mediump vec3 R = reflect(-V, N);
 
-	mediump vec3 indirect = compute_volumetric_diffuse(pos, modified_N, true);
-	return indirect * (base_color * diffuse_base + pseudo_fresnel_colored);
+	mediump vec3 irradiance = compute_volumetric_diffuse(pos, N, true);
+	// A super crude approximation, basically 1x1 mip level roughness.
+	mediump vec3 prefiltered = compute_volumetric_diffuse(pos, R, true);
+	mediump vec2 brdf = textureLod(uBRDFLut, vec2(NoV, roughness), 0.0).xy;
+	mediump vec3 specular = prefiltered * (F * brdf.x + brdf.y);
+	mediump vec3 kD = (1.0 - F) * (1.0 - metallic);
+	return base_color * irradiance * kD + specular;
 }
+#endif
 
 #endif

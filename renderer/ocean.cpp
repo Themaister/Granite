@@ -94,9 +94,12 @@ Ocean::Handles Ocean::add_to_scene(Scene &scene, const OceanConfig &config)
 	return handles;
 }
 
+static constexpr double AnimationPeriod = 256.0;
+static constexpr double AnimationPeriodScaled = AnimationPeriod / (2.0 * muglm::pi<double>());
+
 bool Ocean::on_frame_tick(const Granite::FrameTickEvent &e)
 {
-	current_time = e.get_elapsed_time();
+	current_time = muglm::mod(e.get_elapsed_time(), AnimationPeriod);
 	return true;
 }
 
@@ -400,10 +403,12 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 		uvec2 N;
 		float freq_to_band_mod;
 		float time;
+		float period;
 	};
 	Push push;
 	push.mod = vec2(2.0f * pi<float>()) / heightmap_world_size();
 	push.time = float(current_time);
+	push.period = float(AnimationPeriodScaled);
 	push.freq_to_band_mod = (float(FrequencyBands - 1) * 2.0f) / float(config.fft_resolution);
 
 	if (freq_band_modulation)

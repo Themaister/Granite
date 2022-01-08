@@ -26,6 +26,7 @@ layout(std430, push_constant) uniform Registers
     uvec2 N;
     float freq_to_band_mod;
     float time;
+    float period;
 } registers;
 
 vec2 alias(vec2 i, vec2 N)
@@ -75,7 +76,10 @@ void main()
     float k_len = length(k);
 
     const float G = 9.81;
-    float w = sqrt(G * k_len) * registers.time;
+    // Ensures that we can wrap time to avoid FP rounding errors for very large values of registers.time.
+    float angular_velocity = sqrt(G * k_len);
+    angular_velocity = round(angular_velocity * registers.period) / registers.period;
+    float w = angular_velocity * registers.time;
 
     float cw = cos(w);
     float sw = sin(w);

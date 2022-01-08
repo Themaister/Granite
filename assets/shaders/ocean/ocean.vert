@@ -24,9 +24,9 @@ layout(set = 2, binding = 0) uniform sampler2D uHeightmap;
 layout(set = 2, binding = 1) uniform sampler2D uLodMap;
 
 #ifndef OCEAN_BORDER
-layout(set = 3, binding = 0, std140) uniform Patches
+layout(set = 3, binding = 0, std140) readonly buffer Patches
 {
-    PatchData data[512];
+    PatchData data[];
 } patches;
 #endif
 

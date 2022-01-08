@@ -168,7 +168,7 @@ void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target, Re
 	if ((dep_flags & RenderPassCreator::GEOMETRY_BIT) != 0)
 	{
 		target.add_indirect_buffer_input("ocean-lod-counter");
-		target.add_uniform_input("ocean-lod-data", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+		target.add_storage_read_only_input("ocean-lod-data", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
 		target.add_texture_input("ocean-lods", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
 		target.add_texture_input("ocean-height-displacement-output", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
 	}
@@ -787,7 +787,7 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 
 		for (unsigned lod = 0; lod < ocean_info.lods; lod++)
 		{
-			cmd.set_uniform_buffer(3, 0, *ocean_info.ubo,
+			cmd.set_storage_buffer(3, 0, *ocean_info.ubo,
 			                       ocean_info.lod_stride * lod,
 			                       ocean_info.lod_stride);
 

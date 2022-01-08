@@ -187,5 +187,12 @@ private:
 
 	Vulkan::ImageView *refraction = nullptr;
 	RenderTextureResource *refraction_resource = nullptr;
+
+	struct
+	{
+		Vulkan::ShaderProgramVariant *height_variant = nullptr;
+		Vulkan::ShaderProgramVariant *normal_variant = nullptr;
+		Vulkan::ShaderProgramVariant *displacement_variant = nullptr;
+	} programs;
 };
 }

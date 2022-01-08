@@ -910,8 +910,8 @@ struct quat : private vec4
 	using vec4::w;
 };
 
-template <typename T> inline T pi() { return T(3.1415926535897932384626433832795028841971); }
-template <typename T> inline T half_pi() { return T(0.5) * pi<T>(); }
-template <typename T> inline T one_over_root_two() { return T(0.7071067811865476); }
+template <typename T> constexpr inline T pi() { return T(3.1415926535897932384626433832795028841971); }
+template <typename T> constexpr inline T half_pi() { return T(0.5) * pi<T>(); }
+template <typename T> constexpr inline T one_over_root_two() { return T(0.7071067811865476); }
 
 }

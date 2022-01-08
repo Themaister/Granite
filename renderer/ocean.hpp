@@ -44,7 +44,7 @@ struct OceanConfig
 	unsigned grid_resolution = 128;
 
 	vec2 ocean_size = vec2(1024.0f);
-	vec2 wind_velocity = vec2(10.0f, 5.0f);
+	vec2 wind_velocity = vec2(4.0f, 2.0f);
 	float normal_mod = 7.3f;
 	float amplitude = 0.2f;
 
@@ -65,7 +65,7 @@ class Ocean : public AbstractRenderable,
               public EventHandler
 {
 public:
-	Ocean(const OceanConfig &config);
+	explicit Ocean(const OceanConfig &config);
 
 	struct Handles
 	{

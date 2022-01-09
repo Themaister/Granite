@@ -48,6 +48,9 @@ struct OceanConfig
 	float normal_mod = 7.3f;
 	float amplitude = 0.2f;
 
+	// If false, we only get an animated normal map on a flat plane.
+	bool heightmap = true;
+
 	struct
 	{
 		std::string input;
@@ -100,6 +103,14 @@ private:
 	void get_render_info(const RenderContext &context,
 	                     const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
+
+	void get_render_info_heightmap(const RenderContext &context,
+	                               const RenderInfoComponent *transform,
+	                               RenderQueue &queue) const;
+
+	void get_render_info_plane(const RenderContext &context,
+	                           const RenderInfoComponent *transform,
+	                           RenderQueue &queue) const;
 
 	const RenderContext *context = nullptr;
 
@@ -168,6 +179,9 @@ private:
 
 	void build_buffers(Vulkan::Device &device);
 	void build_lod(Vulkan::Device &device, unsigned size, unsigned stride);
+	void build_plane_grid(std::vector<vec3> &positions,
+	                      std::vector<uint16_t> &indices,
+	                      unsigned size, unsigned stride);
 	void init_distributions(Vulkan::Device &device);
 	void build_border(std::vector<vec3> &positions, std::vector<uint16_t> &indices,
 	                  ivec2 base, ivec2 dx, ivec2 dy);

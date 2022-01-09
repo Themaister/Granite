@@ -175,7 +175,7 @@ class Image;
 
 struct ImageViewCreateInfo
 {
-	Image *image = nullptr;
+	const Image *image = nullptr;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	unsigned base_level = 0;
 	unsigned levels = VK_REMAINING_MIP_LEVELS;
@@ -272,11 +272,6 @@ public:
 	}
 
 	const Image &get_image() const
-	{
-		return *info.image;
-	}
-
-	Image &get_image()
 	{
 		return *info.image;
 	}

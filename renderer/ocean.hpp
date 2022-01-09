@@ -72,6 +72,9 @@ struct OceanConfig
 	// Heightmap FFTs are still computed since we need to deduce coarse normals + displacement + jacobian factors.
 	bool heightmap = true;
 
+	// Fudge factor.
+	float lod_bias = -3.5f;
+
 	struct
 	{
 		std::string input;

@@ -311,18 +311,17 @@ void Ocean::build_lod_map(Vulkan::CommandBuffer &cmd)
 
 	struct Push
 	{
-		alignas(16) vec3 world_offset;
-		alignas(16) vec3 camera_pos;
+		alignas(16) vec3 shifted_camera_pos;
 		alignas(4) float max_lod;
 		alignas(8) ivec2 image_offset;
 		alignas(8) ivec2 num_threads;
 		alignas(8) vec2 grid_base;
 		alignas(8) vec2 grid_size;
+		alignas(4) float lod_bias;
 	};
 
 	auto &push = *cmd.allocate_typed_constant_data<Push>(1, 0, 1);
-	push.world_offset = get_world_offset();
-	push.camera_pos = last_camera_position;
+	push.shifted_camera_pos = last_camera_position - get_world_offset();
 	push.max_lod = float(quad_lod.size()) - 1.0f;
 
 	vec2 grid_base;
@@ -340,6 +339,7 @@ void Ocean::build_lod_map(Vulkan::CommandBuffer &cmd)
 	push.num_threads = ivec2(config.grid_count);
 	push.grid_base = grid_base;
 	push.grid_size = get_grid_size();
+	push.lod_bias = config.lod_bias;
 
 	cmd.set_program("builtin://shaders/ocean/update_lod.comp");
 	cmd.dispatch((config.grid_count + 7) / 8, (config.grid_count + 7) / 8, 1);
@@ -840,7 +840,6 @@ static void ocean_render_plane(Vulkan::CommandBuffer &cmd, const RenderQueueData
 	auto &ocean_info = *static_cast<const OceanInfoPlane *>(infos->render_info);
 
 	cmd.set_primitive_restart(true);
-	//cmd.set_wireframe(true);
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
 	for (unsigned instance = 0; instance < num_instances; instance++)

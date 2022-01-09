@@ -291,6 +291,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		//ocean_config.ocean_size = vec2(32.0f, 32.0f);
 		//ocean_config.fft_resolution = ocean_config.grid_count * ocean_config.grid_resolution;
 		//ocean_config.heightmap = true;
+		//ocean_config.lod_bias = -2.0f;
 		//auto &scene = scene_loader.get_scene();
 		//auto node = scene.create_node();
 		//node->transform.translation = vec3(30.0f, -5.0f, 40.0f);

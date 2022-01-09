@@ -89,7 +89,7 @@ class Ocean : public AbstractRenderable,
               public EventHandler
 {
 public:
-	explicit Ocean(const OceanConfig &config);
+	Ocean(const OceanConfig &config, Scene::NodeHandle node);
 
 	struct Handles
 	{
@@ -97,7 +97,9 @@ public:
 		Ocean *ocean;
 	};
 
-	static Handles add_to_scene(Scene &scene, const OceanConfig &config = {});
+	// The node only honors final translation, which can be used to place localized "oceans", i.e. lakes, etc.
+	// Scaling and rotation is ignored. Not super meaningful either way ...
+	static Handles add_to_scene(Scene &scene, const OceanConfig &config = {}, Scene::NodeHandle node = {});
 
 	enum { FrequencyBands = 8 };
 	void set_frequency_band_amplitude(unsigned band, float amplitude);
@@ -219,6 +221,8 @@ private:
 	ivec2 get_grid_base_coord() const;
 	vec2 heightmap_world_size() const;
 	vec2 normalmap_world_size() const;
+	vec3 get_world_offset() const;
+	vec2 get_coord_offset() const;
 
 	Vulkan::ImageView *refraction = nullptr;
 	RenderTextureResource *refraction_resource = nullptr;
@@ -229,5 +233,8 @@ private:
 		Vulkan::ShaderProgramVariant *normal_variant = nullptr;
 		Vulkan::ShaderProgramVariant *displacement_variant = nullptr;
 	} programs;
+
+	Scene::NodeHandle node;
+	vec3 node_center_position;
 };
 }

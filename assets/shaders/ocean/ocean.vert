@@ -15,14 +15,16 @@ invariant gl_Position;
 layout(location = 0) out vec3 vPos;
 layout(location = 1) out vec4 vGradNormalUV;
 
-layout(std430, push_constant) uniform Registers
+layout(std140, set = 2, binding = 6) uniform Registers
 {
+    vec3 world_offset;
+    vec2 coord_offset;
+
     vec2 inv_heightmap_size;
     vec2 inv_ocean_grid_count;
     vec2 normal_uv_scale;
     vec2 integer_to_world_mod;
     vec2 heightmap_range;
-    vec2 base_position;
 } registers;
 
 #ifdef NO_HEIGHTMAP

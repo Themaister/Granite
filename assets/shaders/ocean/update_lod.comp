@@ -3,8 +3,9 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(r16f, set = 0, binding = 0) writeonly uniform mediump image2D uLODs;
 
-layout(std430, push_constant) uniform Registers
+layout(std140, set = 1, binding = 0) uniform Registers
 {
+    vec3 world_offset;
     vec3 camera_pos;
     float max_lod;
     ivec2 image_offset;
@@ -20,7 +21,7 @@ void main()
         return;
 
     vec2 center_pos = registers.grid_base + (vec2(id) + 0.5) * registers.grid_size;
-    vec3 dist = registers.camera_pos - vec3(center_pos.x, 0.0, center_pos.y);
+    vec3 dist = registers.camera_pos - (vec3(center_pos.x, 0.0, center_pos.y) + registers.world_offset);
     float dist_sqr = dot(dist, dist);
 
     float lod = 0.5 * log2(dist_sqr + 8.0) - 3.0;

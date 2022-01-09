@@ -42,8 +42,8 @@ struct OceanVertex
 	uint8_t weights[4];
 };
 
-Ocean::Ocean(const OceanConfig &config_)
-	: config(config_)
+Ocean::Ocean(const OceanConfig &config_, Scene::NodeHandle node_)
+	: config(config_), node(std::move(node_))
 {
 	for (auto &f : frequency_bands)
 		f = 1.0f;
@@ -82,12 +82,12 @@ void Ocean::set_frequency_band_modulation(bool enable)
 	freq_band_modulation = enable;
 }
 
-Ocean::Handles Ocean::add_to_scene(Scene &scene, const OceanConfig &config)
+Ocean::Handles Ocean::add_to_scene(Scene &scene, const OceanConfig &config, Scene::NodeHandle node)
 {
 	Handles handles;
 	handles.entity = scene.create_entity();
 
-	auto ocean = Util::make_handle<Ocean>(config);
+	auto ocean = Util::make_handle<Ocean>(config, std::move(node));
 
 	auto *update_component = handles.entity->allocate_component<PerFrameUpdateComponent>();
 	update_component->refresh = ocean.get();
@@ -161,6 +161,11 @@ void Ocean::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 void Ocean::refresh(const RenderContext &context_, TaskComposer &)
 {
 	last_camera_position = context_.get_render_parameters().camera_position;
+
+	if (node)
+		node_center_position = node->cached_transform.world_transform[3].xyz();
+	else
+		node_center_position = vec3(0.0f);
 }
 
 void Ocean::set_base_renderer(const RendererSuite *)
@@ -303,24 +308,38 @@ void Ocean::build_lod_map(Vulkan::CommandBuffer &cmd)
 {
 	auto &lod = graph->get_physical_texture_resource(*ocean_lod);
 	cmd.set_storage_texture(0, 0, lod);
-	vec2 grid_base = vec2(get_grid_base_coord()) * get_grid_size();
 
 	struct Push
 	{
+		alignas(16) vec3 world_offset;
 		alignas(16) vec3 camera_pos;
 		alignas(4) float max_lod;
 		alignas(8) ivec2 image_offset;
 		alignas(8) ivec2 num_threads;
 		alignas(8) vec2 grid_base;
 		alignas(8) vec2 grid_size;
-	} push;
+	};
+
+	auto &push = *cmd.allocate_typed_constant_data<Push>(1, 0, 1);
+	push.world_offset = get_world_offset();
 	push.camera_pos = last_camera_position;
-	push.image_offset = get_grid_base_coord();
+	push.max_lod = float(quad_lod.size()) - 1.0f;
+
+	vec2 grid_base;
+	if (node)
+	{
+		push.image_offset = ivec2(0);
+		grid_base = vec2(0.0f);
+	}
+	else
+	{
+		push.image_offset = get_grid_base_coord();
+		grid_base = vec2(get_grid_base_coord()) * get_grid_size();
+	}
+
 	push.num_threads = ivec2(config.grid_count);
 	push.grid_base = grid_base;
 	push.grid_size = get_grid_size();
-	push.max_lod = float(quad_lod.size()) - 1.0f;
-	cmd.push_constants(&push, 0, sizeof(push));
 
 	cmd.set_program("builtin://shaders/ocean/update_lod.comp");
 	cmd.dispatch((config.grid_count + 7) / 8, (config.grid_count + 7) / 8, 1);
@@ -342,6 +361,7 @@ void Ocean::cull_blocks(Vulkan::CommandBuffer &cmd)
 {
 	struct Push
 	{
+		alignas(16) vec3 world_offset;
 		alignas(8) ivec2 image_offset;
 		alignas(8) ivec2 num_threads;
 		alignas(8) vec2 inv_num_threads;
@@ -352,34 +372,48 @@ void Ocean::cull_blocks(Vulkan::CommandBuffer &cmd)
 		alignas(4) float guard_band;
 		alignas(4) uint lod_stride;
 		alignas(4) float max_lod;
-	} push;
+		alignas(4) uint32_t handle_edge_lods;
+	};
 
-	vec2 grid_center = get_snapped_grid_center();
-	vec2 grid_base = grid_center * get_grid_size() - 0.5f * config.ocean_size;
-
-	memcpy(cmd.allocate_typed_constant_data<vec4>(0, 3, 6),
+	memcpy(cmd.allocate_typed_constant_data<vec4>(1, 1, 6),
 	       context->get_visibility_frustum().get_planes(),
 	       sizeof(vec4) * 6);
 
-	push.image_offset = get_grid_base_coord();
+	auto &push = *cmd.allocate_typed_constant_data<Push>(1, 0, 1);
+
+	push.world_offset = get_world_offset();
+
+	vec2 grid_base;
+	if (node)
+	{
+		grid_base = vec2(0.0f);
+		push.image_offset = ivec2(0);
+	}
+	else
+	{
+		push.image_offset = get_grid_base_coord();
+		grid_base = vec2(get_grid_base_coord()) * get_grid_size();
+	}
+
 	push.num_threads = ivec2(config.grid_count);
 	push.inv_num_threads = 1.0f / vec2(push.num_threads);
 	push.grid_base = grid_base;
 	push.grid_size = get_grid_size();
-	push.lod_stride = config.grid_count * config.grid_count;
+	push.grid_resolution = vec2(config.grid_resolution);
 	push.heightmap_range = vec2(-10.0f, 10.0f);
 	push.guard_band = 5.0f;
-	push.grid_resolution = vec2(config.grid_resolution);
+	push.lod_stride = config.grid_count * config.grid_count;
 	push.max_lod = float(quad_lod.size()) - 1.0f;
-
-	cmd.push_constants(&push, 0, sizeof(push));
+	push.handle_edge_lods = node ? 0 : 1;
 
 	auto &lod = graph->get_physical_texture_resource(*ocean_lod);
 	auto &lod_buffer = graph->get_physical_buffer_resource(*lod_data);
 	cmd.set_storage_buffer(0, 0, lod_buffer);
 	auto &lod_counter_buffer = graph->get_physical_buffer_resource(*lod_data_counters);
 	cmd.set_storage_buffer(0, 1, lod_counter_buffer);
-	cmd.set_texture(0, 2, lod, Vulkan::StockSampler::NearestWrap);
+
+	Vulkan::StockSampler stock = node ? Vulkan::StockSampler::NearestClamp : Vulkan::StockSampler::NearestWrap;
+	cmd.set_texture(0, 2, lod, stock);
 
 	cmd.set_program("builtin://shaders/ocean/cull_blocks.comp");
 	cmd.dispatch((config.grid_count + 7) / 8, (config.grid_count + 7) / 8, 1);
@@ -736,12 +770,13 @@ void Ocean::add_render_passes(RenderGraph &graph_)
 
 struct OceanData
 {
-	vec2 inv_heightmap_size;
-	vec2 inv_ocean_grid_size;
-	vec2 normal_uv_scale;
-	vec2 integer_to_world_mod;
-	vec2 heightmap_range;
-	vec2 base_position;
+	alignas(16) vec3 world_offset;
+	alignas(8) vec2 coord_offset;
+	alignas(8) vec2 inv_heightmap_size;
+	alignas(8) vec2 inv_ocean_grid_size;
+	alignas(8) vec2 normal_uv_scale;
+	alignas(8) vec2 integer_to_world_mod;
+	alignas(8) vec2 heightmap_range;
 };
 
 struct RefractionData
@@ -811,7 +846,6 @@ static void ocean_render_plane(Vulkan::CommandBuffer &cmd, const RenderQueueData
 	for (unsigned instance = 0; instance < num_instances; instance++)
 	{
 		cmd.set_program(ocean_info.program);
-		cmd.push_constants(&ocean_info.data, 0, sizeof(ocean_info.data));
 		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 		cmd.set_texture(2, 3, *ocean_info.normal, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 
@@ -820,6 +854,9 @@ static void ocean_render_plane(Vulkan::CommandBuffer &cmd, const RenderQueueData
 			cmd.set_texture(2, 4, *ocean_info.refraction, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 			*cmd.allocate_typed_constant_data<RefractionData>(2, 5, 1) = ocean_info.refraction_data;
 		}
+
+		memcpy(cmd.allocate_typed_constant_data<OceanData>(2, 6, 1),
+		       &ocean_info.data, sizeof(ocean_info.data));
 
 		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
 		cmd.set_vertex_binding(0, *ocean_info.border_vbo, 0, sizeof(vec3));
@@ -841,7 +878,6 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 		cmd.set_program(ocean_info.program);
 		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8B8A8_UINT, offsetof(OceanVertex, pos));
 		cmd.set_vertex_attrib(1, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(OceanVertex, weights));
-		cmd.push_constants(&ocean_info.data, 0, sizeof(ocean_info.data));
 		cmd.set_texture(2, 0, *ocean_info.heightmap, Vulkan::StockSampler::LinearWrap);
 		cmd.set_texture(2, 1, *ocean_info.lod_map, Vulkan::StockSampler::LinearWrap);
 		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::DefaultGeometryFilterWrap);
@@ -852,6 +888,9 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 			cmd.set_texture(2, 4, *ocean_info.refraction, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 			*cmd.allocate_typed_constant_data<RefractionData>(2, 5, 1) = ocean_info.refraction_data;
 		}
+
+		memcpy(cmd.allocate_typed_constant_data<OceanData>(2, 6, 1),
+		       &ocean_info.data, sizeof(ocean_info.data));
 
 		for (unsigned lod = 0; lod < ocean_info.lods; lod++)
 		{
@@ -864,11 +903,14 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 			cmd.draw_indexed_indirect(*ocean_info.indirect, 8 * sizeof(uint32_t) * lod, 1, 8 * sizeof(uint32_t));
 		}
 
-		cmd.set_program(ocean_info.border_program);
-		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
-		cmd.set_vertex_binding(0, *ocean_info.border_vbo, 0, sizeof(vec3));
-		cmd.set_index_buffer(*ocean_info.border_ibo, 0, ocean_info.index_type);
-		cmd.draw_indexed(ocean_info.border_count);
+		if (ocean_info.border_program)
+		{
+			cmd.set_program(ocean_info.border_program);
+			cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
+			cmd.set_vertex_binding(0, *ocean_info.border_vbo, 0, sizeof(vec3));
+			cmd.set_index_buffer(*ocean_info.border_ibo, 0, ocean_info.index_type);
+			cmd.draw_indexed(ocean_info.border_count);
+		}
 	}
 }
 }
@@ -889,6 +931,22 @@ enum VariantFlags : uint32_t
 	VARIANT_FLAG_REFRACTION_BANDLIMITED_PIXEL = 1 << 2, // Dirty hack for a demo ...
 	VARIANT_FLAG_PLANE = 1 << 3
 };
+
+vec3 Ocean::get_world_offset() const
+{
+	if (node)
+		return node_center_position - vec3(config.ocean_size.x * 0.5f, 0.0f, config.ocean_size.y * 0.5f);
+	else
+		return vec3(0.0f);
+}
+
+vec2 Ocean::get_coord_offset() const
+{
+	if (node)
+		return vec2(0.0f);
+	else
+		return vec2(get_grid_base_coord() * int(config.grid_resolution));
+}
 
 void Ocean::get_render_info_plane(const RenderContext &, const RenderInfoComponent *,
                                   RenderQueue &queue) const
@@ -935,7 +993,8 @@ void Ocean::get_render_info_plane(const RenderContext &, const RenderInfoCompone
 		patch_data->data.integer_to_world_mod = get_grid_size() / vec2(config.grid_resolution);
 		patch_data->data.normal_uv_scale = vec2(config.normal_mod);
 		patch_data->data.heightmap_range = vec2(-10.0f, 10.0f);
-		patch_data->data.base_position = vec2(get_grid_base_coord() * int(config.grid_resolution));
+		patch_data->data.world_offset = get_world_offset();
+		patch_data->data.coord_offset = get_coord_offset();
 
 		patch_data->border_vbo = border_vbo.get();
 		patch_data->border_ibo = border_ibo.get();
@@ -1008,11 +1067,21 @@ void Ocean::get_render_info_heightmap(const RenderContext &,
 				                                                                          MATERIAL_TEXTURE_BASE_COLOR_BIT,
 				                                                                          refraction_flag);
 
-		patch_data->border_program =
-				queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(DrawPipeline::Opaque,
-				                                                                          MESH_ATTRIBUTE_POSITION_BIT,
-				                                                                          MATERIAL_TEXTURE_BASE_COLOR_BIT,
-				                                                                          VARIANT_FLAG_BORDER | refraction_flag);
+		// If we have fixed transform, don't render an "infinite" border.
+		if (!node)
+		{
+			patch_data->border_program =
+					queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(DrawPipeline::Opaque,
+																							  MESH_ATTRIBUTE_POSITION_BIT,
+																							  MATERIAL_TEXTURE_BASE_COLOR_BIT,
+																							  VARIANT_FLAG_BORDER | refraction_flag);
+
+			patch_data->border_vbo = border_vbo.get();
+			patch_data->border_ibo = border_ibo.get();
+			patch_data->border_count = border_count;
+		}
+		else
+			patch_data->border_program = nullptr;
 
 		patch_data->heightmap = &height_displacement;
 		patch_data->lod_map = &lod;
@@ -1028,12 +1097,10 @@ void Ocean::get_render_info_heightmap(const RenderContext &,
 		patch_data->data.integer_to_world_mod = get_grid_size() / vec2(config.grid_resolution);
 		patch_data->data.normal_uv_scale = vec2(config.normal_mod);
 		patch_data->data.heightmap_range = vec2(-10.0f, 10.0f);
-		patch_data->data.base_position = vec2(get_grid_base_coord() * int(config.grid_resolution));
+		patch_data->data.world_offset = get_world_offset();
+		patch_data->data.coord_offset = get_coord_offset();
 
-		patch_data->border_vbo = border_vbo.get();
-		patch_data->border_ibo = border_ibo.get();
 		patch_data->index_type = index_type;
-		patch_data->border_count = border_count;
 
 		patch_data->refraction = refraction;
 		if (refraction)
@@ -1243,119 +1310,125 @@ void Ocean::build_buffers(Vulkan::Device &device)
 		build_plane_grid(positions, indices, size, stride);
 	}
 
-	int outer_delta = int(config.grid_count * config.grid_resolution) >> 3;
-	int inner_delta = config.grid_resolution >> 1;
-
-	// Top border
-	build_border(positions, indices,
-	             ivec2(config.grid_count * config.grid_resolution, 0),
-	             ivec2(-inner_delta, 0),
-	             ivec2(0, -outer_delta));
-
-	// Left border
-	build_border(positions, indices,
-	             ivec2(0, 0),
-	             ivec2(0, inner_delta),
-	             ivec2(-outer_delta, 0));
-
-	// Bottom border
-	build_border(positions, indices,
-	             ivec2(0, config.grid_count * config.grid_resolution),
-	             ivec2(inner_delta, 0),
-	             ivec2(0, outer_delta));
-
-	// Right border
-	build_border(positions, indices,
-	             ivec2(config.grid_count * config.grid_resolution),
-	             ivec2(0, -inner_delta),
-	             ivec2(outer_delta, 0));
-
-	// Top-left corner
-	build_corner(positions, indices,
-	             ivec2(0, 0),
-	             ivec2(0, -outer_delta),
-	             ivec2(-outer_delta, 0));
-
-	// Bottom-left corner
-	build_corner(positions, indices,
-	             ivec2(0, config.grid_count * config.grid_resolution),
-	             ivec2(-outer_delta, 0),
-	             ivec2(0, outer_delta));
-
-	// Top-right
-	build_corner(positions, indices,
-	             ivec2(config.grid_count * config.grid_resolution, 0),
-	             ivec2(outer_delta, 0),
-	             ivec2(0, -outer_delta));
-
-	// Bottom-right
-	build_corner(positions, indices,
-	             ivec2(config.grid_count * config.grid_resolution),
-	             ivec2(0, outer_delta),
-	             ivec2(outer_delta, 0));
-
-	const float neg_edge_size = float(-32 * 1024);
-	const float pos_edge_size = float(32 * 1024) + config.grid_count * config.grid_resolution;
-
-	// Top outer ring
-	build_fill_edge(positions, indices,
-	                vec2(pos_edge_size, neg_edge_size),
-	                vec2(neg_edge_size, neg_edge_size),
-	                ivec2(config.grid_count * config.grid_resolution, -outer_delta),
-	                ivec2(-inner_delta, 0),
-	                ivec2(-outer_delta, 0));
-
-	// Left outer ring
-	build_fill_edge(positions, indices,
-	                vec2(neg_edge_size, neg_edge_size),
-	                vec2(neg_edge_size, pos_edge_size),
-	                ivec2(-outer_delta, 0),
-	                ivec2(0, inner_delta),
-	                ivec2(0, outer_delta));
-
-	// Bottom outer ring
-	build_fill_edge(positions, indices,
-	                vec2(neg_edge_size, pos_edge_size),
-	                vec2(pos_edge_size, pos_edge_size),
-	                ivec2(0, outer_delta + config.grid_count * config.grid_resolution),
-	                ivec2(inner_delta, 0),
-	                ivec2(outer_delta, 0));
-
-	// Right outer ring
-	build_fill_edge(positions, indices,
-	                vec2(pos_edge_size, pos_edge_size),
-	                vec2(pos_edge_size, neg_edge_size),
-	                ivec2(outer_delta + config.grid_count * config.grid_resolution,
-	                      config.grid_count * config.grid_resolution),
-	                ivec2(0, -inner_delta),
-	                ivec2(0, -outer_delta));
-
-	Vulkan::BufferCreateInfo border_vbo_info;
-	border_vbo_info.size = positions.size() * sizeof(vec3);
-	border_vbo_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-	border_vbo_info.domain = Vulkan::BufferDomain::Device;
-	border_vbo = device.create_buffer(border_vbo_info, positions.data());
-
-	Vulkan::BufferCreateInfo border_ibo_info;
-	border_ibo_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-	border_ibo_info.domain = Vulkan::BufferDomain::Device;
-	if (device.get_gpu_properties().vendorID == Vulkan::VENDOR_ID_ARM)
+	if (!node)
 	{
-		// Workaround driver bug with primitive restart + 16-bit indices + indirect on some versions.
-		// Pad to 32-bit indices to work around this.
-		vector<uint32_t> padded_indices;
-		padded_indices.reserve(indices.size());
-		for (auto &i : indices)
-			padded_indices.push_back(i == 0xffffu ? 0xffffffffu : i);
-		border_ibo_info.size = padded_indices.size() * sizeof(uint32_t);
-		border_ibo = device.create_buffer(border_ibo_info, padded_indices.data());
-		index_type = VK_INDEX_TYPE_UINT32;
+		int outer_delta = int(config.grid_count * config.grid_resolution) >> 3;
+		int inner_delta = config.grid_resolution >> 1;
+
+		// Top border
+		build_border(positions, indices,
+					 ivec2(config.grid_count * config.grid_resolution, 0),
+					 ivec2(-inner_delta, 0),
+					 ivec2(0, -outer_delta));
+
+		// Left border
+		build_border(positions, indices,
+					 ivec2(0, 0),
+					 ivec2(0, inner_delta),
+					 ivec2(-outer_delta, 0));
+
+		// Bottom border
+		build_border(positions, indices,
+					 ivec2(0, config.grid_count * config.grid_resolution),
+					 ivec2(inner_delta, 0),
+					 ivec2(0, outer_delta));
+
+		// Right border
+		build_border(positions, indices,
+					 ivec2(config.grid_count * config.grid_resolution),
+					 ivec2(0, -inner_delta),
+					 ivec2(outer_delta, 0));
+
+		// Top-left corner
+		build_corner(positions, indices,
+					 ivec2(0, 0),
+					 ivec2(0, -outer_delta),
+					 ivec2(-outer_delta, 0));
+
+		// Bottom-left corner
+		build_corner(positions, indices,
+					 ivec2(0, config.grid_count * config.grid_resolution),
+					 ivec2(-outer_delta, 0),
+					 ivec2(0, outer_delta));
+
+		// Top-right
+		build_corner(positions, indices,
+					 ivec2(config.grid_count * config.grid_resolution, 0),
+					 ivec2(outer_delta, 0),
+					 ivec2(0, -outer_delta));
+
+		// Bottom-right
+		build_corner(positions, indices,
+					 ivec2(config.grid_count * config.grid_resolution),
+					 ivec2(0, outer_delta),
+					 ivec2(outer_delta, 0));
+
+		const float neg_edge_size = float(-32 * 1024);
+		const float pos_edge_size = float(32 * 1024) + config.grid_count * config.grid_resolution;
+
+		// Top outer ring
+		build_fill_edge(positions, indices,
+						vec2(pos_edge_size, neg_edge_size),
+						vec2(neg_edge_size, neg_edge_size),
+						ivec2(config.grid_count * config.grid_resolution, -outer_delta),
+						ivec2(-inner_delta, 0),
+						ivec2(-outer_delta, 0));
+
+		// Left outer ring
+		build_fill_edge(positions, indices,
+						vec2(neg_edge_size, neg_edge_size),
+						vec2(neg_edge_size, pos_edge_size),
+						ivec2(-outer_delta, 0),
+						ivec2(0, inner_delta),
+						ivec2(0, outer_delta));
+
+		// Bottom outer ring
+		build_fill_edge(positions, indices,
+						vec2(neg_edge_size, pos_edge_size),
+						vec2(pos_edge_size, pos_edge_size),
+						ivec2(0, outer_delta + config.grid_count * config.grid_resolution),
+						ivec2(inner_delta, 0),
+						ivec2(outer_delta, 0));
+
+		// Right outer ring
+		build_fill_edge(positions, indices,
+						vec2(pos_edge_size, pos_edge_size),
+						vec2(pos_edge_size, neg_edge_size),
+						ivec2(outer_delta + config.grid_count * config.grid_resolution,
+							  config.grid_count * config.grid_resolution),
+							  ivec2(0, -inner_delta),
+							  ivec2(0, -outer_delta));
 	}
-	else
+
+	if (!positions.empty())
 	{
-		border_ibo_info.size = indices.size() * sizeof(uint16_t);
-		border_ibo = device.create_buffer(border_ibo_info, indices.data());
-		index_type = VK_INDEX_TYPE_UINT16;
+		Vulkan::BufferCreateInfo border_vbo_info;
+		border_vbo_info.size = positions.size() * sizeof(vec3);
+		border_vbo_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		border_vbo_info.domain = Vulkan::BufferDomain::Device;
+		border_vbo = device.create_buffer(border_vbo_info, positions.data());
+
+		Vulkan::BufferCreateInfo border_ibo_info;
+		border_ibo_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+		border_ibo_info.domain = Vulkan::BufferDomain::Device;
+		if (device.get_gpu_properties().vendorID == Vulkan::VENDOR_ID_ARM)
+		{
+			// Workaround driver bug with primitive restart + 16-bit indices + indirect on some versions.
+			// Pad to 32-bit indices to work around this.
+			vector<uint32_t> padded_indices;
+			padded_indices.reserve(indices.size());
+			for (auto &i : indices)
+				padded_indices.push_back(i == 0xffffu ? 0xffffffffu : i);
+			border_ibo_info.size = padded_indices.size() * sizeof(uint32_t);
+			border_ibo = device.create_buffer(border_ibo_info, padded_indices.data());
+			index_type = VK_INDEX_TYPE_UINT32;
+		}
+		else
+		{
+			border_ibo_info.size = indices.size() * sizeof(uint16_t);
+			border_ibo = device.create_buffer(border_ibo_info, indices.data());
+			index_type = VK_INDEX_TYPE_UINT16;
+		}
 	}
 
 	border_count = unsigned(indices.size());

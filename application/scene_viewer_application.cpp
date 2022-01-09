@@ -285,7 +285,20 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	read_lights();
 
 	if (cli_config.ocean)
-		Ocean::add_to_scene(scene_loader.get_scene());
+	{
+		OceanConfig ocean_config = {};
+		//ocean_config.grid_count = 4;
+		//ocean_config.ocean_size = vec2(32.0f, 32.0f);
+		//ocean_config.fft_resolution = ocean_config.grid_count * ocean_config.grid_resolution;
+		//ocean_config.heightmap = true;
+		//auto &scene = scene_loader.get_scene();
+		//auto node = scene.create_node();
+		//node->transform.translation = vec3(30.0f, -5.0f, 40.0f);
+		//node->invalidate_cached_transform();
+		//Ocean::add_to_scene(scene_loader.get_scene(), ocean_config, node);
+		Ocean::add_to_scene(scene_loader.get_scene(), ocean_config);
+		//scene.get_root_node()->add_child(std::move(node));
+	}
 
 	{
 		auto &scene = scene_loader.get_scene();

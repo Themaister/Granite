@@ -28,6 +28,8 @@ vec2 warp_position()
     uvec2 mask = (uvec2(1u) << uvec2(ufloor_lod, ufloor_lod + 1u)) - 1u;
     uvec4 rounding = aPosition.zwzw * mask.xxyy;
     vec4 lower_upper_snapped = vec4((aPosition.xyxy + rounding) & ~mask.xxyy);
+    // Don't need precise here since X dimensions and Y dimensions are evaluated in same direction,
+    // i.e. we will end up with exact same inputs.
     return mix(lower_upper_snapped.xy, lower_upper_snapped.zw, fract_lod);
 }
 #endif
@@ -50,16 +52,23 @@ mediump vec3 sample_height_displacement(vec2 uv, vec2 off, mediump vec2 lod)
 
 void main()
 {
+    // To avoid cracks, ensure that all edges are computed with integer coordinates.
+    // This ensures no rounding errors, then we can offset with non-integer values.
+    // Need precise here to avoid any reordering of expressions.
+    // To neighboring patches will for example render overlapping vertex at:
+    // warp_position = 128, offset = 0 and
+    // warp_position = 0, offset = 128.
 #ifdef OCEAN_BORDER
-    vec2 pos = aPosition.xy + registers.base_position;
+    precise vec2 integer_pos = aPosition.xy + registers.coord_offset;
 #else
-    vec2 pos = warp_position();
-    pos += patches.data[gl_InstanceIndex].Offsets;
+    vec2 warped_pos = warp_position();
+    precise vec2 integer_pos = warped_pos + patches.data[gl_InstanceIndex].Offsets;
 #endif
-    mediump vec2 lod = lod_factor(pos);
+
+    mediump vec2 lod = lod_factor(integer_pos);
     mediump float delta_mod = exp2(lod.x);
 
-    vec2 uv = pos * registers.inv_heightmap_size;
+    vec2 uv = integer_pos * registers.inv_heightmap_size;
     vec2 off = registers.inv_heightmap_size * delta_mod;
 
     vec2 centered_uv = uv + 0.5 * registers.inv_heightmap_size;
@@ -70,9 +79,9 @@ void main()
     height_displacement *= aPosition.z;
 #endif
 
-    pos *= registers.integer_to_world_mod;
-    pos += height_displacement.yz;
-    vec3 world = vec3(pos.x, height_displacement.x, pos.y);
+    vec2 world_pos = integer_pos * registers.integer_to_world_mod;
+    world_pos += height_displacement.yz;
+    vec3 world = vec3(world_pos.x, height_displacement.x, world_pos.y) + registers.world_offset;
     vPos = world;
     gl_Position = global.view_projection * vec4(world, 1.0);
 }

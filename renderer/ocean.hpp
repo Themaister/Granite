@@ -38,17 +38,38 @@ static constexpr unsigned MaxOceanLayers = 4;
 
 struct OceanConfig
 {
+	// Denotes the FFT resolution of heightmaps and normal maps.
 	unsigned fft_resolution = 1024;
+
+	// For displacement FFT, shift fft_resolution by this.
+	// Displacement FFT can be lower resolution than heightmap FFT.
 	unsigned displacement_downsample = 1;
+
+	// Controls geometric density.
+	// At the finest LOD, we'll get grid_count * grid_resolution
+	// vertices in X/Z dimensions.
+	// Each heightmap FFT sample will map to one vertex.
 	unsigned grid_count = 64;
+	// Shouldn't really be changed. Can be POT between 4 and 128 inclusive.
 	unsigned grid_resolution = 128;
 
+	// The entire grid will be stretched out to fill a certain length.
+	// The distance between heightmap samples is thus:
+	// ocean_size / (grid_count * grid_resolution).
 	vec2 ocean_size = vec2(1024.0f);
+
+	// TODO: Attempt to make this more dynamic?
 	vec2 wind_velocity = vec2(4.0f, 2.0f);
+
+	// Needs to be somewhat odd to combat tiling artifacts.
 	float normal_mod = 7.3f;
+
+	// Fudge factor.
 	float amplitude = 0.2f;
 
 	// If false, we only get an animated normal map on a flat plane.
+	// Saves on processing requirements.
+	// Heightmap FFTs are still computed since we need to deduce coarse normals + displacement + jacobian factors.
 	bool heightmap = true;
 
 	struct

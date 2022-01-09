@@ -883,6 +883,15 @@ void Ocean::get_render_info(const RenderContext &context_, const RenderInfoCompo
 		get_render_info_plane(context_, transform, queue);
 }
 
+enum VariantFlags : uint32_t
+{
+	VARIANT_FLAG_NONE = 0,
+	VARIANT_FLAG_BORDER = 1 << 0,
+	VARIANT_FLAG_REFRACTION = 1 << 1,
+	VARIANT_FLAG_REFRACTION_BANDLIMITED_PIXEL = 1 << 2, // Dirty hack for a demo ...
+	VARIANT_FLAG_PLANE = 1 << 3
+};
+
 void Ocean::get_render_info_plane(const RenderContext &, const RenderInfoComponent *,
                                   RenderQueue &queue) const
 {
@@ -908,16 +917,17 @@ void Ocean::get_render_info_plane(const RenderContext &, const RenderInfoCompone
 
 	if (patch_data)
 	{
-		constexpr uint32_t plane_flag = 1u << 3;
-		uint32_t refraction_flag = refraction ? (1u << 1) : 0;
+		uint32_t plane_flag = VARIANT_FLAG_PLANE;
+		if (refraction)
+			plane_flag |= VARIANT_FLAG_REFRACTION;
 		if (config.refraction.bandlimited_pixel)
-			refraction_flag |= 1u << 2;
+			plane_flag |= VARIANT_FLAG_REFRACTION_BANDLIMITED_PIXEL;
 
 		patch_data->program =
 				queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(DrawPipeline::Opaque,
 				                                                                          MESH_ATTRIBUTE_POSITION_BIT,
 				                                                                          MATERIAL_TEXTURE_BASE_COLOR_BIT,
-				                                                                          refraction_flag | plane_flag);
+				                                                                          plane_flag);
 
 		patch_data->grad_jacobian = &grad_jacobian;
 		patch_data->normal = &normal;
@@ -990,21 +1000,21 @@ void Ocean::get_render_info_heightmap(const RenderContext &,
 
 	if (patch_data)
 	{
-		uint32_t refraction_flag = refraction ? (1u << 1) : 0;
+		uint32_t refraction_flag = refraction ? VARIANT_FLAG_REFRACTION : VARIANT_FLAG_NONE;
 		if (config.refraction.bandlimited_pixel)
-			refraction_flag |= (1u << 2);
+			refraction_flag |= VARIANT_FLAG_REFRACTION_BANDLIMITED_PIXEL;
 
 		patch_data->program =
 				queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(DrawPipeline::Opaque,
 				                                                                          MESH_ATTRIBUTE_POSITION_BIT,
 				                                                                          MATERIAL_TEXTURE_BASE_COLOR_BIT,
-				                                                                          0 | refraction_flag);
+				                                                                          refraction_flag);
 
 		patch_data->border_program =
 				queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(DrawPipeline::Opaque,
 				                                                                          MESH_ATTRIBUTE_POSITION_BIT,
 				                                                                          MATERIAL_TEXTURE_BASE_COLOR_BIT,
-				                                                                          (1u << 0) | refraction_flag);
+				                                                                          VARIANT_FLAG_BORDER | refraction_flag);
 
 		patch_data->heightmap = &height_displacement;
 		patch_data->lod_map = &lod;

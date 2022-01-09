@@ -55,7 +55,17 @@ Ocean::Ocean(const OceanConfig &config_)
 	vec2 base_freq = 1.0f / heightmap_world_size();
 
 	// We're modelling noise, so assume we're integrating energy, not amplitude.
-	this->config.amplitude *= muglm::sqrt(base_freq.x * base_freq.y);
+	config.amplitude *= muglm::sqrt(base_freq.x * base_freq.y);
+
+	if (!config.heightmap)
+	{
+		while (config.grid_count > 8 && config.grid_count % 2 == 0)
+		{
+			// Adjust the grid composition to reduce geometry load when we're just rendering flat planes.
+			config.grid_count /= 2;
+			config.grid_resolution *= 2;
+		}
+	}
 
 	EVENT_MANAGER_REGISTER_LATCH(Ocean, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
 	EVENT_MANAGER_REGISTER(Ocean, on_frame_tick, FrameTickEvent);

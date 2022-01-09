@@ -303,9 +303,7 @@ void Ocean::build_lod_map(Vulkan::CommandBuffer &cmd)
 {
 	auto &lod = graph->get_physical_texture_resource(*ocean_lod);
 	cmd.set_storage_texture(0, 0, lod);
-
-	vec2 grid_center = get_snapped_grid_center();
-	vec2 grid_base = grid_center * get_grid_size() - 0.5f * config.ocean_size;
+	vec2 grid_base = vec2(get_grid_base_coord()) * get_grid_size();
 
 	struct Push
 	{

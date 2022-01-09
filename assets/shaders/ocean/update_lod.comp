@@ -3,15 +3,23 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(r16f, set = 0, binding = 0) writeonly uniform mediump image2D uLODs;
 
-layout(std430, push_constant) uniform Registers
+layout(std140, set = 1, binding = 0) uniform Registers
 {
-    vec3 camera_pos;
+    vec3 shifted_camera_pos;
     float max_lod;
     ivec2 image_offset;
     ivec2 num_threads;
     vec2 grid_base;
     vec2 grid_size;
+    float lod_bias;
 } registers;
+
+float get_square_dist(vec2 pos)
+{
+    vec3 dist = registers.shifted_camera_pos - vec3(pos.x, 0.0, pos.y);
+    float dist_sqr = dot(dist, dist);
+    return dist_sqr;
+}
 
 void main()
 {
@@ -19,11 +27,20 @@ void main()
     if (any(greaterThanEqual(id, registers.num_threads)))
         return;
 
-    vec2 center_pos = registers.grid_base + (vec2(id) + 0.5) * registers.grid_size;
-    vec3 dist = registers.camera_pos - vec3(center_pos.x, 0.0, center_pos.y);
-    float dist_sqr = dot(dist, dist);
+    // Get a decent estimate for distance to grid.
+    vec2 center_pos_00 = registers.grid_base + vec2(id) * registers.grid_size;
+    vec2 center_pos_10 = center_pos_00 + vec2(1.0, 0.0) * registers.grid_size;
+    vec2 center_pos_01 = center_pos_00 + vec2(0.0, 1.0) * registers.grid_size;
+    vec2 center_pos_11 = center_pos_00 + vec2(1.0, 1.0) * registers.grid_size;
+    vec2 center_pos = center_pos_00 + 0.5 * registers.grid_size;
 
-    float lod = 0.5 * log2(dist_sqr + 8.0) - 3.0;
+    float dist_sqr = get_square_dist(center_pos);
+    dist_sqr = min(dist_sqr, get_square_dist(center_pos_00));
+    dist_sqr = min(dist_sqr, get_square_dist(center_pos_10));
+    dist_sqr = min(dist_sqr, get_square_dist(center_pos_01));
+    dist_sqr = min(dist_sqr, get_square_dist(center_pos_11));
+
+    float lod = 0.5 * log2(dist_sqr + 1.0) + registers.lod_bias;
 
     lod = clamp(lod, 0.0, registers.max_lod);
     ivec2 image_coord = (id + registers.image_offset) & (registers.num_threads - 1);

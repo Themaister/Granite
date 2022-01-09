@@ -9,8 +9,10 @@ layout(push_constant, std430) uniform Registers
 
 layout(set = 0, binding = 0) uniform sampler2D uHeight;
 layout(set = 0, binding = 1) uniform sampler2D uDisplacement;
-layout(rgba16f, set = 0, binding = 2) writeonly uniform mediump image2D iHeightDisplacement;
 layout(rgba16f, set = 0, binding = 3) writeonly uniform mediump image2D iGradJacobian;
+#if VERTEX_TEXTURE
+layout(rgba16f, set = 0, binding = 2) writeonly uniform mediump image2D iHeightDisplacement;
+#endif
 
 mediump float jacobian(mediump vec2 dDdx, mediump vec2 dDdy)
 {
@@ -43,8 +45,10 @@ void main()
         textureLodOffset(uDisplacement, uv.zw, 0.0, ivec2(0, -1)).xy);
     float j = jacobian(dDdx * registers.scale.z, dDdy * registers.scale.w);
 
+#if VERTEX_TEXTURE
     // Read by vertex shader/tess shader.
     imageStore(iHeightDisplacement, ivec2(gl_GlobalInvocationID.xy), vec4(h, displacement, 0.0));
+#endif
 
     // Read by fragment shader.
     imageStore(iGradJacobian, ivec2(gl_GlobalInvocationID.xy), vec4(grad, j, 0.0));

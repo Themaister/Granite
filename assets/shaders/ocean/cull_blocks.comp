@@ -3,8 +3,9 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 #include "ocean.inc"
 
-layout(std430, push_constant) uniform Registers
+layout(std140, set = 1, binding = 0) uniform Registers
 {
+    vec3 world_offset;
     ivec2 image_offset;
     uvec2 num_threads;
     vec2 inv_num_threads;
@@ -15,9 +16,10 @@ layout(std430, push_constant) uniform Registers
     float guard_band;
     uint lod_stride;
     float max_lod;
+    int handle_edge_lods;
 } registers;
 
-layout(std140, set = 0, binding = 3) uniform Frustum
+layout(std140, set = 1, binding = 1) uniform Frustum
 {
     vec4 frustum[6];
 };
@@ -63,39 +65,48 @@ bool frustum_cull()
     vec2 max_xz = min_xz + registers.grid_size;
     vec3 lo = vec3(min_xz.x - registers.guard_band, registers.heightmap_range.x, min_xz.y - registers.guard_band);
     vec3 hi = vec3(max_xz.x + registers.guard_band, registers.heightmap_range.y, max_xz.y + registers.guard_band);
+    lo += registers.world_offset;
+    hi += registers.world_offset;
     return is_inside_plane(lo, hi);
 }
 
 void main()
 {
-    if (frustum_cull())
+    if (all(lessThan(gl_GlobalInvocationID.xy, registers.num_threads)))
     {
-        ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + registers.image_offset;
-        vec2 uv = (vec2(coord) + 0.5) * registers.inv_num_threads;
+        if (frustum_cull())
+        {
+            ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + registers.image_offset;
+            vec2 uv = (vec2(coord) + 0.5) * registers.inv_num_threads;
 
-        float lod_center = textureLod(uLODs, uv, 0.0).x;
-        vec4 lods = vec4(
-            textureLodOffset(uLODs, uv, 0.0, ivec2(-1, 0)).x,
-            textureLodOffset(uLODs, uv, 0.0, ivec2(+1, 0)).x,
-            textureLodOffset(uLODs, uv, 0.0, ivec2(0, -1)).x,
-            textureLodOffset(uLODs, uv, 0.0, ivec2(0, +1)).x);
+            float lod_center = textureLod(uLODs, uv, 0.0).x;
+            vec4 lods = vec4(
+                textureLodOffset(uLODs, uv, 0.0, ivec2(-1, 0)).x,
+                textureLodOffset(uLODs, uv, 0.0, ivec2(+1, 0)).x,
+                textureLodOffset(uLODs, uv, 0.0, ivec2(0, -1)).x,
+                textureLodOffset(uLODs, uv, 0.0, ivec2(0, +1)).x);
 
-        lods = max(lods, vec4(lod_center));
+            lods = max(lods, vec4(lod_center));
 
-        lods = mix(lods, vec4(registers.max_lod),
-                   equal(gl_GlobalInvocationID.xxyy,
-                         uvec4(0u, registers.num_threads.x - 1u,
-                               0u, registers.num_threads.y - 1u)));
+            // If we need to render border mesh, need to ensure we get a fixed LOD when rendering that edge.
+            if (registers.handle_edge_lods != 0)
+            {
+                lods = mix(lods, vec4(registers.max_lod),
+                    equal(gl_GlobalInvocationID.xxyy,
+                        uvec4(0u, registers.num_threads.x - 1u,
+                        0u, registers.num_threads.y - 1u)));
+            }
 
-        float inner_lod = lod_center;
+            float inner_lod = lod_center;
 
-        int lod = compute_lod(lods, lod_center);
-        uint offset = atomicAdd(draws[lod].instance_count, 1u);
-        offset += registers.lod_stride * lod;
+            int lod = compute_lod(lods, lod_center);
+            uint offset = atomicAdd(draws[lod].instance_count, 1u);
+            offset += registers.lod_stride * lod;
 
-        vec2 offsets = vec2(coord) * registers.grid_resolution;
+            vec2 offsets = vec2(coord) * registers.grid_resolution;
 
-        PatchData block = PatchData(offsets, inner_lod, 0.0, lods);
-        patches[offset] = block;
+            PatchData block = PatchData(offsets, inner_lod, 0.0, lods);
+            patches[offset] = block;
+        }
     }
 }

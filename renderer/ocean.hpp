@@ -38,15 +38,42 @@ static constexpr unsigned MaxOceanLayers = 4;
 
 struct OceanConfig
 {
+	// Denotes the FFT resolution of heightmaps and normal maps.
 	unsigned fft_resolution = 1024;
+
+	// For displacement FFT, shift fft_resolution by this.
+	// Displacement FFT can be lower resolution than heightmap FFT.
 	unsigned displacement_downsample = 1;
+
+	// Controls geometric density.
+	// At the finest LOD, we'll get grid_count * grid_resolution
+	// vertices in X/Z dimensions.
+	// Each heightmap FFT sample will map to one vertex.
 	unsigned grid_count = 64;
+	// Shouldn't really be changed. Can be POT between 4 and 128 inclusive.
 	unsigned grid_resolution = 128;
 
+	// The entire grid will be stretched out to fill a certain length.
+	// The distance between heightmap samples is thus:
+	// ocean_size / (grid_count * grid_resolution).
 	vec2 ocean_size = vec2(1024.0f);
-	vec2 wind_velocity = vec2(10.0f, 5.0f);
+
+	// TODO: Attempt to make this more dynamic?
+	vec2 wind_velocity = vec2(4.0f, 2.0f);
+
+	// Needs to be somewhat odd to combat tiling artifacts.
 	float normal_mod = 7.3f;
+
+	// Fudge factor.
 	float amplitude = 0.2f;
+
+	// If false, we only get an animated normal map on a flat plane.
+	// Saves on processing requirements.
+	// Heightmap FFTs are still computed since we need to deduce coarse normals + displacement + jacobian factors.
+	bool heightmap = true;
+
+	// Fudge factor.
+	float lod_bias = -3.5f;
 
 	struct
 	{
@@ -65,7 +92,7 @@ class Ocean : public AbstractRenderable,
               public EventHandler
 {
 public:
-	Ocean(const OceanConfig &config);
+	Ocean(const OceanConfig &config, Scene::NodeHandle node);
 
 	struct Handles
 	{
@@ -73,7 +100,9 @@ public:
 		Ocean *ocean;
 	};
 
-	static Handles add_to_scene(Scene &scene, const OceanConfig &config = {});
+	// The node only honors final translation, which can be used to place localized "oceans", i.e. lakes, etc.
+	// Scaling and rotation is ignored. Not super meaningful either way ...
+	static Handles add_to_scene(Scene &scene, const OceanConfig &config = {}, Scene::NodeHandle node = {});
 
 	enum { FrequencyBands = 8 };
 	void set_frequency_band_amplitude(unsigned band, float amplitude);
@@ -100,6 +129,14 @@ private:
 	void get_render_info(const RenderContext &context,
 	                     const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
+
+	void get_render_info_heightmap(const RenderContext &context,
+	                               const RenderInfoComponent *transform,
+	                               RenderQueue &queue) const;
+
+	void get_render_info_plane(const RenderContext &context,
+	                           const RenderInfoComponent *transform,
+	                           RenderQueue &queue) const;
 
 	const RenderContext *context = nullptr;
 
@@ -168,6 +205,9 @@ private:
 
 	void build_buffers(Vulkan::Device &device);
 	void build_lod(Vulkan::Device &device, unsigned size, unsigned stride);
+	void build_plane_grid(std::vector<vec3> &positions,
+	                      std::vector<uint16_t> &indices,
+	                      unsigned size, unsigned stride);
 	void init_distributions(Vulkan::Device &device);
 	void build_border(std::vector<vec3> &positions, std::vector<uint16_t> &indices,
 	                  ivec2 base, ivec2 dx, ivec2 dy);
@@ -184,8 +224,20 @@ private:
 	ivec2 get_grid_base_coord() const;
 	vec2 heightmap_world_size() const;
 	vec2 normalmap_world_size() const;
+	vec3 get_world_offset() const;
+	vec2 get_coord_offset() const;
 
 	Vulkan::ImageView *refraction = nullptr;
 	RenderTextureResource *refraction_resource = nullptr;
+
+	struct
+	{
+		Vulkan::ShaderProgramVariant *height_variant = nullptr;
+		Vulkan::ShaderProgramVariant *normal_variant = nullptr;
+		Vulkan::ShaderProgramVariant *displacement_variant = nullptr;
+	} programs;
+
+	Scene::NodeHandle node;
+	vec3 node_center_position;
 };
 }

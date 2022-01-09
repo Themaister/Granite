@@ -2011,9 +2011,9 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 	else
 	{
 		// Images.
-		Vulkan::Image *image = barrier.history ?
-		                       physical_history_image_attachments[barrier.resource_index].get() :
-		                       &physical_attachments[barrier.resource_index]->get_image();
+		const Vulkan::Image *image = barrier.history ?
+		                             physical_history_image_attachments[barrier.resource_index].get() :
+		                             &physical_attachments[barrier.resource_index]->get_image();
 
 		if (!image)
 		{

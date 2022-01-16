@@ -347,9 +347,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	// Create a dummy background if there isn't any background.
 	if (scene_loader.get_scene().get_entity_pool().get_component_group<BackgroundComponent>().empty())
 	{
-		auto cylinder = Util::make_handle<SkyCylinder>("builtin://textures/background.png");
-		cylinder->set_xz_scale(8.0f / pi<float>());
-		scene_loader.get_scene().create_renderable(cylinder, nullptr);
+		auto dome = Util::make_handle<Skybox>();
+		scene_loader.get_scene().create_renderable(dome, nullptr);
 	}
 
 	auto *environment = scene_loader.get_scene().get_environment();

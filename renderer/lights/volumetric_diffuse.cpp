@@ -490,7 +490,9 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 	light.light.set_buffers(device.create_buffer(atomics_info), device.create_buffer(list_info));
 
 	RenderPassSceneRenderer::Setup setup = {};
-	setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT;
+	setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT |
+	              SCENE_RENDERER_SKIP_UNBOUNDED_BIT |
+	              SCENE_RENDERER_SKIP_OPAQUE_FLOATING_BIT;
 	setup.deferred_lights = nullptr;
 	setup.suite = suite;
 	setup.scene = scene;

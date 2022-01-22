@@ -134,14 +134,16 @@ void RenderPassSceneRenderer::prepare_render_pass()
 	{
 		scene->gather_visible_render_pass_sinks(context->get_render_parameters().camera_position, visible);
 		scene->gather_visible_opaque_renderables(frustum, visible);
-		scene->gather_opaque_floating_renderables(visible);
+		if ((setup_data.flags & SCENE_RENDERER_SKIP_OPAQUE_FLOATING_BIT) == 0)
+			scene->gather_opaque_floating_renderables(visible);
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
 			queue_depth.push_depth_renderables(*context, visible.data(), visible.size());
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
 		{
-			setup_data.scene->gather_unbounded_renderables(visible);
+			if ((setup_data.flags & SCENE_RENDERER_SKIP_UNBOUNDED_BIT) == 0)
+				setup_data.scene->gather_unbounded_renderables(visible);
 			queue_opaque.push_renderables(*context, visible.data(), visible.size());
 		}
 	}
@@ -152,8 +154,10 @@ void RenderPassSceneRenderer::prepare_render_pass()
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
 	{
 		scene->gather_visible_render_pass_sinks(context->get_render_parameters().camera_position, visible);
-		scene->gather_opaque_floating_renderables(visible);
-		scene->gather_unbounded_renderables(visible);
+		if ((setup_data.flags & SCENE_RENDERER_SKIP_OPAQUE_FLOATING_BIT) == 0)
+			scene->gather_opaque_floating_renderables(visible);
+		if ((setup_data.flags & SCENE_RENDERER_SKIP_UNBOUNDED_BIT) == 0)
+			scene->gather_unbounded_renderables(visible);
 		scene->gather_visible_opaque_renderables(frustum, visible);
 		queue_opaque.push_renderables(*context, visible.data(), visible.size());
 	}
@@ -235,7 +239,8 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 				setup_data.scene->gather_visible_render_pass_sinks(
 						setup_data.context->get_render_parameters().camera_position,
 						visible_per_task[0]);
-				setup_data.scene->gather_opaque_floating_renderables(visible_per_task[0]);
+				if ((setup_data.flags & SCENE_RENDERER_SKIP_OPAQUE_FLOATING_BIT) == 0)
+					setup_data.scene->gather_opaque_floating_renderables(visible_per_task[0]);
 			});
 		}
 
@@ -253,6 +258,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
 		{
+			if ((setup_data.flags & SCENE_RENDERER_SKIP_UNBOUNDED_BIT) == 0)
 			{
 				auto &group = composer.begin_pipeline_stage();
 				group.enqueue_task([this]() {
@@ -277,8 +283,10 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 			auto &group = composer.begin_pipeline_stage();
 			group.enqueue_task([this]() {
 				setup_data.scene->gather_visible_render_pass_sinks(setup_data.context->get_render_parameters().camera_position, visible_per_task[0]);
-				setup_data.scene->gather_opaque_floating_renderables(visible_per_task[0]);
-				setup_data.scene->gather_unbounded_renderables(visible_per_task[0]);
+				if ((setup_data.flags & SCENE_RENDERER_SKIP_OPAQUE_FLOATING_BIT) == 0)
+					setup_data.scene->gather_opaque_floating_renderables(visible_per_task[0]);
+				if ((setup_data.flags & SCENE_RENDERER_SKIP_UNBOUNDED_BIT) == 0)
+					setup_data.scene->gather_unbounded_renderables(visible_per_task[0]);
 			});
 		}
 		Threaded::scene_gather_opaque_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task, MaxTasks);

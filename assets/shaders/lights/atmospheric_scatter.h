@@ -37,8 +37,6 @@ const float H_absorption = 30000.0;
 const float absorption_falloff = 4000.0;
 const float E_radius = 6.371e6;
 const float H_atmosphere = 100000.0;
-const int primary_steps = 32;
-const int light_steps = 8;
 
 float phase_rayleigh(float cos_theta)
 {
@@ -72,18 +70,24 @@ float density_mie(float h)
 	return exp(-h / H_mie);
 }
 
-float trace_to_outer_atmosphere(vec3 pos, vec3 dir, float outer_radius)
+vec2 trace_to_sphere(vec3 pos, vec3 dir, float radius)
 {
-	float a = dot(dir, dir);
+	// a term is implicitly 1 since dir is normalized.
 	float b = 2.0 * dot(pos, dir);
-	float c = dot(pos, pos) - outer_radius * outer_radius;
-	float quadratic = b * b - 4.0 * a * c;
+	float c = dot(pos, pos) - radius * radius;
+	float quadratic = b * b - 4.0 * c;
 
-	float result;
+	vec2 result;
 	if (quadratic < 0.0)
-		result = 0.0;
+	{
+		result = vec2(0.0);
+	}
 	else
-		result = (-b + sqrt(quadratic)) / (2.0 * a);
+	{
+		float q = sqrt(quadratic);
+		result.x = (-b - q) * 0.5;
+		result.y = (-b + q) * 0.5;
+	}
 
 	return result;
 }
@@ -108,7 +112,7 @@ vec3 sample_optical_depth(float h, float step_length)
 	return sample_optical_depth(h, depth_R, depth_M, step_length);
 }
 
-vec3 accumulate_optical_depth(vec3 pos, vec3 dir, float t)
+vec3 accumulate_optical_depth(vec3 pos, vec3 dir, float t, int light_steps)
 {
 	vec3 accumulated_optical_depth = vec3(0.0);
 	float step_length = t / float(light_steps);
@@ -116,44 +120,64 @@ vec3 accumulate_optical_depth(vec3 pos, vec3 dir, float t)
 	{
 		float t_dir = (float(i) + 0.5) * step_length;
 		vec3 sample_pos = pos + t_dir * dir;
-		float h = length(sample_pos) - E_radius;
+		float h = max(length(sample_pos) - E_radius, 0.0);
 		accumulated_optical_depth += sample_optical_depth(h, step_length);
 	}
 	return accumulated_optical_depth;
 }
 
-vec3 rayleigh_mie_scatter(vec3 V, float camera_height)
+vec3 rayleigh_mie_scatter(vec3 V, vec3 L, float camera_height, int primary_steps, int light_steps)
 {
+	camera_height = max(camera_height, 0.0);
+	vec3 pos = vec3(0.0, E_radius + camera_height, 0.0);
+
 	// Accumulate in-scatter in this direction.
-	float t = trace_to_outer_atmosphere(vec3(0.0, E_radius + camera_height, 0.0), V, E_radius + H_atmosphere);
+	vec2 t_range_atmos = trace_to_sphere(pos, V, E_radius + H_atmosphere);
+	t_range_atmos.x = max(t_range_atmos.x, 0.0);
 
-	vec3 accumulated_optical_depth = vec3(0.0);
-	vec3 inscatter_rayleigh = vec3(0.0);
-	vec3 inscatter_mie = vec3(0.0);
-	float step_length = t / float(primary_steps);
-	for (int i = 0; i < primary_steps; i++)
+	// Earth is opaque. Make sure we don't trace through the earth, especially relevant for GI lookups
+	// which can sample skydome in lots of weird directions.
+	// In case we're inside the earths radius, pretend we're above ground for purposes of making math not explode.
+	vec2 t_range_earth = trace_to_sphere(pos, V, 0.98 * E_radius);
+	// If we have a positive t intersection, ray will hit ground there.
+	bool intersects_earth = any(greaterThan(t_range_earth, vec2(0.0)));
+	float t_diff = max(t_range_atmos.y - t_range_atmos.x, 0.0);
+
+	vec3 inscatter;
+
+	if (t_diff > 0.0 && !intersects_earth)
 	{
-		float t_view = (float(i) + 0.5) * step_length;
-		vec3 sample_pos = vec3(0.0, E_radius + camera_height, 0.0) + t_view * V;
-		float h = length(sample_pos) - E_radius;
+		vec3 accumulated_optical_depth = vec3(0.0);
+		vec3 inscatter_rayleigh = vec3(0.0);
+		vec3 inscatter_mie = vec3(0.0);
+		float step_length = t_diff / float(primary_steps);
+		for (int i = 0; i < primary_steps; i++)
+		{
+			float t_view = (float(i) + 0.5) * step_length + t_range_atmos.x;
+			vec3 sample_pos = pos + t_view * V;
+			float h = max(length(sample_pos) - E_radius, 0.0);
 
-		float depth_R, depth_M;
-		vec3 optical_depth_sample = sample_optical_depth(h, depth_R, depth_M, step_length);
+			float depth_R, depth_M;
+			vec3 optical_depth_sample = sample_optical_depth(h, depth_R, depth_M, step_length);
 
-		float t_sun = trace_to_outer_atmosphere(sample_pos, registers.sun_direction, E_radius + H_atmosphere);
-		vec3 optical_depth_total = accumulated_optical_depth + 0.5 * optical_depth_sample +
-				accumulate_optical_depth(sample_pos, registers.sun_direction, t_sun);
-		vec3 T = transmittance(optical_depth_total);
+			float t_sun = trace_to_sphere(sample_pos, L, E_radius + H_atmosphere).y;
+			vec3 optical_depth_total = accumulated_optical_depth + 0.5 * optical_depth_sample +
+					accumulate_optical_depth(sample_pos, L, t_sun, light_steps);
+			vec3 T = transmittance(optical_depth_total);
 
-		accumulated_optical_depth += optical_depth_sample;
-		inscatter_rayleigh += depth_R * T;
-		inscatter_mie += depth_M * T;
+			accumulated_optical_depth += optical_depth_sample;
+			inscatter_rayleigh += depth_R * T;
+			inscatter_mie += depth_M * T;
+		}
+
+		float cos_theta = dot(V, L);
+		inscatter_rayleigh *= phase_rayleigh(cos_theta) * B_rayleigh;
+		inscatter_mie *= phase_mie(cos_theta) * B_mie;
+		inscatter = inscatter_rayleigh + inscatter_mie;
 	}
+	else
+		inscatter = vec3(0.0);
 
-	float cos_theta = dot(V, registers.sun_direction);
-	inscatter_rayleigh *= phase_rayleigh(cos_theta) * B_rayleigh;
-	inscatter_mie *= phase_mie(cos_theta) * B_mie;
-	vec3 inscatter = inscatter_rayleigh + inscatter_mie;
 	return inscatter;
 }
 

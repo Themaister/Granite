@@ -81,7 +81,6 @@ void LightClusterer::set_scene(Scene *scene_)
 {
 	scene = scene_;
 	lights = &scene->get_entity_pool().get_component_group<PositionalLightComponent, RenderInfoComponent>();
-	hemisphere_lights = &scene->get_entity_pool().get_component_group<HemisphereLightComponent>();
 }
 
 void LightClusterer::set_resolution(unsigned x, unsigned y, unsigned z)
@@ -1275,21 +1274,15 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 	bindless.volumetric.num_volumes = std::min<uint32_t>(visible_diffuse_lights.size(), CLUSTERER_MAX_VOLUMES);
 	bindless.volumetric.fallback_volume = muglm::floatToHalf(vec4(0.0001f, 0.0001f, 0.0001f, 0.01f));
 
-	if (!hemisphere_lights || hemisphere_lights->empty())
+	if (auto *light = context_.get_lighting_parameters())
 	{
-		bindless.volumetric.sky_color_lo = vec3(0.1f);
-		bindless.volumetric.sky_color_hi = vec3(1.0f);
+		bindless.volumetric.sun_color = light->directional.color;
+		bindless.volumetric.sun_direction = light->directional.direction;
 	}
 	else
 	{
-		bindless.volumetric.sky_color_lo = vec3(0.0f);
-		bindless.volumetric.sky_color_hi = vec3(0.0f);
-		for (auto &l : *hemisphere_lights)
-		{
-			auto &hemi = *get_component<HemisphereLightComponent>(l);
-			bindless.volumetric.sky_color_lo += hemi.y_zero;
-			bindless.volumetric.sky_color_hi += hemi.y_up;
-		}
+		bindless.volumetric.sun_color = vec3(1.0f);
+		bindless.volumetric.sun_direction = vec3(0.0, 1.0f, 0.0f);
 	}
 
 	for (uint32_t i = 0; i < bindless.volumetric.num_volumes; i++)

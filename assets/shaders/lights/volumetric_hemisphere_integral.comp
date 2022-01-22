@@ -12,6 +12,7 @@ layout(local_size_x = 64) in;
 #include "clusterer_data.h"
 #include "volumetric_probe_hash.h"
 #include "volumetric_diffuse.h"
+#include "atmospheric_scatter.h"
 
 layout(set = 3, binding = 2) uniform ClusterTransforms
 {
@@ -90,8 +91,8 @@ mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
     }
     else
     {
-        // Emissive sky rendering is very dynamic, we cannot rely on gbuffer here.
-        color = mix(volumetric.sky_color_lo, volumetric.sky_color_hi, sqrt(clamp(n.y, 0.0, 1.0)));
+        // TODO: We should probably precompute a low-res skydome cubemap here.
+        color = volumetric.sun_color * rayleigh_mie_scatter(n, volumetric.sun_direction, pos.y, 12, 4);
     }
 
     // We have 4 patches per face, so it cancels out the 4.0 / (res * res) computation.

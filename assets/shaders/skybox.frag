@@ -29,7 +29,9 @@ void main()
 #if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE
     Emissive = texture(uSkybox, vDirection).rgb * registers.color;
 #else
-    Emissive = registers.color * rayleigh_mie_scatter(normalize(vDirection), registers.camera_height);
+    Emissive = registers.color * rayleigh_mie_scatter(normalize(vDirection),
+        registers.sun_direction, registers.camera_height,
+        16, 8);
 #endif
 #ifdef VOLUMETRIC_FOG
     mediump vec4 fog = sample_volumetric_fog(uFogVolume,

@@ -1084,6 +1084,8 @@ struct SkyboxRenderInfo
 	const ImageView *view;
 	const Sampler *sampler;
 	vec3 color;
+	float camera_height;
+	vec3 direction;
 };
 
 static void skybox_render(CommandBuffer &cmd, const RenderQueueData *infos, unsigned instances)
@@ -1101,7 +1103,16 @@ static void skybox_render(CommandBuffer &cmd, const RenderQueueData *infos, unsi
 		if (info->view)
 			cmd.set_texture(2, 0, *info->view, *info->sampler);
 
-		cmd.push_constants(&info->color, 0, sizeof(info->color));
+		struct Push
+		{
+			alignas(16) vec3 color;
+			alignas(4) float camera_height;
+			alignas(16) vec3 direction;
+		} push = {};
+		push.color = info->color;
+		push.camera_height = info->camera_height;
+		push.direction = info->direction;
+		cmd.push_constants(&push, 0, sizeof(push));
 
 		CommandBufferUtil::set_fullscreen_quad_vertex_state(cmd);
 		CommandBufferUtil::draw_fullscreen_quad(cmd);
@@ -1130,7 +1141,19 @@ void Skybox::get_render_info(const RenderContext &context, const RenderInfoCompo
 	auto sorting_key = RenderInfo::get_background_sort_key(Queue::OpaqueEmissive, 0, 0);
 
 	info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearClamp);
-	info.color = color;
+
+	if (info.view)
+	{
+		info.color = color;
+		info.camera_height = 0.0f;
+		info.direction = vec3(0.0);
+	}
+	else
+	{
+		info.color = context.get_lighting_parameters()->directional.color;
+		info.camera_height = context.get_render_parameters().camera_position.y;
+		info.direction = context.get_lighting_parameters()->directional.direction;
+	}
 
 	auto *skydome_info = queue.push<SkyboxRenderInfo>(Queue::OpaqueEmissive, instance_key, sorting_key,
 	                                                  skybox_render,

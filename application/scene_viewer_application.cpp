@@ -347,9 +347,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	// Create a dummy background if there isn't any background.
 	if (scene_loader.get_scene().get_entity_pool().get_component_group<BackgroundComponent>().empty())
 	{
-		auto cylinder = Util::make_handle<SkyCylinder>("builtin://textures/background.png");
-		cylinder->set_xz_scale(8.0f / pi<float>());
-		scene_loader.get_scene().create_renderable(cylinder, nullptr);
+		auto dome = Util::make_handle<Skybox>();
+		scene_loader.get_scene().create_renderable(dome, nullptr);
 	}
 
 	auto *environment = scene_loader.get_scene().get_environment();
@@ -383,13 +382,6 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		selected_directional = get_component<DirectionalLightComponent>(dir_lights.front());
 	else
 		selected_directional = &default_directional_light;
-
-	{
-		auto hemi = scene_loader.get_scene().create_entity();
-		auto *l = hemi->allocate_component<HemisphereLightComponent>();
-		l->y_zero = vec3(0.1f);
-		l->y_up = vec3(1.0f, 0.8f, 0.7f);
-	}
 
 	if (config.clustered_lights_shadows || config.clustered_lights)
 	{

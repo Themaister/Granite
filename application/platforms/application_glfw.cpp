@@ -102,6 +102,16 @@ public:
 #if defined(HAVE_LINUX_INPUT) || defined(HAVE_XINPUT_WINDOWS)
 		input_manager.poll();
 #endif
+
+		// Convenient equivalent to pressing escape on the keyboard or something.
+		if (get_input_tracker().joykey_pressed(0, JoypadKey::Start) &&
+		    get_input_tracker().joykey_pressed(0, JoypadKey::Select) &&
+		    get_input_tracker().joykey_pressed(0, JoypadKey::LeftShoulder) &&
+		    get_input_tracker().joykey_pressed(0, JoypadKey::RightShoulder))
+		{
+			return false;
+		}
+
 		return !request_tear_down.load();
 	}
 

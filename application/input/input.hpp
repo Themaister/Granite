@@ -205,6 +205,14 @@ public:
 		return (key_state & (1ull << Util::ecast(key))) != 0;
 	}
 
+	bool joykey_pressed(unsigned index, JoypadKey key) const
+	{
+		if (index > Joypads)
+			return false;
+
+		return (joypads[index].button_mask & (1u << Util::ecast(key))) != 0;
+	}
+
 	bool mouse_button_pressed(MouseButton button) const
 	{
 		return (mouse_button_state & (1ull << Util::ecast(button))) != 0;
@@ -277,6 +285,7 @@ private:
 
 	float axis_deadzone = 0.3f;
 };
+
 class JoypadConnectionEvent : public Granite::Event
 {
 public:

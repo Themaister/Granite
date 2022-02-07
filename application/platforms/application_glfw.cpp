@@ -101,7 +101,10 @@ public:
 		}
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		window = glfwCreateWindow(width, height, "GLFW Window", nullptr, nullptr);
+
+		auto base = Path::basename(Path::get_executable_path());
+		window = glfwCreateWindow(width, height, base.empty() ? "GLFW Window" : base.c_str(),
+		                          nullptr, nullptr);
 
 		glfwSetWindowUserPointer(window, this);
 		glfwSetFramebufferSizeCallback(window, fb_size_cb);

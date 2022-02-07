@@ -363,7 +363,7 @@ static void copy_gbuffer(Vulkan::CommandBuffer &cmd,
 	cmd.set_specialization_constant_mask(0);
 }
 
-static std::atomic_uint32_t probe_render_count;
+static std::atomic<uint32_t> probe_render_count;
 
 void VolumetricDiffuseLightManager::render_probe_gbuffer_slice(VolumetricDiffuseLightComponent &light,
                                                                Vulkan::Device &device,

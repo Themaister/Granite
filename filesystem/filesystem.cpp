@@ -80,7 +80,12 @@ void *StdioFile::map()
 {
 	rewind(file);
 	buffer.resize(size);
-	fread(buffer.data(), 1, size, file);
+	if (fread(buffer.data(), 1, size, file) != size)
+	{
+		LOGE("Failed to read file.\n");
+		buffer.clear();
+		return nullptr;
+	}
 	return buffer.data();
 }
 

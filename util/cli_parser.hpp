@@ -46,16 +46,15 @@ struct CLICallbacks
 class CLIParser
 {
 public:
+	// Don't pass in argv[0], which is the application name.
+	// Pass in argc - 1, argv + 1.
 	CLIParser(CLICallbacks cbs_, int argc_, char *argv_[]);
 
 	bool parse();
-
 	void end();
 
 	unsigned next_uint();
-
 	double next_double();
-
 	const char *next_string();
 
 	bool is_ended_state() const
@@ -75,4 +74,9 @@ private:
 	bool ended_state = false;
 	bool unknown_argument_is_default = false;
 };
+
+// Returns false is parsing requires an exit, either because of error, or by request.
+// In that case, exit_code should be returned from main().
+// argc / argv must contain the full argc, argv, where argv[0] holds program name.
+bool parse_cli_filtered(CLICallbacks cbs, int &argc, char *argv[], int &exit_code);
 }

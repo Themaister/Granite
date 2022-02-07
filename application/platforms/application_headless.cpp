@@ -521,9 +521,6 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		double time_step = 0.01;
 	} args;
 
-	std::vector<char *> filtered_argv;
-	filtered_argv.push_back(argv[0]);
-
 	CLICallbacks cbs;
 	cbs.add("--frames", [&](CLIParser &parser) { args.max_frames = parser.next_uint(); });
 	cbs.add("--width", [&](CLIParser &parser) { args.width = parser.next_uint(); });
@@ -541,16 +538,11 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		print_help();
 		parser.end();
 	});
-	cbs.default_handler = [&](const char *arg) { filtered_argv.push_back(const_cast<char *>(arg)); };
 	cbs.error_handler = [&]() { print_help(); };
-	CLIParser parser(move(cbs), argc - 1, argv + 1);
-	parser.ignore_unknown_arguments();
-	if (!parser.parse())
-		return 1;
-	else if (parser.is_ended_state())
-		return 0;
+	int exit_code;
 
-	filtered_argv.push_back(nullptr);
+	if (!Util::parse_cli_filtered(std::move(cbs), argc, argv, exit_code))
+		return exit_code;
 
 	Granite::Global::init(Granite::Global::MANAGER_FEATURE_DEFAULT_BITS);
 
@@ -561,8 +553,7 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 	if (!args.cache.empty())
 		GRANITE_FILESYSTEM()->register_protocol("cache", make_unique<OSFilesystem>(args.cache));
 
-	auto app = unique_ptr<Application>(
-			create_application(int(filtered_argv.size() - 1), filtered_argv.data()));
+	auto app = unique_ptr<Application>(create_application(argc, argv));
 
 	if (app)
 	{

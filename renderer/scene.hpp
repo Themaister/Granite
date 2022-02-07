@@ -351,7 +351,7 @@ private:
 	Util::AtomicAppendBuffer<Node *, 8> pending_node_updates;
 	Util::AtomicAppendBuffer<Node *, 8> pending_node_updates_skin;
 	Util::AtomicAppendBuffer<Node *, 8> pending_node_update_per_level[MaxNodeHierarchyLevels];
-	std::atomic_uint32_t pending_hierarchy_level_mask;
+	std::atomic<uint32_t> pending_hierarchy_level_mask;
 
 	void update_transform_tree(TaskComposer *composer);
 };

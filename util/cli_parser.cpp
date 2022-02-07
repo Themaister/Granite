@@ -24,6 +24,7 @@
 #include "logging.hpp"
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 using namespace std;
 
@@ -125,5 +126,40 @@ const char *CLIParser::next_string()
 	argc--;
 	argv++;
 	return ret;
+}
+
+bool parse_cli_filtered(CLICallbacks cbs, int &argc, char *argv[], int &exit_code)
+{
+	if (argc == 0)
+	{
+		exit_code = 1;
+		return false;
+	}
+
+	exit_code = 0;
+	std::vector<char *> filtered;
+	filtered.reserve(argc + 1);
+	filtered.push_back(argv[0]);
+
+	cbs.default_handler = [&](const char *arg) { filtered.push_back(const_cast<char *>(arg)); };
+
+	CLIParser parser(std::move(cbs), argc - 1, argv + 1);
+	parser.ignore_unknown_arguments();
+
+	if (!parser.parse())
+	{
+		exit_code = 1;
+		return false;
+	}
+	else if (parser.is_ended_state())
+	{
+		exit_code = 0;
+		return false;
+	}
+
+	argc = int(filtered.size());
+	std::copy(filtered.begin(), filtered.end(), argv);
+	argv[argc] = nullptr;
+	return true;
 }
 }

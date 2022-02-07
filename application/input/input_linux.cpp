@@ -166,10 +166,23 @@ void LinuxInputManager::setup_joypad_remapper(int fd, unsigned index)
 #define BTN_WEST 0x134
 #endif
 
-	remapper.register_button(BTN_EAST, JoypadKey::East, JoypadAxis::Unknown);
-	remapper.register_button(BTN_WEST, JoypadKey::West, JoypadAxis::Unknown);
-	remapper.register_button(BTN_NORTH, JoypadKey::North, JoypadAxis::Unknown);
-	remapper.register_button(BTN_SOUTH, JoypadKey::South, JoypadAxis::Unknown);
+	if (id.vendor == 0x28de && id.product == 0x11ff)
+	{
+		LOGI("Detected X-Box 360 gamepad.\n");
+		remapper.register_button(BTN_A, JoypadKey::South, JoypadAxis::Unknown);
+		remapper.register_button(BTN_B, JoypadKey::East, JoypadAxis::Unknown);
+		remapper.register_button(BTN_X, JoypadKey::West, JoypadAxis::Unknown);
+		remapper.register_button(BTN_Y, JoypadKey::North, JoypadAxis::Unknown);
+	}
+	else
+	{
+		LOGI("Detected other gamepad, using default mapping.\n");
+		remapper.register_button(BTN_EAST, JoypadKey::East, JoypadAxis::Unknown);
+		remapper.register_button(BTN_WEST, JoypadKey::West, JoypadAxis::Unknown);
+		remapper.register_button(BTN_NORTH, JoypadKey::North, JoypadAxis::Unknown);
+		remapper.register_button(BTN_SOUTH, JoypadKey::South, JoypadAxis::Unknown);
+	}
+
 	remapper.register_button(BTN_START, JoypadKey::Start, JoypadAxis::Unknown);
 	remapper.register_button(BTN_SELECT, JoypadKey::Select, JoypadAxis::Unknown);
 	remapper.register_button(BTN_THUMBL, JoypadKey::LeftThumb, JoypadAxis::Unknown);

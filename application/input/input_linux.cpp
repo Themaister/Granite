@@ -148,6 +148,24 @@ void LinuxInputManager::setup_joypad_remapper(int fd, unsigned index)
 
 	// TODO: Make this data-driven.
 	// This seems to be the "standard" layout however. It's the same for both Xbox and DS4 controllers.
+
+	// Not always defined on older glibcs.
+#ifndef BTN_SOUTH
+#define BTN_SOUTH 0x130
+#endif
+
+#ifndef BTN_EAST
+#define BTN_EAST 0x131
+#endif
+
+#ifndef BTN_NORTH
+#define BTN_NORTH 0x133
+#endif
+
+#ifndef BTN_WEST
+#define BTN_WEST 0x134
+#endif
+
 	remapper.register_button(BTN_EAST, JoypadKey::East, JoypadAxis::Unknown);
 	remapper.register_button(BTN_WEST, JoypadKey::West, JoypadAxis::Unknown);
 	remapper.register_button(BTN_NORTH, JoypadKey::North, JoypadAxis::Unknown);

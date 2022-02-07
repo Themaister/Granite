@@ -113,6 +113,7 @@ public:
 		glfwSetCursorPosCallback(window, cursor_cb);
 		glfwSetCursorEnterCallback(window, enter_cb);
 		glfwSetWindowCloseCallback(window, close_cb);
+		glfwShowWindow(window);
 
 		if (options.fullscreen)
 			toggle_fullscreen();

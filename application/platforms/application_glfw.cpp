@@ -27,6 +27,7 @@
 #include "global_managers_init.hpp"
 #include "thread_group.hpp"
 #include "thread_id.hpp"
+#include "cli_parser.hpp"
 #include "GLFW/glfw3.h"
 #include <thread>
 #include <condition_variable>
@@ -64,11 +65,28 @@ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL GetInstanceProcAddr(VkInstance i
 struct WSIPlatformGLFW : GraniteWSIPlatform
 {
 public:
+	struct Options
+	{
+		unsigned override_width = 0;
+		unsigned override_height = 0;
+		bool fullscreen = false;
+	};
+
+	explicit WSIPlatformGLFW(const Options &options_)
+		: options(options_)
+	{
+	}
+
 	bool init(unsigned width_, unsigned height_)
 	{
 		request_tear_down.store(false);
 		width = width_;
 		height = height_;
+
+		if (options.override_width)
+			width = options.override_width;
+		if (options.override_height)
+			height = options.override_height;
 
 		if (!glfwInit())
 		{
@@ -93,7 +111,44 @@ public:
 		glfwSetCursorEnterCallback(window, enter_cb);
 		glfwSetWindowCloseCallback(window, close_cb);
 
+		if (options.fullscreen)
+			toggle_fullscreen();
+
 		return true;
+	}
+
+	void toggle_fullscreen()
+	{
+#ifdef _WIN32
+		push_task_to_async_thread([this]() {
+			set_hmonitor(nullptr);
+		});
+#endif
+		if (glfwGetWindowMonitor(window))
+		{
+			// Fullscreen -> windowed
+			auto cached = get_cached_window();
+			glfwSetWindowMonitor(window, nullptr, cached.x, cached.y, cached.width, cached.height, 0);
+		}
+		else
+		{
+			// Windowed -> fullscreen
+			auto *primary = glfwGetPrimaryMonitor();
+			if (primary)
+			{
+				auto *mode = glfwGetVideoMode(primary);
+				WSIPlatformGLFW::CachedWindow win;
+				glfwGetWindowPos(window, &win.x, &win.y);
+				glfwGetWindowSize(window, &win.width, &win.height);
+				set_cached_window(win);
+#ifdef _WIN32
+				push_task_to_async_thread([this]() {
+					set_hmonitor(MonitorFromWindow(glfwGetWin32Window(window), MONITOR_DEFAULTTOPRIMARY));
+				});
+#endif
+				glfwSetWindowMonitor(window, primary, 0, 0, mode->width, mode->height, mode->refreshRate);
+			}
+		}
 	}
 
 	bool alive(Vulkan::WSI &) override
@@ -329,6 +384,7 @@ private:
 	unsigned width = 0;
 	unsigned height = 0;
 	CachedWindow cached_window;
+	Options options;
 
 	std::thread threaded_main_loop;
 	struct TaskList
@@ -492,36 +548,7 @@ static void key_cb(GLFWwindow *window, int key, int, int action, int mods)
 	}
 	else if (action == GLFW_PRESS && key == GLFW_KEY_ENTER && mods == GLFW_MOD_ALT)
 	{
-#ifdef _WIN32
-		glfw->push_task_to_async_thread([=]() {
-			glfw->set_hmonitor(nullptr);
-		});
-#endif
-		if (glfwGetWindowMonitor(window))
-		{
-			// Fullscreen -> windowed
-			auto cached = glfw->get_cached_window();
-			glfwSetWindowMonitor(window, nullptr, cached.x, cached.y, cached.width, cached.height, 0);
-		}
-		else
-		{
-			// Windowed -> fullscreen
-			auto *primary = glfwGetPrimaryMonitor();
-			if (primary)
-			{
-				auto *mode = glfwGetVideoMode(primary);
-				WSIPlatformGLFW::CachedWindow win;
-				glfwGetWindowPos(window, &win.x, &win.y);
-				glfwGetWindowSize(window, &win.width, &win.height);
-				glfw->set_cached_window(win);
-#ifdef _WIN32
-				glfw->push_task_to_async_thread([=]() {
-					glfw->set_hmonitor(MonitorFromWindow(glfwGetWin32Window(window), MONITOR_DEFAULTTOPRIMARY));
-				});
-#endif
-				glfwSetWindowMonitor(window, primary, 0, 0, mode->width, mode->height, mode->refreshRate);
-			}
-		}
+		glfw->toggle_fullscreen();
 	}
 	else
 	{
@@ -597,11 +624,23 @@ namespace Granite
 int application_main(Application *(*create_application)(int, char **), int argc, char *argv[])
 {
 	Granite::Global::init();
+
+	Granite::WSIPlatformGLFW::Options options;
+	int exit_code;
+
+	Util::CLICallbacks cbs;
+	cbs.add("--fullscreen", [&](Util::CLIParser &) { options.fullscreen = true; });
+	cbs.add("--width", [&](Util::CLIParser &parser) { options.override_width = parser.next_uint(); });
+	cbs.add("--height", [&](Util::CLIParser &parser) { options.override_height = parser.next_uint(); });
+	cbs.error_handler = [&]() { LOGE("Failed to parse CLI arguments for GLFW.\n"); };
+	if (!Util::parse_cli_filtered(std::move(cbs), argc, argv, exit_code))
+		return exit_code;
+
 	auto app = unique_ptr<Granite::Application>(create_application(argc, argv));
 
 	if (app)
 	{
-		auto platform = make_unique<Granite::WSIPlatformGLFW>();
+		auto platform = make_unique<Granite::WSIPlatformGLFW>(options);
 		auto *platform_handle = platform.get();
 
 		if (!platform->init(app->get_default_width(), app->get_default_height()))

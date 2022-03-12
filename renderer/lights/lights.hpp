@@ -196,6 +196,8 @@ public:
 
 private:
 	Vulkan::ImageHandle volume, prev_volume;
+	Vulkan::ImageHandle hemisphere;
+	Vulkan::ImageViewHandle hemisphere_view;
 	Util::SmallVector<Vulkan::ImageHandle> accums;
 	Vulkan::BufferHandle atomics, worklist;
 	GBuffer gbuffer;

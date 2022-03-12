@@ -53,6 +53,36 @@ VolumetricDiffuseLightManager::VolumetricDiffuseLightManager()
 	probe_pos_jitter[1] = vec4(+1.0f / 16.0f, -3.0f / 16.0f, +3.0f / 16.0f, 0.0f);
 	probe_pos_jitter[2] = vec4(-1.0f / 16.0f, +3.0f / 16.0f, -5.0f / 16.0f, 0.0f);
 	probe_pos_jitter[3] = vec4(+3.0f / 16.0f, -1.0f / 16.0f, -3.0f / 16.0f, 0.0f);
+
+	EVENT_MANAGER_REGISTER_LATCH(VolumetricDiffuseLightManager, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
+}
+
+void VolumetricDiffuseLightManager::on_device_created(const Vulkan::DeviceCreatedEvent &e)
+{
+	auto &device = e.get_device();
+
+	auto info = Vulkan::ImageCreateInfo::immutable_2d_image(128, 128, VK_FORMAT_R16G16B16A16_SFLOAT);
+	info.layers = 6;
+	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+	info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+	info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+	sky_light = device.create_image(info);
+	sky_light->set_layout(Vulkan::Layout::General);
+	device.set_name(*sky_light, "sky-light");
+
+	Vulkan::ImageViewCreateInfo view = {};
+	view.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	view.layers = 6;
+	view.levels = 1;
+	view.image = sky_light.get();
+	view.view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+	sky_light_2d_array = device.create_image_view(view);
+}
+
+void VolumetricDiffuseLightManager::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
+{
+	sky_light.reset();
+	sky_light_2d_array.reset();
 }
 
 void VolumetricDiffuseLightManager::set_scene(Scene *scene_)
@@ -248,6 +278,7 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	cmd.set_texture(2, 3, light.light.get_gbuffer().normal->get_view());
 	cmd.set_texture(2, 4, light.light.get_gbuffer().depth->get_view());
 	cmd.set_storage_buffer(2, 5, *light.light.get_worklist_buffer());
+	cmd.set_texture(2, 6, sky_light->get_view(), Vulkan::StockSampler::LinearClamp);
 	cmd.dispatch_indirect(*light.light.get_atomic_buffer(), 0);
 	cmd.enable_subgroup_size_control(false);
 }
@@ -647,6 +678,28 @@ void VolumetricDiffuseLightManager::cull_probe_buffer(Vulkan::CommandBuffer &cmd
 	cmd.dispatch((res.x + 3) / 4, (res.y + 3) / 4, (res.z + 3) / 4);
 }
 
+void VolumetricDiffuseLightManager::update_sky_cube(Vulkan::CommandBuffer &cmd)
+{
+	cmd.set_program("builtin://shaders/lights/volumetric_light_setup_sky.comp");
+	cmd.set_storage_texture(0, 0, *sky_light_2d_array);
+
+	struct Constants
+	{
+		alignas(16) vec3 sun_color;
+		alignas(4) float camera_y;
+		alignas(16) vec3 sun_direction;
+		alignas(4) float inv_resolution;
+	};
+
+	auto *constants = cmd.allocate_typed_constant_data<Constants>(1, 0, 1);
+	constants->sun_color = fallback_render_context->get_lighting_parameters()->directional.color;
+	constants->camera_y = fallback_render_context->get_render_parameters().camera_position.y;
+	constants->sun_direction = fallback_render_context->get_lighting_parameters()->directional.direction;
+	constants->inv_resolution = 1.0f / float(sky_light->get_width());
+
+	cmd.dispatch(sky_light->get_width() / 8, sky_light->get_height() / 8, 6);
+}
+
 void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 {
 	auto &light_pass = graph.add_pass("probe-light", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
@@ -660,6 +713,9 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 			cmd.set_storage_buffer(0, 0, *light->light.get_atomic_buffer());
 			cmd.dispatch(1, 1, 1);
 		}
+
+		// In parallel, light the sky cube.
+		update_sky_cube(cmd);
 
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);

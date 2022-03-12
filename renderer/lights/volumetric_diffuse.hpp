@@ -88,5 +88,11 @@ private:
 
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z,
 	             uint32_t word_count, const Vulkan::DebugChannelInterface::Word *words) override;
+
+	Vulkan::ImageHandle sky_light;
+	Vulkan::ImageViewHandle sky_light_2d_array;
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
+	void update_sky_cube(Vulkan::CommandBuffer &cmd);
 };
 }

@@ -723,6 +723,8 @@ void VolumetricDiffuseLight::on_device_destroyed(const Vulkan::DeviceCreatedEven
 	atomics.reset();
 	worklist.reset();
 	accums.clear();
+	hemisphere_view.reset();
+	hemisphere.reset();
 	gbuffer = {};
 }
 

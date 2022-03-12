@@ -12,7 +12,6 @@ layout(local_size_x = 64) in;
 #include "clusterer_data.h"
 #include "volumetric_probe_hash.h"
 #include "volumetric_diffuse.h"
-#include "atmospheric_scatter.h"
 
 layout(set = 3, binding = 2) uniform ClusterTransforms
 {
@@ -42,6 +41,8 @@ layout(set = 2, binding = 5) readonly buffer WorkList
 {
     uint work_list[];
 };
+
+layout(set = 2, binding = 6) uniform samplerCube uSkyLight;
 
 layout(set = 3, binding = 0) uniform Transforms
 {
@@ -91,8 +92,9 @@ mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
     }
     else
     {
-        // TODO: We should probably precompute a low-res skydome cubemap here.
-        color = volumetric.sun_color * rayleigh_mie_scatter(n, volumetric.sun_direction, pos.y, 12, 4);
+        // Technically we have to vary lighting based on pixel Y, not camera Y,
+        // but any difference close to camera is trivial.
+        color = textureLod(uSkyLight, n, 0.0).rgb;
     }
 
     // We have 4 patches per face, so it cancels out the 4.0 / (res * res) computation.
@@ -126,29 +128,7 @@ shared vec3 shared_patch_contributions[6 * 2 * 2][3];
 shared vec3 shared_colors[gl_WorkGroupSize.x][3];
 #endif
 
-const vec3 base_dirs[6] = vec3[](
-    vec3(1.0, 0.0, 0.0),
-    vec3(-1.0, 0.0, 0.0),
-    vec3(0.0, 1.0, 0.0),
-    vec3(0.0, -1.0, 0.0),
-    vec3(0.0, 0.0, 1.0),
-    vec3(0.0, 0.0, -1.0));
-
-const vec3 pos_du[6] = vec3[](
-    vec3(0.0, 0.0, -1.0),
-    vec3(0.0, 0.0, +1.0),
-    vec3(1.0, 0.0, 0.0),
-    vec3(1.0, 0.0, 0.0),
-    vec3(1.0, 0.0, 0.0),
-    vec3(-1.0, 0.0, 0.0));
-
-const vec3 pos_dv[6] = vec3[](
-    vec3(0.0, -1.0, 0.0),
-    vec3(0.0, -1.0, 0.0),
-    vec3(0.0, 0.0, +1.0),
-    vec3(0.0, 0.0, -1.0),
-    vec3(0.0, -1.0, 0.0),
-    vec3(0.0, -1.0, 0.0));
+#include "../inc/cube_coordinates.h"
 
 #define M(b) (1u << (b))
 const uint patch_mask_per_face[6] = uint[](

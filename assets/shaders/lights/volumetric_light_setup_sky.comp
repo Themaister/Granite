@@ -1,0 +1,27 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0, rgba16f) writeonly uniform image2DArray uSkydome;
+layout(set = 1, binding = 0) uniform UBO
+{
+    vec3 sun_color;
+    float camera_y;
+    vec3 sun_direction;
+    float inv_resolution;
+};
+
+#include "../inc/cube_coordinates.h"
+#include "atmospheric_scatter.h"
+
+void main()
+{
+    ivec3 coord = ivec3(gl_GlobalInvocationID);
+    vec2 uv = (vec2(coord.xy) + 0.5) * inv_resolution;
+    uv = 2.0 * uv - 1.0;
+
+    vec3 N = base_dirs[coord.z] + pos_du[coord.z] * uv.x + pos_dv[coord.z] * uv.y;
+
+    vec3 result = sun_color * rayleigh_mie_scatter(normalize(N),
+        sun_direction, camera_y, 32, 16);
+
+    imageStore(uSkydome, coord, vec4(result, 1.0));
+}

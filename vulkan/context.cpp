@@ -1067,6 +1067,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			ppNext = &ext.pipeline_creation_cache_control_features.pNext;
 		}
 
+		if (has_extension(VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME))
+		{
+			ext.supports_format_feature_flags2 = true;
+			enabled_extensions.push_back(VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME);
+		}
+
 		// Validation layers don't fully support present_id/wait yet.
 		// Ignore this extension for now.
 #ifndef VULKAN_DEBUG

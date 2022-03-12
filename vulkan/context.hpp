@@ -79,6 +79,7 @@ struct DeviceFeatures
 	bool supports_video_decode_queue = false;
 	bool supports_video_decode_h264 = false;
 	bool supports_pipeline_creation_cache_control = false;
+	bool supports_format_feature_flags2 = false;
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
 	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};

@@ -235,17 +235,6 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 {
 	auto *context = static_cast<Context *>(pUserData);
 
-	if (messageType == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
-	{
-		// Using LINEAR filter with COMPARE. Spec bug, should not trigger validation.
-		if (uint32_t(pCallbackData->messageIdNumber) == 0xf2fea78eu)
-			return VK_FALSE;
-		if (uint32_t(pCallbackData->messageIdNumber) == 0xd2c86c0cu)
-			return VK_FALSE;
-		if (uint32_t(pCallbackData->messageIdNumber) == 0x2aba6354u)
-			return VK_FALSE;
-	}
-
 	switch (messageSeverity)
 	{
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:

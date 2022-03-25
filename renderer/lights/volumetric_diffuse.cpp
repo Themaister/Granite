@@ -77,12 +77,25 @@ void VolumetricDiffuseLightManager::on_device_created(const Vulkan::DeviceCreate
 	view.image = sky_light.get();
 	view.view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 	sky_light_2d_array = device.create_image_view(view);
+
+	Vulkan::BufferCreateInfo buf_info = {};
+	buf_info.size = sizeof(uint16_t) * 4 * 6;
+	buf_info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+	buf_info.domain = Vulkan::BufferDomain::Device;
+	fallback_volume = device.create_buffer(buf_info);
+	Vulkan::BufferViewCreateInfo view_info = {};
+	view_info.buffer = fallback_volume.get();
+	view_info.range = VK_WHOLE_SIZE;
+	view_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	fallback_volume_view = device.create_buffer_view(view_info);
 }
 
 void VolumetricDiffuseLightManager::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 {
 	sky_light.reset();
 	sky_light_2d_array.reset();
+	fallback_volume.reset();
+	fallback_volume_view.reset();
 }
 
 void VolumetricDiffuseLightManager::set_scene(Scene *scene_)
@@ -678,6 +691,26 @@ void VolumetricDiffuseLightManager::cull_probe_buffer(Vulkan::CommandBuffer &cmd
 	cmd.dispatch((res.x + 3) / 4, (res.y + 3) / 4, (res.z + 3) / 4);
 }
 
+void VolumetricDiffuseLightManager::update_fallback_volume(Vulkan::CommandBuffer &cmd)
+{
+	cmd.set_program("builtin://shaders/lights/volumetric_light_compute_fallback.comp");
+	cmd.set_storage_buffer_view(0, 0, *fallback_volume_view);
+	cmd.set_texture(0, 1, *sky_light_2d_array, Vulkan::StockSampler::NearestClamp);
+
+	struct Constants
+	{
+		alignas(4) uint32_t num_iterations;
+		alignas(4) float inv_resolution;
+		alignas(4) float inv_resolution2;
+	} constants = {};
+
+	constants.num_iterations = sky_light->get_width() / (2 * 8);
+	constants.inv_resolution = 2.0f / float(sky_light->get_width());
+	constants.inv_resolution2 = constants.inv_resolution * constants.inv_resolution;
+	cmd.push_constants(&constants, 0, sizeof(constants));
+	cmd.dispatch(6, 1, 1);
+}
+
 void VolumetricDiffuseLightManager::update_sky_cube(Vulkan::CommandBuffer &cmd)
 {
 	cmd.set_program("builtin://shaders/lights/volumetric_light_setup_sky.comp");
@@ -700,6 +733,11 @@ void VolumetricDiffuseLightManager::update_sky_cube(Vulkan::CommandBuffer &cmd)
 	cmd.dispatch(sky_light->get_width() / 8, sky_light->get_height() / 8, 6);
 }
 
+const Vulkan::BufferView &VolumetricDiffuseLightManager::get_fallback_volume_view() const
+{
+	return *fallback_volume_view;
+}
+
 void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 {
 	auto &light_pass = graph.add_pass("probe-light", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
@@ -720,9 +758,11 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
 
-		cmd.set_program("builtin://shaders/lights/volumetric_light_cull_texels.comp");
+		// In parallel with culling, update the fallback volume.
+		update_fallback_volume(cmd);
 
 		// Cull
+		cmd.set_program("builtin://shaders/lights/volumetric_light_cull_texels.comp");
 		for (auto &light_tuple : *volumetric_diffuse)
 		{
 			auto *light = get_component<VolumetricDiffuseLightComponent>(light_tuple);

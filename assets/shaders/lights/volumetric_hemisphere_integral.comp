@@ -110,6 +110,7 @@ mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
     // A ~= 4.0 / (res^2 * l^3)
     float area = registers.inv_patch_resolution2 * inv_l * inv_l * inv_l;
 
+    // Cosine-weight the area here.
     vec3 hemisphere_area = abs(n) * area;
 
     return mat3(

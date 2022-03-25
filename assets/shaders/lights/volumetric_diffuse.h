@@ -22,13 +22,15 @@ const int CLUSTERER_MAX_VOLUMES = 128;
 
 layout(std140, set = 0, binding = BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_PARAMETERS) uniform VolumeParameters
 {
-	int bindless_index_offset;
-	int num_volumes;
-	uvec2 fallback_volume_fp16;
 	vec3 sun_direction;
+	int bindless_index_offset;
 	vec3 sun_color;
+	int num_volumes;
 	DiffuseVolumeParameters volumes[CLUSTERER_MAX_VOLUMES];
 } volumetric;
+
+layout(set = 0, binding = BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_FALLBACK_VOLUME)
+uniform mediump textureBuffer uVolumetricDiffuseFallback;
 
 mediump float maximum3(mediump vec3 v)
 {
@@ -84,9 +86,13 @@ mediump vec4 compute_volumetric_diffuse(int index, DiffuseVolumeParameters volum
 
 mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal, bool active_lane)
 {
-	mediump vec4 diffuse_weight = vec4(
-			unpackHalf2x16(volumetric.fallback_volume_fp16.x),
-			unpackHalf2x16(volumetric.fallback_volume_fp16.y));
+	mediump ivec3 coords = mix(ivec3(0, 2, 4), ivec3(1, 3, 5), lessThan(normal, vec3(0.0)));
+	mediump vec3 normal2 = normal * normal;
+	mediump vec3 result =
+			normal2.x * texelFetch(uVolumetricDiffuseFallback, coords.x).rgb +
+			normal2.y * texelFetch(uVolumetricDiffuseFallback, coords.y).rgb +
+			normal2.z * texelFetch(uVolumetricDiffuseFallback, coords.z).rgb;
+	mediump vec4 diffuse_weight = vec4(result * 0.01, 0.01);
 
 #if defined(SUBGROUP_OPS) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
 	const float FLT_BIG = 1e38;

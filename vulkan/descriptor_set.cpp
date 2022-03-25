@@ -101,10 +101,17 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 			types++;
 		}
 
-		if (layout.sampled_buffer_mask & (1u << i))
+		if (layout.sampled_texel_buffer_mask & (1u << i))
 		{
 			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, array_size, stages, nullptr });
 			pool_size.push_back({ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, pool_array_size });
+			types++;
+		}
+
+		if (layout.storage_texel_buffer_mask & (1u << i))
+		{
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, array_size, stages, nullptr });
+			pool_size.push_back({ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, pool_array_size });
 			types++;
 		}
 

@@ -605,7 +605,8 @@ static ResourceLayout parse_resource_layout(const rapidjson::Value &layout_obj)
 		auto &set = layout.sets[i];
 		set.uniform_buffer_mask = set_obj["uniformBufferMask"].GetUint();
 		set.storage_buffer_mask = set_obj["storageBufferMask"].GetUint();
-		set.sampled_buffer_mask = set_obj["sampledBufferMask"].GetUint();
+		set.sampled_texel_buffer_mask = set_obj["sampledTexelBufferMask"].GetUint();
+		set.storage_texel_buffer_mask = set_obj["storageTexelBufferMask"].GetUint();
 		set.sampled_image_mask = set_obj["sampledImageMask"].GetUint();
 		set.storage_image_mask = set_obj["storageImageMask"].GetUint();
 		set.separate_image_mask = set_obj["separateImageMask"].GetUint();
@@ -638,7 +639,8 @@ static rapidjson::Value serialize_resource_layout(const ResourceLayout &layout, 
 		Value set_obj(kObjectType);
 		set_obj.AddMember("uniformBufferMask", set.uniform_buffer_mask, allocator);
 		set_obj.AddMember("storageBufferMask", set.storage_buffer_mask, allocator);
-		set_obj.AddMember("sampledBufferMask", set.sampled_buffer_mask, allocator);
+		set_obj.AddMember("sampledTexelBufferMask", set.sampled_texel_buffer_mask, allocator);
+		set_obj.AddMember("storageTexelBufferMask", set.storage_texel_buffer_mask, allocator);
 		set_obj.AddMember("sampledImageMask", set.sampled_image_mask, allocator);
 		set_obj.AddMember("storageImageMask", set.storage_image_mask, allocator);
 		set_obj.AddMember("separateImageMask", set.separate_image_mask, allocator);

@@ -26,6 +26,7 @@
 #include "sprite.hpp"
 #include "lights/clusterer.hpp"
 #include "lights/volumetric_fog.hpp"
+#include "lights/volumetric_diffuse.hpp"
 #include "render_parameters.hpp"
 #include "global_managers.hpp"
 #include "common_renderer_data.hpp"
@@ -65,6 +66,8 @@ enum GlobalDescriptorSetBindings
 	BINDING_GLOBAL_LINEAR_SAMPLER = 14,
 	BINDING_GLOBAL_SHADOW_SAMPLER = 15,
 	BINDING_GLOBAL_GEOMETRY_SAMPLER = 16,
+
+	BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_FALLBACK_VOLUME = 17
 };
 
 namespace Granite
@@ -660,6 +663,12 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 
 	if (lighting->cluster && (lighting->cluster->get_cluster_image() || lighting->cluster->get_cluster_bitmask_buffer()))
 		set_cluster_parameters(cmd, *lighting->cluster);
+
+	if (lighting->volumetric_diffuse)
+	{
+		cmd.set_buffer_view(0, BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_FALLBACK_VOLUME,
+							lighting->volumetric_diffuse->get_fallback_volume_view());
+	}
 }
 
 void Renderer::bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
@@ -1000,7 +1009,15 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 			if (light.cluster->get_cluster_bindless_set())
 			{
 				if (cluster_volumetric_diffuse)
+				{
 					cluster_defines.emplace_back("VOLUMETRIC_DIFFUSE", 1);
+					if (light.volumetric_diffuse)
+					{
+						cmd.set_buffer_view(0, BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_FALLBACK_VOLUME,
+											light.volumetric_diffuse->get_fallback_volume_view());
+					}
+				}
+
 				if (light.ambient_occlusion)
 					cluster_defines.emplace_back("AMBIENT_OCCLUSION", 1);
 			}

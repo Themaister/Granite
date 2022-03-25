@@ -108,7 +108,7 @@ void PipelineLayout::create_update_templates()
 	{
 		if ((layout.descriptor_set_mask & (1u << desc_set)) == 0)
 			continue;
-		if ((layout.bindless_descriptor_set_mask & (1u << desc_set)) == 0)
+		if ((layout.bindless_descriptor_set_mask & (1u << desc_set)) != 0)
 			continue;
 
 		VkDescriptorUpdateTemplateEntryKHR update_entries[VULKAN_NUM_BINDINGS];
@@ -140,11 +140,23 @@ void PipelineLayout::create_update_templates()
 			entry.stride = sizeof(ResourceBinding);
 		});
 
-		for_each_bit(set_layout.sampled_buffer_mask, [&](uint32_t binding) {
+		for_each_bit(set_layout.sampled_texel_buffer_mask, [&](uint32_t binding) {
 			unsigned array_size = set_layout.array_size[binding];
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
 			auto &entry = update_entries[update_count++];
 			entry.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+			entry.dstBinding = binding;
+			entry.dstArrayElement = 0;
+			entry.descriptorCount = array_size;
+			entry.offset = offsetof(ResourceBinding, buffer_view) + sizeof(ResourceBinding) * binding;
+			entry.stride = sizeof(ResourceBinding);
+		});
+
+		for_each_bit(set_layout.storage_texel_buffer_mask, [&](uint32_t binding) {
+			unsigned array_size = set_layout.array_size[binding];
+			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
+			auto &entry = update_entries[update_count++];
+			entry.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
 			entry.dstBinding = binding;
 			entry.dstArrayElement = 0;
 			entry.descriptorCount = array_size;
@@ -378,7 +390,7 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
 		auto &type = compiler.get_type(image.type_id);
 		if (type.image.dim == spv::DimBuffer)
-			layout.sets[set].sampled_buffer_mask |= 1u << binding;
+			layout.sets[set].sampled_texel_buffer_mask |= 1u << binding;
 		else
 			layout.sets[set].sampled_image_mask |= 1u << binding;
 
@@ -410,7 +422,7 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 			layout.sets[set].fp_mask |= 1u << binding;
 
 		if (type.image.dim == spv::DimBuffer)
-			layout.sets[set].sampled_buffer_mask |= 1u << binding;
+			layout.sets[set].sampled_texel_buffer_mask |= 1u << binding;
 		else
 			layout.sets[set].separate_image_mask |= 1u << binding;
 
@@ -429,9 +441,13 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 	{
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
-		layout.sets[set].storage_image_mask |= 1u << binding;
 
 		auto &type = compiler.get_type(image.type_id);
+		if (type.image.dim == spv::DimBuffer)
+			layout.sets[set].storage_texel_buffer_mask |= 1u << binding;
+		else
+			layout.sets[set].storage_image_mask |= 1u << binding;
+
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
 			layout.sets[set].fp_mask |= 1u << binding;
 

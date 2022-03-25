@@ -442,7 +442,8 @@ void Device::bake_program(Program &program)
 			layout.sets[set].storage_image_mask |= shader_layout.sets[set].storage_image_mask;
 			layout.sets[set].uniform_buffer_mask |= shader_layout.sets[set].uniform_buffer_mask;
 			layout.sets[set].storage_buffer_mask |= shader_layout.sets[set].storage_buffer_mask;
-			layout.sets[set].sampled_buffer_mask |= shader_layout.sets[set].sampled_buffer_mask;
+			layout.sets[set].sampled_texel_buffer_mask |= shader_layout.sets[set].sampled_texel_buffer_mask;
+			layout.sets[set].storage_texel_buffer_mask |= shader_layout.sets[set].storage_texel_buffer_mask;
 			layout.sets[set].input_attachment_mask |= shader_layout.sets[set].input_attachment_mask;
 			layout.sets[set].sampler_mask |= shader_layout.sets[set].sampler_mask;
 			layout.sets[set].separate_image_mask |= shader_layout.sets[set].separate_image_mask;
@@ -469,7 +470,8 @@ void Device::bake_program(Program &program)
 					shader_layout.sets[set].storage_image_mask |
 					shader_layout.sets[set].uniform_buffer_mask|
 					shader_layout.sets[set].storage_buffer_mask |
-					shader_layout.sets[set].sampled_buffer_mask |
+					shader_layout.sets[set].sampled_texel_buffer_mask |
+					shader_layout.sets[set].storage_texel_buffer_mask |
 					shader_layout.sets[set].input_attachment_mask |
 					shader_layout.sets[set].sampler_mask |
 					shader_layout.sets[set].separate_image_mask;

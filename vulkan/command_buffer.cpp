@@ -1686,11 +1686,10 @@ void CommandBuffer::set_sampler(unsigned set, unsigned binding, const Sampler &s
 	bindings.secondary_cookies[set][binding] = sampler.get_cookie();
 }
 
-void CommandBuffer::set_buffer_view(unsigned set, unsigned binding, const BufferView &view)
+void CommandBuffer::set_buffer_view_common(unsigned set, unsigned binding, const BufferView &view)
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
 	VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
-	VK_ASSERT(view.get_buffer().get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT);
 	if (view.get_cookie() == bindings.cookies[set][binding])
 		return;
 	auto &b = bindings.bindings[set][binding];
@@ -1698,6 +1697,18 @@ void CommandBuffer::set_buffer_view(unsigned set, unsigned binding, const Buffer
 	bindings.cookies[set][binding] = view.get_cookie();
 	bindings.secondary_cookies[set][binding] = 0;
 	dirty_sets |= 1u << set;
+}
+
+void CommandBuffer::set_buffer_view(unsigned set, unsigned binding, const BufferView &view)
+{
+	VK_ASSERT(view.get_buffer().get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT);
+	set_buffer_view_common(set, binding, view);
+}
+
+void CommandBuffer::set_storage_buffer_view(unsigned set, unsigned binding, const BufferView &view)
+{
+	VK_ASSERT(view.get_buffer().get_create_info().usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT);
+	set_buffer_view_common(set, binding, view);
 }
 
 void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
@@ -1867,7 +1878,7 @@ static void update_descriptor_set_legacy(Device &device, VkDescriptorSet desc_se
 		}
 	});
 
-	for_each_bit(set_layout.sampled_buffer_mask, [&](uint32_t binding) {
+	for_each_bit(set_layout.sampled_texel_buffer_mask, [&](uint32_t binding) {
 		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
@@ -1877,6 +1888,23 @@ static void update_descriptor_set_legacy(Device &device, VkDescriptorSet desc_se
 			write.pNext = nullptr;
 			write.descriptorCount = 1;
 			write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+			write.dstArrayElement = i;
+			write.dstBinding = binding;
+			write.dstSet = desc_set;
+			write.pTexelBufferView = &bindings[binding + i].buffer_view;
+		}
+	});
+
+	for_each_bit(set_layout.storage_texel_buffer_mask, [&](uint32_t binding) {
+		unsigned array_size = set_layout.array_size[binding];
+		for (unsigned i = 0; i < array_size; i++)
+		{
+			VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
+			auto &write = writes[write_count++];
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.pNext = nullptr;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
 			write.dstArrayElement = i;
 			write.dstBinding = binding;
 			write.dstSet = desc_set;
@@ -2060,8 +2088,8 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 		}
 	});
 
-	// Sampled buffers
-	for_each_bit(set_layout.sampled_buffer_mask, [&](uint32_t binding) {
+	// Texel buffers
+	for_each_bit(set_layout.sampled_texel_buffer_mask | set_layout.storage_texel_buffer_mask, [&](uint32_t binding) {
 		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{

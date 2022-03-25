@@ -58,7 +58,7 @@ struct ResourceLayout
 	uint32_t push_constant_size = 0;
 	uint32_t spec_constant_mask = 0;
 	uint32_t bindless_set_mask = 0;
-	enum { Version = 2 };
+	enum { Version = 3 };
 
 	bool unserialize(const uint8_t *data, size_t size);
 	bool serialize(uint8_t *data, size_t size) const;

@@ -301,13 +301,14 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		//scene.get_root_node()->add_child(std::move(node));
 	}
 
+	if (false)
 	{
 		auto &scene = scene_loader.get_scene();
 		auto node = scene.create_node();
-		node->transform.scale = vec3(26.0f, 8.0f, 26.0f);
-		node->transform.translation = vec3(0.0f, 3.0f, 0.0f);
+		node->transform.scale = vec3(4.0f, 4.0f, 4.0f);
+		node->transform.translation = vec3(0.0f, 1.5f, 0.0f);
 		node->invalidate_cached_transform();
-		scene.create_volumetric_diffuse_light(uvec3(32, 8, 32), node.get());
+		scene.create_volumetric_diffuse_light(uvec3(8, 8, 8), node.get());
 		scene.get_root_node()->add_child(std::move(node));
 	}
 
@@ -451,6 +452,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	    config.volumetric_diffuse)
 	{
 		volumetric_diffuse = make_unique<VolumetricDiffuseLightManager>();
+		lighting.volumetric_diffuse = volumetric_diffuse.get();
+
 		auto entity = scene_loader.get_scene().create_entity();
 
 		auto *rp = entity->allocate_component<RenderPassComponent>();
@@ -1405,6 +1408,7 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	fallback_lighting.shadows = graph.maybe_get_physical_texture_resource(fallback_shadows);
 	fallback_lighting.directional = lighting.directional;
 	fallback_lighting.cluster = lighting.cluster;
+	fallback_lighting.volumetric_diffuse = lighting.volumetric_diffuse;
 
 	scene.bind_render_graph_resources(graph);
 

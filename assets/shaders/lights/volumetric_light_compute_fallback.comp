@@ -1,0 +1,72 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0, rgba16f) writeonly uniform imageBuffer uFallbackVolume;
+layout(set = 0, binding = 1) uniform sampler2DArray uImage;
+
+layout(push_constant) uniform Registers
+{
+    uint num_iterations;
+    float inv_resolution;
+    float inv_resolution2;
+};
+
+#include "../inc/cube_coordinates.h"
+#ifndef PI
+#define PI 3.1415628
+#endif
+
+vec3 integrate_sample(vec3 primary_N, vec3 N, vec3 color)
+{
+    // See volumetric_hemisphere_integral.comp for math.
+    float l2 = dot(N, N);
+    float inv_l = inversesqrt(l2);
+    vec3 n = N * inv_l;
+
+    float area = 4.0 * inv_resolution2 * inv_l * inv_l * inv_l;
+    // Cosine-weight the area here.
+    float hemisphere_area = clamp(dot(primary_N, n), 0.0, 1.0) * area;
+    return color * hemisphere_area;
+}
+
+shared vec3 shared_result[gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+
+void main()
+{
+    vec3 per_thread_contribution = vec3(0.0);
+    vec3 primary_N = base_dirs[gl_WorkGroupID.x];
+
+    for (int face = 0; face < 6; face++)
+    {
+        vec3 base_dir = base_dirs[face];
+        vec3 du = pos_du[face];
+        vec3 dv = pos_dv[face];
+
+        for (int iter_y = 0; iter_y < num_iterations; iter_y++)
+        {
+            for (int iter_x = 0; iter_x < num_iterations; iter_x++)
+            {
+                ivec2 coord = ivec2(gl_LocalInvocationID.xy) + ivec2(gl_WorkGroupSize.xy) * ivec2(iter_x, iter_y);
+                vec2 uv = (vec2(coord) + 0.5) * inv_resolution;
+                vec2 clip_uv = uv * 2.0 - 1.0;
+                vec3 N = base_dir + du * clip_uv.x + dv * clip_uv.y;
+                vec3 color = textureLod(uImage, vec3(uv, float(face)), 0.0).rgb;
+                per_thread_contribution += integrate_sample(primary_N, N, color);
+            }
+        }
+    }
+
+    shared_result[gl_LocalInvocationIndex] = per_thread_contribution;
+#define STEP(index) \
+    barrier(); \
+    if (gl_LocalInvocationIndex < (index)) \
+        shared_result[gl_LocalInvocationIndex] += shared_result[gl_LocalInvocationIndex + (index)]
+    STEP(32u);
+    STEP(16u);
+    STEP(8u);
+    STEP(4u);
+    STEP(2u);
+    barrier();
+    if (gl_LocalInvocationIndex == 0u)
+        imageStore(uFallbackVolume, int(gl_WorkGroupID.x), vec4((shared_result[0] + shared_result[1]) / PI, 1.0));
+}

@@ -1272,7 +1272,6 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 		LOGI("Clusterer pruned a total of %llu bytes.\n", static_cast<unsigned long long>(total_pruned));
 
 	bindless.volumetric.num_volumes = std::min<uint32_t>(visible_diffuse_lights.size(), CLUSTERER_MAX_VOLUMES);
-	bindless.volumetric.fallback_volume = muglm::floatToHalf(vec4(0.0001f, 0.0001f, 0.0001f, 0.01f));
 
 	if (auto *light = context_.get_lighting_parameters())
 	{

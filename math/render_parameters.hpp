@@ -31,6 +31,7 @@ namespace Granite
 {
 class LightClusterer;
 class VolumetricFog;
+class VolumetricDiffuseLightManager;
 enum { NumShadowCascades = 4 };
 
 struct RenderParameters
@@ -137,11 +138,10 @@ struct DiffuseVolumeParameters
 #define CLUSTERER_MAX_VOLUMES 128
 struct ClustererParametersVolumetric
 {
-	uint32_t bindless_index_offset;
-	uint32_t num_volumes;
-	alignas(8) muglm::u16vec4 fallback_volume;
 	alignas(16) muglm::vec3 sun_direction;
+	uint32_t bindless_index_offset;
 	alignas(16) muglm::vec3 sun_color;
+	uint32_t num_volumes;
 	alignas(16) DiffuseVolumeParameters volumes[CLUSTERER_MAX_VOLUMES];
 };
 
@@ -211,5 +211,6 @@ struct LightingParameters
 	Vulkan::ImageView *ambient_occlusion = nullptr;
 	const LightClusterer *cluster = nullptr;
 	const VolumetricFog *volumetric_fog = nullptr;
+	const VolumetricDiffuseLightManager *volumetric_diffuse = nullptr;
 };
 }

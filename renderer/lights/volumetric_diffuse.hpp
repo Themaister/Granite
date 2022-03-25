@@ -45,6 +45,8 @@ public:
 	VolumetricDiffuseLightManager();
 	void set_fallback_render_context(const RenderContext *context);
 
+	const Vulkan::BufferView &get_fallback_volume_view() const;
+
 private:
 	void refresh(const RenderContext &context_, TaskComposer &composer) override;
 	const ComponentGroupVector<VolumetricDiffuseLightComponent> *volumetric_diffuse = nullptr;
@@ -91,8 +93,11 @@ private:
 
 	Vulkan::ImageHandle sky_light;
 	Vulkan::ImageViewHandle sky_light_2d_array;
+	Vulkan::BufferHandle fallback_volume;
+	Vulkan::BufferViewHandle fallback_volume_view;
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	void update_sky_cube(Vulkan::CommandBuffer &cmd);
+	void update_fallback_volume(Vulkan::CommandBuffer &cmd);
 };
 }

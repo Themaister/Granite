@@ -108,7 +108,7 @@ void PipelineLayout::create_update_templates()
 	{
 		if ((layout.descriptor_set_mask & (1u << desc_set)) == 0)
 			continue;
-		if ((layout.bindless_descriptor_set_mask & (1u << desc_set)) == 0)
+		if ((layout.bindless_descriptor_set_mask & (1u << desc_set)) != 0)
 			continue;
 
 		VkDescriptorUpdateTemplateEntryKHR update_entries[VULKAN_NUM_BINDINGS];

@@ -117,6 +117,8 @@ public:
 
 	virtual uintptr_t get_fullscreen_monitor();
 
+	virtual const VkApplicationInfo *get_application_info();
+
 protected:
 	unsigned current_swapchain_width = 0;
 	unsigned current_swapchain_height = 0;

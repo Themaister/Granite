@@ -51,6 +51,11 @@ uintptr_t WSIPlatform::get_fullscreen_monitor()
 	return 0;
 }
 
+const VkApplicationInfo *WSIPlatform::get_application_info()
+{
+	return nullptr;
+}
+
 void WSI::set_window_title(const std::string &title)
 {
 	if (platform)
@@ -150,6 +155,8 @@ bool WSI::init(unsigned num_thread_indices, const Context::SystemHandles &system
 	auto instance_ext = platform->get_instance_extensions();
 	auto device_ext = platform->get_device_extensions();
 	context.reset(new Context);
+
+	context->set_application_info(platform->get_application_info());
 	context->set_num_thread_indices(num_thread_indices);
 	context->set_system_handles(system_handles);
 	if (!context->init_instance_and_device(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()))

@@ -114,6 +114,8 @@ protected:
 
 	std::vector<RecordedCamera> recorded_cameras;
 
+	std::string get_name() override;
+
 private:
 	void read_config(const std::string &path);
 	void read_quirks(const std::string &path);

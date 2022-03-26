@@ -269,6 +269,16 @@ public:
 		context->set_num_thread_indices(GRANITE_THREAD_GROUP()->get_num_threads() + 1);
 		const char *khr_surface = VK_KHR_SURFACE_EXTENSION_NAME;
 		const char *khr_swapchain = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+
+		auto name = app->get_name();
+		if (name.empty())
+			name = Path::basename(Path::get_executable_path());
+		VkApplicationInfo app_info = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
+		app_info.pEngineName = "Granite";
+		app_info.pApplicationName = name.empty() ? "Granite" : name.c_str();
+		app_info.apiVersion = VK_API_VERSION_1_1;
+		context->set_application_info(&app_info);
+
 		if (!context->init_instance_and_device(&khr_surface, 1, &khr_swapchain, 1))
 			return false;
 		wsi.init_external_context(move(context));

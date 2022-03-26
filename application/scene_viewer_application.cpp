@@ -1436,4 +1436,9 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	get_wsi().get_device().promote_read_write_caches_to_read_only();
 }
 
+std::string SceneViewerApplication::get_name()
+{
+	return "scene-viewer";
+}
+
 } // namespace Granite

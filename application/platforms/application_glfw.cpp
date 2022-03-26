@@ -77,7 +77,7 @@ public:
 	{
 	}
 
-	bool init(unsigned width_, unsigned height_)
+	bool init(const std::string &name, unsigned width_, unsigned height_)
 	{
 		request_tear_down.store(false);
 		width = width_;
@@ -102,8 +102,10 @@ public:
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-		auto base = Path::basename(Path::get_executable_path());
-		window = glfwCreateWindow(width, height, base.empty() ? "GLFW Window" : base.c_str(),
+		application.name = name;
+		if (application.name.empty())
+			application.name = Path::basename(Path::get_executable_path());
+		window = glfwCreateWindow(width, height, application.name.empty() ? "GLFW Window" : application.name.c_str(),
 		                          nullptr, nullptr);
 
 		glfwSetWindowUserPointer(window, this);
@@ -118,7 +120,17 @@ public:
 		if (options.fullscreen)
 			toggle_fullscreen();
 
+		application.info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+		application.info.pEngineName = "Granite";
+		application.info.pApplicationName = application.name.empty() ? "Granite" : application.name.c_str();
+		application.info.apiVersion = VK_API_VERSION_1_1;
+
 		return true;
+	}
+
+	const VkApplicationInfo *get_application_info() override
+	{
+		return &application.info;
 	}
 
 	void toggle_fullscreen()
@@ -390,6 +402,12 @@ private:
 	CachedWindow cached_window;
 	Options options;
 
+	struct
+	{
+		VkApplicationInfo info = {};
+		std::string name;
+	} application;
+
 	std::thread threaded_main_loop;
 	struct TaskList
 	{
@@ -647,7 +665,7 @@ int application_main(Application *(*create_application)(int, char **), int argc,
 		auto platform = make_unique<Granite::WSIPlatformGLFW>(options);
 		auto *platform_handle = platform.get();
 
-		if (!platform->init(app->get_default_width(), app->get_default_height()))
+		if (!platform->init(app->get_name(), app->get_default_width(), app->get_default_height()))
 			return 1;
 
 		if (!app->init_wsi(move(platform)))

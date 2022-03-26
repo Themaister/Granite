@@ -33,5 +33,10 @@ target_include_directories(granite-util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(granite-util PUBLIC granite-application-global-interface)
 
 if (NOT WIN32)
-    target_link_libraries(granite-util PUBLIC dl rt)
+    target_link_libraries(granite-util PUBLIC dl)
+	find_library(LIBRT_LIBRARY rt)
+	if (EXISTS ${LIBRT_LIBRARY})
+		target_link_libraries(granite-util PUBLIC rt)
+    endif()
 endif()
+

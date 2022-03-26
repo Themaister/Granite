@@ -130,7 +130,10 @@ VkPipeline Device::fossilize_create_graphics_pipeline(Fossilize::Hash hash, VkGr
 
 	register_graphics_pipeline(hash, info);
 
-	LOGI("Creating graphics pipeline.\n");
+#ifdef VULKAN_DEBUG
+	LOGI("Replaying graphics pipeline.\n");
+#endif
+
 	VkPipeline pipeline = VK_NULL_HANDLE;
 	VkResult res = table->vkCreateGraphicsPipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
@@ -152,7 +155,9 @@ VkPipeline Device::fossilize_create_compute_pipeline(Fossilize::Hash hash, VkCom
 
 	register_compute_pipeline(hash, info);
 
-	LOGI("Creating compute pipeline.\n");
+#ifdef VULKAN_DEBUG
+	LOGI("Replaying compute pipeline.\n");
+#endif
 	VkPipeline pipeline = VK_NULL_HANDLE;
 	VkResult res = table->vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
 	if (res != VK_SUCCESS)

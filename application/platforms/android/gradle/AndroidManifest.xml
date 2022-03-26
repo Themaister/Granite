@@ -4,8 +4,8 @@
       android:versionCode="$$VERSION_CODE$$"
       android:versionName="$$VERSION_NAME$$">
 
-    <!-- Require Vulkan 1.0 -->
-    <uses-feature android:name="android.hardware.vulkan.version" android:version="0x400003" android:required="true"/>
+    <!-- Require Vulkan 1.1 -->
+    <uses-feature android:name="android.hardware.vulkan.version" android:version="0x401000" android:required="true"/>
     <uses-feature android:name="android.hardware.vulkan.level" android:version="0" android:required="true"/>
 
     <application android:label="@string/app_name" android:icon="@drawable/$$ICON$$">

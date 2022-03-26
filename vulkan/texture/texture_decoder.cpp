@@ -1303,13 +1303,6 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 {
 	auto &device = cmd.get_device();
 
-	// For EXTENDED_USAGE_BIT.
-	if (!device.get_device_features().supports_maintenance_2)
-	{
-		LOGE("Require KHR_maintenance_2.\n");
-		return {};
-	}
-
 	if (!device.get_device_features().enabled_features.shaderStorageImageWriteWithoutFormat)
 	{
 		LOGE("Require shaderStorageImageWriteWithoutFormat.\n");

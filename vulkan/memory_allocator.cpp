@@ -444,16 +444,16 @@ bool DeviceAllocator::allocate_image_memory(uint32_t size, uint32_t alignment, A
                                             DeviceAllocation *alloc, VkImage image,
                                             bool force_no_dedicated)
 {
-	if (!device->get_device_features().supports_dedicated || force_no_dedicated)
+	if (force_no_dedicated)
 		return allocate(size, alignment, mode, memory_type, alloc);
 
-	VkImageMemoryRequirementsInfo2KHR info = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR };
+	VkImageMemoryRequirementsInfo2 info = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2 };
 	info.image = image;
 
-	VkMemoryDedicatedRequirementsKHR dedicated_req = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR };
-	VkMemoryRequirements2KHR mem_req = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR };
+	VkMemoryDedicatedRequirements dedicated_req = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS };
+	VkMemoryRequirements2 mem_req = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
 	mem_req.pNext = &dedicated_req;
-	table->vkGetImageMemoryRequirements2KHR(device->get_device(), &info, &mem_req);
+	table->vkGetImageMemoryRequirements2(device->get_device(), &info, &mem_req);
 
 	if (dedicated_req.prefersDedicatedAllocation || dedicated_req.requiresDedicatedAllocation)
 		return allocators[memory_type]->allocate_dedicated(size, mode, alloc, image);
@@ -569,25 +569,17 @@ void DeviceAllocator::get_memory_budget_nolock(HeapBudget *heap_budgets)
 {
 	uint32_t num_heaps = mem_props.memoryHeapCount;
 
-	if (device->get_device_features().supports_physical_device_properties2 &&
-	    device->get_device_features().supports_memory_budget)
+	if (device->get_device_features().supports_memory_budget)
 	{
-		VkPhysicalDeviceMemoryProperties2KHR props =
-				{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR};
+		VkPhysicalDeviceMemoryProperties2 props =
+				{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2 };
 		VkPhysicalDeviceMemoryBudgetPropertiesEXT budget_props =
-				{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT};
+				{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT };
 
 		if (device->get_device_features().supports_memory_budget)
 			props.pNext = &budget_props;
 
-		// For global instance functions, we might not get KHR versions if we don't control
-		// instance creation, e.g. libretro.
-		// We can rely on Vulkan 1.1 having been enabled however.
-		if (device->get_device_features().supports_vulkan_11_device &&
-		    device->get_device_features().supports_vulkan_11_instance)
-			vkGetPhysicalDeviceMemoryProperties2(device->get_physical_device(), &props);
-		else
-			vkGetPhysicalDeviceMemoryProperties2KHR(device->get_physical_device(), &props);
+		vkGetPhysicalDeviceMemoryProperties2(device->get_physical_device(), &props);
 
 		for (uint32_t i = 0; i < num_heaps; i++)
 		{
@@ -693,7 +685,7 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMo
 	}
 
 	VkMemoryAllocateInfo info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, size, memory_type };
-	VkMemoryDedicatedAllocateInfoKHR dedicated = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR };
+	VkMemoryDedicatedAllocateInfo dedicated = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO };
 	if (dedicated_image != VK_NULL_HANDLE)
 	{
 		dedicated.image = dedicated_image;

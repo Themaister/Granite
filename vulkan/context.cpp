@@ -40,6 +40,12 @@ using namespace std;
 
 namespace Vulkan
 {
+void Context::set_application_info(const VkApplicationInfo *app_info)
+{
+	user_application_info = app_info;
+	VK_ASSERT(app_info->apiVersion >= VK_API_VERSION_1_1);
+}
+
 bool Context::init_instance_and_device(const char **instance_ext, uint32_t instance_ext_count, const char **device_ext,
                                        uint32_t device_ext_count, ContextCreationFlags flags)
 {
@@ -203,16 +209,12 @@ Context::~Context()
 	destroy();
 }
 
-const VkApplicationInfo &Context::get_application_info(bool supports_vulkan_11)
+const VkApplicationInfo &Context::get_application_info() const
 {
 	static const VkApplicationInfo info_11 = {
 		VK_STRUCTURE_TYPE_APPLICATION_INFO, nullptr, "Granite", 0, "Granite", 0, VK_API_VERSION_1_1,
 	};
-
-	static const VkApplicationInfo info = {
-		VK_STRUCTURE_TYPE_APPLICATION_INFO, nullptr, "Granite", 0, "Granite", 0, VK_MAKE_VERSION(1, 0, 57),
-	};
-	return supports_vulkan_11 ? info_11 : info;
+	return user_application_info ? *user_application_info : info_11;
 }
 
 void Context::notify_validation_error(const char *msg)
@@ -294,10 +296,15 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 
 bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_count)
 {
-	ext.supports_vulkan_11_instance = volkGetInstanceVersion() >= VK_API_VERSION_1_1;
+	uint32_t target_instance_version = user_application_info ? user_application_info->apiVersion : VK_API_VERSION_1_1;
+	if (volkGetInstanceVersion() < target_instance_version)
+	{
+		LOGE("Vulkan loader does not support target Vulkan version.\n");
+		return false;
+	}
 
 	VkInstanceCreateInfo info = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
-	info.pApplicationInfo = &get_application_info(ext.supports_vulkan_11_instance);
+	info.pApplicationInfo = &get_application_info();
 
 	vector<const char *> instance_exts;
 	vector<const char *> instance_layers;
@@ -330,21 +337,6 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	for (uint32_t i = 0; i < instance_ext_count; i++)
 		if (!has_extension(instance_ext[i]))
 			return false;
-
-	if (has_extension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
-	{
-		ext.supports_physical_device_properties2 = true;
-		instance_exts.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-	}
-
-	if (ext.supports_physical_device_properties2 &&
-	    has_extension(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME) &&
-	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME))
-	{
-		instance_exts.push_back(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
-		instance_exts.push_back(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME);
-		ext.supports_external = true;
-	}
 
 	if (has_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
 	{
@@ -451,6 +443,10 @@ static unsigned device_score(VkPhysicalDevice &gpu)
 {
 	VkPhysicalDeviceProperties props = {};
 	vkGetPhysicalDeviceProperties(gpu, &props);
+
+	if (props.apiVersion < VK_API_VERSION_1_1)
+		return 0;
+
 	switch (props.deviceType)
 	{
 	case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
@@ -563,31 +559,18 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			return false;
 
 	vkGetPhysicalDeviceProperties(gpu, &gpu_props);
+
+	if (gpu_props.apiVersion < VK_API_VERSION_1_1)
+	{
+		LOGE("Found no Vulkan GPU which supports Vulkan 1.1.\n");
+		return false;
+	}
+
 	vkGetPhysicalDeviceMemoryProperties(gpu, &mem_props);
 
-	LOGI("Selected Vulkan GPU: %s\n", gpu_props.deviceName);
-
-	if (gpu_props.apiVersion >= VK_API_VERSION_1_1)
-	{
-		ext.supports_vulkan_11_device = ext.supports_vulkan_11_instance;
-		LOGI("GPU supports Vulkan 1.1.\n");
-	}
-	else if (gpu_props.apiVersion >= VK_API_VERSION_1_0)
-	{
-		ext.supports_vulkan_11_device = false;
-		LOGI("GPU supports Vulkan 1.0.\n");
-	}
-
 	uint32_t queue_family_count = 0;
-	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
-		vkGetPhysicalDeviceQueueFamilyProperties2(gpu, &queue_family_count, nullptr);
-	else if (ext.supports_physical_device_properties2)
-		vkGetPhysicalDeviceQueueFamilyProperties2KHR(gpu, &queue_family_count, nullptr);
-	else
-		vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_family_count, nullptr);
-
-	Util::SmallVector<VkQueueFamilyProperties> queue_props(queue_family_count);
-	Util::SmallVector<VkQueueFamilyProperties2> queue_props2(queue_family_count);
+	vkGetPhysicalDeviceQueueFamilyProperties2(gpu, &queue_family_count, nullptr);
+	Util::SmallVector<VkQueueFamilyProperties2> queue_props(queue_family_count);
 
 #ifdef GRANITE_VULKAN_BETA
 	Util::SmallVector<VkVideoQueueFamilyProperties2KHR> video_queue_props2(queue_family_count);
@@ -598,7 +581,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 
 	for (uint32_t i = 0; i < queue_family_count; i++)
 	{
-		queue_props2[i].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
+		queue_props[i].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
 #ifdef GRANITE_VULKAN_BETA
 		if (ext.supports_video_queue)
 		{
@@ -610,17 +593,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 
 	Util::SmallVector<uint32_t> queue_offsets(queue_family_count);
 	Util::SmallVector<Util::SmallVector<float, QUEUE_INDEX_COUNT>> queue_priorities(queue_family_count);
-
-	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
-		vkGetPhysicalDeviceQueueFamilyProperties2(gpu, &queue_family_count, queue_props2.data());
-	else if (ext.supports_physical_device_properties2)
-		vkGetPhysicalDeviceQueueFamilyProperties2KHR(gpu, &queue_family_count, queue_props2.data());
-	else
-		vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_family_count, queue_props.data());
-
-	if ((ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device) || ext.supports_physical_device_properties2)
-		for (uint32_t i = 0; i < queue_family_count; i++)
-			queue_props[i] = queue_props2[i].queueFamilyProperties;
+	vkGetPhysicalDeviceQueueFamilyProperties2(gpu, &queue_family_count, queue_props.data());
 
 	queue_info = {};
 	uint32_t queue_indices[QUEUE_INDEX_COUNT] = {};
@@ -630,7 +603,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	                                   float priority) -> bool {
 		for (unsigned family_index = 0; family_index < queue_family_count; family_index++)
 		{
-			if ((queue_props[family_index].queueFlags & ignore_flags) != 0)
+			if ((queue_props[family_index].queueFamilyProperties.queueFlags & ignore_flags) != 0)
 				continue;
 
 			// A graphics queue candidate must support present for us to select it.
@@ -641,10 +614,11 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 					continue;
 			}
 
-			if (queue_props[family_index].queueCount && (queue_props[family_index].queueFlags & required) == required)
+			if (queue_props[family_index].queueFamilyProperties.queueCount &&
+			    (queue_props[family_index].queueFamilyProperties.queueFlags & required) == required)
 			{
 				family = family_index;
-				queue_props[family_index].queueCount--;
+				queue_props[family_index].queueFamilyProperties.queueCount--;
 				index = queue_offsets[family_index]++;
 				queue_priorities[family_index].push_back(priority);
 				return true;
@@ -663,7 +637,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	}
 
 	// XXX: This assumes timestamp valid bits is the same for all queue types.
-	queue_info.timestamp_valid_bits = queue_props[queue_info.family_indices[QUEUE_INDEX_GRAPHICS]].timestampValidBits;
+	queue_info.timestamp_valid_bits =
+			queue_props[queue_info.family_indices[QUEUE_INDEX_GRAPHICS]].queueFamilyProperties.timestampValidBits;
 
 	// Prefer another graphics queue since we can do async graphics that way.
 	// The compute queue is to be treated as high priority since we also do async graphics on it.
@@ -726,24 +701,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	for (uint32_t i = 0; i < num_required_device_layers; i++)
 		enabled_layers.push_back(required_device_layers[i]);
 
-	if (has_extension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME))
-	{
-		ext.supports_get_memory_requirements2 = true;
-		enabled_extensions.push_back(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
-	}
-
-	if (ext.supports_get_memory_requirements2 && has_extension(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME))
-	{
-		ext.supports_dedicated = true;
-		enabled_extensions.push_back(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
-	}
-
-	if (has_extension(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME))
-	{
-		ext.supports_image_format_list = true;
-		enabled_extensions.push_back(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
-	}
-
 	if (has_extension(VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME))
 	{
 		ext.supports_mirror_clamp_to_edge = true;
@@ -772,9 +729,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	}
 #endif
 
-	if (ext.supports_external && ext.supports_dedicated &&
-	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME) &&
-	    has_extension(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME) &&
+	if (
 #ifdef _WIN32
 	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME) &&
 	    has_extension(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME)
@@ -785,8 +740,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		)
 	{
 		ext.supports_external = true;
-		enabled_extensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME);
-		enabled_extensions.push_back(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
 #ifdef _WIN32
 		enabled_extensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME);
 		enabled_extensions.push_back(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
@@ -798,46 +751,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	else
 		ext.supports_external = false;
 
-	if (has_extension(VK_KHR_DESCRIPTOR_UPDATE_TEMPLATE_EXTENSION_NAME))
-	{
-		enabled_extensions.push_back(VK_KHR_DESCRIPTOR_UPDATE_TEMPLATE_EXTENSION_NAME);
-		ext.supports_update_template = true;
-	}
-
-	if (has_extension(VK_KHR_MAINTENANCE1_EXTENSION_NAME))
-	{
-		enabled_extensions.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
-		ext.supports_maintenance_1 = true;
-	}
-
-	if (has_extension(VK_KHR_MAINTENANCE2_EXTENSION_NAME))
-	{
-		enabled_extensions.push_back(VK_KHR_MAINTENANCE2_EXTENSION_NAME);
-		ext.supports_maintenance_2 = true;
-	}
-
-	if (has_extension(VK_KHR_MAINTENANCE3_EXTENSION_NAME))
-	{
-		enabled_extensions.push_back(VK_KHR_MAINTENANCE3_EXTENSION_NAME);
-		ext.supports_maintenance_3 = true;
-	}
-
-	if (has_extension(VK_KHR_BIND_MEMORY_2_EXTENSION_NAME))
-	{
-		ext.supports_bind_memory2 = true;
-		enabled_extensions.push_back(VK_KHR_BIND_MEMORY_2_EXTENSION_NAME);
-	}
-
 	if (has_extension(VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME))
 	{
 		ext.supports_draw_indirect_count = true;
 		enabled_extensions.push_back(VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME);
-	}
-
-	if (has_extension(VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME))
-	{
-		ext.supports_draw_parameters = true;
-		enabled_extensions.push_back(VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME);
 	}
 
 	if (has_extension(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME))
@@ -845,9 +762,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ext.supports_calibrated_timestamps = true;
 		enabled_extensions.push_back(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME);
 	}
-
-	if (has_extension(VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_EXTENSION_NAME))
-		enabled_extensions.push_back(VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_EXTENSION_NAME);
 
 	if (has_extension(VK_EXT_CONSERVATIVE_RASTERIZATION_EXTENSION_NAME))
 	{
@@ -881,220 +795,204 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	}
 #endif
 
-	VkPhysicalDeviceFeatures2KHR features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR };
+	VkPhysicalDeviceFeatures2 features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+
+	ext.multiview_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES };
+	ext.sampler_ycbcr_conversion_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES };
+	ext.shader_draw_parameters_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES };
+
 	ext.storage_8bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR };
 	ext.storage_16bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR };
 	ext.float16_int8_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT16_INT8_FEATURES_KHR };
-	ext.multiview_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES_KHR };
-	ext.subgroup_size_control_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES_EXT };
-	ext.compute_shader_derivative_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV };
-	ext.host_query_reset_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES_EXT };
-	ext.demote_to_helper_invocation_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT };
-	ext.scalar_block_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT };
 	ext.ubo_std430_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_UNIFORM_BUFFER_STANDARD_LAYOUT_FEATURES_KHR };
 	ext.timeline_semaphore_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES_KHR };
-	ext.descriptor_indexing_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT };
-	ext.performance_query_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_FEATURES_KHR };
-	ext.sampler_ycbcr_conversion_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES_KHR };
-	ext.memory_priority_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PRIORITY_FEATURES_EXT };
-	ext.astc_decode_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_FEATURES_EXT };
-	ext.astc_hdr_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES_EXT };
 	ext.sync2_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR };
 	ext.present_id_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR };
 	ext.present_wait_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR };
+	ext.performance_query_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_FEATURES_KHR };
+
+	ext.subgroup_size_control_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES_EXT };
+	ext.host_query_reset_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES_EXT };
+	ext.demote_to_helper_invocation_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT };
+	ext.scalar_block_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT };
+	ext.descriptor_indexing_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT };
+	ext.memory_priority_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PRIORITY_FEATURES_EXT };
+	ext.astc_decode_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_FEATURES_EXT };
+	ext.astc_hdr_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES_EXT };
 	ext.pipeline_creation_cache_control_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_CREATION_CACHE_CONTROL_FEATURES_EXT };
+
+	ext.compute_shader_derivative_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV };
+
 	void **ppNext = &features.pNext;
 
-	bool has_pdf2 = ext.supports_physical_device_properties2 ||
-	                (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device);
+	*ppNext = &ext.multiview_features;
+	ppNext = &ext.multiview_features.pNext;
+	*ppNext = &ext.sampler_ycbcr_conversion_features;
+	ppNext = &ext.sampler_ycbcr_conversion_features.pNext;
+	*ppNext = &ext.shader_draw_parameters_features;
+	ppNext = &ext.shader_draw_parameters_features.pNext;
 
-	if (has_pdf2)
+	if (has_extension(VK_KHR_8BIT_STORAGE_EXTENSION_NAME))
 	{
-		if (has_extension(VK_KHR_8BIT_STORAGE_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
-			*ppNext = &ext.storage_8bit_features;
-			ppNext = &ext.storage_8bit_features.pNext;
-		}
-
-		if (has_extension(VK_KHR_16BIT_STORAGE_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_KHR_16BIT_STORAGE_EXTENSION_NAME);
-			*ppNext = &ext.storage_16bit_features;
-			ppNext = &ext.storage_16bit_features.pNext;
-		}
-
-		if (has_extension(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
-			*ppNext = &ext.float16_int8_features;
-			ppNext = &ext.float16_int8_features.pNext;
-		}
-
-		if (has_extension(VK_KHR_MULTIVIEW_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_KHR_MULTIVIEW_EXTENSION_NAME);
-			*ppNext = &ext.multiview_features;
-			ppNext = &ext.multiview_features.pNext;
-		}
-
-		if (has_extension(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
-			*ppNext = &ext.subgroup_size_control_features;
-			ppNext = &ext.subgroup_size_control_features.pNext;
-		}
-
-		if (has_extension(VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME);
-			*ppNext = &ext.compute_shader_derivative_features;
-			ppNext = &ext.compute_shader_derivative_features.pNext;
-		}
-
-		if (has_extension(VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME);
-			*ppNext = &ext.host_query_reset_features;
-			ppNext = &ext.host_query_reset_features.pNext;
-		}
-
-		if (has_extension(VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME);
-			*ppNext = &ext.demote_to_helper_invocation_features;
-			ppNext = &ext.demote_to_helper_invocation_features.pNext;
-		}
-
-		if (has_extension(VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME);
-			*ppNext = &ext.scalar_block_features;
-			ppNext = &ext.scalar_block_features.pNext;
-		}
-
-		if (has_extension(VK_KHR_UNIFORM_BUFFER_STANDARD_LAYOUT_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_KHR_UNIFORM_BUFFER_STANDARD_LAYOUT_EXTENSION_NAME);
-			*ppNext = &ext.ubo_std430_features;
-			ppNext = &ext.ubo_std430_features.pNext;
-		}
-
-		if (has_extension(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
-			*ppNext = &ext.timeline_semaphore_features;
-			ppNext = &ext.timeline_semaphore_features.pNext;
-		}
-
-		if ((flags & CONTEXT_CREATION_DISABLE_BINDLESS_BIT) == 0 &&
-		    ext.supports_maintenance_3 &&
-		    has_extension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
-			*ppNext = &ext.descriptor_indexing_features;
-			ppNext = &ext.descriptor_indexing_features.pNext;
-		}
-
-		if (has_extension(VK_KHR_PERFORMANCE_QUERY_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_KHR_PERFORMANCE_QUERY_EXTENSION_NAME);
-			*ppNext = &ext.performance_query_features;
-			ppNext = &ext.performance_query_features.pNext;
-		}
-
-		if (ext.supports_bind_memory2 &&
-		    ext.supports_get_memory_requirements2 &&
-		    has_extension(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME);
-			*ppNext = &ext.sampler_ycbcr_conversion_features;
-			ppNext = &ext.sampler_ycbcr_conversion_features.pNext;
-		}
-
-		if (has_extension(VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME);
-			*ppNext = &ext.memory_priority_features;
-			ppNext = &ext.memory_priority_features.pNext;
-		}
-
-		if (has_extension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
-			ext.supports_memory_budget = true;
-		}
-
-		if (has_extension(VK_EXT_ASTC_DECODE_MODE_EXTENSION_NAME))
-		{
-			ext.supports_astc_decode_mode = true;
-			enabled_extensions.push_back(VK_EXT_ASTC_DECODE_MODE_EXTENSION_NAME);
-			*ppNext = &ext.astc_decode_features;
-			ppNext = &ext.astc_decode_features.pNext;
-		}
-
-		if (has_extension(VK_EXT_TEXTURE_COMPRESSION_ASTC_HDR_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_EXT_TEXTURE_COMPRESSION_ASTC_HDR_EXTENSION_NAME);
-			*ppNext = &ext.astc_hdr_features;
-			ppNext = &ext.astc_hdr_features.pNext;
-		}
-
-		if (has_extension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME))
-		{
-			ext.supports_sync2 = true;
-			enabled_extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
-			*ppNext = &ext.sync2_features;
-			ppNext = &ext.sync2_features.pNext;
-		}
-
-		if (has_extension(VK_EXT_PIPELINE_CREATION_CACHE_CONTROL_EXTENSION_NAME))
-		{
-			ext.supports_pipeline_creation_cache_control = true;
-			enabled_extensions.push_back(VK_EXT_PIPELINE_CREATION_CACHE_CONTROL_EXTENSION_NAME);
-			*ppNext = &ext.pipeline_creation_cache_control_features;
-			ppNext = &ext.pipeline_creation_cache_control_features.pNext;
-		}
-
-		if (has_extension(VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME))
-		{
-			ext.supports_format_feature_flags2 = true;
-			enabled_extensions.push_back(VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME);
-		}
-
-		// Validation layers don't fully support present_id/wait yet.
-		// Ignore this extension for now.
-#ifndef VULKAN_DEBUG
-		for (unsigned i = 0; i < num_required_device_extensions; i++)
-		{
-			if (strcmp(required_device_extensions[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
-			{
-				if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
-				{
-					enabled_extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
-					*ppNext = &ext.present_id_features;
-					ppNext = &ext.present_id_features.pNext;
-				}
-
-				if (has_extension(VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
-				{
-					enabled_extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
-					*ppNext = &ext.present_wait_features;
-					ppNext = &ext.present_wait_features.pNext;
-				}
-
-				break;
-			}
-		}
-#endif
+		enabled_extensions.push_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
+		*ppNext = &ext.storage_8bit_features;
+		ppNext = &ext.storage_8bit_features.pNext;
 	}
 
-	if (ext.supports_vulkan_11_device && ext.supports_vulkan_11_instance)
-		vkGetPhysicalDeviceFeatures2(gpu, &features);
-	else if (ext.supports_physical_device_properties2)
-		vkGetPhysicalDeviceFeatures2KHR(gpu, &features);
-	else
-		vkGetPhysicalDeviceFeatures(gpu, &features.features);
+	if (has_extension(VK_KHR_16BIT_STORAGE_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_16BIT_STORAGE_EXTENSION_NAME);
+		*ppNext = &ext.storage_16bit_features;
+		ppNext = &ext.storage_16bit_features.pNext;
+	}
+
+	if (has_extension(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
+		*ppNext = &ext.float16_int8_features;
+		ppNext = &ext.float16_int8_features.pNext;
+	}
+
+	if (has_extension(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
+		*ppNext = &ext.subgroup_size_control_features;
+		ppNext = &ext.subgroup_size_control_features.pNext;
+	}
+
+	if (has_extension(VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME);
+		*ppNext = &ext.compute_shader_derivative_features;
+		ppNext = &ext.compute_shader_derivative_features.pNext;
+	}
+
+	if (has_extension(VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME);
+		*ppNext = &ext.host_query_reset_features;
+		ppNext = &ext.host_query_reset_features.pNext;
+	}
+
+	if (has_extension(VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME);
+		*ppNext = &ext.demote_to_helper_invocation_features;
+		ppNext = &ext.demote_to_helper_invocation_features.pNext;
+	}
+
+	if (has_extension(VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME);
+		*ppNext = &ext.scalar_block_features;
+		ppNext = &ext.scalar_block_features.pNext;
+	}
+
+	if (has_extension(VK_KHR_UNIFORM_BUFFER_STANDARD_LAYOUT_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_UNIFORM_BUFFER_STANDARD_LAYOUT_EXTENSION_NAME);
+		*ppNext = &ext.ubo_std430_features;
+		ppNext = &ext.ubo_std430_features.pNext;
+	}
+
+	if (has_extension(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
+		*ppNext = &ext.timeline_semaphore_features;
+		ppNext = &ext.timeline_semaphore_features.pNext;
+	}
+
+	if ((flags & CONTEXT_CREATION_DISABLE_BINDLESS_BIT) == 0 && has_extension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+		*ppNext = &ext.descriptor_indexing_features;
+		ppNext = &ext.descriptor_indexing_features.pNext;
+	}
+
+	if (has_extension(VK_KHR_PERFORMANCE_QUERY_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_PERFORMANCE_QUERY_EXTENSION_NAME);
+		*ppNext = &ext.performance_query_features;
+		ppNext = &ext.performance_query_features.pNext;
+	}
+
+	if (has_extension(VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME);
+		*ppNext = &ext.memory_priority_features;
+		ppNext = &ext.memory_priority_features.pNext;
+	}
+
+	if (has_extension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+		ext.supports_memory_budget = true;
+	}
+
+	if (has_extension(VK_EXT_ASTC_DECODE_MODE_EXTENSION_NAME))
+	{
+		ext.supports_astc_decode_mode = true;
+		enabled_extensions.push_back(VK_EXT_ASTC_DECODE_MODE_EXTENSION_NAME);
+		*ppNext = &ext.astc_decode_features;
+		ppNext = &ext.astc_decode_features.pNext;
+	}
+
+	if (has_extension(VK_EXT_TEXTURE_COMPRESSION_ASTC_HDR_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_TEXTURE_COMPRESSION_ASTC_HDR_EXTENSION_NAME);
+		*ppNext = &ext.astc_hdr_features;
+		ppNext = &ext.astc_hdr_features.pNext;
+	}
+
+	if (has_extension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME))
+	{
+		ext.supports_sync2 = true;
+		enabled_extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+		*ppNext = &ext.sync2_features;
+		ppNext = &ext.sync2_features.pNext;
+	}
+
+	if (has_extension(VK_EXT_PIPELINE_CREATION_CACHE_CONTROL_EXTENSION_NAME))
+	{
+		ext.supports_pipeline_creation_cache_control = true;
+		enabled_extensions.push_back(VK_EXT_PIPELINE_CREATION_CACHE_CONTROL_EXTENSION_NAME);
+		*ppNext = &ext.pipeline_creation_cache_control_features;
+		ppNext = &ext.pipeline_creation_cache_control_features.pNext;
+	}
+
+	if (has_extension(VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME))
+	{
+		ext.supports_format_feature_flags2 = true;
+		enabled_extensions.push_back(VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME);
+	}
+
+	// Validation layers don't fully support present_id/wait yet.
+	// Ignore this extension for now.
+#ifndef VULKAN_DEBUG
+	for (unsigned i = 0; i < num_required_device_extensions; i++)
+	{
+		if (strcmp(required_device_extensions[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
+		{
+			if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
+			{
+				enabled_extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+				*ppNext = &ext.present_id_features;
+				ppNext = &ext.present_id_features.pNext;
+			}
+
+			if (has_extension(VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
+			{
+				enabled_extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+				*ppNext = &ext.present_wait_features;
+				ppNext = &ext.present_wait_features.pNext;
+			}
+
+			break;
+		}
+	}
+#endif
+
+	vkGetPhysicalDeviceFeatures2(gpu, &features);
 
 	// Enable device features we might care about.
 	{
@@ -1146,10 +1044,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ext.enabled_features = enabled_features;
 	}
 
-	if (ext.supports_physical_device_properties2)
-		device_info.pNext = &features;
-	else
-		device_info.pEnabledFeatures = &features.features;
+	device_info.pNext = &features;
 
 #ifdef VULKAN_DEBUG
 	if (!force_no_validation && has_layer("VK_LAYER_KHRONOS_validation"))
@@ -1165,18 +1060,23 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	}
 
 	// Only need GetPhysicalDeviceProperties2 for Vulkan 1.1-only code, so don't bother getting KHR variant.
+	VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
 	ext.subgroup_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES };
+	ext.multiview_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES };
+
+	ext.driver_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR };
+
 	ext.host_memory_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT };
 	ext.subgroup_size_control_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES_EXT };
 	ext.descriptor_indexing_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT };
 	ext.conservative_rasterization_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT };
-	ext.driver_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR };
-	ext.multiview_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES };
-	VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+
 	ppNext = &props.pNext;
 
 	*ppNext = &ext.subgroup_properties;
 	ppNext = &ext.subgroup_properties.pNext;
+	*ppNext = &ext.multiview_properties;
+	ppNext = &ext.multiview_properties.pNext;
 
 	if (ext.supports_external_memory_host)
 	{
@@ -1190,7 +1090,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ppNext = &ext.subgroup_size_control_properties.pNext;
 	}
 
-	if (ext.supports_maintenance_3 && has_extension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
+	if (has_extension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
 	{
 		*ppNext = &ext.descriptor_indexing_properties;
 		ppNext = &ext.descriptor_indexing_properties.pNext;
@@ -1202,14 +1102,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ppNext = &ext.conservative_rasterization_properties.pNext;
 	}
 
-	if (ext.multiview_features.multiview)
-	{
-		*ppNext = &ext.multiview_properties;
-		ppNext = &ext.multiview_properties.pNext;
-	}
-
-	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device &&
-	    has_extension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME))
+	if (has_extension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME);
 		ext.supports_driver_properties = true;
@@ -1217,8 +1110,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ppNext = &ext.driver_properties.pNext;
 	}
 
-	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
-		vkGetPhysicalDeviceProperties2(gpu, &props);
+	vkGetPhysicalDeviceProperties2(gpu, &props);
 
 	device_info.enabledExtensionCount = enabled_extensions.size();
 	device_info.ppEnabledExtensionNames = enabled_extensions.empty() ? nullptr : enabled_extensions.data();
@@ -1232,9 +1124,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		return false;
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	feature_filter.init(
-			(ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device ?
-			 VK_API_VERSION_1_1 : VK_API_VERSION_1_0),
+	feature_filter.init(user_application_info ? user_application_info->apiVersion : VK_API_VERSION_1_1,
 			enabled_extensions.data(), device_info.enabledExtensionCount,
 			&features, &props);
 	feature_filter.set_device_query_interface(this);
@@ -1272,6 +1162,7 @@ void Context::check_descriptor_indexing_features()
 	auto &f = ext.descriptor_indexing_features;
 	if (f.descriptorBindingSampledImageUpdateAfterBind &&
 	    f.descriptorBindingPartiallyBound &&
+		f.descriptorBindingVariableDescriptorCount &&
 	    f.runtimeDescriptorArray &&
 	    f.shaderSampledImageArrayNonUniformIndexing)
 	{

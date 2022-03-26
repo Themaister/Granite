@@ -64,8 +64,7 @@ bool ShaderTemplate::init()
 	if (!device->get_system_handles().filesystem)
 		return false;
 	compiler = make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
-	if (device->get_device_features().supports_vulkan_11_device)
-		compiler->set_target(Granite::Target::Vulkan11);
+	compiler->set_target(Granite::Target::Vulkan11);
 	if (!compiler->set_source_from_file(path))
 		return false;
 	compiler->set_include_directories(&include_directories);
@@ -225,8 +224,7 @@ void ShaderTemplate::recompile()
 	if (!device->get_system_handles().filesystem)
 		return;
 	auto newcompiler = make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
-	if (device->get_device_features().supports_vulkan_11_device)
-		newcompiler->set_target(Granite::Target::Vulkan11);
+	newcompiler->set_target(Granite::Target::Vulkan11);
 	if (!newcompiler->set_source_from_file(path))
 		return;
 	newcompiler->set_include_directories(&include_directories);

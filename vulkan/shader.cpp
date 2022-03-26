@@ -97,8 +97,7 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourc
 	device->register_pipeline_layout(pipe_layout, get_hash(), info);
 #endif
 
-	if (device->get_device_features().supports_update_template)
-		create_update_templates();
+	create_update_templates();
 }
 
 void PipelineLayout::create_update_templates()
@@ -111,7 +110,7 @@ void PipelineLayout::create_update_templates()
 		if ((layout.bindless_descriptor_set_mask & (1u << desc_set)) != 0)
 			continue;
 
-		VkDescriptorUpdateTemplateEntryKHR update_entries[VULKAN_NUM_BINDINGS];
+		VkDescriptorUpdateTemplateEntry update_entries[VULKAN_NUM_BINDINGS];
 		uint32_t update_count = 0;
 
 		auto &set_layout = layout.sets[desc_set];
@@ -236,18 +235,18 @@ void PipelineLayout::create_update_templates()
 			entry.stride = sizeof(ResourceBinding);
 		});
 
-		VkDescriptorUpdateTemplateCreateInfoKHR info = {VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR };
+		VkDescriptorUpdateTemplateCreateInfo info = {VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO };
 		info.pipelineLayout = pipe_layout;
 		info.descriptorSetLayout = set_allocators[desc_set]->get_layout();
-		info.templateType = VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR;
+		info.templateType = VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET;
 		info.set = desc_set;
 		info.descriptorUpdateEntryCount = update_count;
 		info.pDescriptorUpdateEntries = update_entries;
 		info.pipelineBindPoint = (layout.stages_for_sets[desc_set] & VK_SHADER_STAGE_COMPUTE_BIT) ?
 				VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
 
-		if (table.vkCreateDescriptorUpdateTemplateKHR(device->get_device(), &info, nullptr,
-		                                              &update_template[desc_set]) != VK_SUCCESS)
+		if (table.vkCreateDescriptorUpdateTemplate(device->get_device(), &info, nullptr,
+		                                           &update_template[desc_set]) != VK_SUCCESS)
 		{
 			LOGE("Failed to create descriptor update template.\n");
 		}
@@ -262,7 +261,7 @@ PipelineLayout::~PipelineLayout()
 
 	for (auto &update : update_template)
 		if (update != VK_NULL_HANDLE)
-			table.vkDestroyDescriptorUpdateTemplateKHR(device->get_device(), update, nullptr);
+			table.vkDestroyDescriptorUpdateTemplate(device->get_device(), update, nullptr);
 }
 
 const char *Shader::stage_to_name(ShaderStage stage)

@@ -124,18 +124,18 @@ Semaphore Device::request_external_semaphore(VkSemaphore semaphore, bool signall
 }
 
 #ifndef _WIN32
-Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type)
+Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBits handle_type)
 {
 	LOCK();
 	if (!ext.supports_external)
 		return {};
 
-	VkExternalSemaphorePropertiesKHR props = { VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES_KHR };
-	VkPhysicalDeviceExternalSemaphoreInfoKHR info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO_KHR };
+	VkExternalSemaphoreProperties props = { VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES };
+	VkPhysicalDeviceExternalSemaphoreInfo info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO };
 	info.handleType = handle_type;
 
-	vkGetPhysicalDeviceExternalSemaphorePropertiesKHR(gpu, &info, &props);
-	if ((props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT_KHR) == 0)
+	vkGetPhysicalDeviceExternalSemaphoreProperties(gpu, &info, &props);
+	if ((props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT) == 0)
 		return Semaphore(nullptr);
 
 	auto semaphore = managers.semaphore.request_cleared_semaphore();
@@ -144,7 +144,7 @@ Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTy
 	import.fd = fd;
 	import.semaphore = semaphore;
 	import.handleType = handle_type;
-	import.flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT_KHR;
+	import.flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT;
 	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, false));
 
 	if (table->vkImportSemaphoreFdKHR(device, &import) != VK_SUCCESS)
@@ -2980,21 +2980,18 @@ public:
 	bool setup_view_usage_info(VkImageViewCreateInfo &create_info, VkImageUsageFlags usage,
 	                           VkImageViewUsageCreateInfo &usage_info) const
 	{
-		if (device->get_device_features().supports_maintenance_2)
-		{
-			usage_info.usage = usage;
-			usage_info.usage &= VK_IMAGE_USAGE_SAMPLED_BIT |
-			                    VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
-			                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-			                    VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
-			                    vk_video_image_usage_flags;
+		usage_info.usage = usage;
+		usage_info.usage &= VK_IMAGE_USAGE_SAMPLED_BIT |
+		                    VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+		                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+		                    VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
+		                    vk_video_image_usage_flags;
 
-			if (format_is_srgb(create_info.format))
-				usage_info.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+		if (format_is_srgb(create_info.format))
+			usage_info.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
 
-			usage_info.pNext = create_info.pNext;
-			create_info.pNext = &usage_info;
-		}
+		usage_info.pNext = create_info.pNext;
+		create_info.pNext = &usage_info;
 
 		return true;
 	}
@@ -3260,7 +3257,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 
 #ifndef _WIN32
 ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t memory_type,
-                                          VkExternalMemoryHandleTypeFlagBitsKHR handle_type,
+                                          VkExternalMemoryHandleTypeFlagBits handle_type,
                                           const ImageCreateInfo &create_info)
 {
 	if (!ext.supports_external)
@@ -3285,7 +3282,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 	info.pNext = create_info.pnext;
 	VK_ASSERT(create_info.domain != ImageDomain::Transient);
 
-	VkExternalMemoryImageCreateInfoKHR externalInfo = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO_KHR };
+	VkExternalMemoryImageCreateInfo externalInfo = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO };
 	externalInfo.handleTypes = handle_type;
 	externalInfo.pNext = info.pNext;
 	info.pNext = &externalInfo;
@@ -3299,7 +3296,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 	alloc_info.allocationSize = size;
 	alloc_info.memoryTypeIndex = memory_type;
 
-	VkMemoryDedicatedAllocateInfoKHR dedicated_info = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR };
+	VkMemoryDedicatedAllocateInfo dedicated_info = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO };
 	dedicated_info.image = holder.image;
 	alloc_info.pNext = &dedicated_info;
 
@@ -3521,24 +3518,21 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 		}
 		else
 		{
-			if (!ext.supports_bind_memory2 || !ext.supports_get_memory_requirements2)
-				return false;
-
 			VkBindImageMemoryInfo bind_infos[3];
 			VkBindImagePlaneMemoryInfo bind_plane_infos[3];
 			VK_ASSERT(num_planes <= 3);
 
 			for (unsigned plane = 0; plane < num_planes; plane++)
 			{
-				VkMemoryRequirements2KHR memory_req = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR };
-				VkImageMemoryRequirementsInfo2KHR image_info = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR };
+				VkMemoryRequirements2 memory_req = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
+				VkImageMemoryRequirementsInfo2 image_info = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2 };
 				image_info.image = image;
 
-				VkImagePlaneMemoryRequirementsInfo plane_info = { VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO_KHR };
+				VkImagePlaneMemoryRequirementsInfo plane_info = { VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO };
 				plane_info.planeAspect = static_cast<VkImageAspectFlagBits>(VK_IMAGE_ASPECT_PLANE_0_BIT << plane);
 				image_info.pNext = &plane_info;
 
-				table->vkGetImageMemoryRequirements2KHR(device, &image_info, &memory_req);
+				table->vkGetImageMemoryRequirements2(device, &image_info, &memory_req);
 				auto &reqs = memory_req.memoryRequirements;
 				auto &alias = *info.memory_aliases[plane];
 
@@ -3560,7 +3554,7 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 				bind_plane_infos[plane].planeAspect = static_cast<VkImageAspectFlagBits>(VK_IMAGE_ASPECT_PLANE_0_BIT << plane);
 			}
 
-			if (table->vkBindImageMemory2KHR(device, num_planes, bind_infos) != VK_SUCCESS)
+			if (table->vkBindImageMemory2(device, num_planes, bind_infos) != VK_SUCCESS)
 				return false;
 		}
 	}
@@ -3665,7 +3659,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	if (info.mipLevels == 0)
 		info.mipLevels = image_num_miplevels(info.extent);
 
-	VkImageFormatListCreateInfoKHR format_info = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR };
+	VkImageFormatListCreateInfo format_info = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO };
 	VkFormat view_formats[2];
 	format_info.pViewFormats = view_formats;
 	format_info.viewFormatCount = 2;
@@ -3677,11 +3671,8 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (format_info.viewFormatCount != 0)
 		{
 			create_unorm_srgb_views = true;
-			if (ext.supports_image_format_list)
-			{
-				format_info.pNext = info.pNext;
-				info.pNext = &format_info;
-			}
+			format_info.pNext = info.pNext;
+			info.pNext = &format_info;
 		}
 	}
 
@@ -4130,7 +4121,7 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 		return BufferHandle{};
 	}
 
-	VkExternalMemoryBufferCreateInfo external_info = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO_KHR };
+	VkExternalMemoryBufferCreateInfo external_info = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO };
 	external_info.handleTypes = type;
 
 	VkMemoryHostPointerPropertiesEXT host_pointer_props = { VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT };

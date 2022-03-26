@@ -16,5 +16,5 @@ cmake .. \
 	-DPYTHON_EXECUTABLE=$(which python3) \
 	-G Ninja
 
-ninja install/strip
+ninja install/strip -v
 

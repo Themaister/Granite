@@ -713,7 +713,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		dep.dstSubpass = subpass;
 		dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 		if (multiview)
-			dep.dependencyFlags |= VK_DEPENDENCY_VIEW_LOCAL_BIT_KHR;
+			dep.dependencyFlags |= VK_DEPENDENCY_VIEW_LOCAL_BIT;
 
 		if (color_self_dependencies & (1u << subpass))
 		{
@@ -740,7 +740,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		dep.dstSubpass = subpass;
 		dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 		if (multiview)
-			dep.dependencyFlags |= VK_DEPENDENCY_VIEW_LOCAL_BIT_KHR;
+			dep.dependencyFlags |= VK_DEPENDENCY_VIEW_LOCAL_BIT;
 
 		if (color_attachment_read_write & (1u << (subpass - 1)))
 		{
@@ -788,7 +788,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	// Store the important subpass information for later.
 	setup_subpasses(rp_info);
 
-	VkRenderPassMultiviewCreateInfoKHR multiview_info = { VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO_KHR };
+	VkRenderPassMultiviewCreateInfo multiview_info = { VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO };
 	vector<uint32_t> multiview_view_mask;
 	if (multiview && device->get_device_features().multiview_features.multiview)
 	{
@@ -800,7 +800,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		rp_info.pNext = &multiview_info;
 	}
 	else if (multiview)
-		LOGE("Multiview not supported. Predending render pass is not multiview.");
+		LOGE("Multiview not supported. Pretending render pass is not multiview.");
 
 #ifdef VULKAN_DEBUG
 	LOGI("Creating render pass.\n");

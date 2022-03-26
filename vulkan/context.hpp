@@ -283,6 +283,7 @@ private:
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	Fossilize::FeatureFilter feature_filter;
 	bool format_is_supported(VkFormat format, VkFormatFeatureFlags features) override;
+	bool descriptor_set_layout_is_supported(const VkDescriptorSetLayoutCreateInfo *set_layout) override;
 #endif
 };
 }

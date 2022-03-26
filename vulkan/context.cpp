@@ -1181,5 +1181,15 @@ bool Context::format_is_supported(VkFormat format, VkFormatFeatureFlags features
 	auto supported = props.bufferFeatures | props.linearTilingFeatures | props.optimalTilingFeatures;
 	return (supported & features) == features;
 }
+
+bool Context::descriptor_set_layout_is_supported(const VkDescriptorSetLayoutCreateInfo *set_layout)
+{
+	if (device == VK_NULL_HANDLE)
+		return false;
+
+	VkDescriptorSetLayoutSupport support = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT };
+	vkGetDescriptorSetLayoutSupport(device, set_layout, &support);
+	return support.supported == VK_TRUE;
+}
 #endif
 }

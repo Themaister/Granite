@@ -60,6 +60,25 @@ ShaderTemplate::~ShaderTemplate()
 
 bool ShaderTemplate::init()
 {
+	if (Granite::Path::ext(path) == "spv")
+	{
+		if (!device->get_system_handles().filesystem)
+			return false;
+
+		auto precompiled_file = device->get_system_handles().filesystem->open(path);
+		const uint32_t *ptr = nullptr;
+
+		if (!precompiled_file || !(ptr = static_cast<const uint32_t *>(precompiled_file->map())))
+		{
+			LOGE("Failed to load shader: %s.\n", path.c_str());
+			return false;
+		}
+
+		static_shader = { ptr, ptr + precompiled_file->get_size() / sizeof(uint32_t) };
+		source_hash = 0;
+		return true;
+	}
+
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	if (!device->get_system_handles().filesystem)
 		return false;
@@ -88,6 +107,9 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<
 	Hasher h;
 	if (defines)
 	{
+		// If we have a static shader, we cannot use defines since we won't be compiling anything.
+		VK_ASSERT(static_shader.empty() || defines->empty());
+
 		for (auto &define : *defines)
 		{
 			h.string(define.first);
@@ -106,6 +128,7 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<
 	{
 		auto *variant = variants.allocate();
 		variant->hash = complete_hash;
+
 		auto *precompiled_spirv = cache.variant_to_shader.find(complete_hash);
 
 		if (precompiled_spirv)
@@ -124,8 +147,13 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<
 
 		if (!precompiled_spirv)
 		{
+			if (!static_shader.empty())
+			{
+				variant->spirv = static_shader;
+				update_variant_cache(*variant);
+			}
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
-			if (compiler)
+			else if (compiler)
 			{
 #ifdef VULKAN_DEBUG
 				std::string hash_debug_str;
@@ -249,8 +277,9 @@ void ShaderTemplate::recompile()
 
 void ShaderTemplate::register_dependencies(ShaderManager &manager)
 {
-	for (auto &dep : compiler->get_dependencies())
-		manager.register_dependency_nolock(this, dep);
+	if (compiler)
+		for (auto &dep : compiler->get_dependencies())
+			manager.register_dependency_nolock(this, dep);
 }
 #endif
 

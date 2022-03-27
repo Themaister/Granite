@@ -1036,6 +1036,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			enabled_features.shaderStorageBufferArrayDynamicIndexing = VK_TRUE;
 		if (features.features.shaderStorageImageArrayDynamicIndexing)
 			enabled_features.shaderStorageImageArrayDynamicIndexing = VK_TRUE;
+		if (features.features.shaderImageGatherExtended)
+			enabled_features.shaderImageGatherExtended = VK_TRUE;
 
 		if (features.features.samplerAnisotropy)
 			enabled_features.samplerAnisotropy = VK_TRUE;

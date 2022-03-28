@@ -1398,12 +1398,13 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	auto &scene = scene_loader.get_scene();
 
 	last_frame_times[last_frame_index++ & FrameWindowSizeMask] = float(frame_time);
-	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
-	scene_loader.get_scene().set_render_pass_data(&renderer_suite, &context);
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	lighting.shadows = graph.maybe_get_physical_texture_resource(shadows);
 	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
+
+	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
+	scene_loader.get_scene().set_render_pass_data(&renderer_suite, &context);
 
 	fallback_lighting.shadows = graph.maybe_get_physical_texture_resource(fallback_shadows);
 	fallback_lighting.directional = lighting.directional;

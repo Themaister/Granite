@@ -131,12 +131,6 @@ typedef struct DescriptorSetLayoutMetaData {
 	const char *name;
 } DescriptorSetLayoutMetaData;
 
-static const DescriptorSetLayoutMetaData DESCRIPTOR_SET_LAYOUT_META_DATA[NUM_DESCRIPTOR_SET_LAYOUTS] = {
-#define DESCRIPTOR_SET_LAYOUT(name, num_inputs, num_outputs) { num_inputs, num_outputs, "FFX_CACAO_DSL_" #name },
-	DESCRIPTOR_SET_LAYOUTS
-#undef DESCRIPTOR_SET_LAYOUT
-};
-
 // DESCRIPTOR_SET(name, layout_name, pass)
 #define DESCRIPTOR_SETS \
 	DESCRIPTOR_SET(CLEAR_LOAD_COUNTER,                 CLEAR_LOAD_COUNTER,                 0) \
@@ -474,19 +468,8 @@ typedef struct ComputeShaderSPIRV {
 	size_t          len;
 } ComputeShaderSPIRV;
 
-typedef struct ComputeShaderDXIL {
-	const void *dxil;
-	size_t      len;
-} ComputeShaderDXIL;
-
 static const char *COMPUTE_SHADER_SPIRV_32[] = {
 #define COMPUTE_SHADER(name, pascal_name, descriptor_set_layout) "builtin://shaders/post/ffx-cacao/CACAO" #pascal_name "_32.spv",
-	COMPUTE_SHADERS
-#undef COMPUTE_SHADER
-};
-
-static const ComputeShaderMetaData COMPUTE_SHADER_META_DATA[] = {
-#define COMPUTE_SHADER(name, pascal_name, descriptor_set_layout) { "FFX_CACAO_"#pascal_name, DSL_##descriptor_set_layout, "FFX_CACAO_CS_"#name, "FFX_CACAO_RS_"#name },
 	COMPUTE_SHADERS
 #undef COMPUTE_SHADER
 };

@@ -120,67 +120,6 @@ void LightMesh::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	point_ibo.reset();
 }
 
-SSAOLookupTables::SSAOLookupTables()
-{
-	EVENT_MANAGER_REGISTER_LATCH(SSAOLookupTables, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
-}
-
-void SSAOLookupTables::on_device_created(const Vulkan::DeviceCreatedEvent &e)
-{
-	auto &device = e.get_device();
-
-	// Reused from http://john-chapman-graphics.blogspot.com/2013/01/ssao-tutorial.html.
-
-	std::mt19937 rnd;
-	std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-	std::uniform_real_distribution<float> dist_u(0.0f, 1.0f);
-
-	Vulkan::ImageCreateInfo info = Vulkan::ImageCreateInfo::immutable_2d_image(4, 4, VK_FORMAT_R16G16_SFLOAT);
-	noise_resolution = 4;
-
-	vec2 noise_samples[4 * 4];
-	for (auto &n : noise_samples)
-	{
-		float x = dist(rnd);
-		float y = dist(rnd);
-		n = normalize(vec2(x, y));
-	}
-
-	u16vec2 noise_samples_fp16[4 * 4];
-	for (unsigned i = 0; i < 4 * 4; i++)
-		noise_samples_fp16[i] = floatToHalf(noise_samples[i]);
-
-	Vulkan::ImageInitialData initial = { noise_samples_fp16, 0, 0 };
-	noise = device.create_image(info, &initial);
-
-	static const unsigned SSAO_KERNEL_SIZE = 16;
-	kernel_size = SSAO_KERNEL_SIZE;
-	vec4 hemisphere[SSAO_KERNEL_SIZE];
-	for (unsigned i = 0; i < SSAO_KERNEL_SIZE; i++)
-	{
-		float x = dist(rnd);
-		float y = dist(rnd);
-		float z = dist_u(rnd);
-		hemisphere[i] = vec4(normalize(vec3(x, y, z)), 0.0f);
-
-		float scale = float(i) / float(kernel_size);
-		scale = mix(0.1f, 1.0f, scale * scale);
-		hemisphere[i] *= scale;
-	}
-
-	Vulkan::BufferCreateInfo buffer = {};
-	buffer.size = sizeof(hemisphere);
-	buffer.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-	buffer.domain = Vulkan::BufferDomain::Device;
-	kernel = device.create_buffer(buffer, hemisphere);
-}
-
-void SSAOLookupTables::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
-{
-	kernel.reset();
-	noise.reset();
-}
-
 BRDFTables::BRDFTables()
 {
 	EVENT_MANAGER_REGISTER_LATCH(BRDFTables, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);

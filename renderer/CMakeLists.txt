@@ -25,6 +25,8 @@ add_granite_internal_lib(granite-renderer
         post/temporal.hpp post/temporal.cpp
         post/aa.hpp post/aa.cpp
         post/ssao.hpp post/ssao.cpp
+        post/ffx-cacao/src/ffx_cacao.cpp post/ffx-cacao/src/ffx_cacao_impl.cpp
+        post/ffx-cacao/inc/ffx_cacao.h post/ffx-cacao/inc/ffx_cacao_impl.h
         utils/image_utils.hpp utils/image_utils.cpp
         lights/lights.cpp lights/lights.hpp
         lights/clusterer.cpp lights/clusterer.hpp
@@ -45,7 +47,12 @@ add_granite_internal_lib(granite-renderer
         font.cpp font.hpp
         threaded_scene.cpp threaded_scene.hpp)
 target_include_directories(granite-renderer
-        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/fft ${CMAKE_CURRENT_SOURCE_DIR}/formats)
+        PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/fft
+        ${CMAKE_CURRENT_SOURCE_DIR}/formats
+        PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/post/ffx-cacao/inc)
 target_link_libraries(granite-renderer PUBLIC
         granite-ecs
         granite-vulkan

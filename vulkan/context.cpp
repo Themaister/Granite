@@ -769,6 +769,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ext.supports_conservative_rasterization = true;
 	}
 
+	if (has_extension(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
+		ext.supports_image_format_list = true;
+	}
+
 #ifdef GRANITE_VULKAN_BETA
 	if (has_extension(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME))
 	{

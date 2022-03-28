@@ -387,6 +387,9 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 	{
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
+		VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+		VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
+
 		auto &type = compiler.get_type(image.type_id);
 		if (type.image.dim == spv::DimBuffer)
 			layout.sets[set].sampled_texel_buffer_mask |= 1u << binding;
@@ -403,6 +406,9 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 	{
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
+		VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+		VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
+
 		layout.sets[set].input_attachment_mask |= 1u << binding;
 
 		auto &type = compiler.get_type(image.type_id);
@@ -415,6 +421,8 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 	{
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
+		VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+		VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
 
 		auto &type = compiler.get_type(image.type_id);
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
@@ -432,6 +440,9 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 	{
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
+		VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+		VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
+
 		layout.sets[set].sampler_mask |= 1u << binding;
 		update_array_info(layout, compiler.get_type(image.type_id), set, binding);
 	}
@@ -440,6 +451,8 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 	{
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
+		VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+		VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
 
 		auto &type = compiler.get_type(image.type_id);
 		if (type.image.dim == spv::DimBuffer)
@@ -457,6 +470,9 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 	{
 		auto set = compiler.get_decoration(buffer.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(buffer.id, spv::DecorationBinding);
+		VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+		VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
+
 		layout.sets[set].uniform_buffer_mask |= 1u << binding;
 		update_array_info(layout, compiler.get_type(buffer.type_id), set, binding);
 	}
@@ -465,6 +481,9 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 	{
 		auto set = compiler.get_decoration(buffer.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(buffer.id, spv::DecorationBinding);
+		VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+		VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
+
 		layout.sets[set].storage_buffer_mask |= 1u << binding;
 		update_array_info(layout, compiler.get_type(buffer.type_id), set, binding);
 	}

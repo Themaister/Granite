@@ -3659,7 +3659,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	if (info.mipLevels == 0)
 		info.mipLevels = image_num_miplevels(info.extent);
 
-	VkImageFormatListCreateInfo format_info = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO };
+	VkImageFormatListCreateInfoKHR format_info = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR };
 	VkFormat view_formats[2];
 	format_info.pViewFormats = view_formats;
 	format_info.viewFormatCount = 2;
@@ -3671,8 +3671,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (format_info.viewFormatCount != 0)
 		{
 			create_unorm_srgb_views = true;
-			format_info.pNext = info.pNext;
-			info.pNext = &format_info;
+			if (ext.supports_image_format_list)
+			{
+				format_info.pNext = info.pNext;
+				info.pNext = &format_info;
+			}
 		}
 	}
 

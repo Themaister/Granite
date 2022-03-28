@@ -98,6 +98,7 @@ private:
 	std::string path;
 	MetaCache &cache;
 	Util::Hash path_hash = 0;
+	std::vector<uint32_t> static_shader;
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	std::unique_ptr<Granite::GLSLCompiler> compiler;
 	const std::vector<std::string> &include_directories;

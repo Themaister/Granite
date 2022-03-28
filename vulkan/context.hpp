@@ -68,6 +68,7 @@ struct DeviceFeatures
 	bool supports_pipeline_creation_cache_control = false;
 	bool supports_format_feature_flags2 = false;
 	bool supports_external = false;
+	bool supports_image_format_list = false;
 
 	// Vulkan 1.1 core
 	VkPhysicalDeviceFeatures enabled_features = {};

@@ -141,7 +141,7 @@ private:
 		bool clustered_lights_shadows_vsm = false;
 		bool hdr_bloom = true;
 		bool hdr_bloom_dynamic_exposure = true;
-		bool forward_depth_prepass = false;
+		bool forward_depth_prepass = true;
 		bool deferred_clustered_stencil_culling = true;
 		bool rt_fp16 = false;
 		bool rescale_scene = false;

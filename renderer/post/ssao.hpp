@@ -26,8 +26,6 @@
 
 namespace Granite
 {
-void setup_ssao_interleaved(RenderGraph &graph, const RenderContext &context,
-                            const std::string &output, const std::string &input_depth, const std::string &input_normal);
-void setup_ssao_naive(RenderGraph &graph, const RenderContext &context,
-                      const std::string &output, const std::string &input_depth, const std::string &input_normal);
+void setup_ffx_cacao(RenderGraph &graph, const RenderContext &context,
+                     const std::string &output, const std::string &input_depth, const std::string &input_normal);
 }

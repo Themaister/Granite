@@ -794,7 +794,7 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 		// TODO: Find a good way to let the prepass renderer share renderer with opaque / transparent passes.
 		prepass_depth.set_render_pass_interface(std::move(renderer));
 		scene_loader.get_scene().add_render_pass_dependencies(graph, prepass_depth, RenderPassCreator::GEOMETRY_BIT);
-		setup_ssao_naive(graph, context, tagcat("ssao-output", tag), tagcat("depth-transient", tag), "");
+		setup_ffx_cacao(graph, context, tagcat("ssao-output", tag), tagcat("depth-transient", tag), "");
 	}
 
 	bool supports_32bpp =
@@ -916,8 +916,8 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 
 	if (config.ssao)
 	{
-		setup_ssao_naive(graph, context, tagcat("ssao-output", tag), tagcat("depth-transient", tag),
-		                 tagcat("normal", tag));
+		setup_ffx_cacao(graph, context, tagcat("ssao-output", tag), tagcat("depth-transient", tag),
+		                tagcat("normal", tag));
 	}
 
 	auto &lighting_pass = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);

@@ -24,6 +24,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "global_managers.hpp"
 #include "common_renderer_data.hpp"
+#include "ffx_cacao_impl.h"
 
 using namespace std;
 
@@ -212,6 +213,99 @@ void setup_ssao_naive(RenderGraph &graph, const RenderContext &context,
 	ssao_blur.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 		cmd.set_texture(0, 0, graph.get_physical_texture_resource(noisy_output), Vulkan::StockSampler::LinearClamp);
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/ssao_blur.frag");
+	});
+}
+
+struct FFX_CACAO_GraniteContext_Destroyer
+{
+	void operator()(FFX_CACAO_GraniteContext *ctx) { if (ctx) FFX_CACAO_GraniteDestroyContext(ctx); }
+};
+
+struct CACAOState : Util::IntrusivePtrEnabled<CACAOState>
+{
+	RenderTextureResource *output = nullptr;
+	RenderTextureResource *depth = nullptr;
+	RenderTextureResource *normal = nullptr;
+	FFX_CACAO_GraniteScreenSizeInfo info = {};
+	std::unique_ptr<FFX_CACAO_GraniteContext, FFX_CACAO_GraniteContext_Destroyer> context;
+};
+
+void setup_ffx_cacao(RenderGraph &graph, const RenderContext &context,
+                     const string &output, const string &input_depth, const string &input_normal)
+{
+	AttachmentInfo info;
+	info.format = VK_FORMAT_R8_UNORM;
+	info.size_class = SizeClass::InputRelative;
+	info.size_relative_name = input_depth;
+	info.size_x = 1.0f;
+	info.size_y = 1.0f;
+
+	auto ctx = Util::make_handle<CACAOState>();
+
+	auto &ffx = graph.add_pass(output, RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+	ctx->output = &ffx.add_storage_texture_output(output, info);
+	ctx->depth = &ffx.add_texture_input(input_depth);
+	if (!input_normal.empty())
+		ctx->normal = &ffx.add_texture_input(input_normal);
+
+	FFX_CACAO_GraniteContext *ffx_context = nullptr;
+	FFX_CACAO_GraniteCreateInfo granite_info { &graph.get_device() };
+	if (FFX_CACAO_GraniteAllocContext(&ffx_context, &granite_info) != FFX_CACAO_STATUS_OK)
+	{
+		LOGE("Failed to create CACAO context.\n");
+		return;
+	}
+
+	ctx->context.reset(ffx_context);
+
+	const FFX_CACAO_Settings settings = {
+		/* radius                            */ 0.6f,
+		/* shadowMultiplier                  */ 1.0f,
+		/* shadowPower                       */ 1.50f,
+		/* shadowClamp                       */ 0.98f,
+		/* horizonAngleThreshold             */ 0.06f,
+		/* fadeOutFrom                       */ 20.0f,
+		/* fadeOutTo                         */ 40.0f,
+		/* qualityLevel                      */ FFX_CACAO_QUALITY_HIGHEST,
+		/* adaptiveQualityLimit              */ 0.75f,
+		/* blurPassCount                     */ 2,
+		/* sharpness                         */ 0.98f,
+		/* temporalSupersamplingAngleOffset  */ 0.0f,
+		/* temporalSupersamplingRadiusOffset */ 0.0f,
+		/* detailShadowStrength              */ 0.5f,
+		/* generateNormals                   */ input_normal.empty() ? FFX_CACAO_TRUE : FFX_CACAO_FALSE,
+		/* bilateralSigmaSquared             */ 5.0f,
+		/* bilateralSimilarityDistanceSigma  */ 0.1f,
+	};
+
+	//settings.generateNormals = FFX_CACAO_TRUE;
+	FFX_CACAO_GraniteUpdateSettings(ffx_context, &settings);
+
+	ffx.set_build_render_pass([ctx, &context, &graph](Vulkan::CommandBuffer &cmd) mutable {
+		auto *depth_view = &graph.get_physical_texture_resource(*ctx->depth);
+		auto *normal_view = ctx->normal ? &graph.get_physical_texture_resource(*ctx->normal) : nullptr;
+		auto *output_view = &graph.get_physical_texture_resource(*ctx->output);
+
+		if (depth_view != ctx->info.depthView ||
+		    normal_view != ctx->info.normalsView ||
+		    output_view != ctx->info.outputView)
+		{
+			ctx->info.outputView = output_view;
+			ctx->info.normalsView = normal_view;
+			ctx->info.depthView = depth_view;
+			ctx->info.width = depth_view->get_image().get_width();
+			ctx->info.height = depth_view->get_image().get_height();
+			ctx->info.useDownsampledSsao = false;
+			FFX_CACAO_GraniteDestroyScreenSizeDependentResources(ctx->context.get());
+			FFX_CACAO_GraniteInitScreenSizeDependentResources(ctx->context.get(), &ctx->info);
+		}
+
+		auto &proj = context.get_render_parameters().projection;
+		auto &normal_to_view = context.get_render_parameters().view;
+
+		FFX_CACAO_GraniteDraw(ctx->context.get(), cmd,
+		                      reinterpret_cast<const FFX_CACAO_Matrix4x4 *>(&proj),
+		                      reinterpret_cast<const FFX_CACAO_Matrix4x4 *>(&normal_to_view));
 	});
 }
 }

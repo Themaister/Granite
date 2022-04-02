@@ -1033,6 +1033,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			enabled_features.shaderInt64 = VK_TRUE;
 		if (features.features.shaderStorageImageWriteWithoutFormat)
 			enabled_features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+		if (features.features.shaderStorageImageReadWithoutFormat)
+			enabled_features.shaderStorageImageReadWithoutFormat = VK_TRUE;
 
 		if (features.features.shaderSampledImageArrayDynamicIndexing)
 			enabled_features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;

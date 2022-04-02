@@ -3751,15 +3751,15 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (info.samples != VK_SAMPLE_COUNT_1_BIT)
 			return ImageHandle(nullptr);
 
-		VkImageFormatProperties props;
+		VkImageFormatProperties2 props = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2 };
 		if (!get_image_format_properties(info.format, info.imageType, info.tiling, info.usage, info.flags, &props))
 			return ImageHandle(nullptr);
 
-		if (!props.maxArrayLayers ||
-		    !props.maxMipLevels ||
-		    (info.extent.width > props.maxExtent.width) ||
-		    (info.extent.height > props.maxExtent.height) ||
-		    (info.extent.depth > props.maxExtent.depth))
+		if (!props.imageFormatProperties.maxArrayLayers ||
+		    !props.imageFormatProperties.maxMipLevels ||
+		    (info.extent.width > props.imageFormatProperties.maxExtent.width) ||
+		    (info.extent.height > props.imageFormatProperties.maxExtent.height) ||
+		    (info.extent.depth > props.imageFormatProperties.maxExtent.depth))
 		{
 			return ImageHandle(nullptr);
 		}
@@ -4354,25 +4354,70 @@ bool Device::memory_type_is_host_visible(uint32_t type) const
 	return (mem_props.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
 }
 
-void Device::get_format_properties(VkFormat format, VkFormatProperties *properties)
+static VkFormatFeatureFlags2KHR promote_storage_usage(const DeviceFeatures &features, VkFormat format,
+                                                      VkFormatFeatureFlags2KHR supported)
 {
-	vkGetPhysicalDeviceFormatProperties(gpu, format, properties);
+	if ((supported & VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT_KHR) != 0 &&
+	    format_supports_storage_image_read_write_without_format(format))
+	{
+		if (features.enabled_features.shaderStorageImageReadWithoutFormat)
+			supported |= VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT_KHR;
+		if (features.enabled_features.shaderStorageImageWriteWithoutFormat)
+			supported |= VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT_KHR;
+	}
+
+	return supported;
+}
+
+void Device::get_format_properties(VkFormat format, VkFormatProperties3KHR *properties3) const
+{
+	VkFormatProperties2 properties2 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2 };
+	VK_ASSERT(properties3->sType == VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3_KHR);
+
+	if (ext.supports_format_feature_flags2)
+	{
+		properties2.pNext = properties3;
+		vkGetPhysicalDeviceFormatProperties2(gpu, format, &properties2);
+	}
+	else
+	{
+		// Skip properties3 and synthesize the results instead.
+		properties2.pNext = properties3->pNext;
+		vkGetPhysicalDeviceFormatProperties2(gpu, format, &properties2);
+
+		properties3->optimalTilingFeatures = properties2.formatProperties.optimalTilingFeatures;
+		properties3->linearTilingFeatures = properties2.formatProperties.linearTilingFeatures;
+		properties3->bufferFeatures = properties2.formatProperties.bufferFeatures;
+
+		// Automatically promote for supported formats.
+		properties3->optimalTilingFeatures =
+				promote_storage_usage(ext, format, properties3->optimalTilingFeatures);
+		properties3->linearTilingFeatures =
+				promote_storage_usage(ext, format, properties3->linearTilingFeatures);
+	}
 }
 
 bool Device::get_image_format_properties(VkFormat format, VkImageType type, VkImageTiling tiling,
                                          VkImageUsageFlags usage, VkImageCreateFlags flags,
-                                         VkImageFormatProperties *properties)
+                                         VkImageFormatProperties2 *properties2) const
 {
-	auto res = vkGetPhysicalDeviceImageFormatProperties(gpu, format, type, tiling, usage, flags,
-	                                                    properties);
+	VK_ASSERT(properties2->sType == VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2);
+	VkPhysicalDeviceImageFormatInfo2 info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2 };
+	info.format = format;
+	info.type = type;
+	info.tiling = tiling;
+	info.usage = usage;
+	info.flags = flags;
+
+	VkResult res = vkGetPhysicalDeviceImageFormatProperties2(gpu, &info, properties2);
 	return res == VK_SUCCESS;
 }
 
-bool Device::image_format_is_supported(VkFormat format, VkFormatFeatureFlags required, VkImageTiling tiling) const
+bool Device::image_format_is_supported(VkFormat format, VkFormatFeatureFlags2KHR required, VkImageTiling tiling) const
 {
-	VkFormatProperties props;
-	vkGetPhysicalDeviceFormatProperties(gpu, format, &props);
-	auto flags = tiling == VK_IMAGE_TILING_OPTIMAL ? props.optimalTilingFeatures : props.linearTilingFeatures;
+	VkFormatProperties3KHR props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3_KHR };
+	get_format_properties(format, &props3);
+	auto flags = tiling == VK_IMAGE_TILING_OPTIMAL ? props3.optimalTilingFeatures : props3.linearTilingFeatures;
 	return (flags & required) == required;
 }
 

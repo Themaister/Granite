@@ -330,4 +330,57 @@ static inline void format_ycbcr_downsample_dimensions(VkFormat format, VkImageAs
 	}
 #undef fmt
 }
+
+static inline bool format_supports_storage_image_read_write_without_format(VkFormat format)
+{
+	/* from https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#formats-without-shader-storage-format */
+	static const VkFormat supported_formats[] =
+	{
+		VK_FORMAT_R8G8B8A8_UNORM,
+		VK_FORMAT_R8G8B8A8_SNORM,
+		VK_FORMAT_R8G8B8A8_UINT,
+		VK_FORMAT_R8G8B8A8_SINT,
+		VK_FORMAT_R32_UINT,
+		VK_FORMAT_R32_SINT,
+		VK_FORMAT_R32_SFLOAT,
+		VK_FORMAT_R32G32_UINT,
+		VK_FORMAT_R32G32_SINT,
+		VK_FORMAT_R32G32_SFLOAT,
+		VK_FORMAT_R32G32B32A32_UINT,
+		VK_FORMAT_R32G32B32A32_SINT,
+		VK_FORMAT_R32G32B32A32_SFLOAT,
+		VK_FORMAT_R16G16B16A16_UINT,
+		VK_FORMAT_R16G16B16A16_SINT,
+		VK_FORMAT_R16G16B16A16_SFLOAT,
+		VK_FORMAT_R16G16_SFLOAT,
+		VK_FORMAT_B10G11R11_UFLOAT_PACK32,
+		VK_FORMAT_R16_SFLOAT,
+		VK_FORMAT_R16G16B16A16_UNORM,
+		VK_FORMAT_A2B10G10R10_UNORM_PACK32,
+		VK_FORMAT_R16G16_UNORM,
+		VK_FORMAT_R8G8_UNORM,
+		VK_FORMAT_R16_UNORM,
+		VK_FORMAT_R8_UNORM,
+		VK_FORMAT_R16G16B16A16_SNORM,
+		VK_FORMAT_R16G16_SNORM,
+		VK_FORMAT_R8G8_SNORM,
+		VK_FORMAT_R16_SNORM,
+		VK_FORMAT_R8_SNORM,
+		VK_FORMAT_R16G16_SINT,
+		VK_FORMAT_R8G8_SINT,
+		VK_FORMAT_R16_SINT,
+		VK_FORMAT_R8_SINT,
+		VK_FORMAT_A2B10G10R10_UINT_PACK32,
+		VK_FORMAT_R16G16_UINT,
+		VK_FORMAT_R8G8_UINT,
+		VK_FORMAT_R16_UINT,
+		VK_FORMAT_R8_UINT,
+	};
+
+	for (auto fmt : supported_formats)
+		if (fmt == format)
+			return true;
+
+	return false;
+}
 }

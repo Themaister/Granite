@@ -340,10 +340,11 @@ public:
 	                                                             unsigned num_sets, unsigned num_descriptors);
 
 	// Render pass helpers.
-	bool image_format_is_supported(VkFormat format, VkFormatFeatureFlags required, VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL) const;
-	void get_format_properties(VkFormat format, VkFormatProperties *properties);
-	bool get_image_format_properties(VkFormat format, VkImageType type, VkImageTiling tiling, VkImageUsageFlags usage, VkImageCreateFlags flags,
-	                                 VkImageFormatProperties *properties);
+	bool image_format_is_supported(VkFormat format, VkFormatFeatureFlags2KHR required, VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL) const;
+	void get_format_properties(VkFormat format, VkFormatProperties3KHR *properties) const;
+	bool get_image_format_properties(VkFormat format, VkImageType type, VkImageTiling tiling,
+	                                 VkImageUsageFlags usage, VkImageCreateFlags flags,
+	                                 VkImageFormatProperties2 *properties2) const;
 
 	VkFormat get_default_depth_stencil_format() const;
 	VkFormat get_default_depth_format() const;

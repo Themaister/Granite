@@ -305,7 +305,6 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 {
 	BufferInfo buffer_info;
 	buffer_info.size = 3 * sizeof(float);
-	buffer_info.persistent = true;
 	buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 
 	AttachmentInfo downsample_info;
@@ -374,7 +373,7 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 
 	{
 		AttachmentInfo tonemap_info;
-		tonemap_info.supports_prerotate = true;
+		tonemap_info.flags |= ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT;
 		tonemap_info.size_class = SizeClass::InputRelative;
 		tonemap_info.size_relative_name = input;
 		auto &tonemap = graph.add_pass("tonemap", RenderGraph::get_default_post_graphics_queue());
@@ -399,7 +398,6 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 {
 	BufferInfo buffer_info;
 	buffer_info.size = 3 * sizeof(float);
-	buffer_info.persistent = true;
 	buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 
 	if (options.dynamic_exposure)

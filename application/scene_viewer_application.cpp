@@ -1158,7 +1158,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 		                                    RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 
 		AttachmentInfo ui_info;
-		ui_info.supports_prerotate = true;
+		ui_info.flags |= ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT;
 		ui.add_color_output("ui-output", ui_info, ui_source);
 		graph.set_backbuffer_source("ui-output");
 

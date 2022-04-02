@@ -2613,7 +2613,6 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 	if (ImplementationQuirks::get().clustering_force_cpu)
 	{
 		BufferInfo att;
-		att.persistent = true;
 		att.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
 		auto &pass = graph.add_pass("clustering-bindless", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
@@ -2640,7 +2639,6 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 	else
 	{
 		BufferInfo att;
-		att.persistent = true;
 		att.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
 		auto &pass = graph.add_pass("clustering-bindless", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
@@ -2691,7 +2689,7 @@ void LightClusterer::add_render_passes_legacy(RenderGraph &graph)
 	att.size_y = resolution_y;
 	att.size_z = resolution_z * (ClusterHierarchies + 1);
 	att.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
-	att.persistent = true;
+	att.flags |= ATTACHMENT_INFO_PERSISTENT_BIT;
 
 	if (ImplementationQuirks::get().clustering_list_iteration || ImplementationQuirks::get().clustering_force_cpu)
 	{

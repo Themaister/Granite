@@ -27,11 +27,11 @@ namespace Granite
 {
 void setup_fxaa_postprocess(RenderGraph &graph, const std::string &input, const std::string &output, VkFormat output_format)
 {
-	graph.get_texture_resource(input).get_attachment_info().unorm_srgb_alias = true;
+	graph.get_texture_resource(input).get_attachment_info().flags |= ATTACHMENT_INFO_UNORM_SRGB_ALIAS_BIT;
 
 	auto &fxaa = graph.add_pass("fxaa", RenderGraph::get_default_post_graphics_queue());
 	AttachmentInfo fxaa_output;
-	fxaa_output.supports_prerotate = true;
+	fxaa_output.flags |= ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT;
 	fxaa_output.size_class = SizeClass::InputRelative;
 	fxaa_output.size_relative_name = input;
 	fxaa_output.format = output_format;

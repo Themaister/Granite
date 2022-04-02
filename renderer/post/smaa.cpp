@@ -69,7 +69,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		jitter.init(TemporalJitter::Type::None, vec2(1.0f));
 
 	const bool masked_edge = true;
-	graph.get_texture_resource(input).get_attachment_info().unorm_srgb_alias = true;
+	graph.get_texture_resource(input).get_attachment_info().flags |= ATTACHMENT_INFO_UNORM_SRGB_ALIAS_BIT;
 
 	AttachmentInfo smaa_edge_output;
 	smaa_edge_output.size_class = SizeClass::InputRelative;
@@ -86,7 +86,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	smaa_output_final.size_relative_name = input;
 
 	AttachmentInfo smaa_output_alias = smaa_output_final;
-	smaa_output_alias.unorm_srgb_alias = true;
+	smaa_output_alias.flags |= ATTACHMENT_INFO_UNORM_SRGB_ALIAS_BIT;
 	smaa_output_alias.format = VK_FORMAT_R8G8B8A8_UNORM;
 
 	AttachmentInfo smaa_depth;

@@ -229,7 +229,7 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 	            vec2(graph.get_backbuffer_dimensions().width, graph.get_backbuffer_dimensions().height));
 
 	setup_fxaa_postprocess(graph, input, "fxaa-pre", VK_FORMAT_R8G8B8A8_UNORM);
-	graph.get_texture_resource("fxaa-pre").get_attachment_info().unorm_srgb_alias = true;
+	graph.get_texture_resource("fxaa-pre").get_attachment_info().flags |= ATTACHMENT_INFO_UNORM_SRGB_ALIAS_BIT;
 
 	auto &sharpen = graph.add_pass("fxaa-sharpen", RenderGraph::get_default_post_graphics_queue());
 	AttachmentInfo att, backbuffer_att;

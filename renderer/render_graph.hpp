@@ -96,6 +96,20 @@ enum RenderGraphQueueFlagBits
 };
 using RenderGraphQueueFlags = uint32_t;
 
+enum AttachmentInfoFlagBits
+{
+	ATTACHMENT_INFO_PERSISTENT_BIT = 1 << 0,
+	ATTACHMENT_INFO_UNORM_SRGB_ALIAS_BIT = 1 << 1,
+	ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT = 1 << 2,
+};
+
+enum AttachmentInfoInternalFlagBits
+{
+	ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT = 1 << 16,
+	ATTACHMENT_INFO_INTERNAL_PROXY_BIT = 1 << 17
+};
+using AttachmentInfoFlags = uint32_t;
+
 struct AttachmentInfo
 {
 	SizeClass size_class = SizeClass::SwapchainRelative;
@@ -108,22 +122,20 @@ struct AttachmentInfo
 	unsigned levels = 1;
 	unsigned layers = 1;
 	VkImageUsageFlags aux_usage = 0;
-	bool persistent = true;
-	bool unorm_srgb_alias = false;
-	bool supports_prerotate = false;
+	AttachmentInfoFlags flags = ATTACHMENT_INFO_PERSISTENT_BIT;
 };
 
 struct BufferInfo
 {
 	VkDeviceSize size = 0;
 	VkBufferUsageFlags usage = 0;
-	bool persistent = true;
+	AttachmentInfoFlags flags = ATTACHMENT_INFO_PERSISTENT_BIT;
 
 	bool operator==(const BufferInfo &other) const
 	{
 		return size == other.size &&
 	           usage == other.usage &&
-	           persistent == other.persistent;
+	           flags == other.flags;
 	}
 
 	bool operator!=(const BufferInfo &other) const
@@ -142,10 +154,7 @@ struct ResourceDimensions
 	unsigned layers = 1;
 	unsigned levels = 1;
 	unsigned samples = 1;
-	bool transient = false;
-	bool unorm_srgb = false;
-	bool persistent = true;
-	bool proxy = false;
+	AttachmentInfoFlags flags = ATTACHMENT_INFO_PERSISTENT_BIT;
 	VkSurfaceTransformFlagBitsKHR transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	RenderGraphQueueFlags queues = 0;
 	VkImageUsageFlags image_usage = 0;
@@ -159,11 +168,8 @@ struct ResourceDimensions
 		       layers == other.layers &&
 		       levels == other.levels &&
 		       buffer_info == other.buffer_info &&
-		       transient == other.transient &&
-		       persistent == other.persistent &&
-		       unorm_srgb == other.unorm_srgb &&
-		       transform == other.transform &&
-		       proxy == other.proxy;
+		       flags == other.flags &&
+		       transform == other.transform;
 		// image_usage is deliberately not part of this test.
 		// queues is deliberately not part of this test.
 	}
@@ -175,7 +181,7 @@ struct ResourceDimensions
 
 	bool uses_semaphore() const
 	{
-		if (proxy)
+		if ((flags & ATTACHMENT_INFO_INTERNAL_PROXY_BIT) != 0)
 			return true;
 
 		// If more than one queue is used for a resource, we need to use semaphores.
@@ -195,7 +201,7 @@ struct ResourceDimensions
 
 	bool is_buffer_like() const
 	{
-		return is_storage_image() || (buffer_info.size != 0) || proxy;
+		return is_storage_image() || (buffer_info.size != 0) || (flags & ATTACHMENT_INFO_INTERNAL_PROXY_BIT) != 0;
 	}
 
 	std::string name;

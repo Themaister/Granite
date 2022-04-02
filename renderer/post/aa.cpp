@@ -76,13 +76,13 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 	auto &upscale = graph.add_pass(output + "-scale", RenderGraph::get_default_post_graphics_queue());
 	AttachmentInfo upscale_info;
 
-	upscale_info.supports_prerotate = !use_sharpen;
+	upscale_info.flags |= !use_sharpen ? ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT : 0;
 	upscale_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-	upscale_info.unorm_srgb_alias = use_sharpen;
+	upscale_info.flags |= use_sharpen ? ATTACHMENT_INFO_UNORM_SRGB_ALIAS_BIT : 0;
 
 	auto &upscale_tex_out = upscale.add_color_output(use_sharpen ? (output + "-scale") : output, upscale_info);
 	auto &tex = upscale.add_texture_input(input);
-	graph.get_texture_resource(input).get_attachment_info().unorm_srgb_alias = true;
+	graph.get_texture_resource(input).get_attachment_info().flags |= ATTACHMENT_INFO_UNORM_SRGB_ALIAS_BIT;
 
 	upscale.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 		auto &view = graph.get_physical_texture_resource(tex);
@@ -138,7 +138,7 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 	if (use_sharpen)
 	{
 		AttachmentInfo sharpen_info;
-		sharpen_info.supports_prerotate = true;
+		sharpen_info.flags |= ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT;
 
 		auto &sharpen = graph.add_pass(output + "-sharpen", RenderGraph::get_default_post_graphics_queue());
 

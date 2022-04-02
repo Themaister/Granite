@@ -795,7 +795,7 @@ void RenderGraph::build_physical_resources()
 			if (input.proxy->get_physical_index() == RenderResource::Unused)
 			{
 				ResourceDimensions dim = {};
-				dim.proxy = true;
+				dim.flags |= ATTACHMENT_INFO_INTERNAL_PROXY_BIT;
 				physical_dimensions.push_back(dim);
 				input.proxy->set_physical_index(phys_index++);
 			}
@@ -850,7 +850,7 @@ void RenderGraph::build_physical_resources()
 			if (output.proxy->get_physical_index() == RenderResource::Unused)
 			{
 				ResourceDimensions dim = {};
-				dim.proxy = true;
+				dim.flags |= ATTACHMENT_INFO_INTERNAL_PROXY_BIT;
 				physical_dimensions.push_back(dim);
 				output.proxy->set_physical_index(phys_index++);
 			}
@@ -988,18 +988,18 @@ void RenderGraph::build_transients()
 		// Buffers are never transient.
 		// Storage images are never transient.
 		if (dim.is_buffer_like())
-			dim.transient = false;
+			dim.flags &= ~ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT;
 		else
-			dim.transient = true;
+			dim.flags |= ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT;
 
-		unsigned index = unsigned(&dim - physical_dimensions.data());
+		auto index = unsigned(&dim - physical_dimensions.data());
 		if (physical_image_has_history[index])
-			dim.transient = false;
+			dim.flags &= ~ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT;
 
 		if (Vulkan::format_has_depth_or_stencil_aspect(dim.format) && !Vulkan::ImplementationQuirks::get().use_transient_depth_stencil)
-			dim.transient = false;
+			dim.flags &= ~ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT;
 		if (!Vulkan::format_has_depth_or_stencil_aspect(dim.format) && !Vulkan::ImplementationQuirks::get().use_transient_color)
-			dim.transient = false;
+			dim.flags |= ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT;
 	}
 
 	for (auto &resource : resources)
@@ -1019,7 +1019,7 @@ void RenderGraph::build_transients()
 				if (physical_pass_used[physical_index] != RenderPass::Unused &&
 				    phys != physical_pass_used[physical_index])
 				{
-					physical_dimensions[physical_index].transient = false;
+					physical_dimensions[physical_index].flags &= ~ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT;
 					break;
 				}
 				physical_pass_used[physical_index] = phys;
@@ -1034,7 +1034,7 @@ void RenderGraph::build_transients()
 				if (physical_pass_used[physical_index] != RenderPass::Unused &&
 				    phys != physical_pass_used[physical_index])
 				{
-					physical_dimensions[physical_index].transient = false;
+					physical_dimensions[physical_index].flags &= ~ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT;
 					break;
 				}
 				physical_pass_used[physical_index] = phys;
@@ -1444,7 +1444,8 @@ void RenderGraph::log()
 			LOGI("Resource #%u (%s): %u x %u (fmt: %u), samples: %u, transient: %s%s\n",
 			     unsigned(&resource - physical_dimensions.data()),
 			     resource.name.c_str(),
-			     resource.width, resource.height, unsigned(resource.format), resource.samples, resource.transient ? "yes" : "no",
+			     resource.width, resource.height, unsigned(resource.format), resource.samples,
+			     (resource.flags & ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT) ? "yes" : "no",
 			     unsigned(&resource - physical_dimensions.data()) == swapchain_physical_index ? " (swapchain)" : "");
 		}
 	}
@@ -1478,7 +1479,7 @@ void RenderGraph::log()
 			auto &barriers = *barrier_itr;
 			for (auto &barrier : barriers.invalidate)
 			{
-				if (!physical_dimensions[barrier.resource_index].transient)
+				if ((physical_dimensions[barrier.resource_index].flags & ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT) == 0)
 				{
 					LOGI("      Invalidate: %u%s, layout: %s, access: %s, stages: %s\n",
 					     barrier.resource_index,
@@ -1517,7 +1518,7 @@ void RenderGraph::log()
 
 			for (auto &barrier : barriers.flush)
 			{
-				if (!physical_dimensions[barrier.resource_index].transient &&
+				if ((physical_dimensions[barrier.resource_index].flags & ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT) &&
 					barrier.resource_index != swapchain_physical_index)
 				{
 					LOGI("      Flush: %u, layout: %s, access: %s, stages: %s\n",
@@ -1981,7 +1982,7 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 	auto &wait_semaphore = physical_graphics_queue ? event.wait_graphics_semaphore : event.wait_compute_semaphore;
 
 	auto &phys = physical_dimensions[barrier.resource_index];
-	if (phys.buffer_info.size || phys.proxy)
+	if (phys.buffer_info.size || (phys.flags & ATTACHMENT_INFO_INTERNAL_PROXY_BIT) != 0)
 	{
 		// Buffers.
 		bool need_sync = (event.to_flush_access != 0) || need_invalidate(barrier, event);
@@ -1995,6 +1996,7 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 
 		if (need_event_barrier)
 		{
+			VK_ASSERT(physical_buffers[barrier.resource_index]);
 			auto &buffer = *physical_buffers[barrier.resource_index];
 			VkBufferMemoryBarrier b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
 
@@ -2570,7 +2572,7 @@ void RenderGraph::setup_physical_buffer(Vulkan::Device &device_, unsigned attach
 	bool need_buffer = true;
 	if (physical_buffers[attachment])
 	{
-		if (att.persistent &&
+		if ((att.flags & ATTACHMENT_INFO_PERSISTENT_BIT) != 0 &&
 		    physical_buffers[attachment]->get_create_info().size == info.size &&
 		    (physical_buffers[attachment]->get_create_info().usage & info.usage) == info.usage)
 		{
@@ -2603,14 +2605,14 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device_, unsigned attachm
 	Vulkan::ImageMiscFlags misc = 0;
 	VkImageCreateFlags flags = 0;
 
-	if (att.unorm_srgb)
+	if ((att.flags & ATTACHMENT_INFO_UNORM_SRGB_ALIAS_BIT) != 0)
 		misc |= Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
 	if (att.is_storage_image())
 		flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 
 	if (physical_image_attachments[attachment])
 	{
-		if (att.persistent &&
+		if ((att.flags & ATTACHMENT_INFO_PERSISTENT_BIT) != 0 &&
 		    physical_image_attachments[attachment]->get_create_info().format == att.format &&
 		    physical_image_attachments[attachment]->get_create_info().width == att.width &&
 		    physical_image_attachments[attachment]->get_create_info().height == att.height &&
@@ -2694,7 +2696,7 @@ void RenderGraph::setup_attachments(Vulkan::Device &device_, Vulkan::ImageView *
 
 		auto &att = physical_dimensions[i];
 
-		if (att.proxy)
+		if ((att.flags & ATTACHMENT_INFO_INTERNAL_PROXY_BIT) != 0)
 			continue;
 
 		if (att.buffer_info.size != 0)
@@ -2707,7 +2709,7 @@ void RenderGraph::setup_attachments(Vulkan::Device &device_, Vulkan::ImageView *
 				setup_physical_image(device_, i);
 			else if (i == swapchain_physical_index)
 				physical_attachments[i] = swapchain;
-			else if (att.transient)
+			else if ((att.flags & ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT) != 0)
 			{
 				physical_image_attachments[i] = device_.get_transient_attachment(
 						att.width, att.height, att.format, i,
@@ -3036,7 +3038,7 @@ void RenderGraph::bake()
 	// If resource is not transient, it's being used in multiple physical passes,
 	// we can't use the implicit subpass dependencies for dealing with swapchain.
 	bool can_alias_backbuffer = (backbuffer_dim.queues & compute_queues) == 0 &&
-	                            backbuffer_dim.transient;
+	                            (backbuffer_dim.flags & ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT) != 0;
 
 	// Resources which do not alias with the backbuffer should not be pre-rotated.
 	for (auto &dim : physical_dimensions)
@@ -3047,8 +3049,9 @@ void RenderGraph::bake()
 	if (Vulkan::surface_transform_swaps_xy(backbuffer_dim.transform))
 		std::swap(backbuffer_dim.width, backbuffer_dim.height);
 
-	backbuffer_dim.transient = false;
-	backbuffer_dim.persistent = swapchain_dimensions.persistent;
+	backbuffer_dim.flags &= ~(ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT | ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT);
+	backbuffer_dim.flags |= swapchain_dimensions.flags & ATTACHMENT_INFO_PERSISTENT_BIT;
+
 	if (!can_alias_backbuffer || backbuffer_dim != swapchain_dimensions)
 	{
 		LOGW("Cannot alias with backbuffer, requires extra blit pass!\n");
@@ -3074,7 +3077,7 @@ void RenderGraph::bake()
 		backbuffer_dim.transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	}
 	else
-		physical_dimensions[swapchain_physical_index].transient = true;
+		physical_dimensions[swapchain_physical_index].flags |= ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT;
 
 	// Based on our render graph, figure out the barriers we actually need.
 	// Some barriers are implicit (transients), and some are redundant, i.e. same texture read in multiple passes.
@@ -3091,7 +3094,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderBufferResour
 	auto &info = resource.get_buffer_info();
 	dim.buffer_info = info;
 	dim.buffer_info.usage |= resource.get_buffer_usage();
-	dim.persistent = info.persistent;
+	dim.flags |= info.flags;
 	dim.name = resource.get_name();
 	return dim;
 }
@@ -3103,16 +3106,17 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	dim.layers = info.layers;
 	dim.samples = info.samples;
 	dim.format = info.format;
-	dim.transient = resource.get_transient_state();
-	dim.persistent = info.persistent;
-	dim.unorm_srgb = info.unorm_srgb_alias;
 	dim.queues = resource.get_used_queues();
 	dim.image_usage = info.aux_usage | resource.get_image_usage();
 	dim.name = resource.get_name();
+	dim.flags = info.flags & ~(ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT | ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT);
+
+	if (resource.get_transient_state())
+		dim.flags |= ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT;
 
 	// Mark the resource as potentially supporting pre-rotate.
 	// If this resource ends up aliasing with the swapchain, it might go through.
-	if (info.supports_prerotate)
+	if ((info.flags & ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT) != 0)
 		dim.transform = swapchain_dimensions.transform;
 
 	switch (info.size_class)
@@ -3219,7 +3223,7 @@ void RenderGraph::build_physical_barriers()
 				auto &res = resource_state[invalidate.resource_index];
 
 				// Transients and swapchain images are handled implicitly.
-				if (physical_dimensions[invalidate.resource_index].transient ||
+				if ((physical_dimensions[invalidate.resource_index].flags & ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT) != 0 ||
 					invalidate.resource_index == swapchain_physical_index)
 				{
 					continue;
@@ -3280,7 +3284,7 @@ void RenderGraph::build_physical_barriers()
 				auto &res = resource_state[flush.resource_index];
 
 				// Transients are handled implicitly.
-				if (physical_dimensions[flush.resource_index].transient ||
+				if ((physical_dimensions[flush.resource_index].flags & ATTACHMENT_INFO_INTERNAL_TRANSIENT_BIT) != 0 ||
 				    flush.resource_index == swapchain_physical_index)
 				{
 					continue;

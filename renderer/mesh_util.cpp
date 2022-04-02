@@ -1362,6 +1362,7 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 	reflection_blur.size_x = 0.5f * scale_x;
 	reflection_blur.size_y = 0.5f * scale_y;
 	reflection_blur.levels = 0;
+	reflection_blur.flags |= ATTACHMENT_INFO_MIPGEN_BIT;
 
 	auto &name = type == Reflection ? reflection_name : refraction_name;
 

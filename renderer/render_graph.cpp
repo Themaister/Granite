@@ -1280,7 +1280,8 @@ void RenderGraph::build_physical_passes()
 		for (auto *output : prev.get_color_outputs())
 		{
 			// Need to mip-map after this pass, so cannot merge.
-			if (physical_dimensions[output->get_physical_index()].levels > 1)
+			if ((physical_dimensions[output->get_physical_index()].levels > 1) &&
+			    (physical_dimensions[output->get_physical_index()].flags & ATTACHMENT_INFO_MIPGEN_BIT) != 0)
 				return false;
 		}
 
@@ -3547,7 +3548,8 @@ void RenderGraph::build_barriers()
 
 			auto &barrier = get_flush_access(output->get_physical_index());
 
-			if (physical_dimensions[output->get_physical_index()].levels > 1)
+			if ((physical_dimensions[output->get_physical_index()].levels > 1) &&
+			    (physical_dimensions[output->get_physical_index()].flags & ATTACHMENT_INFO_MIPGEN_BIT) != 0)
 			{
 				// access should be 0 here. generate_mipmaps will take care of invalidation needed.
 				barrier.access |= VK_ACCESS_TRANSFER_READ_BIT; // Validation layers complain without this.

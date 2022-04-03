@@ -760,6 +760,9 @@ public:
 		return swapchain_dimensions;
 	}
 
+	ResourceDimensions get_resource_dimensions(const RenderBufferResource &resource) const;
+	ResourceDimensions get_resource_dimensions(const RenderTextureResource &resource) const;
+
 	void enable_timestamps(bool enable);
 
 	void bake();
@@ -888,8 +891,6 @@ private:
 	void validate_passes();
 	void build_barriers();
 
-	ResourceDimensions get_resource_dimensions(const RenderBufferResource &resource) const;
-	ResourceDimensions get_resource_dimensions(const RenderTextureResource &resource) const;
 	ResourceDimensions swapchain_dimensions;
 
 	struct ColorClearRequest

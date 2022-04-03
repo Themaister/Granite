@@ -118,13 +118,7 @@ static inline VkAccessFlags image_usage_to_possible_access(VkImageUsageFlags usa
 static inline uint32_t image_num_miplevels(const VkExtent3D &extent)
 {
 	uint32_t size = std::max(std::max(extent.width, extent.height), extent.depth);
-	uint32_t levels = 0;
-	while (size)
-	{
-		levels++;
-		size >>= 1;
-	}
-	return levels;
+	return Util::floor_log2(size) + 1;
 }
 
 static inline VkFormatFeatureFlags image_usage_to_features(VkImageUsageFlags usage)

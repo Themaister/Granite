@@ -657,7 +657,7 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 			info.output_mips = output_mips;
 			info.num_mips = num_mips;
 			info.counter_buffer = &graph->get_physical_buffer_resource(*spd_counter_buffer);
-			info.counter_buffer_offset = 1 * cmd.get_device().get_gpu_properties().limits.minStorageBufferOffsetAlignment;
+			info.counter_buffer_offset = 1 * std::max<VkDeviceSize>(4, cmd.get_device().get_gpu_properties().limits.minStorageBufferOffsetAlignment);
 			info.num_components = 3;
 
 			emit_single_pass_downsample(cmd, info);
@@ -692,7 +692,7 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 			info.output_mips = output_mips;
 			info.num_mips = num_mips;
 			info.counter_buffer = &graph->get_physical_buffer_resource(*spd_counter_buffer);
-			info.counter_buffer_offset = 2 * cmd.get_device().get_gpu_properties().limits.minStorageBufferOffsetAlignment;
+			info.counter_buffer_offset = 2 * std::max<VkDeviceSize>(4, cmd.get_device().get_gpu_properties().limits.minStorageBufferOffsetAlignment);
 			info.num_components = 2;
 
 			emit_single_pass_downsample(cmd, info);
@@ -802,7 +802,7 @@ void Ocean::add_fft_update_pass(RenderGraph &graph_)
 	                                                                 displacement_map);
 
 	BufferInfo spd_info = {};
-	spd_info.size = 3 * graph_.get_device().get_gpu_properties().limits.minStorageBufferOffsetAlignment;
+	spd_info.size = 3 * std::max<VkDeviceSize>(4, graph_.get_device().get_gpu_properties().limits.minStorageBufferOffsetAlignment);
 	spd_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	spd_counter_buffer = &update_fft.add_storage_output("ocean-spd-counter", spd_info);
 

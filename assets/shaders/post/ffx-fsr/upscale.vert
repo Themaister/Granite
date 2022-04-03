@@ -4,7 +4,7 @@ layout(location = 0) out highp vec2 vUV;
 
 #define A_GLSL 1
 #define A_GPU 1
-#include "ffx_a.h"
+#include "../ffx-a/ffx_a.h"
 #include "ffx_fsr1.h"
 #include "../../inc/prerotate.h"
 

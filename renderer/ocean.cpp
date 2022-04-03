@@ -592,7 +592,7 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
 		cmd.set_program("builtin://shaders/ocean/mipmap.comp",
-		                {{ "MIPMAP_RGBA16F", 1 }, { "MIPMAP_TEXEL_CENTER", 1 }});
+		                {{ "MIPMAP_RGBA16F", 1 }});
 
 		push.lod = float(i - 1);
 
@@ -910,7 +910,7 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 		cmd.set_program(ocean_info.program);
 		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8B8A8_UINT, offsetof(OceanVertex, pos));
 		cmd.set_vertex_attrib(1, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(OceanVertex, weights));
-		cmd.set_texture(2, 0, *ocean_info.heightmap, Vulkan::StockSampler::LinearWrap);
+		cmd.set_texture(2, 0, *ocean_info.heightmap, Vulkan::StockSampler::TrilinearWrap);
 		cmd.set_texture(2, 1, *ocean_info.lod_map, Vulkan::StockSampler::LinearWrap);
 		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 		cmd.set_texture(2, 3, *ocean_info.normal, Vulkan::StockSampler::DefaultGeometryFilterWrap);

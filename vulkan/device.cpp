@@ -4267,26 +4267,28 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	if (!managers.memory.allocate(reqs.size, reqs.alignment, mode, memory_type, &allocation))
 	{
+		auto fallback_domain = create_info.domain;
+
 		// This memory type is rather scarce, so fallback to Host type if we've exhausted this memory.
 		if (create_info.domain == BufferDomain::LinkedDeviceHost)
 		{
 			LOGW("Exhausted LinkedDeviceHost memory, falling back to host.\n");
-			memory_type = find_memory_type(BufferDomain::Host, reqs.memoryTypeBits);
-			if (memory_type == UINT32_MAX)
-			{
-				LOGE("Failed to find memory type.\n");
-				table->vkDestroyBuffer(device, buffer, nullptr);
-				return BufferHandle(nullptr);
-			}
+			fallback_domain = BufferDomain::Host;
 
-			if (!managers.memory.allocate(reqs.size, reqs.alignment, mode, memory_type, &allocation))
-			{
-				table->vkDestroyBuffer(device, buffer, nullptr);
-				return BufferHandle(nullptr);
-			}
 		}
-		else
+		else if (create_info.domain == BufferDomain::LinkedDeviceHostPreferDevice)
 		{
+			LOGW("Exhausted LinkedDeviceHostPreferDevice memory, falling back to device.\n");
+			fallback_domain = BufferDomain::Device;
+		}
+
+		memory_type = find_memory_type(fallback_domain, reqs.memoryTypeBits);
+
+		if (memory_type == UINT32_MAX ||
+		    fallback_domain == create_info.domain ||
+		    !managers.memory.allocate(reqs.size, reqs.alignment, mode, memory_type, &allocation))
+		{
+			LOGE("Failed to allocate fallback memory.\n");
 			table->vkDestroyBuffer(device, buffer, nullptr);
 			return BufferHandle(nullptr);
 		}

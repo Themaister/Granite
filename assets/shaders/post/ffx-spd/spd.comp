@@ -32,6 +32,13 @@ layout(set = 0, binding = 1) coherent buffer Counter
 } spdGlobalAtomic;
 layout(set = 0, binding = 2) coherent uniform image2D uImages[12];
 
+#if FILTER_MOD
+layout(set = 1, binding = 0, std140) uniform FilterMod
+{
+	vec4 filter_mods[12];
+};
+#endif
+
 layout(push_constant) uniform Registers
 {
 	ivec2 base_image_resolution;
@@ -40,7 +47,7 @@ layout(push_constant) uniform Registers
 	uint num_workgroups;
 };
 
-#ifdef LINEAR
+#if LINEAR
 #define SPD_LINEAR_SAMPLER
 #endif
 
@@ -59,7 +66,7 @@ vec4 chop_components(vec4 tex)
 
 AF4 SpdLoadSourceImage(ASU2 p, AU1 slice)
 {
-#ifdef LINEAR
+#if LINEAR
 	vec2 uv = vec2(p) * inv_resolution + inv_resolution;
 #else
 	vec2 uv = vec2(p) * inv_resolution + 0.5 * inv_resolution;
@@ -75,15 +82,10 @@ void SpdStore(ASU2 p, AF4 value, AU1 mip, AU1 slice)
 	ivec2 mip_res = max(base_image_resolution >> int(mip), ivec2(1));
 	if (all(lessThan(ivec2(p), mip_res)))
 	{
-#if COMPONENTS == 4
-		vec4 store_value = chop_components(value);
-#elif COMPONENTS == 3
-		vec4 store_value = vec4(value.rgb, 0.0);
-#elif COMPONENTS == 2
-		vec4 store_value = vec4(value.rg, 0.0, 0.0);
-#else
-		vec4 store_value = vec4(value.r, 0.0, 0.0, 0.0);
+#if FILTER_MOD
+		value *= filter_mods[mip];
 #endif
+		vec4 store_value = chop_components(value);
 		imageStore(uImages[mip], ivec2(p), store_value);
 	}
 }
@@ -154,7 +156,7 @@ AF4 SpdReduce4(AF4 v0, AF4 v1, AF4 v2, AF4 v3)
 
 void main()
 {
-#ifdef SUBGROUP
+#if SUBGROUP
 	uint local_index = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
 #else
 	uint local_index = gl_LocalInvocationIndex;

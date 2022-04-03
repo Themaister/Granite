@@ -28,9 +28,18 @@
 namespace Granite
 {
 bool supports_single_pass_downsample(Vulkan::Device &device, VkFormat format);
-void emit_single_pass_downsample(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &input,
-                                 const Vulkan::ImageView **output_mips, unsigned num_mips,
-                                 Vulkan::Buffer &counter_buffer, VkDeviceSize counter_buffer_offset,
-                                 unsigned num_components,
-                                 const vec4 *filter_mod = nullptr);
+
+struct SPDInfo
+{
+	const Vulkan::ImageView *input;
+	const Vulkan::ImageView **output_mips;
+	unsigned num_mips;
+	const Vulkan::Buffer *counter_buffer;
+	VkDeviceSize counter_buffer_offset;
+	unsigned num_components;
+	const vec4 *filter_mod;
+};
+
+static constexpr unsigned MaxSPDMips = 12;
+void emit_single_pass_downsample(Vulkan::CommandBuffer &cmd, const SPDInfo &info);
 }

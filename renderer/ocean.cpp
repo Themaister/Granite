@@ -588,6 +588,9 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 	bool support_spd_normal =
 			supports_single_pass_downsample(cmd.get_device(), normal_mip_views.front()->get_format());
 
+	if (support_spd_vert && support_spd_frag && support_spd_normal)
+		num_passes = 2;
+
 	for (unsigned i = 1; i < num_passes; i++)
 	{
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,

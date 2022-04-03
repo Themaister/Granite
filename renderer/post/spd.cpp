@@ -54,14 +54,21 @@ bool supports_single_pass_downsample(Vulkan::Device &device, VkFormat format)
 void emit_single_pass_downsample(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &input,
                                  const Vulkan::ImageView **output_mips, unsigned num_mips,
                                  Vulkan::Buffer &counter_buffer, VkDeviceSize counter_buffer_offset,
-                                 unsigned num_components)
+                                 unsigned num_components,
+                                 const vec4 *filter_mod)
 {
 	cmd.set_program("builtin://shaders/post/ffx-spd/spd.comp",
-	                {{"SUBGROUP", 1}, {"LINEAR", 1}, { "COMPONENTS", int(num_components) }});
+	                {{"SUBGROUP", 1}, {"LINEAR", 1},
+	                 {"COMPONENTS", int(num_components)},
+	                 {"FILTER_MOD", int(filter_mod != nullptr)}});
+
 	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
 	cmd.set_storage_buffer(0, 1, counter_buffer, counter_buffer_offset, 4);
 	for (unsigned i = 0; i < 12; i++)
 		cmd.set_storage_texture(0, 2 + i, *output_mips[std::min(i, num_mips - 1)]);
+
+	if (filter_mod)
+		memcpy(cmd.allocate_typed_constant_data<vec4>(1, 0, num_mips), filter_mod, num_mips * sizeof(*filter_mod));
 
 	struct Registers
 	{

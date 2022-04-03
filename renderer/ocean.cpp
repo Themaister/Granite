@@ -581,6 +581,8 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 		float lod;
 	} push;
 
+	bool support_spd_vert =
+			supports_single_pass_downsample(cmd.get_device(), vertex_mip_views.front()->get_format());
 	bool support_spd_frag =
 			supports_single_pass_downsample(cmd.get_device(), fragment_mip_views.front()->get_format());
 	bool support_spd_normal =
@@ -591,13 +593,30 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
-		cmd.set_program("builtin://shaders/ocean/mipmap.comp",
-		                {{ "MIPMAP_RGBA16F", 1 }});
-
 		push.lod = float(i - 1);
 
-		if (i < vertex_mip_views.size())
+		if (i == 1 && support_spd_vert)
 		{
+			const Vulkan::ImageView *output_mips[12];
+			vec4 filter_mods[12];
+			unsigned num_mips = unsigned(vertex_mip_views.size()) - 1;
+			VK_ASSERT(num_mips <= 12);
+			for (unsigned j = 0; j < num_mips; j++)
+			{
+				output_mips[j] = vertex_mip_views[j + 1].get();
+				filter_mods[j] = j + 1 == num_mips ?
+						vec4(0.0f, 1.0f, 1.0f, 1.0f) : vec4(1.0f);
+			}
+			emit_single_pass_downsample(cmd, *vertex_mip_views.front(), output_mips, num_mips,
+			                            graph->get_physical_buffer_resource(*spd_counter_buffer),
+			                            0, 3,
+			                            filter_mods);
+		}
+		else if (!support_spd_vert && i < vertex_mip_views.size())
+		{
+			cmd.set_program("builtin://shaders/ocean/mipmap.comp",
+			                {{ "MIPMAP_RGBA16F", 1 }});
+
 			// Last heightmap level should go towards 0 to make padding edges transition cleaner.
 			if (i + 1 == vertex_mip_views.size())
 				push.filter_mod = vec4(0.0f, 1.0f, 1.0f, 1.0f);
@@ -623,8 +642,8 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 			for (unsigned j = 0; j < num_mips; j++)
 				output_mips[j] = fragment_mip_views[j + 1].get();
 			emit_single_pass_downsample(cmd, *fragment_mip_views.front(), output_mips, num_mips,
-										graph->get_physical_buffer_resource(*spd_counter_buffer), 0,
-										4);
+			                            graph->get_physical_buffer_resource(*spd_counter_buffer),
+			                            16, 3);
 		}
 		else if (!support_spd_frag && i < fragment_mip_views.size())
 		{
@@ -651,8 +670,8 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 			for (unsigned j = 0; j < num_mips; j++)
 				output_mips[j] = normal_mip_views[j + 1].get();
 			emit_single_pass_downsample(cmd, *normal_mip_views.front(), output_mips, num_mips,
-										graph->get_physical_buffer_resource(*spd_counter_buffer), 64,
-										2);
+										graph->get_physical_buffer_resource(*spd_counter_buffer),
+										32, 2);
 		}
 		else if (!support_spd_normal && i < normal.get_image().get_create_info().levels)
 		{

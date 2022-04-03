@@ -1560,9 +1560,9 @@ void *CommandBuffer::update_image(const Image &image, const VkOffset3D &offset, 
                                   const VkImageSubresourceLayers &subresource)
 {
 	auto &create_info = image.get_create_info();
-	uint32_t width = max(image.get_width() >> subresource.mipLevel, 1u);
-	uint32_t height = max(image.get_height() >> subresource.mipLevel, 1u);
-	uint32_t depth = max(image.get_depth() >> subresource.mipLevel, 1u);
+	uint32_t width = image.get_width(subresource.mipLevel);
+	uint32_t height = image.get_height(subresource.mipLevel);
+	uint32_t depth = image.get_depth(subresource.mipLevel);
 
 	if (!row_length)
 		row_length = width;

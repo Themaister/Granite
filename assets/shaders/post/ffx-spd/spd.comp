@@ -1,0 +1,166 @@
+#version 450
+
+#define A_GLSL
+#define A_GPU
+#include "ffx_a.h"
+
+#extension GL_EXT_shader_image_load_formatted : require
+layout(local_size_x = 256) in;
+
+shared uint spdCounter;
+#if COMPONENTS >= 1
+shared float spdIntermediateR[16][16];
+#endif
+#if COMPONENTS >= 2
+shared float spdIntermediateG[16][16];
+#endif
+#if COMPONENTS >= 3
+shared float spdIntermediateB[16][16];
+#endif
+#if COMPONENTS >= 4
+shared float spdIntermediateA[16][16];
+#endif
+
+#ifndef SUBGROUP
+#define SPD_NO_WAVE_OPERATIONS
+#endif
+
+layout(set = 0, binding = 0) uniform sampler2D uInput;
+layout(set = 0, binding = 1) coherent buffer Counter
+{
+	uint counter[];
+} spdGlobalAtomic;
+layout(set = 0, binding = 2) coherent uniform image2D uImages[12];
+
+layout(push_constant) uniform Registers
+{
+	ivec2 base_image_resolution;
+	vec2 inv_resolution;
+	uint mips;
+	uint num_workgroups;
+};
+
+#ifdef LINEAR
+#define SPD_LINEAR_SAMPLER
+#endif
+
+vec4 chop_components(vec4 tex)
+{
+#if COMPONENTS == 4
+	return tex;
+#elif COMPONENTS == 3
+	return vec4(tex.rgb, 0.0);
+#elif COMPONENTS == 2
+	return vec4(tex.rg, 0.0, 0.0);
+#else
+	return vec4(tex.r, 0.0, 0.0, 0.0);
+#endif
+}
+
+AF4 SpdLoadSourceImage(ASU2 p, AU1 slice)
+{
+#ifdef LINEAR
+	vec2 uv = vec2(p) * inv_resolution + inv_resolution;
+#else
+	vec2 uv = vec2(p) * inv_resolution + 0.5 * inv_resolution;
+#endif
+	vec4 tex = textureLod(uInput, uv, 0.0);
+
+	// Aid compiler in DCE.
+	return chop_components(tex);
+}
+
+void SpdStore(ASU2 p, AF4 value, AU1 mip, AU1 slice)
+{
+	ivec2 mip_res = max(base_image_resolution >> int(mip), ivec2(1));
+	if (all(lessThan(ivec2(p), mip_res)))
+	{
+#if COMPONENTS == 4
+		vec4 store_value = chop_components(value);
+#elif COMPONENTS == 3
+		vec4 store_value = vec4(value.rgb, 0.0);
+#elif COMPONENTS == 2
+		vec4 store_value = vec4(value.rg, 0.0, 0.0);
+#else
+		vec4 store_value = vec4(value.r, 0.0, 0.0, 0.0);
+#endif
+		imageStore(uImages[mip], ivec2(p), store_value);
+	}
+}
+
+AF4 SpdLoadIntermediate(AU1 x, AU1 y)
+{
+	vec4 v = vec4(0.0);
+#if COMPONENTS >= 1
+	v.r = spdIntermediateR[x][y];
+#endif
+#if COMPONENTS >= 2
+	v.g = spdIntermediateG[x][y];
+#endif
+#if COMPONENTS >= 3
+	v.b = spdIntermediateB[x][y];
+#endif
+#if COMPONENTS >= 4
+	v.a = spdIntermediateA[x][y];
+#endif
+	return v;
+}
+
+void SpdStoreIntermediate(AU1 x, AU1 y, AF4 value)
+{
+#if COMPONENTS >= 1
+	spdIntermediateR[x][y] = value.r;
+#endif
+#if COMPONENTS >= 2
+	spdIntermediateG[x][y] = value.g;
+#endif
+#if COMPONENTS >= 3
+	spdIntermediateB[x][y] = value.b;
+#endif
+#if COMPONENTS >= 4
+	spdIntermediateA[x][y] = value.a;
+#endif
+}
+
+AF4 SpdLoad(ASU2 p, AU1 slice)
+{
+	ivec2 mip_res = max(base_image_resolution >> 5, ivec2(1));
+	p = clamp(p, ivec2(0), mip_res - 1);
+	vec4 tex = imageLoad(uImages[5], p);
+	return chop_components(tex);
+}
+
+void SpdIncreaseAtomicCounter(AU1 slice)
+{
+	spdCounter = atomicAdd(spdGlobalAtomic.counter[slice], 1);
+}
+
+AU1 SpdGetAtomicCounter()
+{
+	return spdCounter;
+}
+
+void SpdResetAtomicCounter(AU1 slice)
+{
+	spdGlobalAtomic.counter[slice] = 0;
+}
+
+AF4 SpdReduce4(AF4 v0, AF4 v1, AF4 v2, AF4 v3)
+{
+	return chop_components((v0 + v1 + v2 + v3) * 0.25);
+}
+
+#include "ffx_spd.h"
+
+void main()
+{
+#ifdef SUBGROUP
+	uint local_index = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
+#else
+	uint local_index = gl_LocalInvocationIndex;
+#endif
+
+	SpdDownsample(
+		AU2(gl_WorkGroupID.xy), AU1(local_index),
+		AU1(mips), num_workgroups, AU1(0) /*AU1(gl_WorkGroupID.z)*/);
+}

@@ -24,9 +24,13 @@
 #include "command_buffer.hpp"
 #include "image.hpp"
 #include "math.hpp"
+#include <string>
 
 namespace Granite
 {
+class RenderGraph;
+class RenderContext;
+
 bool supports_single_pass_downsample(Vulkan::Device &device, VkFormat format);
 
 struct SPDInfo
@@ -38,8 +42,12 @@ struct SPDInfo
 	VkDeviceSize counter_buffer_offset;
 	unsigned num_components;
 	const vec4 *filter_mod;
+	const mat2 *z_transform;
 };
 
 static constexpr unsigned MaxSPDMips = 12;
 void emit_single_pass_downsample(Vulkan::CommandBuffer &cmd, const SPDInfo &info);
+
+void setup_depth_hierarchy_pass(RenderGraph &graph, const RenderContext &context,
+                                const std::string &input, const std::string &output);
 }

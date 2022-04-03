@@ -39,6 +39,13 @@ layout(set = 1, binding = 0, std140) uniform FilterMod
 };
 #endif
 
+#if Z_TRANSFORM
+layout(set = 1, binding = 1, std140) uniform ZTransform
+{
+	vec4 z_transform;
+};
+#endif
+
 layout(push_constant) uniform Registers
 {
 	ivec2 base_image_resolution;
@@ -47,7 +54,7 @@ layout(push_constant) uniform Registers
 	uint num_workgroups;
 };
 
-#if LINEAR
+#if SINGLE_INPUT_TAP
 #define SPD_LINEAR_SAMPLER
 #endif
 
@@ -66,15 +73,24 @@ vec4 chop_components(vec4 tex)
 
 AF4 SpdLoadSourceImage(ASU2 p, AU1 slice)
 {
-#if LINEAR
+#if Z_TRANSFORM
+	vec2 uv = 0.5 * (vec2(p) * inv_resolution + inv_resolution);
+#elif SINGLE_INPUT_TAP
 	vec2 uv = vec2(p) * inv_resolution + inv_resolution;
 #else
 	vec2 uv = vec2(p) * inv_resolution + 0.5 * inv_resolution;
 #endif
 	vec4 tex = textureLod(uInput, uv, 0.0);
 
+#if Z_TRANSFORM
+	mat2 m = mat2(z_transform.xy, z_transform.zw);
+	vec2 clip = m * vec2(tex.x, 1.0);
+	float z = -clip.x / clip.y;
+	return vec4(z, 0.0, 0.0, 0.0);
+#else
 	// Aid compiler in DCE.
 	return chop_components(tex);
+#endif
 }
 
 void SpdStore(ASU2 p, AF4 value, AU1 mip, AU1 slice)
@@ -149,7 +165,14 @@ void SpdResetAtomicCounter(AU1 slice)
 
 AF4 SpdReduce4(AF4 v0, AF4 v1, AF4 v2, AF4 v3)
 {
+#if Z_TRANSFORM
+	AF1 min0 = min(v0.x, v1.x);
+	AF1 min1 = min(v2.x, v3.x);
+	AF1 m = min(min0, min1);
+	return AF4(m, 0.0, 0.0, 0.0);
+#else
 	return chop_components((v0 + v1 + v2 + v3) * 0.25);
+#endif
 }
 
 #include "ffx_spd.h"

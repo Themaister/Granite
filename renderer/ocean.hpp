@@ -165,6 +165,7 @@ private:
 	RenderBufferResource *height_fft_input = nullptr;
 	RenderBufferResource *displacement_fft_input = nullptr;
 	RenderBufferResource *normal_fft_input = nullptr;
+	RenderBufferResource *spd_counter_buffer = nullptr;
 
 	RenderTextureResource *height_fft_output = nullptr;
 	RenderTextureResource *displacement_fft_output = nullptr;

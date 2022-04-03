@@ -27,6 +27,7 @@ add_granite_internal_lib(granite-renderer
         post/ssao.hpp post/ssao.cpp
         post/ffx-cacao/src/ffx_cacao.cpp post/ffx-cacao/src/ffx_cacao_impl.cpp
         post/ffx-cacao/inc/ffx_cacao.h post/ffx-cacao/inc/ffx_cacao_impl.h
+        post/spd.hpp post/spd.cpp
         utils/image_utils.hpp utils/image_utils.cpp
         lights/lights.cpp lights/lights.hpp
         lights/clusterer.cpp lights/clusterer.hpp

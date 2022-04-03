@@ -19,7 +19,7 @@ vec4 FsrEasuGF(vec2 p) { return textureGather(uTex, p, 1); }
 vec4 FsrEasuBF(vec2 p) { return textureGather(uTex, p, 2); }
 #endif
 
-#include "ffx_a.h"
+#include "../ffx-a/ffx_a.h"
 #include "ffx_fsr1.h"
 #include "../../inc/srgb.h"
 

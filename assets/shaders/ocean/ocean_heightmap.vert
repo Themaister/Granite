@@ -34,20 +34,15 @@ vec2 warp_position()
 }
 #endif
 
-mediump vec2 lod_factor(vec2 pos)
+mediump float lod_factor(vec2 pos)
 {
     mediump float level = textureLod(uLodMap, pos * registers.inv_ocean_grid_count, 0.0).x;
-    mediump float floor_level = floor(level);
-    mediump float fract_level = level - floor_level;
-    return vec2(floor_level, fract_level);
+    return level;
 }
 
-mediump vec3 sample_height_displacement(vec2 uv, vec2 off, mediump vec2 lod)
+mediump vec3 sample_height_displacement(vec2 uv, mediump float lod)
 {
-    return clamp(mix(
-        textureLod(uHeightmap, uv + 0.5 * off, lod.x).xyz,
-        textureLod(uHeightmap, uv + 1.0 * off, lod.x + 1.0).xyz,
-            lod.y), registers.heightmap_range.x, registers.heightmap_range.y);
+    return clamp(textureLod(uHeightmap, uv, lod).xyz, registers.heightmap_range.x, registers.heightmap_range.y);
 }
 
 void main()
@@ -65,15 +60,12 @@ void main()
     precise vec2 integer_pos = warped_pos + patches.data[gl_InstanceIndex].Offsets;
 #endif
 
-    mediump vec2 lod = lod_factor(integer_pos);
-    mediump float delta_mod = exp2(lod.x);
+    mediump float lod = lod_factor(integer_pos);
 
     vec2 uv = integer_pos * registers.inv_heightmap_size;
-    vec2 off = registers.inv_heightmap_size * delta_mod;
-
     vec2 centered_uv = uv + 0.5 * registers.inv_heightmap_size;
     vGradNormalUV = vec4(centered_uv, centered_uv * registers.normal_uv_scale);
-    mediump vec3 height_displacement = sample_height_displacement(uv, off, lod).xyz;
+    mediump vec3 height_displacement = sample_height_displacement(centered_uv, lod).xyz;
 
 #ifdef OCEAN_BORDER
     height_displacement *= aPosition.z;

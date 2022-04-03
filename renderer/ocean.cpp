@@ -26,8 +26,9 @@
 #include "render_context.hpp"
 #include "render_graph.hpp"
 #include "muglm/matrix_helper.hpp"
-#include <random>
 #include "timer.hpp"
+#include "post/spd.hpp"
+#include <random>
 
 using namespace std;
 
@@ -580,18 +581,42 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 		float lod;
 	} push;
 
+	bool support_spd_vert =
+			supports_single_pass_downsample(cmd.get_device(), vertex_mip_views.front()->get_format());
+	bool support_spd_frag =
+			supports_single_pass_downsample(cmd.get_device(), fragment_mip_views.front()->get_format());
+	bool support_spd_normal =
+			supports_single_pass_downsample(cmd.get_device(), normal_mip_views.front()->get_format());
+
 	for (unsigned i = 1; i < num_passes; i++)
 	{
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
-		cmd.set_program("builtin://shaders/ocean/mipmap.comp",
-		                {{ "MIPMAP_RGBA16F", 1 }, { "MIPMAP_TEXEL_CENTER", 1 }});
-
 		push.lod = float(i - 1);
 
-		if (i < vertex_mip_views.size())
+		if (i == 1 && support_spd_vert)
 		{
+			const Vulkan::ImageView *output_mips[12];
+			vec4 filter_mods[12];
+			unsigned num_mips = unsigned(vertex_mip_views.size()) - 1;
+			VK_ASSERT(num_mips <= 12);
+			for (unsigned j = 0; j < num_mips; j++)
+			{
+				output_mips[j] = vertex_mip_views[j + 1].get();
+				filter_mods[j] = j + 1 == num_mips ?
+						vec4(0.0f, 1.0f, 1.0f, 1.0f) : vec4(1.0f);
+			}
+			emit_single_pass_downsample(cmd, *vertex_mip_views.front(), output_mips, num_mips,
+			                            graph->get_physical_buffer_resource(*spd_counter_buffer),
+			                            0, 3,
+			                            filter_mods);
+		}
+		else if (!support_spd_vert && i < vertex_mip_views.size())
+		{
+			cmd.set_program("builtin://shaders/ocean/mipmap.comp",
+			                {{ "MIPMAP_RGBA16F", 1 }});
+
 			// Last heightmap level should go towards 0 to make padding edges transition cleaner.
 			if (i + 1 == vertex_mip_views.size())
 				push.filter_mod = vec4(0.0f, 1.0f, 1.0f, 1.0f);
@@ -609,11 +634,22 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 			cmd.dispatch((push.count.x + 7) / 8, (push.count.y + 7) / 8, 1);
 		}
 
-		cmd.set_program("builtin://shaders/ocean/mipmap.comp",
-		                {{ "MIPMAP_RGBA16F", 1 }});
-
-		if (i < fragment_mip_views.size())
+		if (i == 1 && support_spd_frag)
 		{
+			const Vulkan::ImageView *output_mips[12];
+			unsigned num_mips = unsigned(fragment_mip_views.size()) - 1;
+			VK_ASSERT(num_mips <= 12);
+			for (unsigned j = 0; j < num_mips; j++)
+				output_mips[j] = fragment_mip_views[j + 1].get();
+			emit_single_pass_downsample(cmd, *fragment_mip_views.front(), output_mips, num_mips,
+			                            graph->get_physical_buffer_resource(*spd_counter_buffer),
+			                            16, 3);
+		}
+		else if (!support_spd_frag && i < fragment_mip_views.size())
+		{
+			cmd.set_program("builtin://shaders/ocean/mipmap.comp",
+			                {{ "MIPMAP_RGBA16F", 1 }});
+
 			push.filter_mod = vec4(1.0f);
 			push.inv_resolution.x = 1.0f / fragment_mip_views.front()->get_image().get_width(i - 1);
 			push.inv_resolution.y = 1.0f / fragment_mip_views.front()->get_image().get_height(i - 1);
@@ -626,11 +662,22 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 			cmd.dispatch((push.count.x + 7) / 8, (push.count.y + 7) / 8, 1);
 		}
 
-		cmd.set_program("builtin://shaders/ocean/mipmap.comp",
-		                {{ "MIPMAP_RG16F", 1 }});
-
-		if (i < normal.get_image().get_create_info().levels)
+		if (i == 1 && support_spd_normal)
 		{
+			const Vulkan::ImageView *output_mips[12];
+			unsigned num_mips = unsigned(normal_mip_views.size()) - 1;
+			VK_ASSERT(num_mips <= 12);
+			for (unsigned j = 0; j < num_mips; j++)
+				output_mips[j] = normal_mip_views[j + 1].get();
+			emit_single_pass_downsample(cmd, *normal_mip_views.front(), output_mips, num_mips,
+										graph->get_physical_buffer_resource(*spd_counter_buffer),
+										32, 2);
+		}
+		else if (!support_spd_normal && i < normal.get_image().get_create_info().levels)
+		{
+			cmd.set_program("builtin://shaders/ocean/mipmap.comp",
+			                {{ "MIPMAP_RG16F", 1 }});
+
 			push.filter_mod = vec4(1.0f);
 			push.inv_resolution.x = 1.0f / normal_mip_views.front()->get_image().get_width(i - 1);
 			push.inv_resolution.y = 1.0f / normal_mip_views.front()->get_image().get_height(i - 1);
@@ -729,6 +776,11 @@ void Ocean::add_fft_update_pass(RenderGraph &graph_)
 	                                                           normal_map);
 	displacement_fft_output = &update_fft.add_storage_texture_output("ocean-displacement-fft-output",
 	                                                                 displacement_map);
+
+	BufferInfo spd_info = {};
+	spd_info.size = 128;
+	spd_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	spd_counter_buffer = &update_fft.add_storage_output("ocean-spd-counter", spd_info);
 
 	AttachmentInfo height_displacement;
 	height_displacement.size_class = SizeClass::Absolute;
@@ -877,7 +929,7 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 		cmd.set_program(ocean_info.program);
 		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8B8A8_UINT, offsetof(OceanVertex, pos));
 		cmd.set_vertex_attrib(1, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(OceanVertex, weights));
-		cmd.set_texture(2, 0, *ocean_info.heightmap, Vulkan::StockSampler::LinearWrap);
+		cmd.set_texture(2, 0, *ocean_info.heightmap, Vulkan::StockSampler::TrilinearWrap);
 		cmd.set_texture(2, 1, *ocean_info.lod_map, Vulkan::StockSampler::LinearWrap);
 		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 		cmd.set_texture(2, 3, *ocean_info.normal, Vulkan::StockSampler::DefaultGeometryFilterWrap);

@@ -15,7 +15,7 @@ layout(set = 1, binding = 0) uniform UBO
 vec4 FsrRcasLoadF(ivec2 p) { return texelFetch(uTex, clamp(p, range.xy, range.zw), 0); }
 void FsrRcasInputF(inout float r, inout float g, inout float b) {}
 
-#include "ffx_a.h"
+#include "../ffx-a/ffx_a.h"
 #include "ffx_fsr1.h"
 
 layout(location = 0) out vec4 FragColor;

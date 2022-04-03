@@ -28,7 +28,6 @@ using namespace std;
 
 namespace Vulkan
 {
-
 ImageView::ImageView(Device *device_, VkImageView view_, const ImageViewCreateInfo &info_)
     : Cookie(device_)
     , device(device_)
@@ -86,6 +85,21 @@ ImageView::~ImageView()
 		for (auto &v : render_target_views)
 			device->destroy_image_view(v);
 	}
+}
+
+unsigned ImageView::get_view_width() const
+{
+	return info.image->get_width(info.base_level);
+}
+
+unsigned ImageView::get_view_height() const
+{
+	return info.image->get_height(info.base_level);
+}
+
+unsigned ImageView::get_view_depth() const
+{
+	return info.image->get_depth(info.base_level);
 }
 
 Image::Image(Device *device_, VkImage image_, VkImageView default_view, const DeviceAllocation &alloc_,

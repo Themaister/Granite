@@ -874,16 +874,14 @@ void Framebuffer::compute_dimensions(const RenderPassInfo &info, uint32_t &width
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
 	{
 		VK_ASSERT(info.color_attachments[i]);
-		unsigned lod = info.color_attachments[i]->get_create_info().base_level;
-		width = min(width, info.color_attachments[i]->get_image().get_width(lod));
-		height = min(height, info.color_attachments[i]->get_image().get_height(lod));
+		width = min(width, info.color_attachments[i]->get_view_width());
+		height = min(height, info.color_attachments[i]->get_view_height());
 	}
 
 	if (info.depth_stencil)
 	{
-		unsigned lod = info.depth_stencil->get_create_info().base_level;
-		width = min(width, info.depth_stencil->get_image().get_width(lod));
-		height = min(height, info.depth_stencil->get_image().get_height(lod));
+		width = min(width, info.depth_stencil->get_view_width());
+		height = min(height, info.depth_stencil->get_view_height());
 	}
 }
 

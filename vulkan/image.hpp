@@ -281,6 +281,10 @@ public:
 		return info;
 	}
 
+	unsigned get_view_width() const;
+	unsigned get_view_height() const;
+	unsigned get_view_depth() const;
+
 private:
 	Device *device;
 	VkImageView view;

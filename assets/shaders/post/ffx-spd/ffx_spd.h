@@ -393,7 +393,7 @@ bool SpdExitWorkgroup(AU1 numWorkGroups, AU1 localInvocationIndex, AU1 slice)
     // global atomic counter
 
 	// Need to make sure atomic is visible after the image writes.
-	memoryBarrierImage();
+	memoryBarrier();
 
     if (localInvocationIndex == 0)
     {

@@ -29,6 +29,6 @@ namespace Granite
 bool supports_single_pass_downsample(Vulkan::Device &device, VkFormat format);
 void emit_single_pass_downsample(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &input,
                                  const Vulkan::ImageView **output_mips, unsigned num_mips,
-                                 Vulkan::Buffer &counter_buffer,
+                                 Vulkan::Buffer &counter_buffer, VkDeviceSize counter_buffer_offset,
                                  unsigned num_components);
 }

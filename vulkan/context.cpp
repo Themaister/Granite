@@ -775,6 +775,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ext.supports_image_format_list = true;
 	}
 
+	if (has_extension(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
+		ext.supports_shader_float_control = true;
+	}
+
 #ifdef GRANITE_VULKAN_BETA
 	if (has_extension(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME))
 	{
@@ -1080,6 +1086,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.subgroup_size_control_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES_EXT };
 	ext.descriptor_indexing_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT };
 	ext.conservative_rasterization_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT };
+	ext.float_control_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES_KHR };
 
 	ppNext = &props.pNext;
 
@@ -1118,6 +1125,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ext.supports_driver_properties = true;
 		*ppNext = &ext.driver_properties;
 		ppNext = &ext.driver_properties.pNext;
+	}
+
+	if (ext.supports_shader_float_control)
+	{
+		*ppNext = &ext.float_control_properties;
+		ppNext = &ext.float_control_properties.pNext;
 	}
 
 	vkGetPhysicalDeviceProperties2(gpu, &props);

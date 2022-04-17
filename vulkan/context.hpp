@@ -69,6 +69,7 @@ struct DeviceFeatures
 	bool supports_format_feature_flags2 = false;
 	bool supports_external = false;
 	bool supports_image_format_list = false;
+	bool supports_shader_float_control = false;
 
 	// Vulkan 1.1 core
 	VkPhysicalDeviceFeatures enabled_features = {};
@@ -88,6 +89,7 @@ struct DeviceFeatures
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
 	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};
 	VkPhysicalDeviceFloat16Int8FeaturesKHR float16_int8_features = {};
+	VkPhysicalDeviceFloatControlsPropertiesKHR float_control_properties = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};

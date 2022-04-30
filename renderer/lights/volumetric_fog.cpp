@@ -115,13 +115,14 @@ void VolumetricFog::add_storage_buffer_dependency(string name)
 
 void VolumetricFog::compute_slice_extents(Vulkan::Device &device)
 {
-	std::vector<float> slice_extents(depth);
+	std::vector<float> slice_extents;
+	slice_extents.reserve(depth);
 
 	for (unsigned z = 0; z < depth; z++)
 	{
 		float end_z = exp2((float(z) + 1.0f) / (float(depth) * get_slice_z_log2_scale())) - 1.0f;
 		float start_z = exp2(float(z) / (float(depth) * get_slice_z_log2_scale())) - 1.0f;
-		slice_extents[z] = end_z - start_z;
+		slice_extents.push_back(end_z - start_z);
 	}
 
 	Vulkan::BufferCreateInfo info = {};
@@ -129,6 +130,7 @@ void VolumetricFog::compute_slice_extents(Vulkan::Device &device)
 	info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
 	info.domain = Vulkan::BufferDomain::Device;
 	slice_depth_lut = device.create_buffer(info, slice_extents.data());
+	device.set_name(*slice_depth_lut, "slice-depth-lut");
 
 	Vulkan::BufferViewCreateInfo view_info = {};
 	view_info.buffer = slice_depth_lut.get();
@@ -191,17 +193,12 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 				context->get_render_parameters().inv_projection[3].zw());
 	}
 
-	if ((flags & (Renderer::POSITIONAL_LIGHT_ENABLE_BIT | Renderer::SHADOW_CASCADE_ENABLE_BIT)) ||
-	    (context->get_lighting_parameters()->cluster &&
-	     context->get_lighting_parameters()->cluster->clusterer_has_volumetric_fog()))
+	Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
+	if (cmd.get_device().supports_subgroup_size_log2(true, 3, 6))
 	{
-		Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
-		if (cmd.get_device().supports_subgroup_size_log2(true, 2, 6))
-		{
-			defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);
-			cmd.set_subgroup_size_log2(true, 2, 6);
-			cmd.enable_subgroup_size_control(true);
-		}
+		defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);
+		cmd.set_subgroup_size_log2(true, 3, 6);
+		cmd.enable_subgroup_size_control(true);
 	}
 
 	old_projection = context->get_render_parameters().view_projection;

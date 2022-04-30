@@ -221,14 +221,22 @@ mediump vec3 compute_floor_inscatter_light(vec3 pos)
 
 void main()
 {
+#if defined(SUBGROUP_COMPUTE_FULL)
+    uint local_index = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
+    uint local_x = bitfieldExtract(local_index, 0, 1) + bitfieldExtract(local_index, 3, 1) * 2u;
+    uint local_y = bitfieldExtract(local_index, 1, 1) + bitfieldExtract(local_index, 4, 1) * 2u;
+    uint local_z = bitfieldExtract(local_index, 2, 1) + bitfieldExtract(local_index, 5, 1) * 2u;
+    uvec3 local_coord = uvec3(local_x, local_y, local_z);
+#else
     uvec3 local_coord = (uvec3(gl_LocalInvocationIndex) >> uvec3(0, 2, 4)) & 3u;
+#endif
     uvec3 global_coord = gl_WorkGroupID * 4u + local_coord;
 
     vec3 uvw = (vec3(global_coord) + 0.5) * registers.inv_resolution;
 
 #if TEMPORAL_REPROJECTION
     mediump vec4 old_in_scatter_light_albedo = vec4(0.0);
-    mediump float w = 1.0;
+    bool in_bounds = false;
     vec3 undither_pos = get_world_position(uvw);
     vec4 old_clip = old_view_projection * vec4(undither_pos, 1.0);
     if (old_clip.w > 0.0)
@@ -241,7 +249,7 @@ void main()
                 float old_world_z = to_world_z(old_ndc.z);
                 float tex_z = volumetric_fog_world_to_texture_z(old_world_z, registers.slice_z_log2_scale);
                 old_in_scatter_light_albedo = textureLod(uOldLightDensity, vec3(0.5 * old_ndc.xy + 0.5, tex_z), 0.0);
-                w = 1.0 / 32.0;
+                in_bounds = true;
             }
         }
     }
@@ -264,7 +272,28 @@ void main()
     in_scatter_light += compute_floor_inscatter_light(pos);
 #endif
 
+    // Do simplified history rejection based on the local 2x2x2 box.
+    // Extract a value range.
+
 #if TEMPORAL_REPROJECTION
+#if defined(SUBGROUP_COMPUTE_FULL) && defined(SUBGROUP_OPS)
+    float l = dot(in_scatter_light, vec3(0.3, 0.6, 0.1));
+    float m2 = subgroupClusteredAdd(l * l, 8) / 8.0;
+    float m1 = subgroupClusteredAdd(l, 8) / 8.0;
+
+    // If variance is low, converge quickly.
+    // If variance is high, converge slowly.
+
+    mediump float w = 1.0;
+    if (in_bounds)
+    {
+        float var = max(m2 - m1 * m1, 0.0);
+        float stddev = sqrt(var);
+        m1 = max(m1, 0.000001);
+        w = 0.5 - 0.5 * (31.0 / 32.0) * smoothstep(m1 * 0.1, m1 * 0.5, stddev);
+    }
+#endif
+
     in_scatter_light = mix(old_in_scatter_light_albedo.rgb, in_scatter_light, w);
     albedo = mix(old_in_scatter_light_albedo.w, albedo, w);
     // Avoid albedo hitting infinity, since it will trigger NaN later in the pipeline.

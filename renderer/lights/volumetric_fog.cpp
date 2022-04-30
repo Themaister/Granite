@@ -351,25 +351,40 @@ void VolumetricFog::set_scene(Scene *)
 {
 }
 
+namespace blue
+{
+// Blue Noise Sampler by Eric Heitz. Returns a value in the range [0, 1].
+#include "utils/blue/samplerBlueNoiseErrorDistribution_128x128_OptimizedFor_2d2d2d2d_1spp.hpp"
+}
+
 void VolumetricFog::build_dither_lut(Device &device)
 {
-	// TODO: Blue noise?
-	auto info = ImageCreateInfo::immutable_3d_image(width, height, NumDitherIterations, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
+	constexpr int W = 128;
+	constexpr int H = 128;
+	auto info = ImageCreateInfo::immutable_2d_image(W, H, VK_FORMAT_R8G8B8A8_UNORM);
+	info.layers = NumDitherIterations;
+	info.levels = 1;
 
-	mt19937 rnd(42);
-	uniform_int_distribution<uint32_t> dist(0, 1023);
+	const auto encode = [](float x, float y, float z) -> uint32_t {
+		auto ix = uint32_t(x * 255.0f + 0.5f);
+		auto iy = uint32_t(y * 255.0f + 0.5f);
+		auto iz = uint32_t(z * 255.0f + 0.5f);
+		return ix | (iy << 8) | (iz << 16);
+	};
 
-	vector<uint32_t> buffer(width * height * NumDitherIterations);
-	for (auto &elem : buffer)
-	{
-		uint32_t b = dist(rnd);
-		uint32_t g = dist(rnd);
-		uint32_t r = dist(rnd);
-		elem = (b << 20) | (g << 10) | (r << 0);
-	}
+	vector<uint32_t> buffer(W * H * NumDitherIterations);
+	for (int z = 0; z < int(NumDitherIterations); z++)
+		for (int y = 0; y < H; y++)
+			for (int x = 0; x < W; x++)
+				buffer[z * W * H + y * W + x] = encode(
+						blue::samplerBlueNoiseErrorDistribution_128x128_OptimizedFor_2d2d2d2d_1spp(x, y, z, 0),
+						blue::samplerBlueNoiseErrorDistribution_128x128_OptimizedFor_2d2d2d2d_1spp(x, y, z, 1),
+						blue::samplerBlueNoiseErrorDistribution_128x128_OptimizedFor_2d2d2d2d_1spp(x, y, z, 2));
 
-	ImageInitialData init = {};
-	init.data = buffer.data();
-	dither_lut = device.create_image(info, &init);
+	ImageInitialData init[NumDitherIterations] = {};
+	for (unsigned i = 0; i < NumDitherIterations; i++)
+		init[i].data = buffer.data() + i * W * H;
+	dither_lut = device.create_image(info, init);
+	device.set_name(*dither_lut, "blue-noise-lut");
 }
 }

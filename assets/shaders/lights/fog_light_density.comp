@@ -151,7 +151,7 @@ float to_clip_z(float world_z)
 
 layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uLightDensity;
 layout(set = 2, binding = 1) uniform mediump textureBuffer uSliceExtents;
-layout(set = 2, binding = 2) uniform mediump texture3D uDitherLUT;
+layout(set = 2, binding = 2) uniform mediump texture2DArray uDitherLUT;
 
 #if TEMPORAL_REPROJECTION
 layout(set = 2, binding = 5) uniform mediump sampler3D uOldLightDensity;
@@ -247,7 +247,7 @@ void main()
     }
 #endif
 
-    vec3 dither = texelFetch(uDitherLUT, ivec3(global_coord.xy, registers.dither_offset), 0).xyz;
+    vec3 dither = texelFetch(uDitherLUT, ivec3(global_coord.xy & 127u, registers.dither_offset), 0).xyz;
     dither.x -= 0.5;
     dither.y -= 0.5;
     dither.z = -dither.z;

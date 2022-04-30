@@ -81,6 +81,8 @@ void VolumetricFog::on_device_created(const DeviceCreatedEvent &)
 void VolumetricFog::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	dither_lut.reset();
+	slice_depth_lut.reset();
+	slice_depth_view.reset();
 }
 
 void VolumetricFog::set_z_range(float range)
@@ -111,14 +113,29 @@ void VolumetricFog::add_storage_buffer_dependency(string name)
 	buffer_dependencies.push_back(move(name));
 }
 
-void VolumetricFog::compute_slice_extents()
+void VolumetricFog::compute_slice_extents(Vulkan::Device &device)
 {
+	std::vector<float> slice_extents(depth);
+
 	for (unsigned z = 0; z < depth; z++)
 	{
-		float end_z = exp2((z + 1.0f) / (depth * get_slice_z_log2_scale())) - 1.0f;
-		float start_z = exp2(float(z) / (depth * get_slice_z_log2_scale())) - 1.0f;
+		float end_z = exp2((float(z) + 1.0f) / (float(depth) * get_slice_z_log2_scale())) - 1.0f;
+		float start_z = exp2(float(z) / (float(depth) * get_slice_z_log2_scale())) - 1.0f;
 		slice_extents[z] = end_z - start_z;
 	}
+
+	Vulkan::BufferCreateInfo info = {};
+	info.size = depth * sizeof(float);
+	info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+	info.domain = Vulkan::BufferDomain::Device;
+	slice_depth_lut = device.create_buffer(info, slice_extents.data());
+
+	Vulkan::BufferViewCreateInfo view_info = {};
+	view_info.buffer = slice_depth_lut.get();
+	view_info.offset = 0;
+	view_info.range = VK_WHOLE_SIZE;
+	view_info.format = VK_FORMAT_R32_SFLOAT;
+	slice_depth_view = device.create_buffer_view(view_info);
 }
 
 void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_density,
@@ -205,9 +222,7 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.set_storage_texture(2, 0, light_density);
-	memcpy(cmd.allocate_typed_constant_data<float>(2, 1, depth),
-	       slice_extents,
-	       sizeof(float) * depth);
+	cmd.set_buffer_view(2, 1, *slice_depth_view);
 	cmd.set_texture(2, 2, dither_lut->get_view(), StockSampler::NearestWrap);
 
 	cmd.dispatch((width + 3) / 4, (height + 3) / 4, (depth + 3) / 4);
@@ -242,7 +257,8 @@ void VolumetricFog::build_fog(CommandBuffer &cmd, ImageView &fog, ImageView &lig
 
 void VolumetricFog::add_render_passes(RenderGraph &graph)
 {
-	compute_slice_extents();
+	slice_depth_view.reset();
+	slice_depth_lut.reset();
 	dither_lut.reset();
 
 	AttachmentInfo volume;
@@ -306,6 +322,8 @@ void VolumetricFog::setup_render_pass_dependencies(RenderGraph &graph)
 
 	if (!dither_lut)
 		build_dither_lut(graph.get_device());
+	if (!slice_depth_view)
+		compute_slice_extents(graph.get_device());
 
 	if (!floor.input.empty())
 		floor.input_resource = &pass->add_texture_input(floor.input);

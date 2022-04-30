@@ -73,6 +73,8 @@ private:
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	Vulkan::ImageHandle dither_lut;
+	Vulkan::BufferHandle slice_depth_lut;
+	Vulkan::BufferViewHandle slice_depth_view;
 
 	struct
 	{
@@ -109,8 +111,7 @@ private:
 	                         Vulkan::ImageView *light_density_history);
 	void build_fog(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &fog, Vulkan::ImageView &light);
 
-	float slice_extents[1024];
-	void compute_slice_extents();
+	void compute_slice_extents(Vulkan::Device &device);
 	void build_dither_lut(Vulkan::Device &device);
 	unsigned dither_offset = 0;
 

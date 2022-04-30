@@ -150,12 +150,8 @@ float to_clip_z(float world_z)
 }
 
 layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uLightDensity;
+layout(set = 2, binding = 1) uniform mediump textureBuffer uSliceExtents;
 layout(set = 2, binding = 2) uniform mediump texture3D uDitherLUT;
-
-layout(std140, set = 2, binding = 1) uniform BlockExtents
-{
-    vec4 slice_extents[1024 / 4];
-};
 
 #if TEMPORAL_REPROJECTION
 layout(set = 2, binding = 5) uniform mediump sampler3D uOldLightDensity;
@@ -183,9 +179,8 @@ vec3 get_world_position(vec3 uvw)
 
 float get_fog_albedo(vec3 uvw)
 {
-    // TODO: Modulate density based on pos.
     float length_mod = length(vec3(1.0, (uvw.xy * 2.0 - 1.0) * registers.xy_scale));
-    float albedo = registers.density_mod * slice_extents[gl_WorkGroupID.z][gl_LocalInvocationID.z] * length_mod;
+    float albedo = registers.density_mod * texelFetch(uSliceExtents, int(gl_GlobalInvocationID.z)).x * length_mod;
     return albedo;
 }
 

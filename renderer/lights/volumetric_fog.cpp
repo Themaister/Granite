@@ -152,7 +152,9 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 		alignas(8) vec2 xy_scale;
 		alignas(4) float slice_z_log2_scale;
 		alignas(4) float density_mod;
-	} push;
+	};
+
+	auto &push = *cmd.allocate_typed_constant_data<Push>(3, 0, 1);
 	push.inv_view_projection = context->get_render_parameters().inv_view_projection;
 	push.z_transform = vec4(context->get_render_parameters().projection[2].zw(),
 	                        context->get_render_parameters().projection[3].zw());
@@ -164,6 +166,7 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 	push.density_mod = density_mod;
 	push.inscatter_strength = inscatter_mod;
 	push.dither_offset = int(dither_offset);
+
 	dither_offset = (dither_offset + 1) % NumDitherIterations;
 
 	cmd.push_constants(&push, 0, sizeof(push));

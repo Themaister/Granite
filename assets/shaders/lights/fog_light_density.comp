@@ -34,7 +34,7 @@ layout(std140, set = 0, binding = BINDING_GLOBAL_VOLUMETRIC_FOG_PARAMETERS) unif
     FogRegionParameters regions[CLUSTERER_MAX_FOG_REGIONS];
 } fog_regions;
 
-layout(set = 1, binding = 0) uniform texture3D uFogVolumes[];
+layout(set = 1, binding = 0) uniform mediump texture3D uFogVolumes[];
 
 mediump float fade_coeff(vec3 local_pos)
 {
@@ -130,7 +130,7 @@ mediump float compute_fog_density(vec3 pos)
 }
 #endif
 
-layout(push_constant, std430) uniform Registers
+layout(std140, set = 3, binding = 0) uniform Registers
 {
     mat4 inv_view_projection;
     vec4 z_transform;

@@ -362,21 +362,31 @@ void VolumetricFog::build_dither_lut(Device &device)
 	info.layers = NumDitherIterations;
 	info.levels = 1;
 
-	const auto encode = [](float x, float y, float z) -> uint32_t {
+	const auto encode = [](float x, float y, float z, float offset) -> uint32_t {
+		x += offset;
+		y += offset;
+		z += offset;
+		x = fract(x);
+		y = fract(y);
+		z = fract(z);
 		auto ix = uint32_t(x * 255.0f + 0.5f);
 		auto iy = uint32_t(y * 255.0f + 0.5f);
 		auto iz = uint32_t(z * 255.0f + 0.5f);
 		return ix | (iy << 8) | (iz << 16);
 	};
 
+	constexpr float GOLDEN_RATIO = 1.61803398875f;
+
+	// From https://github.com/GPUOpen-Effects/FidelityFX-SSSR/blob/master/sample/src/Shaders/PrepareBlueNoiseTexture.hlsl.
 	vector<uint32_t> buffer(W * H * NumDitherIterations);
 	for (int z = 0; z < int(NumDitherIterations); z++)
 		for (int y = 0; y < H; y++)
 			for (int x = 0; x < W; x++)
 				buffer[z * W * H + y * W + x] = encode(
-						blue::samplerBlueNoiseErrorDistribution_128x128_OptimizedFor_2d2d2d2d_1spp(x, y, z, 0),
-						blue::samplerBlueNoiseErrorDistribution_128x128_OptimizedFor_2d2d2d2d_1spp(x, y, z, 1),
-						blue::samplerBlueNoiseErrorDistribution_128x128_OptimizedFor_2d2d2d2d_1spp(x, y, z, 2));
+						blue::samplerBlueNoiseErrorDistribution_128x128_OptimizedFor_2d2d2d2d_1spp(x, y, 0, 0),
+						blue::samplerBlueNoiseErrorDistribution_128x128_OptimizedFor_2d2d2d2d_1spp(x, y, 0, 1),
+						blue::samplerBlueNoiseErrorDistribution_128x128_OptimizedFor_2d2d2d2d_1spp(x, y, 0, 2),
+						GOLDEN_RATIO * float(z));
 
 	ImageInitialData init[NumDitherIterations] = {};
 	for (unsigned i = 0; i < NumDitherIterations; i++)

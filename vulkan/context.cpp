@@ -585,7 +585,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 #ifdef GRANITE_VULKAN_BETA
 		if (ext.supports_video_queue)
 		{
-			queue_props2[i].pNext = &video_queue_props2[i];
+			queue_props[i].pNext = &video_queue_props2[i];
 			video_queue_props2[i].sType = VK_STRUCTURE_TYPE_VIDEO_QUEUE_FAMILY_PROPERTIES_2_KHR;
 		}
 #endif

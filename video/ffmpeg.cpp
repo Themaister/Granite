@@ -26,6 +26,7 @@ extern "C"
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
+#include <libavutil/channel_layout.h>
 #include <libswscale/swscale.h>
 }
 
@@ -375,7 +376,7 @@ void VideoEncoder::set_audio_source(Audio::DumpBackend *backend)
 bool VideoEncoder::Impl::init_audio_codec()
 {
 #ifdef HAVE_GRANITE_AUDIO
-	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_FLAC);
+	const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_FLAC);
 	if (!codec)
 	{
 		LOGE("Could not find FLAC encoder.\n");
@@ -443,7 +444,7 @@ bool VideoEncoder::Impl::init_audio_codec()
 
 bool VideoEncoder::Impl::init_video_codec()
 {
-	AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+	const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H264);
 	if (!codec)
 	{
 		LOGE("Could not find H.264 encoder.\n");

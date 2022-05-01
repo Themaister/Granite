@@ -160,7 +160,10 @@ bool WSI::init(unsigned num_thread_indices, const Context::SystemHandles &system
 	context->set_num_thread_indices(num_thread_indices);
 	context->set_system_handles(system_handles);
 	if (!context->init_instance_and_device(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()))
+	{
+		LOGE("Failed to create Vulkan device.\n");
 		return false;
+	}
 
 	device.reset(new Device);
 	device->set_context(*context);
@@ -170,7 +173,10 @@ bool WSI::init(unsigned num_thread_indices, const Context::SystemHandles &system
 
 	surface = platform->create_surface(context->get_instance(), context->get_gpu());
 	if (surface == VK_NULL_HANDLE)
+	{
+		LOGE("Failed to create VkSurfaceKHR.\n");
 		return false;
+	}
 
 	unsigned width = platform->get_surface_width();
 	unsigned height = platform->get_surface_height();
@@ -192,12 +198,18 @@ bool WSI::init(unsigned num_thread_indices, const Context::SystemHandles &system
 	}
 
 	if ((queue_present_support & (1u << context->get_queue_info().family_indices[QUEUE_INDEX_GRAPHICS])) == 0)
+	{
+		LOGE("No presentation queue found for GPU. Is it connected to a display?\n");
 		return false;
+	}
 
 	device->set_swapchain_queue_family_support(queue_present_support);
 
 	if (!blocking_init_swapchain(width, height))
+	{
+		LOGE("Failed to create swapchain.\n");
 		return false;
+	}
 
 	device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format,
 	                       swapchain_current_prerotate,

@@ -22,8 +22,6 @@ void main()
         vec3 color = texelFetch(uColor, ivec2(coord), 0).xyz;
         if (all(lessThanEqual(abs(uv_mod.xy), vec2(0.5))))
             color += textureLod(sampler2D(uColor, uLinearSampler), uv_mod.xy + 0.5, 0.0).rgb * uv_mod.z;
-        else
-            color += vec3(0.2, 0.0, 0.2);
 
         imageStore(uOutput, ivec2(coord), vec4(color, 1.0));
     }

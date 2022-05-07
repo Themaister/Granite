@@ -30,6 +30,7 @@
 #include "thread_group.hpp"
 #include "utils/image_utils.hpp"
 #include "ocean.hpp"
+#include "post/ssr.hpp"
 #include <float.h>
 #include <stdexcept>
 
@@ -896,6 +897,10 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
 
+	setup_ssr_pass(graph, context, tagcat("depth-transient", tag),
+	               tagcat("normal", tag), tagcat("pbr", tag),
+	               tagcat("ssr", tag));
+
 	{
 		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
 		RenderPassSceneRenderer::Setup setup = {};
@@ -921,7 +926,7 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	}
 
 	auto &lighting_pass = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-	lighting_pass.add_color_output(tagcat("HDR", tag), emissive, tagcat("emissive", tag));
+	lighting_pass.add_color_output(tagcat("HDR-tmp", tag), emissive, tagcat("emissive", tag));
 	lighting_pass.add_attachment_input(tagcat("albedo", tag));
 	lighting_pass.add_attachment_input(tagcat("normal", tag));
 	lighting_pass.add_attachment_input(tagcat("pbr", tag));
@@ -958,6 +963,8 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	                                                      RenderPassCreator::MATERIAL_BIT);
 	scene_loader.get_scene().add_render_pass_dependencies(graph, lighting_pass,
 	                                                      RenderPassCreator::LIGHTING_BIT);
+
+	setup_ssr_resolve_pass(graph, tagcat("HDR-tmp", tag), tagcat("ssr", tag), tagcat("HDR", tag));
 }
 
 void SceneViewerApplication::add_main_pass(Device &device, const std::string &tag)

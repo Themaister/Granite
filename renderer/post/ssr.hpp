@@ -20,10 +20,6 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "device.hpp"
-#include "command_buffer.hpp"
-#include "image.hpp"
-#include "math.hpp"
 #include <string>
 
 namespace Granite
@@ -31,27 +27,10 @@ namespace Granite
 class RenderGraph;
 class RenderContext;
 
-bool supports_single_pass_downsample(Vulkan::Device &device, VkFormat format);
+void setup_ssr_pass(RenderGraph &graph, const RenderContext &context,
+                    const std::string &input_depth, const std::string &input_normal,
+                    const std::string &input_pbr,
+                    const std::string &output);
 
-enum ReductionMode : int
-{
-	Color = 0,
-	Depth
-};
-
-struct SPDInfo
-{
-	const Vulkan::ImageView *input;
-	const Vulkan::ImageView **output_mips;
-	unsigned num_mips;
-	const Vulkan::Buffer *counter_buffer;
-	VkDeviceSize counter_buffer_offset;
-	unsigned num_components;
-	const vec4 *filter_mod;
-	ReductionMode mode;
-};
-
-static constexpr unsigned MaxSPDMips = 12;
-void emit_single_pass_downsample(Vulkan::CommandBuffer &cmd, const SPDInfo &info);
-void setup_depth_hierarchy_pass(RenderGraph &graph, const std::string &input, const std::string &output);
+void setup_ssr_resolve_pass(RenderGraph &graph, const std::string &input, const std::string &ssr, const std::string &output);
 }

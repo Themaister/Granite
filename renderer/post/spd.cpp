@@ -60,9 +60,9 @@ void emit_single_pass_downsample(Vulkan::CommandBuffer &cmd, const SPDInfo &info
 	                 {"SINGLE_INPUT_TAP", 1},
 	                 {"COMPONENTS", int(info.num_components)},
 	                 {"FILTER_MOD", int(info.filter_mod != nullptr)},
-	                 {"Z_TRANSFORM", int(info.z_transform != nullptr)}});
+	                 {"REDUCTION_MODE", Util::ecast(info.mode) }});
 
-	const Vulkan::StockSampler stock = info.z_transform ?
+	const Vulkan::StockSampler stock = info.mode == ReductionMode::Depth ?
 			Vulkan::StockSampler::NearestClamp : Vulkan::StockSampler::LinearClamp;
 
 	cmd.set_texture(0, 0, *info.input, stock);
@@ -74,12 +74,6 @@ void emit_single_pass_downsample(Vulkan::CommandBuffer &cmd, const SPDInfo &info
 	{
 		memcpy(cmd.allocate_typed_constant_data<vec4>(1, 0, info.num_mips),
 		       info.filter_mod, info.num_mips * sizeof(*info.filter_mod));
-	}
-
-	if (info.z_transform)
-	{
-		memcpy(cmd.allocate_typed_constant_data<mat2>(1, 1, 1),
-		       info.z_transform, sizeof(*info.z_transform));
 	}
 
 	struct Registers
@@ -117,11 +111,10 @@ struct SPDPassState : Util::IntrusivePtrEnabled<SPDPassState>
 	SPDInfo info = {};
 };
 
-void setup_depth_hierarchy_pass(RenderGraph &graph, const RenderContext &context,
-                                const std::string &input, const std::string &output)
+void setup_depth_hierarchy_pass(RenderGraph &graph, const std::string &input, const std::string &output)
 {
 	AttachmentInfo att;
-	att.format = VK_FORMAT_R16_SFLOAT;
+	att.format = VK_FORMAT_R32_SFLOAT;
 	att.size_relative_name = input;
 	att.size_class = SizeClass::InputRelative;
 
@@ -139,7 +132,7 @@ void setup_depth_hierarchy_pass(RenderGraph &graph, const RenderContext &context
 	storage_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	handle->counter = &pass.add_storage_output(output + "-counter", storage_info);
 
-	pass.set_build_render_pass([&graph, &context, h = handle](Vulkan::CommandBuffer &cmd) mutable {
+	pass.set_build_render_pass([&graph, h = handle](Vulkan::CommandBuffer &cmd) mutable {
 		if (h->views.empty())
 		{
 			auto &otex = graph.get_physical_texture_resource(*h->otex);
@@ -151,7 +144,7 @@ void setup_depth_hierarchy_pass(RenderGraph &graph, const RenderContext &context
 			info.image = &otex.get_image();
 			info.levels = 1;
 			info.layers = 1;
-			info.format = VK_FORMAT_R16_SFLOAT;
+			info.format = VK_FORMAT_R32_SFLOAT;
 			info.view_type = VK_IMAGE_VIEW_TYPE_2D;
 
 			for (unsigned i = 0; i < h->info.num_mips; i++)
@@ -166,10 +159,8 @@ void setup_depth_hierarchy_pass(RenderGraph &graph, const RenderContext &context
 		h->info.input = &graph.get_physical_texture_resource(*h->itex);
 		h->info.counter_buffer = &graph.get_physical_buffer_resource(*h->counter);
 		h->info.num_components = 1;
+		h->info.mode = ReductionMode::Depth;
 
-		mat2 inv_zw = mat2(context.get_render_parameters().inv_projection[2].zw(),
-		                   context.get_render_parameters().inv_projection[3].zw());
-		h->info.z_transform = &inv_zw;
 		emit_single_pass_downsample(cmd, h->info);
 	});
 }

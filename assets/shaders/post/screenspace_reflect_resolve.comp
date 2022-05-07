@@ -1,0 +1,30 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#pragma optimize off
+layout(set = 0, binding = 0) uniform texture2D uColor;
+layout(set = 0, binding = 1) uniform texture2D uSSR;
+layout(set = 0, binding = 2) uniform sampler uLinearSampler;
+layout(set = 0, binding = 3) writeonly uniform image2D uOutput;
+
+layout(push_constant) uniform Registers
+{
+    uvec2 resolution;
+};
+
+void main()
+{
+    uvec2 coord = gl_GlobalInvocationID.xy;
+    if (all(lessThan(coord, resolution)))
+    {
+        vec3 uv_mod = texelFetch(uSSR, ivec2(coord), 0).xyz;
+        vec3 color = texelFetch(uColor, ivec2(coord), 0).xyz;
+        if (all(lessThanEqual(abs(uv_mod.xy), vec2(0.5))))
+            color += textureLod(sampler2D(uColor, uLinearSampler), uv_mod.xy + 0.5, 0.0).rgb * uv_mod.z;
+        else
+            color += vec3(0.2, 0.0, 0.2);
+
+        imageStore(uOutput, ivec2(coord), vec4(color, 1.0));
+    }
+}

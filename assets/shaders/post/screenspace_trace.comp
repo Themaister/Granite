@@ -2,7 +2,6 @@
 #extension GL_EXT_samplerless_texture_functions : require
 layout(local_size_x = 8, local_size_y = 8) in;
 
-#pragma optimize off
 #include "../inc/project_direction.h"
 
 layout(set = 0, binding = 0) uniform texture2D uDepth;
@@ -19,30 +18,27 @@ layout(set = 1, binding = 0) uniform UBO
     vec3 camera_position;
 };
 
-vec2 trace_screenspace(vec3 start, vec3 d)
+vec3 trace_screenspace(vec3 start, vec3 d)
 {
     if (d.z <= 0.0)
-        return vec2(-10.0);
+        return vec3(-1.0, -1.0, 0.0);
 
     vec3 inv_d = 1.0 / d;
     float d_z = 1.0 - start.z;
     float t = d_z * inv_d.z;
     vec3 ndc = start + t * d;
-    return ndc.xy;
+    return vec3(ndc.xy - 0.5, 1.0);
 }
 
-vec2 trace_inner()
+vec3 trace_inner()
 {
     uvec2 coord = gl_GlobalInvocationID.xy;
-    if (any(greaterThanEqual(coord, resolution)))
-        return vec2(-10.0);
-
     vec2 uv = (vec2(coord) + 0.5) * inv_resolution;
     vec2 clip_uv = 2.0 * uv - 1.0;
 
     float clip_depth = texelFetch(uDepth, ivec2(coord), 0).x;
     if (clip_depth == 1.0)
-        return vec2(-10.0);
+        return vec3(-1.0, -1.0, 0.0);
 
     vec3 N = normalize(texelFetch(uNormal, ivec2(coord), 0).xyz * 2.0 - 1.0);
     vec4 world_clip = inv_view_projection * vec4(clip_uv, clip_depth, 1.0);
@@ -59,7 +55,15 @@ vec2 trace_inner()
 
 void main()
 {
-    vec2 uv = trace_inner();
-    // Shift to [-0.5, 0.5] range for more FP16 precision.
-    imageStore(uOutputUV, ivec2(gl_GlobalInvocationID.xy), vec4(uv - 0.5, 1.0, 0.0));
+    if (all(lessThan(gl_GlobalInvocationID.xy, resolution)))
+    {
+        vec3 uv_confidence = trace_inner();
+
+        // Vignette
+        uv_confidence.z *= 1.0 - smoothstep(0.45, 0.5, abs(uv_confidence.x));
+        uv_confidence.z *= 1.0 - smoothstep(0.45, 0.5, abs(uv_confidence.y));
+
+        // Shift to [-0.5, 0.5] range for more FP16 precision.
+        imageStore(uOutputUV, ivec2(gl_GlobalInvocationID.xy), vec4(uv_confidence, 0.0));
+    }
 }

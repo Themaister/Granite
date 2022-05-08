@@ -97,5 +97,5 @@ void main()
 #endif
 
     emit_render_target(emissive, vec4(base_color, 1.0), normal,
-                       1.0 - 0.2 * turbulence, 0.2 * turbulence, 1.0, vPos);
+                       1.0 - 0.05 * turbulence, 0.03 * turbulence, 1.0, vPos);
 }

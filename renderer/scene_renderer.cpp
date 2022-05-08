@@ -222,7 +222,7 @@ void RenderPassSceneRenderer::prepare_setup_queues()
 	}
 }
 
-void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer)
+void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskComposer &composer)
 {
 	auto &setup_group = composer.begin_pipeline_stage();
 	setup_group.enqueue_task([this]() {

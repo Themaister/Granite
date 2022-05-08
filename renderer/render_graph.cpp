@@ -71,7 +71,7 @@ void RenderPassInterface::build_render_pass_separate_layer(Vulkan::CommandBuffer
 {
 }
 
-void RenderPassInterface::enqueue_prepare_render_pass(TaskComposer &)
+void RenderPassInterface::enqueue_prepare_render_pass(RenderGraph &, TaskComposer &)
 {
 }
 
@@ -2355,7 +2355,7 @@ void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
 	for (auto &pass : physical_pass.passes)
 	{
 		auto &subpass = *passes[pass];
-		subpass.enqueue_prepare_render_pass(composer);
+		subpass.prepare_render_pass(composer);
 	}
 
 	state.rendering_dependency = composer.get_outgoing_task();

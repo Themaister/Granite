@@ -101,14 +101,55 @@ void emit_single_pass_downsample(Vulkan::CommandBuffer &cmd, const SPDInfo &info
 	cmd.enable_subgroup_size_control(false);
 }
 
-struct SPDPassState : Util::IntrusivePtrEnabled<SPDPassState>
+struct SPDPassState : RenderPassInterface
 {
-	RenderTextureResource *otex;
-	RenderTextureResource *itex;
-	RenderBufferResource *counter;
+	RenderTextureResource *otex_resource;
+	RenderTextureResource *itex_resource;
+	RenderBufferResource *counter_resource;
 	Util::SmallVector<Vulkan::ImageViewHandle, MaxSPDMips> views;
 	const Vulkan::ImageView *output_mips[MaxSPDMips];
 	SPDInfo info = {};
+
+	void build_render_pass(Vulkan::CommandBuffer &cmd) override
+	{
+		emit_single_pass_downsample(cmd, info);
+	}
+
+	void enqueue_prepare_render_pass(RenderGraph &graph, TaskComposer &) override
+	{
+		auto &otex = graph.get_physical_texture_resource(*otex_resource);
+
+		// If output is part of history, this could happen.
+		if (!views.empty() && otex.get_image().get_cookie() != views.front()->get_image().get_cookie())
+			views.clear();
+
+		if (views.empty())
+		{
+			info.num_mips = otex.get_image().get_create_info().levels;
+			views.reserve(info.num_mips);
+			VK_ASSERT(info.num_mips <= MaxSPDMips);
+
+			Vulkan::ImageViewCreateInfo view_info = {};
+			view_info.image = &otex.get_image();
+			view_info.levels = 1;
+			view_info.layers = 1;
+			view_info.format = VK_FORMAT_R32_SFLOAT;
+			view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
+
+			for (unsigned i = 0; i < info.num_mips; i++)
+			{
+				view_info.base_level = i;
+				views.push_back(graph.get_device().create_image_view(view_info));
+				output_mips[i] = views.back().get();
+			}
+			info.output_mips = output_mips;
+		}
+
+		info.input = &graph.get_physical_texture_resource(*itex_resource);
+		info.counter_buffer = &graph.get_physical_buffer_resource(*counter_resource);
+		info.num_components = 1;
+		info.mode = ReductionMode::Depth;
+	}
 };
 
 void setup_depth_hierarchy_pass(RenderGraph &graph, const std::string &input, const std::string &output)
@@ -120,48 +161,18 @@ void setup_depth_hierarchy_pass(RenderGraph &graph, const std::string &input, co
 
 	auto &pass = graph.add_pass(output, RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 	auto handle = Util::make_handle<SPDPassState>();
-	handle->itex = &pass.add_texture_input(input);
+	handle->itex_resource = &pass.add_texture_input(input);
 
 	// Stop if we reach 2x1 or 1x2 dimension.
-	auto dim = graph.get_resource_dimensions(*handle->itex);
+	auto dim = graph.get_resource_dimensions(*handle->itex_resource);
 	att.levels = Util::floor_log2(std::min(dim.width, dim.height)) + 1;
-	handle->otex = &pass.add_storage_texture_output(output, att);
+	handle->otex_resource = &pass.add_storage_texture_output(output, att);
 
 	BufferInfo storage_info = {};
 	storage_info.size = 4;
 	storage_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	handle->counter = &pass.add_storage_output(output + "-counter", storage_info);
+	handle->counter_resource = &pass.add_storage_output(output + "-counter", storage_info);
 
-	pass.set_build_render_pass([&graph, h = handle](Vulkan::CommandBuffer &cmd) mutable {
-		if (h->views.empty())
-		{
-			auto &otex = graph.get_physical_texture_resource(*h->otex);
-			h->info.num_mips = otex.get_image().get_create_info().levels;
-			h->views.reserve(h->info.num_mips);
-			VK_ASSERT(h->info.num_mips <= MaxSPDMips);
-
-			Vulkan::ImageViewCreateInfo info = {};
-			info.image = &otex.get_image();
-			info.levels = 1;
-			info.layers = 1;
-			info.format = VK_FORMAT_R32_SFLOAT;
-			info.view_type = VK_IMAGE_VIEW_TYPE_2D;
-
-			for (unsigned i = 0; i < h->info.num_mips; i++)
-			{
-				info.base_level = i;
-				h->views.push_back(cmd.get_device().create_image_view(info));
-				h->output_mips[i] = h->views.back().get();
-			}
-			h->info.output_mips = h->output_mips;
-		}
-
-		h->info.input = &graph.get_physical_texture_resource(*h->itex);
-		h->info.counter_buffer = &graph.get_physical_buffer_resource(*h->counter);
-		h->info.num_components = 1;
-		h->info.mode = ReductionMode::Depth;
-
-		emit_single_pass_downsample(cmd, h->info);
-	});
+	pass.set_render_pass_interface(std::move(handle));
 }
 }

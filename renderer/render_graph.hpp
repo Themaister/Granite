@@ -61,7 +61,9 @@ public:
 	virtual bool get_clear_depth_stencil(VkClearDepthStencilValue *value) const;
 	virtual bool get_clear_color(unsigned attachment, VkClearColorValue *value) const;
 
-	virtual void enqueue_prepare_render_pass(TaskComposer &composer);
+	// Called every frame, useful for building dependent resources like custom views, etc.
+	virtual void enqueue_prepare_render_pass(RenderGraph &graph, TaskComposer &composer);
+
 	virtual void build_render_pass(Vulkan::CommandBuffer &cmd);
 	virtual void build_render_pass_separate_layer(Vulkan::CommandBuffer &cmd, unsigned layer);
 };
@@ -633,10 +635,10 @@ public:
 			return false;
 	}
 
-	void enqueue_prepare_render_pass(TaskComposer &composer)
+	void prepare_render_pass(TaskComposer &composer)
 	{
 		if (render_pass_handle)
-			render_pass_handle->enqueue_prepare_render_pass(composer);
+			render_pass_handle->enqueue_prepare_render_pass(graph, composer);
 	}
 
 	void build_render_pass(Vulkan::CommandBuffer &cmd, unsigned layer)

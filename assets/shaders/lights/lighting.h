@@ -54,8 +54,7 @@ mediump vec3 compute_lighting(
 #endif
 	{
 		lighting += material_ambient_factor * compute_volumetric_diffuse_directional(
-			light_world_pos, N, V, NoV,
-			material_base_color, material_metallic, material_roughness);
+			light_world_pos, N, material_base_color, material_metallic);
 	}
 #else
 	lighting += material_base_color * vec3(0.05 * (1.0 - material_metallic) * material_ambient_factor);

@@ -302,14 +302,14 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		//scene.get_root_node()->add_child(std::move(node));
 	}
 
-	if (false)
+	if (config.volumetric_diffuse)
 	{
 		auto &scene = scene_loader.get_scene();
 		auto node = scene.create_node();
-		node->transform.scale = vec3(4.0f, 4.0f, 4.0f);
-		node->transform.translation = vec3(0.0f, 1.5f, 0.0f);
+		node->transform.scale = vec3(32.0f, 8.0f, 32.0f);
+		node->transform.translation = vec3(0.0f, 3.5f, 0.0f);
 		node->invalidate_cached_transform();
-		scene.create_volumetric_diffuse_light(uvec3(8, 8, 8), node.get());
+		scene.create_volumetric_diffuse_light(uvec3(32, 8, 32), node.get());
 		scene.get_root_node()->add_child(std::move(node));
 	}
 

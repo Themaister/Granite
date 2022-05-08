@@ -61,6 +61,8 @@ public:
 	virtual bool get_clear_depth_stencil(VkClearDepthStencilValue *value) const;
 	virtual bool get_clear_color(unsigned attachment, VkClearColorValue *value) const;
 
+	// Called once after bake().
+	virtual void setup(Vulkan::Device &device);
 	// Called every frame, useful for building dependent resources like custom views, etc.
 	virtual void enqueue_prepare_render_pass(RenderGraph &graph, TaskComposer &composer);
 
@@ -639,6 +641,12 @@ public:
 	{
 		if (render_pass_handle)
 			render_pass_handle->enqueue_prepare_render_pass(graph, composer);
+	}
+
+	void setup(Vulkan::Device &device)
+	{
+		if (render_pass_handle)
+			render_pass_handle->setup(device);
 	}
 
 	void build_render_pass(Vulkan::CommandBuffer &cmd, unsigned layer)

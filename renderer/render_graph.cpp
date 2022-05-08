@@ -75,6 +75,10 @@ void RenderPassInterface::enqueue_prepare_render_pass(RenderGraph &, TaskCompose
 {
 }
 
+void RenderPassInterface::setup(Vulkan::Device &)
+{
+}
+
 static const RenderGraphQueueFlags compute_queues = RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT |
                                                     RENDER_GRAPH_QUEUE_COMPUTE_BIT;
 
@@ -3087,6 +3091,10 @@ void RenderGraph::bake()
 	// Figure out which images can alias with each other.
 	// Also build virtual "transfer" barriers. These things only copy events over to other physical resources.
 	build_aliases();
+
+	for (auto &physical_pass : physical_passes)
+		for (auto pass : physical_pass.passes)
+			passes[pass]->setup(*device);
 }
 
 ResourceDimensions RenderGraph::get_resource_dimensions(const RenderBufferResource &resource) const

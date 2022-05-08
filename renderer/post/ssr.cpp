@@ -43,19 +43,24 @@ static void screenspace_trace(Vulkan::CommandBuffer &cmd,
 
 	struct UBO
 	{
-		mat4 view_projection;
-		mat4 inv_view_projection;
-		vec2 inv_resolution;
-		uvec2 resolution;
-		vec3 camera_position;
+		alignas(16) mat4 view_projection;
+		alignas(16) mat4 inv_view_projection;
+		alignas(8) vec2 float_resolution;
+		alignas(8) vec2 inv_resolution;
+		alignas(8) uvec2 resolution;
+		alignas(4) uint32_t max_lod;
+		alignas(16) vec3 camera_position;
 	};
 
 	auto *ubo = cmd.allocate_typed_constant_data<UBO>(1, 0, 1);
 	ubo->view_projection = context.get_render_parameters().view_projection;
 	ubo->inv_view_projection = context.get_render_parameters().inv_view_projection;
-	ubo->inv_resolution = vec2(1.0f / float(output.get_view_width()), 1.0f / float(output.get_view_height()));
+	vec2 float_resolution(float(output.get_view_width()), float(output.get_view_height()));
+	ubo->float_resolution = float_resolution;
+	ubo->inv_resolution = 1.0f / float_resolution;
 	ubo->resolution = uvec2(output.get_view_width(), output.get_view_height());
 	ubo->camera_position = context.get_render_parameters().camera_position;
+	ubo->max_lod = output.get_create_info().levels - 1;
 
 	cmd.dispatch((output.get_view_width() + 7) / 8, (output.get_view_height() + 7) / 8, 1);
 }

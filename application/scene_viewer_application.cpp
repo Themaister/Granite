@@ -897,10 +897,6 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
 
-	setup_ssr_pass(graph, context, tagcat("depth-transient", tag),
-	               tagcat("normal", tag), tagcat("pbr", tag),
-	               tagcat("ssr", tag));
-
 	{
 		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
 		RenderPassSceneRenderer::Setup setup = {};
@@ -926,7 +922,7 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	}
 
 	auto &lighting_pass = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-	lighting_pass.add_color_output(tagcat("HDR-tmp", tag), emissive, tagcat("emissive", tag));
+	lighting_pass.add_color_output(tagcat("HDR", tag), emissive, tagcat("emissive", tag));
 	lighting_pass.add_attachment_input(tagcat("albedo", tag));
 	lighting_pass.add_attachment_input(tagcat("normal", tag));
 	lighting_pass.add_attachment_input(tagcat("pbr", tag));
@@ -963,8 +959,6 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	                                                      RenderPassCreator::MATERIAL_BIT);
 	scene_loader.get_scene().add_render_pass_dependencies(graph, lighting_pass,
 	                                                      RenderPassCreator::LIGHTING_BIT);
-
-	setup_ssr_resolve_pass(graph, tagcat("HDR-tmp", tag), tagcat("ssr", tag), tagcat("HDR", tag));
 }
 
 void SceneViewerApplication::add_main_pass(Device &device, const std::string &tag)
@@ -1124,6 +1118,16 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	}
 
 	add_main_pass(swap.get_device(), "main");
+
+	const char *light_output = "HDR-main";
+	if (config.renderer_type == RendererType::GeneralDeferred)
+	{
+		setup_ssr_trace_pass(graph, context, "depth-transient-main",
+							 "albedo-main", "normal-main", "pbr-main",
+							 light_output, "SSR");
+		light_output = "SSR";
+	}
+
 	if (config.postaa_type == PostAAType::TAA_Low ||
 	    config.postaa_type == PostAAType::TAA_Medium ||
 	    config.postaa_type == PostAAType::TAA_High)
@@ -1134,15 +1138,15 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	if (config.hdr_bloom)
 	{
 		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type, graph, jitter, config.resolution_scale,
-		                                                     "HDR-main", "depth-main", "mv-main", "HDR-resolved");
+		                                                     light_output, "depth-main", "mv-main", "HDR-resolved");
 
 		HDROptions opts;
 		opts.dynamic_exposure = config.hdr_bloom_dynamic_exposure;
 
 		if (ImplementationQuirks::get().use_async_compute_post)
-			setup_hdr_postprocess_compute(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped", opts);
+			setup_hdr_postprocess_compute(graph, resolved ? "HDR-resolved" : light_output, "tonemapped", opts);
 		else
-			setup_hdr_postprocess(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped", opts);
+			setup_hdr_postprocess(graph, resolved ? "HDR-resolved" : light_output, "tonemapped", opts);
 	}
 
 	if (setup_after_post_chain_antialiasing(config.postaa_type, graph, jitter, config.resolution_scale,

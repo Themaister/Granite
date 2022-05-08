@@ -5,12 +5,16 @@ layout(local_size_x = 8, local_size_y = 8) in;
 #define SUBGROUP_OPS
 #include "../inc/subgroup_extensions.h"
 #include "../inc/project_direction.h"
+#include "../lights/pbr.h"
 
 layout(set = 0, binding = 0) uniform texture2D uDepth;
-layout(set = 0, binding = 1) uniform texture2D uNormal;
-layout(set = 0, binding = 2) uniform texture2D uPBR;
-layout(set = 0, binding = 3) uniform texture2DArray uNoise;
-layout(set = 0, binding = 4) writeonly uniform image2D uOutputUV;
+layout(set = 0, binding = 1) uniform mediump texture2D uBaseColor;
+layout(set = 0, binding = 2) uniform mediump texture2D uNormal;
+layout(set = 0, binding = 3) uniform mediump texture2D uPBR;
+layout(set = 0, binding = 4) uniform mediump texture2D uLight;
+layout(set = 0, binding = 5) uniform mediump texture2DArray uNoise;
+layout(set = 0, binding = 6) uniform mediump sampler2D uBRDFLut;
+layout(set = 0, binding = 7) writeonly uniform mediump image2D uOutput;
 
 layout(set = 1, binding = 0) uniform UBO
 {
@@ -29,7 +33,7 @@ float FFX_SSSR_LoadDepth(ivec2 coord, int lod)
     return texelFetch(uDepth, coord, lod).x;
 }
 
-vec3 FFX_SSSR_LoadWorldSpaceNormal(ivec2 coord)
+mediump vec3 FFX_SSSR_LoadWorldSpaceNormal(ivec2 coord)
 {
     return texelFetch(uNormal, coord, 0).xyz * 2.0 - 1.0;
 }
@@ -70,77 +74,75 @@ const float M_PI = 3.1415628;
 // Input alpha_x, alpha_y: roughness parameters
 // Input U1, U2: uniform random numbers
 // Output Ne: normal sampled with PDF D_Ve(Ne) = G1(Ve) * max(0, dot(Ve, Ne)) * D(Ne) / Ve.z
-vec3 SampleGGXVNDF(vec3 Ve, float alpha_x, float alpha_y, float U1, float U2)
+mediump vec3 SampleGGXVNDF(mediump vec3 Ve, mediump float alpha_x, mediump float alpha_y, mediump float U1, mediump float U2)
 {
     // Section 3.2: transforming the view direction to the hemisphere configuration
-    vec3 Vh = normalize(vec3(alpha_x * Ve.x, alpha_y * Ve.y, Ve.z));
+    mediump vec3 Vh = normalize(vec3(alpha_x * Ve.x, alpha_y * Ve.y, Ve.z));
     // Section 4.1: orthonormal basis (with special case if cross product is zero)
-    float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
-    vec3 T1 = lensq > 0 ? vec3(-Vh.y, Vh.x, 0) * inversesqrt(lensq) : vec3(1, 0, 0);
-    vec3 T2 = cross(Vh, T1);
+    mediump float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+    mediump vec3 T1 = lensq > 0 ? vec3(-Vh.y, Vh.x, 0) * inversesqrt(lensq) : vec3(1, 0, 0);
+    mediump vec3 T2 = cross(Vh, T1);
     // Section 4.2: parameterization of the projected area
-    float r = sqrt(U1);
-    float phi = 2.0 * M_PI * U2;
-    float t1 = r * cos(phi);
-    float t2 = r * sin(phi);
-    float s = 0.5 * (1.0 + Vh.z);
+    mediump float r = sqrt(U1);
+    mediump float phi = 2.0 * M_PI * U2;
+    mediump float t1 = r * cos(phi);
+    mediump float t2 = r * sin(phi);
+    mediump float s = 0.5 * (1.0 + Vh.z);
     t2 = (1.0 - s) * sqrt(1.0 - t1 * t1) + s * t2;
     // Section 4.3: reprojection onto hemisphere
-    vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
+    mediump vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
     // Section 3.4: transforming the normal back to the ellipsoid configuration
-    vec3 Ne = normalize(vec3(alpha_x * Nh.x, alpha_y * Nh.y, max(0.0, Nh.z)));
+    mediump vec3 Ne = normalize(vec3(alpha_x * Nh.x, alpha_y * Nh.y, max(0.0, Nh.z)));
     return Ne;
 }
 
-vec3 Sample_GGX_VNDF_Ellipsoid(vec3 Ve, float alpha_x, float alpha_y, float U1, float U2)
+mediump vec3 Sample_GGX_VNDF_Ellipsoid(mediump vec3 Ve, mediump float alpha_x, mediump float alpha_y, mediump float U1, mediump float U2)
 {
     return SampleGGXVNDF(Ve, alpha_x, alpha_y, U1, U2);
 }
 
-vec3 Sample_GGX_VNDF_Hemisphere(vec3 Ve, float alpha, float U1, float U2)
+mediump vec3 Sample_GGX_VNDF_Hemisphere(mediump vec3 Ve, mediump float alpha, mediump float U1, mediump float U2)
 {
     return Sample_GGX_VNDF_Ellipsoid(Ve, alpha, alpha, U1, U2);
 }
 
-mat3 CreateTBN(vec3 N)
+mediump mat3 CreateTBN(vec3 N)
 {
-    vec3 U;
+    mediump vec3 U;
 
     if (abs(N.z) > 0.0)
     {
-        float k = sqrt(N.y * N.y + N.z * N.z);
+        mediump float k = sqrt(N.y * N.y + N.z * N.z);
         U.x = 0.0; U.y = -N.z / k; U.z = N.y / k;
     }
     else
     {
-        float k = sqrt(N.x * N.x + N.y * N.y);
+        mediump float k = sqrt(N.x * N.x + N.y * N.y);
         U.x = N.y / k; U.y = -N.x / k; U.z = 0.0;
     }
 
     return mat3(U, cross(N, U), N);
 }
 
-vec2 SampleRandomVector2D(ivec2 pixel)
+mediump vec2 SampleRandomVector2D(ivec2 pixel)
 {
     return texelFetch(uNoise, ivec3(pixel.xy & 127, frame), 0).xy;
 }
 
-vec3 SampleReflectionVector(vec3 view_direction, vec3 normal, float roughness, ivec2 dispatch_thread_id)
+mediump vec3 SampleReflectionVector(
+        mediump vec3 view_direction, mediump vec3 normal,
+        mediump float roughness, ivec2 dispatch_thread_id)
 {
-    mat3 tbn_transform = CreateTBN(normal);
-    vec3 view_direction_tbn = -view_direction * tbn_transform;
-
-    vec2 u = SampleRandomVector2D(dispatch_thread_id);
-
-    vec3 sampled_normal_tbn = Sample_GGX_VNDF_Hemisphere(view_direction_tbn, roughness, u.x, u.y);
-
-    vec3 reflected_direction_tbn = reflect(-view_direction_tbn, sampled_normal_tbn);
-
+    mediump mat3 tbn_transform = CreateTBN(normal);
+    mediump vec3 view_direction_tbn = -view_direction * tbn_transform;
+    mediump vec2 u = SampleRandomVector2D(dispatch_thread_id);
+    mediump vec3 sampled_normal_tbn = Sample_GGX_VNDF_Hemisphere(view_direction_tbn, roughness, u.x, u.y);
+    mediump vec3 reflected_direction_tbn = reflect(-view_direction_tbn, sampled_normal_tbn);
     // Transform reflected_direction back to the initial space.
     return tbn_transform * reflected_direction_tbn;
 }
 
-bool IsMirrorReflection(float roughness)
+bool IsMirrorReflection(mediump float roughness)
 {
     return roughness < 0.0001;
 }
@@ -266,7 +268,7 @@ float FFX_SSSR_ValidateHit(vec3 hit, vec2 uv,
     if (any(lessThan(vec4(hit.xy, 1.0, 1.0), vec4(0.0, 0.0, hit.xy))))
         return 0.0;
 
-    // Reject the hit if we didnt advance the ray significantly to avoid immediate self reflection
+    // Reject the hit if we didn't advance the ray significantly to avoid immediate self reflection
     vec2 manhattan_dist = abs(hit.xy - uv);
     if (all(lessThan(manhattan_dist, 2.0 * inv_resolution)))
         return 0.0;
@@ -279,7 +281,7 @@ float FFX_SSSR_ValidateHit(vec3 hit, vec2 uv,
         return 1.0;
 
     // We check if we hit the surface from the back, these should be rejected.
-    vec3 hit_normal = FFX_SSSR_LoadWorldSpaceNormal(texel_coords);
+    mediump vec3 hit_normal = FFX_SSSR_LoadWorldSpaceNormal(texel_coords);
     if (dot(hit_normal, world_space_ray_direction) > 0.0)
         return 0.0;
 
@@ -305,7 +307,7 @@ float FFX_SSSR_ValidateHit(vec3 hit, vec2 uv,
 }
 ////
 
-vec3 trace_inner()
+mediump vec3 trace_inner()
 {
     ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
     vec2 uv = (vec2(coord) + 0.5) * inv_resolution;
@@ -313,13 +315,16 @@ vec3 trace_inner()
 
     float clip_depth = texelFetch(uDepth, ivec2(coord), 0).x;
     if (clip_depth == 1.0)
-        return vec3(-1.0, -1.0, 0.0);
+        return vec3(0.0);
+
+    mediump vec2 mr = texelFetch(uPBR, ivec2(coord), 0).xy;
+    mediump float metallic = mr.x;
+    mediump float roughness = mr.y;
 
     vec3 world_pos = FFX_SSSR_ScreenSpaceToWorldSpace(vec3(clip_uv, clip_depth));
-    vec3 d = normalize(world_pos - camera_position);
-    vec3 N = FFX_SSSR_LoadWorldSpaceNormal(coord);
-    float roughness = texelFetch(uPBR, coord, 0).g;
-    vec3 reflected = SampleReflectionVector(d, N, roughness, ivec2(gl_GlobalInvocationID.xy));
+    mediump vec3 V = normalize(camera_position - world_pos);
+    mediump vec3 N = FFX_SSSR_LoadWorldSpaceNormal(coord);
+    vec3 reflected = SampleReflectionVector(-V, N, roughness, coord);
     vec3 screen_space_dir = project_direction_to_clip_space(vec3(clip_uv, clip_depth), reflected, view_projection);
 
     vec3 ndc = vec3(uv, clip_depth);
@@ -335,22 +340,37 @@ vec3 trace_inner()
             most_detailed_mip,
             min_traversal_occupancy, max_traversal_intersections, valid_hit);
 
-    if (!valid_hit)
-        return vec3(-1.0, -1.0, 0.0);
-
     const float depth_buffer_thickness = 0.20;
 
-    float confidence = FFX_SSSR_ValidateHit(result, uv, reflected, depth_buffer_thickness);
-    return vec3(result.xy, confidence);
+    mediump float confidence;
+    if (valid_hit)
+        confidence = FFX_SSSR_ValidateHit(result, uv, reflected, depth_buffer_thickness);
+    else
+        confidence = 0.0;
+
+    mediump vec3 color = vec3(0.0);
+    if (confidence > 0.0)
+    {
+        ivec2 texel_coords = ivec2(float_resolution * result.xy);
+        color = texelFetch(uLight, texel_coords, 0).rgb * confidence;
+
+        // Modulate by IBL parameters.
+        mediump float NoV = clamp(dot(N, V), 0.0, 1.0);
+        mediump vec3 F0 = compute_F0(texelFetch(uBaseColor, coord, 0).rgb, metallic);
+        mediump vec3 F = fresnel_ibl(F0, NoV, roughness);
+        mediump vec2 brdf = textureLod(uBRDFLut, vec2(NoV, roughness), 0.0).xy;
+        color = color * (F * brdf.x + brdf.y);
+    }
+
+    return color;
 }
 
 void main()
 {
     if (all(lessThan(gl_GlobalInvocationID.xy, resolution)))
     {
-        vec3 uv_confidence = trace_inner();
-        // Shift to [-0.5, 0.5] range for more FP16 precision.
-        uv_confidence.xy -= 0.5;
-        imageStore(uOutputUV, ivec2(gl_GlobalInvocationID.xy), vec4(uv_confidence, 0.0));
+        mediump vec3 color = trace_inner();
+        color += texelFetch(uLight, ivec2(gl_GlobalInvocationID.xy), 0).rgb;
+        imageStore(uOutput, ivec2(gl_GlobalInvocationID.xy), vec4(color, 0.0));
     }
 }

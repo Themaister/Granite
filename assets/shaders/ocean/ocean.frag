@@ -56,7 +56,7 @@ mediump vec4 sample_refraction_layer(int layer, mediump float turbulence,
 void main()
 {
     mediump vec3 grad_jacobian = texture(uGradJacobian, vGradNormalUV.xy).xyz;
-    mediump vec2 N = 0.3 * texture(uNormal, vGradNormalUV.zw).xy;
+    mediump vec2 N = texture(uNormal, vGradNormalUV.zw).xy;
     mediump float jacobian = grad_jacobian.z;
     mediump float turbulence = max(2.0 - jacobian + dot(abs(N), vec2(1.2)), 0.0);
 

@@ -302,7 +302,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		//scene.get_root_node()->add_child(std::move(node));
 	}
 
-	if (config.volumetric_diffuse)
+	if (false && config.volumetric_diffuse)
 	{
 		auto &scene = scene_loader.get_scene();
 		auto node = scene.create_node();

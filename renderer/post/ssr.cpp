@@ -50,6 +50,9 @@ struct SSRState : RenderPassInterface
 		cmd.set_texture(2, 4, *light_view);
 		cmd.set_texture(2, 5, dither_lut->get_view());
 		cmd.set_storage_texture(2, 6, *output_view);
+		cmd.set_storage_texture(2, 7, *ray_length_view);
+		cmd.set_storage_buffer(2, 8, *ray_counter_buffer);
+		cmd.set_storage_buffer(2, 9, *ray_list_buffer);
 
 		struct UBO
 		{
@@ -61,22 +64,8 @@ struct SSRState : RenderPassInterface
 			alignas(4) uint32_t max_lod;
 			alignas(4) uint32_t frame;
 			alignas(16) vec3 camera_position;
+			alignas(4) uint resolution_1d;
 		};
-
-		defines.clear();
-		Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
-		if (cmd.get_device().supports_subgroup_size_log2(true, 2, 7))
-		{
-			defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);
-			cmd.set_subgroup_size_log2(true, 2, 7);
-			cmd.enable_subgroup_size_control(true);
-		}
-
-		if (auto *lighting = context->get_lighting_parameters())
-			if (lighting->volumetric_diffuse)
-				defines.emplace_back("FALLBACK", 1);
-
-		cmd.set_program("builtin://shaders/post/screenspace_trace.comp", defines);
 
 		auto *ubo = cmd.allocate_typed_constant_data<UBO>(3, 0, 1);
 		ubo->view_projection = context->get_render_parameters().view_projection;
@@ -88,19 +77,66 @@ struct SSRState : RenderPassInterface
 		ubo->camera_position = context->get_render_parameters().camera_position;
 		ubo->max_lod = depth_view->get_create_info().levels - 1;
 		ubo->frame = frame;
+		ubo->resolution_1d = output_view->get_view_width() * output_view->get_view_height();
 
+		// ClassifyTiles.hlsl
+		cmd.set_program("builtin://shaders/post/screenspace_classify.comp");
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+					VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		cmd.dispatch((output_view->get_view_width() + 7) / 8, (output_view->get_view_height() + 7) / 8, 1);
-		cmd.enable_subgroup_size_control(false);
+
+		// PrepareIndirectArgs.hlsl
+		cmd.set_program("builtin://shaders/post/screenspace_build_indirect.comp", {{ "ITERATION", 0 }});
+		cmd.dispatch(1, 1, 1);
+
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+		            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+
+		// Intersect.hlsl
+		cmd.set_program("builtin://shaders/post/screenspace_trace_primary.comp", defines);
+		cmd.dispatch_indirect(*ray_counter_buffer, 0);
+
+		if (auto *lighting = context->get_lighting_parameters())
+		{
+			if (lighting->volumetric_diffuse)
+			{
+				cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+							VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+				cmd.set_program("builtin://shaders/post/screenspace_build_indirect.comp", {{ "ITERATION", 1 }});
+				cmd.dispatch(1, 1, 1);
+				cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+							VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+							VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+
+				defines.clear();
+				Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
+				if (cmd.get_device().supports_subgroup_size_log2(true, 2, 7))
+				{
+					defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);
+					cmd.set_subgroup_size_log2(true, 2, 7);
+					cmd.enable_subgroup_size_control(true);
+				}
+
+				defines.emplace_back("FALLBACK", 1);
+				cmd.set_program("builtin://shaders/post/screenspace_trace_fallback.comp", defines);
+				cmd.dispatch_indirect(*ray_counter_buffer, 4 * sizeof(uint32_t));
+				cmd.enable_subgroup_size_control(false);
+			}
+		}
 	}
 
 	void enqueue_prepare_render_pass(RenderGraph &graph, TaskComposer &) override
 	{
 		output_view = &graph.get_physical_texture_resource(*output);
+		ray_length_view = &graph.get_physical_texture_resource(*ray_length);
 		depth_view = &graph.get_physical_texture_resource(*depth);
 		normal_view = &graph.get_physical_texture_resource(*normal);
 		pbr_view = &graph.get_physical_texture_resource(*pbr);
 		light_view = &graph.get_physical_texture_resource(*light);
 		base_color_view = &graph.get_physical_texture_resource(*base_color);
+		ray_list_buffer = &graph.get_physical_buffer_resource(*ray_list);
+		ray_counter_buffer = &graph.get_physical_buffer_resource(*ray_counter);
 		frame = (frame + 1) % NumDitherIterations;
 	}
 
@@ -156,12 +192,18 @@ struct SSRState : RenderPassInterface
 	RenderTextureResource *base_color;
 	RenderTextureResource *pbr;
 	RenderTextureResource *light;
+	RenderTextureResource *ray_length;
+	RenderBufferResource *ray_counter;
+	RenderBufferResource *ray_list;
 	const Vulkan::ImageView *output_view;
 	const Vulkan::ImageView *depth_view;
 	const Vulkan::ImageView *normal_view;
 	const Vulkan::ImageView *pbr_view;
 	const Vulkan::ImageView *light_view;
+	const Vulkan::ImageView *ray_length_view;
 	const Vulkan::ImageView *base_color_view;
+	const Vulkan::Buffer *ray_counter_buffer;
+	const Vulkan::Buffer *ray_list_buffer;
 	const RenderContext *context;
 	unsigned frame = 0;
 	std::vector<std::pair<std::string, int>> defines;
@@ -186,11 +228,25 @@ void setup_ssr_trace_pass(RenderGraph &graph, const RenderContext &context,
 	state->light = &pass.add_texture_input(input_light);
 	state->base_color = &pass.add_texture_input(input_base_color);
 
+	auto light_dim = graph.get_resource_dimensions(*state->light);
+
 	AttachmentInfo att;
 	att.size_class = SizeClass::InputRelative;
 	att.size_relative_name = input_depth;
-	att.format = graph.get_resource_dimensions(*state->light).format;
+	att.format = light_dim.format;
 	state->output = &pass.add_storage_texture_output(output, att);
+
+	att.format = VK_FORMAT_R16_SFLOAT;
+	state->ray_length = &pass.add_storage_texture_output(output + "-length", att);
+
+	BufferInfo buf;
+	buf.size = light_dim.width * light_dim.height * sizeof(uint32_t) * 2;
+	state->ray_list = &pass.add_storage_output("ssr-ray-list", buf);
+
+	buf.size = 4096;
+	buf.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+	            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	state->ray_counter = &pass.add_storage_output("ssr-ray-counter", buf);
 
 	state->context = &context;
 

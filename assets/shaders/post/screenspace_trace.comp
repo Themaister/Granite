@@ -21,6 +21,7 @@ layout(set = 2, binding = 3) uniform mediump texture2D uPBR;
 layout(set = 2, binding = 4) uniform mediump texture2D uLight;
 layout(set = 2, binding = 5) uniform mediump texture2DArray uNoise;
 layout(set = 2, binding = 6) writeonly uniform mediump image2D uOutput;
+layout(set = 2, binding = 7, r16f) writeonly uniform mediump image2D uRayLength;
 
 layout(set = 3, binding = 0) uniform UBO
 {
@@ -32,6 +33,7 @@ layout(set = 3, binding = 0) uniform UBO
     int max_lod;
     int frame;
     vec3 camera_position;
+    uint resolution_1d;
 };
 
 float FFX_SSSR_LoadDepth(ivec2 coord, int lod)
@@ -313,14 +315,14 @@ float FFX_SSSR_ValidateHit(vec3 hit, vec2 uv,
 }
 ////
 
-mediump vec3 trace_inner(ivec2 coord)
+mediump vec4 trace_inner(ivec2 coord)
 {
     vec2 uv = (vec2(coord) + 0.5) * inv_resolution;
     vec2 clip_uv = 2.0 * uv - 1.0;
 
     float clip_depth = texelFetch(uDepth, ivec2(coord), 0).x;
     if (clip_depth == 1.0)
-        return vec3(0.0);
+        return vec4(0.0);
 
     mediump vec2 mr = texelFetch(uPBR, ivec2(coord), 0).xy;
     mediump float metallic = mr.x;
@@ -353,11 +355,16 @@ mediump vec3 trace_inner(ivec2 coord)
     else
         confidence = 0.0;
 
+    mediump float ray_length = 0.0;
     mediump vec3 color = vec3(0.0);
     if (confidence > 0.0)
     {
         ivec2 texel_coords = ivec2(float_resolution * result.xy);
         color = texelFetch(uLight, texel_coords, 0).rgb * confidence;
+
+        result.xy = result.xy * 2.0 - 1.0;
+        vec3 hit_pos = FFX_SSSR_ScreenSpaceToWorldSpace(result);
+        ray_length = distance(world_pos, hit_pos);
     }
 
 #ifdef FALLBACK
@@ -371,7 +378,7 @@ mediump vec3 trace_inner(ivec2 coord)
     mediump vec2 brdf = textureLod(uBRDFLut, vec2(NoV, roughness), 0.0).xy;
     color = color * (F * brdf.x + brdf.y);
 
-    return color;
+    return vec4(color, ray_length);
 }
 
 void main()
@@ -386,8 +393,10 @@ void main()
 
     if (all(lessThan(coord, resolution)))
     {
-        mediump vec3 color = trace_inner(ivec2(coord));
+        mediump vec4 color_length = trace_inner(ivec2(coord));
+        mediump vec3 color = color_length.rgb;
         color += texelFetch(uLight, ivec2(coord), 0).rgb;
         imageStore(uOutput, ivec2(coord), vec4(color, 0.0));
+        imageStore(uRayLength, ivec2(coord), vec4(color_length.w, 0.0, 0.0, 0.0));
     }
 }

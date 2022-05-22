@@ -79,6 +79,10 @@ void RenderPassInterface::setup(Vulkan::Device &)
 {
 }
 
+void RenderPassInterface::setup_dependencies(RenderPass &, RenderGraph &)
+{
+}
+
 static const RenderGraphQueueFlags compute_queues = RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT |
                                                     RENDER_GRAPH_QUEUE_COMPUTE_BIT;
 
@@ -2979,6 +2983,9 @@ bool RenderGraph::depends_on_pass(unsigned dst_pass, unsigned src_pass)
 
 void RenderGraph::bake()
 {
+	for (auto &pass : passes)
+		pass->setup_dependencies();
+
 	// First, validate that the graph is sane.
 	validate_passes();
 

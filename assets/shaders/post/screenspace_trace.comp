@@ -1,22 +1,28 @@
 #version 450
 #extension GL_EXT_samplerless_texture_functions : require
-layout(local_size_x = 8, local_size_y = 8) in;
+layout(local_size_x = 64) in;
 
-#define SUBGROUP_OPS
 #include "../inc/subgroup_extensions.h"
+#include "../inc/global_bindings.h"
 #include "../inc/project_direction.h"
 #include "../lights/pbr.h"
+#include "../lights/lighting_resources.h"
 
-layout(set = 0, binding = 0) uniform texture2D uDepth;
-layout(set = 0, binding = 1) uniform mediump texture2D uBaseColor;
-layout(set = 0, binding = 2) uniform mediump texture2D uNormal;
-layout(set = 0, binding = 3) uniform mediump texture2D uPBR;
-layout(set = 0, binding = 4) uniform mediump texture2D uLight;
-layout(set = 0, binding = 5) uniform mediump texture2DArray uNoise;
-layout(set = 0, binding = 6) uniform mediump sampler2D uBRDFLut;
-layout(set = 0, binding = 7) writeonly uniform mediump image2D uOutput;
+#ifdef FALLBACK
+#define VOLUMETRIC_DIFFUSE_ATLAS_SET 1
+#extension GL_EXT_nonuniform_qualifier : require
+#include "../lights/volumetric_diffuse.h"
+#endif
 
-layout(set = 1, binding = 0) uniform UBO
+layout(set = 2, binding = 0) uniform texture2D uDepth;
+layout(set = 2, binding = 1) uniform mediump texture2D uBaseColor;
+layout(set = 2, binding = 2) uniform mediump texture2D uNormal;
+layout(set = 2, binding = 3) uniform mediump texture2D uPBR;
+layout(set = 2, binding = 4) uniform mediump texture2D uLight;
+layout(set = 2, binding = 5) uniform mediump texture2DArray uNoise;
+layout(set = 2, binding = 6) writeonly uniform mediump image2D uOutput;
+
+layout(set = 3, binding = 0) uniform UBO
 {
     mat4 view_projection;
     mat4 inv_view_projection;
@@ -307,9 +313,8 @@ float FFX_SSSR_ValidateHit(vec3 hit, vec2 uv,
 }
 ////
 
-mediump vec3 trace_inner()
+mediump vec3 trace_inner(ivec2 coord)
 {
-    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
     vec2 uv = (vec2(coord) + 0.5) * inv_resolution;
     vec2 clip_uv = 2.0 * uv - 1.0;
 
@@ -331,16 +336,16 @@ mediump vec3 trace_inner()
     screen_space_dir.xy *= 0.5;
 
     bool is_mirror = IsMirrorReflection(roughness);
-    const int most_detailed_mip = 0;
+    const int most_detailed_mip = 1;
     const uint min_traversal_occupancy = 4;
-    const uint max_traversal_intersections = 64;
+    const uint max_traversal_intersections = 128;
+    const float depth_buffer_thickness = 0.05;
+
     bool valid_hit;
 
     vec3 result = FFX_SSSR_HierarchicalRaymarch(ndc, screen_space_dir, is_mirror,
             most_detailed_mip,
             min_traversal_occupancy, max_traversal_intersections, valid_hit);
-
-    const float depth_buffer_thickness = 0.20;
 
     mediump float confidence;
     if (valid_hit)
@@ -353,24 +358,36 @@ mediump vec3 trace_inner()
     {
         ivec2 texel_coords = ivec2(float_resolution * result.xy);
         color = texelFetch(uLight, texel_coords, 0).rgb * confidence;
-
-        // Modulate by IBL parameters.
-        mediump float NoV = clamp(dot(N, V), 0.0, 1.0);
-        mediump vec3 F0 = compute_F0(texelFetch(uBaseColor, coord, 0).rgb, metallic);
-        mediump vec3 F = fresnel_ibl(F0, NoV, roughness);
-        mediump vec2 brdf = textureLod(uBRDFLut, vec2(NoV, roughness), 0.0).xy;
-        color = color * (F * brdf.x + brdf.y);
     }
+
+#ifdef FALLBACK
+    color += (1.0 - confidence) * compute_volumetric_diffuse(world_pos, normalize(reflected), true);
+#endif
+
+    // Modulate by IBL parameters.
+    mediump float NoV = clamp(dot(N, V), 0.0, 1.0);
+    mediump vec3 F0 = compute_F0(texelFetch(uBaseColor, coord, 0).rgb, metallic);
+    mediump vec3 F = fresnel_ibl(F0, NoV, roughness);
+    mediump vec2 brdf = textureLod(uBRDFLut, vec2(NoV, roughness), 0.0).xy;
+    color = color * (F * brdf.x + brdf.y);
 
     return color;
 }
 
 void main()
 {
-    if (all(lessThan(gl_GlobalInvocationID.xy, resolution)))
+    uvec2 coord = gl_WorkGroupID.xy * 8u;
+    coord.x += bitfieldExtract(gl_LocalInvocationIndex, 0, 1) << 0;
+    coord.x += bitfieldExtract(gl_LocalInvocationIndex, 2, 1) << 1;
+    coord.x += bitfieldExtract(gl_LocalInvocationIndex, 4, 1) << 2;
+    coord.y += bitfieldExtract(gl_LocalInvocationIndex, 1, 1) << 0;
+    coord.y += bitfieldExtract(gl_LocalInvocationIndex, 3, 1) << 1;
+    coord.y += bitfieldExtract(gl_LocalInvocationIndex, 5, 1) << 2;
+
+    if (all(lessThan(coord, resolution)))
     {
-        mediump vec3 color = trace_inner();
-        color += texelFetch(uLight, ivec2(gl_GlobalInvocationID.xy), 0).rgb;
-        imageStore(uOutput, ivec2(gl_GlobalInvocationID.xy), vec4(color, 0.0));
+        mediump vec3 color = trace_inner(ivec2(coord));
+        color += texelFetch(uLight, ivec2(coord), 0).rgb;
+        imageStore(uOutput, ivec2(coord), vec4(color, 0.0));
     }
 }

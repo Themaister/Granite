@@ -25,6 +25,8 @@
 #include "spd.hpp"
 #include "command_buffer.hpp"
 #include "common_renderer_data.hpp"
+#include "lights/clusterer.hpp"
+#include "lights/volumetric_diffuse.hpp"
 #include "ssr.hpp"
 
 namespace Granite
@@ -39,17 +41,15 @@ struct SSRState : RenderPassInterface
 {
 	void build_render_pass(Vulkan::CommandBuffer &cmd) override
 	{
-		cmd.set_program("builtin://shaders/post/screenspace_trace.comp");
-		cmd.set_texture(0, 0, *depth_view);
-		cmd.set_texture(0, 1, *base_color_view);
-		cmd.set_texture(0, 2, *normal_view);
-		cmd.set_texture(0, 3, *pbr_view);
-		cmd.set_texture(0, 4, *light_view);
-		cmd.set_texture(0, 5, dither_lut->get_view());
-		cmd.set_texture(0, 6,
-		                GRANITE_COMMON_RENDERER_DATA()->brdf_tables.get_texture()->get_image()->get_view(),
-		                Vulkan::StockSampler::LinearClamp);
-		cmd.set_storage_texture(0, 7, *output_view);
+		Renderer::bind_lighting_parameters(cmd, *context);
+
+		cmd.set_texture(2, 0, *depth_view);
+		cmd.set_texture(2, 1, *base_color_view);
+		cmd.set_texture(2, 2, *normal_view);
+		cmd.set_texture(2, 3, *pbr_view);
+		cmd.set_texture(2, 4, *light_view);
+		cmd.set_texture(2, 5, dither_lut->get_view());
+		cmd.set_storage_texture(2, 6, *output_view);
 
 		struct UBO
 		{
@@ -63,7 +63,22 @@ struct SSRState : RenderPassInterface
 			alignas(16) vec3 camera_position;
 		};
 
-		auto *ubo = cmd.allocate_typed_constant_data<UBO>(1, 0, 1);
+		defines.clear();
+		Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
+		if (cmd.get_device().supports_subgroup_size_log2(true, 2, 7))
+		{
+			defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);
+			cmd.set_subgroup_size_log2(true, 2, 7);
+			cmd.enable_subgroup_size_control(true);
+		}
+
+		if (auto *lighting = context->get_lighting_parameters())
+			if (lighting->volumetric_diffuse)
+				defines.emplace_back("FALLBACK", 1);
+
+		cmd.set_program("builtin://shaders/post/screenspace_trace.comp", defines);
+
+		auto *ubo = cmd.allocate_typed_constant_data<UBO>(3, 0, 1);
 		ubo->view_projection = context->get_render_parameters().view_projection;
 		ubo->inv_view_projection = context->get_render_parameters().inv_view_projection;
 		vec2 float_resolution(float(output_view->get_view_width()), float(output_view->get_view_height()));
@@ -75,6 +90,7 @@ struct SSRState : RenderPassInterface
 		ubo->frame = frame;
 
 		cmd.dispatch((output_view->get_view_width() + 7) / 8, (output_view->get_view_height() + 7) / 8, 1);
+		cmd.enable_subgroup_size_control(false);
 	}
 
 	void enqueue_prepare_render_pass(RenderGraph &graph, TaskComposer &) override
@@ -125,6 +141,13 @@ struct SSRState : RenderPassInterface
 		device.set_name(*dither_lut, "blue-noise-lut");
 	}
 
+	void setup_dependencies(RenderPass &self, RenderGraph &graph) override
+	{
+		auto *pass = graph.find_pass("probe-light");
+		if (pass)
+			self.add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+	}
+
 	Vulkan::ImageHandle dither_lut;
 
 	RenderTextureResource *output;
@@ -141,6 +164,7 @@ struct SSRState : RenderPassInterface
 	const Vulkan::ImageView *base_color_view;
 	const RenderContext *context;
 	unsigned frame = 0;
+	std::vector<std::pair<std::string, int>> defines;
 	enum { NumDitherIterations = 64 };
 };
 

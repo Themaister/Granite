@@ -1857,54 +1857,34 @@ static void get_queue_type(Vulkan::CommandBuffer::Type &queue_type, bool &graphi
 	}
 }
 
-void RenderGraph::PassSubmissionState::add_unique_event(VkEvent event)
-{
-	assert(event != VK_NULL_HANDLE);
-	auto itr = find(begin(events), end(events), event);
-	if (itr == end(events))
-		events.push_back(event);
-}
-
 void RenderGraph::PassSubmissionState::emit_pre_pass_barriers()
 {
 	cmd->begin_region("render-graph-sync-pre");
 
 	// Submit barriers.
-	if (!semaphore_handover_barriers.empty() || !immediate_image_barriers.empty())
+	if (!semaphore_handover_barriers.empty() || !immediate_image_barriers.empty() ||
+	    !image_barriers.empty() || !buffer_barriers.empty())
 	{
 		Util::SmallVector<VkImageMemoryBarrier, 64> combined_barriers;
-		combined_barriers.reserve(semaphore_handover_barriers.size() + immediate_image_barriers.size());
+		combined_barriers.reserve(semaphore_handover_barriers.size() +
+		                          immediate_image_barriers.size() +
+		                          image_barriers.size());
 		combined_barriers.insert(combined_barriers.end(), semaphore_handover_barriers.begin(), semaphore_handover_barriers.end());
 		combined_barriers.insert(combined_barriers.end(), immediate_image_barriers.begin(), immediate_image_barriers.end());
+		combined_barriers.insert(combined_barriers.end(), image_barriers.begin(), image_barriers.end());
 
-		auto src = handover_stages;
-		auto dst = handover_stages | immediate_dst_stages;
+		auto src = handover_stages | pre_src_stages;
+		auto dst = handover_stages | immediate_dst_stages | pre_dst_stages;
 		if (!src)
 			src = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 
 		cmd->barrier(src, dst,
-		             0, nullptr, 0, nullptr,
+		             0, nullptr,
+		             buffer_barriers.size(), buffer_barriers.empty() ? nullptr : buffer_barriers.data(),
 		             combined_barriers.size(),
 		             combined_barriers.empty() ? nullptr : combined_barriers.data());
 	}
 
-	if (!image_barriers.empty() || !buffer_barriers.empty())
-	{
-		cmd->wait_events(events.size(), events.data(),
-		                 src_stages, dst_stages,
-		                 0, nullptr,
-		                 buffer_barriers.size(), buffer_barriers.empty() ? nullptr : buffer_barriers.data(),
-		                 image_barriers.size(), image_barriers.empty() ? nullptr : image_barriers.data());
-	}
-
-	cmd->end_region();
-}
-
-void RenderGraph::PassSubmissionState::emit_post_pass_barriers()
-{
-	cmd->begin_region("render-graph-sync-post");
-	if (event_signal_stages != 0)
-		cmd->complete_signal_event(*signal_event);
 	cmd->end_region();
 }
 
@@ -1985,7 +1965,7 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 	auto &event = barrier.history ? physical_history_events[barrier.resource_index] :
 	              physical_events[barrier.resource_index];
 
-	bool need_event_barrier = false;
+	bool need_pipeline_barrier = false;
 	bool layout_change = false;
 	bool need_wait_semaphore = false;
 	auto &wait_semaphore = physical_graphics_queue ? event.wait_graphics_semaphore : event.wait_compute_semaphore;
@@ -1998,12 +1978,12 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 
 		if (need_sync)
 		{
-			need_event_barrier = bool(event.event);
+			need_pipeline_barrier = event.pipeline_barrier_src_stages != 0;
 			// Signalling and waiting for a semaphore satisfies the memory barrier automatically.
 			need_wait_semaphore = bool(wait_semaphore);
 		}
 
-		if (need_event_barrier)
+		if (need_pipeline_barrier)
 		{
 			VK_ASSERT(physical_buffers[barrier.resource_index]);
 			auto &buffer = *physical_buffers[barrier.resource_index];
@@ -2055,11 +2035,11 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 
 		if (need_sync)
 		{
-			if (event.event)
+			if (event.pipeline_barrier_src_stages)
 			{
-				// Either we wait for a VkEvent ...
+				// Either we wait for a pipeline barrier ...
 				state.image_barriers.push_back(b);
-				need_event_barrier = true;
+				need_pipeline_barrier = true;
 			}
 			else if (wait_semaphore)
 			{
@@ -2095,13 +2075,12 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 	}
 	event.to_flush_access = 0;
 
-	if (need_event_barrier)
+	if (need_pipeline_barrier)
 	{
-		state.dst_stages |= barrier.stages;
+		state.pre_dst_stages |= barrier.stages;
 
-		assert(event.event);
-		state.src_stages |= event.event->get_stages();
-		state.add_unique_event(event.event->get_event());
+		assert(event.pipeline_barrier_src_stages != 0);
+		state.pre_src_stages |= event.pipeline_barrier_src_stages;
 
 		// Mark appropriate caches as invalidated now.
 		Util::for_each_bit(barrier.stages, [&](uint32_t bit) {
@@ -2135,11 +2114,8 @@ void RenderGraph::physical_pass_handle_signal(Vulkan::Device &device_, const Phy
 		if (physical_dimensions[barrier.resource_index].uses_semaphore())
 			state.need_submission_semaphore = true;
 		else
-			state.event_signal_stages |= barrier.stages;
+			state.post_pipeline_barrier_stages |= barrier.stages;
 	}
-
-	if (state.event_signal_stages)
-		state.signal_event = device_.begin_signal_event(state.event_signal_stages);
 
 	if (state.need_submission_semaphore)
 	{
@@ -2176,12 +2152,10 @@ void RenderGraph::physical_pass_handle_flush_barrier(const Barrier &barrier, Pas
 		assert(state.proxy_semaphores[1]);
 		event.wait_graphics_semaphore = state.proxy_semaphores[0];
 		event.wait_compute_semaphore = state.proxy_semaphores[1];
+		event.pipeline_barrier_src_stages = 0;
 	}
 	else
-	{
-		assert(state.signal_event);
-		event.event = state.signal_event;
-	}
+		event.pipeline_barrier_src_stages = state.post_pipeline_barrier_stages;
 }
 
 void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &physical_pass, PassSubmissionState &state)
@@ -2382,8 +2356,6 @@ void RenderGraph::physical_pass_handle_gpu_timeline(ThreadGroup &group, Vulkan::
 		else
 			physical_pass_enqueue_compute_commands(physical_pass, state);
 
-		state.emit_post_pass_barriers();
-
 		// Explicitly end in the thread since we would break threading rules otherwise if we record and End
 		// in the submission task.
 		state.cmd->end_debug_channel();
@@ -2432,9 +2404,8 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 
 	auto target_layout = physical_dimensions[index].is_storage_image() ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-	if (physical_events[index].event)
+	if (physical_events[index].pipeline_barrier_src_stages != 0)
 	{
-		VkEvent event = physical_events[index].event->get_event();
 		VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 		barrier.image = image.get_image();
 		barrier.oldLayout = physical_events[index].layout;
@@ -2448,12 +2419,11 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 		barrier.subresourceRange.layerCount = image.get_create_info().layers;
 		barrier.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(physical_attachments[index]->get_format());
 
-		cmd->wait_events(1, &event,
-		                 physical_events[index].event->get_stages(),
-		                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-		                 0, nullptr,
-		                 0, nullptr,
-		                 1, &barrier);
+		cmd->barrier(physical_events[index].pipeline_barrier_src_stages,
+		             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		             0, nullptr,
+		             0, nullptr,
+		             1, &barrier);
 
 		physical_events[index].layout = target_layout;
 	}
@@ -2506,7 +2476,6 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 	}
 	else
 	{
-		physical_events[index].event = cmd->signal_event(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 		device_.submit(cmd);
 	}
 
@@ -3454,6 +3423,20 @@ void RenderGraph::build_barriers()
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
 			barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+			if (Vulkan::format_has_depth_or_stencil_aspect(input->get_attachment_info().format))
+			{
+				// Need DEPTH_ATTACHMENT_READ here to satisfy loadOp = LOAD.
+				barrier.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+				barrier.stages |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			}
+			else
+			{
+				// Need COLOR_ATTACHMENT_READ here to satisfy loadOp = LOAD.
+				barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+				barrier.stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			}
+
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

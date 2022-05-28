@@ -1,0 +1,51 @@
+#version 450
+#extension GL_EXT_shader_image_load_formatted : require
+layout(local_size_x = 64) in;
+
+#include "../../inc/subgroup_extensions.h"
+#include "sssr_util.h"
+
+#include "../../inc/global_bindings.h"
+#define VOLUMETRIC_DIFFUSE_ATLAS_SET 1
+#extension GL_EXT_nonuniform_qualifier : require
+#include "../../lights/volumetric_diffuse.h"
+
+layout(set = 2, binding = 0) uniform texture2D uDepth;
+layout(set = 2, binding = 2) uniform mediump texture2D uNormal;
+layout(set = 2, binding = 6) uniform mediump image2D uOutput;
+layout(set = 2, binding = 8, r8) readonly uniform mediump image2D uRayConfidence;
+
+void main()
+{
+    uvec2 coord = gl_WorkGroupID.xy * 8u;
+    uint local = gl_SubgroupSize * gl_SubgroupID + gl_SubgroupInvocationID;
+    uvec2 local_2d = UnpackZOrder(local);
+    coord += local_2d;
+
+    bool in_range = all(lessThan(coord, sssr.resolution));
+
+    vec2 uv = (vec2(coord) + 0.5) * sssr.inv_resolution;
+    vec2 clip_uv = 2.0 * uv - 1.0;
+    float clip_depth = texelFetch(uDepth, ivec2(coord), 0).x;
+
+    vec3 world_pos = FFX_SSSR_ScreenSpaceToWorldSpace(vec3(clip_uv, clip_depth));
+    mediump vec3 V = normalize(sssr.camera_position - world_pos);
+    mediump vec3 N = FFX_SSSR_LoadWorldSpaceNormal(uNormal, ivec2(coord));
+    mediump vec3 R = reflect(-V, N);
+
+    mediump float confidence = imageLoad(uRayConfidence, ivec2(coord)).x;
+    bool active_lane = confidence < 1.0 && clip_depth < 1.0 && in_range;
+
+    // Fallback reflection. Very rough estimate.
+    mediump vec3 fallback_color = compute_volumetric_diffuse(world_pos, R, active_lane);
+
+    mediump vec3 traced_color = vec3(0.0);
+    if (confidence > 0.0)
+        traced_color = imageLoad(uOutput, ivec2(coord)).rgb;
+
+    if (active_lane)
+    {
+        traced_color += fallback_color * (1.0 - confidence);
+        imageStore(uOutput, ivec2(coord), vec4(traced_color, 0.0));
+    }
+}

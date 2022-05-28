@@ -72,7 +72,7 @@ public:
 	void build_render_pass(Vulkan::CommandBuffer &cmd) const;
 	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
 	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
-	void enqueue_prepare_render_pass(TaskComposer &composer) override;
+	void enqueue_prepare_render_pass(RenderGraph &graph, TaskComposer &composer) override;
 
 	// An immediate version of enqueue_prepare_render_pass.
 	void prepare_render_pass();

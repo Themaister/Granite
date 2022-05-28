@@ -22,6 +22,7 @@
 	"volumetricFog": false,
 	"volumetricDiffuse": false,
 	"ssao": true,
+	"ssr": false,
 	"debugProbes": false,
 	"resolutionScale": 1.0,
 	"resolutionScaleSharpen": true,

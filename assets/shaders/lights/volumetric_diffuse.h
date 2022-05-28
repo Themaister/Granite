@@ -163,28 +163,13 @@ mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal, boo
 	return diffuse_weight.rgb / max(diffuse_weight.a, 0.0001);
 }
 
-#ifdef HAVE_BRDF_LUT
-mediump vec3 compute_volumetric_diffuse_directional(
-	vec3 pos, mediump vec3 N, mediump vec3 V, mediump float NoV,
-	mediump vec3 base_color,
-	mediump float metallic,
-	mediump float roughness)
+mediump vec3 compute_volumetric_diffuse_metallic(
+		vec3 pos, mediump vec3 N,
+		mediump vec3 base_color,
+		mediump float metallic)
 {
-	// Super hacky "IBL" implementation. Just here so that metallic surfaces also can get *some*
-	// lighting contribution since we don't have mipmapped GGX specular cubemaps available in GI.
-
-	mediump vec3 F0 = compute_F0(base_color, metallic);
-	mediump vec3 F = fresnel_ibl(F0, NoV, roughness);
-	mediump vec3 R = reflect(-V, N);
-
 	mediump vec3 irradiance = compute_volumetric_diffuse(pos, N, true);
-	// A super crude approximation, basically 1x1 mip level roughness.
-	mediump vec3 prefiltered = compute_volumetric_diffuse(pos, R, true);
-	mediump vec2 brdf = textureLod(uBRDFLut, vec2(NoV, roughness), 0.0).xy;
-	mediump vec3 specular = prefiltered * (F * brdf.x + brdf.y);
-	mediump vec3 kD = (1.0 - F) * (1.0 - metallic);
-	return base_color * irradiance * kD + specular;
+	return base_color * irradiance * (1.0 - metallic);
 }
-#endif
 
 #endif

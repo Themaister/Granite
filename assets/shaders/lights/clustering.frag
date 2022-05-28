@@ -1,12 +1,8 @@
 #version 450
 
 #ifdef VOLUMETRIC_DIFFUSE
-
 #include "../inc/helper_invocation.h"
 #include "../inc/global_bindings.h"
-
-#define HAVE_BRDF_LUT
-layout(set = 0, binding = BINDING_GLOBAL_BRDF_TABLE) uniform mediump sampler2D uBRDFLut;
 #endif
 
 #include "clusterer.h"
@@ -66,9 +62,8 @@ void main()
         // Generally, for this deferred one, helper lanes will not appear, but to be pendantic ...
         mediump vec3 V = normalize(registers.camera_pos - pos);
         mediump float NoV = clamp(dot(N, V), 0.0, 1.0);
-        FragColor += ambient_term * base_color_ambient.a * compute_volumetric_diffuse_directional(
-                pos, N, V, NoV,
-                base_color_ambient.rgb, mr.x, mr.y);
+        FragColor += ambient_term * base_color_ambient.a * compute_volumetric_diffuse_metallic(
+                pos, N, base_color_ambient.rgb, mr.x);
     }
 #endif
 }

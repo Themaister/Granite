@@ -151,6 +151,7 @@ private:
 		bool volumetric_diffuse = false;
 		bool ssao = true;
 		bool debug_probes = false;
+		bool ssr = false;
 		PostAAType postaa_type = PostAAType::None;
 	};
 	Config config;

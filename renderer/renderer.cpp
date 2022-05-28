@@ -648,7 +648,7 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 	combined->resolution.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 
 	cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE,
-	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.gtx")->get_image()->get_view(),
+	                GRANITE_COMMON_RENDERER_DATA()->brdf_tables.get_texture()->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
 
 	if (lighting->shadows != nullptr)

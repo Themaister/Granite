@@ -30,6 +30,7 @@
 #include "thread_group.hpp"
 #include "utils/image_utils.hpp"
 #include "ocean.hpp"
+#include "post/ssr.hpp"
 #include <float.h>
 #include <stdexcept>
 
@@ -195,6 +196,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("ssao"))
 		config.ssao = doc["ssao"].GetBool();
 
+	if (doc.HasMember("ssr"))
+		config.ssr = doc["ssr"].GetBool();
+
 	if (doc.HasMember("debugProbes"))
 		config.debug_probes = doc["debugProbes"].GetBool();
 
@@ -301,14 +305,14 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		//scene.get_root_node()->add_child(std::move(node));
 	}
 
-	if (false)
+	if (false && config.volumetric_diffuse)
 	{
 		auto &scene = scene_loader.get_scene();
 		auto node = scene.create_node();
-		node->transform.scale = vec3(4.0f, 4.0f, 4.0f);
-		node->transform.translation = vec3(0.0f, 1.5f, 0.0f);
+		node->transform.scale = vec3(32.0f, 8.0f, 32.0f);
+		node->transform.translation = vec3(0.0f, 3.5f, 0.0f);
 		node->invalidate_cached_transform();
-		scene.create_volumetric_diffuse_light(uvec3(8, 8, 8), node.get());
+		scene.create_volumetric_diffuse_light(uvec3(32, 8, 32), node.get());
 		scene.get_root_node()->add_child(std::move(node));
 	}
 
@@ -1117,6 +1121,17 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	}
 
 	add_main_pass(swap.get_device(), "main");
+
+	const char *light_output = "HDR-main";
+
+	if (config.renderer_type == RendererType::GeneralDeferred && config.ssr)
+	{
+		setup_ssr_pass(graph, context, "depth-transient-main",
+		               "albedo-main", "normal-main", "pbr-main",
+		               light_output, "SSR");
+		light_output = "SSR";
+	}
+
 	if (config.postaa_type == PostAAType::TAA_Low ||
 	    config.postaa_type == PostAAType::TAA_Medium ||
 	    config.postaa_type == PostAAType::TAA_High)
@@ -1127,15 +1142,15 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	if (config.hdr_bloom)
 	{
 		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type, graph, jitter, config.resolution_scale,
-		                                                     "HDR-main", "depth-main", "mv-main", "HDR-resolved");
+		                                                     light_output, "depth-main", "mv-main", "HDR-resolved");
 
 		HDROptions opts;
 		opts.dynamic_exposure = config.hdr_bloom_dynamic_exposure;
 
 		if (ImplementationQuirks::get().use_async_compute_post)
-			setup_hdr_postprocess_compute(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped", opts);
+			setup_hdr_postprocess_compute(graph, resolved ? "HDR-resolved" : light_output, "tonemapped", opts);
 		else
-			setup_hdr_postprocess(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped", opts);
+			setup_hdr_postprocess(graph, resolved ? "HDR-resolved" : light_output, "tonemapped", opts);
 	}
 
 	if (setup_after_post_chain_antialiasing(config.postaa_type, graph, jitter, config.resolution_scale,

@@ -25,6 +25,9 @@ shared float spdIntermediateA[16][16];
 #define SPD_NO_WAVE_OPERATIONS
 #endif
 
+#define REDUCTION_MODE_COLOR 0
+#define REDUCTION_MODE_DEPTH 1
+
 layout(set = 0, binding = 0) uniform sampler2D uInput;
 layout(set = 0, binding = 1) coherent buffer Counter
 {
@@ -36,13 +39,6 @@ layout(set = 0, binding = 2) coherent uniform image2D uImages[12];
 layout(set = 1, binding = 0, std140) uniform FilterMod
 {
 	vec4 filter_mods[12];
-};
-#endif
-
-#if Z_TRANSFORM
-layout(set = 1, binding = 1, std140) uniform ZTransform
-{
-	vec4 z_transform;
 };
 #endif
 
@@ -73,7 +69,7 @@ vec4 chop_components(vec4 tex)
 
 AF4 SpdLoadSourceImage(ASU2 p, AU1 slice)
 {
-#if Z_TRANSFORM
+#if REDUCTION_MODE == REDUCTION_MODE_DEPTH
 	vec2 uv = 0.5 * (vec2(p) * inv_resolution + inv_resolution);
 #elif SINGLE_INPUT_TAP
 	vec2 uv = vec2(p) * inv_resolution + inv_resolution;
@@ -82,15 +78,8 @@ AF4 SpdLoadSourceImage(ASU2 p, AU1 slice)
 #endif
 	vec4 tex = textureLod(uInput, uv, 0.0);
 
-#if Z_TRANSFORM
-	mat2 m = mat2(z_transform.xy, z_transform.zw);
-	vec2 clip = m * vec2(tex.x, 1.0);
-	float z = -clip.x / clip.y;
-	return vec4(z, 0.0, 0.0, 0.0);
-#else
 	// Aid compiler in DCE.
 	return chop_components(tex);
-#endif
 }
 
 void SpdStore(ASU2 p, AF4 value, AU1 mip, AU1 slice)
@@ -165,7 +154,7 @@ void SpdResetAtomicCounter(AU1 slice)
 
 AF4 SpdReduce4(AF4 v0, AF4 v1, AF4 v2, AF4 v3)
 {
-#if Z_TRANSFORM
+#if REDUCTION_MODE == REDUCTION_MODE_DEPTH
 	AF1 min0 = min(v0.x, v1.x);
 	AF1 min1 = min(v2.x, v3.x);
 	AF1 m = min(min0, min1);

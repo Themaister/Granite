@@ -71,7 +71,15 @@ void RenderPassInterface::build_render_pass_separate_layer(Vulkan::CommandBuffer
 {
 }
 
-void RenderPassInterface::enqueue_prepare_render_pass(TaskComposer &)
+void RenderPassInterface::enqueue_prepare_render_pass(RenderGraph &, TaskComposer &)
+{
+}
+
+void RenderPassInterface::setup(Vulkan::Device &)
+{
+}
+
+void RenderPassInterface::setup_dependencies(RenderPass &, RenderGraph &)
 {
 }
 
@@ -2355,7 +2363,7 @@ void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
 	for (auto &pass : physical_pass.passes)
 	{
 		auto &subpass = *passes[pass];
-		subpass.enqueue_prepare_render_pass(composer);
+		subpass.prepare_render_pass(composer);
 	}
 
 	state.rendering_dependency = composer.get_outgoing_task();
@@ -2975,6 +2983,9 @@ bool RenderGraph::depends_on_pass(unsigned dst_pass, unsigned src_pass)
 
 void RenderGraph::bake()
 {
+	for (auto &pass : passes)
+		pass->setup_dependencies();
+
 	// First, validate that the graph is sane.
 	validate_passes();
 
@@ -3087,6 +3098,10 @@ void RenderGraph::bake()
 	// Figure out which images can alias with each other.
 	// Also build virtual "transfer" barriers. These things only copy events over to other physical resources.
 	build_aliases();
+
+	for (auto &physical_pass : physical_passes)
+		for (auto pass : physical_pass.passes)
+			passes[pass]->setup(*device);
 }
 
 ResourceDimensions RenderGraph::get_resource_dimensions(const RenderBufferResource &resource) const

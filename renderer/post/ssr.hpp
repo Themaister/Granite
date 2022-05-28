@@ -27,9 +27,9 @@ namespace Granite
 class RenderGraph;
 class RenderContext;
 
-void setup_ssr_trace_pass(RenderGraph &graph, const RenderContext &context,
-                          const std::string &input_depth,
-                          const std::string &input_base_color, const std::string &input_normal,
-                          const std::string &input_pbr, const std::string &input_color,
-                          const std::string &output);
+void setup_ssr_pass(RenderGraph &graph, const RenderContext &context,
+                    const std::string &input_depth,
+                    const std::string &input_base_color, const std::string &input_normal,
+                    const std::string &input_pbr, const std::string &input_color,
+                    const std::string &output);
 }

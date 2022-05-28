@@ -262,21 +262,6 @@ mediump vec4 trace_inner(ivec2 coord, out mediump float confidence)
         ray_length = distance(world_pos, hit_pos);
     }
 
-        #if 0
-#ifdef FALLBACK
-    color += (1.0 - confidence) * compute_volumetric_diffuse(world_pos, normalize(reflected), true);
-#endif
-#endif
-
-    #if 0
-    // Modulate by IBL parameters.
-    mediump float NoV = clamp(dot(N, V), 0.0, 1.0);
-    mediump vec3 F0 = compute_F0(texelFetch(uBaseColor, coord, 0).rgb, metallic);
-    mediump vec3 F = fresnel_ibl(F0, NoV, roughness);
-    mediump vec2 brdf = textureLod(uBRDFLut, vec2(NoV, roughness), 0.0).xy;
-    color = color * (F * brdf.x + brdf.y);
-    #endif
-
     return vec4(color, ray_length);
 }
 

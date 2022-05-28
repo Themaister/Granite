@@ -25,7 +25,8 @@ shared uint shared_tile_count;
 
 bool is_base_ray(uvec2 coord)
 {
-    return all(equal(coord & 1u, uvec2(0)));
+    //return all(equal(coord & 1u, uvec2(0)));
+    return ((coord.x ^ (sssr.frame & 1u)) & 1u) == (coord.y & 1u);
 }
 
 void classify_tiles(uvec2 global_coord, uvec2 local_coord, float roughness)

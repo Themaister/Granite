@@ -230,12 +230,12 @@ struct SSRState : RenderPassInterface
 	enum { NumDitherIterations = 64 };
 };
 
-void setup_ssr_trace_pass(RenderGraph &graph, const RenderContext &context,
-                          const std::string &input_depth,
-                          const std::string &input_base_color,
-                          const std::string &input_normal,
-                          const std::string &input_pbr, const std::string &input_light,
-                          const std::string &output)
+void setup_ssr_pass(RenderGraph &graph, const RenderContext &context,
+                    const std::string &input_depth,
+                    const std::string &input_base_color,
+                    const std::string &input_normal,
+                    const std::string &input_pbr, const std::string &input_light,
+                    const std::string &output)
 {
 	setup_depth_hierarchy_pass(graph, input_depth, input_depth + "-hier");
 
@@ -263,7 +263,7 @@ void setup_ssr_trace_pass(RenderGraph &graph, const RenderContext &context,
 	state->ray_confidence = &pass.add_storage_texture_output(output + "-confidence", att);
 
 	BufferInfo buf;
-	buf.size = light_dim.width * light_dim.height * sizeof(uint32_t) * 2;
+	buf.size = light_dim.width * light_dim.height * sizeof(uint32_t);
 	state->ray_list = &pass.add_storage_output("ssr-ray-list", buf);
 
 	buf.size = 4096;
@@ -274,6 +274,8 @@ void setup_ssr_trace_pass(RenderGraph &graph, const RenderContext &context,
 	state->context = &context;
 
 	pass.set_render_pass_interface(std::move(state));
+
+	// TODO: Figure out how to integrate FFX-DNSR denoiser.
 
 	// Apply results with plain blending.
 	auto &apply_pass = graph.add_pass(output, RENDER_GRAPH_QUEUE_GRAPHICS_BIT);

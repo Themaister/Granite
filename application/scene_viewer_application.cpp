@@ -196,6 +196,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("ssao"))
 		config.ssao = doc["ssao"].GetBool();
 
+	if (doc.HasMember("ssr"))
+		config.ssr = doc["ssr"].GetBool();
+
 	if (doc.HasMember("debugProbes"))
 		config.debug_probes = doc["debugProbes"].GetBool();
 
@@ -1120,11 +1123,12 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	add_main_pass(swap.get_device(), "main");
 
 	const char *light_output = "HDR-main";
-	if (config.renderer_type == RendererType::GeneralDeferred)
+
+	if (config.renderer_type == RendererType::GeneralDeferred && config.ssr)
 	{
-		setup_ssr_trace_pass(graph, context, "depth-transient-main",
-							 "albedo-main", "normal-main", "pbr-main",
-							 light_output, "SSR");
+		setup_ssr_pass(graph, context, "depth-transient-main",
+		               "albedo-main", "normal-main", "pbr-main",
+		               light_output, "SSR");
 		light_output = "SSR";
 	}
 

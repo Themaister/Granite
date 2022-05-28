@@ -19,6 +19,7 @@ layout(set = 2, binding = 10) writeonly buffer RayList
 
 layout(set = 2, binding = 0) uniform texture2D uDepth;
 layout(set = 2, binding = 3) uniform mediump texture2D uPBR;
+layout(set = 2, binding = 6) writeonly uniform mediump image2D uOutput;
 layout(set = 2, binding = 8, r8) writeonly uniform mediump image2D uRayConfidence;
 
 shared uint shared_tile_count;
@@ -84,5 +85,8 @@ void main()
 
     // Clear out confidence texture here.
     if (all(lessThan(coord, sssr.resolution)))
+    {
+        imageStore(uOutput, ivec2(coord), vec4(0.0));
         imageStore(uRayConfidence, ivec2(coord), vec4(0.0));
+    }
 }

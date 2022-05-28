@@ -1862,30 +1862,27 @@ void RenderGraph::PassSubmissionState::emit_pre_pass_barriers()
 	cmd->begin_region("render-graph-sync-pre");
 
 	// Submit barriers.
-	if (!semaphore_handover_barriers.empty() || !immediate_image_barriers.empty())
+	if (!semaphore_handover_barriers.empty() || !immediate_image_barriers.empty() ||
+	    !image_barriers.empty() || !buffer_barriers.empty())
 	{
 		Util::SmallVector<VkImageMemoryBarrier, 64> combined_barriers;
-		combined_barriers.reserve(semaphore_handover_barriers.size() + immediate_image_barriers.size());
+		combined_barriers.reserve(semaphore_handover_barriers.size() +
+		                          immediate_image_barriers.size() +
+		                          image_barriers.size());
 		combined_barriers.insert(combined_barriers.end(), semaphore_handover_barriers.begin(), semaphore_handover_barriers.end());
 		combined_barriers.insert(combined_barriers.end(), immediate_image_barriers.begin(), immediate_image_barriers.end());
+		combined_barriers.insert(combined_barriers.end(), image_barriers.begin(), image_barriers.end());
 
-		auto src = handover_stages;
-		auto dst = handover_stages | immediate_dst_stages;
+		auto src = handover_stages | pre_src_stages;
+		auto dst = handover_stages | immediate_dst_stages | pre_dst_stages;
 		if (!src)
 			src = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 
 		cmd->barrier(src, dst,
-		             0, nullptr, 0, nullptr,
-		             combined_barriers.size(),
-		             combined_barriers.empty() ? nullptr : combined_barriers.data());
-	}
-
-	if (!image_barriers.empty() || !buffer_barriers.empty())
-	{
-		cmd->barrier(pre_src_stages, pre_dst_stages,
 		             0, nullptr,
 		             buffer_barriers.size(), buffer_barriers.empty() ? nullptr : buffer_barriers.data(),
-		             image_barriers.size(), image_barriers.empty() ? nullptr : image_barriers.data());
+		             combined_barriers.size(),
+		             combined_barriers.empty() ? nullptr : combined_barriers.data());
 	}
 
 	cmd->end_region();

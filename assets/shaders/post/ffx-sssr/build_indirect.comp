@@ -1,0 +1,17 @@
+#version 450
+layout(local_size_x = 1) in;
+
+layout(set = 2, binding = 9) buffer RayCounter
+{
+    uvec4 indirect;
+    uint atomic_count;
+    uint copied_count;
+} ray_counter;
+
+void main()
+{
+    uint count = ray_counter.atomic_count;
+    ray_counter.indirect = uvec4((count + 63) / 64, 1, 1, 0);
+    ray_counter.copied_count = count;
+    ray_counter.atomic_count = 0;
+}

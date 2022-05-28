@@ -37,6 +37,35 @@ namespace blue
 #include "utils/blue/samplerBlueNoiseErrorDistribution_128x128_OptimizedFor_2d2d2d2d_1spp.hpp"
 }
 
+struct UBO
+{
+	alignas(16) mat4 view_projection;
+	alignas(16) mat4 inv_view_projection;
+	alignas(8) vec2 float_resolution;
+	alignas(8) vec2 inv_resolution;
+	alignas(8) uvec2 resolution;
+	alignas(4) uint32_t max_lod;
+	alignas(4) uint32_t frame;
+	alignas(16) vec3 camera_position;
+	alignas(4) uint resolution_1d;
+};
+
+static void fill_ubo(UBO &ubo, const RenderContext &context, const Vulkan::ImageView &output_view,
+                     const Vulkan::ImageView *depth_view,
+                     unsigned frame)
+{
+	ubo.view_projection = context.get_render_parameters().view_projection;
+	ubo.inv_view_projection = context.get_render_parameters().inv_view_projection;
+	vec2 float_resolution(float(output_view.get_view_width()), float(output_view.get_view_height()));
+	ubo.float_resolution = float_resolution;
+	ubo.inv_resolution = 1.0f / float_resolution;
+	ubo.resolution = uvec2(output_view.get_view_width(), output_view.get_view_height());
+	ubo.camera_position = context.get_render_parameters().camera_position;
+	ubo.max_lod = depth_view ? depth_view->get_create_info().levels - 1 : 0;
+	ubo.frame = frame;
+	ubo.resolution_1d = output_view.get_view_width() * output_view.get_view_height();
+}
+
 struct SSRState : RenderPassInterface
 {
 	void build_render_pass(Vulkan::CommandBuffer &cmd) override
@@ -51,42 +80,28 @@ struct SSRState : RenderPassInterface
 		cmd.set_texture(2, 5, dither_lut->get_view());
 		cmd.set_storage_texture(2, 6, *output_view);
 		cmd.set_storage_texture(2, 7, *ray_length_view);
-		cmd.set_storage_buffer(2, 8, *ray_counter_buffer);
-		cmd.set_storage_buffer(2, 9, *ray_list_buffer);
-
-		struct UBO
-		{
-			alignas(16) mat4 view_projection;
-			alignas(16) mat4 inv_view_projection;
-			alignas(8) vec2 float_resolution;
-			alignas(8) vec2 inv_resolution;
-			alignas(8) uvec2 resolution;
-			alignas(4) uint32_t max_lod;
-			alignas(4) uint32_t frame;
-			alignas(16) vec3 camera_position;
-			alignas(4) uint resolution_1d;
-		};
+		cmd.set_storage_texture(2, 8, *ray_confidence_view);
+		cmd.set_storage_buffer(2, 9, *ray_counter_buffer);
+		cmd.set_storage_buffer(2, 10, *ray_list_buffer);
 
 		auto *ubo = cmd.allocate_typed_constant_data<UBO>(3, 0, 1);
-		ubo->view_projection = context->get_render_parameters().view_projection;
-		ubo->inv_view_projection = context->get_render_parameters().inv_view_projection;
-		vec2 float_resolution(float(output_view->get_view_width()), float(output_view->get_view_height()));
-		ubo->float_resolution = float_resolution;
-		ubo->inv_resolution = 1.0f / float_resolution;
-		ubo->resolution = uvec2(output_view->get_view_width(), output_view->get_view_height());
-		ubo->camera_position = context->get_render_parameters().camera_position;
-		ubo->max_lod = depth_view->get_create_info().levels - 1;
-		ubo->frame = frame;
-		ubo->resolution_1d = output_view->get_view_width() * output_view->get_view_height();
+		fill_ubo(*ubo, *context, *output_view, depth_view, frame);
 
 		// ClassifyTiles.hlsl
-		cmd.set_program("builtin://shaders/post/screenspace_classify.comp");
-		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-					VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		if (cmd.get_device().supports_subgroup_size_log2(true, 2, 6))
+		{
+			cmd.set_subgroup_size_log2(true, 2, 6);
+			cmd.enable_subgroup_size_control(true);
+		}
+		cmd.set_program("builtin://shaders/post/ffx-sssr/classify.comp");
 		cmd.dispatch((output_view->get_view_width() + 7) / 8, (output_view->get_view_height() + 7) / 8, 1);
+		cmd.enable_subgroup_size_control(false);
+
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
 		// PrepareIndirectArgs.hlsl
-		cmd.set_program("builtin://shaders/post/screenspace_build_indirect.comp", {{ "ITERATION", 0 }});
+		cmd.set_program("builtin://shaders/post/ffx-sssr/build_indirect.comp");
 		cmd.dispatch(1, 1, 1);
 
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
@@ -94,7 +109,7 @@ struct SSRState : RenderPassInterface
 		            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
 
 		// Intersect.hlsl
-		cmd.set_program("builtin://shaders/post/screenspace_trace_primary.comp", defines);
+		cmd.set_program("builtin://shaders/post/ffx-sssr/trace_primary.comp");
 		cmd.dispatch_indirect(*ray_counter_buffer, 0);
 
 		if (auto *lighting = context->get_lighting_parameters())
@@ -102,25 +117,27 @@ struct SSRState : RenderPassInterface
 			if (lighting->volumetric_diffuse)
 			{
 				cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-							VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-				cmd.set_program("builtin://shaders/post/screenspace_build_indirect.comp", {{ "ITERATION", 1 }});
-				cmd.dispatch(1, 1, 1);
-				cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-							VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
-							VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+				            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+				            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+
+				VkFormatProperties3KHR props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3_KHR };
+				cmd.get_device().get_format_properties(output_view->get_format(), &props3);
+				if (!(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT_KHR))
+					LOGW("Cannot read without format.\n");
+				if (!(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT_KHR))
+					LOGW("Cannot write without format.\n");
 
 				defines.clear();
 				Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
-				if (cmd.get_device().supports_subgroup_size_log2(true, 2, 7))
+				if (cmd.get_device().supports_subgroup_size_log2(true, 2, 6))
 				{
 					defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);
-					cmd.set_subgroup_size_log2(true, 2, 7);
+					cmd.set_subgroup_size_log2(true, 2, 6);
 					cmd.enable_subgroup_size_control(true);
 				}
 
-				defines.emplace_back("FALLBACK", 1);
-				cmd.set_program("builtin://shaders/post/screenspace_trace_fallback.comp", defines);
-				cmd.dispatch_indirect(*ray_counter_buffer, 4 * sizeof(uint32_t));
+				cmd.set_program("builtin://shaders/post/ffx-sssr/trace_fallback.comp", defines);
+				cmd.dispatch((output_view->get_view_width() + 7) / 8, (output_view->get_view_height() + 7) / 8, 1);
 				cmd.enable_subgroup_size_control(false);
 			}
 		}
@@ -130,6 +147,7 @@ struct SSRState : RenderPassInterface
 	{
 		output_view = &graph.get_physical_texture_resource(*output);
 		ray_length_view = &graph.get_physical_texture_resource(*ray_length);
+		ray_confidence_view = &graph.get_physical_texture_resource(*ray_confidence);
 		depth_view = &graph.get_physical_texture_resource(*depth);
 		normal_view = &graph.get_physical_texture_resource(*normal);
 		pbr_view = &graph.get_physical_texture_resource(*pbr);
@@ -193,6 +211,7 @@ struct SSRState : RenderPassInterface
 	RenderTextureResource *pbr;
 	RenderTextureResource *light;
 	RenderTextureResource *ray_length;
+	RenderTextureResource *ray_confidence;
 	RenderBufferResource *ray_counter;
 	RenderBufferResource *ray_list;
 	const Vulkan::ImageView *output_view;
@@ -201,6 +220,7 @@ struct SSRState : RenderPassInterface
 	const Vulkan::ImageView *pbr_view;
 	const Vulkan::ImageView *light_view;
 	const Vulkan::ImageView *ray_length_view;
+	const Vulkan::ImageView *ray_confidence_view;
 	const Vulkan::ImageView *base_color_view;
 	const Vulkan::Buffer *ray_counter_buffer;
 	const Vulkan::Buffer *ray_list_buffer;
@@ -219,7 +239,7 @@ void setup_ssr_trace_pass(RenderGraph &graph, const RenderContext &context,
 {
 	setup_depth_hierarchy_pass(graph, input_depth, input_depth + "-hier");
 
-	auto &pass = graph.add_pass(output, RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+	auto &pass = graph.add_pass(output + "-trace", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 
 	auto state = Util::make_handle<SSRState>();
 	state->normal = &pass.add_texture_input(input_normal);
@@ -234,10 +254,13 @@ void setup_ssr_trace_pass(RenderGraph &graph, const RenderContext &context,
 	att.size_class = SizeClass::InputRelative;
 	att.size_relative_name = input_depth;
 	att.format = light_dim.format;
-	state->output = &pass.add_storage_texture_output(output, att);
+	state->output = &pass.add_storage_texture_output(output + "-sssr", att);
 
 	att.format = VK_FORMAT_R16_SFLOAT;
 	state->ray_length = &pass.add_storage_texture_output(output + "-length", att);
+
+	att.format = VK_FORMAT_R8_UNORM;
+	state->ray_confidence = &pass.add_storage_texture_output(output + "-confidence", att);
 
 	BufferInfo buf;
 	buf.size = light_dim.width * light_dim.height * sizeof(uint32_t) * 2;
@@ -251,5 +274,43 @@ void setup_ssr_trace_pass(RenderGraph &graph, const RenderContext &context,
 	state->context = &context;
 
 	pass.set_render_pass_interface(std::move(state));
+
+	// Apply results with plain blending.
+	auto &apply_pass = graph.add_pass(output, RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	auto &sssr_result = apply_pass.add_texture_input(output + "-sssr");
+	AttachmentInfo output_attr;
+	output_attr.size_class = SizeClass::InputRelative;
+	output_attr.size_relative_name = input_light;
+	output_attr.format = graph.get_resource_dimensions(sssr_result).format;
+	apply_pass.add_color_output(output, output_attr, input_light);
+	apply_pass.set_depth_stencil_input(input_depth);
+	apply_pass.add_attachment_input(input_base_color);
+	apply_pass.add_attachment_input(input_normal);
+	apply_pass.add_attachment_input(input_pbr);
+	apply_pass.add_attachment_input(input_depth);
+
+	apply_pass.set_build_render_pass([&graph, &sssr_result, &context](Vulkan::CommandBuffer &cmd) {
+		auto &res_view = graph.get_physical_texture_resource(sssr_result);
+		cmd.set_texture(0, 0, res_view, Vulkan::StockSampler::NearestClamp);
+		cmd.set_input_attachments(0, 1);
+
+		auto *ubo = cmd.allocate_typed_constant_data<UBO>(3, 0, 1);
+		fill_ubo(*ubo, context, res_view, nullptr, 0);
+
+		cmd.set_texture(0, 5,
+						GRANITE_COMMON_RENDERER_DATA()->brdf_tables.get_texture()->get_image()->get_view(),
+						Vulkan::StockSampler::LinearClamp);
+
+		Vulkan::CommandBufferUtil::setup_fullscreen_quad(cmd,
+		                                                 "builtin://shaders/post/ffx-sssr/apply.vert",
+		                                                 "builtin://shaders/post/ffx-sssr/apply.frag",
+		                                                 {},
+		                                                 true, false,
+		                                                 VK_COMPARE_OP_NOT_EQUAL);
+		cmd.set_blend_enable(true);
+		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
+		cmd.set_blend_op(VK_BLEND_OP_ADD);
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd);
+	});
 }
 }

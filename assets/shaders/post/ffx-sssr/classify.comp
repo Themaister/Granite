@@ -1,0 +1,87 @@
+#version 450
+layout(local_size_x = 64) in;
+
+#define SUBGROUP_OPS
+#include "../../inc/subgroup_extensions.h"
+#include "sssr_util.h"
+
+layout(set = 2, binding = 9) buffer RayCounter
+{
+    uvec4 indirect;
+    uint atomic_count;
+    uint copied_count;
+} ray_counter;
+
+layout(set = 2, binding = 10) writeonly buffer RayList
+{
+    uint data[];
+} ray_list;
+
+layout(set = 2, binding = 0) uniform texture2D uDepth;
+layout(set = 2, binding = 3) uniform mediump texture2D uPBR;
+layout(set = 2, binding = 8, r8) writeonly uniform mediump image2D uRayConfidence;
+
+shared uint shared_tile_count;
+
+bool is_base_ray(uvec2 coord)
+{
+    return all(equal(coord & 1u, uvec2(0)));
+}
+
+void classify_tiles(uvec2 global_coord, uvec2 local_coord, float roughness)
+{
+    if (gl_LocalInvocationIndex == 0u)
+        shared_tile_count = 0u;
+
+    bool needs_ray = all(lessThan(global_coord, sssr.resolution));
+    bool is_reflective_surface = IsReflective(uDepth, global_coord);
+    bool is_glossy_reflection = IsGlossy(roughness);
+    needs_ray = needs_ray && is_glossy_reflection && is_reflective_surface;
+
+    // Also we dont need to run the denoiser on mirror reflections.
+    bool needs_denoiser = needs_ray && !IsMirrorReflection(roughness);
+
+    // Decide which ray to keep
+    bool is_base_ray = is_base_ray(global_coord);
+    needs_ray = needs_ray && (!needs_denoiser || is_base_ray); // Make sure to not deactivate mirror reflection rays.
+
+    barrier();
+
+    if (is_glossy_reflection && is_reflective_surface)
+        atomicAdd(shared_tile_count, 1u);
+
+    // Next we have to figure out for which pixels that ray is creating the values for.
+    // Thus, if we have to copy its value horizontal, vertical or across.
+    // Our pixel only requires a copy if we want to run a denoiser on it but don't want to shoot a ray for it.
+    bool require_copy = !needs_ray && needs_denoiser;
+    bool horiz_require_copy = subgroupQuadSwapHorizontal(require_copy);
+    bool vert_require_copy = subgroupQuadSwapVertical(require_copy);
+    bool diag_require_copy = subgroupQuadSwapDiagonal(require_copy);
+    bool copy_horizontal = is_base_ray && horiz_require_copy;
+    bool copy_vertical = is_base_ray && vert_require_copy;
+    bool copy_diagonal = is_base_ray && diag_require_copy;
+
+    // Thus, we need to compact the rays and append them all at once to the ray list.
+
+    if (needs_ray)
+    {
+        uint ray_index = atomicAdd(ray_counter.atomic_count, 1u);
+        ray_list.data[ray_index] = PackRay(global_coord, bvec3(copy_horizontal, copy_vertical, copy_diagonal));
+    }
+
+    // TODO: Append denoiser tile.
+}
+
+void main()
+{
+    uvec2 coord = gl_WorkGroupID.xy * 8u;
+    uint local = gl_SubgroupSize * gl_SubgroupID + gl_SubgroupInvocationID;
+    uvec2 local_2d = UnpackZOrder(local);
+    coord += local_2d;
+    float roughness = texelFetch(uPBR, ivec2(coord), 0).g;
+    classify_tiles(coord, local_2d, roughness);
+
+    // Clear out confidence texture here.
+    if (all(lessThan(coord, sssr.resolution)))
+        imageStore(uRayConfidence, ivec2(coord), vec4(0.0));
+}

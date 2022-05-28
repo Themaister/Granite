@@ -58,7 +58,7 @@ void main()
     mediump vec3 grad_jacobian = texture(uGradJacobian, vGradNormalUV.xy).xyz;
     mediump vec2 N = texture(uNormal, vGradNormalUV.zw).xy;
     mediump float jacobian = grad_jacobian.z;
-    mediump float turbulence = max(2.0 - jacobian + dot(abs(N), vec2(1.2)), 0.0);
+    mediump float turbulence = max(2.0 - jacobian + dot(abs(N), vec2(0.4)), 0.0);
 
     N += grad_jacobian.xy;
     mediump vec3 normal = normalize(vec3(-N.x, 1.0, -N.y));

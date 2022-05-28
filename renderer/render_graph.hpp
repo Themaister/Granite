@@ -977,7 +977,8 @@ private:
 
 	struct PipelineEvent
 	{
-		Vulkan::PipelineEvent event;
+		VkPipelineStageFlags pipeline_barrier_src_stages = 0;
+
 		// Need two separate semaphores so we can wait in both queues independently.
 		// Waiting for a semaphore resets it.
 		Vulkan::Semaphore wait_graphics_semaphore;
@@ -1034,22 +1035,19 @@ private:
 		// We need to use pipeline barriers here so we can have srcStage = dstStage,
 		// and hand over while not breaking the pipeline.
 		Util::SmallVector<VkImageMemoryBarrier> semaphore_handover_barriers;
-		Util::SmallVector<VkEvent> events;
 
 		Util::SmallVector<VkSubpassContents> subpass_contents;
 
-		VkPipelineStageFlags dst_stages = 0;
+		VkPipelineStageFlags post_pipeline_barrier_stages = 0;
+		VkPipelineStageFlags pre_dst_stages = 0;
 		VkPipelineStageFlags immediate_dst_stages = 0;
-		VkPipelineStageFlags src_stages = 0;
+		VkPipelineStageFlags pre_src_stages = 0;
 		VkPipelineStageFlags handover_stages = 0;
 
 		Util::SmallVector<Vulkan::Semaphore> wait_semaphores;
 		Util::SmallVector<VkPipelineStageFlags> wait_semaphore_stages;
 
 		Util::SmallVector<RenderPass::AccessedExternalLockInterface> external_locks;
-
-		Vulkan::PipelineEvent signal_event;
-		VkPipelineStageFlags event_signal_stages = 0;
 
 		Vulkan::Semaphore proxy_semaphores[2];
 		bool need_submission_semaphore = false;
@@ -1062,9 +1060,7 @@ private:
 
 		TaskGroupHandle rendering_dependency;
 
-		void add_unique_event(VkEvent event);
 		void emit_pre_pass_barriers();
-		void emit_post_pass_barriers();
 		void submit();
 	};
 	std::vector<PassSubmissionState> pass_submission_state;

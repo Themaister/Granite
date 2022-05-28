@@ -3454,6 +3454,20 @@ void RenderGraph::build_barriers()
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
 			barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+			if (Vulkan::format_has_depth_or_stencil_aspect(input->get_attachment_info().format))
+			{
+				// Need DEPTH_ATTACHMENT_READ here to satisfy loadOp = LOAD.
+				barrier.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+				barrier.stages |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			}
+			else
+			{
+				// Need COLOR_ATTACHMENT_READ here to satisfy loadOp = LOAD.
+				barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+				barrier.stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			}
+
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

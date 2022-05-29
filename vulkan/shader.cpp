@@ -326,6 +326,14 @@ bool ResourceLayout::unserialize(const uint8_t *data, size_t size)
 	return true;
 }
 
+Util::Hash Shader::hash(const uint32_t *data, size_t size, const ImmutableSamplerBank *sampler_bank)
+{
+	Util::Hasher hasher;
+	hasher.data(data, size);
+	ImmutableSamplerBank::hash(hasher, sampler_bank);
+	return hasher.get();
+}
+
 #ifdef GRANITE_VULKAN_SPIRV_CROSS
 static void update_array_info(ResourceLayout &layout, const SPIRType &type, unsigned set, unsigned binding)
 {
@@ -364,14 +372,6 @@ static void update_array_info(ResourceLayout &layout, const SPIRType &type, unsi
 			LOGE("Array dimension for (%u, %u) is inconsistent.\n", set, binding);
 		size = 1;
 	}
-}
-
-Util::Hash Shader::hash(const uint32_t *data, size_t size, const ImmutableSamplerBank *sampler_bank)
-{
-	Util::Hasher hasher;
-	hasher.data(data, size);
-	ImmutableSamplerBank::hash(hasher, sampler_bank);
-	return hasher.get();
 }
 
 bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *data, size_t size)

@@ -207,9 +207,9 @@ bool RendererSuite::save_variant_cache(const std::string &path)
 
 	Value variants_array(kArrayType);
 
-	for (unsigned suite_type = 0; suite_type < Util::ecast(RendererSuite::Type::Count); suite_type++)
+	for (int suite_type = 0; suite_type < Util::ecast(RendererSuite::Type::Count); suite_type++)
 	{
-		for (unsigned renderable_type = 0; renderable_type < Util::ecast(RenderableType::Count); renderable_type++)
+		for (int renderable_type = 0; renderable_type < Util::ecast(RenderableType::Count); renderable_type++)
 		{
 			auto &suite = handles[suite_type]->get_shader_suites()[renderable_type];
 			auto &signatures = suite.get_variant_signatures().get_thread_unsafe();

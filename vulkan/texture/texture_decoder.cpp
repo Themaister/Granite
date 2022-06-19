@@ -25,7 +25,7 @@
 
 namespace Granite
 {
-static VkFormat compressed_format_to_decoded_format(VkFormat format)
+static VkFormat compressed_format_to_decoded_format(VkFormat format, VkFormat preferred_decode_format)
 {
 	switch (format)
 	{
@@ -88,7 +88,8 @@ static VkFormat compressed_format_to_decoded_format(VkFormat format)
 	case VK_FORMAT_ASTC_10x10_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_12x10_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_12x12_UNORM_BLOCK:
-		return VK_FORMAT_R8G8B8A8_UNORM;
+		return preferred_decode_format == VK_FORMAT_R16G16B16A16_SFLOAT ?
+		       preferred_decode_format : VK_FORMAT_R8G8B8A8_UNORM;
 
 	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
 	case VK_FORMAT_ASTC_5x4_SRGB_BLOCK:
@@ -1037,16 +1038,8 @@ static void dispatch_kernel_astc(Vulkan::CommandBuffer &cmd, uint32_t width, uin
 
 	push.width = width;
 	push.height = height;
-	bool srgb = Vulkan::format_is_srgb(format);
 
-	if (srgb)
-	{
-		push.error_color[0] = 0xff;
-		push.error_color[1] = 0;
-		push.error_color[2] = 0xff;
-		push.error_color[3] = 0xff;
-	}
-	else if (HDR)
+	if (HDR)
 	{
 		push.error_color[0] = 0xffff;
 		push.error_color[1] = 0xffff;
@@ -1055,11 +1048,12 @@ static void dispatch_kernel_astc(Vulkan::CommandBuffer &cmd, uint32_t width, uin
 	}
 	else
 	{
-		push.error_color[0] = 0x3c00;
+		push.error_color[0] = 0xff;
 		push.error_color[1] = 0;
-		push.error_color[2] = 0x3c00;
-		push.error_color[3] = 0x3c00;
+		push.error_color[2] = 0xff;
+		push.error_color[3] = 0xff;
 	}
+
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	uint32_t block_width, block_height;
@@ -1068,7 +1062,7 @@ static void dispatch_kernel_astc(Vulkan::CommandBuffer &cmd, uint32_t width, uin
 	cmd.set_specialization_constant_mask(7);
 	cmd.set_specialization_constant(0, block_width);
 	cmd.set_specialization_constant(1, block_height);
-	cmd.set_specialization_constant(2, uint32_t(srgb || !HDR));
+	cmd.set_specialization_constant(2, uint32_t(!HDR));
 
 	cmd.dispatch((width + 2 * block_width - 1) / (2 * block_width),
 	             (height + 2 * block_height - 1) / (2 * block_height),
@@ -1201,7 +1195,8 @@ static void dispatch_kernel_s3tc(Vulkan::CommandBuffer &cmd, uint32_t width, uin
 	cmd.dispatch(width, height, 1);
 }
 
-static void dispatch_kernel(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t height, VkFormat format)
+static void dispatch_kernel(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t height, VkFormat format,
+                            VkFormat preferred_decode_format)
 {
 	switch (format)
 	{
@@ -1259,6 +1254,10 @@ static void dispatch_kernel(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t
 	case VK_FORMAT_ASTC_10x10_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_12x10_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_12x12_UNORM_BLOCK:
+		dispatch_kernel_astc(cmd, width, height, format,
+		                     preferred_decode_format == VK_FORMAT_R16G16B16A16_SFLOAT);
+		break;
+
 	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
 	case VK_FORMAT_ASTC_5x4_SRGB_BLOCK:
 	case VK_FORMAT_ASTC_5x5_SRGB_BLOCK:
@@ -1299,6 +1298,7 @@ static void dispatch_kernel(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t
 }
 
 Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vulkan::TextureFormatLayout &layout,
+                                            VkFormat preferred_decode_format,
                                             const VkComponentMapping &swizzle)
 {
 	auto &device = cmd.get_device();
@@ -1319,7 +1319,7 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 
 	auto image_info = Vulkan::ImageCreateInfo::immutable_image(layout);
 	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-	image_info.format = compressed_format_to_decoded_format(layout.get_format());
+	image_info.format = compressed_format_to_decoded_format(layout.get_format(), preferred_decode_format);
 	image_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
 	                   VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	image_info.flags = VK_IMAGE_CREATE_EXTENDED_USAGE_BIT | VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
@@ -1374,7 +1374,8 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 	view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
 	view_info.levels = 1;
 	view_info.layers = 1;
-	view_info.format = to_storage_format(compressed_format_to_decoded_format(layout.get_format()), layout.get_format());
+	view_info.format = to_storage_format(compressed_format_to_decoded_format(layout.get_format(), preferred_decode_format),
+	                                     layout.get_format());
 
 	Vulkan::ImageViewCreateInfo input_view_info;
 	input_view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
@@ -1408,7 +1409,7 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 
 			cmd.set_storage_texture(0, 0, *storage_view);
 			cmd.set_texture(0, 1, *payload_view);
-			dispatch_kernel(cmd, mip_width, mip_height, layout.get_format());
+			dispatch_kernel(cmd, mip_width, mip_height, layout.get_format(), preferred_decode_format);
 		}
 	}
 

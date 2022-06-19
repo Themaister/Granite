@@ -249,8 +249,9 @@ static BufferHandle decode_astc_cpu(Device &device, const TextureFormatLayout &l
 	astcenc_config config = {};
 	uint32_t block_width, block_height;
 	TextureFormatLayout::format_block_dim(layout.get_format(), block_width, block_height);
-	bool srgb = Vulkan::format_is_srgb(readback_format);
-	astcenc_config_init(srgb ? ASTCENC_PRF_LDR_SRGB : ASTCENC_PRF_HDR, block_width, block_height, 1,
+	bool hdr = readback_format == VK_FORMAT_R16G16B16A16_SFLOAT;
+	astcenc_config_init(hdr ? ASTCENC_PRF_HDR : ASTCENC_PRF_LDR_SRGB,
+	                    block_width, block_height, 1,
 	                    ASTCENC_PRE_FAST, 0, &config);
 
 	astcenc_context *ctx = nullptr;
@@ -263,14 +264,14 @@ static BufferHandle decode_astc_cpu(Device &device, const TextureFormatLayout &l
 	image.dim_z = 1;
 
 	Vulkan::BufferCreateInfo buffer_info = {};
-	buffer_info.size = layout.get_width() * layout.get_height() * (srgb ? 4 : 8);
+	buffer_info.size = layout.get_width() * layout.get_height() * (hdr ? 8 : 4);
 	buffer_info.domain = BufferDomain::CachedHost;
 	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	auto buffer = device.create_buffer(buffer_info);
 
 	void *slice = nullptr;
 
-	if (srgb)
+	if (!hdr)
 	{
 		slice = static_cast<uint8_t *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));
 		image.data = &slice;
@@ -326,9 +327,10 @@ static BufferHandle decode_gpu(CommandBuffer &cmd, const TextureFormatLayout &la
 	return readback_image(cmd, *rt);
 }
 
-static BufferHandle decode_compute(CommandBuffer &cmd, const TextureFormatLayout &layout)
+static BufferHandle decode_compute(CommandBuffer &cmd, const TextureFormatLayout &layout,
+                                   VkFormat preferred_readback_format)
 {
-	auto compressed = decode_compressed_image(cmd, layout);
+	auto compressed = decode_compressed_image(cmd, layout, preferred_readback_format);
 	if (!compressed)
 		return {};
 	cmd.image_barrier(*compressed, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -393,7 +395,7 @@ static bool test_astc_weights(Device &device, VkFormat format, VkFormat readback
 	}
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
-	auto readback_decoded = decode_compute(*cmd, layout);
+	auto readback_decoded = decode_compute(*cmd, layout, readback_format);
 	if (!readback_decoded)
 	{
 		device.submit_discard(cmd);
@@ -406,7 +408,7 @@ static bool test_astc_weights(Device &device, VkFormat format, VkFormat readback
 
 	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
-	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB)
+	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB || readback_format == VK_FORMAT_R8G8B8A8_UNORM)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
@@ -465,7 +467,7 @@ static bool test_astc_endpoint_formats(Device &device, VkFormat format, VkFormat
 	}
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
-	auto readback_decoded = decode_compute(*cmd, layout);
+	auto readback_decoded = decode_compute(*cmd, layout, readback_format);
 	if (!readback_decoded)
 	{
 		device.submit_discard(cmd);
@@ -478,7 +480,7 @@ static bool test_astc_endpoint_formats(Device &device, VkFormat format, VkFormat
 
 	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
-	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB)
+	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB || readback_format == VK_FORMAT_R8G8B8A8_UNORM)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
@@ -543,7 +545,7 @@ static bool test_astc_partitions(Device &device, VkFormat format, VkFormat readb
 	}
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
-	auto readback_decoded = decode_compute(*cmd, layout);
+	auto readback_decoded = decode_compute(*cmd, layout, readback_format);
 	if (!readback_decoded)
 	{
 		device.submit_discard(cmd);
@@ -556,7 +558,7 @@ static bool test_astc_partitions(Device &device, VkFormat format, VkFormat readb
 
 	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
-	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB)
+	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB || readback_format == VK_FORMAT_R8G8B8A8_UNORM)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
@@ -620,7 +622,7 @@ static bool test_astc_partitions_complex(Device &device, VkFormat format, VkForm
 	}
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
-	auto readback_decoded = decode_compute(*cmd, layout);
+	auto readback_decoded = decode_compute(*cmd, layout, readback_format);
 	if (!readback_decoded)
 	{
 		device.submit_discard(cmd);
@@ -633,7 +635,7 @@ static bool test_astc_partitions_complex(Device &device, VkFormat format, VkForm
 
 	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
-	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB)
+	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB || readback_format == VK_FORMAT_R8G8B8A8_UNORM)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
@@ -716,7 +718,7 @@ static bool test_astc_void_extent(Device &device, VkFormat format, VkFormat read
 	}
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
-	auto readback_decoded = decode_compute(*cmd, layout);
+	auto readback_decoded = decode_compute(*cmd, layout, readback_format);
 	if (!readback_decoded)
 	{
 		device.submit_discard(cmd);
@@ -729,7 +731,7 @@ static bool test_astc_void_extent(Device &device, VkFormat format, VkFormat read
 
 	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
-	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB)
+	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB || readback_format == VK_FORMAT_R8G8B8A8_UNORM)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
@@ -773,7 +775,7 @@ static bool test_astc_block_mode(Device &device, VkFormat format, VkFormat readb
 	}
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
-	auto readback_decoded = decode_compute(*cmd, layout);
+	auto readback_decoded = decode_compute(*cmd, layout, readback_format);
 	if (!readback_decoded)
 	{
 		device.submit_discard(cmd);
@@ -786,7 +788,7 @@ static bool test_astc_block_mode(Device &device, VkFormat format, VkFormat readb
 
 	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
-	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB)
+	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB || readback_format == VK_FORMAT_R8G8B8A8_UNORM)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
@@ -809,6 +811,23 @@ static bool test_astc(Device &device)
 		VK_FORMAT_ASTC_10x10_UNORM_BLOCK,
 		VK_FORMAT_ASTC_12x10_UNORM_BLOCK,
 		VK_FORMAT_ASTC_12x12_UNORM_BLOCK,
+	};
+
+	static const VkFormat hdr_formats[] = {
+		VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK,
+		VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK,
 	};
 
 	static const VkFormat srgb_formats[] = {
@@ -849,7 +868,23 @@ static bool test_astc(Device &device)
 		{
 			uint32_t w, h;
 			Vulkan::TextureFormatLayout::format_block_dim(format, w, h);
-			LOGI(" ... %u x %u UNORM\n", w, h);
+			LOGI(" ... %u x %u UNORM (LDR)\n", w, h);
+			if (!func(device, format, VK_FORMAT_R8G8B8A8_UNORM))
+			{
+				LOGE("    ... FAILED!\n");
+				return false;
+			}
+			else
+				LOGI("    ... Success!\n");
+
+			device.wait_idle();
+		}
+
+		for (auto format : hdr_formats)
+		{
+			uint32_t w, h;
+			Vulkan::TextureFormatLayout::format_block_dim(format, w, h);
+			LOGI(" ... %u x %u UNORM (HDR)\n", w, h);
 			if (!func(device, format, VK_FORMAT_R16G16B16A16_SFLOAT))
 			{
 				LOGE("    ... FAILED!\n");
@@ -860,6 +895,7 @@ static bool test_astc(Device &device)
 
 			device.wait_idle();
 		}
+
 		return true;
 	};
 
@@ -932,7 +968,7 @@ static bool test_bc6(Device &device, VkFormat format)
 	}
 
 	auto readback_reference = decode_gpu(*cmd, layout, VK_FORMAT_R16G16B16A16_SFLOAT);
-	auto readback_decoded = decode_compute(*cmd, layout);
+	auto readback_decoded = decode_compute(*cmd, layout, VK_FORMAT_R16G16B16A16_SFLOAT);
 	if (!readback_decoded)
 	{
 		device.submit_discard(cmd);
@@ -971,7 +1007,7 @@ static bool test_bc7(Device &device, VkFormat format, VkFormat readback_format)
 	}
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
-	auto readback_decoded = decode_compute(*cmd, layout);
+	auto readback_decoded = decode_compute(*cmd, layout, readback_format);
 	if (!readback_decoded)
 	{
 		device.submit_discard(cmd);
@@ -1010,7 +1046,7 @@ static bool test_eac(Device &device, VkFormat format, VkFormat readback_format)
 	}
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
-	auto readback_decoded = decode_compute(*cmd, layout);
+	auto readback_decoded = decode_compute(*cmd, layout, readback_format);
 	if (!readback_decoded)
 	{
 		device.submit_discard(cmd);
@@ -1054,7 +1090,7 @@ static bool test_etc2(Device &device, VkFormat format, VkFormat readback_format)
 	}
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
-	auto readback_decoded = decode_compute(*cmd, layout);
+	auto readback_decoded = decode_compute(*cmd, layout, readback_format);
 	if (!readback_decoded)
 	{
 		device.submit_discard(cmd);
@@ -1090,7 +1126,7 @@ static bool test_rgtc(Device &device, VkFormat format, VkFormat readback_format)
 		d[i] = uint32_t(rnd());
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
-	auto readback_decoded = decode_compute(*cmd, layout);
+	auto readback_decoded = decode_compute(*cmd, layout, readback_format);
 	if (!readback_decoded)
 	{
 		device.submit_discard(cmd);
@@ -1131,7 +1167,7 @@ static bool test_s3tc(Device &device, VkFormat format, VkFormat readback_format)
 		d[i] = uint32_t(rnd());
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
-	auto readback_decoded = decode_compute(*cmd, layout);
+	auto readback_decoded = decode_compute(*cmd, layout, readback_format);
 	if (!readback_decoded)
 	{
 		device.submit_discard(cmd);

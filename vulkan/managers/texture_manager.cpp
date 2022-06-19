@@ -141,7 +141,7 @@ void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 		LOGI("Compressed format #%u is not supported, falling back to compute decode of compressed image.\n",
 		     unsigned(layout.get_format()));
 		auto cmd = device->request_command_buffer(CommandBuffer::Type::AsyncCompute);
-		image = Granite::decode_compressed_image(*cmd, layout, swizzle);
+		image = Granite::decode_compressed_image(*cmd, layout, VK_FORMAT_UNDEFINED, swizzle);
 		Semaphore sem;
 		device->submit(cmd, nullptr, 1, &sem);
 		device->add_wait_semaphore(CommandBuffer::Type::Generic, sem, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, true);

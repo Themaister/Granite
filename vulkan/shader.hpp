@@ -179,6 +179,12 @@ private:
 	ImmutableSamplerBank immutable_sampler_bank;
 };
 
+struct Pipeline
+{
+	VkPipeline pipeline;
+	uint32_t dynamic_mask;
+};
+
 class Program : public HashedObject<Program>, public InternalSyncEnabled
 {
 public:
@@ -201,8 +207,8 @@ public:
 		return layout;
 	}
 
-	VkPipeline get_pipeline(Util::Hash hash) const;
-	VkPipeline add_pipeline(Util::Hash hash, VkPipeline pipeline);
+	Pipeline get_pipeline(Util::Hash hash) const;
+	Pipeline add_pipeline(Util::Hash hash, const Pipeline &pipeline);
 
 	void promote_read_write_to_read_only();
 
@@ -211,7 +217,7 @@ private:
 	Device *device;
 	Shader *shaders[Util::ecast(ShaderStage::Count)] = {};
 	PipelineLayout *layout = nullptr;
-	VulkanCache<Util::IntrusivePODWrapper<VkPipeline>> pipelines;
-	void destroy_pipeline(VkPipeline pipeline);
+	VulkanCache<Util::IntrusivePODWrapper<Pipeline>> pipelines;
+	void destroy_pipeline(const Pipeline &pipeline);
 };
 }

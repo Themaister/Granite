@@ -134,11 +134,42 @@ VkPipeline Device::fossilize_create_graphics_pipeline(Fossilize::Hash hash, VkGr
 	LOGI("Replaying graphics pipeline.\n");
 #endif
 
+	uint32_t dynamic_state = 0;
+	if (info.pDynamicState)
+	{
+		for (uint32_t i = 0; i < info.pDynamicState->dynamicStateCount; i++)
+		{
+			switch (info.pDynamicState->pDynamicStates[i])
+			{
+			case VK_DYNAMIC_STATE_VIEWPORT:
+				dynamic_state |= COMMAND_BUFFER_DIRTY_VIEWPORT_BIT;
+				break;
+
+			case VK_DYNAMIC_STATE_SCISSOR:
+				dynamic_state |= COMMAND_BUFFER_DIRTY_SCISSOR_BIT;
+				break;
+
+			case VK_DYNAMIC_STATE_DEPTH_BIAS:
+				dynamic_state |= COMMAND_BUFFER_DIRTY_DEPTH_BIAS_BIT;
+				break;
+
+			case VK_DYNAMIC_STATE_STENCIL_REFERENCE:
+			case VK_DYNAMIC_STATE_STENCIL_WRITE_MASK:
+			case VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK:
+				dynamic_state |= COMMAND_BUFFER_DIRTY_STENCIL_REFERENCE_BIT;
+				break;
+
+			default:
+				break;
+			}
+		}
+	}
+
 	VkPipeline pipeline = VK_NULL_HANDLE;
 	VkResult res = table->vkCreateGraphicsPipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
 		LOGE("Failed to create graphics pipeline!\n");
-	return ret->add_pipeline(hash, pipeline);
+	return ret->add_pipeline(hash, { pipeline, dynamic_state }).pipeline;
 }
 
 VkPipeline Device::fossilize_create_compute_pipeline(Fossilize::Hash hash, VkComputePipelineCreateInfo &info)
@@ -162,7 +193,7 @@ VkPipeline Device::fossilize_create_compute_pipeline(Fossilize::Hash hash, VkCom
 	VkResult res = table->vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
 		LOGE("Failed to create compute pipeline!\n");
-	return ret->add_pipeline(hash, pipeline);
+	return ret->add_pipeline(hash, { pipeline, 0 }).pipeline;
 }
 
 bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash,

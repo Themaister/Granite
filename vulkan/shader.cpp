@@ -600,23 +600,23 @@ Program::Program(Device *device_, Shader *compute_shader)
 	device->bake_program(*this);
 }
 
-VkPipeline Program::get_pipeline(Hash hash) const
+Pipeline Program::get_pipeline(Hash hash) const
 {
 	auto *ret = pipelines.find(hash);
-	return ret ? ret->get() : VK_NULL_HANDLE;
+	return ret ? ret->get() : Pipeline{};
 }
 
-VkPipeline Program::add_pipeline(Hash hash, VkPipeline pipeline)
+Pipeline Program::add_pipeline(Hash hash, const Pipeline &pipeline)
 {
 	return pipelines.emplace_yield(hash, pipeline)->get();
 }
 
-void Program::destroy_pipeline(VkPipeline pipeline)
+void Program::destroy_pipeline(const Pipeline &pipeline)
 {
 	if (internal_sync)
-		device->destroy_pipeline_nolock(pipeline);
+		device->destroy_pipeline_nolock(pipeline.pipeline);
 	else
-		device->destroy_pipeline(pipeline);
+		device->destroy_pipeline(pipeline.pipeline);
 }
 
 void Program::promote_read_write_to_read_only()

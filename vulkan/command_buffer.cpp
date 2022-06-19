@@ -475,7 +475,7 @@ void CommandBuffer::begin_context()
 	dirty = ~0u;
 	dirty_sets = ~0u;
 	dirty_vbos = ~0u;
-	current_pipeline = VK_NULL_HANDLE;
+	current_pipeline = {};
 	current_pipeline_layout = VK_NULL_HANDLE;
 	current_layout = nullptr;
 	pipeline_state.program = nullptr;
@@ -721,14 +721,14 @@ void CommandBuffer::end_render_pass()
 	begin_compute();
 }
 
-VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile, bool synchronous)
+Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile, bool synchronous)
 {
 	// If we don't have pipeline creation cache control feature,
 	// we must assume compilation can be synchronous.
 	if (!synchronous &&
 	    !device->get_device_features().pipeline_creation_cache_control_features.pipelineCreationCacheControl)
 	{
-		return VK_NULL_HANDLE;
+		return {};
 	}
 
 	auto &shader = *compile.program->get_shader(ShaderStage::Compute);
@@ -775,7 +775,7 @@ VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredP
 		                                         compile.static_state.state.subgroup_maximum_size_log2))
 		{
 			LOGE("Subgroup size configuration not supported.\n");
-			return VK_NULL_HANDLE;
+			return {};
 		}
 		auto &features = device->get_device_features();
 
@@ -821,11 +821,11 @@ VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredP
 	{
 		if (vr < 0)
 			LOGE("Failed to create compute pipeline!\n");
-		return VK_NULL_HANDLE;
+		return {};
 	}
 
-	auto returned_pipeline = compile.program->add_pipeline(compile.hash, compute_pipeline);
-	if (returned_pipeline != compute_pipeline)
+	auto returned_pipeline = compile.program->add_pipeline(compile.hash, { compute_pipeline, 0 });
+	if (returned_pipeline.pipeline != compute_pipeline)
 		table.vkDestroyPipeline(device->get_device(), compute_pipeline, nullptr);
 	return returned_pipeline;
 }
@@ -849,14 +849,14 @@ void CommandBuffer::extract_pipeline_state(DeferredPipelineCompile &compile) con
 	}
 }
 
-VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile, bool synchronous)
+Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile, bool synchronous)
 {
 	// If we don't have pipeline creation cache control feature,
 	// we must assume compilation can be synchronous.
 	if (!synchronous &&
 	    !device->get_device_features().pipeline_creation_cache_control_features.pipelineCreationCacheControl)
 	{
-		return VK_NULL_HANDLE;
+		return {};
 	}
 
 	// Viewport state
@@ -872,13 +872,20 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const Deferred
 	};
 	dyn.pDynamicStates = states;
 
+	uint32_t dynamic_mask = COMMAND_BUFFER_DIRTY_VIEWPORT_BIT | COMMAND_BUFFER_DIRTY_SCISSOR_BIT;
+
 	if (compile.static_state.state.depth_bias_enable)
+	{
 		states[dyn.dynamicStateCount++] = VK_DYNAMIC_STATE_DEPTH_BIAS;
+		dynamic_mask |= COMMAND_BUFFER_DIRTY_DEPTH_BIAS_BIT;
+	}
+
 	if (compile.static_state.state.stencil_test)
 	{
 		states[dyn.dynamicStateCount++] = VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK;
 		states[dyn.dynamicStateCount++] = VK_DYNAMIC_STATE_STENCIL_REFERENCE;
 		states[dyn.dynamicStateCount++] = VK_DYNAMIC_STATE_STENCIL_WRITE_MASK;
+		dynamic_mask |= COMMAND_BUFFER_DIRTY_STENCIL_REFERENCE_BIT;
 	}
 
 	// Blend state
@@ -992,7 +999,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const Deferred
 		else
 		{
 			LOGE("Conservative rasterization is not supported on this device.\n");
-			return VK_NULL_HANDLE;
+			return {};
 		}
 	}
 
@@ -1072,11 +1079,11 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const Deferred
 	{
 		if (res < 0)
 			LOGE("Failed to create graphics pipeline!\n");
-		return VK_NULL_HANDLE;
+		return {};
 	}
 
-	auto returned_pipeline = compile.program->add_pipeline(compile.hash, pipeline);
-	if (returned_pipeline != pipeline)
+	auto returned_pipeline = compile.program->add_pipeline(compile.hash, { pipeline, dynamic_mask });
+	if (returned_pipeline.pipeline != pipeline)
 		table.vkDestroyPipeline(device->get_device(), pipeline, nullptr);
 	return returned_pipeline;
 }
@@ -1085,9 +1092,9 @@ bool CommandBuffer::flush_compute_pipeline(bool synchronous)
 {
 	update_hash_compute_pipeline(pipeline_state);
 	current_pipeline = pipeline_state.program->get_pipeline(pipeline_state.hash);
-	if (current_pipeline == VK_NULL_HANDLE)
+	if (current_pipeline.pipeline == VK_NULL_HANDLE)
 		current_pipeline = build_compute_pipeline(device, pipeline_state, synchronous);
-	return current_pipeline != VK_NULL_HANDLE;
+	return current_pipeline.pipeline != VK_NULL_HANDLE;
 }
 
 void CommandBuffer::update_hash_compute_pipeline(DeferredPipelineCompile &compile)
@@ -1172,9 +1179,19 @@ bool CommandBuffer::flush_graphics_pipeline(bool synchronous)
 {
 	update_hash_graphics_pipeline(pipeline_state, active_vbos);
 	current_pipeline = pipeline_state.program->get_pipeline(pipeline_state.hash);
-	if (current_pipeline == VK_NULL_HANDLE)
+	if (current_pipeline.pipeline == VK_NULL_HANDLE)
 		current_pipeline = build_graphics_pipeline(device, pipeline_state, synchronous);
-	return current_pipeline != VK_NULL_HANDLE;
+	return current_pipeline.pipeline != VK_NULL_HANDLE;
+}
+
+void CommandBuffer::bind_pipeline(VkPipelineBindPoint bind_point, VkPipeline pipeline, uint32_t active_dynamic_state)
+{
+	table.vkCmdBindPipeline(cmd, bind_point, pipeline);
+
+	// If some dynamic state is static in the pipeline it clobbers the dynamic state.
+	// As a performance optimization don't clobber everything.
+	uint32_t static_state_clobber = ~active_dynamic_state & COMMAND_BUFFER_DYNAMIC_BITS;
+	set_dirty(static_state_clobber);
 }
 
 bool CommandBuffer::flush_compute_state(bool synchronous)
@@ -1183,20 +1200,20 @@ bool CommandBuffer::flush_compute_state(bool synchronous)
 		return false;
 	VK_ASSERT(current_layout);
 
-	if (current_pipeline == VK_NULL_HANDLE)
+	if (current_pipeline.pipeline == VK_NULL_HANDLE)
 		set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
 
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT | COMMAND_BUFFER_DIRTY_PIPELINE_BIT))
 	{
-		VkPipeline old_pipe = current_pipeline;
+		VkPipeline old_pipe = current_pipeline.pipeline;
 		if (!flush_compute_pipeline(synchronous))
 			return false;
 
-		if (old_pipe != current_pipeline)
-			table.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, current_pipeline);
+		if (old_pipe != current_pipeline.pipeline)
+			bind_pipeline(VK_PIPELINE_BIND_POINT_COMPUTE, current_pipeline.pipeline, current_pipeline.dynamic_mask);
 	}
 
-	if (current_pipeline == VK_NULL_HANDLE)
+	if (current_pipeline.pipeline == VK_NULL_HANDLE)
 		return false;
 
 	flush_descriptor_sets();
@@ -1222,25 +1239,22 @@ bool CommandBuffer::flush_render_state(bool synchronous)
 		return false;
 	VK_ASSERT(current_layout);
 
-	if (current_pipeline == VK_NULL_HANDLE)
+	if (current_pipeline.pipeline == VK_NULL_HANDLE)
 		set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
 
 	// We've invalidated pipeline state, update the VkPipeline.
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT | COMMAND_BUFFER_DIRTY_PIPELINE_BIT |
 	                  COMMAND_BUFFER_DIRTY_STATIC_VERTEX_BIT))
 	{
-		VkPipeline old_pipe = current_pipeline;
+		VkPipeline old_pipe = current_pipeline.pipeline;
 		if (!flush_graphics_pipeline(synchronous))
 			return false;
 
-		if (old_pipe != current_pipeline)
-		{
-			table.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, current_pipeline);
-			set_dirty(COMMAND_BUFFER_DYNAMIC_BITS);
-		}
+		if (old_pipe != current_pipeline.pipeline)
+			bind_pipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, current_pipeline.pipeline, current_pipeline.dynamic_mask);
 	}
 
-	if (current_pipeline == VK_NULL_HANDLE)
+	if (current_pipeline.pipeline == VK_NULL_HANDLE)
 		return false;
 
 	flush_descriptor_sets();
@@ -1468,9 +1482,9 @@ void CommandBuffer::set_program(Program *program)
 		return;
 
 	pipeline_state.program = program;
-	current_pipeline = VK_NULL_HANDLE;
+	current_pipeline = {};
 
-	set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT | COMMAND_BUFFER_DYNAMIC_BITS);
+	set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
 	if (!program)
 		return;
 

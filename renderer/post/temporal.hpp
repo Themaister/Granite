@@ -26,6 +26,7 @@
 
 namespace Granite
 {
+class RenderContext;
 class TemporalJitter
 {
 public:
@@ -35,11 +36,13 @@ public:
 		SMAA_T2X,
 		TAA_8Phase,
 		TAA_16Phase,
+		Custom,
 		None
 	};
 	TemporalJitter();
 	void reset();
 	void init(Type type_, vec2 backbuffer_resolution);
+	void init_custom(const vec2 *phases, unsigned phase_count, vec2 backbuffer_resolution);
 
 	void step(const mat4 &projection, const mat4 &view);
 	const mat4 &get_jitter_matrix() const;
@@ -49,7 +52,6 @@ public:
 	const mat4 &get_history_jittered_view_proj(int frames) const;
 	const mat4 &get_history_jittered_inv_view_proj(int frames) const;
 	unsigned get_jitter_phase() const;
-	unsigned get_unmasked_phase() const;
 
 	Type get_jitter_type() const
 	{
@@ -58,15 +60,19 @@ public:
 
 private:
 	unsigned phase = 0;
-	unsigned jitter_mask = 0;
+	unsigned jitter_count = 0;
 	enum { MaxJitterPhases = 16 };
-	mat4 jitter_table[MaxJitterPhases];
-	mat4 saved_jittered_view_proj[MaxJitterPhases];
-	mat4 saved_jittered_inv_view_proj[MaxJitterPhases];
-	mat4 saved_view_proj[MaxJitterPhases];
-	mat4 saved_inv_view_proj[MaxJitterPhases];
+
+	void init_banks();
+	std::vector<mat4> jitter_table;
+	std::vector<mat4> saved_jittered_view_proj;
+	std::vector<mat4> saved_jittered_inv_view_proj;
+	std::vector<mat4> saved_view_proj;
+	std::vector<mat4> saved_inv_view_proj;
 	mat4 saved_jittered_projection;
 	Type type = Type::None;
+
+	unsigned get_offset_phase(int frames) const;
 };
 
 void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,
@@ -81,4 +87,10 @@ enum class TAAQuality
 void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, float scaling_factor,
                        const std::string &input, const std::string &input_depth, const std::string &input_mv,
                        const std::string &output, TAAQuality quality);
+
+void setup_fsr2_pass(RenderGraph &graph, TemporalJitter &jitter,
+                     const RenderContext &context,
+                     float scaling_factor,
+                     const std::string &input, const std::string &input_depth, const std::string &input_mv,
+                     const std::string &output);
 }

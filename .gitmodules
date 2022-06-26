@@ -43,3 +43,6 @@
 [submodule "third_party/khronos/vulkan-headers"]
 	path = third_party/khronos/vulkan-headers
 	url = https://github.com/KhronosGroup/Vulkan-Headers
+[submodule "third_party/fsr2"]
+	path = third_party/fsr2
+	url = https://github.com/Themaister/FidelityFX-FSR2

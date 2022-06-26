@@ -23,6 +23,7 @@
 #include "scene_renderer.hpp"
 #include "threaded_scene.hpp"
 #include "mesh_util.hpp"
+#include "muglm/matrix_helper.hpp"
 
 namespace Granite
 {
@@ -38,6 +39,27 @@ void RenderPassSceneRenderer::setup_debug_probes()
 	if (setup_data.scene)
 		volumetric_diffuse_lights = &setup_data.scene->get_entity_pool().get_component_group<VolumetricDiffuseLightComponent>();
 	debug_probe_mesh = Util::make_handle<DebugProbeMesh>();
+}
+
+void RenderPassSceneRenderer::resolve_full_motion_vectors(Vulkan::CommandBuffer &cmd, const RenderContext &context) const
+{
+	cmd.set_input_attachments(0, 0);
+
+	struct UBO
+	{
+		mat4 reprojection;
+		vec2 inv_resolution;
+	};
+
+	auto *ubo = cmd.allocate_typed_constant_data<UBO>(1, 0, 1);
+	ubo->reprojection =
+		context.get_render_parameters().unjittered_prev_view_projection *
+		context.get_render_parameters().unjittered_inv_view_projection;
+	ubo->inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
+
+	Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd,
+	                                                "builtin://shaders/quad.vert",
+	                                                "builtin://shaders/reconstruct_mv.frag");
 }
 
 void RenderPassSceneRenderer::render_debug_probes(const Renderer &renderer, Vulkan::CommandBuffer &cmd, RenderQueue &queue,
@@ -356,6 +378,9 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 
 	if (setup_data.flags & SCENE_RENDERER_MOTION_VECTOR_BIT)
 	{
+		if (setup_data.flags & SCENE_RENDERER_MOTION_VECTOR_FULL_BIT)
+			resolve_full_motion_vectors(cmd, *setup_data.context);
+
 		Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT |
 		                                    Renderer::DEPTH_STENCIL_READ_ONLY_BIT |
 		                                    Renderer::DEPTH_TEST_EQUAL_BIT |

@@ -96,3 +96,6 @@ if (ANDROID AND GRANITE_AUDIO)
     target_compile_options(oboe PUBLIC -Wno-unused-parameter)
     target_compile_features(oboe PRIVATE cxx_std_17)
 endif()
+
+# Custom integration, bypass all the noise.
+add_subdirectory(fsr2/src/ffx-fsr2-api/granite EXCLUDE_FROM_ALL)

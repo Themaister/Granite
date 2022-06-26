@@ -26,8 +26,10 @@
 
 namespace Granite
 {
+class RenderContext;
 class RenderGraph;
 class TemporalJitter;
+
 enum class PostAAType
 {
 	FXAA,
@@ -40,10 +42,12 @@ enum class PostAAType
 	TAA_Low,
 	TAA_Medium,
 	TAA_High,
+	TAA_FSR2,
 	None
 };
 
 bool setup_before_post_chain_antialiasing(PostAAType type, RenderGraph &graph, TemporalJitter &jitter,
+                                          const RenderContext &context,
                                           float scaling_factor,
                                           const std::string &input, const std::string &input_depth,
                                           const std::string &input_mv,

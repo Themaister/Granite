@@ -74,7 +74,7 @@ static Stage convert_stage(const std::string &stage)
 		return Stage::Unknown;
 }
 
-bool GLSLCompiler::set_source_from_file(const string &path)
+bool GLSLCompiler::set_source_from_file(const string &path, Stage forced_stage)
 {
 	if (!iface.load_text_file(path, source))
 	{
@@ -83,7 +83,12 @@ bool GLSLCompiler::set_source_from_file(const string &path)
 	}
 
 	source_path = path;
-	stage = stage_from_path(path);
+
+	if (forced_stage != Stage::Unknown)
+		stage = forced_stage;
+	else
+		stage = stage_from_path(path);
+
 	return stage != Stage::Unknown;
 }
 
@@ -136,11 +141,18 @@ bool GLSLCompiler::parse_variants(const string &source_, const string &path)
 	auto lines = Util::split(source_, "\n");
 
 	unsigned line_index = 1;
+	size_t offset;
+
 	for (auto &line : lines)
 	{
-		if (line.find("#include \"") == 0)
+		// This check, followed by the include statement check below isn't even remotely correct,
+		// but we only have to care about shaders we control here.
+		if ((offset = line.find("//")) != std::string::npos)
+			line = line.substr(0, offset);
+
+		if ((offset = line.find("#include \"")) != std::string::npos)
 		{
-			auto include_path = line.substr(10);
+			auto include_path = line.substr(offset + 10);
 			if (!include_path.empty() && include_path.back() == '"')
 				include_path.pop_back();
 

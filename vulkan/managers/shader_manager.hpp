@@ -38,6 +38,7 @@
 namespace Granite
 {
 class GLSLCompiler;
+enum class Stage;
 }
 
 namespace Vulkan
@@ -77,7 +78,8 @@ struct ShaderTemplateVariant : public Util::IntrusiveHashMapEnabled<ShaderTempla
 class ShaderTemplate : public Util::IntrusiveHashMapEnabled<ShaderTemplate>
 {
 public:
-	ShaderTemplate(Device *device, const std::string &shader_path, MetaCache &cache,
+	ShaderTemplate(Device *device, const std::string &shader_path,
+	               Granite::Stage force_stage, MetaCache &cache,
 	               Util::Hash path_hash, const std::vector<std::string> &include_directories);
 	~ShaderTemplate();
 
@@ -96,6 +98,7 @@ public:
 private:
 	Device *device;
 	std::string path;
+	Granite::Stage force_stage;
 	MetaCache &cache;
 	Util::Hash path_hash = 0;
 	std::vector<uint32_t> static_shader;
@@ -197,7 +200,7 @@ private:
 	VulkanCache<ShaderProgram> programs;
 	std::vector<std::string> include_directories;
 
-	ShaderTemplate *get_template(const std::string &source);
+	ShaderTemplate *get_template(const std::string &source, Granite::Stage force_stage);
 
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	std::unordered_map<std::string, std::unordered_set<ShaderTemplate *>> dependees;

@@ -64,4 +64,7 @@ target_link_libraries(granite-renderer PUBLIC
         granite-application-events
         granite-application-global
         granite-threading
-        PRIVATE granite-mikktspace meshoptimizer granite-rapidjson granite-stb)
+        PRIVATE granite-mikktspace meshoptimizer granite-rapidjson granite-stb granite-fsr2)
+
+set(GRANITE_FSR2_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/fsr2/src/ffx-fsr2-api/shaders)
+target_compile_definitions(granite-renderer PRIVATE GRANITE_FSR2_SHADER_DIR=\"${GRANITE_FSR2_SHADER_DIR}\")

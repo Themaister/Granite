@@ -186,23 +186,46 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 }
 
 bool setup_before_post_chain_antialiasing(PostAAType type, RenderGraph &graph, TemporalJitter &jitter,
+                                          const RenderContext &context,
                                           float scaling_factor,
                                           const std::string &input,
                                           const std::string &input_depth,
                                           const std::string &input_mv,
                                           const std::string &output)
 {
-	TAAQuality taa_quality;
-	switch (type)
+	if (type == PostAAType::TAA_FSR2 && scaling_factor >= 1.0f)
 	{
-	case PostAAType::TAA_Low: taa_quality = TAAQuality::Low; break;
-	case PostAAType::TAA_Medium: taa_quality = TAAQuality::Medium; break;
-	case PostAAType::TAA_High: taa_quality = TAAQuality::High; break;
-	default: return false;
+		// TODO: Not sure if it even makes sense to use 1:1 FSR.
+		LOGW("Trying to use FSR2, but scaling factor is >= 1.0f. Using normal TAA instead.\n");
+		type = PostAAType::TAA_High;
 	}
 
-	setup_taa_resolve(graph, jitter, scaling_factor, input, input_depth, input_mv, output, taa_quality);
-	return true;
+	if (type == PostAAType::TAA_FSR2)
+	{
+		setup_fsr2_pass(graph, jitter, context, scaling_factor, input, input_depth, input_mv, output);
+		return true;
+	}
+	else
+	{
+		TAAQuality taa_quality;
+		switch (type)
+		{
+		case PostAAType::TAA_Low:
+			taa_quality = TAAQuality::Low;
+			break;
+		case PostAAType::TAA_Medium:
+			taa_quality = TAAQuality::Medium;
+			break;
+		case PostAAType::TAA_High:
+			taa_quality = TAAQuality::High;
+			break;
+		default:
+			return false;
+		}
+
+		setup_taa_resolve(graph, jitter, scaling_factor, input, input_depth, input_mv, output, taa_quality);
+		return true;
+	}
 }
 
 bool setup_after_post_chain_antialiasing(PostAAType type, RenderGraph &graph, TemporalJitter &jitter,
@@ -274,6 +297,8 @@ PostAAType string_to_post_antialiasing_type(const char *type)
 		return PostAAType::TAA_Medium;
 	else if (strcmp(type, "taaHigh") == 0)
 		return PostAAType::TAA_High;
+	else if (strcmp(type, "taaFSR2") == 0)
+		return PostAAType::TAA_FSR2;
 	else if (strcmp(type, "none") == 0)
 		return PostAAType::None;
 	else

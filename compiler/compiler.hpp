@@ -72,7 +72,7 @@ public:
 
 	void set_include_directories(const std::vector<std::string> *include_directories);
 
-	bool set_source_from_file(const std::string &path);
+	bool set_source_from_file(const std::string &path, Stage stage = Stage::Unknown);
 	bool set_source_from_file_multistage(const std::string &path);
 	bool preprocess();
 	Util::Hash get_source_hash() const;

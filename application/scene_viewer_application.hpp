@@ -107,7 +107,7 @@ protected:
 	void add_main_pass(Vulkan::Device &device, const std::string &tag);
 	void add_main_pass_forward(Vulkan::Device &device, const std::string &tag);
 	void add_main_pass_deferred(Vulkan::Device &device, const std::string &tag);
-	void add_mv_pass(const std::string &tag, const std::string &depth);
+	void add_mv_pass(const std::string &tag, const std::string &depth, bool full_mv);
 
 	void add_shadow_pass(Vulkan::Device &device, const std::string &tag);
 	void add_shadow_pass_fallback(Vulkan::Device &device, const std::string &tag);

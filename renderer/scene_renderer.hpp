@@ -50,7 +50,8 @@ enum SceneRendererFlagBits : uint32_t
 	SCENE_RENDERER_FALLBACK_DEPTH_BIT = 1 << 14,
 	SCENE_RENDERER_MOTION_VECTOR_BIT = 1 << 15,
 	SCENE_RENDERER_SKIP_UNBOUNDED_BIT = 1 << 16,
-	SCENE_RENDERER_SKIP_OPAQUE_FLOATING_BIT = 1 << 17
+	SCENE_RENDERER_SKIP_OPAQUE_FLOATING_BIT = 1 << 17,
+	SCENE_RENDERER_MOTION_VECTOR_FULL_BIT = 1 << 18, // Reconstruct MVs even for static objects.
 };
 using SceneRendererFlags = uint32_t;
 
@@ -99,5 +100,6 @@ protected:
 	const ComponentGroupVector<VolumetricDiffuseLightComponent> *volumetric_diffuse_lights = nullptr;
 
 	void prepare_setup_queues();
+	void resolve_full_motion_vectors(Vulkan::CommandBuffer &cmd, const RenderContext &context) const;
 };
 }

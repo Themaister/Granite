@@ -44,10 +44,11 @@ namespace Vulkan
 {
 ShaderTemplate::ShaderTemplate(Device *device_,
                                const std::string &shader_path,
+                               Granite::Stage force_stage_,
                                MetaCache &cache_,
                                Util::Hash path_hash_,
                                const std::vector<std::string> &include_directories_)
-	: device(device_), path(shader_path), cache(cache_), path_hash(path_hash_)
+	: device(device_), path(shader_path), force_stage(force_stage_), cache(cache_), path_hash(path_hash_)
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	, include_directories(include_directories_)
 #endif
@@ -84,7 +85,7 @@ bool ShaderTemplate::init()
 		return false;
 	compiler = make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
 	compiler->set_target(Granite::Target::Vulkan11);
-	if (!compiler->set_source_from_file(path))
+	if (!compiler->set_source_from_file(path, force_stage))
 		return false;
 	compiler->set_include_directories(&include_directories);
 	if (!compiler->preprocess())
@@ -253,7 +254,7 @@ void ShaderTemplate::recompile()
 		return;
 	auto newcompiler = make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
 	newcompiler->set_target(Granite::Target::Vulkan11);
-	if (!newcompiler->set_source_from_file(path))
+	if (!newcompiler->set_source_from_file(path, force_stage))
 		return;
 	newcompiler->set_include_directories(&include_directories);
 	if (!newcompiler->preprocess())
@@ -450,7 +451,7 @@ ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pai
 
 ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 {
-	auto *tmpl = get_template(compute);
+	auto *tmpl = get_template(compute, Granite::Stage::Compute);
 	if (!tmpl)
 		return nullptr;
 
@@ -464,7 +465,7 @@ ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 	return ret;
 }
 
-ShaderTemplate *ShaderManager::get_template(const std::string &path)
+ShaderTemplate *ShaderManager::get_template(const std::string &path, Granite::Stage force_stage)
 {
 	Hasher hasher;
 	hasher.string(path);
@@ -473,7 +474,8 @@ ShaderTemplate *ShaderManager::get_template(const std::string &path)
 	auto *ret = shaders.find(hash);
 	if (!ret)
 	{
-		auto *shader = shaders.allocate(device, path, meta_cache, hasher.get(), include_directories);
+		auto *shader = shaders.allocate(device, path, force_stage,
+		                                meta_cache, hasher.get(), include_directories);
 		if (!shader->init())
 		{
 			shaders.free(shader);
@@ -494,8 +496,8 @@ ShaderTemplate *ShaderManager::get_template(const std::string &path)
 
 ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const std::string &fragment)
 {
-	auto *vert_tmpl = get_template(vertex);
-	auto *frag_tmpl = get_template(fragment);
+	auto *vert_tmpl = get_template(vertex, Granite::Stage::Vertex);
+	auto *frag_tmpl = get_template(fragment, Granite::Stage::Fragment);
 	if (!vert_tmpl || !frag_tmpl)
 		return nullptr;
 

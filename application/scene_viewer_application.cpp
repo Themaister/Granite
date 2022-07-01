@@ -749,7 +749,7 @@ static inline string tagcat(const std::string &a, const std::string &b)
 	return a + "-" + b;
 }
 
-void SceneViewerApplication::add_mv_pass(const std::string &tag, const std::string &depth)
+void SceneViewerApplication::add_mv_pass(const std::string &tag, const std::string &depth, bool full_mv)
 {
 	AttachmentInfo mv;
 	mv.size_class = SizeClass::InputRelative;
@@ -760,12 +760,17 @@ void SceneViewerApplication::add_mv_pass(const std::string &tag, const std::stri
 	mv_pass.set_depth_stencil_input(depth);
 	mv_pass.add_color_output(tagcat("mv", tag), mv);
 
+	if (full_mv)
+		mv_pass.add_attachment_input(depth);
+
 	auto renderer = Util::make_handle<RenderPassSceneRenderer>();
 	RenderPassSceneRenderer::Setup setup = {};
 	setup.scene = &scene_loader.get_scene();
 	setup.context = &context;
 	setup.suite = &renderer_suite;
 	setup.flags = SCENE_RENDERER_MOTION_VECTOR_BIT;
+	if (full_mv)
+		setup.flags |= SCENE_RENDERER_MOTION_VECTOR_FULL_BIT;
 	renderer->init(setup);
 
 	mv_pass.set_render_pass_interface(std::move(renderer));
@@ -1134,14 +1139,15 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	if (config.postaa_type == PostAAType::TAA_Low ||
 	    config.postaa_type == PostAAType::TAA_Medium ||
-	    config.postaa_type == PostAAType::TAA_High)
+	    config.postaa_type == PostAAType::TAA_High ||
+	    config.postaa_type == PostAAType::TAA_FSR2)
 	{
-		add_mv_pass("main", "depth-main");
+		add_mv_pass("main", "depth-main", config.postaa_type == PostAAType::TAA_FSR2);
 	}
 
 	if (config.hdr_bloom)
 	{
-		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type, graph, jitter, config.resolution_scale,
+		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type, graph, jitter, context, config.resolution_scale,
 		                                                     light_output, "depth-main", "mv-main", "HDR-resolved");
 
 		HDROptions opts;
@@ -1159,7 +1165,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 		ui_source = "post-aa-output";
 	}
 
-	if (config.resolution_scale < 1.0f &&
+	if (config.resolution_scale < 1.0f && config.postaa_type != PostAAType::TAA_FSR2 &&
 	    setup_after_post_chain_upscaling(graph, ui_source, "post-scale-output",
 	                                     config.resolution_scale_sharpen))
 	{

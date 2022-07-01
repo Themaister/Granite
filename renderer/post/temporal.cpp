@@ -26,12 +26,42 @@
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "simd.hpp"
+#include "render_graph.hpp"
+#include "render_context.hpp"
+#include "os_filesystem.hpp"
+#include "global_managers.hpp"
+
+#include "ffx_fsr2_granite.h"
+#include "ffx_fsr2.h"
 
 namespace Granite
 {
 TemporalJitter::TemporalJitter()
 {
 	init(Type::None, vec2(0.0f));
+}
+
+void TemporalJitter::init_banks()
+{
+	saved_jittered_view_proj.resize(jitter_count);
+	saved_jittered_inv_view_proj.resize(jitter_count);
+	saved_view_proj.resize(jitter_count);
+	saved_inv_view_proj.resize(jitter_count);
+}
+
+void TemporalJitter::init_custom(const vec2 *phases, unsigned phase_count, vec2 backbuffer_resolution)
+{
+	jitter_table.clear();
+	jitter_table.reserve(phase_count);
+	for (unsigned i = 0; i < phase_count; i++)
+	{
+		jitter_table.push_back(translate(2.0f * vec3(phases[i].x / backbuffer_resolution.x,
+		                                             phases[i].y / backbuffer_resolution.y, 0.0f)));
+	}
+
+	jitter_count = phase_count;
+	type = Type::Custom;
+	init_banks();
 }
 
 void TemporalJitter::init(Type type_, vec2 backbuffer_resolution)
@@ -41,22 +71,25 @@ void TemporalJitter::init(Type type_, vec2 backbuffer_resolution)
 	switch (type)
 	{
 	case Type::FXAA_2Phase:
-		jitter_mask = 1;
+		jitter_count = 2;
 		phase = 0;
+		jitter_table.resize(jitter_count);
 		jitter_table[0] = translate(2.0f * vec3(0.5f / backbuffer_resolution.x, 0.0f, 0.0f));
 		jitter_table[1] = translate(2.0f * vec3(0.0f, 0.5f / backbuffer_resolution.y, 0.0f));
 		break;
 
 	case Type::SMAA_T2X:
-		jitter_mask = 1;
+		jitter_count = 2;
 		phase = 0;
+		jitter_table.resize(jitter_count);
 		jitter_table[0] = translate(2.0f * vec3(-0.25f / backbuffer_resolution.x, -0.25f / backbuffer_resolution.y, 0.0f));
 		jitter_table[1] = translate(2.0f * vec3(+0.25f / backbuffer_resolution.x, +0.25f / backbuffer_resolution.y, 0.0f));
 		break;
 
 	case Type::TAA_8Phase:
-		jitter_mask = 7;
+		jitter_count = 8;
 		phase = 0;
+		jitter_table.resize(jitter_count);
 		jitter_table[0] = translate(0.125f * vec3(-7.0f / backbuffer_resolution.x, +1.0f / backbuffer_resolution.y, 0.0f));
 		jitter_table[1] = translate(0.125f * vec3(-5.0f / backbuffer_resolution.x, -5.0f / backbuffer_resolution.y, 0.0f));
 		jitter_table[2] = translate(0.125f * vec3(-1.0f / backbuffer_resolution.x, -3.0f / backbuffer_resolution.y, 0.0f));
@@ -68,8 +101,9 @@ void TemporalJitter::init(Type type_, vec2 backbuffer_resolution)
 		break;
 
 	case Type::TAA_16Phase:
-		jitter_mask = 15;
+		jitter_count = 16;
 		phase = 0;
+		jitter_table.resize(jitter_count);
 		jitter_table[ 0] = translate(0.125f * vec3(-8.0f / backbuffer_resolution.x, 0.0f / backbuffer_resolution.y, 0.0f));
 		jitter_table[ 1] = translate(0.125f * vec3(-6.0f / backbuffer_resolution.x, -4.0f / backbuffer_resolution.y, 0.0f));
 		jitter_table[ 2] = translate(0.125f * vec3(-3.0f / backbuffer_resolution.x, -2.0f / backbuffer_resolution.y, 0.0f));
@@ -88,17 +122,22 @@ void TemporalJitter::init(Type type_, vec2 backbuffer_resolution)
 		jitter_table[15] = translate(0.125f * vec3(-5.0f / backbuffer_resolution.x, 2.0f / backbuffer_resolution.y, 0.0f));
 		break;
 
-	case Type::None:
-		jitter_mask = 0;
+	default:
+		jitter_count = 1;
 		phase = 0;
+		jitter_table.resize(jitter_count);
 		jitter_table[0] = mat4(1.0f);
 		break;
 	}
+
+	init_banks();
 }
 
 void TemporalJitter::step(const mat4 &proj, const mat4 &view)
 {
 	phase++;
+	if (phase >= jitter_count)
+		phase = 0;
 
 	SIMD::mul(saved_view_proj[get_jitter_phase()], proj, view);
 	SIMD::mul(saved_jittered_projection, get_jitter_matrix(), proj);
@@ -108,24 +147,32 @@ void TemporalJitter::step(const mat4 &proj, const mat4 &view)
 	saved_jittered_inv_view_proj[get_jitter_phase()] = inverse(saved_jittered_view_proj[get_jitter_phase()]);
 }
 
+unsigned TemporalJitter::get_offset_phase(int frames) const
+{
+	if (phase >= unsigned(frames))
+		return phase - frames;
+	else
+		return jitter_count - frames;
+}
+
 const mat4 &TemporalJitter::get_history_view_proj(int frames) const
 {
-	return saved_view_proj[(phase - frames) & jitter_mask];
+	return saved_view_proj[get_offset_phase(frames)];
 }
 
 const mat4 &TemporalJitter::get_history_inv_view_proj(int frames) const
 {
-	return saved_inv_view_proj[(phase - frames) & jitter_mask];
+	return saved_inv_view_proj[get_offset_phase(frames)];
 }
 
 const mat4 &TemporalJitter::get_history_jittered_view_proj(int frames) const
 {
-	return saved_jittered_view_proj[(phase - frames) & jitter_mask];
+	return saved_jittered_view_proj[get_offset_phase(frames)];
 }
 
 const mat4 &TemporalJitter::get_history_jittered_inv_view_proj(int frames) const
 {
-	return saved_jittered_inv_view_proj[(phase - frames) & jitter_mask];
+	return saved_jittered_inv_view_proj[get_offset_phase(frames)];
 }
 
 const mat4 &TemporalJitter::get_jitter_matrix() const
@@ -144,11 +191,6 @@ void TemporalJitter::reset()
 }
 
 unsigned TemporalJitter::get_jitter_phase() const
-{
-	return phase & jitter_mask;
-}
-
-unsigned TemporalJitter::get_unmasked_phase() const
 {
 	return phase;
 }
@@ -290,5 +332,176 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 		                                                                                                         : 0}
 		                                                });
 	});
+}
+
+struct FSR2State : RenderPassInterface
+{
+	~FSR2State() override;
+	RenderGraph *graph = nullptr;
+	RenderTextureResource *color = nullptr;
+	RenderTextureResource *depth = nullptr;
+	RenderTextureResource *mv = nullptr;
+	RenderTextureResource *output = nullptr;
+
+	const Vulkan::ImageView *color_view = nullptr;
+	const Vulkan::ImageView *depth_view = nullptr;
+	const Vulkan::ImageView *mv_view = nullptr;
+	const Vulkan::ImageView *output_view = nullptr;
+	const TemporalJitter *jitter = nullptr;
+	const RenderContext *render_context = nullptr;
+
+	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
+	void setup(Vulkan::Device &device) override;
+	void enqueue_prepare_render_pass(RenderGraph &graph, TaskComposer &composer) override;
+
+	FfxFsr2ContextDescription desc = {};
+	FfxFsr2Context context;
+	void *scratch = nullptr;
+	int phase_count = 0;
+};
+
+FSR2State::~FSR2State()
+{
+	ffxFsr2ContextDestroy(&context);
+	free(scratch);
+}
+
+void FSR2State::enqueue_prepare_render_pass(RenderGraph &graph_, TaskComposer &)
+{
+	color_view = &graph_.get_physical_texture_resource(*color);
+	depth_view = &graph_.get_physical_texture_resource(*depth);
+	mv_view = &graph_.get_physical_texture_resource(*mv);
+	output_view = &graph_.get_physical_texture_resource(*output);
+}
+
+void FSR2State::setup(Vulkan::Device &device)
+{
+	FfxErrorCode code;
+
+	if (GRANITE_FILESYSTEM()->get_protocols().find("fsr2") == GRANITE_FILESYSTEM()->get_protocols().end())
+	{
+		auto self_dir = Path::basedir(Path::get_executable_path());
+		auto fsr2_dir = Path::join(self_dir, "fsr2");
+		FileStat s = {};
+		if (GRANITE_FILESYSTEM()->stat(fsr2_dir, s) && s.type == PathType::Directory)
+		{
+			LOGI("Setting up FSR2 shader path: %s.\n", fsr2_dir.c_str());
+			GRANITE_FILESYSTEM()->register_protocol("fsr2", std::make_unique<OSFilesystem>(fsr2_dir));
+		}
+#ifdef GRANITE_FSR2_SHADER_DIR
+		else
+		{
+			LOGI("Setting up FSR2 shader path: %s.\n", GRANITE_FSR2_SHADER_DIR);
+			GRANITE_FILESYSTEM()->register_protocol("fsr2", std::make_unique<OSFilesystem>(GRANITE_FSR2_SHADER_DIR));
+		}
+#endif
+	}
+
+	scratch = malloc(ffxFsr2GetScratchMemorySizeGranite());
+	code = ffxFsr2GetInterfaceGranite(&desc.callbacks, scratch, ffxFsr2GetScratchMemorySizeGranite());
+	if (code != FFX_OK)
+	{
+		LOGE("Failed to get FSR2 Granite interface (code = %x).\n", code);
+		return;
+	}
+
+	desc.device = ffxGetDeviceGranite(&device);
+
+	code = ffxFsr2ContextCreate(&context, &desc);
+	if (code != FFX_OK)
+	{
+		LOGE("Failed to create FSR2 context (code = %x).\n", code);
+		return;
+	}
+}
+
+void FSR2State::build_render_pass(Vulkan::CommandBuffer &cmd)
+{
+	FfxFsr2DispatchDescription dispatch = {};
+	dispatch.commandList = ffxGetCommandListGranite(&cmd);
+	dispatch.color = ffxGetTextureResourceGranite(&context, &color_view->get_image(), color_view);
+	dispatch.depth = ffxGetTextureResourceGranite(&context, &depth_view->get_image(), depth_view);
+	dispatch.motionVectors = ffxGetTextureResourceGranite(&context, &mv_view->get_image(), mv_view);
+	dispatch.output = ffxGetTextureResourceGranite(&context, &output_view->get_image(), output_view,
+	                                               FFX_RESOURCE_STATE_UNORDERED_ACCESS);
+	// Our MVs are from old frame to current. Negating should "just werk".
+	dispatch.motionVectorScale.x = -float(mv_view->get_view_width());
+	dispatch.motionVectorScale.y = -float(mv_view->get_view_height());
+	dispatch.renderSize.width = color_view->get_view_width();
+	dispatch.renderSize.height = color_view->get_view_height();
+	dispatch.enableSharpening = true;
+	dispatch.sharpness = 0.5f;
+	dispatch.preExposure = 0.0f; // Using AUTO
+	dispatch.reset = false; // FIXME: Not used atm.
+	dispatch.frameTimeDelta = 10.0f; // FIXME
+	dispatch.cameraFar = render_context->get_render_parameters().z_far;
+	dispatch.cameraNear = render_context->get_render_parameters().z_near;
+
+	// Not sure if this is correct.
+	float proj_y_scale = muglm::abs(render_context->get_render_parameters().inv_projection[1][1]);
+	float fovY = 2.0f * muglm::atan(proj_y_scale);
+	dispatch.cameraFovAngleVertical = fovY;
+
+	ffxFsr2GetJitterOffset(&dispatch.jitterOffset.x, &dispatch.jitterOffset.y,
+	                       int(jitter->get_jitter_phase()), phase_count);
+
+	auto code = ffxFsr2ContextDispatch(&context, &dispatch);
+	if (code != FFX_OK)
+		LOGE("Failed to dispatch context.\n");
+}
+
+void setup_fsr2_pass(RenderGraph &graph, TemporalJitter &jitter,
+                     const RenderContext &context,
+                     float scaling_factor,
+                     const std::string &input,
+                     const std::string &input_depth,
+                     const std::string &input_mv,
+                     const std::string &output)
+{
+	auto fsr2 = Util::make_handle<FSR2State>();
+
+	auto &pass = graph.add_pass("fsr2", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+
+	fsr2->color = &pass.add_texture_input(input);
+	fsr2->depth = &pass.add_texture_input(input_depth);
+	fsr2->mv = &pass.add_texture_input(input_mv);
+	fsr2->graph = &graph;
+
+	AttachmentInfo info;
+	info.size_class = SizeClass::SwapchainRelative;
+	info.format = graph.get_resource_dimensions(*fsr2->color).format;
+	fsr2->output = &pass.add_storage_texture_output(output, info);
+
+	fsr2->desc.displaySize.width = graph.get_resource_dimensions(*fsr2->output).width;
+	fsr2->desc.displaySize.height = graph.get_resource_dimensions(*fsr2->output).height;
+	fsr2->desc.maxRenderSize.width = graph.get_resource_dimensions(*fsr2->color).width;
+	fsr2->desc.maxRenderSize.height = graph.get_resource_dimensions(*fsr2->color).height;
+	fsr2->desc.flags |= FFX_FSR2_ENABLE_AUTO_EXPOSURE | FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE;
+	fsr2->jitter = &jitter;
+	fsr2->render_context = &context;
+
+	int phase_count = ffxFsr2GetJitterPhaseCount(int32_t(fsr2->desc.maxRenderSize.width),
+	                                             int32_t(fsr2->desc.displaySize.width));
+
+	fsr2->phase_count = phase_count;
+
+	std::vector<vec2> phase;
+	phase.reserve(phase_count);
+
+	for (int i = 0; i < phase_count; i++)
+	{
+		vec2 offset;
+		ffxFsr2GetJitterOffset(&offset.x, &offset.y, i, phase_count);
+		phase.push_back(offset);
+		// Docs use (pos, neg) offsets here, but that's because DX does Y-flip in window space transform.
+		// We don't.
+	}
+
+	auto backbuffer_dim = graph.get_backbuffer_dimensions();
+
+	jitter.init_custom(phase.data(), unsigned(phase.size()),
+	                   vec2(backbuffer_dim.width, backbuffer_dim.height) * scaling_factor);
+
+	pass.set_render_pass_interface(fsr2);
 }
 }

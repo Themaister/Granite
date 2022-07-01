@@ -5,6 +5,7 @@
 #include "post/temporal.hpp"
 #include "post/hdr.hpp"
 #include "task_composer.hpp"
+#include "render_context.hpp"
 
 using namespace Util;
 using namespace Granite;
@@ -29,6 +30,7 @@ private:
 	Texture *images[2] = {};
 	RenderGraph graph;
 	TemporalJitter jitter;
+	RenderContext render_context;
 	bool need_main_pass = false;
 	unsigned input_index = 0;
 };
@@ -107,8 +109,15 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 		return true;
 	});
 
+	Camera cam;
+	cam.look_at(vec3(0.0f, 0.0f, +1.0f), vec3(0.0f), vec3(0.0f, 1.0f, 0.0f));
+	cam.set_depth_range(1.0f, 1000.0f);
+	cam.set_fovy(0.5f);
+	render_context.set_camera(cam);
+
 	bool resolved = setup_before_post_chain_antialiasing(type,
 	                                                     graph, jitter,
+	                                                     render_context,
 	                                                     scale,
 	                                                     "HDR-main", "depth-main", "", "HDR-resolved");
 

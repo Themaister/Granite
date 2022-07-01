@@ -98,4 +98,4 @@ if (ANDROID AND GRANITE_AUDIO)
 endif()
 
 # Custom integration, bypass all the noise.
-add_subdirectory(fsr2/src/ffx-fsr2-api/granite EXCLUDE_FROM_ALL)
+add_subdirectory(fsr2/src/ffx-fsr2-api/granite)

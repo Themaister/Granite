@@ -31,7 +31,7 @@ class Application
 {
 public:
 	Application();
-	virtual ~Application() = default;
+	virtual ~Application();
 	virtual void render_frame(double frame_time, double elapsed_time) = 0;
 	bool init_wsi(std::unique_ptr<Vulkan::WSIPlatform> platform);
 

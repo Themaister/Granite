@@ -35,6 +35,13 @@ Application::Application()
 {
 }
 
+Application::~Application()
+{
+	auto *group = GRANITE_THREAD_GROUP();
+	if (group)
+		group->wait_idle();
+}
+
 bool Application::init_wsi(std::unique_ptr<WSIPlatform> new_platform)
 {
 	platform = move(new_platform);

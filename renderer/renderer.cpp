@@ -738,7 +738,7 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 		cmd.set_stencil_reference(parameters->stencil.compare_mask, parameters->stencil.write_mask, parameters->stencil.ref);
 	}
 
-	CommandBufferSavedState state;
+	CommandBufferSavedState state = {};
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	// No need to spend write bandwidth on writing 0 to light buffer, render opaque emissive on top.
 	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);

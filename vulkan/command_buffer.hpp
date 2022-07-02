@@ -168,7 +168,7 @@ using CommandBufferSaveStateFlags = uint32_t;
 
 struct CommandBufferSavedState
 {
-	CommandBufferSaveStateFlags flags = 0;
+	CommandBufferSaveStateFlags flags;
 	ResourceBindings bindings;
 	VkViewport viewport;
 	VkRect2D scissor;

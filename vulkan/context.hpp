@@ -136,8 +136,9 @@ struct QueueInfo
 
 class Context
 #ifdef GRANITE_VULKAN_FOSSILIZE
-		: public Fossilize::DeviceQueryInterface
+		: public Fossilize::DeviceQueryInterface,
 #endif
+          public Util::IntrusivePtrEnabled<Context, std::default_delete<Context>, HandleCounter>
 {
 public:
 	// Call before initializing instances. Pointer must remain valid until instance and device creation completes.
@@ -159,7 +160,7 @@ public:
 	static bool init_loader(PFN_vkGetInstanceProcAddr addr);
 	static PFN_vkGetInstanceProcAddr get_instance_proc_addr();
 
-	~Context();
+	~Context() override;
 
 	VkInstance get_instance() const
 	{
@@ -289,4 +290,6 @@ private:
 	bool descriptor_set_layout_is_supported(const VkDescriptorSetLayoutCreateInfo *set_layout) override;
 #endif
 };
+
+using ContextHandle = Util::IntrusivePtr<Context>;
 }

@@ -31,7 +31,7 @@ namespace Granite
 retro_log_printf_t libretro_log;
 static retro_hw_render_interface_vulkan *vulkan_interface;
 static retro_hw_render_context_negotiation_interface_vulkan vulkan_negotiation;
-static std::unique_ptr<Vulkan::Context> vulkan_context;
+static Vulkan::ContextHandle vulkan_context;
 static Vulkan::ImageViewHandle swapchain_unorm_view;
 static Vulkan::ImageHandle swapchain_image;
 static retro_vulkan_image swapchain_image_info;
@@ -50,7 +50,7 @@ static VkApplicationInfo vulkan_app = {
 	nullptr, 0,
 	"Granite",
 	0,
-	VK_MAKE_VERSION(1, 0, 59)
+	VK_API_VERSION_1_1,
 };
 
 void libretro_set_swapchain_size(unsigned width, unsigned height)
@@ -82,7 +82,12 @@ bool libretro_create_device(
 	if (!Vulkan::Context::init_loader(get_instance_proc_addr))
 		return false;
 
-	vulkan_context.reset(new Vulkan::Context);
+	vulkan_context = Util::make_handle<Vulkan::Context>();
+	Vulkan::Context::SystemHandles system_handles;
+	system_handles.filesystem = GRANITE_FILESYSTEM();
+	system_handles.thread_group = GRANITE_THREAD_GROUP();
+	system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
+	vulkan_context->set_system_handles(system_handles);
 #ifdef GRANITE_VULKAN_MT
 	vulkan_context->set_num_thread_indices(GRANITE_THREAD_GROUP()->get_num_threads() + 1);
 #endif
@@ -176,7 +181,9 @@ bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Vulkan::WS
 	if (vulkan->interface_version != RETRO_HW_RENDER_INTERFACE_VULKAN_VERSION)
 		return false;
 
-	if (!wsi.init_external_context(std::move(vulkan_context)))
+	if (!wsi.init_from_existing_context(std::move(vulkan_context)))
+		return false;
+	if (!wsi.init_device())
 		return false;
 
 	wsi.get_device().set_queue_lock([vulkan]() {
@@ -236,7 +243,7 @@ void libretro_context_destroy(Vulkan::WSI *wsi)
 	acquire_semaphore.reset();
 
 	if (wsi)
-		wsi->deinit_external();
+		wsi->teardown();
 }
 
 static const VkApplicationInfo *get_application_info(void)

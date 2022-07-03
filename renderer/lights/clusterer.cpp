@@ -75,6 +75,11 @@ void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 
 	fill(begin(legacy.spots.cookie), end(legacy.spots.cookie), 0);
 	fill(begin(legacy.points.cookie), end(legacy.points.cookie), 0);
+
+	bindless.allocator.reset();
+
+	acquire_semaphore.reset();
+	release_semaphores.clear();
 }
 
 void LightClusterer::set_scene(Scene *scene_)

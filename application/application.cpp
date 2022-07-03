@@ -53,7 +53,7 @@ bool Application::init_wsi(std::unique_ptr<WSIPlatform> new_platform)
 	system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
 
 	if (!platform->has_external_swapchain() &&
-	    !application_wsi.init(system_handles.thread_group->get_num_threads() + 1, system_handles))
+	    !application_wsi.init_simple(system_handles.thread_group->get_num_threads() + 1, system_handles))
 	{
 		return false;
 	}

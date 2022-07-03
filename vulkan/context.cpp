@@ -432,7 +432,8 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		debug_info.pUserData = this;
 
 		// For some reason, this segfaults Android, sigh ... We get relevant output in logcat anyways.
-		vkCreateDebugUtilsMessengerEXT(instance, &debug_info, nullptr, &debug_messenger);
+		if (vkCreateDebugUtilsMessengerEXT)
+			vkCreateDebugUtilsMessengerEXT(instance, &debug_info, nullptr, &debug_messenger);
 	}
 #endif
 

@@ -160,7 +160,7 @@ public:
 	static bool init_loader(PFN_vkGetInstanceProcAddr addr);
 	static PFN_vkGetInstanceProcAddr get_instance_proc_addr();
 
-	~Context() override;
+	~Context();
 
 	VkInstance get_instance() const
 	{

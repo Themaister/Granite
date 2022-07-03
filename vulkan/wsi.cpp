@@ -675,7 +675,10 @@ void WSI::teardown()
 	}
 
 	if (surface != VK_NULL_HANDLE)
+	{
 		vkDestroySurfaceKHR(context->get_instance(), surface, nullptr);
+		surface = VK_NULL_HANDLE;
+	}
 
 	if (platform)
 		platform->event_device_destroyed();

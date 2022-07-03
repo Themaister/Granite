@@ -673,7 +673,7 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 			{
 				LOGI("Lifecycle init window.\n");
 				auto surface = create_surface_from_native_window(state.app_wsi->get_context().get_instance(), app->window);
-				state.app_wsi->init_surface_and_swapchain(surface);
+				state.app_wsi->reinit_surface_and_swapchain(surface);
 			}
 			else
 			{
@@ -777,7 +777,7 @@ bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)
 		{
 			LOGI("Pending native window init\n");
 			auto surface = create_surface_from_native_window(wsi.get_context().get_instance(), global_state.app->window);
-			wsi.init_surface_and_swapchain(surface);
+			wsi.reinit_surface_and_swapchain(surface);
 			state.pending_native_window_init = false;
 		}
 	};

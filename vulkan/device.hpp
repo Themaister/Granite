@@ -165,8 +165,9 @@ private:
 
 class Device
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	: public Fossilize::StateCreatorInterface
+	: public Fossilize::StateCreatorInterface,
 #endif
+      public Util::IntrusivePtrEnabled<Device, std::default_delete<Device>, HandleCounter>
 {
 public:
 	// Device-based objects which need to poke at internal data structures when their lifetimes end.
@@ -848,4 +849,5 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 		const OwnershipTransferInfo &info,
 		const Vulkan::Semaphore &semaphore);
 
+using DeviceHandle = Util::IntrusivePtr<Device>;
 }

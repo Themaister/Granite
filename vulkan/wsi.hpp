@@ -27,7 +27,6 @@
 #include "vulkan_headers.hpp"
 #include "timer.hpp"
 #include "wsi_timing.hpp"
-#include <memory>
 #include <vector>
 #include <thread>
 #include <chrono>
@@ -74,14 +73,14 @@ public:
 		return float(get_surface_width()) / float(get_surface_height());
 	}
 
-	virtual bool alive(Vulkan::WSI &wsi) = 0;
+	virtual bool alive(WSI &wsi) = 0;
 	virtual void poll_input() = 0;
 	virtual bool has_external_swapchain()
 	{
 		return false;
 	}
 
-	virtual void block_until_wsi_forward_progress(Vulkan::WSI &wsi)
+	virtual void block_until_wsi_forward_progress(WSI &wsi)
 	{
 		get_frame_timer().enter_idle();
 		while (!resize && alive(wsi))
@@ -158,10 +157,33 @@ public:
 		return srgb_backbuffer_enable;
 	}
 
-	bool init(unsigned num_thread_indices, const Context::SystemHandles &system_handles);
-	bool init_external_context(std::unique_ptr<Vulkan::Context> context);
-	bool init_external_swapchain(std::vector<Vulkan::ImageHandle> external_images);
-	void deinit_external();
+	// First, we need a Util::IntrinsivePtr<Vulkan::Context>.
+	// This holds the instance and device.
+
+	// The simple approach. WSI internally creates the context with instance + device.
+	// Required information about extensions etc, is pulled from the platform.
+	bool init_context_from_platform(unsigned num_thread_indices, const Context::SystemHandles &system_handles);
+
+	// If you have your own VkInstance and/or VkDevice, you must create your own Vulkan::Context with
+	// the appropriate init() call. Based on the platform you use, you must make sure to enable the
+	// required extensions.
+	bool init_from_existing_context(ContextHandle context);
+
+	// Then we initialize the Vulkan::Device. Either lets WSI create its own device or reuse an existing handle.
+	// A device provided here must have been bound to the context.
+	bool init_device();
+	bool init_device(DeviceHandle device);
+
+	// Called after we have a device and context.
+	// Either we can use a swapchain based on VkSurfaceKHR, or we can supply our own images
+	// to create a virtual swapchain.
+	// init_surface_swapchain() is called once.
+	// Here we create the surface and perform creation of the first swapchain.
+	bool init_surface_swapchain();
+	bool init_external_swapchain(std::vector<ImageHandle> external_images);
+
+	// Calls init_context_from_platform -> init_device -> init_surface_swapchain in succession.
+	bool init_simple(unsigned num_thread_indices, const Context::SystemHandles &system_handles);
 
 	~WSI();
 
@@ -175,10 +197,29 @@ public:
 		return *device;
 	}
 
+	// Acquires a frame from swapchain, also calls poll_input() after acquire
+	// since acquire tends to block.
 	bool begin_frame();
+	// Presents and iterates frame context.
+	// Present is skipped if swapchain resource was not touched.
+	// The normal app loop is something like begin_frame() -> submit work -> end_frame().
 	bool end_frame();
-	void set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore, double frame_time);
-	Vulkan::Semaphore consume_external_release_semaphore();
+
+	// For external swapchains we don't have a normal acquire -> present cycle.
+	// - set_external_frame()
+	//   - index replaces the acquire next image index.
+	//   - acquire_semaphore replaces semaphore from acquire next image.
+	//   - frame_time controls the frame time passed down.
+	// - begin_frame()
+	// - submit work
+	// - end_frame()
+	// - consume_external_release_semaphore()
+	//   - Returns the release semaphore that can passed to the equivalent of QueuePresentKHR.
+	void set_external_frame(unsigned index, Semaphore acquire_semaphore, double frame_time);
+	Semaphore consume_external_release_semaphore();
+
+	// Equivalent to calling destructor.
+	void teardown();
 
 	WSIPlatform &get_platform()
 	{
@@ -186,8 +227,11 @@ public:
 		return *platform;
 	}
 
+	// For Android. Used in response to APP_CMD_{INIT,TERM}_WINDOW once
+	// we have a proper swapchain going.
+	// We have to completely drain swapchain before the window is terminated on Android.
 	void deinit_surface_and_swapchain();
-	void init_surface_and_swapchain(VkSurfaceKHR new_surface);
+	void reinit_surface_and_swapchain(VkSurfaceKHR new_surface);
 
 	float get_estimated_video_latency();
 	void set_window_title(const std::string &title);
@@ -205,12 +249,12 @@ public:
 private:
 	void update_framebuffer(unsigned width, unsigned height);
 
-	std::unique_ptr<Context> context;
+	ContextHandle context;
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
 	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 	std::vector<VkImage> swapchain_images;
 	std::vector<Semaphore> release_semaphores;
-	std::unique_ptr<Device> device;
+	DeviceHandle device;
 	const VolkDeviceTable *table = nullptr;
 
 	unsigned swapchain_width = 0;
@@ -237,11 +281,11 @@ private:
 
 	WSIPlatform *platform = nullptr;
 
-	std::vector<Vulkan::ImageHandle> external_swapchain_images;
+	std::vector<ImageHandle> external_swapchain_images;
 
 	unsigned external_frame_index = 0;
-	Vulkan::Semaphore external_acquire;
-	Vulkan::Semaphore external_release;
+	Semaphore external_acquire;
+	Semaphore external_release;
 	bool frame_is_external = false;
 	bool using_display_timing = false;
 	bool srgb_backbuffer_enable = true;

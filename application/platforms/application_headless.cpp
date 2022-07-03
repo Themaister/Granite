@@ -258,7 +258,7 @@ public:
 		app = app_;
 
 		auto &wsi = app->get_wsi();
-		auto context = make_unique<Context>();
+		auto context = Util::make_handle<Context>();
 
 		Context::SystemHandles system_handles;
 		system_handles.filesystem = GRANITE_FILESYSTEM();
@@ -281,7 +281,10 @@ public:
 
 		if (!context->init_instance_and_device(&khr_surface, 1, &khr_swapchain, 1))
 			return false;
-		wsi.init_external_context(move(context));
+		if (!wsi.init_from_existing_context(std::move(context)))
+			return false;
+		if (!wsi.init_device())
+			return false;
 
 		auto &device = wsi.get_device();
 

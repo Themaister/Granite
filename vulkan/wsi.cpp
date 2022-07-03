@@ -104,21 +104,18 @@ float WSI::get_estimated_video_latency()
 	}
 }
 
-bool WSI::init_external_context(std::unique_ptr<Context> fresh_context)
+bool WSI::init_from_existing_context(ContextHandle existing_context)
 {
-	context = move(fresh_context);
-
-	// Need to have a dummy swapchain in place before we issue create device events.
-	device.reset(new Device);
-	device->set_context(*context);
-	device->init_external_swapchain({ ImageHandle(nullptr) });
-	platform->event_device_created(device.get());
+	VK_ASSERT(platform);
+	context = std::move(existing_context);
 	table = &context->get_device_table();
 	return true;
 }
 
 bool WSI::init_external_swapchain(std::vector<ImageHandle> swapchain_images_)
 {
+	VK_ASSERT(context);
+	VK_ASSERT(device);
 	swapchain_width = platform->get_surface_width();
 	swapchain_height = platform->get_surface_height();
 	swapchain_aspect_ratio = platform->get_aspect_ratio();
@@ -150,26 +147,28 @@ void WSI::set_platform(WSIPlatform *platform_)
 	platform = platform_;
 }
 
-bool WSI::init(unsigned num_thread_indices, const Context::SystemHandles &system_handles)
+bool WSI::init_device()
 {
-	auto instance_ext = platform->get_instance_extensions();
-	auto device_ext = platform->get_device_extensions();
-	context.reset(new Context);
-
-	context->set_application_info(platform->get_application_info());
-	context->set_num_thread_indices(num_thread_indices);
-	context->set_system_handles(system_handles);
-	if (!context->init_instance_and_device(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()))
-	{
-		LOGE("Failed to create Vulkan device.\n");
-		return false;
-	}
-
-	device.reset(new Device);
+	VK_ASSERT(context);
+	device = Util::make_handle<Device>();
 	device->set_context(*context);
-	table = &context->get_device_table();
-
 	platform->event_device_created(device.get());
+	return true;
+}
+
+bool WSI::init_device(DeviceHandle device_handle)
+{
+	VK_ASSERT(context);
+	device = std::move(device_handle);
+	platform->event_device_created(device.get());
+	return true;
+}
+
+bool WSI::init_surface_swapchain()
+{
+	VK_ASSERT(surface == VK_NULL_HANDLE);
+	VK_ASSERT(context);
+	VK_ASSERT(device);
 
 	surface = platform->create_surface(context->get_instance(), context->get_gpu());
 	if (surface == VK_NULL_HANDLE)
@@ -189,8 +188,8 @@ bool WSI::init(unsigned num_thread_indices, const Context::SystemHandles &system
 	{
 		if (index != VK_QUEUE_FAMILY_IGNORED)
 		{
-			if (vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(), index, surface, &supported) == VK_SUCCESS &&
-			    supported)
+			if (vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(), index, surface, &supported) ==
+			    VK_SUCCESS && supported)
 			{
 				queue_present_support |= 1u << index;
 			}
@@ -218,7 +217,39 @@ bool WSI::init(unsigned num_thread_indices, const Context::SystemHandles &system
 	return true;
 }
 
-void WSI::init_surface_and_swapchain(VkSurfaceKHR new_surface)
+bool WSI::init_simple(unsigned num_thread_indices, const Context::SystemHandles &system_handles)
+{
+	if (!init_context_from_platform(num_thread_indices, system_handles))
+		return false;
+	if (!init_device())
+		return false;
+	if (!init_surface_swapchain())
+		return false;
+	return true;
+}
+
+bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context::SystemHandles &system_handles)
+{
+	VK_ASSERT(platform);
+	auto instance_ext = platform->get_instance_extensions();
+	auto device_ext = platform->get_device_extensions();
+	auto new_context = Util::make_handle<Context>();
+
+	new_context->set_application_info(platform->get_application_info());
+	new_context->set_num_thread_indices(num_thread_indices);
+	new_context->set_system_handles(system_handles);
+	if (!new_context->init_instance_and_device(
+		instance_ext.data(), instance_ext.size(),
+		device_ext.data(), device_ext.size()))
+	{
+		LOGE("Failed to create Vulkan device.\n");
+		return false;
+	}
+
+	return init_from_existing_context(std::move(new_context));
+}
+
+void WSI::reinit_surface_and_swapchain(VkSurfaceKHR new_surface)
 {
 	LOGI("init_surface_and_swapchain()\n");
 	if (new_surface != VK_NULL_HANDLE)
@@ -445,8 +476,7 @@ bool WSI::end_frame()
 	{
 		// If we didn't render into the swapchain this frame, we will return a blank semaphore.
 		external_release = device->consume_release_semaphore();
-		if (external_release && !external_release->is_signalled())
-			abort();
+		VK_ASSERT(!external_release || external_release->is_signalled());
 		frame_is_external = false;
 	}
 	else
@@ -633,7 +663,7 @@ void WSI::set_backbuffer_srgb(bool enable)
 	}
 }
 
-void WSI::deinit_external()
+void WSI::teardown()
 {
 	if (platform)
 		platform->release_resources();
@@ -1174,7 +1204,7 @@ VkSurfaceTransformFlagBitsKHR WSI::get_current_prerotate() const
 
 WSI::~WSI()
 {
-	deinit_external();
+	teardown();
 }
 
 void WSIPlatform::event_device_created(Device *) {}

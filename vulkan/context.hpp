@@ -135,10 +135,10 @@ struct QueueInfo
 };
 
 class Context
+	: public Util::IntrusivePtrEnabled<Context, std::default_delete<Context>, HandleCounter>
 #ifdef GRANITE_VULKAN_FOSSILIZE
-		: public Fossilize::DeviceQueryInterface,
+	, public Fossilize::DeviceQueryInterface
 #endif
-          public Util::IntrusivePtrEnabled<Context, std::default_delete<Context>, HandleCounter>
 {
 public:
 	// Call before initializing instances. Pointer must remain valid until instance and device creation completes.

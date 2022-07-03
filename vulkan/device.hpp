@@ -164,10 +164,10 @@ private:
 }
 
 class Device
+	: public Util::IntrusivePtrEnabled<Device, std::default_delete<Device>, HandleCounter>
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	: public Fossilize::StateCreatorInterface,
+	, public Fossilize::StateCreatorInterface
 #endif
-      public Util::IntrusivePtrEnabled<Device, std::default_delete<Device>, HandleCounter>
 {
 public:
 	// Device-based objects which need to poke at internal data structures when their lifetimes end.

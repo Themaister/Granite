@@ -429,6 +429,11 @@ void BindlessAllocator::begin()
 	views.clear();
 }
 
+void BindlessAllocator::reset()
+{
+	descriptor_pool.reset();
+}
+
 unsigned BindlessAllocator::get_next_offset() const
 {
 	return unsigned(views.size());

@@ -174,6 +174,8 @@ public:
 
 	unsigned get_next_offset() const;
 
+	void reset();
+
 private:
 	BindlessDescriptorPoolHandle descriptor_pool;
 	unsigned max_sets_per_pool = 0;

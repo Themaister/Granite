@@ -444,7 +444,7 @@ void RenderGraph::on_device_created(const Vulkan::DeviceCreatedEvent &)
 
 void RenderGraph::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 {
-	physical_buffers.clear();
+	reset();
 }
 
 RenderTextureResource &RenderGraph::get_texture_resource(const std::string &name)

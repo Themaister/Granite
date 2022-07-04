@@ -27,17 +27,6 @@
 
 namespace Granite
 {
-PersistentFrameEvent::PersistentFrameEvent()
-{
-	EVENT_MANAGER_REGISTER(PersistentFrameEvent, on_frame_time, FrameTickEvent);
-}
-
-bool PersistentFrameEvent::on_frame_time(const FrameTickEvent &tick)
-{
-	frame_time = float(tick.get_frame_time());
-	return true;
-}
-
 LightMesh::LightMesh()
 {
 	EVENT_MANAGER_REGISTER_LATCH(LightMesh, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);

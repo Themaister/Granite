@@ -47,6 +47,11 @@ void RenderContext::set_motion_vector_projections(const TemporalJitter &jitter)
 	camera.unjittered_prev_view_projection = jitter.get_history_view_proj(1);
 }
 
+void RenderContext::set_frame_parameters(const FrameParameters &frame_)
+{
+	frame = frame_;
+}
+
 void RenderContext::set_device(Device *device_)
 {
 	device = device_;

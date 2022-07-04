@@ -25,11 +25,13 @@
 #include "application_events.hpp"
 #include "common_renderer_data.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "render_context.hpp"
 
 namespace Granite
 {
 
-static void luminance_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd,
+static void luminance_build_render_pass(RenderPass &pass, const FrameParameters &frame,
+                                        Vulkan::CommandBuffer &cmd,
                                         RenderTextureResource &input_res,
                                         RenderBufferResource &output_res)
 {
@@ -54,14 +56,15 @@ static void luminance_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer 
 		float maximum;
 	} push;
 	push.size = uvec2(half_width, half_height);
-	push.lerp = 1.0f - pow(0.5f, GRANITE_COMMON_RENDERER_DATA()->frame_tick.frame_time);
+	push.lerp = float(1.0 - pow(0.5f, frame.frame_time));
 	push.minimum = -3.0f;
 	push.maximum = 2.0f;
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch(1, 1, 1);
 }
 
-static void luminance_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &graph,
+static void luminance_build_compute(Vulkan::CommandBuffer &cmd, const FrameParameters &frame,
+                                    RenderGraph &graph,
                                     const RenderBufferResource &lum, const RenderTextureResource &d3)
 {
 	auto &input = graph.get_physical_texture_resource(d3);
@@ -85,7 +88,7 @@ static void luminance_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &gra
 		float maximum;
 	} push;
 	push.size = uvec2(half_width, half_height);
-	push.lerp = 1.0f - pow(0.5f, GRANITE_COMMON_RENDERER_DATA()->frame_tick.frame_time);
+	push.lerp = float(1.0 - pow(0.5, frame.frame_time));
 	push.minimum = -3.0f;
 	push.maximum = 2.0f;
 	cmd.push_constants(&push, 0, sizeof(push));
@@ -138,7 +141,7 @@ static void bloom_threshold_build_compute(Vulkan::CommandBuffer &cmd, RenderGrap
 	cmd.dispatch((push.threads.x + 7) / 8, (push.threads.y + 7) / 8, 1);
 }
 
-static void bloom_downsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &graph,
+static void bloom_downsample_build_compute(Vulkan::CommandBuffer &cmd, const FrameParameters &frame, RenderGraph &graph,
                                            const RenderTextureResource &output_res, const RenderTextureResource &input_res,
                                            const RenderTextureResource *feedback)
 {
@@ -174,7 +177,7 @@ static void bloom_downsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGra
 	push.inv_output_resolution.y = 1.0f / float(push.threads.y);
 	push.inv_input_resolution.x = 1.0f / float(input.get_image().get_width());
 	push.inv_input_resolution.y = 1.0f / float(input.get_image().get_height());
-	float lerp = 1.0f - pow(0.001f, GRANITE_COMMON_RENDERER_DATA()->frame_tick.frame_time);
+	float lerp = float(1.0 - pow(0.001, frame.frame_time));
 	push.lerp = lerp;
 
 	cmd.push_constants(&push, 0, sizeof(push));
@@ -210,7 +213,8 @@ static void bloom_upsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph
 	cmd.dispatch((push.threads.x + 7) / 8, (push.threads.y + 7) / 8, 1);
 }
 
-static void bloom_downsample_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd,
+static void bloom_downsample_build_render_pass(RenderPass &pass, const FrameParameters &frame,
+                                               Vulkan::CommandBuffer &cmd,
                                                RenderTextureResource &input_res,
                                                RenderTextureResource *feedback_res,
                                                bool feedback)
@@ -232,7 +236,7 @@ static void bloom_downsample_build_render_pass(RenderPass &pass, Vulkan::Command
 			push.inv_size = vec2(1.0f / input.get_image().get_create_info().width,
 			                     1.0f / input.get_image().get_create_info().height);
 
-			float lerp = 1.0f - pow(0.001f, GRANITE_COMMON_RENDERER_DATA()->frame_tick.frame_time);
+			float lerp = float(1.0 - pow(0.001, frame.frame_time));
 			push.lerp = lerp;
 			cmd.push_constants(&push, 0, sizeof(push));
 
@@ -299,7 +303,8 @@ static void tonemap_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &c
 	                                                {{ "DYNAMIC_EXPOSURE", ubo ? 1 : 0 }});
 }
 
-void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input, const std::string &output,
+void setup_hdr_postprocess_compute(RenderGraph &graph, const FrameParameters &frame,
+                                   const std::string &input, const std::string &output,
                                    const HDROptions &options,
                                    const HDRDynamicExposureInterface *iface)
 {
@@ -348,20 +353,20 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 		bloom_threshold_build_compute(cmd, graph, t, hdr, ubo);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		bloom_downsample_build_compute(cmd, graph, d0, t, nullptr);
+		bloom_downsample_build_compute(cmd, frame, graph, d0, t, nullptr);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		bloom_downsample_build_compute(cmd, graph, d1, d0, nullptr);
+		bloom_downsample_build_compute(cmd, frame, graph, d1, d0, nullptr);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		bloom_downsample_build_compute(cmd, graph, d2, d1, nullptr);
+		bloom_downsample_build_compute(cmd, frame, graph, d2, d1, nullptr);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		bloom_downsample_build_compute(cmd, graph, d3, d2, &d3);
+		bloom_downsample_build_compute(cmd, frame, graph, d3, d2, &d3);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		if (ubo)
-			luminance_build_compute(cmd, graph, *ubo, d3);
+			luminance_build_compute(cmd, frame, graph, *ubo, d3);
 		bloom_upsample_build_compute(cmd, graph, u2, d3);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT);
@@ -392,7 +397,8 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 	}
 }
 
-void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const std::string &output,
+void setup_hdr_postprocess(RenderGraph &graph, const FrameParameters &frame,
+                           const std::string &input, const std::string &output,
                            const HDROptions &options,
                            const HDRDynamicExposureInterface *iface)
 {
@@ -412,7 +418,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 			auto &input_res = adapt_pass.add_texture_input("bloom-downsample-3");
 			adapt_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd)
 			                                 {
-				                                 luminance_build_render_pass(adapt_pass, cmd, input_res, output_res);
+				                                 luminance_build_render_pass(adapt_pass, frame, cmd, input_res, output_res);
 			                                 });
 		}
 	}
@@ -450,7 +456,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 		auto &input_res = blur0.add_texture_input("threshold");
 		blur0.set_build_render_pass([&](Vulkan::CommandBuffer &cmd)
 		                            {
-			                            bloom_downsample_build_render_pass(blur0, cmd, input_res, nullptr, false);
+			                            bloom_downsample_build_render_pass(blur0, frame, cmd, input_res, nullptr, false);
 		                            });
 	}
 
@@ -463,7 +469,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 		auto &input_res = blur1.add_texture_input("bloom-downsample-0");
 		blur1.set_build_render_pass([&](Vulkan::CommandBuffer &cmd)
 		                            {
-			                            bloom_downsample_build_render_pass(blur1, cmd, input_res, nullptr, false);
+			                            bloom_downsample_build_render_pass(blur1, frame, cmd, input_res, nullptr, false);
 		                            });
 	}
 
@@ -476,7 +482,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 		auto &input_res = blur2.add_texture_input("bloom-downsample-1");
 		blur2.set_build_render_pass([&](Vulkan::CommandBuffer &cmd)
 		                            {
-			                            bloom_downsample_build_render_pass(blur2, cmd, input_res, nullptr, false);
+			                            bloom_downsample_build_render_pass(blur2, frame, cmd, input_res, nullptr, false);
 		                            });
 	}
 
@@ -490,7 +496,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 		auto &feedback = blur3.add_history_input("bloom-downsample-3");
 		blur3.set_build_render_pass([&](Vulkan::CommandBuffer &cmd)
 		                            {
-			                            bloom_downsample_build_render_pass(blur3, cmd, input_res, &feedback, true);
+			                            bloom_downsample_build_render_pass(blur3, frame, cmd, input_res, &feedback, true);
 		                            });
 	}
 

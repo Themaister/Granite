@@ -52,29 +52,4 @@ public:
 private:
 	ApplicationLifecycle lifecycle;
 };
-
-class FrameTickEvent : public Granite::Event
-{
-public:
-	GRANITE_EVENT_TYPE_DECL(FrameTickEvent)
-
-	FrameTickEvent(double frame_time_, double elapsed_time_)
-		: frame_time(frame_time_), elapsed_time(elapsed_time_)
-	{
-	}
-
-	double get_frame_time() const
-	{
-		return frame_time;
-	}
-
-	double get_elapsed_time() const
-	{
-		return elapsed_time;
-	}
-
-private:
-	double frame_time;
-	double elapsed_time;
-};
 }

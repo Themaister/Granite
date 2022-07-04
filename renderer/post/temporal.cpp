@@ -432,8 +432,8 @@ void FSR2State::build_render_pass(Vulkan::CommandBuffer &cmd)
 	dispatch.enableSharpening = true;
 	dispatch.sharpness = 0.5f;
 	dispatch.preExposure = 0.0f; // Using AUTO
-	dispatch.reset = false; // FIXME: Not used atm.
-	dispatch.frameTimeDelta = 10.0f; // FIXME
+	dispatch.reset = render_context->get_frame_parameters().discontinuous_camera;
+	dispatch.frameTimeDelta = float(render_context->get_frame_parameters().frame_time * 1000.0);
 	dispatch.cameraFar = render_context->get_render_parameters().z_far;
 	dispatch.cameraNear = render_context->get_render_parameters().z_near;
 

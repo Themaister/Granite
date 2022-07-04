@@ -35,6 +35,13 @@ namespace Granite
 {
 class TemporalJitter;
 
+struct FrameParameters
+{
+	double frame_time = 0.0;
+	double elapsed_time = 0.0;
+	bool discontinuous_camera = false;
+};
+
 class RenderContext
 {
 public:
@@ -47,6 +54,7 @@ public:
 	void set_camera(const Camera &camera);
 	void set_shadow_cascades(const mat4 cascades[NumShadowCascades]);
 	void set_motion_vector_projections(const TemporalJitter &jitter);
+	void set_frame_parameters(const FrameParameters &frame);
 
 	const RenderParameters &get_render_parameters() const
 	{
@@ -68,6 +76,11 @@ public:
 		return frustum;
 	}
 
+	const FrameParameters &get_frame_parameters() const
+	{
+		return frame;
+	}
+
 	Vulkan::Device &get_device() const
 	{
 		return *device;
@@ -81,5 +94,6 @@ private:
 	const LightingParameters *lighting = nullptr;
 	RenderParameters camera;
 	Frustum frustum;
+	FrameParameters frame;
 };
 }

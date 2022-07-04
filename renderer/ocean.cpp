@@ -69,7 +69,6 @@ Ocean::Ocean(const OceanConfig &config_, Scene::NodeHandle node_)
 	}
 
 	EVENT_MANAGER_REGISTER_LATCH(Ocean, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
-	EVENT_MANAGER_REGISTER(Ocean, on_frame_tick, FrameTickEvent);
 }
 
 void Ocean::set_frequency_band_amplitude(unsigned band, float amplitude)
@@ -107,12 +106,6 @@ Ocean::Handles Ocean::add_to_scene(Scene &scene, const OceanConfig &config, Scen
 
 static constexpr double AnimationPeriod = 256.0;
 static constexpr double AnimationPeriodScaled = AnimationPeriod / (2.0 * muglm::pi<double>());
-
-bool Ocean::on_frame_tick(const Granite::FrameTickEvent &e)
-{
-	current_time = muglm::mod(e.get_elapsed_time(), AnimationPeriod);
-	return true;
-}
 
 void Ocean::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 {
@@ -453,7 +446,7 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 	};
 	Push push;
 	push.mod = vec2(2.0f * pi<float>()) / heightmap_world_size();
-	push.time = float(current_time);
+	push.time = float(muglm::mod(context->get_frame_parameters().elapsed_time, AnimationPeriod));
 	push.period = float(AnimationPeriodScaled);
 	push.freq_to_band_mod = (float(FrequencyBands - 1) * 2.0f) / float(config.fft_resolution);
 

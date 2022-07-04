@@ -1154,9 +1154,15 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 		opts.dynamic_exposure = config.hdr_bloom_dynamic_exposure;
 
 		if (ImplementationQuirks::get().use_async_compute_post)
-			setup_hdr_postprocess_compute(graph, resolved ? "HDR-resolved" : light_output, "tonemapped", opts);
+		{
+			setup_hdr_postprocess_compute(graph, context.get_frame_parameters(),
+			                              resolved ? "HDR-resolved" : light_output, "tonemapped", opts);
+		}
 		else
-			setup_hdr_postprocess(graph, resolved ? "HDR-resolved" : light_output, "tonemapped", opts);
+		{
+			setup_hdr_postprocess(graph, context.get_frame_parameters(),
+			                      resolved ? "HDR-resolved" : light_output, "tonemapped", opts);
+		}
 	}
 
 	if (setup_after_post_chain_antialiasing(config.postaa_type, graph, jitter, config.resolution_scale,
@@ -1413,6 +1419,11 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	TaskComposer composer(*GRANITE_THREAD_GROUP());
 
 	Util::TimelineTraceFile::Event *e = nullptr;
+
+	FrameParameters frame;
+	frame.elapsed_time = elapsed_time;
+	frame.frame_time = frame_time;
+	context.set_frame_parameters(frame);
 
 	// Set up handles before we kick of task graph.
 	auto &device = get_wsi().get_device();

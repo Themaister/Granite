@@ -30,7 +30,6 @@
 
 namespace Granite
 {
-class FrameTickEvent;
 class ImportedMesh : public StaticMesh, public EventHandler
 {
 public:
@@ -321,10 +320,8 @@ private:
 	float scale_x = 1.0f;
 	float scale_y = 1.0f;
 
-	double elapsed = 0.0f;
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
-	bool on_frame_time(const FrameTickEvent &e);
 
 	std::string reflection_name;
 	std::string refraction_name;

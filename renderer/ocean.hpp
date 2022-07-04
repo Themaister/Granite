@@ -113,7 +113,6 @@ private:
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
-	bool on_frame_tick(const FrameTickEvent &e);
 	FFT height_fft;
 	FFT normal_fft;
 	FFT displacement_fft;
@@ -187,7 +186,6 @@ private:
 	void generate_mipmaps(Vulkan::CommandBuffer &cmd);
 
 	vec3 last_camera_position = vec3(0.0f);
-	double current_time = 0.0;
 
 	vec2 wind_direction;
 	float phillips_L;

@@ -73,11 +73,8 @@ void GraniteWSIPlatform::event_swapchain_index(Vulkan::Device *device, unsigned 
 	}
 }
 
-void GraniteWSIPlatform::event_frame_tick(double frame, double elapsed)
+void GraniteWSIPlatform::event_frame_tick(double, double)
 {
-	auto *em = GRANITE_EVENT_MANAGER();
-	if (em)
-		em->dispatch_inline(FrameTickEvent{frame, elapsed});
 }
 
 void GraniteWSIPlatform::event_display_timing_stutter(uint32_t current_serial, uint32_t observed_serial,

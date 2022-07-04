@@ -1251,13 +1251,6 @@ TexturePlane::TexturePlane(const std::string &normal_)
 	: normal_path(normal_)
 {
 	EVENT_MANAGER_REGISTER_LATCH(TexturePlane, on_device_created, on_device_destroyed, DeviceCreatedEvent);
-	EVENT_MANAGER_REGISTER(TexturePlane, on_frame_time, FrameTickEvent);
-}
-
-bool TexturePlane::on_frame_time(const FrameTickEvent &tick)
-{
-	elapsed = tick.get_elapsed_time();
-	return true;
 }
 
 void TexturePlane::on_device_created(const DeviceCreatedEvent &created)
@@ -1473,7 +1466,7 @@ void TexturePlane::get_render_info(const RenderContext &context_, const RenderIn
 	info.push.dPdy = vec4(dpdy, 0.0f);
 	info.push.tangent = vec4(normalize(dpdx), 0.0f);
 	info.push.bitangent = vec4(normalize(dpdy), 0.0f);
-	info.push.offset_scale = vec4(vec2(0.03 * elapsed), vec2(2.0f));
+	info.push.offset_scale = vec4(vec2(0.03 * base_context->get_frame_parameters().elapsed_time), vec2(2.0f));
 	info.push.base_emissive = vec4(base_emissive, 0.0f);
 
 	Hasher h;

@@ -36,16 +36,6 @@ class Texture;
 
 namespace Granite
 {
-class PersistentFrameEvent : public EventHandler
-{
-public:
-	PersistentFrameEvent();
-	float frame_time = 0.0f;
-
-private:
-	bool on_frame_time(const FrameTickEvent &tick);
-};
-
 class LightMesh : public EventHandler
 {
 public:
@@ -83,7 +73,6 @@ class CommonRendererData final : public CommonRendererDataInterface
 {
 public:
 	LightMesh light_mesh;
-	PersistentFrameEvent frame_tick;
 	BRDFTables brdf_tables;
 };
 }

@@ -1103,6 +1103,10 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	ssao_output = nullptr;
 
 	graph.reset();
+
+	// Reclaims memory released by graph.reset(), before we bake and start allocating more.
+	swap.get_device().wait_idle();
+
 	graph.set_device(&swap.get_device());
 
 	swap.get_device().configure_default_geometry_samplers(8.0f, config.lod_bias);

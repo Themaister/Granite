@@ -46,6 +46,11 @@ void WSIPlatform::set_window_title(const std::string &)
 {
 }
 
+void WSIPlatform::destroy_surface(VkInstance instance, VkSurfaceKHR surface)
+{
+	vkDestroySurfaceKHR(instance, surface, nullptr);
+}
+
 uintptr_t WSIPlatform::get_fullscreen_monitor()
 {
 	return 0;
@@ -294,8 +299,10 @@ void WSI::deinit_surface_and_swapchain()
 	tear_down_swapchain();
 
 	if (surface != VK_NULL_HANDLE)
-		vkDestroySurfaceKHR(context->get_instance(), surface, nullptr);
-	surface = VK_NULL_HANDLE;
+	{
+		platform->destroy_surface(context->get_instance(), surface);
+		surface = VK_NULL_HANDLE;
+	}
 
 	platform->event_swapchain_destroyed();
 }
@@ -676,7 +683,7 @@ void WSI::teardown()
 
 	if (surface != VK_NULL_HANDLE)
 	{
-		vkDestroySurfaceKHR(context->get_instance(), surface, nullptr);
+		platform->destroy_surface(context->get_instance(), surface);
 		surface = VK_NULL_HANDLE;
 	}
 

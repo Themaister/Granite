@@ -41,6 +41,8 @@ public:
 	virtual ~WSIPlatform() = default;
 
 	virtual VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice gpu) = 0;
+	// This is virtual so that application can hold ownership over the surface handle, for e.g. Qt interop.
+	virtual void destroy_surface(VkInstance instance, VkSurfaceKHR surface);
 	virtual std::vector<const char *> get_instance_extensions() = 0;
 	virtual std::vector<const char *> get_device_extensions()
 	{

@@ -193,13 +193,6 @@ bool setup_before_post_chain_antialiasing(PostAAType type, RenderGraph &graph, T
                                           const std::string &input_mv,
                                           const std::string &output)
 {
-	if (type == PostAAType::TAA_FSR2 && scaling_factor >= 1.0f)
-	{
-		// TODO: Not sure if it even makes sense to use 1:1 FSR.
-		LOGW("Trying to use FSR2, but scaling factor is >= 1.0f. Using normal TAA instead.\n");
-		type = PostAAType::TAA_High;
-	}
-
 	if (type == PostAAType::TAA_FSR2)
 	{
 		setup_fsr2_pass(graph, jitter, context, scaling_factor, input, input_depth, input_mv, output);

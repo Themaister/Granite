@@ -75,7 +75,10 @@ void Device::register_render_pass(VkRenderPass render_pass, Fossilize::Hash hash
 bool Device::enqueue_create_shader_module(Fossilize::Hash hash, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
 {
 	if (!replayer_state.feature_filter->shader_module_is_supported(create_info))
-		return false;
+	{
+		*module = VK_NULL_HANDLE;
+		return true;
+	}
 
 	ResourceLayout layout;
 	Shader *ret;
@@ -200,8 +203,26 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash,
                                               const VkGraphicsPipelineCreateInfo *create_info,
                                               VkPipeline *pipeline)
 {
+	for (uint32_t i = 0; i < create_info->stageCount; i++)
+	{
+		if (create_info->pStages[i].module == VK_NULL_HANDLE)
+		{
+			*pipeline = VK_NULL_HANDLE;
+			return true;
+		}
+	}
+
+	if (create_info->renderPass == VK_NULL_HANDLE)
+	{
+		*pipeline = VK_NULL_HANDLE;
+		return true;
+	}
+
 	if (!replayer_state.feature_filter->graphics_pipeline_is_supported(create_info))
-		return false;
+	{
+		*pipeline = VK_NULL_HANDLE;
+		return true;
+	}
 
 #ifdef GRANITE_VULKAN_MT
 	if (!replayer_state.pipeline_group && get_system_handles().thread_group)
@@ -231,8 +252,17 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash,
                                              const VkComputePipelineCreateInfo *create_info,
                                              VkPipeline *pipeline)
 {
+	if (create_info->stage.module == VK_NULL_HANDLE)
+	{
+		*pipeline = VK_NULL_HANDLE;
+		return true;
+	}
+
 	if (!replayer_state.feature_filter->compute_pipeline_is_supported(create_info))
-		return false;
+	{
+		*pipeline = VK_NULL_HANDLE;
+		return true;
+	}
 
 #ifdef GRANITE_VULKAN_MT
 	if (!replayer_state.pipeline_group && get_system_handles().thread_group)
@@ -263,7 +293,10 @@ bool Device::enqueue_create_render_pass(Fossilize::Hash hash,
                                         VkRenderPass *render_pass)
 {
 	if (!replayer_state.feature_filter->render_pass_is_supported(create_info))
-		return false;
+	{
+		*render_pass = VK_NULL_HANDLE;
+		return true;
+	}
 
 	auto *ret = render_passes.emplace_yield(hash, hash, this, *create_info);
 	*render_pass = ret->get_render_pass();

@@ -78,11 +78,6 @@ public:
 		return ret;
 	}
 
-	bool can_recycle() const
-	{
-		return !should_destroy_on_consume;
-	}
-
 	void wait_external()
 	{
 		VK_ASSERT(semaphore);
@@ -97,20 +92,32 @@ public:
 		signalled = true;
 	}
 
-	void destroy_on_consume()
+	void set_pending_wait()
 	{
-		should_destroy_on_consume = true;
-	}
-
-	void signal_pending_wait()
-	{
-		pending = true;
+		pending_wait = true;
 	}
 
 	bool is_pending_wait() const
 	{
-		return pending;
+		return pending_wait;
 	}
+
+	void set_external_object_compatible()
+	{
+		external_compatible = true;
+	}
+
+	bool is_external_object_compatible() const
+	{
+		return external_compatible;
+	}
+
+	// If successful, importing takes ownership of the handle/fd.
+	// Application can use dup() / DuplicateHandle() to keep a reference.
+	// Imported semaphores are assumed to be signalled, or pending to be signalled.
+	// All imports are performed with TEMPORARY permanence.
+	ExternalHandle export_to_opaque_handle();
+	bool import_from_opaque_handle(ExternalHandle handle);
 
 	SemaphoreHolder &operator=(SemaphoreHolder &&other) noexcept;
 
@@ -141,8 +148,8 @@ private:
 	VkSemaphore semaphore = VK_NULL_HANDLE;
 	uint64_t timeline = 0;
 	bool signalled = true;
-	bool pending = false;
-	bool should_destroy_on_consume = false;
+	bool pending_wait = false;
+	bool external_compatible = false;
 };
 
 using Semaphore = Util::IntrusivePtr<SemaphoreHolder>;

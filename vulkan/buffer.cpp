@@ -34,6 +34,11 @@ Buffer::Buffer(Device *device_, VkBuffer buffer_, const DeviceAllocation &alloc_
 {
 }
 
+ExternalHandle Buffer::export_handle()
+{
+	return alloc.export_handle(*device);
+}
+
 Buffer::~Buffer()
 {
 	if (internal_sync)

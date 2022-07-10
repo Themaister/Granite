@@ -81,7 +81,8 @@ enum class BufferDomain
 
 enum BufferMiscFlagBits
 {
-	BUFFER_MISC_ZERO_INITIALIZE_BIT = 1 << 0
+	BUFFER_MISC_ZERO_INITIALIZE_BIT = 1 << 0,
+	BUFFER_MISC_EXTERNAL_MEMORY_BIT = 1 << 1
 };
 
 using BufferMiscFlags = uint32_t;
@@ -92,6 +93,7 @@ struct BufferCreateInfo
 	VkDeviceSize size = 0;
 	VkBufferUsageFlags usage = 0;
 	BufferMiscFlags misc = 0;
+	ExternalHandle external;
 };
 
 class Buffer;
@@ -132,6 +134,8 @@ public:
 	{
 		return alloc;
 	}
+
+	ExternalHandle export_handle();
 
 private:
 	friend class Util::ObjectPool<Buffer>;

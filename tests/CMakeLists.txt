@@ -151,3 +151,4 @@ if (GRANITE_FFMPEG)
 endif()
 
 add_granite_offline_tool(linkage-test linkage_test.cpp)
+add_granite_offline_tool(external-objects external_objects.cpp)

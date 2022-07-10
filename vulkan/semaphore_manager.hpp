@@ -34,12 +34,17 @@ public:
 	void init(Device *device);
 	~SemaphoreManager();
 
-	VkSemaphore request_cleared_semaphore();
-	void recycle(VkSemaphore semaphore);
+	VkSemaphore request_cleared_semaphore(bool external);
+	void recycle(VkSemaphore semaphore, bool external);
 
 private:
 	Device *device = nullptr;
 	const VolkDeviceTable *table = nullptr;
 	std::vector<VkSemaphore> semaphores;
+	std::vector<VkSemaphore> semaphores_external;
+
+	VkExternalSemaphoreHandleTypeFlags importable_types = 0;
+	VkExternalSemaphoreHandleTypeFlags exportable_types = 0;
+	void test_external_semaphore_handle_type(VkExternalSemaphoreHandleTypeFlagBits handle_type);
 };
 }

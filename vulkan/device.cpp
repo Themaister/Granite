@@ -100,11 +100,22 @@ Device::Device()
 #endif
 }
 
-Semaphore Device::request_legacy_semaphore()
+Semaphore Device::request_binary_semaphore()
 {
 	LOCK();
-	auto semaphore = managers.semaphore.request_cleared_semaphore();
+	auto semaphore = managers.semaphore.request_cleared_semaphore(false);
 	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, false));
+	return ptr;
+}
+
+Semaphore Device::request_binary_semaphore_external()
+{
+	LOCK();
+	auto semaphore = managers.semaphore.request_cleared_semaphore(true);
+	if (!semaphore)
+		return Semaphore{};
+	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, false));
+	ptr->set_external_object_compatible();
 	return ptr;
 }
 
@@ -114,47 +125,6 @@ Semaphore Device::request_proxy_semaphore()
 	Semaphore ptr(handle_pool.semaphores.allocate(this));
 	return ptr;
 }
-
-Semaphore Device::request_external_semaphore(VkSemaphore semaphore, bool signalled)
-{
-	LOCK();
-	VK_ASSERT(semaphore);
-	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, signalled));
-	return ptr;
-}
-
-#ifndef _WIN32
-Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBits handle_type)
-{
-	LOCK();
-	if (!ext.supports_external)
-		return {};
-
-	VkExternalSemaphoreProperties props = { VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES };
-	VkPhysicalDeviceExternalSemaphoreInfo info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO };
-	info.handleType = handle_type;
-
-	vkGetPhysicalDeviceExternalSemaphoreProperties(gpu, &info, &props);
-	if ((props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT) == 0)
-		return Semaphore(nullptr);
-
-	auto semaphore = managers.semaphore.request_cleared_semaphore();
-
-	VkImportSemaphoreFdInfoKHR import = { VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR };
-	import.fd = fd;
-	import.semaphore = semaphore;
-	import.handleType = handle_type;
-	import.flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT;
-	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, false));
-
-	if (table->vkImportSemaphoreFdKHR(device, &import) != VK_SUCCESS)
-		return Semaphore(nullptr);
-
-	ptr->signal_external();
-	ptr->destroy_on_consume();
-	return ptr;
-}
-#endif
 
 void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush)
 {
@@ -175,7 +145,7 @@ void Device::add_wait_semaphore_nolock(QueueIndices physical_type, Semaphore sem
 		VK_ASSERT(sem.get() != semaphore.get());
 #endif
 
-	semaphore->signal_pending_wait();
+	semaphore->set_pending_wait();
 	data.wait_semaphores.push_back(semaphore);
 	data.wait_stages.push_back(stages);
 	data.need_fence = true;
@@ -1089,7 +1059,7 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	{
 		LOGI("Submitting profiled command buffer, draining GPU.\n");
 		Fence drain_fence;
-		submit_empty_nolock(physical_type, &drain_fence, 0, nullptr, -1);
+		submit_empty_nolock(physical_type, &drain_fence, nullptr, -1);
 		drain_fence->wait();
 		drain_fence->set_internal_sync_object();
 	}
@@ -1102,6 +1072,7 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	if (fence || semaphore_count)
 	{
 		submit_queue(physical_type, fence ? &signalled_fence : nullptr,
+		             nullptr,
 		             semaphore_count, semaphores,
 		             profiled_submit ? 0 : -1);
 	}
@@ -1121,7 +1092,7 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 		LOGI("Submitted profiled command buffer, draining GPU and report ...\n");
 		auto &query_pool = get_performance_query_pool(physical_type);
 		Fence drain_fence;
-		submit_empty_nolock(physical_type, &drain_fence, 0, nullptr, fence || semaphore_count ? -1 : 0);
+		submit_empty_nolock(physical_type, &drain_fence, nullptr, fence || semaphore_count ? -1 : 0);
 		drain_fence->wait();
 		drain_fence->set_internal_sync_object();
 		query_pool.report();
@@ -1130,21 +1101,23 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	decrement_frame_counter_nolock();
 }
 
-void Device::submit_empty(CommandBuffer::Type type, Fence *fence,
-                          unsigned semaphore_count, Semaphore *semaphores)
+void Device::submit_empty(CommandBuffer::Type type, Fence *fence, SemaphoreHolder *semaphore)
 {
 	LOCK();
-	submit_empty_nolock(get_physical_queue_type(type), fence, semaphore_count, semaphores, -1);
+	submit_empty_nolock(get_physical_queue_type(type), fence, semaphore, -1);
 }
 
 void Device::submit_empty_nolock(QueueIndices physical_type, Fence *fence,
-                                 unsigned semaphore_count, Semaphore *semaphores, int profiling_iteration)
+                                 SemaphoreHolder *semaphore, int profiling_iteration)
 {
 	if (physical_type != QUEUE_INDEX_TRANSFER)
 		flush_frame(QUEUE_INDEX_TRANSFER);
 
 	InternalFence signalled_fence;
-	submit_queue(physical_type, fence ? &signalled_fence : nullptr, semaphore_count, semaphores, profiling_iteration);
+
+	submit_queue(physical_type, fence ? &signalled_fence : nullptr, semaphore,
+	             0, nullptr, profiling_iteration);
+
 	if (fence)
 	{
 		if (signalled_fence.value)
@@ -1155,6 +1128,7 @@ void Device::submit_empty_nolock(QueueIndices physical_type, Fence *fence,
 }
 
 void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence,
+                                SemaphoreHolder *external_semaphore,
                                 unsigned semaphore_count, Semaphore *semaphores)
 {
 	auto &data = queue_data[physical_type];
@@ -1168,7 +1142,9 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 	Helper::BatchComposer composer(get_workarounds().split_binary_timeline_semaphores);
 	collect_wait_semaphores(data, wait_semaphores);
 	composer.add_wait_submissions(wait_semaphores);
-	emit_queue_signals(composer, timeline_semaphore, timeline_value,
+
+	emit_queue_signals(composer, external_semaphore,
+	                   timeline_semaphore, timeline_value,
 	                   fence, semaphore_count, semaphores);
 
 	VkFence cleared_fence = fence && !ext.timeline_semaphore_features.timelineSemaphore ?
@@ -1295,10 +1271,10 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 		}
 		else
 		{
-			if (semaphore->can_recycle())
-				frame().recycled_semaphores.push_back(vk_semaphore);
+			if (semaphore->is_external_object_compatible())
+				frame().recycled_external_semaphores.push_back(vk_semaphore);
 			else
-				frame().destroyed_semaphores.push_back(vk_semaphore);
+				frame().recycled_semaphores.push_back(vk_semaphore);
 
 			sem.binary_waits.push_back(vk_semaphore);
 			sem.binary_wait_stages.push_back(data.wait_stages[i]);
@@ -1487,9 +1463,21 @@ void Helper::BatchComposer::add_wait_semaphore(SemaphoreHolder &sem, VkPipelineS
 }
 
 void Device::emit_queue_signals(Helper::BatchComposer &composer,
+                                SemaphoreHolder *external_semaphore,
                                 VkSemaphore sem, uint64_t timeline, InternalFence *fence,
                                 unsigned semaphore_count, Semaphore *semaphores)
 {
+	if (external_semaphore)
+	{
+		VK_ASSERT(!external_semaphore->is_signalled());
+		VK_ASSERT(!external_semaphore->get_timeline_value());
+		VK_ASSERT(external_semaphore->get_semaphore());
+		external_semaphore->signal_external();
+		composer.add_signal_semaphore(external_semaphore->get_semaphore(), 0);
+		// Make sure we observe that the external semaphore is signalled before fences are signalled.
+		composer.begin_batch();
+	}
+
 	// Add external signal semaphores.
 	if (ext.timeline_semaphore_features.timelineSemaphore)
 	{
@@ -1519,7 +1507,7 @@ void Device::emit_queue_signals(Helper::BatchComposer &composer,
 
 		for (unsigned i = 0; i < semaphore_count; i++)
 		{
-			VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore();
+			VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore(false);
 			composer.add_signal_semaphore(cleared_semaphore, 0);
 			VK_ASSERT(!semaphores[i]);
 			semaphores[i] = Semaphore(handle_pool.semaphores.allocate(this, cleared_semaphore, true));
@@ -1556,6 +1544,7 @@ VkResult Device::submit_batches(Helper::BatchComposer &composer, VkQueue queue, 
 }
 
 void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
+                          SemaphoreHolder *external_semaphore,
                           unsigned semaphore_count, Semaphore *semaphores, int profiling_iteration)
 {
 	// Always check if we need to flush pending transfers.
@@ -1568,7 +1557,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 	if (submissions.empty())
 	{
 		if (fence || semaphore_count)
-			submit_empty_inner(physical_type, fence, semaphore_count, semaphores);
+			submit_empty_inner(physical_type, fence, external_semaphore, semaphore_count, semaphores);
 		return;
 	}
 
@@ -1603,10 +1592,10 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 				composer.add_wait_semaphore(*wsi.acquire, wsi_stages);
 				if (!wsi.acquire->get_timeline_value())
 				{
-					if (wsi.acquire->can_recycle())
-						frame().recycled_semaphores.push_back(wsi.acquire->get_semaphore());
+					if (wsi.acquire->is_external_object_compatible())
+						frame().recycled_external_semaphores.push_back(wsi.acquire->get_semaphore());
 					else
-						frame().destroyed_semaphores.push_back(wsi.acquire->get_semaphore());
+						frame().recycled_semaphores.push_back(wsi.acquire->get_semaphore());
 				}
 				wsi.acquire->consume();
 				wsi.acquire.reset();
@@ -1614,7 +1603,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 
 			composer.add_command_buffer(cmd->get_command_buffer());
 
-			VkSemaphore release = managers.semaphore.request_cleared_semaphore();
+			VkSemaphore release = managers.semaphore.request_cleared_semaphore(false);
 			wsi.release = Semaphore(handle_pool.semaphores.allocate(this, release, true));
 			wsi.release->set_internal_sync_object();
 			composer.add_signal_semaphore(release, 0);
@@ -1637,7 +1626,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 	if (fence)
 		fence->fence = cleared_fence;
 
-	emit_queue_signals(composer, timeline_semaphore, timeline_value,
+	emit_queue_signals(composer, external_semaphore, timeline_semaphore, timeline_value,
 	                   fence, semaphore_count, semaphores);
 
 	auto start_ts = write_calibrated_timestamp_nolock();
@@ -1662,7 +1651,7 @@ void Device::flush_frame(QueueIndices physical_type)
 
 	if (physical_type == QUEUE_INDEX_TRANSFER)
 		sync_buffer_blocks();
-	submit_queue(physical_type, nullptr, 0, nullptr);
+	submit_queue(physical_type, nullptr);
 }
 
 void Device::sync_buffer_blocks()
@@ -1731,7 +1720,7 @@ void Device::end_frame_nolock()
 	{
 		if (queue_data[i].need_fence || !frame().submissions[i].empty())
 		{
-			submit_queue(i, &fence, 0, nullptr);
+			submit_queue(i, &fence);
 			if (fence.fence != VK_NULL_HANDLE)
 			{
 				frame().wait_fences.push_back(fence.fence);
@@ -2141,6 +2130,12 @@ void Device::recycle_semaphore(VkSemaphore semaphore)
 	recycle_semaphore_nolock(semaphore);
 }
 
+void Device::recycle_external_semaphore(VkSemaphore semaphore)
+{
+	LOCK();
+	recycle_external_semaphore_nolock(semaphore);
+}
+
 void Device::free_memory(const DeviceAllocation &alloc)
 {
 	LOCK();
@@ -2187,6 +2182,12 @@ void Device::recycle_semaphore_nolock(VkSemaphore semaphore)
 {
 	VK_ASSERT(!exists(frame().recycled_semaphores, semaphore));
 	frame().recycled_semaphores.push_back(semaphore);
+}
+
+void Device::recycle_external_semaphore_nolock(VkSemaphore semaphore)
+{
+	VK_ASSERT(!exists(frame().recycled_external_semaphores, semaphore));
+	frame().recycled_external_semaphores.push_back(semaphore);
 }
 
 void Device::destroy_event_nolock(VkEvent event)
@@ -2665,7 +2666,9 @@ void Device::PerFrame::begin()
 	for (auto &pool : destroyed_descriptor_pools)
 		table.vkDestroyDescriptorPool(vkdevice, pool, nullptr);
 	for (auto &semaphore : recycled_semaphores)
-		managers.semaphore.recycle(semaphore);
+		managers.semaphore.recycle(semaphore, false);
+	for (auto &semaphore : recycled_external_semaphores)
+		managers.semaphore.recycle(semaphore, true);
 	for (auto &event : recycled_events)
 		managers.event.recycle(event);
 	for (auto &alloc : allocations)
@@ -2681,6 +2684,7 @@ void Device::PerFrame::begin()
 	destroyed_semaphores.clear();
 	destroyed_descriptor_pools.clear();
 	recycled_semaphores.clear();
+	recycled_external_semaphores.clear();
 	recycled_events.clear();
 	allocations.clear();
 
@@ -3255,99 +3259,6 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 		return ImageViewHandle(nullptr);
 }
 
-#ifndef _WIN32
-ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t memory_type,
-                                          VkExternalMemoryHandleTypeFlagBits handle_type,
-                                          const ImageCreateInfo &create_info)
-{
-	if (!ext.supports_external)
-		return {};
-
-	ImageResourceHolder holder(this);
-
-	VkImageCreateInfo info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-	info.format = create_info.format;
-	info.extent.width = create_info.width;
-	info.extent.height = create_info.height;
-	info.extent.depth = create_info.depth;
-	info.imageType = create_info.type;
-	info.mipLevels = create_info.levels;
-	info.arrayLayers = create_info.layers;
-	info.samples = create_info.samples;
-	info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	info.tiling = VK_IMAGE_TILING_OPTIMAL;
-	info.usage = create_info.usage;
-	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	info.flags = create_info.flags;
-	info.pNext = create_info.pnext;
-	VK_ASSERT(create_info.domain != ImageDomain::Transient);
-
-	VkExternalMemoryImageCreateInfo externalInfo = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO };
-	externalInfo.handleTypes = handle_type;
-	externalInfo.pNext = info.pNext;
-	info.pNext = &externalInfo;
-
-	VK_ASSERT(image_format_is_supported(create_info.format, image_usage_to_features(info.usage), info.tiling));
-
-	if (table->vkCreateImage(device, &info, nullptr, &holder.image) != VK_SUCCESS)
-		return ImageHandle(nullptr);
-
-	VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-	alloc_info.allocationSize = size;
-	alloc_info.memoryTypeIndex = memory_type;
-
-	VkMemoryDedicatedAllocateInfo dedicated_info = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO };
-	dedicated_info.image = holder.image;
-	alloc_info.pNext = &dedicated_info;
-
-	VkImportMemoryFdInfoKHR fd_info = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR };
-	fd_info.handleType = handle_type;
-	fd_info.fd = fd;
-	dedicated_info.pNext = &fd_info;
-
-	VkMemoryRequirements reqs;
-	table->vkGetImageMemoryRequirements(device, holder.image, &reqs);
-	if (reqs.size > size)
-		return ImageHandle(nullptr);
-
-	if (((1u << memory_type) & reqs.memoryTypeBits) == 0)
-		return ImageHandle(nullptr);
-
-	if (table->vkAllocateMemory(device, &alloc_info, nullptr, &holder.memory) != VK_SUCCESS)
-		return ImageHandle(nullptr);
-
-	if (table->vkBindImageMemory(device, holder.image, holder.memory, 0) != VK_SUCCESS)
-		return ImageHandle(nullptr);
-
-	// Create default image views.
-	// App could of course to this on its own, but it's very handy to have these being created automatically for you.
-	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
-	if (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-	                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
-	{
-		if (!holder.create_default_views(create_info, nullptr))
-			return ImageHandle(nullptr);
-		view_type = holder.get_default_view_type();
-	}
-
-	auto allocation = DeviceAllocation::make_imported_allocation(holder.memory, size, memory_type);
-	ImageHandle handle(handle_pool.images.allocate(this, holder.image, holder.image_view, allocation, create_info, view_type));
-	if (handle)
-	{
-		holder.owned = false;
-		handle->get_view().set_alt_views(holder.depth_view, holder.stencil_view);
-		handle->get_view().set_render_target_views(move(holder.rt_views));
-
-		// Set possible dstStage and dstAccess.
-		handle->set_stage_flags(image_usage_to_possible_stages(info.usage));
-		handle->set_access_flags(image_usage_to_possible_access(info.usage));
-		return handle;
-	}
-	else
-		return ImageHandle(nullptr);
-}
-#endif
-
 InitialImageBuffer Device::create_image_staging_buffer(const TextureFormatLayout &layout)
 {
 	InitialImageBuffer result;
@@ -3461,8 +3372,11 @@ DeviceAllocationOwnerHandle Device::allocate_memory(const MemoryAllocateInfo &in
 		return {};
 
 	DeviceAllocation alloc = {};
-	if (!managers.memory.allocate(info.requirements.size, info.requirements.alignment, info.mode, index, &alloc))
+	if (!managers.memory.allocate_generic_memory(info.requirements.size, info.requirements.alignment,
+	                                             info.mode, index, &alloc))
+	{
 		return {};
+	}
 	return DeviceAllocationOwnerHandle(handle_pool.allocations.allocate(this, alloc));
 }
 
@@ -3488,6 +3402,19 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 	if ((info.flags & VK_IMAGE_CREATE_DISJOINT_BIT) != 0 && info.num_memory_aliases == 0)
 	{
 		LOGE("Must use memory aliases when creating a DISJOINT planar image.\n");
+		return false;
+	}
+
+	bool use_external = (info.misc & IMAGE_MISC_EXTERNAL_MEMORY_BIT) != 0;
+	if (use_external && info.num_memory_aliases != 0)
+	{
+		LOGE("Cannot use external and memory aliases at the same time.\n");
+		return false;
+	}
+
+	if (use_external && tiling == VK_IMAGE_TILING_LINEAR)
+	{
+		LOGE("Cannot use linear tiling with external memory.\n");
 		return false;
 	}
 
@@ -3584,16 +3511,20 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 				return false;
 		}
 
+		ExternalHandle external = info.external;
+
 		AllocationMode mode;
-		if (tiling == VK_IMAGE_TILING_OPTIMAL &&
-		    (info.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT)) != 0)
+		if (use_external)
+			mode = AllocationMode::External;
+		else if (tiling == VK_IMAGE_TILING_OPTIMAL &&
+		         (info.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT)) != 0)
 			mode = AllocationMode::OptimalRenderTarget;
 		else
 			mode = tiling == VK_IMAGE_TILING_OPTIMAL ? AllocationMode::OptimalResource : AllocationMode::LinearHostMappable;
 
 		if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, mode, memory_type,
-		                                           allocation, image,
-		                                           (info.misc & IMAGE_MISC_FORCE_NO_DEDICATED_BIT) != 0))
+		                                           image, (info.misc & IMAGE_MISC_FORCE_NO_DEDICATED_BIT) != 0,
+		                                           allocation, use_external ? &external : nullptr))
 		{
 			LOGE("Failed to allocate image memory (type %u, size: %u).\n", unsigned(memory_type), unsigned(reqs.size));
 			return false;
@@ -3752,7 +3683,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			return ImageHandle(nullptr);
 
 		VkImageFormatProperties2 props = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2 };
-		if (!get_image_format_properties(info.format, info.imageType, info.tiling, info.usage, info.flags, &props))
+		if (!get_image_format_properties(info.format, info.imageType, info.tiling, info.usage, info.flags, nullptr, &props))
 			return ImageHandle(nullptr);
 
 		if (!props.imageFormatProperties.maxArrayLayers ||
@@ -3770,6 +3701,63 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	{
 		LOGE("Format %u is not supported for usage flags!\n", unsigned(create_info.format));
 		return ImageHandle(nullptr);
+	}
+
+	bool use_external = (create_info.misc & IMAGE_MISC_EXTERNAL_MEMORY_BIT) != 0;
+	if (use_external && create_info.domain != ImageDomain::Physical)
+	{
+		LOGE("Must use physical image domain for external memory images.\n");
+		return ImageHandle(nullptr);
+	}
+
+	if (use_external && !ext.supports_external)
+	{
+		LOGE("External memory not supported.\n");
+		return ImageHandle(nullptr);
+	}
+
+	VkExternalMemoryImageCreateInfo external_info = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO };
+	if (ext.supports_external && use_external)
+	{
+		// Ensure that the handle type is supported.
+		VkImageFormatProperties2 props2 = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2 };
+		VkExternalImageFormatProperties external_props =
+		    { VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES };
+		VkPhysicalDeviceExternalImageFormatInfo external_format_info =
+		    { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO };
+		external_format_info.handleType = create_info.external.memory_handle_type;
+
+		props2.pNext = &external_props;
+		if (!get_image_format_properties(info.format, info.imageType, info.tiling,
+		                                 info.usage, info.flags,
+		                                 &external_format_info, &props2))
+		{
+			LOGE("Image format is not supported for external memory type #%x.\n",
+			     external_format_info.handleType);
+			return ImageHandle(nullptr);
+		}
+
+		bool supports_import = (external_props.externalMemoryProperties.externalMemoryFeatures &
+		                        VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) != 0;
+		bool supports_export = (external_props.externalMemoryProperties.externalMemoryFeatures &
+		                        VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT) != 0;
+
+		if (!supports_import && !create_info.external)
+		{
+			LOGE("Attempting to import with handle type #%x, but it is not supported.\n",
+			     create_info.external.memory_handle_type);
+			return ImageHandle(nullptr);
+		}
+		else if (!supports_export && create_info.external)
+		{
+			LOGE("Attempting to export with handle type #%x, but it is not supported.\n",
+			     create_info.external.memory_handle_type);
+			return ImageHandle(nullptr);
+		}
+
+		external_info.handleTypes = create_info.external.memory_handle_type;
+		external_info.pNext = info.pNext;
+		info.pNext = &external_info;
 	}
 
 	if (table->vkCreateImage(device, &info, nullptr, &holder.image) != VK_SUCCESS)
@@ -4223,14 +4211,20 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 
 BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const void *initial)
 {
-	VkBuffer buffer;
-	VkMemoryRequirements reqs;
 	DeviceAllocation allocation;
+	VkBuffer buffer;
 
 	bool zero_initialize = (create_info.misc & BUFFER_MISC_ZERO_INITIALIZE_BIT) != 0;
+	bool use_external = (create_info.misc & BUFFER_MISC_EXTERNAL_MEMORY_BIT) != 0;
 	if (initial && zero_initialize)
 	{
 		LOGE("Cannot initialize buffer with data and clear.\n");
+		return BufferHandle{};
+	}
+
+	if (use_external && create_info.domain != BufferDomain::Device)
+	{
+		LOGE("When using external memory, must be Device domain.\n");
 		return BufferHandle{};
 	}
 
@@ -4242,12 +4236,55 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	uint32_t sharing_indices[QUEUE_INDEX_COUNT];
 	fill_buffer_sharing_indices(info, sharing_indices);
 
+	if (use_external && !ext.supports_external)
+	{
+		LOGE("External memory not supported.\n");
+		return BufferHandle{};
+	}
+
+	VkExternalMemoryBufferCreateInfo external_info = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO };
+	if (ext.supports_external && use_external)
+	{
+		// Ensure that the handle type is supported.
+		VkPhysicalDeviceExternalBufferInfo external_buffer_props_info =
+		    { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_BUFFER_INFO };
+		VkExternalBufferProperties external_buffer_props = { VK_STRUCTURE_TYPE_EXTERNAL_BUFFER_PROPERTIES };
+		external_buffer_props_info.handleType = create_info.external.memory_handle_type;
+		external_buffer_props_info.usage = info.usage;
+		external_buffer_props_info.flags = info.flags;
+		vkGetPhysicalDeviceExternalBufferProperties(gpu, &external_buffer_props_info, &external_buffer_props);
+
+		bool supports_import = (external_buffer_props.externalMemoryProperties.externalMemoryFeatures &
+		                        VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) != 0;
+		bool supports_export = (external_buffer_props.externalMemoryProperties.externalMemoryFeatures &
+		                        VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT) != 0;
+
+		if (!supports_import && !create_info.external)
+		{
+			LOGE("Attempting to import with handle type #%x, but it is not supported.\n",
+			     create_info.external.memory_handle_type);
+			return BufferHandle{};
+		}
+		else if (!supports_export && create_info.external)
+		{
+			LOGE("Attempting to export with handle type #%x, but it is not supported.\n",
+			     create_info.external.memory_handle_type);
+			return BufferHandle{};
+		}
+
+		external_info.handleTypes = create_info.external.memory_handle_type;
+		info.pNext = &external_info;
+	}
+
 	if (table->vkCreateBuffer(device, &info, nullptr, &buffer) != VK_SUCCESS)
 		return BufferHandle(nullptr);
 
-	table->vkGetBufferMemoryRequirements(device, buffer, &reqs);
+	VkMemoryRequirements2 reqs = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
+	VkBufferMemoryRequirementsInfo2 req_info = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2 };
+	req_info.buffer = buffer;
+	table->vkGetBufferMemoryRequirements2(device, &req_info, &reqs);
 
-	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
+	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryRequirements.memoryTypeBits);
 	if (memory_type == UINT32_MAX)
 	{
 		LOGE("Failed to find memory type.\n");
@@ -4256,7 +4293,9 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	}
 
 	AllocationMode mode;
-	if (create_info.domain == BufferDomain::Device &&
+	if ((create_info.misc & BUFFER_MISC_EXTERNAL_MEMORY_BIT) != 0)
+		mode = AllocationMode::External;
+	else if (create_info.domain == BufferDomain::Device &&
 	    (create_info.usage & (VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)) != 0)
 		mode = AllocationMode::LinearDeviceHighPriority;
 	else if (create_info.domain == BufferDomain::Device ||
@@ -4265,8 +4304,19 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	else
 		mode = AllocationMode::LinearHostMappable;
 
-	if (!managers.memory.allocate(reqs.size, reqs.alignment, mode, memory_type, &allocation))
+	auto external = create_info.external;
+
+	if (!managers.memory.allocate_buffer_memory(reqs.memoryRequirements.size, reqs.memoryRequirements.alignment,
+	                                            mode, memory_type, buffer, &allocation,
+	                                            use_external ? &external : nullptr))
 	{
+		if (use_external)
+		{
+			LOGE("Failed to export / import buffer memory.\n");
+			table->vkDestroyBuffer(device, buffer, nullptr);
+			return BufferHandle(nullptr);
+		}
+
 		auto fallback_domain = create_info.domain;
 
 		// This memory type is rather scarce, so fallback to Host type if we've exhausted this memory.
@@ -4282,11 +4332,11 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 			fallback_domain = BufferDomain::Device;
 		}
 
-		memory_type = find_memory_type(fallback_domain, reqs.memoryTypeBits);
+		memory_type = find_memory_type(fallback_domain, reqs.memoryRequirements.memoryTypeBits);
 
-		if (memory_type == UINT32_MAX ||
-		    fallback_domain == create_info.domain ||
-		    !managers.memory.allocate(reqs.size, reqs.alignment, mode, memory_type, &allocation))
+		if (memory_type == UINT32_MAX || fallback_domain == create_info.domain ||
+			!managers.memory.allocate_buffer_memory(reqs.memoryRequirements.size, reqs.memoryRequirements.alignment,
+			                                        mode, memory_type, buffer, &allocation, nullptr))
 		{
 			LOGE("Failed to allocate fallback memory.\n");
 			table->vkDestroyBuffer(device, buffer, nullptr);
@@ -4401,10 +4451,12 @@ void Device::get_format_properties(VkFormat format, VkFormatProperties3KHR *prop
 
 bool Device::get_image_format_properties(VkFormat format, VkImageType type, VkImageTiling tiling,
                                          VkImageUsageFlags usage, VkImageCreateFlags flags,
+                                         const void *pNext,
                                          VkImageFormatProperties2 *properties2) const
 {
 	VK_ASSERT(properties2->sType == VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2);
 	VkPhysicalDeviceImageFormatInfo2 info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2 };
+	info.pNext = pNext;
 	info.format = format;
 	info.type = type;
 	info.tiling = tiling;

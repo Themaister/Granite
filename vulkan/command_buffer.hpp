@@ -320,6 +320,13 @@ public:
 	void image_barriers(VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
 	                    unsigned image_barriers, const VkImageMemoryBarrier *images);
 
+	void release_external_buffer_barrier(const Buffer &buffer, VkPipelineStageFlags src_stage, VkAccessFlags src_access);
+	void acquire_external_buffer_barrier(const Buffer &buffer, VkPipelineStageFlags dst_stage, VkAccessFlags dst_access);
+	void release_external_image_barrier(const Image &image, VkImageLayout old_layout, VkImageLayout new_layout,
+	                                    VkPipelineStageFlags src_stage, VkAccessFlags src_access);
+	void acquire_external_image_barrier(const Image &image, VkImageLayout old_layout, VkImageLayout new_layout,
+	                                    VkPipelineStageFlags dst_stage, VkAccessFlags dst_access);
+
 	void blit_image(const Image &dst,
 	                const Image &src,
 	                const VkOffset3D &dst_offset0, const VkOffset3D &dst_extent,

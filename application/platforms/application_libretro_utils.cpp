@@ -224,10 +224,10 @@ bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Vulkan::WS
 	swapchain_image_info.create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	swapchain_image_info.create_info.image = swapchain_unorm_view->get_image().get_image();
 	swapchain_image_info.create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-	swapchain_image_info.create_info.components.r = VK_COMPONENT_SWIZZLE_R;
-	swapchain_image_info.create_info.components.g = VK_COMPONENT_SWIZZLE_G;
-	swapchain_image_info.create_info.components.b = VK_COMPONENT_SWIZZLE_B;
-	swapchain_image_info.create_info.components.a = VK_COMPONENT_SWIZZLE_A;
+	swapchain_image_info.create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+	swapchain_image_info.create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+	swapchain_image_info.create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+	swapchain_image_info.create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
 	swapchain_image_info.create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	swapchain_image_info.create_info.subresourceRange.levelCount = 1;
 	swapchain_image_info.create_info.subresourceRange.layerCount = 1;

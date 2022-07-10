@@ -100,11 +100,22 @@ Device::Device()
 #endif
 }
 
-Semaphore Device::request_legacy_semaphore()
+Semaphore Device::request_binary_semaphore()
 {
 	LOCK();
-	auto semaphore = managers.semaphore.request_cleared_semaphore();
+	auto semaphore = managers.semaphore.request_cleared_semaphore(false);
 	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, false));
+	return ptr;
+}
+
+Semaphore Device::request_binary_semaphore_external()
+{
+	LOCK();
+	auto semaphore = managers.semaphore.request_cleared_semaphore(true);
+	if (!semaphore)
+		return Semaphore{};
+	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, false));
+	ptr->set_external_object_compatible();
 	return ptr;
 }
 
@@ -114,47 +125,6 @@ Semaphore Device::request_proxy_semaphore()
 	Semaphore ptr(handle_pool.semaphores.allocate(this));
 	return ptr;
 }
-
-Semaphore Device::request_external_semaphore(VkSemaphore semaphore, bool signalled)
-{
-	LOCK();
-	VK_ASSERT(semaphore);
-	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, signalled));
-	return ptr;
-}
-
-#ifndef _WIN32
-Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBits handle_type)
-{
-	LOCK();
-	if (!ext.supports_external)
-		return {};
-
-	VkExternalSemaphoreProperties props = { VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES };
-	VkPhysicalDeviceExternalSemaphoreInfo info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO };
-	info.handleType = handle_type;
-
-	vkGetPhysicalDeviceExternalSemaphoreProperties(gpu, &info, &props);
-	if ((props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT) == 0)
-		return Semaphore(nullptr);
-
-	auto semaphore = managers.semaphore.request_cleared_semaphore();
-
-	VkImportSemaphoreFdInfoKHR import = { VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR };
-	import.fd = fd;
-	import.semaphore = semaphore;
-	import.handleType = handle_type;
-	import.flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT;
-	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, false));
-
-	if (table->vkImportSemaphoreFdKHR(device, &import) != VK_SUCCESS)
-		return Semaphore(nullptr);
-
-	ptr->signal_external();
-	ptr->destroy_on_consume();
-	return ptr;
-}
-#endif
 
 void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush)
 {
@@ -175,7 +145,7 @@ void Device::add_wait_semaphore_nolock(QueueIndices physical_type, Semaphore sem
 		VK_ASSERT(sem.get() != semaphore.get());
 #endif
 
-	semaphore->signal_pending_wait();
+	semaphore->set_pending_wait();
 	data.wait_semaphores.push_back(semaphore);
 	data.wait_stages.push_back(stages);
 	data.need_fence = true;
@@ -1089,7 +1059,7 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	{
 		LOGI("Submitting profiled command buffer, draining GPU.\n");
 		Fence drain_fence;
-		submit_empty_nolock(physical_type, &drain_fence, 0, nullptr, -1);
+		submit_empty_nolock(physical_type, &drain_fence, nullptr, -1);
 		drain_fence->wait();
 		drain_fence->set_internal_sync_object();
 	}
@@ -1102,6 +1072,7 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	if (fence || semaphore_count)
 	{
 		submit_queue(physical_type, fence ? &signalled_fence : nullptr,
+		             nullptr,
 		             semaphore_count, semaphores,
 		             profiled_submit ? 0 : -1);
 	}
@@ -1121,7 +1092,7 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 		LOGI("Submitted profiled command buffer, draining GPU and report ...\n");
 		auto &query_pool = get_performance_query_pool(physical_type);
 		Fence drain_fence;
-		submit_empty_nolock(physical_type, &drain_fence, 0, nullptr, fence || semaphore_count ? -1 : 0);
+		submit_empty_nolock(physical_type, &drain_fence, nullptr, fence || semaphore_count ? -1 : 0);
 		drain_fence->wait();
 		drain_fence->set_internal_sync_object();
 		query_pool.report();
@@ -1130,21 +1101,23 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	decrement_frame_counter_nolock();
 }
 
-void Device::submit_empty(CommandBuffer::Type type, Fence *fence,
-                          unsigned semaphore_count, Semaphore *semaphores)
+void Device::submit_empty(CommandBuffer::Type type, Fence *fence, SemaphoreHolder *semaphore)
 {
 	LOCK();
-	submit_empty_nolock(get_physical_queue_type(type), fence, semaphore_count, semaphores, -1);
+	submit_empty_nolock(get_physical_queue_type(type), fence, semaphore, -1);
 }
 
 void Device::submit_empty_nolock(QueueIndices physical_type, Fence *fence,
-                                 unsigned semaphore_count, Semaphore *semaphores, int profiling_iteration)
+                                 SemaphoreHolder *semaphore, int profiling_iteration)
 {
 	if (physical_type != QUEUE_INDEX_TRANSFER)
 		flush_frame(QUEUE_INDEX_TRANSFER);
 
 	InternalFence signalled_fence;
-	submit_queue(physical_type, fence ? &signalled_fence : nullptr, semaphore_count, semaphores, profiling_iteration);
+
+	submit_queue(physical_type, fence ? &signalled_fence : nullptr, semaphore,
+	             0, nullptr, profiling_iteration);
+
 	if (fence)
 	{
 		if (signalled_fence.value)
@@ -1155,6 +1128,7 @@ void Device::submit_empty_nolock(QueueIndices physical_type, Fence *fence,
 }
 
 void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence,
+                                SemaphoreHolder *external_semaphore,
                                 unsigned semaphore_count, Semaphore *semaphores)
 {
 	auto &data = queue_data[physical_type];
@@ -1168,7 +1142,9 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 	Helper::BatchComposer composer(get_workarounds().split_binary_timeline_semaphores);
 	collect_wait_semaphores(data, wait_semaphores);
 	composer.add_wait_submissions(wait_semaphores);
-	emit_queue_signals(composer, timeline_semaphore, timeline_value,
+
+	emit_queue_signals(composer, external_semaphore,
+	                   timeline_semaphore, timeline_value,
 	                   fence, semaphore_count, semaphores);
 
 	VkFence cleared_fence = fence && !ext.timeline_semaphore_features.timelineSemaphore ?
@@ -1295,10 +1271,10 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 		}
 		else
 		{
-			if (semaphore->can_recycle())
-				frame().recycled_semaphores.push_back(vk_semaphore);
+			if (semaphore->is_external_object_compatible())
+				frame().recycled_external_semaphores.push_back(vk_semaphore);
 			else
-				frame().destroyed_semaphores.push_back(vk_semaphore);
+				frame().recycled_semaphores.push_back(vk_semaphore);
 
 			sem.binary_waits.push_back(vk_semaphore);
 			sem.binary_wait_stages.push_back(data.wait_stages[i]);
@@ -1487,9 +1463,21 @@ void Helper::BatchComposer::add_wait_semaphore(SemaphoreHolder &sem, VkPipelineS
 }
 
 void Device::emit_queue_signals(Helper::BatchComposer &composer,
+                                SemaphoreHolder *external_semaphore,
                                 VkSemaphore sem, uint64_t timeline, InternalFence *fence,
                                 unsigned semaphore_count, Semaphore *semaphores)
 {
+	if (external_semaphore)
+	{
+		VK_ASSERT(!external_semaphore->is_signalled());
+		VK_ASSERT(!external_semaphore->get_timeline_value());
+		VK_ASSERT(external_semaphore->get_semaphore());
+		external_semaphore->signal_external();
+		composer.add_signal_semaphore(external_semaphore->get_semaphore(), 0);
+		// Make sure we observe that the external semaphore is signalled before fences are signalled.
+		composer.begin_batch();
+	}
+
 	// Add external signal semaphores.
 	if (ext.timeline_semaphore_features.timelineSemaphore)
 	{
@@ -1519,7 +1507,7 @@ void Device::emit_queue_signals(Helper::BatchComposer &composer,
 
 		for (unsigned i = 0; i < semaphore_count; i++)
 		{
-			VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore();
+			VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore(false);
 			composer.add_signal_semaphore(cleared_semaphore, 0);
 			VK_ASSERT(!semaphores[i]);
 			semaphores[i] = Semaphore(handle_pool.semaphores.allocate(this, cleared_semaphore, true));
@@ -1556,6 +1544,7 @@ VkResult Device::submit_batches(Helper::BatchComposer &composer, VkQueue queue, 
 }
 
 void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
+                          SemaphoreHolder *external_semaphore,
                           unsigned semaphore_count, Semaphore *semaphores, int profiling_iteration)
 {
 	// Always check if we need to flush pending transfers.
@@ -1568,7 +1557,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 	if (submissions.empty())
 	{
 		if (fence || semaphore_count)
-			submit_empty_inner(physical_type, fence, semaphore_count, semaphores);
+			submit_empty_inner(physical_type, fence, external_semaphore, semaphore_count, semaphores);
 		return;
 	}
 
@@ -1603,10 +1592,10 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 				composer.add_wait_semaphore(*wsi.acquire, wsi_stages);
 				if (!wsi.acquire->get_timeline_value())
 				{
-					if (wsi.acquire->can_recycle())
-						frame().recycled_semaphores.push_back(wsi.acquire->get_semaphore());
+					if (wsi.acquire->is_external_object_compatible())
+						frame().recycled_external_semaphores.push_back(wsi.acquire->get_semaphore());
 					else
-						frame().destroyed_semaphores.push_back(wsi.acquire->get_semaphore());
+						frame().recycled_semaphores.push_back(wsi.acquire->get_semaphore());
 				}
 				wsi.acquire->consume();
 				wsi.acquire.reset();
@@ -1614,7 +1603,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 
 			composer.add_command_buffer(cmd->get_command_buffer());
 
-			VkSemaphore release = managers.semaphore.request_cleared_semaphore();
+			VkSemaphore release = managers.semaphore.request_cleared_semaphore(false);
 			wsi.release = Semaphore(handle_pool.semaphores.allocate(this, release, true));
 			wsi.release->set_internal_sync_object();
 			composer.add_signal_semaphore(release, 0);
@@ -1637,7 +1626,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 	if (fence)
 		fence->fence = cleared_fence;
 
-	emit_queue_signals(composer, timeline_semaphore, timeline_value,
+	emit_queue_signals(composer, external_semaphore, timeline_semaphore, timeline_value,
 	                   fence, semaphore_count, semaphores);
 
 	auto start_ts = write_calibrated_timestamp_nolock();
@@ -1662,7 +1651,7 @@ void Device::flush_frame(QueueIndices physical_type)
 
 	if (physical_type == QUEUE_INDEX_TRANSFER)
 		sync_buffer_blocks();
-	submit_queue(physical_type, nullptr, 0, nullptr);
+	submit_queue(physical_type, nullptr);
 }
 
 void Device::sync_buffer_blocks()
@@ -1731,7 +1720,7 @@ void Device::end_frame_nolock()
 	{
 		if (queue_data[i].need_fence || !frame().submissions[i].empty())
 		{
-			submit_queue(i, &fence, 0, nullptr);
+			submit_queue(i, &fence);
 			if (fence.fence != VK_NULL_HANDLE)
 			{
 				frame().wait_fences.push_back(fence.fence);
@@ -2141,6 +2130,12 @@ void Device::recycle_semaphore(VkSemaphore semaphore)
 	recycle_semaphore_nolock(semaphore);
 }
 
+void Device::recycle_external_semaphore(VkSemaphore semaphore)
+{
+	LOCK();
+	recycle_external_semaphore_nolock(semaphore);
+}
+
 void Device::free_memory(const DeviceAllocation &alloc)
 {
 	LOCK();
@@ -2187,6 +2182,12 @@ void Device::recycle_semaphore_nolock(VkSemaphore semaphore)
 {
 	VK_ASSERT(!exists(frame().recycled_semaphores, semaphore));
 	frame().recycled_semaphores.push_back(semaphore);
+}
+
+void Device::recycle_external_semaphore_nolock(VkSemaphore semaphore)
+{
+	VK_ASSERT(!exists(frame().recycled_external_semaphores, semaphore));
+	frame().recycled_external_semaphores.push_back(semaphore);
 }
 
 void Device::destroy_event_nolock(VkEvent event)
@@ -2665,7 +2666,9 @@ void Device::PerFrame::begin()
 	for (auto &pool : destroyed_descriptor_pools)
 		table.vkDestroyDescriptorPool(vkdevice, pool, nullptr);
 	for (auto &semaphore : recycled_semaphores)
-		managers.semaphore.recycle(semaphore);
+		managers.semaphore.recycle(semaphore, false);
+	for (auto &semaphore : recycled_external_semaphores)
+		managers.semaphore.recycle(semaphore, true);
 	for (auto &event : recycled_events)
 		managers.event.recycle(event);
 	for (auto &alloc : allocations)
@@ -2681,6 +2684,7 @@ void Device::PerFrame::begin()
 	destroyed_semaphores.clear();
 	destroyed_descriptor_pools.clear();
 	recycled_semaphores.clear();
+	recycled_external_semaphores.clear();
 	recycled_events.clear();
 	allocations.clear();
 
@@ -3255,7 +3259,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 		return ImageViewHandle(nullptr);
 }
 
-#ifndef _WIN32
+#if 0
 ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t memory_type,
                                           VkExternalMemoryHandleTypeFlagBits handle_type,
                                           const ImageCreateInfo &create_info)

@@ -58,4 +58,19 @@ enum QueueIndices
 	QUEUE_INDEX_VIDEO_DECODE,
 	QUEUE_INDEX_COUNT
 };
+
+#ifdef _WIN32
+using ExternalHandle = void *;
+#else
+using ExternalHandle = int;
+#endif
+
+static inline bool validate_handle(ExternalHandle handle)
+{
+#ifdef _WIN32
+	return handle != nullptr;
+#else
+	return handle >= 0;
+#endif
+}
 }

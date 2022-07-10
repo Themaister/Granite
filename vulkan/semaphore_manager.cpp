@@ -25,37 +25,101 @@
 
 namespace Vulkan
 {
+void SemaphoreManager::test_external_semaphore_handle_type(VkExternalSemaphoreHandleTypeFlagBits handle_type)
+{
+	if (device->get_device_features().supports_external)
+	{
+		VkExternalSemaphoreProperties props = { VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES };
+		VkPhysicalDeviceExternalSemaphoreInfo info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO };
+		info.handleType = handle_type;
+		vkGetPhysicalDeviceExternalSemaphoreProperties(device->get_physical_device(), &info, &props);
+
+		// To avoid having to validate, allow exporting imported payloads.
+		// This should be well supported?
+		if (props.exportFromImportedHandleTypes & info.handleType)
+		{
+			if (props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT)
+				exportable_types |= info.handleType;
+			if (props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT)
+				importable_types |= info.handleType;
+		}
+	}
+}
+
 void SemaphoreManager::init(Device *device_)
 {
 	device = device_;
 	table = &device->get_device_table();
+
+#ifdef _WIN32
+	test_external_semaphore_handle_type(VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT);
+#else
+	test_external_semaphore_handle_type(VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT);
+#endif
 }
 
 SemaphoreManager::~SemaphoreManager()
 {
 	for (auto &sem : semaphores)
 		table->vkDestroySemaphore(device->get_device(), sem, nullptr);
+	for (auto &sem : semaphores_external)
+		table->vkDestroySemaphore(device->get_device(), sem, nullptr);
 }
 
-void SemaphoreManager::recycle(VkSemaphore sem)
+void SemaphoreManager::recycle(VkSemaphore sem, bool external)
 {
 	if (sem != VK_NULL_HANDLE)
-		semaphores.push_back(sem);
+	{
+		if (external)
+			semaphores_external.push_back(sem);
+		else
+			semaphores.push_back(sem);
+	}
 }
 
-VkSemaphore SemaphoreManager::request_cleared_semaphore()
+VkSemaphore SemaphoreManager::request_cleared_semaphore(bool external)
 {
-	if (semaphores.empty())
+	auto &sems = external ? semaphores_external : semaphores;
+
+	if (sems.empty())
 	{
-		VkSemaphore semaphore;
 		VkSemaphoreCreateInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-		table->vkCreateSemaphore(device->get_device(), &info, nullptr, &semaphore);
-		return semaphore;
+		VkSemaphore semaphore;
+
+		if (external)
+		{
+			if ((exportable_types & importable_types) == 0)
+				return VK_NULL_HANDLE;
+
+			VkExportSemaphoreCreateInfo export_info = { VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO };
+			export_info.handleTypes = exportable_types;
+
+			// For Win32, use default security attributes.
+			info.pNext = &export_info;
+
+			if (table->vkCreateSemaphore(device->get_device(), &info, nullptr, &semaphore) != VK_SUCCESS)
+			{
+				LOGE("Failed to create external semaphore.\n");
+				semaphore = VK_NULL_HANDLE;
+			}
+
+			return semaphore;
+		}
+		else
+		{
+			if (table->vkCreateSemaphore(device->get_device(), &info, nullptr, &semaphore) != VK_SUCCESS)
+			{
+				LOGE("Failed to create semaphore.\n");
+				semaphore = VK_NULL_HANDLE;
+			}
+
+			return semaphore;
+		}
 	}
 	else
 	{
-		auto sem = semaphores.back();
-		semaphores.pop_back();
+		auto sem = sems.back();
+		sems.pop_back();
 		return sem;
 	}
 }

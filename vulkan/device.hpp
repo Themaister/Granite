@@ -335,6 +335,7 @@ public:
 	void get_format_properties(VkFormat format, VkFormatProperties3KHR *properties) const;
 	bool get_image_format_properties(VkFormat format, VkImageType type, VkImageTiling tiling,
 	                                 VkImageUsageFlags usage, VkImageCreateFlags flags,
+	                                 const void *pNext,
 	                                 VkImageFormatProperties2 *properties2) const;
 
 	VkFormat get_default_depth_stencil_format() const;

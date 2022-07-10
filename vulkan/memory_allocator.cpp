@@ -24,6 +24,10 @@
 #include "device.hpp"
 #include <algorithm>
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 using namespace std;
 
 #ifdef GRANITE_VULKAN_MT
@@ -34,7 +38,6 @@ using namespace std;
 
 namespace Vulkan
 {
-
 void DeviceAllocation::free_immediate()
 {
 	if (!alloc)
@@ -45,6 +48,45 @@ void DeviceAllocation::free_immediate()
 	base = VK_NULL_HANDLE;
 	mask = 0;
 	offset = 0;
+}
+
+ExternalHandle DeviceAllocation::export_handle(Device &device)
+{
+	ExternalHandle h;
+
+	if (exportable_types == 0)
+	{
+		LOGE("Cannot export from this allocation.\n");
+		return h;
+	}
+
+	auto &table = device.get_device_table();
+
+#ifdef _WIN32
+	VkMemoryGetWin32HandleInfoKHR handle_info = { VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR };
+	handle_info.handleType = static_cast<VkExternalMemoryHandleTypeFlagBits>(exportable_types);
+	handle_info.memory = base;
+	h.memory_handle_type = handle_info.handleType;
+
+	if (table.vkGetMemoryWin32HandleKHR(device.get_device(), &handle_info, &h.handle) != VK_SUCCESS)
+	{
+		LOGE("Failed to export memory handle.\n");
+		h.handle = nullptr;
+	}
+#else
+	VkMemoryGetFdInfoKHR fd_info = { VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR };
+	fd_info.handleType = static_cast<VkExternalMemoryHandleTypeFlagBits>(exportable_types);
+	fd_info.memory = base;
+	h.memory_handle_type = fd_info.handleType;
+
+	if (table.vkGetMemoryFdKHR(device.get_device(), &fd_info, &h.handle) != VK_SUCCESS)
+	{
+		LOGE("Failed to export memory handle.\n");
+		h.handle = -1;
+	}
+#endif
+
+	return h;
 }
 
 void DeviceAllocation::free_immediate(DeviceAllocator &allocator)
@@ -185,7 +227,7 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 		                                (mode == AllocationMode::LinearHostMappable ||
 		                                 mode == AllocationMode::LinearDevice ||
 		                                 mode == AllocationMode::LinearDeviceHighPriority) ? &heap.allocation.host_base : nullptr,
-		                                VK_NULL_HANDLE))
+		                                VK_OBJECT_TYPE_DEVICE, 0, nullptr))
 		{
 			object_pool.free(node);
 			return false;
@@ -283,8 +325,12 @@ bool Allocator::allocate_global(uint32_t size, AllocationMode mode, DeviceAlloca
 	if (!global_allocator->allocate(size, memory_type, mode, &alloc->base,
 	                                (mode == AllocationMode::LinearHostMappable ||
 	                                 mode == AllocationMode::LinearDevice ||
-	                                 mode == AllocationMode::LinearDeviceHighPriority) ? &alloc->host_base : nullptr, VK_NULL_HANDLE))
+	                                 mode == AllocationMode::LinearDeviceHighPriority) ? &alloc->host_base : nullptr,
+	                                VK_OBJECT_TYPE_DEVICE, 0, nullptr))
+	{
 		return false;
+	}
+
 	alloc->mode = mode;
 	alloc->alloc = nullptr;
 	alloc->memory_type = memory_type;
@@ -292,19 +338,29 @@ bool Allocator::allocate_global(uint32_t size, AllocationMode mode, DeviceAlloca
 	return true;
 }
 
-bool Allocator::allocate_dedicated(uint32_t size, AllocationMode mode, DeviceAllocation *alloc, VkImage dedicated_image)
+bool Allocator::allocate_dedicated(uint32_t size, AllocationMode mode, DeviceAllocation *alloc,
+                                   VkObjectType type, uint64_t object, ExternalHandle *external)
 {
 	// Fall back to global allocation, do not recycle.
 	alloc->host_base = nullptr;
 	if (!global_allocator->allocate(size, memory_type, mode, &alloc->base,
 	                                (mode == AllocationMode::LinearHostMappable ||
 	                                 mode == AllocationMode::LinearDevice ||
-	                                 mode == AllocationMode::LinearDeviceHighPriority) ? &alloc->host_base : nullptr, dedicated_image))
+	                                 mode == AllocationMode::LinearDeviceHighPriority) ? &alloc->host_base : nullptr,
+	                                type, object, external))
+	{
 		return false;
+	}
+
 	alloc->mode = mode;
 	alloc->alloc = nullptr;
 	alloc->memory_type = memory_type;
 	alloc->size = size;
+
+	// If we imported memory instead, do not allow handle export.
+	if (external && !(*external))
+		alloc->exportable_types = external->memory_handle_type;
+
 	return true;
 }
 
@@ -434,18 +490,37 @@ void DeviceAllocator::init(Device *device_)
 	}
 }
 
-bool DeviceAllocator::allocate(uint32_t size, uint32_t alignment, AllocationMode mode, uint32_t memory_type,
-                               DeviceAllocation *alloc)
+bool DeviceAllocator::allocate_generic_memory(uint32_t size, uint32_t alignment, AllocationMode mode,
+                                              uint32_t memory_type, DeviceAllocation *alloc)
 {
 	return allocators[memory_type]->allocate(size, alignment, mode, alloc);
 }
 
+bool DeviceAllocator::allocate_buffer_memory(uint32_t size, uint32_t alignment, AllocationMode mode,
+                                             uint32_t memory_type, VkBuffer buffer,
+                                             DeviceAllocation *alloc, ExternalHandle *external)
+{
+	if (mode == AllocationMode::External)
+	{
+		return allocators[memory_type]->allocate_dedicated(
+			size, mode, alloc,
+			VK_OBJECT_TYPE_BUFFER, (uint64_t)buffer, external);
+	}
+	else
+	{
+		return allocate_generic_memory(size, alignment, mode, memory_type, alloc);
+	}
+}
+
 bool DeviceAllocator::allocate_image_memory(uint32_t size, uint32_t alignment, AllocationMode mode, uint32_t memory_type,
-                                            DeviceAllocation *alloc, VkImage image,
-                                            bool force_no_dedicated)
+                                            VkImage image, bool force_no_dedicated, DeviceAllocation *alloc,
+                                            ExternalHandle *external)
 {
 	if (force_no_dedicated)
-		return allocate(size, alignment, mode, memory_type, alloc);
+	{
+		VK_ASSERT(mode != AllocationMode::External && !external);
+		return allocate_generic_memory(size, alignment, mode, memory_type, alloc);
+	}
 
 	VkImageMemoryRequirementsInfo2 info = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2 };
 	info.image = image;
@@ -455,10 +530,17 @@ bool DeviceAllocator::allocate_image_memory(uint32_t size, uint32_t alignment, A
 	mem_req.pNext = &dedicated_req;
 	table->vkGetImageMemoryRequirements2(device->get_device(), &info, &mem_req);
 
-	if (dedicated_req.prefersDedicatedAllocation || dedicated_req.requiresDedicatedAllocation)
-		return allocators[memory_type]->allocate_dedicated(size, mode, alloc, image);
+	if (dedicated_req.prefersDedicatedAllocation ||
+	    dedicated_req.requiresDedicatedAllocation ||
+	    mode == AllocationMode::External)
+	{
+		return allocators[memory_type]->allocate_dedicated(
+			size, mode, alloc, VK_OBJECT_TYPE_IMAGE, (uint64_t)image, external);
+	}
 	else
-		return allocate(size, alignment, mode, memory_type, alloc);
+	{
+		return allocate_generic_memory(size, alignment, mode, memory_type, alloc);
+	}
 }
 
 bool DeviceAllocator::allocate_global(uint32_t size, AllocationMode mode, uint32_t memory_type, DeviceAllocation *alloc)
@@ -614,7 +696,7 @@ void DeviceAllocator::get_memory_budget(HeapBudget *heap_budgets)
 
 bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMode mode,
                                VkDeviceMemory *memory, uint8_t **host_memory,
-                               VkImage dedicated_image)
+                               VkObjectType object_type, uint64_t dedicated_object, ExternalHandle *external)
 {
 	uint32_t heap_index = mem_props.memoryTypes[memory_type].heapIndex;
 	auto &heap = heaps[heap_index];
@@ -622,7 +704,7 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMo
 
 	// Naive searching is fine here as vkAllocate blocks are *huge* and we won't have many of them.
 	auto itr = end(heap.blocks);
-	if (dedicated_image == VK_NULL_HANDLE)
+	if (dedicated_object == 0 && !external)
 	{
 		itr = find_if(begin(heap.blocks), end(heap.blocks),
 		              [=](const Allocation &alloc) { return size == alloc.size && memory_type == alloc.type && mode == alloc.mode; });
@@ -645,55 +727,94 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMo
 		return true;
 	}
 
-	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
-	get_memory_budget_nolock(budgets);
+	// Don't bother checking against budgets on external memory.
+	// It's not very meaningful.
+	if (!external)
+	{
+		HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
+		get_memory_budget_nolock(budgets);
 
 #ifdef VULKAN_DEBUG
-	LOGI("Allocating %.1f MiB on heap #%u (mode #%u), before allocating budget: (%.1f MiB / %.1f MiB) [%.1f / %.1f].\n",
-	     double(size) / double(1024 * 1024),
-	     heap_index,
-	     unsigned(mode),
-	     double(budgets[heap_index].device_usage) / double(1024 * 1024),
-	     double(budgets[heap_index].budget_size) / double(1024 * 1024),
-	     double(budgets[heap_index].tracked_usage) / double(1024 * 1024),
-	     double(budgets[heap_index].max_size) / double(1024 * 1024));
+		LOGI("Allocating %.1f MiB on heap #%u (mode #%u), before allocating budget: (%.1f MiB / %.1f MiB) [%.1f / %.1f].\n",
+		     double(size) / double(1024 * 1024), heap_index, unsigned(mode),
+		     double(budgets[heap_index].device_usage) / double(1024 * 1024),
+		     double(budgets[heap_index].budget_size) / double(1024 * 1024),
+		     double(budgets[heap_index].tracked_usage) / double(1024 * 1024),
+		     double(budgets[heap_index].max_size) / double(1024 * 1024));
 #endif
 
-	const auto log_heap_index = [&]() {
-		LOGW("  Size: %u MiB.\n", unsigned(size / (1024 * 1024)));
-		LOGW("  Device usage: %u MiB.\n", unsigned(budgets[heap_index].device_usage / (1024 * 1024)));
-		LOGW("  Tracked usage: %u MiB.\n", unsigned(budgets[heap_index].tracked_usage / (1024 * 1024)));
-		LOGW("  Budget size: %u MiB.\n", unsigned(budgets[heap_index].budget_size / (1024 * 1024)));
-		LOGW("  Max size: %u MiB.\n", unsigned(budgets[heap_index].max_size / (1024 * 1024)));
-	};
+		const auto log_heap_index = [&]()
+		{
+			LOGW("  Size: %u MiB.\n", unsigned(size / (1024 * 1024)));
+			LOGW("  Device usage: %u MiB.\n", unsigned(budgets[heap_index].device_usage / (1024 * 1024)));
+			LOGW("  Tracked usage: %u MiB.\n", unsigned(budgets[heap_index].tracked_usage / (1024 * 1024)));
+			LOGW("  Budget size: %u MiB.\n", unsigned(budgets[heap_index].budget_size / (1024 * 1024)));
+			LOGW("  Max size: %u MiB.\n", unsigned(budgets[heap_index].max_size / (1024 * 1024)));
+		};
 
-	// If we're going to blow out the budget, we should recycle a bit.
-	if (budgets[heap_index].device_usage + size >= budgets[heap_index].budget_size)
-	{
-		LOGW("Will exceed memory budget, cleaning up ...\n");
-		log_heap_index();
-		heap.garbage_collect(device);
-	}
+		// If we're going to blow out the budget, we should recycle a bit.
+		if (budgets[heap_index].device_usage + size >= budgets[heap_index].budget_size)
+		{
+			LOGW("Will exceed memory budget, cleaning up ...\n");
+			log_heap_index();
+			heap.garbage_collect(device);
+		}
 
-	get_memory_budget_nolock(budgets);
-	if (budgets[heap_index].device_usage + size >= budgets[heap_index].budget_size)
-	{
-		LOGW("Even after garbage collection, we will exceed budget ...\n");
-		if (memory_heap_is_budget_critical[heap_index])
-			return false;
-		log_heap_index();
+		get_memory_budget_nolock(budgets);
+		if (budgets[heap_index].device_usage + size >= budgets[heap_index].budget_size)
+		{
+			LOGW("Even after garbage collection, we will exceed budget ...\n");
+			if (memory_heap_is_budget_critical[heap_index])
+				return false;
+			log_heap_index();
+		}
 	}
 
 	VkMemoryAllocateInfo info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, size, memory_type };
 	VkMemoryDedicatedAllocateInfo dedicated = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO };
-	if (dedicated_image != VK_NULL_HANDLE)
+	VkExportMemoryAllocateInfo export_info = { VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO };
+	VkMemoryPriorityAllocateInfoEXT priority_info = { VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT };
+#ifdef _WIN32
+	VkImportMemoryWin32HandleInfoKHR import_info = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR };
+#else
+	VkImportMemoryFdInfoKHR import_info = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR };
+#endif
+
+	if (dedicated_object != 0)
 	{
-		dedicated.image = dedicated_image;
+		if (object_type == VK_OBJECT_TYPE_IMAGE)
+			dedicated.image = (VkImage)dedicated_object;
+		else if (object_type == VK_OBJECT_TYPE_BUFFER)
+			dedicated.buffer = (VkBuffer)dedicated_object;
 		info.pNext = &dedicated;
 	}
 
-	VkMemoryPriorityAllocateInfoEXT priority_info = { VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT };
-	if (device->get_device_features().memory_priority_features.memoryPriority)
+	if (external)
+	{
+		VK_ASSERT(dedicated_object);
+
+		if (bool(*external))
+		{
+			import_info.handleType = external->memory_handle_type;
+			import_info.pNext = info.pNext;
+			info.pNext = &import_info;
+
+#ifdef _WIN32
+			import_info.handle = external->handle;
+#else
+			import_info.fd = external->handle;
+#endif
+		}
+		else
+		{
+			export_info.handleTypes = external->memory_handle_type;
+			export_info.pNext = info.pNext;
+			info.pNext = &export_info;
+		}
+	}
+
+	// Don't bother with memory priority on external objects.
+	if (device->get_device_features().memory_priority_features.memoryPriority && !external)
 	{
 		switch (mode)
 		{
@@ -718,6 +839,17 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMo
 
 	VkDeviceMemory device_memory;
 	VkResult res = table->vkAllocateMemory(device->get_device(), &info, nullptr, &device_memory);
+
+	// If we're importing, make sure we consume the native handle.
+	if (external && bool(*external) &&
+	    ExternalHandle::memory_handle_type_imports_by_reference(external->memory_handle_type))
+	{
+#ifdef _WIN32
+		::CloseHandle(external->handle);
+#else
+		::close(external->handle);
+#endif
+	}
 
 	if (res == VK_SUCCESS)
 	{

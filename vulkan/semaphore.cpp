@@ -78,41 +78,51 @@ SemaphoreHolder &SemaphoreHolder::operator=(SemaphoreHolder &&other) noexcept
 
 ExternalHandle SemaphoreHolder::export_to_opaque_handle()
 {
+	ExternalHandle h;
+
 	if (!external_compatible)
 	{
 		LOGE("Semaphore is not external compatible.\n");
-		return -1;
+		return h;
 	}
 
 	if (!semaphore)
 	{
 		LOGE("Semaphore has already been consumed.\n");
-		return -1;
+		return h;
 	}
 
-	// Technically we can with reference transference, but it's a bit dubious.
+	// Technically we can export early with reference transference, but it's a bit dubious.
 	// We want to remain compatible with copy transference for later, e.g. SYNC_FD.
 	if (!signalled)
 	{
 		LOGE("Cannot export payload from a semaphore that is not queued up for signal.\n");
-		return -1;
+		return h;
 	}
 
 #ifdef _WIN32
+	VkSemaphoreGetWin32HandleInfoKHR handle_info = { VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR };
+	handle_info.semaphore = semaphore;
+	handle_info.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+
+	if (device->get_device_table().vkGetSemaphoreWin32HandleKHR(device->get_device(), &handle_info, &h.handle) != VK_SUCCESS)
+	{
+		LOGE("Failed to export to opaque handle.\n");
+		h.handle = nullptr;
+	}
 #else
 	VkSemaphoreGetFdInfoKHR fd_info = { VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR };
 	fd_info.semaphore = semaphore;
 	fd_info.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
 
-	ExternalHandle handle = -1;
-	if (device->get_device_table().vkGetSemaphoreFdKHR(device->get_device(), &fd_info, &handle) != VK_SUCCESS)
+	if (device->get_device_table().vkGetSemaphoreFdKHR(device->get_device(), &fd_info, &h.handle) != VK_SUCCESS)
 	{
 		LOGE("Failed to export to opaque FD.\n");
-		return -1;
+		h.handle = -1;
 	}
 #endif
 
-	return handle;
+	return h;
 }
 
 bool SemaphoreHolder::import_from_opaque_handle(ExternalHandle handle)
@@ -136,15 +146,28 @@ bool SemaphoreHolder::import_from_opaque_handle(ExternalHandle handle)
 	}
 
 #ifdef _WIN32
+	VkImportSemaphoreWin32HandleInfoKHR import = { VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_WIN32_HANDLE_INFO_KHR };
+	import.handle = handle.handle;
+	import.semaphore = semaphore;
+	import.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+	import.flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT;
+	if (device->get_device_table().vkImportSemaphoreWin32HandleKHR(device->get_device(), &import) != VK_SUCCESS)
+	{
+		LOGE("Failed to import semaphore handle %p!\n", handle.handle);
+		return false;
+	}
+
+	// Consume the handle, since the VkSemaphore holds a reference on Win32.
+	::CloseHandle(handle.handle);
 #else
 	VkImportSemaphoreFdInfoKHR import = { VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR };
-	import.fd = handle;
+	import.fd = handle.handle;
 	import.semaphore = semaphore;
 	import.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
 	import.flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT;
 	if (device->get_device_table().vkImportSemaphoreFdKHR(device->get_device(), &import) != VK_SUCCESS)
 	{
-		LOGE("Failed to import semaphore FD %d!\n", handle);
+		LOGE("Failed to import semaphore FD %d!\n", handle.handle);
 		return false;
 	}
 #endif

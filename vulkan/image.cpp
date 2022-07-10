@@ -131,6 +131,11 @@ DeviceAllocation Image::take_allocation_ownership()
 	return ret;
 }
 
+ExternalHandle Image::export_handle()
+{
+	return alloc.export_handle(*device);
+}
+
 void Image::disown_image()
 {
 	owns_image = false;

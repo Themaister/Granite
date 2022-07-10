@@ -25,6 +25,7 @@
 #include "intrusive.hpp"
 #include "object_pool.hpp"
 #include "intrusive_hash_map.hpp"
+#include "vulkan_headers.hpp"
 
 namespace Vulkan
 {
@@ -59,18 +60,41 @@ enum QueueIndices
 	QUEUE_INDEX_COUNT
 };
 
-#ifdef _WIN32
-using ExternalHandle = void *;
-#else
-using ExternalHandle = int;
-#endif
-
-static inline bool validate_handle(ExternalHandle handle)
+struct ExternalHandle
 {
 #ifdef _WIN32
-	return handle != nullptr;
+	using NativeHandle = void *;
+	NativeHandle handle = nullptr;
 #else
-	return handle >= 0;
+	using NativeHandle = int;
+	NativeHandle handle = -1;
 #endif
-}
+
+	VkExternalMemoryHandleTypeFlagBits memory_handle_type = get_opaque_memory_handle_type();
+
+	constexpr static VkExternalMemoryHandleTypeFlagBits get_opaque_memory_handle_type()
+	{
+#ifdef _WIN32
+		return VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+#else
+		return VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+#endif
+	}
+
+	inline explicit operator bool() const
+	{
+#ifdef _WIN32
+		return handle != nullptr;
+#else
+		return handle >= 0;
+#endif
+	}
+
+	static bool memory_handle_type_imports_by_reference(VkExternalMemoryHandleTypeFlagBits type)
+	{
+		VK_ASSERT(type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT ||
+		          type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT);
+		return type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+	}
+};
 }

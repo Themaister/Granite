@@ -116,7 +116,7 @@ public:
 	// Application can use dup() / DuplicateHandle() to keep a reference.
 	// Imported semaphores are assumed to be signalled, or pending to be signalled.
 	// All imports are performed with TEMPORARY permanence.
-	int export_to_opaque_handle();
+	ExternalHandle export_to_opaque_handle();
 	bool import_from_opaque_handle(ExternalHandle handle);
 
 	SemaphoreHolder &operator=(SemaphoreHolder &&other) noexcept;

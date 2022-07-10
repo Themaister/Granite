@@ -34,15 +34,10 @@ void SemaphoreManager::test_external_semaphore_handle_type(VkExternalSemaphoreHa
 		info.handleType = handle_type;
 		vkGetPhysicalDeviceExternalSemaphoreProperties(device->get_physical_device(), &info, &props);
 
-		// To avoid having to validate, allow exporting imported payloads.
-		// This should be well supported?
-		if (props.exportFromImportedHandleTypes & info.handleType)
-		{
-			if (props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT)
-				exportable_types |= info.handleType;
-			if (props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT)
-				importable_types |= info.handleType;
-		}
+		if (props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT)
+			exportable_types |= info.handleType;
+		if (props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT)
+			importable_types |= info.handleType;
 	}
 }
 

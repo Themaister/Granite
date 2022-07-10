@@ -1088,6 +1088,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.descriptor_indexing_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT };
 	ext.conservative_rasterization_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT };
 	ext.float_control_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES_KHR };
+	ext.id_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES };
 
 	ppNext = &props.pNext;
 
@@ -1132,6 +1133,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	{
 		*ppNext = &ext.float_control_properties;
 		ppNext = &ext.float_control_properties.pNext;
+	}
+
+	if (ext.supports_external)
+	{
+		*ppNext = &ext.id_properties;
+		ppNext = &ext.id_properties.pNext;
 	}
 
 	vkGetPhysicalDeviceProperties2(gpu, &props);

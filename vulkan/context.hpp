@@ -90,6 +90,7 @@ struct DeviceFeatures
 	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};
 	VkPhysicalDeviceFloat16Int8FeaturesKHR float16_int8_features = {};
 	VkPhysicalDeviceFloatControlsPropertiesKHR float_control_properties = {};
+	VkPhysicalDeviceIDProperties id_properties = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};

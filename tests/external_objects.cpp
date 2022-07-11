@@ -25,6 +25,9 @@ static bool run_test(Device &producer, Device &consumer)
 	ImageHandle write_image;
 	ImageHandle read_image;
 
+	Semaphore write_timeline;
+	Semaphore read_timeline;
+
 	BufferCreateInfo info = {};
 	info.size = 2 * 1024 * sizeof(uint32_t);
 	info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -35,6 +38,27 @@ static bool run_test(Device &producer, Device &consumer)
 	info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	info.misc = BUFFER_MISC_EXTERNAL_MEMORY_BIT;
 	write_buffer = producer.create_buffer(info);
+
+	write_timeline = producer.request_timeline_semaphore_external(ExternalHandle::get_opaque_semaphore_handle_type());
+	auto write_timeline_handle = write_timeline->export_to_handle(ExternalHandle::get_opaque_semaphore_handle_type());
+	if (!write_timeline_handle)
+	{
+		LOGE("Failed to create external timeline.\n");
+		return false;
+	}
+	read_timeline = consumer.request_timeline_semaphore_external(ExternalHandle::get_opaque_semaphore_handle_type());
+
+	if (!read_timeline)
+	{
+		LOGE("Failed to create external timeline.\n");
+		return false;
+	}
+
+	if (!read_timeline->import_from_handle(write_timeline_handle))
+	{
+		LOGE("Failed to import timeline.\n");
+		return false;
+	}
 
 	ImageCreateInfo image_info = ImageCreateInfo::immutable_2d_image(1, 1, VK_FORMAT_R32_UINT);
 	image_info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -108,13 +132,13 @@ static bool run_test(Device &producer, Device &consumer)
 		auto external = producer.request_binary_semaphore_external();
 		producer.submit_empty(CommandBuffer::Type::Generic, nullptr, external.get());
 
-		ExternalHandle handle = external->export_to_opaque_handle();
+		ExternalHandle handle = external->export_to_handle(ExternalHandle::get_opaque_semaphore_handle_type());
 		if (!handle)
 			break;
 
 		// Consume
 		auto import = consumer.request_binary_semaphore_external();
-		if (!import->import_from_opaque_handle(handle))
+		if (!import->import_from_handle(handle))
 		{
 			close_native_handle(handle.handle);
 			break;
@@ -130,22 +154,16 @@ static bool run_test(Device &producer, Device &consumer)
 		copy_cmd->copy_image_to_buffer(*readback_buffer, *read_image,
 		                               (2 * i + 1) * sizeof(uint32_t), {}, {1, 1, 1}, 0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
 		consumer.submit(copy_cmd);
-		external = consumer.request_binary_semaphore_external();
-		consumer.submit_empty(CommandBuffer::Type::AsyncTransfer, nullptr, external.get());
 
-		handle = external->export_to_opaque_handle();
-		if (!handle)
-			break;
-
-		import = producer.request_binary_semaphore_external();
-		if (!import->import_from_opaque_handle(handle))
-		{
-			close_native_handle(handle.handle);
-			break;
-		}
+		auto consumer_done = consumer.request_timeline_semaphore_as_binary(*read_timeline, i + 1);
+		consumer.submit_empty(CommandBuffer::Type::AsyncTransfer, nullptr, consumer_done.get());
 
 		// Avoid WAR hazard.
-		producer.add_wait_semaphore(CommandBuffer::Type::Generic, import, VK_PIPELINE_STAGE_TRANSFER_BIT, true);
+		auto producer_begin = producer.request_timeline_semaphore_as_binary(*write_timeline, i + 1);
+		producer_begin->signal_external();
+		producer.add_wait_semaphore(CommandBuffer::Type::Generic, std::move(producer_begin),
+		                            VK_PIPELINE_STAGE_TRANSFER_BIT, true);
+
 		producer.next_frame_context();
 		consumer.next_frame_context();
 	}

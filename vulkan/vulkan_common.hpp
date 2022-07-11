@@ -71,6 +71,7 @@ struct ExternalHandle
 #endif
 
 	VkExternalMemoryHandleTypeFlagBits memory_handle_type = get_opaque_memory_handle_type();
+	VkExternalSemaphoreHandleTypeFlagBits semaphore_handle_type = get_opaque_semaphore_handle_type();
 
 	constexpr static VkExternalMemoryHandleTypeFlagBits get_opaque_memory_handle_type()
 	{
@@ -78,6 +79,15 @@ struct ExternalHandle
 		return VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
 #else
 		return VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+#endif
+	}
+
+	constexpr static VkExternalSemaphoreHandleTypeFlagBits get_opaque_semaphore_handle_type()
+	{
+#ifdef _WIN32
+		return VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+#else
+		return VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
 #endif
 	}
 
@@ -93,8 +103,21 @@ struct ExternalHandle
 	static bool memory_handle_type_imports_by_reference(VkExternalMemoryHandleTypeFlagBits type)
 	{
 		VK_ASSERT(type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT ||
-		          type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT);
-		return type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+		          type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT ||
+		          type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT ||
+		          type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT ||
+		          type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT);
+		return type != VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+	}
+
+	static bool semaphore_handle_type_imports_by_reference(VkExternalSemaphoreHandleTypeFlagBits type)
+	{
+		VK_ASSERT(type == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT ||
+		          type == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT ||
+		          type == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT);
+
+		// D3D11 fence aliases D3D12 fence. It's basically the same thing, just D3D11.3.
+		return type != VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
 	}
 };
 }

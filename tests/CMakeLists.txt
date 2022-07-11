@@ -152,3 +152,13 @@ endif()
 
 add_granite_offline_tool(linkage-test linkage_test.cpp)
 add_granite_offline_tool(external-objects external_objects.cpp)
+
+option(GRANITE_TEST_INTEROP "Enable interop tests." OFF)
+if (GRANITE_TEST_INTEROP)
+    add_granite_offline_tool(granite-gl-interop gl_interop_test.cpp
+            glad/src/glad.c
+            glad/include/glad/glad.h
+            glad/include/KHR/khrplatform.h)
+    target_link_libraries(granite-gl-interop PRIVATE glfw granite-vulkan)
+    target_include_directories(granite-gl-interop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/glad/include)
+endif()

@@ -344,14 +344,39 @@ public:
 	                                     unsigned index = 0, unsigned samples = 1, unsigned layers = 1);
 	RenderPassInfo get_swapchain_render_pass(SwapchainRenderPass style);
 
-	// Request binary semaphore.
-	// Timeline semaphores are only used internally to reduce handle bloat.
-	Semaphore request_binary_semaphore();
+	// Semaphore API:
+	// Semaphores in Granite are abstracted to support both binary and timeline semaphores
+	// internally.
+	// In practice this means that semaphores behave like single-use binary semaphores,
+	// with one signal and one wait.
+	// A single semaphore handle is not reused for multiple submissions, and they must be recycled through
+	// the device. The intended use is device.submit(&sem), device.add_wait_semaphore(sem); dispose(sem);
+	// For timeline semaphores, the semaphore is just a proxy object which
+	// holds the internally owned VkSemaphore + timeline value and is otherwise lightweight.
+	//
+	// However, there are various use cases where we explicitly need semaphore objects:
+	// - Interoperate with other code that only accepts VkSemaphore.
+	// - Interoperate with external objects. We need to know whether to use binary or timeline.
+	//   For timelines, we need to know which handle type to use (OPAQUE or ID3D12Fence).
+	//   Binary external semaphore is always opaque with TEMPORARY semantics.
+
+	// If transfer_ownership is set, Semaphore owns the VkSemaphore. Otherwise, application must
+	// free the semaphore when GPU usage of it is complete.
+	Semaphore request_binary_semaphore(VkSemaphore handle = VK_NULL_HANDLE, bool transfer_ownership = false);
+	Semaphore request_timeline_semaphore(VkSemaphore handle = VK_NULL_HANDLE, bool transfer_ownership = false);
+
 	// Requests a binary semaphore that can be used to import/export sync handles.
 	Semaphore request_binary_semaphore_external();
+	// Requests a timeline semaphore that can be used to import/export.
+	// These semaphores cannot be used directly by add_wait_semaphore() and submit_empty().
+	// See request_timeline_semaphore_as_binary().
+	Semaphore request_timeline_semaphore_external(VkExternalSemaphoreHandleTypeFlagBits type);
+	// The created semaphore does not hold ownership of the VkSemaphore object.
+	Semaphore request_timeline_semaphore_as_binary(const SemaphoreHolder &holder, uint64_t value);
+
 	// A proxy semaphore which lets us grab a semaphore handle before we signal it.
+	// Move assignment can be used to move a payload.
 	// Mostly useful to deal better with render graph implementation.
-	// TODO: When we require timeline semaphores, this could be a bit more elegant, and we could expose timeline directly.
 	// For time being however, we'll support moving the payload over to the proxy object.
 	Semaphore request_proxy_semaphore();
 

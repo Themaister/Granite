@@ -525,6 +525,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		}
 	}
 
+	{
+		VkPhysicalDeviceProperties props;
+		vkGetPhysicalDeviceProperties(gpu, &props);
+		LOGI("Using Vulkan GPU: %s\n", props.deviceName);
+	}
+
 	uint32_t ext_count = 0;
 	vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, nullptr);
 	vector<VkExtensionProperties> queried_extensions(ext_count);

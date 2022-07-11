@@ -57,6 +57,7 @@ public:
 
 	uint64_t get_timeline_value() const
 	{
+		VK_ASSERT(!owned && semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR);
 		return timeline;
 	}
 
@@ -67,6 +68,7 @@ public:
 		VK_ASSERT(signalled);
 		semaphore = VK_NULL_HANDLE;
 		signalled = false;
+		owned = false;
 		return ret;
 	}
 
@@ -75,6 +77,7 @@ public:
 		auto ret = semaphore;
 		semaphore = VK_NULL_HANDLE;
 		signalled = false;
+		owned = false;
 		return ret;
 	}
 
@@ -112,29 +115,51 @@ public:
 		return external_compatible;
 	}
 
+	VkSemaphoreTypeKHR get_semaphore_type() const
+	{
+		return semaphore_type;
+	}
+
+	bool is_proxy_timeline() const
+	{
+		return proxy_timeline;
+	}
+
+	void set_proxy_timeline()
+	{
+		proxy_timeline = true;
+		signalled = false;
+	}
+
 	// If successful, importing takes ownership of the handle/fd.
 	// Application can use dup() / DuplicateHandle() to keep a reference.
 	// Imported semaphores are assumed to be signalled, or pending to be signalled.
 	// All imports are performed with TEMPORARY permanence.
-	ExternalHandle export_to_opaque_handle();
-	bool import_from_opaque_handle(ExternalHandle handle);
+	ExternalHandle export_to_handle(VkExternalSemaphoreHandleTypeFlagBits handle);
+	bool import_from_handle(ExternalHandle handle);
 
 	SemaphoreHolder &operator=(SemaphoreHolder &&other) noexcept;
 
 private:
 	friend class Util::ObjectPool<SemaphoreHolder>;
-	SemaphoreHolder(Device *device_, VkSemaphore semaphore_, bool signalled_)
+	SemaphoreHolder(Device *device_, VkSemaphore semaphore_, bool signalled_, bool owned_)
 		: device(device_)
 		, semaphore(semaphore_)
 		, timeline(0)
+		, semaphore_type(VK_SEMAPHORE_TYPE_BINARY_KHR)
 		, signalled(signalled_)
+		, owned(owned_)
 	{
 	}
 
-	SemaphoreHolder(Device *device_, uint64_t timeline_, VkSemaphore semaphore_)
-		: device(device_), semaphore(semaphore_), timeline(timeline_)
+	SemaphoreHolder(Device *device_, uint64_t timeline_, VkSemaphore semaphore_, bool owned_)
+		: device(device_)
+		, semaphore(semaphore_)
+		, timeline(timeline_)
+		, semaphore_type(VK_SEMAPHORE_TYPE_TIMELINE_KHR)
+		, owned(owned_)
 	{
-		VK_ASSERT(timeline > 0);
+		VK_ASSERT((owned && timeline == 0) || (!owned && timeline != 0));
 	}
 
 	explicit SemaphoreHolder(Device *device_)
@@ -147,9 +172,12 @@ private:
 	Device *device;
 	VkSemaphore semaphore = VK_NULL_HANDLE;
 	uint64_t timeline = 0;
-	bool signalled = true;
+	VkSemaphoreTypeKHR semaphore_type = VK_SEMAPHORE_TYPE_BINARY_KHR;
+	bool signalled = false;
 	bool pending_wait = false;
 	bool external_compatible = false;
+	bool owned = false;
+	bool proxy_timeline = false;
 };
 
 using Semaphore = Util::IntrusivePtr<SemaphoreHolder>;

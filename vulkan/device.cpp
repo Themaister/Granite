@@ -162,7 +162,6 @@ Semaphore Device::request_timeline_semaphore_as_binary(const SemaphoreHolder &ho
 {
 	VK_ASSERT(holder.get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE_KHR);
 	VK_ASSERT(holder.is_proxy_timeline());
-	LOCK();
 	Semaphore ptr(handle_pool.semaphores.allocate(this, value, holder.get_semaphore(), false));
 	return ptr;
 }
@@ -219,7 +218,6 @@ Semaphore Device::request_timeline_semaphore_external(VkExternalSemaphoreHandleT
 
 Semaphore Device::request_proxy_semaphore()
 {
-	LOCK();
 	Semaphore ptr(handle_pool.semaphores.allocate(this));
 	return ptr;
 }

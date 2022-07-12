@@ -114,8 +114,8 @@ void PerformanceQueryPool::init_device(Device *device_, uint32_t queue_family_in
 		return;
 	}
 
-	counters.resize(num_counters);
-	counter_descriptions.resize(num_counters);
+	counters.resize(num_counters, { VK_STRUCTURE_TYPE_PERFORMANCE_COUNTER_KHR });
+	counter_descriptions.resize(num_counters, { VK_STRUCTURE_TYPE_PERFORMANCE_COUNTER_DESCRIPTION_KHR });
 
 	if (vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(
 			device->get_physical_device(),

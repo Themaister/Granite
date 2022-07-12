@@ -1490,10 +1490,9 @@ Helper::BatchComposer::bake(int profiling_iteration)
 		{
 			profiling_infos[i] = { VK_STRUCTURE_TYPE_PERFORMANCE_QUERY_SUBMIT_INFO_KHR };
 			profiling_infos[i].counterPassIndex = uint32_t(profiling_iteration);
-			if (submit.pNext)
-				timeline_submit.pNext = &profiling_infos[i];
-			else
-				submit.pNext = &profiling_infos[i];
+
+			profiling_infos[i].pNext = submit.pNext;
+			submit.pNext = &profiling_infos[i];
 		}
 
 		submit.commandBufferCount = cmds[i].size();
@@ -4839,18 +4838,9 @@ void Device::query_available_performance_counters(CommandBuffer::Type type, uint
 	*desc = query_pool.get_available_counter_descs();
 }
 
-bool Device::init_performance_counters(const std::vector<std::string> &names)
+bool Device::init_performance_counters(CommandBuffer::Type type, const std::vector<std::string> &names)
 {
-	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
-	{
-		if (&get_performance_query_pool(QueueIndices(i)) == &queue_data[i].performance_query_pool)
-		{
-			if (!queue_data[i].performance_query_pool.init_counters(names))
-				return false;
-		}
-	}
-
-	return true;
+	return queue_data[get_physical_queue_type(type)].performance_query_pool.init_counters(names);
 }
 
 void Device::release_profiling()

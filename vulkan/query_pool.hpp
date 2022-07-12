@@ -47,6 +47,10 @@ public:
 	const VkPerformanceCounterKHR *get_available_counters() const;
 	const VkPerformanceCounterDescriptionKHR *get_available_counter_descs() const;
 
+	static void log_available_counters(const VkPerformanceCounterKHR *counters,
+	                                   const VkPerformanceCounterDescriptionKHR *descs,
+	                                   uint32_t count);
+
 private:
 	Device *device = nullptr;
 	uint32_t queue_family_index = 0;

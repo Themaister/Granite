@@ -35,7 +35,7 @@ static const char *storage_to_str(VkPerformanceCounterStorageKHR storage)
 	case VK_PERFORMANCE_COUNTER_STORAGE_FLOAT32_KHR:
 		return "float32";
 	case VK_PERFORMANCE_COUNTER_STORAGE_FLOAT64_KHR:
-		return "float32";
+		return "float64";
 	case VK_PERFORMANCE_COUNTER_STORAGE_INT32_KHR:
 		return "int32";
 	case VK_PERFORMANCE_COUNTER_STORAGE_INT64_KHR:
@@ -95,6 +95,19 @@ static const char *unit_to_str(VkPerformanceCounterUnitKHR unit)
 	}
 }
 
+void PerformanceQueryPool::log_available_counters(const VkPerformanceCounterKHR *counters,
+                                                  const VkPerformanceCounterDescriptionKHR *descs,
+                                                  uint32_t count)
+{
+	for (uint32_t i = 0; i < count; i++)
+	{
+		LOGI("  %s: %s\n", descs[i].name, descs[i].description);
+		LOGI("    Storage: %s\n", storage_to_str(counters[i].storage));
+		LOGI("    Scope: %s\n", scope_to_str(counters[i].scope));
+		LOGI("    Unit: %s\n", unit_to_str(counters[i].unit));
+	}
+}
+
 void PerformanceQueryPool::init_device(Device *device_, uint32_t queue_family_index_)
 {
 	device = device_;
@@ -126,15 +139,6 @@ void PerformanceQueryPool::init_device(Device *device_, uint32_t queue_family_in
 		LOGE("Failed to enumerate performance counters.\n");
 		return;
 	}
-
-	LOGI("Available performance counters for queue family: %u\n", queue_family_index);
-	for (uint32_t i = 0; i < num_counters; i++)
-	{
-		LOGI("  %s: %s\n", counter_descriptions[i].name, counter_descriptions[i].description);
-		LOGI("    Storage: %s\n", storage_to_str(counters[i].storage));
-		LOGI("    Scope: %s\n", scope_to_str(counters[i].scope));
-		LOGI("    Unit: %s\n", unit_to_str(counters[i].unit));
-	}
 }
 
 PerformanceQueryPool::~PerformanceQueryPool()
@@ -149,7 +153,7 @@ void PerformanceQueryPool::begin_command_buffer(VkCommandBuffer cmd)
 		return;
 
 	auto &table = device->get_device_table();
-	table.vkResetQueryPoolEXT(device->get_device(), pool, 0, 0);
+	table.vkResetQueryPoolEXT(device->get_device(), pool, 0, 1);
 	table.vkCmdBeginQuery(cmd, pool, 0, 0);
 
 	VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
@@ -176,13 +180,19 @@ void PerformanceQueryPool::end_command_buffer(VkCommandBuffer cmd)
 
 void PerformanceQueryPool::report()
 {
+	if (pool == VK_NULL_HANDLE)
+	{
+		LOGE("No query pool is set up.\n");
+		return;
+	}
+
 	auto &table = device->get_device_table();
 	if (table.vkGetQueryPoolResults(device->get_device(), pool,
 	                                0, 1,
 	                                results.size() * sizeof(VkPerformanceCounterResultKHR),
 	                                results.data(),
 	                                sizeof(VkPerformanceCounterResultKHR),
-	                                0) != VK_SUCCESS)
+	                                VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS)
 	{
 		LOGE("Getting performance counters did not succeed.\n");
 	}

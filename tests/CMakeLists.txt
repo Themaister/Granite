@@ -152,6 +152,7 @@ endif()
 
 add_granite_offline_tool(linkage-test linkage_test.cpp)
 add_granite_offline_tool(external-objects external_objects.cpp)
+add_granite_offline_tool(performance-query performance_query.cpp)
 
 option(GRANITE_TEST_INTEROP "Enable interop tests." OFF)
 if (GRANITE_TEST_INTEROP)

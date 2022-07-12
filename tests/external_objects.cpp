@@ -39,14 +39,16 @@ static bool run_test(Device &producer, Device &consumer)
 	info.misc = BUFFER_MISC_EXTERNAL_MEMORY_BIT;
 	write_buffer = producer.create_buffer(info);
 
-	write_timeline = producer.request_timeline_semaphore_external(ExternalHandle::get_opaque_semaphore_handle_type());
+	write_timeline = producer.request_semaphore_external(VK_SEMAPHORE_TYPE_TIMELINE_KHR,
+	                                                     ExternalHandle::get_opaque_semaphore_handle_type());
 	auto write_timeline_handle = write_timeline->export_to_handle(ExternalHandle::get_opaque_semaphore_handle_type());
 	if (!write_timeline_handle)
 	{
 		LOGE("Failed to create external timeline.\n");
 		return false;
 	}
-	read_timeline = consumer.request_timeline_semaphore_external(ExternalHandle::get_opaque_semaphore_handle_type());
+	read_timeline = consumer.request_semaphore_external(VK_SEMAPHORE_TYPE_TIMELINE_KHR,
+	                                                    ExternalHandle::get_opaque_semaphore_handle_type());
 
 	if (!read_timeline)
 	{
@@ -129,7 +131,8 @@ static bool run_test(Device &producer, Device &consumer)
 		fill_cmd->release_external_image_barrier(*write_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		                                         VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 		producer.submit(fill_cmd);
-		auto external = producer.request_binary_semaphore_external();
+		auto external = producer.request_semaphore_external(
+		    VK_SEMAPHORE_TYPE_BINARY_KHR, ExternalHandle::get_opaque_semaphore_handle_type());
 		producer.submit_empty(CommandBuffer::Type::Generic, nullptr, external.get());
 
 		ExternalHandle handle = external->export_to_handle(ExternalHandle::get_opaque_semaphore_handle_type());
@@ -137,7 +140,8 @@ static bool run_test(Device &producer, Device &consumer)
 			break;
 
 		// Consume
-		auto import = consumer.request_binary_semaphore_external();
+		auto import = consumer.request_semaphore_external(
+			VK_SEMAPHORE_TYPE_BINARY_KHR, ExternalHandle::get_opaque_semaphore_handle_type());
 		if (!import->import_from_handle(handle))
 		{
 			close_native_handle(handle.handle);

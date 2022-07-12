@@ -100,22 +100,9 @@ Device::Device()
 #endif
 }
 
-Semaphore Device::request_binary_semaphore(VkSemaphore vk_semaphore, bool transfer_ownership)
+Semaphore Device::request_semaphore(VkSemaphoreTypeKHR type, VkSemaphore vk_semaphore, bool transfer_ownership)
 {
-	if (vk_semaphore == VK_NULL_HANDLE)
-	{
-		LOCK();
-		vk_semaphore = managers.semaphore.request_cleared_semaphore(false);
-		transfer_ownership = true;
-	}
-
-	Semaphore ptr(handle_pool.semaphores.allocate(this, vk_semaphore, false, transfer_ownership));
-	return ptr;
-}
-
-Semaphore Device::request_timeline_semaphore(VkSemaphore vk_semaphore, bool transfer_ownership)
-{
-	if (!ext.timeline_semaphore_features.timelineSemaphore)
+	if (type == VK_SEMAPHORE_TYPE_TIMELINE_KHR && !ext.timeline_semaphore_features.timelineSemaphore)
 	{
 		LOGE("Timeline semaphores not supported.\n");
 		return Semaphore{};
@@ -123,39 +110,38 @@ Semaphore Device::request_timeline_semaphore(VkSemaphore vk_semaphore, bool tran
 
 	if (vk_semaphore == VK_NULL_HANDLE)
 	{
-		VkSemaphoreTypeCreateInfoKHR type_info = { VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO_KHR };
-		VkSemaphoreCreateInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-		info.pNext = &type_info;
-		type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE_KHR;
-		type_info.initialValue = 0;
-		if (table->vkCreateSemaphore(device, &info, nullptr, &vk_semaphore) != VK_SUCCESS)
+		if (type == VK_SEMAPHORE_TYPE_BINARY_KHR)
 		{
-			LOGE("Failed to create semaphore.\n");
-			return Semaphore{};
+			LOCK();
+			vk_semaphore = managers.semaphore.request_cleared_semaphore();
 		}
-
+		else
+		{
+			VkSemaphoreTypeCreateInfoKHR type_info = { VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO_KHR };
+			VkSemaphoreCreateInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+			info.pNext = &type_info;
+			type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE_KHR;
+			type_info.initialValue = 0;
+			if (table->vkCreateSemaphore(device, &info, nullptr, &vk_semaphore) != VK_SUCCESS)
+			{
+				LOGE("Failed to create semaphore.\n");
+				return Semaphore{};
+			}
+		}
 		transfer_ownership = true;
 	}
 
-	Semaphore ptr(handle_pool.semaphores.allocate(this, 0, vk_semaphore, transfer_ownership));
-	ptr->set_proxy_timeline();
-	return ptr;
-}
-
-Semaphore Device::request_binary_semaphore_external()
-{
-	VkSemaphore semaphore;
+	if (type == VK_SEMAPHORE_TYPE_BINARY_KHR)
 	{
-		LOCK();
-		semaphore = managers.semaphore.request_cleared_semaphore(true);
+		Semaphore ptr(handle_pool.semaphores.allocate(this, vk_semaphore, false, transfer_ownership));
+		return ptr;
 	}
-
-	if (!semaphore)
-		return Semaphore{};
-
-	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, false, true));
-	ptr->set_external_object_compatible();
-	return ptr;
+	else
+	{
+		Semaphore ptr(handle_pool.semaphores.allocate(this, 0, vk_semaphore, transfer_ownership));
+		ptr->set_proxy_timeline();
+		return ptr;
+	}
 }
 
 Semaphore Device::request_timeline_semaphore_as_binary(const SemaphoreHolder &holder, uint64_t value)
@@ -166,9 +152,10 @@ Semaphore Device::request_timeline_semaphore_as_binary(const SemaphoreHolder &ho
 	return ptr;
 }
 
-Semaphore Device::request_timeline_semaphore_external(VkExternalSemaphoreHandleTypeFlagBits type)
+Semaphore Device::request_semaphore_external(VkSemaphoreTypeKHR type,
+                                             VkExternalSemaphoreHandleTypeFlagBits handle_type)
 {
-	if (!ext.timeline_semaphore_features.timelineSemaphore)
+	if (type == VK_SEMAPHORE_TYPE_TIMELINE_KHR && !ext.timeline_semaphore_features.timelineSemaphore)
 	{
 		LOGE("Timeline semaphores not supported.\n");
 		return Semaphore{};
@@ -183,13 +170,13 @@ Semaphore Device::request_timeline_semaphore_external(VkExternalSemaphoreHandleT
 	{
 		VkExternalSemaphoreProperties props = { VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES };
 		VkPhysicalDeviceExternalSemaphoreInfo info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO };
-		info.handleType = type;
+		info.handleType = handle_type;
 		vkGetPhysicalDeviceExternalSemaphoreProperties(gpu, &info, &props);
 
 		if (!(props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT) ||
 		    !(props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT))
 		{
-			LOGE("External semaphore handle type #%x is not supported.\n", type);
+			LOGE("External semaphore handle type #%x is not supported.\n", handle_type);
 			return Semaphore{};
 		}
 	}
@@ -198,10 +185,14 @@ Semaphore Device::request_timeline_semaphore_external(VkExternalSemaphoreHandleT
 	VkSemaphoreTypeCreateInfoKHR type_info = { VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO_KHR };
 	VkExportSemaphoreCreateInfo export_info = { VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO };
 
-	export_info.handleTypes = type;
-	type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE_KHR;
-	info.pNext = &type_info;
-	type_info.pNext = &export_info;
+	export_info.handleTypes = handle_type;
+	info.pNext = &export_info;
+
+	if (type == VK_SEMAPHORE_TYPE_TIMELINE_KHR)
+	{
+		type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE_KHR;
+		export_info.pNext = &type_info;
+	}
 
 	VkSemaphore semaphore;
 	if (table->vkCreateSemaphore(device, &info, nullptr, &semaphore) != VK_SUCCESS)
@@ -210,10 +201,19 @@ Semaphore Device::request_timeline_semaphore_external(VkExternalSemaphoreHandleT
 		return Semaphore{};
 	}
 
-	Semaphore ptr(handle_pool.semaphores.allocate(this, 0, semaphore, true));
-	ptr->set_external_object_compatible();
-	ptr->set_proxy_timeline();
-	return ptr;
+	if (type == VK_SEMAPHORE_TYPE_TIMELINE_KHR)
+	{
+		Semaphore ptr(handle_pool.semaphores.allocate(this, 0, semaphore, true));
+		ptr->set_external_object_compatible();
+		ptr->set_proxy_timeline();
+		return ptr;
+	}
+	else
+	{
+		Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, false, true));
+		ptr->set_external_object_compatible();
+		return ptr;
+	}
 }
 
 Semaphore Device::request_proxy_semaphore()
@@ -1371,7 +1371,7 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 		else
 		{
 			if (semaphore->is_external_object_compatible())
-				frame().recycled_external_semaphores.push_back(vk_semaphore);
+				frame().destroyed_semaphores.push_back(vk_semaphore);
 			else
 				frame().recycled_semaphores.push_back(vk_semaphore);
 
@@ -1611,7 +1611,7 @@ void Device::emit_queue_signals(Helper::BatchComposer &composer,
 
 		for (unsigned i = 0; i < semaphore_count; i++)
 		{
-			VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore(false);
+			VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore();
 			composer.add_signal_semaphore(cleared_semaphore, 0);
 			VK_ASSERT(!semaphores[i]);
 			semaphores[i] = Semaphore(handle_pool.semaphores.allocate(this, cleared_semaphore, true, true));
@@ -1697,7 +1697,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 				if (wsi.acquire->get_semaphore_type() == VK_SEMAPHORE_TYPE_BINARY_KHR)
 				{
 					if (wsi.acquire->is_external_object_compatible())
-						frame().recycled_external_semaphores.push_back(wsi.acquire->get_semaphore());
+						frame().destroyed_semaphores.push_back(wsi.acquire->get_semaphore());
 					else
 						frame().recycled_semaphores.push_back(wsi.acquire->get_semaphore());
 				}
@@ -1707,7 +1707,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 
 			composer.add_command_buffer(cmd->get_command_buffer());
 
-			VkSemaphore release = managers.semaphore.request_cleared_semaphore(false);
+			VkSemaphore release = managers.semaphore.request_cleared_semaphore();
 			wsi.release = Semaphore(handle_pool.semaphores.allocate(this, release, true, true));
 			wsi.release->set_internal_sync_object();
 			composer.add_signal_semaphore(release, 0);
@@ -2234,12 +2234,6 @@ void Device::recycle_semaphore(VkSemaphore semaphore)
 	recycle_semaphore_nolock(semaphore);
 }
 
-void Device::recycle_external_semaphore(VkSemaphore semaphore)
-{
-	LOCK();
-	recycle_external_semaphore_nolock(semaphore);
-}
-
 void Device::free_memory(const DeviceAllocation &alloc)
 {
 	LOCK();
@@ -2286,12 +2280,6 @@ void Device::recycle_semaphore_nolock(VkSemaphore semaphore)
 {
 	VK_ASSERT(!exists(frame().recycled_semaphores, semaphore));
 	frame().recycled_semaphores.push_back(semaphore);
-}
-
-void Device::recycle_external_semaphore_nolock(VkSemaphore semaphore)
-{
-	VK_ASSERT(!exists(frame().recycled_external_semaphores, semaphore));
-	frame().recycled_external_semaphores.push_back(semaphore);
 }
 
 void Device::destroy_event_nolock(VkEvent event)
@@ -2770,9 +2758,7 @@ void Device::PerFrame::begin()
 	for (auto &pool : destroyed_descriptor_pools)
 		table.vkDestroyDescriptorPool(vkdevice, pool, nullptr);
 	for (auto &semaphore : recycled_semaphores)
-		managers.semaphore.recycle(semaphore, false);
-	for (auto &semaphore : recycled_external_semaphores)
-		managers.semaphore.recycle(semaphore, true);
+		managers.semaphore.recycle(semaphore);
 	for (auto &event : recycled_events)
 		managers.event.recycle(event);
 	for (auto &alloc : allocations)
@@ -2788,7 +2774,6 @@ void Device::PerFrame::begin()
 	destroyed_semaphores.clear();
 	destroyed_descriptor_pools.clear();
 	recycled_semaphores.clear();
-	recycled_external_semaphores.clear();
 	recycled_events.clear();
 	allocations.clear();
 

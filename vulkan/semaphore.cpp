@@ -43,19 +43,15 @@ void SemaphoreHolder::recycle_semaphore()
 
 	if (internal_sync)
 	{
-		if (semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR || is_signalled())
+		if (semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR || external_compatible || is_signalled())
 			device->destroy_semaphore_nolock(semaphore);
-		else if (external_compatible)
-			device->recycle_external_semaphore_nolock(semaphore);
 		else
 			device->recycle_semaphore_nolock(semaphore);
 	}
 	else
 	{
-		if (semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR || is_signalled())
+		if (semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR || external_compatible || is_signalled())
 			device->destroy_semaphore(semaphore);
-		else if (external_compatible)
-			device->recycle_external_semaphore(semaphore);
 		else
 			device->recycle_semaphore(semaphore);
 	}

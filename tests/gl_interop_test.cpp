@@ -213,15 +213,14 @@ int main()
 		const GLenum gllayout = GL_LAYOUT_COLOR_ATTACHMENT_EXT;
 		GLuint glsem;
 
+		// Synchronize with OpenGL. Export a handle.
+		auto ext_semaphore = device.request_semaphore_external(VK_SEMAPHORE_TYPE_BINARY_KHR, ExternalHandle::get_opaque_semaphore_handle_type());
+		device.submit_empty(CommandBuffer::Type::Generic, nullptr, ext_semaphore.get());
+		auto exported_semaphore = ext_semaphore->export_to_handle(ExternalHandle::get_opaque_semaphore_handle_type());
+
+		glGenSemaphoresEXT(1, &glsem);
+
 		{
-			// Synchronize with OpenGL. Export a handle.
-			auto ext_semaphore = device.request_binary_semaphore_external();
-			device.submit_empty(CommandBuffer::Type::Generic, nullptr, ext_semaphore.get());
-			auto exported_semaphore =
-			    ext_semaphore->export_to_handle(ExternalHandle::get_opaque_semaphore_handle_type());
-
-			glGenSemaphoresEXT(1, &glsem);
-
 #ifdef _WIN32
 			glImportSemaphoreWin32HandleEXT(glsem, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, exported_semaphore.handle);
 			check_gl_error();
@@ -233,7 +232,6 @@ int main()
 
 			// Wait. The layout matches whatever we used when releasing the image.
 			glWaitSemaphoreEXT(glsem, 0, nullptr, 1, &gltex, &gllayout);
-			glDeleteSemaphoresEXT(1, &glsem);
 			check_gl_error();
 		}
 
@@ -248,30 +246,13 @@ int main()
 
 		// We're done using the semaphore. Import the layout from GL and wait on it to avoid write-after-read hazard.
 		{
-			auto ext_semaphore = device.request_binary_semaphore_external();
-			// Mark that the semaphore has already been signalled.
-			// We'll do a reverse import basically. GL imports the semaphore and signals it.
-			ext_semaphore->signal_external();
-			auto exported_semaphore =
-				ext_semaphore->export_to_handle(ExternalHandle::get_opaque_semaphore_handle_type());
-
-			glGenSemaphoresEXT(1, &glsem);
-
-#ifdef _WIN32
-			glImportSemaphoreWin32HandleEXT(glsem, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, exported_semaphore.handle);
-			CloseHandle(exported_semaphore.handle);
-#else
-			// Importing an FD takes ownership of it. We'll reimport the FD, so need to dup it.
-			glImportSemaphoreFdEXT(glsem, GL_HANDLE_TYPE_OPAQUE_FD_EXT, exported_semaphore.handle);
-#endif
-
 			glSignalSemaphoreEXT(glsem, 0, nullptr, 1, &gltex, &gllayout);
-			glDeleteSemaphoresEXT(1, &glsem);
 			check_gl_error();
-
 			device.add_wait_semaphore(CommandBuffer::Type::Generic, std::move(ext_semaphore),
 			                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, true);
 		}
+
+		glDeleteSemaphoresEXT(1, &glsem);
 
 		glfwSwapBuffers(window);
 		device.next_frame_context();

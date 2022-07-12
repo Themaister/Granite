@@ -362,15 +362,13 @@ public:
 
 	// If transfer_ownership is set, Semaphore owns the VkSemaphore. Otherwise, application must
 	// free the semaphore when GPU usage of it is complete.
-	Semaphore request_binary_semaphore(VkSemaphore handle = VK_NULL_HANDLE, bool transfer_ownership = false);
-	Semaphore request_timeline_semaphore(VkSemaphore handle = VK_NULL_HANDLE, bool transfer_ownership = false);
+	Semaphore request_semaphore(VkSemaphoreTypeKHR type, VkSemaphore handle = VK_NULL_HANDLE, bool transfer_ownership = false);
 
-	// Requests a binary semaphore that can be used to import/export sync handles.
-	Semaphore request_binary_semaphore_external();
-	// Requests a timeline semaphore that can be used to import/export.
+	// Requests a binary or timeline semaphore that can be used to import/export.
 	// These semaphores cannot be used directly by add_wait_semaphore() and submit_empty().
-	// See request_timeline_semaphore_as_binary().
-	Semaphore request_timeline_semaphore_external(VkExternalSemaphoreHandleTypeFlagBits type);
+	// See request_timeline_semaphore_as_binary() for how to use timelines.
+	Semaphore request_semaphore_external(VkSemaphoreTypeKHR type,
+	                                     VkExternalSemaphoreHandleTypeFlagBits handle_type);
 	// The created semaphore does not hold ownership of the VkSemaphore object.
 	Semaphore request_timeline_semaphore_as_binary(const SemaphoreHolder &holder, uint64_t value);
 
@@ -381,7 +379,7 @@ public:
 	Semaphore request_proxy_semaphore();
 
 	// For compat with existing code that uses this entry point.
-	inline Semaphore request_legacy_semaphore() { return request_binary_semaphore(); }
+	inline Semaphore request_legacy_semaphore() { return request_semaphore(VK_SEMAPHORE_TYPE_BINARY_KHR); }
 
 	VkDevice get_device() const
 	{
@@ -594,7 +592,6 @@ private:
 		std::vector<VkDescriptorPool> destroyed_descriptor_pools;
 		Util::SmallVector<CommandBufferHandle> submissions[QUEUE_INDEX_COUNT];
 		std::vector<VkSemaphore> recycled_semaphores;
-		std::vector<VkSemaphore> recycled_external_semaphores;
 		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
 		std::vector<ImageHandle> keep_alive_images;
@@ -740,7 +737,6 @@ private:
 	void destroy_framebuffer(VkFramebuffer framebuffer);
 	void destroy_semaphore(VkSemaphore semaphore);
 	void recycle_semaphore(VkSemaphore semaphore);
-	void recycle_external_semaphore(VkSemaphore semaphore);
 	void destroy_event(VkEvent event);
 	void free_memory(const DeviceAllocation &alloc);
 	void reset_fence(VkFence fence, bool observed_wait);
@@ -756,7 +752,6 @@ private:
 	void destroy_framebuffer_nolock(VkFramebuffer framebuffer);
 	void destroy_semaphore_nolock(VkSemaphore semaphore);
 	void recycle_semaphore_nolock(VkSemaphore semaphore);
-	void recycle_external_semaphore_nolock(VkSemaphore semaphore);
 	void destroy_event_nolock(VkEvent event);
 	void free_memory_nolock(const DeviceAllocation &alloc);
 	void destroy_descriptor_pool_nolock(VkDescriptorPool desc_pool);

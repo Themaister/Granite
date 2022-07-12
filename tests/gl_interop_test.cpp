@@ -26,8 +26,8 @@ static void import_semaphore(GLuint &glsem, const ExternalHandle &handle)
 {
 	glGenSemaphoresEXT(1, &glsem);
 #ifdef _WIN32
-	glImportSemaphoreWin32HandleEXT(glsem, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, exported_semaphore.handle);
-	CloseHandle(exported_semaphore.handle);
+	glImportSemaphoreWin32HandleEXT(glsem, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, handle.handle);
+	CloseHandle(handle.handle);
 #else
 	// Importing an FD takes ownership of it. We'll reimport the FD, so need to dup it.
 	glImportSemaphoreFdEXT(glsem, GL_HANDLE_TYPE_OPAQUE_FD_EXT, handle.handle);
@@ -128,6 +128,8 @@ int main()
 	GLint gltrue = GL_TRUE;
 	glMemoryObjectParameterivEXT(glmem, GL_DEDICATED_MEMORY_OBJECT_EXT, &gltrue);
 
+	check_gl_error();
+
 	const char *vendor = (const char *)glGetString(GL_VENDOR);
 	LOGI("GL vendor: %s\n", vendor);
 
@@ -147,17 +149,24 @@ int main()
 #ifdef _WIN32
 	glImportMemoryWin32HandleEXT(glmem, image->get_allocation().get_size(),
 	                             GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, exported_image.handle);
-	CloseHandle(exported_image.handle);
 #else
 	// Importing takes ownership of the FD.
 	glImportMemoryFdEXT(glmem, image->get_allocation().get_size(),
 	                    GL_HANDLE_TYPE_OPAQUE_FD_EXT, exported_image.handle);
 #endif
 
+	check_gl_error();
+
 	glTextureStorageMem2DEXT(gltex, 1, GL_RGBA8,
 	                         GLsizei(image->get_width()),
 	                         GLsizei(image->get_height()),
 	                         glmem, 0);
+
+#ifdef _WIN32
+	// The HANDLE seems to be consumed at TextureStorage time, otherwise we get OUT_OF_MEMORY error on NV Windows.
+	// Sort of makes sense since it's a dedicated allocation?
+	CloseHandle(exported_image.handle);
+#endif
 
 	// We'll blit the result to screen with BlitFramebuffer.
 	glNamedFramebufferTexture(glfbo, GL_COLOR_ATTACHMENT0, gltex, 0);

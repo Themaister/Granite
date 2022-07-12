@@ -37,7 +37,7 @@ static void import_semaphore(GLuint &glsem, const ExternalHandle &handle)
 
 int main()
 {
-	Granite::Global::init(1, Granite::Global::MANAGER_FEATURE_DEFAULT_BITS);
+	Granite::Global::init(Granite::Global::MANAGER_FEATURE_DEFAULT_BITS, 1);
 	if (!glfwInit())
 		return EXIT_FAILURE;
 

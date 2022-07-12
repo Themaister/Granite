@@ -22,6 +22,19 @@ static void check_gl_error()
 	}
 }
 
+static void import_semaphore(GLuint &glsem, const ExternalHandle &handle)
+{
+	glGenSemaphoresEXT(1, &glsem);
+#ifdef _WIN32
+	glImportSemaphoreWin32HandleEXT(glsem, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, exported_semaphore.handle);
+	CloseHandle(exported_semaphore.handle);
+#else
+	// Importing an FD takes ownership of it. We'll reimport the FD, so need to dup it.
+	glImportSemaphoreFdEXT(glsem, GL_HANDLE_TYPE_OPAQUE_FD_EXT, handle.handle);
+#endif
+	check_gl_error();
+}
+
 int main()
 {
 	Granite::Global::init(1, Granite::Global::MANAGER_FEATURE_DEFAULT_BITS);
@@ -111,33 +124,29 @@ int main()
 	glCreateMemoryObjectsEXT(1, &glmem);
 	glCreateFramebuffers(1, &glfbo);
 
+	// We always use dedicated allocations in Granite for external objects.
 	GLint gltrue = GL_TRUE;
 	glMemoryObjectParameterivEXT(glmem, GL_DEDICATED_MEMORY_OBJECT_EXT, &gltrue);
 
 	const char *vendor = (const char *)glGetString(GL_VENDOR);
 	LOGI("GL vendor: %s\n", vendor);
 
-	check_gl_error();
-
-#ifdef _WIN32
-	GLubyte luid[GL_LUID_SIZE_EXT] = {};
 	auto &features = device.get_device_features();
-	glGetUnsignedBytevEXT(GL_DEVICE_LUID_EXT, luid);
-
-	check_gl_error();
-
-	for (unsigned i = 0; i < VK_LUID_SIZE; i++)
+	if (features.id_properties.deviceLUIDValid)
 	{
-		if (features.id_properties.deviceLUID[i] != luid[i])
+		GLubyte luid[GL_LUID_SIZE_EXT] = {};
+		glGetUnsignedBytevEXT(GL_DEVICE_LUID_EXT, luid);
+
+		if (memcmp(features.id_properties.deviceLUID, luid, GL_LUID_SIZE_EXT) != 0)
 		{
 			LOGE("LUID mismatch.\n");
 			return EXIT_FAILURE;
 		}
 	}
 
+#ifdef _WIN32
 	glImportMemoryWin32HandleEXT(glmem, image->get_allocation().get_size(),
 	                             GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, exported_image.handle);
-	check_gl_error();
 	CloseHandle(exported_image.handle);
 #else
 	// Importing takes ownership of the FD.
@@ -145,14 +154,10 @@ int main()
 	                    GL_HANDLE_TYPE_OPAQUE_FD_EXT, exported_image.handle);
 #endif
 
-	check_gl_error();
-
 	glTextureStorageMem2DEXT(gltex, 1, GL_RGBA8,
 	                         GLsizei(image->get_width()),
 	                         GLsizei(image->get_height()),
 	                         glmem, 0);
-
-	check_gl_error();
 
 	// We'll blit the result to screen with BlitFramebuffer.
 	glNamedFramebufferTexture(glfbo, GL_COLOR_ATTACHMENT0, gltex, 0);
@@ -161,7 +166,6 @@ int main()
 	if ((status = glCheckNamedFramebufferStatus(glfbo, GL_READ_FRAMEBUFFER)) != GL_FRAMEBUFFER_COMPLETE)
 	{
 		LOGE("Failed to bind framebuffer (#%x).\n", status);
-		check_gl_error();
 		return EXIT_FAILURE;
 	}
 
@@ -181,9 +185,11 @@ int main()
 			rp_info.clear_color[0].float32[1] = float(0.5f + 0.3f * sin(double(frame_count) * 0.020));
 			rp_info.clear_color[0].float32[2] = float(0.5f + 0.3f * sin(double(frame_count) * 0.015));
 
+			// Don't need to reacquire from external queue family if we don't care about the contents being preserved.
 			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
 			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+
 			cmd->begin_render_pass(rp_info);
 
 			VkClearRect clear_rect = {};
@@ -213,26 +219,18 @@ int main()
 		const GLenum gllayout = GL_LAYOUT_COLOR_ATTACHMENT_EXT;
 		GLuint glsem;
 
-		// Synchronize with OpenGL. Export a handle.
-		auto ext_semaphore = device.request_semaphore_external(VK_SEMAPHORE_TYPE_BINARY_KHR, ExternalHandle::get_opaque_semaphore_handle_type());
-		device.submit_empty(CommandBuffer::Type::Generic, nullptr, ext_semaphore.get());
-		auto exported_semaphore = ext_semaphore->export_to_handle(ExternalHandle::get_opaque_semaphore_handle_type());
-
-		glGenSemaphoresEXT(1, &glsem);
-
 		{
-#ifdef _WIN32
-			glImportSemaphoreWin32HandleEXT(glsem, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, exported_semaphore.handle);
-			check_gl_error();
-			CloseHandle(exported_semaphore.handle);
-#else
-			// Importing an FD takes ownership of it. We'll reimport the FD, so need to dup it.
-			glImportSemaphoreFdEXT(glsem, GL_HANDLE_TYPE_OPAQUE_FD_EXT, exported_semaphore.handle);
-#endif
+			// Synchronize with OpenGL. Export a handle.
+			auto ext_semaphore = device.request_semaphore_external(
+			    VK_SEMAPHORE_TYPE_BINARY_KHR, ExternalHandle::get_opaque_semaphore_handle_type());
+			device.submit_empty(CommandBuffer::Type::Generic, nullptr, ext_semaphore.get());
+			auto exported_semaphore = ext_semaphore->export_to_handle(ExternalHandle::get_opaque_semaphore_handle_type());
+
+			import_semaphore(glsem, exported_semaphore);
 
 			// Wait. The layout matches whatever we used when releasing the image.
 			glWaitSemaphoreEXT(glsem, 0, nullptr, 1, &gltex, &gllayout);
-			check_gl_error();
+			glDeleteSemaphoresEXT(1, &glsem);
 		}
 
 		int fb_width, fb_height;
@@ -242,23 +240,33 @@ int main()
 		                       0, 0, GLint(image->get_width()), GLint(image->get_height()),
 		                       0, 0, fb_width, fb_height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
 
-		check_gl_error();
-
 		// We're done using the semaphore. Import the layout from GL and wait on it to avoid write-after-read hazard.
+		// We could keep reusing the semaphore, but NV Linux seems to trigger random ~5 second hangs
+		// when doing that for some reason, so just use one semaphore per signal wait pair.
 		{
+			// Synchronize with OpenGL. Export a handle that GL can signal.
+			auto ext_semaphore = device.request_semaphore_external(
+			    VK_SEMAPHORE_TYPE_BINARY_KHR, ExternalHandle::get_opaque_semaphore_handle_type());
+			// Have to mark the semaphore is signalled since we assert on that being the case when exporting a semaphore.
+			ext_semaphore->signal_external();
+			auto exported_semaphore = ext_semaphore->export_to_handle(ExternalHandle::get_opaque_semaphore_handle_type());
+
+			import_semaphore(glsem, exported_semaphore);
+
 			glSignalSemaphoreEXT(glsem, 0, nullptr, 1, &gltex, &gllayout);
-			check_gl_error();
+
+			// Unsure if we have to flush to make sure the signal has been processed.
+			glFlush();
+
 			device.add_wait_semaphore(CommandBuffer::Type::Generic, std::move(ext_semaphore),
 			                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, true);
-		}
 
-		glDeleteSemaphoresEXT(1, &glsem);
+			glDeleteSemaphoresEXT(1, &glsem);
+		}
 
 		glfwSwapBuffers(window);
 		device.next_frame_context();
 		frame_count++;
-
-		check_gl_error();
 	}
 
 	glDeleteFramebuffers(1, &glfbo);

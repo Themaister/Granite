@@ -22,6 +22,7 @@
  */
 
 #extension GL_EXT_samplerless_texture_functions : require
+#extension GL_GOOGLE_include_directive : require
 layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z = 4) in;
 
 #include "bitextract.h"

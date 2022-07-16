@@ -140,6 +140,16 @@ public:
 	ExternalHandle export_to_handle();
 	bool import_from_handle(ExternalHandle handle);
 
+	VkExternalSemaphoreFeatureFlags get_external_features() const
+	{
+		return external_compatible_features;
+	}
+
+	VkExternalSemaphoreHandleTypeFlagBits get_external_handle_type() const
+	{
+		return external_compatible_handle_type;
+	}
+
 	SemaphoreHolder &operator=(SemaphoreHolder &&other) noexcept;
 
 private:

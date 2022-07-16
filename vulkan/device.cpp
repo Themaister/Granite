@@ -167,14 +167,24 @@ Semaphore Device::request_semaphore_external(VkSemaphoreTypeKHR type,
 		return Semaphore{};
 	}
 
+	VkSemaphoreTypeCreateInfoKHR type_info = { VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO_KHR };
+	type_info.semaphoreType = type;
+	VkExternalSemaphoreFeatureFlags features;
+
 	{
 		VkExternalSemaphoreProperties props = { VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES };
 		VkPhysicalDeviceExternalSemaphoreInfo info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO };
 		info.handleType = handle_type;
+
+		// Workaround AMD Windows bug where it reports TIMELINE as not supported.
+		// D3D12_FENCE used to be BINARY type before timelines were introduced to Vulkan.
+		if (type != VK_SEMAPHORE_TYPE_BINARY_KHR && handle_type != VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT)
+			info.pNext = &type_info;
 		vkGetPhysicalDeviceExternalSemaphoreProperties(gpu, &info, &props);
 
-		if (!(props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT) ||
-		    !(props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT))
+		features = props.externalSemaphoreFeatures;
+
+		if (!features)
 		{
 			LOGE("External semaphore handle type #%x is not supported.\n", handle_type);
 			return Semaphore{};
@@ -182,16 +192,19 @@ Semaphore Device::request_semaphore_external(VkSemaphoreTypeKHR type,
 	}
 
 	VkSemaphoreCreateInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-	VkSemaphoreTypeCreateInfoKHR type_info = { VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO_KHR };
 	VkExportSemaphoreCreateInfo export_info = { VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO };
 
-	export_info.handleTypes = handle_type;
-	info.pNext = &export_info;
-
-	if (type == VK_SEMAPHORE_TYPE_TIMELINE_KHR)
+	if ((features & VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT) != 0)
 	{
-		type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE_KHR;
-		export_info.pNext = &type_info;
+		export_info.handleTypes = handle_type;
+		export_info.pNext = info.pNext;
+		info.pNext = &export_info;
+	}
+
+	if (type != VK_SEMAPHORE_TYPE_BINARY_KHR)
+	{
+		type_info.pNext = info.pNext;
+		info.pNext = &type_info;
 	}
 
 	VkSemaphore semaphore;
@@ -204,14 +217,14 @@ Semaphore Device::request_semaphore_external(VkSemaphoreTypeKHR type,
 	if (type == VK_SEMAPHORE_TYPE_TIMELINE_KHR)
 	{
 		Semaphore ptr(handle_pool.semaphores.allocate(this, 0, semaphore, true));
-		ptr->set_external_object_compatible();
+		ptr->set_external_object_compatible(handle_type, features);
 		ptr->set_proxy_timeline();
 		return ptr;
 	}
 	else
 	{
 		Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, false, true));
-		ptr->set_external_object_compatible();
+		ptr->set_external_object_compatible(handle_type, features);
 		return ptr;
 	}
 }
@@ -3830,13 +3843,13 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		bool supports_export = (external_props.externalMemoryProperties.externalMemoryFeatures &
 		                        VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT) != 0;
 
-		if (!supports_import && !create_info.external)
+		if (!supports_import && create_info.external)
 		{
 			LOGE("Attempting to import with handle type #%x, but it is not supported.\n",
 			     create_info.external.memory_handle_type);
 			return ImageHandle(nullptr);
 		}
-		else if (!supports_export && create_info.external)
+		else if (!supports_export && !create_info.external)
 		{
 			LOGE("Attempting to export with handle type #%x, but it is not supported.\n",
 			     create_info.external.memory_handle_type);

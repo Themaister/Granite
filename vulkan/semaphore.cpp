@@ -43,14 +43,14 @@ void SemaphoreHolder::recycle_semaphore()
 
 	if (internal_sync)
 	{
-		if (semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR || external_compatible || is_signalled())
+		if (semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR || external_compatible_features || is_signalled())
 			device->destroy_semaphore_nolock(semaphore);
 		else
 			device->recycle_semaphore_nolock(semaphore);
 	}
 	else
 	{
-		if (semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR || external_compatible || is_signalled())
+		if (semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR || external_compatible_features || is_signalled())
 			device->destroy_semaphore(semaphore);
 		else
 			device->recycle_semaphore(semaphore);
@@ -81,13 +81,13 @@ SemaphoreHolder &SemaphoreHolder::operator=(SemaphoreHolder &&other) noexcept
 	return *this;
 }
 
-ExternalHandle SemaphoreHolder::export_to_handle(VkExternalSemaphoreHandleTypeFlagBits type)
+ExternalHandle SemaphoreHolder::export_to_handle()
 {
 	ExternalHandle h;
 
-	if (!external_compatible)
+	if ((external_compatible_features & VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT) == 0)
 	{
-		LOGE("Semaphore is not external compatible.\n");
+		LOGE("Semaphore is not export compatible.\n");
 		return h;
 	}
 
@@ -108,7 +108,7 @@ ExternalHandle SemaphoreHolder::export_to_handle(VkExternalSemaphoreHandleTypeFl
 #ifdef _WIN32
 	VkSemaphoreGetWin32HandleInfoKHR handle_info = { VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR };
 	handle_info.semaphore = semaphore;
-	handle_info.handleType = type;
+	handle_info.handleType = external_compatible_handle_type;
 
 	if (device->get_device_table().vkGetSemaphoreWin32HandleKHR(device->get_device(), &handle_info, &h.handle) != VK_SUCCESS)
 	{
@@ -118,7 +118,7 @@ ExternalHandle SemaphoreHolder::export_to_handle(VkExternalSemaphoreHandleTypeFl
 #else
 	VkSemaphoreGetFdInfoKHR fd_info = { VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR };
 	fd_info.semaphore = semaphore;
-	fd_info.handleType = type;
+	fd_info.handleType = external_compatible_handle_type;
 
 	if (device->get_device_table().vkGetSemaphoreFdKHR(device->get_device(), &fd_info, &h.handle) != VK_SUCCESS)
 	{
@@ -127,15 +127,15 @@ ExternalHandle SemaphoreHolder::export_to_handle(VkExternalSemaphoreHandleTypeFl
 	}
 #endif
 
-	h.semaphore_handle_type = type;
+	h.semaphore_handle_type = external_compatible_handle_type;
 	return h;
 }
 
 bool SemaphoreHolder::import_from_handle(ExternalHandle handle)
 {
-	if (!external_compatible)
+	if ((external_compatible_features & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT) == 0)
 	{
-		LOGE("Semaphore is not external compatible.\n");
+		LOGE("Semaphore is not import compatible.\n");
 		return false;
 	}
 
@@ -148,6 +148,12 @@ bool SemaphoreHolder::import_from_handle(ExternalHandle handle)
 	if (signalled)
 	{
 		LOGE("Cannot import payload to semaphore that is already signalled.\n");
+		return false;
+	}
+
+	if (handle.semaphore_handle_type != external_compatible_handle_type)
+	{
+		LOGE("Mismatch in semaphore handle type.\n");
 		return false;
 	}
 

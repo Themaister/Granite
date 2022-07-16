@@ -105,14 +105,16 @@ public:
 		return pending_wait;
 	}
 
-	void set_external_object_compatible()
+	void set_external_object_compatible(VkExternalSemaphoreHandleTypeFlagBits handle_type,
+	                                    VkExternalSemaphoreFeatureFlags features)
 	{
-		external_compatible = true;
+		external_compatible_handle_type = handle_type;
+		external_compatible_features = features;
 	}
 
 	bool is_external_object_compatible() const
 	{
-		return external_compatible;
+		return external_compatible_features != 0;
 	}
 
 	VkSemaphoreTypeKHR get_semaphore_type() const
@@ -135,8 +137,18 @@ public:
 	// Application can use dup() / DuplicateHandle() to keep a reference.
 	// Imported semaphores are assumed to be signalled, or pending to be signalled.
 	// All imports are performed with TEMPORARY permanence.
-	ExternalHandle export_to_handle(VkExternalSemaphoreHandleTypeFlagBits handle);
+	ExternalHandle export_to_handle();
 	bool import_from_handle(ExternalHandle handle);
+
+	VkExternalSemaphoreFeatureFlags get_external_features() const
+	{
+		return external_compatible_features;
+	}
+
+	VkExternalSemaphoreHandleTypeFlagBits get_external_handle_type() const
+	{
+		return external_compatible_handle_type;
+	}
 
 	SemaphoreHolder &operator=(SemaphoreHolder &&other) noexcept;
 
@@ -175,9 +187,10 @@ private:
 	VkSemaphoreTypeKHR semaphore_type = VK_SEMAPHORE_TYPE_BINARY_KHR;
 	bool signalled = false;
 	bool pending_wait = false;
-	bool external_compatible = false;
 	bool owned = false;
 	bool proxy_timeline = false;
+	VkExternalSemaphoreHandleTypeFlagBits external_compatible_handle_type = {};
+	VkExternalSemaphoreFeatureFlags external_compatible_features = 0;
 };
 
 using Semaphore = Util::IntrusivePtr<SemaphoreHolder>;

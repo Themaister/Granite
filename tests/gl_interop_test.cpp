@@ -29,7 +29,7 @@ static void import_semaphore(GLuint &glsem, const ExternalHandle &handle)
 	glImportSemaphoreWin32HandleEXT(glsem, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, handle.handle);
 	CloseHandle(handle.handle);
 #else
-	// Importing an FD takes ownership of it. We'll reimport the FD, so need to dup it.
+	// Importing an FD takes ownership of it.
 	glImportSemaphoreFdEXT(glsem, GL_HANDLE_TYPE_OPAQUE_FD_EXT, handle.handle);
 #endif
 	check_gl_error();

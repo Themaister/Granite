@@ -683,9 +683,9 @@ public:
 
 	void extract_pipeline_state(DeferredPipelineCompile &compile) const;
 	static Pipeline build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile,
-	                                        bool synchronous = true);
+	                                        bool synchronous = true, bool async_thread = false);
 	static Pipeline build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile,
-	                                       bool synchronous = true);
+	                                       bool synchronous = true, bool async_thread = false);
 
 	bool flush_pipeline_state_without_blocking();
 

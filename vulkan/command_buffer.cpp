@@ -25,6 +25,7 @@
 #include "format.hpp"
 #include "thread_id.hpp"
 #include "vulkan_prerotate.hpp"
+#include "timer.hpp"
 #include <string.h>
 
 //#define FULL_BACKTRACE_CHECKPOINTS
@@ -838,7 +839,46 @@ void CommandBuffer::end_render_pass()
 	begin_compute();
 }
 
-Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile, bool synchronous)
+static void log_compile_time(const char *tag, Hash hash,
+                             int64_t time_ns, VkResult result,
+                             bool synchronous, bool async_thread)
+{
+	bool stall = time_ns >= 5 * 1000 * 1000 && !async_thread;
+#ifndef VULKAN_DEBUG
+	// If a compile takes more than 5 ms and it's not happening on an async thread,
+	// we consider it a stall.
+	if (stall)
+#endif
+	{
+		double time_us = 1e-3 * double(time_ns);
+		const char *mode;
+
+		if (async_thread)
+			mode = "async-thread";
+		else
+			mode = synchronous ? "sync" : "fail-on-compile-required";
+
+#ifdef VULKAN_DEBUG
+		if (!stall)
+		{
+			LOGI("Compile (%s, %016llx): thread %u - %.3f us (mode: %s, success: %s).\n",
+			     tag, static_cast<unsigned long long>(hash),
+			     get_current_thread_index(),
+			     time_us, mode, result == VK_SUCCESS ? "yes" : "no");
+		}
+		else
+#endif
+		{
+			LOGW("Stalled compile (%s, %016llx): thread %u - %.3f us (mode: %s, success: %s).\n",
+			     tag, static_cast<unsigned long long>(hash),
+			     get_current_thread_index(),
+			     time_us, mode, result == VK_SUCCESS ? "yes" : "no");
+		}
+	}
+}
+
+Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile,
+                                               bool synchronous, bool async_thread)
 {
 	// If we don't have pipeline creation cache control feature,
 	// we must assume compilation can be synchronous.
@@ -933,7 +973,10 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 	if (!synchronous)
 		info.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_EXT;
 
+	auto start_ts = Util::get_current_time_nsecs();
 	VkResult vr = table.vkCreateComputePipelines(device->get_device(), compile.cache, 1, &info, nullptr, &compute_pipeline);
+	auto end_ts = Util::get_current_time_nsecs();
+	log_compile_time("compute", compile.hash, end_ts - start_ts, vr, synchronous, async_thread);
 
 	if (vr != VK_SUCCESS || compute_pipeline == VK_NULL_HANDLE)
 	{
@@ -967,7 +1010,8 @@ void CommandBuffer::extract_pipeline_state(DeferredPipelineCompile &compile) con
 	}
 }
 
-Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile, bool synchronous)
+Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile,
+                                                bool synchronous, bool async_thread)
 {
 	// If we don't have pipeline creation cache control feature,
 	// we must assume compilation can be synchronous.
@@ -1193,7 +1237,11 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	if (!synchronous)
 		pipe.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_EXT;
 
+	auto start_ts = Util::get_current_time_nsecs();
 	VkResult res = table.vkCreateGraphicsPipelines(device->get_device(), compile.cache, 1, &pipe, nullptr, &pipeline);
+	auto end_ts = Util::get_current_time_nsecs();
+	log_compile_time("graphics", compile.hash, end_ts - start_ts, res, synchronous, async_thread);
+
 	if (res != VK_SUCCESS || pipeline == VK_NULL_HANDLE)
 	{
 		if (res < 0)

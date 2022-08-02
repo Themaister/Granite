@@ -682,11 +682,15 @@ public:
 	void end_debug_channel();
 
 	void extract_pipeline_state(DeferredPipelineCompile &compile) const;
-	static Pipeline build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile,
-	                                        bool synchronous = true);
-	static Pipeline build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile,
-	                                       bool synchronous = true);
 
+	enum class CompileMode
+	{
+		Sync,
+		FailOnCompileRequired,
+		AsyncThread
+	};
+	static Pipeline build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile, CompileMode mode);
+	static Pipeline build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile, CompileMode mode);
 	bool flush_pipeline_state_without_blocking();
 
 private:

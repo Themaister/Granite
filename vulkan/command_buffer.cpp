@@ -843,7 +843,8 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 	// If we don't have pipeline creation cache control feature,
 	// we must assume compilation can be synchronous.
 	if (!synchronous &&
-	    !device->get_device_features().pipeline_creation_cache_control_features.pipelineCreationCacheControl)
+	    (device->get_workarounds().broken_pipeline_cache_control ||
+	     !device->get_device_features().pipeline_creation_cache_control_features.pipelineCreationCacheControl))
 	{
 		return {};
 	}
@@ -971,7 +972,8 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	// If we don't have pipeline creation cache control feature,
 	// we must assume compilation can be synchronous.
 	if (!synchronous &&
-	    !device->get_device_features().pipeline_creation_cache_control_features.pipelineCreationCacheControl)
+	    (device->get_workarounds().broken_pipeline_cache_control ||
+	     !device->get_device_features().pipeline_creation_cache_control_features.pipelineCreationCacheControl))
 	{
 		return {};
 	}

@@ -802,6 +802,11 @@ void Device::init_workarounds()
 			workarounds.split_binary_timeline_semaphores = true;
 		}
 	}
+	else if (ext.driver_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
+	{
+		LOGW("Disabling pipeline cache control.\n");
+		workarounds.broken_pipeline_cache_control = true;
+	}
 #endif
 }
 

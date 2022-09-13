@@ -105,9 +105,9 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				info.restitution = 0.2f;
 				info.angular_damping = 0.3f;
 				info.linear_damping = 0.3f;
-				auto *sphere = GRANITE_PHYSICS()->add_capsule(sphere_node.get(), 1.0f, 0.5f, info);
-				entity->allocate_component<PhysicsComponent>()->handle = sphere;
-				PhysicsSystem::set_handle_parent(sphere, entity);
+				auto *capsule_sphere = GRANITE_PHYSICS()->add_capsule(sphere_node.get(), 1.0f, 0.5f, info);
+				entity->allocate_component<PhysicsComponent>()->handle = capsule_sphere;
+				PhysicsSystem::set_handle_parent(capsule_sphere, entity);
 			}
 		}
 		return true;
@@ -200,9 +200,9 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 		auto root_node = scene.create_node();
 		auto *entity = scene.create_renderable(plane, root_node.get());
-		auto *plane = GRANITE_PHYSICS()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f), {});
-		entity->allocate_component<PhysicsComponent>()->handle = plane;
-		PhysicsSystem::set_handle_parent(plane, entity);
+		auto *infinite_plane = GRANITE_PHYSICS()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f), {});
+		entity->allocate_component<PhysicsComponent>()->handle = infinite_plane;
+		PhysicsSystem::set_handle_parent(infinite_plane, entity);
 		scene.set_root_node(root_node);
 		context.set_lighting_parameters(&lighting);
 
@@ -432,16 +432,16 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				info.restitution = 0.2f;
 				info.angular_damping = 0.3f;
 				info.linear_damping = 0.3f;
-				auto *sphere = GRANITE_PHYSICS()->add_capsule(sphere_node.get(), 1.0f, 0.5f, info);
-				entity->allocate_component<PhysicsComponent>()->handle = sphere;
-				PhysicsSystem::set_handle_parent(sphere, entity);
+				auto *capsule_sphere = GRANITE_PHYSICS()->add_capsule(sphere_node.get(), 1.0f, 0.5f, info);
+				entity->allocate_component<PhysicsComponent>()->handle = capsule_sphere;
+				PhysicsSystem::set_handle_parent(capsule_sphere, entity);
 			}
 		}
 
 		return true;
 	}
 
-	void render_frame(double frame_time, double elapsed_time) override
+	void render_frame(double frame_time, double) override
 	{
 		auto &phys = scene.get_entity_pool().get_component_group<ForceComponent>();
 		if (apply_anti_gravity)
@@ -488,7 +488,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		cmd->begin_render_pass(rp);
 
 		renderer.begin(render_queue);
-		render_queue.push_renderables(context, visible);
+		render_queue.push_renderables(context, visible.data(), visible.size());
 		renderer.flush(*cmd, render_queue, context, 0);
 
 		cmd->end_render_pass();

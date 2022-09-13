@@ -29,8 +29,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-using namespace std;
-
 namespace Granite
 {
 bool StdioFile::init(const std::string &path, FileMode mode_)
@@ -131,29 +129,29 @@ StdioFile::~StdioFile()
 	}
 }
 
-vector<ListEntry> FilesystemBackend::walk(const std::string &path)
+std::vector<ListEntry> FilesystemBackend::walk(const std::string &path)
 {
 	auto entries = list(path);
-	vector<ListEntry> final_entries;
+	std::vector<ListEntry> final_entries;
 	for (auto &e : entries)
 	{
 		if (e.type == PathType::Directory)
 		{
 			auto subentries = walk(e.path);
-			final_entries.push_back(move(e));
+			final_entries.push_back(std::move(e));
 			for (auto &sub : subentries)
-				final_entries.push_back(move(sub));
+				final_entries.push_back(std::move(sub));
 		}
 		else if (e.type == PathType::File)
-			final_entries.push_back(move(e));
+			final_entries.push_back(std::move(e));
 	}
 	return final_entries;
 }
 
 Filesystem::Filesystem()
 {
-	register_protocol("file", unique_ptr<FilesystemBackend>(new OSFilesystem(".")));
-	register_protocol("memory", unique_ptr<FilesystemBackend>(new ScratchFilesystem));
+	register_protocol("file", std::unique_ptr<FilesystemBackend>(new OSFilesystem(".")));
+	register_protocol("memory", std::unique_ptr<FilesystemBackend>(new ScratchFilesystem));
 
 	const char *asset_dir = getenv("GRANITE_DEFAULT_ASSET_DIRECTORY");
 #ifdef GRANITE_DEFAULT_ASSET_DIRECTORY
@@ -161,7 +159,7 @@ Filesystem::Filesystem()
 			asset_dir = GRANITE_DEFAULT_ASSET_DIRECTORY;
 #endif
 	if (asset_dir)
-		register_protocol("builtin", unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
+		register_protocol("builtin", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 
 	const char *builtin_dir = getenv("GRANITE_DEFAULT_BUILTIN_DIRECTORY");
 #ifdef GRANITE_DEFAULT_BUILTIN_DIRECTORY
@@ -169,7 +167,7 @@ Filesystem::Filesystem()
 		builtin_dir = GRANITE_DEFAULT_BUILTIN_DIRECTORY;
 #endif
 	if (builtin_dir)
-		register_protocol("builtin", unique_ptr<FilesystemBackend>(new OSFilesystem(builtin_dir)));
+		register_protocol("builtin", std::unique_ptr<FilesystemBackend>(new OSFilesystem(builtin_dir)));
 
 	const char *cache_dir = getenv("GRANITE_DEFAULT_CACHE_DIRECTORY");
 #ifdef GRANITE_DEFAULT_CACHE_DIRECTORY
@@ -177,7 +175,7 @@ Filesystem::Filesystem()
 		cache_dir = GRANITE_DEFAULT_CACHE_DIRECTORY;
 #endif
 	if (cache_dir)
-		register_protocol("cache", unique_ptr<FilesystemBackend>(new OSFilesystem(cache_dir)));
+		register_protocol("cache", std::unique_ptr<FilesystemBackend>(new OSFilesystem(cache_dir)));
 }
 
 void Filesystem::setup_default_filesystem(Filesystem *filesystem, const char *default_asset_directory)
@@ -215,7 +213,7 @@ void Filesystem::setup_default_filesystem(Filesystem *filesystem, const char *de
 void Filesystem::register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs)
 {
 	fs->set_protocol(proto);
-	protocols[proto] = move(fs);
+	protocols[proto] = std::move(fs);
 }
 
 FilesystemBackend *Filesystem::get_backend(const std::string &proto)
@@ -261,7 +259,7 @@ bool Filesystem::read_file_to_string(const std::string &path, std::string &str)
 	if (!mapped)
 		return false;
 
-	str = string(mapped, mapped + size);
+	str = std::string(mapped, mapped + size);
 
 	// Remove DOS EOL.
 	str.erase(remove_if(begin(str), end(str), [](char c) { return c == '\r'; }), end(str));

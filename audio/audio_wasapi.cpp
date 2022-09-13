@@ -23,7 +23,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <thread>
-#include <vector>
 #include <algorithm>
 #include <atomic>
 
@@ -34,8 +33,6 @@
 #include "audio_interface.hpp"
 #include "dsp/dsp.hpp"
 #include "logging.hpp"
-
-using namespace std;
 
 static const size_t MAX_NUM_FRAMES = 256;
 
@@ -83,7 +80,7 @@ struct WASAPIBackend final : Backend
 
 	void thread_runner() noexcept;
 
-	thread thr;
+	std::thread thr;
 	std::atomic<bool> dead;
 
 	IMMDeviceEnumerator *pEnumerator = nullptr;
@@ -243,7 +240,7 @@ bool WASAPIBackend::start()
 	if (callback)
 	{
 		callback->on_backend_start();
-		thr = thread(&WASAPIBackend::thread_runner, this);
+		thr = std::thread(&WASAPIBackend::thread_runner, this);
 	}
 	else
 	{

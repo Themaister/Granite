@@ -27,7 +27,6 @@
 #include <string.h>
 
 static constexpr size_t MAX_NUM_SAMPLES = 256;
-using namespace std;
 
 namespace Granite
 {

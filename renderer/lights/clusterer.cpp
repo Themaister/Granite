@@ -34,7 +34,6 @@
 #include <string.h>
 
 using namespace Vulkan;
-using namespace std;
 
 namespace Granite
 {
@@ -73,8 +72,8 @@ void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	scratch_vsm_rt.reset();
 	scratch_vsm_down.reset();
 
-	fill(begin(legacy.spots.cookie), end(legacy.spots.cookie), 0);
-	fill(begin(legacy.points.cookie), end(legacy.points.cookie), 0);
+	std::fill(std::begin(legacy.spots.cookie), std::end(legacy.spots.cookie), 0);
+	std::fill(std::begin(legacy.points.cookie), std::end(legacy.points.cookie), 0);
 
 	bindless.allocator.reset();
 
@@ -295,36 +294,36 @@ static uint32_t reassign_indices_legacy(T &type)
 	for (unsigned i = 0; i < type.count; i++)
 	{
 		// Try to inherit shadow information from some other index.
-		auto itr = find_if(begin(type.cookie), end(type.cookie), [=](unsigned cookie) {
+		auto itr = std::find_if(std::begin(type.cookie), std::end(type.cookie), [=](unsigned cookie) {
 			return cookie == type.handles[i]->get_cookie();
 		});
 
-		if (itr != end(type.cookie))
+		if (itr != std::end(type.cookie))
 		{
-			auto index = std::distance(begin(type.cookie), itr);
+			auto index = std::distance(std::begin(type.cookie), itr);
 			if (i != unsigned(index))
 			{
 				// Reuse the shadow data from the atlas.
-				swap(type.cookie[i], type.cookie[index]);
-				swap(type.shadow_transforms[i], type.shadow_transforms[index]);
-				swap(type.index_remap[i], type.index_remap[index]);
+				std::swap(type.cookie[i], type.cookie[index]);
+				std::swap(type.shadow_transforms[i], type.shadow_transforms[index]);
+				std::swap(type.index_remap[i], type.index_remap[index]);
 			}
 		}
 
 		// Try to find an atlas slot which has never been used.
 		if (type.handles[i]->get_cookie() != type.cookie[i] && type.cookie[i] != 0)
 		{
-			auto cookie_itr = find(begin(type.cookie), end(type.cookie), 0);
+			auto cookie_itr = std::find(std::begin(type.cookie), std::end(type.cookie), 0);
 
-			if (cookie_itr != end(type.cookie))
+			if (cookie_itr != std::end(type.cookie))
 			{
-				auto index = std::distance(begin(type.cookie), cookie_itr);
+				auto index = std::distance(std::begin(type.cookie), cookie_itr);
 				if (i != unsigned(index))
 				{
 					// Reuse the shadow data from the atlas.
-					swap(type.cookie[i], type.cookie[index]);
-					swap(type.shadow_transforms[i], type.shadow_transforms[index]);
-					swap(type.index_remap[i], type.index_remap[index]);
+					std::swap(type.cookie[i], type.cookie[index]);
+					std::swap(type.shadow_transforms[i], type.shadow_transforms[index]);
+					std::swap(type.index_remap[i], type.index_remap[index]);
 				}
 			}
 		}
@@ -1963,7 +1962,7 @@ static ProjectedResult project_sphere(const RenderContext &context,
 
 void LightClusterer::update_bindless_mask_buffer_spot(uint32_t *masks, unsigned index)
 {
-	vector<uvec2> coverage;
+	std::vector<uvec2> coverage;
 
 	Rasterizer::CullMode cull;
 	vec2 range = spot_light_z_range(*context, bindless.transforms.model[index]);
@@ -2417,8 +2416,8 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 				uint32_t cached_point_mask = 0;
 				uvec4 cached_node = uvec4(0);
 
-				vector<uint32_t> tmp_list_buffer;
-				vector<uvec4> image_base;
+				std::vector<uint32_t> tmp_list_buffer;
+				std::vector<uvec4> image_base;
 				if (ImplementationQuirks::get().clustering_list_iteration)
 					image_base.resize(ClusterPrepassDownsample * res_x * res_y);
 
@@ -2515,7 +2514,7 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 				{
 					size_t cluster_offset = 0;
 					{
-						lock_guard<mutex> holder{legacy.cluster_list_lock};
+						std::lock_guard<std::mutex> holder{legacy.cluster_list_lock};
 						cluster_offset = legacy.cluster_list_buffer.size();
 						legacy.cluster_list_buffer.resize(cluster_offset + tmp_list_buffer.size());
 						memcpy(legacy.cluster_list_buffer.data() + cluster_offset, tmp_list_buffer.data(),

@@ -30,7 +30,6 @@
 using namespace Vulkan;
 using namespace Granite;
 using namespace Util;
-using namespace std;
 
 static void print_help()
 {
@@ -42,9 +41,9 @@ int main(int argc, char *argv[])
 	CLICallbacks cbs;
 	struct Args
 	{
-		string cube;
-		string reflection;
-		string irradiance;
+		std::string cube;
+		std::string reflection;
+		std::string irradiance;
 	} args;
 
 	Granite::Global::init();
@@ -55,7 +54,7 @@ int main(int argc, char *argv[])
 	cbs.default_handler = [&](const char *arg) { args.cube = arg; };
 	cbs.error_handler = [&]() { print_help(); };
 
-	CLIParser parser(move(cbs), argc - 1, argv + 1);
+	CLIParser parser(std::move(cbs), argc - 1, argv + 1);
 	if (!parser.parse())
 		return 1;
 	else if (parser.is_ended_state())

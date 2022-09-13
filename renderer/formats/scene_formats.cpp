@@ -29,7 +29,6 @@
 #include "meshoptimizer.h"
 
 using namespace Util;
-using namespace std;
 
 namespace Granite
 {
@@ -52,7 +51,7 @@ struct IndexRemapping
 static IndexRemapping build_index_remap_list(const Mesh &mesh)
 {
 	unsigned attribute_count = unsigned(mesh.positions.size() / mesh.position_stride);
-	unordered_map<Hash, unsigned> attribute_remapper;
+	std::unordered_map<Hash, unsigned> attribute_remapper;
 	IndexRemapping remapped;
 	remapped.index_remap.reserve(attribute_count);
 
@@ -82,9 +81,9 @@ static IndexRemapping build_index_remap_list(const Mesh &mesh)
 	return remapped;
 }
 
-static vector<uint32_t> build_canonical_index_buffer(const Mesh &mesh, const vector<unsigned> &index_remap)
+static std::vector<uint32_t> build_canonical_index_buffer(const Mesh &mesh, const std::vector<unsigned> &index_remap)
 {
-	vector<uint32_t> index_buffer;
+	std::vector<uint32_t> index_buffer;
 	if (mesh.indices.empty())
 	{
 		index_buffer.reserve(mesh.count);
@@ -107,13 +106,13 @@ static vector<uint32_t> build_canonical_index_buffer(const Mesh &mesh, const vec
 	return index_buffer;
 }
 
-static void rebuild_new_attributes_remap_src(vector<uint8_t> &positions, unsigned position_stride,
-                                             vector<uint8_t> &attributes, unsigned attribute_stride,
-                                             const vector<uint8_t> &source_positions, const vector<uint8_t> &source_attributes,
-                                             const vector<uint32_t> &unique_attrib_to_source_index)
+static void rebuild_new_attributes_remap_src(std::vector<uint8_t> &positions, unsigned position_stride,
+                                             std::vector<uint8_t> &attributes, unsigned attribute_stride,
+                                             const std::vector<uint8_t> &source_positions, const std::vector<uint8_t> &source_attributes,
+                                             const std::vector<uint32_t> &unique_attrib_to_source_index)
 {
-	vector<uint8_t> new_positions;
-	vector<uint8_t> new_attributes;
+	std::vector<uint8_t> new_positions;
+	std::vector<uint8_t> new_attributes;
 
 	new_positions.resize(position_stride * unique_attrib_to_source_index.size());
 	if (attribute_stride)
@@ -134,17 +133,17 @@ static void rebuild_new_attributes_remap_src(vector<uint8_t> &positions, unsigne
 		}
 	}
 
-	positions = move(new_positions);
-	attributes = move(new_attributes);
+	positions = std::move(new_positions);
+	attributes = std::move(new_attributes);
 }
 
-static void rebuild_new_attributes_remap_dst(vector<uint8_t> &positions, unsigned position_stride,
-                                             vector<uint8_t> &attributes, unsigned attribute_stride,
-                                             const vector<uint8_t> &source_positions, const vector<uint8_t> &source_attributes,
-                                             const vector<uint32_t> &unique_attrib_to_dest_index)
+static void rebuild_new_attributes_remap_dst(std::vector<uint8_t> &positions, unsigned position_stride,
+                                             std::vector<uint8_t> &attributes, unsigned attribute_stride,
+                                             const std::vector<uint8_t> &source_positions, const std::vector<uint8_t> &source_attributes,
+                                             const std::vector<uint32_t> &unique_attrib_to_dest_index)
 {
-	vector<uint8_t> new_positions;
-	vector<uint8_t> new_attributes;
+	std::vector<uint8_t> new_positions;
+	std::vector<uint8_t> new_attributes;
 
 	new_positions.resize(position_stride * unique_attrib_to_dest_index.size());
 	if (attribute_stride)
@@ -165,13 +164,13 @@ static void rebuild_new_attributes_remap_dst(vector<uint8_t> &positions, unsigne
 		}
 	}
 
-	positions = move(new_positions);
-	attributes = move(new_attributes);
+	positions = std::move(new_positions);
+	attributes = std::move(new_attributes);
 }
 
-static vector<uint32_t> remap_indices(const vector<uint32_t> &indices, const vector<uint32_t> &remap_table)
+static std::vector<uint32_t> remap_indices(const std::vector<uint32_t> &indices, const std::vector<uint32_t> &remap_table)
 {
-	vector<uint32_t> remapped;
+	std::vector<uint32_t> remapped;
 	remapped.reserve(indices.size());
 	for (auto &i : indices)
 		remapped.push_back(remap_table[i]);
@@ -185,8 +184,8 @@ static bool mesh_unroll_vertices(Mesh &mesh)
 	if (mesh.indices.empty())
 		return true;
 
-	vector<uint8_t> positions(mesh.count * mesh.position_stride);
-	vector<uint8_t> attributes(mesh.count * mesh.attribute_stride);
+	std::vector<uint8_t> positions(mesh.count * mesh.position_stride);
+	std::vector<uint8_t> attributes(mesh.count * mesh.attribute_stride);
 
 	if (mesh.index_type == VK_INDEX_TYPE_UINT32)
 	{
@@ -217,8 +216,8 @@ static bool mesh_unroll_vertices(Mesh &mesh)
 		}
 	}
 
-	mesh.positions = move(positions);
-	mesh.attributes = move(attributes);
+	mesh.positions = std::move(positions);
+	mesh.attributes = std::move(attributes);
 	mesh.indices.clear();
 	return true;
 }
@@ -262,7 +261,7 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify)
 	                            vertex_count);
 
 	// Remap vertex fetch to get contiguous indices as much as possible.
-	vector<uint32_t> remap_table(optimized.positions.size() / optimized.position_stride);
+	std::vector<uint32_t> remap_table(optimized.positions.size() / optimized.position_stride);
 	meshopt_optimizeVertexFetchRemap(remap_table.data(), index_buffer.data(), index_buffer.size(), vertex_count);
 	index_buffer = remap_indices(index_buffer, remap_table);
 	rebuild_new_attributes_remap_dst(optimized.positions, optimized.position_stride,
@@ -275,7 +274,7 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify)
 	if (stripify)
 	{
 		// Try to stripify the mesh. If we end up with fewer indices, use that.
-		vector<uint32_t> stripped_index_buffer((index_buffer.size() / 3) * 4);
+		std::vector<uint32_t> stripped_index_buffer((index_buffer.size() / 3) * 4);
 		size_t stripped_index_count = meshopt_stripify(stripped_index_buffer.data(),
 		                                               index_buffer.data(), index_buffer.size(),
 		                                               vertex_count, ~0u);
@@ -284,7 +283,7 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify)
 		if (stripped_index_count < index_buffer.size())
 		{
 			optimized.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-			index_buffer = move(stripped_index_buffer);
+			index_buffer = std::move(stripped_index_buffer);
 			optimized.primitive_restart = true;
 		}
 	}
@@ -571,7 +570,7 @@ bool mesh_recompute_normals(Mesh &mesh)
 	return true;
 }
 
-static void touch_node_children(unordered_set<uint32_t> &touched, const vector<Node> &nodes, uint32_t index)
+static void touch_node_children(std::unordered_set<uint32_t> &touched, const std::vector<Node> &nodes, uint32_t index)
 {
 	touched.insert(index);
 	for (auto &child : nodes[index].children)
@@ -581,9 +580,9 @@ static void touch_node_children(unordered_set<uint32_t> &touched, const vector<N
 	}
 }
 
-unordered_set<uint32_t> build_used_nodes_in_scene(const SceneNodes &scene, const vector<Node> &nodes)
+std::unordered_set<uint32_t> build_used_nodes_in_scene(const SceneNodes &scene, const std::vector<Node> &nodes)
 {
-	unordered_set<uint32_t> touched;
+	std::unordered_set<uint32_t> touched;
 	for (auto &node : scene.node_indices)
 		touch_node_children(touched, nodes, node);
 	return touched;

@@ -27,7 +27,6 @@
 using namespace spirv_cross;
 #endif
 
-using namespace std;
 using namespace Util;
 
 namespace Vulkan

@@ -24,7 +24,6 @@
 #include "post/temporal.hpp"
 #include "muglm/matrix_helper.hpp"
 
-using namespace std;
 using namespace Vulkan;
 
 namespace Granite

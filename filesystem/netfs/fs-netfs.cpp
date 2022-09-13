@@ -27,7 +27,6 @@
 #include <queue>
 
 #define HOST_IP "localhost"
-using namespace std;
 
 namespace Granite
 {

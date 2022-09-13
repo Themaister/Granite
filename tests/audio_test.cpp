@@ -14,13 +14,12 @@
 
 using namespace Granite;
 using namespace Granite::Audio;
-using namespace std;
 
 int main()
 {
 	Global::init(/*Granite::Global::MANAGER_FEATURE_AUDIO_BIT |*/
 	             Granite::Global::MANAGER_FEATURE_FILESYSTEM_BIT);
-	GRANITE_FILESYSTEM()->register_protocol("assets", make_unique<OSFilesystem>(ASSET_DIRECTORY));
+	GRANITE_FILESYSTEM()->register_protocol("assets", std::make_unique<OSFilesystem>(ASSET_DIRECTORY));
 
 	auto *stream = create_vorbis_stream("assets://test.ogg");
 #if 0

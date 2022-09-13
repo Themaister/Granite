@@ -24,8 +24,6 @@
 #include "timer.hpp"
 #include "thread_group.hpp"
 
-using namespace std;
-
 namespace Vulkan
 {
 #if 0

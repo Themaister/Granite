@@ -70,7 +70,7 @@ protected:
 		}
 
 		auto *self = static_cast<T *>(this);
-		self->update(move(file));
+		self->update(std::move(file));
 
 		auto paths = Path::protocol_split(path);
 		auto *proto = fs->get_backend(paths.first);

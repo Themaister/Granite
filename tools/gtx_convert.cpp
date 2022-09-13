@@ -28,7 +28,6 @@
 #include "global_managers_init.hpp"
 #include "texture_utils.hpp"
 
-using namespace std;
 using namespace Granite;
 using namespace Granite::SceneFormats;
 using namespace Util;
@@ -104,7 +103,7 @@ int main(int argc, char *argv[])
 	             Global::MANAGER_FEATURE_FILESYSTEM_BIT |
 	             Global::MANAGER_FEATURE_EVENT_BIT);
 
-	string input_path;
+	std::string input_path;
 	bool generate_mipmap = false;
 	bool deferred_generate_mipmap = false;
 	bool fixup_alpha = false;
@@ -133,7 +132,7 @@ int main(int argc, char *argv[])
 	cbs.add("--swizzle", [&](CLIParser &parser) { swizzle = parse_swizzle(parser.next_string()); });
 	cbs.default_handler = [&](const char *arg) { input_path = arg; };
 	cbs.error_handler = []() { print_help(); };
-	CLIParser parser(move(cbs), argc - 1, argv + 1);
+	CLIParser parser(std::move(cbs), argc - 1, argv + 1);
 
 	if (!parser.parse())
 		return 1;
@@ -155,7 +154,7 @@ int main(int argc, char *argv[])
 	Vulkan::ColorSpace color = Vulkan::format_is_srgb(args.format) ?
 	                           Vulkan::ColorSpace::sRGB : Vulkan::ColorSpace::Linear;
 
-	auto input = make_shared<Vulkan::MemoryMappedTexture>(
+	auto input = std::make_shared<Vulkan::MemoryMappedTexture>(
 			Vulkan::load_texture_from_file(*GRANITE_FILESYSTEM(), input_path, color));
 
 	if (input->get_layout().get_required_size() == 0)

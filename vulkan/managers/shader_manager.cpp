@@ -31,7 +31,6 @@
 #include <algorithm>
 #include <cstring>
 
-using namespace std;
 using namespace Util;
 
 #ifdef GRANITE_VULKAN_MT
@@ -83,7 +82,7 @@ bool ShaderTemplate::init()
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	if (!device->get_system_handles().filesystem)
 		return false;
-	compiler = make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
+	compiler = std::make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
 	compiler->set_target(Granite::Target::Vulkan11);
 	if (!compiler->set_source_from_file(path, force_stage))
 		return false;
@@ -227,7 +226,7 @@ void ShaderTemplate::recompile_variant(ShaderTemplateVariant &variant)
 		return;
 	}
 
-	variant.spirv = move(newspirv);
+	variant.spirv = std::move(newspirv);
 	variant.instance++;
 	update_variant_cache(variant);
 }
@@ -252,7 +251,7 @@ void ShaderTemplate::recompile()
 	// Recompile all variants.
 	if (!device->get_system_handles().filesystem)
 		return;
-	auto newcompiler = make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
+	auto newcompiler = std::make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
 	newcompiler->set_target(Granite::Target::Vulkan11);
 	if (!newcompiler->set_source_from_file(path, force_stage))
 		return;
@@ -262,7 +261,7 @@ void ShaderTemplate::recompile()
 		LOGE("Failed to preprocess updated shader: %s\n", path.c_str());
 		return;
 	}
-	compiler = move(newcompiler);
+	compiler = std::move(newcompiler);
 	source_hash = compiler->get_source_hash();
 
 #ifdef GRANITE_VULKAN_MT
@@ -604,7 +603,7 @@ bool ShaderManager::get_resource_layout_by_shader_hash(Util::Hash shader_hash, R
 		return false;
 }
 
-void ShaderManager::add_include_directory(const string &path)
+void ShaderManager::add_include_directory(const std::string &path)
 {
 	if (find(begin(include_directories), end(include_directories), path) == end(include_directories))
 		include_directories.push_back(path);
@@ -687,13 +686,13 @@ static rapidjson::Value serialize_resource_layout(const ResourceLayout &layout, 
 	return layout_obj;
 }
 
-bool ShaderManager::load_shader_cache(const string &path)
+bool ShaderManager::load_shader_cache(const std::string &path)
 {
 	if (!device->get_system_handles().filesystem)
 		return false;
 
 	using namespace rapidjson;
-	string json;
+	std::string json;
 	if (!device->get_system_handles().filesystem->read_file_to_string(path, json))
 		return false;
 
@@ -735,7 +734,7 @@ bool ShaderManager::load_shader_cache(const string &path)
 	return true;
 }
 
-bool ShaderManager::save_shader_cache(const string &path)
+bool ShaderManager::save_shader_cache(const std::string &path)
 {
 	if (!device->get_system_handles().filesystem)
 		return false;

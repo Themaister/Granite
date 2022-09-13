@@ -26,8 +26,6 @@
 #include "common_renderer_data.hpp"
 #include "ffx_cacao_impl.h"
 
-using namespace std;
-
 namespace Granite
 {
 struct FFX_CACAO_GraniteContext_Destroyer
@@ -45,7 +43,7 @@ struct CACAOState : Util::IntrusivePtrEnabled<CACAOState>
 };
 
 void setup_ffx_cacao(RenderGraph &graph, const RenderContext &context,
-                     const string &output, const string &input_depth, const string &input_normal)
+                     const std::string &output, const std::string &input_depth, const std::string &input_normal)
 {
 	AttachmentInfo info;
 	info.format = VK_FORMAT_R8_UNORM;

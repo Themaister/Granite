@@ -30,7 +30,6 @@
 #include <float.h>
 
 using namespace Vulkan;
-using namespace std;
 using namespace Util;
 
 namespace Granite
@@ -50,11 +49,11 @@ Font::Font(const std::string &path, unsigned size)
 
 	auto file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
 	if (!file)
-		throw runtime_error("Failed to open font.");
+		throw std::runtime_error("Failed to open font.");
 
 	auto *mapped = file->map();
 	if (!mapped)
-		throw runtime_error("Failed to map font.");
+		throw std::runtime_error("Failed to map font.");
 
 	unsigned multiplier = 4;
 	bool success = false;
@@ -80,7 +79,7 @@ Font::Font(const std::string &path, unsigned size)
 	} while (!success && multiplier <= 32);
 
 	if (!success)
-		throw runtime_error("Failed to bake bitmap.");
+		throw std::runtime_error("Failed to bake bitmap.");
 
 	font_height = size;
 	EVENT_MANAGER_REGISTER_LATCH(Font, on_device_created, on_device_destroyed, DeviceCreatedEvent);

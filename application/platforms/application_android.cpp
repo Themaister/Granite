@@ -43,7 +43,6 @@
 #include "audio_oboe.hpp"
 #endif
 
-using namespace std;
 using namespace Vulkan;
 
 #define SENSOR_GAME_ROTATION_VECTOR 15
@@ -117,9 +116,9 @@ static void finishFromThread()
 	jni.env->CallVoidMethod(global_state.app->activity->clazz, jni.finishFromThread);
 }
 
-static string getCommandLine()
+static std::string getCommandLine()
 {
-	string result;
+	std::string result;
 
 	jstring key = jni.env->NewStringUTF("granite");
 	jstring str = static_cast<jstring>(jni.env->CallObjectMethod(global_state.app->activity->clazz,
@@ -200,7 +199,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		                  VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR |
 		                  VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR))
 		{
-			swap(width_, height_);
+			std::swap(width_, height_);
 		}
 		get_input_tracker().set_touch_resolution(width_, height_);
 	}
@@ -209,7 +208,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	bool alive(Vulkan::WSI &wsi) override;
 	void poll_input() override;
 
-	vector<const char *> get_instance_extensions() override
+	std::vector<const char *> get_instance_extensions() override
 	{
 		return { "VK_KHR_surface", "VK_KHR_android_surface" };
 	}
@@ -231,7 +230,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 
 	struct GamepadInfo
 	{
-		string name;
+		std::string name;
 		int vid = 0;
 		int pid = 0;
 		void init_remap_table(JoypadRemapper &remapper);
@@ -397,7 +396,7 @@ static void handle_sensors()
 				// Compensate for different display rotation.
 				if (global_state.display_rotation == 1)
 				{
-					swap(q.x, q.y);
+					std::swap(q.x, q.y);
 					q.x = -q.x;
 				}
 				else if (global_state.display_rotation == 2)
@@ -407,7 +406,7 @@ static void handle_sensors()
 				}
 				else if (global_state.display_rotation == 3)
 				{
-					swap(q.x, q.y);
+					std::swap(q.x, q.y);
 					q.y = -q.y;
 				}
 
@@ -949,9 +948,9 @@ void android_main(android_app *app)
 #endif
 
 	AssetManagerFilesystem::global_asset_manager = app->activity->assetManager;
-	GRANITE_FILESYSTEM()->register_protocol("builtin", make_unique<AssetManagerFilesystem>(ANDROID_BUILTIN_ASSET_PATH));
-	GRANITE_FILESYSTEM()->register_protocol("assets", make_unique<AssetManagerFilesystem>(ANDROID_ASSET_PATH));
-	GRANITE_FILESYSTEM()->register_protocol("cache", make_unique<OSFilesystem>(app->activity->internalDataPath));
+	GRANITE_FILESYSTEM()->register_protocol("builtin", std::make_unique<AssetManagerFilesystem>(ANDROID_BUILTIN_ASSET_PATH));
+	GRANITE_FILESYSTEM()->register_protocol("assets", std::make_unique<AssetManagerFilesystem>(ANDROID_ASSET_PATH));
+	GRANITE_FILESYSTEM()->register_protocol("cache", std::make_unique<OSFilesystem>(app->activity->internalDataPath));
 #endif
 
 	app->onAppCmd = engine_handle_cmd_init;
@@ -992,11 +991,11 @@ void android_main(android_app *app)
 
 				try
 				{
-					vector<const char *> argv;
+					std::vector<const char *> argv;
 					argv.push_back("granite");
 
-					string cli_arguments = App::getCommandLine();
-					vector<string> arguments;
+					std::string cli_arguments = App::getCommandLine();
+					std::vector<std::string> arguments;
 					LOGI("Intent arguments: %s\n", cli_arguments.c_str());
 					if (!cli_arguments.empty())
 					{
@@ -1009,7 +1008,7 @@ void android_main(android_app *app)
 					}
 					argv.push_back(nullptr);
 
-					auto app_handle = unique_ptr<Granite::Application>(
+					auto app_handle = std::unique_ptr<Granite::Application>(
 							Granite::application_create(int(argv.size()) - 1,
 							                            const_cast<char **>(argv.data())));
 
@@ -1022,7 +1021,7 @@ void android_main(android_app *app)
 						unsigned width = 0;
 						unsigned height = 0;
 						{
-							string android_config;
+							std::string android_config;
 							GRANITE_FILESYSTEM()->read_file_to_string("assets://android.json", android_config);
 							if (!android_config.empty())
 							{
@@ -1037,11 +1036,11 @@ void android_main(android_app *app)
 						}
 						LOGI("Using resolution: %u x %u\n", width, height);
 
-						auto platform = make_unique<Granite::WSIPlatformAndroid>();
+						auto platform = std::make_unique<Granite::WSIPlatformAndroid>();
 						if (platform->init(width, height))
 						{
 							global_state.app->userData = platform.get();
-							if (!app_handle->init_wsi(move(platform)))
+							if (!app_handle->init_wsi(std::move(platform)))
 								ret = 1;
 							else
 							{

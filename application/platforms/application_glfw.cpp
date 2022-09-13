@@ -44,7 +44,6 @@
 #include "GLFW/glfw3native.h"
 #endif
 
-using namespace std;
 using namespace Vulkan;
 
 namespace Granite
@@ -192,7 +191,7 @@ public:
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 	}
 
-	vector<const char *> get_instance_extensions() override
+	std::vector<const char *> get_instance_extensions() override
 	{
 		uint32_t count;
 		const char **ext = glfwGetRequiredInstanceExtensions(&count);
@@ -278,7 +277,7 @@ public:
 		cached_window = win;
 	}
 
-	void set_window_title(const string &title) override
+	void set_window_title(const std::string &title) override
 	{
 		push_task_to_main_thread([=]() {
 			if (window)
@@ -658,17 +657,17 @@ int application_main(Application *(*create_application)(int, char **), int argc,
 	if (!Util::parse_cli_filtered(std::move(cbs), argc, argv, exit_code))
 		return exit_code;
 
-	auto app = unique_ptr<Granite::Application>(create_application(argc, argv));
+	auto app = std::unique_ptr<Granite::Application>(create_application(argc, argv));
 
 	if (app)
 	{
-		auto platform = make_unique<Granite::WSIPlatformGLFW>(options);
+		auto platform = std::make_unique<Granite::WSIPlatformGLFW>(options);
 		auto *platform_handle = platform.get();
 
 		if (!platform->init(app->get_name(), app->get_default_width(), app->get_default_height()))
 			return 1;
 
-		if (!app->init_wsi(move(platform)))
+		if (!app->init_wsi(std::move(platform)))
 			return 1;
 
 		int ret = platform_handle->run_async_loop(app.get());

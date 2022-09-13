@@ -23,20 +23,18 @@
 #include "label.hpp"
 #include "widget.hpp"
 
-using namespace std;
-
 namespace Granite
 {
 namespace UI
 {
-Label::Label(string text_, FontSize font_size_)
-	: text(move(text_)), font_size(font_size_)
+Label::Label(std::string text_, FontSize font_size_)
+	: text(std::move(text_)), font_size(font_size_)
 {
 }
 
 void Label::set_text(std::string text_)
 {
-	text = move(text_);
+	text = std::move(text_);
 	geometry_changed();
 }
 

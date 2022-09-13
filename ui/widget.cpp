@@ -24,8 +24,6 @@
 #include "flat_renderer.hpp"
 #include <algorithm>
 
-using namespace std;
-
 namespace Granite
 {
 namespace UI

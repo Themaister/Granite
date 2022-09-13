@@ -27,7 +27,6 @@
 #include <utility>
 #include <cstring>
 
-using namespace std;
 using namespace Util;
 
 #ifdef GRANITE_VULKAN_MT
@@ -121,7 +120,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	: IntrusiveHashMapEnabled<RenderPass>(hash)
 	, device(device_)
 {
-	fill(begin(color_attachments), end(color_attachments), VK_FORMAT_UNDEFINED);
+	std::fill(std::begin(color_attachments), std::end(color_attachments), VK_FORMAT_UNDEFINED);
 
 	VK_ASSERT(info.num_color_attachments || info.depth_stencil);
 
@@ -307,8 +306,8 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	Util::StackAllocator<VkAttachmentReference, 1024> reference_allocator;
 	Util::StackAllocator<uint32_t, 1024> preserve_allocator;
 
-	vector<VkSubpassDescription> subpasses(num_subpasses);
-	vector<VkSubpassDependency> external_dependencies;
+	std::vector<VkSubpassDescription> subpasses(num_subpasses);
+	std::vector<VkSubpassDependency> external_dependencies;
 	for (unsigned i = 0; i < num_subpasses; i++)
 	{
 		auto *colors = reference_allocator.allocate_cleared(subpass_infos[i].num_color_attachments);
@@ -789,7 +788,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	setup_subpasses(rp_info);
 
 	VkRenderPassMultiviewCreateInfo multiview_info = { VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO };
-	vector<uint32_t> multiview_view_mask;
+	std::vector<uint32_t> multiview_view_mask;
 	if (multiview && device->get_device_features().multiview_features.multiview)
 	{
 		multiview_view_mask.resize(num_subpasses);
@@ -874,14 +873,14 @@ void Framebuffer::compute_dimensions(const RenderPassInfo &info, uint32_t &width
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
 	{
 		VK_ASSERT(info.color_attachments[i]);
-		width = min(width, info.color_attachments[i]->get_view_width());
-		height = min(height, info.color_attachments[i]->get_view_height());
+		width = std::min(width, info.color_attachments[i]->get_view_width());
+		height = std::min(height, info.color_attachments[i]->get_view_height());
 	}
 
 	if (info.depth_stencil)
 	{
-		width = min(width, info.depth_stencil->get_view_width());
-		height = min(height, info.depth_stencil->get_view_height());
+		width = std::min(width, info.depth_stencil->get_view_width());
+		height = std::min(height, info.depth_stencil->get_view_height());
 	}
 }
 

@@ -30,11 +30,10 @@
 
 using namespace rapidjson;
 using namespace Granite;
-using namespace std;
 
-static vector<TMXParser::Property> parse_properties(const Value &properties)
+static std::vector<TMXParser::Property> parse_properties(const Value &properties)
 {
-	vector<TMXParser::Property> props;
+	std::vector<TMXParser::Property> props;
 	props.reserve(properties.GetArray().Size());
 
 	for (auto itr = properties.Begin(); itr != properties.End(); ++itr)
@@ -59,7 +58,7 @@ static vector<TMXParser::Property> parse_properties(const Value &properties)
 		{
 			const char *hex = value.GetString();
 			if (hex[0] != '#')
-				throw logic_error("Invalid color property format.");
+				throw std::logic_error("Invalid color property format.");
 			size_t len = strlen(hex);
 			uint8_t r = 0, g = 0, b = 0, a = 255;
 
@@ -79,32 +78,32 @@ static vector<TMXParser::Property> parse_properties(const Value &properties)
 				a = uint8_t(rgb >> 24);
 			}
 			else
-				throw logic_error("Invalid format.");
+				throw std::logic_error("Invalid format.");
 
 			p.value.set_color(muglm::u8vec4(r, g, b, a));
 		}
 
-		props.push_back(move(p));
+		props.push_back(std::move(p));
 	}
 
 	return props;
 }
 
-TMXParser::TMXParser(const string &path)
+TMXParser::TMXParser(const std::string &path)
 {
-	string str;
+	std::string str;
 	if (!GRANITE_FILESYSTEM()->read_file_to_string(path, str))
-		throw runtime_error("Failed to read JSON file.\n");
+		throw std::runtime_error("Failed to read JSON file.\n");
 
 	parse(path, str);
 }
 
-void TMXParser::parse(const string &base_path, const string &json)
+void TMXParser::parse(const std::string &base_path, const std::string &json)
 {
 	Document doc;
 	doc.Parse(json);
 	if (doc.HasParseError())
-		throw runtime_error("Failed to parse JSON.");
+		throw std::runtime_error("Failed to parse JSON.");
 
 	map_size.x = doc["width"].GetUint();
 	map_size.y = doc["height"].GetUint();
@@ -112,9 +111,9 @@ void TMXParser::parse(const string &base_path, const string &json)
 	tile_size.y = doc["tileheight"].GetUint();
 
 	if (strcmp(doc["orientation"].GetString(), "orthogonal") != 0)
-		throw runtime_error("Only orthogonal maps are supported.");
+		throw std::runtime_error("Only orthogonal maps are supported.");
 	if (strcmp(doc["renderorder"].GetString(), "right-down") != 0)
-		throw runtime_error("Only top-left rendering is supported.");
+		throw std::runtime_error("Only top-left rendering is supported.");
 
 	layers.resize(doc["layers"].GetArray().Size());
 
@@ -125,7 +124,7 @@ void TMXParser::parse(const string &base_path, const string &json)
 		auto &layer = *itr;
 
 		if (layer.HasMember("compression"))
-			throw runtime_error("TMX Compression not supported.");
+			throw std::runtime_error("TMX Compression not supported.");
 
 		if (strcmp(layer["type"].GetString(), "tilelayer") != 0)
 		{
@@ -155,9 +154,9 @@ void TMXParser::parse(const string &base_path, const string &json)
 		unsigned first_gid;
 		unsigned num_tiles;
 		int gid_offset;
-		string path;
+		std::string path;
 	};
-	vector<Tileset> tilesets(doc["tilesets"].GetArray().Size());
+	std::vector<Tileset> tilesets(doc["tilesets"].GetArray().Size());
 
 	unsigned num_tiles = 0;
 	for (auto itr = doc["tilesets"].Begin(); itr != doc["tilesets"].End(); ++itr)
@@ -207,10 +206,10 @@ void TMXParser::parse(const string &base_path, const string &json)
 			for (auto terrain_itr = tileset["terrains"].Begin(); terrain_itr != tileset["terrains"].End(); ++terrain_itr)
 			{
 				auto &terrain = *terrain_itr;
-				vector<Property> properties;
+				std::vector<Property> properties;
 				if (terrain.HasMember("properties"))
 					properties = parse_properties(terrain["properties"]);
-				terrains.push_back({ terrain["name"].GetString(), move(properties) });
+				terrains.push_back({ terrain["name"].GetString(), std::move(properties) });
 			}
 			num_terrains += tileset["terrains"].GetArray().Size();
 		}
@@ -218,7 +217,7 @@ void TMXParser::parse(const string &base_path, const string &json)
 
 	tilemap.set_2d(VK_FORMAT_R8G8B8A8_SRGB, tile_size.x, tile_size.y, num_tiles, 1);
 	if (!tilemap.map_write_scratch())
-		throw runtime_error("Failed to map scratch texture.");
+		throw std::runtime_error("Failed to map scratch texture.");
 
 	unsigned tile_dst_index = 0;
 
@@ -228,10 +227,10 @@ void TMXParser::parse(const string &base_path, const string &json)
 		                                           Path::relpath(base_path, tileset.path),
 		                                           Vulkan::ColorSpace::sRGB);
 		if (file.empty())
-			throw runtime_error("Failed to load texture.");
+			throw std::runtime_error("Failed to load texture.");
 
 		if (file.get_layout().get_format() != VK_FORMAT_R8G8B8A8_SRGB)
-			throw runtime_error("Unexpected format.");
+			throw std::runtime_error("Unexpected format.");
 
 		unsigned rows = tileset.num_tiles / tileset.columns;
 		for (unsigned y = 0; y < rows; y++)
@@ -304,9 +303,9 @@ void TMXParser::copy_tile(const Vulkan::TextureFormatLayout &dst_layout, unsigne
                           const Vulkan::TextureFormatLayout &src_layout, unsigned base_x, unsigned base_y)
 {
 	if (base_x + tile_size.x > src_layout.get_width())
-		throw runtime_error("Accessing texture out of bounds.");
+		throw std::runtime_error("Accessing texture out of bounds.");
 	if (base_y + tile_size.y > src_layout.get_height())
-		throw runtime_error("Accessing texture out of bounds.");
+		throw std::runtime_error("Accessing texture out of bounds.");
 
 	for (unsigned y = 0; y < tile_size.y; y++)
 		for (unsigned x = 0; x < tile_size.x; x++)
@@ -323,12 +322,12 @@ uvec2 TMXParser::get_map_tiles() const
 	return map_size;
 }
 
-const vector<TMXParser::Layer> &TMXParser::get_layers() const
+const std::vector<TMXParser::Layer> &TMXParser::get_layers() const
 {
 	return layers;
 }
 
-const vector<TMXParser::Terrain> &TMXParser::get_terrains() const
+const std::vector<TMXParser::Terrain> &TMXParser::get_terrains() const
 {
 	return terrains;
 }
@@ -338,7 +337,7 @@ const Vulkan::TextureFormatLayout &TMXParser::get_tilemap_image_layout() const
 	return tilemap.get_layout();
 }
 
-const vector<TMXParser::Tile> &TMXParser::get_tiles() const
+const std::vector<TMXParser::Tile> &TMXParser::get_tiles() const
 {
 	return tiles;
 }

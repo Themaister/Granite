@@ -26,8 +26,6 @@
 #include <BulletCollision/CollisionDispatch/btGhostObject.h>
 #include <BulletDynamics/Character/btKinematicCharacterController.h>
 
-using namespace std;
-
 namespace Granite
 {
 static const float PHYSICS_TICK = 1.0f / 300.0f;
@@ -169,12 +167,12 @@ RaycastResult PhysicsSystem::query_closest_hit_ray(const vec3 &from, const vec3 
 
 PhysicsSystem::PhysicsSystem()
 {
-	collision_config = make_unique<btDefaultCollisionConfiguration>();
-	dispatcher = make_unique<btCollisionDispatcher>(collision_config.get());
-	broadphase = make_unique<btDbvtBroadphase>();
-	solver = make_unique<btSequentialImpulseConstraintSolver>();
-	world = make_unique<btDiscreteDynamicsWorld>(dispatcher.get(), broadphase.get(),
-	                                             solver.get(), collision_config.get());
+	collision_config = std::make_unique<btDefaultCollisionConfiguration>();
+	dispatcher = std::make_unique<btCollisionDispatcher>(collision_config.get());
+	broadphase = std::make_unique<btDbvtBroadphase>();
+	solver = std::make_unique<btSequentialImpulseConstraintSolver>();
+	world = std::make_unique<btDiscreteDynamicsWorld>(dispatcher.get(), broadphase.get(),
+	                                                  solver.get(), collision_config.get());
 
 	world->setGravity(btVector3(0.0f, -9.81f, 0.0f));
 	world->setInternalTickCallback(tick_callback_wrapper, this);
@@ -251,7 +249,7 @@ KinematicCharacter::KinematicCharacter(btDynamicsWorld *world, Scene::NodeHandle
 
 KinematicCharacter &KinematicCharacter::operator=(KinematicCharacter &&other) noexcept
 {
-	impl = move(other.impl);
+	impl = std::move(other.impl);
 	return *this;
 }
 
@@ -272,7 +270,7 @@ void KinematicCharacter::jump(const vec3 &v)
 
 KinematicCharacter::KinematicCharacter(KinematicCharacter &&other) noexcept
 {
-	*this = move(other);
+	*this = std::move(other);
 }
 
 KinematicCharacter::KinematicCharacter()
@@ -844,7 +842,7 @@ struct TriggerContactResultCallback : btCollisionWorld::ContactResultCallback
 	}
 };
 
-bool PhysicsSystem::get_overlapping_objects(PhysicsHandle *handle, vector<PhysicsHandle *> &other,
+bool PhysicsSystem::get_overlapping_objects(PhysicsHandle *handle, std::vector<PhysicsHandle *> &other,
                                             OverlapMethod method)
 {
 	other.clear();

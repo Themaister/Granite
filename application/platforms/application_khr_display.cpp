@@ -35,7 +35,6 @@
 #include <signal.h>
 #endif
 
-using namespace std;
 using namespace Vulkan;
 
 namespace Granite
@@ -163,7 +162,7 @@ public:
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 	}
 
-	vector<const char *> get_instance_extensions() override
+	std::vector<const char *> get_instance_extensions() override
 	{
 #ifdef KHR_DISPLAY_ACQUIRE_XLIB
 		return { "VK_KHR_surface", "VK_KHR_display", "VK_EXT_acquire_xlib_display" };
@@ -187,12 +186,12 @@ public:
 
 		uint32_t display_count;
 		p_vkGetPhysicalDeviceDisplayPropertiesKHR(gpu, &display_count, nullptr);
-		vector<VkDisplayPropertiesKHR> displays(display_count);
+		std::vector<VkDisplayPropertiesKHR> displays(display_count);
 		p_vkGetPhysicalDeviceDisplayPropertiesKHR(gpu, &display_count, displays.data());
 
 		uint32_t plane_count;
 		p_vkGetPhysicalDeviceDisplayPlanePropertiesKHR(gpu, &plane_count, nullptr);
-		vector<VkDisplayPlanePropertiesKHR> planes(plane_count);
+		std::vector<VkDisplayPlanePropertiesKHR> planes(plane_count);
 		p_vkGetPhysicalDeviceDisplayPlanePropertiesKHR(gpu, &plane_count, planes.data());
 
 #ifdef KHR_DISPLAY_ACQUIRE_XLIB
@@ -218,7 +217,7 @@ public:
 
 			uint32_t mode_count;
 			p_vkGetDisplayModePropertiesKHR(gpu, display, &mode_count, nullptr);
-			vector<VkDisplayModePropertiesKHR> modes(mode_count);
+			std::vector<VkDisplayModePropertiesKHR> modes(mode_count);
 			p_vkGetDisplayModePropertiesKHR(gpu, display, &mode_count, modes.data());
 
 			for (unsigned i = 0; i < mode_count; i++)
@@ -240,7 +239,7 @@ public:
 				if (!supported_count)
 					continue;
 
-				vector<VkDisplayKHR> supported(supported_count);
+				std::vector<VkDisplayKHR> supported(supported_count);
 				p_vkGetDisplayPlaneSupportedDisplaysKHR(gpu, i, &supported_count, supported.data());
 
 				unsigned j;
@@ -362,13 +361,13 @@ namespace Granite
 int application_main(Application *(*create_application)(int, char **), int argc, char *argv[])
 {
 	Global::init();
-	auto app = unique_ptr<Granite::Application>(create_application(argc, argv));
+	auto app = std::unique_ptr<Granite::Application>(create_application(argc, argv));
 	if (app)
 	{
-		auto platform = make_unique<Granite::WSIPlatformDisplay>();
+		auto platform = std::make_unique<Granite::WSIPlatformDisplay>();
 		if (!platform->init(1280, 720))
 			return 1;
-		if (!app->init_wsi(move(platform)))
+		if (!app->init_wsi(std::move(platform)))
 			return 1;
 
 		Granite::Global::start_audio_system();

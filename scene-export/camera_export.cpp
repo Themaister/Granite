@@ -24,11 +24,10 @@
 #include "rapidjson_wrapper.hpp"
 
 using namespace rapidjson;
-using namespace std;
 
 namespace Granite
 {
-string export_cameras_to_json(const vector<RecordedCamera> &recorded_cameras)
+std::string export_cameras_to_json(const std::vector<RecordedCamera> &recorded_cameras)
 {
 	Document doc;
 	doc.SetObject();

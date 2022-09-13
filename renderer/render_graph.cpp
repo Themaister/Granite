@@ -30,8 +30,6 @@
 #include "vulkan_prerotate.hpp"
 #include <algorithm>
 
-using namespace std;
-
 namespace Granite
 {
 bool RenderPassInterface::render_pass_is_conditional() const
@@ -508,7 +506,7 @@ std::vector<Vulkan::BufferHandle> RenderGraph::consume_physical_buffers() const
 
 void RenderGraph::install_physical_buffers(std::vector<Vulkan::BufferHandle> buffers)
 {
-	physical_buffers = move(buffers);
+	physical_buffers = std::move(buffers);
 }
 
 Vulkan::BufferHandle RenderGraph::consume_persistent_physical_buffer_resource(unsigned index) const
@@ -524,7 +522,7 @@ Vulkan::BufferHandle RenderGraph::consume_persistent_physical_buffer_resource(un
 void RenderGraph::install_persistent_physical_buffer_resource(unsigned index, Vulkan::BufferHandle buffer)
 {
 	if (index >= physical_buffers.size())
-		throw logic_error("Out of range.");
+		throw std::logic_error("Out of range.");
 	physical_buffers[index] = buffer;
 }
 
@@ -566,19 +564,19 @@ void RenderGraph::validate_passes()
 		auto &pass = *pass_ptr;
 
 		if (pass.get_color_inputs().size() != pass.get_color_outputs().size())
-			throw logic_error("Size of color inputs must match color outputs.");
+			throw std::logic_error("Size of color inputs must match color outputs.");
 
 		if (pass.get_storage_inputs().size() != pass.get_storage_outputs().size())
-			throw logic_error("Size of storage inputs must match storage outputs.");
+			throw std::logic_error("Size of storage inputs must match storage outputs.");
 
 		if (pass.get_blit_texture_inputs().size() != pass.get_blit_texture_outputs().size())
-			throw logic_error("Size of blit inputs must match blit outputs.");
+			throw std::logic_error("Size of blit inputs must match blit outputs.");
 
 		if (pass.get_storage_texture_inputs().size() != pass.get_storage_texture_outputs().size())
-			throw logic_error("Size of storage texture inputs must match storage texture outputs.");
+			throw std::logic_error("Size of storage texture inputs must match storage texture outputs.");
 
 		if (!pass.get_resolve_outputs().empty() && pass.get_resolve_outputs().size() != pass.get_color_outputs().size())
-			throw logic_error("Must have one resolve output for each color output.");
+			throw std::logic_error("Must have one resolve output for each color output.");
 
 		unsigned num_inputs = pass.get_color_inputs().size();
 		for (unsigned i = 0; i < num_inputs; i++)
@@ -599,7 +597,7 @@ void RenderGraph::validate_passes()
 					continue;
 
 				if (pass.get_storage_outputs()[i]->get_buffer_info() != pass.get_storage_inputs()[i]->get_buffer_info())
-					throw logic_error("Doing RMW on a storage buffer, but usage and sizes do not match.");
+					throw std::logic_error("Doing RMW on a storage buffer, but usage and sizes do not match.");
 			}
 		}
 
@@ -612,7 +610,7 @@ void RenderGraph::validate_passes()
 					continue;
 
 				if (get_resource_dimensions(*pass.get_blit_texture_inputs()[i]) != get_resource_dimensions(*pass.get_blit_texture_outputs()[i]))
-					throw logic_error("Doing RMW on a blit image, but usage and sizes do not match.");
+					throw std::logic_error("Doing RMW on a blit image, but usage and sizes do not match.");
 			}
 		}
 
@@ -625,14 +623,14 @@ void RenderGraph::validate_passes()
 					continue;
 
 				if (get_resource_dimensions(*pass.get_storage_texture_outputs()[i]) != get_resource_dimensions(*pass.get_storage_texture_inputs()[i]))
-					throw logic_error("Doing RMW on a storage texture image, but sizes do not match.");
+					throw std::logic_error("Doing RMW on a storage texture image, but sizes do not match.");
 			}
 		}
 
 		if (pass.get_depth_stencil_input() && pass.get_depth_stencil_output())
 		{
 			if (get_resource_dimensions(*pass.get_depth_stencil_input()) != get_resource_dimensions(*pass.get_depth_stencil_output()))
-				throw logic_error("Dimension mismatch.");
+				throw std::logic_error("Dimension mismatch.");
 		}
 	}
 }
@@ -712,7 +710,7 @@ void RenderGraph::build_physical_resources()
 					if (pass.get_color_outputs()[i]->get_physical_index() == RenderResource::Unused)
 						pass.get_color_outputs()[i]->set_physical_index(input->get_physical_index());
 					else if (pass.get_color_outputs()[i]->get_physical_index() != input->get_physical_index())
-						throw logic_error("Cannot alias resources. Index already claimed.");
+						throw std::logic_error("Cannot alias resources. Index already claimed.");
 				}
 			}
 		}
@@ -739,7 +737,7 @@ void RenderGraph::build_physical_resources()
 					if (pass.get_storage_outputs()[i]->get_physical_index() == RenderResource::Unused)
 						pass.get_storage_outputs()[i]->set_physical_index(input->get_physical_index());
 					else if (pass.get_storage_outputs()[i]->get_physical_index() != input->get_physical_index())
-						throw logic_error("Cannot alias resources. Index already claimed.");
+						throw std::logic_error("Cannot alias resources. Index already claimed.");
 				}
 			}
 		}
@@ -766,7 +764,7 @@ void RenderGraph::build_physical_resources()
 					if (pass.get_blit_texture_outputs()[i]->get_physical_index() == RenderResource::Unused)
 						pass.get_blit_texture_outputs()[i]->set_physical_index(input->get_physical_index());
 					else if (pass.get_blit_texture_outputs()[i]->get_physical_index() != input->get_physical_index())
-						throw logic_error("Cannot alias resources. Index already claimed.");
+						throw std::logic_error("Cannot alias resources. Index already claimed.");
 				}
 			}
 		}
@@ -793,7 +791,7 @@ void RenderGraph::build_physical_resources()
 					if (pass.get_storage_texture_outputs()[i]->get_physical_index() == RenderResource::Unused)
 						pass.get_storage_texture_outputs()[i]->set_physical_index(input->get_physical_index());
 					else if (pass.get_storage_texture_outputs()[i]->get_physical_index() != input->get_physical_index())
-						throw logic_error("Cannot alias resources. Index already claimed.");
+						throw std::logic_error("Cannot alias resources. Index already claimed.");
 				}
 			}
 		}
@@ -928,7 +926,7 @@ void RenderGraph::build_physical_resources()
 				if (ds_output->get_physical_index() == RenderResource::Unused)
 					ds_output->set_physical_index(ds_input->get_physical_index());
 				else if (ds_output->get_physical_index() != ds_input->get_physical_index())
-					throw logic_error("Cannot alias resources. Index already claimed.");
+					throw std::logic_error("Cannot alias resources. Index already claimed.");
 
 				physical_dimensions[ds_output->get_physical_index()].queues |= ds_output->get_used_queues();
 				physical_dimensions[ds_output->get_physical_index()].image_usage |= ds_output->get_image_usage();
@@ -979,7 +977,7 @@ void RenderGraph::build_physical_resources()
 		{
 			unsigned history_phys_index = history->get_physical_index();
 			if (history_phys_index == RenderResource::Unused)
-				throw logic_error("History input is used, but it was never written to.");
+				throw std::logic_error("History input is used, but it was never written to.");
 			physical_image_has_history[history_phys_index] = true;
 		}
 	}
@@ -987,7 +985,7 @@ void RenderGraph::build_physical_resources()
 
 void RenderGraph::build_transients()
 {
-	vector<unsigned> physical_pass_used(physical_dimensions.size());
+	std::vector<unsigned> physical_pass_used(physical_dimensions.size());
 	for (auto &u : physical_pass_used)
 		u = RenderPass::Unused;
 
@@ -1068,28 +1066,28 @@ void RenderGraph::build_render_pass_info()
 		auto &colors = physical_pass.physical_color_attachments;
 		colors.clear();
 
-		const auto add_unique_color = [&](unsigned index) -> pair<unsigned, bool> {
+		const auto add_unique_color = [&](unsigned index) -> std::pair<unsigned, bool> {
 			auto itr = find(begin(colors), end(colors), index);
 			if (itr != end(colors))
-				return make_pair(unsigned(itr - begin(colors)), false);
+				return std::make_pair(unsigned(itr - begin(colors)), false);
 			else
 			{
 				unsigned ret = colors.size();
 				colors.push_back(index);
-				return make_pair(ret, true);
+				return std::make_pair(ret, true);
 			}
 		};
 
-		const auto add_unique_input_attachment = [&](unsigned index) -> pair<unsigned, bool> {
+		const auto add_unique_input_attachment = [&](unsigned index) -> std::pair<unsigned, bool> {
 			if (index == physical_pass.physical_depth_stencil_attachment)
-				return make_pair(unsigned(colors.size()), false); // The N + 1 attachment refers to depth.
+				return std::make_pair(unsigned(colors.size()), false); // The N + 1 attachment refers to depth.
 			else
 				return add_unique_color(index);
 		};
 
 		for (auto &subpass : physical_pass.passes)
 		{
-			vector<ScaledClearRequests> scaled_clear_requests;
+			std::vector<ScaledClearRequests> scaled_clear_requests;
 
 			auto &pass = *passes[subpass];
 			auto subpass_index = unsigned(&subpass - physical_pass.passes.data());
@@ -1136,18 +1134,18 @@ void RenderGraph::build_render_pass_info()
 				}
 			}
 
-			physical_pass.scaled_clear_requests.push_back(move(scaled_clear_requests));
+			physical_pass.scaled_clear_requests.push_back(std::move(scaled_clear_requests));
 
 			auto *ds_input = pass.get_depth_stencil_input();
 			auto *ds_output = pass.get_depth_stencil_output();
 
-			const auto add_unique_ds = [&](unsigned index) -> pair<unsigned, bool> {
+			const auto add_unique_ds = [&](unsigned index) -> std::pair<unsigned, bool> {
 				assert(physical_pass.physical_depth_stencil_attachment == RenderResource::Unused ||
 				       physical_pass.physical_depth_stencil_attachment == index);
 
 				bool new_attachment = physical_pass.physical_depth_stencil_attachment == RenderResource::Unused;
 				physical_pass.physical_depth_stencil_attachment = index;
-				return make_pair(index, new_attachment);
+				return std::make_pair(index, new_attachment);
 			};
 
 			if (ds_output && ds_input)
@@ -1257,7 +1255,7 @@ void RenderGraph::build_physical_passes()
 	physical_passes.clear();
 	PhysicalPass physical_pass;
 
-	const auto find_attachment = [](const vector<RenderTextureResource *> &resource_list, const RenderTextureResource *resource) -> bool {
+	const auto find_attachment = [](const std::vector<RenderTextureResource *> &resource_list, const RenderTextureResource *resource) -> bool {
 		if (!resource)
 			return false;
 
@@ -1267,7 +1265,7 @@ void RenderGraph::build_physical_passes()
 		return itr != end(resource_list);
 	};
 
-	const auto find_buffer = [](const vector<RenderBufferResource *> &resource_list, const RenderBufferResource *resource) -> bool {
+	const auto find_buffer = [](const std::vector<RenderBufferResource *> &resource_list, const RenderBufferResource *resource) -> bool {
 		if (!resource)
 			return false;
 
@@ -1425,7 +1423,7 @@ void RenderGraph::build_physical_passes()
 		}
 
 		physical_pass.passes.insert(end(physical_pass.passes), begin(pass_stack) + index, begin(pass_stack) + merge_end);
-		physical_passes.push_back(move(physical_pass));
+		physical_passes.push_back(std::move(physical_pass));
 		index = merge_end;
 	}
 
@@ -1574,12 +1572,12 @@ void RenderGraph::enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std:
 	if (requests.empty())
 		return;
 
-	vector<pair<string, int>> defines;
+	std::vector<std::pair<std::string, int>> defines;
 	defines.reserve(requests.size());
 
 	for (auto &req : requests)
 	{
-		defines.emplace_back(string("HAVE_TARGET_") + to_string(req.target), 1);
+		defines.emplace_back(std::string("HAVE_TARGET_") + std::to_string(req.target), 1);
 		cmd.set_texture(0, req.target, *physical_attachments[req.physical_resource], Vulkan::StockSampler::LinearClamp);
 	}
 
@@ -1655,7 +1653,7 @@ void RenderGraph::build_aliases()
 		}
 	};
 
-	vector<Range> pass_range(physical_dimensions.size());
+	std::vector<Range> pass_range(physical_dimensions.size());
 
 	const auto register_reader = [&pass_range](const RenderTextureResource *resource, unsigned pass_index) {
 		if (resource && pass_index != RenderPass::Unused)
@@ -1721,7 +1719,7 @@ void RenderGraph::build_aliases()
 			register_writer(output, subpass.get_physical_pass_index(), true);
 	}
 
-	vector<vector<unsigned>> alias_chains(physical_dimensions.size());
+	std::vector<std::vector<unsigned>> alias_chains(physical_dimensions.size());
 
 	physical_aliases.resize(physical_dimensions.size());
 	for (auto &v : physical_aliases)
@@ -1784,9 +1782,9 @@ void RenderGraph::build_aliases()
 		for (unsigned i = 0; i < chain.size(); i++)
 		{
 			if (i + 1 < chain.size())
-				physical_passes[pass_range[chain[i]].last_used_pass()].alias_transfer.push_back(make_pair(chain[i], chain[i + 1]));
+				physical_passes[pass_range[chain[i]].last_used_pass()].alias_transfer.push_back(std::make_pair(chain[i], chain[i + 1]));
 			else
-				physical_passes[pass_range[chain[i]].last_used_pass()].alias_transfer.push_back(make_pair(chain[i], chain[0]));
+				physical_passes[pass_range[chain[i]].last_used_pass()].alias_transfer.push_back(std::make_pair(chain[i], chain[0]));
 		}
 	}
 }
@@ -2061,7 +2059,7 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 				// ... or vkCmdPipelineBarrier from TOP_OF_PIPE_BIT if this is the first time we use the resource.
 				state.immediate_image_barriers.push_back(b);
 				if (b.oldLayout != VK_IMAGE_LAYOUT_UNDEFINED)
-					throw logic_error("Cannot do immediate image barriers from a layout other than UNDEFINED.");
+					throw std::logic_error("Cannot do immediate image barriers from a layout other than UNDEFINED.");
 				state.immediate_dst_stages |= barrier.stages;
 			}
 		}
@@ -2252,7 +2250,7 @@ void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &ph
 	if (enabled_timestamps)
 	{
 		end_graphics = cmd.write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-		string name;
+		std::string name;
 		if (physical_pass.passes.size() == 1)
 			name = passes[physical_pass.passes.front()]->get_name();
 		else
@@ -2447,7 +2445,7 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 	}
 	else
 	{
-		throw logic_error("Swapchain resource was not written to.");
+		throw std::logic_error("Swapchain resource was not written to.");
 	}
 
 	Vulkan::RenderPassInfo rp_info;
@@ -2668,8 +2666,8 @@ void RenderGraph::setup_attachments(Vulkan::Device &device_, Vulkan::ImageView *
 		// Move over history attachments and events.
 		if (physical_image_has_history[i])
 		{
-			swap(physical_history_image_attachments[i], physical_image_attachments[i]);
-			swap(physical_history_events[i], physical_events[i]);
+			std::swap(physical_history_image_attachments[i], physical_image_attachments[i]);
+			std::swap(physical_history_events[i], physical_events[i]);
 		}
 
 		auto &att = physical_dimensions[i];
@@ -2800,10 +2798,10 @@ void RenderGraph::depend_passes_recursive(const RenderPass &self, const std::uno
                                           unsigned stack_count, bool no_check, bool ignore_self, bool merge_dependency)
 {
 	if (!no_check && written_passes.empty())
-		throw logic_error("No pass exists which writes to resource.");
+		throw std::logic_error("No pass exists which writes to resource.");
 
 	if (stack_count > passes.size())
-		throw logic_error("Cycle detected.");
+		throw std::logic_error("Cycle detected.");
 
 	for (auto &pass : written_passes)
 		if (pass != self.get_index())
@@ -2821,7 +2819,7 @@ void RenderGraph::depend_passes_recursive(const RenderPass &self, const std::uno
 		if (ignore_self && pushed_pass == self.get_index())
 			continue;
 		else if (pushed_pass == self.get_index())
-			throw logic_error("Pass depends on itself.");
+			throw std::logic_error("Pass depends on itself.");
 
 		pass_stack.push_back(pushed_pass);
 		auto &pass = *passes[pushed_pass];
@@ -2860,16 +2858,16 @@ void RenderGraph::reorder_passes(std::vector<unsigned> &flattened_passes)
 	if (flattened_passes.size() <= 2)
 		return;
 
-	vector<unsigned> unscheduled_passes;
+	std::vector<unsigned> unscheduled_passes;
 	unscheduled_passes.reserve(passes.size());
 	swap(flattened_passes, unscheduled_passes);
 
 	const auto schedule = [&](unsigned index) {
 		// Need to preserve the order of remaining elements.
 		flattened_passes.push_back(unscheduled_passes[index]);
-		move(unscheduled_passes.begin() + index + 1,
-		     unscheduled_passes.end(),
-		     unscheduled_passes.begin() + index);
+		std::move(unscheduled_passes.begin() + index + 1,
+		          unscheduled_passes.end(),
+		          unscheduled_passes.begin() + index);
 		unscheduled_passes.pop_back();
 	};
 
@@ -2960,7 +2958,7 @@ void RenderGraph::bake()
 
 	auto itr = resource_to_index.find(backbuffer_source);
 	if (itr == end(resource_to_index))
-		throw logic_error("Backbuffer source does not exist.");
+		throw std::logic_error("Backbuffer source does not exist.");
 
 	pass_stack.clear();
 
@@ -2973,7 +2971,7 @@ void RenderGraph::bake()
 	auto &backbuffer_resource = *resources[itr->second];
 
 	if (backbuffer_resource.get_write_passes().empty())
-		throw logic_error("No pass exists which writes to resource.");
+		throw std::logic_error("No pass exists which writes to resource.");
 
 	for (auto &pass : backbuffer_resource.get_write_passes())
 		pass_stack.push_back(pass);
@@ -3124,7 +3122,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	{
 		auto itr = resource_to_index.find(info.size_relative_name);
 		if (itr == end(resource_to_index))
-			throw logic_error("Resource does not exist.");
+			throw std::logic_error("Resource does not exist.");
 		auto &input = static_cast<RenderTextureResource &>(*resources[itr->second]);
 		auto input_dim = get_resource_dimensions(input);
 
@@ -3185,7 +3183,7 @@ void RenderGraph::build_physical_barriers()
 	};
 
 	// To handle state inside a physical pass.
-	vector<ResourceState> resource_state;
+	std::vector<ResourceState> resource_state;
 	resource_state.reserve(physical_dimensions.size());
 
 	for (auto &physical_pass : physical_passes)
@@ -3354,7 +3352,7 @@ void RenderGraph::build_barriers()
 	pass_barriers.clear();
 	pass_barriers.reserve(pass_stack.size());
 
-	const auto get_access = [&](vector<Barrier> &barriers, unsigned index, bool history) -> Barrier & {
+	const auto get_access = [&](std::vector<Barrier> &barriers, unsigned index, bool history) -> Barrier & {
 		auto itr = find_if(begin(barriers), end(barriers), [index, history](const Barrier &b) {
 			return index == b.resource_index && history == b.history;
 		});
@@ -3386,7 +3384,7 @@ void RenderGraph::build_barriers()
 			barrier.access |= input.access;
 			barrier.stages |= input.stages;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = input.layout;
 		}
 
@@ -3396,7 +3394,7 @@ void RenderGraph::build_barriers()
 			barrier.access |= input.access;
 			barrier.stages |= input.stages;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = input.layout;
 		}
 
@@ -3411,14 +3409,14 @@ void RenderGraph::build_barriers()
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		}
 
 		for (auto *input : pass.get_attachment_inputs())
 		{
 			if (pass.get_queue() & compute_queues)
-				throw logic_error("Only graphics passes can have input attachments.");
+				throw std::logic_error("Only graphics passes can have input attachments.");
 
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
@@ -3438,7 +3436,7 @@ void RenderGraph::build_barriers()
 			}
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		}
 
@@ -3455,7 +3453,7 @@ void RenderGraph::build_barriers()
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 		}
 
@@ -3467,7 +3465,7 @@ void RenderGraph::build_barriers()
 			barrier.stages |= input.stages;
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = input.layout;
 		}
 
@@ -3484,7 +3482,7 @@ void RenderGraph::build_barriers()
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 		}
 
@@ -3497,7 +3495,7 @@ void RenderGraph::build_barriers()
 			barrier.access |= VK_ACCESS_TRANSFER_WRITE_BIT;
 			barrier.stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 		}
 
@@ -3507,7 +3505,7 @@ void RenderGraph::build_barriers()
 				continue;
 
 			if (pass.get_queue() & compute_queues)
-				throw logic_error("Only graphics passes can have color inputs.");
+				throw std::logic_error("Only graphics passes can have color inputs.");
 
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
@@ -3518,7 +3516,7 @@ void RenderGraph::build_barriers()
 			if (barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 				barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 			else if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			else
 				barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		}
@@ -3529,20 +3527,20 @@ void RenderGraph::build_barriers()
 				continue;
 
 			if (pass.get_queue() & compute_queues)
-				throw logic_error("Only graphics passes can have scaled color inputs.");
+				throw std::logic_error("Only graphics passes can have scaled color inputs.");
 
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
 			barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		}
 
 		for (auto *output : pass.get_color_outputs())
 		{
 			if (pass.get_queue() & compute_queues)
-				throw logic_error("Only graphics passes can have color outputs.");
+				throw std::logic_error("Only graphics passes can have color outputs.");
 
 			auto &barrier = get_flush_access(output->get_physical_index());
 
@@ -3553,7 +3551,7 @@ void RenderGraph::build_barriers()
 				barrier.access |= VK_ACCESS_TRANSFER_READ_BIT; // Validation layers complain without this.
 				barrier.stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
 				if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-					throw logic_error("Layout mismatch.");
+					throw std::logic_error("Layout mismatch.");
 				barrier.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 			}
 			else
@@ -3569,7 +3567,7 @@ void RenderGraph::build_barriers()
 					barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 				}
 				else if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-					throw logic_error("Layout mismatch.");
+					throw std::logic_error("Layout mismatch.");
 				else
 					barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			}
@@ -3578,13 +3576,13 @@ void RenderGraph::build_barriers()
 		for (auto *output : pass.get_resolve_outputs())
 		{
 			if (pass.get_queue() & compute_queues)
-				throw logic_error("Only graphics passes can resolve outputs.");
+				throw std::logic_error("Only graphics passes can resolve outputs.");
 
 			auto &barrier = get_flush_access(output->get_physical_index());
 			barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 			barrier.stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		}
 
@@ -3594,7 +3592,7 @@ void RenderGraph::build_barriers()
 			barrier.access |= VK_ACCESS_TRANSFER_WRITE_BIT;
 			barrier.stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 		}
 
@@ -3609,7 +3607,7 @@ void RenderGraph::build_barriers()
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 		}
 
@@ -3621,7 +3619,7 @@ void RenderGraph::build_barriers()
 			barrier.stages |= output.stages;
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = output.layout;
 		}
 
@@ -3631,7 +3629,7 @@ void RenderGraph::build_barriers()
 			barrier.access |= VK_ACCESS_TRANSFER_WRITE_BIT;
 			barrier.stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 		}
 
@@ -3646,7 +3644,7 @@ void RenderGraph::build_barriers()
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 		}
 
@@ -3654,7 +3652,7 @@ void RenderGraph::build_barriers()
 		auto *input = pass.get_depth_stencil_input();
 
 		if ((output || input) && (pass.get_queue() & compute_queues))
-			throw logic_error("Only graphics passes can have depth attachments.");
+			throw std::logic_error("Only graphics passes can have depth attachments.");
 
 		if (output && input)
 		{
@@ -3664,7 +3662,7 @@ void RenderGraph::build_barriers()
 			if (dst_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 				dst_barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 			else if (dst_barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			else
 				dst_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
@@ -3682,7 +3680,7 @@ void RenderGraph::build_barriers()
 			if (dst_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 				dst_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 			else if (dst_barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			else
 				dst_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
@@ -3696,7 +3694,7 @@ void RenderGraph::build_barriers()
 			if (src_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 				src_barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 			else if (src_barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
+				throw std::logic_error("Layout mismatch.");
 			else
 				src_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
@@ -3704,13 +3702,13 @@ void RenderGraph::build_barriers()
 			src_barrier.stages |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 		}
 
-		pass_barriers.push_back(move(barriers));
+		pass_barriers.push_back(std::move(barriers));
 	}
 }
 
 void RenderGraph::filter_passes(std::vector<unsigned> &list)
 {
-	unordered_set<unsigned> seen;
+	std::unordered_set<unsigned> seen;
 
 	auto output_itr = begin(list);
 	for (auto itr = begin(list); itr != end(list); ++itr)

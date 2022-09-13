@@ -361,7 +361,7 @@ FileNotifyHandle OSFilesystem::install_notification(const std::string &path, std
 	handle_id++;
 	Handler handler;
 	handler.path = protocol + "://" + path;
-	handler.func = move(func);
+	handler.func = std::move(func);
 	handler.handle = handle;
 	handler.event = event;
 	auto &h = handlers[handle_id];

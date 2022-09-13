@@ -909,7 +909,7 @@ void CubeMesh::on_device_destroyed(const DeviceCreatedEvent &)
 }
 
 SkyCylinder::SkyCylinder(std::string bg_path_)
-	: bg_path(move(bg_path_))
+	: bg_path(std::move(bg_path_))
 {
 	EVENT_MANAGER_REGISTER_LATCH(SkyCylinder, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
@@ -1073,7 +1073,7 @@ void SkyCylinder::get_render_info(const RenderContext &, const RenderInfoCompone
 }
 
 Skybox::Skybox(std::string bg_path_, bool latlon)
-	: bg_path(move(bg_path_)), is_latlon(latlon)
+	: bg_path(std::move(bg_path_)), is_latlon(latlon)
 {
 	EVENT_MANAGER_REGISTER_LATCH(Skybox, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }

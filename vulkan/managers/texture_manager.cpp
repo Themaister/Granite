@@ -31,8 +31,6 @@
 #include "thread_id.hpp"
 #endif
 
-using namespace std;
-
 namespace Vulkan
 {
 bool Texture::init_texture()
@@ -66,13 +64,13 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 #if defined(GRANITE_VULKAN_THREAD_GROUP) && defined(VULKAN_DEBUG)
 		LOGI("Loading texture in thread index: %u\n", Util::get_current_thread_index());
 #endif
-		unique_ptr<Granite::File> updated_file{f};
+		std::unique_ptr<Granite::File> updated_file{f};
 		auto size = updated_file->get_size();
 		void *mapped = updated_file->map();
 		if (size && mapped)
 		{
 			if (MemoryMappedTexture::is_header(mapped, size))
-				update_gtx(move(updated_file), mapped);
+				update_gtx(std::move(updated_file), mapped);
 			else
 				update_other(mapped, size);
 			device->get_texture_manager().notify_updated_texture(path, *this);
@@ -88,7 +86,7 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 	if (auto *group = device->get_system_handles().thread_group)
 	{
 		// Workaround, cannot copy the lambda because of owning a unique_ptr.
-		auto task = group->create_task(move(work));
+		auto task = group->create_task(std::move(work));
 		task->flush();
 	}
 	else
@@ -180,10 +178,10 @@ void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 	replace_image(image);
 }
 
-void Texture::update_gtx(unique_ptr<Granite::File> file, void *mapped)
+void Texture::update_gtx(std::unique_ptr<Granite::File> file, void *mapped)
 {
 	MemoryMappedTexture mapped_file;
-	if (!mapped_file.map_read(move(file), mapped))
+	if (!mapped_file.map_read(std::move(file), mapped))
 	{
 		LOGE("Failed to read texture.\n");
 		return;
@@ -218,9 +216,9 @@ void Texture::unload()
 
 void Texture::replace_image(ImageHandle handle_)
 {
-	auto old = this->handle.write_object(move(handle_));
+	auto old = this->handle.write_object(std::move(handle_));
 	if (old)
-		device->keep_handle_alive(move(old));
+		device->keep_handle_alive(std::move(old));
 
 	if (enable_notification)
 		device->get_texture_manager().notify_updated_texture(path, *this);
@@ -278,7 +276,7 @@ void TextureManager::register_texture_update_notification(const std::string &mod
 	auto *ret = deferred_textures.find(hash);
 	if (ret)
 		func(*ret);
-	notifications[modified_path].push_back(move(func));
+	notifications[modified_path].push_back(std::move(func));
 }
 
 void TextureManager::notify_updated_texture(const std::string &path, Vulkan::Texture &texture)

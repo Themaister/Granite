@@ -21,19 +21,18 @@
  */
 
 #include "string_helpers.hpp"
-using namespace std;
 
 namespace Util
 {
-static vector<string> split(const string &str, const char *delim, bool allow_empty)
+static std::vector<std::string> split(const std::string &str, const char *delim, bool allow_empty)
 {
 	if (str.empty())
 		return {};
-	vector<string> ret;
+	std::vector<std::string> ret;
 
 	size_t start_index = 0;
 	size_t index = 0;
-	while ((index = str.find_first_of(delim, start_index)) != string::npos)
+	while ((index = str.find_first_of(delim, start_index)) != std::string::npos)
 	{
 		if (allow_empty || index > start_index)
 			ret.push_back(str.substr(start_index, index - start_index));
@@ -48,25 +47,25 @@ static vector<string> split(const string &str, const char *delim, bool allow_emp
 	return ret;
 }
 
-vector<string> split(const string &str, const char *delim)
+std::vector<std::string> split(const std::string &str, const char *delim)
 {
 	return split(str, delim, true);
 }
 
-vector<string> split_no_empty(const string &str, const char *delim)
+std::vector<std::string> split_no_empty(const std::string &str, const char *delim)
 {
 	return split(str, delim, false);
 }
 
-string strip_whitespace(const string &str)
+std::string strip_whitespace(const std::string &str)
 {
-	string ret;
+	std::string ret;
 	auto index = str.find_first_not_of(" \t");
-	if (index == string::npos)
+	if (index == std::string::npos)
 		return "";
-	ret = str.substr(index, string::npos);
+	ret = str.substr(index, std::string::npos);
 	index = ret.find_last_not_of(" \t");
-	if (index != string::npos)
+	if (index != std::string::npos)
 		return ret.substr(0, index + 1);
 	else
 		return ret;

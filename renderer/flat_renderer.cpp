@@ -27,7 +27,6 @@
 #include <float.h>
 
 using namespace Vulkan;
-using namespace std;
 using namespace Util;
 
 namespace Granite

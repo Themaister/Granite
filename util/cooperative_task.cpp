@@ -27,8 +27,6 @@
 #include <assert.h>
 #include "libco.h"
 
-using namespace std;
-
 namespace Util
 {
 static thread_local stack<cothread_t> swap_stack;
@@ -54,15 +52,15 @@ static void co_trampoline(void *arg)
 	runnable->yield_complete();
 
 	// Should never reach here.
-	terminate();
+	std::terminate();
 }
 
-CooperativeTask::CooperativeTask(unique_ptr<CooperativeTaskRunnable> task_)
-	: task(move(task_))
+CooperativeTask::CooperativeTask(std::unique_ptr<CooperativeTaskRunnable> task_)
+	: task(std::move(task_))
 {
 	cothread = co_create(0x10000, co_trampoline, task.get());
 	if (!cothread)
-		throw bad_alloc();
+		throw std::bad_alloc();
 }
 
 CooperativeTask::~CooperativeTask()

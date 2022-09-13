@@ -39,8 +39,6 @@
 #include <sys/inotify.h>
 #endif
 
-using namespace std;
-
 namespace Granite
 {
 static bool ensure_directory_inner(const std::string &path)
@@ -234,12 +232,12 @@ OSFilesystem::~OSFilesystem()
 #endif
 }
 
-unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
+std::unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
 {
-	return unique_ptr<MMapFile>(MMapFile::open(Path::join(base, path), mode));
+	return std::unique_ptr<MMapFile>(MMapFile::open(Path::join(base, path), mode));
 }
 
-string OSFilesystem::get_filesystem_path(const string &path)
+std::string OSFilesystem::get_filesystem_path(const std::string &path)
 {
 	return Path::join(base, path);
 }
@@ -295,7 +293,7 @@ void OSFilesystem::poll_notifications()
 					if (itr->second.directory)
 					{
 						auto notify_path = protocol + "://" + Path::join(func.path, current->name);
-						func.func({ move(notify_path), type, func.virtual_handle });
+						func.func({ std::move(notify_path), type, func.virtual_handle });
 					}
 					else
 						func.func({ protocol + "://" + func.path, type, func.virtual_handle });
@@ -355,8 +353,8 @@ void OSFilesystem::uninstall_notification(FileNotifyHandle handle)
 #endif
 }
 
-FileNotifyHandle OSFilesystem::install_notification(const string &path,
-                                                    function<void (const FileNotifyInfo &)> func)
+FileNotifyHandle OSFilesystem::install_notification(const std::string &path,
+                                                    std::function<void (const FileNotifyInfo &)> func)
 {
 #ifdef __linux__
 	//LOGI("Installing notification for: %s\n", path.c_str());
@@ -383,9 +381,9 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path,
 	// We could have different paths which look different but resolve to the same wd, so handle that.
 	auto itr = handlers.find(wd);
 	if (itr == end(handlers))
-		handlers[wd] = { {{ move(path), move(func), ++virtual_handle }}, s.type == PathType::Directory };
+		handlers[wd] = { {{ std::move(path), std::move(func), ++virtual_handle }}, s.type == PathType::Directory };
 	else
-		itr->second.funcs.push_back({ move(path), move(func), ++virtual_handle });
+		itr->second.funcs.push_back({ std::move(path), std::move(func), ++virtual_handle });
 
 	//LOGI("  Got handle: %d\n", virtual_handle);
 
@@ -398,7 +396,7 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path,
 #endif
 }
 
-vector<ListEntry> OSFilesystem::list(const string &path)
+std::vector<ListEntry> OSFilesystem::list(const std::string &path)
 {
 	auto directory = Path::join(base, path);
 	DIR *dir = opendir(directory.c_str());
@@ -408,7 +406,7 @@ vector<ListEntry> OSFilesystem::list(const string &path)
 		return {};
 	}
 
-	vector<ListEntry> entries;
+	std::vector<ListEntry> entries;
 	struct dirent *entry;
 	while ((entry = readdir(dir)))
 	{
@@ -435,7 +433,7 @@ vector<ListEntry> OSFilesystem::list(const string &path)
 
 			type = s.type;
 		}
-		entries.push_back({ move(joined_path), type });
+		entries.push_back({ std::move(joined_path), type });
 	}
 	closedir(dir);
 	return entries;

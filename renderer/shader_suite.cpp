@@ -24,7 +24,6 @@
 #include "device.hpp"
 #include "string_helpers.hpp"
 
-using namespace std;
 using namespace Util;
 using namespace Vulkan;
 
@@ -110,7 +109,7 @@ Vulkan::Program *ShaderSuite::get_program(DrawPipelineCoverage coverage, uint32_
 		signature.variant_id = variant_id;
 		register_variant_signature(signature);
 
-		vector<pair<string, int>> defines = base_defines;
+		std::vector<std::pair<std::string, int>> defines = base_defines;
 		if (coverage == DrawPipelineCoverage::Modifies)
 			defines.emplace_back("ALPHA_TEST", 1);
 

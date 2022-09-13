@@ -28,7 +28,6 @@
 #include "transforms.hpp"
 
 using namespace Vulkan;
-using namespace std;
 using namespace Util;
 
 namespace Granite
@@ -212,9 +211,9 @@ void Ground::on_device_created(const DeviceCreatedEvent &created)
 void Ground::build_lod(Device &device, unsigned lod_size, unsigned stride)
 {
 	unsigned size_1 = lod_size + 1;
-	vector<GroundVertex> vertices;
+	std::vector<GroundVertex> vertices;
 	vertices.reserve(size_1 * size_1);
-	vector<uint16_t> indices;
+	std::vector<uint16_t> indices;
 	indices.reserve(lod_size * (2 * size_1 + 1));
 
 	unsigned half_size = info.base_patch_size >> 1;
@@ -431,11 +430,11 @@ Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_f
 
 	vec2 inv_patches = vec2(1.0f / ground->get_num_patches_x(), 1.0f / ground->get_num_patches_z());
 
-	vector<GroundPatch *> patches;
+	std::vector<GroundPatch *> patches;
 	patches.reserve(ground->get_num_patches_x() * ground->get_num_patches_z());
 
 	if (!info.patch_lod_bias.empty() && info.patch_lod_bias.size() != (ground->get_num_patches_x() * ground->get_num_patches_z()))
-		throw logic_error("Mismatch in number of patch lod biases and patches.");
+		throw std::logic_error("Mismatch in number of patch lod biases and patches.");
 
 	const float *patch_bias = info.patch_lod_bias.empty() ? nullptr : info.patch_lod_bias.data();
 	const vec2 *patch_range = info.patch_range.empty() ? nullptr : info.patch_range.data();

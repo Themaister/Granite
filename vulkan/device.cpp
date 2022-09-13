@@ -60,7 +60,6 @@ static unsigned get_thread_index()
 }
 #endif
 
-using namespace std;
 using namespace Util;
 
 namespace Vulkan
@@ -317,7 +316,7 @@ LinearHostImageHandle Device::create_linear_host_image(const LinearHostImageCrea
 	else
 		gpu_image->set_layout(Layout::General);
 
-	return LinearHostImageHandle(handle_pool.linear_images.allocate(this, move(gpu_image), move(cpu_image), info.stages));
+	return LinearHostImageHandle(handle_pool.linear_images.allocate(this, std::move(gpu_image), std::move(cpu_image), info.stages));
 }
 
 void *Device::map_linear_host_image(const LinearHostImage &image, MemoryAccessFlags access)
@@ -1117,7 +1116,7 @@ void Device::submit(CommandBufferHandle &cmd, Fence *fence, unsigned semaphore_c
 	cmd->end_debug_channel();
 
 	LOCK();
-	submit_nolock(move(cmd), fence, semaphore_count, semaphores);
+	submit_nolock(std::move(cmd), fence, semaphore_count, semaphores);
 }
 
 void Device::submit_discard_nolock(CommandBufferHandle &cmd)
@@ -1181,7 +1180,7 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	}
 
 	cmd->end();
-	submissions.push_back(move(cmd));
+	submissions.push_back(std::move(cmd));
 
 	InternalFence signalled_fence;
 
@@ -1972,7 +1971,7 @@ CommandBufferHandle Device::request_secondary_command_buffer_for_thread(unsigned
 
 void Device::set_acquire_semaphore(unsigned index, Semaphore acquire)
 {
-	wsi.acquire = move(acquire);
+	wsi.acquire = std::move(acquire);
 	wsi.index = index;
 	wsi.consumed = false;
 
@@ -1985,7 +1984,7 @@ void Device::set_acquire_semaphore(unsigned index, Semaphore acquire)
 
 Semaphore Device::consume_release_semaphore()
 {
-	auto ret = move(wsi.release);
+	auto ret = std::move(wsi.release);
 	wsi.release.reset();
 	return ret;
 }
@@ -2067,12 +2066,12 @@ void Device::init_frame_contexts(unsigned count)
 
 	for (unsigned i = 0; i < count; i++)
 	{
-		auto frame = unique_ptr<PerFrame>(new PerFrame(this, i));
-		per_frame.emplace_back(move(frame));
+		auto frame = std::unique_ptr<PerFrame>(new PerFrame(this, i));
+		per_frame.emplace_back(std::move(frame));
 	}
 }
 
-void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images)
+void Device::init_external_swapchain(const std::vector<ImageHandle> &swapchain_images)
 {
 	DRAIN_FRAME_LOCK();
 	wsi.swapchain.clear();
@@ -2110,7 +2109,7 @@ void Device::set_swapchain_queue_family_support(uint32_t queue_family_support)
 	wsi.queue_family_support_mask = queue_family_support;
 }
 
-void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format,
+void Device::init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format,
                             VkSurfaceTransformFlagBitsKHR transform, VkImageUsageFlags usage)
 {
 	DRAIN_FRAME_LOCK();
@@ -2173,7 +2172,7 @@ Device::PerFrame::PerFrame(Device *device_, unsigned frame_index_)
 void Device::keep_handle_alive(ImageHandle handle)
 {
 	LOCK();
-	frame().keep_alive_images.push_back(move(handle));
+	frame().keep_alive_images.push_back(std::move(handle));
 }
 
 void Device::free_memory_nolock(const DeviceAllocation &alloc)
@@ -2649,7 +2648,7 @@ void Device::register_time_interval_nolock(std::string tid, QueryPoolHandle star
 		if (start_ts->is_signalled() && end_ts->is_signalled())
 			VK_ASSERT(end_ts->get_timestamp_ticks() >= start_ts->get_timestamp_ticks());
 #endif
-		frame().timestamp_intervals.push_back({ std::move(tid), move(start_ts), move(end_ts), timestamp_tag, std::move(extra) });
+		frame().timestamp_intervals.push_back({ std::move(tid), std::move(start_ts), std::move(end_ts), timestamp_tag, std::move(extra) });
 	}
 }
 
@@ -3060,7 +3059,7 @@ public:
 	VkImageView unorm_view = VK_NULL_HANDLE;
 	VkImageView srgb_view = VK_NULL_HANDLE;
 	VkImageViewType default_view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
-	vector<VkImageView> rt_views;
+	std::vector<VkImageView> rt_views;
 	DeviceAllocation allocation;
 	DeviceAllocator *allocator = nullptr;
 	bool owned = true;
@@ -3358,7 +3357,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 	{
 		holder.owned = false;
 		ret->set_alt_views(holder.depth_view, holder.stencil_view);
-		ret->set_render_target_views(move(holder.rt_views));
+		ret->set_render_target_views(std::move(holder.rt_views));
 		return ret;
 	}
 	else
@@ -3903,7 +3902,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (has_view)
 		{
 			handle->get_view().set_alt_views(holder.depth_view, holder.stencil_view);
-			handle->get_view().set_render_target_views(move(holder.rt_views));
+			handle->get_view().set_render_target_views(std::move(holder.rt_views));
 			handle->get_view().set_unorm_view(holder.unorm_view);
 			handle->get_view().set_srgb_view(holder.srgb_view);
 		}
@@ -4607,7 +4606,7 @@ uint64_t Device::allocate_cookie()
 {
 	// Reserve lower bits for "special purposes".
 #ifdef GRANITE_VULKAN_MT
-	return cookie.fetch_add(16, memory_order_relaxed) + 16;
+	return cookie.fetch_add(16, std::memory_order_relaxed) + 16;
 #else
 	cookie += 16;
 	return cookie;
@@ -4777,8 +4776,8 @@ RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)
 
 void Device::set_queue_lock(std::function<void()> lock_callback, std::function<void()> unlock_callback)
 {
-	queue_lock_callback = move(lock_callback);
-	queue_unlock_callback = move(unlock_callback);
+	queue_lock_callback = std::move(lock_callback);
+	queue_unlock_callback = std::move(unlock_callback);
 }
 
 void Device::set_name(const Buffer &buffer, const char *name)
@@ -4832,7 +4831,7 @@ void Device::report_checkpoints()
 
 		uint32_t count;
 		table->vkGetQueueCheckpointDataNV(queue_info.queues[i], &count, nullptr);
-		vector<VkCheckpointDataNV> checkpoint_data(count);
+		std::vector<VkCheckpointDataNV> checkpoint_data(count);
 		for (auto &data : checkpoint_data)
 			data.sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV;
 		table->vkGetQueueCheckpointDataNV(queue_info.queues[i], &count, checkpoint_data.data());

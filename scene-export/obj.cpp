@@ -26,7 +26,6 @@
 #include "texture_files.hpp"
 #include "string_helpers.hpp"
 
-using namespace std;
 using namespace Util;
 
 namespace OBJ
@@ -51,8 +50,8 @@ void Parser::flush_mesh()
 	mesh.count = unsigned(current_positions.size());
 	mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
-	vec3 lo = vec3(numeric_limits<float>::max());
-	vec3 hi = vec3(-numeric_limits<float>::max());
+	vec3 lo = vec3(std::numeric_limits<float>::max());
+	vec3 hi = vec3(-std::numeric_limits<float>::max());
 	for (auto &p : current_positions)
 	{
 		lo = min(lo, p);
@@ -63,9 +62,9 @@ void Parser::flush_mesh()
 	if (!current_normals.empty() && !current_uvs.empty())
 	{
 		if (current_normals.size() != current_positions.size())
-			throw runtime_error("Normal size != position size.");
+			throw std::runtime_error("Normal size != position size.");
 		if (current_uvs.size() != current_positions.size())
-			throw runtime_error("UV size != position size.");
+			throw std::runtime_error("UV size != position size.");
 
 		mesh.attribute_layout[ecast(MeshAttribute::Normal)].format = VK_FORMAT_R32G32B32_SFLOAT;
 		mesh.attribute_layout[ecast(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
@@ -83,7 +82,7 @@ void Parser::flush_mesh()
 	else if (!current_normals.empty())
 	{
 		if (current_normals.size() != current_positions.size())
-			throw runtime_error("Normal size != position size.");
+			throw std::runtime_error("Normal size != position size.");
 		mesh.attribute_layout[ecast(MeshAttribute::Normal)].format = VK_FORMAT_R32G32B32_SFLOAT;
 		static const size_t stride = sizeof(vec3);
 		mesh.attribute_stride = stride;
@@ -94,7 +93,7 @@ void Parser::flush_mesh()
 	else if (!current_uvs.empty())
 	{
 		if (current_uvs.size() != current_positions.size())
-			throw runtime_error("UV size != position size.");
+			throw std::runtime_error("UV size != position size.");
 		mesh.attribute_layout[ecast(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
 		static const size_t stride = sizeof(vec2);
 		mesh.attribute_stride = stride;
@@ -110,7 +109,7 @@ void Parser::flush_mesh()
 	mesh_deduplicate_vertices(mesh);
 
 	root_node.meshes.push_back(meshes.size());
-	meshes.push_back(move(mesh));
+	meshes.push_back(std::move(mesh));
 }
 
 void Parser::emit_gltf_base_color(const std::string &base_color_path, const std::string &alpha_mask_path)
@@ -167,7 +166,7 @@ void Parser::emit_gltf_base_color(const std::string &base_color_path, const std:
 	height = base_color.get_layout().get_height();
 	hasher.string(base_color_path);
 	hasher.string(alpha_mask_path);
-	string packed_path = string("memory://") + to_string(hasher.get()) + ".gtx";
+	std::string packed_path = std::string("memory://") + std::to_string(hasher.get()) + ".gtx";
 	materials.back().base_color.path = packed_path;
 	materials.back().pipeline = DrawPipeline::AlphaTest;
 	materials.back().two_sided = true;
@@ -266,7 +265,7 @@ void Parser::emit_gltf_pbr_metallic_roughness(const std::string &metallic_path, 
 
 	hasher.string(metallic_path);
 	hasher.string(roughness_path);
-	string packed_path = string("memory://") + to_string(hasher.get()) + ".gtx";
+	std::string packed_path = std::string("memory://") + std::to_string(hasher.get()) + ".gtx";
 	materials.back().metallic_roughness.path = packed_path;
 
 	pbr.set_2d(VK_FORMAT_R8G8B8A8_UNORM, width, height);
@@ -331,7 +330,7 @@ void Parser::emit_vertex(const OBJVertex * const *face)
 				index--;
 
 			if (index < 0 || index >= int(positions.size()))
-				throw logic_error("Index out of bounds.");
+				throw std::logic_error("Index out of bounds.");
 			current_positions.push_back(positions[index]);
 		}
 
@@ -350,7 +349,7 @@ void Parser::emit_vertex(const OBJVertex * const *face)
 				index--;
 
 			if (index < 0 || index >= int(uvs.size()))
-				throw logic_error("Index out of bounds.");
+				throw std::logic_error("Index out of bounds.");
 			current_uvs.push_back(uvs[index]);
 		}
 
@@ -363,7 +362,7 @@ void Parser::emit_vertex(const OBJVertex * const *face)
 				index--;
 
 			if (index < 0 || index >= int(normals.size()))
-				throw logic_error("Index out of bounds.");
+				throw std::logic_error("Index out of bounds.");
 			current_normals.push_back(normals[index]);
 		}
 	}
@@ -371,22 +370,22 @@ void Parser::emit_vertex(const OBJVertex * const *face)
 
 void Parser::load_material_library(const std::string &path)
 {
-	string mtl;
+	std::string mtl;
 	if (!GRANITE_FILESYSTEM()->read_file_to_string(path, mtl))
-		throw runtime_error("Failed to load material library.");
+		throw std::runtime_error("Failed to load material library.");
 
-	vector<string> lines = split_no_empty(mtl, "\n");
-	string metallic;
-	string roughness;
-	string base_color;
-	string alpha_mask;
+	std::vector<std::string> lines = split_no_empty(mtl, "\n");
+	std::string metallic;
+	std::string roughness;
+	std::string base_color;
+	std::string alpha_mask;
 
 	for (auto &line : lines)
 	{
 		line = strip_whitespace(line);
 		auto comment_index = line.find_first_of('#');
-		if (comment_index != string::npos)
-			line = line.substr(comment_index, string::npos);
+		if (comment_index != std::string::npos)
+			line = line.substr(comment_index, std::string::npos);
 
 		auto elements = split_no_empty(line, " ");
 		if (elements.empty())
@@ -410,40 +409,40 @@ void Parser::load_material_library(const std::string &path)
 		else if (ident == "Kd")
 		{
 			if (materials.empty())
-				throw logic_error("No material");
+				throw std::logic_error("No material");
 			for (unsigned i = 0; i < 3; i++)
 				materials.back().uniform_base_color[i] = stof(elements.at(i + 1));
 		}
 		else if (ident == "map_Kd")
 		{
 			if (materials.empty())
-				throw logic_error("No material");
+				throw std::logic_error("No material");
 			base_color = Path::relpath(path, elements.at(1));
 		}
 		else if (ident == "map_d")
 		{
 			if (materials.empty())
-				throw logic_error("No material");
+				throw std::logic_error("No material");
 			alpha_mask = Path::relpath(path, elements.at(1));
 		}
 		else if (ident == "bump")
 		{
 			if (materials.empty())
-				throw logic_error("No material");
+				throw std::logic_error("No material");
 			materials.back().normal.path = Path::relpath(path, elements.at(1));
 		}
 		else if (ident == "map_Ka")
 		{
 			// Custom magic stuff for Sponza PBR.
 			if (materials.empty())
-				throw logic_error("No material");
+				throw std::logic_error("No material");
 			metallic = Path::relpath(path, elements.at(1));
 		}
 		else if (ident == "map_Ns")
 		{
 			// Custom magic stuff for Sponza PBR.
 			if (materials.empty())
-				throw logic_error("No material");
+				throw std::logic_error("No material");
 			roughness = Path::relpath(path, elements.at(1));
 		}
 	}
@@ -456,17 +455,17 @@ void Parser::load_material_library(const std::string &path)
 
 Parser::Parser(const std::string &path)
 {
-	string obj;
+	std::string obj;
 	if (!GRANITE_FILESYSTEM()->read_file_to_string(path, obj))
-		throw runtime_error("Failed to load OBJ.");
+		throw std::runtime_error("Failed to load OBJ.");
 
-	vector<string> lines = split_no_empty(obj, "\n");
+	std::vector<std::string> lines = split_no_empty(obj, "\n");
 	for (auto &line : lines)
 	{
 		line = strip_whitespace(line);
 		auto comment_index = line.find_first_of('#');
-		if (comment_index != string::npos)
-			line = line.substr(comment_index, string::npos);
+		if (comment_index != std::string::npos)
+			line = line.substr(comment_index, std::string::npos);
 
 		auto elements = split_no_empty(line, " ");
 		if (elements.empty())
@@ -488,7 +487,7 @@ Parser::Parser(const std::string &path)
 			{
 				LOGE("Material %s does not exist!\n",
 				     elements.at(1).c_str());
-				throw runtime_error("Material does not exist.");
+				throw std::runtime_error("Material does not exist.");
 			}
 			int index = int(itr->second);
 			if (index != current_material)
@@ -521,7 +520,7 @@ Parser::Parser(const std::string &path)
 	}
 
 	flush_mesh();
-	nodes.push_back(move(root_node));
+	nodes.push_back(std::move(root_node));
 }
 }
 

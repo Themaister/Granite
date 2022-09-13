@@ -34,7 +34,6 @@
 #include <float.h>
 #include <stdexcept>
 
-using namespace std;
 using namespace Vulkan;
 
 namespace Granite
@@ -47,7 +46,7 @@ static vec3 light_direction()
 
 void SceneViewerApplication::read_lights()
 {
-	string json;
+	std::string json;
 	if (!GRANITE_FILESYSTEM()->read_file_to_string("assets://lights.json", json))
 		return;
 
@@ -129,7 +128,7 @@ void SceneViewerApplication::read_lights()
 
 void SceneViewerApplication::read_quirks(const std::string &path)
 {
-	string json;
+	std::string json;
 	if (!GRANITE_FILESYSTEM()->read_file_to_string(path, json))
 	{
 		LOGE("Failed to read quirks file. Assuming defaults.\n");
@@ -169,7 +168,7 @@ void SceneViewerApplication::read_quirks(const std::string &path)
 
 void SceneViewerApplication::read_config(const std::string &path)
 {
-	string json;
+	std::string json;
 	if (!GRANITE_FILESYSTEM()->read_file_to_string(path, json))
 	{
 		LOGE("Failed to read config file. Assuming defaults.\n");
@@ -187,7 +186,7 @@ void SceneViewerApplication::read_config(const std::string &path)
 		else if (strcmp(renderer, "deferred") == 0)
 			config.renderer_type = RendererType::GeneralDeferred;
 		else
-			throw invalid_argument("Invalid renderer option.");
+			throw std::invalid_argument("Invalid renderer option.");
 	}
 
 	if (doc.HasMember("msaa"))
@@ -390,7 +389,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	if (config.clustered_lights_shadows || config.clustered_lights)
 	{
-		cluster = make_unique<LightClusterer>();
+		cluster = std::make_unique<LightClusterer>();
 		auto entity = scene_loader.get_scene().create_entity();
 		auto *refresh = entity->allocate_component<PerFrameUpdateComponent>();
 		refresh->refresh = cluster.get();
@@ -427,7 +426,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	if (config.volumetric_fog)
 	{
-		volumetric_fog = make_unique<VolumetricFog>();
+		volumetric_fog = std::make_unique<VolumetricFog>();
 		volumetric_fog->set_resolution(160, 92, 128);
 		volumetric_fog->set_z_range(80.0f);
 		lighting.volumetric_fog = volumetric_fog.get();
@@ -455,7 +454,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	    config.clustered_lights_bindless &&
 	    config.volumetric_diffuse)
 	{
-		volumetric_diffuse = make_unique<VolumetricDiffuseLightManager>();
+		volumetric_diffuse = std::make_unique<VolumetricDiffuseLightManager>();
 		lighting.volumetric_diffuse = volumetric_diffuse.get();
 
 		auto entity = scene_loader.get_scene().create_entity();
@@ -744,7 +743,7 @@ void SceneViewerApplication::capture_environment_probe()
 	save_image_buffer_to_gtx(device, buffer, "cache://environment.gtx");
 }
 
-static inline string tagcat(const std::string &a, const std::string &b)
+static inline std::string tagcat(const std::string &a, const std::string &b)
 {
 	return a + "-" + b;
 }
@@ -1206,7 +1205,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	scene_loader.get_scene().add_render_pass_dependencies(graph);
 	graph.bake();
 	//graph.log();
-	graph.install_physical_buffers(move(physical_buffers));
+	graph.install_physical_buffers(std::move(physical_buffers));
 
 	need_shadow_map_update = true;
 }

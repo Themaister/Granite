@@ -38,8 +38,6 @@
 #include <termio.h>
 #include <limits.h>
 
-using namespace std;
-
 namespace Granite
 {
 static long old_kbmd = 0xffff;
@@ -206,7 +204,7 @@ bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode,
 		return false;
 
 	epoll_event event;
-	auto dev = make_unique<Device>();
+	auto dev = std::make_unique<Device>();
 	dev->type = type;
 	dev->callback = callback;
 	dev->devnode = devnode;
@@ -281,7 +279,7 @@ bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode,
 		return false;
 	}
 
-	devices.push_back(move(dev));
+	devices.push_back(std::move(dev));
 	return true;
 }
 
@@ -392,7 +390,7 @@ bool LinuxInputManager::poll()
 
 void LinuxInputManager::remove_device(const char *devnode)
 {
-	auto itr = Util::unstable_remove_if(begin(devices), end(devices), [=](const unique_ptr<Device> &dev) {
+	auto itr = Util::unstable_remove_if(begin(devices), end(devices), [=](const std::unique_ptr<Device> &dev) {
 		return dev->devnode == devnode;
 	});
 

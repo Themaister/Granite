@@ -28,8 +28,6 @@
 #include <string.h>
 #include <algorithm>
 
-using namespace std;
-
 namespace Granite
 {
 namespace Audio
@@ -37,7 +35,7 @@ namespace Audio
 struct VorbisStream : MixerStream
 {
 	~VorbisStream();
-	bool init(const string &path);
+	bool init(const std::string &path);
 
 	size_t accumulate_samples(float * const *channels, const float *gains, size_t num_frames) noexcept override;
 
@@ -64,7 +62,7 @@ struct VorbisStream : MixerStream
 	}
 
 	stb_vorbis *file = nullptr;
-	unique_ptr<File> filesystem_file;
+	std::unique_ptr<File> filesystem_file;
 
 	float sample_rate = 0.0f;
 	unsigned num_channels = 0;
@@ -76,7 +74,7 @@ struct VorbisStream : MixerStream
 
 struct DecodedVorbisStream : MixerStream
 {
-	bool init(const string &path);
+	bool init(const std::string &path);
 
 	size_t accumulate_samples(float * const *channels, const float *gains, size_t num_frames) noexcept override;
 
@@ -97,7 +95,7 @@ struct DecodedVorbisStream : MixerStream
 	bool looping = false;
 };
 
-bool VorbisStream::init(const string &path)
+bool VorbisStream::init(const std::string &path)
 {
 	filesystem_file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
 	if (!filesystem_file)
@@ -125,7 +123,7 @@ bool VorbisStream::init(const string &path)
 	return true;
 }
 
-bool DecodedVorbisStream::init(const string &path)
+bool DecodedVorbisStream::init(const std::string &path)
 {
 	auto filesystem_file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
 	if (!filesystem_file)
@@ -229,7 +227,7 @@ VorbisStream::~VorbisStream()
 		stb_vorbis_close(file);
 }
 
-MixerStream *create_vorbis_stream(const string &path, bool looping)
+MixerStream *create_vorbis_stream(const std::string &path, bool looping)
 {
 	auto vorbis = new VorbisStream;
 	if (!vorbis->init(path))
@@ -242,7 +240,7 @@ MixerStream *create_vorbis_stream(const string &path, bool looping)
 	return vorbis;
 }
 
-MixerStream *create_decoded_vorbis_stream(const string &path, bool looping)
+MixerStream *create_decoded_vorbis_stream(const std::string &path, bool looping)
 {
 	auto vorbis = new DecodedVorbisStream;
 	if (!vorbis->init(path))

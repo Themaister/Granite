@@ -28,8 +28,6 @@
 
 #include "spirv-tools/libspirv.hpp"
 
-using namespace std;
-
 namespace Granite
 {
 GLSLCompiler::GLSLCompiler(FilesystemInterface &iface_)
@@ -74,7 +72,7 @@ static Stage convert_stage(const std::string &stage)
 		return Stage::Unknown;
 }
 
-bool GLSLCompiler::set_source_from_file(const string &path, Stage forced_stage)
+bool GLSLCompiler::set_source_from_file(const std::string &path, Stage forced_stage)
 {
 	if (!iface.load_text_file(path, source))
 	{
@@ -110,8 +108,8 @@ void GLSLCompiler::set_include_directories(const std::vector<std::string> *inclu
 	include_directories = include_directories_;
 }
 
-bool GLSLCompiler::find_include_path(const string &source_path_, const string &include_path,
-                                     string &included_path, string &included_source)
+bool GLSLCompiler::find_include_path(const std::string &source_path_, const std::string &include_path,
+                                     std::string &included_path, std::string &included_source)
 {
 	auto relpath = Path::relpath(source_path_, include_path);
 	if (iface.load_text_file(relpath, included_source))
@@ -136,7 +134,7 @@ bool GLSLCompiler::find_include_path(const string &source_path_, const string &i
 	return false;
 }
 
-bool GLSLCompiler::parse_variants(const string &source_, const string &path)
+bool GLSLCompiler::parse_variants(const std::string &source_, const std::string &path)
 {
 	auto lines = Util::split(source_, "\n");
 
@@ -156,7 +154,7 @@ bool GLSLCompiler::parse_variants(const string &source_, const string &path)
 			if (!include_path.empty() && include_path.back() == '"')
 				include_path.pop_back();
 
-			string included_source;
+			std::string included_source;
 			if (!find_include_path(path, include_path, include_path, included_source))
 			{
 				LOGE("Failed to include GLSL file: %s\n", include_path.c_str());
@@ -205,7 +203,7 @@ bool GLSLCompiler::parse_variants(const string &source_, const string &path)
 			preprocessed_source += '\n';
 
 			auto first_non_space = line.find_first_not_of(' ');
-			if (first_non_space != string::npos && line[first_non_space] == '#')
+			if (first_non_space != std::string::npos && line[first_non_space] == '#')
 			{
 				auto keywords = Util::split(line.substr(first_non_space + 1), " ");
 				if (keywords.size() == 1)
@@ -256,7 +254,7 @@ Util::Hash GLSLCompiler::get_source_hash() const
 	return h.get();
 }
 
-vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const vector<pair<string, int>> *defines) const
+std::vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const std::vector<std::pair<std::string, int>> *defines) const
 {
 	shaderc::Compiler compiler;
 	shaderc::CompileOptions options;
@@ -268,7 +266,7 @@ vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const vector<
 
 	if (defines)
 		for (auto &define : *defines)
-			options.AddMacroDefinition(define.first, to_string(define.second));
+			options.AddMacroDefinition(define.first, std::to_string(define.second));
 
 #if GRANITE_COMPILER_OPTIMIZE
 	if (optimization != Optimization::ForceOff)
@@ -356,7 +354,7 @@ vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const vector<
 		return {};
 	}
 
-	vector<uint32_t> compiled_spirv(result.cbegin(), result.cend());
+	std::vector<uint32_t> compiled_spirv(result.cbegin(), result.cend());
 
 	spvtools::SpirvTools core(target == Target::Vulkan11 ? SPV_ENV_VULKAN_1_1 : SPV_ENV_VULKAN_1_0);
 

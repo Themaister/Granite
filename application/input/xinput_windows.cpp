@@ -25,7 +25,6 @@
 #include "bitops.hpp"
 
 using namespace Util;
-using namespace std;
 
 #ifndef ERROR_DEVICE_NOT_CONNECTED
 #define ERROR_DEVICE_NOT_CONNECTED 1167

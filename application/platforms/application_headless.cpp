@@ -53,7 +53,6 @@ using namespace rapidjson;
 #include <shellapi.h>
 #endif
 
-using namespace std;
 using namespace Vulkan;
 using namespace Util;
 
@@ -66,13 +65,13 @@ public:
 	~FrameWorker();
 
 	void wait();
-	void set_work(function<void ()> work);
+	void set_work(std::function<void ()> work);
 
 private:
-	thread thr;
-	condition_variable cond;
-	mutex cond_lock;
-	function<void ()> func;
+	std::thread thr;
+	std::condition_variable cond;
+	std::mutex cond_lock;
+	std::function<void ()> func;
 	bool working = false;
 	bool dead = false;
 
@@ -81,22 +80,22 @@ private:
 
 FrameWorker::FrameWorker()
 {
-	thr = thread(&FrameWorker::thread_loop, this);
+	thr = std::thread(&FrameWorker::thread_loop, this);
 }
 
 void FrameWorker::wait()
 {
-	unique_lock<mutex> u{cond_lock};
+	std::unique_lock<std::mutex> u{cond_lock};
 	cond.wait(u, [this]() -> bool {
 		return !working;
 	});
 }
 
-void FrameWorker::set_work(function<void()> work)
+void FrameWorker::set_work(std::function<void()> work)
 {
 	wait();
-	func = move(work);
-	unique_lock<mutex> u{cond_lock};
+	func = std::move(work);
+	std::unique_lock<std::mutex> u{cond_lock};
 	working = true;
 	cond.notify_one();
 }
@@ -106,7 +105,7 @@ void FrameWorker::thread_loop()
 	for (;;)
 	{
 		{
-			unique_lock<mutex> u{cond_lock};
+			std::unique_lock<std::mutex> u{cond_lock};
 			cond.wait(u, [this]() -> bool {
 				return working || dead;
 			});
@@ -118,7 +117,7 @@ void FrameWorker::thread_loop()
 		if (func)
 			func();
 
-		lock_guard<mutex> holder{cond_lock};
+		std::lock_guard<std::mutex> holder{cond_lock};
 		working = false;
 		cond.notify_one();
 	}
@@ -127,7 +126,7 @@ void FrameWorker::thread_loop()
 FrameWorker::~FrameWorker()
 {
 	{
-		lock_guard<mutex> holder{cond_lock};
+		std::lock_guard<std::mutex> holder{cond_lock};
 		dead = true;
 		cond.notify_one();
 	}
@@ -179,12 +178,12 @@ public:
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 	}
 
-	void enable_png_readback(string base_path)
+	void enable_png_readback(std::string base_path)
 	{
 		png_readback = std::move(base_path);
 	}
 
-	void enable_video_encode(string path)
+	void enable_video_encode(std::string path)
 	{
 		video_encode_path = std::move(path);
 #ifndef HAVE_GRANITE_FFMPEG
@@ -192,7 +191,7 @@ public:
 #endif
 	}
 
-	vector<const char *> get_instance_extensions() override
+	std::vector<const char *> get_instance_extensions() override
 	{
 		return {};
 	}
@@ -302,7 +301,7 @@ public:
 			swapchain_images.push_back(device.create_image(info, nullptr));
 			readback_buffers.push_back(device.create_buffer(readback, nullptr));
 			acquire_semaphore.push_back(Semaphore(nullptr));
-			worker_threads.push_back(make_unique<FrameWorker>());
+			worker_threads.push_back(std::make_unique<FrameWorker>());
 			readback_fence.push_back({});
 		}
 
@@ -462,15 +461,15 @@ private:
 	unsigned max_frames = UINT_MAX;
 	unsigned frame_index = 0;
 	double time_step = 0.01;
-	string png_readback;
-	string video_encode_path;
+	std::string png_readback;
+	std::string video_encode_path;
 	enum { SwapchainImages = 4 };
 
-	vector<ImageHandle> swapchain_images;
-	vector<BufferHandle> readback_buffers;
-	vector<Semaphore> acquire_semaphore;
-	vector<Fence> readback_fence;
-	vector<unique_ptr<FrameWorker>> worker_threads;
+	std::vector<ImageHandle> swapchain_images;
+	std::vector<BufferHandle> readback_buffers;
+	std::vector<Semaphore> acquire_semaphore;
+	std::vector<Fence> readback_fence;
+	std::vector<std::unique_ptr<FrameWorker>> worker_threads;
 	std::function<void (unsigned)> next_readback_cb;
 	ThreadLatch thread_latches[SwapchainImages];
 
@@ -521,13 +520,13 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 
 	struct Args
 	{
-		string png_path;
-		string video_encode_path;
-		string png_reference_path;
-		string stat;
-		string assets;
-		string cache;
-		string builtin;
+		std::string png_path;
+		std::string video_encode_path;
+		std::string png_reference_path;
+		std::string stat;
+		std::string assets;
+		std::string cache;
+		std::string builtin;
 		unsigned max_frames = UINT_MAX;
 		unsigned width = 1280;
 		unsigned height = 720;
@@ -560,23 +559,23 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 	Granite::Global::init(Granite::Global::MANAGER_FEATURE_DEFAULT_BITS);
 
 	if (!args.assets.empty())
-		GRANITE_FILESYSTEM()->register_protocol("assets", make_unique<OSFilesystem>(args.assets));
+		GRANITE_FILESYSTEM()->register_protocol("assets", std::make_unique<OSFilesystem>(args.assets));
 	if (!args.builtin.empty())
-		GRANITE_FILESYSTEM()->register_protocol("builtin", make_unique<OSFilesystem>(args.builtin));
+		GRANITE_FILESYSTEM()->register_protocol("builtin", std::make_unique<OSFilesystem>(args.builtin));
 	if (!args.cache.empty())
-		GRANITE_FILESYSTEM()->register_protocol("cache", make_unique<OSFilesystem>(args.cache));
+		GRANITE_FILESYSTEM()->register_protocol("cache", std::make_unique<OSFilesystem>(args.cache));
 
-	auto app = unique_ptr<Application>(create_application(argc, argv));
+	auto app = std::unique_ptr<Application>(create_application(argc, argv));
 
 	if (app)
 	{
-		auto platform = make_unique<WSIPlatformHeadless>();
+		auto platform = std::make_unique<WSIPlatformHeadless>();
 		if (!platform->init(args.width, args.height))
 			return 1;
 
 		auto *p = platform.get();
 
-		if (!app->init_wsi(move(platform)))
+		if (!app->init_wsi(std::move(platform)))
 			return 1;
 
 		if (!args.png_path.empty())

@@ -26,11 +26,9 @@
 #include <algorithm>
 #include <stdexcept>
 
-using namespace std;
-
 namespace Granite
 {
-bool AssetFile::init(AAssetManager *mgr, const string &path, FileMode mode)
+bool AssetFile::init(AAssetManager *mgr, const std::string &path, FileMode mode)
 {
 	if (mode != FileMode::ReadOnly)
 	{
@@ -95,9 +93,9 @@ AssetManagerFilesystem::AssetManagerFilesystem(const std::string &base_)
 {
 }
 
-unique_ptr<File> AssetManagerFilesystem::open(const std::string &path, FileMode mode)
+std::unique_ptr<File> AssetManagerFilesystem::open(const std::string &path, FileMode mode)
 {
-	return unique_ptr<File>(AssetFile::open(mgr, Path::join(base, Path::canonicalize_path(path)), mode));
+	return std::unique_ptr<File>(AssetFile::open(mgr, Path::join(base, Path::canonicalize_path(path)), mode));
 }
 
 int AssetManagerFilesystem::get_notification_fd() const
@@ -113,13 +111,13 @@ void AssetManagerFilesystem::uninstall_notification(FileNotifyHandle)
 {
 }
 
-FileNotifyHandle AssetManagerFilesystem::install_notification(const string &,
-                                                              function<void (const FileNotifyInfo &)>)
+FileNotifyHandle AssetManagerFilesystem::install_notification(const std::string &,
+                                                              std::function<void (const FileNotifyInfo &)>)
 {
 	return -1;
 }
 
-vector<ListEntry> AssetManagerFilesystem::list(const string &path)
+std::vector<ListEntry> AssetManagerFilesystem::list(const std::string &path)
 {
 	auto directory = Path::join(base, Path::canonicalize_path(path));
 	auto *dir = AAssetManager_openDir(mgr, directory.c_str());
@@ -127,7 +125,7 @@ vector<ListEntry> AssetManagerFilesystem::list(const string &path)
 	if (!dir)
 		return {};
 
-	vector<ListEntry> entries;
+	std::vector<ListEntry> entries;
 
 	const char *entry;
 	while ((entry = AAssetDir_getNextFileName(dir)))

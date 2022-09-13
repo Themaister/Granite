@@ -24,8 +24,6 @@
 #include "device.hpp"
 #include "buffer.hpp"
 
-using namespace std;
-
 namespace Vulkan
 {
 ImageView::ImageView(Device *device_, VkImageView view_, const ImageViewCreateInfo &info_)
@@ -207,7 +205,7 @@ VkPipelineStageFlags LinearHostImage::get_used_pipeline_stages() const
 }
 
 LinearHostImage::LinearHostImage(Device *device_, ImageHandle gpu_image_, BufferHandle cpu_image_, VkPipelineStageFlags stages_)
-	: device(device_), gpu_image(move(gpu_image_)), cpu_image(move(cpu_image_)), stages(stages_)
+	: device(device_), gpu_image(std::move(gpu_image_)), cpu_image(std::move(cpu_image_)), stages(stages_)
 {
 	if (gpu_image->get_create_info().domain == ImageDomain::LinearHostCached ||
 	    gpu_image->get_create_info().domain == ImageDomain::LinearHost)

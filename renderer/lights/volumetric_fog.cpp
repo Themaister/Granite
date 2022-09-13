@@ -28,7 +28,6 @@
 #include <cmath>
 
 using namespace Vulkan;
-using namespace std;
 
 static constexpr unsigned NumDitherIterations = 64;
 
@@ -103,14 +102,14 @@ void VolumetricFog::set_resolution(unsigned width_, unsigned height_, unsigned d
 	depth = depth_;
 }
 
-void VolumetricFog::add_texture_dependency(string name)
+void VolumetricFog::add_texture_dependency(std::string name)
 {
-	texture_dependencies.push_back(move(name));
+	texture_dependencies.push_back(std::move(name));
 }
 
-void VolumetricFog::add_storage_buffer_dependency(string name)
+void VolumetricFog::add_storage_buffer_dependency(std::string name)
 {
-	buffer_dependencies.push_back(move(name));
+	buffer_dependencies.push_back(std::move(name));
 }
 
 void VolumetricFog::compute_slice_extents(Vulkan::Device &device)
@@ -378,7 +377,7 @@ void VolumetricFog::build_dither_lut(Device &device)
 	constexpr float GOLDEN_RATIO = 1.61803398875f;
 
 	// From https://github.com/GPUOpen-Effects/FidelityFX-SSSR/blob/master/sample/src/Shaders/PrepareBlueNoiseTexture.hlsl.
-	vector<uint32_t> buffer(W * H * NumDitherIterations);
+	std::vector<uint32_t> buffer(W * H * NumDitherIterations);
 	for (int z = 0; z < int(NumDitherIterations); z++)
 		for (int y = 0; y < H; y++)
 			for (int x = 0; x < W; x++)

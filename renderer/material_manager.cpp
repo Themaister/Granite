@@ -26,7 +26,6 @@
 #include "rapidjson_wrapper.hpp"
 #include "scene_formats.hpp"
 
-using namespace std;
 using namespace Vulkan;
 using namespace rapidjson;
 using namespace Util;
@@ -38,7 +37,7 @@ MaterialFile::MaterialFile(Granite::Filesystem *fs_, const std::string &path_)
 	: VolatileSource(fs_, path_)
 {
 	if (!init())
-		throw runtime_error("Failed to load material file.");
+		throw std::runtime_error("Failed to load material file.");
 
 	EVENT_MANAGER_REGISTER_LATCH(MaterialFile, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
@@ -77,7 +76,7 @@ void MaterialFile::update(std::unique_ptr<File> file)
 
 	try
 	{
-		string json(static_cast<const char *>(data), static_cast<const char *>(data) + size);
+		std::string json(static_cast<const char *>(data), static_cast<const char *>(data) + size);
 
 		Document doc;
 		doc.Parse(json);

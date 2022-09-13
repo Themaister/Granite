@@ -24,15 +24,13 @@
 #include "ui_manager.hpp"
 #include "widget.hpp"
 
-using namespace std;
-
 namespace Granite
 {
 namespace UI
 {
 void ClickButton::set_text(std::string text_)
 {
-	text = move(text_);
+	text = std::move(text_);
 	geometry_changed();
 }
 

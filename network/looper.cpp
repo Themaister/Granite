@@ -34,8 +34,6 @@
 #include <sys/eventfd.h>
 #endif
 
-using namespace std;
-
 namespace Granite
 {
 LooperHandler::LooperHandler(std::unique_ptr<Socket> socket_)

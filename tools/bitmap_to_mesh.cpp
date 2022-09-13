@@ -29,8 +29,6 @@
 #include <algorithm>
 #include <unordered_set>
 
-using namespace std;
-
 namespace Granite
 {
 enum class PixelState : uint8_t
@@ -159,9 +157,9 @@ public:
 
 private:
 	unsigned width, height;
-	vector<PixelState> state_bitmap;
-	vector<list<uvec2>::iterator> state_nodes;
-	list<uvec2> pending_pixels;
+	std::vector<PixelState> state_bitmap;
+	std::vector<std::list<uvec2>::iterator> state_nodes;
+	std::list<uvec2> pending_pixels;
 };
 
 struct ClaimedRect
@@ -170,10 +168,10 @@ struct ClaimedRect
 	unsigned y = 0;
 	unsigned w = 0;
 	unsigned h = 0;
-	vector<unsigned> north_neighbors;
-	vector<unsigned> east_neighbors;
-	vector<unsigned> south_neighbors;
-	vector<unsigned> west_neighbors;
+	std::vector<unsigned> north_neighbors;
+	std::vector<unsigned> east_neighbors;
+	std::vector<unsigned> south_neighbors;
+	std::vector<unsigned> west_neighbors;
 };
 
 static ClaimedRect find_largest_pending_rect_backwards(StateBitmap &state, const ClaimedRect &rect)
@@ -361,10 +359,10 @@ static vec2 interpolate_rect(const ClaimedRect &rect, const vec2 &v)
 }
 
 // Need to link up neighbors with "degenerate" triangles to get a 100% watertight mesh.
-static void emit_neighbors(vector<vec3> &position,
+static void emit_neighbors(std::vector<vec3> &position,
                            const ClaimedRect &rect,
-                           const vector<unsigned> &neighbors,
-                           const vector<ClaimedRect> &all_rects,
+                           const std::vector<unsigned> &neighbors,
+                           const std::vector<ClaimedRect> &all_rects,
                            const vec2 &neighbor_primary,
                            const vec2 &neighbor_secondary,
                            const vec2 &rect_primary,
@@ -396,7 +394,7 @@ static void emit_neighbors(vector<vec3> &position,
 			position.emplace_back(c.x, 0.0f, c.y);
 }
 
-static void emit_rect(vector<vec3> &position, ClaimedRect &rect, const vector<ClaimedRect> &all_rects)
+static void emit_rect(std::vector<vec3> &position, ClaimedRect &rect, const std::vector<ClaimedRect> &all_rects)
 {
 	const float e = 0.0f;
 	position.emplace_back(float(rect.x) + e, 0.0f, float(rect.y) + e);
@@ -440,8 +438,8 @@ static void emit_rect(vector<vec3> &position, ClaimedRect &rect, const vector<Cl
 	               vec2(1.0f, 1.0f), vec2(1.0f, 0.0f));
 }
 
-static void emit_depth_links_north(const StateBitmap &state, vector<vec3> &depth_links,
-                                   ClaimedRect &rect, vector<ClaimedRect> &rects)
+static void emit_depth_links_north(const StateBitmap &state, std::vector<vec3> &depth_links,
+                                   ClaimedRect &rect, std::vector<ClaimedRect> &rects)
 {
 	// North edge.
 	if (state.rect_is_all_state(int(rect.x), int(rect.y) - 1, rect.w, 1, PixelState::Empty))
@@ -501,8 +499,8 @@ static void emit_depth_links_north(const StateBitmap &state, vector<vec3> &depth
 	}
 }
 
-static void emit_depth_links_south(const StateBitmap &state, vector<vec3> &depth_links,
-                                   ClaimedRect &rect, vector<ClaimedRect> &rects)
+static void emit_depth_links_south(const StateBitmap &state, std::vector<vec3> &depth_links,
+                                   ClaimedRect &rect, std::vector<ClaimedRect> &rects)
 {
 	// South edge.
 	if (state.rect_is_all_state(int(rect.x), int(rect.y + rect.h), rect.w, 1, PixelState::Empty))
@@ -560,8 +558,8 @@ static void emit_depth_links_south(const StateBitmap &state, vector<vec3> &depth
 	}
 }
 
-static void emit_depth_links_east(const StateBitmap &state, vector<vec3> &depth_links,
-                                  ClaimedRect &rect, vector<ClaimedRect> &rects)
+static void emit_depth_links_east(const StateBitmap &state, std::vector<vec3> &depth_links,
+                                  ClaimedRect &rect, std::vector<ClaimedRect> &rects)
 {
 	// South edge.
 	if (state.rect_is_all_state(int(rect.x + rect.w), int(rect.y), 1, rect.h, PixelState::Empty))
@@ -619,8 +617,8 @@ static void emit_depth_links_east(const StateBitmap &state, vector<vec3> &depth_
 	}
 }
 
-static void emit_depth_links_west(const StateBitmap &state, vector<vec3> &depth_links,
-                                  ClaimedRect &rect, vector<ClaimedRect> &rects)
+static void emit_depth_links_west(const StateBitmap &state, std::vector<vec3> &depth_links,
+                                  ClaimedRect &rect, std::vector<ClaimedRect> &rects)
 {
 	// South edge.
 	if (state.rect_is_all_state(int(rect.x) - 1, int(rect.y), 1, rect.h, PixelState::Empty))
@@ -679,8 +677,8 @@ static void emit_depth_links_west(const StateBitmap &state, vector<vec3> &depth_
 	}
 }
 
-static void emit_depth_links(const StateBitmap &state, vector<vec3> &depth_links,
-                             ClaimedRect &rect, vector<ClaimedRect> &rects)
+static void emit_depth_links(const StateBitmap &state, std::vector<vec3> &depth_links,
+                             ClaimedRect &rect, std::vector<ClaimedRect> &rects)
 {
 	emit_depth_links_north(state, depth_links, rect, rects);
 	emit_depth_links_south(state, depth_links, rect, rects);
@@ -688,7 +686,7 @@ static void emit_depth_links(const StateBitmap &state, vector<vec3> &depth_links
 	emit_depth_links_west(state, depth_links, rect, rects);
 }
 
-static void compute_normals(vector<vec3> &normals, const vector<vec3> &positions)
+static void compute_normals(std::vector<vec3> &normals, const std::vector<vec3> &positions)
 {
 	for (size_t i = 0; i < positions.size(); i += 3)
 	{
@@ -706,7 +704,7 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 {
 	bitmap = {};
 
-	vector<StateBitmap> state_mipmap;
+	std::vector<StateBitmap> state_mipmap;
 	{
 		StateBitmap state(width, height);
 		for (unsigned y = 0; y < height; y++)
@@ -746,7 +744,7 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 	}
 
 	// Create all rects which the bitmap is made of.
-	vector<ClaimedRect> rects;
+	std::vector<ClaimedRect> rects;
 
 	uvec2 coord;
 	auto &state = state_mipmap.front();
@@ -775,23 +773,23 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 		}
 	}
 
-	vector<vec3> depth_link_position;
+	std::vector<vec3> depth_link_position;
 	unsigned primary_rects = rects.size();
 
 	// Have to emit depth link neighbors to patch up degenerate strips.
 	for (unsigned i = 0; i < primary_rects; i++)
 	{
 		// rects[i] might be invalidated if rects changes, so move into a temporary.
-		auto r = move(rects[i]);
+		auto r = std::move(rects[i]);
 		emit_depth_links(state_mipmap.front(), depth_link_position, r, rects);
-		rects[i] = move(r);
+		rects[i] = std::move(r);
 	}
 
-	vector<vec3> positions;
+	std::vector<vec3> positions;
 	for (unsigned i = 0; i < primary_rects; i++)
 		emit_rect(positions, rects[i], rects);
 
-	vector<vec3> back_positions;
+	std::vector<vec3> back_positions;
 
 	back_positions.reserve(positions.size());
 	for (auto itr = begin(positions); itr != end(positions);)
@@ -816,10 +814,10 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 		positions.insert(end(positions), begin(depth_link_position), end(depth_link_position));
 	}
 
-	vector<vec3> normals(positions.size());
+	std::vector<vec3> normals(positions.size());
 	compute_normals(normals, positions);
 
-	vector<uint32_t> output_indices(positions.size());
+	std::vector<uint32_t> output_indices(positions.size());
 	meshopt_Stream streams[2] = {};
 	streams[0].data = positions.data();
 	streams[0].size = sizeof(vec3);
@@ -834,12 +832,12 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 	positions.resize(unique_vertices);
 	normals.resize(unique_vertices);
 
-	bitmap.positions = move(positions);
-	bitmap.normals = move(normals);
+	bitmap.positions = std::move(positions);
+	bitmap.normals = std::move(normals);
 	bitmap.indices.reserve(output_indices.size());
 
 	// We might emit duplicate primitives, remove them.
-	unordered_set<Util::Hash> seen_primitives;
+	std::unordered_set<Util::Hash> seen_primitives;
 	seen_primitives.reserve(output_indices.size() / 3);
 	for (size_t i = 0; i < output_indices.size(); i += 3)
 	{

@@ -36,8 +36,6 @@
 
 //#undef VULKAN_DEBUG
 
-using namespace std;
-
 namespace Vulkan
 {
 void Context::set_application_info(const VkApplicationInfo *app_info)
@@ -71,7 +69,7 @@ bool Context::init_instance_and_device(const char **instance_ext, uint32_t insta
 	return true;
 }
 
-static mutex loader_init_lock;
+static std::mutex loader_init_lock;
 static bool loader_init_once;
 static PFN_vkGetInstanceProcAddr instance_proc_addr;
 
@@ -82,7 +80,7 @@ PFN_vkGetInstanceProcAddr Context::get_instance_proc_addr()
 
 bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 {
-	lock_guard<mutex> holder(loader_init_lock);
+	std::lock_guard<std::mutex> holder(loader_init_lock);
 	if (loader_init_once && !addr)
 		return true;
 
@@ -223,9 +221,9 @@ void Context::notify_validation_error(const char *msg)
 		message_callback(msg);
 }
 
-void Context::set_notification_callback(function<void(const char *)> func)
+void Context::set_notification_callback(std::function<void(const char *)> func)
 {
-	message_callback = move(func);
+	message_callback = std::move(func);
 }
 
 #ifdef VULKAN_DEBUG
@@ -306,20 +304,20 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	VkInstanceCreateInfo info = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	info.pApplicationInfo = &get_application_info();
 
-	vector<const char *> instance_exts;
-	vector<const char *> instance_layers;
+	std::vector<const char *> instance_exts;
+	std::vector<const char *> instance_layers;
 	for (uint32_t i = 0; i < instance_ext_count; i++)
 		instance_exts.push_back(instance_ext[i]);
 
 	uint32_t ext_count = 0;
 	vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, nullptr);
-	vector<VkExtensionProperties> queried_extensions(ext_count);
+	std::vector<VkExtensionProperties> queried_extensions(ext_count);
 	if (ext_count)
 		vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, queried_extensions.data());
 
 	uint32_t layer_count = 0;
 	vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
-	vector<VkLayerProperties> queried_layers(layer_count);
+	std::vector<VkLayerProperties> queried_layers(layer_count);
 	if (layer_count)
 		vkEnumerateInstanceLayerProperties(&layer_count, queried_layers.data());
 
@@ -344,7 +342,7 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		ext.supports_debug_utils = true;
 	}
 
-	auto itr = find_if(instance_ext, instance_ext + instance_ext_count, [](const char *name) {
+	auto itr = std::find_if(instance_ext, instance_ext + instance_ext_count, [](const char *name) {
 		return strcmp(name, VK_KHR_SURFACE_EXTENSION_NAME) == 0;
 	});
 	bool has_surface_extension = itr != (instance_ext + instance_ext_count);
@@ -482,7 +480,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		if (gpu_count == 0)
 			return false;
 
-		vector<VkPhysicalDevice> gpus(gpu_count);
+		std::vector<VkPhysicalDevice> gpus(gpu_count);
 		if (vkEnumeratePhysicalDevices(instance, &gpu_count, gpus.data()) != VK_SUCCESS)
 			return false;
 
@@ -533,13 +531,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 
 	uint32_t ext_count = 0;
 	vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, nullptr);
-	vector<VkExtensionProperties> queried_extensions(ext_count);
+	std::vector<VkExtensionProperties> queried_extensions(ext_count);
 	if (ext_count)
 		vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, queried_extensions.data());
 
 	uint32_t layer_count = 0;
 	vkEnumerateDeviceLayerProperties(gpu, &layer_count, nullptr);
-	vector<VkLayerProperties> queried_layers(layer_count);
+	std::vector<VkLayerProperties> queried_layers(layer_count);
 	if (layer_count)
 		vkEnumerateDeviceLayerProperties(gpu, &layer_count, queried_layers.data());
 
@@ -700,8 +698,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	device_info.pQueueCreateInfos = queue_infos.data();
 	device_info.queueCreateInfoCount = uint32_t(queue_infos.size());
 
-	vector<const char *> enabled_extensions;
-	vector<const char *> enabled_layers;
+	std::vector<const char *> enabled_extensions;
+	std::vector<const char *> enabled_layers;
 
 	for (uint32_t i = 0; i < num_required_device_extensions; i++)
 		enabled_extensions.push_back(required_device_extensions[i]);

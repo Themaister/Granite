@@ -32,7 +32,6 @@
 #include "texture_format.hpp"
 #include "stb_image_write.h"
 
-using namespace std;
 using namespace rapidjson;
 using namespace Util;
 
@@ -43,9 +42,9 @@ namespace SceneFormats
 template<typename T>
 struct Remap
 {
-	vector<unsigned> to_index;
+	std::vector<unsigned> to_index;
 	HashMap<unsigned> hashmap;
-	vector<const T *> info;
+	std::vector<const T *> info;
 };
 
 struct BufferView
@@ -118,13 +117,13 @@ struct EmittedTexture
 struct AnalysisResult
 {
 	std::string src_path;
-	shared_ptr<Vulkan::MemoryMappedTexture> image;
+	std::shared_ptr<Vulkan::MemoryMappedTexture> image;
 	TextureCompression compression;
 	TextureMode mode;
 	Material::Textures type;
 	VkComponentMapping swizzle;
 
-	bool load_image(const string &src);
+	bool load_image(const std::string &src);
 	void deduce_compression(TextureCompressionFamily family);
 
 	enum class MetallicRoughnessMode
@@ -140,16 +139,16 @@ struct AnalysisResult
 
 struct EmittedImage
 {
-	string source_path;
-	string target_relpath;
-	string target_mime;
+	std::string source_path;
+	std::string target_relpath;
+	std::string target_mime;
 
 	TextureCompressionFamily compression;
 	unsigned compression_quality;
 	TextureMode mode;
 	Material::Textures type;
 
-	shared_ptr<AnalysisResult> loaded_image;
+	std::shared_ptr<AnalysisResult> loaded_image;
 };
 
 struct EmittedSampler
@@ -204,7 +203,7 @@ struct RemapState
 
 	void emit_material(unsigned remapped_material);
 	void emit_mesh(unsigned remapped_index);
-	void emit_environment(const string &cube, const string &reflection, const string &irradiance, float intensity,
+	void emit_environment(const std::string &cube, const std::string &reflection, const std::string &irradiance, float intensity,
 	                      vec3 fog_color, float fog_falloff,
 	                      TextureCompressionFamily compression, unsigned quality);
 	unsigned emit_meshes(ArrayView<const unsigned> meshes);
@@ -213,34 +212,34 @@ struct RemapState
 	Remap<Mesh> mesh;
 	Remap<MaterialInfo> material;
 
-	vector<uint8_t> glb_buffer_data;
+	std::vector<uint8_t> glb_buffer_data;
 	HashMap<unsigned> buffer_hash;
-	vector<BufferView> buffer_views;
+	std::vector<BufferView> buffer_views;
 
 	HashMap<unsigned> accessor_hash;
-	vector<EmittedAccessor> accessor_cache;
+	std::vector<EmittedAccessor> accessor_cache;
 
-	unordered_set<unsigned> mesh_hash;
-	vector<EmittedMesh> mesh_cache;
+	std::unordered_set<unsigned> mesh_hash;
+	std::vector<EmittedMesh> mesh_cache;
 
-	vector<EmittedEnvironment> environment_cache;
+	std::vector<EmittedEnvironment> environment_cache;
 
-	unordered_set<unsigned> material_hash;
-	vector<EmittedMaterial> material_cache;
+	std::unordered_set<unsigned> material_hash;
+	std::vector<EmittedMaterial> material_cache;
 
 	HashMap<unsigned> texture_hash;
-	vector<EmittedTexture> texture_cache;
+	std::vector<EmittedTexture> texture_cache;
 
 	HashMap<unsigned> image_hash;
-	vector<EmittedImage> image_cache;
+	std::vector<EmittedImage> image_cache;
 
 	HashMap<unsigned> sampler_hash;
-	vector<EmittedSampler> sampler_cache;
+	std::vector<EmittedSampler> sampler_cache;
 
-	vector<EmittedAnimation> animations;
+	std::vector<EmittedAnimation> animations;
 
 	HashMap<unsigned> mesh_group_hash;
-	vector<vector<unsigned>> mesh_group_cache;
+	std::vector<std::vector<unsigned>> mesh_group_cache;
 };
 
 Hash RemapState::hash(const Mesh &m)
@@ -426,7 +425,7 @@ static const char *get_accessor_type(VkFormat format)
 		return "VEC4";
 
 	default:
-		throw invalid_argument("Unsupported format.");
+		throw std::invalid_argument("Unsupported format.");
 	}
 }
 
@@ -533,7 +532,7 @@ static unsigned get_accessor_component(VkFormat format)
 		return GL_UNSIGNED_INT_2_10_10_10_REV;
 
 	default:
-		throw invalid_argument("Unsupported format.");
+		throw std::invalid_argument("Unsupported format.");
 	}
 }
 
@@ -655,9 +654,9 @@ unsigned RemapState::emit_image(const MaterialInfo::Texture &texture, Material::
 		unsigned index = image_cache.size();
 		image_hash[h.get()] = index;
 
-		string extension = compression == TextureCompressionFamily::PNG ? ".png" : ".gtx";
+		std::string extension = compression == TextureCompressionFamily::PNG ? ".png" : ".gtx";
 		const char *mime = compression == TextureCompressionFamily::PNG ? "image/png" : "image/custom/granite-texture";
-		image_cache.push_back({ texture.path, to_string(h.get()) + extension, mime,
+		image_cache.push_back({ texture.path, std::to_string(h.get()) + extension, mime,
 		                        compression, quality, mode, type, {}});
 		return index;
 	}
@@ -687,7 +686,7 @@ unsigned RemapState::emit_texture(const MaterialInfo::Texture &texture,
 		return itr->second;
 }
 
-void RemapState::emit_environment(const string &cube, const string &reflection, const string &irradiance,
+void RemapState::emit_environment(const std::string &cube, const std::string &reflection, const std::string &irradiance,
                                   float intensity,
                                   vec3 fog_color, float fog_falloff,
                                   TextureCompressionFamily compression, unsigned quality)
@@ -961,7 +960,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 		    all(greaterThanEqual(output_mesh.static_aabb.get_minimum(), vec3(0.0f))) &&
 		    all(lessThanEqual(output_mesh.static_aabb.get_maximum(), vec3(1.0f))))
 		{
-			vector<uint8_t> output(sizeof(u16vec4) * count);
+			std::vector<uint8_t> output(sizeof(u16vec4) * count);
 			quantize_attribute_fp32_unorm16(output.data(), output_mesh.positions.data(), output_mesh.position_stride, count);
 			buffer_index = emit_buffer(output);
 			acc = emit_accessor(buffer_index,
@@ -972,7 +971,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 		         all(greaterThanEqual(output_mesh.static_aabb.get_minimum(), vec3(-1.0f))) &&
 		         all(lessThanEqual(output_mesh.static_aabb.get_maximum(), vec3(1.0f))))
 		{
-			vector<uint8_t> output(sizeof(i16vec4) * count);
+			std::vector<uint8_t> output(sizeof(i16vec4) * count);
 			quantize_attribute_fp32_snorm16(output.data(), output_mesh.positions.data(), output_mesh.position_stride, count);
 			buffer_index = emit_buffer(output);
 			acc = emit_accessor(buffer_index,
@@ -983,7 +982,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 		         all(greaterThan(output_mesh.static_aabb.get_minimum(), vec3(-0x8000))) &&
 		         all(lessThan(output_mesh.static_aabb.get_maximum(), vec3(0x8000))))
 		{
-			vector<uint8_t> output(sizeof(u16vec4) * count);
+			std::vector<uint8_t> output(sizeof(u16vec4) * count);
 
 			quantize_attribute_fp32_fp16(output.data(), output_mesh.positions.data(), output_mesh.position_stride, count);
 
@@ -1018,7 +1017,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 			emit.attribute_mask |= 1u << i;
 
 			auto format_size = Vulkan::TextureFormatLayout::format_block_size(layout[i].format, 0);
-			vector<uint8_t> unpacked_buffer(attr_count * format_size);
+			std::vector<uint8_t> unpacked_buffer(attr_count * format_size);
 
 			extract_attribute(unpacked_buffer.data(), format_size,
 			                  output_mesh.attributes.data() + layout[i].offset, output_mesh.attribute_stride, format_size, attr_count);
@@ -1029,9 +1028,9 @@ void RemapState::emit_mesh(unsigned remapped_index)
 			    (attr == MeshAttribute::Normal || attr == MeshAttribute::Tangent) &&
 			    (layout[i].format == VK_FORMAT_R32G32B32A32_SFLOAT || layout[i].format == VK_FORMAT_R32G32B32_SFLOAT))
 			{
-				vector<uint8_t> quantized(attr_count * sizeof(uint32_t));
+				std::vector<uint8_t> quantized(attr_count * sizeof(uint32_t));
 				quantize_attribute_fp32_a2bgr10snorm(quantized.data(), unpacked_buffer.data(), format_size, attr_count);
-				unpacked_buffer = move(quantized);
+				unpacked_buffer = std::move(quantized);
 
 				remapped_format = VK_FORMAT_A2B10G10R10_SNORM_PACK32;
 				format_size = sizeof(uint32_t);
@@ -1054,25 +1053,25 @@ void RemapState::emit_mesh(unsigned remapped_index)
 
 				if (all(lessThanEqual(max_uv, vec2(1.0f))) && all(greaterThanEqual(min_uv, vec2(0.0f))))
 				{
-					vector<uint8_t> quantized(attr_count * sizeof(u16vec2));
+					std::vector<uint8_t> quantized(attr_count * sizeof(u16vec2));
 					quantize_attribute_rg32f_rg16unorm(quantized.data(), unpacked_buffer.data(), attr_count);
-					unpacked_buffer = move(quantized);
+					unpacked_buffer = std::move(quantized);
 					remapped_format = VK_FORMAT_R16G16_UNORM;
 					format_size = sizeof(u16vec2);
 				}
 				else if (all(lessThanEqual(max_uv, vec2(1.0f))) && all(greaterThanEqual(min_uv, vec2(-1.0f))))
 				{
-					vector<uint8_t> quantized(attr_count * sizeof(i16vec2));
+					std::vector<uint8_t> quantized(attr_count * sizeof(i16vec2));
 					quantize_attribute_rg32f_rg16snorm(quantized.data(), unpacked_buffer.data(), attr_count);
-					unpacked_buffer = move(quantized);
+					unpacked_buffer = std::move(quantized);
 					remapped_format = VK_FORMAT_R16G16_SNORM;
 					format_size = sizeof(i16vec2);
 				}
 				else if (all(lessThan(max_uv, vec2(0x8000))) && all(greaterThan(min_uv, vec2(-0x8000))))
 				{
-					vector<uint8_t> quantized(attr_count * sizeof(u16vec2));
+					std::vector<uint8_t> quantized(attr_count * sizeof(u16vec2));
 					quantize_attribute_rg32f_rg16f(quantized.data(), unpacked_buffer.data(), attr_count);
-					unpacked_buffer = move(quantized);
+					unpacked_buffer = std::move(quantized);
 					remapped_format = VK_FORMAT_R16G16_SFLOAT;
 					format_size = sizeof(u16vec2);
 				}
@@ -1087,7 +1086,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 unsigned RemapState::emit_meshes(ArrayView<const unsigned> meshes)
 {
 	Hasher emit_hash;
-	vector<unsigned> mesh_group;
+	std::vector<unsigned> mesh_group;
 	mesh_group.reserve(meshes.size());
 
 	for (auto &remapped_mesh : meshes)
@@ -1108,7 +1107,7 @@ unsigned RemapState::emit_meshes(ArrayView<const unsigned> meshes)
 	if (itr == end(mesh_group_hash))
 	{
 		index = mesh_group_cache.size();
-		mesh_group_cache.push_back(move(mesh_group));
+		mesh_group_cache.push_back(std::move(mesh_group));
 		mesh_group_hash[emit_hash.get()] = index;
 	}
 	else
@@ -1207,7 +1206,7 @@ void RemapState::emit_animations(ArrayView<const Animation> animation_list)
 			sampler_index++;
 		}
 
-		this->animations.push_back(move(anim));
+		this->animations.push_back(std::move(anim));
 	}
 }
 
@@ -1310,10 +1309,10 @@ AnalysisResult::MetallicRoughnessMode AnalysisResult::deduce_metallic_roughness_
 		return MetallicRoughnessMode::Default;
 }
 
-bool AnalysisResult::load_image(const string &src)
+bool AnalysisResult::load_image(const std::string &src)
 {
 	src_path = src;
-	image = make_shared<Vulkan::MemoryMappedTexture>();
+	image = std::make_shared<Vulkan::MemoryMappedTexture>();
 	*image = Vulkan::load_texture_from_file(
 			*GRANITE_FILESYSTEM(), src,
 			(mode == TextureMode::sRGBA || mode == TextureMode::sRGB) ? Vulkan::ColorSpace::sRGB
@@ -1421,7 +1420,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 		}
 
 		default:
-			throw invalid_argument("Invalid material type.");
+			throw std::invalid_argument("Invalid material type.");
 		}
 		break;
 
@@ -1495,7 +1494,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 			break;
 
 		default:
-			throw invalid_argument("Invalid material type.");
+			throw std::invalid_argument("Invalid material type.");
 		}
 
 		if (mode == TextureMode::HDR)
@@ -1508,13 +1507,13 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 	}
 }
 
-static shared_ptr<AnalysisResult> analyze_image(ThreadGroup &workers,
-                                                const string &src,
+static std::shared_ptr<AnalysisResult> analyze_image(ThreadGroup &workers,
+                                                const std::string &src,
                                                 Material::Textures type, TextureCompressionFamily family,
                                                 TextureMode mode,
                                                 TaskSignal *signal)
 {
-	auto result = make_shared<AnalysisResult>();
+	auto result = std::make_shared<AnalysisResult>();
 	result->mode = mode;
 	result->type = type;
 
@@ -1532,7 +1531,7 @@ static shared_ptr<AnalysisResult> analyze_image(ThreadGroup &workers,
 	return result;
 }
 
-static void compress_image(ThreadGroup &workers, const string &target_path, shared_ptr<AnalysisResult> &result,
+static void compress_image(ThreadGroup &workers, const std::string &target_path, std::shared_ptr<AnalysisResult> &result,
                            unsigned quality, TaskSignal *signal)
 {
 	FileStat src_stat, dst_stat;
@@ -1580,7 +1579,7 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 				return;
 			}
 
-			string real_path = GRANITE_FILESYSTEM()->get_filesystem_path(args.output);
+			std::string real_path = GRANITE_FILESYSTEM()->get_filesystem_path(args.output);
 			if (real_path.empty())
 			{
 				LOGE("Can only use filesystem backend paths when writing PNG.\n");
@@ -1620,7 +1619,7 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 		mipgen_task->set_fence_counter_signal(signal);
 }
 
-bool export_scene_to_glb(const SceneInformation &scene, const string &path, const ExportOptions &options)
+bool export_scene_to_glb(const SceneInformation &scene, const std::string &path, const ExportOptions &options)
 {
 	Document doc;
 	doc.SetObject();
@@ -2297,7 +2296,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	else
 	{
 		// Every node which is not a child of some other node is part of the scene.
-		unordered_set<uint32_t> is_child;
+		std::unordered_set<uint32_t> is_child;
 		for (auto &node : scene.nodes)
 			for (auto &child : node.children)
 				is_child.insert(child);

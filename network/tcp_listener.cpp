@@ -55,8 +55,6 @@ TCPListener::TCPListener(uint16_t port)
 #include <errno.h>
 #include <signal.h>
 
-using namespace std;
-
 namespace Granite
 {
 SocketGlobal::SocketGlobal()

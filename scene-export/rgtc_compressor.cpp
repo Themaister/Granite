@@ -25,8 +25,6 @@
 #include <iterator>
 #include <assert.h>
 
-using namespace std;
-
 namespace Granite
 {
 static const int range_threshold = 16;
@@ -172,8 +170,8 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 
 	for (int i = 0; i < 16; i++)
 	{
-		block_lo = min<int>(block_lo, input_r[i]);
-		block_hi = max<int>(block_hi, input_r[i]);
+		block_lo = std::min<int>(block_lo, input_r[i]);
+		block_hi = std::max<int>(block_hi, input_r[i]);
 	}
 
 	uint64_t block = 0;
@@ -243,7 +241,7 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 		int sorted_block[16];
 		for (int i = 0; i < 16; i++)
 			sorted_block[i] = input_r[i];
-		sort(begin(sorted_block), end(sorted_block));
+		std::sort(std::begin(sorted_block), std::end(sorted_block));
 
 		for (int lo = 0; lo < 15; lo++)
 		{
@@ -260,7 +258,7 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 				// Consider that we can quantize to 0.0 as well.
 				for (int i = 0; i < lo; i++)
 				{
-					int diff = min(sorted_block[i] - 0, partition_lo - sorted_block[i]);
+					int diff = std::min(sorted_block[i] - 0, partition_lo - sorted_block[i]);
 					error += diff * diff;
 				}
 
@@ -276,7 +274,7 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 				// Consider that we can quantize to 1.0 as well.
 				for (int i = hi + 1; i <= 15; i++)
 				{
-					int diff = min(255 - sorted_block[i], sorted_block[i] - partition_hi);
+					int diff = std::min(255 - sorted_block[i], sorted_block[i] - partition_hi);
 					error += diff * diff;
 				}
 

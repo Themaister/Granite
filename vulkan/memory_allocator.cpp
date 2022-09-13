@@ -31,8 +31,6 @@
 #include <windows.h>
 #endif
 
-using namespace std;
-
 #ifdef GRANITE_VULKAN_MT
 #define ALLOCATOR_LOCK() std::lock_guard<std::mutex> holder__{lock}
 #else

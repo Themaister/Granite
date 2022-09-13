@@ -32,8 +32,6 @@
 #include <errno.h>
 #endif
 
-using namespace std;
-
 namespace Granite
 {
 void SocketReader::start(void *data_, size_t size_)

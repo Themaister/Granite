@@ -2,7 +2,6 @@
 #include "logging.hpp"
 
 using namespace Granite;
-using namespace std;
 
 struct AComponent : ComponentBase
 {

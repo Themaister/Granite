@@ -36,7 +36,6 @@
 #include <sstream>
 #endif
 
-using namespace std;
 using namespace Util;
 
 namespace Vulkan
@@ -534,9 +533,9 @@ void CommandBuffer::generate_mipmap(const Image &image)
 	for (unsigned i = 1; i < create_info.levels; i++)
 	{
 		VkOffset3D src_size = size;
-		size.x = max(size.x >> 1, 1);
-		size.y = max(size.y >> 1, 1);
-		size.z = max(size.z >> 1, 1);
+		size.x = std::max(size.x >> 1, 1);
+		size.y = std::max(size.y >> 1, 1);
+		size.z = std::max(size.z >> 1, 1);
 
 		blit_image(image, image,
 		           origin, size, origin, src_size, i, i - 1, 0, 0, create_info.layers, VK_FILTER_LINEAR);
@@ -631,10 +630,10 @@ void CommandBuffer::init_viewport_scissor(const RenderPassInfo &info, const Fram
 	uint32_t fb_width = fb->get_width();
 	uint32_t fb_height = fb->get_height();
 
-	rect.offset.x = min(fb_width, uint32_t(rect.offset.x));
-	rect.offset.y = min(fb_height, uint32_t(rect.offset.y));
-	rect.extent.width = min(fb_width - rect.offset.x, rect.extent.width);
-	rect.extent.height = min(fb_height - rect.offset.y, rect.extent.height);
+	rect.offset.x = std::min(fb_width, uint32_t(rect.offset.x));
+	rect.offset.y = std::min(fb_height, uint32_t(rect.offset.y));
+	rect.extent.width = std::min(fb_width - rect.offset.x, rect.extent.width);
+	rect.extent.height = std::min(fb_height - rect.offset.y, rect.extent.height);
 
 	if (surface_transform_swaps_xy(current_framebuffer_surface_transform))
 		rect2d_swap_xy(rect);

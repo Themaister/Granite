@@ -763,6 +763,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ext.supports_shader_float_control = true;
 	}
 
+	if (has_extension(VK_EXT_TOOLING_INFO_EXTENSION_NAME))
+		ext.supports_tooling_info = true;
+
 #ifdef GRANITE_VULKAN_BETA
 	if (has_extension(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME))
 	{

@@ -807,6 +807,28 @@ void Device::init_workarounds()
 		workarounds.broken_pipeline_cache_control = true;
 	}
 #endif
+
+	if (ext.supports_tooling_info && vkGetPhysicalDeviceToolPropertiesEXT)
+	{
+		uint32_t count = 0;
+		vkGetPhysicalDeviceToolPropertiesEXT(gpu, &count, nullptr);
+		Util::SmallVector<VkPhysicalDeviceToolPropertiesEXT> tool_props(count);
+		for (auto &t : tool_props)
+			t = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TOOL_PROPERTIES_EXT };
+		vkGetPhysicalDeviceToolPropertiesEXT(gpu, &count, tool_props.data());
+		for (auto &t : tool_props)
+		{
+			LOGI("  Detected attached tool:\n");
+			LOGI("    Name: %s\n", t.name);
+			LOGI("    Description: %s\n", t.description);
+			LOGI("    Version: %s\n", t.version);
+			if ((t.purposes & VK_TOOL_PURPOSE_TRACING_BIT_EXT) != 0)
+			{
+				LOGI("Detected tracing tool, forcing host cached memory types for performance.\n");
+				workarounds.force_host_cached = true;
+			}
+		}
+	}
 }
 
 void Device::set_context(const Context &context)
@@ -2869,6 +2891,27 @@ uint32_t Device::find_memory_type(uint32_t required, uint32_t mask) const
 uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask) const
 {
 	uint32_t prio[3] = {};
+
+	// Optimize for tracing apps by not allocating host memory that is uncached.
+	if (workarounds.force_host_cached)
+	{
+		switch (domain)
+		{
+		case BufferDomain::LinkedDeviceHostPreferDevice:
+			domain = BufferDomain::Device;
+			break;
+
+		case BufferDomain::LinkedDeviceHost:
+		case BufferDomain::Host:
+		case BufferDomain::CachedCoherentHostPreferCoherent:
+			domain = BufferDomain::CachedCoherentHostPreferCached;
+			break;
+
+		default:
+			break;
+		}
+	}
+
 	switch (domain)
 	{
 	case BufferDomain::Device:

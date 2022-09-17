@@ -49,5 +49,6 @@ struct ImplementationWorkarounds
 	bool optimize_all_graphics_barrier = false;
 	bool split_binary_timeline_semaphores = false;
 	bool broken_pipeline_cache_control = false;
+	bool force_host_cached = false;
 };
 }

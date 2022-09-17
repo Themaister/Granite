@@ -70,6 +70,7 @@ struct DeviceFeatures
 	bool supports_external = false;
 	bool supports_image_format_list = false;
 	bool supports_shader_float_control = false;
+	bool supports_tooling_info = false;
 
 	// Vulkan 1.1 core
 	VkPhysicalDeviceFeatures enabled_features = {};

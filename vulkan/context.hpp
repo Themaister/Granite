@@ -151,8 +151,7 @@ public:
 	                              ContextCreationFlags flags = 0);
 	bool init_from_instance_and_device(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, VkQueue queue, uint32_t queue_family);
 	bool init_device_from_instance(VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface, const char **required_device_extensions,
-	                               unsigned num_required_device_extensions, const char **required_device_layers,
-	                               unsigned num_required_device_layers, const VkPhysicalDeviceFeatures *required_features,
+	                               unsigned num_required_device_extensions, const VkPhysicalDeviceFeatures *required_features,
 	                               ContextCreationFlags flags = 0);
 
 	Context() = default;
@@ -268,8 +267,7 @@ private:
 
 	bool create_instance(const char **instance_ext, uint32_t instance_ext_count);
 	bool create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const char **required_device_extensions,
-	                   unsigned num_required_device_extensions, const char **required_device_layers,
-	                   unsigned num_required_device_layers, const VkPhysicalDeviceFeatures *required_features,
+	                   unsigned num_required_device_extensions, const VkPhysicalDeviceFeatures *required_features,
 	                   ContextCreationFlags flags);
 
 	bool owned_instance = false;

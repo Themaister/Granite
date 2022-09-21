@@ -96,6 +96,8 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 #ifdef __APPLE__
 			if (!module)
 				module = dlopen("libvulkan.1.dylib", RTLD_LOCAL | RTLD_LAZY);
+			if (!module)
+				module = dlopen("libMoltenVK.dylib", RTLD_LOCAL | RTLD_LAZY);
 #else
 			if (!module)
 				module = dlopen("libvulkan.so.1", RTLD_LOCAL | RTLD_LAZY);

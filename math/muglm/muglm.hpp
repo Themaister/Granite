@@ -38,6 +38,7 @@ struct tvec2
 {
 	tvec2() = default;
 	tvec2(const tvec2 &) = default;
+	tvec2 &operator=(const tvec2 &) = default;
 
 	explicit inline tvec2(T v) noexcept
 	{
@@ -114,6 +115,7 @@ struct tvec3
 {
 	tvec3() = default;
 	tvec3(const tvec3 &) = default;
+	tvec3 &operator=(const tvec3 &) = default;
 
 	template <typename U>
 	explicit inline tvec3(const tvec3<U> &u) noexcept
@@ -296,6 +298,7 @@ struct tvec4
 {
 	tvec4() = default;
 	tvec4(const tvec4 &) = default;
+	tvec4 &operator=(const tvec4 &) = default;
 
 	template <typename U>
 	explicit inline tvec4(const tvec4<U> &u) noexcept
@@ -733,6 +736,8 @@ template <typename T>
 struct tmat2
 {
 	tmat2() = default;
+	tmat2(const tmat2 &) = default;
+	tmat2 &operator=(const tmat2 &) = default;
 
 	explicit inline tmat2(T v) noexcept
 	{
@@ -764,6 +769,8 @@ template <typename T>
 struct tmat3
 {
 	tmat3() = default;
+	tmat3(const tmat3 &) = default;
+	tmat3 &operator=(const tmat3 &) = default;
 
 	explicit inline tmat3(T v) noexcept
 	{
@@ -804,6 +811,8 @@ template <typename T>
 struct tmat4
 {
 	tmat4() = default;
+	tmat4(const tmat4 &) = default;
+	tmat4 &operator=(const tmat4 &) = default;
 
 	explicit inline tmat4(T v) noexcept
 	{
@@ -903,6 +912,8 @@ struct quat : private vec4
 	{
 		return *static_cast<const vec4 *>(this);
 	}
+
+	quat &operator=(const quat &) = default;
 
 	using vec4::x;
 	using vec4::y;

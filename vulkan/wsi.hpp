@@ -309,6 +309,7 @@ private:
 
 	void tear_down_swapchain();
 	void drain_swapchain();
+	void wait_swapchain_latency();
 
 	VkSurfaceFormatKHR find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats) const;
 };

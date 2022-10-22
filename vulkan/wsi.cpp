@@ -351,6 +351,32 @@ Semaphore WSI::consume_external_release_semaphore()
 
 //#define VULKAN_WSI_TIMING_DEBUG
 
+void WSI::wait_swapchain_latency()
+{
+	if (device->get_device_features().present_wait_features.presentWait &&
+	    present_last_id > present_frame_latency)
+	{
+		// The effective latency is more like present_frame_latency + 1.
+		// If 0, we wait for vblank, and we must do CPU work and GPU work in one frame
+		// to hit next vblank.
+		uint64_t target = present_last_id - present_frame_latency;
+
+#ifdef VULKAN_WSI_TIMING_DEBUG
+		auto begin_wait = Util::get_current_time_nsecs();
+#endif
+		auto wait_ts = device->write_calibrated_timestamp();
+		VkResult wait_result = table->vkWaitForPresentKHR(context->get_device(), swapchain, target, UINT64_MAX);
+		device->register_time_interval("WSI", std::move(wait_ts),
+		                               device->write_calibrated_timestamp(), "wait_frame_latency");
+		if (wait_result != VK_SUCCESS)
+			LOGE("vkWaitForPresentKHR failed, vr %d.\n", wait_result);
+#ifdef VULKAN_WSI_TIMING_DEBUG
+		auto end_wait = Util::get_current_time_nsecs();
+				LOGI("WaitForPresentKHR took %.3f ms.\n", 1e-6 * double(end_wait - begin_wait));
+#endif
+	}
+}
+
 bool WSI::begin_frame()
 {
 	if (frame_is_external)
@@ -435,6 +461,8 @@ bool WSI::begin_frame()
 		{
 			has_acquired_swapchain_index = true;
 			acquire->signal_external();
+
+			wait_swapchain_latency();
 
 			auto frame_time = platform->get_frame_timer().frame();
 			auto elapsed_time = platform->get_frame_timer().get_elapsed();
@@ -561,29 +589,8 @@ bool WSI::end_frame()
 		// This makes sense I guess. Record the latest present ID which was successfully presented
 		// so we don't risk deadlock.
 		if ((result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) &&
-		    device->get_device_features().present_wait_features.presentWait)
+		    device->get_device_features().present_id_features.presentId)
 		{
-			if (present_id > present_frame_latency)
-			{
-				uint64_t target = present_id - present_frame_latency;
-				// In case there are weird gaps which present IDs got a successful present.
-				if (target > present_last_id)
-					target = present_last_id;
-#ifdef VULKAN_WSI_TIMING_DEBUG
-				auto begin_wait = Util::get_current_time_nsecs();
-#endif
-				auto wait_ts = device->write_calibrated_timestamp();
-				VkResult wait_result = table->vkWaitForPresentKHR(context->get_device(), swapchain,
-				                                                  target, UINT64_MAX);
-				device->register_time_interval("WSI", std::move(wait_ts),
-				                               device->write_calibrated_timestamp(), "wait_frame_latency");
-				if (wait_result != VK_SUCCESS)
-					LOGE("vkWaitForPresentKHR failed, vr %d.\n", wait_result);
-#ifdef VULKAN_WSI_TIMING_DEBUG
-				auto end_wait = Util::get_current_time_nsecs();
-				LOGI("WaitForPresentKHR took %.3f ms.\n", 1e-6 * double(end_wait - begin_wait));
-#endif
-			}
 			present_last_id = present_id;
 		}
 

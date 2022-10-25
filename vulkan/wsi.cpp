@@ -40,6 +40,13 @@ WSI::WSI()
 #else
 	present_frame_latency = 1;
 #endif
+
+	const char *env = getenv("GRANITE_VULKAN_PRESENT_WAIT_LATENCY");
+	if (env)
+	{
+		present_frame_latency = uint32_t(strtoul(env, nullptr, 0));
+		LOGI("Overriding VK_KHR_present_wait latency to %u frames.\n", present_frame_latency);
+	}
 }
 
 void WSIPlatform::set_window_title(const std::string &)

@@ -3,6 +3,7 @@ add_granite_internal_lib(granite-renderer
         simple_renderer.hpp simple_renderer.cpp
         mesh.hpp mesh.cpp
         scene.hpp scene.cpp
+        node.hpp node.cpp
         scene_renderer.hpp scene_renderer.cpp
         shader_suite.hpp shader_suite.cpp
         render_context.hpp render_context.cpp

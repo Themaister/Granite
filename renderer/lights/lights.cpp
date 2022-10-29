@@ -366,7 +366,7 @@ void SpotLight::get_depth_render_info(const RenderContext &, const RenderInfoCom
 	auto sorting_key = h.get();
 	auto *spot = queue.allocate_one<PositionalShaderInfo>();
 
-	spot->vertex.model = build_model_matrix(transform->transform->world_transform);
+	spot->vertex.model = build_model_matrix(transform->get_world_transform());
 
 	auto *spot_info = queue.push<PositionalLightRenderInfo>(Queue::Opaque, instance_key, sorting_key,
 	                                                        func, spot);
@@ -417,7 +417,7 @@ void SpotLight::get_render_info(const RenderContext &context, const RenderInfoCo
                                 RenderQueue &queue) const
 {
 	auto &params = context.get_render_parameters();
-	vec2 range = get_z_range(context, transform->transform->world_transform);
+	vec2 range = get_z_range(context, transform->get_world_transform());
 	RenderFunc func;
 
 	if (range.x < params.z_near) // We risk clipping into the mesh, and since we can't rely on depthClamp, use backface.
@@ -443,8 +443,8 @@ void SpotLight::get_render_info(const RenderContext &context, const RenderInfoCo
 
 	auto *spot = queue.allocate_one<PositionalShaderInfo>();
 
-	spot->vertex.model = build_model_matrix(transform->transform->world_transform);
-	spot->fragment = get_shader_info(transform->transform->world_transform);
+	spot->vertex.model = build_model_matrix(transform->get_world_transform());
+	spot->fragment = get_shader_info(transform->get_world_transform());
 	spot->u.shadow_transform = shadow_transform;
 
 	auto *spot_info = queue.push<PositionalLightRenderInfo>(Queue::Light, instance_key, sorting_key,
@@ -538,7 +538,7 @@ void PointLight::get_depth_render_info(const RenderContext &, const RenderInfoCo
 	auto sorting_key = h.get();
 	auto *point = queue.allocate_one<PositionalShaderInfo>();
 
-	point->vertex.model = transform->transform->world_transform * scale(vec3(min(falloff_range, cutoff_range)));
+	point->vertex.model = transform->get_world_transform() * scale(vec3(min(falloff_range, cutoff_range)));
 
 	auto *point_info = queue.push<PositionalLightRenderInfo>(Queue::Opaque, instance_key, sorting_key,
 	                                                         func, point);
@@ -562,7 +562,7 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
                                  RenderQueue &queue) const
 {
 	auto &params = context.get_render_parameters();
-	vec2 range = get_z_range(context, transform->transform->world_transform);
+	vec2 range = get_z_range(context, transform->get_world_transform());
 	RenderFunc func;
 
 	if (range.x < params.z_near) // We risk clipping into the mesh, and since we can't rely on depthClamp, use backface.
@@ -588,8 +588,8 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
 
 	auto *point = queue.allocate_one<PositionalShaderInfo>();
 
-	point->vertex.model = transform->transform->world_transform * scale(vec3(min(falloff_range, cutoff_range)));
-	point->fragment = get_shader_info(transform->transform->world_transform);
+	point->vertex.model = transform->get_world_transform() * scale(vec3(min(falloff_range, cutoff_range)));
+	point->fragment = get_shader_info(transform->get_world_transform());
 	point->u.point_transform = shadow_transform;
 
 	auto *point_info = queue.push<PositionalLightRenderInfo>(Queue::Light, instance_key, sorting_key,

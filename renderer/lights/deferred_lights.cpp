@@ -45,7 +45,7 @@ void DeferredLights::refresh(const RenderContext &context, TaskComposer &)
 
 	// Lights which clip either near or far don't need double-sided testing.
 	auto itr = Util::unstable_remove_if(begin(visible), end(visible), [&params, &context](const RenderableInfo &light) -> bool {
-		vec2 range = static_cast<const PositionalLight *>(light.renderable)->get_z_range(context, light.transform->transform->world_transform);
+		vec2 range = static_cast<const PositionalLight *>(light.renderable)->get_z_range(context, light.transform->get_world_transform());
 		return range.x < params.z_near || range.y > params.z_far;
 	});
 

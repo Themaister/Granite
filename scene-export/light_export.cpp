@@ -58,17 +58,17 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 	for (auto &light : pos)
 	{
 		auto *l = get_component<PositionalLightComponent>(light)->light;
-		auto *t = get_component<RenderInfoComponent>(light)->transform;
+		auto &world_transform = get_component<RenderInfoComponent>(light)->get_world_transform();
 
 		Value light_pos(kArrayType);
-		light_pos.PushBack(t->world_transform[3].x, allocator);
-		light_pos.PushBack(t->world_transform[3].y, allocator);
-		light_pos.PushBack(t->world_transform[3].z, allocator);
+		light_pos.PushBack(world_transform[3].x, allocator);
+		light_pos.PushBack(world_transform[3].y, allocator);
+		light_pos.PushBack(world_transform[3].z, allocator);
 
 		Value light_dir(kArrayType);
-		light_dir.PushBack(-t->world_transform[2].x, allocator);
-		light_dir.PushBack(-t->world_transform[2].y, allocator);
-		light_dir.PushBack(-t->world_transform[2].z, allocator);
+		light_dir.PushBack(-world_transform[2].x, allocator);
+		light_dir.PushBack(-world_transform[2].y, allocator);
+		light_dir.PushBack(-world_transform[2].z, allocator);
 
 		if (l->get_type() == PositionalLight::Type::Spot)
 		{

@@ -297,14 +297,14 @@ void Ground::get_render_info(const RenderContext &context, const RenderInfoCompo
                              RenderQueue &queue, const GroundPatch &ground_patch) const
 {
 	PatchInfo patch;
-	patch.push[0] = transform->transform->world_transform;
+	patch.push[0] = transform->get_world_transform();
 
 	// The normalmaps are generated with the reference that neighbor pixels are certain length apart.
 	// However, the base mesh [0, normal_size) is squashed to [0, 1] size in X/Z direction.
 	// We compensate for this scaling by doing the inverse transposed normal matrix properly here.
 	//patch.push[1] = transform->transform->normal_transform * scale(vec3(info.normal_size, 1.0f, info.normal_size));
 	mat4 normal_transform;
-	compute_normal_transform(normal_transform, transform->transform->world_transform);
+	compute_normal_transform(normal_transform, transform->get_world_transform());
 	patch.push[1] = normal_transform * scale(vec3(info.normal_size, 1.0f, info.normal_size));
 
 	// Find something concrete to put here.
@@ -360,7 +360,7 @@ void Ground::get_render_info(const RenderContext &context, const RenderInfoCompo
 
 	// Allow promotion to push constant for transforms.
 	// We'll instance a lot of patches belonging to the same ground.
-	hasher.pointer(transform->transform);
+	hasher.pointer(&transform->get_world_transform());
 
 	auto instance_key = hasher.get();
 
@@ -423,8 +423,7 @@ Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_f
 	update_component->refresh = ground.get();
 
 	auto *cached_transform = handles.entity->allocate_component<RenderInfoComponent>();
-	cached_transform->transform = &handles.node->cached_transform;
-	cached_transform->skin_transform = nullptr;
+	cached_transform->scene_node = handles.node.get();
 
 	handles.ground = ground.get();
 

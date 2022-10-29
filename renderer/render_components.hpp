@@ -30,6 +30,7 @@
 #include "abstract_renderable.hpp"
 #include "renderer_enums.hpp"
 #include "camera.hpp"
+#include "node.hpp"
 #include "lights/lights.hpp"
 #include "lights/volumetric_fog_region.hpp"
 #include "lights/decal_volume.hpp"
@@ -46,25 +47,6 @@ class Ground;
 class PositionalLight;
 class Skybox;
 class TaskComposer;
-
-struct Transform
-{
-	vec3 scale = vec3(1.0f);
-	vec3 translation = vec3(0.0f);
-	quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
-};
-
-struct CachedTransform
-{
-	mat4 world_transform;
-	//mat4 normal_transform;
-};
-
-struct CachedSkinTransform
-{
-	std::vector<mat4> bone_world_transforms;
-	//std::vector<mat4> bone_normal_transforms;
-};
 
 struct BoundedComponent : ComponentBase
 {
@@ -178,11 +160,7 @@ struct RenderInfoComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(RenderInfoComponent)
 	AABB world_aabb;
-	CachedTransform *transform = nullptr;
-	CachedSkinTransform *skin_transform = nullptr;
-
-	CachedTransform *prev_transform = nullptr;
-	CachedSkinTransform *prev_skin_transform = nullptr;
+	Node *scene_node = nullptr;
 
 	// If set, the transform changed last frame and motion vectors will need to be rendered explicitly.
 	bool requires_motion_vectors = false;
@@ -190,6 +168,26 @@ struct RenderInfoComponent : ComponentBase
 	// Can be used to pass non-spatial transform related data to an AbstractRenderable,
 	// e.g. per instance material information.
 	const void *extra_data = nullptr;
+
+	inline const mat4 &get_world_transform() const
+	{
+		return scene_node->cached_transform.world_transform;
+	}
+
+	inline const mat4 &get_prev_world_transform() const
+	{
+		return scene_node->prev_cached_transform.world_transform;
+	}
+
+	inline const Node::Skinning *get_skin() const
+	{
+		return scene_node->get_skin();
+	}
+
+	inline bool has_scene_node() const
+	{
+		return scene_node != nullptr;
+	}
 };
 
 struct CachedTransformComponent : ComponentBase

@@ -256,13 +256,12 @@ void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoC
 	auto instance_key = get_baked_instance_key();
 	auto sorting_key = RenderInfo::get_sort_key(context, type, pipe_hash, h.get(), transform->world_aabb.get_center());
 
-	auto *t = transform->transform;
 	auto *instance_data = queue.allocate_one<StaticMeshInstanceInfo>();
-	instance_data->vertex.Model = t->world_transform;
+	instance_data->vertex.Model = transform->get_world_transform();
 	if (mv)
 	{
 		instance_data->vertex.PrevModel = queue.allocate_one<mat4>();
-		*instance_data->vertex.PrevModel = transform->prev_transform->world_transform;
+		*instance_data->vertex.PrevModel = transform->get_prev_world_transform();
 	}
 	//instance_data->vertex.Normal = t->normal_transform;
 
@@ -328,17 +327,18 @@ void SkinnedMesh::get_render_info(const RenderContext &context, const RenderInfo
 
 	auto *instance_data = queue.allocate_one<SkinnedMeshInstanceInfo>();
 
-	unsigned num_bones = transform->skin_transform->bone_world_transforms.size();
+	auto *skin = transform->get_skin();
+	unsigned num_bones = skin->cached_skin_transform.bone_world_transforms.size();
 	instance_data->num_bones = num_bones;
 	instance_data->world_transforms = queue.allocate_many<mat4>(num_bones);
 	//instance_data->normal_transforms = queue.allocate_many<mat4>(num_bones);
-	memcpy(instance_data->world_transforms, transform->skin_transform->bone_world_transforms.data(), num_bones * sizeof(mat4));
+	memcpy(instance_data->world_transforms, skin->cached_skin_transform.bone_world_transforms.data(), num_bones * sizeof(mat4));
 	//memcpy(instance_data->normal_transforms, transform->skin_transform->bone_normal_transforms.data(), num_bones * sizeof(mat4));
 
 	if (mv)
 	{
 		instance_data->prev_world_transforms = queue.allocate_many<mat4>(num_bones);
-		memcpy(instance_data->prev_world_transforms, transform->prev_skin_transform->bone_world_transforms.data(), num_bones * sizeof(mat4));
+		memcpy(instance_data->prev_world_transforms, skin->prev_cached_skin_transform.bone_world_transforms.data(), num_bones * sizeof(mat4));
 	}
 
 	auto *mesh_info = queue.push<StaticMeshInfo>(type, instance_key, sorting_key,

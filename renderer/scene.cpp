@@ -25,93 +25,10 @@
 #include "lights/lights.hpp"
 #include "simd.hpp"
 #include "task_composer.hpp"
-#include <float.h>
+#include <limits>
 
 namespace Granite
 {
-Node::Node(Scene &parent_)
-	: parent_scene(parent_)
-	, transform(*parent_scene.transform_pool.allocate())
-	, cached_transform(*parent_scene.cached_transform_pool.allocate())
-	, prev_cached_transform(*parent_scene.cached_transform_pool.allocate())
-{
-	node_is_pending_update.store(false, std::memory_order_relaxed);
-	invalidate_cached_transform();
-	assert(node_is_pending_update.is_lock_free());
-}
-
-Node::~Node()
-{
-	if (skinning)
-		parent_scene.skinning_pool.free(skinning);
-	parent_scene.transform_pool.free(&transform);
-	parent_scene.cached_transform_pool.free(&cached_transform);
-	parent_scene.cached_transform_pool.free(&prev_cached_transform);
-}
-
-void Node::set_skin(Skinning *skinning_)
-{
-	if (skinning)
-		parent_scene.skinning_pool.free(skinning);
-	skinning = skinning_;
-}
-
-unsigned Node::get_dirty_transform_depth() const
-{
-	unsigned level_candidate = 0;
-	unsigned level = 0;
-
-	auto *node = this;
-	while (node->parent)
-	{
-		level++;
-		if (node->parent->node_is_pending_update.load(std::memory_order_relaxed))
-			level_candidate = level;
-		node = node->parent;
-	}
-
-	return level_candidate;
-}
-
-void Node::add_child(NodeHandle node)
-{
-	assert(this != node.get());
-	assert(node->parent == nullptr);
-	node->parent = this;
-	node->invalidate_cached_transform();
-	children.push_back(node);
-}
-
-NodeHandle Node::remove_child(Node *node)
-{
-	assert(node->parent == this);
-	node->parent = nullptr;
-	auto handle = node->reference_from_this();
-	node->invalidate_cached_transform();
-
-	auto itr = remove_if(begin(children), end(children), [&](const NodeHandle &h) {
-		return node == h.get();
-	});
-	assert(itr != end(children));
-	children.erase(itr, end(children));
-	return handle;
-}
-
-NodeHandle Node::remove_node_from_hierarchy(Node *node)
-{
-	if (node->parent)
-		return node->parent->remove_child(node);
-	else
-		return NodeHandle(nullptr);
-}
-
-void Node::invalidate_cached_transform()
-{
-	// Order does not matter. We will synchronize where we actually read from this.
-	if (!node_is_pending_update.exchange(true, std::memory_order_relaxed))
-		parent_scene.push_pending_node_update(this);
-}
-
 Scene::Scene()
 	: spatials(pool.get_component_group<BoundedComponent, RenderInfoComponent, CachedSpatialTransformTimestampComponent>()),
 	  opaque(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, OpaqueComponent>()),
@@ -168,7 +85,7 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 		h.u64(timestamp->cookie);
 		h.u32(timestamp->last_timestamp);
 
-		if (transform->transform)
+		if (transform->has_scene_node())
 		{
 			if ((flags & RENDERABLE_FORCE_VISIBLE_BIT) != 0 ||
 			    SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
@@ -424,7 +341,7 @@ static void gather_positional_lights(const Frustum &frustum, VisibilityList &lis
 		h.u64(timestamp->cookie);
 		h.u32(timestamp->last_timestamp);
 
-		if (transform->transform)
+		if (transform->has_scene_node())
 		{
 			if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
 				list.push_back({ renderable->renderable.get(), transform, h.get() });
@@ -452,7 +369,7 @@ static void gather_positional_lights(const Frustum &frustum, PositionalLightList
 		h.u64(timestamp->cookie);
 		h.u32(timestamp->last_timestamp);
 
-		if (transform->transform)
+		if (transform->has_scene_node())
 		{
 			if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
 				list.push_back({ light, transform, h.get() });
@@ -496,7 +413,7 @@ void Scene::gather_visible_volumetric_diffuse_lights(const Frustum &frustum, Vol
 
 		if (light->light.get_volume_view())
 		{
-			if (transform->transform)
+			if (transform->has_scene_node())
 			{
 				if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
 					list.push_back({ light, transform });
@@ -516,7 +433,7 @@ void Scene::gather_visible_volumetric_decals(const Frustum &frustum, VolumetricD
 
 		if (decal->decal.get_decal_view())
 		{
-			if (transform->transform)
+			if (transform->has_scene_node())
 			{
 				if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
 					list.push_back({ decal, transform });
@@ -536,7 +453,7 @@ void Scene::gather_visible_volumetric_fog_regions(const Frustum &frustum, Volume
 
 		if (region->region.get_volume_view())
 		{
-			if (transform->transform)
+			if (transform->has_scene_node())
 			{
 				if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
 					list.push_back({ region, transform });
@@ -798,7 +715,7 @@ void Scene::update_transform_listener_components()
 			// This is a somewhat expensive operation, so timestamp it.
 			// We only expect this to run once since diffuse volumes really
 			// cannot freely move around the scene due to the semi-baked nature of it.
-			auto texture_to_world = transform->transform->world_transform * translate(vec3(-0.5f));
+			auto texture_to_world = transform->get_world_transform() * translate(vec3(-0.5f));
 			auto world_to_texture = inverse(texture_to_world);
 
 			world_to_texture = transpose(world_to_texture);
@@ -825,7 +742,7 @@ void Scene::update_transform_listener_components()
 		if (timestamp->last_timestamp != r->timestamp)
 		{
 			// This is a somewhat expensive operation, so timestamp it.
-			auto texture_to_world = transform->transform->world_transform * translate(vec3(-0.5f));
+			auto texture_to_world = transform->get_world_transform() * translate(vec3(-0.5f));
 			auto world_to_texture = inverse(texture_to_world);
 
 			world_to_texture = transpose(world_to_texture);
@@ -847,7 +764,7 @@ void Scene::update_transform_listener_components()
 		if (timestamp->last_timestamp != d->timestamp)
 		{
 			// This is a somewhat expensive operation, so timestamp it.
-			auto texture_to_world = transform->transform->world_transform;
+			auto texture_to_world = transform->get_world_transform();
 			auto world_to_texture = inverse(texture_to_world);
 
 			world_to_texture = transpose(world_to_texture);
@@ -879,20 +796,22 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 
 		if (modified_timestamp)
 		{
-			if (cached_transform->transform)
+			if (cached_transform->has_scene_node())
 			{
-				if (cached_transform->skin_transform)
+				if (cached_transform->get_skin())
 				{
 					// TODO: Isolate the AABB per bone.
-					cached_transform->world_aabb = AABB(vec3(FLT_MAX), vec3(-FLT_MAX));
-					for (auto &m : cached_transform->skin_transform->bone_world_transforms)
+					cached_transform->world_aabb =
+						AABB(vec3(std::numeric_limits<float>::max()),
+						     vec3(-std::numeric_limits<float>::max()));
+					for (auto &m : cached_transform->get_skin()->cached_skin_transform.bone_world_transforms)
 						SIMD::transform_and_expand_aabb(cached_transform->world_aabb, *aabb->aabb, m);
 				}
 				else
 				{
 					SIMD::transform_aabb(cached_transform->world_aabb,
 					                     *aabb->aabb,
-					                     cached_transform->transform->world_transform);
+					                     cached_transform->get_world_transform());
 				}
 			}
 
@@ -1081,7 +1000,7 @@ Entity *Scene::create_volumetric_diffuse_light(uvec3 resolution, Node *node)
 
 	if (node)
 	{
-		transform->transform = &node->cached_transform;
+		transform->scene_node = node;
 		timestamp->current_timestamp = node->get_timestamp_pointer();
 	}
 	timestamp->cookie = transform_cookies.fetch_add(std::memory_order_relaxed);
@@ -1103,7 +1022,7 @@ Entity *Scene::create_volumetric_fog_region(Node *node)
 
 	if (node)
 	{
-		transform->transform = &node->cached_transform;
+		transform->scene_node = node;
 		timestamp->current_timestamp = node->get_timestamp_pointer();
 	}
 	timestamp->cookie = transform_cookies.fetch_add(std::memory_order_relaxed);
@@ -1125,7 +1044,7 @@ Entity *Scene::create_volumetric_decal(Node *node)
 
 	if (node)
 	{
-		transform->transform = &node->cached_transform;
+		transform->scene_node = node;
 		timestamp->current_timestamp = node->get_timestamp_pointer();
 	}
 	timestamp->cookie = transform_cookies.fetch_add(std::memory_order_relaxed);
@@ -1176,7 +1095,7 @@ Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 
 		if (node)
 		{
-			transform->transform = &node->cached_transform;
+			transform->scene_node = node;
 			timestamp->current_timestamp = node->get_timestamp_pointer();
 		}
 
@@ -1201,15 +1120,8 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 
 		if (node)
 		{
-			transform->transform = &node->cached_transform;
-			transform->prev_transform = &node->prev_cached_transform;
+			transform->scene_node = node;
 			timestamp->current_timestamp = node->get_timestamp_pointer();
-
-			if (node->get_skin() && !node->get_skin()->cached_skin.empty())
-			{
-				transform->skin_transform = &node->get_skin()->cached_skin_transform;
-				transform->prev_skin_transform = &node->get_skin()->prev_cached_skin_transform;
-			}
 		}
 		auto *bounded = entity->allocate_component<BoundedComponent>();
 		bounded->aabb = renderable->get_static_aabb();

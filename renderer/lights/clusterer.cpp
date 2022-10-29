@@ -1111,7 +1111,7 @@ void LightClusterer::refresh_legacy(const RenderContext& context_)
 			spot.set_shadow_info(nullptr, {});
 			if (legacy.spots.count < max_spot_lights)
 			{
-				legacy.spots.lights[legacy.spots.count] = spot.get_shader_info(transform->transform->world_transform);
+				legacy.spots.lights[legacy.spots.count] = spot.get_shader_info(transform->get_world_transform());
 				legacy.spots.handles[legacy.spots.count] = &spot;
 				legacy.spots.count++;
 			}
@@ -1122,7 +1122,7 @@ void LightClusterer::refresh_legacy(const RenderContext& context_)
 			point.set_shadow_info(nullptr, {});
 			if (legacy.points.count < max_point_lights)
 			{
-				legacy.points.lights[legacy.points.count] = point.get_shader_info(transform->transform->world_transform);
+				legacy.points.lights[legacy.points.count] = point.get_shader_info(transform->get_world_transform());
 				legacy.points.handles[legacy.points.count] = &point;
 				legacy.points.count++;
 			}
@@ -1201,8 +1201,8 @@ unsigned LightClusterer::scan_visible_positional_lights(const PositionalLightLis
 			spot.set_shadow_info(nullptr, {});
 			if (index < max_lights)
 			{
-				transforms.lights[index] = spot.get_shader_info(transform->transform->world_transform);
-				set_spot_model_transform(transforms, index, spot, transform->transform->world_transform);
+				transforms.lights[index] = spot.get_shader_info(transform->get_world_transform());
+				set_spot_model_transform(transforms, index, spot, transform->get_world_transform());
 				bindless.handles[index + handle_offset] = &l;
 				bindless.light_transform_hashes.push_back(light.transform_hash);
 				index++;
@@ -1214,7 +1214,7 @@ unsigned LightClusterer::scan_visible_positional_lights(const PositionalLightLis
 			point.set_shadow_info(nullptr, {});
 			if (index < max_lights)
 			{
-				transforms.lights[index] = point.get_shader_info(transform->transform->world_transform);
+				transforms.lights[index] = point.get_shader_info(transform->get_world_transform());
 				set_point_model_transform(transforms, index);
 				transforms.type_mask[index >> 5] |= 1u << (index & 31u);
 				bindless.handles[index + handle_offset] = &l;
@@ -1816,7 +1816,7 @@ void LightClusterer::update_bindless_range_buffer_decal_gpu(Vulkan::CommandBuffe
 
 	for (unsigned i = 0; i < count; i++)
 	{
-		vec2 range = decal_z_range(*context, visible_decals[i].transform->transform->world_transform);
+		vec2 range = decal_z_range(*context, visible_decals[i].transform->get_world_transform());
 		bindless.volume_index_range[i] = compute_uint_range(range);
 	}
 
@@ -2143,7 +2143,7 @@ void LightClusterer::update_bindless_mask_buffer_decal_gpu(Vulkan::CommandBuffer
 	for (uint32_t i = 0; i < count; i++)
 	{
 		SIMD::mul(mapped_mvps[i], context->get_render_parameters().view_projection,
-		          visible_decals[i].transform->transform->world_transform);
+		          visible_decals[i].transform->get_world_transform());
 	}
 	cmd.get_device().unmap_host_buffer(*mvps, MEMORY_ACCESS_WRITE_BIT);
 	cmd.set_storage_buffer(2, 0, *mvps);

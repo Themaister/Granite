@@ -41,7 +41,7 @@ struct OceanVertex
 	uint8_t weights[4];
 };
 
-Ocean::Ocean(const OceanConfig &config_, Scene::NodeHandle node_)
+Ocean::Ocean(const OceanConfig &config_, NodeHandle node_)
 	: config(config_), node(std::move(node_))
 {
 	for (auto &f : frequency_bands)
@@ -80,7 +80,7 @@ void Ocean::set_frequency_band_modulation(bool enable)
 	freq_band_modulation = enable;
 }
 
-Ocean::Handles Ocean::add_to_scene(Scene &scene, const OceanConfig &config, Scene::NodeHandle node)
+Ocean::Handles Ocean::add_to_scene(Scene &scene, const OceanConfig &config, NodeHandle node)
 {
 	Handles handles;
 	handles.entity = scene.create_entity();

@@ -40,7 +40,7 @@ public:
 
 	// Loads scene and returns the root node.
 	// You must insert the node manually into the scene as appropriate.
-	Scene::NodeHandle load_scene_to_root_node(const std::string &path);
+	NodeHandle load_scene_to_root_node(const std::string &path);
 
 	Scene &get_scene()
 	{
@@ -60,10 +60,10 @@ private:
 
 	std::unique_ptr<Scene> scene;
 	std::unique_ptr<AnimationSystem> animation_system;
-	Scene::NodeHandle parse_scene_format(const std::string &path, const std::string &json);
-	Scene::NodeHandle parse_gltf(const std::string &path);
+	NodeHandle parse_scene_format(const std::string &path, const std::string &json);
+	NodeHandle parse_gltf(const std::string &path);
 
-	Scene::NodeHandle build_tree_for_subscene(const SubsceneData &subscene);
+	NodeHandle build_tree_for_subscene(const SubsceneData &subscene);
 	void load_animation(const std::string &path, SceneFormats::Animation &animation);
 };
 }

@@ -30,7 +30,6 @@
 namespace GLTF
 {
 using namespace Granite;
-using namespace Granite::SceneFormats;
 
 enum class ScalarType
 {
@@ -57,7 +56,7 @@ class Parser
 public:
 	explicit Parser(const std::string &path);
 
-	const std::vector<SceneNodes> &get_scenes() const
+	const std::vector<SceneFormats::SceneNodes> &get_scenes() const
 	{
 		return json_scenes;
 	}
@@ -67,42 +66,42 @@ public:
 		return default_scene_index;
 	}
 
-	const std::vector<Mesh> &get_meshes() const
+	const std::vector<SceneFormats::Mesh> &get_meshes() const
 	{
 		return meshes;
 	}
 
-	const std::vector<MaterialInfo> &get_materials() const
+	const std::vector<SceneFormats::MaterialInfo> &get_materials() const
 	{
 		return materials;
 	}
 
-	const std::vector<Node> &get_nodes() const
+	const std::vector<SceneFormats::Node> &get_nodes() const
 	{
 		return nodes;
 	}
 
-	const std::vector<Animation> &get_animations() const
+	const std::vector<SceneFormats::Animation> &get_animations() const
 	{
 		return animations;
 	}
 
-	const std::vector<Skin> &get_skins() const
+	const std::vector<SceneFormats::Skin> &get_skins() const
 	{
 		return json_skins;
 	}
 
-	const std::vector<CameraInfo> &get_cameras() const
+	const std::vector<SceneFormats::CameraInfo> &get_cameras() const
 	{
 		return json_cameras;
 	}
 
-	const std::vector<LightInfo> &get_lights() const
+	const std::vector<SceneFormats::LightInfo> &get_lights() const
 	{
 		return json_lights;
 	}
 
-	const std::vector<EnvironmentInfo> &get_environments() const
+	const std::vector<SceneFormats::EnvironmentInfo> &get_environments() const
 	{
 		return json_environments;
 	}
@@ -163,8 +162,8 @@ private:
 	};
 
 	void parse(const std::string &path, const std::string &json);
-	std::vector<Mesh> meshes;
-	std::vector<MaterialInfo> materials;
+	std::vector<SceneFormats::Mesh> meshes;
+	std::vector<SceneFormats::MaterialInfo> materials;
 	static VkFormat components_to_padded_format(ScalarType type, uint32_t components);
 	static Buffer read_buffer(const std::string &path, uint64_t length);
 	static Buffer read_base64(const char *data, uint64_t length);
@@ -176,21 +175,21 @@ private:
 	std::vector<BufferView> json_views;
 	std::vector<Accessor> json_accessors;
 	std::vector<MeshData> json_meshes;
-	std::vector<MaterialInfo::Texture> json_images;
+	std::vector<SceneFormats::MaterialInfo::Texture> json_images;
 	std::vector<Texture> json_textures;
 	std::vector<Vulkan::StockSampler> json_stock_samplers;
-	std::vector<Skin> json_skins;
-	std::vector<CameraInfo> json_cameras;
-	std::vector<LightInfo> json_lights;
-	std::vector<EnvironmentInfo> json_environments;
-	std::vector<Node> nodes;
-	std::vector<Animation> animations;
+	std::vector<SceneFormats::Skin> json_skins;
+	std::vector<SceneFormats::CameraInfo> json_cameras;
+	std::vector<SceneFormats::LightInfo> json_lights;
+	std::vector<SceneFormats::EnvironmentInfo> json_environments;
+	std::vector<SceneFormats::Node> nodes;
+	std::vector<SceneFormats::Animation> animations;
 	std::vector<Util::Hash> skin_compat;
 	std::vector<std::string> json_animation_names;
 	std::unordered_map<uint32_t, uint32_t> json_node_index_to_skin;
 	std::unordered_map<uint32_t, uint32_t> json_node_index_to_joint_index;
 	std::vector<std::vector<uint32_t>> mesh_index_to_primitives;
-	std::vector<SceneNodes> json_scenes;
+	std::vector<SceneFormats::SceneNodes> json_scenes;
 	uint32_t default_scene_index = 0;
 
 	void build_meshes();

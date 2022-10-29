@@ -50,7 +50,7 @@ AnimationSystem &SceneLoader::get_animation_system()
 	return *animation_system;
 }
 
-Scene::NodeHandle SceneLoader::load_scene_to_root_node(const std::string &path)
+NodeHandle SceneLoader::load_scene_to_root_node(const std::string &path)
 {
 	auto ext = Path::ext(path);
 	if (ext == "gltf" || ext == "glb")
@@ -72,10 +72,10 @@ void SceneLoader::load_scene(const std::string &path)
 	scene->set_root_node(node);
 }
 
-Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subscene)
+NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subscene)
 {
 	auto &parser = *subscene.parser;
-	std::vector<Scene::NodeHandle> nodes;
+	std::vector<NodeHandle> nodes;
 	nodes.reserve(parser.get_nodes().size());
 
 	auto &scene_nodes = parser.get_scenes()[parser.get_default_scene()];
@@ -86,7 +86,7 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 	{
 		if (!node.joint && touched.count(node_index))
 		{
-			Scene::NodeHandle nodeptr;
+			NodeHandle nodeptr;
 			if (node.has_skin)
 			{
 				nodeptr = scene->create_skinned_node(parser.get_skins()[node.skin]);
@@ -261,7 +261,7 @@ void SceneLoader::load_animation(const std::string &path, SceneFormats::Animatio
 	animation.update_length();
 }
 
-Scene::NodeHandle SceneLoader::parse_gltf(const std::string &path)
+NodeHandle SceneLoader::parse_gltf(const std::string &path)
 {
 	SubsceneData subscene;
 	subscene.parser = std::make_unique<GLTF::Parser>(path);
@@ -297,7 +297,7 @@ Scene::NodeHandle SceneLoader::parse_gltf(const std::string &path)
 	return build_tree_for_subscene(subscene);
 }
 
-Scene::NodeHandle SceneLoader::parse_scene_format(const std::string &path, const std::string &json)
+NodeHandle SceneLoader::parse_scene_format(const std::string &path, const std::string &json)
 {
 	Document doc;
 	doc.Parse(json);
@@ -342,7 +342,7 @@ Scene::NodeHandle SceneLoader::parse_scene_format(const std::string &path, const
 		}
 	}
 
-	std::vector<Scene::NodeHandle> hierarchy;
+	std::vector<NodeHandle> hierarchy;
 
 	auto &nodes = doc["nodes"];
 	for (auto itr = nodes.Begin(); itr != nodes.End(); ++itr)

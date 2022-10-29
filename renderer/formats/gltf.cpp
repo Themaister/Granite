@@ -595,11 +595,11 @@ void Parser::extract_attribute(std::vector<mat4> &attributes, const Accessor &ac
 	}
 }
 
-static void build_bone_hierarchy(Skin::Bone &bone, const std::vector<std::vector<uint32_t>> &hierarchy, uint32_t index)
+static void build_bone_hierarchy(SceneFormats::Skin::Bone &bone, const std::vector<std::vector<uint32_t>> &hierarchy, uint32_t index)
 {
 	for (auto &child : hierarchy[index])
 	{
-		Skin::Bone child_bone;
+		SceneFormats::Skin::Bone child_bone;
 		child_bone.index = child;
 		build_bone_hierarchy(child_bone, hierarchy, child);
 		bone.children.push_back(std::move(child_bone));
@@ -887,7 +887,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 	};
 
 	const auto add_material = [&](const Value &value) {
-		MaterialInfo info;
+		SceneFormats::MaterialInfo info;
 
 		info.uniform_base_color = vec4(1.0f);
 		info.uniform_roughness = 1.0f;
@@ -1024,7 +1024,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 	};
 
 	const auto add_node = [&](const Value &value) {
-		Node node;
+		SceneFormats::Node node;
 
 		if (value.HasMember("mesh"))
 		{
@@ -1119,7 +1119,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 		Util::Hasher hasher;
 
 		auto &joints = skin["joints"];
-		std::vector<NodeTransform> joint_transforms;
+		std::vector<SceneFormats::NodeTransform> joint_transforms;
 		std::vector<uint32_t> joint_indices;
 
 		std::vector<int> parents(joints.GetArray().Size());
@@ -1168,13 +1168,13 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 			}
 		}
 
-		std::vector<Skin::Bone> skeleton;
+		std::vector<SceneFormats::Skin::Bone> skeleton;
 		for (unsigned i = 0; i < parents.size(); i++)
 		{
 			if (parents[i] == -1)
 			{
 				// This is a top-level node in the skeleton hierarchy.
-				Skin::Bone bone;
+				SceneFormats::Skin::Bone bone;
 				bone.index = i;
 				build_bone_hierarchy(bone, hierarchy, i);
 				skeleton.push_back(std::move(bone));
@@ -1201,7 +1201,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 	};
 
 	const auto add_camera = [&](const Value &camera) {
-		CameraInfo info;
+		SceneFormats::CameraInfo info;
 
 		if (camera.HasMember("name"))
 			info.name = camera["name"].GetString();
@@ -1210,7 +1210,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 		{
 			if (strcmp(camera["type"].GetString(), "perspective") == 0)
 			{
-				info.type = CameraInfo::Type::Perspective;
+				info.type = SceneFormats::CameraInfo::Type::Perspective;
 				auto &p = camera["perspective"];
 				if (p.HasMember("yfov"))
 					info.yfov = p["yfov"].GetFloat();
@@ -1223,7 +1223,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 			}
 			else if (strcmp(camera["type"].GetString(), "orthographic") == 0)
 			{
-				info.type = CameraInfo::Type::Orthographic;
+				info.type = SceneFormats::CameraInfo::Type::Orthographic;
 				auto &o = camera["orthographic"];
 				if (o.HasMember("znear"))
 					info.znear = o["znear"].GetFloat();
@@ -1240,7 +1240,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 	};
 
 	const auto add_light = [&](const Value &light) {
-		LightInfo info;
+		SceneFormats::LightInfo info;
 
 		if (light.HasMember("name"))
 			info.name = light["name"].GetString();
@@ -1263,11 +1263,11 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 
 		auto *type = light["type"].GetString();
 		if (strcmp(type, "point") == 0)
-			info.type = LightInfo::Type::Point;
+			info.type = SceneFormats::LightInfo::Type::Point;
 		else if (strcmp(type, "spot") == 0)
-			info.type = LightInfo::Type::Spot;
+			info.type = SceneFormats::LightInfo::Type::Spot;
 		else if (strcmp(type, "directional") == 0)
-			info.type = LightInfo::Type::Directional;
+			info.type = SceneFormats::LightInfo::Type::Directional;
 		else
 			throw std::logic_error("Invalid light type.");
 
@@ -1278,7 +1278,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 		info.inner_cone = std::cos(0.0f);
 		info.outer_cone = std::cos(pi<float>() / 4.0f);
 
-		if (info.type == LightInfo::Type::Spot)
+		if (info.type == SceneFormats::LightInfo::Type::Spot)
 		{
 			if (light.HasMember("spot"))
 			{
@@ -1301,7 +1301,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 	};
 
 	const auto add_environment = [&](const Value &value) {
-		MaterialInfo::Texture cube;
+		SceneFormats::MaterialInfo::Texture cube;
 
 		if (value.HasMember("cubeTexture"))
 		{
@@ -1318,7 +1318,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 			fog_falloff = fog["falloff"].GetFloat();
 		}
 
-		EnvironmentInfo::Fog fog = { fog_color, fog_falloff };
+		SceneFormats::EnvironmentInfo::Fog fog = { fog_color, fog_falloff };
 		json_environments.push_back({ std::move(cube), fog });
 	};
 
@@ -1385,7 +1385,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 
 		iterate_elements(samplers, add_sampler);
 
-		Animation combined_animation;
+		SceneFormats::Animation combined_animation;
 
 		for (auto itr = channels.Begin(); itr != channels.End(); ++itr)
 		{
@@ -1393,7 +1393,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 			auto &animation_target = (*itr)["target"];
 			auto &node_id = animation_target.HasMember("node") ? animation_target["node"] : animation_target["id"];
 
-			AnimationChannel channel;
+			SceneFormats::AnimationChannel channel;
 			channel.node_index = node_id.GetUint();
 
 			if (nodes[channel.node_index].joint)
@@ -1428,17 +1428,17 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 			{
 				if (!strcmp(target, "translation"))
 				{
-					channel.type = AnimationChannel::Type::Translation;
+					channel.type = SceneFormats::AnimationChannel::Type::Translation;
 					extract_attribute(channel.positional.values, *sampler);
 				}
 				else if (!strcmp(target, "rotation"))
 				{
-					channel.type = AnimationChannel::Type::Rotation;
+					channel.type = SceneFormats::AnimationChannel::Type::Rotation;
 					extract_attribute(channel.spherical.values, *sampler);
 				}
 				else if (!strcmp(target, "scale"))
 				{
-					channel.type = AnimationChannel::Type::Scale;
+					channel.type = SceneFormats::AnimationChannel::Type::Scale;
 					extract_attribute(channel.positional.values, *sampler);
 				}
 				else
@@ -1448,17 +1448,17 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 			{
 				if (!strcmp(target, "translation"))
 				{
-					channel.type = AnimationChannel::Type::CubicTranslation;
+					channel.type = SceneFormats::AnimationChannel::Type::CubicTranslation;
 					extract_attribute(channel.positional.values, *sampler);
 				}
 				else if (!strcmp(target, "rotation"))
 				{
-					channel.type = AnimationChannel::Type::CubicRotation;
+					channel.type = SceneFormats::AnimationChannel::Type::CubicRotation;
 					extract_attribute(channel.spherical.values, *sampler);
 				}
 				else if (!strcmp(target, "scale"))
 				{
-					channel.type = AnimationChannel::Type::CubicScale;
+					channel.type = SceneFormats::AnimationChannel::Type::CubicScale;
 					extract_attribute(channel.positional.values, *sampler);
 				}
 				else
@@ -1468,7 +1468,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 			{
 				if (!strcmp(target, "rotation"))
 				{
-					channel.type = AnimationChannel::Type::Squad;
+					channel.type = SceneFormats::AnimationChannel::Type::Squad;
 					extract_attribute(channel.spherical.values, *sampler);
 				}
 				else
@@ -1512,7 +1512,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 		for (auto itr = scenes.Begin(); itr != scenes.End(); ++itr)
 		{
 			auto &s = *itr;
-			SceneNodes sc;
+			SceneFormats::SceneNodes sc;
 
 			if (s.HasMember("name"))
 				sc.name = s["name"].GetString();
@@ -1543,7 +1543,7 @@ static uint32_t padded_type_size(uint32_t type_size)
 
 void Parser::build_primitive(const MeshData::AttributeData &prim)
 {
-	Mesh mesh;
+	SceneFormats::Mesh mesh;
 	mesh.topology = prim.topology;
 	mesh.primitive_restart = prim.primitive_restart;
 	mesh.has_material = prim.has_material;

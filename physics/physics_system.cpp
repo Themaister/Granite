@@ -52,7 +52,7 @@ static quat convert(const btQuaternion &q)
 
 struct PhysicsHandle
 {
-	Scene::Node *node = nullptr;
+	Node *node = nullptr;
 	btCollisionObject *bt_object = nullptr;
 	btCollisionShape *bt_shape = nullptr;
 	Entity *entity = nullptr;
@@ -221,11 +221,11 @@ struct KinematicCharacter::Impl : btKinematicCharacterController
 	btPairCachingGhostObject *ghost;
 	btConvexShape *shape;
 	btDynamicsWorld *world = nullptr;
-	Scene::NodeHandle node;
+	NodeHandle node;
 	float tick = 0.0f;
 };
 
-KinematicCharacter::KinematicCharacter(btDynamicsWorld *world, Scene::NodeHandle node)
+KinematicCharacter::KinematicCharacter(btDynamicsWorld *world, NodeHandle node)
 {
 	auto *ghost = new btPairCachingGhostObject();
 	auto *shape = new btSphereShape(btScalar(1.0f));
@@ -281,7 +281,7 @@ KinematicCharacter::~KinematicCharacter()
 {
 }
 
-KinematicCharacter PhysicsSystem::add_kinematic_character(Scene::NodeHandle node)
+KinematicCharacter PhysicsSystem::add_kinematic_character(NodeHandle node)
 {
 	KinematicCharacter character(world.get(), node);
 	return character;
@@ -400,7 +400,7 @@ Entity *PhysicsSystem::get_handle_parent(PhysicsHandle *handle)
 	return handle->entity;
 }
 
-Scene::Node *PhysicsSystem::get_scene_node(PhysicsHandle *handle)
+Node *PhysicsSystem::get_scene_node(PhysicsHandle *handle)
 {
 	return handle->node;
 }
@@ -455,7 +455,7 @@ unsigned PhysicsSystem::register_collision_mesh(const CollisionMesh &mesh)
 	return index;
 }
 
-PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &info, btCollisionShape *shape)
+PhysicsHandle *PhysicsSystem::add_shape(Node *node, const MaterialInfo &info, btCollisionShape *shape)
 {
 	btTransform t;
 	t.setIdentity();
@@ -616,7 +616,7 @@ btCollisionShape *PhysicsSystem::create_shape(const ConvexMeshPart &part)
 	return shape;
 }
 
-PhysicsHandle *PhysicsSystem::add_object(Scene::Node *node,
+PhysicsHandle *PhysicsSystem::add_object(Node *node,
                                          const ConvexMeshPart &part,
                                          const MaterialInfo &info)
 {
@@ -630,7 +630,7 @@ PhysicsHandle *PhysicsSystem::add_object(Scene::Node *node,
 		return nullptr;
 }
 
-PhysicsHandle *PhysicsSystem::add_compound_object(Scene::Node *node,
+PhysicsHandle *PhysicsSystem::add_compound_object(Node *node,
                                                   const ConvexMeshPart *parts, unsigned num_parts,
                                                   const MaterialInfo &info)
 {
@@ -660,7 +660,7 @@ PhysicsHandle *PhysicsSystem::add_compound_object(Scene::Node *node,
 	return handle;
 }
 
-PhysicsHandle *PhysicsSystem::add_mesh(Scene::Node *node, unsigned index, const MaterialInfo &info)
+PhysicsHandle *PhysicsSystem::add_mesh(Node *node, unsigned index, const MaterialInfo &info)
 {
 	assert(index < mesh_collision_shapes.size());
 	auto *shape = new btScaledBvhTriangleMeshShape(mesh_collision_shapes[index].get(),
@@ -676,7 +676,7 @@ PhysicsHandle *PhysicsSystem::add_mesh(Scene::Node *node, unsigned index, const 
 	return handle;
 }
 
-PhysicsHandle *PhysicsSystem::add_convex_hull(Scene::Node *node, unsigned index, const MaterialInfo &info)
+PhysicsHandle *PhysicsSystem::add_convex_hull(Node *node, unsigned index, const MaterialInfo &info)
 {
 	assert(index < mesh_collision_shapes.size());
 
@@ -701,28 +701,28 @@ PhysicsHandle *PhysicsSystem::add_convex_hull(Scene::Node *node, unsigned index,
 	return handle;
 }
 
-PhysicsHandle *PhysicsSystem::add_cube(Scene::Node *node, const MaterialInfo &info)
+PhysicsHandle *PhysicsSystem::add_cube(Node *node, const MaterialInfo &info)
 {
 	auto *shape = new btBoxShape(btVector3(1.0f, 1.0f, 1.0f));
 	auto *handle = add_shape(node, info, shape);
 	return handle;
 }
 
-PhysicsHandle *PhysicsSystem::add_cone(Scene::Node *node, float height, float radius, const MaterialInfo &info)
+PhysicsHandle *PhysicsSystem::add_cone(Node *node, float height, float radius, const MaterialInfo &info)
 {
 	auto *shape = new btConeShape(radius, height);
 	auto *handle = add_shape(node, info, shape);
 	return handle;
 }
 
-PhysicsHandle *PhysicsSystem::add_cylinder(Scene::Node *node, float height, float radius, const MaterialInfo &info)
+PhysicsHandle *PhysicsSystem::add_cylinder(Node *node, float height, float radius, const MaterialInfo &info)
 {
 	auto *shape = new btCylinderShape(btVector3(radius, 0.5f * height, radius));
 	auto *handle = add_shape(node, info, shape);
 	return handle;
 }
 
-PhysicsHandle *PhysicsSystem::add_capsule(Scene::Node *node, float height, float radius, const MaterialInfo &info)
+PhysicsHandle *PhysicsSystem::add_capsule(Node *node, float height, float radius, const MaterialInfo &info)
 {
 	auto *shape = new btCapsuleShape(radius, 0.5f * height);
 	auto *handle = add_shape(node, info, shape);
@@ -763,7 +763,7 @@ void PhysicsSystem::apply_force(PhysicsHandle *handle, const vec3 &v, const vec3
 	}
 }
 
-PhysicsHandle *PhysicsSystem::add_sphere(Scene::Node *node, const MaterialInfo &info)
+PhysicsHandle *PhysicsSystem::add_sphere(Node *node, const MaterialInfo &info)
 {
 	auto *shape = new btSphereShape(btScalar(node->transform.scale.x));
 	auto *handle = add_shape(node, info, shape);

@@ -84,15 +84,15 @@ class AnimationSystem
 public:
 	void animate(double frame_time, double elapsed_time);
 	void animate(TaskComposer &composer, double frame_time, double elapsed_time);
-	void set_fixed_pose(Scene::Node &node, AnimationID id, float offset) const;
-	void set_fixed_pose_multi(Scene::NodeHandle *nodes, unsigned num_nodes, AnimationID id, float offset) const;
+	void set_fixed_pose(Node &node, AnimationID id, float offset) const;
+	void set_fixed_pose_multi(NodeHandle *nodes, unsigned num_nodes, AnimationID id, float offset) const;
 
 	AnimationID register_animation(const std::string &name, const SceneFormats::Animation &animation, float key_frame_rate = 60.0f);
 	AnimationID register_animation(const std::string &name, AnimationUnrolled animation);
 	AnimationID get_animation_id_from_name(const std::string &name) const;
 
-	AnimationStateID start_animation(Scene::Node &node, AnimationID id, double start_time);
-	AnimationStateID start_animation_multi(Scene::NodeHandle *nodes, unsigned num_nodes, AnimationID id, double start_time);
+	AnimationStateID start_animation(Node &node, AnimationID id, double start_time);
+	AnimationStateID start_animation_multi(NodeHandle *nodes, unsigned num_nodes, AnimationID id, double start_time);
 	void stop_animation(AnimationStateID id);
 	bool animation_is_running(AnimationStateID id) const;
 
@@ -106,17 +106,17 @@ private:
 	{
 		AnimationState(const AnimationUnrolled &anim,
 		               Util::SmallVector<Transform *> channel_transforms_,
-		               Util::SmallVector<Scene::Node *> channel_nodes_,
+		               Util::SmallVector<Node *> channel_nodes_,
 		               double start_time_);
 
 		AnimationState(const AnimationUnrolled &anim,
-		               Scene::Node *node,
+		               Node *node,
 		               double start_time_);
 
-		Scene::Node *skinned_node = nullptr;
+		Node *skinned_node = nullptr;
 		AnimationStateID id = 0;
 		Util::SmallVector<Transform *> channel_transforms;
-		Util::SmallVector<Scene::Node *> channel_nodes;
+		Util::SmallVector<Node *> channel_nodes;
 		const AnimationUnrolled &animation;
 		double start_time = 0.0;
 		bool repeating = false;

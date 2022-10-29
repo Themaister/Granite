@@ -296,7 +296,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			{
 				auto *node = PhysicsSystem::get_scene_node(result.handle);
 				if (node && node->get_children().empty())
-					Scene::Node::remove_node_from_hierarchy(node);
+					Node::remove_node_from_hierarchy(node);
 				scene.destroy_entity(result.entity);
 			}
 		}

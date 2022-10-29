@@ -272,7 +272,7 @@ AnimationID AnimationSystem::register_animation(const std::string &name,
 	return register_animation(name, AnimationUnrolled(animation, key_frame_rate));
 }
 
-AnimationStateID AnimationSystem::start_animation(Scene::Node &node, Granite::AnimationID animation_id,
+AnimationStateID AnimationSystem::start_animation(Node &node, Granite::AnimationID animation_id,
                                                   double start_time)
 {
 	auto *animation = animation_pool.maybe_get(animation_id);
@@ -303,7 +303,7 @@ AnimationStateID AnimationSystem::start_animation(Scene::Node &node, Granite::An
 		}
 
 		Util::SmallVector<Transform *> target_transforms = { &node.transform };
-		Util::SmallVector<Scene::Node *> nodes = { &node };
+		Util::SmallVector<Node *> nodes = { &node };
 		id = animation_state_pool.emplace(*animation, std::move(target_transforms), std::move(nodes), start_time);
 	}
 
@@ -313,7 +313,7 @@ AnimationStateID AnimationSystem::start_animation(Scene::Node &node, Granite::An
 	return id;
 }
 
-void AnimationSystem::set_fixed_pose(Scene::Node &node, Granite::AnimationID id, float offset) const
+void AnimationSystem::set_fixed_pose(Node &node, Granite::AnimationID id, float offset) const
 {
 	auto *animation = animation_pool.maybe_get(id);
 	if (!animation)
@@ -348,7 +348,7 @@ void AnimationSystem::set_fixed_pose(Scene::Node &node, Granite::AnimationID id,
 	}
 }
 
-void AnimationSystem::set_fixed_pose_multi(Scene::NodeHandle *nodes, unsigned num_nodes, AnimationID id,
+void AnimationSystem::set_fixed_pose_multi(NodeHandle *nodes, unsigned num_nodes, AnimationID id,
                                            float offset) const
 {
 	auto *animation = animation_pool.maybe_get(id);
@@ -366,7 +366,7 @@ void AnimationSystem::set_fixed_pose_multi(Scene::NodeHandle *nodes, unsigned nu
 
 	// Not very efficient.
 	Util::SmallVector<Transform *> target_transforms;
-	Util::SmallVector<Scene::Node *> target_nodes;
+	Util::SmallVector<Node *> target_nodes;
 	target_transforms.reserve(animation->get_num_channels());
 	target_nodes.reserve(animation->get_num_channels());
 
@@ -386,7 +386,7 @@ void AnimationSystem::set_fixed_pose_multi(Scene::NodeHandle *nodes, unsigned nu
 	animation->animate(target_transforms.data(), target_transforms.size(), offset);
 }
 
-AnimationStateID AnimationSystem::start_animation_multi(Scene::NodeHandle *nodes, unsigned num_nodes,
+AnimationStateID AnimationSystem::start_animation_multi(NodeHandle *nodes, unsigned num_nodes,
                                                         AnimationID animation_id, double start_time)
 {
 	auto *animation = animation_pool.maybe_get(animation_id);
@@ -403,7 +403,7 @@ AnimationStateID AnimationSystem::start_animation_multi(Scene::NodeHandle *nodes
 	}
 
 	Util::SmallVector<Transform *> target_transforms;
-	Util::SmallVector<Scene::Node *> target_nodes;
+	Util::SmallVector<Node *> target_nodes;
 	target_transforms.reserve(animation->get_num_channels());
 	target_nodes.reserve(animation->get_num_channels());
 
@@ -539,7 +539,7 @@ void AnimationSystem::animate(TaskComposer &composer, double frame_time, double 
 
 AnimationSystem::AnimationState::AnimationState(const AnimationUnrolled &anim,
                                                 Util::SmallVector<Transform *> channel_transforms_,
-                                                Util::SmallVector<Scene::Node *> channel_nodes_,
+                                                Util::SmallVector<Node *> channel_nodes_,
                                                 double start_time_)
 	: channel_transforms(std::move(channel_transforms_)),
 	  channel_nodes(std::move(channel_nodes_)),
@@ -548,9 +548,9 @@ AnimationSystem::AnimationState::AnimationState(const AnimationUnrolled &anim,
 {
 }
 
-AnimationSystem::AnimationState::AnimationState(const Granite::AnimationUnrolled &anim, Granite::Scene::Node *node,
+AnimationSystem::AnimationState::AnimationState(const Granite::AnimationUnrolled &anim, Node *node,
                                                 double start_time_)
-		: skinned_node(node), animation(anim), start_time(start_time_)
+	: skinned_node(node), animation(anim), start_time(start_time_)
 {
 }
 }

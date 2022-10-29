@@ -33,15 +33,106 @@
 
 namespace Granite
 {
-
 class RenderContext;
 struct EnvironmentComponent;
+class Node;
+class Scene;
 
+struct NodeDeleter
+{
+	void operator()(Node *node);
+};
+
+// TODO: Need to slim this down, and be more data oriented.
+// Should possibly maintain separate large buffers with transform matrices, and just point to those
+// in the node.
+class Node : public Util::IntrusivePtrEnabled<Node, NodeDeleter>
+{
+public:
+	explicit Node(Scene &parent_);
+	~Node();
+
+	Scene &parent_scene;
+	Transform &transform;
+	CachedTransform &cached_transform;
+	CachedTransform &prev_cached_transform;
+
+	void invalidate_cached_transform();
+	void add_child(Util::IntrusivePtr<Node> node);
+	Util::IntrusivePtr<Node> remove_child(Node *node);
+	static Util::IntrusivePtr<Node> remove_node_from_hierarchy(Node *node);
+
+	inline const std::vector<Util::IntrusivePtr<Node>> &get_children() const
+	{
+		return children;
+	}
+
+	inline std::vector<Util::IntrusivePtr<Node>> &get_children()
+	{
+		return children;
+	}
+
+	inline Node *get_parent() const
+	{
+		return parent;
+	}
+
+	struct Skinning
+	{
+		CachedSkinTransform cached_skin_transform;
+		CachedSkinTransform prev_cached_skin_transform;
+		std::vector<const CachedTransform *> cached_skin;
+		std::vector<Transform *> skin;
+		std::vector<mat4> inverse_bind_poses;
+		Util::Hash skin_compat = 0;
+	};
+
+	void set_skin(Skinning *skinning_);
+
+	inline Skinning *get_skin()
+	{
+		return skinning;
+	}
+
+	inline void update_timestamp()
+	{
+		timestamp++;
+	}
+
+	inline const uint32_t *get_timestamp_pointer() const
+	{
+		return &timestamp;
+	}
+
+	unsigned get_dirty_transform_depth() const;
+
+	inline bool test_and_set_pending_update_no_atomic()
+	{
+		bool value = node_is_pending_update.load(std::memory_order_relaxed);
+		if (!value)
+			node_is_pending_update.store(true, std::memory_order_relaxed);
+		return value;
+	}
+
+	inline void clear_pending_update_no_atomic()
+	{
+		node_is_pending_update.store(false, std::memory_order_relaxed);
+	}
+
+private:
+	std::vector<Util::IntrusivePtr<Node>> children;
+	Skinning *skinning = nullptr;
+	Node *parent = nullptr;
+	uint32_t timestamp = 0;
+	std::atomic<bool> node_is_pending_update;
+};
+using NodeHandle = Util::IntrusivePtr<Node>;
 class Scene
 {
 public:
 	Scene();
 	~Scene();
+	friend class Node;
 
 	// Non-copyable, movable.
 	Scene(const Scene &) = delete;
@@ -103,118 +194,6 @@ public:
 	void set_render_pass_data(const RendererSuite *suite, const RenderContext *context);
 	void bind_render_graph_resources(RenderGraph &graph);
 
-	class Node;
-	struct NodeDeleter
-	{
-		void operator()(Node *node);
-	};
-
-	// TODO: Need to slim this down, and be more data oriented.
-	// Should possibly maintain separate large buffers with transform matrices, and just point to those
-	// in the node.
-	class Node : public Util::IntrusivePtrEnabled<Node, NodeDeleter>
-	{
-	public:
-		explicit Node(Scene &parent_)
-			: parent_scene(parent_)
-			, transform(*parent_scene.transform_pool.allocate())
-			, cached_transform(*parent_scene.cached_transform_pool.allocate())
-			, prev_cached_transform(*parent_scene.cached_transform_pool.allocate())
-		{
-			node_is_pending_update.store(false, std::memory_order_relaxed);
-			invalidate_cached_transform();
-			assert(node_is_pending_update.is_lock_free());
-		}
-
-		~Node()
-		{
-			if (skinning)
-				parent_scene.skinning_pool.free(skinning);
-			parent_scene.transform_pool.free(&transform);
-			parent_scene.cached_transform_pool.free(&cached_transform);
-			parent_scene.cached_transform_pool.free(&prev_cached_transform);
-		}
-
-		Scene &parent_scene;
-		Transform &transform;
-		CachedTransform &cached_transform;
-		CachedTransform &prev_cached_transform;
-
-		void invalidate_cached_transform();
-		void add_child(Util::IntrusivePtr<Node> node);
-		Util::IntrusivePtr<Node> remove_child(Node *node);
-		static Util::IntrusivePtr<Node> remove_node_from_hierarchy(Node *node);
-
-		inline const std::vector<Util::IntrusivePtr<Node>> &get_children() const
-		{
-			return children;
-		}
-
-		inline std::vector<Util::IntrusivePtr<Node>> &get_children()
-		{
-			return children;
-		}
-
-		inline Node *get_parent() const
-		{
-			return parent;
-		}
-
-		struct Skinning
-		{
-			CachedSkinTransform cached_skin_transform;
-			CachedSkinTransform prev_cached_skin_transform;
-			std::vector<const CachedTransform *> cached_skin;
-			std::vector<Transform *> skin;
-			std::vector<mat4> inverse_bind_poses;
-			Util::Hash skin_compat = 0;
-		};
-
-		inline void set_skin(Skinning *skinning_)
-		{
-			if (skinning)
-				parent_scene.skinning_pool.free(skinning);
-			skinning = skinning_;
-		}
-
-		inline Skinning *get_skin()
-		{
-			return skinning;
-		}
-
-		inline void update_timestamp()
-		{
-			timestamp++;
-		}
-
-		inline const uint32_t *get_timestamp_pointer() const
-		{
-			return &timestamp;
-		}
-
-		unsigned get_dirty_transform_depth() const;
-
-		inline bool test_and_set_pending_update_no_atomic()
-		{
-			bool value = node_is_pending_update.load(std::memory_order_relaxed);
-			if (!value)
-				node_is_pending_update.store(true, std::memory_order_relaxed);
-			return value;
-		}
-
-		inline void clear_pending_update_no_atomic()
-		{
-			node_is_pending_update.store(false, std::memory_order_relaxed);
-		}
-
-	private:
-		std::vector<Util::IntrusivePtr<Node>> children;
-		Skinning *skinning = nullptr;
-		Node *parent = nullptr;
-		uint32_t timestamp = 0;
-		std::atomic<bool> node_is_pending_update;
-	};
-	using NodeHandle = Util::IntrusivePtr<Node>;
 	NodeHandle create_node();
 	NodeHandle create_skinned_node(const SceneFormats::Skin &skin);
 

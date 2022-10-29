@@ -71,9 +71,9 @@ MeshManager::MeshGroup *MeshManager::register_mesh(
 	return group;
 }
 
-static std::vector<Scene::NodeHandle> create_nodes(Scene &scene, const std::vector<Granite::SceneFormats::Node> &nodes)
+static std::vector<NodeHandle> create_nodes(Scene &scene, const std::vector<Granite::SceneFormats::Node> &nodes)
 {
-	std::vector<Scene::NodeHandle> scene_nodes(nodes.size());
+	std::vector<NodeHandle> scene_nodes(nodes.size());
 
 	for (size_t i = 0; i < nodes.size(); i++)
 	{
@@ -99,7 +99,7 @@ static std::vector<Scene::NodeHandle> create_nodes(Scene &scene, const std::vect
 	return scene_nodes;
 }
 
-static Scene::NodeHandle create_root_node(Scene &scene, const std::vector<Scene::NodeHandle> &nodes, const std::vector<uint32_t> &top_level_nodes)
+static NodeHandle create_root_node(Scene &scene, const std::vector<NodeHandle> &nodes, const std::vector<uint32_t> &top_level_nodes)
 {
 	auto root = scene.create_node();
 	for (auto &top_level : top_level_nodes)

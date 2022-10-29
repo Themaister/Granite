@@ -29,6 +29,89 @@
 
 namespace Granite
 {
+Node::Node(Scene &parent_)
+	: parent_scene(parent_)
+	, transform(*parent_scene.transform_pool.allocate())
+	, cached_transform(*parent_scene.cached_transform_pool.allocate())
+	, prev_cached_transform(*parent_scene.cached_transform_pool.allocate())
+{
+	node_is_pending_update.store(false, std::memory_order_relaxed);
+	invalidate_cached_transform();
+	assert(node_is_pending_update.is_lock_free());
+}
+
+Node::~Node()
+{
+	if (skinning)
+		parent_scene.skinning_pool.free(skinning);
+	parent_scene.transform_pool.free(&transform);
+	parent_scene.cached_transform_pool.free(&cached_transform);
+	parent_scene.cached_transform_pool.free(&prev_cached_transform);
+}
+
+void Node::set_skin(Skinning *skinning_)
+{
+	if (skinning)
+		parent_scene.skinning_pool.free(skinning);
+	skinning = skinning_;
+}
+
+unsigned Node::get_dirty_transform_depth() const
+{
+	unsigned level_candidate = 0;
+	unsigned level = 0;
+
+	auto *node = this;
+	while (node->parent)
+	{
+		level++;
+		if (node->parent->node_is_pending_update.load(std::memory_order_relaxed))
+			level_candidate = level;
+		node = node->parent;
+	}
+
+	return level_candidate;
+}
+
+void Node::add_child(NodeHandle node)
+{
+	assert(this != node.get());
+	assert(node->parent == nullptr);
+	node->parent = this;
+	node->invalidate_cached_transform();
+	children.push_back(node);
+}
+
+NodeHandle Node::remove_child(Node *node)
+{
+	assert(node->parent == this);
+	node->parent = nullptr;
+	auto handle = node->reference_from_this();
+	node->invalidate_cached_transform();
+
+	auto itr = remove_if(begin(children), end(children), [&](const NodeHandle &h) {
+		return node == h.get();
+	});
+	assert(itr != end(children));
+	children.erase(itr, end(children));
+	return handle;
+}
+
+NodeHandle Node::remove_node_from_hierarchy(Node *node)
+{
+	if (node->parent)
+		return node->parent->remove_child(node);
+	else
+		return NodeHandle(nullptr);
+}
+
+void Node::invalidate_cached_transform()
+{
+	// Order does not matter. We will synchronize where we actually read from this.
+	if (!node_is_pending_update.exchange(true, std::memory_order_relaxed))
+		parent_scene.push_pending_node_update(this);
+}
+
 Scene::Scene()
 	: spatials(pool.get_component_group<BoundedComponent, RenderInfoComponent, CachedSpatialTransformTimestampComponent>()),
 	  opaque(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, OpaqueComponent>()),
@@ -533,7 +616,7 @@ static void log_node_transforms(const Scene::Node &node)
 }
 #endif
 
-static void update_skinning(Scene::Node &node)
+static void update_skinning(Node &node)
 {
 	auto &skin = *node.get_skin();
 	if (!skin.cached_skin_transform.bone_world_transforms.empty())
@@ -575,7 +658,7 @@ void Scene::update_all_transforms()
 	update_cached_transforms_range(0, spatials.size());
 }
 
-static void perform_update_skinning(Scene::Node * const *updates, size_t count)
+static void perform_update_skinning(Node * const *updates, size_t count)
 {
 	for (size_t i = 0; i < count; i++)
 	{
@@ -826,23 +909,6 @@ void Scene::push_pending_node_update(Node *node)
 	pending_node_updates.push(node);
 }
 
-unsigned Scene::Node::get_dirty_transform_depth() const
-{
-	unsigned level_candidate = 0;
-	unsigned level = 0;
-
-	auto *node = this;
-	while (node->parent)
-	{
-		level++;
-		if (node->parent->node_is_pending_update.load(std::memory_order_relaxed))
-			level_candidate = level;
-		node = node->parent;
-	}
-
-	return level_candidate;
-}
-
 void Scene::distribute_update_to_level(Node *update, unsigned level)
 {
 	if (level >= MaxNodeHierarchyLevels)
@@ -891,7 +957,7 @@ void Scene::distribute_per_level_updates(TaskGroup *group)
 	}
 }
 
-static void update_transform_tree_node(Scene::Node &node, const mat4 &transform)
+static void update_transform_tree_node(Node &node, const mat4 &transform)
 {
 	node.prev_cached_transform = node.cached_transform;
 	compute_model_transform(node.cached_transform.world_transform,
@@ -903,7 +969,7 @@ static void update_transform_tree_node(Scene::Node &node, const mat4 &transform)
 	node.clear_pending_update_no_atomic();
 }
 
-static void perform_updates(Scene::Node * const *updates, size_t count)
+static void perform_updates(Node * const *updates, size_t count)
 {
 	for (size_t i = 0; i < count; i++)
 	{
@@ -932,24 +998,24 @@ void Scene::perform_per_level_updates(unsigned level, TaskGroup *group)
 	}
 }
 
-Scene::NodeHandle Scene::create_node()
+NodeHandle Scene::create_node()
 {
-	return Scene::NodeHandle(node_pool.allocate(*this));
+	return NodeHandle(node_pool.allocate(*this));
 }
 
-void Scene::NodeDeleter::operator()(Node *node)
+void NodeDeleter::operator()(Node *node)
 {
 	node->parent_scene.get_node_pool().free(node);
 }
 
-static void add_bone(Scene::NodeHandle *bones, uint32_t parent, const SceneFormats::Skin::Bone &bone)
+static void add_bone(NodeHandle *bones, uint32_t parent, const SceneFormats::Skin::Bone &bone)
 {
 	bones[parent]->add_child(bones[bone.index]);
 	for (auto &child : bone.children)
 		add_bone(bones, bone.index, child);
 }
 
-Scene::NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
+NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 {
 	auto node = create_node();
 
@@ -989,45 +1055,6 @@ Scene::NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 
 	node_skin.skin_compat = skin.skin_compat;
 	return node;
-}
-
-void Scene::Node::add_child(NodeHandle node)
-{
-	assert(this != node.get());
-	assert(node->parent == nullptr);
-	node->parent = this;
-	node->invalidate_cached_transform();
-	children.push_back(node);
-}
-
-Scene::NodeHandle Scene::Node::remove_child(Node *node)
-{
-	assert(node->parent == this);
-	node->parent = nullptr;
-	auto handle = node->reference_from_this();
-	node->invalidate_cached_transform();
-
-	auto itr = remove_if(begin(children), end(children), [&](const NodeHandle &h) {
-		return node == h.get();
-	});
-	assert(itr != end(children));
-	children.erase(itr, end(children));
-	return handle;
-}
-
-Scene::NodeHandle Scene::Node::remove_node_from_hierarchy(Node *node)
-{
-	if (node->parent)
-		return node->parent->remove_child(node);
-	else
-		return Scene::NodeHandle(nullptr);
-}
-
-void Scene::Node::invalidate_cached_transform()
-{
-	// Order does not matter. We will synchronize where we actually read from this.
-	if (!node_is_pending_update.exchange(true, std::memory_order_relaxed))
-		parent_scene.push_pending_node_update(this);
 }
 
 Entity *Scene::create_entity()

@@ -68,7 +68,7 @@ class KinematicCharacter
 {
 public:
 	KinematicCharacter();
-	KinematicCharacter(btDynamicsWorld *world, Scene::NodeHandle node);
+	KinematicCharacter(btDynamicsWorld *world, NodeHandle node);
 	~KinematicCharacter();
 
 	KinematicCharacter(KinematicCharacter &&other) noexcept;
@@ -201,29 +201,29 @@ public:
 	struct ConvexMeshPart
 	{
 		MeshType type = MeshType::None;
-		const Scene::Node *child_node = nullptr;
+		const Node *child_node = nullptr;
 		unsigned index = 0;
 		float height = 1.0f;
 		float radius = 1.0f;
 	};
 
-	PhysicsHandle *add_compound_object(Scene::Node *node,
+	PhysicsHandle *add_compound_object(Node *node,
 	                                   const ConvexMeshPart *parts, unsigned num_parts,
 	                                   const MaterialInfo &info);
-	PhysicsHandle *add_object(Scene::Node *node,
+	PhysicsHandle *add_object(Node *node,
 	                          const ConvexMeshPart &part,
 	                          const MaterialInfo &info);
 
-	PhysicsHandle *add_mesh(Scene::Node *node, unsigned index, const MaterialInfo &info);
-	PhysicsHandle *add_convex_hull(Scene::Node *node, unsigned index, const MaterialInfo &info);
-	PhysicsHandle *add_cube(Scene::Node *node, const MaterialInfo &info);
-	PhysicsHandle *add_sphere(Scene::Node *node, const MaterialInfo &info);
-	PhysicsHandle *add_cone(Scene::Node *node, float height, float radius, const MaterialInfo &info);
-	PhysicsHandle *add_capsule(Scene::Node *node, float height, float radius, const MaterialInfo &info);
-	PhysicsHandle *add_cylinder(Scene::Node *node, float height, float radius, const MaterialInfo &info);
+	PhysicsHandle *add_mesh(Node *node, unsigned index, const MaterialInfo &info);
+	PhysicsHandle *add_convex_hull(Node *node, unsigned index, const MaterialInfo &info);
+	PhysicsHandle *add_cube(Node *node, const MaterialInfo &info);
+	PhysicsHandle *add_sphere(Node *node, const MaterialInfo &info);
+	PhysicsHandle *add_cone(Node *node, float height, float radius, const MaterialInfo &info);
+	PhysicsHandle *add_capsule(Node *node, float height, float radius, const MaterialInfo &info);
+	PhysicsHandle *add_cylinder(Node *node, float height, float radius, const MaterialInfo &info);
 	PhysicsHandle *add_infinite_plane(const vec4 &plane, const MaterialInfo &info);
 
-	KinematicCharacter add_kinematic_character(Scene::NodeHandle node);
+	KinematicCharacter add_kinematic_character(NodeHandle node);
 
 	void set_linear_velocity(PhysicsHandle *handle, const vec3 &v);
 	void set_angular_velocity(PhysicsHandle *handle, const vec3 &v);
@@ -235,7 +235,7 @@ public:
 	void remove_body(PhysicsHandle *handle);
 	static void set_handle_parent(PhysicsHandle *handle, Entity *entity);
 	static Entity *get_handle_parent(PhysicsHandle *handle);
-	static Scene::Node *get_scene_node(PhysicsHandle *handle);
+	static Node *get_scene_node(PhysicsHandle *handle);
 	static InteractionType get_interaction_type(PhysicsHandle *handle);
 
 	void apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &world_position);
@@ -279,7 +279,7 @@ private:
 	Util::ObjectPool<PhysicsHandle> handle_pool;
 	std::vector<PhysicsHandle *> handles;
 
-	PhysicsHandle *add_shape(Scene::Node *node, const MaterialInfo &info, btCollisionShape *shape);
+	PhysicsHandle *add_shape(Node *node, const MaterialInfo &info, btCollisionShape *shape);
 	std::vector<CollisionEvent> new_collision_buffer;
 	std::vector<std::unique_ptr<btBvhTriangleMeshShape>> mesh_collision_shapes;
 	std::vector<std::unique_ptr<btTriangleIndexVertexArray>> index_vertex_arrays;

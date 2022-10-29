@@ -51,13 +51,13 @@ public:
 	struct SingleHandle
 	{
 		Entity *entity;
-		Scene::NodeHandle root_node;
+		NodeHandle root_node;
 	};
 
 	struct MultiHandle
 	{
 		std::vector<Entity *> entities;
-		Scene::NodeHandle root_node;
+		NodeHandle root_node;
 	};
 
 	struct Animation

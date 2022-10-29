@@ -934,12 +934,12 @@ void Scene::perform_per_level_updates(unsigned level, TaskGroup *group)
 
 Scene::NodeHandle Scene::create_node()
 {
-	return Scene::NodeHandle(node_pool.allocate(this));
+	return Scene::NodeHandle(node_pool.allocate(*this));
 }
 
 void Scene::NodeDeleter::operator()(Node *node)
 {
-	node->parent_scene->get_node_pool().free(node);
+	node->parent_scene.get_node_pool().free(node);
 }
 
 static void add_bone(Scene::NodeHandle *bones, uint32_t parent, const SceneFormats::Skin::Bone &bone)
@@ -1027,7 +1027,7 @@ void Scene::Node::invalidate_cached_transform()
 {
 	// Order does not matter. We will synchronize where we actually read from this.
 	if (!node_is_pending_update.exchange(true, std::memory_order_relaxed))
-		parent_scene->push_pending_node_update(this);
+		parent_scene.push_pending_node_update(this);
 }
 
 Entity *Scene::create_entity()

@@ -138,26 +138,47 @@ enum class PresentMode
 	UnlockedNoTearing // Force MAILBOX
 };
 
+enum class BackbufferFormat
+{
+	UNORM,
+	sRGB,
+	HDR10
+};
+
 class WSI
 {
 public:
 	WSI();
 	void set_platform(WSIPlatform *platform);
 	void set_present_mode(PresentMode mode);
-	void set_backbuffer_srgb(bool enable);
+	void set_backbuffer_format(BackbufferFormat format);
+	inline BackbufferFormat get_backbuffer_format() const
+	{
+		return backbuffer_format;
+	}
+
+	inline VkColorSpaceKHR get_backbuffer_color_space() const
+	{
+		return swapchain_surface_format.colorSpace;	
+	}
+
 	void set_support_prerotate(bool enable);
 	void set_extra_usage_flags(VkImageUsageFlags usage);
 	VkSurfaceTransformFlagBitsKHR get_current_prerotate() const;
 
-	PresentMode get_present_mode() const
+	inline PresentMode get_present_mode() const
 	{
 		return present_mode;
 	}
 
-	bool get_backbuffer_srgb() const
+	// Deprecated, use set_backbuffer_format().
+	void set_backbuffer_srgb(bool enable);
+	inline bool get_backbuffer_srgb() const
 	{
-		return srgb_backbuffer_enable;
+		return backbuffer_format == BackbufferFormat::sRGB;
 	}
+
+	void set_hdr_metadata(const VkHdrMetadataEXT &metadata);
 
 	// First, we need a Util::IntrinsivePtr<Vulkan::Context>.
 	// This holds the instance and device.
@@ -262,7 +283,7 @@ private:
 	unsigned swapchain_width = 0;
 	unsigned swapchain_height = 0;
 	float swapchain_aspect_ratio = 1.0f;
-	VkFormat swapchain_format = VK_FORMAT_UNDEFINED;
+	VkSurfaceFormatKHR swapchain_surface_format = { VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
 	PresentMode current_present_mode = PresentMode::SyncToVBlank;
 	PresentMode present_mode = PresentMode::SyncToVBlank;
 	VkImageUsageFlags current_extra_usage = 0;
@@ -290,8 +311,10 @@ private:
 	Semaphore external_release;
 	bool frame_is_external = false;
 	bool using_display_timing = false;
-	bool srgb_backbuffer_enable = true;
-	bool current_srgb_backbuffer_enable = true;
+
+	BackbufferFormat backbuffer_format = BackbufferFormat::sRGB;
+	BackbufferFormat current_backbuffer_format = BackbufferFormat::sRGB;
+
 	bool support_prerotate = false;
 	VkSurfaceTransformFlagBitsKHR swapchain_current_prerotate = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 
@@ -311,6 +334,8 @@ private:
 	void drain_swapchain();
 	void wait_swapchain_latency();
 
-	VkSurfaceFormatKHR find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats) const;
+	VkHdrMetadataEXT hdr_metadata = { VK_STRUCTURE_TYPE_HDR_METADATA_EXT };
+
+	VkSurfaceFormatKHR find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats, BackbufferFormat desired_format) const;
 };
 }

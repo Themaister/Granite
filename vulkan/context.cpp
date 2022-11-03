@@ -353,6 +353,12 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		ext.supports_surface_capabilities2 = true;
 	}
 
+	if (has_surface_extension && has_extension(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))
+	{
+		instance_exts.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
+		ext.supports_swapchain_colorspace = true;
+	}
+
 #ifdef VULKAN_DEBUG
 	const auto has_layer = [&](const char *name) -> bool {
 		auto layer_itr = find_if(begin(queried_layers), end(queried_layers), [name](const VkLayerProperties &e) -> bool {
@@ -965,8 +971,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		enabled_extensions.push_back(VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME);
 	}
 
-	// Validation layers don't fully support present_id/wait yet.
-	// Ignore this extension for now.
 	for (unsigned i = 0; i < num_required_device_extensions; i++)
 	{
 		if (strcmp(required_device_extensions[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
@@ -983,6 +987,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 				enabled_extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
 				*ppNext = &ext.present_wait_features;
 				ppNext = &ext.present_wait_features.pNext;
+			}
+
+			if (ext.supports_swapchain_colorspace && has_extension(VK_EXT_HDR_METADATA_EXTENSION_NAME))
+			{
+				ext.supports_hdr_metadata = true;
+				enabled_extensions.push_back(VK_EXT_HDR_METADATA_EXTENSION_NAME);
 			}
 
 			break;

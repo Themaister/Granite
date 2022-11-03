@@ -207,7 +207,7 @@ public:
 
 	bool joykey_pressed(unsigned index, JoypadKey key) const
 	{
-		if (index > Joypads)
+		if (index >= Joypads)
 			return false;
 
 		return (joypads[index].button_mask & (1u << Util::ecast(key))) != 0;

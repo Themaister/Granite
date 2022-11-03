@@ -71,6 +71,8 @@ struct DeviceFeatures
 	bool supports_image_format_list = false;
 	bool supports_shader_float_control = false;
 	bool supports_tooling_info = false;
+	bool supports_hdr_metadata = false;
+	bool supports_swapchain_colorspace = false;
 
 	// Vulkan 1.1 core
 	VkPhysicalDeviceFeatures enabled_features = {};

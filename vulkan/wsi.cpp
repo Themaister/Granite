@@ -47,6 +47,25 @@ WSI::WSI()
 		present_frame_latency = uint32_t(strtoul(env, nullptr, 0));
 		LOGI("Overriding VK_KHR_present_wait latency to %u frames.\n", present_frame_latency);
 	}
+
+	// Unclear what good defaults are. Primaries are for ST2048.
+	hdr_metadata.displayPrimaryRed = { 0.708f, 0.292f };
+	hdr_metadata.displayPrimaryGreen = { 0.300f, 0.600f };
+	hdr_metadata.displayPrimaryBlue = { 0.131f, 0.046f };
+	hdr_metadata.whitePoint = { 0.3127f, 0.3290f };
+	hdr_metadata.minLuminance = 0.001f;
+	// HDR10 range?
+	hdr_metadata.maxLuminance = 1000.0f;
+	hdr_metadata.maxContentLightLevel = 1000.0f;
+	// *shrug*
+	hdr_metadata.maxFrameAverageLightLevel = 200.0f;
+}
+
+void WSI::set_hdr_metadata(const VkHdrMetadataEXT &hdr)
+{
+	hdr_metadata = hdr;
+	if (swapchain && swapchain_surface_format.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT)
+		table->vkSetHdrMetadataEXT(device->get_device(), 1, &swapchain, &hdr_metadata);
 }
 
 void WSIPlatform::set_window_title(const std::string &)
@@ -136,16 +155,16 @@ bool WSI::init_external_swapchain(std::vector<ImageHandle> swapchain_images_)
 
 	swapchain_width = external_swapchain_images.front()->get_width();
 	swapchain_height = external_swapchain_images.front()->get_height();
-	swapchain_format = external_swapchain_images.front()->get_format();
+	swapchain_surface_format = { external_swapchain_images.front()->get_format(), VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
 
 	LOGI("Created swapchain %u x %u (fmt: %u).\n",
-	     swapchain_width, swapchain_height, static_cast<unsigned>(swapchain_format));
+	     swapchain_width, swapchain_height, static_cast<unsigned>(swapchain_surface_format.format));
 
 	platform->event_swapchain_destroyed();
 	platform->event_swapchain_created(device.get(), swapchain_width, swapchain_height,
 	                                  swapchain_aspect_ratio,
 	                                  external_swapchain_images.size(),
-	                                  swapchain_format, swapchain_current_prerotate);
+	                                  swapchain_surface_format.format, swapchain_current_prerotate);
 
 	device->init_external_swapchain(this->external_swapchain_images);
 	platform->get_frame_timer().reset();
@@ -222,7 +241,7 @@ bool WSI::init_surface_swapchain()
 		return false;
 	}
 
-	device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format,
+	device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_surface_format.format,
 	                       swapchain_current_prerotate,
 	                       current_extra_usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 	platform->get_frame_timer().reset();
@@ -498,7 +517,7 @@ bool WSI::begin_frame()
 			if (!blocking_init_swapchain(swapchain_width, swapchain_height))
 				return false;
 			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height,
-			                       swapchain_format, swapchain_current_prerotate,
+			                       swapchain_surface_format.format, swapchain_current_prerotate,
 			                       current_extra_usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 		}
 		else
@@ -624,11 +643,11 @@ bool WSI::end_frame()
 		}
 
 		// Re-init swapchain.
-		if (present_mode != current_present_mode || srgb_backbuffer_enable != current_srgb_backbuffer_enable ||
+		if (present_mode != current_present_mode || backbuffer_format != current_backbuffer_format ||
 		    extra_usage != current_extra_usage)
 		{
 			current_present_mode = present_mode;
-			current_srgb_backbuffer_enable = srgb_backbuffer_enable;
+			current_backbuffer_format = backbuffer_format;
 			current_extra_usage = extra_usage;
 			update_framebuffer(swapchain_width, swapchain_height);
 		}
@@ -644,7 +663,7 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 		drain_swapchain();
 		if (blocking_init_swapchain(width, height))
 		{
-			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format,
+			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_surface_format.format,
 			                       swapchain_current_prerotate,
 			                       current_extra_usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 		}
@@ -674,14 +693,19 @@ void WSI::set_extra_usage_flags(VkImageUsageFlags usage)
 	}
 }
 
-void WSI::set_backbuffer_srgb(bool enable)
+void WSI::set_backbuffer_format(BackbufferFormat format)
 {
-	srgb_backbuffer_enable = enable;
-	if (!has_acquired_swapchain_index && srgb_backbuffer_enable != current_srgb_backbuffer_enable)
+	backbuffer_format = format;
+	if (!has_acquired_swapchain_index && backbuffer_format != current_backbuffer_format)
 	{
-		current_srgb_backbuffer_enable = srgb_backbuffer_enable;
+		current_backbuffer_format = backbuffer_format;
 		update_framebuffer(swapchain_width, swapchain_height);
 	}
+}
+
+void WSI::set_backbuffer_srgb(bool enable)
+{
+	set_backbuffer_format(enable ? BackbufferFormat::sRGB : BackbufferFormat::UNORM);
 }
 
 void WSI::teardown()
@@ -743,10 +767,16 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 	return swapchain != VK_NULL_HANDLE;
 }
 
-VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats) const
+VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats, BackbufferFormat desired_format) const
 {
 	size_t format_count = formats.size();
 	VkSurfaceFormatKHR format = { VK_FORMAT_UNDEFINED };
+
+	if (desired_format == BackbufferFormat::HDR10 && !device->get_device_features().supports_hdr_metadata)
+	{
+		LOGW("VK_EXT_hdr_metadata is not supported, ignoring HDR10.\n");
+		return format;
+	}
 
 	VkFormatFeatureFlags features = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
 	                                VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT;
@@ -764,11 +794,22 @@ VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurface
 		if (!device->image_format_is_supported(formats[i].format, features))
 			continue;
 
-		if (current_srgb_backbuffer_enable)
+		if (desired_format == BackbufferFormat::HDR10)
 		{
-			if (formats[i].format == VK_FORMAT_R8G8B8A8_SRGB ||
-			    formats[i].format == VK_FORMAT_B8G8R8A8_SRGB ||
-			    formats[i].format == VK_FORMAT_A8B8G8R8_SRGB_PACK32)
+			if (formats[i].colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT &&
+			    (formats[i].format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ||
+			     formats[i].format == VK_FORMAT_A2R10G10B10_UNORM_PACK32))
+			{
+				format = formats[i];
+				break;
+			}
+		}
+		else if (desired_format == BackbufferFormat::sRGB)
+		{
+			if (formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
+			    (formats[i].format == VK_FORMAT_R8G8B8A8_SRGB ||
+			     formats[i].format == VK_FORMAT_B8G8R8A8_SRGB ||
+			     formats[i].format == VK_FORMAT_A8B8G8R8_SRGB_PACK32))
 			{
 				format = formats[i];
 				break;
@@ -776,9 +817,10 @@ VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurface
 		}
 		else
 		{
-			if (formats[i].format == VK_FORMAT_R8G8B8A8_UNORM ||
-			    formats[i].format == VK_FORMAT_B8G8R8A8_UNORM ||
-			    formats[i].format == VK_FORMAT_A8B8G8R8_UNORM_PACK32)
+			if (formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
+			    (formats[i].format == VK_FORMAT_R8G8B8A8_UNORM ||
+			     formats[i].format == VK_FORMAT_B8G8R8A8_UNORM ||
+			     formats[i].format == VK_FORMAT_A8B8G8R8_UNORM_PACK32))
 			{
 				format = formats[i];
 				break;
@@ -932,13 +974,22 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		extra_usage = current_extra_usage;
 	}
 
-	auto surface_format = find_suitable_present_format(formats);
+	auto attempt_backbuffer_format = current_backbuffer_format;
+	auto surface_format = find_suitable_present_format(formats, attempt_backbuffer_format);
+
+	if (surface_format.format == VK_FORMAT_UNDEFINED && attempt_backbuffer_format == BackbufferFormat::HDR10)
+	{
+		LOGW("Could not find suitable present format for HDR10. Attempting fallback to sRGB.\n");
+		attempt_backbuffer_format = BackbufferFormat::sRGB;
+		surface_format = find_suitable_present_format(formats, attempt_backbuffer_format);
+	}
+
 	if (surface_format.format == VK_FORMAT_UNDEFINED)
 	{
 		LOGW("Could not find supported format for swapchain usage flags 0x%x.\n", current_extra_usage);
 		current_extra_usage = 0;
 		extra_usage = 0;
-		surface_format = find_suitable_present_format(formats);
+		surface_format = find_suitable_present_format(formats, attempt_backbuffer_format);
 	}
 
 	static const char *transform_names[] = {
@@ -1182,11 +1233,11 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	swapchain_width = swapchain_size.width;
 	swapchain_height = swapchain_size.height;
-	swapchain_format = surface_format.format;
+	swapchain_surface_format = surface_format;
 	swapchain_is_suboptimal = false;
 
 	LOGI("Created swapchain %u x %u (fmt: %u, transform: %u).\n", swapchain_width, swapchain_height,
-	     unsigned(swapchain_format), unsigned(swapchain_current_prerotate));
+	     unsigned(swapchain_surface_format.format), unsigned(swapchain_current_prerotate));
 
 	uint32_t image_count;
 	if (table->vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, nullptr) != VK_SUCCESS)
@@ -1201,6 +1252,9 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	platform->event_swapchain_destroyed();
 	platform->event_swapchain_created(device.get(), swapchain_width, swapchain_height,
 	                                  swapchain_aspect_ratio, image_count, info.imageFormat, swapchain_current_prerotate);
+
+	if (swapchain_surface_format.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT)
+		table->vkSetHdrMetadataEXT(device->get_device(), 1, &swapchain, &hdr_metadata);
 
 	return SwapchainError::None;
 }

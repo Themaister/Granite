@@ -37,6 +37,7 @@ if (NOT ANDROID)
 endif()
 
 add_granite_application(latency-test latency_test.cpp)
+add_granite_application(hdr-test hdr_test.cpp)
 
 add_granite_application(multi-draw-indirect multi_draw_indirect.cpp)
 if (NOT ANDROID)

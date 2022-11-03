@@ -75,8 +75,7 @@ bool libretro_create_device(
 		PFN_vkGetInstanceProcAddr get_instance_proc_addr,
 		const char **required_device_extensions,
 		unsigned num_required_device_extensions,
-		const char **required_device_layers,
-		unsigned num_required_device_layers,
+		const char **, unsigned, // Deprecated.
 		const VkPhysicalDeviceFeatures *required_features)
 {
 	if (!Vulkan::Context::init_loader(get_instance_proc_addr))
@@ -92,7 +91,6 @@ bool libretro_create_device(
 	vulkan_context->set_num_thread_indices(GRANITE_THREAD_GROUP()->get_num_threads() + 1);
 #endif
 	if (!vulkan_context->init_device_from_instance(instance, gpu, surface, required_device_extensions, num_required_device_extensions,
-	                                               required_device_layers, num_required_device_layers,
 	                                               required_features))
 	{
 		return false;

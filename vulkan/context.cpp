@@ -41,7 +41,7 @@ namespace Vulkan
 void Context::set_application_info(const VkApplicationInfo *app_info)
 {
 	user_application_info = app_info;
-	VK_ASSERT(app_info->apiVersion >= VK_API_VERSION_1_1);
+	VK_ASSERT(!app_info || app_info->apiVersion >= VK_API_VERSION_1_1);
 }
 
 bool Context::init_instance_and_device(const char **instance_ext, uint32_t instance_ext_count, const char **device_ext,

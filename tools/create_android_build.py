@@ -106,7 +106,6 @@ def main():
     with open(manifest, 'r') as f:
         manifest_data = f.read()
         manifest_data = manifest_data \
-            .replace('$$PACKAGE$$', args.application_id) \
             .replace('$$ICON$$', args.activity_icon_drawable) \
             .replace('$$NATIVE_TARGET$$', args.native_target) \
             .replace('$$VERSION_CODE$$', args.version_code) \
@@ -137,6 +136,7 @@ def main():
         target_abis = ', '.join(["'" + x + "'" for x in abis])
 
         data = data \
+            .replace('$$NAMESPACE$$', args.application_id) \
             .replace('$$TARGET$$', args.native_target) \
             .replace('$$CMAKELISTS$$', cmakelists) \
             .replace('$$ASSETS$$', assets) \

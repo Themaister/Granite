@@ -1,6 +1,7 @@
 apply plugin: 'com.android.library'
 
 android {
+    namespace "net.themaister.granite"
     compileSdkVersion 26
 
     defaultConfig {

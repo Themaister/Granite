@@ -22,13 +22,6 @@ endif()
 
 include(GNUInstallDirs)
 
-# We are overriding settings in subdirectories.
-# Avoid warnings.
-if (${CMAKE_VERSION} VERSION_GREATER "3.13.0")
-   message("Setting CMake policy CMP0077.")
-   cmake_policy(SET CMP0077 NEW)
-endif()
-
 option(GRANITE_SHARED "Build Granite as a shared library." OFF)
 option(GRANITE_ISPC_TEXTURE_COMPRESSION "Enable ISPC texture compression" ON)
 option(GRANITE_ASTC_ENCODER_COMPRESSION "Enable astc-encoder texture compression" ON)

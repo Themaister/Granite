@@ -116,8 +116,9 @@ union PipelineState {
 struct PotentialState
 {
 	float blend_constants[4];
-	uint32_t spec_constants[VULKAN_NUM_SPEC_CONSTANTS];
+	uint32_t spec_constants[VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
 	uint8_t spec_constant_mask;
+	uint8_t internal_spec_constant_mask;
 };
 
 struct DynamicState
@@ -579,14 +580,14 @@ public:
 
 	inline void set_specialization_constant_mask(uint32_t spec_constant_mask)
 	{
-		VK_ASSERT((spec_constant_mask & ~((1u << VULKAN_NUM_SPEC_CONSTANTS) - 1u)) == 0u);
+		VK_ASSERT((spec_constant_mask & ~((1u << VULKAN_NUM_USER_SPEC_CONSTANTS) - 1u)) == 0u);
 		SET_POTENTIALLY_STATIC_STATE(spec_constant_mask);
 	}
 
 	template <typename T>
 	inline void set_specialization_constant(unsigned index, const T &value)
 	{
-		VK_ASSERT(index < VULKAN_NUM_SPEC_CONSTANTS);
+		VK_ASSERT(index < VULKAN_NUM_USER_SPEC_CONSTANTS);
 		static_assert(sizeof(value) == sizeof(uint32_t), "Spec constant data must be 32-bit.");
 		if (memcmp(&pipeline_state.potential_static_state.spec_constants[index], &value, sizeof(value)))
 		{
@@ -600,8 +601,6 @@ public:
 	{
 		set_specialization_constant(index, uint32_t(value));
 	}
-
-	void set_surface_transform_specialization_constants(unsigned base_index);
 
 	inline void enable_subgroup_size_control(bool subgroup_control_size)
 	{
@@ -786,6 +785,7 @@ private:
 
 	static void update_hash_graphics_pipeline(DeferredPipelineCompile &compile, uint32_t &active_vbos);
 	static void update_hash_compute_pipeline(DeferredPipelineCompile &compile);
+	void set_surface_transform_specialization_constants();
 };
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

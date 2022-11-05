@@ -512,7 +512,7 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 	auto spec_constants = compiler.get_specialization_constants();
 	for (auto &c : spec_constants)
 	{
-		if (c.constant_id >= VULKAN_NUM_SPEC_CONSTANTS)
+		if (c.constant_id >= VULKAN_NUM_TOTAL_SPEC_CONSTANTS)
 		{
 			LOGE("Spec constant ID: %u is out of range, will be ignored.\n", c.constant_id);
 			continue;

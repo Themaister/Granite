@@ -40,6 +40,12 @@ using namespace Util;
 
 namespace Vulkan
 {
+static inline uint32_t get_combined_spec_constant_mask(const DeferredPipelineCompile &compile)
+{
+	return compile.potential_static_state.spec_constant_mask |
+	       (compile.potential_static_state.internal_spec_constant_mask << VULKAN_NUM_USER_SPEC_CONSTANTS);
+}
+
 CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCache cache, Type type_)
     : device(device_)
     , table(device_->get_device_table())
@@ -597,6 +603,7 @@ void CommandBuffer::begin_context()
 	current_layout = nullptr;
 	pipeline_state.program = nullptr;
 	pipeline_state.potential_static_state.spec_constant_mask = 0;
+	pipeline_state.potential_static_state.internal_spec_constant_mask = 0;
 	memset(bindings.cookies, 0, sizeof(bindings.cookies));
 	memset(bindings.secondary_cookies, 0, sizeof(bindings.secondary_cookies));
 	memset(&index_state, 0, sizeof(index_state));
@@ -620,7 +627,7 @@ void CommandBuffer::begin_graphics()
 	// Vertex shaders which support prerotate are expected to include inc/prerotate.h and
 	// call prerotate_fixup_clip_xy().
 	if (current_framebuffer_surface_transform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
-		set_surface_transform_specialization_constants(0);
+		set_surface_transform_specialization_constants();
 }
 
 void CommandBuffer::init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *fb)
@@ -714,14 +721,16 @@ void CommandBuffer::next_subpass(VkSubpassContents contents)
 	begin_graphics();
 }
 
-void CommandBuffer::set_surface_transform_specialization_constants(unsigned base_index)
+void CommandBuffer::set_surface_transform_specialization_constants()
 {
 	float transform[4];
-
-	set_specialization_constant_mask(0xf << base_index);
+	pipeline_state.potential_static_state.internal_spec_constant_mask = 0xf;
 	build_prerotate_matrix_2x2(current_framebuffer_surface_transform, transform);
 	for (unsigned i = 0; i < 4; i++)
-		set_specialization_constant(base_index + i, transform[i]);
+	{
+		memcpy(pipeline_state.potential_static_state.spec_constants + VULKAN_NUM_USER_SPEC_CONSTANTS,
+		       transform, sizeof(transform));
+	}
 }
 
 void CommandBuffer::init_surface_transform(const RenderPassInfo &info)
@@ -907,11 +916,11 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 	info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
 
 	VkSpecializationInfo spec_info = {};
-	VkSpecializationMapEntry spec_entries[VULKAN_NUM_SPEC_CONSTANTS];
+	VkSpecializationMapEntry spec_entries[VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
 	auto mask = compile.program->get_pipeline_layout()->get_resource_layout().combined_spec_constant_mask &
-	            compile.potential_static_state.spec_constant_mask;
+	            get_combined_spec_constant_mask(compile);
 
-	uint32_t spec_constants[VULKAN_NUM_SPEC_CONSTANTS];
+	uint32_t spec_constants[VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
 
 	if (mask)
 	{
@@ -1176,8 +1185,8 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	unsigned num_stages = 0;
 
 	VkSpecializationInfo spec_info[ecast(ShaderStage::Count)] = {};
-	VkSpecializationMapEntry spec_entries[ecast(ShaderStage::Count)][VULKAN_NUM_SPEC_CONSTANTS];
-	uint32_t spec_constants[static_cast<unsigned>(ShaderStage::Count)][VULKAN_NUM_SPEC_CONSTANTS];
+	VkSpecializationMapEntry spec_entries[ecast(ShaderStage::Count)][VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
+	uint32_t spec_constants[static_cast<unsigned>(ShaderStage::Count)][VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
 
 	for (unsigned i = 0; i < static_cast<unsigned>(ShaderStage::Count); i++)
 	{
@@ -1191,7 +1200,7 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 			s.stage = static_cast<VkShaderStageFlagBits>(1u << i);
 
 			auto mask = compile.program->get_pipeline_layout()->get_resource_layout().spec_constant_mask[i] &
-			            compile.potential_static_state.spec_constant_mask;
+			            get_combined_spec_constant_mask(compile);
 
 			if (mask)
 			{
@@ -1277,7 +1286,7 @@ void CommandBuffer::update_hash_compute_pipeline(DeferredPipelineCompile &compil
 	// Spec constants.
 	auto &layout = compile.program->get_pipeline_layout()->get_resource_layout();
 	uint32_t combined_spec_constant = layout.combined_spec_constant_mask;
-	combined_spec_constant &= compile.potential_static_state.spec_constant_mask;
+	combined_spec_constant &= get_combined_spec_constant_mask(compile);
 	h.u32(combined_spec_constant);
 	for_each_bit(combined_spec_constant, [&](uint32_t bit) {
 		h.u32(compile.potential_static_state.spec_constants[bit]);
@@ -1338,7 +1347,7 @@ void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compi
 
 	// Spec constants.
 	uint32_t combined_spec_constant = layout.combined_spec_constant_mask;
-	combined_spec_constant &= compile.potential_static_state.spec_constant_mask;
+	combined_spec_constant &= get_combined_spec_constant_mask(compile);
 	h.u32(combined_spec_constant);
 	for_each_bit(combined_spec_constant, [&](uint32_t bit) {
 		h.u32(compile.potential_static_state.spec_constants[bit]);

@@ -179,6 +179,10 @@ public:
 	}
 
 	void set_hdr_metadata(const VkHdrMetadataEXT &metadata);
+	inline const VkHdrMetadataEXT &get_hdr_metadata() const
+	{
+		return hdr_metadata;
+	}
 
 	// First, we need a Util::IntrinsivePtr<Vulkan::Context>.
 	// This holds the instance and device.

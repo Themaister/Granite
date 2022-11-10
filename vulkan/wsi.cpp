@@ -48,16 +48,16 @@ WSI::WSI()
 		LOGI("Overriding VK_KHR_present_wait latency to %u frames.\n", present_frame_latency);
 	}
 
-	// Unclear what good defaults are. Primaries are for ST2048.
+	// Primaries are ST.2020 with D65 whitepoint as specified.
 	hdr_metadata.displayPrimaryRed = { 0.708f, 0.292f };
-	hdr_metadata.displayPrimaryGreen = { 0.300f, 0.600f };
+	hdr_metadata.displayPrimaryGreen = { 0.170f, 0.797f };
 	hdr_metadata.displayPrimaryBlue = { 0.131f, 0.046f };
 	hdr_metadata.whitePoint = { 0.3127f, 0.3290f };
-	hdr_metadata.minLuminance = 0.001f;
-	// HDR10 range?
+
+	// HDR10 range? Just arbitrary values, user can override later.
+	hdr_metadata.minLuminance = 0.01f;
 	hdr_metadata.maxLuminance = 1000.0f;
 	hdr_metadata.maxContentLightLevel = 1000.0f;
-	// *shrug*
 	hdr_metadata.maxFrameAverageLightLevel = 200.0f;
 }
 

@@ -39,6 +39,7 @@ struct HDRTest : Granite::Application, Granite::EventHandler
 	HDRTest()
 	{
 		EVENT_MANAGER_REGISTER(HDRTest, on_key_down, KeyboardEvent);
+		get_wsi().set_backbuffer_format(BackbufferFormat::HDR10);
 	}
 
 	bool on_key_down(const KeyboardEvent &e)

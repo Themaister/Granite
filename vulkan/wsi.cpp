@@ -865,6 +865,14 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	const char *exclusive = getenv("GRANITE_EXCLUSIVE_FULL_SCREEN");
 	bool prefer_exclusive = exclusive && strtoul(exclusive, nullptr, 0) != 0;
+
+	if (device->get_device_features().driver_properties.driverID == VK_DRIVER_ID_AMD_PROPRIETARY_KHR &&
+	    current_backbuffer_format == BackbufferFormat::HDR10)
+	{
+		LOGI("HDR requested on AMD Windows. Forcing exclusive fullscreen, or HDR will not work properly.\n");
+		prefer_exclusive = true;
+	}
+
 	if (prefer_exclusive)
 	{
 		LOGI("Win32: Opting in to exclusive full-screen!\n");

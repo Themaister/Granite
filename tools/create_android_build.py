@@ -85,6 +85,7 @@ def main():
     build_gradle = os.path.join(gradle_base, 'build.gradle')
     settings_gradle = os.path.join(gradle_base, 'settings.gradle')
     toplevel_gradle = os.path.join(gradle_base, 'toplevel.build.gradle')
+    gradle_properties = os.path.join(gradle_base, 'gradle.properties')
     if (not os.path.isfile(manifest)) or \
         (not os.path.isfile(build_gradle)) or \
         (not os.path.isfile(settings_gradle)) \
@@ -96,6 +97,7 @@ def main():
     os.makedirs(os.path.join(args.output_gradle, 'res'), exist_ok = True)
     os.makedirs(os.path.join(args.output_gradle, 'res/values'), exist_ok = True)
     output_toplevel_build_gradle = 'build.gradle'
+    output_gradle_properties = 'gradle.properties'
     output_settings_gradle = 'settings.gradle'
 
     resource_dir = os.path.join(args.granite_dir, 'application/platforms/android/gradle/res') if not args.resource_dir else args.resource_dir
@@ -151,6 +153,7 @@ def main():
 
 
     copyfile(toplevel_gradle, output_toplevel_build_gradle)
+    copyfile(gradle_properties, output_gradle_properties)
 
     # Write out settings.gradle
     with open(settings_gradle, 'r') as f:

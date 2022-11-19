@@ -3,11 +3,16 @@
 if (ANDROID)
     add_granite_internal_static_lib(granite-platform
             application_android.cpp)
-    add_library(android-glue STATIC
-            ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
-            ${ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c)
-    target_include_directories(android-glue PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue)
-    target_link_libraries(granite-platform PRIVATE android-glue granite-rapidjson)
+    find_package(game-activity REQUIRED CONFIG)
+
+    target_link_libraries(granite-platform PRIVATE granite-rapidjson)
+    get_target_property(game-activity-include game-activity::game-activity INTERFACE_INCLUDE_DIRECTORIES)
+    target_include_directories(granite-platform PRIVATE ${game-activity-include})
+    target_sources(granite-platform PRIVATE
+            ${game-activity-include}/game-activity/native_app_glue/android_native_app_glue.c
+            ${game-activity-include}/game-activity/GameActivity.cpp
+            ${game-activity-include}/game-text-input/gametextinput.cpp)
+
     target_compile_definitions(granite-platform PRIVATE "VK_USE_PLATFORM_ANDROID_KHR")
     if (GRANITE_ANDROID_APK_FILESYSTEM)
         target_compile_definitions(granite-platform PRIVATE ANDROID_APK_FILESYSTEM)

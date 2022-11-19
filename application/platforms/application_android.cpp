@@ -21,7 +21,8 @@
  */
 
 #include "global_managers_init.hpp"
-#include "android_native_app_glue.h"
+#include "game-activity/GameActivity.h"
+#include "game-activity/native_app_glue/android_native_app_glue.h"
 #include "logging.hpp"
 #include "application.hpp"
 #include "application_events.hpp"
@@ -80,7 +81,6 @@ struct JNI
 {
 	JNIEnv *env;
 	jclass granite;
-	jmethodID finishFromThread;
 	jmethodID getDisplayRotation;
 	jmethodID getAudioNativeSampleRate;
 	jmethodID getAudioNativeBlockFrames;
@@ -101,7 +101,7 @@ struct JNI
 static GlobalState global_state;
 static JNI jni;
 
-static void on_content_rect_changed(ANativeActivity *, const ARect *rect)
+static void on_content_rect_changed(GameActivity *, const ARect *rect)
 {
 	global_state.base_width = rect->right - rect->left;
 	global_state.base_height = rect->bottom - rect->top;
@@ -111,17 +111,12 @@ static void on_content_rect_changed(ANativeActivity *, const ARect *rect)
 
 namespace App
 {
-static void finishFromThread()
-{
-	jni.env->CallVoidMethod(global_state.app->activity->clazz, jni.finishFromThread);
-}
-
 static std::string getCommandLine()
 {
 	std::string result;
 
 	jstring key = jni.env->NewStringUTF("granite");
-	jstring str = static_cast<jstring>(jni.env->CallObjectMethod(global_state.app->activity->clazz,
+	jstring str = static_cast<jstring>(jni.env->CallObjectMethod(global_state.app->activity->javaGameActivity,
 	                                                             jni.getCommandLineArgument,
 	                                                             key));
 	if (str)
@@ -157,13 +152,13 @@ static int getAudioNativeBlockFrames()
 
 static int getCurrentOrientation()
 {
-	int ret = jni.env->CallIntMethod(global_state.app->activity->clazz, jni.getCurrentOrientation);
+	int ret = jni.env->CallIntMethod(global_state.app->activity->javaGameActivity, jni.getCurrentOrientation);
 	return ret;
 }
 
 static int getDisplayRotation()
 {
-	int ret = jni.env->CallIntMethod(global_state.app->activity->clazz, jni.getDisplayRotation);
+	int ret = jni.env->CallIntMethod(global_state.app->activity->javaGameActivity, jni.getDisplayRotation);
 	return ret;
 }
 }
@@ -207,6 +202,8 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	void update_orientation();
 	bool alive(Vulkan::WSI &wsi) override;
 	void poll_input() override;
+
+	void request_teardown();
 
 	std::vector<const char *> get_instance_extensions() override
 	{
@@ -290,6 +287,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	bool active = false;
 	bool has_window = true;
 	bool wsi_idle = false;
+	bool requesting_teardown = false;
 
 	bool pending_native_window_init = false;
 	bool pending_native_window_term = false;
@@ -418,49 +416,53 @@ static void handle_sensors()
 	}
 }
 
-static int32_t engine_handle_input(android_app *app, AInputEvent *event)
+static void engine_handle_input(WSIPlatformAndroid &state)
 {
-	if (!app->userData)
-		return 0;
+	auto *input_buffer = android_app_swap_input_buffers(global_state.app);
 
-	auto &state = *static_cast<WSIPlatformAndroid *>(app->userData);
-	bool handled = false;
+	if (!input_buffer)
+		return;
 
-	auto type = AInputEvent_getType(event);
-	auto source = AInputEvent_getSource(event);
-	auto device_id = AInputEvent_getDeviceId(event);
-	//auto source_class = source & AINPUT_SOURCE_CLASS_MASK;
-	source &= AINPUT_SOURCE_ANY;
-
-	switch (type)
+	for (uint32_t i = 0; i < input_buffer->keyEventsCount; i++)
 	{
-	case AINPUT_EVENT_TYPE_KEY:
-	{
-		if (source & AINPUT_SOURCE_GAMEPAD)
+		auto &event = input_buffer->keyEvents[i];
+
+		auto action = event.action;
+		auto code = event.keyCode;
+		auto device_id = event.deviceId;
+
+		bool pressed = action == AKEY_EVENT_ACTION_DOWN;
+		bool released = action == AKEY_EVENT_ACTION_UP;
+
+		if (event.source & AINPUT_SOURCE_KEYBOARD)
 		{
-			auto action = AKeyEvent_getAction(event);
-			auto code = AKeyEvent_getKeyCode(event);
-
-			bool pressed = action == AKEY_EVENT_ACTION_DOWN;
-			bool released = action == AKEY_EVENT_ACTION_UP;
-
+			if (pressed && code == AKEYCODE_BACK)
+			{
+				LOGI("Requesting teardown.\n");
+				state.requesting_teardown = true;
+			}
+		}
+		else if (event.source & AINPUT_SOURCE_GAMEPAD)
+		{
 			if (pressed || released)
 			{
 				unsigned joypad_index = state.register_gamepad_id(device_id);
 				auto &tracker = state.get_input_tracker();
 				tracker.joypad_key_state_raw(joypad_index, code, pressed);
 			}
-
-			handled = true;
 		}
-		break;
 	}
 
-	case AINPUT_EVENT_TYPE_MOTION:
+	if (input_buffer->keyEventsCount)
+		android_app_clear_key_events(input_buffer);
+
+	for (uint32_t i = 0; i < input_buffer->motionEventsCount; i++)
 	{
-		auto pointer = AMotionEvent_getAction(event);
-		auto action = pointer & AMOTION_EVENT_ACTION_MASK;
-		auto index = (pointer & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
+		auto &event = input_buffer->motionEvents[i];
+		auto action = event.action & AMOTION_EVENT_ACTION_MASK;
+		auto index = (event.action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
+		auto source = event.source;
+		auto device_id = event.deviceId;
 
 		if (source & AINPUT_SOURCE_JOYSTICK)
 		{
@@ -483,64 +485,62 @@ static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 				};
 
 				for (int ax : axes)
-					tracker.joyaxis_state_raw(joypad_index, ax, AMotionEvent_getAxisValue(event, ax, index));
-
-				handled = true;
+					tracker.joyaxis_state_raw(joypad_index, ax, event.pointers[index].axisValues[ax]);
 			}
 		}
 		else if (source & AINPUT_SOURCE_TOUCHSCREEN)
 		{
 			switch (action)
 			{
-			case AMOTION_EVENT_ACTION_DOWN:
-			case AMOTION_EVENT_ACTION_POINTER_DOWN:
-			{
-				auto x = AMotionEvent_getX(event, index) / global_state.base_width;
-				auto y = AMotionEvent_getY(event, index) / global_state.base_height;
-				int id = AMotionEvent_getPointerId(event, index);
-				state.get_input_tracker().on_touch_down(id, x, y);
-				handled = true;
-				break;
-			}
-
-			case AMOTION_EVENT_ACTION_MOVE:
-			{
-				size_t count = AMotionEvent_getPointerCount(event);
-				for (size_t i = 0; i < count; i++)
+				case AMOTION_EVENT_ACTION_DOWN:
+				case AMOTION_EVENT_ACTION_POINTER_DOWN:
 				{
-					auto x = AMotionEvent_getX(event, i) / global_state.base_width;
-					auto y = AMotionEvent_getY(event, i) / global_state.base_height;
-					int id = AMotionEvent_getPointerId(event, i);
-					state.get_input_tracker().on_touch_move(id, x, y);
+					auto x = GameActivityPointerAxes_getX(&event.pointers[index]);
+					auto y = GameActivityPointerAxes_getY(&event.pointers[index]);
+					x /= float(global_state.base_width);
+					y /= float(global_state.base_height);
+					int id = event.pointers[index].id;
+					state.get_input_tracker().on_touch_down(id, x, y);
+					break;
 				}
-				state.get_input_tracker().dispatch_touch_gesture();
-				handled = true;
-				break;
-			}
 
-			case AMOTION_EVENT_ACTION_UP:
-			case AMOTION_EVENT_ACTION_POINTER_UP:
-			{
-				auto x = AMotionEvent_getX(event, index) / global_state.base_width;
-				auto y = AMotionEvent_getY(event, index) / global_state.base_height;
-				int id = AMotionEvent_getPointerId(event, index);
-				state.get_input_tracker().on_touch_up(id, x, y);
-				handled = true;
-				break;
-			}
+				case AMOTION_EVENT_ACTION_MOVE:
+				{
+					size_t count = event.pointerCount;
+					for (size_t p = 0; p < count; p++)
+					{
+						// Divide by base_width / base_height?
+						auto x = GameActivityPointerAxes_getX(&event.pointers[p]);
+						auto y = GameActivityPointerAxes_getY(&event.pointers[p]);
+						x /= float(global_state.base_width);
+						y /= float(global_state.base_height);
+						int id = event.pointers[p].id;
+						state.get_input_tracker().on_touch_move(id, x, y);
+					}
+					state.get_input_tracker().dispatch_touch_gesture();
+					break;
+				}
 
-			default:
-				break;
+				case AMOTION_EVENT_ACTION_UP:
+				case AMOTION_EVENT_ACTION_POINTER_UP:
+				{
+					auto x = GameActivityPointerAxes_getX(&event.pointers[index]);
+					auto y = GameActivityPointerAxes_getY(&event.pointers[index]);
+					x /= float(global_state.base_width);
+					y /= float(global_state.base_height);
+					int id = event.pointers[index].id;
+					state.get_input_tracker().on_touch_up(id, x, y);
+					break;
+				}
+
+				default:
+					break;
 			}
 		}
-		break;
 	}
 
-	default:
-		break;
-	}
-
-	return handled ? 1 : 0;
+	if (input_buffer->motionEventsCount)
+		android_app_clear_motion_events(input_buffer);
 }
 
 static void engine_handle_cmd_init(android_app *app, int32_t cmd)
@@ -593,9 +593,16 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 			LOGI("Init window\n");
 			global_state.base_width = ANativeWindow_getWidth(app->window);
 			global_state.base_height = ANativeWindow_getHeight(app->window);
+			global_state.content_rect_changed = true;
 		}
 
-		global_state.display_rotation = jni.env->CallIntMethod(app->activity->clazz, jni.getDisplayRotation);
+		global_state.display_rotation = jni.env->CallIntMethod(app->activity->javaGameActivity, jni.getDisplayRotation);
+		break;
+	}
+
+	case APP_CMD_CONTENT_RECT_CHANGED:
+	{
+		on_content_rect_changed(app->activity, &app->contentRect);
 		break;
 	}
 
@@ -696,6 +703,12 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 		}
 		break;
 
+	case APP_CMD_CONTENT_RECT_CHANGED:
+	{
+		on_content_rect_changed(app->activity, &app->contentRect);
+		break;
+	}
+
 	default:
 		break;
 	}
@@ -718,13 +731,18 @@ void WSIPlatformAndroid::update_orientation()
 	pending_config_change = true;
 }
 
+void WSIPlatformAndroid::request_teardown()
+{
+	requesting_teardown = true;
+}
+
 void WSIPlatformAndroid::poll_input()
 {
 	int events;
 	int ident;
 	android_poll_source *source;
 	app_wsi = nullptr;
-	while ((ident = ALooper_pollAll(1, nullptr, &events, reinterpret_cast<void **>(&source))) >= 0)
+	while ((ident = ALooper_pollAll(0, nullptr, &events, reinterpret_cast<void **>(&source))) >= 0)
 	{
 		if (source)
 			source->process(global_state.app, source);
@@ -735,6 +753,7 @@ void WSIPlatformAndroid::poll_input()
 		if (global_state.app->destroyRequested)
 			return;
 	}
+	engine_handle_input(*this);
 	get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 }
 
@@ -746,7 +765,7 @@ bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)
 	android_poll_source *source;
 	state.app_wsi = &wsi;
 
-	if (global_state.app->destroyRequested)
+	if (global_state.app->destroyRequested || requesting_teardown)
 		return false;
 
 	bool once = false;
@@ -820,9 +839,9 @@ static void init_jni()
 	auto *app = global_state.app;
 	app->activity->vm->AttachCurrentThread(&jni.env, nullptr);
 
-	jclass clazz = jni.env->GetObjectClass(app->activity->clazz);
+	jclass clazz = jni.env->GetObjectClass(app->activity->javaGameActivity);
 	jmethodID getApplication = jni.env->GetMethodID(clazz, "getApplication", "()Landroid/app/Application;");
-	jobject application = jni.env->CallObjectMethod(app->activity->clazz, getApplication);
+	jobject application = jni.env->CallObjectMethod(app->activity->javaGameActivity, getApplication);
 
 	jclass applicationClass = jni.env->GetObjectClass(application);
 	jmethodID getApplicationContext = jni.env->GetMethodID(applicationClass, "getApplicationContext", "()Landroid/content/Context;");
@@ -840,7 +859,6 @@ static void init_jni()
 
 	jni.inputDeviceClass = jni.env->FindClass("android/view/InputDevice");
 
-	jni.finishFromThread = jni.env->GetMethodID(jni.granite, "finishFromThread", "()V");
 	jni.getDisplayRotation = jni.env->GetMethodID(jni.granite, "getDisplayRotation", "()I");
 	jni.getAudioNativeSampleRate = jni.env->GetMethodID(jni.granite, "getAudioNativeSampleRate", "()I");
 	jni.getAudioNativeBlockFrames = jni.env->GetMethodID(jni.granite, "getAudioNativeBlockFrames", "()I");
@@ -870,11 +888,7 @@ static void init_jni()
 
 static void init_sensors()
 {
-#if __ANDROID_API__ >= 26
 	auto *manager = ASensorManager_getInstanceForPackage("net.themaister.GraniteActivity");
-#else
-	auto *manager = ASensorManager_getInstance();
-#endif
 	if (!manager)
 		return;
 
@@ -894,7 +908,7 @@ using namespace Granite;
 
 static void wait_for_complete_teardown(android_app *app)
 {
-	// If we requested to be torn down with App::finishFromThread(),
+	// If we requested to be torn down with GameActivity_finish(),
 	// at least make sure we observe and pump through all takedown events,
 	// or we get a deadlock.
 	while (!app->destroyRequested)
@@ -912,16 +926,34 @@ static void wait_for_complete_teardown(android_app *app)
 	assert(app->activityState == APP_CMD_STOP);
 }
 
+static bool key_event_filter(const GameActivityKeyEvent *event)
+{
+	switch (event->source)
+	{
+	case AINPUT_SOURCE_GAMEPAD:
+	case AINPUT_SOURCE_KEYBOARD:
+		return true;
+
+	default:
+		return false;
+	}
+}
+
+static bool motion_event_filter(const GameActivityMotionEvent *event)
+{
+	switch (event->source)
+	{
+	case AINPUT_SOURCE_TOUCHSCREEN:
+	case AINPUT_SOURCE_JOYSTICK:
+		return true;
+
+	default:
+		return false;
+	}
+}
+
 void android_main(android_app *app)
 {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated"
-	app_dummy();
-#pragma GCC diagnostic pop
-
-	// Native glue does not implement this.
-	app->activity->callbacks->onContentRectChanged = on_content_rect_changed;
-
 #ifdef AUDIO_HAVE_OBOE
 	Granite::Audio::set_oboe_android_api_version(app->activity->sdkVersion);
 #endif
@@ -953,8 +985,9 @@ void android_main(android_app *app)
 	GRANITE_FILESYSTEM()->register_protocol("cache", std::make_unique<OSFilesystem>(app->activity->internalDataPath));
 #endif
 
+	android_app_set_key_event_filter(app, key_event_filter);
+	android_app_set_motion_event_filter(app, motion_event_filter);
 	app->onAppCmd = engine_handle_cmd_init;
-	app->onInputEvent = engine_handle_input;
 	app->userData = nullptr;
 
 	init_sensors();
@@ -1060,7 +1093,7 @@ void android_main(android_app *app)
 
 					LOGI("Application returned %d.\n", ret);
 					GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-					App::finishFromThread();
+					GameActivity_finish(global_state.app->activity);
 
 					wait_for_complete_teardown(global_state.app);
 

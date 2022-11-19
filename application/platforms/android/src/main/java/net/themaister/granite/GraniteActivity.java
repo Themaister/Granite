@@ -22,9 +22,12 @@
 
 package net.themaister.granite;
 
+import com.google.androidgamesdk.GameActivity;
 import android.app.ActionBar;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.view.Display;
@@ -33,18 +36,9 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.graphics.Point;
 
-public class GraniteActivity extends android.app.NativeActivity
+public class GraniteActivity extends GameActivity
 {
     private final static String TAG = "Granite";
-    public void finishFromThread()
-    {
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                finish();
-            }
-        });
-    }
 
     private void setImmersiveMode()
     {

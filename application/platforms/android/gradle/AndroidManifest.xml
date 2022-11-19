@@ -9,9 +9,10 @@
 
     <application android:label="@string/app_name" android:icon="@drawable/$$ICON$$">
         <activity android:name="net.themaister.granite.GraniteActivity"
-                  android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+                  android:theme="@style/Application.Fullscreen"
                   android:launchMode="singleTask"
                   android:screenOrientation="landscape"
+                  android:exported="true"
                   android:label="@string/app_name">
             <meta-data android:name="android.app.lib_name" android:value="$$NATIVE_TARGET$$" />
             <intent-filter>

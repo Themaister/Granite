@@ -23,51 +23,71 @@
 package net.themaister.granite;
 
 import com.google.androidgamesdk.GameActivity;
-import android.app.ActionBar;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
 import android.media.AudioManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Display;
 import android.view.View;
-import android.view.Window;
 import android.view.WindowManager;
-import android.graphics.Point;
+
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 public class GraniteActivity extends GameActivity
 {
     private final static String TAG = "Granite";
 
-    private void setImmersiveMode()
+    private void hideSystemUI()
     {
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
-                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-                        View.SYSTEM_UI_FLAG_FULLSCREEN |
-                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        );
+        // This will put the game behind any cutouts and waterfalls on devices which have
+        // them, so the corresponding insets will be non-zero.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+        {
+            getWindow().getAttributes().layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
 
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            // From API 30 onwards, this is the recommended way to hide the system UI, rather than
+            // using View.setSystemUiVisibility.
+            View decorView = getWindow().getDecorView();
+            WindowInsetsControllerCompat controller = new WindowInsetsControllerCompat(getWindow(),
+                    decorView);
+            controller.hide(WindowInsetsCompat.Type.systemBars());
+            controller.hide(WindowInsetsCompat.Type.displayCutout());
+            controller.setSystemBarsBehavior(
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        }
+        else
+        {
+            getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_FULLSCREEN |
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        }
     }
 
     @Override
     protected void onCreate(Bundle savedState)
     {
-        super.onCreate(savedState);
-        setImmersiveMode();
+        // When true, the app will fit inside any system UI windows.
+        // When false, we render behind any system UI windows.
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        hideSystemUI();
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
+        super.onCreate(savedState);
     }
 
     @Override
     public void onWindowFocusChanged(boolean hasFocus)
     {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus)
-            setImmersiveMode();
+        if (hasFocus && Build.VERSION.SDK_INT < Build.VERSION_CODES.R)
+            hideSystemUI();
     }
 
     public int getDisplayRotation()

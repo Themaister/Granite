@@ -23,6 +23,7 @@
 #include "global_managers_init.hpp"
 #include "game-activity/GameActivity.h"
 #include "game-activity/native_app_glue/android_native_app_glue.h"
+#include "paddleboat/paddleboat.h"
 #include "logging.hpp"
 #include "application.hpp"
 #include "application_events.hpp"
@@ -31,6 +32,7 @@
 #include "string_helpers.hpp"
 #include <jni.h>
 #include <android/sensor.h>
+#include <android/window.h>
 
 #include "android.hpp"
 #include "os_filesystem.hpp"
@@ -100,6 +102,21 @@ struct JNI
 };
 static GlobalState global_state;
 static JNI jni;
+
+static void on_window_resized(android_app *app)
+{
+	if (app->window)
+	{
+		auto new_width = ANativeWindow_getWidth(app->window);
+		auto new_height = ANativeWindow_getHeight(app->window);
+		if (new_width != global_state.base_width || new_height != global_state.base_height)
+		{
+			global_state.base_width = new_width;
+			global_state.base_height = new_height;
+			global_state.content_rect_changed = true;
+		}
+	}
+}
 
 static void on_content_rect_changed(GameActivity *, const ARect *rect)
 {
@@ -179,9 +196,6 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		has_window = global_state.has_window;
 		active = global_state.active;
 
-		for (auto &id : gamepad_ids)
-			id = -1;
-
 		return true;
 	}
 
@@ -204,6 +218,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	void poll_input() override;
 
 	void request_teardown();
+	void gamepad_update();
 
 	std::vector<const char *> get_instance_extensions() override
 	{
@@ -225,65 +240,12 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		return float(global_state.base_width) / global_state.base_height;
 	}
 
-	struct GamepadInfo
-	{
-		std::string name;
-		int vid = 0;
-		int pid = 0;
-		void init_remap_table(JoypadRemapper &remapper);
-	};
-
-	void query_gamepad_info(unsigned index, int32_t id)
-	{
-		auto &info = gamepad_info[index];
-
-		jobject device = jni.env->CallStaticObjectMethod(jni.inputDeviceClass, jni.getDevice, id);
-		if (device)
-		{
-			jstring name = static_cast<jstring>(jni.env->CallObjectMethod(device, jni.getDeviceName));
-			if (name)
-			{
-				const char *str = jni.env->GetStringUTFChars(name, nullptr);
-				if (str)
-				{
-					info.name = str;
-					jni.env->ReleaseStringUTFChars(name, str);
-				}
-			}
-			info.vid = jni.env->CallIntMethod(device, jni.getVendorId);
-			info.pid = jni.env->CallIntMethod(device, jni.getProductId);
-		}
-
-		LOGI("Found gamepad: %s (VID: 0x%x, PID: 0x%x)\n",
-		     info.name.c_str(), info.vid, info.pid);
-
-		info.init_remap_table(get_input_tracker().get_joypad_remapper(index));
-	}
-
-	unsigned register_gamepad_id(int32_t id)
-	{
-		for (unsigned i = 0; i < InputTracker::Joypads; i++)
-		{
-			if (gamepad_ids[i] == -1)
-			{
-				get_input_tracker().enable_joypad(i);
-				gamepad_ids[i] = id;
-				query_gamepad_info(i, id);
-				return i;
-			}
-			else if (gamepad_ids[i] == id)
-				return i;
-		}
-
-		// Fallback to gamepad 0.
-		return 0;
-	}
-
 	VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice) override;
 
 	unsigned width, height;
 	Application *app = nullptr;
 	Vulkan::WSI *app_wsi = nullptr;
+	uint64_t active_axes = 0;
 	bool active = false;
 	bool has_window = true;
 	bool wsi_idle = false;
@@ -292,47 +254,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	bool pending_native_window_init = false;
 	bool pending_native_window_term = false;
 	bool pending_config_change = false;
-	int32_t gamepad_ids[InputTracker::Joypads];
-	GamepadInfo gamepad_info[InputTracker::Joypads];
 };
-
-void WSIPlatformAndroid::GamepadInfo::init_remap_table(JoypadRemapper &remapper)
-{
-	remapper.reset();
-
-	// TODO: Make this data-driven.
-	if (vid == 0x54c && pid == 0x9cc)
-	{
-		name = "PlayStation 4 Controller - Wireless";
-		LOGI("Autodetected joypad: %s\n", name.c_str());
-
-		remapper.register_button(AKEYCODE_BUTTON_A, JoypadKey::West, JoypadAxis::Unknown);
-		remapper.register_button(AKEYCODE_BUTTON_B, JoypadKey::South, JoypadAxis::Unknown);
-		remapper.register_button(AKEYCODE_BUTTON_C, JoypadKey::East, JoypadAxis::Unknown);
-		remapper.register_button(AKEYCODE_BUTTON_X, JoypadKey::North, JoypadAxis::Unknown);
-		remapper.register_button(AKEYCODE_BUTTON_Y, JoypadKey::LeftShoulder, JoypadAxis::Unknown);
-		remapper.register_button(AKEYCODE_BUTTON_START, JoypadKey::RightThumb, JoypadAxis::Unknown);
-		remapper.register_button(AKEYCODE_BUTTON_Z, JoypadKey::RightShoulder, JoypadAxis::Unknown);
-		remapper.register_button(AKEYCODE_BUTTON_SELECT, JoypadKey::LeftThumb, JoypadAxis::Unknown);
-		remapper.register_button(AKEYCODE_BUTTON_R2, JoypadKey::Start, JoypadAxis::Unknown);
-		remapper.register_button(AKEYCODE_BUTTON_L2, JoypadKey::Select, JoypadAxis::Unknown);
-		remapper.register_button(AKEYCODE_BUTTON_L1, JoypadKey::Unknown, JoypadAxis::LeftTrigger);
-		remapper.register_button(AKEYCODE_BUTTON_R1, JoypadKey::Unknown, JoypadAxis::RightTrigger);
-
-		remapper.register_axis(AMOTION_EVENT_AXIS_X, JoypadAxis::LeftX, 1.0f, JoypadKey::Unknown,
-		                       JoypadKey::Unknown);
-		remapper.register_axis(AMOTION_EVENT_AXIS_Y, JoypadAxis::LeftY, 1.0f, JoypadKey::Unknown,
-		                       JoypadKey::Unknown);
-		remapper.register_axis(AMOTION_EVENT_AXIS_Z, JoypadAxis::RightX, 1.0f, JoypadKey::Unknown,
-		                       JoypadKey::Unknown);
-		remapper.register_axis(AMOTION_EVENT_AXIS_RZ, JoypadAxis::RightY, 1.0f, JoypadKey::Unknown,
-		                       JoypadKey::Unknown);
-		remapper.register_axis(AMOTION_EVENT_AXIS_HAT_X, JoypadAxis::Unknown, 1.0f, JoypadKey::Left,
-		                       JoypadKey::Right);
-		remapper.register_axis(AMOTION_EVENT_AXIS_HAT_Y, JoypadAxis::Unknown, 1.0f, JoypadKey::Up,
-		                       JoypadKey::Down);
-	}
-}
 
 static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANativeWindow *window)
 {
@@ -429,26 +351,17 @@ static void engine_handle_input(WSIPlatformAndroid &state)
 
 		auto action = event.action;
 		auto code = event.keyCode;
-		auto device_id = event.deviceId;
 
-		bool pressed = action == AKEY_EVENT_ACTION_DOWN;
-		bool released = action == AKEY_EVENT_ACTION_UP;
+		if (Paddleboat_isInitialized())
+			if (Paddleboat_processGameActivityKeyInputEvent(&event, sizeof(event)))
+				continue;
 
 		if (event.source & AINPUT_SOURCE_KEYBOARD)
 		{
-			if (pressed && code == AKEYCODE_BACK)
+			if (action == AKEY_EVENT_ACTION_DOWN && code == AKEYCODE_BACK)
 			{
 				LOGI("Requesting teardown.\n");
 				state.requesting_teardown = true;
-			}
-		}
-		else if (event.source & AINPUT_SOURCE_GAMEPAD)
-		{
-			if (pressed || released)
-			{
-				unsigned joypad_index = state.register_gamepad_id(device_id);
-				auto &tracker = state.get_input_tracker();
-				tracker.joypad_key_state_raw(joypad_index, code, pressed);
 			}
 		}
 	}
@@ -459,36 +372,16 @@ static void engine_handle_input(WSIPlatformAndroid &state)
 	for (uint32_t i = 0; i < input_buffer->motionEventsCount; i++)
 	{
 		auto &event = input_buffer->motionEvents[i];
+
+		if (Paddleboat_isInitialized())
+			if (Paddleboat_processGameActivityMotionInputEvent(&event, sizeof(event)))
+				continue;
+
 		auto action = event.action & AMOTION_EVENT_ACTION_MASK;
 		auto index = (event.action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
 		auto source = event.source;
-		auto device_id = event.deviceId;
 
-		if (source & AINPUT_SOURCE_JOYSTICK)
-		{
-			if (action == AMOTION_EVENT_ACTION_MOVE)
-			{
-				unsigned joypad_index = state.register_gamepad_id(device_id);
-				auto &tracker = state.get_input_tracker();
-
-				static const int axes[] = {
-					AMOTION_EVENT_AXIS_X,
-					AMOTION_EVENT_AXIS_Y,
-					AMOTION_EVENT_AXIS_Z,
-					AMOTION_EVENT_AXIS_RZ,
-					AMOTION_EVENT_AXIS_HAT_X,
-					AMOTION_EVENT_AXIS_HAT_Y,
-					AMOTION_EVENT_AXIS_LTRIGGER,
-					AMOTION_EVENT_AXIS_RTRIGGER,
-					AMOTION_EVENT_AXIS_GAS,
-					AMOTION_EVENT_AXIS_BRAKE,
-				};
-
-				for (int ax : axes)
-					tracker.joyaxis_state_raw(joypad_index, ax, event.pointers[index].axisValues[ax]);
-			}
-		}
-		else if (source & AINPUT_SOURCE_TOUCHSCREEN)
+		if (source & AINPUT_SOURCE_TOUCHSCREEN)
 		{
 			switch (action)
 			{
@@ -574,6 +467,8 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 		LOGI("Lifecycle start\n");
 		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		if (jni.env && Paddleboat_isInitialized())
+			Paddleboat_onStart(jni.env);
 		break;
 	}
 
@@ -582,6 +477,8 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 		LOGI("Lifecycle stop\n");
 		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		if (jni.env && Paddleboat_isInitialized())
+			Paddleboat_onStop(jni.env);
 		break;
 	}
 
@@ -597,6 +494,12 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 		}
 
 		global_state.display_rotation = jni.env->CallIntMethod(app->activity->javaGameActivity, jni.getDisplayRotation);
+		break;
+	}
+
+	case APP_CMD_WINDOW_RESIZED:
+	{
+		on_window_resized(app);
 		break;
 	}
 
@@ -655,6 +558,8 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 		LOGI("Lifecycle start\n");
 		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		if (jni.env && Paddleboat_isInitialized())
+			Paddleboat_onStart(jni.env);
 		break;
 	}
 
@@ -663,6 +568,8 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 		LOGI("Lifecycle stop\n");
 		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		if (jni.env && Paddleboat_isInitialized())
+			Paddleboat_onStop(jni.env);
 		break;
 	}
 
@@ -703,6 +610,12 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 		}
 		break;
 
+	case APP_CMD_WINDOW_RESIZED:
+	{
+		on_window_resized(app);
+		break;
+	}
+
 	case APP_CMD_CONTENT_RECT_CHANGED:
 	{
 		on_content_rect_changed(app->activity, &app->contentRect);
@@ -736,12 +649,104 @@ void WSIPlatformAndroid::request_teardown()
 	requesting_teardown = true;
 }
 
+void WSIPlatformAndroid::gamepad_update()
+{
+	if (jni.env && Paddleboat_isInitialized())
+		Paddleboat_update(jni.env);
+
+	// Need to explicitly enables axes we care about.
+	const uint64_t new_active_axes = Paddleboat_getActiveAxisMask();
+	uint64_t new_axes = new_active_axes ^ active_axes;
+
+	if (new_axes != 0)
+	{
+		active_axes = new_active_axes;
+		int32_t axis_index = 0;
+
+		while (new_axes != 0)
+		{
+			if ((new_axes & 1) != 0)
+			{
+				LOGI("Enable Axis: %d", axis_index);
+				GameActivityPointerAxes_enableAxis(axis_index);
+			}
+			axis_index++;
+			new_axes >>= 1;
+		}
+	}
+
+	auto &tracker = get_input_tracker();
+	for (int i = 0; i < PADDLEBOAT_MAX_CONTROLLERS; i++)
+	{
+		if (Paddleboat_getControllerStatus(i) != PADDLEBOAT_CONTROLLER_ACTIVE)
+			continue;
+
+		Paddleboat_Controller_Info info = {};
+		Paddleboat_getControllerInfo(i, &info);
+		bool known_layout = false;
+
+		switch (info.controllerFlags & PADDLEBOAT_CONTROLLER_LAYOUT_MASK)
+		{
+		case PADDLEBOAT_CONTROLLER_LAYOUT_SHAPES:
+		case PADDLEBOAT_CONTROLLER_LAYOUT_STANDARD:
+			known_layout = true;
+			break;
+
+		default:
+			break;
+		}
+
+		if (!known_layout)
+			continue;
+
+		Paddleboat_Controller_Data data = {};
+		Paddleboat_getControllerData(i, &data);
+
+		struct Mapping
+		{
+			JoypadKey key;
+			uint32_t mask;
+		};
+		static const Mapping map[] = {
+			{ JoypadKey::Left, PADDLEBOAT_BUTTON_DPAD_LEFT },
+			{ JoypadKey::Right, PADDLEBOAT_BUTTON_DPAD_RIGHT },
+			{ JoypadKey::Up, PADDLEBOAT_BUTTON_DPAD_UP },
+			{ JoypadKey::Down, PADDLEBOAT_BUTTON_DPAD_DOWN },
+			{ JoypadKey::West, PADDLEBOAT_BUTTON_X },
+			{ JoypadKey::East, PADDLEBOAT_BUTTON_B },
+			{ JoypadKey::North, PADDLEBOAT_BUTTON_Y },
+			{ JoypadKey::South, PADDLEBOAT_BUTTON_A },
+			{ JoypadKey::Start, PADDLEBOAT_BUTTON_START },
+			{ JoypadKey::Select, PADDLEBOAT_BUTTON_SELECT },
+			{ JoypadKey::LeftShoulder, PADDLEBOAT_BUTTON_L1 },
+			{ JoypadKey::RightShoulder, PADDLEBOAT_BUTTON_R1 },
+			{ JoypadKey::LeftThumb, PADDLEBOAT_BUTTON_L3 },
+			{ JoypadKey::RightThumb, PADDLEBOAT_BUTTON_R3 },
+		};
+
+		for (auto &m : map)
+		{
+			tracker.joypad_key_state(i, m.key,
+									 (data.buttonsDown & m.mask) != 0 ?
+									 JoypadKeyState::Pressed : JoypadKeyState::Released);
+		}
+
+		tracker.joyaxis_state(i, JoypadAxis::LeftX, data.leftStick.stickX);
+		tracker.joyaxis_state(i, JoypadAxis::LeftY, data.leftStick.stickY);
+		tracker.joyaxis_state(i, JoypadAxis::RightX, data.rightStick.stickX);
+		tracker.joyaxis_state(i, JoypadAxis::RightY, data.rightStick.stickY);
+		tracker.joyaxis_state(i, JoypadAxis::LeftTrigger, data.triggerL2);
+		tracker.joyaxis_state(i, JoypadAxis::RightTrigger, data.triggerR2);
+	}
+}
+
 void WSIPlatformAndroid::poll_input()
 {
 	int events;
 	int ident;
 	android_poll_source *source;
 	app_wsi = nullptr;
+
 	while ((ident = ALooper_pollAll(0, nullptr, &events, reinterpret_cast<void **>(&source))) >= 0)
 	{
 		if (source)
@@ -753,6 +758,8 @@ void WSIPlatformAndroid::poll_input()
 		if (global_state.app->destroyRequested)
 			return;
 	}
+
+	gamepad_update();
 	engine_handle_input(*this);
 	get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 }
@@ -827,6 +834,9 @@ bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)
 
 static void deinit_jni()
 {
+	if (jni.env && Paddleboat_isInitialized())
+		Paddleboat_destroy(jni.env);
+
 	if (jni.env && global_state.app)
 	{
 		global_state.app->activity->vm->DetachCurrentThread();
@@ -834,10 +844,41 @@ static void deinit_jni()
 	}
 }
 
+void paddleboat_controller_status_cb(
+	const int32_t controllerIndex,
+	const Paddleboat_ControllerStatus controllerStatus, void *)
+{
+	if (controllerStatus == PADDLEBOAT_CONTROLLER_JUST_CONNECTED)
+	{
+		char name[1024];
+		*name = '\0';
+		Paddleboat_getControllerName(controllerIndex, sizeof(name), name);
+		LOGI("Controller #%u (%s) connected.\n", controllerIndex, name);
+		auto *platform = static_cast<WSIPlatformAndroid *>(global_state.app->userData);
+		if (platform)
+			platform->get_input_tracker().enable_joypad(controllerIndex);
+
+	}
+	else if (controllerStatus == PADDLEBOAT_CONTROLLER_JUST_DISCONNECTED)
+	{
+		LOGI("Controller #%u disconnected.\n", controllerIndex);
+		auto *platform = static_cast<WSIPlatformAndroid *>(global_state.app->userData);
+		if (platform)
+			platform->get_input_tracker().disable_joypad(controllerIndex);
+	}
+}
+
 static void init_jni()
 {
 	auto *app = global_state.app;
 	app->activity->vm->AttachCurrentThread(&jni.env, nullptr);
+
+	if (Paddleboat_init(jni.env, app->activity->javaGameActivity) != PADDLEBOAT_NO_ERROR)
+		LOGE("Failed to initialize Paddleboat.\n");
+	else if (!Paddleboat_isInitialized())
+		LOGE("Paddleboat is not initialized.\n");
+	else
+		Paddleboat_setControllerStatusCallback(paddleboat_controller_status_cb, nullptr);
 
 	jclass clazz = jni.env->GetObjectClass(app->activity->javaGameActivity);
 	jmethodID getApplication = jni.env->GetMethodID(clazz, "getApplication", "()Landroid/app/Application;");
@@ -884,6 +925,12 @@ static void init_jni()
 	Granite::Audio::set_oboe_low_latency_parameters(sample_rate, block_frames);
 #endif
 #endif
+
+	GameActivity_setWindowFlags(app->activity,
+	                            AWINDOW_FLAG_KEEP_SCREEN_ON | AWINDOW_FLAG_TURN_SCREEN_ON |
+	                            AWINDOW_FLAG_FULLSCREEN |
+	                            AWINDOW_FLAG_SHOW_WHEN_LOCKED,
+	                            0);
 }
 
 static void init_sensors()

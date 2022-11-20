@@ -180,6 +180,20 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	{
 		width = width_;
 		height = height_;
+		VK_ASSERT(global_state.base_width && global_state.base_height);
+
+		if (width == 0 && height != 0)
+		{
+			width = unsigned(std::round(float(height) * get_aspect_ratio()));
+			LOGI("Adjusting width to %u pixels based on aspect ratio.\n", width);
+		}
+
+		if (width != 0 && height == 0)
+		{
+			height = unsigned(std::round(float(width) / get_aspect_ratio()));
+			LOGI("Adjusting height to %u pixels based on aspect ratio.\n", height);
+		}
+
 		if (!Vulkan::Context::init_loader(nullptr))
 		{
 			LOGE("Failed to init Vulkan loader.\n");
@@ -236,7 +250,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 
 	VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice) override;
 
-	unsigned width, height;
+	unsigned width = 0, height = 0;
 	Application *app = nullptr;
 	Vulkan::WSI *app_wsi = nullptr;
 	uint64_t active_axes = 0;

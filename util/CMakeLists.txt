@@ -29,6 +29,7 @@ add_granite_internal_lib(granite-util
         unordered_array.hpp
         message_queue.hpp message_queue.cpp
         small_callable.hpp radix_sorter.hpp
+        dynamic_array.hpp
         no_init_pod.hpp)
 target_include_directories(granite-util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(granite-util PUBLIC granite-application-global-interface)

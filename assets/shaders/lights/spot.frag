@@ -59,9 +59,9 @@ void main()
 
     FragColor = compute_spot_light(
 #ifdef INSTANCING
-        vIndex,
+        vIndex, spot.data[vIndex],
 #else
-        0,
+        0, spot.data[0],
 #endif
         base_color_ambient.rgb, N, mr.x, mr.y, pos, registers.camera_pos);
 }

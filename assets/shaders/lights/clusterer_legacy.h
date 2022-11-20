@@ -2,6 +2,7 @@
 #define CLUSTERER_LEGACY_H_
 
 #include "../inc/global_bindings.h"
+#include "../inc/helper_invocation.h"
 
 #define SPOT_LIGHT_SHADOW_ATLAS_SET 0
 #define SPOT_LIGHT_SHADOW_ATLAS_BINDING BINDING_GLOBAL_CLUSTER_SPOT_LEGACY

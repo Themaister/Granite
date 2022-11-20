@@ -138,11 +138,6 @@ FrameWorker::~FrameWorker()
 struct WSIPlatformHeadless : Granite::GraniteWSIPlatform
 {
 public:
-	float get_estimated_frame_presentation_duration() override
-	{
-		return 0.0f;
-	}
-
 	~WSIPlatformHeadless() override
 	{
 		release_resources();

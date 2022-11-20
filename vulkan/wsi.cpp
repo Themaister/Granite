@@ -103,38 +103,6 @@ double WSI::get_smooth_frame_time() const
 	return smooth_frame_time;
 }
 
-float WSIPlatform::get_estimated_frame_presentation_duration()
-{
-	// Just assume 60 FPS for now.
-	// TODO: Be more intelligent.
-	return 1.0f / 60.0f;
-}
-
-float WSI::get_estimated_video_latency()
-{
-	if (using_display_timing)
-	{
-		// Very accurate estimate.
-		double latency = timing.get_current_latency();
-		return float(latency);
-	}
-	else
-	{
-		// Very rough estimate.
-		unsigned latency_frames = device->get_num_swapchain_images();
-		if (latency_frames > 0)
-			latency_frames--;
-
-		if (platform)
-		{
-			float frame_duration = platform->get_estimated_frame_presentation_duration();
-			return frame_duration * float(latency_frames);
-		}
-		else
-			return -1.0f;
-	}
-}
-
 bool WSI::init_from_existing_context(ContextHandle existing_context)
 {
 	VK_ASSERT(platform);
@@ -438,21 +406,13 @@ bool WSI::begin_frame()
 	{
 		auto acquire = device->request_legacy_semaphore();
 
-		// For adaptive low latency we don't want to observe the time it takes to wait for
-		// WSI semaphore as part of our latency,
-		// which means we will never get sub-frame latency on some implementations,
-		// so block on that first.
-		Fence fence;
-		if (timing.get_options().latency_limiter == LatencyLimiter::AdaptiveLowLatency)
-			fence = device->request_legacy_fence();
-
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto acquire_start = Util::get_current_time_nsecs();
 #endif
 
 		auto acquire_ts = device->write_calibrated_timestamp();
 		result = table->vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX, acquire->get_semaphore(),
-		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
+		                                      VK_NULL_HANDLE, &swapchain_index);
 		device->register_time_interval("WSI", std::move(acquire_ts), device->write_calibrated_timestamp(), "acquire");
 
 #if defined(ANDROID)
@@ -461,9 +421,6 @@ bool WSI::begin_frame()
 		if (result == VK_SUBOPTIMAL_KHR && !support_prerotate)
 			result = VK_SUCCESS;
 #endif
-
-		if ((result >= 0) && fence)
-			fence->wait();
 
 		if (result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
 		{
@@ -492,9 +449,6 @@ bool WSI::begin_frame()
 
 			auto frame_time = platform->get_frame_timer().frame();
 			auto elapsed_time = platform->get_frame_timer().get_elapsed();
-
-			if (using_display_timing)
-				timing.begin_frame(frame_time, elapsed_time);
 
 			smooth_frame_time = frame_time;
 			smooth_elapsed_time = elapsed_time;
@@ -561,17 +515,6 @@ bool WSI::end_frame()
 		info.pSwapchains = &swapchain;
 		info.pImageIndices = &swapchain_index;
 		info.pResults = &result;
-
-		VkPresentTimeGOOGLE present_time;
-		VkPresentTimesInfoGOOGLE present_timing = { VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE };
-
-		if (using_display_timing && timing.fill_present_info_timing(present_time))
-		{
-			present_timing.swapchainCount = 1;
-			present_timing.pTimes = &present_time;
-			present_timing.pNext = info.pNext;
-			info.pNext = &present_timing;
-		}
 
 		VkPresentIdKHR present_id_info = { VK_STRUCTURE_TYPE_PRESENT_ID_KHR };
 		if (device->get_device_features().present_id_features.presentId)
@@ -732,8 +675,6 @@ void WSI::teardown()
 	external_swapchain_images.clear();
 	device.reset();
 	context.reset();
-
-	using_display_timing = false;
 }
 
 bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
@@ -1218,20 +1159,6 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	}
 #endif
 
-#if 0
-	if (use_vsync && context->get_enabled_device_features().supports_google_display_timing)
-	{
-		WSITimingOptions timing_options;
-		timing_options.swap_interval = 1;
-		//timing_options.adaptive_swap_interval = true;
-		//timing_options.latency_limiter = LatencyLimiter::IdealPipeline;
-		timing.init(platform, device.get(), swapchain, timing_options);
-		using_display_timing = true;
-	}
-	else
-#endif
-	using_display_timing = false;
-
 	if (res != VK_SUCCESS)
 	{
 		LOGE("Failed to create swapchain (code: %d)\n", int(res));
@@ -1265,17 +1192,6 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		table->vkSetHdrMetadataEXT(device->get_device(), 1, &swapchain, &hdr_metadata);
 
 	return SwapchainError::None;
-}
-
-double WSI::get_estimated_refresh_interval() const
-{
-	uint64_t interval = timing.get_refresh_interval();
-	if (interval)
-		return interval * 1e-9;
-	else if (platform)
-		return platform->get_estimated_frame_presentation_duration();
-	else
-		return 0.0;
 }
 
 void WSI::set_support_prerotate(bool enable)

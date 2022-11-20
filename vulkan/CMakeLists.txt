@@ -3,7 +3,6 @@ add_granite_internal_lib(granite-vulkan
         vulkan_headers.hpp vulkan_prerotate.hpp
         device.cpp device.hpp
         wsi.cpp wsi.hpp
-        wsi_timing.cpp wsi_timing.hpp
         buffer_pool.cpp buffer_pool.hpp
         image.cpp image.hpp
         cookie.cpp cookie.hpp

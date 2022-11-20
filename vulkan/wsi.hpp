@@ -26,7 +26,6 @@
 #include "semaphore_manager.hpp"
 #include "vulkan_headers.hpp"
 #include "timer.hpp"
-#include "wsi_timing.hpp"
 #include <vector>
 #include <thread>
 #include <chrono>
@@ -111,8 +110,6 @@ public:
 	virtual void event_swapchain_index(Device *device, unsigned index);
 	virtual void event_display_timing_stutter(uint32_t current_serial, uint32_t observed_serial,
 	                                          unsigned dropped_frames);
-
-	virtual float get_estimated_frame_presentation_duration();
 
 	virtual void set_window_title(const std::string &title);
 
@@ -260,18 +257,10 @@ public:
 	void deinit_surface_and_swapchain();
 	void reinit_surface_and_swapchain(VkSurfaceKHR new_surface);
 
-	float get_estimated_video_latency();
 	void set_window_title(const std::string &title);
 
 	double get_smooth_frame_time() const;
 	double get_smooth_elapsed_time() const;
-
-	double get_estimated_refresh_interval() const;
-
-	WSITiming &get_timing()
-	{
-		return timing;
-	}
 
 private:
 	void update_framebuffer(unsigned width, unsigned height);
@@ -331,8 +320,6 @@ private:
 	uint64_t present_id = 0;
 	uint64_t present_last_id = 0;
 	unsigned present_frame_latency = 0;
-
-	WSITiming timing;
 
 	void tear_down_swapchain();
 	void drain_swapchain();

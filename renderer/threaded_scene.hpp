@@ -41,10 +41,10 @@ void scene_gather_transparent_renderables(const Scene &scene, TaskComposer &comp
                                           VisibilityList *lists, unsigned num_tasks);
 void scene_gather_static_shadow_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                             VisibilityList *lists, Util::Hash *transform_hashes,
-                                            unsigned num_tasks, const std::function<bool ()> &cond = {});
+                                            unsigned num_tasks);
 void scene_gather_dynamic_shadow_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                              VisibilityList *lists, Util::Hash *transform_hashes,
-                                             unsigned num_tasks, const std::function<bool ()> &cond = {});
+                                             unsigned num_tasks);
 void scene_gather_positional_light_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                                VisibilityList *lists, unsigned num_tasks);
 void scene_gather_positional_light_renderables_sorted(const Scene &scene, TaskComposer &composer, const RenderContext &context,

@@ -68,51 +68,43 @@ void scene_gather_transparent_renderables(const Scene &scene, TaskComposer &comp
 }
 
 void scene_gather_static_shadow_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
-                                            VisibilityList *lists, Util::Hash *transform_hashes, unsigned num_tasks,
-                                            const std::function<bool ()> &func)
+                                            VisibilityList *lists, Util::Hash *transform_hashes, unsigned num_tasks)
 {
 	auto &group = composer.begin_pipeline_stage();
 	group.set_desc("gather-static-shadow-renderables");
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
-		group.enqueue_task([&frustum, lists, &scene, i, num_tasks, func, transform_hashes]() {
+		group.enqueue_task([&frustum, lists, &scene, i, num_tasks, transform_hashes]() {
 			if (transform_hashes)
 				transform_hashes[i] = 0;
 
-			if (!func || func())
-			{
-				scene.gather_visible_static_shadow_renderables_subset(frustum, lists[i], i, num_tasks);
+			scene.gather_visible_static_shadow_renderables_subset(frustum, lists[i], i, num_tasks);
 
-				// This way of combining hashes is order independent and serves as a good way of hashing the overall scene.
-				if (transform_hashes)
-					for (auto &v : lists[i])
-						transform_hashes[i] ^= v.transform_hash;
-			}
+			// This way of combining hashes is order independent and serves as a good way of hashing the overall scene.
+			if (transform_hashes)
+				for (auto &v : lists[i])
+					transform_hashes[i] ^= v.transform_hash;
 		});
 	}
 }
 
 void scene_gather_dynamic_shadow_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
-                                             VisibilityList *lists, Util::Hash *transform_hashes, unsigned num_tasks,
-                                             const std::function<bool ()> &func)
+                                             VisibilityList *lists, Util::Hash *transform_hashes, unsigned num_tasks)
 {
 	auto &group = composer.begin_pipeline_stage();
 	group.set_desc("gather-dynamic-shadow-renderables");
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
-		group.enqueue_task([&frustum, lists, &scene, i, num_tasks, func, transform_hashes]() {
+		group.enqueue_task([&frustum, lists, &scene, i, num_tasks, transform_hashes]() {
 			if (transform_hashes)
 				transform_hashes[i] = 0;
 
-			if (!func || func())
-			{
-				scene.gather_visible_dynamic_shadow_renderables_subset(frustum, lists[i], i, num_tasks);
+			scene.gather_visible_dynamic_shadow_renderables_subset(frustum, lists[i], i, num_tasks);
 
-				// This way of combining hashes is order independent and serves as a good way of hashing the overall scene.
-				if (transform_hashes)
-					for (auto &v : lists[i])
-						transform_hashes[i] ^= v.transform_hash;
-			}
+			// This way of combining hashes is order independent and serves as a good way of hashing the overall scene.
+			if (transform_hashes)
+				for (auto &v : lists[i])
+					transform_hashes[i] ^= v.transform_hash;
 		});
 	}
 }

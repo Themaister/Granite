@@ -29,13 +29,13 @@
 #include <queue>
 #include <future>
 #include <memory>
-#include <functional>
 #include "object_pool.hpp"
 #include "variant.hpp"
 #include "intrusive.hpp"
 #include "timeline_trace_file.hpp"
 #include "global_managers.hpp"
 #include "small_vector.hpp"
+#include "small_callable.hpp"
 
 namespace Granite
 {
@@ -100,16 +100,19 @@ using TaskDepsHandle = Util::IntrusivePtr<TaskDeps>;
 
 struct Task
 {
-	Task(TaskDepsHandle deps_, std::function<void ()> func_)
-		: deps(std::move(deps_)), func(std::move(func_))
+	template <typename Func>
+	Task(TaskDepsHandle deps_, Func&& func)
+		: callable(std::forward<Func>(func)), deps(std::move(deps_))
 	{
 	}
 
 	Task() = default;
 
+	Util::SmallCallable<void (), 64 - sizeof(TaskDepsHandle), alignof(TaskDepsHandle)> callable;
 	TaskDepsHandle deps;
-	std::function<void ()> func;
 };
+
+static_assert(sizeof(Task) == 64, "sizeof(Task) is unexpected.");
 }
 
 struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, Internal::TaskGroupDeleter, Util::MultiThreadCounter>
@@ -119,12 +122,12 @@ struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, Internal::TaskGroupDelet
 	void flush();
 	void wait();
 
-	void add_flush_dependency();
-	void release_flush_dependency();
-
 	ThreadGroup *group;
 	Internal::TaskDepsHandle deps;
-	void enqueue_task(std::function<void ()> func);
+
+	template <typename Func>
+	void enqueue_task(Func&& func);
+
 	void set_fence_counter_signal(TaskSignal *signal);
 	ThreadGroup *get_thread_group() const;
 
@@ -153,8 +156,10 @@ public:
 
 	void stop();
 
-	void enqueue_task(TaskGroup &group, std::function<void ()> func);
-	TaskGroupHandle create_task(std::function<void ()> func);
+	template <typename Func>
+	void enqueue_task(TaskGroup &group, Func&& func);
+	template <typename Func>
+	TaskGroupHandle create_task(Func&& func);
 	TaskGroupHandle create_task();
 
 	void move_to_ready_tasks(const Util::SmallVector<Internal::Task *> &list);
@@ -197,4 +202,29 @@ private:
 	std::unique_ptr<Util::TimelineTraceFile> timeline_trace_file;
 	void set_thread_context() override;
 };
+
+template <typename Func>
+TaskGroupHandle ThreadGroup::create_task(Func&& func)
+{
+	TaskGroupHandle group(task_group_pool.allocate(this));
+	group->deps = Internal::TaskDepsHandle(task_deps_pool.allocate(this));
+	group->deps->pending_tasks.push_back(task_pool.allocate(group->deps, std::forward<Func>(func)));
+	group->deps->count.store(1, std::memory_order_relaxed);
+	return group;
+}
+
+template <typename Func>
+void ThreadGroup::enqueue_task(TaskGroup &group, Func&& func)
+{
+	if (group.flushed)
+		throw std::logic_error("Cannot enqueue work to a flushed task group.");
+	group.deps->pending_tasks.push_back(task_pool.allocate(group.deps, std::forward<Func>(func)));
+	group.deps->count.fetch_add(1, std::memory_order_relaxed);
+}
+
+template <typename Func>
+void TaskGroup::enqueue_task(Func&& func)
+{
+	group->enqueue_task(*this, std::forward<Func>(func));
+}
 }

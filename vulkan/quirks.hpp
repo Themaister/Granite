@@ -30,8 +30,6 @@ struct ImplementationQuirks
 	bool merge_subpasses = true;
 	bool use_transient_color = true;
 	bool use_transient_depth_stencil = true;
-	bool clustering_list_iteration = false;
-	bool clustering_force_cpu = false;
 	bool queue_wait_on_submission = false;
 	bool staging_need_device_local = false;
 	bool use_async_compute_post = true;

@@ -533,13 +533,13 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 	list_info.domain = Vulkan::BufferDomain::Device;
 	light.light.set_buffers(device.create_buffer(atomics_info), device.create_buffer(list_info));
 
-	RenderPassSceneRenderer::Setup setup = {};
-	setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT |
-	              SCENE_RENDERER_SKIP_UNBOUNDED_BIT |
-	              SCENE_RENDERER_SKIP_OPAQUE_FLOATING_BIT;
-	setup.deferred_lights = nullptr;
-	setup.suite = suite;
-	setup.scene = scene;
+	auto setup = std::make_shared<RenderPassSceneRenderer::Setup>();
+	setup->flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT |
+	               SCENE_RENDERER_SKIP_UNBOUNDED_BIT |
+	               SCENE_RENDERER_SKIP_OPAQUE_FLOATING_BIT;
+	setup->deferred_lights = nullptr;
+	setup->suite = suite;
+	setup->scene = scene;
 
 	TaskComposer probe_composer(*incoming.get_thread_group());
 	probe_composer.set_incoming_task(composer.get_pipeline_stage_dependency());
@@ -558,7 +558,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 	{
 		render_stage.enqueue_task([this, z, &light, setup, &device]() {
 			ContextRenderers renderers;
-			setup_cube_renderer(renderers, device, setup, light.light.get_resolution().x);
+			setup_cube_renderer(renderers, device, *setup, light.light.get_resolution().x);
 			render_probe_gbuffer_slice(light, device, renderers, z);
 		});
 	}

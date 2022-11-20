@@ -60,8 +60,8 @@ struct AsyncSpecConstantApplication : Granite::Application, Granite::EventHandle
 			if (pending_pipelines.count(compile.hash) == 0)
 			{
 				LOGI("Enqueueing pipeline compile for spec constant %u.\n", value);
-				GRANITE_THREAD_GROUP()->create_task([&device, compile]() {
-					CommandBuffer::build_graphics_pipeline(&device, compile, CommandBuffer::CompileMode::AsyncThread);
+				GRANITE_THREAD_GROUP()->create_task([&device, c = std::make_unique<DeferredPipelineCompile>(compile)]() {
+					CommandBuffer::build_graphics_pipeline(&device, *c, CommandBuffer::CompileMode::AsyncThread);
 				});
 				pending_pipelines.insert(compile.hash);
 			}

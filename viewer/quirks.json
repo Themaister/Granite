@@ -3,8 +3,6 @@
 	"mergeSubpasses" : true,
 	"useTransientColor": true,
 	"useTransientDepthStencil": true,
-	"clusteringListIteration": false,
-	"clusteringForceCPU": false,
 	"queueWaitOnSubmission": false,
 	"stagingNeedDeviceLocal" : false,
 	"useAsyncComputePost": true,

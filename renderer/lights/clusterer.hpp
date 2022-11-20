@@ -158,8 +158,6 @@ private:
 	unsigned max_spot_lights = MaxLights;
 	unsigned max_point_lights = MaxLights;
 	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled);
-	void build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view);
-	void build_cluster_bindless_cpu(Vulkan::CommandBuffer &cmd);
 	void build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
@@ -194,8 +192,6 @@ private:
 		Vulkan::ShaderProgramVariant *cull_variant = nullptr;
 
 		mat4 cluster_transform;
-		std::vector<uint32_t> cluster_list_buffer;
-		std::mutex cluster_list_lock;
 
 		Vulkan::ShaderProgram *program = nullptr;
 		Vulkan::ImageView *target = nullptr;
@@ -214,32 +210,6 @@ private:
 	bool enable_volumetric_fog = false;
 	bool enable_volumetric_decals = false;
 	ShadowType shadow_type = ShadowType::PCF;
-
-	struct CPUGlobalAccelState
-	{
-		mat4 inverse_cluster_transform;
-		vec3 spot_position[MaxLights];
-		vec3 spot_direction[MaxLights];
-		float spot_size[MaxLights];
-		float spot_angle_sin[MaxLights];
-		float spot_angle_cos[MaxLights];
-		vec3 point_position[MaxLights];
-		float point_size[MaxLights];
-
-		vec3 inv_res;
-		float radius;
-	};
-
-	struct CPULocalAccelState
-	{
-		float cube_radius;
-		float world_scale_factor;
-		float z_bias;
-	};
-	uvec2 cluster_lights_cpu(int x, int y, int z,
-	                         const CPUGlobalAccelState &state,
-	                         const CPULocalAccelState &local,
-	                         float scale, uvec2 pre_mask);
 
 	void render_shadow_legacy(Vulkan::CommandBuffer &cmd,
 	                          const RenderContext &context,
@@ -304,14 +274,10 @@ private:
 
 	void update_bindless_descriptors(Vulkan::Device &device);
 	void update_bindless_data(Vulkan::CommandBuffer &cmd);
-	void update_bindless_range_buffer_cpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_range_buffer_decal_gpu(Vulkan::CommandBuffer &cmd);
-	void update_bindless_mask_buffer_cpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_decal_gpu(Vulkan::CommandBuffer &cmd);
-	void update_bindless_mask_buffer_spot(uint32_t *masks, unsigned index);
-	void update_bindless_mask_buffer_point(uint32_t *masks, unsigned index);
 	void begin_bindless_barriers(Vulkan::CommandBuffer &cmd);
 	void end_bindless_barriers(Vulkan::CommandBuffer &cmd);
 

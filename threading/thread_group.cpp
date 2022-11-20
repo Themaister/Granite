@@ -23,6 +23,7 @@
 #include "thread_group.hpp"
 #include <assert.h>
 #include <stdexcept>
+#include <type_traits>
 #include "logging.hpp"
 #include "thread_id.hpp"
 #include "string_helpers.hpp"
@@ -86,16 +87,6 @@ void TaskGroup::flush()
 		throw std::logic_error("Cannot flush more than once.");
 
 	flushed = true;
-	deps->dependency_satisfied();
-}
-
-void TaskGroup::add_flush_dependency()
-{
-	deps->dependency_count.fetch_add(1, std::memory_order_relaxed);
-}
-
-void TaskGroup::release_flush_dependency()
-{
 	deps->dependency_satisfied();
 }
 
@@ -253,17 +244,6 @@ void TaskSignal::wait_until_at_least(uint64_t count)
 	});
 }
 
-TaskGroupHandle ThreadGroup::create_task(std::function<void()> func)
-{
-	TaskGroupHandle group(task_group_pool.allocate(this));
-
-	group->deps = Internal::TaskDepsHandle(task_deps_pool.allocate(this));
-
-	group->deps->pending_tasks.push_back(task_pool.allocate(group->deps, std::move(func)));
-	group->deps->count.store(1, std::memory_order_relaxed);
-	return group;
-}
-
 TaskGroupHandle ThreadGroup::create_task()
 {
 	TaskGroupHandle group(task_group_pool.allocate(this));
@@ -282,23 +262,9 @@ ThreadGroup *TaskGroup::get_thread_group() const
 	return group;
 }
 
-void TaskGroup::enqueue_task(std::function<void()> func)
-{
-	group->enqueue_task(*this, std::move(func));
-}
-
 void TaskGroup::set_desc(const char *desc)
 {
 	snprintf(deps->desc, sizeof(deps->desc), "%s", desc);
-}
-
-void ThreadGroup::enqueue_task(TaskGroup &group, std::function<void()> func)
-{
-	if (group.flushed)
-		throw std::logic_error("Cannot enqueue work to a flushed task group.");
-
-	group.deps->pending_tasks.push_back(task_pool.allocate(group.deps, std::move(func)));
-	group.deps->count.fetch_add(1, std::memory_order_relaxed);
 }
 
 void ThreadGroup::wait_idle()
@@ -335,12 +301,12 @@ void ThreadGroup::thread_looper(unsigned index)
 			ready_tasks.pop();
 		}
 
-		if (task->func)
+		if (task->callable)
 		{
 			Util::TimelineTraceFile::Event *e = nullptr;
 			if (*task->deps->desc != '\0' && timeline_trace_file)
 				e = timeline_trace_file->begin_event(task->deps->desc);
-			task->func();
+			task->callable.call();
 			if (e)
 				timeline_trace_file->end_event(e);
 

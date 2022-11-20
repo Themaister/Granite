@@ -229,6 +229,7 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash,
 	if (replayer_state.pipeline_group)
 	{
 		replayer_state.pipeline_group->enqueue_task([this, create_info, hash, pipeline]() {
+			// The lifetime of create_info is tied to the replayer itself.
 			auto tmp_create_info = *create_info;
 			*pipeline = fossilize_create_graphics_pipeline(hash, tmp_create_info);
 		});
@@ -270,6 +271,7 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash,
 	if (replayer_state.pipeline_group)
 	{
 		replayer_state.pipeline_group->enqueue_task([this, create_info, hash, pipeline]() {
+			// The lifetime of create_info is tied to the replayer itself.
 			auto tmp_create_info = *create_info;
 			*pipeline = fossilize_create_compute_pipeline(hash, tmp_create_info);
 		});

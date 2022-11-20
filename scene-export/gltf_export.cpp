@@ -123,7 +123,7 @@ struct AnalysisResult
 	Material::Textures type;
 	VkComponentMapping swizzle;
 
-	bool load_image(const std::string &src);
+	bool load_image();
 	void deduce_compression(TextureCompressionFamily family);
 
 	enum class MetallicRoughnessMode
@@ -1309,12 +1309,14 @@ AnalysisResult::MetallicRoughnessMode AnalysisResult::deduce_metallic_roughness_
 		return MetallicRoughnessMode::Default;
 }
 
-bool AnalysisResult::load_image(const std::string &src)
+bool AnalysisResult::load_image()
 {
-	src_path = src;
+	if (src_path.empty())
+		return false;
+
 	image = std::make_shared<Vulkan::MemoryMappedTexture>();
 	*image = Vulkan::load_texture_from_file(
-			*GRANITE_FILESYSTEM(), src,
+			*GRANITE_FILESYSTEM(), src_path,
 			(mode == TextureMode::sRGBA || mode == TextureMode::sRGB) ? Vulkan::ColorSpace::sRGB
 			                                                          : Vulkan::ColorSpace::Linear);
 
@@ -1516,9 +1518,10 @@ static std::shared_ptr<AnalysisResult> analyze_image(ThreadGroup &workers,
 	auto result = std::make_shared<AnalysisResult>();
 	result->mode = mode;
 	result->type = type;
+	result->src_path = src;
 
-	auto group = workers.create_task([=]() {
-		if (!result->load_image(src))
+	auto group = workers.create_task([result, family]() {
+		if (!result->load_image())
 		{
 			LOGE("Failed to load image.\n");
 			return;
@@ -1546,14 +1549,14 @@ static void compress_image(ThreadGroup &workers, const std::string &target_path,
 		}
 	}
 
-	CompressorArguments args;
-	args.output = target_path;
-	args.format = get_compression_format(result->compression, result->mode);
-	args.quality = quality;
-	args.mode = result->mode;
-	args.output_mapping = result->swizzle;
+	auto args = std::make_shared<CompressorArguments>();
+	args->output = target_path;
+	args->format = get_compression_format(result->compression, result->mode);
+	args->quality = quality;
+	args->mode = result->mode;
+	args->output_mapping = result->swizzle;
 
-	auto mipgen_task = workers.create_task([=]() {
+	auto mipgen_task = workers.create_task([result, args]() {
 		if (result->image->get_layout().get_levels() == 1 && result->mode != TextureMode::HDR)
 		{
 			if (result->compression == TextureCompression::PNG)
@@ -1563,7 +1566,7 @@ static void compress_image(ThreadGroup &workers, const std::string &target_path,
 			else if (result->compression != TextureCompression::Uncompressed)
 				*result->image = generate_mipmaps(result->image->get_layout(), result->image->get_flags());
 			else
-				*result->image = generate_mipmaps_to_file(target_path, result->image->get_layout(), result->image->get_flags());
+				*result->image = generate_mipmaps_to_file(args->output, result->image->get_layout(), result->image->get_flags());
 		}
 
 		LOGI("Mapped input texture: %u bytes.\n", unsigned(result->image->get_required_size()));
@@ -1571,7 +1574,7 @@ static void compress_image(ThreadGroup &workers, const std::string &target_path,
 
 	if (result->compression == TextureCompression::PNG)
 	{
-		auto write_task = workers.create_task([=]() {
+		auto write_task = workers.create_task([result, args]() {
 			if (result->image->get_layout().get_format() != VK_FORMAT_R8G8B8A8_UNORM &&
 			    result->image->get_layout().get_format() != VK_FORMAT_R8G8B8A8_SRGB)
 			{
@@ -1579,7 +1582,7 @@ static void compress_image(ThreadGroup &workers, const std::string &target_path,
 				return;
 			}
 
-			std::string real_path = GRANITE_FILESYSTEM()->get_filesystem_path(args.output);
+			std::string real_path = GRANITE_FILESYSTEM()->get_filesystem_path(args->output);
 			if (real_path.empty())
 			{
 				LOGE("Can only use filesystem backend paths when writing PNG.\n");
@@ -1602,11 +1605,11 @@ static void compress_image(ThreadGroup &workers, const std::string &target_path,
 		workers.add_dependency(*write_task, *mipgen_task);
 	}
 	else if (result->compression != TextureCompression::Uncompressed)
-		compress_texture(workers, args, result->image, mipgen_task, signal);
+		compress_texture(workers, *args, result->image, mipgen_task, signal);
 	else if (result->image->get_layout().get_levels() != 1 || result->mode == TextureMode::HDR)
 	{
-		auto write_task = workers.create_task([=]() {
-			if (!result->image->copy_to_path(*GRANITE_FILESYSTEM(), args.output))
+		auto write_task = workers.create_task([result, args]() {
+			if (!result->image->copy_to_path(*GRANITE_FILESYSTEM(), args->output))
 				LOGE("Failed to copy image.\n");
 
 			LOGI("Unmapping %u bytes for texture writing.\n", unsigned(result->image->get_required_size()));

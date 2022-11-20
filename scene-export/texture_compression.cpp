@@ -142,6 +142,7 @@ static unsigned output_format_to_input_stride(VkFormat format)
 
 struct CompressorState : std::enable_shared_from_this<CompressorState>
 {
+	CompressorArguments args;
 	std::shared_ptr<Vulkan::MemoryMappedTexture> input;
 	std::shared_ptr<Vulkan::MemoryMappedTexture> output;
 
@@ -932,7 +933,7 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 	}
 
 	// Pass down ownership to final task.
-	auto write_task = group.create_task([args, state = shared_from_this()]() {
+	auto write_task = group.create_task([state = shared_from_this()]() {
 		if (state->total_error[0] != 0.0)
 			LOGI("Red PSNR: %.f dB\n", 10.0 * log10(255.0 * 255.0 / state->total_error[0]));
 		if (state->total_error[1] != 0.0)
@@ -955,6 +956,7 @@ bool compress_texture(ThreadGroup &group, const CompressorArguments &args,
 	auto output = std::make_shared<CompressorState>();
 	output->input = input;
 	output->signal = signal;
+	output->args = args;
 
 	switch (input->get_layout().get_format())
 	{
@@ -968,9 +970,10 @@ bool compress_texture(ThreadGroup &group, const CompressorArguments &args,
 		return false;
 	}
 
-	auto setup_task = group.create_task([&group, output, args]() {
+	auto setup_task = group.create_task([&group, output]() {
 		output->output = std::make_shared<Vulkan::MemoryMappedTexture>();
 		auto &layout = output->input->get_layout();
+		auto &args = output->args;
 
 		output->setup(args);
 

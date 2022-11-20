@@ -31,6 +31,7 @@
 #include "enum_cast.hpp"
 #include "intrusive_hash_map.hpp"
 #include "math.hpp"
+#include "radix_sorter.hpp"
 
 namespace Granite
 {
@@ -213,7 +214,15 @@ public:
 	void combine_render_info(const RenderQueue &queue);
 	void reset();
 
-	using RenderQueueDataVector = Util::SmallVector<RenderQueueData, 64>;
+	struct RenderQueueDataVector
+	{
+		Util::SmallVector<RenderQueueData, 64> raw_input;
+		Util::DynamicArray<RenderQueueData> sorted_output;
+		Util::RadixSorter<uint64_t, 8, 8, 8, 8, 8, 8, 8, 8> sorter;
+		inline size_t size() const { return raw_input.size(); }
+		inline void clear() { raw_input.clear(); sorter.resize(0); }
+		inline const RenderQueueData *sorted_data() const { return sorted_output.data(); }
+	};
 
 	const RenderQueueDataVector &get_queue_data(Queue queue) const
 	{

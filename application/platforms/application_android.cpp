@@ -79,6 +79,14 @@ struct GlobalState
 	bool content_rect_changed;
 };
 
+struct Config
+{
+	unsigned target_width = 0;
+	unsigned target_height = 0;
+	bool support_prerotate = true;
+	bool support_gyro = false;
+};
+
 struct JNI
 {
 	JNIEnv *env;
@@ -94,7 +102,9 @@ struct JNI
 	ASensorEventQueue *sensor_queue;
 	const ASensor *rotation_sensor;
 };
+
 static GlobalState global_state;
+static Config global_config;
 static JNI jni;
 
 static void on_window_resized(android_app *app)
@@ -993,6 +1003,27 @@ static bool motion_event_filter(const GameActivityMotionEvent *event)
 	}
 }
 
+static void parse_config()
+{
+	std::string android_config;
+	GRANITE_FILESYSTEM()->read_file_to_string("assets://android.json", android_config);
+
+	if (!android_config.empty())
+	{
+		rapidjson::Document doc;
+		doc.Parse(android_config);
+
+		if (doc.HasMember("width"))
+			global_config.target_width = doc["width"].GetUint();
+		if (doc.HasMember("height"))
+			global_config.target_height = doc["height"].GetUint();
+		if (doc.HasMember("supportPrerotate"))
+			global_config.support_prerotate = doc["supportPrerotate"].GetBool();
+		if (doc.HasMember("enableGyro"))
+			global_config.support_gyro = doc["enableGyro"].GetBool();
+	}
+}
+
 void android_main(android_app *app)
 {
 #ifdef AUDIO_HAVE_OBOE
@@ -1001,6 +1032,7 @@ void android_main(android_app *app)
 
 	// Statics on Android might not be cleared out.
 	global_state = {};
+	global_config = {};
 	jni = {};
 
 	global_state.app = app;
@@ -1031,7 +1063,10 @@ void android_main(android_app *app)
 	app->onAppCmd = engine_handle_cmd_init;
 	app->userData = nullptr;
 
-	init_sensors();
+	parse_config();
+
+	if (global_config.support_gyro)
+		init_sensors();
 
 	GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 
@@ -1089,29 +1124,11 @@ void android_main(android_app *app)
 					int ret;
 					if (app_handle)
 					{
-						// TODO: Configurable.
-						app_handle->get_wsi().set_support_prerotate(true);
-
-						unsigned width = 0;
-						unsigned height = 0;
-						{
-							std::string android_config;
-							GRANITE_FILESYSTEM()->read_file_to_string("assets://android.json", android_config);
-							if (!android_config.empty())
-							{
-								rapidjson::Document doc;
-								doc.Parse(android_config);
-
-								if (doc.HasMember("width"))
-									width = doc["width"].GetUint();
-								if (doc.HasMember("height"))
-									height = doc["height"].GetUint();
-							}
-						}
-						LOGI("Using resolution: %u x %u\n", width, height);
+						LOGI("Using resolution: %u x %u\n", global_config.target_width, global_config.target_height);
+						app_handle->get_wsi().set_support_prerotate(global_config.support_prerotate);
 
 						auto platform = std::make_unique<Granite::WSIPlatformAndroid>();
-						if (platform->init(width, height))
+						if (platform->init(global_config.target_width, global_config.target_height))
 						{
 							global_state.app->userData = platform.get();
 							if (!app_handle->init_wsi(std::move(platform)))

@@ -146,10 +146,6 @@ void SceneViewerApplication::read_quirks(const std::string &path)
 		ImplementationQuirks::get().use_transient_color = doc["useTransientColor"].GetBool();
 	if (doc.HasMember("useTransientDepthStencil"))
 		ImplementationQuirks::get().use_transient_depth_stencil = doc["useTransientDepthStencil"].GetBool();
-	if (doc.HasMember("clusteringListIteration"))
-		ImplementationQuirks::get().clustering_list_iteration = doc["clusteringListIteration"].GetBool();
-	if (doc.HasMember("clusteringForceCPU"))
-		ImplementationQuirks::get().clustering_force_cpu = doc["clusteringForceCPU"].GetBool();
 	if (doc.HasMember("queueWaitOnSubmission"))
 		ImplementationQuirks::get().queue_wait_on_submission = doc["queueWaitOnSubmission"].GetBool();
 	if (doc.HasMember("stagingNeedDeviceLocal"))

@@ -137,9 +137,4 @@ public class GraniteActivity extends GameActivity
             return "";
         return extra;
     }
-
-    public int getCurrentOrientation()
-    {
-        return getResources().getConfiguration().orientation;
-    }
 }

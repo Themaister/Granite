@@ -73,7 +73,6 @@ struct GlobalState
 	int32_t base_width;
 	int32_t base_height;
 	int display_rotation;
-	int surface_orientation;
 	bool has_window;
 	bool active;
 	bool content_rect_changed;
@@ -95,7 +94,6 @@ struct JNI
 	jmethodID getAudioNativeSampleRate;
 	jmethodID getAudioNativeBlockFrames;
 	jmethodID getCommandLineArgument;
-	jmethodID getCurrentOrientation;
 	jclass classLoaderClass;
 	jobject classLoader;
 
@@ -170,12 +168,6 @@ static int getAudioNativeBlockFrames()
 	return ret;
 }
 #endif
-
-static int getCurrentOrientation()
-{
-	int ret = jni.env->CallIntMethod(global_state.app->activity->javaGameActivity, jni.getCurrentOrientation);
-	return ret;
-}
 
 static int getDisplayRotation()
 {
@@ -652,11 +644,7 @@ VkSurfaceKHR WSIPlatformAndroid::create_surface(VkInstance instance, VkPhysicalD
 
 void WSIPlatformAndroid::update_orientation()
 {
-	// Apparently, AConfiguration_getOrientation is broken in latest Android versions.
-	// Gotta use JNI. Sigh ........
-	global_state.surface_orientation = App::getCurrentOrientation();
 	global_state.display_rotation = App::getDisplayRotation();
-	LOGI("Got new orientation: %d\n", global_state.surface_orientation);
 	LOGI("Got new rotation: %d\n", global_state.display_rotation);
 	LOGI("Got new resolution: %d x %d\n", global_state.base_width, global_state.base_height);
 	pending_config_change = true;
@@ -919,7 +907,6 @@ static void init_jni()
 	jni.getDisplayRotation = jni.env->GetMethodID(jni.granite, "getDisplayRotation", "()I");
 	jni.getAudioNativeSampleRate = jni.env->GetMethodID(jni.granite, "getAudioNativeSampleRate", "()I");
 	jni.getAudioNativeBlockFrames = jni.env->GetMethodID(jni.granite, "getAudioNativeBlockFrames", "()I");
-	jni.getCurrentOrientation = jni.env->GetMethodID(jni.granite, "getCurrentOrientation", "()I");
 	jni.getCommandLineArgument = jni.env->GetMethodID(jni.granite, "getCommandLineArgument", "(Ljava/lang/String;)Ljava/lang/String;");
 
 #ifdef HAVE_GRANITE_AUDIO
@@ -1094,8 +1081,6 @@ void android_main(android_app *app)
 			if (Granite::global_state.has_window && Granite::global_state.content_rect_changed)
 			{
 				Granite::global_state.content_rect_changed = false;
-				global_state.surface_orientation = AConfiguration_getOrientation(app->config);
-				LOGI("Get initial orientation: %d\n", global_state.surface_orientation);
 				app->onAppCmd = Granite::engine_handle_cmd;
 
 				try

@@ -91,12 +91,6 @@ struct JNI
 	jclass classLoaderClass;
 	jobject classLoader;
 
-	jmethodID getVendorId;
-	jmethodID getProductId;
-	jmethodID getDeviceName;
-	jmethodID getDevice;
-	jclass inputDeviceClass;
-
 	ASensorEventQueue *sensor_queue;
 	const ASensor *rotation_sensor;
 };
@@ -898,25 +892,11 @@ static void init_jni()
 	jstring granite_str = jni.env->NewStringUTF("net.themaister.granite.GraniteActivity");
 	jni.granite = static_cast<jclass>(jni.env->CallObjectMethod(jni.classLoader, loadClass, granite_str));
 
-	jni.inputDeviceClass = jni.env->FindClass("android/view/InputDevice");
-
 	jni.getDisplayRotation = jni.env->GetMethodID(jni.granite, "getDisplayRotation", "()I");
 	jni.getAudioNativeSampleRate = jni.env->GetMethodID(jni.granite, "getAudioNativeSampleRate", "()I");
 	jni.getAudioNativeBlockFrames = jni.env->GetMethodID(jni.granite, "getAudioNativeBlockFrames", "()I");
 	jni.getCurrentOrientation = jni.env->GetMethodID(jni.granite, "getCurrentOrientation", "()I");
 	jni.getCommandLineArgument = jni.env->GetMethodID(jni.granite, "getCommandLineArgument", "(Ljava/lang/String;)Ljava/lang/String;");
-
-	if (jni.inputDeviceClass)
-	{
-		jni.getDevice = jni.env->GetStaticMethodID(jni.inputDeviceClass, "getDevice",
-		                                           "(I)Landroid/view/InputDevice;");
-		jni.getDeviceName = jni.env->GetMethodID(jni.inputDeviceClass, "getName",
-		                                         "()Ljava/lang/String;");
-		jni.getVendorId = jni.env->GetMethodID(jni.inputDeviceClass, "getVendorId",
-		                                       "()I");
-		jni.getProductId = jni.env->GetMethodID(jni.inputDeviceClass, "getProductId",
-		                                        "()I");
-	}
 
 #ifdef HAVE_GRANITE_AUDIO
 	int sample_rate = App::getAudioNativeSampleRate();

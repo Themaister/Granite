@@ -22,43 +22,32 @@
 
 #pragma once
 
-#include <stddef.h>
-#include <stdexcept>
-#include <new>
+#include "aligned_alloc.hpp"
+#include <memory>
+#include <algorithm>
 
 namespace Util
 {
-void *memalign_alloc(size_t boundary, size_t size);
-void *memalign_calloc(size_t boundary, size_t size);
-void memalign_free(void *ptr);
-
-struct AlignedDeleter { void operator()(void *ptr) { memalign_free(ptr); }};
-
 template <typename T>
-struct AlignedAllocation
+class DynamicArray
 {
-    static void *operator new(size_t size)
-    {
-        void *ret = ::Util::memalign_alloc(alignof(T), size);
-        if (!ret) throw std::bad_alloc();
-        return ret;
-    }
+public:
+	inline void reserve(size_t n)
+	{
+		if (n > N)
+		{
+			buffer.reset(static_cast<T *>(memalign_alloc(std::max(size_t(64), alignof(T)), n * sizeof(T))));
+			N = n;
+		}
+	}
 
-    static void *operator new[](size_t size)
-    {
-        void *ret = ::Util::memalign_alloc(alignof(T), size);
-        if (!ret) throw std::bad_alloc();
-        return ret;
-    }
+	inline T &operator[](size_t index) { return buffer.get()[index]; }
+	inline const T &operator[](size_t index) const { return buffer.get()[index]; }
+	inline T *data() { return buffer.get(); }
+	inline const T *data() const { return buffer.get(); }
 
-    static void operator delete(void *ptr)
-    {
-        return ::Util::memalign_free(ptr);
-    }
-
-    static void operator delete[](void *ptr)
-    {
-        return ::Util::memalign_free(ptr);
-    }
+private:
+	std::unique_ptr<T, AlignedDeleter> buffer;
+	size_t N = 0;
 };
 }

@@ -370,7 +370,7 @@ RenderTextureResource &RenderPass::add_blit_texture_output(const std::string &na
 	{
 		auto &input_res = graph.get_texture_resource(input);
 		input_res.read_in_pass(index);
-		input_res.add_image_usage(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+		input_res.add_image_usage(VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 		blit_texture_inputs.push_back(&input_res);
 	}
 	else

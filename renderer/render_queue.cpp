@@ -24,7 +24,6 @@
 #include "render_context.hpp"
 #include <cstring>
 #include <iterator>
-#include <algorithm>
 #include <assert.h>
 
 using namespace Vulkan;
@@ -36,9 +35,18 @@ void RenderQueue::sort()
 {
 	for (auto &queue : queues)
 	{
-		std::stable_sort(std::begin(queue), std::end(queue), [](const RenderQueueData &a, const RenderQueueData &b) {
-			return a.sorting_key < b.sorting_key;
-		});
+		queue.sorter.resize(queue.raw_input.size());
+		queue.sorted_output.reserve(queue.raw_input.size());
+
+		size_t n = queue.raw_input.size();
+		uint64_t *codes = queue.sorter.code_data();
+		const uint32_t *indices = queue.sorter.indices_data();
+
+		for (size_t i = 0; i < n; i++)
+			codes[i] = queue.raw_input[i].sorting_key;
+		queue.sorter.sort();
+		for (size_t i = 0; i < n; i++)
+			queue.sorted_output[i] = queue.raw_input[indices[i]];
 	}
 }
 
@@ -47,13 +55,17 @@ void RenderQueue::combine_render_info(const RenderQueue &queue)
 	for (unsigned i = 0; i < ecast(Queue::Count); i++)
 	{
 		auto e = static_cast<Queue>(i);
-		queues[i].insert(std::end(queues[i]), std::begin(queue.get_queue_data(e)), std::end(queue.get_queue_data(e)));
+		auto &q = queue.get_queue_data(e).raw_input;
+		queues[i].raw_input.insert(std::end(queues[i].raw_input), std::begin(q), std::end(q));
 	}
 }
 
 void RenderQueue::dispatch_range(Queue queue_type, CommandBuffer &cmd, const CommandBufferSavedState *state, size_t begin, size_t end) const
 {
-	auto *queue = queues[ecast(queue_type)].data();
+	auto *queue = queues[ecast(queue_type)].sorted_data();
+
+	// Assert that we did in fact sort.
+	assert(queues[ecast(queue_type)].sorter.size() == queues[ecast(queue_type)].raw_input.size());
 
 	while (begin < end)
 	{
@@ -93,7 +105,7 @@ void RenderQueue::dispatch_subset(Queue queue, Vulkan::CommandBuffer &cmd, const
 
 void RenderQueue::enqueue_queue_data(Queue queue_type, const RenderQueueData &render_info)
 {
-	queues[ecast(queue_type)].push_back(render_info);
+	queues[ecast(queue_type)].raw_input.push_back(render_info);
 }
 
 Util::ThreadSafeObjectPool<RenderQueue::Block> RenderQueue::allocator_pool;

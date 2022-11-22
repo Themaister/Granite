@@ -172,3 +172,5 @@ if (GRANITE_TEST_INTEROP)
         target_link_libraries(granite-d3d12-interop PRIVATE glfw granite-vulkan d3d12 dxgi)
     endif()
 endif()
+
+add_granite_offline_tool(lbvh-build lbvh_build.cpp)

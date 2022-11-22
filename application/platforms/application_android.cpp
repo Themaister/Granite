@@ -158,13 +158,13 @@ static std::string getCommandLine()
 #ifdef HAVE_GRANITE_AUDIO
 static int getAudioNativeSampleRate()
 {
-	int ret = jni.env->CallIntMethod(global_state.app->activity->clazz, jni.getAudioNativeSampleRate);
+	int ret = jni.env->CallIntMethod(global_state.app->activity->javaGameActivity, jni.getAudioNativeSampleRate);
 	return ret;
 }
 
 static int getAudioNativeBlockFrames()
 {
-	int ret = jni.env->CallIntMethod(global_state.app->activity->clazz, jni.getAudioNativeBlockFrames);
+	int ret = jni.env->CallIntMethod(global_state.app->activity->javaGameActivity, jni.getAudioNativeBlockFrames);
 	return ret;
 }
 #endif

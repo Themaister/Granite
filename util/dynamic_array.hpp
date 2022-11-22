@@ -25,6 +25,7 @@
 #include "aligned_alloc.hpp"
 #include <memory>
 #include <algorithm>
+#include <type_traits>
 
 namespace Util
 {
@@ -32,6 +33,10 @@ template <typename T>
 class DynamicArray
 {
 public:
+	// Only POD-like types work here since we don't invoke placement new or delete.
+	static_assert(std::is_trivially_default_constructible<T>::value, "T must be trivially constructible.");
+	static_assert(std::is_trivially_destructible<T>::value, "T must be trivially destructible.");
+
 	inline void reserve(size_t n)
 	{
 		if (n > N)

@@ -31,6 +31,89 @@ namespace Granite
 {
 namespace SIMD
 {
+enum class FrustumCullDualResult
+{
+	None,
+	Partial,
+	Full
+};
+
+static inline FrustumCullDualResult frustum_cull_dual(const AABB &aabb, const vec4 *planes)
+{
+#if defined(__SSE3__)
+	__m128 lo = _mm_loadu_ps(aabb.get_minimum4().data);
+	__m128 hi = _mm_loadu_ps(aabb.get_maximum4().data);
+
+#define COMPUTE_PLANE(i) \
+	__m128 p##i = _mm_loadu_ps(planes[i].data); \
+	__m128 mask##i = _mm_cmpgt_ps(p##i, _mm_setzero_ps()); \
+	__m128 major_axis##i = _mm_or_ps(_mm_and_ps(mask##i, hi), _mm_andnot_ps(mask##i, lo)); \
+	__m128 minor_axis##i = _mm_or_ps(_mm_and_ps(mask##i, lo), _mm_andnot_ps(mask##i, hi)); \
+	__m128 dotted_major##i = _mm_mul_ps(p##i, major_axis##i); \
+	__m128 dotted_minor##i = _mm_mul_ps(p##i, minor_axis##i)
+	COMPUTE_PLANE(0);
+	COMPUTE_PLANE(1);
+	COMPUTE_PLANE(2);
+	COMPUTE_PLANE(3);
+	COMPUTE_PLANE(4);
+	COMPUTE_PLANE(5);
+
+#define BUILD_MASK(d) \
+	__m128 merged_##d##01 = _mm_hadd_ps(dotted_##d##0, dotted_##d##1); \
+	__m128 merged_##d##23 = _mm_hadd_ps(dotted_##d##2, dotted_##d##3); \
+	__m128 merged_##d##45 = _mm_hadd_ps(dotted_##d##4, dotted_##d##5); \
+	__m128 merged_##d##0123 = _mm_hadd_ps(merged_##d##01, merged_##d##23); \
+	merged_##d##45 = _mm_hadd_ps(merged_##d##45, merged_##d##45); \
+	__m128 merged_##d = _mm_or_ps(merged_##d##0123, merged_##d##45); \
+	int mask_##d = _mm_movemask_ps(merged_##d)
+
+	BUILD_MASK(major);
+	if (mask_major)
+		return FrustumCullDualResult::None;
+	BUILD_MASK(minor);
+	return mask_minor ? FrustumCullDualResult::Partial : FrustumCullDualResult::Full;
+
+#elif defined(__ARM_NEON) && defined(__aarch64__)
+	float32x4_t lo = vld1q_f32(aabb.get_minimum4().data);
+	float32x4_t hi = vld1q_f32(aabb.get_maximum4().data);
+
+#define COMPUTE_PLANE(i) \
+	float32x4_t p##i = vld1q_f32(planes[i].data); \
+	uint32x4_t mask##i = vcgtq_f32(p##i, vdupq_n_f32(0.0f)); \
+	float32x4_t major_axis##i = vbslq_f32(mask##i, hi, lo); \
+	float32x4_t minor_axis##i = vbslq_f32(mask##i, lo, hi); \
+	float32x4_t dotted_major##i = vmulq_f32(p##i, major_axis##i); \
+	float32x4_t dotted_minor##i = vmulq_f32(p##i, minor_axis##i)
+	COMPUTE_PLANE(0);
+	COMPUTE_PLANE(1);
+	COMPUTE_PLANE(2);
+	COMPUTE_PLANE(3);
+	COMPUTE_PLANE(4);
+	COMPUTE_PLANE(5);
+
+#define BUILD_MASK(d) \
+	float32x4_t merged_##d##01 = vpaddq_f32(dotted_##d##0, dotted_##d##1); \
+	float32x4_t merged_##d##23 = vpaddq_f32(dotted_##d##2, dotted_##d##3); \
+	float32x4_t merged_##d##45 = vpaddq_f32(dotted_##d##4, dotted_##d##5); \
+	float32x4_t merged_##d##0123 = vpaddq_f32(merged_##d##01, merged_##d##23); \
+	merged_##d##45 = vpaddq_f32(merged_##d##45, merged_##d##45); \
+	float32x4_t merged_##d = vminq_f32(merged_##d##0123, merged_##d##45); \
+	float32x2_t merged_##d##_half = vmin_f32(vget_low_f32(merged_##d), vget_high_f32(merged_##d)); \
+	merged_##d##_half = vpmin_f32(merged_##d##_half, merged_##d##_half)
+
+	BUILD_MASK(major);
+	if (vget_lane_f32(merged_major_half, 0) >= 0.0f)
+		return FrustumCullDualResult::None;
+	BUILD_MASK(minor);
+	return vget_lane_f32(merged_minor_half, 0) >= 0.0f ?
+		FrustumCullDualResult::Partial : FrustumCullDualResult::Full;
+#else
+#error "Implement me."
+#endif
+}
+#undef COMPUTE_PLANE
+#undef BUILD_MASK
+
 static inline bool frustum_cull(const AABB &aabb, const vec4 *planes)
 {
 #if defined(__SSE3__)
@@ -58,7 +141,7 @@ static inline bool frustum_cull(const AABB &aabb, const vec4 *planes)
 	// Sets bit if the sign bit is set.
 	int mask = _mm_movemask_ps(merged);
 	return mask == 0;
-#elif defined(__ARM_NEON)
+#elif defined(__ARM_NEON) && defined(__aarch64__)
 	float32x4_t lo = vld1q_f32(aabb.get_minimum4().data);
 	float32x4_t hi = vld1q_f32(aabb.get_maximum4().data);
 
@@ -74,7 +157,6 @@ static inline bool frustum_cull(const AABB &aabb, const vec4 *planes)
 	COMPUTE_PLANE(4);
 	COMPUTE_PLANE(5);
 
-#if defined(__aarch64__)
 	float32x4_t merged01 = vpaddq_f32(dotted0, dotted1);
 	float32x4_t merged23 = vpaddq_f32(dotted2, dotted3);
 	float32x4_t merged45 = vpaddq_f32(dotted4, dotted5);
@@ -85,24 +167,10 @@ static inline bool frustum_cull(const AABB &aabb, const vec4 *planes)
 	merged_half = vpmin_f32(merged_half, merged_half);
 	return vget_lane_f32(merged_half, 0) >= 0.0f;
 #else
-	float32x2_t merged0 = vpadd_f32(vget_low_f32(dotted0), vget_high_f32(dotted0));
-	float32x2_t merged1 = vpadd_f32(vget_low_f32(dotted1), vget_high_f32(dotted1));
-	float32x2_t merged2 = vpadd_f32(vget_low_f32(dotted2), vget_high_f32(dotted2));
-	float32x2_t merged3 = vpadd_f32(vget_low_f32(dotted3), vget_high_f32(dotted3));
-	float32x2_t merged4 = vpadd_f32(vget_low_f32(dotted4), vget_high_f32(dotted4));
-	float32x2_t merged5 = vpadd_f32(vget_low_f32(dotted5), vget_high_f32(dotted5));
-	float32x2_t merged01 = vpadd_f32(merged0, merged1);
-	float32x2_t merged23 = vpadd_f32(merged2, merged3);
-	float32x2_t merged45 = vpadd_f32(merged4, merged5);
-	float32x2_t merged = vmin_f32(merged01, merged23);
-	merged = vmin_f32(merged, merged45);
-	float32x2_t merged_half = vpmin_f32(merged, merged);
-	return vget_lane_f32(merged_half, 0) >= 0.0f;
-#endif
-#else
 #error "Implement me."
 #endif
 }
+#undef COMPUTE_PLANE
 
 static inline void mul(vec4 &c, const mat4 &a, const vec4 &b)
 {

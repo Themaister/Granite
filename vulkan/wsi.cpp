@@ -132,7 +132,8 @@ bool WSI::init_external_swapchain(std::vector<ImageHandle> swapchain_images_)
 	platform->event_swapchain_created(device.get(), swapchain_width, swapchain_height,
 	                                  swapchain_aspect_ratio,
 	                                  external_swapchain_images.size(),
-	                                  swapchain_surface_format.format, swapchain_current_prerotate);
+	                                  swapchain_surface_format.format, swapchain_surface_format.colorSpace,
+	                                  swapchain_current_prerotate);
 
 	device->init_external_swapchain(this->external_swapchain_images);
 	platform->get_frame_timer().reset();
@@ -1186,7 +1187,10 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	platform->event_swapchain_destroyed();
 	platform->event_swapchain_created(device.get(), swapchain_width, swapchain_height,
-	                                  swapchain_aspect_ratio, image_count, info.imageFormat, swapchain_current_prerotate);
+	                                  swapchain_aspect_ratio, image_count,
+	                                  swapchain_surface_format.format,
+	                                  swapchain_surface_format.colorSpace,
+	                                  swapchain_current_prerotate);
 
 	if (swapchain_surface_format.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT)
 		table->vkSetHdrMetadataEXT(device->get_device(), 1, &swapchain, &hdr_metadata);
@@ -1211,7 +1215,9 @@ WSI::~WSI()
 
 void WSIPlatform::event_device_created(Device *) {}
 void WSIPlatform::event_device_destroyed() {}
-void WSIPlatform::event_swapchain_created(Device *, unsigned, unsigned, float, size_t, VkFormat, VkSurfaceTransformFlagBitsKHR) {}
+void WSIPlatform::event_swapchain_created(Device *, unsigned, unsigned, float, size_t,
+                                          VkFormat, VkColorSpaceKHR,
+                                          VkSurfaceTransformFlagBitsKHR) {}
 void WSIPlatform::event_swapchain_destroyed() {}
 void WSIPlatform::event_frame_tick(double, double) {}
 void WSIPlatform::event_swapchain_index(Device *, unsigned) {}

@@ -209,9 +209,10 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		return true;
 	}
 
-	void event_swapchain_created(Device *device_, unsigned width_, unsigned height_, float aspect_, size_t count_, VkFormat format_, VkSurfaceTransformFlagBitsKHR transform_) override
+	void event_swapchain_created(Device *device_, unsigned width_, unsigned height_, float aspect_, size_t count_,
+	                             VkFormat format_, VkColorSpaceKHR color_space_, VkSurfaceTransformFlagBitsKHR transform_) override
 	{
-		Granite::GraniteWSIPlatform::event_swapchain_created(device_, width_, height_, aspect_, count_, format_, transform_);
+		Granite::GraniteWSIPlatform::event_swapchain_created(device_, width_, height_, aspect_, count_, format_, color_space_, transform_);
 
 		if (transform_ & (VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR |
 		                  VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR |

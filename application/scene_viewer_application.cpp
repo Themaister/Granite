@@ -656,6 +656,13 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		break;
 	}
 
+	case Key::H:
+	{
+		get_wsi().set_backbuffer_format(get_wsi().get_backbuffer_format() == Vulkan::BackbufferFormat::HDR10 ?
+				Vulkan::BackbufferFormat::sRGB : Vulkan::BackbufferFormat::HDR10);
+		break;
+	}
+
 	default:
 		break;
 	}
@@ -805,7 +812,7 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 			device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32,
 			                                 VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
 
-	if (config.hdr_bloom)
+	if (config.hdr_bloom || get_wsi().get_backbuffer_color_space() == VK_COLOR_SPACE_HDR10_ST2084_EXT)
 		color.format =
 		    (config.rt_fp16 || !supports_32bpp) ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	else
@@ -872,7 +879,7 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	bool supports_32bpp =
 	    device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
-	if (config.hdr_bloom)
+	if (config.hdr_bloom || get_wsi().get_backbuffer_color_space() == VK_COLOR_SPACE_HDR10_ST2084_EXT)
 		emissive.format =
 		    (config.rt_fp16 || !supports_32bpp) ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	else
@@ -1096,6 +1103,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	shadows = nullptr;
 	ssao_output = nullptr;
+	const bool hdr10 = swap.get_color_space() == VK_COLOR_SPACE_HDR10_ST2084_EXT;
 
 	graph.reset();
 
@@ -1113,8 +1121,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	dim.transform = swap.get_prerotate();
 	graph.set_backbuffer_dimensions(dim);
 
-	const char *backbuffer_source = getenv("GRANITE_SURFACE");
-	const char *ui_source = backbuffer_source ? backbuffer_source : (config.hdr_bloom ? "tonemapped" : "HDR-main");
+	const char *ui_source = "HDR-main";
 
 	scene_loader.get_scene().add_render_passes(graph);
 
@@ -1144,23 +1151,32 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 		add_mv_pass("main", "depth-main", config.postaa_type == PostAAType::TAA_FSR2);
 	}
 
-	if (config.hdr_bloom)
+	if (config.hdr_bloom || hdr10)
 	{
 		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type, graph, jitter, context, config.resolution_scale,
 		                                                     light_output, "depth-main", "mv-main", "HDR-resolved");
 
-		HDROptions opts;
-		opts.dynamic_exposure = config.hdr_bloom_dynamic_exposure;
-
-		if (ImplementationQuirks::get().use_async_compute_post)
+		if (!hdr10)
 		{
-			setup_hdr_postprocess_compute(graph, context.get_frame_parameters(),
-			                              resolved ? "HDR-resolved" : light_output, "tonemapped", opts);
+			HDROptions opts;
+			opts.dynamic_exposure = config.hdr_bloom_dynamic_exposure;
+
+			if (ImplementationQuirks::get().use_async_compute_post)
+			{
+				setup_hdr_postprocess_compute(graph, context.get_frame_parameters(),
+				                              resolved ? "HDR-resolved" : light_output, "tonemapped", opts);
+			}
+			else
+			{
+				setup_hdr_postprocess(graph, context.get_frame_parameters(), resolved ? "HDR-resolved" : light_output,
+				                      "tonemapped", opts);
+			}
+
+			ui_source = "tonemapped";
 		}
 		else
 		{
-			setup_hdr_postprocess(graph, context.get_frame_parameters(),
-			                      resolved ? "HDR-resolved" : light_output, "tonemapped", opts);
+			ui_source = "HDR-resolved";
 		}
 	}
 
@@ -1180,16 +1196,35 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	if (config.show_ui)
 	{
 		auto &ui = graph.add_pass("ui", config.hdr_bloom || config.postaa_type != PostAAType::None ?
-		                                    RenderGraph::get_default_post_graphics_queue() :
-		                                    RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-
+		                                RenderGraph::get_default_post_graphics_queue() :
+		                                RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 		AttachmentInfo ui_info;
-		ui_info.flags |= ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT;
-		ui.add_color_output("ui-output", ui_info, ui_source);
+
+		if (hdr10)
+		{
+			ui.add_color_output("ui-temporary", ui_info, ui_source);
+			ui_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+
+			// TODO: Make this dynamic.
+			HDR10PQEncodingConfig hdr10_config = {};
+			hdr10_config.hdr_pre_exposure = 500.0f;
+			hdr10_config.ui_pre_exposure = 400.0f;
+			setup_hdr10_pq_encoding(graph, "ui-output", ui_source, "ui-temporary", hdr10_config,
+			                        get_wsi().get_hdr_metadata());
+		}
+		else
+		{
+			ui_info.flags |= ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT;
+			ui.add_color_output("ui-output", ui_info, ui_source);
+		}
+
 		graph.set_backbuffer_source("ui-output");
 
 		ui.set_get_clear_color([](unsigned, VkClearColorValue *value) {
-			memset(value, 0, sizeof(*value));
+			value->float32[0] = 0.0f;
+			value->float32[1] = 0.0f;
+			value->float32[2] = 0.0f;
+			value->float32[3] = 1.0f;
 			return true;
 		});
 
@@ -1363,6 +1398,10 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 	char max_text[64];
 	sprintf(max_text, "Max: %10.3f ms", max_time * 1000.0f);
 
+	char colorspace_text[64];
+	sprintf(colorspace_text, "%s",
+	        get_wsi().get_backbuffer_color_space() == VK_COLOR_SPACE_HDR10_ST2084_EXT ? "ST.2084 / PQ" : "sRGB");
+
 	char pos_text[256];
 	char rot_text[256];
 	auto cam_pos = selected_camera->get_position();
@@ -1378,13 +1417,15 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), avg_text, offset, size, color,
 	                          alignment, 1.0f);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), min_text,
-	                          offset + vec3(0.0f, 20.0f, 0.0f), size - vec2(0.0f, 20.0f), color, alignment, 1.0f);
+	                          offset + vec3(0.0f, 20.0f, 0.0f), size, color, alignment, 1.0f);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), max_text,
-	                          offset + vec3(0.0f, 40.0f, 0.0f), size - vec2(0.0f, 40.0f), color, alignment, 1.0f);
+	                          offset + vec3(0.0f, 40.0f, 0.0f), size, color, alignment, 1.0f);
+	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), colorspace_text,
+	                          offset + vec3(0.0f, 65.0f, 0.0f), size, color, alignment, 1.0f);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), pos_text,
-	                          offset + vec3(0.0f, 60.0f, 0.0f), size - vec2(0.0f, 60.0f), color, alignment, 1.0f);
+	                          offset + vec3(0.0f, 80.0f, 0.0f), size, color, alignment, 1.0f);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), rot_text,
-	                          offset + vec3(0.0f, 75.0f, 0.0f), size - vec2(0.0f, 75.0f), color, alignment, 1.0f);
+	                          offset + vec3(0.0f, 95.0f, 0.0f), size, color, alignment, 1.0f);
 
 	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
 	device.get_memory_budget(budgets);
@@ -1397,9 +1438,8 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 		        double(budgets[i].tracked_usage) / double(1024 * 1024),
 		        double(budgets[i].max_size) / double(1024 * 1024));
 		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), heap_text,
-		                          offset + vec3(0.0f, 110.0f + 15.0f * float(i), 0.0f),
-		                          size - vec2(0.0f, 110.0f + 15.0f * float(i)),
-		                          color, alignment, 1.0f);
+		                          offset + vec3(0.0f, 130.0f + 15.0f * float(i), 0.0f),
+		                          size, color, alignment, 1.0f);
 	}
 
 	flat_renderer.flush(cmd, vec3(0.0f), vec3(cmd.get_viewport().width, cmd.get_viewport().height, 1.0f));

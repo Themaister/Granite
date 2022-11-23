@@ -25,6 +25,7 @@
 #include "application_events.hpp"
 #include "common_renderer_data.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "muglm/matrix_helper.hpp"
 #include "render_context.hpp"
 
 namespace Granite
@@ -556,5 +557,105 @@ void setup_hdr_postprocess(RenderGraph &graph, const FrameParameters &frame,
 			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo, iface);
 		                              });
 	}
+}
+
+// From https://mina86.com/2019/srgb-xyz-matrix/
+static vec3 convert_primary(const VkXYColorEXT &xy)
+{
+	float X = xy.x / xy.y;
+	float Y = 1.0f;
+	float Z = (1.0f - xy.x - xy.y) / xy.y;
+	return vec3(X, Y, Z);
+}
+
+static mat3 compute_xyz_matrix(const VkHdrMetadataEXT &metadata)
+{
+	vec3 red = convert_primary(metadata.displayPrimaryRed);
+	vec3 green = convert_primary(metadata.displayPrimaryGreen);
+	vec3 blue = convert_primary(metadata.displayPrimaryBlue);
+	vec3 white = convert_primary(metadata.whitePoint);
+
+	vec3 component_scale = inverse(mat3(red, green, blue)) * white;
+	return mat3(red * component_scale.x, green * component_scale.y, blue * component_scale.z);
+}
+
+static mat3 compute_rec709_to_st2020(const VkHdrMetadataEXT &metadata)
+{
+	// D65 is always assumed in Vulkan. See Table 48. Color Spaces and Attributes.
+	// sRGB in Vulkan uses BT709 primaries.
+
+	VkHdrMetadataEXT rec709 = {};
+	rec709.displayPrimaryRed = { 0.640f, 0.330f };
+	rec709.displayPrimaryGreen = { 0.3f, 0.6f };
+	rec709.displayPrimaryBlue = { 0.150f, 0.060f };
+	rec709.whitePoint = { 0.3127f, 0.3290f };
+	const mat3 srgb_to_xyz = compute_xyz_matrix(rec709);
+	const mat3 xyz_to_st2020 = inverse(compute_xyz_matrix(metadata));
+	return xyz_to_st2020 * srgb_to_xyz;
+}
+
+void setup_hdr10_pq_encoding(RenderGraph &graph, const std::string &output,
+                             const std::string &hdr_input, const std::string &ui_input,
+                             const HDR10PQEncodingConfig &config,
+                             const VkHdrMetadataEXT &static_metadata)
+{
+	struct PQEncoder : RenderPassInterface
+	{
+		HDR10PQEncodingConfig config;
+		RenderTextureResource *hdr = nullptr;
+		RenderTextureResource *ui = nullptr;
+		const Vulkan::ImageView *hdr_view = nullptr;
+		const Vulkan::ImageView *ui_view = nullptr;
+		mat4 primary_conversion;
+		float max_light_level;
+
+		bool get_clear_color(unsigned, VkClearColorValue *) const override { return false; }
+
+		// Called every frame, useful for building dependent resources like custom views, etc.
+		void enqueue_prepare_render_pass(RenderGraph &graph, TaskComposer &) override
+		{
+			hdr_view = &graph.get_physical_texture_resource(*hdr);
+			ui_view = &graph.get_physical_texture_resource(*ui);
+		}
+
+		void build_render_pass(Vulkan::CommandBuffer &cmd) override
+		{
+			cmd.set_texture(0, 0, *hdr_view);
+			cmd.set_texture(0, 1, *ui_view);
+
+			struct UBO
+			{
+				mat4 primary_conversion;
+				float hdr_pre_exposure;
+				float ui_pre_exposure;
+				float max_light_level;
+				float inv_light_level;
+			};
+			auto *ubo = cmd.allocate_typed_constant_data<UBO>(1, 0, 1);
+			ubo->primary_conversion = primary_conversion;
+			ubo->hdr_pre_exposure = config.hdr_pre_exposure;
+			ubo->ui_pre_exposure = config.ui_pre_exposure;
+			ubo->max_light_level = max_light_level;
+			// Pre-reinhard scaling.
+			ubo->inv_light_level = 1.0f / max_light_level;
+			*cmd.allocate_typed_constant_data<HDR10PQEncodingConfig>(1, 1, 1) = config;
+			Vulkan::CommandBufferUtil::draw_fullscreen_quad(
+				cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/pq10_encode.frag");
+		}
+	};
+
+	auto &pq10 = graph.add_pass("pq10", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+
+	AttachmentInfo att;
+	att.flags |= ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT;
+
+	auto pass = Util::make_handle<PQEncoder>();
+	pass->config = config;
+	pass->primary_conversion = mat4(compute_rec709_to_st2020(static_metadata));
+	pass->max_light_level = static_metadata.maxContentLightLevel;
+	pq10.add_color_output(output, att);
+	pass->hdr = &pq10.add_texture_input(hdr_input);
+	pass->ui = &pq10.add_texture_input(ui_input);
+	pq10.set_render_pass_interface(std::move(pass));
 }
 }

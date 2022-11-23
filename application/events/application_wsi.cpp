@@ -35,11 +35,15 @@ GraniteWSIPlatform::GraniteWSIPlatform()
 
 void GraniteWSIPlatform::event_swapchain_created(Vulkan::Device *device, unsigned width, unsigned height,
                                                  float aspect_ratio, size_t image_count, VkFormat format,
+                                                 VkColorSpaceKHR color_space,
                                                  VkSurfaceTransformFlagBitsKHR transform)
 {
 	auto *em = GRANITE_EVENT_MANAGER();
 	if (em)
-		em->enqueue_latched<Vulkan::SwapchainParameterEvent>(device, width, height, aspect_ratio, image_count, format, transform);
+	{
+		em->enqueue_latched<Vulkan::SwapchainParameterEvent>(device, width, height, aspect_ratio, image_count, format,
+		                                                     color_space, transform);
+	}
 }
 
 void GraniteWSIPlatform::event_swapchain_destroyed()

@@ -89,9 +89,10 @@ public:
 	SwapchainParameterEvent(Device *device_,
 	                        unsigned width_, unsigned height_,
 	                        float aspect_ratio_, unsigned count_,
-	                        VkFormat format_, VkSurfaceTransformFlagBitsKHR transform_)
+	                        VkFormat format_, VkColorSpaceKHR color_space_,
+	                        VkSurfaceTransformFlagBitsKHR transform_)
 		: device(*device_), width(width_), height(height_),
-		  aspect_ratio(aspect_ratio_), image_count(count_), format(format_), transform(transform_)
+		  aspect_ratio(aspect_ratio_), image_count(count_), format(format_), color_space(color_space_), transform(transform_)
 	{}
 
 	Device &get_device() const
@@ -124,6 +125,11 @@ public:
 		return format;
 	}
 
+	VkColorSpaceKHR get_color_space() const
+	{
+		return color_space;
+	}
+
 	VkSurfaceTransformFlagBitsKHR get_prerotate() const
 	{
 		return transform;
@@ -136,6 +142,7 @@ private:
 	float aspect_ratio;
 	unsigned image_count;
 	VkFormat format;
+	VkColorSpaceKHR color_space;
 	VkSurfaceTransformFlagBitsKHR transform;
 };
 

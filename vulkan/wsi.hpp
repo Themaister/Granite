@@ -104,7 +104,9 @@ public:
 	virtual void event_device_created(Device *device);
 	virtual void event_device_destroyed();
 	virtual void event_swapchain_created(Device *device, unsigned width, unsigned height,
-	                                     float aspect_ratio, size_t num_swapchain_images, VkFormat format, VkSurfaceTransformFlagBitsKHR pre_rotate);
+	                                     float aspect_ratio, size_t num_swapchain_images,
+	                                     VkFormat format, VkColorSpaceKHR color_space,
+	                                     VkSurfaceTransformFlagBitsKHR pre_rotate);
 	virtual void event_swapchain_destroyed();
 	virtual void event_frame_tick(double frame, double elapsed);
 	virtual void event_swapchain_index(Device *device, unsigned index);

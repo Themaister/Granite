@@ -47,4 +47,14 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const FrameParameters &fr
                                    const std::string &input, const std::string &output,
                                    const HDROptions &options,
                                    const HDRDynamicExposureInterface *iface = nullptr);
+
+struct HDR10PQEncodingConfig
+{
+	float hdr_pre_exposure;
+	float ui_pre_exposure;
+};
+void setup_hdr10_pq_encoding(RenderGraph &graph, const std::string &output,
+                             const std::string &hdr_input, const std::string &ui_input,
+                             const HDR10PQEncodingConfig &config,
+                             const VkHdrMetadataEXT &static_metadata);
 }

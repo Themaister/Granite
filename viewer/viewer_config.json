@@ -12,6 +12,7 @@
 	"clusteredLightsShadowsResolution": 512,
 	"hdrBloom": true,
 	"hdrBloomDynamicExposure": true,
+	"hdr10": false,
 	"forwardDepthPrepass" : true,
 	"shadowMapResolution": 2048,
 	"renderTargetFp16": false,

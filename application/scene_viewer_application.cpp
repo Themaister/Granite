@@ -229,6 +229,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.hdr_bloom = doc["hdrBloom"].GetBool();
 	if (doc.HasMember("hdrBloomDynamicExposure"))
 		config.hdr_bloom_dynamic_exposure = doc["hdrBloomDynamicExposure"].GetBool();
+	if (doc.HasMember("hdr10"))
+		config.hdr10 = doc["hdr10"].GetBool();
 	if (doc.HasMember("showUi"))
 		config.show_ui = doc["showUi"].GetBool();
 	if (doc.HasMember("forwardDepthPrepass"))
@@ -805,7 +807,7 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 			device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32,
 			                                 VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
 
-	if (config.hdr_bloom)
+	if (config.hdr_bloom || config.hdr10)
 		color.format =
 		    (config.rt_fp16 || !supports_32bpp) ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	else
@@ -872,7 +874,7 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	bool supports_32bpp =
 	    device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
-	if (config.hdr_bloom)
+	if (config.hdr_bloom || config.hdr10)
 		emissive.format =
 		    (config.rt_fp16 || !supports_32bpp) ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	else
@@ -1180,16 +1182,35 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	if (config.show_ui)
 	{
 		auto &ui = graph.add_pass("ui", config.hdr_bloom || config.postaa_type != PostAAType::None ?
-		                                    RenderGraph::get_default_post_graphics_queue() :
-		                                    RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-
+		                                RenderGraph::get_default_post_graphics_queue() :
+		                                RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 		AttachmentInfo ui_info;
-		ui_info.flags |= ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT;
-		ui.add_color_output("ui-output", ui_info, ui_source);
+
+		if (config.hdr10 && !config.hdr_bloom && get_wsi().get_backbuffer_color_space() == VK_COLOR_SPACE_HDR10_ST2084_EXT)
+		{
+			ui.add_color_output("ui-temporary", ui_info, ui_source);
+			ui_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+
+			// TODO: Make this dynamic.
+			HDR10PQEncodingConfig hdr10_config = {};
+			hdr10_config.hdr_pre_exposure = 200.0f;
+			hdr10_config.ui_pre_exposure = 400.0f;
+			setup_hdr10_pq_encoding(graph, "ui-output", ui_source, "ui-temporary", hdr10_config,
+			                        get_wsi().get_hdr_metadata());
+		}
+		else
+		{
+			ui_info.flags |= ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT;
+			ui.add_color_output("ui-output", ui_info, ui_source);
+		}
+
 		graph.set_backbuffer_source("ui-output");
 
 		ui.set_get_clear_color([](unsigned, VkClearColorValue *value) {
-			memset(value, 0, sizeof(*value));
+			value->float32[0] = 0.0f;
+			value->float32[1] = 0.0f;
+			value->float32[2] = 0.0f;
+			value->float32[3] = 1.0f;
 			return true;
 		});
 

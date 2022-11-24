@@ -349,7 +349,8 @@ Semaphore WSI::consume_external_release_semaphore()
 void WSI::wait_swapchain_latency()
 {
 	if (device->get_device_features().present_wait_features.presentWait &&
-	    present_last_id > present_frame_latency)
+	    present_last_id > present_frame_latency &&
+	    current_present_mode == PresentMode::SyncToVBlank)
 	{
 		// The effective latency is more like present_frame_latency + 1.
 		// If 0, we wait for vblank, and we must do CPU work and GPU work in one frame

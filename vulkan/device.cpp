@@ -861,9 +861,9 @@ void Device::set_context(const Context &context)
 	init_bindless();
 
 #ifdef ANDROID
-	init_frame_contexts(3); // Android needs a bit more ... ;)
+	init_frame_contexts(8); // Android needs a bit more ... ;)
 #else
-	init_frame_contexts(2); // By default, regular double buffer between CPU and GPU.
+	init_frame_contexts(8); // By default, regular double buffer between CPU and GPU.
 #endif
 
 	managers.memory.init(this);

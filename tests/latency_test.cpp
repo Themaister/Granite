@@ -40,6 +40,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 	{
 		EVENT_MANAGER_REGISTER(LatencyTest, on_key_down, KeyboardEvent);
 		frame_times.reserve(100);
+		get_wsi().set_present_mode(PresentMode::UnlockedMaybeTear);
 	}
 
 	bool on_key_down(const KeyboardEvent &e)

@@ -305,7 +305,6 @@ private:
 	Semaphore external_acquire;
 	Semaphore external_release;
 	bool frame_is_external = false;
-	bool using_display_timing = false;
 
 	BackbufferFormat backbuffer_format = BackbufferFormat::sRGB;
 	BackbufferFormat current_backbuffer_format = BackbufferFormat::sRGB;

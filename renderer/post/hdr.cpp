@@ -647,7 +647,7 @@ void setup_hdr10_pq_encoding(RenderGraph &graph, const std::string &output,
 	auto &pq10 = graph.add_pass("pq10", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 
 	AttachmentInfo att;
-	att.flags |= ATTACHMENT_INFO_SUPPORTS_PREROTATE_BIT;
+	// TODO: Support pre-rotate.
 
 	auto pass = Util::make_handle<PQEncoder>();
 	pass->config = config;

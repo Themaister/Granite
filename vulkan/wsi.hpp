@@ -103,7 +103,8 @@ public:
 
 	virtual void event_device_created(Device *device);
 	virtual void event_device_destroyed();
-	virtual void event_swapchain_created(Device *device, unsigned width, unsigned height,
+	virtual void event_swapchain_created(Device *device, VkSwapchainKHR swapchain,
+	                                     unsigned width, unsigned height,
 	                                     float aspect_ratio, size_t num_swapchain_images,
 	                                     VkFormat format, VkColorSpaceKHR color_space,
 	                                     VkSurfaceTransformFlagBitsKHR pre_rotate);

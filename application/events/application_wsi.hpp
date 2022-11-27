@@ -40,7 +40,8 @@ public:
 protected:
 	void event_device_created(Vulkan::Device *device) override;
 	void event_device_destroyed() override;
-	void event_swapchain_created(Vulkan::Device *device, unsigned width, unsigned height,
+	void event_swapchain_created(Vulkan::Device *device, VkSwapchainKHR swapchain,
+	                             unsigned width, unsigned height,
 	                             float aspect_ratio, size_t image_count,
 	                             VkFormat format, VkColorSpaceKHR color_space,
 	                             VkSurfaceTransformFlagBitsKHR pre_rotate) override;

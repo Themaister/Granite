@@ -23,6 +23,10 @@
 #include "wsi.hpp"
 #include "quirks.hpp"
 
+#ifdef ANDROID
+#include "swappy/swappyVk.h"
+#endif
+
 namespace Vulkan
 {
 WSI::WSI()
@@ -129,7 +133,7 @@ bool WSI::init_external_swapchain(std::vector<ImageHandle> swapchain_images_)
 	     swapchain_width, swapchain_height, static_cast<unsigned>(swapchain_surface_format.format));
 
 	platform->event_swapchain_destroyed();
-	platform->event_swapchain_created(device.get(), swapchain_width, swapchain_height,
+	platform->event_swapchain_created(device.get(), VK_NULL_HANDLE, swapchain_width, swapchain_height,
 	                                  swapchain_aspect_ratio,
 	                                  external_swapchain_images.size(),
 	                                  swapchain_surface_format.format, swapchain_surface_format.colorSpace,
@@ -274,6 +278,7 @@ void WSI::drain_swapchain()
 void WSI::tear_down_swapchain()
 {
 	drain_swapchain();
+	platform->event_swapchain_destroyed();
 
 	if (swapchain != VK_NULL_HANDLE)
 	{
@@ -298,8 +303,6 @@ void WSI::deinit_surface_and_swapchain()
 		platform->destroy_surface(context->get_instance(), surface);
 		surface = VK_NULL_HANDLE;
 	}
-
-	platform->event_swapchain_destroyed();
 }
 
 void WSI::set_external_frame(unsigned index, Semaphore acquire_semaphore, double frame_time)
@@ -533,7 +536,13 @@ bool WSI::end_frame()
 #endif
 
 		auto present_ts = device->write_calibrated_timestamp();
+
+#ifdef ANDROID
+		VkResult overall = SwappyVk_queuePresent(device->get_current_present_queue(), &info);
+#else
 		VkResult overall = table->vkQueuePresentKHR(device->get_current_present_queue(), &info);
+#endif
+
 		device->register_time_interval("WSI", std::move(present_ts), device->write_calibrated_timestamp(), "present");
 
 #if defined(ANDROID)
@@ -659,10 +668,7 @@ void WSI::teardown()
 		platform->release_resources();
 
 	if (context)
-	{
 		tear_down_swapchain();
-		platform->event_swapchain_destroyed();
-	}
 
 	if (surface != VK_NULL_HANDLE)
 	{
@@ -1143,6 +1149,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		info.pNext = &exclusive_info;
 #endif
 
+	platform->event_swapchain_destroyed();
 	auto res = table->vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
 	if (old_swapchain != VK_NULL_HANDLE)
 		table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
@@ -1186,8 +1193,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	LOGI("Got %u swapchain images.\n", image_count);
 
-	platform->event_swapchain_destroyed();
-	platform->event_swapchain_created(device.get(), swapchain_width, swapchain_height,
+	platform->event_swapchain_created(device.get(), swapchain, swapchain_width, swapchain_height,
 	                                  swapchain_aspect_ratio, image_count,
 	                                  swapchain_surface_format.format,
 	                                  swapchain_surface_format.colorSpace,
@@ -1216,7 +1222,7 @@ WSI::~WSI()
 
 void WSIPlatform::event_device_created(Device *) {}
 void WSIPlatform::event_device_destroyed() {}
-void WSIPlatform::event_swapchain_created(Device *, unsigned, unsigned, float, size_t,
+void WSIPlatform::event_swapchain_created(Device *, VkSwapchainKHR, unsigned, unsigned, float, size_t,
                                           VkFormat, VkColorSpaceKHR,
                                           VkSurfaceTransformFlagBitsKHR) {}
 void WSIPlatform::event_swapchain_destroyed() {}

@@ -4,13 +4,15 @@ if (ANDROID)
     add_granite_internal_static_lib(granite-platform application_android.cpp)
     find_package(game-activity REQUIRED CONFIG)
     find_package(games-controller REQUIRED CONFIG)
+    find_package(games-frame-pacing REQUIRED CONFIG)
     get_target_property(game-activity-include game-activity::game-activity INTERFACE_INCLUDE_DIRECTORIES)
     add_library(android-game-activity STATIC
         ${game-activity-include}/game-activity/native_app_glue/android_native_app_glue.c
         ${game-activity-include}/game-activity/GameActivity.cpp
         ${game-activity-include}/game-text-input/gametextinput.cpp)
     target_include_directories(android-game-activity PUBLIC ${game-activity-include})
-    target_link_libraries(granite-platform PRIVATE granite-rapidjson android-game-activity games-controller::paddleboat)
+    target_link_libraries(granite-platform PRIVATE granite-rapidjson android-game-activity
+            games-controller::paddleboat games-frame-pacing::swappy)
 
     target_compile_definitions(granite-platform PRIVATE "VK_USE_PLATFORM_ANDROID_KHR")
     if (GRANITE_ANDROID_APK_FILESYSTEM)

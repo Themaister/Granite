@@ -33,6 +33,7 @@
 #include <jni.h>
 #include <android/sensor.h>
 #include <android/window.h>
+#include "swappy/swappyVk.h"
 
 #include "android.hpp"
 #include "os_filesystem.hpp"
@@ -209,10 +210,31 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		return true;
 	}
 
-	void event_swapchain_created(Device *device_, unsigned width_, unsigned height_, float aspect_, size_t count_,
+	VkDevice current_device = VK_NULL_HANDLE;
+	VkSwapchainKHR current_swapchain = VK_NULL_HANDLE;
+
+	void event_swapchain_created(Device *device_, VkSwapchainKHR swapchain, unsigned width_, unsigned height_, float aspect_, size_t count_,
 	                             VkFormat format_, VkColorSpaceKHR color_space_, VkSurfaceTransformFlagBitsKHR transform_) override
 	{
-		Granite::GraniteWSIPlatform::event_swapchain_created(device_, width_, height_, aspect_, count_, format_, color_space_, transform_);
+		current_device = device_->get_device();
+		current_swapchain = swapchain;
+		SwappyVk_setWindow(current_device, current_swapchain, global_state.app->window);
+
+		uint64_t refresh = 0;
+		if (SwappyVk_initAndGetRefreshCycleDuration(jni.env, global_state.app->activity->javaGameActivity,
+		                                            device_->get_physical_device(), device_->get_device(),
+		                                            swapchain, &refresh))
+		{
+			LOGI("Swappy reported refresh duration of %.3f ms.\n", double(refresh) * 1e-6);
+		}
+		else
+			LOGW("Failed to initialize swappy refresh rate.\n");
+
+		SwappyVk_setMaxAutoSwapIntervalNS(SWAPPY_SWAP_30FPS);
+
+		Granite::GraniteWSIPlatform::event_swapchain_created(device_, swapchain, width_, height_,
+		                                                     aspect_, count_, format_,
+		                                                     color_space_, transform_);
 
 		if (transform_ & (VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR |
 		                  VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR |
@@ -222,6 +244,17 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 			std::swap(width_, height_);
 		}
 		get_input_tracker().set_touch_resolution(width_, height_);
+	}
+
+	void event_swapchain_destroyed() override
+	{
+		if (current_device && current_swapchain)
+		{
+			SwappyVk_destroySwapchain(current_device, current_swapchain);
+			current_device = VK_NULL_HANDLE;
+			current_swapchain = VK_NULL_HANDLE;
+		}
+		Granite::GraniteWSIPlatform::event_swapchain_destroyed();
 	}
 
 	void update_orientation();

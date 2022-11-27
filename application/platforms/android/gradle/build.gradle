@@ -90,4 +90,5 @@ dependencies {
     api project(':granite:android')
     implementation 'androidx.games:games-activity:1.2.1'
     implementation 'androidx.games:games-controller:1.1.0'
+    implementation 'androidx.games:games-frame-pacing:1.10.1'
 }

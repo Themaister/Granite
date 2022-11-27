@@ -34,6 +34,10 @@
 #include <windows.h>
 #endif
 
+#ifdef ANDROID
+#include "swappy/swappyVk.h"
+#endif
+
 //#undef VULKAN_DEBUG
 
 namespace Vulkan
@@ -196,8 +200,14 @@ void Context::destroy()
 	debug_messenger = VK_NULL_HANDLE;
 #endif
 
+#ifdef ANDROID
+	if (device != VK_NULL_HANDLE)
+		SwappyVk_destroyDevice(device);
+#endif
+
 	if (owned_device && device != VK_NULL_HANDLE)
 		device_table.vkDestroyDevice(device, nullptr);
+
 	if (owned_instance && instance != VK_NULL_HANDLE)
 		vkDestroyInstance(instance, nullptr);
 }
@@ -688,19 +698,47 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 
 	std::vector<const char *> enabled_extensions;
 
+	bool requires_swapchain = false;
 	for (uint32_t i = 0; i < num_required_device_extensions; i++)
+	{
 		enabled_extensions.push_back(required_device_extensions[i]);
+		if (strcmp(required_device_extensions[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
+			requires_swapchain = true;
+	}
+
+#ifdef ANDROID
+	// Enable additional extensions required by SwappyVk.
+	std::unique_ptr<char[]> swappy_str_buffer;
+	if (requires_swapchain)
+	{
+		uint32_t required_swappy_extension_count = 0;
+
+		// I'm really not sure why the API just didn't return static const char * strings here,
+		// but oh well.
+		SwappyVk_determineDeviceExtensions(gpu, uint32_t(queried_extensions.size()),
+		                                   queried_extensions.data(),
+		                                   &required_swappy_extension_count,
+		                                   nullptr);
+		swappy_str_buffer.reset(new char[required_swappy_extension_count * (VK_MAX_EXTENSION_NAME_SIZE + 1)]);
+
+		std::vector<char *> extension_buffer;
+		extension_buffer.reserve(required_swappy_extension_count);
+		for (uint32_t i = 0; i < required_swappy_extension_count; i++)
+			extension_buffer.push_back(swappy_str_buffer.get() + i * (VK_MAX_EXTENSION_NAME_SIZE + 1));
+		SwappyVk_determineDeviceExtensions(gpu, uint32_t(queried_extensions.size()),
+		                                   queried_extensions.data(),
+		                                   &required_swappy_extension_count,
+		                                   extension_buffer.data());
+
+		for (auto *required_ext : extension_buffer)
+			enabled_extensions.push_back(required_ext);
+	}
+#endif
 
 	if (has_extension(VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME))
 	{
 		ext.supports_mirror_clamp_to_edge = true;
 		enabled_extensions.push_back(VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME);
-	}
-
-	if (has_extension(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME))
-	{
-		ext.supports_google_display_timing = true;
-		enabled_extensions.push_back(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
 	}
 
 #ifdef _WIN32
@@ -971,31 +1009,26 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		enabled_extensions.push_back(VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME);
 	}
 
-	for (unsigned i = 0; i < num_required_device_extensions; i++)
+	if (requires_swapchain)
 	{
-		if (strcmp(required_device_extensions[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
+		if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
 		{
-			if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
-			{
-				enabled_extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
-				*ppNext = &ext.present_id_features;
-				ppNext = &ext.present_id_features.pNext;
-			}
+			enabled_extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+			*ppNext = &ext.present_id_features;
+			ppNext = &ext.present_id_features.pNext;
+		}
 
-			if (has_extension(VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
-			{
-				enabled_extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
-				*ppNext = &ext.present_wait_features;
-				ppNext = &ext.present_wait_features.pNext;
-			}
+		if (has_extension(VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+			*ppNext = &ext.present_wait_features;
+			ppNext = &ext.present_wait_features.pNext;
+		}
 
-			if (ext.supports_swapchain_colorspace && has_extension(VK_EXT_HDR_METADATA_EXTENSION_NAME))
-			{
-				ext.supports_hdr_metadata = true;
-				enabled_extensions.push_back(VK_EXT_HDR_METADATA_EXTENSION_NAME);
-			}
-
-			break;
+		if (ext.supports_swapchain_colorspace && has_extension(VK_EXT_HDR_METADATA_EXTENSION_NAME))
+		{
+			ext.supports_hdr_metadata = true;
+			enabled_extensions.push_back(VK_EXT_HDR_METADATA_EXTENSION_NAME);
 		}
 	}
 
@@ -1154,6 +1187,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		{
 			device_table.vkGetDeviceQueue(device, queue_info.family_indices[i], queue_indices[i],
 			                              &queue_info.queues[i]);
+
+#ifdef ANDROID
+			SwappyVk_setQueueFamilyIndex(device, queue_info.queues[i], queue_info.family_indices[i]);
+#endif
 		}
 		else
 		{

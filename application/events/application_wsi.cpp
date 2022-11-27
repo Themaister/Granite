@@ -33,7 +33,7 @@ GraniteWSIPlatform::GraniteWSIPlatform()
 	input_tracker.set_input_handler(this);
 }
 
-void GraniteWSIPlatform::event_swapchain_created(Vulkan::Device *device, unsigned width, unsigned height,
+void GraniteWSIPlatform::event_swapchain_created(Vulkan::Device *device, VkSwapchainKHR, unsigned width, unsigned height,
                                                  float aspect_ratio, size_t image_count, VkFormat format,
                                                  VkColorSpaceKHR color_space,
                                                  VkSurfaceTransformFlagBitsKHR transform)

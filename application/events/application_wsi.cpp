@@ -81,14 +81,6 @@ void GraniteWSIPlatform::event_frame_tick(double, double)
 {
 }
 
-void GraniteWSIPlatform::event_display_timing_stutter(uint32_t current_serial, uint32_t observed_serial,
-                                                      unsigned dropped_frames)
-{
-	auto *em = GRANITE_EVENT_MANAGER();
-	if (em)
-		em->dispatch_inline(Vulkan::DisplayTimingStutterEvent{current_serial, observed_serial, dropped_frames});
-}
-
 template <typename T>
 void GraniteWSIPlatform::dispatch_template(const T &t)
 {

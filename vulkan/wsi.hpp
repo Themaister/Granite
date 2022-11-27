@@ -110,8 +110,6 @@ public:
 	virtual void event_swapchain_destroyed();
 	virtual void event_frame_tick(double frame, double elapsed);
 	virtual void event_swapchain_index(Device *device, unsigned index);
-	virtual void event_display_timing_stutter(uint32_t current_serial, uint32_t observed_serial,
-	                                          unsigned dropped_frames);
 
 	virtual void set_window_title(const std::string &title);
 

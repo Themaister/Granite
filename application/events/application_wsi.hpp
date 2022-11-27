@@ -47,8 +47,6 @@ protected:
 	void event_swapchain_destroyed() override;
 	void event_swapchain_index(Vulkan::Device *device, unsigned index) override;
 	void event_frame_tick(double frame, double elapsed) override;
-	void event_display_timing_stutter(uint32_t current_serial, uint32_t observed_serial,
-	                                  unsigned dropped_frames) override;
 
 private:
 	InputTracker input_tracker;

@@ -970,8 +970,17 @@ static bool key_event_filter(const GameActivityKeyEvent *event)
 	switch (event->source)
 	{
 	case AINPUT_SOURCE_GAMEPAD:
-	case AINPUT_SOURCE_KEYBOARD:
 		return true;
+
+	case AINPUT_SOURCE_KEYBOARD:
+	{
+		// System level keycodes that we don't care about
+		// should be handled by system.
+		auto code = event->keyCode;
+		bool handled = code != AKEYCODE_VOLUME_DOWN &&
+		               code != AKEYCODE_VOLUME_UP;
+		return handled;
+	}
 
 	default:
 		return false;

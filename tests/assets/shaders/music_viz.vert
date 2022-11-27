@@ -1,5 +1,7 @@
 #version 450
 
+#include "prerotate.h"
+
 layout(location = 0) in float vMusic;
 layout(push_constant, std430) uniform Registers
 {
@@ -13,4 +15,5 @@ void main()
     float y = -vMusic;
     x = 2.0 * x - 1.0;
     gl_Position = vec4(x, 16.0 * y, 0.0, 1.0);
+	prerotate_fixup_clip_xy();
 }

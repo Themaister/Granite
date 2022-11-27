@@ -46,6 +46,16 @@ struct AudioApplication : Application, EventHandler
 		EVENT_MANAGER_REGISTER(AudioApplication, on_tone_samples, DSP::ToneFilterWave);
 		EVENT_MANAGER_REGISTER(AudioApplication, on_audio_perf, AudioStreamPerformanceEvent);
 		EVENT_MANAGER_REGISTER_LATCH(AudioApplication, on_mixer_start, on_mixer_stop, MixerStartEvent);
+		EVENT_MANAGER_REGISTER_LATCH(AudioApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	}
+
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e)
+	{
+		e.get_device().get_shader_manager().add_include_directory("builtin://shaders/inc");
+	}
+
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
+	{
 	}
 
 	enum { RingSize = 512 };

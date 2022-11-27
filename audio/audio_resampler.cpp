@@ -39,7 +39,7 @@ ResampledStream::~ResampledStream()
 		source->dispose();
 }
 
-void ResampledStream::setup(float output_rate, unsigned channels, size_t num_frames)
+bool ResampledStream::setup(float output_rate, unsigned channels, size_t num_frames)
 {
 	num_channels = channels;
 	max_num_frames = num_frames;
@@ -56,7 +56,7 @@ void ResampledStream::setup(float output_rate, unsigned channels, size_t num_fra
 	for (unsigned i = 0; i < channels; i++)
 		input_buffer[i].resize(maximum_input);
 
-	source->setup(source->get_sample_rate(), source->get_num_channels(), maximum_input);
+	return source->setup(source->get_sample_rate(), source->get_num_channels(), maximum_input);
 }
 
 size_t ResampledStream::accumulate_samples(float *const *channels, const float *gain, size_t num_frames) noexcept
@@ -80,6 +80,5 @@ size_t ResampledStream::accumulate_samples(float *const *channels, const float *
 
 	return source_input ? num_frames : 0;
 }
-
 }
 }

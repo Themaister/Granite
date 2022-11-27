@@ -92,9 +92,17 @@ public:
 		return true;
 	}
 
-	void setup(float mixer_output_rate, unsigned mixer_channels, size_t) override
+	void install_message_queue(StreamID id, Util::LockFreeMessageQueue *queue) override
 	{
-		source->setup(mixer_output_rate, mixer_channels, block_size);
+		MixerStream::install_message_queue(id, queue);
+		if (source)
+			source->install_message_queue(id, queue);
+	}
+
+	bool setup(float mixer_output_rate, unsigned mixer_channels, size_t) override
+	{
+		if (!source->setup(mixer_output_rate, mixer_channels, block_size))
+			return false;
 		num_channels = source->get_num_channels();
 		sample_rate = source->get_sample_rate();
 
@@ -107,6 +115,7 @@ public:
 				iter[c] = allocate_float(fft_block_size);
 
 		current_read = block_size;
+		return true;
 	}
 
 	// Must increment.

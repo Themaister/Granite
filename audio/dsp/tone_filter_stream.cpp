@@ -46,7 +46,7 @@ struct ToneFilterStream : MixerStream
 		return true;
 	}
 
-	void setup(float mixer_output_rate, unsigned mixer_channels, size_t max_frames) override
+	bool setup(float mixer_output_rate, unsigned mixer_channels, size_t max_frames) override
 	{
 		source->setup(mixer_output_rate, mixer_channels, max_frames);
 		filter.init(source->get_sample_rate(), tuning_freq);
@@ -58,6 +58,7 @@ struct ToneFilterStream : MixerStream
 			mix_ptrs[c] = mix_channels[c].data();
 		}
 		mix_channels_mono.resize(max_frames);
+		return true;
 	}
 
 	// Must increment.

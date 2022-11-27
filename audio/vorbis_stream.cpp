@@ -46,26 +46,37 @@ struct VorbisStream : MixerStream
 
 	unsigned get_num_channels() const override
 	{
-		return num_channels;
+		return num_mixer_channels;
 	}
 
-	void setup(float, unsigned, size_t num_frames) override
+	bool setup(float, unsigned mixer_channels_, size_t num_frames) override
 	{
+		num_mixer_channels = mixer_channels_;
+		if (num_mixer_channels != num_input_channels && num_input_channels != 1)
+			return false;
+
 		for (auto &mix : mix_buffer)
 			mix.clear();
 
-		for (unsigned c = 0; c < num_channels; c++)
+		for (unsigned c = 0; c < num_input_channels; c++)
 		{
 			mix_buffer[c].resize(num_frames);
 			mix_channels[c] = mix_buffer[c].data();
 		}
+
+		if (num_input_channels == 1)
+			for (unsigned i = 1; i < num_mixer_channels; i++)
+				mix_channels[i] = mix_channels[0];
+
+		return true;
 	}
 
 	stb_vorbis *file = nullptr;
 	std::unique_ptr<File> filesystem_file;
 
 	float sample_rate = 0.0f;
-	unsigned num_channels = 0;
+	unsigned num_input_channels = 0;
+	unsigned num_mixer_channels = 0;
 	bool looping = false;
 
 	std::vector<float> mix_buffer[Backend::MaxAudioChannels];
@@ -85,13 +96,26 @@ struct DecodedVorbisStream : MixerStream
 
 	unsigned get_num_channels() const override
 	{
-		return num_channels;
+		return num_mixer_channels;
+	}
+
+	bool setup(float, unsigned mixer_channels_, size_t) override
+	{
+		num_mixer_channels = mixer_channels_;
+		if (num_mixer_channels != num_input_channels && num_input_channels != 1)
+			return false;
+
+		for (unsigned i = 0; i < num_mixer_channels; i++)
+			decoded_audio_ptr[i] = decoded_audio[num_input_channels == 1 ? 0 : i].data();
+		return true;
 	}
 
 	std::vector<float> decoded_audio[Backend::MaxAudioChannels];
+	const float *decoded_audio_ptr[Backend::MaxAudioChannels] = {};
 	size_t offset = 0;
 	float sample_rate = 0.0f;
-	unsigned num_channels = 0;
+	unsigned num_input_channels = 0;
+	unsigned num_mixer_channels = 0;
 	bool looping = false;
 };
 
@@ -118,7 +142,7 @@ bool VorbisStream::init(const std::string &path)
 
 	auto info = stb_vorbis_get_info(file);
 	sample_rate = info.sample_rate;
-	num_channels = unsigned(info.channels);
+	num_input_channels = unsigned(info.channels);
 
 	return true;
 }
@@ -147,16 +171,16 @@ bool DecodedVorbisStream::init(const std::string &path)
 
 	auto info = stb_vorbis_get_info(file);
 	sample_rate = info.sample_rate;
-	num_channels = unsigned(info.channels);
+	num_input_channels = unsigned(info.channels);
 
 	float block[Backend::MaxAudioChannels][256];
 	float *mix_channels[Backend::MaxAudioChannels];
-	for (unsigned c = 0; c < num_channels; c++)
+	for (unsigned c = 0; c < num_input_channels; c++)
 		mix_channels[c] = block[c];
 
 	int ret;
-	while ((ret = stb_vorbis_get_samples_float(file, int(num_channels), mix_channels, 256)) > 0)
-		for (unsigned c = 0; c < num_channels; c++)
+	while ((ret = stb_vorbis_get_samples_float(file, int(num_input_channels), mix_channels, 256)) > 0)
+		for (unsigned c = 0; c < num_input_channels; c++)
 			decoded_audio[c].insert(end(decoded_audio[c]), mix_channels[c], mix_channels[c] + ret);
 
 	if (ret < 0)
@@ -174,8 +198,8 @@ size_t DecodedVorbisStream::accumulate_samples(float *const *channels, const flo
 {
 	size_t to_write = std::min(decoded_audio[0].size() - offset, num_frames);
 
-	for (unsigned c = 0; c < num_channels; c++)
-		DSP::accumulate_channel(channels[c], decoded_audio[c].data() + offset, gains[c], to_write);
+	for (unsigned c = 0; c < num_mixer_channels; c++)
+		DSP::accumulate_channel(channels[c], decoded_audio_ptr[c] + offset, gains[c], to_write);
 
 	offset += to_write;
 
@@ -191,7 +215,7 @@ size_t DecodedVorbisStream::accumulate_samples(float *const *channels, const flo
 	if (spill_to_write)
 	{
 		float *modified_channels[Backend::MaxAudioChannels];
-		for (unsigned c = 0; c < num_channels; c++)
+		for (unsigned c = 0; c < num_input_channels; c++)
 			modified_channels[c] = channels[c] + to_write;
 
 		return accumulate_samples(modified_channels, gains, spill_to_write) + to_write;
@@ -202,18 +226,18 @@ size_t DecodedVorbisStream::accumulate_samples(float *const *channels, const flo
 
 size_t VorbisStream::accumulate_samples(float * const *channels, const float *gains, size_t num_frames) noexcept
 {
-	auto actual_frames = stb_vorbis_get_samples_float(file, num_channels, mix_channels, int(num_frames));
+	auto actual_frames = stb_vorbis_get_samples_float(file, int(num_input_channels), mix_channels, int(num_frames));
 	if (actual_frames < 0)
 		return 0;
 
-	for (unsigned c = 0; c < num_channels; c++)
+	for (unsigned c = 0; c < num_mixer_channels; c++)
 		DSP::accumulate_channel(channels[c], mix_channels[c], gains[c], size_t(actual_frames));
 
 	if (looping && size_t(actual_frames) < num_frames)
 	{
 		stb_vorbis_seek_start(file);
 		float *moved_channels[Backend::MaxAudioChannels];
-		for (unsigned c = 0; c < num_channels; c++)
+		for (unsigned c = 0; c < num_input_channels; c++)
 			moved_channels[c] = channels[c] + actual_frames;
 
 		actual_frames += accumulate_samples(moved_channels, gains, num_frames - actual_frames);

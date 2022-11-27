@@ -273,10 +273,30 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 	if (!stream)
 		return StreamID(-1);
 
-	// Cannot deal with this yet.
-	if (stream->get_num_channels() != num_channels)
+	if (!stream->setup(sample_rate, num_channels, max_num_samples))
+	{
+		LOGE("Failed to setup stream.\n");
+		stream->dispose();
+		return StreamID(-1);
+	}
+
+	if (stream->get_sample_rate() != sample_rate)
+	{
+		auto *resample_stream = new ResampledStream(stream);
+		stream = resample_stream;
+		if (!stream->setup(sample_rate, num_channels, max_num_samples))
+		{
+			LOGE("Failed to setup resampled stream.\n");
+			stream->dispose();
+			return StreamID(-1);
+		}
+	}
+
+	unsigned stream_channels = stream->get_num_channels();
+	if (stream_channels != num_channels)
 	{
 		LOGE("Number of audio channels in stream does not match mixer.\n");
+		stream->dispose();
 		return StreamID(-1);
 	}
 
@@ -302,15 +322,6 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 		StreamID id = generate_stream_id(index);
 		stream->install_message_queue(id, &message_queue);
 
-		stream->setup(sample_rate, num_channels, max_num_samples);
-
-		if (stream->get_sample_rate() != sample_rate)
-		{
-			auto *resample_stream = new ResampledStream(stream);
-			stream = resample_stream;
-			stream->setup(sample_rate, num_channels, max_num_samples);
-		}
-
 		// Can all be relaxed here.
 		// The mixer thread will be dependent on the active_channel_mask having been kicked.
 		mixer_streams[index] = stream;
@@ -329,7 +340,8 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 		return id;
 	}
 
-	return unsigned(-1);
+	stream->dispose();
+	return StreamID(-1);
 }
 
 void Mixer::dispose_dead_streams()

@@ -41,25 +41,28 @@ public:
 	virtual ~MixerStream() = default;
 
 	// Basically, a destructor.
-	// Allows for more flexible resource recycling beyond operator delete.
+	// Allows for more flexible resource recycling beyond just plain operator delete.
 	virtual void dispose()
 	{
 		delete this;
 	}
 
-	void install_message_queue(StreamID id, Util::LockFreeMessageQueue *queue);
+	virtual void install_message_queue(StreamID id, Util::LockFreeMessageQueue *queue);
 
-	virtual void setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames)
-	{
-		(void)mixer_output_rate;
-		(void)mixer_channels;
-		(void)max_num_frames;
-	}
+	// The first call made by mixer.
+	// The stream can adjust its output mixer output rate and number of channels
+	// to match the mixer.
+	virtual bool setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames) = 0;
 
 	// Must increment.
 	virtual size_t accumulate_samples(float * const *channels, const float *gain, size_t num_frames) noexcept = 0;
 
+	// Called after setup().
+	// If get_num_channels() returns != mixer_channels, the stream is refused.
+	// Mono streams can trivially mix to stereo.
 	virtual unsigned get_num_channels() const = 0;
+	// If get_sample_rate() returns a value != mixer_output_rate,
+	// a resampler will be injected automatically.
 	virtual float get_sample_rate() const = 0;
 
 	StreamID get_stream_id() const
@@ -90,6 +93,8 @@ public:
 	// Atomically adds a mixer stream. Might also dispose and replace an old stream.
 	// Can only be called from a non-critical thread.
 	// Returns StreamID(-1) if a mixer stream slot cannot be found.
+	// The add_mixer_stream() always takes ownership and disposes the stream
+	// on error or there is no vacant stream.
 	StreamID add_mixer_stream(MixerStream *stream, bool start_playing = true,
 	                          float initial_gain_db = 0.0f, float initial_panning = 0.0f);
 	void kill_stream(StreamID id);

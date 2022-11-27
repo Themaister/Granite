@@ -147,13 +147,11 @@ struct AudioApplication : Application, EventHandler
 		switch (e.get_key())
 		{
 		case Key::A:
-			//id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/a.ogg"));
-			id = mixer->add_mixer_stream(DSP::create_tone_filter_stream(create_vorbis_stream("/tmp/test.ogg")));
+			id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/a.ogg"));
 			break;
 
 		case Key::B:
-			//id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/b.ogg"));
-			id = mixer->add_mixer_stream(DSP::create_tone_filter_stream(create_vorbis_stream("/tmp/test2.ogg")));
+			id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/b.ogg"));
 			break;
 
 		case Key::C:

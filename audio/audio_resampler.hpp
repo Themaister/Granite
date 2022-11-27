@@ -36,8 +36,15 @@ public:
 	ResampledStream(MixerStream *source);
 	~ResampledStream();
 
-	void setup(float output_rate, unsigned channels, size_t frames) override;
+	bool setup(float output_rate, unsigned channels, size_t frames) override;
 	size_t accumulate_samples(float * const *channels, const float *gain, size_t num_frames) noexcept override;
+
+	void install_message_queue(StreamID id, Util::LockFreeMessageQueue *queue) override
+	{
+		MixerStream::install_message_queue(id, queue);
+		if (source)
+			source->install_message_queue(id, queue);
+	}
 
 	float get_sample_rate() const override
 	{

@@ -132,6 +132,7 @@ def main():
         cmakelists = find_relative_path(target_build_gradle, args.cmake_lists_toplevel)
         assets = find_relative_path(target_build_gradle, args.assets)
         granite_assets = find_relative_path(target_build_gradle, os.path.join(args.granite_dir, 'assets'))
+        granite_fsr2_assets = find_relative_path(target_build_gradle, os.path.join(args.granite_dir, 'third_party/fsr2/src/ffx-fsr2-api/shaders'))
         external_jni = find_relative_path(target_build_gradle, os.path.join(args.granite_dir,
                                                                             'application/platforms/android/external_layers'))
 
@@ -143,6 +144,7 @@ def main():
             .replace('$$CMAKELISTS$$', cmakelists) \
             .replace('$$ASSETS$$', assets) \
             .replace('$$GRANITE_ASSETS$$', granite_assets) \
+            .replace('$$GRANITE_FSR2_ASSETS$$', granite_fsr2_assets) \
             .replace('$$EXTERNAL_JNI$$', external_jni) \
             .replace('$$ABIS$$', target_abis) \
             .replace('$$AUDIO$$', 'ON' if args.audio else 'OFF') \

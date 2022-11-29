@@ -1082,9 +1082,14 @@ void android_main(android_app *app)
 #define ANDROID_ASSET_PATH ""
 #endif
 
+#ifndef ANDROID_FSR2_ASSET_PATH
+#define ANDROID_FSR2_ASSET_PATH ""
+#endif
+
 	AssetManagerFilesystem::global_asset_manager = app->activity->assetManager;
 	GRANITE_FILESYSTEM()->register_protocol("builtin", std::make_unique<AssetManagerFilesystem>(ANDROID_BUILTIN_ASSET_PATH));
 	GRANITE_FILESYSTEM()->register_protocol("assets", std::make_unique<AssetManagerFilesystem>(ANDROID_ASSET_PATH));
+	GRANITE_FILESYSTEM()->register_protocol("fsr2", std::make_unique<AssetManagerFilesystem>(ANDROID_FSR2_ASSET_PATH));
 	GRANITE_FILESYSTEM()->register_protocol("cache", std::make_unique<OSFilesystem>(app->activity->internalDataPath));
 #endif
 

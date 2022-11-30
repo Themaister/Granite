@@ -2585,6 +2585,8 @@ void Device::init_calibrated_timestamps()
 	{
 #ifdef _WIN32
 		const auto supported_domain = VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT;
+#elif defined(ANDROID)
+		const auto supported_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT;
 #else
 		const auto supported_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT;
 #endif

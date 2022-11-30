@@ -107,7 +107,12 @@ int64_t get_current_time_nsecs()
 	return int64_t(double(li.QuadPart) * static_qpc_freq.inv_freq);
 #else
 	struct timespec ts = {};
-	if (clock_gettime(CLOCK_MONOTONIC_RAW, &ts) < 0)
+#ifdef ANDROID
+	constexpr auto timebase = CLOCK_MONOTONIC;
+#else
+	constexpr auto timebase = CLOCK_MONOTONIC_RAW;
+#endif
+	if (clock_gettime(timebase, &ts) < 0)
 		return 0;
 	return ts.tv_sec * 1000000000ll + ts.tv_nsec;
 #endif

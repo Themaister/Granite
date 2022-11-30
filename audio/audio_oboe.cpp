@@ -27,6 +27,7 @@
 #include <cmath>
 #include <vector>
 #include <algorithm>
+#include <sys/system_properties.h>
 
 namespace Granite
 {
@@ -37,13 +38,6 @@ void set_oboe_low_latency_parameters(unsigned sample_rate, unsigned block_frames
 	// For OpenSL ES fallback path.
 	oboe::DefaultStreamValues::SampleRate = sample_rate;
 	oboe::DefaultStreamValues::FramesPerBurst = block_frames;
-}
-
-static uint32_t android_api_version;
-
-void set_oboe_android_api_version(uint32_t version)
-{
-	android_api_version = version;
 }
 
 struct OboeBackend final : Backend, oboe::AudioStreamCallback
@@ -137,6 +131,13 @@ bool OboeBackend::reinit()
 	return true;
 }
 
+static unsigned get_sdk_version()
+{
+	char buf[PROP_VALUE_MAX] = {};
+	__system_property_get("ro.build.version.sdk", buf);
+	return strtoul(buf, nullptr, 0);
+}
+
 void OboeBackend::setup_stream_builder(oboe::AudioStreamBuilder &builder)
 {
 	builder.setDirection(oboe::Direction::Output);
@@ -148,6 +149,8 @@ void OboeBackend::setup_stream_builder(oboe::AudioStreamBuilder &builder)
 	// https://github.com/google/oboe/issues/381
 	// Force OpenSLES for now. It works quite well.
 	// Appears to work fine on Android 10 though ...
+
+	unsigned android_api_version = get_sdk_version();
 
 	if (android_api_version >= 29)
 	{

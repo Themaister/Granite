@@ -1057,10 +1057,6 @@ static void parse_config()
 
 void android_main(android_app *app)
 {
-#ifdef AUDIO_HAVE_OBOE
-	Granite::Audio::set_oboe_android_api_version(app->activity->sdkVersion);
-#endif
-
 	// Statics on Android might not be cleared out.
 	global_state = {};
 	global_config = {};

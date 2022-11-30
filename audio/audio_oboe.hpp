@@ -30,6 +30,5 @@ namespace Audio
 {
 Backend *create_oboe_backend(BackendCallback *callback, float sample_rate, unsigned channels);
 void set_oboe_low_latency_parameters(unsigned sample_rate, unsigned block_frames);
-void set_oboe_android_api_version(uint32_t version);
 }
 }

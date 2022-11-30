@@ -225,12 +225,12 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		                                            swapchain, &refresh))
 		{
 			LOGI("Swappy reported refresh duration of %.3f ms.\n", double(refresh) * 1e-6);
+			SwappyVk_setSwapIntervalNS(current_device, current_swapchain, refresh);
 		}
 		else
 			LOGW("Failed to initialize swappy refresh rate.\n");
 
 		SwappyVk_setWindow(current_device, current_swapchain, global_state.app->window);
-		SwappyVk_setSwapIntervalNS(current_device, current_swapchain, SWAPPY_SWAP_60FPS);
 		SwappyVk_setMaxAutoSwapIntervalNS(SWAPPY_SWAP_30FPS);
 
 		Granite::GraniteWSIPlatform::event_swapchain_created(device_, swapchain, width_, height_,

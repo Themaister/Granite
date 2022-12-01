@@ -860,11 +860,7 @@ void Device::set_context(const Context &context)
 	init_timeline_semaphores();
 	init_bindless();
 
-#ifdef ANDROID
-	init_frame_contexts(3); // Android needs a bit more ... ;)
-#else
 	init_frame_contexts(2); // By default, regular double buffer between CPU and GPU.
-#endif
 
 	managers.memory.init(this);
 	managers.semaphore.init(this);

@@ -538,12 +538,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		}
 	}
 
-	{
-		VkPhysicalDeviceProperties props;
-		vkGetPhysicalDeviceProperties(gpu, &props);
-		LOGI("Using Vulkan GPU: %s\n", props.deviceName);
-	}
-
 	uint32_t ext_count = 0;
 	vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, nullptr);
 	std::vector<VkExtensionProperties> queried_extensions(ext_count);
@@ -561,7 +555,17 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		if (!has_extension(required_device_extensions[i]))
 			return false;
 
-	vkGetPhysicalDeviceProperties(gpu, &gpu_props);
+	VkPhysicalDeviceProperties2 gpu_props2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+	if (has_extension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME))
+	{
+		ext.supports_driver_properties = true;
+		ext.driver_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR };
+		gpu_props2.pNext = &ext.driver_properties;
+	}
+
+	vkGetPhysicalDeviceProperties2(gpu, &gpu_props2);
+	gpu_props = gpu_props2.properties;
+	LOGI("Using Vulkan GPU: %s\n", gpu_props.deviceName);
 
 	if (gpu_props.apiVersion < VK_API_VERSION_1_1)
 	{
@@ -643,12 +647,22 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	queue_info.timestamp_valid_bits =
 			queue_props[queue_info.family_indices[QUEUE_INDEX_GRAPHICS]].queueFamilyProperties.timestampValidBits;
 
+	// Driver ends up interleaving GPU work in very bizarre ways, causing horrible GPU
+	// bubbles and completely broken pacing. Single queue works around it.
+	bool broken_async_queues =
+			ext.supports_driver_properties &&
+			ext.driver_properties.driverID == VK_DRIVER_ID_SAMSUNG_PROPRIETARY;
+
+	if (broken_async_queues)
+		LOGW("Working around broken scheduler for separate compute queues, forcing single GRAPHICS + COMPUTE queue.\n");
+
 	// Prefer another graphics queue since we can do async graphics that way.
 	// The compute queue is to be treated as high priority since we also do async graphics on it.
-	if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_COMPUTE], queue_indices[QUEUE_INDEX_COMPUTE],
-	                       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0, 1.0f) &&
-	    !find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_COMPUTE], queue_indices[QUEUE_INDEX_COMPUTE],
-	                       VK_QUEUE_COMPUTE_BIT, 0, 1.0f))
+	if (broken_async_queues ||
+	    (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_COMPUTE], queue_indices[QUEUE_INDEX_COMPUTE],
+	                        VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0, 1.0f) &&
+	     !find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_COMPUTE], queue_indices[QUEUE_INDEX_COMPUTE],
+	                        VK_QUEUE_COMPUTE_BIT, 0, 1.0f)))
 	{
 		// Fallback to the graphics queue if we must.
 		queue_info.family_indices[QUEUE_INDEX_COMPUTE] = queue_info.family_indices[QUEUE_INDEX_GRAPHICS];
@@ -1101,8 +1115,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.subgroup_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES };
 	ext.multiview_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES };
 
-	ext.driver_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR };
-
 	ext.host_memory_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT };
 	ext.subgroup_size_control_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES_EXT };
 	ext.descriptor_indexing_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT };
@@ -1139,14 +1151,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	{
 		*ppNext = &ext.conservative_rasterization_properties;
 		ppNext = &ext.conservative_rasterization_properties.pNext;
-	}
-
-	if (has_extension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME))
-	{
-		enabled_extensions.push_back(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME);
-		ext.supports_driver_properties = true;
-		*ppNext = &ext.driver_properties;
-		ppNext = &ext.driver_properties.pNext;
 	}
 
 	if (ext.supports_shader_float_control)

@@ -81,6 +81,7 @@ using MiniHeap = Util::LegionHeap<DeviceAllocation>;
 
 struct DeviceAllocation
 {
+	friend class Util::ArenaAllocator<ClassAllocator, DeviceAllocation>;
 	friend class ClassAllocator;
 	friend class Allocator;
 	friend class DeviceAllocator;
@@ -169,34 +170,16 @@ struct MemoryAllocateInfo
 	AllocationMode mode = {};
 };
 
-class ClassAllocator
+class ClassAllocator : public Util::ArenaAllocator<ClassAllocator, DeviceAllocation>
 {
 public:
-	~ClassAllocator();
+	friend class Util::ArenaAllocator<ClassAllocator, DeviceAllocation>;
 
-	inline void set_sub_block_size(uint32_t size)
+	inline void set_global_allocator(DeviceAllocator *allocator, AllocationMode mode, uint32_t memory_type_)
 	{
-		assert(Util::is_pow2(size));
-		sub_block_size_log2 = Util::floor_log2(size);
-		sub_block_size = size;
-	}
-
-	uint32_t get_max_allocation_size() const
-	{
-		return sub_block_size * Util::LegionAllocator::NumSubBlocks;
-	}
-
-	uint32_t get_block_alignment() const
-	{
-		return sub_block_size;
-	}
-
-	bool allocate(uint32_t size, DeviceAllocation *alloc);
-	void free(Util::IntrusiveList<Util::LegionHeap<DeviceAllocation>>::Iterator itr, uint32_t mask);
-
-	inline void set_object_pool(Util::ObjectPool<MiniHeap> *object_pool_)
-	{
-		object_pool = object_pool_;
+		global_allocator = allocator;
+		global_allocator_mode = mode;
+		memory_type = memory_type_;
 	}
 
 	inline void set_parent(ClassAllocator *allocator)
@@ -204,39 +187,16 @@ public:
 		parent = allocator;
 	}
 
-	void set_global_allocator(DeviceAllocator *allocator, AllocationMode mode)
-	{
-		global_allocator = allocator;
-		global_allocator_mode = mode;
-	}
-
-	void set_memory_type(uint32_t type)
-	{
-		memory_type = type;
-	}
-
-protected:
+private:
 	ClassAllocator *parent = nullptr;
-	Util::AllocationArena<DeviceAllocation> heap_arena;
-	Util::ObjectPool<MiniHeap> *object_pool = nullptr;
-
-	uint32_t sub_block_size = 1;
-	uint32_t sub_block_size_log2 = 0;
 	uint32_t memory_type = 0;
 	DeviceAllocator *global_allocator = nullptr;
 	AllocationMode global_allocator_mode = AllocationMode::Count;
 
-	struct SuballocationResult
-	{
-		uint32_t offset;
-		uint32_t size;
-		uint32_t mask;
-	};
-
+	// Implements curious recurring template pattern calls.
 	bool allocate_backing_heap(DeviceAllocation *allocation);
 	void free_backing_heap(DeviceAllocation *allocation);
 	void prepare_allocation(DeviceAllocation *allocation, MiniHeap &heap, const SuballocationResult &suballoc);
-	SuballocationResult suballocate(uint32_t num_blocks, MiniHeap &heap);
 };
 
 class Allocator
@@ -261,19 +221,12 @@ public:
 		alloc->free_immediate();
 	}
 
-	void set_memory_type(uint32_t memory_type_)
+	void set_global_allocator(DeviceAllocator *allocator, uint32_t memory_type_)
 	{
 		memory_type = memory_type_;
 		for (auto &sub : classes)
-			for (auto &m : sub)
-				m.set_memory_type(memory_type);
-	}
-
-	void set_global_allocator(DeviceAllocator *allocator)
-	{
-		for (auto &sub : classes)
 			for (int i = 0; i < Util::ecast(AllocationMode::Count); i++)
-				sub[i].set_global_allocator(allocator, AllocationMode(i));
+				sub[i].set_global_allocator(allocator, AllocationMode(i), memory_type);
 		global_allocator = allocator;
 	}
 

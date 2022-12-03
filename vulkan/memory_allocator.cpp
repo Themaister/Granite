@@ -124,83 +124,6 @@ void ClassAllocator::prepare_allocation(DeviceAllocation *alloc, MiniHeap &heap,
 	alloc->alloc = this;
 }
 
-ClassAllocator::SuballocationResult
-ClassAllocator::suballocate(uint32_t num_blocks, MiniHeap &heap)
-{
-	SuballocationResult res = {};
-	res.size = num_blocks << sub_block_size_log2;
-	heap.heap.allocate(num_blocks, res.mask, res.offset);
-	res.offset <<= sub_block_size_log2;
-	return res;
-}
-
-bool ClassAllocator::allocate(uint32_t size, DeviceAllocation *alloc)
-{
-	unsigned num_blocks = (size + sub_block_size - 1) >> sub_block_size_log2;
-	uint32_t size_mask = (1u << (num_blocks - 1)) - 1;
-	uint32_t index = trailing_zeroes(heap_arena.heap_availability_mask & ~size_mask);
-
-	if (index < Util::LegionAllocator::NumSubBlocks)
-	{
-		auto itr = heap_arena.heaps[index].begin();
-		VK_ASSERT(itr);
-		VK_ASSERT(index >= (num_blocks - 1));
-
-		auto &heap = *itr;
-		prepare_allocation(alloc, heap, suballocate(num_blocks, heap));
-
-		unsigned new_index = heap.heap.get_longest_run() - 1;
-
-		if (heap.heap.full())
-		{
-			heap_arena.full_heaps.move_to_front(heap_arena.heaps[index], itr);
-			if (!heap_arena.heaps[index].begin())
-				heap_arena.heap_availability_mask &= ~(1u << index);
-		}
-		else if (new_index != index)
-		{
-			auto &new_heap = heap_arena.heaps[new_index];
-			new_heap.move_to_front(heap_arena.heaps[index], itr);
-			heap_arena.heap_availability_mask |= 1u << new_index;
-			if (!heap_arena.heaps[index].begin())
-				heap_arena.heap_availability_mask &= ~(1u << index);
-		}
-
-		alloc->heap = itr;
-		return true;
-	}
-
-	// We didn't find a vacant heap, make a new one.
-	auto *node = object_pool->allocate();
-	if (!node)
-		return false;
-
-	auto &heap = *node;
-
-	if (!allocate_backing_heap(&heap.allocation))
-	{
-		object_pool->free(node);
-		return false;
-	}
-
-	// This cannot fail.
-	prepare_allocation(alloc, heap, suballocate(num_blocks, heap));
-
-	alloc->heap = node;
-	if (heap.heap.full())
-	{
-		heap_arena.full_heaps.insert_front(node);
-	}
-	else
-	{
-		unsigned new_index = heap.heap.get_longest_run() - 1;
-		heap_arena.heaps[new_index].insert_front(node);
-		heap_arena.heap_availability_mask |= 1u << new_index;
-	}
-
-	return true;
-}
-
 static inline bool mode_request_host_mapping(AllocationMode mode)
 {
 	// LinearHostMapping will always work. LinearDevice ones will speculatively work on UMA.
@@ -231,70 +154,16 @@ bool ClassAllocator::allocate_backing_heap(DeviceAllocation *alloc)
 	}
 }
 
-ClassAllocator::~ClassAllocator()
-{
-	bool error = false;
-
-	if (heap_arena.full_heaps.begin())
-		error = true;
-
-	for (auto &h : heap_arena.heaps)
-		if (h.begin())
-			error = true;
-
-	if (error)
-		LOGE("Memory leaked in class allocator!\n");
-}
-
 void ClassAllocator::free_backing_heap(DeviceAllocation *allocation)
 {
+	assert(allocation->mode == global_allocator_mode);
+	assert(allocation->memory_type == memory_type);
+
 	// Our mini-heap is completely freed, free to higher level allocator.
 	if (parent)
 		allocation->free_immediate();
 	else
 		allocation->free_global(*global_allocator, sub_block_size * Util::LegionAllocator::NumSubBlocks, memory_type);
-}
-
-void ClassAllocator::free(Util::IntrusiveList<Util::LegionHeap<DeviceAllocation>>::Iterator itr, uint32_t mask)
-{
-	auto *heap = itr.get();
-	auto &block = heap->heap;
-	bool was_full = block.full();
-
-	unsigned index = block.get_longest_run() - 1;
-	block.free(mask);
-	unsigned new_index = block.get_longest_run() - 1;
-
-	VK_ASSERT(heap->allocation.mode == global_allocator_mode);
-	VK_ASSERT(heap->allocation.memory_type == memory_type);
-
-	if (block.empty())
-	{
-		free_backing_heap(&heap->allocation);
-
-		if (was_full)
-			heap_arena.full_heaps.erase(heap);
-		else
-		{
-			heap_arena.heaps[index].erase(heap);
-			if (!heap_arena.heaps[index].begin())
-				heap_arena.heap_availability_mask &= ~(1u << index);
-		}
-
-		object_pool->free(heap);
-	}
-	else if (was_full)
-	{
-		heap_arena.heaps[new_index].move_to_front(heap_arena.full_heaps, heap);
-		heap_arena.heap_availability_mask |= 1u << new_index;
-	}
-	else if (index != new_index)
-	{
-		heap_arena.heaps[new_index].move_to_front(heap_arena.heaps[index], heap);
-		heap_arena.heap_availability_mask |= 1u << new_index;
-		if (!heap_arena.heaps[index].begin())
-			heap_arena.heap_availability_mask &= ~(1u << index);
-	}
 }
 
 bool Allocator::allocate_global(uint32_t size, AllocationMode mode, DeviceAllocation *alloc)
@@ -439,8 +308,7 @@ void DeviceAllocator::init(Device *device_)
 	for (unsigned i = 0; i < mem_props.memoryTypeCount; i++)
 	{
 		allocators.emplace_back(new Allocator(object_pool));
-		allocators.back()->set_memory_type(i);
-		allocators.back()->set_global_allocator(this);
+		allocators.back()->set_global_allocator(this, i);
 	}
 
 	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];

@@ -201,6 +201,14 @@ bool ClassAllocator::allocate(uint32_t size, DeviceAllocation *alloc)
 	return true;
 }
 
+static inline bool mode_request_host_mapping(AllocationMode mode)
+{
+	// LinearHostMapping will always work. LinearDevice ones will speculatively work on UMA.
+	return mode == AllocationMode::LinearHostMappable ||
+	       mode == AllocationMode::LinearDevice ||
+	       mode == AllocationMode::LinearDeviceHighPriority;
+}
+
 bool ClassAllocator::allocate_backing_heap(DeviceAllocation *alloc)
 {
 	uint32_t alloc_size = sub_block_size * Util::LegionAllocator::NumSubBlocks;
@@ -211,21 +219,14 @@ bool ClassAllocator::allocate_backing_heap(DeviceAllocation *alloc)
 	}
 	else
 	{
-		auto mode = global_allocator_mode;
-
 		alloc->offset = 0;
 		alloc->host_base = nullptr;
-		alloc->mode = mode;
+		alloc->mode = global_allocator_mode;
 		alloc->memory_type = memory_type;
 
-		bool request_host_mapping =
-		    mode == AllocationMode::LinearHostMappable ||
-		    mode == AllocationMode::LinearDevice ||
-		    mode == AllocationMode::LinearDeviceHighPriority;
-
 		return global_allocator->internal_allocate(
-		    alloc_size, memory_type, mode, &alloc->base,
-		    request_host_mapping ? &alloc->host_base : nullptr,
+		    alloc_size, memory_type, global_allocator_mode, &alloc->base,
+		    mode_request_host_mapping(global_allocator_mode) ? &alloc->host_base : nullptr,
 		    VK_OBJECT_TYPE_DEVICE, 0, nullptr);
 	}
 }
@@ -302,9 +303,7 @@ bool Allocator::allocate_global(uint32_t size, AllocationMode mode, DeviceAlloca
 	alloc->host_base = nullptr;
 	if (!global_allocator->internal_allocate(
 		size, memory_type, mode, &alloc->base,
-		(mode == AllocationMode::LinearHostMappable ||
-		 mode == AllocationMode::LinearDevice ||
-		 mode == AllocationMode::LinearDeviceHighPriority) ? &alloc->host_base : nullptr,
+		mode_request_host_mapping(mode) ? &alloc->host_base : nullptr,
 		VK_OBJECT_TYPE_DEVICE, 0, nullptr))
 	{
 		return false;
@@ -324,9 +323,7 @@ bool Allocator::allocate_dedicated(uint32_t size, AllocationMode mode, DeviceAll
 	alloc->host_base = nullptr;
 	if (!global_allocator->internal_allocate(
 		size, memory_type, mode, &alloc->base,
-		(mode == AllocationMode::LinearHostMappable ||
-		 mode == AllocationMode::LinearDevice ||
-		 mode == AllocationMode::LinearDeviceHighPriority) ? &alloc->host_base : nullptr,
+		mode_request_host_mapping(mode) ? &alloc->host_base : nullptr,
 		type, object, external))
 	{
 		return false;

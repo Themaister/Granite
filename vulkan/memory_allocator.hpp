@@ -188,9 +188,6 @@ public:
 	bool allocate(uint32_t size, DeviceAllocation *alloc);
 	void free(Util::IntrusiveList<Util::LegionHeap<DeviceAllocation>>::Iterator itr, uint32_t mask);
 
-	bool allocate_backing_heap(DeviceAllocation *allocation);
-	void free_backing_heap(DeviceAllocation *allocation);
-
 private:
 	ClassAllocator() = default;
 	inline void set_object_pool(Util::ObjectPool<MiniHeap> *object_pool_)
@@ -219,7 +216,17 @@ private:
 		memory_type = type;
 	}
 
-	void suballocate(uint32_t num_blocks, MiniHeap &heap, DeviceAllocation *alloc);
+	struct SuballocationResult
+	{
+		uint32_t offset;
+		uint32_t size;
+		uint32_t mask;
+	};
+
+	bool allocate_backing_heap(DeviceAllocation *allocation);
+	void free_backing_heap(DeviceAllocation *allocation);
+	void prepare_allocation(DeviceAllocation *allocation, MiniHeap &heap, const SuballocationResult &suballoc);
+	SuballocationResult suballocate(uint32_t num_blocks, MiniHeap &heap);
 
 	inline void set_parent(ClassAllocator *allocator)
 	{

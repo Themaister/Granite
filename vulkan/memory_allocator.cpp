@@ -106,23 +106,32 @@ void DeviceAllocation::free_global(DeviceAllocator &allocator, uint32_t size_, u
 	}
 }
 
-void ClassAllocator::suballocate(uint32_t num_blocks, MiniHeap &heap, DeviceAllocation *alloc)
+void ClassAllocator::prepare_allocation(DeviceAllocation *alloc, MiniHeap &heap, const SuballocationResult &suballoc)
 {
-	heap.heap.allocate(num_blocks, alloc->mask, alloc->offset);
 	alloc->base = heap.allocation.base;
-	alloc->offset <<= sub_block_size_log2;
+	alloc->offset = suballoc.offset + heap.allocation.offset;
+	alloc->mask = suballoc.mask;
+	alloc->size = suballoc.size;
 
 	if (heap.allocation.host_base)
-		alloc->host_base = heap.allocation.host_base + alloc->offset;
+		alloc->host_base = heap.allocation.host_base + suballoc.offset;
 
 	VK_ASSERT(heap.allocation.mode == global_allocator_mode);
 	VK_ASSERT(heap.allocation.memory_type == memory_type);
 
-	alloc->offset += heap.allocation.offset;
 	alloc->mode = global_allocator_mode;
 	alloc->memory_type = memory_type;
 	alloc->alloc = this;
-	alloc->size = num_blocks << sub_block_size_log2;
+}
+
+ClassAllocator::SuballocationResult
+ClassAllocator::suballocate(uint32_t num_blocks, MiniHeap &heap)
+{
+	SuballocationResult res = {};
+	res.size = num_blocks << sub_block_size_log2;
+	heap.heap.allocate(num_blocks, res.mask, res.offset);
+	res.offset <<= sub_block_size_log2;
+	return res;
 }
 
 bool ClassAllocator::allocate(uint32_t size, DeviceAllocation *alloc)
@@ -138,7 +147,8 @@ bool ClassAllocator::allocate(uint32_t size, DeviceAllocation *alloc)
 		VK_ASSERT(index >= (num_blocks - 1));
 
 		auto &heap = *itr;
-		suballocate(num_blocks, heap, alloc);
+		prepare_allocation(alloc, heap, suballocate(num_blocks, heap));
+
 		unsigned new_index = heap.heap.get_longest_run() - 1;
 
 		if (heap.heap.full())
@@ -174,7 +184,7 @@ bool ClassAllocator::allocate(uint32_t size, DeviceAllocation *alloc)
 	}
 
 	// This cannot fail.
-	suballocate(num_blocks, heap, alloc);
+	prepare_allocation(alloc, heap, suballocate(num_blocks, heap));
 
 	alloc->heap = node;
 	if (heap.heap.full())

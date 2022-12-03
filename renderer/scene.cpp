@@ -983,7 +983,7 @@ Entity *Scene::create_entity()
 	return entity;
 }
 
-static std::atomic<uint64_t> transform_cookies;
+static std::atomic_uint64_t transform_cookies;
 
 Entity *Scene::create_volumetric_diffuse_light(uvec3 resolution, Node *node)
 {

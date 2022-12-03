@@ -128,8 +128,8 @@ public:
 	}
 
 private:
-	std::atomic<size_t> read_count;
-	std::atomic<size_t> write_count;
+	std::atomic_size_t read_count;
+	std::atomic_size_t write_count;
 	size_t read_offset = 0;
 	size_t write_offset = 0;
 	std::vector<T> ring;

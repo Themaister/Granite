@@ -113,7 +113,7 @@ public:
 private:
 	static_assert(MinimumMSB < 32, "MinimumMSB must be < 32.");
 	std::atomic<T *> lists[32 - MinimumMSB];
-	std::atomic<uint32_t> count;
+	std::atomic_uint32_t count;
 
 	static uint32_t num_elements_per_list_index(unsigned index)
 	{

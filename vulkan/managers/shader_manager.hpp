@@ -134,7 +134,7 @@ private:
 
 #ifndef GRANITE_SHIPPING
 	// We'll never want to recompile shaders in runtime outside a dev environment.
-	std::atomic<unsigned> shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)];
+	std::atomic_uint shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)];
 	std::atomic<Vulkan::Program *> program;
 #ifdef GRANITE_VULKAN_MT
 	Util::RWSpinLock instance_lock;

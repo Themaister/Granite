@@ -137,7 +137,7 @@ private:
 	Skinning *skinning = nullptr;
 	Node *parent = nullptr;
 	uint32_t timestamp = 0;
-	std::atomic<bool> node_is_pending_update;
+	std::atomic_bool node_is_pending_update;
 };
 using NodeHandle = Util::IntrusivePtr<Node>;
 }

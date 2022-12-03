@@ -132,17 +132,17 @@ public:
 
 private:
 	enum { MaxSources = 128 };
-	std::atomic<uint32_t> active_channel_mask[MaxSources / 32];
+	std::atomic_uint32_t active_channel_mask[MaxSources / 32];
 	MixerStream *mixer_streams[MaxSources] = {};
 
 	// Actually float, bitcasted.
-	std::atomic<uint32_t> panning[MaxSources];
-	std::atomic<uint32_t> gain_linear[MaxSources];
-	std::atomic<uint32_t> latency;
-	std::atomic<bool> stream_playing[MaxSources];
+	std::atomic_uint32_t panning[MaxSources];
+	std::atomic_uint32_t gain_linear[MaxSources];
+	std::atomic_uint32_t latency;
+	std::atomic_bool stream_playing[MaxSources];
 
 	uint64_t stream_raw_play_cursors[MaxSources];
-	std::atomic<uint64_t> stream_adjusted_play_cursors_usec[MaxSources];
+	std::atomic_uint64_t stream_adjusted_play_cursors_usec[MaxSources];
 
 	uint64_t stream_generation[MaxSources] = {};
 	std::mutex non_critical_lock;

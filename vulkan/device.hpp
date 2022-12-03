@@ -471,7 +471,7 @@ private:
 	unsigned num_thread_indices = 1;
 
 #ifdef GRANITE_VULKAN_MT
-	std::atomic<uint64_t> cookie;
+	std::atomic_uint64_t cookie;
 #else
 	uint64_t cookie = 0;
 #endif

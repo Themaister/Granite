@@ -88,6 +88,6 @@ public:
 	}
 
 private:
-	std::atomic<uint32_t> counter;
+	std::atomic_uint32_t counter;
 };
 }

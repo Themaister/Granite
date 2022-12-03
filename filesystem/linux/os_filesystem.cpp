@@ -75,7 +75,7 @@ MMapFile *MMapFile::open(const std::string &path, FileMode mode)
 		return file;
 }
 
-static std::atomic<uint32_t> global_transaction_counter;
+static std::atomic_uint32_t global_transaction_counter;
 
 bool MMapFile::init(const std::string &path, FileMode mode)
 {

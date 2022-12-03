@@ -81,7 +81,7 @@ struct WASAPIBackend final : Backend
 	void thread_runner() noexcept;
 
 	std::thread thr;
-	std::atomic<bool> dead;
+	std::atomic_bool dead;
 
 	IMMDeviceEnumerator *pEnumerator = nullptr;
 	IMMDevice *pDevice = nullptr;

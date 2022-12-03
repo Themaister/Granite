@@ -186,7 +186,7 @@ public:
 	}
 
 	bool allocate(uint32_t size, DeviceAllocation *alloc);
-	void free(DeviceAllocation *alloc);
+	void free(Util::IntrusiveList<Util::LegionHeap<DeviceAllocation>>::Iterator itr, uint32_t mask);
 
 private:
 	ClassAllocator() = default;

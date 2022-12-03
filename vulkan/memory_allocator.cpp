@@ -38,7 +38,7 @@ void DeviceAllocation::free_immediate()
 	if (!alloc)
 		return;
 
-	alloc->free(this);
+	alloc->free(heap, mask);
 	alloc = nullptr;
 	base = VK_NULL_HANDLE;
 	mask = 0;
@@ -230,17 +230,18 @@ ClassAllocator::~ClassAllocator()
 		LOGE("Memory leaked in class allocator!\n");
 }
 
-void ClassAllocator::free(DeviceAllocation *alloc)
+void ClassAllocator::free(Util::IntrusiveList<Util::LegionHeap<DeviceAllocation>>::Iterator itr, uint32_t mask)
 {
-	auto *heap = alloc->heap.get();
+	auto *heap = itr.get();
 	auto &block = heap->heap;
 	bool was_full = block.full();
 
-	VK_ASSERT(alloc->mode == global_allocator_mode);
-
 	unsigned index = block.get_longest_run() - 1;
-	block.free(alloc->mask);
+	block.free(mask);
 	unsigned new_index = block.get_longest_run() - 1;
+
+	VK_ASSERT(heap->allocation.mode == global_allocator_mode);
+	VK_ASSERT(heap->allocation.memory_type == memory_type);
 
 	if (block.empty())
 	{

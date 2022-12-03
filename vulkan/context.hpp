@@ -278,12 +278,12 @@ private:
 
 #ifdef VULKAN_DEBUG
 	VkDebugUtilsMessengerEXT debug_messenger = VK_NULL_HANDLE;
+	bool force_no_validation = false;
 #endif
 	std::function<void (const char *)> message_callback;
 
 	void destroy();
 	void check_descriptor_indexing_features();
-	bool force_no_validation = false;
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	Fossilize::FeatureFilter feature_filter;

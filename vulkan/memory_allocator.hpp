@@ -30,6 +30,7 @@
 #include "bitops.hpp"
 #include "enum_cast.hpp"
 #include "vulkan_common.hpp"
+#include "arena_allocator.hpp"
 #include <assert.h>
 #include <memory>
 #include <stddef.h>
@@ -75,66 +76,6 @@ using MemoryAccessFlags = uint32_t;
 struct DeviceAllocation;
 class DeviceAllocator;
 
-class Block
-{
-public:
-	enum
-	{
-		NumSubBlocks = 32u,
-		AllFree = ~0u
-	};
-
-	Block(const Block &) = delete;
-	void operator=(const Block &) = delete;
-
-	Block()
-	{
-		for (auto &v : free_blocks)
-			v = AllFree;
-		longest_run = 32;
-	}
-
-	~Block()
-	{
-		if (free_blocks[0] != AllFree)
-			LOGE("Memory leak in block detected.\n");
-	}
-
-	inline bool full() const
-	{
-		return free_blocks[0] == 0;
-	}
-
-	inline bool empty() const
-	{
-		return free_blocks[0] == AllFree;
-	}
-
-	inline uint32_t get_longest_run() const
-	{
-		return longest_run;
-	}
-
-	void allocate(uint32_t num_blocks, DeviceAllocation *block);
-	void free(uint32_t mask);
-
-private:
-	uint32_t free_blocks[NumSubBlocks];
-	uint32_t longest_run = 0;
-
-	inline void update_longest_run()
-	{
-		uint32_t f = free_blocks[0];
-		longest_run = 0;
-
-		while (f)
-		{
-			free_blocks[longest_run++] = f;
-			f &= f >> 1;
-		}
-	}
-};
-
 struct MiniHeap;
 class ClassAllocator;
 class DeviceAllocator;
@@ -145,7 +86,6 @@ struct DeviceAllocation
 {
 	friend class ClassAllocator;
 	friend class Allocator;
-	friend class Block;
 	friend class DeviceAllocator;
 	friend class Device;
 
@@ -235,7 +175,7 @@ struct MemoryAllocateInfo
 struct MiniHeap : Util::IntrusiveListEnabled<MiniHeap>
 {
 	DeviceAllocation allocation;
-	Block heap;
+	Util::LegionAllocator heap;
 };
 
 class Allocator;
@@ -260,7 +200,7 @@ private:
 	ClassAllocator() = default;
 	struct AllocationModeHeaps
 	{
-		Util::IntrusiveList<MiniHeap> heaps[Block::NumSubBlocks];
+		Util::IntrusiveList<MiniHeap> heaps[Util::LegionAllocator::NumSubBlocks];
 		Util::IntrusiveList<MiniHeap> full_heaps;
 		uint32_t heap_availability_mask = 0;
 	};

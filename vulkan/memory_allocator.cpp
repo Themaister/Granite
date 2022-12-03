@@ -112,41 +112,10 @@ void DeviceAllocation::free_global(DeviceAllocator &allocator, uint32_t size_, u
 	}
 }
 
-void Block::allocate(uint32_t num_blocks, DeviceAllocation *block)
-{
-	VK_ASSERT(NumSubBlocks >= num_blocks);
-	VK_ASSERT(num_blocks != 0);
-
-	uint32_t block_mask;
-	if (num_blocks == NumSubBlocks)
-		block_mask = ~0u;
-	else
-		block_mask = ((1u << num_blocks) - 1u);
-
-	uint32_t mask = free_blocks[num_blocks - 1];
-	uint32_t b = trailing_zeroes(mask);
-
-	VK_ASSERT(((free_blocks[0] >> b) & block_mask) == block_mask);
-
-	uint32_t sb = block_mask << b;
-	free_blocks[0] &= ~sb;
-	update_longest_run();
-
-	block->mask = sb;
-	block->offset = b;
-}
-
-void Block::free(uint32_t mask)
-{
-	VK_ASSERT((free_blocks[0] & mask) == 0);
-	free_blocks[0] |= mask;
-	update_longest_run();
-}
-
 void ClassAllocator::suballocate(uint32_t num_blocks, AllocationMode mode, uint32_t memory_type_, MiniHeap &heap,
                                  DeviceAllocation *alloc)
 {
-	heap.heap.allocate(num_blocks, alloc);
+	heap.heap.allocate(num_blocks, alloc->mask, alloc->offset);
 	alloc->base = heap.allocation.base;
 	alloc->offset <<= sub_block_size_log2;
 
@@ -171,7 +140,7 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 
 	uint32_t index = trailing_zeroes(m.heap_availability_mask & ~size_mask);
 
-	if (index < Block::NumSubBlocks)
+	if (index < Util::LegionAllocator::NumSubBlocks)
 	{
 		auto itr = m.heaps[index].begin();
 		VK_ASSERT(itr);
@@ -208,7 +177,7 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 		return false;
 
 	auto &heap = *node;
-	uint32_t alloc_size = sub_block_size * Block::NumSubBlocks;
+	uint32_t alloc_size = sub_block_size * Util::LegionAllocator::NumSubBlocks;
 
 	if (parent)
 	{
@@ -292,7 +261,7 @@ void ClassAllocator::free(DeviceAllocation *alloc)
 		if (parent)
 			heap->allocation.free_immediate();
 		else
-			heap->allocation.free_global(*global_allocator, sub_block_size * Block::NumSubBlocks, memory_type);
+			heap->allocation.free_global(*global_allocator, sub_block_size * Util::LegionAllocator::NumSubBlocks, memory_type);
 
 		if (was_full)
 			m.full_heaps.erase(heap);
@@ -381,12 +350,12 @@ bool Allocator::allocate(uint32_t size, uint32_t alignment, AllocationMode mode,
 	for (auto &c : classes)
 	{
 		// Find a suitable class to allocate from.
-		if (size <= c.sub_block_size * Block::NumSubBlocks)
+		if (size <= c.sub_block_size * Util::LegionAllocator::NumSubBlocks)
 		{
 			if (alignment > c.sub_block_size)
 			{
 				size_t padded_size = size + (alignment - c.sub_block_size);
-				if (padded_size <= c.sub_block_size * Block::NumSubBlocks)
+				if (padded_size <= c.sub_block_size * Util::LegionAllocator::NumSubBlocks)
 					size = padded_size;
 				else
 					continue;
@@ -415,11 +384,19 @@ Allocator::Allocator()
 	// 128 chunk
 	get_class_allocator(MemoryClass::Small).set_sub_block_size(128);
 	// 4k chunk
-	get_class_allocator(MemoryClass::Medium).set_sub_block_size(128 * Block::NumSubBlocks); // 4K
+	get_class_allocator(MemoryClass::Medium).set_sub_block_size(
+		128 *
+		Util::LegionAllocator::NumSubBlocks); // 4K
 	// 128k chunk
-	get_class_allocator(MemoryClass::Large).set_sub_block_size(128 * Block::NumSubBlocks * Block::NumSubBlocks);
-	// 2M chunk
-	get_class_allocator(MemoryClass::Huge).set_sub_block_size(64 * Block::NumSubBlocks * Block::NumSubBlocks * Block::NumSubBlocks);
+	get_class_allocator(MemoryClass::Large).set_sub_block_size(
+		128 *
+		Util::LegionAllocator::NumSubBlocks *
+		Util::LegionAllocator::NumSubBlocks); // 2M chunk
+	get_class_allocator(MemoryClass::Huge).set_sub_block_size(
+		64 *
+		Util::LegionAllocator::NumSubBlocks *
+		Util::LegionAllocator::NumSubBlocks *
+		Util::LegionAllocator::NumSubBlocks);
 }
 
 void DeviceAllocator::init(Device *device_)

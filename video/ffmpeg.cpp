@@ -69,7 +69,7 @@ struct VideoEncoder::Impl
 
 	void drain_codec();
 	AVFrame *alloc_video_frame(AVPixelFormat pix_fmt, unsigned width, unsigned height);
-	AVFrame *alloc_audio_frame(AVSampleFormat samp_format, uint64_t channel_layout,
+	AVFrame *alloc_audio_frame(AVSampleFormat samp_format, AVChannelLayout channel_layout,
 	                           unsigned sample_rate, unsigned sample_count);
 
 	struct Frame
@@ -399,8 +399,7 @@ bool VideoEncoder::Impl::init_audio_codec()
 
 	audio.av_ctx->sample_fmt = AV_SAMPLE_FMT_S16;
 	audio.av_ctx->sample_rate = int(audio_source->get_sample_rate());
-	audio.av_ctx->channels = 2;
-	audio.av_ctx->channel_layout = AV_CH_LAYOUT_STEREO;
+	audio.av_ctx->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
 	audio.av_ctx->time_base = { 1, audio.av_ctx->sample_rate };
 
 	if (av_format_ctx->oformat->flags & AVFMT_GLOBALHEADER)
@@ -424,7 +423,7 @@ bool VideoEncoder::Impl::init_audio_codec()
 	else
 		samples_per_tick = audio.av_ctx->frame_size;
 
-	audio.av_frame = alloc_audio_frame(audio.av_ctx->sample_fmt, audio.av_ctx->channel_layout,
+	audio.av_frame = alloc_audio_frame(audio.av_ctx->sample_fmt, audio.av_ctx->ch_layout,
 	                                   audio.av_ctx->sample_rate, samples_per_tick);
 	if (!audio.av_frame)
 	{
@@ -552,14 +551,14 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 }
 
 AVFrame *VideoEncoder::Impl::alloc_audio_frame(
-		AVSampleFormat samp_format, uint64_t channel_layout,
+		AVSampleFormat samp_format, AVChannelLayout channel_layout,
 		unsigned sample_rate, unsigned sample_count)
 {
 	AVFrame *frame = av_frame_alloc();
 	if (!frame)
 		return nullptr;
 
-	frame->channel_layout = channel_layout;
+	frame->ch_layout = channel_layout;
 	frame->format = samp_format;
 	frame->sample_rate = sample_rate;
 	frame->nb_samples = sample_count;

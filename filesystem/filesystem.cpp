@@ -186,10 +186,13 @@ void Filesystem::setup_default_filesystem(Filesystem *filesystem, const char *de
 
 	if (default_asset_directory)
 	{
-		const char *asset_dir = getenv("ASSET_DIRECTORY");
-		if (!asset_dir)
-			asset_dir = default_asset_directory;
-		filesystem->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
+#ifdef GRANITE_SHIPPING
+		LOGW("Default asset directory %s was provided, but this is only intended for non-shipping configs.\n",
+		     default_asset_directory);
+#else
+		filesystem->register_protocol("assets",
+		                              std::unique_ptr<FilesystemBackend>(new OSFilesystem(default_asset_directory)));
+#endif
 	}
 
 	FileStat s;
@@ -208,6 +211,14 @@ void Filesystem::setup_default_filesystem(Filesystem *filesystem, const char *de
 		filesystem->register_protocol("builtin", std::make_unique<OSFilesystem>(builtin_dir));
 		LOGI("Redirecting filesystem \"builtin\" to %s.\n", builtin_dir.c_str());
 	}
+
+	// These filesystems are core functionality.
+	if (!filesystem->get_backend("assets"))
+		throw std::runtime_error("assets filesystem was not initialized.");
+	if (!filesystem->get_backend("builtin"))
+		throw std::runtime_error("builtin filesystem was not initialized.");
+	if (!filesystem->get_backend("cache"))
+		throw std::runtime_error("cache filesystem was not initialized.");
 }
 
 void Filesystem::register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs)

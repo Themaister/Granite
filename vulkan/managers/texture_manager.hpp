@@ -29,8 +29,11 @@
 namespace Vulkan
 {
 class MemoryMappedTexture;
-class Texture : public Granite::VolatileSource<Texture>,
-                public Util::IntrusiveHashMapEnabled<Texture>
+class Texture :
+#ifndef GRANITE_SHIPPING
+    public Granite::VolatileSource<Texture>,
+#endif
+    public Util::IntrusiveHashMapEnabled<Texture>
 {
 public:
 	friend class Granite::VolatileSource<Texture>;
@@ -43,6 +46,10 @@ public:
 	void replace_image(ImageHandle handle);
 	void set_enable_notification(bool enable);
 
+#ifdef GRANITE_SHIPPING
+	bool init();
+#endif
+
 private:
 	Texture(Device *device, const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED,
 	        const VkComponentMapping &swizzle = {
@@ -53,6 +60,10 @@ private:
 
 	explicit Texture(Device *device);
 
+#ifdef GRANITE_SHIPPING
+	std::string path;
+#endif
+
 	Device *device;
 	Util::AsyncObjectSink<ImageHandle> handle;
 	VkFormat format;
@@ -61,7 +72,6 @@ private:
 	void update_gtx(std::unique_ptr<Granite::File> file, void *mapped);
 	void update_gtx(const MemoryMappedTexture &texture);
 	void update_checkerboard();
-
 	void load();
 	void unload();
 	void update(std::unique_ptr<Granite::File> file);

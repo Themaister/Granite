@@ -41,11 +41,35 @@ bool Texture::init_texture()
 		return true;
 }
 
-Texture::Texture(Device *device_, const std::string &path_, VkFormat format_, const VkComponentMapping &swizzle_)
-	: VolatileSource(device_->get_system_handles().filesystem, path_),
-	  device(device_), format(format_), swizzle(swizzle_)
+Texture::Texture(Device *device_, const std::string &path_, VkFormat format_, const VkComponentMapping &swizzle_) :
+#ifndef GRANITE_SHIPPING
+	VolatileSource(device_->get_system_handles().filesystem, path_),
+#else
+	path(path_),
+#endif
+	device(device_), format(format_), swizzle(swizzle_)
 {
 }
+
+#ifdef GRANITE_SHIPPING
+bool Texture::init()
+{
+	auto *fs = device->get_system_handles().filesystem;
+
+	if (path.empty() || !fs)
+		return false;
+
+	auto file = fs->open(path);
+	if (!file)
+	{
+		LOGE("Failed to open volatile file: %s\n", path.c_str());
+		return false;
+	}
+
+	update(std::move(file));
+	return true;
+}
+#endif
 
 Texture::Texture(Device *device_)
 	: device(device_), format(VK_FORMAT_UNDEFINED)
@@ -103,10 +127,10 @@ void Texture::update_checkerboard()
 
 	ImageInitialData initial = {};
 	static const uint32_t checkerboard[] = {
-			0xffffffffu, 0xffffffffu, 0xff000000u, 0xff000000u,
-			0xffffffffu, 0xffffffffu, 0xff000000u, 0xff000000u,
-			0xff000000u, 0xff000000u, 0xffffffffu, 0xffffffffu,
-			0xff000000u, 0xff000000u, 0xffffffffu, 0xffffffffu,
+		0xffffffffu, 0xffffffffu, 0xff000000u, 0xff000000u,
+		0xffffffffu, 0xffffffffu, 0xff000000u, 0xff000000u,
+		0xff000000u, 0xff000000u, 0xffffffffu, 0xffffffffu,
+		0xff000000u, 0xff000000u, 0xffffffffu, 0xffffffffu,
 	};
 	initial.data = checkerboard;
 
@@ -210,7 +234,9 @@ void Texture::load()
 
 void Texture::unload()
 {
+#ifndef GRANITE_SHIPPING
 	deinit();
+#endif
 	handle.reset();
 }
 

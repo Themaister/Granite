@@ -26,6 +26,7 @@ android {
                             "-DGRANITE_SHADER_COMPILER_OPTIMIZE=ON",
                             "-DCMAKE_BUILD_TYPE=Debug",
                             "-DANDROID_PLATFORM=android-26",
+                            "-DGRANITE_SHIPPING=ON",
                             "-DGRANITE_AUDIO=$$AUDIO$$",
                             "-DGRANITE_BULLET=$$PHYSICS$$",
                             "-DANDROID_ARM_NEON=ON",

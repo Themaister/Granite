@@ -106,8 +106,7 @@ void DeviceAllocation::free_global(DeviceAllocator &allocator, uint32_t size_, u
 	}
 }
 
-void ClassAllocator::suballocate(uint32_t num_blocks, AllocationMode mode, uint32_t memory_type_, MiniHeap &heap,
-                                 DeviceAllocation *alloc)
+void ClassAllocator::suballocate(uint32_t num_blocks, MiniHeap &heap, DeviceAllocation *alloc)
 {
 	heap.heap.allocate(num_blocks, alloc->mask, alloc->offset);
 	alloc->base = heap.allocation.base;
@@ -116,51 +115,48 @@ void ClassAllocator::suballocate(uint32_t num_blocks, AllocationMode mode, uint3
 	if (heap.allocation.host_base)
 		alloc->host_base = heap.allocation.host_base + alloc->offset;
 
+	VK_ASSERT(heap.allocation.mode == global_allocator_mode);
+	VK_ASSERT(heap.allocation.memory_type == memory_type);
+
 	alloc->offset += heap.allocation.offset;
-	alloc->mode = mode;
-	alloc->memory_type = memory_type_;
+	alloc->mode = global_allocator_mode;
+	alloc->memory_type = memory_type;
 	alloc->alloc = this;
 	alloc->size = num_blocks << sub_block_size_log2;
 }
 
-bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocation *alloc)
+bool ClassAllocator::allocate(uint32_t size, DeviceAllocation *alloc)
 {
 	unsigned num_blocks = (size + sub_block_size - 1) >> sub_block_size_log2;
 	uint32_t size_mask = (1u << (num_blocks - 1)) - 1;
-
-	VK_ASSERT(mode != AllocationMode::Count);
-	auto &m = mode_heaps[Util::ecast(mode)];
-
-	uint32_t index = trailing_zeroes(m.heap_availability_mask & ~size_mask);
+	uint32_t index = trailing_zeroes(heap_arena.heap_availability_mask & ~size_mask);
 
 	if (index < Util::LegionAllocator::NumSubBlocks)
 	{
-		auto itr = m.heaps[index].begin();
+		auto itr = heap_arena.heaps[index].begin();
 		VK_ASSERT(itr);
 		VK_ASSERT(index >= (num_blocks - 1));
 
 		auto &heap = *itr;
-		suballocate(num_blocks, mode, memory_type, heap, alloc);
+		suballocate(num_blocks, heap, alloc);
 		unsigned new_index = heap.heap.get_longest_run() - 1;
 
 		if (heap.heap.full())
 		{
-			m.full_heaps.move_to_front(m.heaps[index], itr);
-			if (!m.heaps[index].begin())
-				m.heap_availability_mask &= ~(1u << index);
+			heap_arena.full_heaps.move_to_front(heap_arena.heaps[index], itr);
+			if (!heap_arena.heaps[index].begin())
+				heap_arena.heap_availability_mask &= ~(1u << index);
 		}
 		else if (new_index != index)
 		{
-			auto &new_heap = m.heaps[new_index];
-			new_heap.move_to_front(m.heaps[index], itr);
-			m.heap_availability_mask |= 1u << new_index;
-			if (!m.heaps[index].begin())
-				m.heap_availability_mask &= ~(1u << index);
+			auto &new_heap = heap_arena.heaps[new_index];
+			new_heap.move_to_front(heap_arena.heaps[index], itr);
+			heap_arena.heap_availability_mask |= 1u << new_index;
+			if (!heap_arena.heaps[index].begin())
+				heap_arena.heap_availability_mask &= ~(1u << index);
 		}
 
 		alloc->heap = itr;
-		alloc->mode = mode;
-
 		return true;
 	}
 
@@ -175,7 +171,7 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 	if (parent)
 	{
 		// We cannot allocate a new block from parent ... This is fatal.
-		if (!parent->allocate(alloc_size, mode, &heap.allocation))
+		if (!parent->allocate(alloc_size, &heap.allocation))
 		{
 			object_pool->free(node);
 			return false;
@@ -183,9 +179,12 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 	}
 	else
 	{
+		auto mode = global_allocator_mode;
+
 		heap.allocation.offset = 0;
 		heap.allocation.host_base = nullptr;
 		heap.allocation.mode = mode;
+		heap.allocation.memory_type = memory_type;
 		if (!global_allocator->internal_allocate(
 			alloc_size, memory_type, mode, &heap.allocation.base,
 			(mode == AllocationMode::LinearHostMappable ||
@@ -199,21 +198,19 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 	}
 
 	// This cannot fail.
-	suballocate(num_blocks, mode, memory_type, heap, alloc);
+	suballocate(num_blocks, heap, alloc);
 
 	alloc->heap = node;
 	if (heap.heap.full())
 	{
-		m.full_heaps.insert_front(node);
+		heap_arena.full_heaps.insert_front(node);
 	}
 	else
 	{
 		unsigned new_index = heap.heap.get_longest_run() - 1;
-		m.heaps[new_index].insert_front(node);
-		m.heap_availability_mask |= 1u << new_index;
+		heap_arena.heaps[new_index].insert_front(node);
+		heap_arena.heap_availability_mask |= 1u << new_index;
 	}
-
-	alloc->mode = mode;
 
 	return true;
 }
@@ -221,15 +218,13 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 ClassAllocator::~ClassAllocator()
 {
 	bool error = false;
-	for (auto &m : mode_heaps)
-	{
-		if (m.full_heaps.begin())
-			error = true;
 
-		for (auto &h : m.heaps)
-			if (h.begin())
-				error = true;
-	}
+	if (heap_arena.full_heaps.begin())
+		error = true;
+
+	for (auto &h : heap_arena.heaps)
+		if (h.begin())
+			error = true;
 
 	if (error)
 		LOGE("Memory leaked in class allocator!\n");
@@ -241,8 +236,7 @@ void ClassAllocator::free(DeviceAllocation *alloc)
 	auto &block = heap->heap;
 	bool was_full = block.full();
 
-	VK_ASSERT(alloc->mode != AllocationMode::Count);
-	auto &m = mode_heaps[Util::ecast(alloc->mode)];
+	VK_ASSERT(alloc->mode == global_allocator_mode);
 
 	unsigned index = block.get_longest_run() - 1;
 	block.free(alloc->mask);
@@ -257,27 +251,27 @@ void ClassAllocator::free(DeviceAllocation *alloc)
 			heap->allocation.free_global(*global_allocator, sub_block_size * Util::LegionAllocator::NumSubBlocks, memory_type);
 
 		if (was_full)
-			m.full_heaps.erase(heap);
+			heap_arena.full_heaps.erase(heap);
 		else
 		{
-			m.heaps[index].erase(heap);
-			if (!m.heaps[index].begin())
-				m.heap_availability_mask &= ~(1u << index);
+			heap_arena.heaps[index].erase(heap);
+			if (!heap_arena.heaps[index].begin())
+				heap_arena.heap_availability_mask &= ~(1u << index);
 		}
 
 		object_pool->free(heap);
 	}
 	else if (was_full)
 	{
-		m.heaps[new_index].move_to_front(m.full_heaps, heap);
-		m.heap_availability_mask |= 1u << new_index;
+		heap_arena.heaps[new_index].move_to_front(heap_arena.full_heaps, heap);
+		heap_arena.heap_availability_mask |= 1u << new_index;
 	}
 	else if (index != new_index)
 	{
-		m.heaps[new_index].move_to_front(m.heaps[index], heap);
-		m.heap_availability_mask |= 1u << new_index;
-		if (!m.heaps[index].begin())
-			m.heap_availability_mask &= ~(1u << index);
+		heap_arena.heaps[new_index].move_to_front(heap_arena.heaps[index], heap);
+		heap_arena.heap_availability_mask |= 1u << new_index;
+		if (!heap_arena.heaps[index].begin())
+			heap_arena.heap_availability_mask &= ~(1u << index);
 	}
 }
 
@@ -344,57 +338,71 @@ bool Allocator::allocate(uint32_t size, uint32_t alignment, AllocationMode mode,
 {
 	for (auto &c : classes)
 	{
+		auto &suballocator = c[unsigned(mode)];
+
 		// Find a suitable class to allocate from.
-		if (size <= c.sub_block_size * Util::LegionAllocator::NumSubBlocks)
+		if (size <= suballocator.sub_block_size * Util::LegionAllocator::NumSubBlocks)
 		{
-			if (alignment > c.sub_block_size)
+			if (alignment > suballocator.sub_block_size)
 			{
-				size_t padded_size = size + (alignment - c.sub_block_size);
-				if (padded_size <= c.sub_block_size * Util::LegionAllocator::NumSubBlocks)
+				size_t padded_size = size + (alignment - suballocator.sub_block_size);
+				if (padded_size <= suballocator.sub_block_size * Util::LegionAllocator::NumSubBlocks)
 					size = padded_size;
 				else
 					continue;
 			}
 
-			bool ret = c.allocate(size, mode, alloc);
+			bool ret = suballocator.allocate(size, alloc);
 			if (ret)
 			{
 				uint32_t aligned_offset = (alloc->offset + alignment - 1) & ~(alignment - 1);
 				if (alloc->host_base)
 					alloc->host_base += aligned_offset - alloc->offset;
 				alloc->offset = aligned_offset;
+				VK_ASSERT(alloc->mode == mode);
+				VK_ASSERT(alloc->memory_type == memory_type);
 			}
+
 			return ret;
 		}
 	}
 
-	return allocate_global(size, mode, alloc);
+	if (!allocate_global(size, mode, alloc))
+		return false;
+
+	VK_ASSERT(alloc->mode == mode);
+	VK_ASSERT(alloc->memory_type == memory_type);
+	return true;
 }
 
 Allocator::Allocator(Util::ObjectPool<MiniHeap> &object_pool)
 {
 	for (int i = 0; i < Util::ecast(MemoryClass::Count) - 1; i++)
-		classes[i].set_parent(&classes[i + 1]);
+		for (int j = 0; j < Util::ecast(AllocationMode::Count); j++)
+			classes[i][j].set_parent(&classes[i + 1][j]);
 
 	for (auto &c : classes)
-		c.set_object_pool(&object_pool);
+		for (auto &m : c)
+			m.set_object_pool(&object_pool);
 
-	// 128 chunk
-	get_class_allocator(MemoryClass::Small).set_sub_block_size(128);
-	// 4k chunk
-	get_class_allocator(MemoryClass::Medium).set_sub_block_size(
-		128 *
-		Util::LegionAllocator::NumSubBlocks); // 4K
-	// 128k chunk
-	get_class_allocator(MemoryClass::Large).set_sub_block_size(
-		128 *
-		Util::LegionAllocator::NumSubBlocks *
-		Util::LegionAllocator::NumSubBlocks); // 2M chunk
-	get_class_allocator(MemoryClass::Huge).set_sub_block_size(
-		64 *
-		Util::LegionAllocator::NumSubBlocks *
-		Util::LegionAllocator::NumSubBlocks *
-		Util::LegionAllocator::NumSubBlocks);
+	for (int j = 0; j < Util::ecast(AllocationMode::Count); j++)
+	{
+		auto mode = static_cast<AllocationMode>(j);
+
+		// 128 chunk
+		get_class_allocator(MemoryClass::Small, mode).set_sub_block_size(128);
+		// 4k chunk
+		get_class_allocator(MemoryClass::Medium, mode).set_sub_block_size(
+			128 * Util::LegionAllocator::NumSubBlocks); // 4K
+		// 128k chunk
+		get_class_allocator(MemoryClass::Large, mode).set_sub_block_size(
+			128 * Util::LegionAllocator::NumSubBlocks *
+			Util::LegionAllocator::NumSubBlocks);
+		// 2M chunk
+		get_class_allocator(MemoryClass::Huge, mode).set_sub_block_size(
+			64 * Util::LegionAllocator::NumSubBlocks * Util::LegionAllocator::NumSubBlocks *
+			Util::LegionAllocator::NumSubBlocks);
+	}
 }
 
 void DeviceAllocator::init(Device *device_)

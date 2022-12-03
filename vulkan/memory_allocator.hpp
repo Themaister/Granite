@@ -185,7 +185,7 @@ public:
 		sub_block_size = size;
 	}
 
-	bool allocate(uint32_t size, AllocationMode mode, DeviceAllocation *alloc);
+	bool allocate(uint32_t size, DeviceAllocation *alloc);
 	void free(DeviceAllocation *alloc);
 
 private:
@@ -195,19 +195,20 @@ private:
 		object_pool = object_pool_;
 	}
 
-	using AllocationModeHeaps = Util::AllocationArena<DeviceAllocation>;
 	ClassAllocator *parent = nullptr;
-	AllocationModeHeaps mode_heaps[Util::ecast(AllocationMode::Count)];
+	Util::AllocationArena<DeviceAllocation> heap_arena;
 	Util::ObjectPool<MiniHeap> *object_pool = nullptr;
 
 	uint32_t sub_block_size = 1;
 	uint32_t sub_block_size_log2 = 0;
 	uint32_t memory_type = 0;
 	DeviceAllocator *global_allocator = nullptr;
+	AllocationMode global_allocator_mode = AllocationMode::Count;
 
-	void set_global_allocator(DeviceAllocator *allocator)
+	void set_global_allocator(DeviceAllocator *allocator, AllocationMode mode)
 	{
 		global_allocator = allocator;
+		global_allocator_mode = mode;
 	}
 
 	void set_memory_type(uint32_t type)
@@ -215,8 +216,7 @@ private:
 		memory_type = type;
 	}
 
-	void suballocate(uint32_t num_blocks, AllocationMode mode, uint32_t memory_type, MiniHeap &heap,
-	                 DeviceAllocation *alloc);
+	void suballocate(uint32_t num_blocks, MiniHeap &heap, DeviceAllocation *alloc);
 
 	inline void set_parent(ClassAllocator *allocator)
 	{
@@ -235,9 +235,10 @@ public:
 	bool allocate_global(uint32_t size, AllocationMode mode, DeviceAllocation *alloc);
 	bool allocate_dedicated(uint32_t size, AllocationMode mode, DeviceAllocation *alloc,
 	                        VkObjectType object_type, uint64_t object, ExternalHandle *external);
-	inline ClassAllocator &get_class_allocator(MemoryClass clazz)
+
+	inline ClassAllocator &get_class_allocator(MemoryClass clazz, AllocationMode mode)
 	{
-		return classes[static_cast<unsigned>(clazz)];
+		return classes[unsigned(clazz)][unsigned(mode)];
 	}
 
 	static void free(DeviceAllocation *alloc)
@@ -249,18 +250,20 @@ public:
 	{
 		memory_type = memory_type_;
 		for (auto &sub : classes)
-			sub.set_memory_type(memory_type);
+			for (auto &m : sub)
+				m.set_memory_type(memory_type);
 	}
 
 	void set_global_allocator(DeviceAllocator *allocator)
 	{
 		for (auto &sub : classes)
-			sub.set_global_allocator(allocator);
+			for (int i = 0; i < Util::ecast(AllocationMode::Count); i++)
+				sub[i].set_global_allocator(allocator, AllocationMode(i));
 		global_allocator = allocator;
 	}
 
 private:
-	ClassAllocator classes[Util::ecast(MemoryClass::Count)];
+	ClassAllocator classes[Util::ecast(MemoryClass::Count)][Util::ecast(AllocationMode::Count)];
 	DeviceAllocator *global_allocator = nullptr;
 	uint32_t memory_type = 0;
 };

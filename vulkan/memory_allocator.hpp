@@ -44,12 +44,6 @@ namespace Vulkan
 {
 class Device;
 
-static inline uint32_t log2_integer(uint32_t v)
-{
-	v--;
-	return 32 - leading_zeroes(v);
-}
-
 enum class MemoryClass : uint8_t
 {
 	Small = 0,
@@ -254,7 +248,8 @@ public:
 
 	inline void set_sub_block_size(uint32_t size)
 	{
-		sub_block_size_log2 = log2_integer(size);
+		assert(Util::is_pow2(size));
+		sub_block_size_log2 = Util::floor_log2(size);
 		sub_block_size = size;
 	}
 

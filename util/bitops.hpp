@@ -119,5 +119,4 @@ inline uint32_t floor_log2(uint32_t v)
 {
 	return 31 - leading_zeroes(v);
 }
-
 }

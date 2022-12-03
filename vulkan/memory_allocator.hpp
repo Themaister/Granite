@@ -37,10 +37,6 @@
 #include <stdint.h>
 #include <vector>
 
-#ifdef GRANITE_VULKAN_MT
-#include <mutex>
-#endif
-
 namespace Vulkan
 {
 class Device;
@@ -76,11 +72,12 @@ using MemoryAccessFlags = uint32_t;
 struct DeviceAllocation;
 class DeviceAllocator;
 
-struct MiniHeap;
 class ClassAllocator;
 class DeviceAllocator;
 class Allocator;
 class Device;
+
+using MiniHeap = Util::LegionHeap<DeviceAllocation>;
 
 struct DeviceAllocation
 {
@@ -88,6 +85,7 @@ struct DeviceAllocation
 	friend class Allocator;
 	friend class DeviceAllocator;
 	friend class Device;
+	friend class ImageResourceHolder;
 
 public:
 	inline VkDeviceMemory get_memory() const
@@ -120,9 +118,6 @@ public:
 		return host_base != nullptr;
 	}
 
-	void free_immediate();
-	void free_immediate(DeviceAllocator &allocator);
-
 	static DeviceAllocation make_imported_allocation(VkDeviceMemory memory, VkDeviceSize size, uint32_t memory_type);
 
 	ExternalHandle export_handle(Device &device);
@@ -141,6 +136,8 @@ private:
 	uint8_t memory_type = 0;
 
 	void free_global(DeviceAllocator &allocator, uint32_t size, uint32_t memory_type);
+	void free_immediate();
+	void free_immediate(DeviceAllocator &allocator);
 };
 
 class DeviceAllocationOwner;
@@ -172,18 +169,13 @@ struct MemoryAllocateInfo
 	AllocationMode mode = {};
 };
 
-struct MiniHeap : Util::IntrusiveListEnabled<MiniHeap>
-{
-	DeviceAllocation allocation;
-	Util::LegionAllocator heap;
-};
-
 class Allocator;
 
 class ClassAllocator
 {
 public:
 	friend class Allocator;
+
 	~ClassAllocator();
 
 	inline void set_sub_block_size(uint32_t size)
@@ -198,22 +190,19 @@ public:
 
 private:
 	ClassAllocator() = default;
-	struct AllocationModeHeaps
+	inline void set_object_pool(Util::ObjectPool<MiniHeap> *object_pool_)
 	{
-		Util::IntrusiveList<MiniHeap> heaps[Util::LegionAllocator::NumSubBlocks];
-		Util::IntrusiveList<MiniHeap> full_heaps;
-		uint32_t heap_availability_mask = 0;
-	};
+		object_pool = object_pool_;
+	}
+
+	using AllocationModeHeaps = Util::AllocationArena<DeviceAllocation>;
 	ClassAllocator *parent = nullptr;
 	AllocationModeHeaps mode_heaps[Util::ecast(AllocationMode::Count)];
-	Util::ObjectPool<MiniHeap> object_pool;
+	Util::ObjectPool<MiniHeap> *object_pool = nullptr;
 
 	uint32_t sub_block_size = 1;
 	uint32_t sub_block_size_log2 = 0;
 	uint32_t memory_type = 0;
-#ifdef GRANITE_VULKAN_MT
-	std::mutex lock;
-#endif
 	DeviceAllocator *global_allocator = nullptr;
 
 	void set_global_allocator(DeviceAllocator *allocator)
@@ -238,7 +227,7 @@ private:
 class Allocator
 {
 public:
-	Allocator();
+	explicit Allocator(Util::ObjectPool<MiniHeap> &object_pool);
 	void operator=(const Allocator &) = delete;
 	Allocator(const Allocator &) = delete;
 
@@ -298,29 +287,25 @@ public:
 	bool allocate_image_memory(uint32_t size, uint32_t alignment, AllocationMode mode, uint32_t memory_type,
 	                           VkImage image, bool force_no_dedicated, DeviceAllocation *alloc, ExternalHandle *external);
 
-	bool allocate_global(uint32_t size, AllocationMode mode, uint32_t memory_type, DeviceAllocation *alloc);
-
 	void garbage_collect();
 	void *map_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags, VkDeviceSize offset, VkDeviceSize length);
 	void unmap_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags, VkDeviceSize offset, VkDeviceSize length);
 
-	bool allocate(uint32_t size, uint32_t memory_type, AllocationMode mode,
-	              VkDeviceMemory *memory, uint8_t **host_memory,
-	              VkObjectType object_type, uint64_t dedicated_object, ExternalHandle *external);
-	void free(uint32_t size, uint32_t memory_type, AllocationMode mode, VkDeviceMemory memory, bool is_mapped);
-	void free_no_recycle(uint32_t size, uint32_t memory_type, VkDeviceMemory memory);
-
 	void get_memory_budget(HeapBudget *heaps);
 
+	bool internal_allocate(uint32_t size, uint32_t memory_type, AllocationMode mode,
+	                       VkDeviceMemory *memory, uint8_t **host_memory,
+	                       VkObjectType object_type, uint64_t dedicated_object, ExternalHandle *external);
+	void internal_free(uint32_t size, uint32_t memory_type, AllocationMode mode, VkDeviceMemory memory, bool is_mapped);
+	void internal_free_no_recycle(uint32_t size, uint32_t memory_type, VkDeviceMemory memory);
+
 private:
+	Util::ObjectPool<MiniHeap> object_pool;
 	std::vector<std::unique_ptr<Allocator>> allocators;
 	Device *device = nullptr;
 	const VolkDeviceTable *table = nullptr;
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkDeviceSize atom_alignment = 1;
-#ifdef GRANITE_VULKAN_MT
-	std::mutex lock;
-#endif
 	struct Allocation
 	{
 		VkDeviceMemory memory;

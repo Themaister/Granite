@@ -28,7 +28,7 @@ namespace Util
 {
 void LegionAllocator::allocate(uint32_t num_blocks, uint32_t &out_mask, uint32_t &out_offset)
 {
-	assert(NumSubLegionAllocators >= num_blocks);
+	assert(NumSubBlocks >= num_blocks);
 	assert(num_blocks != 0);
 
 	uint32_t block_mask;

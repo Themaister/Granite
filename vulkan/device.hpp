@@ -528,7 +528,6 @@ private:
 	int64_t calibrated_timestamp_device = 0;
 	int64_t calibrated_timestamp_host = 0;
 	int64_t calibrated_timestamp_device_accum = 0;
-	int64_t last_calibrated_timestamp_host = 0; // To ensure monotonicity after a recalibration.
 	unsigned timestamp_calibration_counter = 0;
 	Vulkan::QueryPoolHandle frame_context_begin_ts;
 
@@ -546,6 +545,7 @@ private:
 	struct
 	{
 #ifdef GRANITE_VULKAN_MT
+		std::mutex memory_lock;
 		std::mutex lock;
 		std::condition_variable cond;
 #endif

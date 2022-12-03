@@ -31,12 +31,6 @@
 #include <windows.h>
 #endif
 
-#ifdef GRANITE_VULKAN_MT
-#define ALLOCATOR_LOCK() std::lock_guard<std::mutex> holder__{lock}
-#else
-#define ALLOCATOR_LOCK()
-#endif
-
 namespace Vulkan
 {
 void DeviceAllocation::free_immediate()
@@ -96,7 +90,7 @@ void DeviceAllocation::free_immediate(DeviceAllocator &allocator)
 		free_immediate();
 	else if (base)
 	{
-		allocator.free_no_recycle(size, memory_type, base);
+		allocator.internal_free_no_recycle(size, memory_type, base);
 		base = VK_NULL_HANDLE;
 	}
 }
@@ -105,7 +99,7 @@ void DeviceAllocation::free_global(DeviceAllocator &allocator, uint32_t size_, u
 {
 	if (base)
 	{
-		allocator.free(size_, memory_type_, mode, base, host_base != nullptr);
+		allocator.internal_free(size_, memory_type_, mode, base, host_base != nullptr);
 		base = VK_NULL_HANDLE;
 		mask = 0;
 		offset = 0;
@@ -131,7 +125,6 @@ void ClassAllocator::suballocate(uint32_t num_blocks, AllocationMode mode, uint3
 
 bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocation *alloc)
 {
-	ALLOCATOR_LOCK();
 	unsigned num_blocks = (size + sub_block_size - 1) >> sub_block_size_log2;
 	uint32_t size_mask = (1u << (num_blocks - 1)) - 1;
 
@@ -172,7 +165,7 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 	}
 
 	// We didn't find a vacant heap, make a new one.
-	auto *node = object_pool.allocate();
+	auto *node = object_pool->allocate();
 	if (!node)
 		return false;
 
@@ -184,7 +177,7 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 		// We cannot allocate a new block from parent ... This is fatal.
 		if (!parent->allocate(alloc_size, mode, &heap.allocation))
 		{
-			object_pool.free(node);
+			object_pool->free(node);
 			return false;
 		}
 	}
@@ -193,13 +186,14 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 		heap.allocation.offset = 0;
 		heap.allocation.host_base = nullptr;
 		heap.allocation.mode = mode;
-		if (!global_allocator->allocate(alloc_size, memory_type, mode, &heap.allocation.base,
-		                                (mode == AllocationMode::LinearHostMappable ||
-		                                 mode == AllocationMode::LinearDevice ||
-		                                 mode == AllocationMode::LinearDeviceHighPriority) ? &heap.allocation.host_base : nullptr,
-		                                VK_OBJECT_TYPE_DEVICE, 0, nullptr))
+		if (!global_allocator->internal_allocate(
+			alloc_size, memory_type, mode, &heap.allocation.base,
+			(mode == AllocationMode::LinearHostMappable ||
+			 mode == AllocationMode::LinearDevice ||
+			 mode == AllocationMode::LinearDeviceHighPriority) ? &heap.allocation.host_base : nullptr,
+			VK_OBJECT_TYPE_DEVICE, 0, nullptr))
 		{
-			object_pool.free(node);
+			object_pool->free(node);
 			return false;
 		}
 	}
@@ -243,7 +237,6 @@ ClassAllocator::~ClassAllocator()
 
 void ClassAllocator::free(DeviceAllocation *alloc)
 {
-	ALLOCATOR_LOCK();
 	auto *heap = alloc->heap.get();
 	auto &block = heap->heap;
 	bool was_full = block.full();
@@ -272,7 +265,7 @@ void ClassAllocator::free(DeviceAllocation *alloc)
 				m.heap_availability_mask &= ~(1u << index);
 		}
 
-		object_pool.free(heap);
+		object_pool->free(heap);
 	}
 	else if (was_full)
 	{
@@ -292,11 +285,12 @@ bool Allocator::allocate_global(uint32_t size, AllocationMode mode, DeviceAlloca
 {
 	// Fall back to global allocation, do not recycle.
 	alloc->host_base = nullptr;
-	if (!global_allocator->allocate(size, memory_type, mode, &alloc->base,
-	                                (mode == AllocationMode::LinearHostMappable ||
-	                                 mode == AllocationMode::LinearDevice ||
-	                                 mode == AllocationMode::LinearDeviceHighPriority) ? &alloc->host_base : nullptr,
-	                                VK_OBJECT_TYPE_DEVICE, 0, nullptr))
+	if (!global_allocator->internal_allocate(
+		size, memory_type, mode, &alloc->base,
+		(mode == AllocationMode::LinearHostMappable ||
+		 mode == AllocationMode::LinearDevice ||
+		 mode == AllocationMode::LinearDeviceHighPriority) ? &alloc->host_base : nullptr,
+		VK_OBJECT_TYPE_DEVICE, 0, nullptr))
 	{
 		return false;
 	}
@@ -313,11 +307,12 @@ bool Allocator::allocate_dedicated(uint32_t size, AllocationMode mode, DeviceAll
 {
 	// Fall back to global allocation, do not recycle.
 	alloc->host_base = nullptr;
-	if (!global_allocator->allocate(size, memory_type, mode, &alloc->base,
-	                                (mode == AllocationMode::LinearHostMappable ||
-	                                 mode == AllocationMode::LinearDevice ||
-	                                 mode == AllocationMode::LinearDeviceHighPriority) ? &alloc->host_base : nullptr,
-	                                type, object, external))
+	if (!global_allocator->internal_allocate(
+		size, memory_type, mode, &alloc->base,
+		(mode == AllocationMode::LinearHostMappable ||
+		 mode == AllocationMode::LinearDevice ||
+		 mode == AllocationMode::LinearDeviceHighPriority) ? &alloc->host_base : nullptr,
+		type, object, external))
 	{
 		return false;
 	}
@@ -376,10 +371,13 @@ bool Allocator::allocate(uint32_t size, uint32_t alignment, AllocationMode mode,
 	return allocate_global(size, mode, alloc);
 }
 
-Allocator::Allocator()
+Allocator::Allocator(Util::ObjectPool<MiniHeap> &object_pool)
 {
 	for (int i = 0; i < Util::ecast(MemoryClass::Count) - 1; i++)
 		classes[i].set_parent(&classes[i + 1]);
+
+	for (auto &c : classes)
+		c.set_object_pool(&object_pool);
 
 	// 128 chunk
 	get_class_allocator(MemoryClass::Small).set_sub_block_size(128);
@@ -414,7 +412,7 @@ void DeviceAllocator::init(Device *device_)
 	allocators.reserve(mem_props.memoryTypeCount);
 	for (unsigned i = 0; i < mem_props.memoryTypeCount; i++)
 	{
-		allocators.emplace_back(new Allocator);
+		allocators.emplace_back(new Allocator(object_pool));
 		allocators.back()->set_memory_type(i);
 		allocators.back()->set_global_allocator(this);
 	}
@@ -521,11 +519,6 @@ bool DeviceAllocator::allocate_image_memory(uint32_t size, uint32_t alignment, A
 	}
 }
 
-bool DeviceAllocator::allocate_global(uint32_t size, AllocationMode mode, uint32_t memory_type, DeviceAllocation *alloc)
-{
-	return allocators[memory_type]->allocate_global(size, mode, alloc);
-}
-
 void DeviceAllocator::Heap::garbage_collect(Device *device_)
 {
 	auto &table_ = device_->get_device_table();
@@ -543,12 +536,11 @@ DeviceAllocator::~DeviceAllocator()
 		heap.garbage_collect(device);
 }
 
-void DeviceAllocator::free(uint32_t size, uint32_t memory_type, AllocationMode mode, VkDeviceMemory memory, bool is_mapped)
+void DeviceAllocator::internal_free(uint32_t size, uint32_t memory_type, AllocationMode mode, VkDeviceMemory memory, bool is_mapped)
 {
 	if (is_mapped)
 		table->vkUnmapMemory(device->get_device(), memory);
 
-	ALLOCATOR_LOCK();
 	auto &heap = heaps[mem_props.memoryTypes[memory_type].heapIndex];
 
 	VK_ASSERT(mode != AllocationMode::Count);
@@ -558,9 +550,8 @@ void DeviceAllocator::free(uint32_t size, uint32_t memory_type, AllocationMode m
 		heap.garbage_collect(device);
 }
 
-void DeviceAllocator::free_no_recycle(uint32_t size, uint32_t memory_type, VkDeviceMemory memory)
+void DeviceAllocator::internal_free_no_recycle(uint32_t size, uint32_t memory_type, VkDeviceMemory memory)
 {
-	ALLOCATOR_LOCK();
 	auto &heap = heaps[mem_props.memoryTypes[memory_type].heapIndex];
 	table->vkFreeMemory(device->get_device(), memory, nullptr);
 	heap.size -= size;
@@ -568,7 +559,6 @@ void DeviceAllocator::free_no_recycle(uint32_t size, uint32_t memory_type, VkDev
 
 void DeviceAllocator::garbage_collect()
 {
-	ALLOCATOR_LOCK();
 	for (auto &heap : heaps)
 		heap.garbage_collect(device);
 }
@@ -666,17 +656,16 @@ void DeviceAllocator::get_memory_budget_nolock(HeapBudget *heap_budgets)
 
 void DeviceAllocator::get_memory_budget(HeapBudget *heap_budgets)
 {
-	ALLOCATOR_LOCK();
 	get_memory_budget_nolock(heap_budgets);
 }
 
-bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMode mode,
-                               VkDeviceMemory *memory, uint8_t **host_memory,
-                               VkObjectType object_type, uint64_t dedicated_object, ExternalHandle *external)
+bool DeviceAllocator::internal_allocate(
+	uint32_t size, uint32_t memory_type, AllocationMode mode,
+	VkDeviceMemory *memory, uint8_t **host_memory,
+	VkObjectType object_type, uint64_t dedicated_object, ExternalHandle *external)
 {
 	uint32_t heap_index = mem_props.memoryTypes[memory_type].heapIndex;
 	auto &heap = heaps[heap_index];
-	ALLOCATOR_LOCK();
 
 	// Naive searching is fine here as vkAllocate blocks are *huge* and we won't have many of them.
 	auto itr = end(heap.blocks);
@@ -893,7 +882,7 @@ DeviceAllocationOwner::~DeviceAllocationOwner()
 		device->free_memory(alloc);
 }
 
-const DeviceAllocation & DeviceAllocationOwner::get_allocation() const
+const DeviceAllocation &DeviceAllocationOwner::get_allocation() const
 {
 	return alloc;
 }

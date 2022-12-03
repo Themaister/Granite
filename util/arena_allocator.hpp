@@ -23,10 +23,13 @@
 #pragma once
 
 #include <stdint.h>
+#include "intrusive_list.hpp"
 #include "logging.hpp"
 
 namespace Util
 {
+// Expands the buddy allocator to consider 32 "buddies".
+// The allocator is logical and works in terms of units, not bytes.
 class LegionAllocator
 {
 public:
@@ -74,5 +77,21 @@ private:
 	uint32_t free_blocks[NumSubBlocks];
 	uint32_t longest_run = 0;
 	void update_longest_run();
+};
+
+// Represents that a legion heap is backed by some kind of allocation.
+template <typename BackingAllocation>
+struct LegionHeap : Util::IntrusiveListEnabled<LegionHeap<BackingAllocation>>
+{
+	BackingAllocation allocation;
+	Util::LegionAllocator heap;
+};
+
+template <typename BackingAllocation>
+struct AllocationArena
+{
+	Util::IntrusiveList<LegionHeap<BackingAllocation>> heaps[Util::LegionAllocator::NumSubBlocks];
+	Util::IntrusiveList<LegionHeap<BackingAllocation>> full_heaps;
+	uint32_t heap_availability_mask = 0;
 };
 }

@@ -166,35 +166,11 @@ bool ClassAllocator::allocate(uint32_t size, DeviceAllocation *alloc)
 		return false;
 
 	auto &heap = *node;
-	uint32_t alloc_size = sub_block_size * Util::LegionAllocator::NumSubBlocks;
 
-	if (parent)
+	if (!allocate_backing_heap(&heap.allocation))
 	{
-		// We cannot allocate a new block from parent ... This is fatal.
-		if (!parent->allocate(alloc_size, &heap.allocation))
-		{
-			object_pool->free(node);
-			return false;
-		}
-	}
-	else
-	{
-		auto mode = global_allocator_mode;
-
-		heap.allocation.offset = 0;
-		heap.allocation.host_base = nullptr;
-		heap.allocation.mode = mode;
-		heap.allocation.memory_type = memory_type;
-		if (!global_allocator->internal_allocate(
-			alloc_size, memory_type, mode, &heap.allocation.base,
-			(mode == AllocationMode::LinearHostMappable ||
-			 mode == AllocationMode::LinearDevice ||
-			 mode == AllocationMode::LinearDeviceHighPriority) ? &heap.allocation.host_base : nullptr,
-			VK_OBJECT_TYPE_DEVICE, 0, nullptr))
-		{
-			object_pool->free(node);
-			return false;
-		}
+		object_pool->free(node);
+		return false;
 	}
 
 	// This cannot fail.
@@ -215,6 +191,35 @@ bool ClassAllocator::allocate(uint32_t size, DeviceAllocation *alloc)
 	return true;
 }
 
+bool ClassAllocator::allocate_backing_heap(DeviceAllocation *alloc)
+{
+	uint32_t alloc_size = sub_block_size * Util::LegionAllocator::NumSubBlocks;
+
+	if (parent)
+	{
+		return parent->allocate(alloc_size, alloc);
+	}
+	else
+	{
+		auto mode = global_allocator_mode;
+
+		alloc->offset = 0;
+		alloc->host_base = nullptr;
+		alloc->mode = mode;
+		alloc->memory_type = memory_type;
+
+		bool request_host_mapping =
+		    mode == AllocationMode::LinearHostMappable ||
+		    mode == AllocationMode::LinearDevice ||
+		    mode == AllocationMode::LinearDeviceHighPriority;
+
+		return global_allocator->internal_allocate(
+		    alloc_size, memory_type, mode, &alloc->base,
+		    request_host_mapping ? &alloc->host_base : nullptr,
+		    VK_OBJECT_TYPE_DEVICE, 0, nullptr);
+	}
+}
+
 ClassAllocator::~ClassAllocator()
 {
 	bool error = false;
@@ -228,6 +233,15 @@ ClassAllocator::~ClassAllocator()
 
 	if (error)
 		LOGE("Memory leaked in class allocator!\n");
+}
+
+void ClassAllocator::free_backing_heap(DeviceAllocation *allocation)
+{
+	// Our mini-heap is completely freed, free to higher level allocator.
+	if (parent)
+		allocation->free_immediate();
+	else
+		allocation->free_global(*global_allocator, sub_block_size * Util::LegionAllocator::NumSubBlocks, memory_type);
 }
 
 void ClassAllocator::free(Util::IntrusiveList<Util::LegionHeap<DeviceAllocation>>::Iterator itr, uint32_t mask)
@@ -245,11 +259,7 @@ void ClassAllocator::free(Util::IntrusiveList<Util::LegionHeap<DeviceAllocation>
 
 	if (block.empty())
 	{
-		// Our mini-heap is completely freed, free to higher level allocator.
-		if (parent)
-			heap->allocation.free_immediate();
-		else
-			heap->allocation.free_global(*global_allocator, sub_block_size * Util::LegionAllocator::NumSubBlocks, memory_type);
+		free_backing_heap(&heap->allocation);
 
 		if (was_full)
 			heap_arena.full_heaps.erase(heap);

@@ -188,6 +188,9 @@ public:
 	bool allocate(uint32_t size, DeviceAllocation *alloc);
 	void free(Util::IntrusiveList<Util::LegionHeap<DeviceAllocation>>::Iterator itr, uint32_t mask);
 
+	bool allocate_backing_heap(DeviceAllocation *allocation);
+	void free_backing_heap(DeviceAllocation *allocation);
+
 private:
 	ClassAllocator() = default;
 	inline void set_object_pool(Util::ObjectPool<MiniHeap> *object_pool_)

@@ -381,7 +381,8 @@ void SpotLight::get_depth_render_info(const RenderContext &, const RenderInfoCom
 		info.type = PositionalLight::Type::Spot;
 
 		unsigned variant = POSITIONAL_VARIANT_INSTANCE_BIT;
-		info.program = queue.get_shader_suites()[ecast(RenderableType::SpotLight)].get_program(DrawPipeline::Opaque, 0, 0, variant);
+		info.program = queue.get_shader_suites()[ecast(RenderableType::SpotLight)].get_program(
+			VariantSignatureKey::build(DrawPipeline::Opaque, 0, 0, variant));
 		*spot_info = info;
 	}
 }
@@ -476,7 +477,8 @@ void SpotLight::get_render_info(const RenderContext &context, const RenderInfoCo
 		if (ImplementationQuirks::get().instance_deferred_lights)
 			variant |= POSITIONAL_VARIANT_INSTANCE_BIT;
 
-		info.program = queue.get_shader_suites()[ecast(RenderableType::SpotLight)].get_program(DrawPipeline::AlphaBlend, 0, 0, variant);
+		info.program = queue.get_shader_suites()[ecast(RenderableType::SpotLight)].get_program(
+			VariantSignatureKey::build(DrawPipeline::AlphaBlend, 0, 0, variant));
 		*spot_info = info;
 	}
 }
@@ -553,7 +555,8 @@ void PointLight::get_depth_render_info(const RenderContext &, const RenderInfoCo
 		info.type = PositionalLight::Type::Point;
 
 		unsigned variant = POSITIONAL_VARIANT_INSTANCE_BIT;
-		info.program = queue.get_shader_suites()[ecast(RenderableType::PointLight)].get_program(DrawPipeline::Opaque, 0, 0, variant);
+		info.program = queue.get_shader_suites()[ecast(RenderableType::PointLight)].get_program(
+			VariantSignatureKey::build(DrawPipeline::Opaque, 0, 0, variant));
 		*point_info = info;
 	}
 }
@@ -621,7 +624,8 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
 		if (ImplementationQuirks::get().instance_deferred_lights)
 			variant |= POSITIONAL_VARIANT_INSTANCE_BIT;
 
-		info.program = queue.get_shader_suites()[ecast(RenderableType::PointLight)].get_program(DrawPipeline::AlphaBlend, 0, 0, variant);
+		info.program = queue.get_shader_suites()[ecast(RenderableType::PointLight)].get_program(
+			VariantSignatureKey::build(DrawPipeline::AlphaBlend, 0, 0, variant));
 		*point_info = info;
 	}
 }

@@ -160,17 +160,19 @@ void FlatRenderer::render_quad(const ImageView *view, unsigned layer, Vulkan::St
 
 		if (view)
 		{
-			sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline,
-			                                                                  MESH_ATTRIBUTE_POSITION_BIT |
-			                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT |
-			                                                                  MESH_ATTRIBUTE_UV_BIT,
-			                                                                  MATERIAL_TEXTURE_BASE_COLOR_BIT, flags);
+			sprite.program = suite[ecast(RenderableType::Sprite)].get_program(
+				VariantSignatureKey::build(pipeline,
+				                           MESH_ATTRIBUTE_POSITION_BIT |
+				                           MESH_ATTRIBUTE_VERTEX_COLOR_BIT |
+				                           MESH_ATTRIBUTE_UV_BIT,
+				                           MATERIAL_TEXTURE_BASE_COLOR_BIT, flags));
 		}
 		else
 		{
-			sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline,
-			                                                                  MESH_ATTRIBUTE_POSITION_BIT |
-			                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0, flags);
+			sprite.program = suite[ecast(RenderableType::Sprite)].get_program(
+				VariantSignatureKey::build(pipeline,
+				                           MESH_ATTRIBUTE_POSITION_BIT |
+				                           MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0, flags));
 		}
 		*sprite_data = sprite;
 	}
@@ -267,8 +269,9 @@ void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned c
 	if (strip_data)
 	{
 		strip.program = suite[ecast(RenderableType::LineUI)].get_program(
-			transparent ? DrawPipeline::AlphaBlend : DrawPipeline::Opaque,
-			MESH_ATTRIBUTE_POSITION_BIT | MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0);
+			VariantSignatureKey::build(
+				transparent ? DrawPipeline::AlphaBlend : DrawPipeline::Opaque,
+				MESH_ATTRIBUTE_POSITION_BIT | MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0));
 
 		*strip_data = strip;
 	}

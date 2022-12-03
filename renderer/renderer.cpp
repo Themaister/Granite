@@ -184,10 +184,7 @@ bool RendererSuite::load_variant_cache(const std::string &path)
 		Variant variant = {};
 		variant.renderer_suite_type = static_cast<RendererSuite::Type>(value["rendererSuiteType"].GetUint());
 		variant.renderable_type = static_cast<RenderableType>(value["renderableType"].GetUint());
-		variant.key.coverage = static_cast<DrawPipelineCoverage>(value["coverage"].GetUint());
-		variant.key.attribute_mask = value["attributeMask"].GetUint();
-		variant.key.texture_mask = value["textureMask"].GetUint();
-		variant.key.variant_id = value["variantId"].GetUint();
+		variant.key.word = value["word"].GetUint();
 		variants.push_back(variant);
 	}
 
@@ -217,10 +214,7 @@ bool RendererSuite::save_variant_cache(const std::string &path)
 				Value variant(kObjectType);
 				variant.AddMember("rendererSuiteType", suite_type, allocator);
 				variant.AddMember("renderableType", renderable_type, allocator);
-				variant.AddMember("coverage", uint32_t(key.key.coverage), allocator);
-				variant.AddMember("attributeMask", uint32_t(key.key.attribute_mask), allocator);
-				variant.AddMember("textureMask", uint32_t(key.key.texture_mask), allocator);
-				variant.AddMember("variantId", uint32_t(key.key.variant_id), allocator);
+				variant.AddMember("word", key.key.word, allocator);
 				variants_array.PushBack(variant, allocator);
 			}
 		}
@@ -261,14 +255,13 @@ void RendererSuite::register_variants_from_cache()
 	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
 	Util::TimelineTraceFile::Event *e = nullptr;
 	if (file)
-		file->begin_event("renderer-suite-warm-variants");
+		e = file->begin_event("renderer-suite-warm-variants");
 
 	for (auto &variant : variants)
 	{
 		auto *suites = handles[Util::ecast(variant.renderer_suite_type)]->get_shader_suites();
 		auto &suite = suites[Util::ecast(variant.renderable_type)];
-		suite.get_program(variant.key.coverage, variant.key.attribute_mask,
-		                  variant.key.texture_mask, variant.key.variant_id);
+		suite.get_program(variant.key);
 	}
 
 	if (e)
@@ -817,9 +810,10 @@ DebugMeshInstanceInfo &Renderer::render_debug(RenderQueue &queue, const RenderCo
 
 	if (debug_info)
 	{
-		debug.program = suite[ecast(RenderableType::DebugMesh)].get_program(DrawPipeline::Opaque,
-		                                                                    MESH_ATTRIBUTE_POSITION_BIT |
-		                                                                    MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0);
+		debug.program = suite[ecast(RenderableType::DebugMesh)].get_program(
+			VariantSignatureKey::build(DrawPipeline::Opaque,
+			                           MESH_ATTRIBUTE_POSITION_BIT |
+			                           MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0));
 		*debug_info = debug;
 	}
 

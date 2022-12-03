@@ -180,7 +180,7 @@ public:
 		Count
 	};
 
-	enum { CacheVersion = 1 };
+	enum { CacheVersion = 2 };
 
 	void set_renderer(Type type, RendererHandle handle);
 	void set_default_renderers();
@@ -210,7 +210,7 @@ private:
 	{
 		Type renderer_suite_type;
 		RenderableType renderable_type;
-		ShaderSuite::VariantSignatureKey key;
+		VariantSignatureKey key;
 	};
 	std::vector<Variant> variants;
 	Util::Hash current_config_hash = 0;

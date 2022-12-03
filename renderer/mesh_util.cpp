@@ -671,7 +671,7 @@ void DebugProbeMesh::get_render_info(const RenderContext &context, const RenderI
 		mesh_info->index_type = index_type;
 		mesh_info->probe = extra->probe;
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::DebugProbe)].get_program(
-				DrawPipeline::Opaque, 1, MATERIAL_EMISSIVE_BIT, 0);
+		    VariantSignatureKey::build(DrawPipeline::Opaque, 1, MATERIAL_EMISSIVE_BIT, 0));
 		mesh_info->count = count;
 		mesh_info->vbo_format = attributes[ecast(MeshAttribute::Position)].format;
 		mesh_info->vbo_offset = attributes[ecast(MeshAttribute::Position)].offset;
@@ -1067,7 +1067,8 @@ void SkyCylinder::get_render_info(const RenderContext &, const RenderInfoCompone
 
 	if (cylinder_info)
 	{
-		info.program = queue.get_shader_suites()[ecast(RenderableType::SkyCylinder)].get_program(DrawPipeline::Opaque, 0, 0);
+		info.program = queue.get_shader_suites()[ecast(RenderableType::SkyCylinder)].get_program(
+			VariantSignatureKey::build(DrawPipeline::Opaque, 0, 0));
 		*cylinder_info = info;
 	}
 }
@@ -1162,7 +1163,8 @@ void Skybox::get_render_info(const RenderContext &context, const RenderInfoCompo
 	if (skydome_info)
 	{
 		auto shader_flags = info.view ? MATERIAL_EMISSIVE_BIT : 0;
-		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, shader_flags);
+		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(
+			VariantSignatureKey::build(DrawPipeline::Opaque, 0, shader_flags));
 		*skydome_info = info;
 	}
 }
@@ -1491,7 +1493,8 @@ void TexturePlane::get_render_info(const RenderContext &context_, const RenderIn
 		unsigned mat_mask = MATERIAL_EMISSIVE_BIT;
 		mat_mask |= info.refraction ? MATERIAL_EMISSIVE_REFRACTION_BIT : 0;
 		mat_mask |= info.reflection ? MATERIAL_EMISSIVE_REFLECTION_BIT : 0;
-		info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(DrawPipeline::Opaque, 0, mat_mask);
+		info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(
+			VariantSignatureKey::build(DrawPipeline::Opaque, 0, mat_mask));
 		*plane_info = info;
 	}
 }

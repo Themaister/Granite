@@ -1046,10 +1046,11 @@ void Ocean::get_render_info_plane(const RenderContext &, const RenderInfoCompone
 			plane_flag |= VARIANT_FLAG_REFRACTION_BANDLIMITED_PIXEL;
 
 		patch_data->program =
-				queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(DrawPipeline::Opaque,
-				                                                                          MESH_ATTRIBUTE_POSITION_BIT,
-				                                                                          MATERIAL_TEXTURE_BASE_COLOR_BIT,
-				                                                                          plane_flag);
+			queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(
+				VariantSignatureKey::build(DrawPipeline::Opaque,
+				                           MESH_ATTRIBUTE_POSITION_BIT,
+				                           MATERIAL_TEXTURE_BASE_COLOR_BIT,
+				                           plane_flag));
 
 		patch_data->grad_jacobian = &grad_jacobian;
 		patch_data->normal = &normal;
@@ -1128,19 +1129,21 @@ void Ocean::get_render_info_heightmap(const RenderContext &,
 			refraction_flag |= VARIANT_FLAG_REFRACTION_BANDLIMITED_PIXEL;
 
 		patch_data->program =
-				queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(DrawPipeline::Opaque,
-				                                                                          MESH_ATTRIBUTE_POSITION_BIT,
-				                                                                          MATERIAL_TEXTURE_BASE_COLOR_BIT,
-				                                                                          refraction_flag);
+			queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(
+				VariantSignatureKey::build(DrawPipeline::Opaque,
+				                           MESH_ATTRIBUTE_POSITION_BIT,
+				                           MATERIAL_TEXTURE_BASE_COLOR_BIT,
+				                           refraction_flag));
 
 		// If we have fixed transform, don't render an "infinite" border.
 		if (!node)
 		{
 			patch_data->border_program =
-					queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(DrawPipeline::Opaque,
-																							  MESH_ATTRIBUTE_POSITION_BIT,
-																							  MATERIAL_TEXTURE_BASE_COLOR_BIT,
-																							  VARIANT_FLAG_BORDER | refraction_flag);
+				queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(
+					VariantSignatureKey::build(DrawPipeline::Opaque,
+					                           MESH_ATTRIBUTE_POSITION_BIT,
+					                           MATERIAL_TEXTURE_BASE_COLOR_BIT,
+					                           VARIANT_FLAG_BORDER | refraction_flag));
 
 			patch_data->border_vbo = border_vbo.get();
 			patch_data->border_ibo = border_ibo.get();

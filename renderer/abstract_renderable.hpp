@@ -33,14 +33,14 @@ class ShaderSuite;
 struct RenderInfoComponent;
 struct SpriteTransformInfo;
 
-enum class DrawPipeline : unsigned
+enum class DrawPipeline : unsigned char
 {
 	Opaque,
 	AlphaTest,
 	AlphaBlend,
 };
 
-enum class DrawPipelineCoverage : unsigned
+enum class DrawPipelineCoverage : unsigned char
 {
 	Full,
 	Modifies

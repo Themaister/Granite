@@ -374,10 +374,11 @@ void Ground::get_render_info(const RenderContext &context, const RenderInfoCompo
 		if (info.bandlimited_pixel)
 			flags |= 1u << 0;
 
-		patch.program = queue.get_shader_suites()[ecast(RenderableType::Ground)].get_program(DrawPipeline::Opaque,
-		                                                                                     MESH_ATTRIBUTE_POSITION_BIT,
-		                                                                                     MATERIAL_TEXTURE_BASE_COLOR_BIT,
-		                                                                                     flags);
+		patch.program = queue.get_shader_suites()[ecast(RenderableType::Ground)].get_program(
+			VariantSignatureKey::build(DrawPipeline::Opaque,
+			                           MESH_ATTRIBUTE_POSITION_BIT,
+			                           MATERIAL_TEXTURE_BASE_COLOR_BIT,
+			                           flags));
 
 		*patch_data = patch;
 	}

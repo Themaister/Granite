@@ -252,12 +252,13 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 
 	if (sprite_data)
 	{
-		sprite.program = queue.get_shader_suites()[ecast(RenderableType::Sprite)].get_program(DrawPipeline::AlphaBlend,
-		                                                                                      MESH_ATTRIBUTE_UV_BIT |
-		                                                                                      MESH_ATTRIBUTE_POSITION_BIT |
-		                                                                                      MESH_ATTRIBUTE_VERTEX_COLOR_BIT,
-		                                                                                      MATERIAL_TEXTURE_BASE_COLOR_BIT,
-		                                                                                      Sprite::ALPHA_TEXTURE_BIT);
+		sprite.program = queue.get_shader_suites()[ecast(RenderableType::Sprite)].get_program(
+			VariantSignatureKey::build(DrawPipeline::AlphaBlend,
+			                           MESH_ATTRIBUTE_UV_BIT |
+			                           MESH_ATTRIBUTE_POSITION_BIT |
+			                           MESH_ATTRIBUTE_VERTEX_COLOR_BIT,
+			                           MATERIAL_TEXTURE_BASE_COLOR_BIT,
+			                           Sprite::ALPHA_TEXTURE_BIT));
 
 		*sprite_data = sprite;
 	}

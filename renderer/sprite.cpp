@@ -208,12 +208,13 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 		if (clear_alpha_to_zero)
 			shader_flags |= CLEAR_ALPHA_TO_ZERO_BIT;
 
-		sprite.program = suite.get_program(pipeline,
-		                                   MESH_ATTRIBUTE_POSITION_BIT |
-		                                   MESH_ATTRIBUTE_VERTEX_COLOR_BIT |
-		                                   (texture ? MESH_ATTRIBUTE_UV_BIT : 0),
-		                                   texture ? MATERIAL_TEXTURE_BASE_COLOR_BIT : 0,
-		                                   shader_flags);
+		sprite.program = suite.get_program(
+			VariantSignatureKey::build(pipeline,
+			                           MESH_ATTRIBUTE_POSITION_BIT |
+			                           MESH_ATTRIBUTE_VERTEX_COLOR_BIT |
+			                           (texture ? MESH_ATTRIBUTE_UV_BIT : 0),
+			                           texture ? MATERIAL_TEXTURE_BASE_COLOR_BIT : 0,
+			                           shader_flags));
 		*sprite_data = sprite;
 	}
 }

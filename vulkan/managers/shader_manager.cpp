@@ -94,8 +94,6 @@ bool ShaderTemplate::init()
 		return false;
 	}
 	source_hash = compiler->get_source_hash();
-#else
-	(void)include_directories;
 #endif
 
 	return true;
@@ -214,6 +212,7 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<
 }
 
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
+#ifndef GRANITE_SHIPPING
 void ShaderTemplate::recompile_variant(ShaderTemplateVariant &variant)
 {
 	std::string error_message;
@@ -230,6 +229,7 @@ void ShaderTemplate::recompile_variant(ShaderTemplateVariant &variant)
 	variant.instance++;
 	update_variant_cache(variant);
 }
+#endif
 
 void ShaderTemplate::update_variant_cache(const ShaderTemplateVariant &variant)
 {
@@ -246,6 +246,7 @@ void ShaderTemplate::update_variant_cache(const ShaderTemplateVariant &variant)
 	cache.shader_to_layout.emplace_yield(shader_hash, layout);
 }
 
+#ifndef GRANITE_SHIPPING
 void ShaderTemplate::recompile()
 {
 	// Recompile all variants.
@@ -274,6 +275,7 @@ void ShaderTemplate::recompile()
 		recompile_variant(variant);
 #endif
 }
+#endif
 
 void ShaderTemplate::register_dependencies(ShaderManager &manager)
 {
@@ -292,9 +294,24 @@ void ShaderProgram::set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader)
 ShaderProgramVariant::ShaderProgramVariant(Device *device_)
 	: device(device_)
 {
+#ifndef GRANITE_SHIPPING
 	for (auto &inst : shader_instance)
 		inst.store(0, std::memory_order_relaxed);
 	program.store(nullptr, std::memory_order_relaxed);
+#endif
+}
+
+Vulkan::Shader *ShaderTemplateVariant::resolve(Vulkan::Device &device) const
+{
+	if (spirv.empty())
+	{
+		return device.request_shader_by_hash(spirv_hash);
+	}
+	else
+	{
+		return device.request_shader(spirv.data(), spirv.size() * sizeof(uint32_t),
+		                             nullptr, sampler_bank ? sampler_bank.get() : nullptr);
+	}
 }
 
 Vulkan::Program *ShaderProgramVariant::get_program_compute()
@@ -302,6 +319,9 @@ Vulkan::Program *ShaderProgramVariant::get_program_compute()
 	Vulkan::Program *ret;
 
 	auto *comp = stages[Util::ecast(Vulkan::ShaderStage::Compute)];
+#ifdef GRANITE_SHIPPING
+	ret = device->request_program(comp->resolve(*device));
+#else
 	auto &comp_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Compute)];
 
 	// If we have observed all possible compilation instances,
@@ -317,20 +337,8 @@ Vulkan::Program *ShaderProgramVariant::get_program_compute()
 #endif
 	if (comp_instance.load(std::memory_order_relaxed) != comp->instance)
 	{
-		Vulkan::Program *new_program;
-		if (comp->spirv.empty())
-		{
-			auto *shader = device->request_shader_by_hash(comp->spirv_hash);
-			new_program = device->request_program(shader);
-		}
-		else
-		{
-			new_program = device->request_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t),
-			                                      nullptr, comp->sampler_bank ? comp->sampler_bank.get() : nullptr);
-		}
-
-		program.store(new_program, std::memory_order_relaxed);
-		ret = new_program;
+		ret = device->request_program(comp->resolve(*device));
+		program.store(ret, std::memory_order_relaxed);
 		comp_instance.store(comp->instance, std::memory_order_release);
 	}
 	else
@@ -339,6 +347,7 @@ Vulkan::Program *ShaderProgramVariant::get_program_compute()
 	}
 #ifdef GRANITE_VULKAN_MT
 	instance_lock.unlock_write();
+#endif
 #endif
 
 	return ret;
@@ -349,6 +358,10 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 	Vulkan::Program *ret;
 	auto *vert = stages[Util::ecast(Vulkan::ShaderStage::Vertex)];
 	auto *frag = stages[Util::ecast(Vulkan::ShaderStage::Fragment)];
+
+#ifdef GRANITE_SHIPPING
+	ret = device->request_program(vert->resolve(*device), frag->resolve(*device));
+#else
 	auto &vert_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Vertex)];
 	auto &frag_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Fragment)];
 
@@ -368,28 +381,8 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 	if (vert_instance.load(std::memory_order_relaxed) != vert->instance ||
 	    frag_instance.load(std::memory_order_relaxed) != frag->instance)
 	{
-		Shader *vert_shader;
-		Shader *frag_shader;
-
-		if (vert->spirv.empty())
-			vert_shader = device->request_shader_by_hash(vert->spirv_hash);
-		else
-		{
-			vert_shader = device->request_shader(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t),
-			                                     nullptr, vert->sampler_bank ? vert->sampler_bank.get() : nullptr);
-		}
-
-		if (frag->spirv.empty())
-			frag_shader = device->request_shader_by_hash(frag->spirv_hash);
-		else
-		{
-			frag_shader = device->request_shader(frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t),
-			                                     nullptr, frag->sampler_bank ? frag->sampler_bank.get() : nullptr);
-		}
-
-		auto *new_program = device->request_program(vert_shader, frag_shader);
-		program.store(new_program, std::memory_order_relaxed);
-		ret = new_program;
+		ret = device->request_program(vert->resolve(*device), frag->resolve(*device));
+		program.store(ret, std::memory_order_relaxed);
 		vert_instance.store(vert->instance, std::memory_order_release);
 		frag_instance.store(frag->instance, std::memory_order_release);
 	}
@@ -399,6 +392,7 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 	}
 #ifdef GRANITE_VULKAN_MT
 	instance_lock.unlock_write();
+#endif
 #endif
 
 	return ret;
@@ -513,7 +507,7 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const
 
 ShaderManager::~ShaderManager()
 {
-#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
+#if defined(GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER) && !defined(GRANITE_SHIPPING)
 	for (auto &dir : directory_watches)
 		if (dir.second.backend)
 			dir.second.backend->uninstall_notification(dir.second.handle);
@@ -530,9 +524,12 @@ void ShaderManager::register_dependency(ShaderTemplate *shader, const std::strin
 void ShaderManager::register_dependency_nolock(ShaderTemplate *shader, const std::string &dependency)
 {
 	dependees[dependency].insert(shader);
+#ifndef GRANITE_SHIPPING
 	add_directory_watch(dependency);
+#endif
 }
 
+#ifndef GRANITE_SHIPPING
 void ShaderManager::recompile(const Granite::FileNotifyInfo &info)
 {
 	DEPENDENCY_LOCK();
@@ -568,6 +565,7 @@ void ShaderManager::add_directory_watch(const std::string &source)
 	if (handle >= 0)
 		directory_watches[basedir] = { backend, handle };
 }
+#endif
 #endif
 
 void ShaderManager::register_shader_from_variant_hash(Hash variant_hash,

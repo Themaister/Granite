@@ -70,16 +70,10 @@ ShaderSuite::get_variant_signatures() const
 
 void ShaderSuite::register_variant_signature(const VariantSignatureKey &key)
 {
-	Hasher h;
-	h.u32(ecast(key.coverage));
-	h.u32(key.attribute_mask);
-	h.u32(key.texture_mask);
-	h.u32(key.variant_id);
-	variant_signature_cache.emplace_yield(h.get(), key);
+	variant_signature_cache.emplace_yield(key.word, key);
 }
 
-Vulkan::Program *ShaderSuite::get_program(DrawPipelineCoverage coverage, uint32_t attribute_mask,
-                                          uint32_t texture_mask, uint32_t variant_id)
+Vulkan::Program *ShaderSuite::get_program(VariantSignatureKey signature)
 {
 	if (!program)
 	{
@@ -89,11 +83,8 @@ Vulkan::Program *ShaderSuite::get_program(DrawPipelineCoverage coverage, uint32_
 
 	Hasher h;
 	assert(base_define_hash != 0);
+	h.u32(signature.word);
 	h.u64(base_define_hash);
-	h.u32(ecast(coverage));
-	h.u32(attribute_mask);
-	h.u32(texture_mask);
-	h.u32(variant_id);
 
 	auto hash = h.get();
 	auto *variant = variants.find(hash);
@@ -102,20 +93,18 @@ Vulkan::Program *ShaderSuite::get_program(DrawPipelineCoverage coverage, uint32_
 	{
 		// Only need to emplace if the first case misses,
 		// since the signature key is a subset of the full key.
-		VariantSignatureKey signature = {};
-		signature.coverage = coverage;
-		signature.attribute_mask = attribute_mask;
-		signature.texture_mask = texture_mask;
-		signature.variant_id = variant_id;
 		register_variant_signature(signature);
 
 		std::vector<std::pair<std::string, int>> defines = base_defines;
-		if (coverage == DrawPipelineCoverage::Modifies)
+		if (signature.flags.coverage == DrawPipelineCoverage::Modifies)
 			defines.emplace_back("ALPHA_TEST", 1);
 
-		for_each_bit(variant_id, [&](unsigned bit) {
+		for_each_bit(signature.flags.variant_id, [&](unsigned bit) {
 			defines.emplace_back(join("VARIANT_BIT_", bit), 1);
 		});
+
+		uint32_t texture_mask = signature.flags.texture_mask;
+		uint32_t attribute_mask = signature.flags.attribute_mask;
 
 		defines.emplace_back("HAVE_EMISSIVE", !!(texture_mask & MATERIAL_EMISSIVE_BIT));
 		defines.emplace_back("HAVE_EMISSIVE_REFRACTION", !!(texture_mask & MATERIAL_EMISSIVE_REFRACTION_BIT));
@@ -139,17 +128,17 @@ Vulkan::Program *ShaderSuite::get_program(DrawPipelineCoverage coverage, uint32_
 		}
 
 		auto *program_variant = program->register_variant(defines);
-		variant = variants.emplace_yield(hash, program_variant);
+		variant = variants.emplace_yield(hash, program_variant->get_program(), program_variant);
+		return variant->cached_program;
 	}
-
-	return variant->get()->get_program();
-}
-
-Vulkan::Program *ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attribute_mask,
-                                          uint32_t texture_mask, uint32_t variant_id)
-{
-	return get_program(pipeline == DrawPipeline::AlphaTest ?
-	                   DrawPipelineCoverage::Modifies : DrawPipelineCoverage::Full,
-	                   attribute_mask, texture_mask, variant_id);
+	else
+	{
+#ifdef GRANITE_SHIPPING
+		// We'll never want to recompile shaders in runtime outside a dev environment.
+		return variant->cached_program;
+#else
+		return variant->indirect_variant->get_program();
+#endif
+	}
 }
 }

@@ -73,6 +73,8 @@ struct ShaderTemplateVariant : public Util::IntrusiveHashMapEnabled<ShaderTempla
 	std::vector<std::pair<std::string, int>> defines;
 	std::unique_ptr<ImmutableSamplerBank> sampler_bank;
 	unsigned instance = 0;
+
+	Vulkan::Shader *resolve(Vulkan::Device &device) const;
 };
 
 class ShaderTemplate : public Util::IntrusiveHashMapEnabled<ShaderTemplate>
@@ -87,13 +89,17 @@ public:
 
 	const ShaderTemplateVariant *register_variant(const std::vector<std::pair<std::string, int>> *defines = nullptr,
 	                                              const ImmutableSamplerBank *sampler_bank = nullptr);
-	void recompile();
 	void register_dependencies(ShaderManager &manager);
 
 	Util::Hash get_path_hash() const
 	{
 		return path_hash;
 	}
+
+#ifndef GRANITE_SHIPPING
+	// We'll never want to recompile shaders in runtime outside a dev environment.
+	void recompile();
+#endif
 
 private:
 	Device *device;
@@ -105,9 +111,12 @@ private:
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	std::unique_ptr<Granite::GLSLCompiler> compiler;
 	const std::vector<std::string> &include_directories;
-	void recompile_variant(ShaderTemplateVariant &variant);
 	void update_variant_cache(const ShaderTemplateVariant &variant);
 	Util::Hash source_hash = 0;
+#ifndef GRANITE_SHIPPING
+	// We'll never want to recompile shaders in runtime outside a dev environment.
+	void recompile_variant(ShaderTemplateVariant &variant);
+#endif
 #endif
 	VulkanCache<ShaderTemplateVariant> variants;
 };
@@ -122,10 +131,14 @@ private:
 	friend class ShaderProgram;
 	Device *device;
 	const ShaderTemplateVariant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
+
+#ifndef GRANITE_SHIPPING
+	// We'll never want to recompile shaders in runtime outside a dev environment.
 	std::atomic<unsigned> shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)];
 	std::atomic<Vulkan::Program *> program;
 #ifdef GRANITE_VULKAN_MT
 	Util::RWSpinLock instance_lock;
+#endif
 #endif
 
 	Vulkan::Program *get_program_compute();
@@ -208,6 +221,8 @@ private:
 	std::mutex dependency_lock;
 #endif
 
+#ifndef GRANITE_SHIPPING
+	// We'll never want to recompile shaders in runtime outside a dev environment.
 	struct Notify
 	{
 		Granite::FilesystemBackend *backend;
@@ -216,6 +231,7 @@ private:
 	std::unordered_map<std::string, Notify> directory_watches;
 	void add_directory_watch(const std::string &source);
 	void recompile(const Granite::FileNotifyInfo &info);
+#endif
 #endif
 };
 }

@@ -671,7 +671,6 @@ void DeviceAllocator::get_memory_budget_nolock(HeapBudget *heap_budgets)
 			heap.budget_size = budget_props.heapBudget[i];
 			heap.device_usage = budget_props.heapUsage[i];
 			heap.tracked_usage = heaps[i].size;
-			heaps[i].last_budget = heap_budgets[i];
 		}
 	}
 	else
@@ -684,7 +683,6 @@ void DeviceAllocator::get_memory_budget_nolock(HeapBudget *heap_budgets)
 			heap.budget_size = heap.max_size - (heap.max_size / 4);
 			heap.tracked_usage = heaps[i].size;
 			heap.device_usage = heaps[i].size;
-			heaps[i].last_budget = heap_budgets[i];
 		}
 	}
 }

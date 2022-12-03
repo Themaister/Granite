@@ -399,7 +399,6 @@ private:
 		uint64_t size = 0;
 		std::vector<Allocation> blocks;
 		void garbage_collect(Device *device);
-		HeapBudget last_budget;
 	};
 
 	std::vector<Heap> heaps;

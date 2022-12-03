@@ -169,13 +169,9 @@ struct MemoryAllocateInfo
 	AllocationMode mode = {};
 };
 
-class Allocator;
-
 class ClassAllocator
 {
 public:
-	friend class Allocator;
-
 	~ClassAllocator();
 
 	inline void set_sub_block_size(uint32_t size)
@@ -185,25 +181,28 @@ public:
 		sub_block_size = size;
 	}
 
+	uint32_t get_max_allocation_size() const
+	{
+		return sub_block_size * Util::LegionAllocator::NumSubBlocks;
+	}
+
+	uint32_t get_block_alignment() const
+	{
+		return sub_block_size;
+	}
+
 	bool allocate(uint32_t size, DeviceAllocation *alloc);
 	void free(Util::IntrusiveList<Util::LegionHeap<DeviceAllocation>>::Iterator itr, uint32_t mask);
 
-private:
-	ClassAllocator() = default;
 	inline void set_object_pool(Util::ObjectPool<MiniHeap> *object_pool_)
 	{
 		object_pool = object_pool_;
 	}
 
-	ClassAllocator *parent = nullptr;
-	Util::AllocationArena<DeviceAllocation> heap_arena;
-	Util::ObjectPool<MiniHeap> *object_pool = nullptr;
-
-	uint32_t sub_block_size = 1;
-	uint32_t sub_block_size_log2 = 0;
-	uint32_t memory_type = 0;
-	DeviceAllocator *global_allocator = nullptr;
-	AllocationMode global_allocator_mode = AllocationMode::Count;
+	inline void set_parent(ClassAllocator *allocator)
+	{
+		parent = allocator;
+	}
 
 	void set_global_allocator(DeviceAllocator *allocator, AllocationMode mode)
 	{
@@ -216,6 +215,17 @@ private:
 		memory_type = type;
 	}
 
+protected:
+	ClassAllocator *parent = nullptr;
+	Util::AllocationArena<DeviceAllocation> heap_arena;
+	Util::ObjectPool<MiniHeap> *object_pool = nullptr;
+
+	uint32_t sub_block_size = 1;
+	uint32_t sub_block_size_log2 = 0;
+	uint32_t memory_type = 0;
+	DeviceAllocator *global_allocator = nullptr;
+	AllocationMode global_allocator_mode = AllocationMode::Count;
+
 	struct SuballocationResult
 	{
 		uint32_t offset;
@@ -227,11 +237,6 @@ private:
 	void free_backing_heap(DeviceAllocation *allocation);
 	void prepare_allocation(DeviceAllocation *allocation, MiniHeap &heap, const SuballocationResult &suballoc);
 	SuballocationResult suballocate(uint32_t num_blocks, MiniHeap &heap);
-
-	inline void set_parent(ClassAllocator *allocator)
-	{
-		parent = allocator;
-	}
 };
 
 class Allocator

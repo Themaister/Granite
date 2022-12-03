@@ -362,12 +362,12 @@ bool Allocator::allocate(uint32_t size, uint32_t alignment, AllocationMode mode,
 		auto &suballocator = c[unsigned(mode)];
 
 		// Find a suitable class to allocate from.
-		if (size <= suballocator.sub_block_size * Util::LegionAllocator::NumSubBlocks)
+		if (size <= suballocator.get_max_allocation_size())
 		{
-			if (alignment > suballocator.sub_block_size)
+			if (alignment > suballocator.get_block_alignment())
 			{
-				size_t padded_size = size + (alignment - suballocator.sub_block_size);
-				if (padded_size <= suballocator.sub_block_size * Util::LegionAllocator::NumSubBlocks)
+				size_t padded_size = size + (alignment - suballocator.get_block_alignment());
+				if (padded_size <= suballocator.get_max_allocation_size())
 					size = padded_size;
 				else
 					continue;

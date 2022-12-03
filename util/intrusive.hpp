@@ -44,7 +44,7 @@ public:
 	}
 
 private:
-	size_t count = 1;
+	uint32_t count = 1;
 };
 
 class MultiThreadCounter
@@ -67,7 +67,7 @@ public:
 	}
 
 private:
-	std::atomic_size_t count;
+	std::atomic_uint32_t count;
 };
 
 template <typename T>

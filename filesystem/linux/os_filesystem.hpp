@@ -34,7 +34,7 @@ public:
 	FileMappingHandle map_subset(uint64_t offset, size_t size) override;
 	FileMappingHandle map_write(size_t map_size) override;
 	void unmap(void *mapped, size_t size) override;
-	size_t get_size() override;
+	uint64_t get_size() override;
 
 private:
 	bool init(const std::string &path, FileMode mode);

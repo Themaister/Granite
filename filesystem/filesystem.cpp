@@ -599,7 +599,7 @@ uint64_t FileMapping::get_file_offset() const
 	return file_offset;
 }
 
-size_t FileMapping::get_size() const
+uint64_t FileMapping::get_size() const
 {
 	return accessible_size;
 }

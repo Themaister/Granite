@@ -182,7 +182,7 @@ struct ScratchFile final : Granite::Internal::File
 	{
 	}
 
-	size_t get_size() override
+	uint64_t get_size() override
 	{
 		return data.size();
 	}

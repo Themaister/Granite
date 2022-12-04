@@ -180,7 +180,7 @@ FileMappingHandle MMapFile::map_subset(uint64_t offset, size_t range)
 		offset - begin_map, range);
 }
 
-size_t MMapFile::get_size()
+uint64_t MMapFile::get_size()
 {
 	return size;
 }

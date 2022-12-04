@@ -50,9 +50,9 @@ public:
 	static bool is_header(const void *mapped, size_t size);
 
 	bool map_write(Granite::Filesystem &fs, const std::string &path);
-	bool map_write(std::unique_ptr<Granite::File> file, void *mapped);
+	bool map_write(Granite::FileMappingHandle file);
 	bool map_read(Granite::Filesystem &fs, const std::string &path);
-	bool map_read(std::unique_ptr<Granite::File> file, void *mapped);
+	bool map_read(Granite::FileMappingHandle file);
 	bool map_copy(const void *mapped, size_t size);
 	bool map_write_scratch();
 	bool copy_to_path(Granite::Filesystem &fs, const std::string &path);
@@ -80,7 +80,7 @@ public:
 
 private:
 	Vulkan::TextureFormatLayout layout;
-	std::unique_ptr<Granite::File> file;
+	Granite::FileMappingHandle file;
 	uint8_t *mapped = nullptr;
 	bool cube = false;
 	bool mipgen_on_load = false;

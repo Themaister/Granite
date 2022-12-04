@@ -108,17 +108,17 @@ MemoryMappedTexture load_texture_from_file(Granite::Filesystem &fs, const std::s
 	if (!file)
 		return {};
 
-	void *mapped = file->map();
+	auto mapped = file->map();
 	if (!mapped)
 		return {};
 
-	if (MemoryMappedTexture::is_header(mapped, file->get_size()))
+	if (MemoryMappedTexture::is_header(mapped->data(), mapped->get_size()))
 	{
 		MemoryMappedTexture tex;
-		tex.map_read(std::move(file), mapped);
+		tex.map_read(std::move(mapped));
 		return tex;
 	}
 
-	return load_texture_from_memory(mapped, file->get_size(), color);
+	return load_texture_from_memory(mapped->data(), mapped->get_size(), color);
 }
 }

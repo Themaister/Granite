@@ -26,23 +26,22 @@
 
 namespace Granite
 {
-class MMapFile : public File
+class MMapFile final : public Internal::File
 {
 public:
-	static MMapFile *open(const std::string &path, FileMode mode);
-	~MMapFile();
-	void *map() override;
-	void *map_write(size_t map_size) override;
-	void unmap() override;
+	static FileHandle open(const std::string &path, FileMode mode);
+	~MMapFile() override;
+	FileMappingHandle map_subset(uint64_t offset, size_t size) override;
+	FileMappingHandle map_write(size_t map_size) override;
+	void unmap(void *mapped, size_t size) override;
 	size_t get_size() override;
-	bool reopen() override;
 
 private:
-	MMapFile() = default;
 	bool init(const std::string &path, FileMode mode);
+	bool query_stat();
 	int fd = -1;
-	void *mapped = nullptr;
 	size_t size = 0;
+	bool has_write_map = false;
 	std::string rename_from_on_close;
 	std::string rename_to_on_close;
 };
@@ -53,7 +52,7 @@ public:
 	OSFilesystem(const std::string &base);
 	~OSFilesystem();
 	std::vector<ListEntry> list(const std::string &path) override;
-	std::unique_ptr<File> open(const std::string &path, FileMode mode) override;
+	FileHandle open(const std::string &path, FileMode mode) override;
 	bool stat(const std::string &path, FileStat &stat) override;
 	FileNotifyHandle install_notification(const std::string &path, std::function<void (const FileNotifyInfo &)> func) override;
 	void uninstall_notification(FileNotifyHandle handle) override;

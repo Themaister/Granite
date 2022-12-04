@@ -81,22 +81,18 @@ void Texture::set_path(const std::string &path_)
 	path = path_;
 }
 
-void Texture::update(std::unique_ptr<Granite::File> file)
+void Texture::update(Granite::FileMappingHandle file)
 {
-	auto *f = file.release();
-	auto work = [f, this]() {
+	auto work = [file, this]() mutable {
 #if defined(GRANITE_VULKAN_THREAD_GROUP) && defined(VULKAN_DEBUG)
 		LOGI("Loading texture in thread index: %u\n", Util::get_current_thread_index());
 #endif
-		std::unique_ptr<Granite::File> updated_file{f};
-		auto size = updated_file->get_size();
-		void *mapped = updated_file->map();
-		if (size && mapped)
+		if (file->get_size())
 		{
-			if (MemoryMappedTexture::is_header(mapped, size))
-				update_gtx(std::move(updated_file), mapped);
+			if (MemoryMappedTexture::is_header(file->data(), file->get_size()))
+				update_gtx(std::move(file));
 			else
-				update_other(mapped, size);
+				update_other(file->data(), file->get_size());
 			device->get_texture_manager().notify_updated_texture(path, *this);
 		}
 		else
@@ -108,11 +104,7 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 
 #ifdef GRANITE_VULKAN_THREAD_GROUP
 	if (auto *group = device->get_system_handles().thread_group)
-	{
-		// Workaround, cannot copy the lambda because of owning a unique_ptr.
-		auto task = group->create_task(std::move(work));
-		task->flush();
-	}
+		group->create_task(std::move(work));
 	else
 		work();
 #else
@@ -202,10 +194,10 @@ void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 	replace_image(image);
 }
 
-void Texture::update_gtx(std::unique_ptr<Granite::File> file, void *mapped)
+void Texture::update_gtx(Granite::FileMappingHandle file)
 {
 	MemoryMappedTexture mapped_file;
-	if (!mapped_file.map_read(std::move(file), mapped))
+	if (!mapped_file.map_read(std::move(file)))
 	{
 		LOGE("Failed to read texture.\n");
 		return;

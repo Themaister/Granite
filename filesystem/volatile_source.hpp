@@ -62,7 +62,7 @@ protected:
 		if (path.empty() || !fs)
 			return false;
 
-		auto file = fs->open(path);
+		auto file = fs->open_readonly_mapping(path);
 		if (!file)
 		{
 			LOGE("Failed to open volatile file: %s\n", path.c_str());
@@ -85,8 +85,8 @@ protected:
 
 				try
 				{
-					auto f = fs->open(info.path);
-					if (!file)
+					auto f = fs->open_readonly_mapping(info.path);
+					if (!f)
 						return;
 					auto *s = static_cast<T *>(this);
 					s->update(std::move(f));

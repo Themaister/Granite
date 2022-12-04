@@ -46,8 +46,8 @@ static bool ensure_directory_inner(const std::string &path)
 	if (Path::is_root_path(path))
 		return false;
 
-	struct stat s;
-	if (::stat(path.c_str(), &s) >= 0 && S_ISDIR(s.st_mode))
+	struct stat64 s = {};
+	if (::stat64(path.c_str(), &s) >= 0 && S_ISDIR(s.st_mode))
 		return true;
 
 	auto basedir = Path::basedir(path);
@@ -63,16 +63,12 @@ static bool ensure_directory(const std::string &path)
 	return ensure_directory_inner(basedir);
 }
 
-MMapFile *MMapFile::open(const std::string &path, FileMode mode)
+FileHandle MMapFile::open(const std::string &path, FileMode mode)
 {
-	auto *file = new MMapFile();
+	auto file = Util::make_handle<MMapFile>();
 	if (!file->init(path, mode))
-	{
-		delete file;
-		return nullptr;
-	}
-	else
-		return file;
+		file.reset();
+	return file;
 }
 
 static std::atomic_uint32_t global_transaction_counter;
@@ -127,7 +123,7 @@ bool MMapFile::init(const std::string &path, FileMode mode)
 		return false;
 	}
 
-	if (!reopen())
+	if (!query_stat())
 	{
 		close(fd);
 		rename_to_on_close.clear();
@@ -138,33 +134,50 @@ bool MMapFile::init(const std::string &path, FileMode mode)
 	return true;
 }
 
-void *MMapFile::map_write(size_t map_size)
+FileMappingHandle MMapFile::map_write(size_t map_size)
 {
-	if (mapped)
-		return nullptr;
+	if (has_write_map)
+		return {};
+	if (ftruncate64(fd, off64_t(map_size)) < 0)
+		return {};
 
-	if (ftruncate(fd, map_size) < 0)
-		return nullptr;
-	this->size = map_size;
+	size = map_size;
 
-	mapped = mmap(nullptr, map_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+	void *mapped = mmap64(nullptr, map_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
 	if (mapped == MAP_FAILED)
 	{
 		LOGE("Failed to mmap: %s\n", strerror(errno));
-		return nullptr;
+		return {};
 	}
-	return mapped;
+
+	has_write_map = true;
+
+	return Util::make_handle<FileMapping>(
+		reference_from_this(),
+		0,
+		mapped, map_size,
+		0, map_size);
 }
 
-void *MMapFile::map()
+FileMappingHandle MMapFile::map_subset(uint64_t offset, size_t range)
 {
-	if (mapped)
-		return mapped;
+	unsigned page_size = sysconf(_SC_PAGESIZE);
 
-	mapped = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+	uint64_t begin_map = offset & ~(page_size - 1);
+	uint64_t end_map = offset + range;
+	size_t mapped_size = end_map - begin_map;
+
+	// length need not be aligned.
+
+	void *mapped = mmap64(nullptr, mapped_size, PROT_READ, MAP_PRIVATE, fd, off64_t(begin_map));
 	if (mapped == MAP_FAILED)
-		return nullptr;
-	return mapped;
+		return {};
+
+	return Util::make_handle<FileMapping>(
+		reference_from_this(),
+		offset,
+		mapped, mapped_size,
+		offset - begin_map, range);
 }
 
 size_t MMapFile::get_size()
@@ -172,11 +185,10 @@ size_t MMapFile::get_size()
 	return size;
 }
 
-bool MMapFile::reopen()
+bool MMapFile::query_stat()
 {
-	unmap();
-	struct stat s;
-	if (fstat(fd, &s) < 0)
+	struct stat64 s = {};
+	if (fstat64(fd, &s) < 0)
 		return false;
 
 	if (uint64_t(s.st_size) > SIZE_MAX)
@@ -185,18 +197,13 @@ bool MMapFile::reopen()
 	return true;
 }
 
-void MMapFile::unmap()
+void MMapFile::unmap(void *mapped, size_t mapped_size)
 {
-	if (mapped)
-	{
-		munmap(mapped, size);
-		mapped = nullptr;
-	}
+	munmap(mapped, mapped_size);
 }
 
 MMapFile::~MMapFile()
 {
-	unmap();
 	if (fd >= 0)
 		close(fd);
 
@@ -232,9 +239,9 @@ OSFilesystem::~OSFilesystem()
 #endif
 }
 
-std::unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
+FileHandle OSFilesystem::open(const std::string &path, FileMode mode)
 {
-	return std::unique_ptr<MMapFile>(MMapFile::open(Path::join(base, path), mode));
+	return MMapFile::open(Path::join(base, path), mode);
 }
 
 std::string OSFilesystem::get_filesystem_path(const std::string &path)
@@ -442,8 +449,8 @@ std::vector<ListEntry> OSFilesystem::list(const std::string &path)
 bool OSFilesystem::stat(const std::string &path, FileStat &stat)
 {
 	auto resolved_path = Path::join(base, path);
-	struct stat buf;
-	if (::stat(resolved_path.c_str(), &buf) < 0)
+	struct stat64 buf = {};
+	if (::stat64(resolved_path.c_str(), &buf) < 0)
 		return false;
 
 	if (S_ISREG(buf.st_mode))

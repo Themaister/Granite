@@ -345,14 +345,14 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 	if (!get_system_handles().filesystem)
 		return;
 
-	auto file = get_system_handles().filesystem->open("assets://pipelines.json", Granite::FileMode::ReadOnly);
+	auto file = get_system_handles().filesystem->open_readonly_mapping("assets://pipelines.json");
 	if (!file)
-		file = get_system_handles().filesystem->open("cache://pipelines.json", Granite::FileMode::ReadOnly);
+		file = get_system_handles().filesystem->open_readonly_mapping("cache://pipelines.json");
 
 	if (!file)
 		return;
 
-	void *mapped = file->map();
+	const void *mapped = file->data();
 	if (!mapped)
 	{
 		LOGE("Failed to map pipelines.json.\n");
@@ -393,12 +393,10 @@ void Device::flush_pipeline_state()
 	                                                  Granite::FileMode::WriteOnlyTransactional);
 	if (file)
 	{
-		auto *data = static_cast<uint8_t *>(file->map_write(serialized_size));
+		auto mapping = file->map_write(serialized_size);
+		auto *data = mapping ? mapping->mutable_data() : nullptr;
 		if (data)
-		{
 			memcpy(data, serialized, serialized_size);
-			file->unmap();
-		}
 		else
 			LOGE("Failed to serialize pipeline data.\n");
 

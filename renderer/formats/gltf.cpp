@@ -436,21 +436,6 @@ static void iterate_elements(const Value &value, const T &t)
 	}
 }
 
-template <typename T, typename Func>
-static void reiterate_elements(T *nodes, const Value &value, const Func &func)
-{
-	if (value.IsArray())
-	{
-		for (auto itr = value.Begin(); itr != value.End(); ++itr, nodes++)
-			func(*nodes, *itr);
-	}
-	else
-	{
-		for (auto itr = value.MemberBegin(); itr != value.MemberEnd(); ++itr, nodes++)
-			func(*nodes, itr->value);
-	}
-}
-
 template <typename T>
 static void read_min_max(T &out, ScalarType type, const Value &v)
 {

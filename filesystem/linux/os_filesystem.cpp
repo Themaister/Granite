@@ -161,8 +161,7 @@ FileMappingHandle MMapFile::map_write(size_t map_size)
 
 FileMappingHandle MMapFile::map_subset(uint64_t offset, size_t range)
 {
-	unsigned page_size = sysconf(_SC_PAGESIZE);
-
+	uint64_t page_size = sysconf(_SC_PAGESIZE);
 	uint64_t begin_map = offset & ~(page_size - 1);
 	uint64_t end_map = offset + range;
 	size_t mapped_size = end_map - begin_map;

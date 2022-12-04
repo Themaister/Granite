@@ -23,6 +23,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 namespace muglm
 {
@@ -68,12 +69,12 @@ struct tvec2
 		};
 	};
 
-	inline T &operator[](int index)
+	inline T &operator[](size_t index)
 	{
 		return data[index];
 	}
 
-	inline const T &operator[](int index) const
+	inline const T &operator[](size_t index) const
 	{
 		return data[index];
 	}
@@ -162,12 +163,12 @@ struct tvec3
 		};
 	};
 
-	inline T &operator[](int index)
+	inline T &operator[](size_t index)
 	{
 		return data[index];
 	}
 
-	inline const T &operator[](int index) const
+	inline const T &operator[](size_t index) const
 	{
 		return data[index];
 	}
@@ -373,12 +374,12 @@ struct tvec4
 		w = w_;
 	}
 
-	inline T &operator[](int index)
+	inline T &operator[](size_t index)
 	{
 		return data[index];
 	}
 
-	inline const T &operator[](int index) const
+	inline const T &operator[](size_t index) const
 	{
 		return data[index];
 	}
@@ -751,12 +752,12 @@ struct tmat2
 		vec[1] = b;
 	}
 
-	inline tvec2<T> &operator[](int index)
+	inline tvec2<T> &operator[](size_t index)
 	{
 		return vec[index];
 	}
 
-	inline const tvec2<T> &operator[](int index) const
+	inline const tvec2<T> &operator[](size_t index) const
 	{
 		return vec[index];
 	}
@@ -793,12 +794,12 @@ struct tmat3
 				vec[col][row] = m[col][row];
 	}
 
-	inline tvec3<T> &operator[](int index)
+	inline tvec3<T> &operator[](size_t index)
 	{
 		return vec[index];
 	}
 
-	inline const tvec3<T> &operator[](int index) const
+	inline const tvec3<T> &operator[](size_t index) const
 	{
 		return vec[index];
 	}
@@ -838,12 +839,12 @@ struct tmat4
 		vec[3] = d;
 	}
 
-	inline tvec4<T> &operator[](int index)
+	inline tvec4<T> &operator[](size_t index)
 	{
 		return vec[index];
 	}
 
-	inline const tvec4<T> &operator[](int index) const
+	inline const tvec4<T> &operator[](size_t index) const
 	{
 		return vec[index];
 	}

@@ -121,11 +121,7 @@ struct DecodedVorbisStream : MixerStream
 
 bool VorbisStream::init(const std::string &path)
 {
-	auto filesystem_file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
-	if (!filesystem_file)
-		return false;
-
-	filesystem_mapping = filesystem_file->map();
+	filesystem_mapping = GRANITE_FILESYSTEM()->open_readonly_mapping(path);
 	if (!filesystem_mapping)
 		return false;
 
@@ -151,13 +147,7 @@ bool VorbisStream::init(const std::string &path)
 
 bool DecodedVorbisStream::init(const std::string &path)
 {
-	auto filesystem_file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
-	if (!filesystem_file)
-		return false;
-
-	if (filesystem_file->get_size() == 0)
-		return false;
-	auto mapped = filesystem_file->map();
+	auto mapped = GRANITE_FILESYSTEM()->open_readonly_mapping(path);
 	if (!mapped)
 		return false;
 

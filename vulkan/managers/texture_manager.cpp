@@ -59,7 +59,7 @@ bool Texture::init()
 	if (path.empty() || !fs)
 		return false;
 
-	auto file = fs->open(path);
+	auto file = fs->open_readonly_mapping(path);
 	if (!file)
 	{
 		LOGE("Failed to open volatile file: %s\n", path.c_str());

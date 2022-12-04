@@ -27,22 +27,19 @@
 
 namespace Granite
 {
-class AssetFile : public File
+class AssetFile final : public Internal::File
 {
 public:
-	static AssetFile *open(AAssetManager *mgr, const std::string &path, FileMode mode);
-	~AssetFile();
-	void *map() override;
-	void *map_write(size_t size) override;
-	void unmap() override;
-	size_t get_size() override;
-	bool reopen() override;
+	static FileHandle open(AAssetManager *mgr, const std::string &path, FileMode mode);
+	~AssetFile() override;
+	FileMappingHandle map_subset(uint64_t offset, size_t range) override;
+	FileMappingHandle map_write(size_t size) override;
+	void unmap(void *mapped, size_t mapped_range) override;
+	uint64_t get_size() override;
 
 private:
-	AssetFile() = default;
 	bool init(AAssetManager *mgr, const std::string &path, FileMode mode);
 	AAsset *asset = nullptr;
-	void *mapped = nullptr;
 	size_t size = 0;
 };
 
@@ -51,7 +48,7 @@ class AssetManagerFilesystem : public FilesystemBackend
 public:
 	AssetManagerFilesystem(const std::string &base);
 	std::vector<ListEntry> list(const std::string &path) override;
-	std::unique_ptr<File> open(const std::string &path, FileMode mode) override;
+	FileHandle open(const std::string &path, FileMode mode) override;
 	bool stat(const std::string &path, FileStat &stat) override;
 	FileNotifyHandle install_notification(const std::string &path, std::function<void (const FileNotifyInfo &)> func) override;
 	void uninstall_notification(FileNotifyHandle handle) override;

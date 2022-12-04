@@ -40,45 +40,44 @@ bool AssetFile::init(AAssetManager *mgr, const std::string &path, FileMode mode)
 	if (!asset)
 		return false;
 
-	size = AAsset_getLength(asset);
+	size = AAsset_getLength64(asset);
 	return true;
 }
 
-AssetFile *AssetFile::open(AAssetManager *mgr, const std::string &path, Granite::FileMode mode)
+FileHandle AssetFile::open(AAssetManager *mgr, const std::string &path, Granite::FileMode mode)
 {
-	auto *file = new AssetFile();
+	auto file = Util::make_handle<AssetFile>();
 	if (!file->init(mgr, path, mode))
-	{
-		delete file;
-		return nullptr;
-	}
-	else
-		return file;
+		file.reset();
+	return file;
 }
 
-bool AssetFile::reopen()
+FileMappingHandle AssetFile::map_subset(uint64_t offset, size_t range)
 {
-	return true;
+	if (offset + range > size)
+		return {};
+
+	auto *data = static_cast<uint8_t *>(const_cast<void *>(AAsset_getBuffer(asset)));
+	if (!data)
+		return {};
+
+	return Util::make_handle<FileMapping>(
+			reference_from_this(), offset,
+			data + offset, range,
+			0, range);
 }
 
-void *AssetFile::map()
-{
-	if (!mapped)
-		mapped = const_cast<void *>(AAsset_getBuffer(asset));
-	return mapped;
-}
-
-size_t AssetFile::get_size()
+uint64_t AssetFile::get_size()
 {
 	return size;
 }
 
-void *AssetFile::map_write(size_t)
+FileMappingHandle AssetFile::map_write(size_t)
 {
-	return nullptr;
+	return {};
 }
 
-void AssetFile::unmap()
+void AssetFile::unmap(void *, size_t)
 {
 }
 
@@ -93,9 +92,9 @@ AssetManagerFilesystem::AssetManagerFilesystem(const std::string &base_)
 {
 }
 
-std::unique_ptr<File> AssetManagerFilesystem::open(const std::string &path, FileMode mode)
+FileHandle AssetManagerFilesystem::open(const std::string &path, FileMode mode)
 {
-	return std::unique_ptr<File>(AssetFile::open(mgr, Path::join(base, Path::canonicalize_path(path)), mode));
+	return AssetFile::open(mgr, Path::join(base, Path::canonicalize_path(path)), mode);
 }
 
 int AssetManagerFilesystem::get_notification_fd() const

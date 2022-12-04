@@ -34,9 +34,9 @@ namespace Granite
 class MaterialFile : public Material, public VolatileSource<MaterialFile>, public EventHandler
 {
 public:
-	MaterialFile(Granite::Filesystem *fs, const std::string &path);
+	MaterialFile(Filesystem *fs, const std::string &path);
 	MaterialFile(const SceneFormats::MaterialInfo &info);
-	void update(std::unique_ptr<File> file);
+	void update(FileMappingHandle file);
 
 private:
 	Vulkan::Device *device = nullptr;

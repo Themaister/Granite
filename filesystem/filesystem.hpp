@@ -28,24 +28,66 @@
 #include <functional>
 #include <stdio.h>
 #include "global_managers.hpp"
+#include "intrusive.hpp"
 
 namespace Granite
 {
-class File
+class FileMapping;
+
+namespace Internal
+{
+class File : public Util::ThreadSafeIntrusivePtrEnabled<File>
 {
 public:
 	virtual ~File() = default;
+	virtual Util::IntrusivePtr<FileMapping> map_subset(uint64_t offset, size_t range) = 0;
+	virtual Util::IntrusivePtr<FileMapping> map_write(size_t size) = 0;
+	virtual uint64_t get_size() = 0;
 
-	virtual void *map() = 0;
+	// Only called by FileMapping.
+	virtual void unmap(void *mapped, size_t range) = 0;
 
-	virtual void *map_write(size_t size) = 0;
-
-	virtual void unmap() = 0;
-
-	virtual size_t get_size() = 0;
-
-	virtual bool reopen() = 0;
+	Util::IntrusivePtr<FileMapping> map();
 };
+}
+using FileHandle = Util::IntrusivePtr<Internal::File>;
+
+class FileMapping : public Util::ThreadSafeIntrusivePtrEnabled<FileMapping>
+{
+public:
+	template <typename T = void>
+	inline const T *data() const
+	{
+		void *ptr = static_cast<uint8_t *>(mapped) + map_offset;
+		return static_cast<const T *>(ptr);
+	}
+
+	template <typename T = void>
+	inline T *mutable_data()
+	{
+		void *ptr = static_cast<uint8_t *>(mapped) + map_offset;
+		return static_cast<T *>(ptr);
+	}
+
+	uint64_t get_file_offset() const;
+	uint64_t get_size() const;
+
+	~FileMapping();
+	FileMapping(FileHandle handle,
+	            uint64_t file_offset,
+	            void *mapped, size_t mapped_size,
+	            size_t map_offset, size_t accessible_size);
+
+private:
+	FileHandle handle;
+	uint64_t file_offset;
+	void *mapped;
+	size_t mapped_size;
+	// For non-page aligned maps.
+	size_t map_offset;
+	size_t accessible_size;
+};
+using FileMappingHandle = Util::IntrusivePtr<FileMapping>;
 
 enum class PathType
 {
@@ -91,32 +133,6 @@ enum class FileMode
 	WriteOnlyTransactional
 };
 
-class StdioFile : public File
-{
-public:
-	static StdioFile *open(const std::string &path, FileMode mode);
-
-	~StdioFile();
-
-	void *map() override;
-
-	void *map_write(size_t size) override;
-
-	void unmap() override;
-
-	size_t get_size() override;
-
-	bool reopen() override;
-
-private:
-	StdioFile() = default;
-	bool init(const std::string &path, FileMode mode);
-	FILE *file = nullptr;
-	size_t size = 0;
-	FileMode mode;
-	std::vector<uint8_t> buffer;
-};
-
 class FilesystemBackend
 {
 public:
@@ -126,7 +142,7 @@ public:
 
 	virtual std::vector<ListEntry> list(const std::string &path) = 0;
 
-	virtual std::unique_ptr<File> open(const std::string &path, FileMode mode = FileMode::ReadOnly) = 0;
+	virtual FileHandle open(const std::string &path, FileMode mode = FileMode::ReadOnly) = 0;
 
 	virtual bool stat(const std::string &path, FileStat &stat) = 0;
 
@@ -166,13 +182,16 @@ public:
 
 	std::vector<ListEntry> list(const std::string &path);
 
-	std::unique_ptr<File> open(const std::string &path, FileMode mode = FileMode::ReadOnly);
+	FileHandle open(const std::string &path, FileMode mode = FileMode::ReadOnly);
 
 	std::string get_filesystem_path(const std::string &path);
 
 	bool read_file_to_string(const std::string &path, std::string &str);
 	bool write_string_to_file(const std::string &path, const std::string &str);
 	bool write_buffer_to_file(const std::string &path, const void *data, size_t size);
+	FileMappingHandle open_readonly_mapping(const std::string &path);
+	FileMappingHandle open_writeonly_mapping(const std::string &path, size_t size);
+	FileMappingHandle open_transactional_mapping(const std::string &path, size_t size);
 
 	bool stat(const std::string &path, FileStat &stat);
 
@@ -191,12 +210,12 @@ private:
 	bool load_text_file(const std::string &path, std::string &str) override;
 };
 
-class ScratchFilesystem : public FilesystemBackend
+class ScratchFilesystem final : public FilesystemBackend
 {
 public:
 	std::vector<ListEntry> list(const std::string &path) override;
 
-	std::unique_ptr<File> open(const std::string &path, FileMode mode = FileMode::ReadOnly) override;
+	FileHandle open(const std::string &path, FileMode mode = FileMode::ReadOnly) override;
 
 	bool stat(const std::string &path, FileStat &stat) override;
 
@@ -216,49 +235,67 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<ScratchFile>> scratch_files;
 };
 
-struct ConstantMemoryFile : Granite::File
+class ConstantMemoryFile final : public Granite::Internal::File
 {
+public:
 	ConstantMemoryFile(const void *mapped_, size_t size_)
-		: mapped(mapped_), size(size_)
+		: mapped(static_cast<const uint8_t *>(mapped_)), size(size_)
 	{
 	}
 
-	void *map() override
+	FileMappingHandle map_subset(uint64_t offset, size_t range) override
 	{
-		return const_cast<void *>(mapped);
+		if (offset + range > size)
+			return {};
+
+		return Util::make_handle<FileMapping>(
+			FileHandle{}, offset,
+			const_cast<uint8_t *>(mapped) + offset, range,
+		    0, range);
 	}
 
-	void *map_write(size_t) override
+	FileMappingHandle map_write(size_t) override
 	{
-		return nullptr;
+		return {};
 	}
 
-	bool reopen() override
-	{
-		return true;
-	}
-
-	void unmap() override
+	void unmap(void *, size_t) override
 	{
 	}
 
-	size_t get_size() override
+	uint64_t get_size() override
 	{
 		return size;
 	}
 
-	const void *mapped;
+private:
+	const uint8_t *mapped;
 	size_t size;
 };
 
-class BlobFilesystem : public FilesystemBackend
+class FileSlice final : public Granite::Internal::File
 {
 public:
-	BlobFilesystem(std::unique_ptr<File> file, std::string basedir);
+	FileSlice(FileHandle handle, uint64_t offset, uint64_t range);
+	FileMappingHandle map_subset(uint64_t offset, size_t range) override;
+	FileMappingHandle map_write(size_t) override;
+	void unmap(void *, size_t) override;
+	uint64_t get_size() override;
+
+private:
+	FileHandle handle;
+	uint64_t offset;
+	uint64_t range;
+};
+
+class BlobFilesystem final : public FilesystemBackend
+{
+public:
+	BlobFilesystem(FileHandle file, std::string basedir);
 
 	std::vector<ListEntry> list(const std::string &path) override;
 
-	std::unique_ptr<File> open(const std::string &path, FileMode mode) override;
+	FileHandle open(const std::string &path, FileMode mode) override;
 
 	bool stat(const std::string &path, FileStat &stat) override;
 
@@ -271,7 +308,8 @@ public:
 	int get_notification_fd() const override;
 
 private:
-	std::unique_ptr<File> file;
+	FileHandle file;
+	size_t blob_base_offset = 0;
 	std::string base;
 
 	struct BlobFile
@@ -292,7 +330,6 @@ private:
 	Directory *find_directory(const std::string &path);
 	Directory *make_directory(const std::string &path);
 	void parse();
-	const uint8_t *blob_base = nullptr;
 
 	static uint8_t read_u8(const uint8_t *&buf, size_t &size);
 	static uint64_t read_u64(const uint8_t *&buf, size_t &size);

@@ -168,6 +168,7 @@ void TMXParser::parse(const std::string &base_path, const std::string &json)
 
 	num_tiles = 0;
 	unsigned num_terrains = 0;
+	(void)num_terrains;
 	unsigned tileset_index = 0;
 	for (auto itr = doc["tilesets"].Begin(); itr != doc["tilesets"].End(); ++itr, tileset_index++)
 	{

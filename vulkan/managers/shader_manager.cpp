@@ -65,10 +65,10 @@ bool ShaderTemplate::init()
 		if (!device->get_system_handles().filesystem)
 			return false;
 
-		auto precompiled_file = device->get_system_handles().filesystem->open(path);
+		auto precompiled_file = device->get_system_handles().filesystem->open_readonly_mapping(path);
 		const uint32_t *ptr = nullptr;
 
-		if (!precompiled_file || !(ptr = static_cast<const uint32_t *>(precompiled_file->map())))
+		if (!precompiled_file || !(ptr = precompiled_file->data<uint32_t>()))
 		{
 			LOGE("Failed to load shader: %s.\n", path.c_str());
 			return false;
@@ -770,23 +770,14 @@ bool ShaderManager::save_shader_cache(const std::string &path)
 	PrettyWriter<StringBuffer> writer(buffer);
 	doc.Accept(writer);
 
-	auto file = device->get_system_handles().filesystem->open(path, Granite::FileMode::WriteOnlyTransactional);
+	auto file = device->get_system_handles().filesystem->open_transactional_mapping(path, buffer.GetSize());
 	if (!file)
 	{
 		LOGE("Failed to open %s for writing.\n", path.c_str());
 		return false;
 	}
 
-	void *mapped = file->map_write(buffer.GetSize());
-	if (!mapped)
-	{
-		LOGE("Failed to map buffer %s for writing.\n", path.c_str());
-		return false;
-	}
-
-	memcpy(mapped, buffer.GetString(), buffer.GetSize());
-	file->unmap();
-
+	memcpy(file->mutable_data(), buffer.GetString(), buffer.GetSize());
 	LOGI("Saved shader manager cache to %s.\n", path.c_str());
 	return true;
 }

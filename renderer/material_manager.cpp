@@ -64,9 +64,9 @@ MaterialFile::MaterialFile(const MaterialInfo &info)
 	EVENT_MANAGER_REGISTER_LATCH(MaterialFile, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
-void MaterialFile::update(std::unique_ptr<File> file)
+void MaterialFile::update(FileMappingHandle file)
 {
-	void *data = file->map();
+	const void *data = file->data();
 	size_t size = file->get_size();
 	if (!data || !size)
 	{

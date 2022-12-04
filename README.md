@@ -199,7 +199,7 @@ These are pulled in as submodules.
 - [stb](https://github.com/nothings/stb)
 - [volk](https://github.com/zeux/volk)
 - [meshoptimizer](https://github.com/zeux/meshoptimizer)
-- [Fossilize](https://github.com/Themaister/Fossilize)
+- [Fossilize](https://github.com/ValveSoftware/Fossilize)
 - [muFFT](https://github.com/Themaister/muFFT)
 - MikkTSpace (inlined into `third_party/mikktspace`)
 

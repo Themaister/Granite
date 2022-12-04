@@ -37,11 +37,11 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 	{
 		get_wsi().set_backbuffer_srgb(false);
 
-		yuv_file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
+		yuv_file = GRANITE_FILESYSTEM()->open_readonly_mapping(path);
 		if (!yuv_file)
 			throw std::runtime_error("Failed to open file.\n");
 
-		file_mapped = static_cast<const uint8_t *>(yuv_file->map());
+		file_mapped = yuv_file->data<uint8_t>();
 		if (!file_mapped)
 			throw std::runtime_error("Failed to map file.\n");
 
@@ -169,7 +169,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 	unsigned width;
 	unsigned height;
 
-	std::unique_ptr<Granite::File> yuv_file;
+	Granite::FileMappingHandle yuv_file;
 	size_t file_offset = 0;
 	size_t file_size = 0;
 	const uint8_t *file_mapped = nullptr;

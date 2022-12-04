@@ -56,16 +56,12 @@ static bool ensure_directory(const std::string &path)
 	return ensure_directory_inner(basedir);
 }
 
-MappedFile *MappedFile::open(const std::string &path, Granite::FileMode mode)
+FileHandle MappedFile::open(const std::string &path, Granite::FileMode mode)
 {
-	auto *file = new MappedFile();
+	auto file = Util::make_handle<MappedFile>();
 	if (!file->init(path, mode))
-	{
-		delete file;
-		return nullptr;
-	}
-	else
-		return file;
+		file.reset();
+	return file;
 }
 
 static std::atomic_uint32_t global_transaction_counter;
@@ -127,46 +123,62 @@ bool MappedFile::init(const std::string &path, FileMode mode)
 		return false;
 	}
 
-	if (mode != FileMode::WriteOnly)
+	if (mode != FileMode::WriteOnly && mode != FileMode::WriteOnlyTransactional)
 	{
 		DWORD hi;
 		DWORD lo = GetFileSize(file, &hi);
-		size = size_t((uint64_t(hi) << 32) | uint32_t(lo));
+		size = (uint64_t(hi) << 32) | uint32_t(lo);
+		file_mapping = CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
 	}
 
 	return true;
 }
 
-size_t MappedFile::get_size()
+uint64_t MappedFile::get_size()
 {
 	return size;
 }
 
-bool MappedFile::reopen()
+struct PageSizeQuery
 {
-	return true;
+	PageSizeQuery()
+	{
+		SYSTEM_INFO system_info = {};
+		GetSystemInfo(&system_info);
+		page_size = system_info.dwPageSize;
+	}
+	uint32_t page_size = 0;
+};
+static PageSizeQuery static_page_size_query;
+
+FileMappingHandle MappedFile::map_subset(uint64_t offset, size_t range)
+{
+	if (offset + range > size)
+		return {};
+
+	if (!file_mapping)
+		return {};
+
+	uint64_t begin_map = offset & ~uint64_t(static_page_size_query.page_size - 1);
+
+	DWORD hi = DWORD(begin_map >> 32);
+	DWORD lo = DWORD(begin_map & 0xffffffffu);
+	uint64_t end_mapping = offset + range;
+	size_t mapped_size = end_mapping - begin_map;
+
+	void *mapped = MapViewOfFile(file_mapping, FILE_MAP_READ, hi, lo, mapped_size);
+	if (!mapped)
+		return {};
+
+	return Util::make_handle<FileMapping>(
+		reference_from_this(), offset,
+		static_cast<uint8_t *>(mapped) + begin_map, mapped_size,
+		offset - begin_map, range);
 }
 
-void *MappedFile::map()
+FileMappingHandle MappedFile::map_write(size_t map_size)
 {
-	if (mapped)
-		unmap();
-
-	HANDLE file_view = CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
-	if (file_view == INVALID_HANDLE_VALUE)
-		return nullptr;
-
-	mapped = MapViewOfFile(file_view, FILE_MAP_READ, 0, 0, size);
-	CloseHandle(file_view);
-	return mapped;
-}
-
-void *MappedFile::map_write(size_t size_)
-{
-	if (mapped)
-		unmap();
-
-	size = size_;
+	size = map_size;
 
 #ifdef _WIN64
 	DWORD hi = DWORD(size >> 32);
@@ -177,24 +189,30 @@ void *MappedFile::map_write(size_t size_)
 #endif
 
 	HANDLE file_view = CreateFileMappingW(file, nullptr, PAGE_READWRITE, hi, lo, nullptr);
-	if (file_view == INVALID_HANDLE_VALUE)
-		return nullptr;
+	if (!file_view)
+		return {};
 
-	mapped = MapViewOfFile(file_view, FILE_MAP_ALL_ACCESS, 0, 0, size);
+	void *mapped = MapViewOfFile(file_view, FILE_MAP_ALL_ACCESS, 0, 0, size);
 	CloseHandle(file_view);
-	return mapped;
+
+	if (!mapped)
+		return {};
+
+	return Util::make_handle<FileMapping>(reference_from_this(), 0,
+		static_cast<uint8_t *>(mapped), size,
+		0, size);
 }
 
-void MappedFile::unmap()
+void MappedFile::unmap(void *mapped, size_t)
 {
 	if (mapped)
 		UnmapViewOfFile(mapped);
-	mapped = nullptr;
 }
 
 MappedFile::~MappedFile()
 {
-	unmap();
+	if (file_mapping)
+		CloseHandle(file_mapping);
 	if (file != INVALID_HANDLE_VALUE)
 		CloseHandle(file);
 
@@ -236,9 +254,9 @@ std::string OSFilesystem::get_filesystem_path(const std::string &path)
 	return Path::join(base, path);
 }
 
-std::unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
+FileHandle OSFilesystem::open(const std::string &path, FileMode mode)
 {
-	return std::unique_ptr<File>(MappedFile::open(Path::join(base, path), mode));
+	return MappedFile::open(Path::join(base, path), mode);
 }
 
 void OSFilesystem::poll_notifications()

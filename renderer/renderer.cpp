@@ -226,22 +226,14 @@ bool RendererSuite::save_variant_cache(const std::string &path)
 	PrettyWriter<StringBuffer> writer(buffer);
 	doc.Accept(writer);
 
-	auto file = GRANITE_FILESYSTEM()->open(path, Granite::FileMode::WriteOnlyTransactional);
+	auto file = GRANITE_FILESYSTEM()->open_transactional_mapping(path, buffer.GetSize());
 	if (!file)
 	{
 		LOGE("Failed to open %s for writing.\n", path.c_str());
 		return false;
 	}
 
-	void *mapped = file->map_write(buffer.GetSize());
-	if (!mapped)
-	{
-		LOGE("Failed to map buffer %s for writing.\n", path.c_str());
-		return false;
-	}
-
-	memcpy(mapped, buffer.GetString(), buffer.GetSize());
-	file->unmap();
+	memcpy(file->mutable_data(), buffer.GetString(), buffer.GetSize());
 
 	LOGI("Saved variant cache to %s.\n", path.c_str());
 	return true;

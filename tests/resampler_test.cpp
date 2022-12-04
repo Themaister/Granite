@@ -39,12 +39,9 @@ int main(int argc, char **argv)
 
 	Granite::Global::init(Granite::Global::MANAGER_FEATURE_FILESYSTEM_BIT);
 	auto *fs = GRANITE_FILESYSTEM();
-	auto file = fs->open(argv[1], Granite::FileMode::ReadOnly);
+	auto file = fs->open_readonly_mapping(argv[1]);
 	if (!file)
 		return EXIT_FAILURE;
-
-	auto out_up = fs->open(argv[2], Granite::FileMode::WriteOnly);
-	auto out_down = fs->open(argv[3], Granite::FileMode::WriteOnly);
 
 	SincResampler resampler_up(2.3f, 1.0f, SincResampler::Quality::High);
 	SincResampler resampler_down(0.4f, 1.0f, SincResampler::Quality::High);
@@ -53,9 +50,12 @@ int main(int argc, char **argv)
 	size_t required_out_up = resampler_up.get_maximum_output_for_input_frames(num_samples);
 	size_t required_out_down = resampler_down.get_maximum_output_for_input_frames(num_samples);
 
-	auto *inputs = static_cast<const float *>(file->map());
-	auto *output_up = static_cast<float *>(out_up->map_write(required_out_up * sizeof(float)));
-	auto *output_down = static_cast<float *>(out_down->map_write(required_out_down * sizeof(float)));
+	auto out_up = fs->open_writeonly_mapping(argv[2], required_out_up * sizeof(float));
+	auto out_down = fs->open_writeonly_mapping(argv[3], required_out_down * sizeof(float));
+
+	auto *inputs = file->data<float>();
+	auto *output_up = out_up->mutable_data<float>();
+	auto *output_down = out_down->mutable_data<float>();
 
 	for (size_t i = 0; i < num_samples; i += 256)
 	{

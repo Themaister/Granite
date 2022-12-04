@@ -47,11 +47,11 @@ Font::Font(const std::string &path, unsigned size)
 {
 	baked_chars.reset(new Baked);
 
-	auto file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
+	auto file = GRANITE_FILESYSTEM()->open_readonly_mapping(path);
 	if (!file)
 		throw std::runtime_error("Failed to open font.");
 
-	auto *mapped = file->map();
+	auto *mapped = file->data();
 	if (!mapped)
 		throw std::runtime_error("Failed to map font.");
 

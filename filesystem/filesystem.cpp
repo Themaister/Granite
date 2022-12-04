@@ -31,104 +31,6 @@
 
 namespace Granite
 {
-bool StdioFile::init(const std::string &path, FileMode mode_)
-{
-	mode = mode_;
-
-	const char *filemode = nullptr;
-	switch (mode)
-	{
-	case FileMode::ReadOnly:
-		filemode = "rb";
-		break;
-
-	case FileMode::ReadWrite:
-		filemode = "rb+";
-		break;
-
-	case FileMode::WriteOnly:
-		filemode = "wb";
-		break;
-
-	case FileMode::WriteOnlyTransactional:
-		LOGE("WriteOnlyTransactional not supported on stdio files.\n");
-		return false;
-	}
-
-	file = fopen(path.c_str(), filemode);
-	if (!file)
-		return false;
-
-	if (mode != FileMode::WriteOnly)
-	{
-		fseek(file, 0, SEEK_END);
-		size = ftell(file);
-		rewind(file);
-	}
-
-	return true;
-}
-
-size_t StdioFile::get_size()
-{
-	return size;
-}
-
-void *StdioFile::map()
-{
-	rewind(file);
-	buffer.resize(size);
-	if (fread(buffer.data(), 1, size, file) != size)
-	{
-		LOGE("Failed to read file.\n");
-		buffer.clear();
-		return nullptr;
-	}
-	return buffer.data();
-}
-
-void *StdioFile::map_write(size_t size_)
-{
-	size = size_;
-	buffer.resize(size);
-	return buffer.data();
-}
-
-bool StdioFile::reopen()
-{
-	return false;
-}
-
-void StdioFile::unmap()
-{
-}
-
-StdioFile *StdioFile::open(const std::string &path, Granite::FileMode mode)
-{
-	auto *file = new StdioFile();
-	if (!file->init(path, mode))
-	{
-		delete file;
-		return nullptr;
-	}
-	else
-		return file;
-}
-
-StdioFile::~StdioFile()
-{
-	if (file)
-	{
-		if (mode != FileMode::ReadOnly)
-		{
-			rewind(file);
-			fwrite(buffer.data(), 1, size, file);
-		}
-
-		fclose(file);
-	}
-}
-
 std::vector<ListEntry> FilesystemBackend::walk(const std::string &path)
 {
 	auto entries = list(path);
@@ -259,18 +161,38 @@ std::vector<ListEntry> Filesystem::list(const std::string &path)
 	return backend->list(paths.second);
 }
 
-bool Filesystem::read_file_to_string(const std::string &path, std::string &str)
+FileMappingHandle Filesystem::open_readonly_mapping(const std::string &path)
 {
 	auto file = open(path, FileMode::ReadOnly);
 	if (!file)
+		return {};
+	return file->map();
+}
+
+FileMappingHandle Filesystem::open_writeonly_mapping(const std::string &path, size_t size)
+{
+	auto file = open(path, FileMode::WriteOnly);
+	if (!file)
+		return {};
+	return file->map_write(size);
+}
+
+FileMappingHandle Filesystem::open_transactional_mapping(const std::string &path, size_t size)
+{
+	auto file = open(path, FileMode::WriteOnlyTransactional);
+	if (!file)
+		return {};
+	return file->map_write(size);
+}
+
+bool Filesystem::read_file_to_string(const std::string &path, std::string &str)
+{
+	auto mapping = open_readonly_mapping(path);
+	if (!mapping)
 		return false;
 
-	auto size = file->get_size();
-	auto *mapped = static_cast<const char *>(file->map());
-	if (!mapped)
-		return false;
-
-	str = std::string(mapped, mapped + size);
+	auto size = mapping->get_size();
+	str = std::string(mapping->data<char>(), mapping->data<char>() + size);
 
 	// Remove DOS EOL.
 	str.erase(remove_if(begin(str), end(str), [](char c) { return c == '\r'; }), end(str));
@@ -280,16 +202,10 @@ bool Filesystem::read_file_to_string(const std::string &path, std::string &str)
 
 bool Filesystem::write_buffer_to_file(const std::string &path, const void *data, size_t size)
 {
-	auto file = open(path, FileMode::WriteOnlyTransactional);
+	auto file = open_transactional_mapping(path, size);
 	if (!file)
 		return false;
-
-	void *mapped = file->map_write(size);
-	if (!mapped)
-		return false;
-
-	memcpy(mapped, data, size);
-	file->unmap();
+	memcpy(file->mutable_data(), data, size);
 	return true;
 }
 
@@ -298,7 +214,7 @@ bool Filesystem::write_string_to_file(const std::string &path, const std::string
 	return write_buffer_to_file(path, str.data(), str.size());
 }
 
-std::unique_ptr<File> Filesystem::open(const std::string &path, FileMode mode)
+FileHandle Filesystem::open(const std::string &path, FileMode mode)
 {
 	auto paths = Path::protocol_split(path);
 	auto *backend = get_backend(paths.first);
@@ -375,34 +291,35 @@ std::vector<ListEntry> ScratchFilesystem::list(const std::string &)
 	return {};
 }
 
-struct ScratchFilesystemFile : File
+struct ScratchFilesystemFile final : Internal::File
 {
 	explicit ScratchFilesystemFile(std::vector<uint8_t> &data_)
 		: data(data_)
 	{
 	}
 
-	void *map() override
+	FileMappingHandle map_subset(uint64_t offset, size_t range) override
 	{
-		return data.data();
+		if (offset + range > data.size())
+			return {};
+
+		return Util::make_handle<FileMapping>(
+		    FileHandle{}, offset,
+			data.data() + offset, range,
+			0, range);
 	}
 
-	void *map_write(size_t size) override
+	FileMappingHandle map_write(size_t size) override
 	{
 		data.resize(size);
-		return data.data();
+		return map_subset(0, size);
 	}
 
-	bool reopen() override
-	{
-		return true;
-	}
-
-	void unmap() override
+	void unmap(void *, size_t) override
 	{
 	}
 
-	size_t get_size() override
+	uint64_t get_size() override
 	{
 		return data.size();
 	}
@@ -410,22 +327,22 @@ struct ScratchFilesystemFile : File
 	std::vector<uint8_t> &data;
 };
 
-std::unique_ptr<File> ScratchFilesystem::open(const std::string &path, FileMode)
+FileHandle ScratchFilesystem::open(const std::string &path, FileMode)
 {
 	auto itr = scratch_files.find(path);
 	if (itr == end(scratch_files))
 	{
 		auto &file = scratch_files[path];
-		file.reset(new ScratchFile);
-		return std::unique_ptr<ScratchFilesystemFile>(new ScratchFilesystemFile(file->data));
+		file = std::make_unique<ScratchFile>();
+		return Util::make_handle<ScratchFilesystemFile>(file->data);
 	}
 	else
 	{
-		return std::unique_ptr<ScratchFilesystemFile>(new ScratchFilesystemFile(itr->second->data));
+		return Util::make_handle<ScratchFilesystemFile>(itr->second->data);
 	}
 }
 
-BlobFilesystem::BlobFilesystem(std::unique_ptr<File> file_, std::string basedir_)
+BlobFilesystem::BlobFilesystem(FileHandle file_, std::string basedir_)
 	: file(std::move(file_)), base(std::move(basedir_))
 {
 	if (!file)
@@ -484,9 +401,13 @@ void BlobFilesystem::parse()
 	size_t mapped_size = file->get_size();
 	if (mapped_size < 16)
 		throw std::runtime_error("Blob archive too small.");
-	auto *mapped = static_cast<const uint8_t *>(file->map());
-	if (!mapped)
+
+	auto mapped_handle = file->map();
+	if (!mapped_handle)
 		throw std::runtime_error("Failed to map blob archive.");
+
+	auto *base_mapped = mapped_handle->data<uint8_t>();
+	auto *mapped = base_mapped;
 
 	if (memcmp(mapped, "BLOBBY01", 8) != 0)
 		throw std::runtime_error("Invalid magic.");
@@ -518,7 +439,7 @@ void BlobFilesystem::parse()
 
 	if (mapped_size >= 4 && memcmp(mapped, "DATA", 4) == 0)
 	{
-		blob_base = mapped + 4;
+		blob_base_offset = size_t((mapped + 4) - base_mapped);
 		mapped_size -= 4;
 		if (mapped_size < required_size)
 			throw std::range_error("Blob is not large enough for all files.");
@@ -624,7 +545,7 @@ bool BlobFilesystem::stat(const std::string &path, FileStat &stat)
 		return false;
 }
 
-std::unique_ptr<File> BlobFilesystem::open(const std::string &path, FileMode mode)
+FileHandle BlobFilesystem::open(const std::string &path, FileMode mode)
 {
 	if (mode != FileMode::ReadOnly)
 		return {};
@@ -633,7 +554,8 @@ std::unique_ptr<File> BlobFilesystem::open(const std::string &path, FileMode mod
 	auto *blob_file = find_file(p);
 	if (!blob_file)
 		return {};
-	return std::make_unique<ConstantMemoryFile>(blob_base + blob_file->offset, blob_file->size);
+
+	return Util::make_handle<FileSlice>(file, blob_base_offset + blob_file->offset, blob_file->size);
 }
 
 FileNotifyHandle BlobFilesystem::install_notification(const std::string &, std::function<void (const FileNotifyInfo &)>)
@@ -654,4 +576,66 @@ int BlobFilesystem::get_notification_fd() const
 	return -1;
 }
 
+FileMapping::FileMapping(FileHandle handle_, uint64_t file_offset_,
+                         void *mapped_, size_t mapped_size_,
+                         size_t map_offset_, size_t accessible_size_)
+	: handle(std::move(handle_))
+	, file_offset(file_offset_)
+	, mapped(mapped_)
+	, mapped_size(mapped_size_)
+	, map_offset(map_offset_)
+	, accessible_size(accessible_size_)
+{
+}
+
+FileMapping::~FileMapping()
+{
+	if (handle)
+		handle->unmap(mapped, mapped_size);
+}
+
+uint64_t FileMapping::get_file_offset() const
+{
+	return file_offset;
+}
+
+uint64_t FileMapping::get_size() const
+{
+	return accessible_size;
+}
+
+namespace Internal
+{
+Util::IntrusivePtr<FileMapping> File::map()
+{
+	return map_subset(0, get_size());
+}
+}
+
+FileSlice::FileSlice(FileHandle handle_, uint64_t offset_, uint64_t range_)
+	: handle(std::move(handle_)), offset(offset_), range(range_)
+{
+}
+
+FileMappingHandle FileSlice::map_subset(uint64_t offset_, size_t range_)
+{
+	if (offset_ + range_ > range)
+		return {};
+	return handle->map_subset(offset + offset_, range_);
+}
+
+FileMappingHandle FileSlice::map_write(size_t)
+{
+	return {};
+}
+
+uint64_t FileSlice::get_size()
+{
+	return range;
+}
+
+void FileSlice::unmap(void *mapped, size_t mapped_size)
+{
+	handle->unmap(mapped, mapped_size);
+}
 }

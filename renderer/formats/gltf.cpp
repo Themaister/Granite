@@ -37,14 +37,14 @@ namespace GLTF
 {
 Parser::Buffer Parser::read_buffer(const std::string &path, uint64_t length)
 {
-	auto file = GRANITE_FILESYSTEM()->open(path);
+	auto file = GRANITE_FILESYSTEM()->open_readonly_mapping(path);
 	if (!file)
 		throw std::runtime_error("Failed to open GLTF buffer.");
 
 	if (file->get_size() != length)
 		throw std::runtime_error("Size mismatch of buffer.");
 
-	void *mapped = file->map();
+	const void *mapped = file->data();
 	if (!mapped)
 		throw std::runtime_error("Failed to map file.");
 
@@ -124,12 +124,12 @@ Parser::Parser(const std::string &path)
 	std::string json;
 
 	{
-		auto file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
+		auto file = GRANITE_FILESYSTEM()->open_readonly_mapping(path);
 		if (!file)
 			throw std::runtime_error("Failed to load GLTF file.");
 
 		auto size = file->get_size();
-		void *mapped = file->map();
+		const void *mapped = file->data();
 		if (!mapped)
 			throw std::runtime_error("Failed to map GLTF file.");
 
@@ -433,21 +433,6 @@ static void iterate_elements(const Value &value, const T &t)
 		{
 			t(*itr);
 		}
-	}
-}
-
-template <typename T, typename Func>
-static void reiterate_elements(T *nodes, const Value &value, const Func &func)
-{
-	if (value.IsArray())
-	{
-		for (auto itr = value.Begin(); itr != value.End(); ++itr, nodes++)
-			func(*nodes, *itr);
-	}
-	else
-	{
-		for (auto itr = value.MemberBegin(); itr != value.MemberEnd(); ++itr, nodes++)
-			func(*nodes, itr->value);
 	}
 }
 
@@ -780,15 +765,11 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 			auto &view = json_views[index];
 			auto fake_path = std::string("memory://") + original_path + "_buffer_view_" + std::to_string(index);
 
-			auto file = GRANITE_FILESYSTEM()->open(fake_path, FileMode::WriteOnly);
+			auto file = GRANITE_FILESYSTEM()->open_writeonly_mapping(fake_path, view.length);
 			if (!file)
 				throw std::runtime_error("Failed to open memory file.");
 
-			void *mapped = file->map_write(view.length);
-			if (!mapped)
-				throw std::runtime_error("Failed to map memory file.");
-
-			memcpy(mapped, json_buffers[view.buffer_index].data() + view.offset, view.length);
+			memcpy(file->mutable_data(), json_buffers[view.buffer_index].data() + view.offset, view.length);
 			json_images.emplace_back(std::move(fake_path));
 		}
 		else
@@ -817,15 +798,11 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 				auto base64_buffer = read_base64(uri + strlen(base64_type_jpg), data_length);
 				auto fake_path = std::string("memory://") + original_path + "_base64_" + std::to_string(json_images.size());
 
-				auto file = GRANITE_FILESYSTEM()->open(fake_path, FileMode::WriteOnly);
+				auto file = GRANITE_FILESYSTEM()->open_writeonly_mapping(fake_path, data_length);
 				if (!file)
 					throw std::runtime_error("Failed to open memory file.");
 
-				void *mapped = file->map_write(data_length);
-				if (!mapped)
-					throw std::runtime_error("Failed to map memory file.");
-
-				memcpy(mapped, base64_buffer.data(), base64_buffer.size());
+				memcpy(file->mutable_data(), base64_buffer.data(), base64_buffer.size());
 				json_images.emplace_back(std::move(fake_path));
 			}
 		}

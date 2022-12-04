@@ -1744,21 +1744,14 @@ bool export_scene_to_glb(const SceneInformation &scene, const std::string &path,
 		auto uri = path + ".bin";
 		buffer.AddMember("uri", Path::basename(uri), allocator);
 
-		auto file = GRANITE_FILESYSTEM()->open(uri, FileMode::WriteOnly);
+		auto file = GRANITE_FILESYSTEM()->open_writeonly_mapping(uri, state.glb_buffer_data.size());
 		if (!file)
 		{
 			LOGE("Failed to open %s for writing.\n", uri.c_str());
 			return false;
 		}
 
-		void *mapped = file->map_write(state.glb_buffer_data.size());
-		if (!mapped)
-		{
-			LOGE("Failed to map buffer for writing.\n");
-			return false;
-		}
-
-		memcpy(mapped, state.glb_buffer_data.data(), state.glb_buffer_data.size());
+		memcpy(file->mutable_data(), state.glb_buffer_data.data(), state.glb_buffer_data.size());
 		buffers.PushBack(buffer, allocator);
 		doc.AddMember("buffers", buffers, allocator);
 	}
@@ -2326,7 +2319,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const std::string &path,
 		memcpy(data, &v, sizeof(uint32_t));
 	};
 
-	auto file = GRANITE_FILESYSTEM()->open(path, FileMode::WriteOnly);
+	auto file = GRANITE_FILESYSTEM()->open_writeonly_mapping(path, buffer.GetLength());
 	if (!file)
 	{
 		LOGE("Failed to open file: %s\n", path.c_str());
@@ -2335,26 +2328,14 @@ bool export_scene_to_glb(const SceneInformation &scene, const std::string &path,
 
 	if (options.gltf)
 	{
-		uint8_t *mapped = static_cast<uint8_t *>(file->map_write(buffer.GetLength()));
-		if (!mapped)
-		{
-			LOGE("Failed to map file: %s\n", path.c_str());
-			return false;
-		}
-
 		const char *json_str = buffer.GetString();
-		memcpy(mapped, json_str, buffer.GetLength());
+		memcpy(file->mutable_data(), json_str, buffer.GetLength());
 	}
 	else
 	{
 		size_t glb_size = 12 + 8 + aligned_size(buffer.GetLength()) + 8 + aligned_size(state.glb_buffer_data.size());
 
-		uint8_t *mapped = static_cast<uint8_t *>(file->map_write(glb_size));
-		if (!mapped)
-		{
-			LOGE("Failed to map file: %s\n", path.c_str());
-			return false;
-		}
+		auto *mapped = file->mutable_data<uint8_t>();
 
 		memcpy(mapped, "glTF", 4);
 		mapped += 4;
@@ -2383,7 +2364,6 @@ bool export_scene_to_glb(const SceneInformation &scene, const std::string &path,
 		memset(mapped + state.glb_buffer_data.size(), 0, pad_length);
 	}
 
-	file->unmap();
 	return true;
 }
 }

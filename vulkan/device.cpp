@@ -680,11 +680,11 @@ void Device::init_pipeline_cache()
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	if (!system_handles.filesystem)
 		return;
-	auto file = system_handles.filesystem->open("cache://pipeline_cache.bin", Granite::FileMode::ReadOnly);
+	auto file = system_handles.filesystem->open_readonly_mapping("cache://pipeline_cache.bin");
 	if (file)
 	{
 		auto size = file->get_size();
-		auto *mapped = static_cast<uint8_t *>(file->map());
+		auto *mapped = file->data<uint8_t>();
 		if (mapped && !init_pipeline_cache(mapped, size))
 			LOGE("Failed to initialize pipeline cache.\n");
 	}
@@ -753,9 +753,8 @@ void Device::flush_pipeline_cache()
 		return;
 	}
 
-	auto file = system_handles.filesystem->open(
-			"cache://pipeline_cache.bin",
-			Granite::FileMode::WriteOnlyTransactional);
+	auto file = system_handles.filesystem->open_transactional_mapping(
+			"cache://pipeline_cache.bin", size);
 
 	if (!file)
 	{
@@ -763,14 +762,7 @@ void Device::flush_pipeline_cache()
 		return;
 	}
 
-	uint8_t *data = static_cast<uint8_t *>(file->map_write(size));
-	if (!data)
-	{
-		LOGE("Failed to get pipeline cache data.\n");
-		return;
-	}
-
-	if (!get_pipeline_cache_data(data, size))
+	if (!get_pipeline_cache_data(file->mutable_data<uint8_t>(), size))
 	{
 		LOGE("Failed to get pipeline cache data.\n");
 		return;

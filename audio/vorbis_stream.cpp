@@ -72,7 +72,7 @@ struct VorbisStream : MixerStream
 	}
 
 	stb_vorbis *file = nullptr;
-	std::unique_ptr<File> filesystem_file;
+	FileMappingHandle filesystem_mapping;
 
 	float sample_rate = 0.0f;
 	unsigned num_input_channels = 0;
@@ -121,18 +121,16 @@ struct DecodedVorbisStream : MixerStream
 
 bool VorbisStream::init(const std::string &path)
 {
-	filesystem_file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
-	if (!filesystem_file)
+	filesystem_mapping = GRANITE_FILESYSTEM()->open_readonly_mapping(path);
+	if (!filesystem_mapping)
 		return false;
 
-	if (filesystem_file->get_size() == 0)
-		return false;
-	void *mapped = filesystem_file->map();
-	if (!mapped)
+	if (filesystem_mapping->get_size() == 0)
 		return false;
 
 	int error;
-	file = stb_vorbis_open_memory(static_cast<const unsigned char *>(mapped), int(filesystem_file->get_size()),
+	file = stb_vorbis_open_memory(filesystem_mapping->data<unsigned char>(),
+	                              int(filesystem_mapping->get_size()),
 	                              &error, nullptr);
 	if (!file)
 	{
@@ -149,19 +147,13 @@ bool VorbisStream::init(const std::string &path)
 
 bool DecodedVorbisStream::init(const std::string &path)
 {
-	auto filesystem_file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
-	if (!filesystem_file)
-		return false;
-
-	if (filesystem_file->get_size() == 0)
-		return false;
-	void *mapped = filesystem_file->map();
+	auto mapped = GRANITE_FILESYSTEM()->open_readonly_mapping(path);
 	if (!mapped)
 		return false;
 
 	int error;
-	stb_vorbis *file = stb_vorbis_open_memory(static_cast<const unsigned char *>(mapped),
-	                                          int(filesystem_file->get_size()),
+	stb_vorbis *file = stb_vorbis_open_memory(mapped->data<unsigned char>(),
+	                                          int(mapped->get_size()),
 	                                          &error, nullptr);
 	if (!file)
 	{

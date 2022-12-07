@@ -795,10 +795,8 @@ void Device::init_workarounds()
 			workarounds.split_binary_timeline_semaphores = true;
 		}
 	}
-	else if (ext.driver_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
-	         VK_VERSION_MAJOR(gpu_props.driverVersion) <= 515)
+	else if (ext.driver_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
 	{
-		// Fixed as of Vulkan beta 515.49.18 (Linux), assuming this will hit next major release.
 		LOGW("Disabling pipeline cache control.\n");
 		workarounds.broken_pipeline_cache_control = true;
 	}

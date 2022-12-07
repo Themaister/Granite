@@ -33,7 +33,9 @@
 #include <jni.h>
 #include <android/sensor.h>
 #include <android/window.h>
+#if defined(HAVE_SWAPPY)
 #include "swappy/swappyVk.h"
+#endif
 
 #include "android.hpp"
 #include "os_filesystem.hpp"
@@ -210,12 +212,15 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		return true;
 	}
 
+#if defined(HAVE_SWAPPY)
 	VkDevice current_device = VK_NULL_HANDLE;
 	VkSwapchainKHR current_swapchain = VK_NULL_HANDLE;
+#endif
 
 	void event_swapchain_created(Device *device_, VkSwapchainKHR swapchain, unsigned width_, unsigned height_, float aspect_, size_t count_,
 	                             VkFormat format_, VkColorSpaceKHR color_space_, VkSurfaceTransformFlagBitsKHR transform_) override
 	{
+#if defined(HAVE_SWAPPY)
 		current_device = device_->get_device();
 		current_swapchain = swapchain;
 
@@ -230,6 +235,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 			LOGW("Failed to initialize swappy refresh rate.\n");
 
 		SwappyVk_setWindow(current_device, current_swapchain, global_state.app->window);
+#endif
 
 		Granite::GraniteWSIPlatform::event_swapchain_created(device_, swapchain, width_, height_,
 		                                                     aspect_, count_, format_,
@@ -247,12 +253,14 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 
 	void event_swapchain_destroyed() override
 	{
+#if defined(HAVE_SWAPPY)
 		if (current_device && current_swapchain)
 		{
 			SwappyVk_destroySwapchain(current_device, current_swapchain);
 			current_device = VK_NULL_HANDLE;
 			current_swapchain = VK_NULL_HANDLE;
 		}
+#endif
 		Granite::GraniteWSIPlatform::event_swapchain_destroyed();
 	}
 

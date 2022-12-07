@@ -102,7 +102,8 @@ endif()
 
 if (ANDROID)
     find_package(games-frame-pacing REQUIRED CONFIG)
-    target_link_libraries(granite-vulkan PRIVATE games-frame-pacing::swappy)
+	target_link_libraries(granite-vulkan PRIVATE games-frame-pacing::swappy)
+	target_compile_definitions(granite-vulkan PRIVATE HAVE_SWAPPY)
 endif()
 
 if (GRANITE_SHIPPING)

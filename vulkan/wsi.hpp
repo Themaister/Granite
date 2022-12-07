@@ -157,7 +157,7 @@ public:
 
 	inline VkColorSpaceKHR get_backbuffer_color_space() const
 	{
-		return swapchain_surface_format.colorSpace;	
+		return swapchain_surface_format.colorSpace;
 	}
 
 	void set_support_prerotate(bool enable);

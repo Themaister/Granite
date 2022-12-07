@@ -34,7 +34,7 @@
 #include <windows.h>
 #endif
 
-#ifdef ANDROID
+#if defined(ANDROID) && defined(HAVE_SWAPPY)
 #include "swappy/swappyVk.h"
 #endif
 
@@ -200,7 +200,7 @@ void Context::destroy()
 	debug_messenger = VK_NULL_HANDLE;
 #endif
 
-#ifdef ANDROID
+#if defined(ANDROID) && defined(HAVE_SWAPPY)
 	if (device != VK_NULL_HANDLE)
 		SwappyVk_destroyDevice(device);
 #endif
@@ -720,7 +720,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			requires_swapchain = true;
 	}
 
-#ifdef ANDROID
+#if defined(ANDROID) && defined(HAVE_SWAPPY)
 	// Enable additional extensions required by SwappyVk.
 	std::unique_ptr<char[]> swappy_str_buffer;
 	if (requires_swapchain)
@@ -1192,7 +1192,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			device_table.vkGetDeviceQueue(device, queue_info.family_indices[i], queue_indices[i],
 			                              &queue_info.queues[i]);
 
-#ifdef ANDROID
+#if defined(ANDROID) && defined(HAVE_SWAPPY)
 			SwappyVk_setQueueFamilyIndex(device, queue_info.queues[i], queue_info.family_indices[i]);
 #endif
 		}

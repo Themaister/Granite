@@ -244,7 +244,8 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 	new_context->set_system_handles(system_handles);
 	if (!new_context->init_instance_and_device(
 		instance_ext.data(), instance_ext.size(),
-		device_ext.data(), device_ext.size()))
+		device_ext.data(), device_ext.size(),
+		CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT))
 	{
 		LOGE("Failed to create Vulkan device.\n");
 		return false;

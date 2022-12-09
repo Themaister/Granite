@@ -125,7 +125,8 @@ enum VendorID
 
 enum ContextCreationFlagBits
 {
-	CONTEXT_CREATION_DISABLE_BINDLESS_BIT = 1 << 0
+	CONTEXT_CREATION_DISABLE_BINDLESS_BIT = 1 << 0,
+	CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT = 1 << 1
 };
 using ContextCreationFlags = uint32_t;
 
@@ -267,7 +268,7 @@ private:
 	QueueInfo queue_info;
 	unsigned num_thread_indices = 1;
 
-	bool create_instance(const char **instance_ext, uint32_t instance_ext_count);
+	bool create_instance(const char **instance_ext, uint32_t instance_ext_count, ContextCreationFlags flags);
 	bool create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const char **required_device_extensions,
 	                   unsigned num_required_device_extensions, const VkPhysicalDeviceFeatures *required_features,
 	                   ContextCreationFlags flags);

@@ -55,7 +55,7 @@ bool Context::init_instance_and_device(const char **instance_ext, uint32_t insta
 
 	owned_instance = true;
 	owned_device = true;
-	if (!create_instance(instance_ext, instance_ext_count))
+	if (!create_instance(instance_ext, instance_ext_count, flags))
 	{
 		destroy();
 		LOGE("Failed to create Vulkan instance.\n");
@@ -176,7 +176,7 @@ bool Context::init_device_from_instance(VkInstance instance_, VkPhysicalDevice g
 	owned_instance = false;
 	owned_device = true;
 
-	if (!create_instance(nullptr, 0))
+	if (!create_instance(nullptr, 0, flags))
 		return false;
 
 	if (!create_device(gpu_, surface, required_device_extensions, num_required_device_extensions, required_features, flags))
@@ -302,7 +302,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 }
 #endif
 
-bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_count)
+bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_count, ContextCreationFlags flags)
 {
 	uint32_t target_instance_version = user_application_info ? user_application_info->apiVersion : VK_API_VERSION_1_1;
 	if (volkGetInstanceVersion() < target_instance_version)
@@ -363,7 +363,9 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		ext.supports_surface_capabilities2 = true;
 	}
 
-	if (has_surface_extension && has_extension(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))
+	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 &&
+	    has_surface_extension &&
+	    has_extension(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))
 	{
 		instance_exts.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
 		ext.supports_swapchain_colorspace = true;
@@ -718,6 +720,16 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		enabled_extensions.push_back(required_device_extensions[i]);
 		if (strcmp(required_device_extensions[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
 			requires_swapchain = true;
+		else if (strcmp(required_device_extensions[i], VK_KHR_PRESENT_ID_EXTENSION_NAME) == 0 ||
+		         strcmp(required_device_extensions[i], VK_KHR_PRESENT_WAIT_EXTENSION_NAME) == 0 ||
+		         strcmp(required_device_extensions[i], VK_EXT_HDR_METADATA_EXTENSION_NAME) == 0)
+		{
+			flags |= CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT;
+		}
+		else if (strcmp(required_device_extensions[i], VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME) == 0)
+		{
+			flags &= ~CONTEXT_CREATION_DISABLE_BINDLESS_BIT;
+		}
 	}
 
 #if defined(ANDROID) && defined(HAVE_SWAPPY)
@@ -1023,7 +1035,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		enabled_extensions.push_back(VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME);
 	}
 
-	if (requires_swapchain)
+	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
 		if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
 		{

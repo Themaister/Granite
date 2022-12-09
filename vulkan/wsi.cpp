@@ -268,25 +268,74 @@ void WSI::reinit_surface_and_swapchain(VkSurfaceKHR new_surface)
 	update_framebuffer(swapchain_width, swapchain_height);
 }
 
-void WSI::drain_swapchain()
+void WSI::nonblock_delete_swapchains()
+{
+	Util::SmallVector<DeferredDeletion> keep;
+	size_t pending = deferred_swapchains.size();
+	for (auto &swap : deferred_swapchains)
+	{
+		if (!swap.fence || swap.fence->wait_timeout(0))
+		{
+			table->vkDestroySwapchainKHR(device->get_device(), swap.swapchain, nullptr);
+		}
+		else if (pending >= 2)
+		{
+			swap.fence->wait();
+			table->vkDestroySwapchainKHR(device->get_device(), swap.swapchain, nullptr);
+		}
+		else
+			keep.push_back(std::move(swap));
+
+		pending--;
+	}
+
+	deferred_swapchains = std::move(keep);
+}
+
+void WSI::drain_swapchain(bool in_tear_down)
 {
 	release_semaphores.clear();
 	device->set_acquire_semaphore(0, Semaphore{});
 	device->consume_release_semaphore();
-	device->wait_idle();
+
+	if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
+	{
+		// If we're just resizing, there's no need to block, defer deletions for later.
+		if (in_tear_down)
+		{
+			if (last_present_fence)
+			{
+				last_present_fence->wait();
+				last_present_fence.reset();
+			}
+
+			for (auto &old_swap : deferred_swapchains)
+			{
+				if (old_swap.fence)
+					old_swap.fence->wait();
+				table->vkDestroySwapchainKHR(context->get_device(), old_swap.swapchain, nullptr);
+			}
+
+			deferred_swapchains.clear();
+		}
+	}
+	else if (swapchain != VK_NULL_HANDLE && device->get_device_features().present_wait_features.presentWait && present_last_id)
+	{
+		table->vkWaitForPresentKHR(context->get_device(), swapchain, present_last_id, UINT64_MAX);
+		// If the last present was not successful,
+		// it's not clear that the present ID will be signalled, so wait idle as a fallback.
+		if (present_id != present_last_id)
+			device->wait_idle();
+	}
+	else
+		device->wait_idle();
 }
 
 void WSI::tear_down_swapchain()
 {
-	drain_swapchain();
+	drain_swapchain(true);
 	platform->event_swapchain_destroyed();
-
-	if (swapchain != VK_NULL_HANDLE)
-	{
-		if (device->get_device_features().present_wait_features.presentWait && present_last_id)
-			table->vkWaitForPresentKHR(context->get_device(), swapchain, present_last_id, UINT64_MAX);
-		table->vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
-	}
+	table->vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
 	swapchain = VK_NULL_HANDLE;
 	has_acquired_swapchain_index = false;
 	present_id = 0;
@@ -490,6 +539,7 @@ bool WSI::begin_frame()
 
 bool WSI::end_frame()
 {
+	nonblock_delete_swapchains();
 	device->end_frame_context();
 
 	// Take ownership of the release semaphore so that the external user can use it.
@@ -522,6 +572,8 @@ bool WSI::end_frame()
 		info.pImageIndices = &swapchain_index;
 		info.pResults = &result;
 
+		VkSwapchainPresentFenceInfoEXT present_fence = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT };
+
 		VkPresentIdKHR present_id_info = { VK_STRUCTURE_TYPE_PRESENT_ID_KHR };
 		if (device->get_device_features().present_id_features.presentId)
 		{
@@ -530,6 +582,15 @@ bool WSI::end_frame()
 			present_id++;
 			present_id_info.pNext = info.pNext;
 			info.pNext = &present_id_info;
+		}
+
+		if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
+		{
+			last_present_fence = device->request_legacy_fence();
+			present_fence.swapchainCount = 1;
+			present_fence.pFences = &last_present_fence->get_fence();
+			present_fence.pNext = const_cast<void *>(info.pNext);
+			info.pNext = &present_fence;
 		}
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
@@ -615,7 +676,7 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 {
 	if (context && device)
 	{
-		drain_swapchain();
+		drain_swapchain(false);
 		if (blocking_init_swapchain(width, height))
 		{
 			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_surface_format.format,
@@ -1139,10 +1200,12 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	info.clipped = VK_TRUE;
 	info.oldSwapchain = old_swapchain;
 
-	if (device->get_device_features().present_wait_features.presentWait &&
-	    old_swapchain != VK_NULL_HANDLE && present_last_id)
+	// Defer the deletion instead.
+	if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1 &&
+	    old_swapchain != VK_NULL_HANDLE)
 	{
-		table->vkWaitForPresentKHR(context->get_device(), old_swapchain, present_last_id, UINT64_MAX);
+		deferred_swapchains.push_back({ old_swapchain, last_present_fence });
+		old_swapchain = VK_NULL_HANDLE;
 	}
 
 #ifdef _WIN32
@@ -1152,8 +1215,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	platform->event_swapchain_destroyed();
 	auto res = table->vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
-	if (old_swapchain != VK_NULL_HANDLE)
-		table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
+	table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
 	present_id = 0;
 	present_last_id = 0;

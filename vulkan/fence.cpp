@@ -36,7 +36,7 @@ FenceHolder::~FenceHolder()
 	}
 }
 
-VkFence FenceHolder::get_fence() const
+const VkFence &FenceHolder::get_fence() const
 {
 	return fence;
 }

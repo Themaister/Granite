@@ -322,10 +322,19 @@ private:
 	unsigned present_frame_latency = 0;
 
 	void tear_down_swapchain();
-	void drain_swapchain();
+	void drain_swapchain(bool in_tear_down);
 	void wait_swapchain_latency();
 
 	VkHdrMetadataEXT hdr_metadata = { VK_STRUCTURE_TYPE_HDR_METADATA_EXT };
+
+	struct DeferredDeletion
+	{
+		VkSwapchainKHR swapchain;
+		Fence fence;
+	};
+	Util::SmallVector<DeferredDeletion> deferred_swapchains;
+	Vulkan::Fence last_present_fence;
+	void nonblock_delete_swapchains();
 
 	VkSurfaceFormatKHR find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats, BackbufferFormat desired_format) const;
 };

@@ -72,6 +72,7 @@ struct DeviceFeatures
 	bool supports_tooling_info = false;
 	bool supports_hdr_metadata = false;
 	bool supports_swapchain_colorspace = false;
+	bool supports_surface_maintenance1 = false;
 
 	// Vulkan 1.1 core
 	VkPhysicalDeviceFeatures enabled_features = {};
@@ -109,6 +110,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceASTCDecodeFeaturesEXT astc_decode_features = {};
 	VkPhysicalDeviceTextureCompressionASTCHDRFeaturesEXT astc_hdr_features = {};
 	VkPhysicalDevicePipelineCreationCacheControlFeaturesEXT pipeline_creation_cache_control_features = {};
+	VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT swapchain_maintenance1_features = {};
 
 	// Vendor
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};

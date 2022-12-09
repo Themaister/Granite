@@ -280,6 +280,11 @@ private:
 	VkSurfaceFormatKHR swapchain_surface_format = { VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
 	PresentMode current_present_mode = PresentMode::SyncToVBlank;
 	PresentMode present_mode = PresentMode::SyncToVBlank;
+
+	VkPresentModeKHR active_present_mode = VK_PRESENT_MODE_FIFO_KHR;
+	std::vector<VkPresentModeKHR> present_mode_compat_group;
+	bool update_active_presentation_mode(PresentMode mode);
+
 	VkImageUsageFlags current_extra_usage = 0;
 	VkImageUsageFlags extra_usage = 0;
 	bool swapchain_is_suboptimal = false;

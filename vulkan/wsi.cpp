@@ -579,8 +579,9 @@ bool WSI::end_frame()
 		info.pResults = &result;
 
 		VkSwapchainPresentFenceInfoEXT present_fence = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT };
-
+		VkSwapchainPresentModeInfoEXT present_mode_info = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_EXT };
 		VkPresentIdKHR present_id_info = { VK_STRUCTURE_TYPE_PRESENT_ID_KHR };
+
 		if (device->get_device_features().present_id_features.presentId)
 		{
 			present_id_info.swapchainCount = 1;
@@ -590,6 +591,9 @@ bool WSI::end_frame()
 			info.pNext = &present_id_info;
 		}
 
+		// If we can, just promote the new presentation mode right away.
+		update_active_presentation_mode(present_mode);
+
 		if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
 		{
 			last_present_fence = device->request_legacy_fence();
@@ -597,6 +601,11 @@ bool WSI::end_frame()
 			present_fence.pFences = &last_present_fence->get_fence();
 			present_fence.pNext = const_cast<void *>(info.pNext);
 			info.pNext = &present_fence;
+
+			present_mode_info.swapchainCount = 1;
+			present_mode_info.pPresentModes = &active_present_mode;
+			present_mode_info.pNext = const_cast<void *>(info.pNext);
+			info.pNext = &present_mode_info;
 		}
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
@@ -696,13 +705,55 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 		platform->notify_current_swapchain_dimensions(swapchain_width, swapchain_height);
 }
 
+bool WSI::update_active_presentation_mode(PresentMode mode)
+{
+	if (current_present_mode == mode)
+		return true;
+
+	for (auto m : present_mode_compat_group)
+	{
+		bool match = false;
+		switch (m)
+		{
+		case VK_PRESENT_MODE_FIFO_KHR:
+			match = mode == PresentMode::SyncToVBlank;
+			break;
+
+		case VK_PRESENT_MODE_IMMEDIATE_KHR:
+			match = mode == PresentMode::UnlockedMaybeTear ||
+			        mode == PresentMode::UnlockedForceTearing;
+			break;
+
+		case VK_PRESENT_MODE_MAILBOX_KHR:
+			match = mode == PresentMode::UnlockedNoTearing ||
+			        mode == PresentMode::UnlockedMaybeTear;
+			break;
+
+		default:
+			break;
+		}
+
+		if (match)
+		{
+			active_present_mode = m;
+			current_present_mode = mode;
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void WSI::set_present_mode(PresentMode mode)
 {
 	present_mode = mode;
 	if (!has_acquired_swapchain_index && present_mode != current_present_mode)
 	{
-		current_present_mode = present_mode;
-		update_framebuffer(swapchain_width, swapchain_height);
+		if (!update_active_presentation_mode(present_mode))
+		{
+			current_present_mode = present_mode;
+			update_framebuffer(swapchain_width, swapchain_height);
+		}
 	}
 }
 
@@ -856,6 +907,7 @@ struct SurfaceInfo
 	VkSurfaceCapabilitiesKHR surface_capabilities;
 	std::vector<VkSurfaceFormatKHR> formats;
 	VkSwapchainPresentModesCreateInfoEXT present_modes_info;
+	std::vector<VkPresentModeKHR> present_mode_compat_group;
 	const void *swapchain_pnext;
 #ifdef _WIN32
 	VkSurfaceFullScreenExclusiveInfoEXT exclusive_info;
@@ -964,7 +1016,7 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		if (vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &num_present_modes, nullptr) != VK_SUCCESS)
 			return false;
 		present_modes.resize(num_present_modes);
-		if (vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface,&num_present_modes, present_modes.data()) != VK_SUCCESS)
+		if (vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &num_present_modes, present_modes.data()) != VK_SUCCESS)
 			return false;
 	}
 
@@ -995,30 +1047,93 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		}
 	}
 
-	info.present_mode = { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT };
-	info.present_mode.presentMode = swapchain_present_mode;
-
-	if (ext.supports_surface_maintenance1)
-	{
-		info.present_mode.pNext = const_cast<void *>(info.surface_info.pNext);
-		info.surface_info.pNext = &info.present_mode;
-	}
-
-	// Make sure we query surface caps tied to the present mode for correct results.
+	// First, query minImageCount without any present mode.
+	// Avoid opting for present mode compat that is pathological in nature,
+	// e.g. Xorg MAILBOX where minImageCount shoots up to 5 for stupid reasons.
+	uint32_t baseline_image_count;
 	if (ext.supports_surface_capabilities2)
 	{
 		VkSurfaceCapabilities2KHR surface_capabilities2 = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR };
 		if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
 			return false;
 		info.surface_capabilities = surface_capabilities2.surfaceCapabilities;
+		baseline_image_count = surface_capabilities2.surfaceCapabilities.minImageCount;
 	}
-	else if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &info.surface_capabilities) != VK_SUCCESS)
-		return false;
+	else
+	{
+		if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &info.surface_capabilities) != VK_SUCCESS)
+			return false;
+		baseline_image_count = info.surface_capabilities.minImageCount;
+	}
+
+	// Do not exceed this limit when selecting compatible present modes.
+	baseline_image_count = std::max(3u, baseline_image_count);
+
+	// Make sure we query surface caps tied to the present mode for correct results.
+	if (ext.supports_surface_maintenance1 && ext.supports_surface_capabilities2)
+	{
+		VkSurfaceCapabilities2KHR surface_capabilities2 = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR };
+		VkSurfacePresentModeCompatibilityEXT present_mode_caps =
+		    { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_COMPATIBILITY_EXT };
+		std::vector<VkPresentModeKHR> present_mode_compat_group;
+
+		if (ext.supports_surface_maintenance1)
+		{
+			present_mode_compat_group.resize(32);
+			present_mode_caps.presentModeCount = present_mode_compat_group.size();
+			present_mode_caps.pPresentModes = present_mode_compat_group.data();
+			surface_capabilities2.pNext = &present_mode_caps;
+		}
+
+		info.present_mode.pNext = const_cast<void *>(info.surface_info.pNext);
+		info.surface_info.pNext = &info.present_mode;
+		info.present_mode = { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT };
+		info.present_mode.presentMode = swapchain_present_mode;
+
+		if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
+			return false;
+
+		info.surface_capabilities.minImageCount = surface_capabilities2.surfaceCapabilities.minImageCount;
+		present_mode_compat_group.resize(present_mode_caps.presentModeCount);
+		info.present_mode_compat_group.reserve(present_mode_caps.presentModeCount);
+		info.present_mode_compat_group.push_back(swapchain_present_mode);
+
+		for (auto mode : present_mode_compat_group)
+		{
+			if (mode == swapchain_present_mode)
+				continue;
+
+			// Only allow sensible present modes that we know of.
+			if (mode != VK_PRESENT_MODE_FIFO_KHR &&
+			    mode != VK_PRESENT_MODE_IMMEDIATE_KHR &&
+			    mode != VK_PRESENT_MODE_MAILBOX_KHR)
+			{
+				continue;
+			}
+
+			info.present_mode.presentMode = mode;
+			if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
+				return false;
+
+			// Accept the present mode if it does not increment minImageCount beyond our expectation.
+			// When we use present groups, minImageCount == max(presentMode's minImageCount).
+			// Accept a bump to 3 images, since that's what we expect to use either way.
+			if (surface_capabilities2.surfaceCapabilities.minImageCount <=
+			    std::max(baseline_image_count, info.surface_capabilities.minImageCount))
+			{
+				info.present_mode_compat_group.push_back(mode);
+				info.surface_capabilities.minImageCount =
+					std::max(surface_capabilities2.surfaceCapabilities.minImageCount,
+					         info.surface_capabilities.minImageCount);
+			}
+		}
+	}
 
 	uint32_t format_count = 0;
 	if (ext.supports_surface_capabilities2)
 	{
-		if (vkGetPhysicalDeviceSurfaceFormats2KHR(device.get_physical_device(), &info.surface_info, &format_count,
+		if (vkGetPhysicalDeviceSurfaceFormats2KHR(device.get_physical_device(),
+		                                          &info.surface_info, &format_count,
 		                                          nullptr) != VK_SUCCESS)
 		{
 			return false;
@@ -1048,15 +1163,17 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 			return false;
 	}
 
-	// A single entry group opts into new behavior for minImageCount.
+	// Allow for seamless toggle between presentation modes.
 	if (ext.swapchain_maintenance1_features.swapchainMaintenance1)
 	{
 		info.present_modes_info = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_EXT };
 		info.present_modes_info.pNext = const_cast<void *>(info.swapchain_pnext);
-		info.present_modes_info.presentModeCount = 1;
-		info.present_modes_info.pPresentModes = &info.present_mode.presentMode;
+		info.present_modes_info.presentModeCount = info.present_mode_compat_group.size();
+		info.present_modes_info.pPresentModes = info.present_mode_compat_group.data();
 		info.swapchain_pnext = &info.present_modes_info;
 	}
+
+	info.present_mode.presentMode = swapchain_present_mode;
 
 	return true;
 }
@@ -1259,6 +1376,9 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	has_acquired_swapchain_index = false;
 	present_id = 0;
 	present_last_id = 0;
+
+	active_present_mode = info.presentMode;
+	present_mode_compat_group = std::move(surface_info.present_mode_compat_group);
 
 #ifdef _WIN32
 	if (surface_info.exclusive_info.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT)

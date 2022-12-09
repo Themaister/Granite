@@ -69,7 +69,7 @@ private:
 		VK_ASSERT(value > 0);
 	}
 
-	VkFence get_fence() const;
+	const VkFence &get_fence() const;
 
 	Device *device;
 	VkFence fence;

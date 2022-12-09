@@ -1108,7 +1108,8 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	graph.reset();
 
 	// Reclaims memory released by graph.reset(), before we bake and start allocating more.
-	swap.get_device().wait_idle();
+	//swap.get_device().wait_idle();
+	swap.get_device().next_frame_context();
 
 	graph.set_device(&swap.get_device());
 

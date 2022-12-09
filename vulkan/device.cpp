@@ -2126,7 +2126,6 @@ void Device::init_swapchain(const std::vector<VkImage> &swapchain_images, unsign
 {
 	DRAIN_FRAME_LOCK();
 	wsi.swapchain.clear();
-	wait_idle_nolock();
 
 	auto info = ImageCreateInfo::render_target(width, height, format);
 	info.usage = usage;

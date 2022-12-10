@@ -21,6 +21,7 @@
  */
 
 #include "device.hpp"
+#include "device_fossilize.hpp"
 #include "format.hpp"
 #include "timeline_trace_file.hpp"
 #include "type_to_string.hpp"
@@ -98,6 +99,7 @@ Device::Device()
 {
 #ifdef GRANITE_VULKAN_MT
 	cookie.store(0);
+	read_only_cache_lock_count.store(0);
 #endif
 }
 
@@ -2441,18 +2443,22 @@ void Device::wait_idle_nolock()
 void Device::promote_read_write_caches_to_read_only()
 {
 #ifdef GRANITE_VULKAN_MT
-	pipeline_layouts.move_to_read_only();
-	descriptor_set_allocators.move_to_read_only();
-	shaders.move_to_read_only();
-	programs.move_to_read_only();
-	for (auto &program : programs.get_read_only())
-		program.promote_read_write_to_read_only();
-	render_passes.move_to_read_only();
-	immutable_samplers.move_to_read_only();
-	immutable_ycbcr_conversions.move_to_read_only();
+	// If Fossilize is spinning the background we shouldn't touch anything.
+	if (read_only_cache_lock_count.load(std::memory_order_acquire) == 0)
+	{
+		pipeline_layouts.move_to_read_only();
+		descriptor_set_allocators.move_to_read_only();
+		shaders.move_to_read_only();
+		programs.move_to_read_only();
+		for (auto &program : programs.get_read_only())
+			program.promote_read_write_to_read_only();
+		render_passes.move_to_read_only();
+		immutable_samplers.move_to_read_only();
+		immutable_ycbcr_conversions.move_to_read_only();
 #ifdef GRANITE_VULKAN_FILESYSTEM
-	shader_manager.promote_read_write_caches_to_read_only();
+		shader_manager.promote_read_write_caches_to_read_only();
 #endif
+	}
 #endif
 }
 

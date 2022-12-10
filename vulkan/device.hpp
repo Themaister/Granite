@@ -688,6 +688,9 @@ private:
 
 	const ImmutableSampler *samplers[static_cast<unsigned>(StockSampler::Count)] = {};
 
+#ifdef GRANITE_VULKAN_MT
+	std::atomic_uint32_t read_only_cache_lock_count;
+#endif
 	VulkanCache<PipelineLayout> pipeline_layouts;
 	VulkanCache<DescriptorSetAllocator> descriptor_set_allocators;
 	VulkanCache<RenderPass> render_passes;
@@ -793,7 +796,6 @@ private:
 #endif
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	Fossilize::StateRecorder state_recorder;
 	bool enqueue_create_sampler(Fossilize::Hash hash, const VkSamplerCreateInfo *create_info, VkSampler *sampler) override;
 	bool enqueue_create_descriptor_set_layout(Fossilize::Hash hash, const VkDescriptorSetLayoutCreateInfo *create_info, VkDescriptorSetLayout *layout) override;
 	bool enqueue_create_pipeline_layout(Fossilize::Hash hash, const VkPipelineLayoutCreateInfo *create_info, VkPipelineLayout *layout) override;
@@ -803,9 +805,10 @@ private:
 	bool enqueue_create_compute_pipeline(Fossilize::Hash hash, const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline) override;
 	bool enqueue_create_graphics_pipeline(Fossilize::Hash hash, const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline) override;
 	bool enqueue_create_raytracing_pipeline(Fossilize::Hash hash, const VkRayTracingPipelineCreateInfoKHR *create_info, VkPipeline *pipeline) override;
-	void notify_replayed_resources_for_type() override;
-	VkPipeline fossilize_create_graphics_pipeline(Fossilize::Hash hash, VkGraphicsPipelineCreateInfo &info);
-	VkPipeline fossilize_create_compute_pipeline(Fossilize::Hash hash, VkComputePipelineCreateInfo &info);
+	bool fossilize_replay_graphics_pipeline(Fossilize::Hash hash, VkGraphicsPipelineCreateInfo &info);
+	bool fossilize_replay_compute_pipeline(Fossilize::Hash hash, VkComputePipelineCreateInfo &info);
+
+	void replay_tag_simple(Fossilize::ResourceTag tag);
 
 	void register_graphics_pipeline(Fossilize::Hash hash, const VkGraphicsPipelineCreateInfo &info);
 	void register_compute_pipeline(Fossilize::Hash hash, const VkComputePipelineCreateInfo &info);
@@ -815,16 +818,14 @@ private:
 	void register_shader_module(VkShaderModule module, Fossilize::Hash hash, const VkShaderModuleCreateInfo &info);
 	//void register_sampler(VkSampler sampler, Fossilize::Hash hash, const VkSamplerCreateInfo &info);
 
-	struct
-	{
-		std::unordered_map<VkShaderModule, Shader *> shader_map;
-		std::unordered_map<VkRenderPass, RenderPass *> render_pass_map;
-		const Fossilize::FeatureFilter *feature_filter = nullptr;
-#ifdef GRANITE_VULKAN_MT
-		// Need to forward-declare the type, avoid the ref-counted wrapper.
-		Granite::TaskGroup *pipeline_group = nullptr;
-#endif
-	} replayer_state;
+	struct RecorderState;
+	std::unique_ptr<RecorderState> recorder_state;
+
+	struct ReplayerState;
+	std::unique_ptr<ReplayerState> replayer_state;
+
+	void promote_write_cache_to_readonly() const;
+	void promote_readonly_db_from_assets() const;
 
 	void init_pipeline_state(const Fossilize::FeatureFilter &filter);
 	void flush_pipeline_state();

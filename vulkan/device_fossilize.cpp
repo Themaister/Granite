@@ -431,6 +431,7 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 		promote_write_cache_to_readonly();
 		promote_readonly_db_from_assets();
 	});
+	cache_maintenance_task->set_desc("foz-cache-maintenance");
 
 	auto recorder_kick_task = group->create_task([this]() {
 		// Kick off recorder thread.
@@ -442,6 +443,7 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 			recorder_state->recorder.init_recording_thread(recorder_state->db.get());
 		}
 	});
+	recorder_kick_task->set_desc("foz-recorder-kick");
 
 	group->add_dependency(*recorder_kick_task, *cache_maintenance_task);
 
@@ -488,10 +490,12 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 		replayer_state->db->get_hash_list_for_resource_tag(
 			Fossilize::RESOURCE_COMPUTE_PIPELINE, &count, replayer_state->compute_hashes.data());
 	});
+	prepare_task->set_desc("foz-prepare");
 
 	group->add_dependency(*prepare_task, *cache_maintenance_task);
 
 	auto parse_modules_task = group->create_task();
+	parse_modules_task->set_desc("foz-parse-modules");
 	group->add_dependency(*parse_modules_task, *prepare_task);
 
 	for (unsigned i = 0; i < NumTasks; i++)
@@ -547,6 +551,7 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 				LOGW("Failed to parse graphics pipeline.\n");
 		}
 	});
+	parse_graphics_task->set_desc("foz-parse-graphics");
 	group->add_dependency(*parse_graphics_task, *prepare_task);
 
 	auto parse_compute_task = group->create_task([this]() {
@@ -572,10 +577,13 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 				LOGW("Failed to parse compute pipeline.\n");
 		}
 	});
+	parse_compute_task->set_desc("foz-parse-compute");
 	group->add_dependency(*parse_compute_task, *prepare_task);
 
 	auto compile_graphics_task = group->create_task();
 	auto compile_compute_task = group->create_task();
+	compile_graphics_task->set_desc("foz-compile-graphics");
+	compile_compute_task->set_desc("foz-compile-compute");
 	group->add_dependency(*compile_graphics_task, *parse_modules_task);
 	group->add_dependency(*compile_graphics_task, *parse_graphics_task);
 	group->add_dependency(*compile_compute_task, *parse_modules_task);
@@ -622,6 +630,7 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 		replayer_state->module_hashes.clear();
 		replayer_state->db.reset();
 	});
+	replayer_state->complete->set_desc("foz-replay-complete");
 	group->add_dependency(*replayer_state->complete, *compile_graphics_task);
 	group->add_dependency(*replayer_state->complete, *compile_compute_task);
 	group->add_dependency(*replayer_state->complete, *recorder_kick_task);

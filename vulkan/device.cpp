@@ -896,6 +896,9 @@ void Device::set_context(const Context &context)
 			queue_data[i].performance_query_pool.init_device(this, queue_info.family_indices[i]);
 	}
 
+	if (system_handles.timeline_trace_file)
+		init_calibrated_timestamps();
+
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	init_shader_manager_cache();
 #endif
@@ -903,9 +906,6 @@ void Device::set_context(const Context &context)
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	init_pipeline_state(context.get_feature_filter());
 #endif
-
-	if (system_handles.timeline_trace_file)
-		init_calibrated_timestamps();
 }
 
 void Device::init_bindless()

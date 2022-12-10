@@ -1347,7 +1347,9 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 
 	animation_system->animate(composer, frame_time, elapsed_time);
 	scene.update_transform_tree(composer);
-	Threaded::scene_update_cached_transforms(scene, composer, 64);
+
+	constexpr unsigned NumTasks = 8;
+	Threaded::scene_update_cached_transforms(scene, composer, NumTasks);
 
 	// Perform updates which depend on node transforms.
 	auto &updates = composer.begin_pipeline_stage();

@@ -242,7 +242,21 @@ void ShaderTemplate::update_variant_cache(const ShaderTemplateVariant &variant)
 
 	ResourceLayout layout;
 	Shader::reflect_resource_layout(layout, variant.spirv.data(), variant.spirv.size() * sizeof(uint32_t));
-	cache.variant_to_shader.emplace_replace(variant.hash, source_hash, shader_hash);
+
+#ifndef GRANITE_SHIPPING
+	auto *var_to_shader = cache.variant_to_shader.find(variant.hash);
+	if (var_to_shader)
+	{
+		// This is only updated from inotify callbacks, so threading shouldn't really be a concern.
+		var_to_shader->source_hash = source_hash;
+		var_to_shader->shader_hash = shader_hash;
+	}
+	else
+#endif
+	{
+		cache.variant_to_shader.emplace_yield(variant.hash, source_hash, shader_hash);
+	}
+
 	cache.shader_to_layout.emplace_yield(shader_hash, layout);
 }
 
@@ -573,8 +587,13 @@ void ShaderManager::register_shader_from_variant_hash(Hash variant_hash,
                                                       Hash shader_hash,
                                                       const ResourceLayout &layout)
 {
-	meta_cache.variant_to_shader.emplace_replace(variant_hash, source_hash, shader_hash);
-	meta_cache.shader_to_layout.emplace_replace(shader_hash, layout);
+	auto *var_to_shader = meta_cache.variant_to_shader.emplace_yield(variant_hash, source_hash, shader_hash);
+	if (var_to_shader->source_hash != source_hash || var_to_shader->shader_hash != shader_hash)
+	{
+		// Unsure if this function is even used, but I suppose we'll figure out ...
+		LOGW("Mismatch in register_shader_from_variant_hash.\n");
+	}
+	meta_cache.shader_to_layout.emplace_yield(shader_hash, layout);
 }
 
 bool ShaderManager::get_shader_hash_by_variant_hash(Hash variant_hash, Hash &shader_hash) const
@@ -612,6 +631,8 @@ void ShaderManager::promote_read_write_caches_to_read_only()
 #ifdef GRANITE_VULKAN_MT
 	shaders.move_to_read_only();
 	programs.move_to_read_only();
+	meta_cache.variant_to_shader.move_to_read_only();
+	meta_cache.shader_to_layout.move_to_read_only();
 #endif
 }
 
@@ -724,8 +745,8 @@ bool ShaderManager::load_shader_cache(const std::string &path)
 		Util::Hash spirv_hash = value["spirvHash"].GetUint64();
 		Util::Hash source_hash = value["sourceHash"].GetUint64();
 		ResourceLayout layout = parse_resource_layout(value["layout"]);
-		meta_cache.variant_to_shader.emplace_replace(variant_hash, source_hash, spirv_hash);
-		meta_cache.shader_to_layout.emplace_replace(spirv_hash, layout);
+		meta_cache.variant_to_shader.emplace_yield(variant_hash, source_hash, spirv_hash);
+		meta_cache.shader_to_layout.emplace_yield(spirv_hash, layout);
 	}
 
 	LOGI("Loaded shader manager cache from %s.\n", path.c_str());
@@ -745,7 +766,14 @@ bool ShaderManager::save_shader_cache(const std::string &path)
 
 	Value maps(kArrayType);
 
-	for (auto &entry : meta_cache.variant_to_shader)
+#ifdef GRANITE_VULKAN_MT
+	meta_cache.variant_to_shader.move_to_read_only();
+	auto &var_to_shader = meta_cache.variant_to_shader.get_read_only();
+#else
+	auto &var_to_shader = meta_cache.variant_to_shader;
+#endif
+
+	for (auto &entry : var_to_shader)
 	{
 		Value map_entry(kObjectType);
 		map_entry.AddMember("variant", entry.get_hash(), allocator);
@@ -770,15 +798,14 @@ bool ShaderManager::save_shader_cache(const std::string &path)
 	PrettyWriter<StringBuffer> writer(buffer);
 	doc.Accept(writer);
 
-	auto file = device->get_system_handles().filesystem->open_transactional_mapping(path, buffer.GetSize());
-	if (!file)
+	if (!device->get_system_handles().filesystem->write_buffer_to_file(path, buffer.GetString(), buffer.GetSize()))
 	{
 		LOGE("Failed to open %s for writing.\n", path.c_str());
 		return false;
 	}
+	else
+		LOGI("Saved shader manager cache to %s.\n", path.c_str());
 
-	memcpy(file->mutable_data(), buffer.GetString(), buffer.GetSize());
-	LOGI("Saved shader manager cache to %s.\n", path.c_str());
 	return true;
 }
 }

@@ -53,8 +53,8 @@ struct PrecomputedMeta : Util::IntrusiveHashMapEnabled<PrecomputedMeta>
 	Util::Hash source_hash;
 	Util::Hash shader_hash;
 };
-using PrecomputedShaderCache = VulkanCacheReadWrite<PrecomputedMeta>;
-using ReflectionCache = VulkanCacheReadWrite<Util::IntrusivePODWrapper<ResourceLayout>>;
+using PrecomputedShaderCache = VulkanCache<PrecomputedMeta>;
+using ReflectionCache = VulkanCache<Util::IntrusivePODWrapper<ResourceLayout>>;
 
 struct MetaCache
 {

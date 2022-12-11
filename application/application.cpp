@@ -39,23 +39,52 @@ Application::~Application()
 	auto *group = GRANITE_THREAD_GROUP();
 	if (group)
 		group->wait_idle();
+
+	teardown_wsi();
 }
 
-bool Application::init_wsi(std::unique_ptr<WSIPlatform> new_platform)
+bool Application::init_platform(std::unique_ptr<WSIPlatform> new_platform)
 {
 	platform = std::move(new_platform);
 	application_wsi.set_platform(platform.get());
+	return true;
+}
 
-	Context::SystemHandles system_handles;
-	system_handles.filesystem = GRANITE_FILESYSTEM();
-	system_handles.thread_group = GRANITE_THREAD_GROUP();
-	system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
+void Application::teardown_wsi()
+{
+	GRANITE_EVENT_MANAGER()->dequeue_all_latched(DevicePipelineReadyEvent::get_type_id());
+	GRANITE_EVENT_MANAGER()->dequeue_all_latched(DeviceShaderModuleReadyEvent::get_type_id());
+	application_wsi.teardown();
+	ready_modules = false;
+	ready_pipelines = false;
+}
 
-	if (!platform->has_external_swapchain() &&
-	    !application_wsi.init_simple(system_handles.thread_group->get_num_threads() + 1, system_handles))
+bool Application::init_wsi(Vulkan::ContextHandle context)
+{
+	if (context)
 	{
-		return false;
+		if (!application_wsi.init_from_existing_context(std::move(context)))
+			return false;
 	}
+	else
+	{
+		Context::SystemHandles system_handles;
+		system_handles.filesystem = GRANITE_FILESYSTEM();
+		system_handles.thread_group = GRANITE_THREAD_GROUP();
+		system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
+
+		if (!application_wsi.init_context_from_platform(
+				system_handles.thread_group->get_num_threads() + 1,
+				system_handles))
+		{
+			return false;
+		}
+	}
+
+	if (!application_wsi.init_device())
+		return false;
+	if (!platform->has_external_swapchain() && !application_wsi.init_surface_swapchain())
+		return false;
 
 	return true;
 }
@@ -102,10 +131,59 @@ bool Application::poll()
 	return true;
 }
 
+void Application::check_initialization_progress()
+{
+	auto &device = get_wsi().get_device();
+
+	if (!ready_modules)
+	{
+		if (device.query_initialization_progress(Device::InitializationStage::CacheMaintenance) >= 100 &&
+		    device.query_initialization_progress(Device::InitializationStage::ShaderModules) >= 100)
+		{
+			GRANITE_EVENT_MANAGER()->enqueue_latched<DeviceShaderModuleReadyEvent>(&device, &device.get_shader_manager());
+			ready_modules = true;
+		}
+	}
+
+	if (!ready_pipelines)
+	{
+		if (device.query_initialization_progress(Device::InitializationStage::Pipelines) >= 100)
+		{
+			GRANITE_EVENT_MANAGER()->enqueue_latched<DevicePipelineReadyEvent>(&device, &device.get_shader_manager());
+			ready_pipelines = true;
+		}
+	}
+}
+
 void Application::run_frame()
 {
+	check_initialization_progress();
+
 	application_wsi.begin_frame();
-	render_frame(application_wsi.get_smooth_frame_time(), application_wsi.get_smooth_elapsed_time());
+
+	double smooth_frame_time = application_wsi.get_smooth_frame_time();
+	double smooth_elapsed = application_wsi.get_smooth_elapsed_time();
+
+	if (!ready_modules)
+		render_early_loading(smooth_frame_time, smooth_elapsed);
+	else if (!ready_pipelines)
+		render_loading(smooth_frame_time, smooth_elapsed);
+	else
+		render_frame(smooth_frame_time, smooth_elapsed);
+
 	application_wsi.end_frame();
+	post_frame();
+}
+
+void Application::render_early_loading(double, double)
+{
+}
+
+void Application::render_loading(double, double)
+{
+}
+
+void Application::post_frame()
+{
 }
 }

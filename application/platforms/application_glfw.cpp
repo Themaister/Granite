@@ -668,7 +668,7 @@ int application_main(Application *(*create_application)(int, char **), int argc,
 		if (!platform->init(app->get_name(), app->get_default_width(), app->get_default_height()))
 			return 1;
 
-		if (!app->init_wsi(std::move(platform)))
+		if (!app->init_platform(std::move(platform)) || !app->init_wsi())
 			return 1;
 
 		int ret = platform_handle->run_async_loop(app.get());

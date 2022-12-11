@@ -1097,7 +1097,7 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 	shadowpass.set_render_pass_interface(std::move(handle));
 }
 
-void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent &swap)
+void SceneViewerApplication::bake_render_graph(const SwapchainParameterEvent &swap)
 {
 	auto physical_buffers = graph.consume_physical_buffers();
 
@@ -1242,8 +1242,14 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	need_shadow_map_update = true;
 }
 
+void SceneViewerApplication::on_swapchain_changed(const Vulkan::SwapchainParameterEvent &e)
+{
+	pending_swapchain = &e;
+}
+
 void SceneViewerApplication::on_swapchain_destroyed(const SwapchainParameterEvent &)
 {
+	pending_swapchain = nullptr;
 }
 
 void SceneViewerApplication::update_shadow_scene_aabb()
@@ -1457,6 +1463,12 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 
 void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
 {
+	if (pending_swapchain)
+	{
+		bake_render_graph(*pending_swapchain);
+		pending_swapchain = nullptr;
+	}
+
 	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
 	TaskComposer composer(*GRANITE_THREAD_GROUP());
 

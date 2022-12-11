@@ -158,8 +158,8 @@ private:
 	unsigned max_point_lights = MaxLights;
 	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled);
 	void build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd);
-	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
+	void on_pipeline_created(const Vulkan::DevicePipelineReadyEvent &e);
+	void on_pipeline_destroyed(const Vulkan::DevicePipelineReadyEvent &e);
 
 	struct
 	{

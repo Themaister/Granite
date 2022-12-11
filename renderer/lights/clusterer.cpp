@@ -39,7 +39,7 @@ namespace Granite
 {
 LightClusterer::LightClusterer()
 {
-	EVENT_MANAGER_REGISTER_LATCH(LightClusterer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	EVENT_MANAGER_REGISTER_LATCH(LightClusterer, on_pipeline_created, on_pipeline_destroyed, DevicePipelineReadyEvent);
 	for (unsigned i = 0; i < MaxLights; i++)
 	{
 		legacy.points.index_remap[i] = i;
@@ -53,7 +53,7 @@ LightClusterer::LightClusterer()
 	bindless.allocator.set_bindless_resource_type(BindlessResourceType::ImageFP);
 }
 
-void LightClusterer::on_device_created(const Vulkan::DeviceCreatedEvent &e)
+void LightClusterer::on_pipeline_created(const Vulkan::DevicePipelineReadyEvent &e)
 {
 	auto &shader_manager = e.get_device().get_shader_manager();
 	legacy.program = shader_manager.register_compute("builtin://shaders/lights/clustering.comp");
@@ -61,7 +61,7 @@ void LightClusterer::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 	legacy.cull_variant = legacy.program->register_variant({});
 }
 
-void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
+void LightClusterer::on_pipeline_destroyed(const Vulkan::DevicePipelineReadyEvent &)
 {
 	legacy.program = nullptr;
 	legacy.inherit_variant = nullptr;

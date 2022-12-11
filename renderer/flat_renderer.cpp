@@ -34,7 +34,7 @@ namespace Granite
 FlatRenderer::FlatRenderer(const ShaderSuiteResolver *resolver_)
 	: resolver(resolver_)
 {
-	EVENT_MANAGER_REGISTER_LATCH(FlatRenderer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	EVENT_MANAGER_REGISTER_LATCH(FlatRenderer, on_module_created, on_module_destroyed, DeviceShaderModuleReadyEvent);
 	reset_scissor();
 }
 
@@ -55,7 +55,7 @@ void FlatRenderer::pop_scissor()
 	scissor_stack.pop_back();
 }
 
-void FlatRenderer::on_device_created(const DeviceCreatedEvent &created)
+void FlatRenderer::on_module_created(const DeviceShaderModuleReadyEvent &created)
 {
 	auto &dev = created.get_device();
 
@@ -71,7 +71,7 @@ void FlatRenderer::on_device_created(const DeviceCreatedEvent &created)
 	device = &dev;
 }
 
-void FlatRenderer::on_device_destroyed(const DeviceCreatedEvent &)
+void FlatRenderer::on_module_destroyed(const DeviceShaderModuleReadyEvent &)
 {
 }
 

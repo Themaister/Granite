@@ -406,6 +406,8 @@ public:
 	const Sampler &get_stock_sampler(StockSampler sampler) const;
 
 #ifdef GRANITE_VULKAN_FILESYSTEM
+	// To obtain ShaderManager, ShaderModules must be observed to be complete
+	// in query_initialization_progress().
 	ShaderManager &get_shader_manager();
 	TextureManager &get_texture_manager();
 #endif

@@ -116,6 +116,9 @@ protected:
 
 	std::string get_name() override;
 
+	void bake_render_graph(const Vulkan::SwapchainParameterEvent &swap);
+	const Vulkan::SwapchainParameterEvent *pending_swapchain = nullptr;
+
 private:
 	void read_config(const std::string &path);
 	void read_quirks(const std::string &path);

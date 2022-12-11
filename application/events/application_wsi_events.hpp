@@ -28,6 +28,7 @@
 namespace Vulkan
 {
 class Device;
+class ShaderManager;
 
 class DeviceCreatedEvent : public Granite::Event
 {
@@ -45,6 +46,54 @@ public:
 
 private:
 	Device &device;
+};
+
+class DeviceShaderModuleReadyEvent : public Granite::Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(DeviceShaderModuleReadyEvent)
+
+	explicit DeviceShaderModuleReadyEvent(Device *device_, ShaderManager *manager_)
+		: device(*device_), manager(*manager_)
+	{}
+
+	Device &get_device() const
+	{
+		return device;
+	}
+
+	ShaderManager &get_shader_manager() const
+	{
+		return manager;
+	}
+
+private:
+	Device &device;
+	ShaderManager &manager;
+};
+
+class DevicePipelineReadyEvent : public Granite::Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(DevicePipelineReadyEvent)
+
+	explicit DevicePipelineReadyEvent(Device *device_, ShaderManager *manager_)
+		: device(*device_), manager(*manager_)
+	{}
+
+	Device &get_device() const
+	{
+		return device;
+	}
+
+	ShaderManager &get_shader_manager() const
+	{
+		return manager;
+	}
+
+private:
+	Device &device;
+	ShaderManager &manager;
 };
 
 class SwapchainParameterEvent : public Granite::Event
@@ -111,7 +160,6 @@ private:
 	VkColorSpaceKHR color_space;
 	VkSurfaceTransformFlagBitsKHR transform;
 };
-
 
 class SwapchainIndexEvent : public Granite::Event
 {

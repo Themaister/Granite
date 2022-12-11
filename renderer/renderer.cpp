@@ -265,7 +265,7 @@ void RendererSuite::register_variants_from_cache()
 Renderer::Renderer(RendererType type_, const ShaderSuiteResolver *resolver_)
 	: type(type_), resolver(resolver_)
 {
-	EVENT_MANAGER_REGISTER_LATCH(Renderer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	EVENT_MANAGER_REGISTER_LATCH(Renderer, on_pipeline_created, on_pipeline_destroyed, DevicePipelineReadyEvent);
 
 	if (type == RendererType::GeneralDeferred || type == RendererType::GeneralForward)
 		set_mesh_renderer_options(SHADOW_CASCADE_ENABLE_BIT | SHADOW_ENABLE_BIT | FOG_ENABLE_BIT);
@@ -507,7 +507,7 @@ void Renderer::setup_shader_suite(Device &device_, RendererType renderer_type)
 		res->init_shader_suite(device_, suite[i], renderer_type, static_cast<RenderableType>(i));
 }
 
-void Renderer::on_device_created(const DeviceCreatedEvent &created)
+void Renderer::on_pipeline_created(const DevicePipelineReadyEvent &created)
 {
 	device = &created.get_device();
 	setup_shader_suite(*device, type);
@@ -516,7 +516,7 @@ void Renderer::on_device_created(const DeviceCreatedEvent &created)
 		s.bake_base_defines();
 }
 
-void Renderer::on_device_destroyed(const DeviceCreatedEvent &)
+void Renderer::on_pipeline_destroyed(const DevicePipelineReadyEvent &)
 {
 }
 

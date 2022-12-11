@@ -5060,6 +5060,7 @@ TextureManager &Device::get_texture_manager()
 
 ShaderManager &Device::get_shader_manager()
 {
+	VK_ASSERT(query_initialization_progress(InitializationStage::ShaderModules) >= 100);
 	return shader_manager;
 }
 #endif

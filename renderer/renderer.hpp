@@ -143,9 +143,8 @@ protected:
 	mutable ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
 private:
-	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
-
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
+	void on_pipeline_created(const Vulkan::DevicePipelineReadyEvent &e);
+	void on_pipeline_destroyed(const Vulkan::DevicePipelineReadyEvent &e);
 
 	Vulkan::Device *device = nullptr;
 

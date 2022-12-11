@@ -177,10 +177,58 @@ void Application::run_frame()
 
 void Application::render_early_loading(double, double)
 {
+	auto &device = application_wsi.get_device();
+	auto cmd = device.request_command_buffer();
+	auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
+	rp.clear_color[0].float32[0] = 0.01f;
+	rp.clear_color[0].float32[2] = 0.02f;
+	rp.clear_color[0].float32[3] = 0.03f;
+	cmd->begin_render_pass(rp);
+	auto vp = cmd->get_viewport();
+
+	VkClearRect rect = {};
+	rect.layerCount = 1;
+	rect.rect.extent = {
+		uint32_t(vp.width * 0.01f * float(device.query_initialization_progress(Device::InitializationStage::ShaderModules))),
+		uint32_t(vp.height),
+	};
+
+	VkClearValue value = {};
+	value.color.float32[0] = 0.08f;
+	value.color.float32[1] = 0.01f;
+	value.color.float32[2] = 0.01f;
+	cmd->clear_quad(0, rect, value);
+
+	cmd->end_render_pass();
+	device.submit(cmd);
 }
 
 void Application::render_loading(double, double)
 {
+	auto &device = application_wsi.get_device();
+	auto cmd = device.request_command_buffer();
+	auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
+	rp.clear_color[0].float32[0] = 0.01f;
+	rp.clear_color[0].float32[2] = 0.02f;
+	rp.clear_color[0].float32[3] = 0.03f;
+	cmd->begin_render_pass(rp);
+	auto vp = cmd->get_viewport();
+
+	VkClearRect rect = {};
+	rect.layerCount = 1;
+	rect.rect.extent = {
+		uint32_t(vp.width * 0.01f * float(device.query_initialization_progress(Device::InitializationStage::Pipelines))),
+		uint32_t(vp.height),
+	};
+
+	VkClearValue value = {};
+	value.color.float32[0] = 0.01f;
+	value.color.float32[1] = 0.08f;
+	value.color.float32[2] = 0.01f;
+	cmd->clear_quad(0, rect, value);
+
+	cmd->end_render_pass();
+	device.submit(cmd);
 }
 
 void Application::post_frame()

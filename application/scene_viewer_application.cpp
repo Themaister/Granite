@@ -1461,6 +1461,12 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 	graph.enqueue_render_passes(device, composer);
 }
 
+void SceneViewerApplication::post_frame()
+{
+	scene_loader.get_scene().destroy_queued_entities();
+	get_wsi().get_device().promote_read_write_caches_to_read_only();
+}
+
 void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
 {
 	if (pending_swapchain)
@@ -1518,8 +1524,6 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 
 	if (e)
 		file->end_event(e);
-
-	get_wsi().get_device().promote_read_write_caches_to_read_only();
 }
 
 std::string SceneViewerApplication::get_name()

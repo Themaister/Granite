@@ -66,6 +66,7 @@ public:
 protected:
 	void update_scene(TaskComposer &composer, double frame_time, double elapsed_time);
 	void render_scene(TaskComposer &composer);
+	void post_frame() override;
 
 	RenderContext context;
 	RenderContext depth_context;

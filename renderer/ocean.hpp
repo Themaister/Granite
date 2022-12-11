@@ -111,8 +111,8 @@ public:
 private:
 	OceanConfig config;
 
-	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
+	void on_pipeline_created(const Vulkan::DevicePipelineReadyEvent &e);
+	void on_pipeline_destroyed(const Vulkan::DevicePipelineReadyEvent &);
 	FFT height_fft;
 	FFT normal_fft;
 	FFT displacement_fft;

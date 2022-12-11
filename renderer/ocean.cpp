@@ -66,7 +66,7 @@ Ocean::Ocean(const OceanConfig &config_, NodeHandle node_)
 		}
 	}
 
-	EVENT_MANAGER_REGISTER_LATCH(Ocean, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
+	EVENT_MANAGER_REGISTER_LATCH(Ocean, on_pipeline_created, on_pipeline_destroyed, Vulkan::DevicePipelineReadyEvent);
 }
 
 void Ocean::set_frequency_band_amplitude(unsigned band, float amplitude)
@@ -105,7 +105,7 @@ Ocean::Handles Ocean::add_to_scene(Scene &scene, const OceanConfig &config, Node
 static constexpr double AnimationPeriod = 256.0;
 static constexpr double AnimationPeriodScaled = AnimationPeriod / (2.0 * muglm::pi<double>());
 
-void Ocean::on_device_created(const Vulkan::DeviceCreatedEvent &e)
+void Ocean::on_pipeline_created(const Vulkan::DevicePipelineReadyEvent &e)
 {
 	FFT::Options options = {};
 	options.data_type = FFT::DataType::FP16;
@@ -132,7 +132,7 @@ void Ocean::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 	init_distributions(e.get_device());
 }
 
-void Ocean::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
+void Ocean::on_pipeline_destroyed(const Vulkan::DevicePipelineReadyEvent &)
 {
 	vertex_mip_views.clear();
 	fragment_mip_views.clear();

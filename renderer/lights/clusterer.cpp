@@ -261,11 +261,6 @@ const Vulkan::ImageView *LightClusterer::get_cluster_image() const
 	return enable_clustering ? legacy.target : nullptr;
 }
 
-const Vulkan::Buffer *LightClusterer::get_cluster_list_buffer() const
-{
-	return enable_clustering && legacy.cluster_list ? legacy.cluster_list.get() : nullptr;
-}
-
 const Vulkan::ImageView *LightClusterer::get_spot_light_shadows() const
 {
 	return (enable_shadows && legacy.spots.atlas) ? &legacy.spots.atlas->get_view() : nullptr;

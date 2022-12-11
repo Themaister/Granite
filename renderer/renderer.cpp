@@ -418,8 +418,6 @@ std::vector<std::pair<std::string, int>> Renderer::build_defines_from_renderer_o
 		global_defines.emplace_back("POSITIONAL_LIGHTS", 1);
 	if (flags & POSITIONAL_LIGHT_SHADOW_ENABLE_BIT)
 		global_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
-	if (flags & POSITIONAL_LIGHT_CLUSTER_LIST_BIT)
-		global_defines.emplace_back("CLUSTER_LIST", 1);
 	if (flags & POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT)
 		global_defines.emplace_back("CLUSTERER_BINDLESS", 1);
 	if (flags & POSITIONAL_DECALS_BIT)
@@ -478,8 +476,6 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 				flags |= POSITIONAL_LIGHT_SHADOW_VSM_BIT;
 		}
 
-		if (lighting.cluster->get_cluster_list_buffer())
-			flags |= POSITIONAL_LIGHT_CLUSTER_LIST_BIT;
 		if (lighting.cluster->clusterer_is_bindless())
 		{
 			flags |= POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT;
@@ -559,9 +555,6 @@ static void set_cluster_parameters_legacy(Vulkan::CommandBuffer &cmd, const Ligh
 		memcpy(params.point_shadow, cluster.get_active_point_light_shadow_transform(),
 		       cluster.get_active_point_light_count() * sizeof(PointTransform));
 	}
-
-	if (cluster.get_cluster_list_buffer())
-		cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_LIST_LEGACY, *cluster.get_cluster_list_buffer());
 }
 
 static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
@@ -1008,8 +1001,6 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 					cluster_defines.emplace_back("AMBIENT_OCCLUSION", 1);
 			}
 		}
-		else if (light.cluster->get_cluster_list_buffer())
-			cluster_defines.emplace_back("CLUSTER_LIST", 1);
 
 		Renderer::add_subgroup_defines(device, cluster_defines, VK_SHADER_STAGE_FRAGMENT_BIT);
 

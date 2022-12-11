@@ -61,7 +61,6 @@ public:
 
 	// Legacy clustering.
 	const Vulkan::ImageView *get_cluster_image() const;
-	const Vulkan::Buffer *get_cluster_list_buffer() const;
 	const Vulkan::ImageView *get_spot_light_shadows() const;
 	const Vulkan::ImageView *get_point_light_shadows() const;
 	const PositionalFragmentInfo *get_active_point_lights() const;
@@ -187,7 +186,6 @@ private:
 			Vulkan::ImageHandle atlas;
 		} spots;
 
-		Vulkan::BufferHandle cluster_list;
 		Vulkan::ShaderProgramVariant *inherit_variant = nullptr;
 		Vulkan::ShaderProgramVariant *cull_variant = nullptr;
 

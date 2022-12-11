@@ -412,7 +412,20 @@ bool OSFilesystem::move_yield(const std::string &dst, const std::string &src)
 {
 	auto resolved_dst = Path::join(base, dst);
 	auto resolved_src = Path::join(base, src);
+#if !defined(__linux__) || (defined(ANDROID) && (__ANDROID_API__ < __ANDROID_API_R__))
+	// Workaround since Android does not have renameat2 until API level 30.
+	// If we can exclusive create a new file, we can rename with replace somewhat safely.
+	int fd = ::open(resolved_dst.c_str(), O_EXCL | O_RDWR | O_CREAT, 0600);
+	if (fd >= 0)
+	{
+		::close(fd);
+		return rename(resolved_src.c_str(), resolved_dst.c_str()) == 0;
+	}
+	else
+		return false;
+#else
 	return renameat2(AT_FDCWD, resolved_src.c_str(), AT_FDCWD, resolved_dst.c_str(), RENAME_NOREPLACE) == 0;
+#endif
 }
 
 bool OSFilesystem::move_replace(const std::string &dst, const std::string &src)

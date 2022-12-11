@@ -197,7 +197,9 @@ void Application::render_early_loading(double, double)
 	value.color.float32[0] = 0.08f;
 	value.color.float32[1] = 0.01f;
 	value.color.float32[2] = 0.01f;
-	cmd->clear_quad(0, rect, value);
+
+	if (rect.rect.extent.width > 0)
+		cmd->clear_quad(0, rect, value);
 
 	cmd->end_render_pass();
 	device.submit(cmd);
@@ -225,7 +227,8 @@ void Application::render_loading(double, double)
 	value.color.float32[0] = 0.01f;
 	value.color.float32[1] = 0.08f;
 	value.color.float32[2] = 0.01f;
-	cmd->clear_quad(0, rect, value);
+	if (rect.rect.extent.width > 0)
+		cmd->clear_quad(0, rect, value);
 
 	cmd->end_render_pass();
 	device.submit(cmd);

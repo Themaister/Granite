@@ -34,6 +34,7 @@ struct Device::RecorderState
 
 	std::unique_ptr<Fossilize::DatabaseInterface> db;
 	Fossilize::StateRecorder recorder;
+	std::atomic_bool recorder_ready;
 };
 
 static constexpr unsigned NumTasks = 4;
@@ -54,5 +55,14 @@ struct Device::ReplayerState
 	Granite::TaskGroupHandle complete;
 	std::vector<std::pair<Fossilize::Hash, VkGraphicsPipelineCreateInfo *>> graphics_pipelines;
 	std::vector<std::pair<Fossilize::Hash, VkComputePipelineCreateInfo *>> compute_pipelines;
+
+	struct
+	{
+		std::atomic_uint32_t pipelines;
+		std::atomic_uint32_t modules;
+		std::atomic_uint32_t prepare;
+		uint32_t num_pipelines = 0;
+		uint32_t num_modules = 0;
+	} progress;
 };
 }

@@ -30,6 +30,7 @@ namespace Vulkan
 {
 Device::RecorderState::RecorderState()
 {
+	recorder_ready.store(false, std::memory_order_relaxed);
 }
 
 Device::RecorderState::~RecorderState()
@@ -38,6 +39,9 @@ Device::RecorderState::~RecorderState()
 
 Device::ReplayerState::ReplayerState()
 {
+	progress.prepare.store(0, std::memory_order_relaxed);
+	progress.modules.store(0, std::memory_order_relaxed);
+	progress.pipelines.store(0, std::memory_order_relaxed);
 }
 
 Device::ReplayerState::~ReplayerState()
@@ -54,37 +58,91 @@ void Device::register_sampler(VkSampler sampler, Fossilize::Hash hash, const VkS
 
 void Device::register_descriptor_set_layout(VkDescriptorSetLayout layout, Fossilize::Hash hash, const VkDescriptorSetLayoutCreateInfo &info)
 {
+	if (!recorder_state)
+		return;
+
+	if (!recorder_state->recorder_ready.load(std::memory_order_acquire))
+	{
+		LOGW("Attempting to register descriptor set layout before recorder is ready.\n");
+		return;
+	}
+
 	if (recorder_state && !recorder_state->recorder.record_descriptor_set_layout(layout, info, hash))
 		LOGW("Failed to register descriptor set layout.\n");
 }
 
 void Device::register_pipeline_layout(VkPipelineLayout layout, Fossilize::Hash hash, const VkPipelineLayoutCreateInfo &info)
 {
+	if (!recorder_state)
+		return;
+
+	if (!recorder_state->recorder_ready.load(std::memory_order_acquire))
+	{
+		LOGW("Attempting to register pipeline layout before recorder is ready.\n");
+		return;
+	}
+
 	if (recorder_state && !recorder_state->recorder.record_pipeline_layout(layout, info, hash))
 		LOGW("Failed to register pipeline layout.\n");
 }
 
 void Device::register_shader_module(VkShaderModule module, Fossilize::Hash hash, const VkShaderModuleCreateInfo &info)
 {
-	if (recorder_state && !recorder_state->recorder.record_shader_module(module, info, hash))
+	if (!recorder_state)
+		return;
+
+	if (!recorder_state->recorder_ready.load(std::memory_order_acquire))
+	{
+		LOGW("Attempting to register shader module before recorder is ready.\n");
+		return;
+	}
+
+	if (!recorder_state->recorder.record_shader_module(module, info, hash))
 		LOGW("Failed to register shader module.\n");
 }
 
 void Device::register_compute_pipeline(Fossilize::Hash hash, const VkComputePipelineCreateInfo &info)
 {
-	if (recorder_state && !recorder_state->recorder.record_compute_pipeline(VK_NULL_HANDLE, info, nullptr, 0, hash))
+	if (!recorder_state)
+		return;
+
+	if (!recorder_state->recorder_ready.load(std::memory_order_acquire))
+	{
+		LOGW("Attempting to register compute pipeline before recorder is ready.\n");
+		return;
+	}
+
+	if (!recorder_state->recorder.record_compute_pipeline(VK_NULL_HANDLE, info, nullptr, 0, hash))
 		LOGW("Failed to register compute pipeline.\n");
 }
 
 void Device::register_graphics_pipeline(Fossilize::Hash hash, const VkGraphicsPipelineCreateInfo &info)
 {
-	if (recorder_state && !recorder_state->recorder.record_graphics_pipeline(VK_NULL_HANDLE, info, nullptr, 0, hash))
+	if (!recorder_state)
+		return;
+
+	if (!recorder_state->recorder_ready.load(std::memory_order_acquire))
+	{
+		LOGW("Attempting to register graphics pipeline before recorder is ready.\n");
+		return;
+	}
+
+	if (!recorder_state->recorder.record_graphics_pipeline(VK_NULL_HANDLE, info, nullptr, 0, hash))
 		LOGW("Failed to register graphics pipeline.\n");
 }
 
 void Device::register_render_pass(VkRenderPass render_pass, Fossilize::Hash hash, const VkRenderPassCreateInfo &info)
 {
-	if (recorder_state && !recorder_state->recorder.record_render_pass(render_pass, info, hash))
+	if (!recorder_state)
+		return;
+
+	if (!recorder_state->recorder_ready.load(std::memory_order_acquire))
+	{
+		LOGW("Attempting to register render pass before recorder is ready.\n");
+		return;
+	}
+
+	if (!recorder_state->recorder.record_render_pass(render_pass, info, hash))
 		LOGW("Failed to register render pass.\n");
 }
 
@@ -93,6 +151,7 @@ bool Device::enqueue_create_shader_module(Fossilize::Hash hash, const VkShaderMo
 	if (!replayer_state->feature_filter->shader_module_is_supported(create_info))
 	{
 		*module = VK_NULL_HANDLE;
+		replayer_state->progress.modules.fetch_add(1, std::memory_order_release);
 		return true;
 	}
 
@@ -107,23 +166,28 @@ bool Device::enqueue_create_shader_module(Fossilize::Hash hash, const VkShaderMo
 
 	// Resolve the handles later.
 	*module = (VkShaderModule)hash;
+	replayer_state->progress.modules.fetch_add(1, std::memory_order_release);
 	return true;
 }
 
 bool Device::fossilize_replay_graphics_pipeline(Fossilize::Hash hash, VkGraphicsPipelineCreateInfo &info)
 {
-	if (info.stageCount != 2)
+	if (info.stageCount != 2 ||
+	    info.pStages[0].stage != VK_SHADER_STAGE_VERTEX_BIT ||
+	    info.pStages[1].stage != VK_SHADER_STAGE_FRAGMENT_BIT)
+	{
+		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return false;
-	if (info.pStages[0].stage != VK_SHADER_STAGE_VERTEX_BIT)
-		return false;
-	if (info.pStages[1].stage != VK_SHADER_STAGE_FRAGMENT_BIT)
-		return false;
+	}
 
 	auto *vert_shader = shaders.find((Fossilize::Hash)info.pStages[0].module);
 	auto *frag_shader = shaders.find((Fossilize::Hash)info.pStages[1].module);
 
 	if (!vert_shader || !frag_shader)
+	{
+		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return false;
+	}
 
 	auto *ret = request_program(vert_shader, frag_shader);
 
@@ -174,12 +238,15 @@ bool Device::fossilize_replay_graphics_pipeline(Fossilize::Hash hash, VkGraphics
 	if (res != VK_SUCCESS)
 	{
 		LOGE("Failed to create graphics pipeline!\n");
+		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return false;
 	}
 
 	auto actual_pipe = ret->add_pipeline(hash, { pipeline, dynamic_state }).pipeline;
 	if (actual_pipe != pipeline)
 		table->vkDestroyPipeline(device, pipeline, nullptr);
+
+	replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 	return actual_pipe != VK_NULL_HANDLE;
 }
 
@@ -188,7 +255,10 @@ bool Device::fossilize_replay_compute_pipeline(Fossilize::Hash hash, VkComputePi
 	// Find the Shader* associated with this VkShaderModule and just use that.
 	auto *shader = shaders.find((Fossilize::Hash)info.stage.module);
 	if (!shader)
+	{
+		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return false;
+	}
 
 	auto *ret = request_program(shader);
 
@@ -206,12 +276,15 @@ bool Device::fossilize_replay_compute_pipeline(Fossilize::Hash hash, VkComputePi
 	if (res != VK_SUCCESS)
 	{
 		LOGE("Failed to create compute pipeline!\n");
+		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return false;
 	}
 
 	auto actual_pipe = ret->add_pipeline(hash, { pipeline, 0 }).pipeline;
 	if (actual_pipe != pipeline)
 		table->vkDestroyPipeline(device, pipeline, nullptr);
+
+	replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 	return actual_pipe != VK_NULL_HANDLE;
 }
 
@@ -224,6 +297,7 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash,
 		if (create_info->pStages[i].module == VK_NULL_HANDLE)
 		{
 			*pipeline = VK_NULL_HANDLE;
+			replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 			return true;
 		}
 	}
@@ -231,12 +305,14 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash,
 	if (create_info->renderPass == VK_NULL_HANDLE || create_info->layout == VK_NULL_HANDLE)
 	{
 		*pipeline = VK_NULL_HANDLE;
+		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return true;
 	}
 
 	if (!replayer_state->feature_filter->graphics_pipeline_is_supported(create_info))
 	{
 		*pipeline = VK_NULL_HANDLE;
+		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return true;
 	}
 
@@ -252,12 +328,14 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash,
 	if (create_info->stage.module == VK_NULL_HANDLE || create_info->layout == VK_NULL_HANDLE)
 	{
 		*pipeline = VK_NULL_HANDLE;
+		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return true;
 	}
 
 	if (!replayer_state->feature_filter->compute_pipeline_is_supported(create_info))
 	{
 		*pipeline = VK_NULL_HANDLE;
+		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return true;
 	}
 
@@ -521,8 +599,11 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 		// Ensure we create the Fossilize cache folder.
 		// Also creates a timestamp.
 		get_system_handles().filesystem->open("cache://fossilize/TOUCH", Granite::FileMode::WriteOnly);
+		replayer_state->progress.prepare.fetch_add(20, std::memory_order_release);
 		promote_write_cache_to_readonly();
+		replayer_state->progress.prepare.fetch_add(50, std::memory_order_release);
 		promote_readonly_db_from_assets();
+		replayer_state->progress.prepare.fetch_add(20, std::memory_order_release);
 	});
 	cache_maintenance_task->set_desc("foz-cache-maintenance");
 
@@ -535,6 +616,8 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 				write_real_path.c_str(), Fossilize::DatabaseMode::Append, nullptr, 0));
 			recorder_state->recorder.init_recording_thread(recorder_state->db.get());
 		}
+		recorder_state->recorder_ready.store(true, std::memory_order_release);
+		replayer_state->progress.prepare.fetch_add(10, std::memory_order_release);
 	});
 	recorder_kick_task->set_desc("foz-recorder-kick");
 
@@ -582,6 +665,11 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 		replayer_state->compute_hashes.resize(count);
 		replayer_state->db->get_hash_list_for_resource_tag(
 			Fossilize::RESOURCE_COMPUTE_PIPELINE, &count, replayer_state->compute_hashes.data());
+
+		replayer_state->progress.num_modules = replayer_state->module_hashes.size();
+		replayer_state->progress.num_pipelines =
+				replayer_state->graphics_hashes.size() +
+				replayer_state->compute_hashes.size();
 	});
 	prepare_task->set_desc("foz-prepare");
 
@@ -722,6 +810,8 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 		replayer_state->graphics_pipelines.clear();
 		replayer_state->compute_pipelines.clear();
 		replayer_state->module_hashes.clear();
+		replayer_state->graphics_hashes.clear();
+		replayer_state->compute_hashes.clear();
 		replayer_state->db.reset();
 	});
 	replayer_state->complete->set_desc("foz-replay-complete");
@@ -745,5 +835,40 @@ void Device::flush_pipeline_state()
 		recorder_state->recorder.tear_down_recording_thread();
 		recorder_state.reset();
 	}
+}
+
+unsigned Device::query_initialization_progress(InitializationStage status) const
+{
+	if (!replayer_state)
+		return 100;
+
+	switch (status)
+	{
+	case InitializationStage::CacheMaintenance:
+		return replayer_state->progress.prepare.load(std::memory_order_acquire);
+
+	case InitializationStage::ShaderModules:
+	{
+		unsigned done = replayer_state->progress.modules.load(std::memory_order_acquire);
+		// Avoid 0/0.
+		if (!done)
+			return 0;
+		return (100u * done) / replayer_state->progress.num_modules;
+	}
+
+	case InitializationStage::Pipelines:
+	{
+		unsigned done = replayer_state->progress.pipelines.load(std::memory_order_acquire);
+		// Avoid 0/0.
+		if (!done)
+			return 0;
+		return (100u * done) / replayer_state->progress.num_pipelines;
+	}
+
+	default:
+		break;
+	}
+
+	return 0;
 }
 }

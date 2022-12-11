@@ -907,6 +907,14 @@ void Device::set_context(const Context &context)
 #endif
 }
 
+#ifndef GRANITE_VULKAN_FOSSILIZE
+unsigned Device::query_initialization_progress(InitializationStage status) const
+{
+	// If we don't have Fossilize, everything is considered done up front.
+	return 100;
+}
+#endif
+
 void Device::init_bindless()
 {
 	if (!ext.supports_descriptor_indexing)

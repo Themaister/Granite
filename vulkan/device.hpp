@@ -410,6 +410,25 @@ public:
 	TextureManager &get_texture_manager();
 #endif
 
+	// Useful for loading screens or otherwise figuring out
+	// when we can start rendering in a stable state.
+	enum class InitializationStage
+	{
+		CacheMaintenance,
+		// When this is done, shader modules and the shader manager have been populated.
+		// At this stage it is safe to use shaders in a configuration where we
+		// don't have SPIRV-Cross and/or shaderc to do on the fly compilation.
+		// For shipping configurations. We can still compile pipelines, but it may stutter.
+		ShaderModules,
+		// When this is done, pipelines should never stutter if Fossilize knows about the pipeline.
+		Pipelines
+	};
+
+	// 0 -> not started
+	// [1, 99] rough percentage of completion
+	// >= 100 done
+	unsigned query_initialization_progress(InitializationStage status) const;
+
 	// For some platforms, the device and queue might be shared, possibly across threads, so need some mechanism to
 	// lock the global device and queue.
 	void set_queue_lock(std::function<void ()> lock_callback,

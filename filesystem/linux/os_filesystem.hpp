@@ -60,6 +60,13 @@ public:
 	int get_notification_fd() const override;
 	std::string get_filesystem_path(const std::string &path) override;
 
+	bool remove(const std::string &path) override;
+	// Must implement atomic renaming semantics.
+	// Atomically replaces dst.
+	bool move_replace(const std::string &dst, const std::string &src) override;
+	// If dst exists, nothing happens (and false is returned).
+	bool move_yield(const std::string &dst, const std::string &src) override;
+
 private:
 	std::string base;
 

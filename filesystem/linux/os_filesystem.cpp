@@ -387,9 +387,9 @@ FileNotifyHandle OSFilesystem::install_notification(const std::string &path,
 	// We could have different paths which look different but resolve to the same wd, so handle that.
 	auto itr = handlers.find(wd);
 	if (itr == end(handlers))
-		handlers[wd] = { {{ std::move(path), std::move(func), ++virtual_handle }}, s.type == PathType::Directory };
+		handlers[wd] = { {{ path, std::move(func), ++virtual_handle }}, s.type == PathType::Directory };
 	else
-		itr->second.funcs.push_back({ std::move(path), std::move(func), ++virtual_handle });
+		itr->second.funcs.push_back({ path, std::move(func), ++virtual_handle });
 
 	//LOGI("  Got handle: %d\n", virtual_handle);
 
@@ -400,6 +400,26 @@ FileNotifyHandle OSFilesystem::install_notification(const std::string &path,
 	(void)func;
 	return -1;
 #endif
+}
+
+bool OSFilesystem::remove(const std::string &path)
+{
+	auto resolved_path = Path::join(base, path);
+	return unlink(resolved_path.c_str()) == 0;
+}
+
+bool OSFilesystem::move_yield(const std::string &dst, const std::string &src)
+{
+	auto resolved_dst = Path::join(base, dst);
+	auto resolved_src = Path::join(base, src);
+	return renameat2(AT_FDCWD, resolved_src.c_str(), AT_FDCWD, resolved_dst.c_str(), RENAME_NOREPLACE) == 0;
+}
+
+bool OSFilesystem::move_replace(const std::string &dst, const std::string &src)
+{
+	auto resolved_dst = Path::join(base, dst);
+	auto resolved_src = Path::join(base, src);
+	return rename(resolved_src.c_str(), resolved_dst.c_str()) == 0;
 }
 
 std::vector<ListEntry> OSFilesystem::list(const std::string &path)

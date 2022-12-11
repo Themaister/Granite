@@ -50,6 +50,21 @@ std::vector<ListEntry> FilesystemBackend::walk(const std::string &path)
 	return final_entries;
 }
 
+bool FilesystemBackend::remove(const std::string &)
+{
+	return false;
+}
+
+bool FilesystemBackend::move_replace(const std::string &, const std::string &)
+{
+	return false;
+}
+
+bool FilesystemBackend::move_yield(const std::string &, const std::string &)
+{
+	return false;
+}
+
 Filesystem::Filesystem()
 {
 	register_protocol("file", std::unique_ptr<FilesystemBackend>(new OSFilesystem(".")));
@@ -159,6 +174,40 @@ std::vector<ListEntry> Filesystem::list(const std::string &path)
 		return {};
 
 	return backend->list(paths.second);
+}
+
+bool Filesystem::remove(const std::string &path)
+{
+	auto paths = Path::protocol_split(path);
+	auto *backend = get_backend(paths.first);
+	if (!backend)
+		return false;
+
+	return backend->remove(paths.second);
+}
+
+bool Filesystem::move_yield(const std::string &dst, const std::string &src)
+{
+	auto paths_dst = Path::protocol_split(dst);
+	auto paths_src = Path::protocol_split(src);
+	auto *backend_dst = get_backend(paths_dst.first);
+	auto *backend_src = get_backend(paths_src.first);
+	if (!backend_dst || !backend_src || backend_dst != backend_src)
+		return false;
+
+	return backend_dst->move_yield(paths_dst.second, paths_src.second);
+}
+
+bool Filesystem::move_replace(const std::string &dst, const std::string &src)
+{
+	auto paths_dst = Path::protocol_split(dst);
+	auto paths_src = Path::protocol_split(src);
+	auto *backend_dst = get_backend(paths_dst.first);
+	auto *backend_src = get_backend(paths_src.first);
+	if (!backend_dst || !backend_src || backend_dst != backend_src)
+		return false;
+
+	return backend_dst->move_replace(paths_dst.second, paths_src.second);
 }
 
 FileMappingHandle Filesystem::open_readonly_mapping(const std::string &path)

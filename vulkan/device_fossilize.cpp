@@ -402,7 +402,93 @@ void Device::replay_tag_simple(Fossilize::ResourceTag tag)
 
 void Device::promote_write_cache_to_readonly() const
 {
-	// TODO
+	auto *fs = get_system_handles().filesystem;
+	auto list = fs->list("cache://fossilize");
+	std::vector<std::string> merge_paths_str;
+	std::vector<std::string> del_paths_str;
+	std::vector<const char *> merge_paths;
+	merge_paths_str.reserve(list.size());
+	merge_paths.reserve(list.size());
+	bool have_read_only = false;
+
+	for (auto &l : list)
+	{
+		if (l.type != Granite::PathType::File || l.path == "fossilize/iteration" || l.path == "fossilize/TOUCH")
+			continue;
+		else if (l.path == "fossilize/db.foz")
+		{
+			have_read_only = true;
+			LOGI("Fossilize: Found read-only cache.\n");
+			continue;
+		}
+		else if (l.path == "fossilize/merge.foz")
+		{
+			del_paths_str.emplace_back("cache://fossilize/merge.foz");
+			continue;
+		}
+
+		auto p = "cache://" + l.path;
+		merge_paths_str.push_back(p);
+		del_paths_str.push_back(p);
+		LOGI("Fossilize: Found write cache: %s.\n", merge_paths_str.back().c_str());
+	}
+
+	if (!have_read_only && merge_paths_str.size() == 1)
+	{
+		LOGI("Fossilize: No read-cache and one write cache. Replacing directly.\n");
+		if (fs->move_replace("cache://fossilize/db.foz", merge_paths_str.front()))
+			LOGI("Fossilize: Promoted write-only cache.\n");
+		else
+			LOGW("Fossilize: Failed to promote write-only cache.\n");
+	}
+	else if (!merge_paths_str.empty())
+	{
+		auto append_path = fs->get_filesystem_path("cache://fossilize/merge.foz");
+		bool should_merge;
+
+		// Ensure that we have taken exclusive write access to this file.
+		// Only one process will be able to pass this test until the file is removed.
+		if (have_read_only)
+		{
+			LOGI("Fossilize: Attempting to merge caches.\n");
+			should_merge = fs->move_yield("cache://fossilize/merge.foz", "cache://fossilize/db.foz");
+		}
+		else
+		{
+			auto db = std::unique_ptr<Fossilize::DatabaseInterface>(
+					Fossilize::create_stream_archive_database(append_path.c_str(), Fossilize::DatabaseMode::ExclusiveOverWrite));
+			should_merge = db && db->prepare();
+		}
+
+		if (should_merge)
+		{
+			for (auto &str : merge_paths_str)
+			{
+				str = fs->get_filesystem_path(str);
+				merge_paths.push_back(str.c_str());
+			}
+
+			if (Fossilize::merge_concurrent_databases(append_path.c_str(), merge_paths.data(), merge_paths.size()))
+			{
+				if (fs->move_replace("cache://fossilize/db.foz", "cache://fossilize/merge.foz"))
+					LOGI("Fossilize: Successfully merged caches.\n");
+				else
+					LOGW("Fossilize: Failed to replace existing read-only database.\n");
+			}
+			else
+				LOGW("Fossilize: Failed to merge databases.\n");
+		}
+		else
+			LOGW("Fossilize: Skipping merge due to unexpected error.\n");
+	}
+	else
+		LOGI("Fossilize: No write only files, nothing to do.\n");
+
+	// Cleanup any stale write-only files.
+	// This can easily race against concurrent processes, so the cache will likely be destroyed by accident,
+	// but that's ok. Running multiple Granite processes concurrently like this is questionable at best.
+	for (auto &str : del_paths_str)
+		fs->remove(str);
 }
 
 void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
@@ -425,7 +511,9 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 	auto *group = get_system_handles().thread_group;
 
 	auto shader_manager_task = group->create_task([this]() {
+		read_only_cache_lock_count.fetch_add(1, std::memory_order_relaxed);
 		init_shader_manager_cache();
+		read_only_cache_lock_count.fetch_sub(1, std::memory_order_release);
 	});
 	shader_manager_task->set_desc("shader-manager-init");
 

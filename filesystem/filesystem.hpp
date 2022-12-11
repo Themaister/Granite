@@ -137,23 +137,21 @@ class FilesystemBackend
 {
 public:
 	virtual ~FilesystemBackend() = default;
-
 	std::vector<ListEntry> walk(const std::string &path);
-
 	virtual std::vector<ListEntry> list(const std::string &path) = 0;
-
 	virtual FileHandle open(const std::string &path, FileMode mode = FileMode::ReadOnly) = 0;
-
 	virtual bool stat(const std::string &path, FileStat &stat) = 0;
 
 	virtual FileNotifyHandle
 	install_notification(const std::string &path, std::function<void(const FileNotifyInfo &)> func) = 0;
 
 	virtual void uninstall_notification(FileNotifyHandle handle) = 0;
-
 	virtual void poll_notifications() = 0;
-
 	virtual int get_notification_fd() const = 0;
+
+	virtual bool remove(const std::string &path);
+	virtual bool move_replace(const std::string &dst, const std::string &src);
+	virtual bool move_yield(const std::string &dst, const std::string &src);
 
 	inline virtual std::string get_filesystem_path(const std::string &)
 	{
@@ -175,15 +173,10 @@ public:
 	Filesystem();
 
 	void register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs);
-
 	FilesystemBackend *get_backend(const std::string &proto);
-
 	std::vector<ListEntry> walk(const std::string &path);
-
 	std::vector<ListEntry> list(const std::string &path);
-
 	FileHandle open(const std::string &path, FileMode mode = FileMode::ReadOnly);
-
 	std::string get_filesystem_path(const std::string &path);
 
 	bool read_file_to_string(const std::string &path, std::string &str);
@@ -192,6 +185,10 @@ public:
 	FileMappingHandle open_readonly_mapping(const std::string &path);
 	FileMappingHandle open_writeonly_mapping(const std::string &path, size_t size);
 	FileMappingHandle open_transactional_mapping(const std::string &path, size_t size);
+
+	bool remove(const std::string &path);
+	bool move_replace(const std::string &dst, const std::string &src);
+	bool move_yield(const std::string &dst, const std::string &src);
 
 	bool stat(const std::string &path, FileStat &stat);
 

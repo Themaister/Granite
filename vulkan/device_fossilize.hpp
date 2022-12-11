@@ -53,6 +53,8 @@ struct Device::ReplayerState
 	const Fossilize::FeatureFilter *feature_filter = nullptr;
 	std::unique_ptr<Fossilize::DatabaseInterface> db;
 	Granite::TaskGroupHandle complete;
+	Granite::TaskGroupHandle module_ready;
+	Granite::TaskGroupHandle pipeline_ready;
 	std::vector<std::pair<Fossilize::Hash, VkGraphicsPipelineCreateInfo *>> graphics_pipelines;
 	std::vector<std::pair<Fossilize::Hash, VkComputePipelineCreateInfo *>> compute_pipelines;
 

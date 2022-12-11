@@ -850,6 +850,8 @@ private:
 
 	void init_pipeline_state(const Fossilize::FeatureFilter &filter);
 	void flush_pipeline_state();
+	void block_until_shader_module_ready();
+	void block_until_pipeline_ready();
 #endif
 
 	ImplementationWorkarounds workarounds;

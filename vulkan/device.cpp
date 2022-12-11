@@ -5060,7 +5060,15 @@ TextureManager &Device::get_texture_manager()
 
 ShaderManager &Device::get_shader_manager()
 {
-	VK_ASSERT(query_initialization_progress(InitializationStage::ShaderModules) >= 100);
+#ifdef GRANITE_VULKAN_FOSSILIZE
+	if (query_initialization_progress(InitializationStage::ShaderModules) < 100)
+	{
+		LOGW("Querying shader manager before completion of module initialization.\n"
+		     "Application should not hit this case.\n"
+		     "Blocking until completion ... Try using DeviceShaderModuleReadyEvent or PipelineReadyEvent instead.\n");
+		block_until_shader_module_ready();
+	}
+#endif
 	return shader_manager;
 }
 #endif

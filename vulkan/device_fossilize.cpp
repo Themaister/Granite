@@ -769,7 +769,7 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 	group->add_dependency(*compile_graphics_task, *parse_modules_task);
 	group->add_dependency(*compile_graphics_task, *parse_graphics_task);
 	group->add_dependency(*compile_compute_task, *parse_modules_task);
-	group->add_dependency(*compile_compute_task, *parse_graphics_task);
+	group->add_dependency(*compile_compute_task, *parse_compute_task);
 	for (unsigned i = 0; i < NumTasks; i++)
 	{
 		compile_graphics_task->enqueue_task([this, i]() {
@@ -819,6 +819,15 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 	group->add_dependency(*replayer_state->complete, *compile_compute_task);
 	group->add_dependency(*replayer_state->complete, *recorder_kick_task);
 	replayer_state->complete->flush();
+
+	replayer_state->module_ready = std::move(parse_modules_task);
+	replayer_state->module_ready->flush();
+
+	auto compile_task = group->create_task();
+	group->add_dependency(*compile_task, *compile_graphics_task);
+	group->add_dependency(*compile_task, *compile_compute_task);
+	replayer_state->pipeline_ready = std::move(compile_task);
+	replayer_state->pipeline_ready->flush();
 }
 
 void Device::flush_pipeline_state()
@@ -870,5 +879,19 @@ unsigned Device::query_initialization_progress(InitializationStage status) const
 	}
 
 	return 0;
+}
+
+void Device::block_until_shader_module_ready()
+{
+	if (!replayer_state || !replayer_state->module_ready)
+		return;
+	replayer_state->module_ready->wait();
+}
+
+void Device::block_until_pipeline_ready()
+{
+	if (!replayer_state || !replayer_state->pipeline_ready)
+		return;
+	replayer_state->pipeline_ready->wait();
 }
 }

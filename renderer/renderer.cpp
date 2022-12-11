@@ -509,8 +509,17 @@ void Renderer::setup_shader_suite(Device &device_, RendererType renderer_type)
 
 void Renderer::on_pipeline_created(const DevicePipelineReadyEvent &created)
 {
+	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
+	Util::TimelineTraceFile::Event *e = nullptr;
+
 	device = &created.get_device();
+
+	if (file)
+		e = file->begin_event("renderer-setup-suite");
 	setup_shader_suite(*device, type);
+	if (e)
+		file->end_event(e);
+
 	set_mesh_renderer_options_internal(renderer_options);
 	for (auto &s : suite)
 		s.bake_base_defines();

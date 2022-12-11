@@ -82,6 +82,12 @@ bool ShaderTemplate::init()
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	if (!device->get_system_handles().filesystem)
 		return false;
+
+	Util::TimelineTraceFile::Event *e = nullptr;
+	auto *trace_file = device->get_system_handles().timeline_trace_file;
+	if (trace_file)
+		e = trace_file->begin_event("glsl-preprocess");
+
 	compiler = std::make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
 	compiler->set_target(Granite::Target::Vulkan11);
 	if (!compiler->set_source_from_file(path, force_stage))
@@ -93,6 +99,8 @@ bool ShaderTemplate::init()
 		compiler.reset();
 		return false;
 	}
+	if (e)
+		trace_file->end_event(e);
 	source_hash = compiler->get_source_hash();
 #endif
 

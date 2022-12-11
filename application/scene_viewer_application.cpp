@@ -1469,16 +1469,20 @@ void SceneViewerApplication::post_frame()
 
 void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
 {
-	if (pending_swapchain)
-	{
-		bake_render_graph(*pending_swapchain);
-		pending_swapchain = nullptr;
-	}
-
 	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
 	TaskComposer composer(*GRANITE_THREAD_GROUP());
 
 	Util::TimelineTraceFile::Event *e = nullptr;
+
+	if (pending_swapchain)
+	{
+		if (file)
+			e = file->begin_event("bake-render-graph");
+		bake_render_graph(*pending_swapchain);
+		if (e)
+			file->end_event(e);
+		pending_swapchain = nullptr;
+	}
 
 	FrameParameters frame;
 	frame.elapsed_time = elapsed_time;

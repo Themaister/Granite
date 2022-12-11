@@ -899,12 +899,11 @@ void Device::set_context(const Context &context)
 	if (system_handles.timeline_trace_file)
 		init_calibrated_timestamps();
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
-	init_shader_manager_cache();
-#endif
-
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	init_pipeline_state(context.get_feature_filter());
+#elif defined(GRANITE_VULKAN_FILESYSTEM)
+	// Fossilize init will deal with init_shader_manager_cache()
+	init_shader_manager_cache();
 #endif
 }
 

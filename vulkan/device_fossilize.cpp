@@ -424,6 +424,11 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 	replayer_state->feature_filter = &filter;
 	auto *group = get_system_handles().thread_group;
 
+	auto shader_manager_task = group->create_task([this]() {
+		init_shader_manager_cache();
+	});
+	shader_manager_task->set_desc("shader-manager-init");
+
 	auto cache_maintenance_task = group->create_task([this]() {
 		// Ensure we create the Fossilize cache folder.
 		// Also creates a timestamp.
@@ -497,6 +502,7 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 	auto parse_modules_task = group->create_task();
 	parse_modules_task->set_desc("foz-parse-modules");
 	group->add_dependency(*parse_modules_task, *prepare_task);
+	group->add_dependency(*parse_modules_task, *shader_manager_task);
 
 	for (unsigned i = 0; i < NumTasks; i++)
 	{
@@ -639,17 +645,17 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 
 void Device::flush_pipeline_state()
 {
-	if (recorder_state)
-	{
-		recorder_state->recorder.tear_down_recording_thread();
-		recorder_state.reset();
-	}
-
 	if (replayer_state)
 	{
 		if (replayer_state->complete)
 			replayer_state->complete->wait();
 		replayer_state.reset();
+	}
+
+	if (recorder_state)
+	{
+		recorder_state->recorder.tear_down_recording_thread();
+		recorder_state.reset();
 	}
 }
 }

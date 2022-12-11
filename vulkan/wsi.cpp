@@ -507,6 +507,9 @@ bool WSI::begin_frame()
 			has_acquired_swapchain_index = true;
 			acquire->signal_external();
 
+			// WSI signals this, which exists outside the domain of our Vulkan queues.
+			acquire->set_signal_is_foreign_queue();
+
 			wait_swapchain_latency();
 
 			auto frame_time = platform->get_frame_timer().frame();

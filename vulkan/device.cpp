@@ -1280,6 +1280,13 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 	collect_wait_semaphores(data, wait_semaphores);
 	composer.add_wait_submissions(wait_semaphores);
 
+	for (auto consume : frame().consumed_semaphores)
+	{
+		composer.add_wait_semaphore(consume, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+		frame().recycled_semaphores.push_back(consume);
+	}
+	frame().consumed_semaphores.clear();
+
 	emit_queue_signals(composer, external_semaphore,
 	                   timeline_semaphore, timeline_value,
 	                   fence, semaphore_count, semaphores);
@@ -1599,6 +1606,19 @@ void Helper::BatchComposer::add_wait_semaphore(SemaphoreHolder &sem, VkPipelineS
 	wait_counts[submit_index].push_back(is_timeline ? sem.get_timeline_value() : 0);
 }
 
+void Helper::BatchComposer::add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags stage)
+{
+	if (!cmds[submit_index].empty() || !signals[submit_index].empty())
+		begin_batch();
+
+	if (split_binary_timeline_semaphores && has_timeline_semaphore_in_batch(submit_index))
+		begin_batch();
+
+	waits[submit_index].push_back(sem);
+	wait_stages[submit_index].push_back(stage);
+	wait_counts[submit_index].push_back(0);
+}
+
 void Device::emit_queue_signals(Helper::BatchComposer &composer,
                                 SemaphoreHolder *external_semaphore,
                                 VkSemaphore sem, uint64_t timeline, InternalFence *fence,
@@ -1767,6 +1787,13 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 	if (fence)
 		fence->fence = cleared_fence;
 
+	for (auto consume : frame().consumed_semaphores)
+	{
+		composer.add_wait_semaphore(consume, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+		frame().recycled_semaphores.push_back(consume);
+	}
+	frame().consumed_semaphores.clear();
+
 	emit_queue_signals(composer, external_semaphore, timeline_semaphore, timeline_value,
 	                   fence, semaphore_count, semaphores);
 
@@ -1859,7 +1886,9 @@ void Device::end_frame_nolock()
 
 	for (auto &i : queue_flush_order)
 	{
-		if (queue_data[i].need_fence || !frame().submissions[i].empty())
+		if (queue_data[i].need_fence ||
+		    !frame().submissions[i].empty() ||
+		    !frame().consumed_semaphores.empty())
 		{
 			submit_queue(i, &fence);
 			if (fence.fence != VK_NULL_HANDLE)
@@ -2028,13 +2057,13 @@ bool Device::swapchain_touched() const
 
 Device::~Device()
 {
-	wait_idle();
-
-	managers.timestamps.log_simple();
-
 	wsi.acquire.reset();
 	wsi.release.reset();
 	wsi.swapchain.clear();
+
+	wait_idle();
+
+	managers.timestamps.log_simple();
 
 	if (pipeline_cache != VK_NULL_HANDLE)
 	{
@@ -2264,6 +2293,12 @@ void Device::destroy_semaphore(VkSemaphore semaphore)
 	destroy_semaphore_nolock(semaphore);
 }
 
+void Device::consume_semaphore(VkSemaphore semaphore)
+{
+	LOCK();
+	consume_semaphore_nolock(semaphore);
+}
+
 void Device::recycle_semaphore(VkSemaphore semaphore)
 {
 	LOCK();
@@ -2310,6 +2345,12 @@ void Device::destroy_semaphore_nolock(VkSemaphore semaphore)
 {
 	VK_ASSERT(!exists(frame().destroyed_semaphores, semaphore));
 	frame().destroyed_semaphores.push_back(semaphore);
+}
+
+void Device::consume_semaphore_nolock(VkSemaphore semaphore)
+{
+	VK_ASSERT(!exists(frame().consumed_semaphores, semaphore));
+	frame().consumed_semaphores.push_back(semaphore);
 }
 
 void Device::recycle_semaphore_nolock(VkSemaphore semaphore)
@@ -2806,6 +2847,7 @@ void Device::PerFrame::begin()
 		managers.semaphore.recycle(semaphore);
 	for (auto &event : recycled_events)
 		managers.event.recycle(event);
+	VK_ASSERT(consumed_semaphores.empty());
 
 	if (!allocations.empty())
 	{

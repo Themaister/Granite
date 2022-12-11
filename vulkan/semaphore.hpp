@@ -95,6 +95,12 @@ public:
 		signalled = true;
 	}
 
+	void set_signal_is_foreign_queue()
+	{
+		VK_ASSERT(signalled);
+		signal_is_foreign_queue = true;
+	}
+
 	void set_pending_wait()
 	{
 		pending_wait = true;
@@ -189,6 +195,7 @@ private:
 	bool pending_wait = false;
 	bool owned = false;
 	bool proxy_timeline = false;
+	bool signal_is_foreign_queue = false;
 	VkExternalSemaphoreHandleTypeFlagBits external_compatible_handle_type = {};
 	VkExternalSemaphoreFeatureFlags external_compatible_features = 0;
 };

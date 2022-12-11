@@ -136,6 +136,7 @@ public:
 	explicit BatchComposer(bool split_binary_timeline_semaphores);
 	void add_wait_submissions(WaitSemaphores &sem);
 	void add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags stage);
+	void add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags stage);
 	void add_signal_semaphore(VkSemaphore sem, uint64_t count);
 	void add_command_buffer(VkCommandBuffer cmd);
 
@@ -613,6 +614,7 @@ private:
 		std::vector<VkSemaphore> recycled_semaphores;
 		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
+		std::vector<VkSemaphore> consumed_semaphores;
 		std::vector<ImageHandle> keep_alive_images;
 
 		struct DebugChannel
@@ -758,6 +760,7 @@ private:
 	void destroy_sampler(VkSampler sampler);
 	void destroy_framebuffer(VkFramebuffer framebuffer);
 	void destroy_semaphore(VkSemaphore semaphore);
+	void consume_semaphore(VkSemaphore semaphore);
 	void recycle_semaphore(VkSemaphore semaphore);
 	void destroy_event(VkEvent event);
 	void free_memory(const DeviceAllocation &alloc);
@@ -773,6 +776,7 @@ private:
 	void destroy_sampler_nolock(VkSampler sampler);
 	void destroy_framebuffer_nolock(VkFramebuffer framebuffer);
 	void destroy_semaphore_nolock(VkSemaphore semaphore);
+	void consume_semaphore_nolock(VkSemaphore semaphore);
 	void recycle_semaphore_nolock(VkSemaphore semaphore);
 	void destroy_event_nolock(VkEvent event);
 	void free_memory_nolock(const DeviceAllocation &alloc);

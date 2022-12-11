@@ -77,7 +77,7 @@ if (GRANITE_VULKAN_FOSSILIZE)
         endif()
     endif()
     if (WIN32)
-        target_include_directories(fossilize PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/fossilize/cli/dirent/include)
+        target_include_directories(fossilize PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/dirent)
     endif()
 endif()
 

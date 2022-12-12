@@ -33,7 +33,23 @@ public:
 	Application();
 	virtual ~Application();
 	virtual void render_frame(double frame_time, double elapsed_time) = 0;
-	bool init_wsi(std::unique_ptr<Vulkan::WSIPlatform> platform);
+	bool init_platform(std::unique_ptr<Vulkan::WSIPlatform> platform);
+	bool init_wsi(Vulkan::ContextHandle context = {});
+	void teardown_wsi();
+
+	// Called after the frame is submitted for presentation.
+	// Can do "garbage collection" or similar batched cleanup
+	// that does not depend on submitting more graphics work.
+	virtual void post_frame();
+
+	// In early loading, we have not loaded SPIR-V yet.
+	// Rendering a background color or extremely basic shaders could work here.
+	// If compiling without SPIRV-Cross or compiler support in a shipping configuration,
+	// any SPIR-V must be provided inline through slangmosh or similar.
+	virtual void render_early_loading(double frame_time, double elapsed_time);
+	// In loading, we have access to SPIR-V, but compiling pipelines is not done yet.
+	// This stage is more suited for rendering splash screens or similar.
+	virtual void render_loading(double frame_time, double elapsed_time);
 
 	Vulkan::WSI &get_wsi()
 	{
@@ -78,6 +94,11 @@ private:
 	std::unique_ptr<Vulkan::WSIPlatform> platform;
 	Vulkan::WSI application_wsi;
 	bool requested_shutdown = false;
+
+	// Ready state for deferred device initialization.
+	bool ready_modules = false;
+	bool ready_pipelines = false;
+	void check_initialization_progress();
 };
 
 int application_main(Application *(*create_application)(int, char **), int argc, char **argv);

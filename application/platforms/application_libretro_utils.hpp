@@ -25,7 +25,7 @@
 #include "vulkan_headers.hpp"
 #include "libretro.h"
 #include "libretro_vulkan.h"
-#include "wsi.hpp"
+#include "application.hpp"
 
 // Various utilities to make writing a libretro Vulkan interface easier.
 // The heavy lifting of WSI interfacing with the libretro frontend is implemented here.
@@ -53,10 +53,10 @@ void libretro_set_swapchain_size(unsigned width, unsigned height);
 void libretro_set_application_info(const char *name, unsigned version);
 
 // Called on context_reset HW_RENDER callback.
-bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Vulkan::WSI &wsi);
+bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Granite::Application &app);
 
 // Called on context_destroy HW_RENDER callback.
-void libretro_context_destroy(Vulkan::WSI *wsi);
+void libretro_context_destroy(Granite::Application *app);
 
 // Called at the start of the frame.
 void libretro_begin_frame(Vulkan::WSI &wsi, retro_usec_t frame_time);

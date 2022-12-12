@@ -302,7 +302,7 @@ RETRO_API void retro_cheat_set(unsigned, bool, const char *)
 
 static void context_destroy(void)
 {
-	libretro_context_destroy(app ? &app->get_wsi() : nullptr);
+	libretro_context_destroy(app);
 }
 
 static void context_reset(void)
@@ -316,7 +316,7 @@ static void context_reset(void)
 		return;
 	}
 
-	if (!libretro_context_reset(vulkan, app->get_wsi()))
+	if (!libretro_context_reset(vulkan, *app))
 	{
 		Granite::libretro_log(RETRO_LOG_ERROR, "Failed to reset Vulkan context.");
 		delete app;
@@ -348,7 +348,7 @@ RETRO_API bool retro_load_game(const struct retro_game_info *info)
 	current_width = app->get_default_width();
 	current_height = app->get_default_height();
 
-	if (!app->init_wsi(std::make_unique<WSIPlatformLibretro>()))
+	if (!app->init_platform(std::make_unique<WSIPlatformLibretro>()))
 	{
 		Granite::libretro_log(RETRO_LOG_ERROR, "Failed to init platform.");
 		delete app;

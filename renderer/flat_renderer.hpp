@@ -100,8 +100,8 @@ public:
 	void pop_scissor();
 
 private:
-	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
+	void on_module_created(const Vulkan::DeviceShaderModuleReadyEvent &e);
+	void on_module_destroyed(const Vulkan::DeviceShaderModuleReadyEvent &e);
 	Vulkan::Device *device = nullptr;
 	const ShaderSuiteResolver *resolver = nullptr;
 	RenderQueue queue;

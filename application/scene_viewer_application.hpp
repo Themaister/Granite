@@ -66,6 +66,7 @@ public:
 protected:
 	void update_scene(TaskComposer &composer, double frame_time, double elapsed_time);
 	void render_scene(TaskComposer &composer);
+	void post_frame() override;
 
 	RenderContext context;
 	RenderContext depth_context;
@@ -115,6 +116,9 @@ protected:
 	std::vector<RecordedCamera> recorded_cameras;
 
 	std::string get_name() override;
+
+	void bake_render_graph(const Vulkan::SwapchainParameterEvent &swap);
+	const Vulkan::SwapchainParameterEvent *pending_swapchain = nullptr;
 
 private:
 	void read_config(const std::string &path);

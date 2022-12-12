@@ -570,7 +570,7 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 
 		auto *p = platform.get();
 
-		if (!app->init_wsi(std::move(platform)))
+		if (!app->init_platform(std::move(platform)) || !app->init_wsi())
 			return 1;
 
 		if (!args.png_path.empty())

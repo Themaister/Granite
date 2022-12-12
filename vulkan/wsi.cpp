@@ -507,6 +507,9 @@ bool WSI::begin_frame()
 			has_acquired_swapchain_index = true;
 			acquire->signal_external();
 
+			// WSI signals this, which exists outside the domain of our Vulkan queues.
+			acquire->set_signal_is_foreign_queue();
+
 			wait_swapchain_latency();
 
 			auto frame_time = platform->get_frame_timer().frame();
@@ -566,6 +569,7 @@ bool WSI::end_frame()
 		auto release = device->consume_release_semaphore();
 		VK_ASSERT(release);
 		VK_ASSERT(release->is_signalled());
+		VK_ASSERT(!release->is_pending_wait());
 		auto release_semaphore = release->get_semaphore();
 		VK_ASSERT(release_semaphore != VK_NULL_HANDLE);
 
@@ -659,18 +663,22 @@ bool WSI::end_frame()
 			swapchain_is_suboptimal = true;
 		}
 
+		// The present semaphore is consumed even on OUT_OF_DATE, etc.
+		release->wait_external();
+
 		if (overall < 0 || result < 0)
 		{
 			LOGE("vkQueuePresentKHR failed.\n");
+			release.reset();
 			tear_down_swapchain();
 			return false;
 		}
 		else
 		{
-			release->wait_external();
 			// Cannot release the WSI wait semaphore until we observe that the image has been
 			// waited on again.
-			release_semaphores[swapchain_index] = release;
+			// Could make this a bit tighter with swapchain_maintenance1, but not that important here.
+			release_semaphores[swapchain_index] = std::move(release);
 		}
 
 		// Re-init swapchain.

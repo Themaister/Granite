@@ -265,7 +265,7 @@ void RendererSuite::register_variants_from_cache()
 Renderer::Renderer(RendererType type_, const ShaderSuiteResolver *resolver_)
 	: type(type_), resolver(resolver_)
 {
-	EVENT_MANAGER_REGISTER_LATCH(Renderer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	EVENT_MANAGER_REGISTER_LATCH(Renderer, on_pipeline_created, on_pipeline_destroyed, DevicePipelineReadyEvent);
 
 	if (type == RendererType::GeneralDeferred || type == RendererType::GeneralForward)
 		set_mesh_renderer_options(SHADOW_CASCADE_ENABLE_BIT | SHADOW_ENABLE_BIT | FOG_ENABLE_BIT);
@@ -418,8 +418,6 @@ std::vector<std::pair<std::string, int>> Renderer::build_defines_from_renderer_o
 		global_defines.emplace_back("POSITIONAL_LIGHTS", 1);
 	if (flags & POSITIONAL_LIGHT_SHADOW_ENABLE_BIT)
 		global_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
-	if (flags & POSITIONAL_LIGHT_CLUSTER_LIST_BIT)
-		global_defines.emplace_back("CLUSTER_LIST", 1);
 	if (flags & POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT)
 		global_defines.emplace_back("CLUSTERER_BINDLESS", 1);
 	if (flags & POSITIONAL_DECALS_BIT)
@@ -478,8 +476,6 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 				flags |= POSITIONAL_LIGHT_SHADOW_VSM_BIT;
 		}
 
-		if (lighting.cluster->get_cluster_list_buffer())
-			flags |= POSITIONAL_LIGHT_CLUSTER_LIST_BIT;
 		if (lighting.cluster->clusterer_is_bindless())
 		{
 			flags |= POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT;
@@ -511,16 +507,25 @@ void Renderer::setup_shader_suite(Device &device_, RendererType renderer_type)
 		res->init_shader_suite(device_, suite[i], renderer_type, static_cast<RenderableType>(i));
 }
 
-void Renderer::on_device_created(const DeviceCreatedEvent &created)
+void Renderer::on_pipeline_created(const DevicePipelineReadyEvent &created)
 {
+	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
+	Util::TimelineTraceFile::Event *e = nullptr;
+
 	device = &created.get_device();
+
+	if (file)
+		e = file->begin_event("renderer-setup-suite");
 	setup_shader_suite(*device, type);
+	if (e)
+		file->end_event(e);
+
 	set_mesh_renderer_options_internal(renderer_options);
 	for (auto &s : suite)
 		s.bake_base_defines();
 }
 
-void Renderer::on_device_destroyed(const DeviceCreatedEvent &)
+void Renderer::on_pipeline_destroyed(const DevicePipelineReadyEvent &)
 {
 }
 
@@ -559,9 +564,6 @@ static void set_cluster_parameters_legacy(Vulkan::CommandBuffer &cmd, const Ligh
 		memcpy(params.point_shadow, cluster.get_active_point_light_shadow_transform(),
 		       cluster.get_active_point_light_count() * sizeof(PointTransform));
 	}
-
-	if (cluster.get_cluster_list_buffer())
-		cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_LIST_LEGACY, *cluster.get_cluster_list_buffer());
 }
 
 static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
@@ -1008,8 +1010,6 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 					cluster_defines.emplace_back("AMBIENT_OCCLUSION", 1);
 			}
 		}
-		else if (light.cluster->get_cluster_list_buffer())
-			cluster_defines.emplace_back("CLUSTER_LIST", 1);
 
 		Renderer::add_subgroup_defines(device, cluster_defines, VK_SHADER_STAGE_FRAGMENT_BIT);
 

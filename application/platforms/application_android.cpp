@@ -1167,7 +1167,7 @@ void android_main(android_app *app)
 						if (platform->init(global_config.target_width, global_config.target_height))
 						{
 							global_state.app->userData = platform.get();
-							if (!app_handle->init_wsi(std::move(platform)))
+							if (!app_handle->init_platform(std::move(platform)) || !app_handle->init_wsi())
 								ret = 1;
 							else
 							{

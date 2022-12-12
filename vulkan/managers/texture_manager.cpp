@@ -104,7 +104,10 @@ void Texture::update(Granite::FileMappingHandle file)
 
 #ifdef GRANITE_VULKAN_THREAD_GROUP
 	if (auto *group = device->get_system_handles().thread_group)
-		group->create_task(std::move(work));
+	{
+		auto task = group->create_task(std::move(work));
+		task->set_desc("texture-load");
+	}
 	else
 		work();
 #else

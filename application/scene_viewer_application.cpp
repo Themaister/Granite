@@ -1097,7 +1097,7 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 	shadowpass.set_render_pass_interface(std::move(handle));
 }
 
-void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent &swap)
+void SceneViewerApplication::bake_render_graph(const SwapchainParameterEvent &swap)
 {
 	auto physical_buffers = graph.consume_physical_buffers();
 
@@ -1242,8 +1242,14 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	need_shadow_map_update = true;
 }
 
+void SceneViewerApplication::on_swapchain_changed(const Vulkan::SwapchainParameterEvent &e)
+{
+	pending_swapchain = &e;
+}
+
 void SceneViewerApplication::on_swapchain_destroyed(const SwapchainParameterEvent &)
 {
+	pending_swapchain = nullptr;
 }
 
 void SceneViewerApplication::update_shadow_scene_aabb()
@@ -1347,7 +1353,9 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 
 	animation_system->animate(composer, frame_time, elapsed_time);
 	scene.update_transform_tree(composer);
-	Threaded::scene_update_cached_transforms(scene, composer, 64);
+
+	constexpr unsigned NumTasks = 8;
+	Threaded::scene_update_cached_transforms(scene, composer, NumTasks);
 
 	// Perform updates which depend on node transforms.
 	auto &updates = composer.begin_pipeline_stage();
@@ -1453,12 +1461,28 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 	graph.enqueue_render_passes(device, composer);
 }
 
+void SceneViewerApplication::post_frame()
+{
+	scene_loader.get_scene().destroy_queued_entities();
+	get_wsi().get_device().promote_read_write_caches_to_read_only();
+}
+
 void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
 {
 	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
 	TaskComposer composer(*GRANITE_THREAD_GROUP());
 
 	Util::TimelineTraceFile::Event *e = nullptr;
+
+	if (pending_swapchain)
+	{
+		if (file)
+			e = file->begin_event("bake-render-graph");
+		bake_render_graph(*pending_swapchain);
+		if (e)
+			file->end_event(e);
+		pending_swapchain = nullptr;
+	}
 
 	FrameParameters frame;
 	frame.elapsed_time = elapsed_time;
@@ -1475,15 +1499,14 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	lighting.shadows = graph.maybe_get_physical_texture_resource(shadows);
 	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
 
-	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
 	scene_loader.get_scene().set_render_pass_data(&renderer_suite, &context);
+	scene.bind_render_graph_resources(graph);
+	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
 
 	fallback_lighting.shadows = graph.maybe_get_physical_texture_resource(fallback_shadows);
 	fallback_lighting.directional = lighting.directional;
 	fallback_lighting.cluster = lighting.cluster;
 	fallback_lighting.volumetric_diffuse = lighting.volumetric_diffuse;
-
-	scene.bind_render_graph_resources(graph);
 
 	if (file)
 		e = file->begin_event("update-scene-enqueue");
@@ -1505,8 +1528,6 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 
 	if (e)
 		file->end_event(e);
-
-	get_wsi().get_device().promote_read_write_caches_to_read_only();
 }
 
 std::string SceneViewerApplication::get_name()

@@ -256,6 +256,11 @@ public:
 	}
 #endif
 
+	const VkPhysicalDeviceFeatures2 &get_physical_device_features() const
+	{
+		return pdf2;
+	}
+
 private:
 	VkDevice device = VK_NULL_HANDLE;
 	VkInstance instance = VK_NULL_HANDLE;
@@ -278,6 +283,7 @@ private:
 	bool owned_instance = false;
 	bool owned_device = false;
 	DeviceFeatures ext;
+	VkPhysicalDeviceFeatures2 pdf2;
 
 #ifdef VULKAN_DEBUG
 	VkDebugUtilsMessengerEXT debug_messenger = VK_NULL_HANDLE;

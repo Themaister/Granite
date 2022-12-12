@@ -170,7 +170,7 @@ void libretro_end_frame(retro_video_refresh_t video_cb, Vulkan::WSI &wsi)
 	acquire_semaphore = signal_semaphore;
 }
 
-bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Vulkan::WSI &wsi)
+bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Granite::Application &app)
 {
 	vulkan_interface = vulkan;
 	if (vulkan->interface_type != RETRO_HW_RENDER_INTERFACE_VULKAN)
@@ -179,17 +179,16 @@ bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Vulkan::WS
 	if (vulkan->interface_version != RETRO_HW_RENDER_INTERFACE_VULKAN_VERSION)
 		return false;
 
-	if (!wsi.init_from_existing_context(std::move(vulkan_context)))
-		return false;
-	if (!wsi.init_device())
+	if (!app.init_wsi(std::move(vulkan_context)))
 		return false;
 
-	wsi.get_device().set_queue_lock([vulkan]() {
-		                                vulkan->lock_queue(vulkan->handle);
-	                                },
-	                                [vulkan]() {
-		                                vulkan->unlock_queue(vulkan->handle);
-	                                });
+	auto &device = app.get_wsi().get_device();
+	device.set_queue_lock([vulkan]() {
+		                      vulkan->lock_queue(vulkan->handle);
+	                      },
+	                      [vulkan]() {
+		                      vulkan->unlock_queue(vulkan->handle);
+	                      });
 
 	const unsigned num_swapchain_images = 2;
 
@@ -199,21 +198,21 @@ bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Vulkan::WS
 	info.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 	info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-	swapchain_image = wsi.get_device().create_image(info, nullptr);
+	swapchain_image = device.create_image(info, nullptr);
 	swapchain_image->set_swapchain_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	can_dupe = false;
 
 	Vulkan::ImageViewCreateInfo view_info;
 	view_info.format = VK_FORMAT_R8G8B8A8_UNORM;
 	view_info.image = swapchain_image.get();
-	swapchain_unorm_view = wsi.get_device().create_image_view(view_info);
+	swapchain_unorm_view = device.create_image_view(view_info);
 
 	std::vector<Vulkan::ImageHandle> images;
 	for (unsigned i = 0; i < num_swapchain_images; i++)
 		images.push_back(swapchain_image);
 
-	wsi.get_device().init_frame_contexts(2);
-	if (!wsi.init_external_swapchain(std::move(images)))
+	device.init_frame_contexts(2);
+	if (!app.get_wsi().init_external_swapchain(std::move(images)))
 		return false;
 
 	// Setup the swapchain image info for the frontend.
@@ -234,14 +233,14 @@ bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Vulkan::WS
 	return true;
 }
 
-void libretro_context_destroy(Vulkan::WSI *wsi)
+void libretro_context_destroy(Granite::Application *app)
 {
 	swapchain_unorm_view.reset();
 	swapchain_image.reset();
 	acquire_semaphore.reset();
 
-	if (wsi)
-		wsi->teardown();
+	if (app)
+		app->teardown_wsi();
 }
 
 static const VkApplicationInfo *get_application_info(void)

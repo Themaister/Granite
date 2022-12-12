@@ -56,14 +56,29 @@ if (GRANITE_VULKAN_FOSSILIZE)
     # Some issues with Android build with missing shm_. Compile exactly what we need for now.
     add_library(fossilize STATIC
             fossilize/fossilize.hpp fossilize/fossilize.cpp
+            fossilize/fossilize_db.hpp fossilize/fossilize_db.cpp
             fossilize/varint.hpp fossilize/varint.cpp
             fossilize/fossilize_application_filter.hpp fossilize/fossilize_application_filter.cpp
             fossilize/path.hpp fossilize/path.cpp
+            fossilize/miniz/miniz.h fossilize/miniz/miniz.c
             fossilize/cli/fossilize_feature_filter.hpp fossilize/cli/fossilize_feature_filter.cpp)
     target_include_directories(fossilize
             PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/fossilize
+            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/fossilize/miniz
             PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/spirv-headers/include/spirv/unified1)
     target_link_libraries(fossilize PUBLIC granite-volk-headers PRIVATE granite-rapidjson)
+    if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
+        target_compile_options(fossilize PRIVATE -fvisibility=hidden)
+        if (NOT APPLE)
+            target_compile_definitions(fossilize PRIVATE _LARGEFILE64_SOURCE)
+        endif()
+        if (WIN32)
+            target_compile_definitions(fossilize PRIVATE __USE_MINGW_ANSI_STDIO=1)
+        endif()
+    endif()
+    if (WIN32)
+        target_include_directories(fossilize PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/dirent)
+    endif()
 endif()
 
 add_library(granite-volk-headers INTERFACE)

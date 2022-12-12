@@ -61,7 +61,6 @@ public:
 
 	// Legacy clustering.
 	const Vulkan::ImageView *get_cluster_image() const;
-	const Vulkan::Buffer *get_cluster_list_buffer() const;
 	const Vulkan::ImageView *get_spot_light_shadows() const;
 	const Vulkan::ImageView *get_point_light_shadows() const;
 	const PositionalFragmentInfo *get_active_point_lights() const;
@@ -159,8 +158,8 @@ private:
 	unsigned max_point_lights = MaxLights;
 	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled);
 	void build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd);
-	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
+	void on_pipeline_created(const Vulkan::DevicePipelineReadyEvent &e);
+	void on_pipeline_destroyed(const Vulkan::DevicePipelineReadyEvent &e);
 
 	struct
 	{
@@ -187,7 +186,6 @@ private:
 			Vulkan::ImageHandle atlas;
 		} spots;
 
-		Vulkan::BufferHandle cluster_list;
 		Vulkan::ShaderProgramVariant *inherit_variant = nullptr;
 		Vulkan::ShaderProgramVariant *cull_variant = nullptr;
 

@@ -871,7 +871,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	}
 #endif
 
-	VkPhysicalDeviceFeatures2 features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+	pdf2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 
 	ext.multiview_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES };
 	ext.sampler_ycbcr_conversion_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES };
@@ -900,7 +900,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 
 	ext.compute_shader_derivative_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV };
 
-	void **ppNext = &features.pNext;
+	void **ppNext = &pdf2.pNext;
 
 	*ppNext = &ext.multiview_features;
 	ppNext = &ext.multiview_features.pNext;
@@ -1073,63 +1073,63 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		}
 	}
 
-	vkGetPhysicalDeviceFeatures2(gpu, &features);
+	vkGetPhysicalDeviceFeatures2(gpu, &pdf2);
 
 	// Enable device features we might care about.
 	{
 		VkPhysicalDeviceFeatures enabled_features = *required_features;
-		if (features.features.textureCompressionETC2)
+		if (pdf2.features.textureCompressionETC2)
 			enabled_features.textureCompressionETC2 = VK_TRUE;
-		if (features.features.textureCompressionBC)
+		if (pdf2.features.textureCompressionBC)
 			enabled_features.textureCompressionBC = VK_TRUE;
-		if (features.features.textureCompressionASTC_LDR)
+		if (pdf2.features.textureCompressionASTC_LDR)
 			enabled_features.textureCompressionASTC_LDR = VK_TRUE;
-		if (features.features.fullDrawIndexUint32)
+		if (pdf2.features.fullDrawIndexUint32)
 			enabled_features.fullDrawIndexUint32 = VK_TRUE;
-		if (features.features.imageCubeArray)
+		if (pdf2.features.imageCubeArray)
 			enabled_features.imageCubeArray = VK_TRUE;
-		if (features.features.fillModeNonSolid)
+		if (pdf2.features.fillModeNonSolid)
 			enabled_features.fillModeNonSolid = VK_TRUE;
-		if (features.features.independentBlend)
+		if (pdf2.features.independentBlend)
 			enabled_features.independentBlend = VK_TRUE;
-		if (features.features.sampleRateShading)
+		if (pdf2.features.sampleRateShading)
 			enabled_features.sampleRateShading = VK_TRUE;
-		if (features.features.fragmentStoresAndAtomics)
+		if (pdf2.features.fragmentStoresAndAtomics)
 			enabled_features.fragmentStoresAndAtomics = VK_TRUE;
-		if (features.features.shaderStorageImageExtendedFormats)
+		if (pdf2.features.shaderStorageImageExtendedFormats)
 			enabled_features.shaderStorageImageExtendedFormats = VK_TRUE;
-		if (features.features.shaderStorageImageMultisample)
+		if (pdf2.features.shaderStorageImageMultisample)
 			enabled_features.shaderStorageImageMultisample = VK_TRUE;
-		if (features.features.largePoints)
+		if (pdf2.features.largePoints)
 			enabled_features.largePoints = VK_TRUE;
-		if (features.features.shaderInt16)
+		if (pdf2.features.shaderInt16)
 			enabled_features.shaderInt16 = VK_TRUE;
-		if (features.features.shaderInt64)
+		if (pdf2.features.shaderInt64)
 			enabled_features.shaderInt64 = VK_TRUE;
-		if (features.features.shaderStorageImageWriteWithoutFormat)
+		if (pdf2.features.shaderStorageImageWriteWithoutFormat)
 			enabled_features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
-		if (features.features.shaderStorageImageReadWithoutFormat)
+		if (pdf2.features.shaderStorageImageReadWithoutFormat)
 			enabled_features.shaderStorageImageReadWithoutFormat = VK_TRUE;
 
-		if (features.features.shaderSampledImageArrayDynamicIndexing)
+		if (pdf2.features.shaderSampledImageArrayDynamicIndexing)
 			enabled_features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
-		if (features.features.shaderUniformBufferArrayDynamicIndexing)
+		if (pdf2.features.shaderUniformBufferArrayDynamicIndexing)
 			enabled_features.shaderUniformBufferArrayDynamicIndexing = VK_TRUE;
-		if (features.features.shaderStorageBufferArrayDynamicIndexing)
+		if (pdf2.features.shaderStorageBufferArrayDynamicIndexing)
 			enabled_features.shaderStorageBufferArrayDynamicIndexing = VK_TRUE;
-		if (features.features.shaderStorageImageArrayDynamicIndexing)
+		if (pdf2.features.shaderStorageImageArrayDynamicIndexing)
 			enabled_features.shaderStorageImageArrayDynamicIndexing = VK_TRUE;
-		if (features.features.shaderImageGatherExtended)
+		if (pdf2.features.shaderImageGatherExtended)
 			enabled_features.shaderImageGatherExtended = VK_TRUE;
 
-		if (features.features.samplerAnisotropy)
+		if (pdf2.features.samplerAnisotropy)
 			enabled_features.samplerAnisotropy = VK_TRUE;
 
-		features.features = enabled_features;
+		pdf2.features = enabled_features;
 		ext.enabled_features = enabled_features;
 	}
 
-	device_info.pNext = &features;
+	device_info.pNext = &pdf2;
 
 	if (ext.supports_external && has_extension(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME))
 	{
@@ -1205,8 +1205,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	feature_filter.init(user_application_info ? user_application_info->apiVersion : VK_API_VERSION_1_1,
-			enabled_extensions.data(), device_info.enabledExtensionCount,
-			&features, &props);
+	                    enabled_extensions.data(), device_info.enabledExtensionCount,
+	                    &pdf2, &props);
 	feature_filter.set_device_query_interface(this);
 #endif
 

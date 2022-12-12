@@ -852,7 +852,9 @@ private:
 	void promote_write_cache_to_readonly() const;
 	void promote_readonly_db_from_assets() const;
 
-	void init_pipeline_state(const Fossilize::FeatureFilter &filter);
+	void init_pipeline_state(const Fossilize::FeatureFilter &filter,
+	                         const VkPhysicalDeviceFeatures2 &pdf2,
+	                         const VkApplicationInfo &application_info);
 	void flush_pipeline_state();
 	void block_until_shader_module_ready();
 	void block_until_pipeline_ready();

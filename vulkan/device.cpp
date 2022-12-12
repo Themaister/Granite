@@ -900,7 +900,9 @@ void Device::set_context(const Context &context)
 		init_calibrated_timestamps();
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	init_pipeline_state(context.get_feature_filter());
+	init_pipeline_state(context.get_feature_filter(),
+	                    context.get_physical_device_features(),
+	                    context.get_application_info());
 #elif defined(GRANITE_VULKAN_FILESYSTEM)
 	// Fossilize init will deal with init_shader_manager_cache()
 	init_shader_manager_cache();

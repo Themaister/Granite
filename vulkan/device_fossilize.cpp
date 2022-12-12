@@ -569,7 +569,9 @@ void Device::promote_write_cache_to_readonly() const
 		fs->remove(str);
 }
 
-void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
+void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
+                                 const VkPhysicalDeviceFeatures2 &pdf2,
+                                 const VkApplicationInfo &application_info)
 {
 	if (!get_system_handles().filesystem)
 	{
@@ -585,6 +587,12 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 
 	replayer_state.reset(new ReplayerState);
 	recorder_state.reset(new RecorderState);
+
+	if (!recorder_state->recorder.record_application_info(application_info))
+		LOGW("Failed to record application info.\n");
+	if (!recorder_state->recorder.record_physical_device_features(&pdf2))
+		LOGW("Failed to record PDF2.\n");
+
 	replayer_state->feature_filter = &filter;
 	auto *group = get_system_handles().thread_group;
 

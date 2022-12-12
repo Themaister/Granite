@@ -614,6 +614,7 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 		{
 			recorder_state->db.reset(Fossilize::create_concurrent_database(
 				write_real_path.c_str(), Fossilize::DatabaseMode::Append, nullptr, 0));
+			recorder_state->recorder.set_database_enable_application_feature_links(false);
 			recorder_state->recorder.init_recording_thread(recorder_state->db.get());
 		}
 		recorder_state->recorder_ready.store(true, std::memory_order_release);

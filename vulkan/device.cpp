@@ -21,7 +21,9 @@
  */
 
 #include "device.hpp"
+#ifdef GRANITE_VULKAN_FOSSILIZE
 #include "device_fossilize.hpp"
+#endif
 #include "format.hpp"
 #include "timeline_trace_file.hpp"
 #include "type_to_string.hpp"

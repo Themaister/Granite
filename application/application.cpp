@@ -83,6 +83,9 @@ bool Application::init_wsi(Vulkan::ContextHandle context)
 
 	if (!application_wsi.init_device())
 		return false;
+
+	application_wsi.get_device().begin_shader_caches();
+
 	if (!platform->has_external_swapchain() && !application_wsi.init_surface_swapchain())
 		return false;
 

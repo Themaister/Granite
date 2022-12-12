@@ -593,13 +593,13 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 	if (!recorder_state->recorder.record_physical_device_features(&pdf2))
 		LOGW("Failed to record PDF2.\n");
 
+	read_only_cache_lock_count.fetch_add(1, std::memory_order_relaxed);
+
 	replayer_state->feature_filter = &filter;
 	auto *group = get_system_handles().thread_group;
 
 	auto shader_manager_task = group->create_task([this]() {
-		read_only_cache_lock_count.fetch_add(1, std::memory_order_relaxed);
 		init_shader_manager_cache();
-		read_only_cache_lock_count.fetch_sub(1, std::memory_order_release);
 	});
 	shader_manager_task->set_desc("shader-manager-init");
 
@@ -633,7 +633,6 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 	group->add_dependency(*recorder_kick_task, *cache_maintenance_task);
 
 	auto prepare_task = group->create_task([this]() {
-		read_only_cache_lock_count.fetch_add(1, std::memory_order_relaxed);
 		auto *fs = get_system_handles().filesystem;
 		auto read_real_path = fs->get_filesystem_path("cache://fossilize/db.foz");
 		if (read_real_path.empty())
@@ -911,5 +910,10 @@ void Device::block_until_pipeline_ready()
 	if (!replayer_state || !replayer_state->pipeline_ready)
 		return;
 	replayer_state->pipeline_ready->wait();
+}
+
+void Device::wait_shader_caches()
+{
+	block_until_pipeline_ready();
 }
 }

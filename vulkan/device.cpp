@@ -831,6 +831,7 @@ void Device::init_workarounds()
 
 void Device::set_context(const Context &context)
 {
+	ctx = &context;
 	table = &context.get_device_table();
 
 #ifdef GRANITE_VULKAN_MT
@@ -900,11 +901,19 @@ void Device::set_context(const Context &context)
 
 	if (system_handles.timeline_trace_file)
 		init_calibrated_timestamps();
+}
+
+void Device::begin_shader_caches()
+{
+	if (!ctx)
+	{
+		LOGE("No context. Forgot Device::set_context()?\n");
+		return;
+	}
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	init_pipeline_state(context.get_feature_filter(),
-	                    context.get_physical_device_features(),
-	                    context.get_application_info());
+	init_pipeline_state(ctx->get_feature_filter(), ctx->get_physical_device_features(),
+	                    ctx->get_application_info());
 #elif defined(GRANITE_VULKAN_FILESYSTEM)
 	// Fossilize init will deal with init_shader_manager_cache()
 	init_shader_manager_cache();
@@ -916,6 +925,10 @@ unsigned Device::query_initialization_progress(InitializationStage) const
 {
 	// If we don't have Fossilize, everything is considered done up front.
 	return 100;
+}
+
+void Device::wait_shader_caches()
+{
 }
 #endif
 

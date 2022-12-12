@@ -219,6 +219,13 @@ public:
 
 	// Only called by main thread, during setup phase.
 	void set_context(const Context &context);
+
+	// This is asynchronous in nature. See query_initialization_progress().
+	// Kicks off Fossilize and shader manager caching.
+	void begin_shader_caches();
+	// For debug or trivial applications, blocks until all shader cache work is done.
+	void wait_shader_caches();
+
 	void init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format,
 	                    VkSurfaceTransformFlagBitsKHR transform, VkImageUsageFlags usage);
 	void set_swapchain_queue_family_support(uint32_t queue_family_support);
@@ -487,6 +494,7 @@ private:
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
 	const VolkDeviceTable *table = nullptr;
+	const Context *ctx = nullptr;
 	QueueInfo queue_info;
 	unsigned num_thread_indices = 1;
 

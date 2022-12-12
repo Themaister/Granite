@@ -670,6 +670,11 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter)
 		replayer_state->progress.num_pipelines =
 				replayer_state->graphics_hashes.size() +
 				replayer_state->compute_hashes.size();
+
+		if (replayer_state->progress.num_modules == 0)
+			replayer_state->progress.modules.store(~0u, std::memory_order_release);
+		if (replayer_state->progress.num_pipelines == 0)
+			replayer_state->progress.pipelines.store(~0u, std::memory_order_release);
 	});
 	prepare_task->set_desc("foz-prepare");
 
@@ -862,6 +867,8 @@ unsigned Device::query_initialization_progress(InitializationStage status) const
 		// Avoid 0/0.
 		if (!done)
 			return 0;
+		else if (done == ~0u)
+			return 100;
 		return (100u * done) / replayer_state->progress.num_modules;
 	}
 
@@ -871,6 +878,8 @@ unsigned Device::query_initialization_progress(InitializationStage status) const
 		// Avoid 0/0.
 		if (!done)
 			return 0;
+		else if (done == ~0u)
+			return 100;
 		return (100u * done) / replayer_state->progress.num_pipelines;
 	}
 

@@ -910,7 +910,7 @@ void Device::set_context(const Context &context)
 }
 
 #ifndef GRANITE_VULKAN_FOSSILIZE
-unsigned Device::query_initialization_progress(InitializationStage status) const
+unsigned Device::query_initialization_progress(InitializationStage) const
 {
 	// If we don't have Fossilize, everything is considered done up front.
 	return 100;

@@ -389,6 +389,30 @@ FileNotifyHandle OSFilesystem::install_notification(const std::string &path, std
 	return handle_id;
 }
 
+bool OSFilesystem::remove(const std::string &path)
+{
+	auto joined = Path::to_utf16(Path::join(base, path));
+	return bool(DeleteFileW(joined.c_str()));
+}
+
+bool OSFilesystem::move_yield(const std::string &dst, const std::string &src)
+{
+	auto joined_dst = Path::to_utf16(Path::join(base, dst));
+	auto joined_src = Path::to_utf16(Path::join(base, src));
+	return bool(MoveFileW(joined_src.c_str(), joined_dst.c_str()));
+}
+
+bool OSFilesystem::move_replace(const std::string &dst, const std::string &src)
+{
+	auto joined_dst = Path::to_utf16(Path::join(base, dst));
+	auto joined_src = Path::to_utf16(Path::join(base, src));
+	if (MoveFileW(joined_src.c_str(), joined_dst.c_str()))
+		return true;
+	if (GetLastError() != ERROR_ALREADY_EXISTS)
+		return false;
+	return bool(ReplaceFileW(joined_dst.c_str(), joined_src.c_str(), nullptr, 0, nullptr, nullptr));
+}
+
 std::vector<ListEntry> OSFilesystem::list(const std::string &path)
 {
 	std::vector<ListEntry> entries;

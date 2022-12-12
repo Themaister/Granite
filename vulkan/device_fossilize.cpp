@@ -637,7 +637,11 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 		auto *fs = get_system_handles().filesystem;
 		auto read_real_path = fs->get_filesystem_path("cache://fossilize/db.foz");
 		if (read_real_path.empty())
+		{
+			replayer_state->progress.modules.store(~0u, std::memory_order_release);
+			replayer_state->progress.pipelines.store(~0u, std::memory_order_release);
 			return;
+		}
 
 		replayer_state->db.reset(
 			Fossilize::create_stream_archive_database(read_real_path.c_str(), Fossilize::DatabaseMode::ReadOnly));
@@ -648,37 +652,33 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 			replayer_state->db.reset();
 		}
 
-		if (!replayer_state->db)
-			return;
+		if (replayer_state->db)
+		{
+			replay_tag_simple(Fossilize::RESOURCE_DESCRIPTOR_SET_LAYOUT);
+			replay_tag_simple(Fossilize::RESOURCE_PIPELINE_LAYOUT);
+			replay_tag_simple(Fossilize::RESOURCE_RENDER_PASS);
 
-		replay_tag_simple(Fossilize::RESOURCE_DESCRIPTOR_SET_LAYOUT);
-		replay_tag_simple(Fossilize::RESOURCE_PIPELINE_LAYOUT);
-		replay_tag_simple(Fossilize::RESOURCE_RENDER_PASS);
+			size_t count = 0;
 
-		size_t count = 0;
+			replayer_state->db->get_hash_list_for_resource_tag(Fossilize::RESOURCE_SHADER_MODULE, &count, nullptr);
+			replayer_state->module_hashes.resize(count);
+			replayer_state->db->get_hash_list_for_resource_tag(Fossilize::RESOURCE_SHADER_MODULE, &count,
+			                                                   replayer_state->module_hashes.data());
 
-		replayer_state->db->get_hash_list_for_resource_tag(
-			Fossilize::RESOURCE_SHADER_MODULE, &count, nullptr);
-		replayer_state->module_hashes.resize(count);
-		replayer_state->db->get_hash_list_for_resource_tag(
-			Fossilize::RESOURCE_SHADER_MODULE, &count, replayer_state->module_hashes.data());
+			replayer_state->db->get_hash_list_for_resource_tag(Fossilize::RESOURCE_GRAPHICS_PIPELINE, &count, nullptr);
+			replayer_state->graphics_hashes.resize(count);
+			replayer_state->db->get_hash_list_for_resource_tag(Fossilize::RESOURCE_GRAPHICS_PIPELINE, &count,
+			                                                   replayer_state->graphics_hashes.data());
 
-		replayer_state->db->get_hash_list_for_resource_tag(
-			Fossilize::RESOURCE_GRAPHICS_PIPELINE, &count, nullptr);
-		replayer_state->graphics_hashes.resize(count);
-		replayer_state->db->get_hash_list_for_resource_tag(
-			Fossilize::RESOURCE_GRAPHICS_PIPELINE, &count, replayer_state->graphics_hashes.data());
+			replayer_state->db->get_hash_list_for_resource_tag(Fossilize::RESOURCE_COMPUTE_PIPELINE, &count, nullptr);
+			replayer_state->compute_hashes.resize(count);
+			replayer_state->db->get_hash_list_for_resource_tag(Fossilize::RESOURCE_COMPUTE_PIPELINE, &count,
+			                                                   replayer_state->compute_hashes.data());
 
-		replayer_state->db->get_hash_list_for_resource_tag(
-			Fossilize::RESOURCE_COMPUTE_PIPELINE, &count, nullptr);
-		replayer_state->compute_hashes.resize(count);
-		replayer_state->db->get_hash_list_for_resource_tag(
-			Fossilize::RESOURCE_COMPUTE_PIPELINE, &count, replayer_state->compute_hashes.data());
-
-		replayer_state->progress.num_modules = replayer_state->module_hashes.size();
-		replayer_state->progress.num_pipelines =
-				replayer_state->graphics_hashes.size() +
-				replayer_state->compute_hashes.size();
+			replayer_state->progress.num_modules = replayer_state->module_hashes.size();
+			replayer_state->progress.num_pipelines =
+			    replayer_state->graphics_hashes.size() + replayer_state->compute_hashes.size();
+		}
 
 		if (replayer_state->progress.num_modules == 0)
 			replayer_state->progress.modules.store(~0u, std::memory_order_release);

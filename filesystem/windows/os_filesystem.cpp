@@ -394,6 +394,7 @@ std::vector<ListEntry> OSFilesystem::list(const std::string &path)
 	std::vector<ListEntry> entries;
 	WIN32_FIND_DATAW result;
 	auto joined = Path::to_utf16(Path::join(base, path));
+	joined += L"/*";
 
 	HANDLE handle = FindFirstFileW(joined.c_str(), &result);
 	if (handle == INVALID_HANDLE_VALUE)
@@ -404,16 +405,18 @@ std::vector<ListEntry> OSFilesystem::list(const std::string &path)
 		ListEntry entry;
 		if (result.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 			entry.type = PathType::Directory;
-		else if (result.dwFileAttributes & FILE_ATTRIBUTE_NORMAL)
-			entry.type = PathType::File;
 		else
-			entry.type = PathType::Special;
+			entry.type = PathType::File;
 
-		entry.path = Path::join(path, Path::to_utf8(result.cFileName));
+		auto utf8_path = Path::to_utf8(result.cFileName);
+		if (utf8_path == "." || utf8_path == "..")
+			continue;
+
+		entry.path = Path::join(path, utf8_path);
 		entries.push_back(std::move(entry));
 	} while (FindNextFileW(handle, &result));
 
-	CloseHandle(handle);
+	FindClose(handle);
 	return entries;
 }
 

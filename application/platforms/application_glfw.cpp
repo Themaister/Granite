@@ -354,15 +354,32 @@ public:
 	void thread_main(Application *app, Global::GlobalManagersHandle ctx)
 	{
 		// Set this up as an alternative main thread.
-		ThreadGroup::set_async_main_thread_name();
+		ThreadGroup::set_async_main_thread();
 		Global::set_thread_context(*ctx);
 		Util::register_thread_index(0);
 		ctx.reset();
 
+		auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
+		Util::TimelineTraceFile::Event *e = nullptr;
+		if (file)
+			e = file->begin_event("glfw-dispatch-running-events");
 		dispatch_running_events();
+		if (e)
+			file->end_event(e);
+
+		if (file)
+			e = file->begin_event("glfw-init-input-managers");
 		init_input_managers();
+		if (e)
+			file->end_event(e);
+
 		{
+			if (file)
+				e = file->begin_event("glfw-start-audio-system");
 			Granite::Global::start_audio_system();
+			if (e)
+				file->end_event(e);
+
 			while (app->poll())
 				app->run_frame();
 			Granite::Global::stop_audio_system();

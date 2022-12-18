@@ -108,27 +108,27 @@ TaskGroup::~TaskGroup()
 		flush();
 }
 
-void ThreadGroup::set_async_main_thread_name()
+void ThreadGroup::set_async_main_thread()
 {
 	Util::set_current_thread_name("MainAsyncThread");
 	Util::TimelineTraceFile::set_tid("main-async");
+	// Seems reasonable to make sure main thread is making forward progress when it has something useful to do.
+	Util::set_current_thread_priority(Util::ThreadPriority::High);
 }
 
 static void set_main_thread_name()
 {
 	Util::set_current_thread_name("MainThread");
 	Util::TimelineTraceFile::set_tid("main");
+	// Seems reasonable to make sure main thread is making forward progress when it has something useful to do.
+	Util::set_current_thread_priority(Util::ThreadPriority::High);
 }
 
-static void set_worker_thread_name(unsigned index, TaskClass task_class)
+static void set_worker_thread_name_and_prio(unsigned index, TaskClass task_class)
 {
 	auto name = Util::join("WorkerThread-", task_class == TaskClass::Foreground ? "FG-" : "BG-", index);
 	Util::set_current_thread_name(name.c_str());
 	Util::TimelineTraceFile::set_tid(std::to_string(index + 1).c_str());
-}
-
-static void set_thread_priority(TaskClass task_class)
-{
 	Util::set_current_thread_priority(task_class == TaskClass::Foreground ?
 	                                  Util::ThreadPriority::Default : Util::ThreadPriority::Low);
 }
@@ -169,15 +169,13 @@ void ThreadGroup::start(unsigned num_threads_foreground,
 
 	refresh_global_timeline_trace_file();
 	set_main_thread_name();
-	// Seems reasonable to make sure main thread is making forward progress when it has something useful to do.
-	Util::set_current_thread_priority(Util::ThreadPriority::High);
 
 	unsigned self_index = 1;
 	for (auto &t : fg.thread_group)
 	{
 		t = std::make_unique<std::thread>([this, on_thread_begin, self_index]() {
 			refresh_global_timeline_trace_file();
-			set_worker_thread_name(self_index - 1, TaskClass::Foreground);
+			set_worker_thread_name_and_prio(self_index - 1, TaskClass::Foreground);
 			if (on_thread_begin)
 				on_thread_begin();
 			thread_looper(self_index, TaskClass::Foreground);
@@ -189,7 +187,7 @@ void ThreadGroup::start(unsigned num_threads_foreground,
 	{
 		t = std::make_unique<std::thread>([this, on_thread_begin, self_index]() {
 			refresh_global_timeline_trace_file();
-			set_worker_thread_name(self_index - 1, TaskClass::Background);
+			set_worker_thread_name_and_prio(self_index - 1, TaskClass::Background);
 			if (on_thread_begin)
 				on_thread_begin();
 			thread_looper(self_index, TaskClass::Background);
@@ -341,7 +339,6 @@ bool ThreadGroup::is_idle()
 void ThreadGroup::thread_looper(unsigned index, TaskClass task_class)
 {
 	Util::register_thread_index(index);
-	set_thread_priority(task_class);
 	auto &ctx = task_class == TaskClass::Foreground ? fg : bg;
 
 	for (;;)

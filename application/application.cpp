@@ -86,8 +86,19 @@ bool Application::init_wsi(Vulkan::ContextHandle context)
 
 	application_wsi.get_device().begin_shader_caches();
 
+	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
+	Util::TimelineTraceFile::Event *e = nullptr;
+
+	if (file)
+		e = file->begin_event("wsi-init-swapchain");
 	if (!platform->has_external_swapchain() && !application_wsi.init_surface_swapchain())
+	{
+		if (e)
+			file->end_event(e);
 		return false;
+	}
+	if (e)
+		file->end_event(e);
 
 	return true;
 }
@@ -172,13 +183,17 @@ void Application::run_frame()
 {
 	check_initialization_progress();
 
+	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
+	Util::TimelineTraceFile::Event *e = nullptr;
+
+	if (file)
+		e = file->begin_event("wsi-begin-frame");
 	application_wsi.begin_frame();
+	if (e)
+		file->end_event(e);
 
 	double smooth_frame_time = application_wsi.get_smooth_frame_time();
 	double smooth_elapsed = application_wsi.get_smooth_elapsed_time();
-
-	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
-	Util::TimelineTraceFile::Event *e = nullptr;
 
 	if (!ready_modules)
 	{
@@ -202,8 +217,17 @@ void Application::run_frame()
 	if (e)
 		file->end_event(e);
 
+	if (file)
+		e = file->begin_event("wsi-end-frame");
 	application_wsi.end_frame();
+	if (e)
+		file->end_event(e);
+
+	if (file)
+		e = file->begin_event("post-frame");
 	post_frame();
+	if (e)
+		file->end_event(e);
 }
 
 void Application::render_early_loading(double, double)

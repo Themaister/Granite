@@ -186,7 +186,7 @@ public:
 	Util::TimelineTraceFile *get_timeline_trace_file();
 	void refresh_global_timeline_trace_file();
 
-	static void set_async_main_thread_name();
+	static void set_async_main_thread();
 
 private:
 	Util::ThreadSafeObjectPool<Internal::Task> task_pool;

@@ -93,7 +93,6 @@ void Texture::update(Granite::FileMappingHandle file)
 				update_gtx(std::move(file));
 			else
 				update_other(file->data(), file->get_size());
-			device->get_texture_manager().notify_updated_texture(path, *this);
 		}
 		else
 		{
@@ -240,9 +239,6 @@ void Texture::replace_image(ImageHandle handle_)
 	auto old = this->handle.write_object(std::move(handle_));
 	if (old)
 		device->keep_handle_alive(std::move(old));
-
-	if (enable_notification)
-		device->get_texture_manager().notify_updated_texture(path, *this);
 }
 
 Image *Texture::get_image()
@@ -250,11 +246,6 @@ Image *Texture::get_image()
 	auto ret = handle.get();
 	VK_ASSERT(ret);
 	return ret;
-}
-
-void Texture::set_enable_notification(bool enable)
-{
-	enable_notification = enable;
 }
 
 TextureManager::TextureManager(Device *device_)
@@ -266,7 +257,6 @@ Texture *TextureManager::request_texture(const std::string &path, VkFormat forma
 {
 	Util::Hasher hasher;
 	hasher.string(path);
-	auto deferred_hash = hasher.get();
 	hasher.u32(format);
 	hasher.u32(mapping.r);
 	hasher.u32(mapping.g);
@@ -274,11 +264,7 @@ Texture *TextureManager::request_texture(const std::string &path, VkFormat forma
 	hasher.u32(mapping.a);
 	auto hash = hasher.get();
 
-	auto *ret = deferred_textures.find(deferred_hash);
-	if (ret)
-		return ret;
-
-	ret = textures.find(hash);
+	auto *ret = textures.find(hash);
 	if (ret)
 		return ret;
 
@@ -287,43 +273,4 @@ Texture *TextureManager::request_texture(const std::string &path, VkFormat forma
 		ret->update_checkerboard();
 	return ret;
 }
-
-void TextureManager::register_texture_update_notification(const std::string &modified_path,
-                                                          std::function<void(Texture &)> func)
-{
-	Util::Hasher hasher;
-	hasher.string(modified_path);
-	auto hash = hasher.get();
-	auto *ret = deferred_textures.find(hash);
-	if (ret)
-		func(*ret);
-	notifications[modified_path].push_back(std::move(func));
-}
-
-void TextureManager::notify_updated_texture(const std::string &path, Vulkan::Texture &texture)
-{
-	auto itr = notifications.find(path);
-	if (itr != end(notifications))
-		for (auto &f : itr->second)
-			if (f)
-				f(texture);
-}
-
-Texture *TextureManager::register_deferred_texture(const std::string &path)
-{
-	Util::Hasher hasher;
-	hasher.string(path);
-	auto hash = hasher.get();
-
-	auto *ret = deferred_textures.find(hash);
-	if (!ret)
-	{
-		auto *texture = deferred_textures.allocate(device);
-		texture->set_path(path);
-		texture->set_enable_notification(false);
-		ret = deferred_textures.insert_yield(hash, texture);
-	}
-	return ret;
-}
-
 }

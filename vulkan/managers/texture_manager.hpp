@@ -43,8 +43,6 @@ public:
 	bool init_texture();
 	void set_path(const std::string &path);
 	Image *get_image();
-	void replace_image(ImageHandle handle);
-	void set_enable_notification(bool enable);
 
 #ifdef GRANITE_SHIPPING
 	bool init();
@@ -75,7 +73,7 @@ private:
 	void load();
 	void unload();
 	void update(Granite::FileMappingHandle file);
-	bool enable_notification = true;
+	void replace_image(ImageHandle handle_);
 };
 
 class TextureManager
@@ -89,19 +87,8 @@ public:
 			                         VK_COMPONENT_SWIZZLE_B,
 			                         VK_COMPONENT_SWIZZLE_A });
 
-	Texture *register_deferred_texture(const std::string &path);
-
-	void register_texture_update_notification(const std::string &modified_path,
-	                                          std::function<void (Texture &)> func);
-
-	void notify_updated_texture(const std::string &path, Vulkan::Texture &texture);
-
 private:
 	Device *device;
-
 	VulkanCache<Texture> textures;
-	VulkanCache<Texture> deferred_textures;
-
-	std::unordered_map<std::string, std::vector<std::function<void (Texture &)>>> notifications;
 };
 }

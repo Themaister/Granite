@@ -204,7 +204,7 @@ private:
 class Skybox : public AbstractRenderable, public EventHandler
 {
 public:
-	Skybox(std::string bg_path = "", bool latlon = false);
+	Skybox(std::string bg_path = "");
 	void set_image(Vulkan::ImageHandle skybox);
 	void set_image(Vulkan::Texture *skybox);
 
@@ -225,8 +225,6 @@ private:
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
-
-	bool is_latlon = true;
 };
 
 class SkyCylinder : public AbstractRenderable, public EventHandler

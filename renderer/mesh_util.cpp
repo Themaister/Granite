@@ -1073,8 +1073,8 @@ void SkyCylinder::get_render_info(const RenderContext &, const RenderInfoCompone
 	}
 }
 
-Skybox::Skybox(std::string bg_path_, bool latlon)
-	: bg_path(std::move(bg_path_)), is_latlon(latlon)
+Skybox::Skybox(std::string bg_path_)
+	: bg_path(std::move(bg_path_))
 {
 	EVENT_MANAGER_REGISTER_LATCH(Skybox, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
@@ -1173,24 +1173,8 @@ void Skybox::on_device_created(const Vulkan::DeviceCreatedEvent &created)
 {
 	texture = nullptr;
 	device = &created.get_device();
-
 	if (!bg_path.empty())
-	{
-		if (is_latlon)
-		{
-			auto &texture_manager = created.get_device().get_texture_manager();
-			texture_manager.request_texture(bg_path);
-
-			auto cube_path = bg_path + ".cube";
-			texture = texture_manager.register_deferred_texture(cube_path);
-
-			texture_manager.register_texture_update_notification(bg_path, [this](Vulkan::Texture &tex) {
-				texture->replace_image(convert_equirect_to_cube(*device, tex.get_image()->get_view(), 1.0f));
-			});
-		}
-		else
-			texture = created.get_device().get_texture_manager().request_texture(bg_path);
-	}
+		texture = created.get_device().get_texture_manager().request_texture(bg_path);
 }
 
 void Skybox::set_image(Vulkan::ImageHandle skybox)

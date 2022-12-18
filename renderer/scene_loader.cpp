@@ -277,7 +277,7 @@ NodeHandle SceneLoader::parse_gltf(const std::string &path)
 		Util::IntrusivePtr<Skybox> skybox;
 		if (!env.cube.path.empty())
 		{
-			skybox = Util::make_handle<Skybox>(env.cube.path, false);
+			skybox = Util::make_handle<Skybox>(env.cube.path);
 			entity = scene->create_renderable(skybox, nullptr);
 			entity->allocate_component<BackgroundComponent>();
 		}
@@ -531,13 +531,9 @@ NodeHandle SceneLoader::parse_scene_format(const std::string &path, const std::s
 			if (box.HasMember("projection"))
 			{
 				auto &proj = box["projection"];
-				if (strcmp(proj.GetString(), "latlon") == 0)
+				if (strcmp(proj.GetString(), "cube") == 0)
 				{
-					renderable = Util::make_handle<Skybox>(texture_path, true);
-				}
-				else if (strcmp(proj.GetString(), "cube") == 0)
-				{
-					renderable = Util::make_handle<Skybox>(texture_path, false);
+					renderable = Util::make_handle<Skybox>(texture_path);
 				}
 				else if (strcmp(proj.GetString(), "cylinder") == 0)
 				{

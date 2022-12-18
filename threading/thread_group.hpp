@@ -51,6 +51,12 @@ struct TaskSignal
 	void wait_until_at_least(uint64_t count);
 };
 
+enum class TaskClass : uint8_t
+{
+	Foreground,
+	Background
+};
+
 struct TaskGroup;
 namespace Internal
 {
@@ -93,6 +99,7 @@ struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::Mul
 	std::condition_variable cond;
 	std::mutex cond_lock;
 	bool done = false;
+	TaskClass task_class = TaskClass::Foreground;
 
 	char desc[64];
 };
@@ -132,6 +139,7 @@ struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, Internal::TaskGroupDelet
 	ThreadGroup *get_thread_group() const;
 
 	void set_desc(const char *desc);
+	void set_task_class(TaskClass task_class);
 
 	unsigned id = 0;
 	bool flushed = false;
@@ -147,11 +155,13 @@ public:
 	ThreadGroup(ThreadGroup &&) = delete;
 	void operator=(ThreadGroup &&) = delete;
 
-	void start(unsigned num_threads, const std::function<void ()> &on_thread_begin) override;
+	void start(unsigned num_threads_foreground,
+	           unsigned num_threads_background,
+	           const std::function<void ()> &on_thread_begin) override;
 
 	unsigned get_num_threads() const
 	{
-		return unsigned(thread_group.size());
+		return unsigned(fg.thread_group.size() + bg.thread_group.size());
 	}
 
 	void stop();
@@ -183,13 +193,15 @@ private:
 	Util::ThreadSafeObjectPool<TaskGroup> task_group_pool;
 	Util::ThreadSafeObjectPool<Internal::TaskDeps> task_deps_pool;
 
-	std::queue<Internal::Task *> ready_tasks;
+	struct
+	{
+		std::vector<std::unique_ptr<std::thread>> thread_group;
+		std::queue<Internal::Task *> ready_tasks;
+		std::mutex cond_lock;
+		std::condition_variable cond;
+	} fg, bg;
 
-	std::vector<std::unique_ptr<std::thread>> thread_group;
-	std::mutex cond_lock;
-	std::condition_variable cond;
-
-	void thread_looper(unsigned self_index);
+	void thread_looper(unsigned self_index, TaskClass task_class);
 
 	bool active = false;
 	bool dead = false;

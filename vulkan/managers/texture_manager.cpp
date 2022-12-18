@@ -106,6 +106,7 @@ void Texture::update(Granite::FileMappingHandle file)
 	{
 		auto task = group->create_task(std::move(work));
 		task->set_desc("texture-load");
+		task->set_task_class(Granite::TaskClass::Background);
 	}
 	else
 		work();

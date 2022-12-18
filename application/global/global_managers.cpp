@@ -199,12 +199,14 @@ void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads)
 	if (kick_threads)
 	{
 		unsigned cpu_threads = std::thread::hardware_concurrency();
+		cpu_threads = cpu_threads > 1 ? (cpu_threads - 1u) : 1u;
+
 		if (cpu_threads > max_threads)
 			cpu_threads = max_threads;
 		if (const char *env = getenv("GRANITE_NUM_WORKER_THREADS"))
 			cpu_threads = strtoul(env, nullptr, 0);
 
-		global_managers.thread_group->start(cpu_threads,
+		global_managers.thread_group->start(cpu_threads, cpu_threads,
 		                                    [ctx = std::shared_ptr<GlobalManagers>(create_thread_context())] {
 			                                    set_thread_context(*ctx);
 		                                    });

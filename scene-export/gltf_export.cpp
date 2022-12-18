@@ -1629,7 +1629,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const std::string &path,
 	auto &allocator = doc.GetAllocator();
 
 	ThreadGroup workers;
-	workers.start(options.threads ? options.threads : std::thread::hardware_concurrency(),
+	workers.start(options.threads ? options.threads : std::thread::hardware_concurrency(), 0,
 	              [ctx = std::shared_ptr<Global::GlobalManagers>(Global::create_thread_context())]() {
 		              Global::set_thread_context(*ctx);
 	              });

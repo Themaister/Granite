@@ -21,7 +21,8 @@ add_granite_internal_lib(granite-util
         string_helpers.hpp string_helpers.cpp
         timeline_trace_file.hpp timeline_trace_file.cpp
         thread_name.hpp thread_name.cpp
-        cli_parser.cpp cli_parser.hpp
+        thread_priority.hpp thread_priority.cpp
+		cli_parser.cpp cli_parser.hpp
         dynamic_library.cpp dynamic_library.hpp
         generational_handle.hpp
         atomic_append_buffer.hpp

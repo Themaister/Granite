@@ -48,7 +48,8 @@ class ThreadGroupInterface
 {
 public:
 	virtual ~ThreadGroupInterface() = default;
-	virtual void start(unsigned count, const std::function<void()> &cb) = 0;
+	virtual void start(unsigned foreground_count, unsigned background_count,
+	                   const std::function<void()> &cb) = 0;
 	virtual void set_thread_context() = 0;
 };
 

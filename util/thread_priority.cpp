@@ -20,21 +20,48 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "thread_name.hpp"
+#include "thread_priority.hpp"
+#include "logging.hpp"
 
-#ifdef __linux__
+#if defined(__linux__)
 #include <pthread.h>
+#elif defined(_WIN32)
+#include <windows.h>
 #endif
 
 namespace Util
 {
-void set_current_thread_name(const char *name)
+void set_current_thread_priority(ThreadPriority priority)
 {
-#ifdef __linux__
-	pthread_setname_np(pthread_self(), name);
+#if defined(__linux__)
+	if (priority == ThreadPriority::Low)
+	{
+		struct sched_param param = {};
+		int policy = 0;
+		param.sched_priority = sched_get_priority_min(SCHED_BATCH);
+		policy = SCHED_BATCH;
+		if (pthread_setschedparam(pthread_self(), policy, &param) != 0)
+			LOGE("Failed to set thread priority.\n");
+	}
+#elif defined(_WIN32)
+	if (priority == ThreadPriority::Low)
+	{
+		if (!SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN))
+			LOGE("Failed to set background thread priority.\n");
+	}
+	else if (priority == ThreadPriority::Default)
+	{
+		if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL))
+			LOGE("Failed to set normal thread priority.\n");
+	}
+	else if (priority == ThreadPriority::High)
+	{
+		if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST))
+			LOGE("Failed to set high thread priority.\n");
+	}
 #else
-	// TODO: Kinda messy.
-	(void)name;
+#warning "Unimplemented set_current_thread_priority."
+	(void)priority;
 #endif
 }
 }

@@ -26,6 +26,7 @@
 #include <type_traits>
 #include "logging.hpp"
 #include "thread_id.hpp"
+#include "thread_priority.hpp"
 #include "string_helpers.hpp"
 #include "timeline_trace_file.hpp"
 #include "thread_name.hpp"
@@ -77,7 +78,7 @@ void TaskDeps::dependency_satisfied()
 }
 
 TaskGroup::TaskGroup(ThreadGroup *group_)
-		: group(group_)
+	: group(group_)
 {
 }
 
@@ -119,11 +120,17 @@ static void set_main_thread_name()
 	Util::TimelineTraceFile::set_tid("main");
 }
 
-static void set_worker_thread_name(unsigned index)
+static void set_worker_thread_name(unsigned index, TaskClass task_class)
 {
-	auto name = Util::join("WorkerThread-", index);
+	auto name = Util::join("WorkerThread-", task_class == TaskClass::Foreground ? "FG-" : "BG-", index);
 	Util::set_current_thread_name(name.c_str());
 	Util::TimelineTraceFile::set_tid(std::to_string(index + 1).c_str());
+}
+
+static void set_thread_priority(TaskClass task_class)
+{
+	Util::set_current_thread_priority(task_class == TaskClass::Foreground ?
+	                                  Util::ThreadPriority::Default : Util::ThreadPriority::Low);
 }
 
 void ThreadGroup::refresh_global_timeline_trace_file()
@@ -141,7 +148,9 @@ Util::TimelineTraceFile *ThreadGroup::get_timeline_trace_file()
 	return timeline_trace_file.get();
 }
 
-void ThreadGroup::start(unsigned num_threads, const std::function<void ()> &on_thread_begin)
+void ThreadGroup::start(unsigned num_threads_foreground,
+                        unsigned num_threads_background,
+                        const std::function<void ()> &on_thread_begin)
 {
 	if (active)
 		throw std::logic_error("Cannot start a thread group which has already started.");
@@ -149,7 +158,8 @@ void ThreadGroup::start(unsigned num_threads, const std::function<void ()> &on_t
 	dead = false;
 	active = true;
 
-	thread_group.resize(num_threads);
+	fg.thread_group.resize(num_threads_foreground);
+	bg.thread_group.resize(num_threads_background);
 
 	if (const char *env = getenv("GRANITE_TIMELINE_TRACE"))
 	{
@@ -159,16 +169,30 @@ void ThreadGroup::start(unsigned num_threads, const std::function<void ()> &on_t
 
 	refresh_global_timeline_trace_file();
 	set_main_thread_name();
+	// Seems reasonable to make sure main thread is making forward progress when it has something useful to do.
+	Util::set_current_thread_priority(Util::ThreadPriority::High);
 
 	unsigned self_index = 1;
-	for (auto &t : thread_group)
+	for (auto &t : fg.thread_group)
 	{
 		t = std::make_unique<std::thread>([this, on_thread_begin, self_index]() {
 			refresh_global_timeline_trace_file();
-			set_worker_thread_name(self_index - 1);
+			set_worker_thread_name(self_index - 1, TaskClass::Foreground);
 			if (on_thread_begin)
 				on_thread_begin();
-			thread_looper(self_index);
+			thread_looper(self_index, TaskClass::Foreground);
+		});
+		self_index++;
+	}
+
+	for (auto &t : bg.thread_group)
+	{
+		t = std::make_unique<std::thread>([this, on_thread_begin, self_index]() {
+			refresh_global_timeline_trace_file();
+			set_worker_thread_name(self_index - 1, TaskClass::Background);
+			if (on_thread_begin)
+				on_thread_begin();
+			thread_looper(self_index, TaskClass::Background);
 		});
 		self_index++;
 	}
@@ -193,19 +217,48 @@ void ThreadGroup::add_dependency(TaskGroup &dependee, TaskGroup &dependency)
 
 void ThreadGroup::move_to_ready_tasks(const Util::SmallVector<Internal::Task *> &list)
 {
-	std::lock_guard<std::mutex> holder{cond_lock};
+	unsigned fg_task_count = 0;
+	unsigned bg_task_count = 0;
+	for (auto *t : list)
+	{
+		if (t->deps->task_class == TaskClass::Foreground)
+			fg_task_count++;
+		else
+			bg_task_count++;
+	}
+
 	total_tasks.fetch_add(list.size(), std::memory_order_relaxed);
 
-	for (auto &t : list)
-		ready_tasks.push(t);
-
-	if (list.size() >= thread_group.size())
-		cond.notify_all();
-	else
+	if (fg_task_count)
 	{
-		size_t count = list.size();
-		for (size_t i = 0; i < count; i++)
-			cond.notify_one();
+		std::lock_guard<std::mutex> holder{fg.cond_lock};
+
+		for (auto &t : list)
+			fg.ready_tasks.push(t);
+
+		if (fg_task_count >= fg.thread_group.size())
+			fg.cond.notify_all();
+		else
+		{
+			for (unsigned i = 0; i < fg_task_count; i++)
+				fg.cond.notify_one();
+		}
+	}
+
+	if (bg_task_count)
+	{
+		std::lock_guard<std::mutex> holder{bg.cond_lock};
+
+		for (auto &t : list)
+			bg.ready_tasks.push(t);
+
+		if (bg_task_count >= bg.thread_group.size())
+			bg.cond.notify_all();
+		else
+		{
+			for (unsigned i = 0; i < bg_task_count; i++)
+				bg.cond.notify_one();
+		}
 	}
 }
 
@@ -267,6 +320,11 @@ void TaskGroup::set_desc(const char *desc)
 	snprintf(deps->desc, sizeof(deps->desc), "%s", desc);
 }
 
+void TaskGroup::set_task_class(TaskClass task_class)
+{
+	deps->task_class = task_class;
+}
+
 void ThreadGroup::wait_idle()
 {
 	std::unique_lock<std::mutex> holder{wait_cond_lock};
@@ -280,25 +338,27 @@ bool ThreadGroup::is_idle()
 	return total_tasks.load(std::memory_order_acquire) == completed_tasks.load(std::memory_order_acquire);
 }
 
-void ThreadGroup::thread_looper(unsigned index)
+void ThreadGroup::thread_looper(unsigned index, TaskClass task_class)
 {
 	Util::register_thread_index(index);
+	set_thread_priority(task_class);
+	auto &ctx = task_class == TaskClass::Foreground ? fg : bg;
 
 	for (;;)
 	{
 		Internal::Task *task = nullptr;
 
 		{
-			std::unique_lock<std::mutex> holder{cond_lock};
-			cond.wait(holder, [&]() {
-				return dead || !ready_tasks.empty();
+			std::unique_lock<std::mutex> holder{ctx.cond_lock};
+			ctx.cond.wait(holder, [&]() {
+				return dead || !ctx.ready_tasks.empty();
 			});
 
-			if (dead && ready_tasks.empty())
+			if (dead && ctx.ready_tasks.empty())
 				break;
 
-			task = ready_tasks.front();
-			ready_tasks.pop();
+			task = ctx.ready_tasks.front();
+			ctx.ready_tasks.pop();
 		}
 
 		if (task->callable)
@@ -354,12 +414,23 @@ void ThreadGroup::stop()
 	wait_idle();
 
 	{
-		std::lock_guard<std::mutex> holder{cond_lock};
+		std::lock_guard<std::mutex> holder_fg{fg.cond_lock};
+		std::lock_guard<std::mutex> holder_bg{bg.cond_lock};
 		dead = true;
-		cond.notify_all();
+		fg.cond.notify_all();
+		bg.cond.notify_all();
 	}
 
-	for (auto &t : thread_group)
+	for (auto &t : fg.thread_group)
+	{
+		if (t && t->joinable())
+		{
+			t->join();
+			t.reset();
+		}
+	}
+
+	for (auto &t : bg.thread_group)
 	{
 		if (t && t->joinable())
 		{
@@ -371,5 +442,4 @@ void ThreadGroup::stop()
 	active = false;
 	dead = false;
 }
-
 }

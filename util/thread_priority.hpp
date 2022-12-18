@@ -20,21 +20,16 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "thread_name.hpp"
-
-#ifdef __linux__
-#include <pthread.h>
-#endif
+#pragma once
 
 namespace Util
 {
-void set_current_thread_name(const char *name)
+enum class ThreadPriority
 {
-#ifdef __linux__
-	pthread_setname_np(pthread_self(), name);
-#else
-	// TODO: Kinda messy.
-	(void)name;
-#endif
-}
+	High,
+	Default,
+	Low
+};
+
+void set_current_thread_priority(ThreadPriority priority);
 }

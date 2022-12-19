@@ -3480,11 +3480,17 @@ InitialImageBuffer Device::create_image_staging_buffer(const TextureFormatLayout
 	buffer_info.domain = BufferDomain::Host;
 	buffer_info.size = layout.get_required_size();
 	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	result.buffer = create_buffer(buffer_info, nullptr);
+	{
+		GRANITE_SCOPED_TIMELINE_EVENT_FILE(system_handles.timeline_trace_file, "allocate-image-staging-buffer");
+		result.buffer = create_buffer(buffer_info, nullptr);
+	}
 	set_name(*result.buffer, "image-upload-staging-buffer");
 
 	auto *mapped = static_cast<uint8_t *>(map_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE_BIT));
-	memcpy(mapped, layout.data(), layout.get_required_size());
+	{
+		GRANITE_SCOPED_TIMELINE_EVENT_FILE(system_handles.timeline_trace_file, "copy-image-staging-buffer");
+		memcpy(mapped, layout.data(), layout.get_required_size());
+	}
 	unmap_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE_BIT);
 
 	layout.build_buffer_image_copies(result.blits);
@@ -3525,7 +3531,10 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 	buffer_info.domain = BufferDomain::Host;
 	buffer_info.size = layout.get_required_size();
 	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	result.buffer = create_buffer(buffer_info, nullptr);
+	{
+		GRANITE_SCOPED_TIMELINE_EVENT_FILE(system_handles.timeline_trace_file, "allocate-image-staging-buffer");
+		result.buffer = create_buffer(buffer_info, nullptr);
+	}
 	set_name(*result.buffer, "image-upload-staging-buffer");
 
 	// And now, do the actual copy.
@@ -3534,6 +3543,7 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 
 	layout.set_buffer(mapped, layout.get_required_size());
 
+	GRANITE_SCOPED_TIMELINE_EVENT_FILE(system_handles.timeline_trace_file, "copy-image-staging-buffer");
 	for (unsigned level = 0; level < copy_levels; level++)
 	{
 		const auto &mip_info = layout.get_mip_info(level);

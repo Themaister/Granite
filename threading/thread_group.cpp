@@ -133,9 +133,9 @@ static void set_main_thread_name()
 
 static void set_worker_thread_name_and_prio(unsigned index, TaskClass task_class)
 {
-	auto name = Util::join("WorkerThread-", task_class == TaskClass::Foreground ? "FG-" : "BG-", index);
+	auto name = Util::join(task_class == TaskClass::Foreground ? "FG-" : "BG-", index);
 	Util::set_current_thread_name(name.c_str());
-	Util::TimelineTraceFile::set_tid(std::to_string(index + 1).c_str());
+	Util::TimelineTraceFile::set_tid(name.c_str());
 	Util::set_current_thread_priority(task_class == TaskClass::Foreground ?
 	                                  Util::ThreadPriority::Default : Util::ThreadPriority::Low);
 }

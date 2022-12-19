@@ -190,9 +190,19 @@ void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 			return;
 		}
 
-		GRANITE_SCOPED_TIMELINE_EVENT_FILE(device->get_system_handles().timeline_trace_file, "texture-load-submit-staging");
-		auto staging = device->create_image_staging_buffer(layout);
-		image = device->create_image_from_staging_buffer(info, &staging);
+		InitialImageBuffer staging;
+
+		{
+			GRANITE_SCOPED_TIMELINE_EVENT_FILE(device->get_system_handles().timeline_trace_file,
+			                                   "texture-load-create-staging");
+			staging = device->create_image_staging_buffer(layout);
+		}
+
+		{
+			GRANITE_SCOPED_TIMELINE_EVENT_FILE(device->get_system_handles().timeline_trace_file,
+			                                   "texture-load-allocate-image");
+			image = device->create_image_from_staging_buffer(info, &staging);
+		}
 	}
 
 	if (image)

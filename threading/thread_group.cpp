@@ -102,6 +102,13 @@ void TaskGroup::wait()
 	});
 }
 
+bool TaskGroup::poll()
+{
+	if (!flushed)
+		flush();
+	return deps->count.load(std::memory_order_acquire) == 0;
+}
+
 TaskGroup::~TaskGroup()
 {
 	if (!flushed)

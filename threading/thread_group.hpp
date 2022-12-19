@@ -128,6 +128,7 @@ struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, Internal::TaskGroupDelet
 	~TaskGroup();
 	void flush();
 	void wait();
+	bool poll();
 
 	ThreadGroup *group;
 	Internal::TaskDepsHandle deps;

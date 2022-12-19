@@ -360,17 +360,8 @@ void ThreadGroup::thread_looper(unsigned index, TaskClass task_class)
 
 		if (task->callable)
 		{
-			Util::TimelineTraceFile::Event *e = nullptr;
-			if (*task->deps->desc != '\0' && timeline_trace_file)
-				e = timeline_trace_file->begin_event(task->deps->desc);
+			GRANITE_SCOPED_TIMELINE_EVENT_FILE(timeline_trace_file.get(), task->deps->desc);
 			task->callable.call();
-			if (e)
-				timeline_trace_file->end_event(e);
-
-			///
-			//if (*task->deps->desc != '\0')
-			//	LOGI("Running task: %s\n", task->deps->desc);
-			///
 		}
 
 		task->deps->task_completed();

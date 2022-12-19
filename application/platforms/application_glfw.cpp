@@ -359,26 +359,21 @@ public:
 		Util::register_thread_index(0);
 		ctx.reset();
 
-		auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
-		Util::TimelineTraceFile::Event *e = nullptr;
-		if (file)
-			e = file->begin_event("glfw-dispatch-running-events");
-		dispatch_running_events();
-		if (e)
-			file->end_event(e);
-
-		if (file)
-			e = file->begin_event("glfw-init-input-managers");
-		init_input_managers();
-		if (e)
-			file->end_event(e);
+		{
+			GRANITE_SCOPED_TIMELINE_EVENT("glfw-dispatch-running-events");
+			dispatch_running_events();
+		}
 
 		{
-			if (file)
-				e = file->begin_event("glfw-start-audio-system");
-			Granite::Global::start_audio_system();
-			if (e)
-				file->end_event(e);
+			GRANITE_SCOPED_TIMELINE_EVENT("glfw-init-input-managers");
+			init_input_managers();
+		}
+
+		{
+			{
+				GRANITE_SCOPED_TIMELINE_EVENT("glfw-start-audio-system");
+				Granite::Global::start_audio_system();
+			}
 
 			while (app->poll())
 				app->run_frame();

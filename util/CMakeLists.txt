@@ -44,3 +44,7 @@ if (NOT WIN32)
     endif()
 endif()
 
+if (GRANITE_SHIPPING)
+    target_compile_definitions(granite-util PUBLIC GRANITE_SHIPPING)
+endif()
+

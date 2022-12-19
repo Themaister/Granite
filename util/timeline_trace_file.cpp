@@ -149,4 +149,17 @@ TimelineTraceFile::~TimelineTraceFile()
 	if (thr.joinable())
 		thr.join();
 }
+
+TimelineTraceFile::ScopedEvent::ScopedEvent(TimelineTraceFile *file_, const char *tag)
+	: file(file_)
+{
+	if (file && tag && *tag != '\0')
+		event = file->begin_event(tag);
+}
+
+TimelineTraceFile::ScopedEvent::~ScopedEvent()
+{
+	if (event)
+		file->end_event(event);
+}
 }

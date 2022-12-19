@@ -86,19 +86,11 @@ bool Application::init_wsi(Vulkan::ContextHandle context)
 
 	application_wsi.get_device().begin_shader_caches();
 
-	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
-	Util::TimelineTraceFile::Event *e = nullptr;
-
-	if (file)
-		e = file->begin_event("wsi-init-swapchain");
-	if (!platform->has_external_swapchain() && !application_wsi.init_surface_swapchain())
 	{
-		if (e)
-			file->end_event(e);
-		return false;
+		GRANITE_SCOPED_TIMELINE_EVENT("wsi-init-swapchain");
+		if (!platform->has_external_swapchain() && !application_wsi.init_surface_swapchain())
+			return false;
 	}
-	if (e)
-		file->end_event(e);
 
 	return true;
 }
@@ -148,19 +140,14 @@ bool Application::poll()
 void Application::check_initialization_progress()
 {
 	auto &device = get_wsi().get_device();
-	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
-	Util::TimelineTraceFile::Event *e = nullptr;
 
 	if (!ready_modules)
 	{
 		if (device.query_initialization_progress(Device::InitializationStage::CacheMaintenance) >= 100 &&
 		    device.query_initialization_progress(Device::InitializationStage::ShaderModules) >= 100)
 		{
-			if (file)
-				e = file->begin_event("dispatch-ready-modules");
+			GRANITE_SCOPED_TIMELINE_EVENT("dispatch-ready-modules");
 			GRANITE_EVENT_MANAGER()->enqueue_latched<DeviceShaderModuleReadyEvent>(&device, &device.get_shader_manager());
-			if (e)
-				file->end_event(e);
 			ready_modules = true;
 		}
 	}
@@ -169,11 +156,8 @@ void Application::check_initialization_progress()
 	{
 		if (device.query_initialization_progress(Device::InitializationStage::Pipelines) >= 100)
 		{
-			if (file)
-				e = file->begin_event("dispatch-ready-pipelines");
+			GRANITE_SCOPED_TIMELINE_EVENT("dispatch-ready-pipelines");
 			GRANITE_EVENT_MANAGER()->enqueue_latched<DevicePipelineReadyEvent>(&device, &device.get_shader_manager());
-			if (e)
-				file->end_event(e);
 			ready_pipelines = true;
 		}
 	}
@@ -183,51 +167,39 @@ void Application::run_frame()
 {
 	check_initialization_progress();
 
-	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
-	Util::TimelineTraceFile::Event *e = nullptr;
-
-	if (file)
-		e = file->begin_event("wsi-begin-frame");
-	application_wsi.begin_frame();
-	if (e)
-		file->end_event(e);
+	{
+		GRANITE_SCOPED_TIMELINE_EVENT("wsi-begin-frame");
+		application_wsi.begin_frame();
+	}
 
 	double smooth_frame_time = application_wsi.get_smooth_frame_time();
 	double smooth_elapsed = application_wsi.get_smooth_elapsed_time();
 
 	if (!ready_modules)
 	{
+		GRANITE_SCOPED_TIMELINE_EVENT("render-early-loading");
 		render_early_loading(smooth_frame_time, smooth_elapsed);
-		if (file)
-			e = file->begin_event("render-early-loading");
 	}
 	else if (!ready_pipelines)
 	{
-		if (file)
-			e = file->begin_event("render-loading");
+		GRANITE_SCOPED_TIMELINE_EVENT("render-loading");
 		render_loading(smooth_frame_time, smooth_elapsed);
 	}
 	else
 	{
-		if (file)
-			e = file->begin_event("render-frame");
+		GRANITE_SCOPED_TIMELINE_EVENT("render-frame");
 		render_frame(smooth_frame_time, smooth_elapsed);
 	}
 
-	if (e)
-		file->end_event(e);
+	{
+		GRANITE_SCOPED_TIMELINE_EVENT("wsi-end-frame");
+		application_wsi.end_frame();
+	}
 
-	if (file)
-		e = file->begin_event("wsi-end-frame");
-	application_wsi.end_frame();
-	if (e)
-		file->end_event(e);
-
-	if (file)
-		e = file->begin_event("post-frame");
-	post_frame();
-	if (e)
-		file->end_event(e);
+	{
+		GRANITE_SCOPED_TIMELINE_EVENT("post-frame");
+		post_frame();
+	}
 }
 
 void Application::render_early_loading(double, double)

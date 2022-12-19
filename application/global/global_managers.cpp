@@ -206,7 +206,9 @@ void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads)
 		if (const char *env = getenv("GRANITE_NUM_WORKER_THREADS"))
 			cpu_threads = strtoul(env, nullptr, 0);
 
-		global_managers.thread_group->start(cpu_threads, cpu_threads,
+		unsigned background_cpu_threads = (cpu_threads + 1) / 2;
+
+		global_managers.thread_group->start(cpu_threads, background_cpu_threads,
 		                                    [ctx = std::shared_ptr<GlobalManagers>(create_thread_context())] {
 			                                    set_thread_context(*ctx);
 		                                    });

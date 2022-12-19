@@ -157,6 +157,8 @@ void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 	{
 		LOGI("Compressed format #%u is not supported, falling back to compute decode of compressed image.\n",
 		     unsigned(layout.get_format()));
+
+		GRANITE_SCOPED_TIMELINE_EVENT_FILE(device->get_system_handles().timeline_trace_file, "texture-load-submit-decompress");
 		auto cmd = device->request_command_buffer(CommandBuffer::Type::AsyncCompute);
 		image = Granite::decode_compressed_image(*cmd, layout, VK_FORMAT_UNDEFINED, swizzle);
 		Semaphore sem;
@@ -188,6 +190,7 @@ void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 			return;
 		}
 
+		GRANITE_SCOPED_TIMELINE_EVENT_FILE(device->get_system_handles().timeline_trace_file, "texture-load-submit-staging");
 		auto staging = device->create_image_staging_buffer(layout);
 		image = device->create_image_from_staging_buffer(info, &staging);
 	}

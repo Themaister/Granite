@@ -1629,7 +1629,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const std::string &path,
 	auto &allocator = doc.GetAllocator();
 
 	ThreadGroup workers;
-	workers.start(options.threads ? options.threads : std::thread::hardware_concurrency(),
+	workers.start(options.threads ? options.threads : std::thread::hardware_concurrency(), 0,
 	              [ctx = std::shared_ptr<Global::GlobalManagers>(Global::create_thread_context())]() {
 		              Global::set_thread_context(*ctx);
 	              });
@@ -2319,21 +2319,26 @@ bool export_scene_to_glb(const SceneInformation &scene, const std::string &path,
 		memcpy(data, &v, sizeof(uint32_t));
 	};
 
-	auto file = GRANITE_FILESYSTEM()->open_writeonly_mapping(path, buffer.GetLength());
-	if (!file)
-	{
-		LOGE("Failed to open file: %s\n", path.c_str());
-		return false;
-	}
-
 	if (options.gltf)
 	{
 		const char *json_str = buffer.GetString();
+		auto file = GRANITE_FILESYSTEM()->open_writeonly_mapping(path, buffer.GetLength());
+		if (!file)
+		{
+			LOGE("Failed to open file: %s\n", path.c_str());
+			return false;
+		}
 		memcpy(file->mutable_data(), json_str, buffer.GetLength());
 	}
 	else
 	{
 		size_t glb_size = 12 + 8 + aligned_size(buffer.GetLength()) + 8 + aligned_size(state.glb_buffer_data.size());
+		auto file = GRANITE_FILESYSTEM()->open_writeonly_mapping(path, glb_size);
+		if (!file)
+		{
+			LOGE("Failed to open file: %s\n", path.c_str());
+			return false;
+		}
 
 		auto *mapped = file->mutable_data<uint8_t>();
 

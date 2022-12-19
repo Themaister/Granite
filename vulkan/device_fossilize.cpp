@@ -593,7 +593,7 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 	if (!recorder_state->recorder.record_physical_device_features(&pdf2))
 		LOGW("Failed to record PDF2.\n");
 
-	read_only_cache_lock_count.fetch_add(1, std::memory_order_relaxed);
+	lock.read_only_cache.lock_read();
 
 	replayer_state->feature_filter = &filter;
 	auto *group = get_system_handles().thread_group;
@@ -811,7 +811,7 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 			 replayer_state->module_hashes.size(),
 			 replayer_state->graphics_hashes.size(),
 			 replayer_state->compute_hashes.size());
-		read_only_cache_lock_count.fetch_sub(1, std::memory_order_release);
+		lock.read_only_cache.unlock_read();
 		const auto cleanup = [](Fossilize::StateReplayer &r) {
 			r.forget_handle_references();
 			r.forget_pipeline_handle_references();

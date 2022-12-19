@@ -285,7 +285,6 @@ public:
 	                  Fence *fence = nullptr,
 	                  SemaphoreHolder *semaphore = nullptr);
 	void submit_discard(CommandBufferHandle &cmd);
-	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
 	QueueIndices get_physical_queue_type(CommandBuffer::Type queue_type) const;
 	void register_time_interval(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,
 	                            std::string tag, std::string extra = {});
@@ -368,6 +367,8 @@ public:
 	//   For timelines, we need to know which handle type to use (OPAQUE or ID3D12Fence).
 	//   Binary external semaphore is always opaque with TEMPORARY semantics.
 
+	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
+
 	// If transfer_ownership is set, Semaphore owns the VkSemaphore. Otherwise, application must
 	// free the semaphore when GPU usage of it is complete.
 	Semaphore request_semaphore(VkSemaphoreTypeKHR type, VkSemaphore handle = VK_NULL_HANDLE, bool transfer_ownership = false);
@@ -377,7 +378,10 @@ public:
 	// See request_timeline_semaphore_as_binary() for how to use timelines.
 	Semaphore request_semaphore_external(VkSemaphoreTypeKHR type,
 	                                     VkExternalSemaphoreHandleTypeFlagBits handle_type);
+
 	// The created semaphore does not hold ownership of the VkSemaphore object.
+	// This is used when we want to wait on or signal an external timeline semaphore at a specific timeline value.
+	// We must collapse the timeline to a "binary" semaphore before we can call submit_empty or add_wait_semaphore().
 	Semaphore request_timeline_semaphore_as_binary(const SemaphoreHolder &holder, uint64_t value);
 
 	// A proxy semaphore which lets us grab a semaphore handle before we signal it.
@@ -463,16 +467,6 @@ public:
 	// A split version of VkEvent handling which lets us record a wait command before signal is recorded.
 	PipelineEvent begin_signal_event(VkPipelineStageFlags stages);
 
-	// Promotes any read-write cached state to read-only,
-	// which eliminates need to read/write lock.
-	// Can be called at any time as long as there is no
-	// racing access to:
-	// - Command buffer recording which uses pipelines (texture manager is fine).
-	// - request_shader()
-	// - request_program()
-	// Generally, this should be called before you call next_frame_context().
-	void promote_read_write_caches_to_read_only();
-
 	const Context::SystemHandles &get_system_handles() const
 	{
 		return system_handles;
@@ -533,7 +527,6 @@ private:
 	void init_stock_samplers();
 	void init_stock_sampler(StockSampler sampler, float max_aniso, float lod_bias);
 	void init_timeline_semaphores();
-	void init_bindless();
 	void deinit_timeline_semaphores();
 
 	uint64_t update_wrapped_device_timestamp(uint64_t ts);
@@ -576,6 +569,7 @@ private:
 		std::mutex memory_lock;
 		std::mutex lock;
 		std::condition_variable cond;
+		Util::RWSpinLock read_only_cache;
 #endif
 		unsigned counter = 0;
 	} lock;
@@ -717,9 +711,6 @@ private:
 
 	const ImmutableSampler *samplers[static_cast<unsigned>(StockSampler::Count)] = {};
 
-#ifdef GRANITE_VULKAN_MT
-	std::atomic_uint32_t read_only_cache_lock_count;
-#endif
 	VulkanCache<PipelineLayout> pipeline_layouts;
 	VulkanCache<DescriptorSetAllocator> descriptor_set_allocators;
 	VulkanCache<RenderPass> render_passes;
@@ -727,9 +718,6 @@ private:
 	VulkanCache<Program> programs;
 	VulkanCache<ImmutableSampler> immutable_samplers;
 	VulkanCache<ImmutableYcbcrConversion> immutable_ycbcr_conversions;
-
-	DescriptorSetAllocator *bindless_sampled_image_allocator_fp = nullptr;
-	DescriptorSetAllocator *bindless_sampled_image_allocator_integer = nullptr;
 
 	FramebufferAllocator framebuffer_allocator;
 	TransientAttachmentAllocator transient_allocator;
@@ -876,6 +864,8 @@ private:
 
 	bool allocate_image_memory(DeviceAllocation *allocation, const ImageCreateInfo &info,
 	                           VkImage image, VkImageTiling tiling);
+
+	void promote_read_write_caches_to_read_only();
 };
 
 // A fairly complex helper used for async queue readbacks.

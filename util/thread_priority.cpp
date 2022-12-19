@@ -20,37 +20,48 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "thread_group.hpp"
+#include "thread_priority.hpp"
 #include "logging.hpp"
 
-using namespace Granite;
+#if defined(__linux__)
+#include <pthread.h>
+#elif defined(_WIN32)
+#include <windows.h>
+#endif
 
-int main()
+namespace Util
 {
-	ThreadGroup group;
-	group.start(4, 0, {});
-
-	auto task1 = group.create_task([]() {
-		LOGI("Ohai!\n");
-	});
-	auto task2 = group.create_task([]() {
-		LOGI("Ohai 2!\n");
-	});
-	auto task3 = group.create_task([]() {
-		LOGI("Ohai 3!\n");
-	});
-	group.enqueue_task(*task3, []() {
-		LOGI("Brrr :3\n");
-	});
-	task1->id = 1;
-	task2->id = 2;
-	task3->id = 3;
-	group.add_dependency(*task1, *task3);
-	group.add_dependency(*task2, *task3);
-	group.add_dependency(*task1, *task2);
-	group.submit(task1);
-	group.submit(task2);
-	group.submit(task3);
-
-	group.wait_idle();
+void set_current_thread_priority(ThreadPriority priority)
+{
+#if defined(__linux__)
+	if (priority == ThreadPriority::Low)
+	{
+		struct sched_param param = {};
+		int policy = 0;
+		param.sched_priority = sched_get_priority_min(SCHED_BATCH);
+		policy = SCHED_BATCH;
+		if (pthread_setschedparam(pthread_self(), policy, &param) != 0)
+			LOGE("Failed to set thread priority.\n");
+	}
+#elif defined(_WIN32)
+	if (priority == ThreadPriority::Low)
+	{
+		if (!SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN))
+			LOGE("Failed to set background thread priority.\n");
+	}
+	else if (priority == ThreadPriority::Default)
+	{
+		if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL))
+			LOGE("Failed to set normal thread priority.\n");
+	}
+	else if (priority == ThreadPriority::High)
+	{
+		if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST))
+			LOGE("Failed to set high thread priority.\n");
+	}
+#else
+#warning "Unimplemented set_current_thread_priority."
+	(void)priority;
+#endif
+}
 }

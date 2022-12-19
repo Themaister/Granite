@@ -189,6 +189,9 @@ public:
 	void poll_input() override
 	{
 		process_events_async_thread();
+#if defined(HAVE_LINUX_INPUT) || defined(HAVE_XINPUT_WINDOWS)
+		input_manager.poll();
+#endif
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 	}
 
@@ -354,15 +357,27 @@ public:
 	void thread_main(Application *app, Global::GlobalManagersHandle ctx)
 	{
 		// Set this up as an alternative main thread.
-		ThreadGroup::set_async_main_thread_name();
+		ThreadGroup::set_async_main_thread();
 		Global::set_thread_context(*ctx);
 		Util::register_thread_index(0);
 		ctx.reset();
 
-		dispatch_running_events();
-		init_input_managers();
 		{
-			Granite::Global::start_audio_system();
+			GRANITE_SCOPED_TIMELINE_EVENT("glfw-dispatch-running-events");
+			dispatch_running_events();
+		}
+
+		{
+			GRANITE_SCOPED_TIMELINE_EVENT("glfw-init-input-managers");
+			init_input_managers();
+		}
+
+		{
+			{
+				GRANITE_SCOPED_TIMELINE_EVENT("glfw-start-audio-system");
+				Granite::Global::start_audio_system();
+			}
+
 			while (app->poll())
 				app->run_frame();
 			Granite::Global::stop_audio_system();

@@ -37,6 +37,8 @@
 #include <signal.h>
 #include <termio.h>
 #include <limits.h>
+#include "timeline_trace_file.hpp"
+#include "global_managers.hpp"
 
 namespace Granite
 {
@@ -360,6 +362,14 @@ bool LinuxInputManager::poll()
 	if (queue_fd < 0)
 		return false;
 
+	// Retire async tasks now.
+	auto complete_itr = Util::unstable_remove_if(deferred_init.begin(), deferred_init.end(), [](DeferredInit &init) -> bool {
+		return !init.task || init.task->poll();
+	});
+	for (auto itr = complete_itr; itr != deferred_init.end(); ++itr)
+		complete_open_devices(*itr);
+	deferred_init.erase(complete_itr, deferred_init.end());
+
 	while (hotplug_available())
 		handle_hotplug();
 
@@ -397,16 +407,10 @@ void LinuxInputManager::remove_device(const char *devnode)
 	devices.erase(itr, end(devices));
 }
 
-bool LinuxInputManager::open_devices(DeviceType type, InputCallback callback)
+void LinuxInputManager::complete_open_devices(DeferredInit &deferred)
 {
-	const char *type_str = get_device_type_string(type);
-	udev_enumerate *enumerate = udev_enumerate_new(udev);
-	if (!enumerate)
-		return false;
-
-	udev_enumerate_add_match_property(enumerate, type_str, "1");
-	udev_enumerate_scan_devices(enumerate);
-	udev_list_entry *devs = udev_enumerate_get_list_entry(enumerate);
+	GRANITE_SCOPED_TIMELINE_EVENT("udev-complete-open-device");
+	udev_list_entry *devs = udev_enumerate_get_list_entry(deferred.enumerate.get());
 
 	for (auto *item = devs; item != nullptr; item = udev_list_entry_get_next(item))
 	{
@@ -419,20 +423,41 @@ bool LinuxInputManager::open_devices(DeviceType type, InputCallback callback)
 			int fd = open(devnode, O_RDONLY | O_NONBLOCK);
 			if (fd != -1)
 			{
-				if (!add_device(fd, type, devnode, callback))
+				if (!add_device(fd, deferred.type, devnode, deferred.cb))
 				{
 					close(fd);
 					LOGE("Failed to add device: %s\n", devnode);
 				}
 				else
+				{
+					const char *type_str = get_device_type_string(deferred.type);
 					LOGI("Found %s (%s)\n", type_str, devnode);
+				}
 			}
 		}
 
 		udev_device_unref(dev);
 	}
+}
 
-	udev_enumerate_unref(enumerate);
+bool LinuxInputManager::enqueue_open_devices(DeviceType type, InputCallback callback)
+{
+	DeferredInit deferred = {};
+	deferred.enumerate.reset(udev_enumerate_new(udev));
+	deferred.type = type;
+	deferred.cb = callback;
+	if (!deferred.enumerate)
+		return false;
+
+	// This can take 200ms or so for some reason ...
+	deferred.task = GRANITE_THREAD_GROUP()->create_task([type, enumerate = deferred.enumerate.get()] {
+		const char *type_str = get_device_type_string(type);
+		udev_enumerate_add_match_property(enumerate, type_str, "1");
+		udev_enumerate_scan_devices(enumerate);
+	});
+	deferred.task->set_desc("udev-scan-devices");
+	deferred.task->flush();
+	deferred_init.push_back(std::move(deferred));
 	return true;
 }
 
@@ -613,8 +638,12 @@ bool LinuxInputManager::init(LinuxInputManagerFlags flags_, InputTracker *tracke
 {
 	flags = flags_;
 	tracker = tracker_;
-	terminal_disable_input();
-	init_key_table();
+
+	if ((flags & LINUX_INPUT_MANAGER_KEYBOARD_BIT) != 0)
+	{
+		terminal_disable_input();
+		init_key_table();
+	}
 
 	udev = udev_new();
 	if (!udev)
@@ -641,28 +670,28 @@ bool LinuxInputManager::init(LinuxInputManagerFlags flags_, InputTracker *tracke
 	}
 
 	if ((flags & LINUX_INPUT_MANAGER_KEYBOARD_BIT) &&
-	    !open_devices(DeviceType::Keyboard, &LinuxInputManager::input_handle_keyboard))
+	    !enqueue_open_devices(DeviceType::Keyboard, &LinuxInputManager::input_handle_keyboard))
 	{
 		LOGE("Failed to open keyboards.\n");
 		return false;
 	}
 
 	if ((flags & LINUX_INPUT_MANAGER_MOUSE_BIT) &&
-	    !open_devices(DeviceType::Mouse, &LinuxInputManager::input_handle_mouse))
+	    !enqueue_open_devices(DeviceType::Mouse, &LinuxInputManager::input_handle_mouse))
 	{
 		LOGE("Failed to open keyboards.\n");
 		return false;
 	}
 
 	if ((flags & LINUX_INPUT_MANAGER_TOUCHPAD_BIT) &&
-	    !open_devices(DeviceType::Touchpad, &LinuxInputManager::input_handle_touchpad))
+	    !enqueue_open_devices(DeviceType::Touchpad, &LinuxInputManager::input_handle_touchpad))
 	{
 		LOGE("Failed to open keyboards.\n");
 		return false;
 	}
 
 	if ((flags & LINUX_INPUT_MANAGER_JOYPAD_BIT) &&
-	    !open_devices(DeviceType::Joystick, &LinuxInputManager::input_handle_joystick))
+	    !enqueue_open_devices(DeviceType::Joystick, &LinuxInputManager::input_handle_joystick))
 	{
 		LOGE("Failed to open joysticks.\n");
 		return false;
@@ -673,6 +702,11 @@ bool LinuxInputManager::init(LinuxInputManagerFlags flags_, InputTracker *tracke
 
 LinuxInputManager::~LinuxInputManager()
 {
+	for (auto &init : deferred_init)
+		if (init.task)
+			init.task->wait();
+	deferred_init.clear();
+
 	if (udev_monitor)
 		udev_monitor_unref(udev_monitor);
 	if (udev)
@@ -690,5 +724,4 @@ LinuxInputManager::Device::~Device()
 		close(fd);
 	}
 }
-
 }

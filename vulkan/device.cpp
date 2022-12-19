@@ -48,16 +48,18 @@ static unsigned get_thread_index()
 {
 	return Util::get_current_thread_index();
 }
-#define LOCK() std::lock_guard<std::mutex> holder__{lock.lock}
-#define LOCK_MEMORY() std::lock_guard<std::mutex> holder__{lock.memory_lock}
+#define LOCK() std::lock_guard<std::mutex> _holder_##__COUNTER__{lock.lock}
+#define LOCK_MEMORY() std::lock_guard<std::mutex> _holder_##__COUNTER__{lock.memory_lock}
+#define LOCK_CACHE() ::Util::RWSpinLockReadHolder _holder_##__COUNTER__{lock.read_only_cache}
 #define DRAIN_FRAME_LOCK() \
-	std::unique_lock<std::mutex> holder__{lock.lock}; \
-	lock.cond.wait(holder__, [&]() { \
+	std::unique_lock<std::mutex> _holder{lock.lock}; \
+	lock.cond.wait(_holder, [&]() { \
 		return lock.counter == 0; \
 	})
 #else
 #define LOCK() ((void)0)
 #define LOCK_MEMORY() ((void)0)
+#define LOCK_CACHE() ((void)0)
 #define DRAIN_FRAME_LOCK() VK_ASSERT(lock.counter == 0)
 static unsigned get_thread_index()
 {
@@ -101,7 +103,6 @@ Device::Device()
 {
 #ifdef GRANITE_VULKAN_MT
 	cookie.store(0);
-	read_only_cache_lock_count.store(0);
 #endif
 }
 
@@ -390,6 +391,7 @@ Shader *Device::request_shader(const uint32_t *data, size_t size,
                                const ImmutableSamplerBank *sampler_bank)
 {
 	auto hash = Shader::hash(data, size, sampler_bank);
+	LOCK_CACHE();
 	auto *ret = shaders.find(hash);
 	if (!ret)
 		ret = shaders.emplace_yield(hash, hash, this, data, size, layout, sampler_bank);
@@ -398,6 +400,7 @@ Shader *Device::request_shader(const uint32_t *data, size_t size,
 
 Shader *Device::request_shader_by_hash(Hash hash)
 {
+	LOCK_CACHE();
 	return shaders.find(hash);
 }
 
@@ -409,6 +412,7 @@ Program *Device::request_program(Vulkan::Shader *compute_shader)
 	Util::Hasher hasher;
 	hasher.u64(compute_shader->get_hash());
 
+	LOCK_CACHE();
 	auto hash = hasher.get();
 	auto *ret = programs.find(hash);
 	if (!ret)
@@ -437,6 +441,7 @@ Program *Device::request_program(Shader *vertex, Shader *fragment)
 	hasher.u64(fragment->get_hash());
 
 	auto hash = hasher.get();
+	LOCK_CACHE();
 	auto *ret = programs.find(hash);
 
 	if (!ret)
@@ -494,6 +499,7 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 	});
 	auto hash = h.get();
 
+	LOCK_CACHE();
 	auto *ret = descriptor_set_allocators.find(hash);
 	if (!ret)
 		ret = descriptor_set_allocators.emplace_yield(hash, hash, this, layout, stages_for_bindings, immutable_samplers_);
@@ -855,7 +861,6 @@ void Device::set_context(const Context &context)
 	init_pipeline_cache();
 
 	init_timeline_semaphores();
-	init_bindless();
 
 	init_frame_contexts(2); // By default, regular double buffer between CPU and GPU.
 
@@ -931,24 +936,6 @@ void Device::wait_shader_caches()
 {
 }
 #endif
-
-void Device::init_bindless()
-{
-	if (!ext.supports_descriptor_indexing)
-		return;
-
-	DescriptorSetLayout layout;
-
-	layout.array_size[0] = DescriptorSetLayout::UNSIZED_ARRAY;
-	for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
-		layout.array_size[i] = 1;
-
-	layout.separate_image_mask = 1;
-	uint32_t stages_for_sets[VULKAN_NUM_BINDINGS] = { VK_SHADER_STAGE_ALL };
-	bindless_sampled_image_allocator_integer = request_descriptor_set_allocator(layout, stages_for_sets, nullptr);
-	layout.fp_mask = 1;
-	bindless_sampled_image_allocator_fp = request_descriptor_set_allocator(layout, stages_for_sets, nullptr);
-}
 
 void Device::init_timeline_semaphores()
 {
@@ -2508,8 +2495,10 @@ void Device::wait_idle_nolock()
 void Device::promote_read_write_caches_to_read_only()
 {
 #ifdef GRANITE_VULKAN_MT
-	// If Fossilize is spinning the background we shouldn't touch anything.
-	if (read_only_cache_lock_count.load(std::memory_order_acquire) == 0)
+	// Components which could potentially call into these must hold global reader locks.
+	// - A CommandBuffer holds a read lock for its lifetime.
+	// - Fossilize replay in the background also holds lock.
+	if (lock.read_only_cache.try_lock_write())
 	{
 		pipeline_layouts.move_to_read_only();
 		descriptor_set_allocators.move_to_read_only();
@@ -2523,6 +2512,7 @@ void Device::promote_read_write_caches_to_read_only()
 #ifdef GRANITE_VULKAN_FILESYSTEM
 		shader_manager.promote_read_write_caches_to_read_only();
 #endif
+		lock.read_only_cache.unlock_write();
 	}
 #endif
 }
@@ -2558,6 +2548,8 @@ void Device::next_frame_context()
 	frame_context_index++;
 	if (frame_context_index >= per_frame.size())
 		frame_context_index = 0;
+
+	promote_read_write_caches_to_read_only();
 
 	frame().begin();
 	recalibrate_timestamps();
@@ -3488,11 +3480,17 @@ InitialImageBuffer Device::create_image_staging_buffer(const TextureFormatLayout
 	buffer_info.domain = BufferDomain::Host;
 	buffer_info.size = layout.get_required_size();
 	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	result.buffer = create_buffer(buffer_info, nullptr);
+	{
+		GRANITE_SCOPED_TIMELINE_EVENT_FILE(system_handles.timeline_trace_file, "allocate-image-staging-buffer");
+		result.buffer = create_buffer(buffer_info, nullptr);
+	}
 	set_name(*result.buffer, "image-upload-staging-buffer");
 
 	auto *mapped = static_cast<uint8_t *>(map_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE_BIT));
-	memcpy(mapped, layout.data(), layout.get_required_size());
+	{
+		GRANITE_SCOPED_TIMELINE_EVENT_FILE(system_handles.timeline_trace_file, "copy-image-staging-buffer");
+		memcpy(mapped, layout.data(), layout.get_required_size());
+	}
 	unmap_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE_BIT);
 
 	layout.build_buffer_image_copies(result.blits);
@@ -3533,7 +3531,10 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 	buffer_info.domain = BufferDomain::Host;
 	buffer_info.size = layout.get_required_size();
 	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	result.buffer = create_buffer(buffer_info, nullptr);
+	{
+		GRANITE_SCOPED_TIMELINE_EVENT_FILE(system_handles.timeline_trace_file, "allocate-image-staging-buffer");
+		result.buffer = create_buffer(buffer_info, nullptr);
+	}
 	set_name(*result.buffer, "image-upload-staging-buffer");
 
 	// And now, do the actual copy.
@@ -3542,6 +3543,7 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 
 	layout.set_buffer(mapped, layout.get_required_size());
 
+	GRANITE_SCOPED_TIMELINE_EVENT_FILE(system_handles.timeline_trace_file, "copy-image-staging-buffer");
 	for (unsigned level = 0; level < copy_levels; level++)
 	{
 		const auto &mip_info = layout.get_mip_info(level);
@@ -4229,6 +4231,7 @@ const ImmutableSampler *Device::request_immutable_sampler(const SamplerCreateInf
 	else
 		h.u32(0);
 
+	LOCK_CACHE();
 	auto *sampler = immutable_samplers.find(h.get());
 	if (!sampler)
 		sampler = immutable_samplers.emplace_yield(h.get(), h.get(), this, sampler_info, ycbcr);
@@ -4251,6 +4254,7 @@ const ImmutableYcbcrConversion *Device::request_immutable_ycbcr_conversion(
 	h.u32(info.ycbcrModel);
 	h.u32(info.ycbcrRange);
 
+	LOCK_CACHE();
 	auto *sampler = immutable_ycbcr_conversions.find(h.get());
 	if (!sampler)
 		sampler = immutable_ycbcr_conversions.emplace_yield(h.get(), h.get(), this, info);
@@ -4272,21 +4276,28 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 	if (!ext.supports_descriptor_indexing)
 		return BindlessDescriptorPoolHandle{nullptr};
 
-	DescriptorSetAllocator *allocator = nullptr;
+	DescriptorSetLayout layout;
+	const uint32_t stages_for_sets[VULKAN_NUM_BINDINGS] = { VK_SHADER_STAGE_ALL };
+	layout.array_size[0] = DescriptorSetLayout::UNSIZED_ARRAY;
+	for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
+		layout.array_size[i] = 1;
 
 	switch (type)
 	{
 	case BindlessResourceType::ImageFP:
-		allocator = bindless_sampled_image_allocator_fp;
+		layout.separate_image_mask = 1;
+		layout.fp_mask = 1;
 		break;
 
 	case BindlessResourceType::ImageInt:
-		allocator = bindless_sampled_image_allocator_integer;
+		layout.separate_image_mask = 1;
 		break;
 
 	default:
-		break;
+		return BindlessDescriptorPoolHandle{nullptr};
 	}
+
+	auto *allocator = request_descriptor_set_allocator(layout, stages_for_sets, nullptr);
 
 	VkDescriptorPool pool = VK_NULL_HANDLE;
 	if (allocator)

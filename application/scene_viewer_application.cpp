@@ -1464,23 +1464,16 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 void SceneViewerApplication::post_frame()
 {
 	scene_loader.get_scene().destroy_queued_entities();
-	get_wsi().get_device().promote_read_write_caches_to_read_only();
 }
 
 void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
 {
-	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
 	TaskComposer composer(*GRANITE_THREAD_GROUP());
-
-	Util::TimelineTraceFile::Event *e = nullptr;
 
 	if (pending_swapchain)
 	{
-		if (file)
-			e = file->begin_event("bake-render-graph");
+		GRANITE_SCOPED_TIMELINE_EVENT("bake-render-graph");
 		bake_render_graph(*pending_swapchain);
-		if (e)
-			file->end_event(e);
 		pending_swapchain = nullptr;
 	}
 
@@ -1508,26 +1501,19 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	fallback_lighting.cluster = lighting.cluster;
 	fallback_lighting.volumetric_diffuse = lighting.volumetric_diffuse;
 
-	if (file)
-		e = file->begin_event("update-scene-enqueue");
-	update_scene(composer, frame_time, elapsed_time);
-	if (e)
-		file->end_event(e);
+	{
+		GRANITE_SCOPED_TIMELINE_EVENT("update-scene-enqueue");
+		update_scene(composer, frame_time, elapsed_time);
+	}
 
-	if (file)
-		e = file->begin_event("render-scene-enqueue");
-	render_scene(composer);
-	if (e)
-		file->end_event(e);
+	{
+		GRANITE_SCOPED_TIMELINE_EVENT("render-scene-enqueue");
+		render_scene(composer);
+	}
 
-	if (file)
-		e = file->begin_event("render-frame-wait");
-
+	GRANITE_SCOPED_TIMELINE_EVENT("render-scene-wait");
 	auto final = composer.get_outgoing_task();
 	final->wait();
-
-	if (e)
-		file->end_event(e);
 }
 
 std::string SceneViewerApplication::get_name()

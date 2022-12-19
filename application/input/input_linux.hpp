@@ -28,6 +28,7 @@
 #include <vector>
 #include <memory>
 #include "input.hpp"
+#include "thread_group.hpp"
 
 namespace Granite
 {
@@ -92,7 +93,7 @@ private:
 	};
 	std::vector<std::unique_ptr<Device>> devices;
 
-	bool open_devices(DeviceType type, InputCallback callback);
+	bool enqueue_open_devices(DeviceType type, InputCallback callback);
 	bool add_device(int fd, DeviceType type, const char *devnode, InputCallback callback);
 	static const char *get_device_type_string(DeviceType type);
 
@@ -108,5 +109,17 @@ private:
 	Key keyboard_to_key[KEY_MAX];
 
 	void setup_joypad_remapper(int fd, unsigned index);
+
+	// Enumerating udev devices takes a long time, do it async.
+	struct UdevDeleter { inline void operator()(udev_enumerate *e) { if (e) udev_enumerate_unref(e); } };
+	struct DeferredInit
+	{
+		TaskGroupHandle task;
+		DeviceType type;
+		std::unique_ptr<udev_enumerate, UdevDeleter> enumerate;
+		InputCallback cb;
+	};
+	std::vector<DeferredInit> deferred_init;
+	void complete_open_devices(DeferredInit &deferred);
 };
 }

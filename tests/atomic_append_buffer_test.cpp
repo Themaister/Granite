@@ -34,7 +34,7 @@ static void test_iterations(ThreadGroup &group, unsigned iterations)
 int main()
 {
 	ThreadGroup group;
-	group.start(4, {});
+	group.start(4, 0, {});
 	test_iterations(group, 0);
 	test_iterations(group, 3);
 	test_iterations(group, 9);

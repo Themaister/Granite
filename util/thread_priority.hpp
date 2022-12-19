@@ -20,37 +20,16 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "thread_group.hpp"
-#include "logging.hpp"
+#pragma once
 
-using namespace Granite;
-
-int main()
+namespace Util
 {
-	ThreadGroup group;
-	group.start(4, 0, {});
+enum class ThreadPriority
+{
+	High,
+	Default,
+	Low
+};
 
-	auto task1 = group.create_task([]() {
-		LOGI("Ohai!\n");
-	});
-	auto task2 = group.create_task([]() {
-		LOGI("Ohai 2!\n");
-	});
-	auto task3 = group.create_task([]() {
-		LOGI("Ohai 3!\n");
-	});
-	group.enqueue_task(*task3, []() {
-		LOGI("Brrr :3\n");
-	});
-	task1->id = 1;
-	task2->id = 2;
-	task3->id = 3;
-	group.add_dependency(*task1, *task3);
-	group.add_dependency(*task2, *task3);
-	group.add_dependency(*task1, *task2);
-	group.submit(task1);
-	group.submit(task2);
-	group.submit(task3);
-
-	group.wait_idle();
+void set_current_thread_priority(ThreadPriority priority);
 }

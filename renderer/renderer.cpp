@@ -244,10 +244,7 @@ void RendererSuite::register_variants_from_cache()
 	if (variants.empty())
 		return;
 
-	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
-	Util::TimelineTraceFile::Event *e = nullptr;
-	if (file)
-		e = file->begin_event("renderer-suite-warm-variants");
+	GRANITE_SCOPED_TIMELINE_EVENT("renderer-suite-warm-variants");
 
 	for (auto &variant : variants)
 	{
@@ -255,9 +252,6 @@ void RendererSuite::register_variants_from_cache()
 		auto &suite = suites[Util::ecast(variant.renderable_type)];
 		suite.get_program(variant.key);
 	}
-
-	if (e)
-		file->end_event(e);
 
 	LOGI("Warmed cached variants.\n");
 }
@@ -509,16 +503,12 @@ void Renderer::setup_shader_suite(Device &device_, RendererType renderer_type)
 
 void Renderer::on_pipeline_created(const DevicePipelineReadyEvent &created)
 {
-	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
-	Util::TimelineTraceFile::Event *e = nullptr;
-
 	device = &created.get_device();
 
-	if (file)
-		e = file->begin_event("renderer-setup-suite");
-	setup_shader_suite(*device, type);
-	if (e)
-		file->end_event(e);
+	{
+		GRANITE_SCOPED_TIMELINE_EVENT("renderer-setup-suite");
+		setup_shader_suite(*device, type);
+	}
 
 	set_mesh_renderer_options_internal(renderer_options);
 	for (auto &s : suite)

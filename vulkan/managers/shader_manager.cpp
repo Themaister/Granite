@@ -83,10 +83,7 @@ bool ShaderTemplate::init()
 	if (!device->get_system_handles().filesystem)
 		return false;
 
-	Util::TimelineTraceFile::Event *e = nullptr;
-	auto *trace_file = device->get_system_handles().timeline_trace_file;
-	if (trace_file)
-		e = trace_file->begin_event("glsl-preprocess");
+	GRANITE_SCOPED_TIMELINE_EVENT_FILE(device->get_system_handles().timeline_trace_file, "glsl-preprocess");
 
 	compiler = std::make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
 	compiler->set_target(Granite::Target::Vulkan11);
@@ -99,8 +96,6 @@ bool ShaderTemplate::init()
 		compiler.reset();
 		return false;
 	}
-	if (e)
-		trace_file->end_event(e);
 	source_hash = compiler->get_source_hash();
 #endif
 
@@ -180,13 +175,11 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<
 
 				std::string error_message;
 
-				Util::TimelineTraceFile::Event *e = nullptr;
-				auto *trace_file = device->get_system_handles().timeline_trace_file;
-				if (trace_file)
-					e = trace_file->begin_event("glsl-compile");
-				variant->spirv = compiler->compile(error_message, defines);
-				if (e)
-					trace_file->end_event(e);
+				{
+					GRANITE_SCOPED_TIMELINE_EVENT_FILE(device->get_system_handles().timeline_trace_file,
+					                                   "glsl-compile");
+					variant->spirv = compiler->compile(error_message, defines);
+				}
 
 				if (variant->spirv.empty())
 				{

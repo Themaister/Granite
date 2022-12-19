@@ -14,8 +14,8 @@ target_link_libraries(granite-scene-export
         PRIVATE granite-rapidjson granite-mikktspace meshoptimizer granite-stb)
 
 if (GRANITE_ISPC_TEXTURE_COMPRESSION)
-    set(GRANITE_ISPC_LIBRARY_DIR "" CACHE STRING "ISPC library directory." FORCE)
-    set(GRANITE_ISPC_INCLUDE_DIR "" CACHE STRING "ISPC include directory." FORCE)
+    set(GRANITE_ISPC_LIBRARY_DIR "" CACHE STRING "ISPC library directory.")
+    set(GRANITE_ISPC_INCLUDE_DIR "" CACHE STRING "ISPC include directory.")
     find_library(ISPC_LIBRARY NAMES ispc_texcomp HINTS ${GRANITE_ISPC_LIBRARY_DIR})
     find_path(ISPC_INCLUDE_DIR NAMES ispc_texcomp.h HINTS ${GRANITE_ISPC_INCLUDE_DIR})
     if (ISPC_LIBRARY AND ISPC_INCLUDE_DIR)

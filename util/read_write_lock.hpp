@@ -51,6 +51,18 @@ public:
 		}
 	}
 
+	inline bool try_lock_read()
+	{
+		unsigned v = counter.fetch_add(Reader, std::memory_order_acquire);
+		if ((v & Writer) != 0)
+		{
+			unlock_read();
+			return false;
+		}
+
+		return true;
+	}
+
 	inline void unlock_read()
 	{
 		counter.fetch_sub(Reader, std::memory_order_release);
@@ -68,6 +80,14 @@ public:
 #endif
 			expected = 0;
 		}
+	}
+
+	inline bool try_lock_write()
+	{
+		uint32_t expected = 0;
+		return counter.compare_exchange_strong(expected, Writer,
+		                                       std::memory_order_acquire,
+		                                       std::memory_order_relaxed);
 	}
 
 	inline void unlock_write()
@@ -89,5 +109,41 @@ public:
 
 private:
 	std::atomic_uint32_t counter;
+};
+
+class RWSpinLockReadHolder
+{
+public:
+	explicit RWSpinLockReadHolder(RWSpinLock &lock_)
+		: lock(lock_)
+	{
+		lock.lock_read();
+	}
+
+	~RWSpinLockReadHolder()
+	{
+		lock.unlock_read();
+	}
+
+private:
+	RWSpinLock &lock;
+};
+
+class RWSpinLockWriteHolder
+{
+public:
+	explicit RWSpinLockWriteHolder(RWSpinLock &lock_)
+			: lock(lock_)
+	{
+		lock.lock_write();
+	}
+
+	~RWSpinLockWriteHolder()
+	{
+		lock.unlock_write();
+	}
+
+private:
+	RWSpinLock &lock;
 };
 }

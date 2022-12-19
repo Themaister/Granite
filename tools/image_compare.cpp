@@ -153,7 +153,7 @@ int main(int argc, char *argv[])
 	}
 
 	ThreadGroup workers;
-	workers.start(std::thread::hardware_concurrency(),
+	workers.start(std::thread::hardware_concurrency(), 0,
 	              [ctx = std::shared_ptr<Global::GlobalManagers>(Global::create_thread_context())] {
 		              Global::set_thread_context(*ctx);
 	              });

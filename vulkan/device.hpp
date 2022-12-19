@@ -527,7 +527,6 @@ private:
 	void init_stock_samplers();
 	void init_stock_sampler(StockSampler sampler, float max_aniso, float lod_bias);
 	void init_timeline_semaphores();
-	void init_bindless();
 	void deinit_timeline_semaphores();
 
 	uint64_t update_wrapped_device_timestamp(uint64_t ts);
@@ -719,9 +718,6 @@ private:
 	VulkanCache<Program> programs;
 	VulkanCache<ImmutableSampler> immutable_samplers;
 	VulkanCache<ImmutableYcbcrConversion> immutable_ycbcr_conversions;
-
-	DescriptorSetAllocator *bindless_sampled_image_allocator_fp = nullptr;
-	DescriptorSetAllocator *bindless_sampled_image_allocator_integer = nullptr;
 
 	FramebufferAllocator framebuffer_allocator;
 	TransientAttachmentAllocator transient_allocator;

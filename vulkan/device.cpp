@@ -499,6 +499,7 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 	});
 	auto hash = h.get();
 
+	LOCK_CACHE();
 	auto *ret = descriptor_set_allocators.find(hash);
 	if (!ret)
 		ret = descriptor_set_allocators.emplace_yield(hash, hash, this, layout, stages_for_bindings, immutable_samplers_);
@@ -860,7 +861,6 @@ void Device::set_context(const Context &context)
 	init_pipeline_cache();
 
 	init_timeline_semaphores();
-	init_bindless();
 
 	init_frame_contexts(2); // By default, regular double buffer between CPU and GPU.
 
@@ -936,24 +936,6 @@ void Device::wait_shader_caches()
 {
 }
 #endif
-
-void Device::init_bindless()
-{
-	if (!ext.supports_descriptor_indexing)
-		return;
-
-	DescriptorSetLayout layout;
-
-	layout.array_size[0] = DescriptorSetLayout::UNSIZED_ARRAY;
-	for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
-		layout.array_size[i] = 1;
-
-	layout.separate_image_mask = 1;
-	uint32_t stages_for_sets[VULKAN_NUM_BINDINGS] = { VK_SHADER_STAGE_ALL };
-	bindless_sampled_image_allocator_integer = request_descriptor_set_allocator(layout, stages_for_sets, nullptr);
-	layout.fp_mask = 1;
-	bindless_sampled_image_allocator_fp = request_descriptor_set_allocator(layout, stages_for_sets, nullptr);
-}
 
 void Device::init_timeline_semaphores()
 {
@@ -4284,21 +4266,28 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 	if (!ext.supports_descriptor_indexing)
 		return BindlessDescriptorPoolHandle{nullptr};
 
-	DescriptorSetAllocator *allocator = nullptr;
+	DescriptorSetLayout layout;
+	const uint32_t stages_for_sets[VULKAN_NUM_BINDINGS] = { VK_SHADER_STAGE_ALL };
+	layout.array_size[0] = DescriptorSetLayout::UNSIZED_ARRAY;
+	for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
+		layout.array_size[i] = 1;
 
 	switch (type)
 	{
 	case BindlessResourceType::ImageFP:
-		allocator = bindless_sampled_image_allocator_fp;
+		layout.separate_image_mask = 1;
+		layout.fp_mask = 1;
 		break;
 
 	case BindlessResourceType::ImageInt:
-		allocator = bindless_sampled_image_allocator_integer;
+		layout.separate_image_mask = 1;
 		break;
 
 	default:
-		break;
+		return BindlessDescriptorPoolHandle{nullptr};
 	}
+
+	auto *allocator = request_descriptor_set_allocator(layout, stages_for_sets, nullptr);
 
 	VkDescriptorPool pool = VK_NULL_HANDLE;
 	if (allocator)

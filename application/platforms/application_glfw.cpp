@@ -189,6 +189,9 @@ public:
 	void poll_input() override
 	{
 		process_events_async_thread();
+#if defined(HAVE_LINUX_INPUT) || defined(HAVE_XINPUT_WINDOWS)
+		input_manager.poll();
+#endif
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 	}
 

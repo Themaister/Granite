@@ -325,8 +325,8 @@ static inline void transform_and_expand_aabb(AABB &expandee, const AABB &aabb, c
 #else
 	auto &output_min = expandee.get_minimum4();
 	auto &output_max = expandee.get_maximum4();
-	output_min = min(output_min, tmp.get_minimum4());
-	output_max = max(output_max, tmp.get_maximum4());
+	output_min = min<vec4>(output_min, tmp.get_minimum4());
+	output_max = max<vec4>(output_max, tmp.get_maximum4());
 #endif
 }
 

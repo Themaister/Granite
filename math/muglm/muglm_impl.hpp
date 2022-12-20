@@ -654,6 +654,9 @@ inline float dot(const vec4 &a, const vec4 &b) { return a.x * b.x + a.y * b.y + 
 
 #undef min
 #undef max
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 
 // min, max, clamp
 template <typename T> T min(T a, T b) { return b < a ? b : a; }

@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "stb_truetype.h"
 #include "font.hpp"
 #include <stdexcept>

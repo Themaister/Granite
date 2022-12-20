@@ -353,7 +353,7 @@ public:
 	template <typename T, typename... Ts>
 	T *allocate_component(Entity &entity, Ts&&... ts)
 	{
-		ComponentType id = ComponentIDMapping::get_id<T>();
+		constexpr ComponentType id = ComponentIDMapping::get_id<T>();
 		auto *t = component_types.find(id);
 		if (!t)
 		{

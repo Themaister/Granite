@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "buffer_pool.hpp"
 #include "device.hpp"
 #include <utility>

@@ -22,6 +22,11 @@
 
 #include "logging.hpp"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace Util
 {
 static thread_local LoggingInterface *logging_iface;
@@ -42,4 +47,26 @@ void set_thread_logging_interface(LoggingInterface *iface)
 {
 	logging_iface = iface;
 }
+
+#ifdef _WIN32
+void debug_output_log(const char *tag, const char *fmt, ...)
+{
+	if (!IsDebuggerPresent())
+		return;
+
+	va_list va;
+	va_start(va, fmt);
+	auto len = vsnprintf(nullptr, 0, fmt, va);
+	if (len > 0)
+	{
+		size_t tag_len = strlen(tag);
+		char *buf = new char[len + tag_len + 1];
+		memcpy(buf, tag, tag_len);
+		vsnprintf(buf + tag_len, len + 1, fmt, va);
+		OutputDebugStringA(buf);
+		delete[] buf;
+	}
+	va_end(va);
+}
+#endif
 }

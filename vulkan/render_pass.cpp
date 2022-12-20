@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "render_pass.hpp"
 #include "stack_allocator.hpp"
 #include "device.hpp"
@@ -29,11 +30,7 @@
 
 using namespace Util;
 
-#ifdef GRANITE_VULKAN_MT
 #define LOCK() std::lock_guard<std::mutex> holder__{lock}
-#else
-#define LOCK() ((void)0)
-#endif
 
 namespace Vulkan
 {

@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "device.hpp"
 #ifdef GRANITE_VULKAN_FOSSILIZE
 #include "device_fossilize.hpp"
@@ -42,7 +43,6 @@
 #include "string_helpers.hpp"
 #endif
 
-#ifdef GRANITE_VULKAN_MT
 #include "thread_id.hpp"
 static unsigned get_thread_index()
 {
@@ -56,16 +56,6 @@ static unsigned get_thread_index()
 	lock.cond.wait(_holder, [&]() { \
 		return lock.counter == 0; \
 	})
-#else
-#define LOCK() ((void)0)
-#define LOCK_MEMORY() ((void)0)
-#define LOCK_CACHE() ((void)0)
-#define DRAIN_FRAME_LOCK() VK_ASSERT(lock.counter == 0)
-static unsigned get_thread_index()
-{
-	return 0;
-}
-#endif
 
 using namespace Util;
 
@@ -101,9 +91,7 @@ Device::Device()
 	, texture_manager(this)
 #endif
 {
-#ifdef GRANITE_VULKAN_MT
 	cookie.store(0);
-#endif
 }
 
 Semaphore Device::request_semaphore(VkSemaphoreTypeKHR type, VkSemaphore vk_semaphore, bool transfer_ownership)
@@ -840,9 +828,7 @@ void Device::set_context(const Context &context)
 	ctx = &context;
 	table = &context.get_device_table();
 
-#ifdef GRANITE_VULKAN_MT
 	register_thread_index(0);
-#endif
 	instance = context.get_instance();
 	gpu = context.get_gpu();
 	device = context.get_device();
@@ -1950,9 +1936,7 @@ CommandBufferHandle Device::request_profiled_command_buffer_for_thread(unsigned 
 
 CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type, bool profiled)
 {
-#ifndef GRANITE_VULKAN_MT
 	VK_ASSERT(thread_index == 0);
-#endif
 	auto physical_type = get_physical_queue_type(type);
 	auto &pool = frame().cmd_pools[physical_type][thread_index];
 	auto cmd = pool.request_command_buffer();
@@ -2468,15 +2452,10 @@ void Device::wait_idle_nolock()
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
 
-#ifdef GRANITE_VULKAN_MT
 	for (auto &allocator : descriptor_set_allocators.get_read_only())
 		allocator.clear();
 	for (auto &allocator : descriptor_set_allocators.get_read_write())
 		allocator.clear();
-#else
-	for (auto &allocator : descriptor_set_allocators)
-		allocator.clear();
-#endif
 
 	for (auto &frame : per_frame)
 	{
@@ -2494,7 +2473,6 @@ void Device::wait_idle_nolock()
 
 void Device::promote_read_write_caches_to_read_only()
 {
-#ifdef GRANITE_VULKAN_MT
 	// Components which could potentially call into these must hold global reader locks.
 	// - A CommandBuffer holds a read lock for its lifetime.
 	// - Fossilize replay in the background also holds lock.
@@ -2514,7 +2492,6 @@ void Device::promote_read_write_caches_to_read_only()
 #endif
 		lock.read_only_cache.unlock_write();
 	}
-#endif
 }
 
 void Device::next_frame_context()
@@ -2534,15 +2511,10 @@ void Device::next_frame_context()
 	framebuffer_allocator.begin_frame();
 	transient_allocator.begin_frame();
 
-#ifdef GRANITE_VULKAN_MT
 	for (auto &allocator : descriptor_set_allocators.get_read_only())
 		allocator.begin_frame();
 	for (auto &allocator : descriptor_set_allocators.get_read_write())
 		allocator.begin_frame();
-#else
-	for (auto &allocator : descriptor_set_allocators)
-		allocator.begin_frame();
-#endif
 
 	VK_ASSERT(!per_frame.empty());
 	frame_context_index++;
@@ -2740,9 +2712,7 @@ void Device::decrement_frame_counter_nolock()
 {
 	VK_ASSERT(lock.counter > 0);
 	lock.counter--;
-#ifdef GRANITE_VULKAN_MT
 	lock.cond.notify_all();
-#endif
 }
 
 void Device::PerFrame::trim_command_pools()
@@ -2860,9 +2830,7 @@ void Device::PerFrame::begin()
 
 	if (!allocations.empty())
 	{
-#ifdef GRANITE_VULKAN_MT
 		std::lock_guard<std::mutex> holder{device.lock.memory_lock};
-#endif
 		for (auto &alloc : allocations)
 			alloc.free_immediate(managers.memory);
 	}
@@ -4752,12 +4720,7 @@ VkFormat Device::get_default_depth_format() const
 uint64_t Device::allocate_cookie()
 {
 	// Reserve lower bits for "special purposes".
-#ifdef GRANITE_VULKAN_MT
 	return cookie.fetch_add(16, std::memory_order_relaxed) + 16;
-#else
-	cookie += 16;
-	return cookie;
-#endif
 }
 
 const RenderPass &Device::request_render_pass(const RenderPassInfo &info, bool compatible)

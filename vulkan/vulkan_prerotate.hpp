@@ -91,8 +91,8 @@ static inline void rect2d_clip(VkRect2D &rect)
 		rect.offset.y = 0;
 	}
 
-	rect.extent.width = std::min(rect.extent.width, 0x7fffffffu - rect.offset.x);
-	rect.extent.height = std::min(rect.extent.height, 0x7fffffffu - rect.offset.y);
+	rect.extent.width = std::min<uint32_t>(rect.extent.width, 0x7fffffffu - rect.offset.x);
+	rect.extent.height = std::min<uint32_t>(rect.extent.height, 0x7fffffffu - rect.offset.y);
 }
 
 static inline void rect2d_transform_xy(VkRect2D &rect, VkSurfaceTransformFlagBitsKHR transform,

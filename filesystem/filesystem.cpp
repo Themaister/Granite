@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "filesystem.hpp"
 #include "path_utils.hpp"
 #include "logging.hpp"
@@ -28,6 +29,7 @@
 #include <algorithm>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 namespace Granite
 {
@@ -479,8 +481,7 @@ void BlobFilesystem::parse()
 		if (blob_offset + blob_size < blob_offset)
 			throw std::range_error("Overflow for blob offset + size.");
 
-		if (blob_offset > std::numeric_limits<size_t>::max() ||
-		    blob_size > std::numeric_limits<size_t>::max())
+		if (blob_offset > SIZE_MAX || blob_size > SIZE_MAX)
 			throw std::range_error("Blob offset out of range.");
 
 		add_entry(path, blob_offset, blob_size);

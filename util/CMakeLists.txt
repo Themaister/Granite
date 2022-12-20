@@ -22,7 +22,7 @@ add_granite_internal_lib(granite-util
         timeline_trace_file.hpp timeline_trace_file.cpp
         thread_name.hpp thread_name.cpp
         thread_priority.hpp thread_priority.cpp
-		cli_parser.cpp cli_parser.hpp
+        cli_parser.cpp cli_parser.hpp
         dynamic_library.cpp dynamic_library.hpp
         generational_handle.hpp
         atomic_append_buffer.hpp
@@ -31,7 +31,7 @@ add_granite_internal_lib(granite-util
         message_queue.hpp message_queue.cpp
         small_callable.hpp radix_sorter.hpp
         dynamic_array.hpp
-		arena_allocator.hpp arena_allocator.cpp
+        arena_allocator.hpp arena_allocator.cpp
         no_init_pod.hpp)
 target_include_directories(granite-util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(granite-util PUBLIC granite-application-global-interface)

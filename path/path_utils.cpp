@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "path_utils.hpp"
 #include "string_helpers.hpp"
 #include <algorithm>

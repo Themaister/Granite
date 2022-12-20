@@ -87,9 +87,7 @@ bool libretro_create_device(
 	system_handles.thread_group = GRANITE_THREAD_GROUP();
 	system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
 	vulkan_context->set_system_handles(system_handles);
-#ifdef GRANITE_VULKAN_MT
 	vulkan_context->set_num_thread_indices(GRANITE_THREAD_GROUP()->get_num_threads() + 1);
-#endif
 	if (!vulkan_context->init_device_from_instance(instance, gpu, surface, required_device_extensions, num_required_device_extensions,
 	                                               required_features))
 	{

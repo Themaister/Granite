@@ -89,7 +89,7 @@ public:
 			return;
 		offset--;
 		int msb = 31 - int(leading_zeroes(offset));
-		msb = std::max(msb, MinimumMSB);
+		msb = std::max<int>(msb, MinimumMSB);
 		int list_index = msb - MinimumMSB;
 
 		// Iterate over the complete lists.
@@ -107,7 +107,7 @@ public:
 		uint32_t num_elements = offset + 1;
 		auto *t = lists[list_index].load(std::memory_order_relaxed);
 		for (uint32_t i = 0; i < num_elements; i += 1u << MinimumMSB)
-			func(&t[i], std::min(num_elements - i, 1u << MinimumMSB));
+			func(&t[i], std::min<uint32_t>(num_elements - i, 1u << MinimumMSB));
 	}
 
 private:
@@ -137,7 +137,7 @@ private:
 
 		uint32_t required_count = num_elements_per_list_index(list_index);
 		size_t required_size = size_t(required_count) * sizeof(T);
-		auto *new_t = static_cast<T *>(Util::memalign_alloc(std::max(size_t(64), alignof(T)), required_size));
+		auto *new_t = static_cast<T *>(Util::memalign_alloc(std::max<size_t>(64, alignof(T)), required_size));
 		T *expected_t = nullptr;
 
 		// Relaxed order is fine. We will not read anything from this buffer until we have synchronized, and

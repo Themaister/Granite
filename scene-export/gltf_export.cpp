@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "gltf_export.hpp"
 #include "texture_compression.hpp"
 #include "texture_files.hpp"

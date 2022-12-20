@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "obj.hpp"
 #include "filesystem.hpp"
 #include "memory_mapped_texture.hpp"

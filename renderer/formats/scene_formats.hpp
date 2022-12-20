@@ -116,7 +116,7 @@ struct Animation
 	{
 		length = 0.0f;
 		for (auto &chan : channels)
-			length = std::max(length, chan.get_length());
+			length = std::max<float>(length, chan.get_length());
 	}
 };
 

@@ -39,31 +39,28 @@ bool interface_log(const char *tag, const char *fmt, ...);
 void set_thread_logging_interface(LoggingInterface *iface);
 }
 
-#if defined(_MSC_VER)
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#if defined(_WIN32)
+namespace Util
+{
+void debug_output_log(const char *tag, const char *fmt, ...);
+}
+
 #define LOGE_FALLBACK(...) do { \
-    fprintf(stderr, "[ERROR]: " __VA_ARGS__); \
-    fflush(stderr); \
-    char buffer[16 * 1024]; \
-    snprintf(buffer, sizeof(buffer), "[ERROR]: " __VA_ARGS__); \
-    OutputDebugStringA(buffer); \
+	fprintf(stderr, "[ERROR]: " __VA_ARGS__); \
+	fflush(stderr); \
+	::Util::debug_output_log("[ERROR]: ", __VA_ARGS__); \
 } while(false)
 
 #define LOGW_FALLBACK(...) do { \
-    fprintf(stderr, "[WARN]: " __VA_ARGS__); \
-    fflush(stderr); \
-    char buffer[16 * 1024]; \
-    snprintf(buffer, sizeof(buffer), "[WARN]: " __VA_ARGS__); \
-    OutputDebugStringA(buffer); \
+	fprintf(stderr, "[WARN]: " __VA_ARGS__); \
+	fflush(stderr); \
+	::Util::debug_output_log("[WARN]: ", __VA_ARGS__); \
 } while(false)
 
 #define LOGI_FALLBACK(...) do { \
-    fprintf(stderr, "[INFO]: " __VA_ARGS__); \
-    fflush(stderr); \
-    char buffer[16 * 1024]; \
-    snprintf(buffer, sizeof(buffer), "[INFO]: " __VA_ARGS__); \
-    OutputDebugStringA(buffer); \
+	fprintf(stderr, "[INFO]: " __VA_ARGS__); \
+	fflush(stderr); \
+	::Util::debug_output_log("[INFO]: ", __VA_ARGS__); \
 } while(false)
 #elif defined(ANDROID)
 #include <android/log.h>

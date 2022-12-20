@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "lights.hpp"
 #include "render_queue.hpp"
 #include "render_context.hpp"

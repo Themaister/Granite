@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "audio_fft_eq.hpp"
 #include "dsp/dsp.hpp"
 #include "fft.h"

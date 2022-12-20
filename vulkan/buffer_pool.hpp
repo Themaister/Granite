@@ -58,8 +58,8 @@ struct BufferBlock
 			auto *ret = mapped + aligned_offset;
 			offset = aligned_offset + allocate_size;
 
-			VkDeviceSize padded_size = std::max(allocate_size, spill_size);
-			padded_size = std::min(padded_size, size - aligned_offset);
+			VkDeviceSize padded_size = std::max<VkDeviceSize>(allocate_size, spill_size);
+			padded_size = std::min<VkDeviceSize>(padded_size, size - aligned_offset);
 
 			return { ret, aligned_offset, padded_size };
 		}

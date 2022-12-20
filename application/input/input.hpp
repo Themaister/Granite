@@ -26,7 +26,7 @@
 #include "event.hpp"
 #include <stdint.h>
 #include "math.hpp"
-#include <limits>
+#include <limits.h>
 
 namespace Granite
 {
@@ -273,8 +273,8 @@ private:
 	double last_mouse_y = 0.0;
 	double mouse_relative_range_x = 0.0;
 	double mouse_relative_range_y = 0.0;
-	double mouse_relative_range_width = std::numeric_limits<double>::max();
-	double mouse_relative_range_height = std::numeric_limits<double>::max();
+	double mouse_relative_range_width = DBL_MAX;
+	double mouse_relative_range_height = DBL_MAX;
 	double mouse_speed_x = 1.0;
 	double mouse_speed_y = 1.0;
 

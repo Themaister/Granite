@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "tone_filter.hpp"
 #include "aligned_alloc.hpp"
 #include "pole_zero_filter_design.hpp"

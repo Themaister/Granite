@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "clusterer.hpp"
 #include "render_graph.hpp"
 #include "scene.hpp"

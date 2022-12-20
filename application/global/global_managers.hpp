@@ -25,7 +25,7 @@
 #include <stdint.h>
 #include <functional>
 #include <memory>
-#include <limits>
+#include <limits.h>
 #include "global_managers_interface.hpp"
 
 namespace Granite
@@ -72,7 +72,7 @@ public:
 };
 
 void init(Factory &factory, ManagerFeatureFlags flags = MANAGER_FEATURE_DEFAULT_BITS,
-          unsigned max_threads = std::numeric_limits<unsigned>::max());
+          unsigned max_threads = UINT_MAX);
 void deinit();
 
 // Used if the application wants to use multiple instances of Granite in the same process.

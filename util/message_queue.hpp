@@ -76,7 +76,7 @@ public:
 		if (count > ring.size() - (current_written - current_read))
 			return false;
 
-		size_t can_write_first = std::min(ring.size() - write_offset, count);
+		size_t can_write_first = std::min<size_t>(ring.size() - write_offset, count);
 		size_t can_write_second = count - can_write_first;
 		std::move(values, values + can_write_first, ring.data() + write_offset);
 
@@ -100,7 +100,7 @@ public:
 		if (count > current_written - current_read)
 			return false;
 
-		size_t can_read_first = std::min(ring.size() - read_offset, count);
+		size_t can_read_first = std::min<size_t>(ring.size() - read_offset, count);
 		size_t can_read_second = count - can_read_first;
 		std::move(ring.data() + read_offset, ring.data() + read_offset + can_read_first, values);
 

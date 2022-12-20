@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "application.hpp"
 #include "application_events.hpp"
 #include "application_wsi.hpp"

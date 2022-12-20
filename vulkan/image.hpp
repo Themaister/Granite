@@ -117,7 +117,7 @@ static inline VkAccessFlags image_usage_to_possible_access(VkImageUsageFlags usa
 
 static inline uint32_t image_num_miplevels(const VkExtent3D &extent)
 {
-	uint32_t size = std::max(std::max(extent.width, extent.height), extent.depth);
+	uint32_t size = std::max<uint32_t>(std::max<uint32_t>(extent.width, extent.height), extent.depth);
 	return Util::floor_log2(size) + 1;
 }
 
@@ -495,17 +495,17 @@ public:
 
 	uint32_t get_width(uint32_t lod = 0) const
 	{
-		return std::max(1u, create_info.width >> lod);
+		return std::max<uint32_t>(1u, create_info.width >> lod);
 	}
 
 	uint32_t get_height(uint32_t lod = 0) const
 	{
-		return std::max(1u, create_info.height >> lod);
+		return std::max<uint32_t>(1u, create_info.height >> lod);
 	}
 
 	uint32_t get_depth(uint32_t lod = 0) const
 	{
-		return std::max(1u, create_info.depth >> lod);
+		return std::max<uint32_t>(1u, create_info.depth >> lod);
 	}
 
 	const ImageCreateInfo &get_create_info() const

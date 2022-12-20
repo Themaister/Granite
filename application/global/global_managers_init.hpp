@@ -28,7 +28,6 @@ namespace Granite
 {
 namespace Global
 {
-void init(ManagerFeatureFlags flags = MANAGER_FEATURE_DEFAULT_BITS,
-          unsigned max_threads = std::numeric_limits<unsigned>::max());
+void init(ManagerFeatureFlags flags = MANAGER_FEATURE_DEFAULT_BITS, unsigned max_threads = UINT_MAX);
 }
 }

@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "command_buffer.hpp"
 #include "device.hpp"
 #include "format.hpp"

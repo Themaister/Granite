@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "tmx_parser.hpp"
 #include "path_utils.hpp"
 #include "filesystem.hpp"

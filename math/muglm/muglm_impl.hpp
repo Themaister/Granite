@@ -652,6 +652,9 @@ inline float dot(const vec2 &a, const vec2 &b) { return a.x * b.x + a.y * b.y; }
 inline float dot(const vec3 &a, const vec3 &b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 inline float dot(const vec4 &a, const vec4 &b) { return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w; }
 
+#undef min
+#undef max
+
 // min, max, clamp
 template <typename T> T min(T a, T b) { return b < a ? b : a; }
 template <typename T> T max(T a, T b) { return a < b ? b : a; }

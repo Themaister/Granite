@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "shader.hpp"
 #include "device.hpp"
 #ifdef GRANITE_VULKAN_SPIRV_CROSS

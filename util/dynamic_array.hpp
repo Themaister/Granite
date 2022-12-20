@@ -41,7 +41,7 @@ public:
 	{
 		if (n > N)
 		{
-			buffer.reset(static_cast<T *>(memalign_alloc(std::max(size_t(64), alignof(T)), n * sizeof(T))));
+			buffer.reset(static_cast<T *>(memalign_alloc(std::max<size_t>(64, alignof(T)), n * sizeof(T))));
 			N = n;
 		}
 	}

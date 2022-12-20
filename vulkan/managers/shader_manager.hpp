@@ -31,9 +31,7 @@
 #include <string>
 #include <vector>
 #include "hash.hpp"
-#ifdef GRANITE_VULKAN_MT
 #include "read_write_lock.hpp"
-#endif
 
 namespace Granite
 {
@@ -136,9 +134,7 @@ private:
 	// We'll never want to recompile shaders in runtime outside a dev environment.
 	std::atomic_uint shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)];
 	std::atomic<Vulkan::Program *> program;
-#ifdef GRANITE_VULKAN_MT
 	Util::RWSpinLock instance_lock;
-#endif
 #endif
 
 	Vulkan::Program *get_program_compute();
@@ -217,9 +213,7 @@ private:
 
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	std::unordered_map<std::string, std::unordered_set<ShaderTemplate *>> dependees;
-#ifdef GRANITE_VULKAN_MT
 	std::mutex dependency_lock;
-#endif
 
 #ifndef GRANITE_SHIPPING
 	// We'll never want to recompile shaders in runtime outside a dev environment.

@@ -49,11 +49,9 @@
 #include "texture_manager.hpp"
 #endif
 
-#ifdef GRANITE_VULKAN_MT
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
-#endif
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 #include "fossilize.hpp"
@@ -492,11 +490,7 @@ private:
 	QueueInfo queue_info;
 	unsigned num_thread_indices = 1;
 
-#ifdef GRANITE_VULKAN_MT
 	std::atomic_uint64_t cookie;
-#else
-	uint64_t cookie = 0;
-#endif
 
 	uint64_t allocate_cookie();
 	void bake_program(Program &program);
@@ -565,12 +559,10 @@ private:
 
 	struct
 	{
-#ifdef GRANITE_VULKAN_MT
 		std::mutex memory_lock;
 		std::mutex lock;
 		std::condition_variable cond;
 		Util::RWSpinLock read_only_cache;
-#endif
 		unsigned counter = 0;
 	} lock;
 

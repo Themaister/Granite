@@ -33,11 +33,7 @@
 
 using namespace Util;
 
-#ifdef GRANITE_VULKAN_MT
 #define DEPENDENCY_LOCK() std::lock_guard<std::mutex> holder{dependency_lock}
-#else
-#define DEPENDENCY_LOCK() ((void)0)
-#endif
 
 namespace Vulkan
 {
@@ -280,15 +276,10 @@ void ShaderTemplate::recompile()
 	compiler = std::move(newcompiler);
 	source_hash = compiler->get_source_hash();
 
-#ifdef GRANITE_VULKAN_MT
 	for (auto &variant : variants.get_read_only())
 		recompile_variant(variant);
 	for (auto &variant : variants.get_read_write())
 		recompile_variant(variant);
-#else
-	for (auto &variant : variants)
-		recompile_variant(variant);
-#endif
 }
 #endif
 
@@ -347,9 +338,7 @@ Vulkan::Program *ShaderProgramVariant::get_program_compute()
 	if (loaded_instance == comp->instance)
 		return program.load(std::memory_order_relaxed);
 
-#ifdef GRANITE_VULKAN_MT
 	instance_lock.lock_write();
-#endif
 	if (comp_instance.load(std::memory_order_relaxed) != comp->instance)
 	{
 		ret = device->request_program(comp->resolve(*device));
@@ -360,9 +349,7 @@ Vulkan::Program *ShaderProgramVariant::get_program_compute()
 	{
 		ret = program.load(std::memory_order_relaxed);
 	}
-#ifdef GRANITE_VULKAN_MT
 	instance_lock.unlock_write();
-#endif
 #endif
 
 	return ret;
@@ -390,9 +377,7 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 	if (loaded_vert_instance == vert->instance && loaded_frag_instance == frag->instance)
 		return program.load(std::memory_order_relaxed);
 
-#ifdef GRANITE_VULKAN_MT
 	instance_lock.lock_write();
-#endif
 	if (vert_instance.load(std::memory_order_relaxed) != vert->instance ||
 	    frag_instance.load(std::memory_order_relaxed) != frag->instance)
 	{
@@ -405,9 +390,7 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 	{
 		ret = program.load(std::memory_order_relaxed);
 	}
-#ifdef GRANITE_VULKAN_MT
 	instance_lock.unlock_write();
-#endif
 #endif
 
 	return ret;
@@ -629,12 +612,10 @@ void ShaderManager::add_include_directory(const std::string &path)
 
 void ShaderManager::promote_read_write_caches_to_read_only()
 {
-#ifdef GRANITE_VULKAN_MT
 	shaders.move_to_read_only();
 	programs.move_to_read_only();
 	meta_cache.variant_to_shader.move_to_read_only();
 	meta_cache.shader_to_layout.move_to_read_only();
-#endif
 }
 
 static ResourceLayout parse_resource_layout(const rapidjson::Value &layout_obj)
@@ -767,12 +748,8 @@ bool ShaderManager::save_shader_cache(const std::string &path)
 
 	Value maps(kArrayType);
 
-#ifdef GRANITE_VULKAN_MT
 	meta_cache.variant_to_shader.move_to_read_only();
 	auto &var_to_shader = meta_cache.variant_to_shader.get_read_only();
-#else
-	auto &var_to_shader = meta_cache.variant_to_shader;
-#endif
 
 	for (auto &entry : var_to_shader)
 	{

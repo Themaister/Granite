@@ -389,9 +389,6 @@ void ThreadGroup::thread_looper(unsigned index, TaskClass task_class)
 
 ThreadGroup::ThreadGroup()
 {
-#ifdef GRANITE_VULKAN_MT
-	Vulkan::register_thread_index(0);
-#endif
 	total_tasks.store(0);
 	completed_tasks.store(0);
 }

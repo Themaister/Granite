@@ -29,11 +29,7 @@
 
 using namespace Util;
 
-#ifdef GRANITE_VULKAN_MT
 #define LOCK() std::lock_guard<std::mutex> holder__{lock}
-#else
-#define LOCK() ((void)0)
-#endif
 
 namespace Vulkan
 {

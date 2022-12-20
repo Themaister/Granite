@@ -65,9 +65,7 @@ CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCa
 			(features.subgroup_size_control_properties.minSubgroupSize << 0) |
 			(features.subgroup_size_control_properties.maxSubgroupSize << 8);
 
-#ifdef GRANITE_VULKAN_MT
 	device->lock.read_only_cache.lock_read();
-#endif
 }
 
 CommandBuffer::~CommandBuffer()
@@ -76,9 +74,7 @@ CommandBuffer::~CommandBuffer()
 	VK_ASSERT(ibo_block.mapped == nullptr);
 	VK_ASSERT(ubo_block.mapped == nullptr);
 	VK_ASSERT(staging_block.mapped == nullptr);
-#ifdef GRANITE_VULKAN_MT
 	device->lock.read_only_cache.unlock_read();
-#endif
 }
 
 void CommandBuffer::fill_buffer(const Buffer &dst, uint32_t value)

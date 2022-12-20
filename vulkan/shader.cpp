@@ -620,21 +620,14 @@ void Program::destroy_pipeline(const Pipeline &pipeline)
 
 void Program::promote_read_write_to_read_only()
 {
-#ifdef GRANITE_VULKAN_MT
 	pipelines.move_to_read_only();
-#endif
 }
 
 Program::~Program()
 {
-#ifdef GRANITE_VULKAN_MT
 	for (auto &pipe : pipelines.get_read_only())
 		destroy_pipeline(pipe.get());
 	for (auto &pipe : pipelines.get_read_write())
 		destroy_pipeline(pipe.get());
-#else
-	for (auto &pipe : pipelines)
-		destroy_pipeline(pipe.get());
-#endif
 }
 }

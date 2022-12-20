@@ -30,6 +30,10 @@
 #define VK_ENABLE_BETA_EXTENSIONS
 #endif
 
+#if defined(VULKAN_H_) || defined(VULKAN_CORE_H_)
+#error "Must include vulkan_headers.hpp before Vulkan headers"
+#endif
+
 #include "volk.h"
 #include <stdlib.h>
 #include "logging.hpp"

@@ -27,6 +27,7 @@
 #include <stdint.h>
 #include "math.hpp"
 #include <limits.h>
+#include <float.h>
 
 namespace Granite
 {

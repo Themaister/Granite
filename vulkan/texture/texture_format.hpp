@@ -65,12 +65,12 @@ public:
 
 	inline size_t get_row_size(uint32_t mip) const
 	{
-		return mips[mip].block_row_length * block_stride;
+		return size_t(mips[mip].block_row_length) * block_stride;
 	}
 
 	inline size_t get_layer_size(uint32_t mip) const
 	{
-		return mips[mip].block_image_height * get_row_size(mip);
+		return size_t(mips[mip].block_image_height) * get_row_size(mip);
 	}
 
 	struct MipInfo

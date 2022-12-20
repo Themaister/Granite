@@ -251,7 +251,7 @@ static inline VkDeviceSize format_get_layer_size(VkFormat format, VkImageAspectF
 	format_num_blocks(format, blocks_x, blocks_y);
 	format_align_dim(format, width, height);
 
-	VkDeviceSize size = TextureFormatLayout::format_block_size(format, aspect) * depth * blocks_x * blocks_y;
+	VkDeviceSize size = VkDeviceSize(TextureFormatLayout::format_block_size(format, aspect)) * depth * blocks_x * blocks_y;
 	return size;
 }
 

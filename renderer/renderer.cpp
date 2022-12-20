@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "renderer.hpp"
 #include "device.hpp"
 #include "render_context.hpp"

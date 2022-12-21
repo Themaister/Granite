@@ -26,10 +26,8 @@
 #include "texture_files.hpp"
 #include "texture_decoder.hpp"
 
-#ifdef GRANITE_VULKAN_THREAD_GROUP
 #include "thread_group.hpp"
 #include "thread_id.hpp"
-#endif
 
 namespace Vulkan
 {
@@ -84,7 +82,7 @@ void Texture::set_path(const std::string &path_)
 void Texture::update(Granite::FileMappingHandle file)
 {
 	auto work = [file, this]() mutable {
-#if defined(GRANITE_VULKAN_THREAD_GROUP) && defined(VULKAN_DEBUG)
+#if defined(VULKAN_DEBUG)
 		LOGI("Loading texture in thread index: %u\n", Util::get_current_thread_index());
 #endif
 		if (file->get_size())
@@ -101,7 +99,6 @@ void Texture::update(Granite::FileMappingHandle file)
 		}
 	};
 
-#ifdef GRANITE_VULKAN_THREAD_GROUP
 	if (auto *group = device->get_system_handles().thread_group)
 	{
 		auto task = group->create_task(std::move(work));
@@ -110,9 +107,6 @@ void Texture::update(Granite::FileMappingHandle file)
 	}
 	else
 		work();
-#else
-	work();
-#endif
 }
 
 void Texture::update_checkerboard()

@@ -39,7 +39,7 @@
 #include <windows.h>
 #endif
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 #include "string_helpers.hpp"
 #endif
 
@@ -86,7 +86,7 @@ static constexpr VkImageUsageFlags vk_video_image_usage_flags = 0;
 Device::Device()
     : framebuffer_allocator(this)
     , transient_allocator(this)
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	, shader_manager(this)
 	, texture_manager(this)
 #endif
@@ -675,7 +675,7 @@ bool Device::init_pipeline_cache(const uint8_t *data, size_t size)
 
 void Device::init_pipeline_cache()
 {
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	if (!system_handles.filesystem)
 		return;
 	auto file = system_handles.filesystem->open_readonly_mapping("cache://pipeline_cache.bin");
@@ -740,7 +740,7 @@ bool Device::get_pipeline_cache_data(uint8_t *data, size_t size)
 
 void Device::flush_pipeline_cache()
 {
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	if (!system_handles.filesystem)
 		return;
 
@@ -905,7 +905,7 @@ void Device::begin_shader_caches()
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	init_pipeline_state(ctx->get_feature_filter(), ctx->get_physical_device_features(),
 	                    ctx->get_application_info());
-#elif defined(GRANITE_VULKAN_FILESYSTEM)
+#elif defined(GRANITE_VULKAN_SYSTEM_HANDLES)
 	// Fossilize init will deal with init_shader_manager_cache()
 	init_shader_manager_cache();
 #endif
@@ -1936,7 +1936,6 @@ CommandBufferHandle Device::request_profiled_command_buffer_for_thread(unsigned 
 
 CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type, bool profiled)
 {
-	VK_ASSERT(thread_index == 0);
 	auto physical_type = get_physical_queue_type(type);
 	auto &pool = frame().cmd_pools[physical_type][thread_index];
 	auto cmd = pool.request_command_buffer();
@@ -2059,7 +2058,7 @@ Device::~Device()
 		table->vkDestroyPipelineCache(device, pipeline_cache, nullptr);
 	}
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	flush_shader_manager_cache();
 #endif
 
@@ -2487,7 +2486,7 @@ void Device::promote_read_write_caches_to_read_only()
 		render_passes.move_to_read_only();
 		immutable_samplers.move_to_read_only();
 		immutable_ycbcr_conversions.move_to_read_only();
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 		shader_manager.promote_read_write_caches_to_read_only();
 #endif
 		lock.read_only_cache.unlock_write();
@@ -5085,7 +5084,7 @@ PipelineEvent Device::begin_signal_event(VkPipelineStageFlags stages)
 	return event;
 }
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 TextureManager &Device::get_texture_manager()
 {
 	return texture_manager;
@@ -5106,7 +5105,7 @@ ShaderManager &Device::get_shader_manager()
 }
 #endif
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 void Device::init_shader_manager_cache()
 {
 	if (!shader_manager.load_shader_cache("assets://shader_cache.json"))

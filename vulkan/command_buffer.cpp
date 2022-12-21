@@ -1654,7 +1654,7 @@ void CommandBuffer::push_constants(const void *data, VkDeviceSize offset, VkDevi
 	set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
 }
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 void CommandBuffer::set_program(const std::string &compute, const std::vector<std::pair<std::string, int>> &defines)
 {
 	auto *p = device->get_shader_manager().register_compute(compute);
@@ -2667,7 +2667,7 @@ void CommandBuffer::end_debug_channel()
 	debug_channel_interface = nullptr;
 }
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 void CommandBufferUtil::set_quad_vertex_state(CommandBuffer &cmd)
 {
 #ifdef __APPLE__

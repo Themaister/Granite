@@ -44,7 +44,7 @@
 #include <unordered_map>
 #include <stdio.h>
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 #include "shader_manager.hpp"
 #include "texture_manager.hpp"
 #endif
@@ -415,7 +415,7 @@ public:
 
 	const Sampler &get_stock_sampler(StockSampler sampler) const;
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	// To obtain ShaderManager, ShaderModules must be observed to be complete
 	// in query_initialization_progress().
 	ShaderManager &get_shader_manager();
@@ -801,7 +801,7 @@ private:
 
 	Fence request_legacy_fence();
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	ShaderManager shader_manager;
 	TextureManager texture_manager;
 	void init_shader_manager_cache();

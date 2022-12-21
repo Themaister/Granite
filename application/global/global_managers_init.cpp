@@ -25,6 +25,7 @@
 #include "event.hpp"
 #include "thread_group.hpp"
 #include "filesystem.hpp"
+#include "asset_manager.hpp"
 #include "common_renderer_data.hpp"
 #include "ui_manager.hpp"
 #ifdef HAVE_GRANITE_AUDIO
@@ -44,6 +45,11 @@ struct FactoryImplementation : Factory
 	FilesystemInterface *create_filesystem() override
 	{
 		return new Filesystem;
+	}
+
+	AssetManagerInterface *create_asset_manager() override
+	{
+		return new AssetManager;
 	}
 
 	EventManagerInterface *create_event_manager() override

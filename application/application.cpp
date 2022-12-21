@@ -22,6 +22,7 @@
 
 #define NOMINMAX
 #include "application.hpp"
+#include "asset_manager.hpp"
 #include "thread_group.hpp"
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_mixer.hpp"
@@ -72,6 +73,7 @@ bool Application::init_wsi(Vulkan::ContextHandle context)
 		Context::SystemHandles system_handles;
 		system_handles.filesystem = GRANITE_FILESYSTEM();
 		system_handles.thread_group = GRANITE_THREAD_GROUP();
+		system_handles.asset_manager = GRANITE_ASSET_MANAGER();
 		system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
 
 		if (!application_wsi.init_context_from_platform(

@@ -41,13 +41,13 @@ bool Texture::init_texture()
 		return true;
 }
 
-Texture::Texture(Device *device_, const std::string &path_, VkFormat format_, const VkComponentMapping &swizzle_) :
+Texture::Texture(Device *device_, const std::string &path_, VkFormat format_) :
 #ifndef GRANITE_SHIPPING
 	VolatileSource(device_->get_system_handles().filesystem, path_),
 #else
 	path(path_),
 #endif
-	device(device_), format(format_), swizzle(swizzle_)
+	device(device_), format(format_)
 {
 }
 
@@ -149,6 +149,7 @@ void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 
 	auto &layout = mapped_file.get_layout();
 
+	VkComponentMapping swizzle = {};
 	mapped_file.remap_swizzle(swizzle);
 
 	Vulkan::ImageHandle image;
@@ -267,22 +268,18 @@ TextureManager::TextureManager(Device *device_)
 {
 }
 
-Texture *TextureManager::request_texture(const std::string &path, VkFormat format, const VkComponentMapping &mapping)
+Texture *TextureManager::request_texture(const std::string &path, VkFormat format)
 {
 	Util::Hasher hasher;
 	hasher.string(path);
 	hasher.u32(format);
-	hasher.u32(mapping.r);
-	hasher.u32(mapping.g);
-	hasher.u32(mapping.b);
-	hasher.u32(mapping.a);
 	auto hash = hasher.get();
 
 	auto *ret = textures.find(hash);
 	if (ret)
 		return ret;
 
-	ret = textures.emplace_yield(hash, device, path, format, mapping);
+	ret = textures.emplace_yield(hash, device, path, format);
 	if (!ret->init_texture())
 		ret->update_checkerboard();
 	return ret;

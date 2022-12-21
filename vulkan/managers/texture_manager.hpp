@@ -49,12 +49,7 @@ public:
 #endif
 
 private:
-	Texture(Device *device, const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED,
-	        const VkComponentMapping &swizzle = {
-			        VK_COMPONENT_SWIZZLE_R,
-			        VK_COMPONENT_SWIZZLE_G,
-			        VK_COMPONENT_SWIZZLE_B,
-			        VK_COMPONENT_SWIZZLE_A });
+	Texture(Device *device, const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED);
 
 	explicit Texture(Device *device);
 
@@ -65,7 +60,6 @@ private:
 	Device *device;
 	Util::AsyncObjectSink<ImageHandle> handle;
 	VkFormat format;
-	VkComponentMapping swizzle;
 	void update_other(const void *data, size_t size);
 	void update_gtx(Granite::FileMappingHandle file);
 	void update_gtx(const MemoryMappedTexture &texture);
@@ -80,12 +74,7 @@ class TextureManager
 {
 public:
 	TextureManager(Device *device);
-	Texture *request_texture(const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED,
-	                         const VkComponentMapping &swizzle = {
-			                         VK_COMPONENT_SWIZZLE_R,
-			                         VK_COMPONENT_SWIZZLE_G,
-			                         VK_COMPONENT_SWIZZLE_B,
-			                         VK_COMPONENT_SWIZZLE_A });
+	Texture *request_texture(const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED);
 
 private:
 	Device *device;

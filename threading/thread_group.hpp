@@ -49,6 +49,7 @@ struct TaskSignal
 
 	void signal_increment();
 	void wait_until_at_least(uint64_t count);
+	uint64_t get_count();
 };
 
 enum class TaskClass : uint8_t

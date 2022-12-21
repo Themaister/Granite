@@ -36,6 +36,7 @@ struct GlobalManagers
 	Factory *factory;
 
 	FilesystemInterface *filesystem;
+	AssetManagerInterface *asset_manager;
 	EventManagerInterface *event_manager;
 	ThreadGroupInterface *thread_group;
 	UI::UIManagerInterface *ui_manager;
@@ -87,6 +88,13 @@ FilesystemInterface *filesystem()
 	if (!global_managers.filesystem)
 		LOGE("Filesystem was not initialized.\n");
 	return global_managers.filesystem;
+}
+
+AssetManagerInterface *asset_manager()
+{
+	if (!global_managers.asset_manager)
+		LOGE("Asset manager was not initialized.\n");
+	return global_managers.asset_manager;
 }
 
 EventManagerInterface *event_manager()
@@ -150,6 +158,12 @@ void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads)
 	{
 		if (!global_managers.filesystem)
 			global_managers.filesystem = factory.create_filesystem();
+	}
+
+	if (flags & MANAGER_FEATURE_ASSET_MANAGER_BIT)
+	{
+		if (!global_managers.asset_manager)
+			global_managers.asset_manager = factory.create_asset_manager();
 	}
 
 	bool kick_threads = false;
@@ -229,6 +243,7 @@ void deinit()
 	delete global_managers.common_renderer_data;
 	delete global_managers.ui_manager;
 	delete global_managers.thread_group;
+	delete global_managers.asset_manager;
 	delete global_managers.filesystem;
 	delete global_managers.event_manager;
 	delete global_managers.logging;
@@ -238,6 +253,7 @@ void deinit()
 	global_managers.physics = nullptr;
 	global_managers.common_renderer_data = nullptr;
 	global_managers.filesystem = nullptr;
+	global_managers.asset_manager = nullptr;
 	global_managers.event_manager = nullptr;
 	global_managers.thread_group = nullptr;
 	global_managers.ui_manager = nullptr;
@@ -274,6 +290,7 @@ void stop_audio_system()
 }
 
 FilesystemInterface *Factory::create_filesystem() { return nullptr; }
+AssetManagerInterface *Factory::create_asset_manager() { return nullptr; }
 EventManagerInterface *Factory::create_event_manager() { return nullptr; }
 ThreadGroupInterface *Factory::create_thread_group() { return nullptr; }
 CommonRendererDataInterface *Factory::create_common_renderer_data() { return nullptr; }

@@ -278,4 +278,8 @@ Texture *TextureManager::request_texture(const std::string &path, VkFormat forma
 		ret->update_checkerboard();
 	return ret;
 }
+
+void TextureManager::init()
+{
+}
 }

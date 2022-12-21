@@ -266,5 +266,6 @@ void Application::render_loading(double, double)
 
 void Application::post_frame()
 {
+	GRANITE_ASSET_MANAGER()->iterate(GRANITE_THREAD_GROUP());
 }
 }

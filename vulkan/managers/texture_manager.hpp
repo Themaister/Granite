@@ -73,8 +73,10 @@ private:
 class TextureManager
 {
 public:
-	TextureManager(Device *device);
+	explicit TextureManager(Device *device);
 	Texture *request_texture(const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED);
+
+	void init();
 
 private:
 	Device *device;

@@ -25,6 +25,7 @@
 #include "global_managers.hpp"
 #include "filesystem.hpp"
 #include "object_pool.hpp"
+#include "intrusive_hash_map.hpp"
 #include <vector>
 #include <mutex>
 #include <memory>
@@ -75,6 +76,8 @@ public:
 	// FileHandle is intended to be used with FileSlice or similar here so that we don't need
 	// a ton of open files at once.
 	ImageAssetID register_image_resource(FileHandle file);
+	ImageAssetID register_image_resource(Filesystem &fs, const std::string &path);
+
 	// Prio 0: Not resident, resource may not exist.
 	bool set_image_residency_priority(ImageAssetID id, int prio);
 
@@ -94,7 +97,7 @@ public:
 	void mark_used_resource(ImageAssetID id);
 
 private:
-	struct AssetInfo
+	struct AssetInfo : Util::IntrusiveHashMapEnabled<AssetInfo>
 	{
 		uint64_t pending_consumed = 0;
 		uint64_t consumed = 0;
@@ -105,9 +108,11 @@ private:
 	};
 
 	std::vector<AssetInfo *> sorted_assets;
+	std::mutex asset_bank_lock;
 	std::vector<AssetInfo *> asset_bank;
 	Util::ObjectPool<AssetInfo> pool;
 	Util::AtomicAppendBuffer<ImageAssetID> lru_append;
+	Util::IntrusiveHashMap<AssetInfo> file_to_assets;
 
 	AssetInstantiatorInterface *iface = nullptr;
 	uint32_t id_count = 0;
@@ -127,5 +132,6 @@ private:
 
 	void adjust_update(const CostUpdate &update);
 	std::unique_ptr<TaskSignal> signal;
+	ImageAssetID register_image_resource_nolock(FileHandle file);
 };
 }

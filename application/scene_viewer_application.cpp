@@ -1463,6 +1463,7 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 
 void SceneViewerApplication::post_frame()
 {
+	Application::post_frame();
 	scene_loader.get_scene().destroy_queued_entities();
 }
 

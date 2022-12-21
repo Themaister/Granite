@@ -892,6 +892,10 @@ void Device::set_context(const Context &context)
 
 	if (system_handles.timeline_trace_file)
 		init_calibrated_timestamps();
+
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
+	texture_manager.init();
+#endif
 }
 
 void Device::begin_shader_caches()

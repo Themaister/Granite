@@ -23,6 +23,7 @@
 #include "asset_manager.hpp"
 #include "thread_group.hpp"
 #include <utility>
+#include <algorithm>
 
 namespace Granite
 {
@@ -38,7 +39,7 @@ AssetManager::~AssetManager()
 		pool.free(a);
 }
 
-ImageAssetID AssetManager::register_image_resource(FileHandle file)
+ImageAssetID AssetManager::register_image_resource_nolock(FileHandle file)
 {
 	auto *info = pool.allocate();
 	info->handle = std::move(file);
@@ -49,6 +50,30 @@ ImageAssetID AssetManager::register_image_resource(FileHandle file)
 	if (iface)
 		iface->set_id_bounds(id_count);
 	return ret;
+}
+
+ImageAssetID AssetManager::register_image_resource(FileHandle file)
+{
+	std::lock_guard<std::mutex> holder{asset_bank_lock};
+	return register_image_resource_nolock(std::move(file));
+}
+
+ImageAssetID AssetManager::register_image_resource(Filesystem &fs, const std::string &path)
+{
+	std::lock_guard<std::mutex> holder{asset_bank_lock};
+
+	Util::Hasher h;
+	h.string(path);
+	if (auto *asset = file_to_assets.find(h.get()))
+		return asset->id;
+
+	auto file = fs.open(path);
+	if (!file)
+		return {};
+
+	auto id = register_image_resource_nolock(std::move(file));
+	file_to_assets.insert_replace(h.get(), asset_bank[id.id]);
+	return id;
 }
 
 void AssetManager::update_cost(ImageAssetID id, uint64_t cost)
@@ -71,8 +96,8 @@ void AssetManager::set_asset_instantiator_interface(AssetInstantiatorInterface *
 		a->consumed = 0;
 		a->pending_consumed = 0;
 		a->last_used = 0;
-		total_consumed = 0;
 	}
+	total_consumed = 0;
 
 	iface = iface_;
 	if (iface)
@@ -96,6 +121,7 @@ void AssetManager::set_image_budget_per_iteration(uint64_t cost)
 
 bool AssetManager::set_image_residency_priority(ImageAssetID id, int prio)
 {
+	std::lock_guard<std::mutex> holder{asset_bank_lock};
 	if (id.id >= asset_bank.size())
 		return false;
 	asset_bank[id.id]->prio = prio;
@@ -110,6 +136,10 @@ void AssetManager::adjust_update(const CostUpdate &update)
 		total_consumed += update.cost - (a->consumed + a->pending_consumed);
 		a->consumed = update.cost;
 		a->pending_consumed = 0;
+
+		// A recently paged in image shouldn't be paged out right away in a situation where we're thrashing,
+		// that'd be very dumb.
+		a->last_used = timestamp;
 	}
 }
 
@@ -142,8 +172,10 @@ void AssetManager::iterate(ThreadGroup *group)
 	else
 		signal->signal_increment();
 
+	std::lock_guard<std::mutex> holder{asset_bank_lock};
+
 	{
-		std::lock_guard<std::mutex> holder{cost_update_lock};
+		std::lock_guard<std::mutex> holder_cost{cost_update_lock};
 		std::swap(cost_updates, thread_cost_updates);
 	}
 
@@ -210,11 +242,7 @@ void AssetManager::iterate(ThreadGroup *group)
 			auto *release_candidate = sorted_assets[--release_index];
 			if (release_candidate->consumed)
 			{
-				if (group)
-					task->enqueue_task([this, release_candidate]() { iface->release_image_resource(release_candidate->id); });
-				else
-					iface->release_image_resource(release_candidate->id);
-
+				iface->release_image_resource(release_candidate->id);
 				total_consumed -= release_candidate->consumed;
 				release_candidate->consumed = 0;
 			}
@@ -238,19 +266,31 @@ void AssetManager::iterate(ThreadGroup *group)
 		}
 	}
 
+	// If we're 75% of budget, start garbage collecting non-resident resources ahead of time.
+	const uint64_t low_image_budget = (image_budget * 3) / 4;
+
+	const auto should_release = [&]() -> bool {
+		if (release_index == activate_index)
+			return false;
+
+		if (total_consumed > image_budget)
+			return true;
+		else if (total_consumed > low_image_budget && sorted_assets[release_index - 1]->prio == 0)
+			return true;
+
+		return false;
+	};
+
 	// If we're over budget, deactivate resources.
-	while (total_consumed > image_budget && release_index != activate_index)
+	while (should_release())
 	{
 		auto *candidate = sorted_assets[--release_index];
 		if (candidate->consumed)
 		{
-			if (group)
-				task->enqueue_task([this, candidate]() { iface->release_image_resource(candidate->id); });
-			else
-				iface->release_image_resource(candidate->id);
-
+			iface->release_image_resource(candidate->id);
 			total_consumed -= candidate->consumed;
 			candidate->consumed = 0;
+			candidate->last_used = 0;
 		}
 	}
 

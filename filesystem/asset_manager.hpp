@@ -93,8 +93,8 @@ public:
 
 	// FileHandle is intended to be used with FileSlice or similar here so that we don't need
 	// a ton of open files at once.
-	ImageAssetID register_image_resource(FileHandle file, ImageClass image_class);
-	ImageAssetID register_image_resource(Filesystem &fs, const std::string &path, ImageClass image_class);
+	ImageAssetID register_image_resource(FileHandle file, ImageClass image_class, int prio = 1);
+	ImageAssetID register_image_resource(Filesystem &fs, const std::string &path, ImageClass image_class, int prio = 1);
 
 	// Prio 0: Not resident, resource may not exist.
 	bool set_image_residency_priority(ImageAssetID id, int prio);
@@ -102,6 +102,7 @@ public:
 	// Intended to be called in Application::post_frame(). Not thread safe.
 	// This function updates internal state.
 	void iterate(ThreadGroup *group);
+	bool iterate_blocking(ThreadGroup &group, ImageAssetID id);
 
 	// Always thread safe, used by AssetInstantiatorInterfaces to update cost estimates.
 	void update_cost(ImageAssetID id, uint64_t cost);
@@ -137,7 +138,7 @@ private:
 	uint64_t total_consumed = 0;
 	uint64_t image_budget = 0;
 	uint64_t image_budget_per_iteration = 0;
-	uint64_t timestamp = 0;
+	uint64_t timestamp = 1;
 
 	struct CostUpdate
 	{
@@ -150,6 +151,9 @@ private:
 
 	void adjust_update(const CostUpdate &update);
 	std::unique_ptr<TaskSignal> signal;
-	ImageAssetID register_image_resource_nolock(FileHandle file, ImageClass image_class);
+	ImageAssetID register_image_resource_nolock(FileHandle file, ImageClass image_class, int prio);
+
+	void update_costs_locked_assets();
+	void update_lru_locked_assets();
 };
 }

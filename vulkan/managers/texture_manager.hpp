@@ -25,6 +25,7 @@
 #include "image.hpp"
 #include "asset_manager.hpp"
 #include <mutex>
+#include <condition_variable>
 
 namespace Vulkan
 {
@@ -44,6 +45,8 @@ public:
 			return nullptr;
 	}
 
+	const Vulkan::ImageView *get_image_view_blocking(Granite::ImageAssetID id);
+
 private:
 	Device *device;
 	Granite::AssetManager *manager = nullptr;
@@ -62,6 +65,8 @@ private:
 	};
 
 	std::mutex lock;
+	std::condition_variable cond;
+
 	std::vector<Texture> textures;
 	std::vector<const ImageView *> views;
 	std::vector<Granite::ImageAssetID> updates;

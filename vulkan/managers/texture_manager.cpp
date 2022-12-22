@@ -159,6 +159,26 @@ ImageHandle TextureManager::create_other(const Granite::FileMapping &mapping, Gr
 	return create_gtx(tex, id);
 }
 
+const Vulkan::ImageView *TextureManager::get_image_view_blocking(Granite::ImageAssetID id)
+{
+	std::unique_lock<std::mutex> holder{lock};
+
+	if (id || id.id >= textures.size())
+		return nullptr;
+
+	if (textures[id.id].image)
+		return &textures[id.id].image->get_view();
+
+	if (!manager->iterate_blocking(*device->get_system_handles().thread_group, id))
+		return nullptr;
+
+	cond.wait(holder, [this, id]() {
+		return textures[id.id].image;
+	});
+
+	return &textures[id.id].image->get_view();
+}
+
 void TextureManager::instantiate_image_resource(Granite::AssetManager &manager_, Granite::ImageAssetID id,
                                                 Granite::File &file)
 {
@@ -182,6 +202,7 @@ void TextureManager::instantiate_image_resource(Granite::AssetManager &manager_,
 	std::lock_guard<std::mutex> holder{lock};
 	updates.push_back(id);
 	textures[id.id].image = std::move(image);
+	cond.notify_all();
 }
 
 void TextureManager::latch_handles()

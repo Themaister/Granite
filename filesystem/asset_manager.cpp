@@ -39,11 +39,12 @@ AssetManager::~AssetManager()
 		pool.free(a);
 }
 
-ImageAssetID AssetManager::register_image_resource_nolock(FileHandle file, ImageClass image_class)
+ImageAssetID AssetManager::register_image_resource_nolock(FileHandle file, ImageClass image_class, int prio)
 {
 	auto *info = pool.allocate();
 	info->handle = std::move(file);
 	info->id.id = id_count++;
+	info->prio = prio;
 	ImageAssetID ret = info->id;
 	asset_bank.push_back(info);
 	sorted_assets.reserve(asset_bank.size());
@@ -59,13 +60,13 @@ void AssetInstantiatorInterface::set_image_class(ImageAssetID, ImageClass)
 {
 }
 
-ImageAssetID AssetManager::register_image_resource(FileHandle file, ImageClass image_class)
+ImageAssetID AssetManager::register_image_resource(FileHandle file, ImageClass image_class, int prio)
 {
 	std::lock_guard<std::mutex> holder{asset_bank_lock};
-	return register_image_resource_nolock(std::move(file), image_class);
+	return register_image_resource_nolock(std::move(file), image_class, prio);
 }
 
-ImageAssetID AssetManager::register_image_resource(Filesystem &fs, const std::string &path, ImageClass image_class)
+ImageAssetID AssetManager::register_image_resource(Filesystem &fs, const std::string &path, ImageClass image_class, int prio)
 {
 	std::lock_guard<std::mutex> holder{asset_bank_lock};
 
@@ -78,7 +79,7 @@ ImageAssetID AssetManager::register_image_resource(Filesystem &fs, const std::st
 	if (!file)
 		return {};
 
-	auto id = register_image_resource_nolock(std::move(file), image_class);
+	auto id = register_image_resource_nolock(std::move(file), image_class, prio);
 	file_to_assets.insert_replace(h.get(), asset_bank[id.id]);
 	return id;
 }
@@ -155,6 +156,53 @@ uint64_t AssetManager::get_current_total_consumed() const
 	return total_consumed;
 }
 
+void AssetManager::update_costs_locked_assets()
+{
+	{
+		std::lock_guard<std::mutex> holder_cost{cost_update_lock};
+		std::swap(cost_updates, thread_cost_updates);
+	}
+
+	for (auto &update : cost_updates)
+		adjust_update(update);
+	cost_updates.clear();
+}
+
+void AssetManager::update_lru_locked_assets()
+{
+	lru_append.for_each_ranged([this](const ImageAssetID *id, size_t count) {
+		for (size_t i = 0; i < count; i++)
+			if (id[i].id < asset_bank.size())
+				asset_bank[id[i].id]->last_used = timestamp;
+	});
+	lru_append.clear();
+}
+
+bool AssetManager::iterate_blocking(ThreadGroup &group, ImageAssetID id)
+{
+	if (!iface)
+		return false;
+
+	std::lock_guard<std::mutex> holder{asset_bank_lock};
+	update_costs_locked_assets();
+	update_lru_locked_assets();
+
+	if (id.id >= id_count)
+		return false;
+
+	auto *candidate = asset_bank[id.id];
+	if (candidate->consumed != 0 || candidate->pending_consumed != 0)
+		return true;
+
+	uint64_t estimate = iface->estimate_cost_image_resource(candidate->id, *candidate->handle);
+	group.create_task([this, candidate]() { iface->instantiate_image_resource(*this, candidate->id, *candidate->handle); });
+	candidate->pending_consumed = estimate;
+	candidate->last_used = timestamp;
+	total_consumed += estimate;
+
+	return true;
+}
+
 void AssetManager::iterate(ThreadGroup *group)
 {
 	if (!iface)
@@ -180,22 +228,8 @@ void AssetManager::iterate(ThreadGroup *group)
 		signal->signal_increment();
 
 	std::lock_guard<std::mutex> holder{asset_bank_lock};
-
-	{
-		std::lock_guard<std::mutex> holder_cost{cost_update_lock};
-		std::swap(cost_updates, thread_cost_updates);
-	}
-
-	for (auto &update : cost_updates)
-		adjust_update(update);
-	cost_updates.clear();
-
-	lru_append.for_each_ranged([this](const ImageAssetID *id, size_t count) {
-		for (size_t i = 0; i < count; i++)
-			if (id[i].id < asset_bank.size())
-				asset_bank[id[i].id]->last_used = timestamp;
-	});
-	lru_append.clear();
+	update_costs_locked_assets();
+	update_lru_locked_assets();
 
 	sorted_assets = asset_bank;
 	std::sort(sorted_assets.begin(), sorted_assets.end(), [](const AssetInfo *a, const AssetInfo *b) -> bool {

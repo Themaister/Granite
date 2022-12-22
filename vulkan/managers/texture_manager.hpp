@@ -39,7 +39,7 @@ public:
 
 	inline const Vulkan::ImageView *get_image_view(Granite::ImageAssetID id) const
 	{
-		if (id && id.id < views.size())
+		if (id.id < views.size())
 			return views[id.id];
 		else
 			return nullptr;

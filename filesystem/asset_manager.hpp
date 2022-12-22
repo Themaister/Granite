@@ -127,6 +127,7 @@ private:
 		uint64_t last_used = 0;
 		FileHandle handle;
 		ImageAssetID id = {};
+		ImageClass image_class = ImageClass::Zeroable;
 		int prio = 0;
 	};
 

@@ -45,7 +45,11 @@ void TextureManager::set_id_bounds(uint32_t bound)
 void TextureManager::set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class)
 {
 	if (id)
+	{
 		textures[id.id].image_class = image_class;
+		if (!views[id.id])
+			views[id.id] = &get_fallback_image(image_class)->get_view();
+	}
 }
 
 void TextureManager::release_image_resource(Granite::ImageAssetID id)
@@ -63,6 +67,29 @@ uint64_t TextureManager::estimate_cost_image_resource(Granite::ImageAssetID, Gra
 void TextureManager::init()
 {
 	manager = device->get_system_handles().asset_manager;
+
+	// Need to initialize these before setting the interface.
+	{
+		uint8_t buffer[4] = {0xff, 0x00, 0xff, 0xff};
+		auto info = ImageCreateInfo::immutable_2d_image(1, 1, VK_FORMAT_R8G8B8A8_UNORM);
+		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+		info.misc = IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
+		            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
+		            IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
+		            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT;
+		ImageInitialData data = {buffer, 0, 0};
+		fallback_color = device->create_image(info, &data);
+		buffer[0] = 0x80;
+		buffer[1] = 0x80;
+		buffer[2] = 0xff;
+		fallback_normal = device->create_image(info, &data);
+		buffer[0] = 0x00;
+		buffer[1] = 0x00;
+		fallback_pbr = device->create_image(info, &data);
+		memset(buffer, 0, sizeof(buffer));
+		fallback_zero = device->create_image(info, &data);
+	}
+
 	if (manager)
 	{
 		manager->set_asset_instantiator_interface(this);
@@ -86,7 +113,7 @@ void TextureManager::init()
 		manager->set_image_budget(size);
 
 		// This is somewhat arbitrary.
-		manager->set_image_budget_per_iteration(20 * 1000 * 1000);
+		manager->set_image_budget_per_iteration(2 * 1000 * 1000);
 	}
 }
 
@@ -187,7 +214,7 @@ const Vulkan::ImageView *TextureManager::get_image_view_blocking(Granite::ImageA
 {
 	std::unique_lock<std::mutex> holder{lock};
 
-	if (id || id.id >= textures.size())
+	if (id.id >= textures.size())
 		return nullptr;
 
 	if (textures[id.id].image)

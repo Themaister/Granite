@@ -219,7 +219,10 @@ void StaticMesh::fill_render_info(Vulkan::TextureManager &texture_manager, Stati
 
 	memcpy(info.attributes, attributes, sizeof(attributes));
 	for (unsigned i = 0; i < ecast(TextureKind::Count); i++)
+	{
 		info.views[i] = texture_manager.get_image_view(material.textures[i]);
+		VK_ASSERT(!material.textures[i] || info.views[i]);
+	}
 }
 
 void StaticMesh::bake()

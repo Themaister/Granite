@@ -30,6 +30,8 @@ namespace Granite
 AssetManager::AssetManager()
 {
 	signal = std::make_unique<TaskSignal>();
+	for (uint64_t i = 0; i < timestamp; i++)
+		signal->signal_increment();
 }
 
 AssetManager::~AssetManager()
@@ -45,6 +47,7 @@ ImageAssetID AssetManager::register_image_resource_nolock(FileHandle file, Image
 	info->handle = std::move(file);
 	info->id.id = id_count++;
 	info->prio = prio;
+	info->image_class = image_class;
 	ImageAssetID ret = info->id;
 	asset_bank.push_back(info);
 	sorted_assets.reserve(asset_bank.size());
@@ -109,7 +112,11 @@ void AssetManager::set_asset_instantiator_interface(AssetInstantiatorInterface *
 
 	iface = iface_;
 	if (iface)
+	{
 		iface->set_id_bounds(id_count);
+		for (uint32_t i = 0; i < id_count; i++)
+			iface->set_image_class({ i }, asset_bank[i]->image_class);
+	}
 }
 
 void AssetManager::mark_used_resource(ImageAssetID id)

@@ -110,8 +110,6 @@ ImportedMesh::ImportedMesh(const Mesh &mesh_, const MaterialInfo &info)
 
 	static_aabb = mesh.static_aabb;
 
-	bake();
-
 	EVENT_MANAGER_REGISTER_LATCH(ImportedMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 

@@ -524,6 +524,7 @@ void Renderer::begin(RenderQueue &queue) const
 {
 	queue.reset();
 	queue.set_shader_suites(suite);
+	queue.set_device(device);
 }
 
 static void set_cluster_parameters_legacy(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)

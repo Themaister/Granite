@@ -182,7 +182,7 @@ struct StaticMesh : AbstractRenderable
 
 protected:
 	void reset();
-	void fill_render_info(Vulkan::Device &device, StaticMeshInfo &info) const;
+	void fill_render_info(Vulkan::TextureManager &texture_manager, StaticMeshInfo &info) const;
 	Util::Hash cached_hash = 0;
 
 private:

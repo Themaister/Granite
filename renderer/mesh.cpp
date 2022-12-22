@@ -190,7 +190,7 @@ void skinned_mesh_render(CommandBuffer &cmd, const RenderQueueData *infos, unsig
 }
 }
 
-void StaticMesh::fill_render_info(Vulkan::Device &device, StaticMeshInfo &info) const
+void StaticMesh::fill_render_info(Vulkan::TextureManager &texture_manager, StaticMeshInfo &info) const
 {
 	info.vbo_attributes = vbo_attributes.get();
 	info.vbo_position = vbo_position.get();
@@ -219,7 +219,7 @@ void StaticMesh::fill_render_info(Vulkan::Device &device, StaticMeshInfo &info) 
 
 	memcpy(info.attributes, attributes, sizeof(attributes));
 	for (unsigned i = 0; i < ecast(TextureKind::Count); i++)
-		info.views[i] = device.get_texture_manager().get_image_view(material.textures[i]);
+		info.views[i] = texture_manager.get_image_view(material.textures[i]);
 }
 
 void StaticMesh::bake()
@@ -280,7 +280,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoC
 		if (type == Queue::OpaqueEmissive)
 			textures |= MATERIAL_EMISSIVE_BIT;
 
-		fill_render_info(context.get_device(), *mesh_info);
+		fill_render_info(queue.get_texture_manager(), *mesh_info);
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(VariantSignatureKey::build(
 				material.get_info().pipeline, attrs,
 				textures, material.shader_variant));
@@ -348,7 +348,7 @@ void SkinnedMesh::get_render_info(const RenderContext &context, const RenderInfo
 
 	if (mesh_info)
 	{
-		fill_render_info(context.get_device(), *mesh_info);
+		fill_render_info(queue.get_texture_manager(), *mesh_info);
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(
 				VariantSignatureKey::build(
 						material.get_info().pipeline, attrs,

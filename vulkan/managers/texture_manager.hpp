@@ -22,64 +22,44 @@
 
 #pragma once
 
-#include "volatile_source.hpp"
-#include "async_object_sink.hpp"
 #include "image.hpp"
+#include "asset_manager.hpp"
+#include <mutex>
 
 namespace Vulkan
 {
-class MemoryMappedTexture;
-class Texture :
-#ifndef GRANITE_SHIPPING
-    public Granite::VolatileSource<Texture>,
-#endif
-    public Util::IntrusiveHashMapEnabled<Texture>
-{
-public:
-	friend class Granite::VolatileSource<Texture>;
-	friend class TextureManager;
-	friend class Util::ObjectPool<Texture>;
-
-	bool init_texture();
-	void set_path(const std::string &path);
-	Image *get_image();
-
-#ifdef GRANITE_SHIPPING
-	bool init();
-#endif
-
-private:
-	Texture(Device *device, const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED);
-
-	explicit Texture(Device *device);
-
-#ifdef GRANITE_SHIPPING
-	std::string path;
-#endif
-
-	Device *device;
-	Util::AsyncObjectSink<ImageHandle> handle;
-	VkFormat format;
-	void update_other(const void *data, size_t size);
-	void update_gtx(Granite::FileMappingHandle file);
-	void update_gtx(const MemoryMappedTexture &texture);
-	void update_checkerboard();
-	void load();
-	void unload();
-	void update(Granite::FileMappingHandle file);
-	void replace_image(ImageHandle handle_);
-};
-
-class TextureManager
+class TextureManager : private Granite::AssetInstantiatorInterface
 {
 public:
 	explicit TextureManager(Device *device);
-	Texture *request_texture(const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED);
-
 	void init();
+	const Vulkan::ImageView *get_image_view(Granite::ImageAssetID id);
 
 private:
 	Device *device;
-	VulkanCache<Texture> textures;
+	Granite::AssetManager *manager = nullptr;
+
+	void latch_handles() override;
+	uint64_t estimate_cost_image_resource(Granite::ImageAssetID id, Granite::FileHandle &mapping) override;
+	void instantiate_image_resource(Granite::AssetManager &manager, Granite::ImageAssetID id, Granite::FileHandle &mapping) override;
+	void release_image_resource(Granite::ImageAssetID id) override;
+	void set_id_bounds(uint32_t bound) override;
+	void set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class) override;
+
+	struct Texture
+	{
+		ImageHandle image;
+		Granite::ImageClass image_class = Granite::ImageClass::Zeroable;
+	};
+
+	std::mutex lock;
+	std::vector<Texture> textures;
+	std::vector<const ImageView *> views;
+	std::vector<Granite::ImageAssetID> updates;
+
+	ImageHandle fallback_color;
+	ImageHandle fallback_normal;
+	ImageHandle fallback_zero;
+	ImageHandle fallback_pbr;
 };
 }

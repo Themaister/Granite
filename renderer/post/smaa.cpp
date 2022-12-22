@@ -25,6 +25,7 @@
 #include "temporal.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "texture_files.hpp"
 #include <string.h>
 
 namespace Granite
@@ -145,15 +146,22 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		return true;
 	});
 
-	smaa_weight.set_build_render_pass([&, edge = masked_edge, q = smaa_quality](Vulkan::CommandBuffer &cmd) {
+	// TODO: Find a more reasonable way to express LUTs that must be resident at all times.
+	auto area = Vulkan::load_texture_from_file(*GRANITE_FILESYSTEM(), "builtin://textures/smaa/area.gtx");
+	Vulkan::ImageCreateInfo area_info = Vulkan::ImageCreateInfo::immutable_image(area.get_layout());
+	auto area_buffer = graph.get_device().create_image_staging_buffer(area.get_layout());
+	auto area_image = graph.get_device().create_image_from_staging_buffer(area_info, &area_buffer);
+
+	auto search = Vulkan::load_texture_from_file(*GRANITE_FILESYSTEM(), "builtin://textures/smaa/search.gtx");
+	Vulkan::ImageCreateInfo search_info = Vulkan::ImageCreateInfo::immutable_image(search.get_layout());
+	auto search_buffer = graph.get_device().create_image_staging_buffer(search.get_layout());
+	auto search_image = graph.get_device().create_image_from_staging_buffer(search_info, &search_buffer);
+
+	smaa_weight.set_build_render_pass([&, area_image, search_image, edge = masked_edge, q = smaa_quality](Vulkan::CommandBuffer &cmd) {
 		auto &input_image = graph.get_physical_texture_resource(weight_input_res);
 		cmd.set_texture(0, 0, input_image, Vulkan::StockSampler::LinearClamp);
-		cmd.set_texture(0, 1,
-		                cmd.get_device().get_texture_manager().request_texture("builtin://textures/smaa/area.gtx")->get_image()->get_view(),
-		                Vulkan::StockSampler::LinearClamp);
-		cmd.set_texture(0, 2,
-		                cmd.get_device().get_texture_manager().request_texture("builtin://textures/smaa/search.gtx")->get_image()->get_view(),
-		                Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(0, 1, area_image->get_view(), Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(0, 2, search_image->get_view(), Vulkan::StockSampler::LinearClamp);
 		vec4 rt_metrics(1.0f / input_image.get_image().get_create_info().width,
 		                1.0f / input_image.get_image().get_create_info().height,
 		                float(input_image.get_image().get_create_info().width),

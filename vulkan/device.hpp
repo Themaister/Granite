@@ -609,7 +609,6 @@ private:
 		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
 		std::vector<VkSemaphore> consumed_semaphores;
-		std::vector<ImageHandle> keep_alive_images;
 
 		struct DebugChannel
 		{
@@ -753,7 +752,6 @@ private:
 	void destroy_event(VkEvent event);
 	void free_memory(const DeviceAllocation &alloc);
 	void reset_fence(VkFence fence, bool observed_wait);
-	void keep_handle_alive(ImageHandle handle);
 	void destroy_descriptor_pool(VkDescriptorPool desc_pool);
 
 	void destroy_buffer_nolock(VkBuffer buffer);

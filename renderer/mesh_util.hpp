@@ -205,8 +205,7 @@ class Skybox : public AbstractRenderable, public EventHandler
 {
 public:
 	Skybox(std::string bg_path = "");
-	void set_image(Vulkan::ImageHandle skybox);
-	void set_image(Vulkan::Texture *skybox);
+	void set_image(ImageAssetID skybox);
 
 	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
@@ -217,14 +216,9 @@ public:
 	}
 
 private:
-	Vulkan::Device *device = nullptr;
 	std::string bg_path;
 	vec3 color = vec3(1.0f);
-	Vulkan::Texture *texture = nullptr;
-	Vulkan::ImageHandle image;
-
-	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
+	ImageAssetID texture;
 };
 
 class SkyCylinder : public AbstractRenderable, public EventHandler
@@ -249,7 +243,7 @@ private:
 	std::string bg_path;
 	vec3 color = vec3(1.0f);
 	float scale = 1.0f;
-	Vulkan::Texture *texture = nullptr;
+	ImageAssetID texture;
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
@@ -260,7 +254,7 @@ private:
 	unsigned count = 0;
 };
 
-class TexturePlane : public AbstractRenderable, public EventHandler, public RenderPassCreator
+class TexturePlane : public AbstractRenderable, public RenderPassCreator
 {
 public:
 	TexturePlane(const std::string &normal);
@@ -303,7 +297,7 @@ private:
 	std::string normal_path;
 	const Vulkan::ImageView *reflection = nullptr;
 	const Vulkan::ImageView *refraction = nullptr;
-	Vulkan::Texture *normalmap = nullptr;
+	ImageAssetID normalmap;
 	RenderQueue internal_queue;
 
 	vec3 position;

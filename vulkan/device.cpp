@@ -1867,14 +1867,6 @@ void Device::end_frame_context()
 
 void Device::end_frame_nolock()
 {
-	// Kept handles alive until end-of-frame, free now if appropriate.
-	for (auto &image : frame().keep_alive_images)
-	{
-		image->set_internal_sync_object();
-		image->get_view().set_internal_sync_object();
-	}
-	frame().keep_alive_images.clear();
-
 	// Make sure we have a fence which covers all submissions in the frame.
 	InternalFence fence;
 
@@ -2207,12 +2199,6 @@ Device::PerFrame::PerFrame(Device *device_, unsigned frame_index_)
 		for (unsigned j = 0; j < count; j++)
 			cmd_pools[i].emplace_back(device_, device_->queue_info.family_indices[i]);
 	}
-}
-
-void Device::keep_handle_alive(ImageHandle handle)
-{
-	LOCK();
-	frame().keep_alive_images.push_back(std::move(handle));
 }
 
 void Device::free_memory_nolock(const DeviceAllocation &alloc)

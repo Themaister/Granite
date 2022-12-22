@@ -25,7 +25,7 @@
 #include "image.hpp"
 #include "math.hpp"
 #include "intrusive.hpp"
-#include "texture_manager.hpp"
+#include "asset_manager.hpp"
 #include "enum_cast.hpp"
 #include "sampler.hpp"
 #include "abstract_renderable.hpp"
@@ -47,7 +47,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 		Count
 	};
 
-	Vulkan::Texture *textures[Util::ecast(Textures::Count)];
+	ImageAssetID textures[Util::ecast(Textures::Count)];
 	vec4 base_color = vec4(1.0f);
 	vec3 emissive = vec3(0.0f);
 	float roughness = 1.0f;
@@ -63,7 +63,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 	{
 		Util::Hasher h;
 		for (auto &tex : textures)
-			h.pointer(tex);
+			h.u32(tex.id);
 		for (unsigned i = 0; i < 4; i++)
 			h.f32(base_color[i]);
 		for (unsigned i = 0; i < 3; i++)

@@ -23,7 +23,6 @@
 #include "mesh_util.hpp"
 #include "device.hpp"
 #include "material_util.hpp"
-#include "material_manager.hpp"
 #include "render_context.hpp"
 #include "shader_suite.hpp"
 #include "renderer.hpp"

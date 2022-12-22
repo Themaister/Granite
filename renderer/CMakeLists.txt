@@ -16,7 +16,6 @@ add_granite_internal_lib(granite-renderer
         renderer.hpp renderer.cpp
         flat_renderer.hpp flat_renderer.cpp
         renderer_enums.hpp
-        material_manager.hpp material_manager.cpp
         animation_system.hpp animation_system.cpp
         render_graph.cpp render_graph.hpp
         ground.hpp ground.cpp

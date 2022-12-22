@@ -31,6 +31,7 @@
 
 namespace Vulkan
 {
+#if 0
 bool Texture::init_texture()
 {
 	if (!path.empty())
@@ -256,30 +257,92 @@ Image *Texture::get_image()
 	VK_ASSERT(ret);
 	return ret;
 }
+#endif
 
 TextureManager::TextureManager(Device *device_)
 	: device(device_)
 {
 }
 
-Texture *TextureManager::request_texture(const std::string &path, VkFormat format)
+void TextureManager::set_id_bounds(uint32_t bound)
 {
-	Util::Hasher hasher;
-	hasher.string(path);
-	hasher.u32(format);
-	auto hash = hasher.get();
+	textures.resize(bound);
+	views.resize(bound);
+}
 
-	auto *ret = textures.find(hash);
-	if (ret)
-		return ret;
+void TextureManager::set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class)
+{
+	textures[id.id].image_class = image_class;
+}
 
-	ret = textures.emplace_yield(hash, device, path, format);
-	if (!ret->init_texture())
-		ret->update_checkerboard();
-	return ret;
+const Vulkan::ImageView *TextureManager::get_image_view(Granite::ImageAssetID id)
+{
+	if (id.id < views.size())
+		return views[id.id];
+	else
+		return nullptr;
+}
+
+void TextureManager::release_image_resource(Granite::ImageAssetID id)
+{
+	textures[id.id].image.reset();
+}
+
+uint64_t TextureManager::estimate_cost_image_resource(Granite::ImageAssetID, Granite::FileHandle &mapping)
+{
+	// TODO: When we get compressed BC/ASTC, this will have to change.
+	return mapping->get_size();
 }
 
 void TextureManager::init()
 {
+	manager = device->get_system_handles().asset_manager;
+	if (manager)
+		manager->set_asset_instantiator_interface(this);
+}
+
+void TextureManager::latch_handles()
+{
+	std::lock_guard<std::mutex> holder{lock};
+	for (auto &update : updates)
+	{
+		if (update.id >= views.size())
+			continue;
+
+		const ImageView *view;
+
+		if (textures[update.id].image)
+		{
+			view = &textures[update.id].image->get_view();
+		}
+		else
+		{
+			switch (textures[update.id].image_class)
+			{
+			case Granite::ImageClass::Zeroable:
+				view = &fallback_zero->get_view();
+				break;
+
+			case Granite::ImageClass::Color:
+				view = &fallback_color->get_view();
+				break;
+
+			case Granite::ImageClass::Normal:
+				view = &fallback_normal->get_view();
+				break;
+
+			case Granite::ImageClass::MetallicRoughness:
+				view = &fallback_pbr->get_view();
+				break;
+
+			default:
+				view = nullptr;
+				break;
+			}
+		}
+
+		views[update.id] = view;
+	}
+	updates.clear();
 }
 }

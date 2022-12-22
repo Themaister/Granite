@@ -39,7 +39,7 @@ AssetManager::~AssetManager()
 		pool.free(a);
 }
 
-ImageAssetID AssetManager::register_image_resource_nolock(FileHandle file)
+ImageAssetID AssetManager::register_image_resource_nolock(FileHandle file, ImageClass image_class)
 {
 	auto *info = pool.allocate();
 	info->handle = std::move(file);
@@ -48,17 +48,24 @@ ImageAssetID AssetManager::register_image_resource_nolock(FileHandle file)
 	asset_bank.push_back(info);
 	sorted_assets.reserve(asset_bank.size());
 	if (iface)
+	{
 		iface->set_id_bounds(id_count);
+		iface->set_image_class(info->id, image_class);
+	}
 	return ret;
 }
 
-ImageAssetID AssetManager::register_image_resource(FileHandle file)
+void AssetInstantiatorInterface::set_image_class(ImageAssetID, ImageClass)
 {
-	std::lock_guard<std::mutex> holder{asset_bank_lock};
-	return register_image_resource_nolock(std::move(file));
 }
 
-ImageAssetID AssetManager::register_image_resource(Filesystem &fs, const std::string &path)
+ImageAssetID AssetManager::register_image_resource(FileHandle file, ImageClass image_class)
+{
+	std::lock_guard<std::mutex> holder{asset_bank_lock};
+	return register_image_resource_nolock(std::move(file), image_class);
+}
+
+ImageAssetID AssetManager::register_image_resource(Filesystem &fs, const std::string &path, ImageClass image_class)
 {
 	std::lock_guard<std::mutex> holder{asset_bank_lock};
 
@@ -71,7 +78,7 @@ ImageAssetID AssetManager::register_image_resource(Filesystem &fs, const std::st
 	if (!file)
 		return {};
 
-	auto id = register_image_resource_nolock(std::move(file));
+	auto id = register_image_resource_nolock(std::move(file), image_class);
 	file_to_assets.insert_replace(h.get(), asset_bank[id.id]);
 	return id;
 }

@@ -23,12 +23,11 @@
 #pragma once
 
 #include "material.hpp"
-#include "event.hpp"
 #include "application_wsi_events.hpp"
 
 namespace Granite
 {
-class StockMaterials : public EventHandler
+class StockMaterials
 {
 public:
 	static StockMaterials &get();
@@ -36,9 +35,6 @@ public:
 
 private:
 	StockMaterials();
-	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
-
 	MaterialHandle checkerboard;
 };
 }

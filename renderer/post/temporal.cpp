@@ -30,6 +30,7 @@
 #include "render_context.hpp"
 #include "os_filesystem.hpp"
 #include "global_managers.hpp"
+#include "path.hpp"
 
 #include "ffx_fsr2_granite.h"
 #include "ffx_fsr2.h"

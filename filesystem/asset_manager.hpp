@@ -40,6 +40,20 @@ struct ImageAssetID
 
 class AssetManager;
 
+// If we have to fall back due to no image being present,
+// lets asset instantiator know what to substitute.
+enum class ImageClass
+{
+	// Substitute with 0.
+	Zeroable,
+	// Substitute with missing color.
+	Color,
+	// Substitute with RG8_UNORM 0.5
+	Normal,
+	// Substitute with M = 0, R = 1.
+	MetallicRoughness
+};
+
 class AssetInstantiatorInterface
 {
 public:
@@ -55,6 +69,7 @@ public:
 	// Will only be called after an upload completes through manager.update_cost().
 	virtual void release_image_resource(ImageAssetID id) = 0;
 	virtual void set_id_bounds(uint32_t bound) = 0;
+	virtual void set_image_class(ImageAssetID id, ImageClass image_class);
 
 	// Called in AssetManager::iterate().
 	virtual void latch_handles() = 0;
@@ -75,8 +90,8 @@ public:
 
 	// FileHandle is intended to be used with FileSlice or similar here so that we don't need
 	// a ton of open files at once.
-	ImageAssetID register_image_resource(FileHandle file);
-	ImageAssetID register_image_resource(Filesystem &fs, const std::string &path);
+	ImageAssetID register_image_resource(FileHandle file, ImageClass image_class);
+	ImageAssetID register_image_resource(Filesystem &fs, const std::string &path, ImageClass image_class);
 
 	// Prio 0: Not resident, resource may not exist.
 	bool set_image_residency_priority(ImageAssetID id, int prio);
@@ -132,6 +147,6 @@ private:
 
 	void adjust_update(const CostUpdate &update);
 	std::unique_ptr<TaskSignal> signal;
-	ImageAssetID register_image_resource_nolock(FileHandle file);
+	ImageAssetID register_image_resource_nolock(FileHandle file, ImageClass image_class);
 };
 }

@@ -38,19 +38,10 @@ StockMaterials &StockMaterials::get()
 StockMaterials::StockMaterials()
 {
 	checkerboard = Util::make_handle<Material>();
-	EVENT_MANAGER_REGISTER_LATCH(StockMaterials, on_device_created, on_device_destroyed, DeviceCreatedEvent);
-}
-
-MaterialHandle StockMaterials::get_checkerboard()
-{
-	return checkerboard;
-}
-
-void StockMaterials::on_device_created(const DeviceCreatedEvent &created)
-{
-	auto &manager = created.get_device().get_texture_manager();
-
-	checkerboard->textures[Util::ecast(Material::Textures::BaseColor)] = manager.request_texture("builtin://textures/checkerboard.png");
+	checkerboard->textures[Util::ecast(Material::Textures::BaseColor)] =
+			GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(),
+			                                                 "builtin://textures/checkerboard.png",
+			                                                 ImageClass::Color);
 	checkerboard->emissive = vec3(0.0f);
 	checkerboard->metallic = 0.0f;
 	checkerboard->roughness = 1.0f;
@@ -58,9 +49,8 @@ void StockMaterials::on_device_created(const DeviceCreatedEvent &created)
 	checkerboard->bake();
 }
 
-void StockMaterials::on_device_destroyed(const DeviceCreatedEvent &)
+MaterialHandle StockMaterials::get_checkerboard()
 {
-	memset(checkerboard->textures, 0, sizeof(checkerboard->textures));
+	return checkerboard;
 }
-
 }

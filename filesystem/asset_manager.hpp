@@ -51,7 +51,10 @@ enum class ImageClass
 	// Substitute with RG8_UNORM 0.5
 	Normal,
 	// Substitute with M = 0, R = 1.
-	MetallicRoughness
+	MetallicRoughness,
+	// Substitute with mid-gray (0.5, 0.5, 0.5, 1.0) UNORM8.
+	// Somewhat compatible with everything.
+	Generic
 };
 
 class AssetInstantiatorInterface
@@ -60,11 +63,11 @@ public:
 	virtual ~AssetInstantiatorInterface() = default;
 
 	// This estimate should be an upper bound.
-	virtual uint64_t estimate_cost_image_resource(ImageAssetID id, FileHandle &mapping) = 0;
+	virtual uint64_t estimate_cost_image_resource(ImageAssetID id, File &mapping) = 0;
 
 	// When instantiation completes, manager.update_cost() must be called with the real cost.
 	// The real cost may only be known after async parsing of the file.
-	virtual void instantiate_image_resource(AssetManager &manager, ImageAssetID id, FileHandle &mapping) = 0;
+	virtual void instantiate_image_resource(AssetManager &manager, ImageAssetID id, File &mapping) = 0;
 
 	// Will only be called after an upload completes through manager.update_cost().
 	virtual void release_image_resource(ImageAssetID id) = 0;

@@ -28,20 +28,29 @@
 
 namespace Vulkan
 {
+class MemoryMappedTexture;
+
 class TextureManager : private Granite::AssetInstantiatorInterface
 {
 public:
 	explicit TextureManager(Device *device);
 	void init();
-	const Vulkan::ImageView *get_image_view(Granite::ImageAssetID id);
+
+	inline const Vulkan::ImageView *get_image_view(Granite::ImageAssetID id) const
+	{
+		if (id && id.id < views.size())
+			return views[id.id];
+		else
+			return nullptr;
+	}
 
 private:
 	Device *device;
 	Granite::AssetManager *manager = nullptr;
 
 	void latch_handles() override;
-	uint64_t estimate_cost_image_resource(Granite::ImageAssetID id, Granite::FileHandle &mapping) override;
-	void instantiate_image_resource(Granite::AssetManager &manager, Granite::ImageAssetID id, Granite::FileHandle &mapping) override;
+	uint64_t estimate_cost_image_resource(Granite::ImageAssetID id, Granite::File &file) override;
+	void instantiate_image_resource(Granite::AssetManager &manager, Granite::ImageAssetID id, Granite::File &file) override;
 	void release_image_resource(Granite::ImageAssetID id) override;
 	void set_id_bounds(uint32_t bound) override;
 	void set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class) override;
@@ -61,5 +70,9 @@ private:
 	ImageHandle fallback_normal;
 	ImageHandle fallback_zero;
 	ImageHandle fallback_pbr;
+
+	ImageHandle create_gtx(Granite::FileMappingHandle mapping, Granite::ImageAssetID id);
+	ImageHandle create_gtx(const MemoryMappedTexture &mapping, Granite::ImageAssetID id);
+	ImageHandle create_other(const Granite::FileMapping &mapping, Granite::ImageClass image_class, Granite::ImageAssetID id);
 };
 }

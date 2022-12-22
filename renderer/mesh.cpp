@@ -52,7 +52,7 @@ Hash StaticMesh::get_instance_key() const
 	h.u32(count);
 	h.u32(vertex_offset);
 	h.u32(position_stride);
-	h.u64(material->get_hash());
+	h.u64(material.get_hash());
 	for (auto &attr : attributes)
 	{
 		h.u32(attr.format);
@@ -66,7 +66,7 @@ Hash StaticMesh::get_baked_instance_key() const
 	Hasher h;
 	assert(cached_hash != 0);
 	h.u64(cached_hash);
-	h.u64(material->get_hash());
+	h.u64(material.get_hash());
 	return h.get();
 }
 
@@ -91,7 +91,7 @@ void mesh_set_state(CommandBuffer &cmd, const StaticMeshInfo &info)
 			cmd.set_vertex_attrib(i, i == 0 ? 0 : 1, info.attributes[i].format, info.attributes[i].offset);
 
 	auto &sampler = cmd.get_device().get_stock_sampler(info.sampler);
-	for (unsigned i = 0; i < ecast(Material::Textures::Count); i++)
+	for (unsigned i = 0; i < ecast(TextureKind::Count); i++)
 		if (info.views[i])
 			cmd.set_texture(2, i, *info.views[i], sampler);
 
@@ -202,22 +202,24 @@ void StaticMesh::fill_render_info(Vulkan::Device &device, StaticMeshInfo &info) 
 	info.ibo_offset = ibo_offset;
 	info.index_type = index_type;
 	info.count = count;
-	info.sampler = material->sampler;
 
-	info.fragment.roughness = material->roughness;
-	info.fragment.metallic = material->metallic;
-	info.fragment.emissive = vec4(material->emissive, 0.0f);
-	info.fragment.base_color = material->base_color;
-	info.fragment.normal_scale = material->normal_scale;
+	auto &minfo = material.get_info();
+	info.sampler = minfo.sampler;
+
+	info.fragment.roughness = minfo.uniform_roughness;
+	info.fragment.metallic = minfo.uniform_metallic;
+	info.fragment.emissive = vec4(minfo.uniform_emissive_color, 0.0f);
+	info.fragment.base_color = minfo.uniform_base_color;
+	info.fragment.normal_scale = minfo.normal_scale;
 
 	info.topology = topology;
 	info.primitive_restart = primitive_restart;
-	info.two_sided = material->two_sided;
-	info.alpha_test = material->pipeline == DrawPipeline::AlphaTest;
+	info.two_sided = minfo.two_sided;
+	info.alpha_test = minfo.pipeline == DrawPipeline::AlphaTest;
 
 	memcpy(info.attributes, attributes, sizeof(attributes));
-	for (unsigned i = 0; i < ecast(Material::Textures::Count); i++)
-		info.views[i] = device.get_texture_manager().get_image_view(material->textures[i]);
+	for (unsigned i = 0; i < ecast(TextureKind::Count); i++)
+		info.views[i] = device.get_texture_manager().get_image_view(material.textures[i]);
 }
 
 void StaticMesh::bake()
@@ -227,7 +229,7 @@ void StaticMesh::bake()
 
 static Queue material_to_queue(const Material &mat)
 {
-	if (mat.pipeline == DrawPipeline::AlphaBlend)
+	if (mat.get_info().pipeline == DrawPipeline::AlphaBlend)
 		return Queue::Transparent;
 	else if (mat.needs_emissive)
 		return Queue::OpaqueEmissive;
@@ -237,7 +239,7 @@ static Queue material_to_queue(const Material &mat)
 
 void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue, bool mv) const
 {
-	auto type = material_to_queue(*material);
+	auto type = material_to_queue(material);
 	uint32_t attrs = 0;
 
 	for (unsigned i = 0; i < ecast(MeshAttribute::Count); i++)
@@ -246,11 +248,10 @@ void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoC
 
 	Hasher h;
 	h.u32(attrs);
-	h.u32(ecast(material->pipeline));
-	h.u32(material->shader_variant);
+	h.u32(ecast(material.get_info().pipeline));
 	auto pipe_hash = h.get();
 
-	h.u64(material->get_hash());
+	h.u64(material.get_hash());
 	h.u64(vbo_position->get_cookie());
 
 	auto instance_key = get_baked_instance_key();
@@ -272,8 +273,8 @@ void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoC
 	if (mesh_info)
 	{
 		uint32_t textures = 0;
-		for (unsigned i = 0; i < ecast(Material::Textures::Count); i++)
-			if (material->textures[i])
+		for (unsigned i = 0; i < ecast(TextureKind::Count); i++)
+			if (material.textures[i])
 				textures |= 1u << i;
 
 		if (type == Queue::OpaqueEmissive)
@@ -281,8 +282,8 @@ void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoC
 
 		fill_render_info(context.get_device(), *mesh_info);
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(VariantSignatureKey::build(
-			material->pipeline, attrs,
-			textures, material->shader_variant));
+				material.get_info().pipeline, attrs,
+				textures, material.shader_variant));
 	}
 }
 
@@ -300,7 +301,7 @@ void StaticMesh::get_motion_vector_render_info(const RenderContext &context, con
 
 void SkinnedMesh::get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue, bool mv) const
 {
-	auto type = material_to_queue(*material);
+	auto type = material_to_queue(material);
 	uint32_t attrs = 0;
 	uint32_t textures = 0;
 
@@ -308,18 +309,18 @@ void SkinnedMesh::get_render_info(const RenderContext &context, const RenderInfo
 		if (attributes[i].format != VK_FORMAT_UNDEFINED)
 			attrs |= 1u << i;
 
-	for (unsigned i = 0; i < ecast(Material::Textures::Count); i++)
-		if (material->textures[i])
+	for (unsigned i = 0; i < ecast(TextureKind::Count); i++)
+		if (material.textures[i])
 			textures |= 1u << i;
 
 	Hasher h;
 	h.u32(attrs);
 	h.u32(textures);
-	h.u32(ecast(material->pipeline));
-	h.u32(material->shader_variant);
+	h.u32(ecast(material.get_info().pipeline));
+	h.u32(material.shader_variant);
 	auto pipe_hash = h.get();
 
-	h.u64(material->get_hash());
+	h.u64(material.get_hash());
 	h.u64(vbo_position->get_cookie());
 
 	auto instance_key = get_baked_instance_key() ^ 1;
@@ -349,9 +350,9 @@ void SkinnedMesh::get_render_info(const RenderContext &context, const RenderInfo
 	{
 		fill_render_info(context.get_device(), *mesh_info);
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(
-			VariantSignatureKey::build(
-				material->pipeline, attrs,
-				textures, material->shader_variant));
+				VariantSignatureKey::build(
+						material.get_info().pipeline, attrs,
+						textures, material.shader_variant));
 	}
 }
 
@@ -372,6 +373,5 @@ void StaticMesh::reset()
 	vbo_attributes.reset();
 	vbo_position.reset();
 	ibo.reset();
-	material.reset();
 }
 }

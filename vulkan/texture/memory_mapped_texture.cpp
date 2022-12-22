@@ -152,7 +152,7 @@ bool MemoryMappedTexture::map_write(Granite::Filesystem &fs, const std::string &
 	return map_write(std::move(map_handle));
 }
 
-struct ScratchFile final : Granite::Internal::File
+struct ScratchFile final : Granite::File
 {
 	ScratchFile(const void *mapped, size_t size)
 	{

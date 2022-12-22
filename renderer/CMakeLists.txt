@@ -40,7 +40,6 @@ add_granite_internal_lib(granite-renderer
         formats/scene_formats.hpp formats/scene_formats.cpp
         formats/gltf.hpp formats/gltf.cpp
         scene_loader.cpp scene_loader.hpp
-        mesh_manager.cpp mesh_manager.hpp
         ocean.hpp ocean.cpp
         fft/fft.cpp fft/fft.hpp
         sprite.cpp sprite.hpp

@@ -625,9 +625,9 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 	combined->resolution.resolution = vec2(cmd.get_viewport().width, cmd.get_viewport().height);
 	combined->resolution.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 
-	cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE,
-	                GRANITE_COMMON_RENDERER_DATA()->brdf_tables.get_view(),
-	                Vulkan::StockSampler::LinearClamp);
+	//cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE,
+	//                GRANITE_COMMON_RENDERER_DATA()->brdf_tables.get_view(),
+	//                Vulkan::StockSampler::LinearClamp);
 
 	if (lighting->shadows != nullptr)
 	{
@@ -907,9 +907,9 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	cmd.set_depth_test(true, false);
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 
-	cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE,
-	                GRANITE_COMMON_RENDERER_DATA()->brdf_tables.get_texture()->get_image()->get_view(),
-	                Vulkan::StockSampler::LinearClamp);
+	//cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE,
+	//                GRANITE_COMMON_RENDERER_DATA()->brdf_tables.get_texture()->get_image()->get_view(),
+	//                Vulkan::StockSampler::LinearClamp);
 
 	if (light.shadows)
 	{

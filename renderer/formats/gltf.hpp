@@ -71,7 +71,7 @@ public:
 		return meshes;
 	}
 
-	const std::vector<SceneFormats::MaterialInfo> &get_materials() const
+	const std::vector<MaterialInfo> &get_materials() const
 	{
 		return materials;
 	}
@@ -163,7 +163,7 @@ private:
 
 	void parse(const std::string &path, const std::string &json);
 	std::vector<SceneFormats::Mesh> meshes;
-	std::vector<SceneFormats::MaterialInfo> materials;
+	std::vector<MaterialInfo> materials;
 	static VkFormat components_to_padded_format(ScalarType type, uint32_t components);
 	static Buffer read_buffer(const std::string &path, uint64_t length);
 	static Buffer read_base64(const char *data, uint64_t length);
@@ -175,7 +175,7 @@ private:
 	std::vector<BufferView> json_views;
 	std::vector<Accessor> json_accessors;
 	std::vector<MeshData> json_meshes;
-	std::vector<SceneFormats::MaterialInfo::Texture> json_images;
+	std::vector<std::string> json_images;
 	std::vector<Texture> json_textures;
 	std::vector<Vulkan::StockSampler> json_stock_samplers;
 	std::vector<SceneFormats::Skin> json_skins;

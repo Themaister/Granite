@@ -33,6 +33,12 @@
 #include "math.hpp"
 #include "radix_sorter.hpp"
 
+namespace Vulkan
+{
+class Device;
+class TextureManager;
+}
+
 namespace Granite
 {
 class ShaderSuite;
@@ -249,7 +255,16 @@ public:
 	void push_depth_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count);
 	void push_motion_vector_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count);
 
+	void set_device(Vulkan::Device *device);
+
+	Vulkan::TextureManager &get_texture_manager()
+	{
+		VK_ASSERT(texture_manager);
+		return *texture_manager;
+	}
+
 private:
+	Vulkan::TextureManager *texture_manager = nullptr;
 	void enqueue_queue_data(Queue queue, const RenderQueueData &data);
 
 	struct Block : Util::IntrusivePtrEnabled<Block>

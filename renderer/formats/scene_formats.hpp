@@ -26,6 +26,7 @@
 #include <unordered_set>
 #include <stdint.h>
 #include "mesh.hpp"
+#include "material.hpp"
 #include "enum_cast.hpp"
 #include "transforms.hpp"
 #include "array_view.hpp"
@@ -166,37 +167,9 @@ struct CameraInfo
 	bool attached_to_node = false;
 };
 
-struct MaterialInfo
-{
-	struct Texture
-	{
-		Texture() = default;
-		explicit Texture(std::string path_)
-			: path(std::move(path_))
-		{}
-
-		std::string path;
-	};
-	Texture base_color;
-	Texture normal;
-	Texture metallic_roughness;
-	Texture occlusion;
-	Texture emissive;
-
-	vec4 uniform_base_color = vec4(1.0f);
-	vec3 uniform_emissive_color = vec3(0.0f);
-	float uniform_metallic = 1.0f;
-	float uniform_roughness = 1.0f;
-	float normal_scale = 1.0f;
-	DrawPipeline pipeline = DrawPipeline::Opaque;
-	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
-	bool two_sided = false;
-	bool bandlimited_pixel = false;
-};
-
 struct EnvironmentInfo
 {
-	MaterialInfo::Texture cube;
+	std::string cube;
 
 	struct Fog
 	{

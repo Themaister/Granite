@@ -23,18 +23,12 @@
 #pragma once
 
 #include "material.hpp"
-#include "application_wsi_events.hpp"
 
 namespace Granite
 {
 class StockMaterials
 {
 public:
-	static StockMaterials &get();
-	MaterialHandle get_checkerboard();
-
-private:
-	StockMaterials();
-	MaterialHandle checkerboard;
+	static Material create_checkerboard();
 };
 }

@@ -99,6 +99,8 @@ public:
 	void push_scissor(const vec2 &offset, const vec2 &size);
 	void pop_scissor();
 
+	Vulkan::Device &get_device();
+
 private:
 	void on_module_created(const Vulkan::DeviceShaderModuleReadyEvent &e);
 	void on_module_destroyed(const Vulkan::DeviceShaderModuleReadyEvent &e);

@@ -24,27 +24,16 @@
 
 #include "widget.hpp"
 #include "texture_manager.hpp"
-#include "application_wsi_events.hpp"
 #include "sampler.hpp"
 
 namespace Granite
 {
 namespace UI
 {
-class Image : public Widget, public EventHandler
+class Image : public Widget
 {
 public:
-	Image(const std::string &path);
-
-	void set_keep_aspect_ratio(bool enable)
-	{
-		keep_aspect = enable;
-	}
-
-	bool get_keep_aspect_ratio() const
-	{
-		return keep_aspect;
-	}
+	Image(const std::string &path, vec2 target);
 
 	void set_filter(Vulkan::StockSampler sampler_)
 	{
@@ -56,17 +45,11 @@ public:
 private:
 	float render(FlatRenderer &renderer, float layout, vec2 offset, vec2 size) override;
 	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
-	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
-	std::string path;
-	Vulkan::Texture *texture = nullptr;
+	ImageAssetID texture;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearClamp;
 
 	vec2 sprite_offset;
 	vec2 sprite_size;
-	vec2 image_size;
-
-	bool keep_aspect = true;
 };
 }
 }

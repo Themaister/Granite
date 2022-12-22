@@ -142,9 +142,9 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	SpriteRenderInfo sprite;
 
 	if (texture)
-		sprite.textures[0] = &texture->get_image()->get_view();
+		sprite.textures[0] = queue.get_texture_manager().get_image_view(texture);
 	if (texture_alt)
-		sprite.textures[1] = &texture_alt->get_image()->get_view();
+		sprite.textures[1] = queue.get_texture_manager().get_image_view(texture_alt);
 	sprite.sampler = sampler;
 
 	auto *instance_data = queue.allocate_one<SpriteInstanceInfo>();
@@ -179,8 +179,8 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	hasher.s32(texture_alt ? 1 : 0);
 	auto pipe_hash = hasher.get();
 
-	hasher.pointer(texture);
-	hasher.pointer(texture_alt);
+	hasher.u32(texture.id);
+	hasher.u32(texture_alt.id);
 	hasher.s32(ecast(sampler));
 	hasher.s32(ecast(pipeline));
 	hasher.s32(transform.clip.x);

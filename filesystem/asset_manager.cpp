@@ -241,7 +241,7 @@ void AssetManager::iterate(ThreadGroup *group)
 			continue;
 		}
 
-		uint64_t estimate = iface->estimate_cost_image_resource(candidate->id, candidate->handle);
+		uint64_t estimate = iface->estimate_cost_image_resource(candidate->id, *candidate->handle);
 
 		can_activate = total_consumed + estimate <= image_budget;
 		while (!can_activate && activate_index + 1 != release_index)
@@ -260,9 +260,9 @@ void AssetManager::iterate(ThreadGroup *group)
 		{
 			// We're trivially in budget.
 			if (group)
-				task->enqueue_task([this, candidate]() { iface->instantiate_image_resource(*this, candidate->id, candidate->handle); });
+				task->enqueue_task([this, candidate]() { iface->instantiate_image_resource(*this, candidate->id, *candidate->handle); });
 			else
-				iface->instantiate_image_resource(*this, candidate->id, candidate->handle);
+				iface->instantiate_image_resource(*this, candidate->id, *candidate->handle);
 
 			candidate->pending_consumed = estimate;
 			total_consumed += estimate;

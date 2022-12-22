@@ -189,7 +189,7 @@ void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target, Re
 		target.add_texture_input("ocean-gradient-jacobian-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 		target.add_texture_input("ocean-normal-fft-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
-		if (!config.refraction.input.empty() && config.refraction.input_is_render_graph)
+		if (!config.refraction.input.empty())
 			refraction_resource = &target.add_texture_input(config.refraction.input);
 		else
 			refraction_resource = nullptr;
@@ -251,18 +251,7 @@ void Ocean::setup_render_pass_resources(RenderGraph &graph_)
 
 	refraction = nullptr;
 	if (!config.refraction.input.empty())
-	{
-		if (config.refraction.input_is_render_graph)
-		{
-			refraction = &graph_.get_physical_texture_resource(*refraction_resource);
-		}
-		else
-		{
-			auto *texture = graph_.get_device().get_texture_manager().request_texture(config.refraction.input);
-			if (texture)
-				refraction = &texture->get_image()->get_view();
-		}
-	}
+		refraction = &graph_.get_physical_texture_resource(*refraction_resource);
 
 	auto *program = graph_.get_device().get_shader_manager().register_compute("builtin://shaders/ocean/generate_fft.comp");
 	programs.height_variant = program->register_variant({

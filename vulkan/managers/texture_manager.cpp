@@ -25,122 +25,51 @@
 #include "memory_mapped_texture.hpp"
 #include "texture_files.hpp"
 #include "texture_decoder.hpp"
-
+#include "string_helpers.hpp"
 #include "thread_group.hpp"
-#include "thread_id.hpp"
 
 namespace Vulkan
 {
-#if 0
-bool Texture::init_texture()
-{
-	if (!path.empty())
-		return init();
-	else
-		return true;
-}
-
-Texture::Texture(Device *device_, const std::string &path_, VkFormat format_) :
-#ifndef GRANITE_SHIPPING
-	VolatileSource(device_->get_system_handles().filesystem, path_),
-#else
-	path(path_),
-#endif
-	device(device_), format(format_)
+TextureManager::TextureManager(Device *device_)
+	: device(device_)
 {
 }
 
-#ifdef GRANITE_SHIPPING
-bool Texture::init()
+void TextureManager::set_id_bounds(uint32_t bound)
 {
-	auto *fs = device->get_system_handles().filesystem;
-
-	if (path.empty() || !fs)
-		return false;
-
-	auto file = fs->open_readonly_mapping(path);
-	if (!file)
-	{
-		LOGE("Failed to open volatile file: %s\n", path.c_str());
-		return false;
-	}
-
-	update(std::move(file));
-	return true;
-}
-#endif
-
-Texture::Texture(Device *device_)
-	: device(device_), format(VK_FORMAT_UNDEFINED)
-{
+	textures.resize(bound);
+	views.resize(bound);
 }
 
-void Texture::set_path(const std::string &path_)
+void TextureManager::set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class)
 {
-	path = path_;
+	if (id)
+		textures[id.id].image_class = image_class;
 }
 
-void Texture::update(Granite::FileMappingHandle file)
+void TextureManager::release_image_resource(Granite::ImageAssetID id)
 {
-	auto work = [file, this]() mutable {
-#if defined(VULKAN_DEBUG)
-		LOGI("Loading texture in thread index: %u\n", Util::get_current_thread_index());
-#endif
-		if (file->get_size())
-		{
-			if (MemoryMappedTexture::is_header(file->data(), file->get_size()))
-				update_gtx(std::move(file));
-			else
-				update_other(file->data(), file->get_size());
-		}
-		else
-		{
-			LOGE("Failed to map texture file ...\n");
-			update_checkerboard();
-		}
-	};
-
-	if (auto *group = device->get_system_handles().thread_group)
-	{
-		auto task = group->create_task(std::move(work));
-		task->set_desc("texture-load");
-		task->set_task_class(Granite::TaskClass::Background);
-	}
-	else
-		work();
+	if (id)
+		textures[id.id].image.reset();
 }
 
-void Texture::update_checkerboard()
+uint64_t TextureManager::estimate_cost_image_resource(Granite::ImageAssetID, Granite::File &file)
 {
-	LOGE("Failed to load texture: %s, falling back to a checkerboard.\n",
-	     path.c_str());
-
-	ImageInitialData initial = {};
-	static const uint32_t checkerboard[] = {
-		0xffffffffu, 0xffffffffu, 0xff000000u, 0xff000000u,
-		0xffffffffu, 0xffffffffu, 0xff000000u, 0xff000000u,
-		0xff000000u, 0xff000000u, 0xffffffffu, 0xffffffffu,
-		0xff000000u, 0xff000000u, 0xffffffffu, 0xffffffffu,
-	};
-	initial.data = checkerboard;
-
-	auto info = ImageCreateInfo::immutable_2d_image(4, 4, VK_FORMAT_R8G8B8A8_UNORM, false);
-	info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
-	            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
-
-	auto image = device->create_image(info, &initial);
-	if (image)
-		device->set_name(*image, path.c_str());
-	replace_image(image);
+	// TODO: When we get compressed BC/ASTC, this will have to change.
+	return file.get_size();
 }
 
-void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
+void TextureManager::init()
+{
+	manager = device->get_system_handles().asset_manager;
+	if (manager)
+		manager->set_asset_instantiator_interface(this);
+}
+
+ImageHandle TextureManager::create_gtx(const MemoryMappedTexture &mapped_file, Granite::ImageAssetID id)
 {
 	if (mapped_file.empty())
-	{
-		update_checkerboard();
-		return;
-	}
+		return {};
 
 	auto &layout = mapped_file.get_layout();
 
@@ -166,8 +95,8 @@ void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 		ImageCreateInfo info = ImageCreateInfo::immutable_image(layout);
 		info.swizzle = swizzle;
 		info.flags = (mapped_file.get_flags() & MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT) ?
-                         VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT :
-                         0;
+		             VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT :
+		             0;
 		info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
 		            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
 
@@ -183,7 +112,7 @@ void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 		if (!device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT))
 		{
 			LOGE("Format (%u) is not supported!\n", unsigned(info.format));
-			return;
+			return {};
 		}
 
 		InitialImageBuffer staging;
@@ -202,103 +131,57 @@ void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 	}
 
 	if (image)
-		device->set_name(*image, path.c_str());
-	replace_image(image);
+	{
+		auto name = Util::join("ImageAssetID-", id.id);
+		device->set_name(*image, name.c_str());
+	}
+	return image;
 }
 
-void Texture::update_gtx(Granite::FileMappingHandle file)
+ImageHandle TextureManager::create_gtx(Granite::FileMappingHandle mapping, Granite::ImageAssetID id)
 {
 	MemoryMappedTexture mapped_file;
-	if (!mapped_file.map_read(std::move(file)))
+	if (!mapped_file.map_read(std::move(mapping)))
 	{
 		LOGE("Failed to read texture.\n");
-		return;
+		return {};
 	}
 
-	update_gtx(mapped_file);
+	return create_gtx(mapped_file, id);
 }
 
-void Texture::update_other(const void *data, size_t size)
+ImageHandle TextureManager::create_other(const Granite::FileMapping &mapping, Granite::ImageClass image_class,
+                                         Granite::ImageAssetID id)
 {
-	auto tex = load_texture_from_memory(data, size,
-	                                    (format == VK_FORMAT_R8G8B8A8_SRGB ||
-	                                     format == VK_FORMAT_UNDEFINED ||
-	                                     format == VK_FORMAT_B8G8R8A8_SRGB ||
-	                                     format == VK_FORMAT_A8B8G8R8_SRGB_PACK32) ?
-	                                    ColorSpace::sRGB : ColorSpace::Linear);
-
-	update_gtx(tex);
+	auto tex = load_texture_from_memory(mapping.data(),
+	                                    mapping.get_size(), image_class == Granite::ImageClass::Color ?
+	                                                        ColorSpace::sRGB : ColorSpace::Linear);
+	return create_gtx(tex, id);
 }
 
-void Texture::load()
+void TextureManager::instantiate_image_resource(Granite::AssetManager &manager_, Granite::ImageAssetID id,
+                                                Granite::File &file)
 {
-	if (!handle.get_nowait())
-		init();
-}
+	ImageHandle image;
+	if (file.get_size())
+	{
+		auto mapping = file.map();
+		if (mapping)
+		{
+			if (MemoryMappedTexture::is_header(mapping->data(), mapping->get_size()))
+				image = create_gtx(std::move(mapping), id);
+			else
+				image = create_other(*mapping, textures[id.id].image_class, id);
+		}
+		else
+			LOGE("Failed to map file.\n");
+	}
 
-void Texture::unload()
-{
-#ifndef GRANITE_SHIPPING
-	deinit();
-#endif
-	handle.reset();
-}
+	manager_.update_cost(id, image ? image->get_allocation().get_size() : 0);
 
-void Texture::replace_image(ImageHandle handle_)
-{
-	auto old = this->handle.write_object(std::move(handle_));
-	if (old)
-		device->keep_handle_alive(std::move(old));
-}
-
-Image *Texture::get_image()
-{
-	auto ret = handle.get();
-	VK_ASSERT(ret);
-	return ret;
-}
-#endif
-
-TextureManager::TextureManager(Device *device_)
-	: device(device_)
-{
-}
-
-void TextureManager::set_id_bounds(uint32_t bound)
-{
-	textures.resize(bound);
-	views.resize(bound);
-}
-
-void TextureManager::set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class)
-{
-	textures[id.id].image_class = image_class;
-}
-
-const Vulkan::ImageView *TextureManager::get_image_view(Granite::ImageAssetID id)
-{
-	if (id.id < views.size())
-		return views[id.id];
-	else
-		return nullptr;
-}
-
-void TextureManager::release_image_resource(Granite::ImageAssetID id)
-{
-	textures[id.id].image.reset();
-}
-
-uint64_t TextureManager::estimate_cost_image_resource(Granite::ImageAssetID, Granite::FileHandle &mapping)
-{
-	// TODO: When we get compressed BC/ASTC, this will have to change.
-	return mapping->get_size();
-}
-
-void TextureManager::init()
-{
-	manager = device->get_system_handles().asset_manager;
-	if (manager)
-		manager->set_asset_instantiator_interface(this);
+	std::lock_guard<std::mutex> holder{lock};
+	updates.push_back(id);
+	textures[id.id].image = std::move(image);
 }
 
 void TextureManager::latch_handles()

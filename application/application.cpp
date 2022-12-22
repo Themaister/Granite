@@ -149,6 +149,9 @@ void Application::check_initialization_progress()
 		if (device.query_initialization_progress(Device::InitializationStage::CacheMaintenance) >= 100 &&
 		    device.query_initialization_progress(Device::InitializationStage::ShaderModules) >= 100)
 		{
+			// Now is a good time to kick shader manager since it might require compute shaders for decode.
+			GRANITE_ASSET_MANAGER()->iterate(GRANITE_THREAD_GROUP());
+
 			GRANITE_SCOPED_TIMELINE_EVENT("dispatch-ready-modules");
 			GRANITE_EVENT_MANAGER()->enqueue_latched<DeviceShaderModuleReadyEvent>(&device, &device.get_shader_manager());
 			ready_modules = true;
@@ -266,6 +269,8 @@ void Application::render_loading(double, double)
 
 void Application::post_frame()
 {
-	GRANITE_ASSET_MANAGER()->iterate(GRANITE_THREAD_GROUP());
+	// Texture manager might require shaders to be ready before we can submit work.
+	if (ready_modules)
+		GRANITE_ASSET_MANAGER()->iterate(GRANITE_THREAD_GROUP());
 }
 }

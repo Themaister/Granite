@@ -199,10 +199,30 @@ void TextureManager::instantiate_image_resource(Granite::AssetManager &manager_,
 
 	manager_.update_cost(id, image ? image->get_allocation().get_size() : 0);
 
+	// Have to signal something.
+	if (!image)
+		image = get_fallback_image(textures[id.id].image_class);
+
 	std::lock_guard<std::mutex> holder{lock};
 	updates.push_back(id);
 	textures[id.id].image = std::move(image);
 	cond.notify_all();
+}
+
+const ImageHandle &TextureManager::get_fallback_image(Granite::ImageClass image_class)
+{
+	switch (image_class)
+	{
+	default:
+	case Granite::ImageClass::Zeroable:
+		return fallback_zero;
+	case Granite::ImageClass::Color:
+		return fallback_color;
+	case Granite::ImageClass::Normal:
+		return fallback_normal;
+	case Granite::ImageClass::MetallicRoughness:
+		return fallback_pbr;
+	}
 }
 
 void TextureManager::latch_handles()
@@ -221,28 +241,8 @@ void TextureManager::latch_handles()
 		}
 		else
 		{
-			switch (textures[update.id].image_class)
-			{
-			case Granite::ImageClass::Zeroable:
-				view = &fallback_zero->get_view();
-				break;
-
-			case Granite::ImageClass::Color:
-				view = &fallback_color->get_view();
-				break;
-
-			case Granite::ImageClass::Normal:
-				view = &fallback_normal->get_view();
-				break;
-
-			case Granite::ImageClass::MetallicRoughness:
-				view = &fallback_pbr->get_view();
-				break;
-
-			default:
-				view = nullptr;
-				break;
-			}
+			auto &img = get_fallback_image(textures[update.id].image_class);
+			view = &img->get_view();
 		}
 
 		views[update.id] = view;

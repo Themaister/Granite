@@ -79,5 +79,6 @@ private:
 	ImageHandle create_gtx(Granite::FileMappingHandle mapping, Granite::ImageAssetID id);
 	ImageHandle create_gtx(const MemoryMappedTexture &mapping, Granite::ImageAssetID id);
 	ImageHandle create_other(const Granite::FileMapping &mapping, Granite::ImageClass image_class, Granite::ImageAssetID id);
+	const ImageHandle &get_fallback_image(Granite::ImageClass image_class);
 };
 }

@@ -342,7 +342,7 @@ std::vector<ListEntry> ScratchFilesystem::list(const std::string &)
 	return {};
 }
 
-struct ScratchFilesystemFile final : Internal::File
+struct ScratchFilesystemFile final : File
 {
 	explicit ScratchFilesystemFile(std::vector<uint8_t> &data_)
 		: data(data_)
@@ -654,12 +654,9 @@ uint64_t FileMapping::get_size() const
 	return accessible_size;
 }
 
-namespace Internal
-{
 Util::IntrusivePtr<FileMapping> File::map()
 {
 	return map_subset(0, get_size());
-}
 }
 
 FileSlice::FileSlice(FileHandle handle_, uint64_t offset_, uint64_t range_)

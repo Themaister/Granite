@@ -27,7 +27,7 @@
 
 namespace Granite
 {
-class AssetFile final : public Internal::File
+class AssetFile final : public File
 {
 public:
 	static FileHandle open(AAssetManager *mgr, const std::string &path, FileMode mode);

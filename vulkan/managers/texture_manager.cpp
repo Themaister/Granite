@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "texture_manager.hpp"
 #include "device.hpp"
 #include "memory_mapped_texture.hpp"
@@ -63,7 +64,30 @@ void TextureManager::init()
 {
 	manager = device->get_system_handles().asset_manager;
 	if (manager)
+	{
 		manager->set_asset_instantiator_interface(this);
+
+		HeapBudget budget[VK_MAX_MEMORY_HEAPS] = {};
+		device->get_memory_budget(budget);
+
+		// Try to set aside 50% of budgetable VRAM for the texture manager. Seems reasonable.
+		VkDeviceSize size = 0;
+		for (uint32_t i = 0; i < device->get_memory_properties().memoryHeapCount; i++)
+			if ((device->get_memory_properties().memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0)
+				size = std::max(size, budget[i].budget_size / 2);
+
+		if (size == 0)
+		{
+			LOGW("No DEVICE_LOCAL heap was found, assuming 2 GiB budget.\n");
+			size = 2 * 1024 * 1024;
+		}
+
+		LOGI("Using texture budget of %u MiB.\n", unsigned(size / 1024));
+		manager->set_image_budget(size);
+
+		// This is somewhat arbitrary.
+		manager->set_image_budget_per_iteration(20 * 1000 * 1000);
+	}
 }
 
 ImageHandle TextureManager::create_gtx(const MemoryMappedTexture &mapped_file, Granite::ImageAssetID id)

@@ -45,7 +45,6 @@ add_granite_internal_lib(granite-renderer
         fft/fft.cpp fft/fft.hpp
         sprite.cpp sprite.hpp
         common_renderer_data.cpp common_renderer_data.hpp
-        cpu_rasterizer.cpp cpu_rasterizer.hpp
         font.cpp font.hpp
         threaded_scene.cpp threaded_scene.hpp)
 target_include_directories(granite-renderer

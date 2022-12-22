@@ -53,7 +53,8 @@ private:
 
 	void latch_handles() override;
 	uint64_t estimate_cost_image_resource(Granite::ImageAssetID id, Granite::File &file) override;
-	void instantiate_image_resource(Granite::AssetManager &manager, Granite::ImageAssetID id, Granite::File &file) override;
+	void instantiate_image_resource(Granite::AssetManager &manager, Granite::TaskGroup *task,
+	                                Granite::ImageAssetID id, Granite::File &file) override;
 	void release_image_resource(Granite::ImageAssetID id) override;
 	void set_id_bounds(uint32_t bound) override;
 	void set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class) override;
@@ -80,5 +81,7 @@ private:
 	ImageHandle create_gtx(const MemoryMappedTexture &mapping, Granite::ImageAssetID id);
 	ImageHandle create_other(const Granite::FileMapping &mapping, Granite::ImageClass image_class, Granite::ImageAssetID id);
 	const ImageHandle &get_fallback_image(Granite::ImageClass image_class);
+
+	void instantiate_image_resource(Granite::AssetManager &manager, Granite::ImageAssetID id, Granite::File &file);
 };
 }

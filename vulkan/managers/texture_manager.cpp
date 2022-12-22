@@ -179,7 +179,23 @@ const Vulkan::ImageView *TextureManager::get_image_view_blocking(Granite::ImageA
 	return &textures[id.id].image->get_view();
 }
 
-void TextureManager::instantiate_image_resource(Granite::AssetManager &manager_, Granite::ImageAssetID id,
+void TextureManager::instantiate_image_resource(Granite::AssetManager &manager_, Granite::TaskGroup *task,
+                                                Granite::ImageAssetID id, Granite::File &file)
+{
+	if (task)
+	{
+		task->enqueue_task([this, &manager_, &file, id]() {
+			instantiate_image_resource(manager_, id, file);
+		});
+	}
+	else
+	{
+		instantiate_image_resource(manager_, id, file);
+	}
+}
+
+void TextureManager::instantiate_image_resource(Granite::AssetManager &manager_,
+                                                Granite::ImageAssetID id,
                                                 Granite::File &file)
 {
 	ImageHandle image;

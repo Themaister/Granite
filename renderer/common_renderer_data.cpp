@@ -109,12 +109,11 @@ void LightMesh::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	point_ibo.reset();
 }
 
-BRDFTables::BRDFTables()
+void CommonRendererData::initialize_static_assets(AssetManagerInterface *iface_, FilesystemInterface *file_iface)
 {
-}
-
-ImageAssetID BRDFTables::get_texture() const
-{
-	return texture;
+	auto *iface = static_cast<AssetManager *>(iface_);
+	auto *fs = static_cast<Filesystem *>(file_iface);
+	brdf_tables = iface->register_image_resource(*fs, "builtin://textures/ibl_brdf_lut.gtx", ImageClass::Zeroable,
+	                                             AssetManager::persistent_prio());
 }
 }

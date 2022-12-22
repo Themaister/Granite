@@ -53,20 +53,11 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
 };
 
-class BRDFTables
-{
-public:
-	BRDFTables();
-	ImageAssetID get_texture() const;
-
-private:
-	ImageAssetID texture;
-};
-
 class CommonRendererData final : public CommonRendererDataInterface
 {
 public:
 	LightMesh light_mesh;
-	BRDFTables brdf_tables;
+	ImageAssetID brdf_tables;
+	void initialize_static_assets(AssetManagerInterface *iface, FilesystemInterface *file_iface) override;
 };
 }

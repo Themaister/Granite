@@ -195,7 +195,8 @@ bool AssetManager::iterate_blocking(ThreadGroup &group, ImageAssetID id)
 		return true;
 
 	uint64_t estimate = iface->estimate_cost_image_resource(candidate->id, *candidate->handle);
-	group.create_task([this, candidate]() { iface->instantiate_image_resource(*this, candidate->id, *candidate->handle); });
+	auto task = group.create_task();
+	iface->instantiate_image_resource(*this, task.get(), candidate->id, *candidate->handle);
 	candidate->pending_consumed = estimate;
 	candidate->last_used = timestamp;
 	total_consumed += estimate;
@@ -277,7 +278,7 @@ void AssetManager::iterate(ThreadGroup *group)
 
 		uint64_t estimate = iface->estimate_cost_image_resource(candidate->id, *candidate->handle);
 
-		can_activate = total_consumed + estimate <= image_budget;
+		can_activate = (total_consumed + estimate <= image_budget) || (candidate->prio >= persistent_prio());
 		while (!can_activate && activate_index + 1 != release_index)
 		{
 			auto *release_candidate = sorted_assets[--release_index];
@@ -293,10 +294,7 @@ void AssetManager::iterate(ThreadGroup *group)
 		if (can_activate)
 		{
 			// We're trivially in budget.
-			if (group)
-				task->enqueue_task([this, candidate]() { iface->instantiate_image_resource(*this, candidate->id, *candidate->handle); });
-			else
-				iface->instantiate_image_resource(*this, candidate->id, *candidate->handle);
+			iface->instantiate_image_resource(*this, task.get(), candidate->id, *candidate->handle);
 
 			candidate->pending_consumed = estimate;
 			total_consumed += estimate;
@@ -312,6 +310,8 @@ void AssetManager::iterate(ThreadGroup *group)
 
 	const auto should_release = [&]() -> bool {
 		if (release_index == activate_index)
+			return false;
+		if (sorted_assets[release_index - 1]->prio == persistent_prio())
 			return false;
 
 		if (total_consumed > image_budget)

@@ -57,6 +57,10 @@ enum class ImageClass
 	Generic
 };
 
+class ThreadGroup;
+struct TaskGroup;
+struct TaskSignal;
+
 class AssetInstantiatorInterface
 {
 public:
@@ -67,7 +71,7 @@ public:
 
 	// When instantiation completes, manager.update_cost() must be called with the real cost.
 	// The real cost may only be known after async parsing of the file.
-	virtual void instantiate_image_resource(AssetManager &manager, ImageAssetID id, File &mapping) = 0;
+	virtual void instantiate_image_resource(AssetManager &manager, TaskGroup *group, ImageAssetID id, File &mapping) = 0;
 
 	// Will only be called after an upload completes through manager.update_cost().
 	virtual void release_image_resource(ImageAssetID id) = 0;
@@ -78,12 +82,12 @@ public:
 	virtual void latch_handles() = 0;
 };
 
-class ThreadGroup;
-struct TaskSignal;
-
 class AssetManager final : public AssetManagerInterface
 {
 public:
+	// Persistent prio means the resource is treated as an internal LUT that must always be resident, no matter what.
+	constexpr static int persistent_prio() { return 0x7fffffff; }
+
 	AssetManager();
 	~AssetManager() override;
 

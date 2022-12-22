@@ -69,6 +69,7 @@ class CommonRendererDataInterface
 {
 public:
 	virtual ~CommonRendererDataInterface() = default;
+	virtual void initialize_static_assets(AssetManagerInterface *iface, FilesystemInterface *file_iface) = 0;
 };
 
 class PhysicsSystemInterface

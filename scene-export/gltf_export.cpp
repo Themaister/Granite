@@ -32,7 +32,7 @@
 #include "texture_utils.hpp"
 #include "texture_format.hpp"
 #include "stb_image_write.h"
-#include "path.hpp"
+#include "path_utils.hpp"
 
 using namespace rapidjson;
 using namespace Util;

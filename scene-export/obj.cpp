@@ -26,7 +26,7 @@
 #include "memory_mapped_texture.hpp"
 #include "texture_files.hpp"
 #include "string_helpers.hpp"
-#include "path.hpp"
+#include "path_utils.hpp"
 
 using namespace Util;
 

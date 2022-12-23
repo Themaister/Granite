@@ -27,7 +27,7 @@
 #include "mesh_util.hpp"
 #include "enum_cast.hpp"
 #include "ground.hpp"
-#include "path.hpp"
+#include "path_utils.hpp"
 
 using namespace rapidjson;
 using namespace Util;

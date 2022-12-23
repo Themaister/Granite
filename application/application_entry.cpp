@@ -22,7 +22,7 @@
 
 #include "application.hpp"
 #include "filesystem.hpp"
-#include "path.hpp"
+#include "path_utils.hpp"
 
 //#define USE_FP_EXCEPTIONS
 #ifdef USE_FP_EXCEPTIONS

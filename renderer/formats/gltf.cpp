@@ -29,7 +29,7 @@
 #include <algorithm>
 #include "rapidjson_wrapper.hpp"
 #include "muglm/matrix_helper.hpp"
-#include "path.hpp"
+#include "path_utils.hpp"
 
 using namespace rapidjson;
 using namespace Granite;

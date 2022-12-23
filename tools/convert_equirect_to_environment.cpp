@@ -86,9 +86,10 @@ int main(int argc, char *argv[])
 	device.init_external_swapchain({ ImageHandle(nullptr) });
 
 	auto &textures = device.get_resource_manager();
-	auto *equirect = textures.request_texture(args.equirect);
+	auto equirect = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), args.equirect, ImageClass::Color);
+	auto *view = textures.get_image_view_blocking(equirect);
 
-	auto cube = convert_equirect_to_cube(device, equirect->get_image()->get_view(), args.cube_scale);
+	auto cube = convert_equirect_to_cube(device, *view, args.cube_scale);
 	auto specular = convert_cube_to_ibl_specular(device, cube->get_view());
 	auto diffuse = convert_cube_to_ibl_diffuse(device, cube->get_view());
 

@@ -254,9 +254,9 @@ int main(int argc, char **argv)
 	m.static_aabb = AABB(scale * (vec3(0.0f, -0.5f, 0.0f) - center_of_mass),
 	                     scale * (vec3(rect_width, 0.5f, rect_height) - center_of_mass));
 
-	SceneFormats::MaterialInfo mat;
-	mat.bandlimited_pixel = true;
-	mat.base_color.path = input;
+	MaterialInfo mat;
+	mat.shader_variant = MATERIAL_SHADER_VARIANT_BANDLIMITED_PIXEL_BIT;
+	mat.paths[Util::ecast(TextureKind::BaseColor)] = input;
 	mat.uniform_metallic = 0.0f;
 	mat.uniform_roughness = 1.0f;
 	mat.sampler = Vulkan::StockSampler::TrilinearClamp;

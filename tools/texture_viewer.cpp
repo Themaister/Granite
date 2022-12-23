@@ -37,7 +37,8 @@ struct TextureViewerApplication : Granite::Application, Granite::EventHandler
 	TextureViewerApplication(std::string path_)
 	    : path(std::move(path_))
 	{
-		EVENT_MANAGER_REGISTER_LATCH(TextureViewerApplication, on_device_create, on_device_destroy, DeviceCreatedEvent);
+		texture = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(),
+																   path, ImageClass::Color);
 		EVENT_MANAGER_REGISTER(TextureViewerApplication, on_key_pressed, KeyboardEvent);
 	}
 
@@ -92,16 +93,6 @@ struct TextureViewerApplication : Granite::Application, Granite::EventHandler
 		return true;
 	}
 
-	void on_device_create(const DeviceCreatedEvent &e)
-	{
-		texture = e.get_device().get_resource_manager().request_texture(path);
-	}
-
-	void on_device_destroy(const DeviceCreatedEvent &)
-	{
-		texture = nullptr;
-	}
-
 	void render_frame(double, double) override
 	{
 		auto &wsi = get_wsi();
@@ -109,7 +100,8 @@ struct TextureViewerApplication : Granite::Application, Granite::EventHandler
 
 		auto cmd = device.request_command_buffer();
 
-		auto &img = *texture->get_image();
+		auto *base_view = device.get_resource_manager().get_image_view_blocking(texture);
+		auto &img = base_view->get_image();
 		layer = std::min(layer, img.get_create_info().layers - 1u);
 		level = std::min(level, img.get_create_info().levels - 1u);
 
@@ -146,7 +138,7 @@ struct TextureViewerApplication : Granite::Application, Granite::EventHandler
 	unsigned layer = 0;
 	unsigned level = 0;
 
-	Texture *texture = nullptr;
+	ImageAssetID texture;
 	std::string path;
 	VkComponentMapping swiz = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
 };
@@ -155,7 +147,7 @@ namespace Granite
 {
 Application *application_create(int argc, char **argv)
 {
-	GRANITE_APPLICATION_SETUP_FILESYSTEM();
+	Filesystem::setup_default_filesystem(GRANITE_FILESYSTEM(), ".");
 
 	if (argc != 2)
 	{

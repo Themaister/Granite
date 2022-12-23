@@ -53,7 +53,7 @@ void Image::reconfigure_to_canvas(vec2, vec2 size)
 
 float Image::render(FlatRenderer &renderer, float layer, vec2 offset, vec2)
 {
-	auto *view = renderer.get_device().get_resource_manager().get_image_view(texture);
+	auto *view = renderer.get_device().get_resource_manager().get_image_view_blocking(texture);
 	vec2 image_size(view->get_view_width(), view->get_view_height());
 
 	renderer.render_textured_quad(

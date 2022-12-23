@@ -41,7 +41,7 @@ float Widget::render_children(FlatRenderer &renderer, float layer, vec2 offset)
 			{
 				if (child.widget->bg_image)
 				{
-					auto *view = renderer.get_device().get_resource_manager().get_image_view(child.widget->bg_image);
+					auto *view = renderer.get_device().get_resource_manager().get_image_view_blocking(child.widget->bg_image);
 					renderer.render_textured_quad(*view,
 					                              vec3(child.offset + offset, layer - 0.5f), vec2(child.size),
 					                              vec2(0.0f), vec2(view->get_view_width(), view->get_view_height()),

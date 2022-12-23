@@ -6,15 +6,15 @@ using namespace Granite;
 
 struct ActivationInterface final : AssetInstantiatorInterface
 {
-	uint64_t estimate_cost_image_resource(ImageAssetID, FileHandle &mapping) override
+	uint64_t estimate_cost_image_resource(ImageAssetID, File &mapping) override
 	{
-		return mapping->get_size();
+		return mapping.get_size();
 	}
 
-	void instantiate_image_resource(AssetManager &manager, ImageAssetID id, FileHandle &mapping) override
+	void instantiate_image_resource(AssetManager &manager, TaskGroup *, ImageAssetID id, File &mapping) override
 	{
 		LOGI("Instantiating ID: %u\n", id.id);
-		manager.update_cost(id, mapping->get_size());
+		manager.update_cost(id, mapping.get_size());
 	}
 
 	void release_image_resource(ImageAssetID id) override
@@ -54,12 +54,12 @@ int main()
 	auto d = fs.open("tmp://d");
 	auto e = fs.open("tmp://e");
 
-	auto id_a = manager.register_image_resource(std::move(a));
-	auto id_b = manager.register_image_resource(std::move(b));
-	auto id_c = manager.register_image_resource(std::move(c));
-	auto id_d = manager.register_image_resource(std::move(d));
+	auto id_a = manager.register_image_resource(std::move(a), ImageClass::Zeroable);
+	auto id_b = manager.register_image_resource(std::move(b), ImageClass::Zeroable);
+	auto id_c = manager.register_image_resource(std::move(c), ImageClass::Zeroable);
+	auto id_d = manager.register_image_resource(std::move(d), ImageClass::Zeroable);
 	manager.set_asset_instantiator_interface(&iface);
-	auto id_e = manager.register_image_resource(std::move(e));
+	auto id_e = manager.register_image_resource(std::move(e), ImageClass::Zeroable);
 
 	manager.set_image_budget(25);
 	manager.set_image_budget_per_iteration(5);

@@ -117,17 +117,18 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 				                 { "BANDLIMITED_PIXEL_USE_TRANSCENDENTAL", 1 },
 		                 });
 
-		auto *texture = device.get_resource_manager().request_texture("assets://textures/sprite.png");
-		cmd->set_texture(2, 0, texture->get_image()->get_view(), mode == 0 ? StockSampler::NearestWrap : StockSampler::TrilinearWrap);
+		auto texture = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), "assets://textures/sprite.png", ImageClass::Color);
+		auto *view = cmd->get_device().get_resource_manager().get_image_view_blocking(texture);
+		cmd->set_texture(2, 0, *view, mode == 0 ? StockSampler::NearestWrap : StockSampler::TrilinearWrap);
 
 		CommandBufferUtil::set_quad_vertex_state(*cmd);
 
 		quat rot = angleAxis(float(elapsed * 0.05), vec3(0.0f, 0.0f, 1.0f));
 
-		auto width = texture->get_image()->get_width();
-		auto height = texture->get_image()->get_height();
+		auto width = view->get_view_width();
+		auto height = view->get_view_height();
 
-		mat4 mvp = pre_rotate * cam.get_projection() * cam.get_view() * mat4_cast(rot) * scale(20.0f * vec3(float(width) / float(height), 1.0f, 1.0f));
+		mat4 mvp = cam.get_projection() * cam.get_view() * mat4_cast(rot) * scale(20.0f * vec3(float(width) / float(height), 1.0f, 1.0f));
 		cmd->push_constants(&mvp, 0, sizeof(mvp));
 
 		struct TexInfo
@@ -149,7 +150,6 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 	bool rotate = false;
 	bool debug = false;
 	unsigned mode = 2;
-	mat4 pre_rotate;
 };
 
 namespace Granite

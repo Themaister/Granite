@@ -772,7 +772,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 				throw std::runtime_error("Failed to open memory file.");
 
 			memcpy(file->mutable_data(), json_buffers[view.buffer_index].data() + view.offset, view.length);
-			json_images.emplace_back(fake_path);
+			json_images.emplace_back(std::move(fake_path));
 		}
 		else
 		{
@@ -805,7 +805,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 					throw std::runtime_error("Failed to open memory file.");
 
 				memcpy(file->mutable_data(), base64_buffer.data(), base64_buffer.size());
-				json_images.emplace_back(fake_path);
+				json_images.emplace_back(std::move(fake_path));
 			}
 		}
 	};

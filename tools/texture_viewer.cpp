@@ -38,7 +38,7 @@ struct TextureViewerApplication : Granite::Application, Granite::EventHandler
 	    : path(std::move(path_))
 	{
 		texture = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(),
-																   path, ImageClass::Color);
+		                                                           path, ImageClass::Color);
 		EVENT_MANAGER_REGISTER(TextureViewerApplication, on_key_pressed, KeyboardEvent);
 	}
 

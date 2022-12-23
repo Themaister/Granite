@@ -252,6 +252,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoC
 	Hasher h;
 	h.u32(attrs);
 	h.u32(ecast(material.get_info().pipeline));
+	h.u32(material.shader_variant);
 	auto pipe_hash = h.get();
 
 	h.u64(material.get_hash());

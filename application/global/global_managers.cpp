@@ -185,14 +185,7 @@ void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads)
 	if (flags & MANAGER_FEATURE_COMMON_RENDERER_DATA_BIT)
 	{
 		if (!global_managers.common_renderer_data)
-		{
 			global_managers.common_renderer_data = factory.create_common_renderer_data();
-			if (global_managers.asset_manager && global_managers.filesystem)
-			{
-				global_managers.common_renderer_data->initialize_static_assets(
-						global_managers.asset_manager, global_managers.filesystem);
-			}
-		}
 	}
 
 	if (flags & MANAGER_FEATURE_LOGGING_BIT)

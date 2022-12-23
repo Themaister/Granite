@@ -24,6 +24,7 @@
 #include "application.hpp"
 #include "asset_manager.hpp"
 #include "thread_group.hpp"
+#include "common_renderer_data.hpp"
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_mixer.hpp"
 #endif
@@ -34,6 +35,7 @@ namespace Granite
 {
 Application::Application()
 {
+	GRANITE_COMMON_RENDERER_DATA()->initialize_static_assets(GRANITE_ASSET_MANAGER(), GRANITE_FILESYSTEM());
 }
 
 Application::~Application()

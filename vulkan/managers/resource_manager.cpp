@@ -222,16 +222,22 @@ const Vulkan::ImageView *ResourceManager::get_image_view_blocking(Granite::Image
 	std::unique_lock<std::mutex> holder{lock};
 
 	if (id.id >= textures.size())
+	{
+		LOGE("ID %u is out of bounds.\n", id.id);
 		return nullptr;
+	}
 
 	if (textures[id.id].image)
 		return &textures[id.id].image->get_view();
 
 	if (!manager->iterate_blocking(*device->get_system_handles().thread_group, id))
+	{
+		LOGE("Failed to iterate.\n");
 		return nullptr;
+	}
 
-	cond.wait(holder, [this, id]() {
-		return textures[id.id].image;
+	cond.wait(holder, [this, id]() -> bool {
+		return bool(textures[id.id].image);
 	});
 
 	return &textures[id.id].image->get_view();

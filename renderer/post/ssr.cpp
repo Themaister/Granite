@@ -299,9 +299,9 @@ void setup_ssr_pass(RenderGraph &graph, const RenderContext &context,
 		auto *ubo = cmd.allocate_typed_constant_data<UBO>(3, 0, 1);
 		fill_ubo(*ubo, context, res_view, nullptr, 0);
 
-		//cmd.set_texture(0, 5,
-		//				GRANITE_COMMON_RENDERER_DATA()->brdf_tables.get_texture()->get_image()->get_view(),
-		//				Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(0, 5,
+		                *cmd.get_device().get_resource_manager().get_image_view_blocking(GRANITE_COMMON_RENDERER_DATA()->brdf_tables),
+		                Vulkan::StockSampler::LinearClamp);
 
 		Vulkan::CommandBufferUtil::setup_fullscreen_quad(cmd,
 		                                                 "builtin://shaders/post/ffx-sssr/apply.vert",

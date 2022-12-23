@@ -35,6 +35,7 @@ class TextureManager : private Granite::AssetInstantiatorInterface
 {
 public:
 	explicit TextureManager(Device *device);
+	~TextureManager();
 	void init();
 
 	inline const Vulkan::ImageView *get_image_view(Granite::ImageAssetID id) const

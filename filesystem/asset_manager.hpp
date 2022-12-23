@@ -136,7 +136,7 @@ private:
 	std::vector<AssetInfo *> asset_bank;
 	Util::ObjectPool<AssetInfo> pool;
 	Util::AtomicAppendBuffer<ImageAssetID> lru_append;
-	Util::IntrusiveHashMap<AssetInfo> file_to_assets;
+	Util::IntrusiveHashMapHolder<AssetInfo> file_to_assets;
 
 	AssetInstantiatorInterface *iface = nullptr;
 	uint32_t id_count = 0;
@@ -144,6 +144,7 @@ private:
 	uint64_t image_budget = 0;
 	uint64_t image_budget_per_iteration = 0;
 	uint64_t timestamp = 1;
+	uint32_t blocking_signals = 0;
 
 	struct CostUpdate
 	{

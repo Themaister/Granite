@@ -83,7 +83,8 @@ ImageAssetID AssetManager::register_image_resource(Filesystem &fs, const std::st
 		return {};
 
 	auto id = register_image_resource_nolock(std::move(file), image_class, prio);
-	file_to_assets.insert_replace(h.get(), asset_bank[id.id]);
+	asset_bank[id.id]->set_hash(h.get());
+	file_to_assets.insert_replace(asset_bank[id.id]);
 	return id;
 }
 
@@ -203,10 +204,17 @@ bool AssetManager::iterate_blocking(ThreadGroup &group, ImageAssetID id)
 
 	uint64_t estimate = iface->estimate_cost_image_resource(candidate->id, *candidate->handle);
 	auto task = group.create_task();
+	task->set_task_class(TaskClass::Background);
+	task->set_fence_counter_signal(signal.get());
+	task->set_desc("asset-manager-instantiate-single");
 	iface->instantiate_image_resource(*this, task.get(), candidate->id, *candidate->handle);
 	candidate->pending_consumed = estimate;
 	candidate->last_used = timestamp;
 	total_consumed += estimate;
+
+	// We cannot increment the timestamp here, remember this for later.
+	// We hold a lock on the asset bank here, so this is fine even if called concurrently.
+	blocking_signals++;
 
 	return true;
 }
@@ -216,11 +224,15 @@ void AssetManager::iterate(ThreadGroup *group)
 	if (!iface)
 		return;
 
-	// If there is too much pending work going on, skip.
+	timestamp += blocking_signals;
+	blocking_signals = 0;
+
+	// If there is too much pending work in flight, skip.
 	uint64_t current_count = signal->get_count();
 	if (current_count + 3 < timestamp)
 	{
 		iface->latch_handles();
+		LOGI("Asset manager skipping iteration due to doo much pending work.\n");
 		return;
 	}
 
@@ -262,6 +274,7 @@ void AssetManager::iterate(ThreadGroup *group)
 
 	size_t release_index = sorted_assets.size();
 	uint64_t activated_cost_this_iteration = 0;
+	unsigned activation_count = 0;
 	size_t activate_index = 0;
 
 	// Aim to activate resources as long as we're in budget.
@@ -291,6 +304,7 @@ void AssetManager::iterate(ThreadGroup *group)
 			auto *release_candidate = sorted_assets[--release_index];
 			if (release_candidate->consumed)
 			{
+				LOGI("Releasing ID %u due to page-in pressure.\n", release_candidate->id.id);
 				iface->release_image_resource(release_candidate->id);
 				total_consumed -= release_candidate->consumed;
 				release_candidate->consumed = 0;
@@ -302,6 +316,7 @@ void AssetManager::iterate(ThreadGroup *group)
 		{
 			// We're trivially in budget.
 			iface->instantiate_image_resource(*this, task.get(), candidate->id, *candidate->handle);
+			activation_count++;
 
 			candidate->pending_consumed = estimate;
 			total_consumed += estimate;
@@ -335,11 +350,18 @@ void AssetManager::iterate(ThreadGroup *group)
 		auto *candidate = sorted_assets[--release_index];
 		if (candidate->consumed)
 		{
+			LOGI("Releasing 0-prio ID %u due to page-in pressure.\n", candidate->id.id);
 			iface->release_image_resource(candidate->id);
 			total_consumed -= candidate->consumed;
 			candidate->consumed = 0;
 			candidate->last_used = 0;
 		}
+	}
+
+	if (activated_cost_this_iteration)
+	{
+		LOGI("Activated %u resources for %llu KiB.\n", activation_count,
+		     static_cast<unsigned long long>(activated_cost_this_iteration / 1024));
 	}
 
 	iface->latch_handles();

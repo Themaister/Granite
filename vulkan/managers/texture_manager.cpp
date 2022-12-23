@@ -36,6 +36,13 @@ TextureManager::TextureManager(Device *device_)
 {
 }
 
+TextureManager::~TextureManager()
+{
+	// Also works as a teardown mechanism to make sure there are no async threads in flight.
+	if (manager)
+		manager->set_asset_instantiator_interface(nullptr);
+}
+
 void TextureManager::set_id_bounds(uint32_t bound)
 {
 	textures.resize(bound);
@@ -109,7 +116,7 @@ void TextureManager::init()
 			size = 2 * 1024 * 1024;
 		}
 
-		LOGI("Using texture budget of %u MiB.\n", unsigned(size / 1024));
+		LOGI("Using texture budget of %u MiB.\n", unsigned(size / (1024 * 1024)));
 		manager->set_image_budget(size);
 
 		// This is somewhat arbitrary.

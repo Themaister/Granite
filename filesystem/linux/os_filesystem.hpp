@@ -26,7 +26,7 @@
 
 namespace Granite
 {
-class MMapFile final : public Internal::File
+class MMapFile final : public File
 {
 public:
 	static FileHandle open(const std::string &path, FileMode mode);

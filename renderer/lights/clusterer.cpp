@@ -30,7 +30,6 @@
 #include "quirks.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "thread_group.hpp"
-#include "cpu_rasterizer.hpp"
 #include "simd.hpp"
 #include <string.h>
 
@@ -1619,7 +1618,7 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 	{
 		bindless.parameters.decals_texture_offset = bindless.allocator.get_next_offset();
 		for (unsigned i = 0; i < bindless.parameters.num_decals; i++)
-			bindless.allocator.push(*visible_decals[i].decal->decal.get_decal_view());
+			bindless.allocator.push(*visible_decals[i].decal->decal.get_decal_view(device));
 	}
 
 	bindless.desc_set = bindless.allocator.commit(device);

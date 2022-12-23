@@ -33,15 +33,10 @@ namespace Granite
 class ImportedMesh : public StaticMesh, public EventHandler
 {
 public:
-	ImportedMesh(const SceneFormats::Mesh &mesh, const SceneFormats::MaterialInfo &info);
-
-	const SceneFormats::Mesh &get_mesh() const;
-	const SceneFormats::MaterialInfo &get_material_info() const;
+	ImportedMesh(const SceneFormats::Mesh &mesh, const MaterialInfo &info);
 
 private:
 	SceneFormats::Mesh mesh;
-	SceneFormats::MaterialInfo info;
-
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
@@ -49,24 +44,19 @@ private:
 class ImportedSkinnedMesh : public SkinnedMesh, public EventHandler
 {
 public:
-	ImportedSkinnedMesh(const SceneFormats::Mesh &mesh, const SceneFormats::MaterialInfo &info);
-
-	const SceneFormats::Mesh &get_mesh() const;
-	const SceneFormats::MaterialInfo &get_material_info() const;
+	ImportedSkinnedMesh(const SceneFormats::Mesh &mesh, const MaterialInfo &info);
 
 private:
 	SceneFormats::Mesh mesh;
-	SceneFormats::MaterialInfo info;
-
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
 
 template <typename StaticMesh = ImportedMesh, typename SkinnedMesh = ImportedSkinnedMesh>
 inline AbstractRenderableHandle create_imported_mesh(const SceneFormats::Mesh &mesh,
-                                                     const SceneFormats::MaterialInfo *materials)
+                                                     const MaterialInfo *materials)
 {
-	SceneFormats::MaterialInfo default_material;
+	MaterialInfo default_material;
 	default_material.uniform_base_color = vec4(0.3f, 1.0f, 0.3f, 1.0f);
 	default_material.uniform_metallic = 0.0f;
 	default_material.uniform_roughness = 1.0f;
@@ -204,9 +194,8 @@ private:
 class Skybox : public AbstractRenderable, public EventHandler
 {
 public:
-	Skybox(std::string bg_path = "");
-	void set_image(Vulkan::ImageHandle skybox);
-	void set_image(Vulkan::Texture *skybox);
+	Skybox(const std::string &bg_path = "");
+	void set_image(ImageAssetID skybox);
 
 	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
@@ -217,20 +206,14 @@ public:
 	}
 
 private:
-	Vulkan::Device *device = nullptr;
-	std::string bg_path;
 	vec3 color = vec3(1.0f);
-	Vulkan::Texture *texture = nullptr;
-	Vulkan::ImageHandle image;
-
-	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
+	ImageAssetID texture;
 };
 
 class SkyCylinder : public AbstractRenderable, public EventHandler
 {
 public:
-	SkyCylinder(std::string bg_path);
+	SkyCylinder(const std::string &bg_path);
 
 	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
@@ -246,10 +229,9 @@ public:
 	}
 
 private:
-	std::string bg_path;
 	vec3 color = vec3(1.0f);
 	float scale = 1.0f;
-	Vulkan::Texture *texture = nullptr;
+	ImageAssetID texture;
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
@@ -260,7 +242,7 @@ private:
 	unsigned count = 0;
 };
 
-class TexturePlane : public AbstractRenderable, public EventHandler, public RenderPassCreator
+class TexturePlane : public AbstractRenderable, public RenderPassCreator
 {
 public:
 	TexturePlane(const std::string &normal);
@@ -300,10 +282,9 @@ public:
 	void set_zfar(float zfar);
 
 private:
-	std::string normal_path;
 	const Vulkan::ImageView *reflection = nullptr;
 	const Vulkan::ImageView *refraction = nullptr;
-	Vulkan::Texture *normalmap = nullptr;
+	ImageAssetID normalmap;
 	RenderQueue internal_queue;
 
 	vec3 position;
@@ -317,9 +298,6 @@ private:
 	float zfar = 100.0f;
 	float scale_x = 1.0f;
 	float scale_y = 1.0f;
-
-	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 
 	std::string reflection_name;
 	std::string refraction_name;

@@ -81,10 +81,11 @@ int main(int argc, char *argv[])
 	device.set_context(context);
 	device.init_external_swapchain({ ImageHandle(nullptr) });
 
-	auto &textures = device.get_texture_manager();
-	auto *cube = textures.request_texture(args.cube);
-	auto specular = convert_cube_to_ibl_specular(device, cube->get_image()->get_view());
-	auto diffuse = convert_cube_to_ibl_diffuse(device, cube->get_image()->get_view());
+	auto &textures = device.get_resource_manager();
+	auto cube = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), args.cube, ImageClass::Color);
+	auto *view = device.get_resource_manager().get_image_view_blocking(cube);
+	auto specular = convert_cube_to_ibl_specular(device, *view);
+	auto diffuse = convert_cube_to_ibl_diffuse(device, *view);
 
 	auto cmd = device.request_command_buffer();
 

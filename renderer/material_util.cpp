@@ -21,46 +21,17 @@
  */
 
 #include "material_util.hpp"
-#include "device.hpp"
-#include "texture_manager.hpp"
-#include <string.h>
-
-using namespace Vulkan;
 
 namespace Granite
 {
-StockMaterials &StockMaterials::get()
+Material StockMaterials::create_checkerboard()
 {
-	static StockMaterials stock;
-	return stock;
+	MaterialInfo checkerboard;
+	checkerboard.paths[Util::ecast(TextureKind::BaseColor)] = "builtin://textures/checkerboard.png";
+	checkerboard.uniform_emissive_color = vec3(0.0f);
+	checkerboard.uniform_metallic = 0.0f;
+	checkerboard.uniform_roughness = 1.0f;
+	checkerboard.uniform_base_color = vec4(1.0f);
+	return Material{checkerboard};
 }
-
-StockMaterials::StockMaterials()
-{
-	checkerboard = Util::make_handle<Material>();
-	EVENT_MANAGER_REGISTER_LATCH(StockMaterials, on_device_created, on_device_destroyed, DeviceCreatedEvent);
-}
-
-MaterialHandle StockMaterials::get_checkerboard()
-{
-	return checkerboard;
-}
-
-void StockMaterials::on_device_created(const DeviceCreatedEvent &created)
-{
-	auto &manager = created.get_device().get_texture_manager();
-
-	checkerboard->textures[Util::ecast(Material::Textures::BaseColor)] = manager.request_texture("builtin://textures/checkerboard.png");
-	checkerboard->emissive = vec3(0.0f);
-	checkerboard->metallic = 0.0f;
-	checkerboard->roughness = 1.0f;
-	checkerboard->base_color = vec4(1.0f);
-	checkerboard->bake();
-}
-
-void StockMaterials::on_device_destroyed(const DeviceCreatedEvent &)
-{
-	memset(checkerboard->textures, 0, sizeof(checkerboard->textures));
-}
-
 }

@@ -27,6 +27,7 @@
 #include "render_context.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "transforms.hpp"
+#include "asset_manager.hpp"
 
 using namespace Vulkan;
 using namespace Util;
@@ -181,18 +182,20 @@ Ground::Ground(unsigned size_, const TerrainInfo &info_)
 	num_patches_z = size / info.base_patch_size;
 	patch_lods.resize(num_patches_x * num_patches_z);
 
+	heights = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), info.heightmap, ImageClass::Zeroable);
+	normals = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), info.normalmap, ImageClass::Normal);
+	occlusion = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), info.occlusionmap, ImageClass::Zeroable);
+	normals_fine = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), info.normalmap_fine, ImageClass::Normal);
+	base_color = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), info.base_color, ImageClass::Color);
+	type_map = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), info.splatmap, ImageClass::Zeroable);
+
 	EVENT_MANAGER_REGISTER_LATCH(Ground, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 void Ground::on_device_created(const DeviceCreatedEvent &created)
 {
 	auto &device = created.get_device();
-	heights = device.get_texture_manager().request_texture(info.heightmap);
-	normals = device.get_texture_manager().request_texture(info.normalmap);
-	occlusion = device.get_texture_manager().request_texture(info.occlusionmap);
-	normals_fine = device.get_texture_manager().request_texture(info.normalmap_fine);
-	base_color = device.get_texture_manager().request_texture(info.base_color);
-	type_map = device.get_texture_manager().request_texture(info.splatmap);
+
 	build_buffers(device);
 
 	ImageCreateInfo image_info = {};
@@ -284,12 +287,6 @@ void Ground::build_buffers(Device &device)
 
 void Ground::on_device_destroyed(const DeviceCreatedEvent &)
 {
-	heights = nullptr;
-	normals = nullptr;
-	occlusion = nullptr;
-	normals_fine = nullptr;
-	base_color = nullptr;
-	type_map = nullptr;
 	quad_lod.clear();
 	lod_map.reset();
 }
@@ -326,19 +323,20 @@ void Ground::get_render_info(const RenderContext &context, const RenderInfoCompo
 	patch.ibo = quad_lod[base_lod].ibo.get();
 	patch.count = quad_lod[base_lod].count;
 
-	auto heightmap = heights->get_image();
-	auto normal = normals->get_image();
-	auto occlusionmap = occlusion->get_image();
-	auto normal_fine = normals_fine->get_image();
-	auto base_color_image = base_color->get_image();
-	auto splatmap_image = type_map->get_image();
-	patch.heights = &heightmap->get_view();
-	patch.normals = &normal->get_view();
-	patch.occlusion = &occlusionmap->get_view();
-	patch.normals_fine = &normal_fine->get_view();
-	patch.base_color = &base_color_image->get_view();
+	auto *heightmap = queue.get_resource_manager().get_image_view(heights);
+	auto *normal = queue.get_resource_manager().get_image_view(normals);
+	auto *occlusionmap = queue.get_resource_manager().get_image_view(occlusion);
+	auto *normal_fine = queue.get_resource_manager().get_image_view(normals_fine);
+	auto *base_color_image = queue.get_resource_manager().get_image_view(base_color);
+	auto *splatmap_image = queue.get_resource_manager().get_image_view(type_map);
+
+	patch.heights = heightmap;
+	patch.normals = normal;
+	patch.occlusion = occlusionmap;
+	patch.normals_fine = normal_fine;
+	patch.base_color = base_color_image;
+	patch.type_map = splatmap_image;
 	patch.lod_map = &lod_map->get_view();
-	patch.type_map = &splatmap_image->get_view();
 	patch.inv_heightmap_size = vec2(1.0f / size);
 	patch.tiling_factor = tiling_factor;
 

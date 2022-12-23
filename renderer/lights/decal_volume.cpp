@@ -22,33 +22,26 @@
 
 #include "decal_volume.hpp"
 #include "device.hpp"
+#include "resource_manager.hpp"
 #include <random>
 
 namespace Granite
 {
 VolumetricDecal::VolumetricDecal()
 {
-	EVENT_MANAGER_REGISTER_LATCH(VolumetricDecal, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
+	tex = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(),
+	                                                       "builtin://textures/decal.png",
+	                                                       ImageClass::Color);
 }
 
-const Vulkan::ImageView *VolumetricDecal::get_decal_view() const
+const Vulkan::ImageView *VolumetricDecal::get_decal_view(Vulkan::Device &device) const
 {
-	return tex ? &tex->get_image()->get_view() : nullptr;
+	return device.get_resource_manager().get_image_view(tex);
 }
 
 const AABB &VolumetricDecal::get_static_aabb()
 {
 	static AABB aabb(vec3(-0.5f), vec3(0.5f));
 	return aabb;
-}
-
-void VolumetricDecal::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
-{
-	tex = nullptr;
-}
-
-void VolumetricDecal::on_device_created(const Vulkan::DeviceCreatedEvent &e)
-{
-	tex = e.get_device().get_texture_manager().request_texture("builtin://textures/decal.png", VK_FORMAT_R8G8B8A8_SRGB);
 }
 }

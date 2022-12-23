@@ -115,7 +115,7 @@ struct StaticMeshInfo
 	const Vulkan::Buffer *vbo_position;
 	const Vulkan::Buffer *vbo_attributes;
 	const Vulkan::Buffer *ibo;
-	const Vulkan::ImageView *views[Util::ecast(Material::Textures::Count)];
+	const Vulkan::ImageView *views[Util::ecast(TextureKind::Count)];
 	Vulkan::StockSampler sampler;
 	Vulkan::Program *program;
 	VkPrimitiveTopology topology;
@@ -161,7 +161,7 @@ struct StaticMesh : AbstractRenderable
 
 	MeshAttributeLayout attributes[Util::ecast(MeshAttribute::Count)];
 
-	MaterialHandle material;
+	Material material;
 
 	Util::Hash get_instance_key() const;
 	Util::Hash get_baked_instance_key() const;
@@ -175,14 +175,14 @@ struct StaticMesh : AbstractRenderable
 
 	DrawPipeline get_mesh_draw_pipeline() const override
 	{
-		return material->pipeline;
+		return material.get_info().pipeline;
 	}
 
 	void bake();
 
 protected:
 	void reset();
-	void fill_render_info(StaticMeshInfo &info) const;
+	void fill_render_info(Vulkan::ResourceManager &resource_manager, StaticMeshInfo &info) const;
 	Util::Hash cached_hash = 0;
 
 private:

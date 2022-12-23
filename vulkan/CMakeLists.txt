@@ -38,27 +38,23 @@ if (GRANITE_RENDERDOC_CAPTURE)
     endif()
 endif()
 
-if (GRANITE_VULKAN_THREAD_GROUP)
-    target_link_libraries(granite-vulkan PRIVATE granite-threading)
-    target_compile_definitions(granite-vulkan PRIVATE GRANITE_VULKAN_THREAD_GROUP)
-endif()
-
 if (GRANITE_VULKAN_BETA)
     target_compile_definitions(granite-vulkan PUBLIC GRANITE_VULKAN_BETA)
 endif()
 
-if (GRANITE_VULKAN_FOSSILIZE AND GRANITE_VULKAN_THREAD_GROUP)
-    target_compile_definitions(granite-vulkan PUBLIC GRANITE_VULKAN_FOSSILIZE)
-    target_sources(granite-vulkan PRIVATE device_fossilize.cpp device_fossilize.hpp)
-    target_link_libraries(granite-vulkan PUBLIC fossilize)
-endif()
+if (GRANITE_VULKAN_SYSTEM_HANDLES)
+    if (GRANITE_VULKAN_FOSSILIZE)
+        target_compile_definitions(granite-vulkan PUBLIC GRANITE_VULKAN_FOSSILIZE)
+        target_sources(granite-vulkan PRIVATE device_fossilize.cpp device_fossilize.hpp)
+        target_link_libraries(granite-vulkan PUBLIC fossilize)
+    endif()
 
-if (GRANITE_VULKAN_FILESYSTEM)
+    target_compile_definitions(granite-vulkan PUBLIC GRANITE_VULKAN_SYSTEM_HANDLES)
     target_sources(granite-vulkan PRIVATE
             managers/shader_manager.cpp
             managers/shader_manager.hpp
-            managers/texture_manager.cpp
-            managers/texture_manager.hpp)
+            managers/resource_manager.cpp
+            managers/resource_manager.hpp)
 
     target_sources(granite-vulkan PRIVATE
             texture/memory_mapped_texture.cpp texture/memory_mapped_texture.hpp
@@ -67,9 +63,8 @@ if (GRANITE_VULKAN_FILESYSTEM)
 
     target_link_libraries(granite-vulkan
             PUBLIC granite-filesystem
-            PRIVATE granite-rapidjson granite-stb granite-math)
+            PRIVATE granite-threading granite-rapidjson granite-stb granite-math)
 
-    target_compile_definitions(granite-vulkan PUBLIC GRANITE_VULKAN_FILESYSTEM)
     target_include_directories(granite-vulkan PUBLIC
             ${CMAKE_CURRENT_SOURCE_DIR}/managers
             ${CMAKE_CURRENT_SOURCE_DIR}/texture)
@@ -77,10 +72,6 @@ if (GRANITE_VULKAN_FILESYSTEM)
     if (GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER)
         target_compile_definitions(granite-vulkan PUBLIC GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER=1)
         target_link_libraries(granite-vulkan PRIVATE granite-compiler)
-    endif()
-
-    if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
-        set_source_files_properties(managers/texture_manager.cpp PROPERTIES COMPILE_FLAGS "-Wno-type-limits -Wno-pedantic -Wno-ignored-qualifiers -Wno-unused-parameter")
     endif()
 endif()
 

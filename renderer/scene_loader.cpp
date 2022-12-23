@@ -27,6 +27,7 @@
 #include "mesh_util.hpp"
 #include "enum_cast.hpp"
 #include "ground.hpp"
+#include "path_utils.hpp"
 
 using namespace rapidjson;
 using namespace Util;
@@ -275,9 +276,9 @@ NodeHandle SceneLoader::parse_gltf(const std::string &path)
 
 		Entity *entity = nullptr;
 		Util::IntrusivePtr<Skybox> skybox;
-		if (!env.cube.path.empty())
+		if (!env.cube.empty())
 		{
-			skybox = Util::make_handle<Skybox>(env.cube.path);
+			skybox = Util::make_handle<Skybox>(env.cube);
 			entity = scene->create_renderable(skybox, nullptr);
 			entity->allocate_component<BackgroundComponent>();
 		}
@@ -315,7 +316,7 @@ NodeHandle SceneLoader::parse_scene_format(const std::string &path, const std::s
 
 		for (auto &mesh : parser.get_meshes())
 		{
-			SceneFormats::MaterialInfo default_material;
+			MaterialInfo default_material;
 			default_material.uniform_base_color = vec4(0.3f, 1.0f, 0.3f, 1.0f);
 			default_material.uniform_metallic = 0.0f;
 			default_material.uniform_roughness = 1.0f;

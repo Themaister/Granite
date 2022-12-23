@@ -22,24 +22,22 @@
 
 #pragma once
 
-#include "event.hpp"
-#include "texture_manager.hpp"
-#include "application_wsi_events.hpp"
+#include "asset_manager.hpp"
 #include "aabb.hpp"
+#include "image.hpp"
 
 namespace Granite
 {
-class VolumetricDecal : public EventHandler
+class VolumetricDecal
 {
 public:
 	VolumetricDecal();
 
-	const Vulkan::ImageView *get_decal_view() const;
+	const Vulkan::ImageView *get_decal_view(Vulkan::Device &device) const;
+	bool has_decal_view() const { return bool(tex); }
 	static const AABB &get_static_aabb();
 
 private:
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
-	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
-	Vulkan::Texture *tex = nullptr;
+	ImageAssetID tex;
 };
 }

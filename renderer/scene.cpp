@@ -431,7 +431,7 @@ void Scene::gather_visible_volumetric_decals(const Frustum &frustum, VolumetricD
 		auto *transform = get_component<RenderInfoComponent>(o);
 		auto *decal = get_component<VolumetricDecalComponent>(o);
 
-		if (decal->decal.get_decal_view())
+		if (decal->decal.has_decal_view())
 		{
 			if (transform->has_scene_node())
 			{

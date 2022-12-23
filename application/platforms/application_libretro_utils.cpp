@@ -24,6 +24,7 @@
 #include "application.hpp"
 #include "application_events.hpp"
 #include "thread_group.hpp"
+#include "asset_manager.hpp"
 #include "context.hpp"
 
 namespace Granite
@@ -85,6 +86,7 @@ bool libretro_create_device(
 	Vulkan::Context::SystemHandles system_handles;
 	system_handles.filesystem = GRANITE_FILESYSTEM();
 	system_handles.thread_group = GRANITE_THREAD_GROUP();
+	system_handles.asset_manager = GRANITE_ASSET_MANAGER();
 	system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
 	vulkan_context->set_system_handles(system_handles);
 	vulkan_context->set_num_thread_indices(GRANITE_THREAD_GROUP()->get_num_threads() + 1);

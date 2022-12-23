@@ -42,7 +42,9 @@ enum ManagerFeatureFlagBits
 	MANAGER_FEATURE_COMMON_RENDERER_DATA_BIT = 1 << 5,
 	MANAGER_FEATURE_PHYSICS_BIT = 1 << 6,
 	MANAGER_FEATURE_LOGGING_BIT = 1 << 7,
+	MANAGER_FEATURE_ASSET_MANAGER_BIT = 1 << 8,
 	MANAGER_FEATURE_DEFAULT_BITS = (MANAGER_FEATURE_FILESYSTEM_BIT |
+	                                MANAGER_FEATURE_ASSET_MANAGER_BIT |
 	                                MANAGER_FEATURE_EVENT_BIT |
 	                                MANAGER_FEATURE_THREAD_GROUP_BIT |
 	                                MANAGER_FEATURE_COMMON_RENDERER_DATA_BIT |
@@ -59,6 +61,7 @@ public:
 	virtual ~Factory() = default;
 
 	virtual FilesystemInterface *create_filesystem();
+	virtual AssetManagerInterface *create_asset_manager();
 	virtual EventManagerInterface *create_event_manager();
 	virtual ThreadGroupInterface *create_thread_group();
 	virtual CommonRendererDataInterface *create_common_renderer_data();
@@ -94,6 +97,7 @@ void install_audio_system(Audio::BackendInterface *backend, Audio::MixerInterfac
 
 Util::MessageQueueInterface *message_queue();
 FilesystemInterface *filesystem();
+AssetManagerInterface *asset_manager();
 EventManagerInterface *event_manager();
 ThreadGroupInterface *thread_group();
 UI::UIManagerInterface *ui_manager();
@@ -106,6 +110,7 @@ PhysicsSystemInterface *physics();
 
 #define GRANITE_MESSAGE_QUEUE() static_cast<::Util::MessageQueue *>(::Granite::Global::message_queue())
 #define GRANITE_FILESYSTEM() static_cast<::Granite::Filesystem *>(::Granite::Global::filesystem())
+#define GRANITE_ASSET_MANAGER() static_cast<::Granite::AssetManager *>(::Granite::Global::asset_manager())
 #define GRANITE_EVENT_MANAGER() static_cast<::Granite::EventManager *>(::Granite::Global::event_manager())
 #define GRANITE_THREAD_GROUP() static_cast<::Granite::ThreadGroup *>(::Granite::Global::thread_group())
 #define GRANITE_UI_MANAGER() static_cast<::Granite::UI::UIManager *>(::Granite::Global::ui_manager())

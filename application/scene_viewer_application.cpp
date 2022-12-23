@@ -1413,10 +1413,13 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 
 	char pos_text[256];
 	char rot_text[256];
+	char tex_text[256];
 	auto cam_pos = selected_camera->get_position();
 	auto cam_ori = selected_camera->get_rotation();
 	snprintf(pos_text, sizeof(pos_text), "Pos: %.3f, %.3f, %.3f", cam_pos.x, cam_pos.y, cam_pos.z);
 	snprintf(rot_text, sizeof(rot_text), "Rot: %.3f, %.3f, %.3f, %.3f", cam_ori.x, cam_ori.y, cam_ori.z, cam_ori.w);
+	snprintf(tex_text, sizeof(tex_text), "Texture: %u MiB",
+	         unsigned(GRANITE_ASSET_MANAGER()->get_current_total_consumed() / (1024 * 1024)));
 
 	vec3 offset(5.0f, 5.0f, 0.0f);
 	vec2 size(cmd.get_viewport().width - 10.0f, cmd.get_viewport().height - 10.0f);
@@ -1435,6 +1438,8 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 	                          offset + vec3(0.0f, 80.0f, 0.0f), size, color, alignment, 1.0f);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), rot_text,
 	                          offset + vec3(0.0f, 95.0f, 0.0f), size, color, alignment, 1.0f);
+	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), tex_text,
+	                          offset + vec3(0.0f, 110.0f, 0.0f), size, color, alignment, 1.0f);
 
 	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
 	device.get_memory_budget(budgets);
@@ -1447,7 +1452,7 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 		        double(budgets[i].tracked_usage) / double(1024 * 1024),
 		        double(budgets[i].max_size) / double(1024 * 1024));
 		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), heap_text,
-		                          offset + vec3(0.0f, 130.0f + 15.0f * float(i), 0.0f),
+		                          offset + vec3(0.0f, 145.0f + 15.0f * float(i), 0.0f),
 		                          size, color, alignment, 1.0f);
 	}
 
@@ -1463,6 +1468,7 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 
 void SceneViewerApplication::post_frame()
 {
+	Application::post_frame();
 	scene_loader.get_scene().destroy_queued_entities();
 }
 

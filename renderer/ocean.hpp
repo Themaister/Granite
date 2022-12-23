@@ -82,7 +82,6 @@ struct OceanConfig
 		float depth[MaxOceanLayers] = { 2.0f, 4.0f, 6.0f, 8.0f };
 		float emissive_mod = 1.0f;
 		bool bandlimited_pixel = false;
-		bool input_is_render_graph = false;
 	} refraction;
 };
 

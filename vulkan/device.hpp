@@ -44,9 +44,9 @@
 #include <unordered_map>
 #include <stdio.h>
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 #include "shader_manager.hpp"
-#include "texture_manager.hpp"
+#include "resource_manager.hpp"
 #endif
 
 #include <atomic>
@@ -415,11 +415,11 @@ public:
 
 	const Sampler &get_stock_sampler(StockSampler sampler) const;
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	// To obtain ShaderManager, ShaderModules must be observed to be complete
 	// in query_initialization_progress().
 	ShaderManager &get_shader_manager();
-	TextureManager &get_texture_manager();
+	ResourceManager &get_resource_manager();
 #endif
 
 	// Useful for loading screens or otherwise figuring out
@@ -609,7 +609,6 @@ private:
 		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
 		std::vector<VkSemaphore> consumed_semaphores;
-		std::vector<ImageHandle> keep_alive_images;
 
 		struct DebugChannel
 		{
@@ -753,7 +752,6 @@ private:
 	void destroy_event(VkEvent event);
 	void free_memory(const DeviceAllocation &alloc);
 	void reset_fence(VkFence fence, bool observed_wait);
-	void keep_handle_alive(ImageHandle handle);
 	void destroy_descriptor_pool(VkDescriptorPool desc_pool);
 
 	void destroy_buffer_nolock(VkBuffer buffer);
@@ -801,9 +799,9 @@ private:
 
 	Fence request_legacy_fence();
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	ShaderManager shader_manager;
-	TextureManager texture_manager;
+	ResourceManager resource_manager;
 	void init_shader_manager_cache();
 	void flush_shader_manager_cache();
 #endif

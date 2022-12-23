@@ -25,14 +25,10 @@
 #include "buffer.hpp"
 #include "image.hpp"
 #include "event.hpp"
+#include "asset_manager.hpp"
 #include "application_wsi_events.hpp"
 #include "application_events.hpp"
 #include "global_managers_interface.hpp"
-
-namespace Vulkan
-{
-class Texture;
-}
 
 namespace Granite
 {
@@ -57,22 +53,11 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
 };
 
-class BRDFTables : public EventHandler
-{
-public:
-	BRDFTables();
-	Vulkan::Texture *get_texture() const;
-
-private:
-	Vulkan::Texture *texture = nullptr;
-	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
-};
-
 class CommonRendererData final : public CommonRendererDataInterface
 {
 public:
 	LightMesh light_mesh;
-	BRDFTables brdf_tables;
+	ImageAssetID brdf_tables;
+	void initialize_static_assets(AssetManager *iface, Filesystem *file_iface);
 };
 }

@@ -32,6 +32,7 @@
 #include "texture_utils.hpp"
 #include "texture_format.hpp"
 #include "stb_image_write.h"
+#include "path_utils.hpp"
 
 using namespace rapidjson;
 using namespace Util;
@@ -121,7 +122,7 @@ struct AnalysisResult
 	std::shared_ptr<Vulkan::MemoryMappedTexture> image;
 	TextureCompression compression;
 	TextureMode mode;
-	Material::Textures type;
+	TextureKind type;
 	VkComponentMapping swizzle;
 
 	bool load_image();
@@ -147,7 +148,7 @@ struct EmittedImage
 	TextureCompressionFamily compression;
 	unsigned compression_quality;
 	TextureMode mode;
-	Material::Textures type;
+	TextureKind type;
 
 	std::shared_ptr<AnalysisResult> loaded_image;
 };
@@ -194,12 +195,12 @@ struct RemapState
 
 	unsigned emit_accessor(unsigned view_index, VkFormat format, unsigned offset, unsigned count);
 
-	unsigned emit_texture(const MaterialInfo::Texture &texture,
-	                      Vulkan::StockSampler sampler, Material::Textures type,
+	unsigned emit_texture(const std::string &texture,
+	                      Vulkan::StockSampler sampler, TextureKind type,
 	                      TextureCompressionFamily compression, unsigned quality, TextureMode mode);
 
 	unsigned emit_sampler(Vulkan::StockSampler sampler);
-	unsigned emit_image(const MaterialInfo::Texture &texture, Material::Textures type,
+	unsigned emit_image(const std::string &texture, TextureKind type,
 	                    TextureCompressionFamily compression, unsigned quality, TextureMode mode);
 
 	void emit_material(unsigned remapped_material);
@@ -283,11 +284,9 @@ Hash RemapState::hash(const Mesh &m)
 Hash RemapState::hash(const MaterialInfo &mat)
 {
 	Hasher h;
-	h.string(mat.base_color.path);
-	h.string(mat.normal.path);
-	h.string(mat.occlusion.path);
-	h.string(mat.metallic_roughness.path);
-	h.string(mat.emissive.path);
+
+	for (auto &path : mat.paths)
+		h.string(path);
 
 	h.f32(mat.normal_scale);
 	h.f32(mat.uniform_metallic);
@@ -297,7 +296,7 @@ Hash RemapState::hash(const MaterialInfo &mat)
 	for (unsigned i = 0; i < 3; i++)
 		h.f32(mat.uniform_emissive_color[i]);
 	h.s32(mat.two_sided);
-	h.s32(mat.bandlimited_pixel);
+	h.u32(mat.shader_variant);
 	h.u32(ecast(mat.pipeline));
 
 	return h.get();
@@ -638,11 +637,11 @@ unsigned RemapState::emit_sampler(Vulkan::StockSampler sampler)
 		return itr->second;
 }
 
-unsigned RemapState::emit_image(const MaterialInfo::Texture &texture, Material::Textures type,
+unsigned RemapState::emit_image(const std::string &texture, TextureKind type,
                                 TextureCompressionFamily compression, unsigned quality, TextureMode mode)
 {
 	Hasher h;
-	h.string(texture.path);
+	h.string(texture);
 	h.u32(ecast(type));
 	h.u32(ecast(compression));
 	h.u32(quality);
@@ -657,7 +656,7 @@ unsigned RemapState::emit_image(const MaterialInfo::Texture &texture, Material::
 
 		std::string extension = compression == TextureCompressionFamily::PNG ? ".png" : ".gtx";
 		const char *mime = compression == TextureCompressionFamily::PNG ? "image/png" : "image/custom/granite-texture";
-		image_cache.push_back({ texture.path, std::to_string(h.get()) + extension, mime,
+		image_cache.push_back({ texture, std::to_string(h.get()) + extension, mime,
 		                        compression, quality, mode, type, {}});
 		return index;
 	}
@@ -665,8 +664,8 @@ unsigned RemapState::emit_image(const MaterialInfo::Texture &texture, Material::
 		return itr->second;
 }
 
-unsigned RemapState::emit_texture(const MaterialInfo::Texture &texture,
-                                  Vulkan::StockSampler sampler, Material::Textures type,
+unsigned RemapState::emit_texture(const std::string &texture,
+                                  Vulkan::StockSampler sampler, TextureKind type,
                                   TextureCompressionFamily compression, unsigned quality, TextureMode mode)
 {
 	unsigned image_index = emit_image(texture, type, compression, quality, mode);
@@ -695,20 +694,20 @@ void RemapState::emit_environment(const std::string &cube, const std::string &re
 	EmittedEnvironment env;
 	if (!cube.empty())
 	{
-		env.cube = emit_texture(MaterialInfo::Texture(cube), Vulkan::StockSampler::LinearClamp,
-		                        Material::Textures::Emissive, compression, quality, TextureMode::HDR);
+		env.cube = emit_texture(cube, Vulkan::StockSampler::LinearClamp,
+		                        TextureKind::Emissive, compression, quality, TextureMode::HDR);
 	}
 
 	if (!reflection.empty())
 	{
-		env.reflection = emit_texture(MaterialInfo::Texture(reflection), Vulkan::StockSampler::LinearClamp,
-		                              Material::Textures::Emissive, compression, quality, TextureMode::HDR);
+		env.reflection = emit_texture(reflection, Vulkan::StockSampler::LinearClamp,
+		                              TextureKind::Emissive, compression, quality, TextureMode::HDR);
 	}
 
 	if (!irradiance.empty())
 	{
-		env.irradiance = emit_texture(MaterialInfo::Texture(irradiance), Vulkan::StockSampler::LinearClamp,
-		                              Material::Textures::Emissive, compression, quality, TextureMode::HDR);
+		env.irradiance = emit_texture(irradiance, Vulkan::StockSampler::LinearClamp,
+		                              TextureKind::Emissive, compression, quality, TextureMode::HDR);
 	}
 
 	env.intensity = intensity;
@@ -724,35 +723,41 @@ void RemapState::emit_material(unsigned remapped_material)
 	material_cache.resize(std::max<size_t>(material_cache.size(), remapped_material + 1));
 	auto &output = material_cache[remapped_material];
 
-	if (!mat.normal.path.empty())
+	auto &normal = mat.paths[Util::ecast(TextureKind::Normal)];
+	auto &occlusion = mat.paths[Util::ecast(TextureKind::Occlusion)];
+	auto &base_color = mat.paths[Util::ecast(TextureKind::BaseColor)];
+	auto &mr = mat.paths[Util::ecast(TextureKind::MetallicRoughness)];
+	auto &emissive = mat.paths[Util::ecast(TextureKind::Emissive)];
+
+	if (!normal.empty())
 	{
-		output.normal = emit_texture(mat.normal, mat.sampler, Material::Textures::Normal,
+		output.normal = emit_texture(normal, mat.sampler, TextureKind::Normal,
 		                             options->compression, options->texcomp_quality, TextureMode::Normal);
 	}
 
-	if (!mat.occlusion.path.empty())
+	if (!occlusion.empty())
 	{
-		output.occlusion = emit_texture(mat.occlusion, mat.sampler, Material::Textures::Occlusion,
+		output.occlusion = emit_texture(occlusion, mat.sampler, TextureKind::Occlusion,
 		                                options->compression, options->texcomp_quality, TextureMode::Luminance);
 	}
 
-	if (!mat.base_color.path.empty())
+	if (!base_color.empty())
 	{
-		output.base_color = emit_texture(mat.base_color, mat.sampler, Material::Textures::BaseColor,
+		output.base_color = emit_texture(base_color, mat.sampler, TextureKind::BaseColor,
 		                                 options->compression, options->texcomp_quality,
 		                                 mat.pipeline != DrawPipeline::Opaque ? TextureMode::sRGBA : TextureMode::sRGB);
 	}
 
-	if (!mat.metallic_roughness.path.empty())
+	if (!mr.empty())
 	{
-		output.metallic_roughness = emit_texture(mat.metallic_roughness, mat.sampler,
-		                                         Material::Textures::MetallicRoughness,
+		output.metallic_roughness = emit_texture(mr, mat.sampler,
+		                                         TextureKind::MetallicRoughness,
 		                                         options->compression, options->texcomp_quality, TextureMode::Mask);
 	}
 
-	if (!mat.emissive.path.empty())
+	if (!emissive.empty())
 	{
-		output.emissive = emit_texture(mat.emissive, mat.sampler, Material::Textures::Emissive,
+		output.emissive = emit_texture(emissive, mat.sampler, TextureKind::Emissive,
 		                               options->compression, options->texcomp_quality, TextureMode::sRGB);
 	}
 
@@ -763,7 +768,7 @@ void RemapState::emit_material(unsigned remapped_material)
 	output.normal_scale = mat.normal_scale;
 	output.pipeline = mat.pipeline;
 	output.two_sided = mat.two_sided;
-	output.bandlimited_pixel = mat.bandlimited_pixel;
+	output.bandlimited_pixel = (mat.shader_variant & MATERIAL_SHADER_VARIANT_BANDLIMITED_PIXEL_BIT) != 0;
 }
 
 static void quantize_attribute_fp32_fp16(uint8_t *output,
@@ -1345,12 +1350,12 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 	case TextureCompressionFamily::ASTC:
 		switch (type)
 		{
-		case Material::Textures::BaseColor:
-		case Material::Textures::Emissive:
+		case TextureKind::BaseColor:
+		case TextureKind::Emissive:
 			compression = TextureCompression::ASTC6x6;
 			break;
 
-		case Material::Textures::Occlusion:
+		case TextureKind::Occlusion:
 			compression = TextureCompression::ASTC6x6;
 			mode = TextureMode::Luminance;
 			swizzle_image(*image, { VK_COMPONENT_SWIZZLE_R,
@@ -1359,7 +1364,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 			                        VK_COMPONENT_SWIZZLE_R });
 			break;
 
-		case Material::Textures::Normal:
+		case TextureKind::Normal:
 			compression = TextureCompression::ASTC6x6;
 			mode = TextureMode::NormalLA;
 			swizzle_image(*image, { VK_COMPONENT_SWIZZLE_R,
@@ -1373,7 +1378,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 			swizzle.a = VK_COMPONENT_SWIZZLE_ONE;
 			break;
 
-		case Material::Textures::MetallicRoughness:
+		case TextureKind::MetallicRoughness:
 		{
 			compression = TextureCompression::ASTC6x6;
 			mode = TextureMode::MaskLA;
@@ -1430,17 +1435,17 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 	case TextureCompressionFamily::BC:
 		switch (type)
 		{
-		case Material::Textures::BaseColor:
-		case Material::Textures::Emissive:
+		case TextureKind::BaseColor:
+		case TextureKind::Emissive:
 			compression = TextureCompression::BC7;
 			break;
 
-		case Material::Textures::Occlusion:
+		case TextureKind::Occlusion:
 			compression = TextureCompression::BC4;
 			mode = TextureMode::Luminance;
 			break;
 
-		case Material::Textures::MetallicRoughness:
+		case TextureKind::MetallicRoughness:
 		{
 			mode = TextureMode::Mask;
 			auto mr_mode = deduce_metallic_roughness_mode();
@@ -1491,7 +1496,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 			break;
 		}
 
-		case Material::Textures::Normal:
+		case TextureKind::Normal:
 			compression = TextureCompression::BC5;
 			mode = TextureMode::Normal;
 			break;
@@ -1511,10 +1516,10 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 }
 
 static std::shared_ptr<AnalysisResult> analyze_image(ThreadGroup &workers,
-                                                const std::string &src,
-                                                Material::Textures type, TextureCompressionFamily family,
-                                                TextureMode mode,
-                                                TaskSignal *signal)
+                                                     const std::string &src,
+                                                     TextureKind type, TextureCompressionFamily family,
+                                                     TextureMode mode,
+                                                     TaskSignal *signal)
 {
 	auto result = std::make_shared<AnalysisResult>();
 	result->mode = mode;

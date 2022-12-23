@@ -95,7 +95,7 @@ set(GRANITE_HIDDEN ON CACHE STRING "Granite hidden" FORCE)
 
 # Disable dependencies on other modules.
 set(GRANITE_VULKAN_FOSSILIZE OFF CACHE STRING "Vulkan Fossilize" FORCE)
-set(GRANITE_VULKAN_FILESYSTEM OFF CACHE STRING "Vulkan filesystem" FORCE)
+set(GRANITE_VULKAN_SYSTEM_HANDLES OFF CACHE STRING "Vulkan filesystem" FORCE)
 add_subdirectory(Granite EXCLUDE_FROM_ALL)
 ```
 

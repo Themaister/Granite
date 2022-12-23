@@ -22,7 +22,9 @@
 
 #define NOMINMAX
 #include "application.hpp"
+#include "asset_manager.hpp"
 #include "thread_group.hpp"
+#include "common_renderer_data.hpp"
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_mixer.hpp"
 #endif
@@ -33,6 +35,7 @@ namespace Granite
 {
 Application::Application()
 {
+	GRANITE_COMMON_RENDERER_DATA()->initialize_static_assets(GRANITE_ASSET_MANAGER(), GRANITE_FILESYSTEM());
 }
 
 Application::~Application()
@@ -72,6 +75,7 @@ bool Application::init_wsi(Vulkan::ContextHandle context)
 		Context::SystemHandles system_handles;
 		system_handles.filesystem = GRANITE_FILESYSTEM();
 		system_handles.thread_group = GRANITE_THREAD_GROUP();
+		system_handles.asset_manager = GRANITE_ASSET_MANAGER();
 		system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
 
 		if (!application_wsi.init_context_from_platform(
@@ -147,6 +151,9 @@ void Application::check_initialization_progress()
 		if (device.query_initialization_progress(Device::InitializationStage::CacheMaintenance) >= 100 &&
 		    device.query_initialization_progress(Device::InitializationStage::ShaderModules) >= 100)
 		{
+			// Now is a good time to kick shader manager since it might require compute shaders for decode.
+			GRANITE_ASSET_MANAGER()->iterate(GRANITE_THREAD_GROUP());
+
 			GRANITE_SCOPED_TIMELINE_EVENT("dispatch-ready-modules");
 			GRANITE_EVENT_MANAGER()->enqueue_latched<DeviceShaderModuleReadyEvent>(&device, &device.get_shader_manager());
 			ready_modules = true;
@@ -264,5 +271,8 @@ void Application::render_loading(double, double)
 
 void Application::post_frame()
 {
+	// Texture manager might require shaders to be ready before we can submit work.
+	if (ready_modules)
+		GRANITE_ASSET_MANAGER()->iterate(GRANITE_THREAD_GROUP());
 }
 }

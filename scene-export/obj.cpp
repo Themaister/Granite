@@ -26,6 +26,7 @@
 #include "memory_mapped_texture.hpp"
 #include "texture_files.hpp"
 #include "string_helpers.hpp"
+#include "path_utils.hpp"
 
 using namespace Util;
 
@@ -130,7 +131,7 @@ void Parser::emit_gltf_base_color(const std::string &base_color_path, const std:
 	}
 	else
 	{
-		materials.back().base_color.path = base_color_path;
+		materials.back().paths[Util::ecast(TextureKind::BaseColor)] = base_color_path;
 		return;
 	}
 
@@ -168,7 +169,7 @@ void Parser::emit_gltf_base_color(const std::string &base_color_path, const std:
 	hasher.string(base_color_path);
 	hasher.string(alpha_mask_path);
 	std::string packed_path = std::string("memory://") + std::to_string(hasher.get()) + ".gtx";
-	materials.back().base_color.path = packed_path;
+	materials.back().paths[Util::ecast(TextureKind::BaseColor)] = packed_path;
 	materials.back().pipeline = DrawPipeline::AlphaTest;
 	materials.back().two_sided = true;
 
@@ -267,7 +268,7 @@ void Parser::emit_gltf_pbr_metallic_roughness(const std::string &metallic_path, 
 	hasher.string(metallic_path);
 	hasher.string(roughness_path);
 	std::string packed_path = std::string("memory://") + std::to_string(hasher.get()) + ".gtx";
-	materials.back().metallic_roughness.path = packed_path;
+	materials.back().paths[Util::ecast(TextureKind::MetallicRoughness)] = packed_path;
 
 	pbr.set_2d(VK_FORMAT_R8G8B8A8_UNORM, width, height);
 	if (!pbr.map_write(*GRANITE_FILESYSTEM(), packed_path))
@@ -430,7 +431,7 @@ void Parser::load_material_library(const std::string &path)
 		{
 			if (materials.empty())
 				throw std::logic_error("No material");
-			materials.back().normal.path = Path::relpath(path, elements.at(1));
+			materials.back().paths[Util::ecast(TextureKind::Normal)] = Path::relpath(path, elements.at(1));
 		}
 		else if (ident == "map_Ka")
 		{

@@ -29,6 +29,7 @@
 #include <algorithm>
 #include "rapidjson_wrapper.hpp"
 #include "muglm/matrix_helper.hpp"
+#include "path_utils.hpp"
 
 using namespace rapidjson;
 using namespace Granite;
@@ -865,7 +866,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 	};
 
 	const auto add_material = [&](const Value &value) {
-		SceneFormats::MaterialInfo info;
+		MaterialInfo info;
 
 		info.uniform_base_color = vec4(1.0f);
 		info.uniform_roughness = 1.0f;
@@ -890,7 +891,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 		{
 			auto &extras = value["extras"];
 			if (extras.HasMember("bandlimitedPixel"))
-				info.bandlimited_pixel = extras["bandlimitedPixel"].GetBool();
+				info.shader_variant |= extras["bandlimitedPixel"].GetBool() ? MATERIAL_SHADER_VARIANT_BANDLIMITED_PIXEL_BIT : 0;
 		}
 
 		if (value.HasMember("emissiveFactor"))
@@ -903,7 +904,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 		{
 			auto &tex = value["normalTexture"]["index"];
 			auto &image = json_images[json_textures[tex.GetUint()].image_index];
-			info.normal = image;
+			info.paths[Util::ecast(TextureKind::Normal)] = image;
 			if (value["normalTexture"].HasMember("scale"))
 				info.normal_scale = value["normalTexture"]["scale"].GetFloat();
 		}
@@ -912,14 +913,14 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 		{
 			auto &tex = value["emissiveTexture"]["index"];
 			auto &image = json_images[json_textures[tex.GetUint()].image_index];
-			info.emissive = image;
+			info.paths[Util::ecast(TextureKind::Emissive)] = image;
 		}
 
 		if (value.HasMember("occlusionTexture"))
 		{
 			auto &tex = value["occlusionTexture"]["index"];
 			auto &image = json_images[json_textures[tex.GetUint()].image_index];
-			info.occlusion = image;
+			info.paths[Util::ecast(TextureKind::Occlusion)] = image;
 		}
 
 		if (value.HasMember("extensions"))
@@ -954,7 +955,8 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 					if (pbr_value.HasMember("diffuseTexture"))
 					{
 						auto &tex = pbr_value["diffuseTexture"]["index"];
-						info.base_color = json_images[json_textures[tex.GetUint()].image_index];
+						info.paths[Util::ecast(TextureKind::BaseColor)] =
+								json_images[json_textures[tex.GetUint()].image_index];
 						info.sampler = json_textures[tex.GetUint()].sampler;
 					}
 
@@ -972,14 +974,16 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 			if (mr.HasMember("baseColorTexture"))
 			{
 				auto &tex = mr["baseColorTexture"]["index"];
-				info.base_color = json_images[json_textures[tex.GetUint()].image_index];
+				info.paths[Util::ecast(TextureKind::BaseColor)] =
+						json_images[json_textures[tex.GetUint()].image_index];
 				info.sampler = json_textures[tex.GetUint()].sampler;
 			}
 
 			if (mr.HasMember("metallicRoughnessTexture"))
 			{
 				auto &tex = mr["metallicRoughnessTexture"]["index"];
-				info.metallic_roughness = json_images[json_textures[tex.GetUint()].image_index];
+				info.paths[Util::ecast(TextureKind::MetallicRoughness)] =
+						json_images[json_textures[tex.GetUint()].image_index];
 			}
 
 			if (mr.HasMember("baseColorFactor"))
@@ -1279,7 +1283,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 	};
 
 	const auto add_environment = [&](const Value &value) {
-		SceneFormats::MaterialInfo::Texture cube;
+		std::string cube;
 
 		if (value.HasMember("cubeTexture"))
 		{
@@ -1564,7 +1568,7 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 		else if (i == ecast(MeshAttribute::Tangent) &&
 		         mesh.has_material &&
 		         !prim.attributes[i].active &&
-		         !materials[mesh.material_index].normal.path.empty())
+		         !materials[mesh.material_index].paths[Util::ecast(TextureKind::Normal)].empty())
 		{
 			rebuild_tangents = true;
 			mesh.attribute_layout[i].format = VK_FORMAT_R32G32B32A32_SFLOAT;

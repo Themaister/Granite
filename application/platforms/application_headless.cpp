@@ -37,6 +37,7 @@
 #include "thread_group.hpp"
 #include "global_managers_init.hpp"
 #include "thread_latch.hpp"
+#include "path_utils.hpp"
 
 #ifdef HAVE_GRANITE_FFMPEG
 #include "ffmpeg.hpp"

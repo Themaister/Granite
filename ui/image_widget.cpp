@@ -31,69 +31,35 @@ namespace Granite
 {
 namespace UI
 {
-Image::Image(const std::string &path_)
-	: path(path_)
+Image::Image(const std::string &path, vec2 target)
 {
-	EVENT_MANAGER_REGISTER_LATCH(Image, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	texture = GRANITE_ASSET_MANAGER()->register_image_resource(
+			*GRANITE_FILESYSTEM(), path,
+			ImageClass::Color);
+
+	geometry.minimum = target;
+	geometry.target = target;
 }
 
 void Image::reconfigure()
 {
 }
 
-void Image::on_device_created(const DeviceCreatedEvent &created)
-{
-	auto &device = created.get_device();
-	texture = device.get_texture_manager().request_texture(path);
-
-	auto &create_info = texture->get_image()->get_create_info();
-	geometry.minimum = vec2(create_info.width, create_info.height);
-	geometry.target = vec2(create_info.width, create_info.height);
-}
-
 void Image::reconfigure_to_canvas(vec2, vec2 size)
 {
 	sprite_offset = vec2(0.0f);
 	sprite_size = size;
-
-	auto &create_info = texture->get_image()->get_create_info();
-	image_size = vec2(create_info.width, create_info.height);
-
-	if (keep_aspect)
-	{
-		float target_aspect = image_size.x / image_size.y;
-		float canvas_aspect = size.x / size.y;
-
-		if (muglm::abs(canvas_aspect / target_aspect - 1.0f) > 0.001f)
-		{
-			if (canvas_aspect > target_aspect)
-			{
-				float width = muglm::round(size.y * target_aspect);
-				float bias = 0.5f * (size.x - width);
-				sprite_offset.x = muglm::round(sprite_offset.x + bias);
-				sprite_size.x = width;
-			}
-			else
-			{
-				float height = muglm::round(size.x / target_aspect);
-				float bias = 0.5f * (size.y - height);
-				sprite_offset.y = muglm::round(sprite_offset.y + bias);
-				sprite_size.y = height;
-			}
-		}
-	}
 }
 
 float Image::render(FlatRenderer &renderer, float layer, vec2 offset, vec2)
 {
-	renderer.render_textured_quad(texture->get_image()->get_view(), vec3(offset + sprite_offset, layer), sprite_size,
-	                              vec2(0.0f), image_size, DrawPipeline::AlphaBlend, vec4(1.0f), sampler);
-	return layer;
-}
+	auto *view = renderer.get_device().get_resource_manager().get_image_view_blocking(texture);
+	vec2 image_size(view->get_view_width(), view->get_view_height());
 
-void Image::on_device_destroyed(const DeviceCreatedEvent &)
-{
-	texture = nullptr;
+	renderer.render_textured_quad(
+			*view, vec3(offset + sprite_offset, layer), sprite_size,
+			vec2(0.0f), image_size, DrawPipeline::AlphaBlend, vec4(1.0f), sampler);
+	return layer;
 }
 }
 }

@@ -34,7 +34,7 @@ using namespace Vulkan;
 
 namespace Granite
 {
-ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
+ImageHandle convert_cube_to_ibl_specular(Device &device, const ImageView &view)
 {
 	unsigned size = 128;
 	float base_sample_lod = log2(float(std::max(view.get_image().get_create_info().width,
@@ -103,7 +103,7 @@ ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
 	return handle;
 }
 
-ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
+ImageHandle convert_cube_to_ibl_diffuse(Device &device, const ImageView &view)
 {
 	unsigned size = 32;
 
@@ -160,7 +160,7 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
 	return handle;
 }
 
-ImageHandle convert_equirect_to_cube(Device &device, ImageView &view, float scale)
+ImageHandle convert_equirect_to_cube(Device &device, const ImageView &view, float scale)
 {
 	unsigned size = unsigned(scale * std::max(view.get_image().get_create_info().width / 3,
 	                                          view.get_image().get_create_info().height / 2));

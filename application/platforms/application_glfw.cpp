@@ -29,6 +29,7 @@
 #include "thread_id.hpp"
 #include "cli_parser.hpp"
 #include "GLFW/glfw3.h"
+#include "path_utils.hpp"
 #include <thread>
 #include <condition_variable>
 #include <mutex>

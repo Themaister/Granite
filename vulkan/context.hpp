@@ -41,6 +41,7 @@ namespace Granite
 {
 class Filesystem;
 class ThreadGroup;
+class AssetManager;
 }
 
 namespace Vulkan
@@ -237,6 +238,7 @@ public:
 		Util::TimelineTraceFile *timeline_trace_file = nullptr;
 		Granite::Filesystem *filesystem = nullptr;
 		Granite::ThreadGroup *thread_group = nullptr;
+		Granite::AssetManager *asset_manager = nullptr;
 	};
 
 	void set_system_handles(const SystemHandles &handles_)

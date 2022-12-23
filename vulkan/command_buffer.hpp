@@ -359,7 +359,7 @@ public:
 
 	void set_program(Program *program);
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	// Convenience functions for one-off shader binds.
 	void set_program(const std::string &vertex, const std::string &fragment, const std::vector<std::pair<std::string, int>> &defines = {});
 	void set_program(const std::string &compute, const std::vector<std::pair<std::string, int>> &defines = {});
@@ -788,7 +788,7 @@ private:
 	void set_surface_transform_specialization_constants();
 };
 
-#ifdef GRANITE_VULKAN_FILESYSTEM
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 struct CommandBufferUtil
 {
 	static void draw_fullscreen_quad(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,

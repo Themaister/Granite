@@ -302,6 +302,12 @@ void TaskSignal::wait_until_at_least(uint64_t count)
 	});
 }
 
+uint64_t TaskSignal::get_count()
+{
+	std::lock_guard<std::mutex> holder{lock};
+	return counter;
+}
+
 TaskGroupHandle ThreadGroup::create_task()
 {
 	TaskGroupHandle group(task_group_pool.allocate(this));

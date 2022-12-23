@@ -32,6 +32,11 @@ using namespace Util;
 
 namespace Granite
 {
+void RenderQueue::set_device(Vulkan::Device *device)
+{
+	resource_manager = &device->get_resource_manager();
+}
+
 void RenderQueue::sort()
 {
 	for (auto &queue : queues)

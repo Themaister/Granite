@@ -56,6 +56,12 @@ void FlatRenderer::pop_scissor()
 	scissor_stack.pop_back();
 }
 
+Vulkan::Device &FlatRenderer::get_device()
+{
+	VK_ASSERT(device);
+	return *device;
+}
+
 void FlatRenderer::on_module_created(const DeviceShaderModuleReadyEvent &created)
 {
 	auto &dev = created.get_device();

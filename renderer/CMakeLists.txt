@@ -16,7 +16,6 @@ add_granite_internal_lib(granite-renderer
         renderer.hpp renderer.cpp
         flat_renderer.hpp flat_renderer.cpp
         renderer_enums.hpp
-        material_manager.hpp material_manager.cpp
         animation_system.hpp animation_system.cpp
         render_graph.cpp render_graph.hpp
         ground.hpp ground.cpp
@@ -41,12 +40,10 @@ add_granite_internal_lib(granite-renderer
         formats/scene_formats.hpp formats/scene_formats.cpp
         formats/gltf.hpp formats/gltf.cpp
         scene_loader.cpp scene_loader.hpp
-        mesh_manager.cpp mesh_manager.hpp
         ocean.hpp ocean.cpp
         fft/fft.cpp fft/fft.hpp
         sprite.cpp sprite.hpp
         common_renderer_data.cpp common_renderer_data.hpp
-        cpu_rasterizer.cpp cpu_rasterizer.hpp
         font.cpp font.hpp
         threaded_scene.cpp threaded_scene.hpp)
 target_include_directories(granite-renderer

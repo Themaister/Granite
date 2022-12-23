@@ -23,7 +23,6 @@
 #include "mesh_util.hpp"
 #include "device.hpp"
 #include "material_util.hpp"
-#include "material_manager.hpp"
 #include "render_context.hpp"
 #include "shader_suite.hpp"
 #include "renderer.hpp"
@@ -39,9 +38,10 @@ using namespace Granite::SceneFormats;
 
 namespace Granite
 {
-ImportedSkinnedMesh::ImportedSkinnedMesh(const Mesh &mesh_, const MaterialInfo &info_)
-	: mesh(mesh_), info(info_)
+ImportedSkinnedMesh::ImportedSkinnedMesh(const Mesh &mesh_, const MaterialInfo &info)
+	: mesh(mesh_)
 {
+	material.set_info(info);
 	topology = mesh.topology;
 	index_type = mesh.index_type;
 
@@ -53,7 +53,6 @@ ImportedSkinnedMesh::ImportedSkinnedMesh(const Mesh &mesh_, const MaterialInfo &
 	vertex_offset = 0;
 	ibo_offset = 0;
 
-	material = Util::make_derived_handle<Material, MaterialFile>(info);
 	static_aabb = mesh.static_aabb;
 
 	EVENT_MANAGER_REGISTER_LATCH(ImportedSkinnedMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
@@ -93,19 +92,10 @@ void ImportedSkinnedMesh::on_device_destroyed(const DeviceCreatedEvent &)
 	ibo.reset();
 }
 
-const SceneFormats::Mesh &ImportedSkinnedMesh::get_mesh() const
+ImportedMesh::ImportedMesh(const Mesh &mesh_, const MaterialInfo &info)
+	: mesh(mesh_)
 {
-	return mesh;
-}
-
-const SceneFormats::MaterialInfo &ImportedSkinnedMesh::get_material_info() const
-{
-	return info;
-}
-
-ImportedMesh::ImportedMesh(const Mesh &mesh_, const MaterialInfo &info_)
-	: mesh(mesh_), info(info_)
-{
+	material.set_info(info);
 	topology = mesh.topology;
 	primitive_restart = mesh.primitive_restart;
 	index_type = mesh.index_type;
@@ -118,20 +108,9 @@ ImportedMesh::ImportedMesh(const Mesh &mesh_, const MaterialInfo &info_)
 	vertex_offset = 0;
 	ibo_offset = 0;
 
-	material = Util::make_derived_handle<Material, MaterialFile>(info);
 	static_aabb = mesh.static_aabb;
 
 	EVENT_MANAGER_REGISTER_LATCH(ImportedMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
-}
-
-const SceneFormats::Mesh &ImportedMesh::get_mesh() const
-{
-	return mesh;
-}
-
-const SceneFormats::MaterialInfo &ImportedMesh::get_material_info() const
-{
-	return info;
 }
 
 void ImportedMesh::on_device_created(const DeviceCreatedEvent &created)
@@ -167,7 +146,6 @@ void ImportedMesh::on_device_destroyed(const DeviceCreatedEvent &)
 	vbo_position.reset();
 	ibo.reset();
 }
-
 
 GeneratedMeshData create_sphere_mesh(unsigned density)
 {
@@ -583,7 +561,7 @@ SphereMesh::SphereMesh(unsigned density_)
 	: density(density_)
 {
 	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
-	material = StockMaterials::get().get_checkerboard();
+	material = StockMaterials::create_checkerboard();
 	EVENT_MANAGER_REGISTER_LATCH(SphereMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
@@ -683,7 +661,7 @@ ConeMesh::ConeMesh(unsigned density_, float height_, float radius_)
 	: density(density_), height(height_), radius(radius_)
 {
 	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
-	material = StockMaterials::get().get_checkerboard();
+	material = StockMaterials::create_checkerboard();
 	EVENT_MANAGER_REGISTER_LATCH(ConeMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
@@ -703,7 +681,7 @@ CylinderMesh::CylinderMesh(unsigned density_, float height_, float radius_)
 	: density(density_), height(height_), radius(radius_)
 {
 	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
-	material = StockMaterials::get().get_checkerboard();
+	material = StockMaterials::create_checkerboard();
 	EVENT_MANAGER_REGISTER_LATCH(CylinderMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
@@ -723,7 +701,7 @@ CapsuleMesh::CapsuleMesh(unsigned density_, float height_, float radius_)
 	: density(density_), height(height_), radius(radius_)
 {
 	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
-	material = StockMaterials::get().get_checkerboard();
+	material = StockMaterials::create_checkerboard();
 	EVENT_MANAGER_REGISTER_LATCH(CapsuleMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
@@ -742,7 +720,7 @@ void CapsuleMesh::on_device_destroyed(const DeviceCreatedEvent &)
 CubeMesh::CubeMesh()
 {
 	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
-	material = StockMaterials::get().get_checkerboard();
+	material = StockMaterials::create_checkerboard();
 	EVENT_MANAGER_REGISTER_LATCH(CubeMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
@@ -908,9 +886,14 @@ void CubeMesh::on_device_destroyed(const DeviceCreatedEvent &)
 	reset();
 }
 
-SkyCylinder::SkyCylinder(std::string bg_path_)
-	: bg_path(std::move(bg_path_))
+SkyCylinder::SkyCylinder(const std::string &bg_path)
 {
+	if (!bg_path.empty())
+	{
+		texture = GRANITE_ASSET_MANAGER()->register_image_resource(
+				*GRANITE_FILESYSTEM(), bg_path, ImageClass::Color);
+	}
+
 	EVENT_MANAGER_REGISTER_LATCH(SkyCylinder, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
@@ -967,9 +950,6 @@ static void skycylinder_render(CommandBuffer &cmd, const RenderQueueData *infos,
 void SkyCylinder::on_device_created(const DeviceCreatedEvent &created)
 {
 	auto &device = created.get_device();
-	texture = nullptr;
-	if (!bg_path.empty())
-		texture = device.get_texture_manager().request_texture(bg_path);
 
 	std::vector<CylinderVertex> v;
 	std::vector<uint16_t> indices;
@@ -1035,7 +1015,6 @@ void SkyCylinder::on_device_created(const DeviceCreatedEvent &created)
 
 void SkyCylinder::on_device_destroyed(const DeviceCreatedEvent &)
 {
-	texture = nullptr;
 	vbo.reset();
 	ibo.reset();
 	sampler.reset();
@@ -1046,7 +1025,7 @@ void SkyCylinder::get_render_info(const RenderContext &, const RenderInfoCompone
 {
 	SkyCylinderRenderInfo info;
 
-	info.view = &texture->get_image()->get_view();
+	info.view = queue.get_resource_manager().get_image_view(texture);
 
 	Hasher h;
 	h.pointer(info.view);
@@ -1073,10 +1052,18 @@ void SkyCylinder::get_render_info(const RenderContext &, const RenderInfoCompone
 	}
 }
 
-Skybox::Skybox(std::string bg_path_)
-	: bg_path(std::move(bg_path_))
+Skybox::Skybox(const std::string &bg_path)
 {
-	EVENT_MANAGER_REGISTER_LATCH(Skybox, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	if (!bg_path.empty())
+	{
+		texture = GRANITE_ASSET_MANAGER()->register_image_resource(
+				*GRANITE_FILESYSTEM(), bg_path, ImageClass::Color);
+	}
+}
+
+void Skybox::set_image(ImageAssetID skybox)
+{
+	texture = skybox;
 }
 
 struct SkyboxRenderInfo
@@ -1125,10 +1112,8 @@ void Skybox::get_render_info(const RenderContext &context, const RenderInfoCompo
 {
 	SkyboxRenderInfo info;
 
-	if (image)
-		info.view = &image->get_view();
-	else if (texture)
-		info.view = &texture->get_image()->get_view();
+	if (texture)
+		info.view = queue.get_resource_manager().get_image_view(texture);
 	else
 		info.view = nullptr;
 
@@ -1167,31 +1152,6 @@ void Skybox::get_render_info(const RenderContext &context, const RenderInfoCompo
 			VariantSignatureKey::build(DrawPipeline::Opaque, 0, shader_flags));
 		*skydome_info = info;
 	}
-}
-
-void Skybox::on_device_created(const Vulkan::DeviceCreatedEvent &created)
-{
-	texture = nullptr;
-	device = &created.get_device();
-	if (!bg_path.empty())
-		texture = created.get_device().get_texture_manager().request_texture(bg_path);
-}
-
-void Skybox::set_image(Vulkan::ImageHandle skybox)
-{
-	image = std::move(skybox);
-}
-
-void Skybox::set_image(Vulkan::Texture *skybox)
-{
-	texture = skybox;
-}
-
-void Skybox::on_device_destroyed(const DeviceCreatedEvent &)
-{
-	device = nullptr;
-	texture = nullptr;
-	image.reset();
 }
 
 struct TexturePlaneInfo
@@ -1233,20 +1193,10 @@ static void texture_plane_render(CommandBuffer &cmd, const RenderQueueData *info
 	}
 }
 
-TexturePlane::TexturePlane(const std::string &normal_)
-	: normal_path(normal_)
+TexturePlane::TexturePlane(const std::string &normal_path)
 {
-	EVENT_MANAGER_REGISTER_LATCH(TexturePlane, on_device_created, on_device_destroyed, DeviceCreatedEvent);
-}
-
-void TexturePlane::on_device_created(const DeviceCreatedEvent &created)
-{
-	normalmap = created.get_device().get_texture_manager().request_texture(normal_path);
-}
-
-void TexturePlane::on_device_destroyed(const DeviceCreatedEvent &)
-{
-	normalmap = nullptr;
+	normalmap = GRANITE_ASSET_MANAGER()->register_image_resource(
+			*GRANITE_FILESYSTEM(), normal_path, ImageClass::Normal);
 }
 
 void TexturePlane::setup_render_pass_resources(RenderGraph &graph)
@@ -1445,7 +1395,7 @@ void TexturePlane::get_render_info(const RenderContext &context_, const RenderIn
 	TexturePlaneInfo info;
 	info.reflection = reflection;
 	info.refraction = refraction;
-	info.normal = &normalmap->get_image()->get_view();
+	info.normal = queue.get_resource_manager().get_image_view(normalmap);
 	info.push.normal = vec4(normalize(normal), 0.0f);
 	info.push.position = vec4(position, 0.0f);
 	info.push.dPdx = vec4(dpdx, 0.0f);

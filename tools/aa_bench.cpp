@@ -27,7 +27,7 @@ private:
 	void on_swapchain_changed(const SwapchainParameterEvent &e);
 	void on_swapchain_destroyed(const SwapchainParameterEvent &e);
 
-	Texture *images[2] = {};
+	ImageAssetID images[2] = {};
 	RenderGraph graph;
 	TemporalJitter jitter;
 	RenderContext render_context;
@@ -39,7 +39,8 @@ AABenchApplication::AABenchApplication(const std::string &input0, const std::str
 	: input_path0(input0), input_path1(input1), scale(scale_)
 {
 	type = string_to_post_antialiasing_type(method);
-
+	images[0] = input_path0.empty() ? ImageAssetID{} : GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), input_path0, ImageClass::Color);
+	images[1] = input_path1.empty() ? ImageAssetID{} : GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), input_path1, ImageClass::Color);
 	EVENT_MANAGER_REGISTER_LATCH(AABenchApplication, on_swapchain_changed, on_swapchain_destroyed, SwapchainParameterEvent);
 	EVENT_MANAGER_REGISTER_LATCH(AABenchApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
@@ -91,10 +92,10 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 		return true;
 	});
 	pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-		auto *img = images[(input_index++) & 1];
+		auto img = images[(input_index++) & 1];
 		if (img)
 		{
-			cmd.set_texture(0, 0, img->get_image()->get_view(),
+			cmd.set_texture(0, 0, *cmd.get_device().get_resource_manager().get_image_view_blocking(img),
 			                Vulkan::StockSampler::LinearClamp);
 			Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
 			                                                "builtin://shaders/blit.frag", {});
@@ -161,14 +162,11 @@ void AABenchApplication::on_swapchain_destroyed(const SwapchainParameterEvent &)
 
 void AABenchApplication::on_device_created(const DeviceCreatedEvent &e)
 {
-	images[0] = input_path0.empty() ? nullptr : e.get_device().get_texture_manager().request_texture(input_path0);
-	images[1] = input_path1.empty() ? nullptr : e.get_device().get_texture_manager().request_texture(input_path1);
 	graph.set_device(&e.get_device());
 }
 
 void AABenchApplication::on_device_destroyed(const DeviceCreatedEvent &)
 {
-	memset(images, 0, sizeof(images));
 	graph.reset();
 	graph.set_device(nullptr);
 }

@@ -34,8 +34,6 @@ namespace Granite
 {
 class FileMapping;
 
-namespace Internal
-{
 class File : public Util::ThreadSafeIntrusivePtrEnabled<File>
 {
 public:
@@ -49,8 +47,7 @@ public:
 
 	Util::IntrusivePtr<FileMapping> map();
 };
-}
-using FileHandle = Util::IntrusivePtr<Internal::File>;
+using FileHandle = Util::IntrusivePtr<File>;
 
 class FileMapping : public Util::ThreadSafeIntrusivePtrEnabled<FileMapping>
 {
@@ -232,7 +229,7 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<ScratchFile>> scratch_files;
 };
 
-class ConstantMemoryFile final : public Granite::Internal::File
+class ConstantMemoryFile final : public Granite::File
 {
 public:
 	ConstantMemoryFile(const void *mapped_, size_t size_)
@@ -270,7 +267,7 @@ private:
 	size_t size;
 };
 
-class FileSlice final : public Granite::Internal::File
+class FileSlice final : public File
 {
 public:
 	FileSlice(FileHandle handle, uint64_t offset, uint64_t range);

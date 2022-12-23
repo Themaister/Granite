@@ -25,7 +25,6 @@
 #include "temporal.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
-#include "texture_files.hpp"
 #include <string.h>
 
 namespace Granite

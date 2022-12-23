@@ -94,7 +94,7 @@ struct TextureViewerApplication : Granite::Application, Granite::EventHandler
 
 	void on_device_create(const DeviceCreatedEvent &e)
 	{
-		texture = e.get_device().get_texture_manager().request_texture(path);
+		texture = e.get_device().get_resource_manager().request_texture(path);
 	}
 
 	void on_device_destroy(const DeviceCreatedEvent &)

@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
 	device.set_context(context);
 	device.init_external_swapchain({ ImageHandle(nullptr) });
 
-	auto &textures = device.get_texture_manager();
+	auto &textures = device.get_resource_manager();
 	auto *equirect = textures.request_texture(args.equirect);
 
 	auto cube = convert_equirect_to_cube(device, equirect->get_image()->get_view(), args.cube_scale);

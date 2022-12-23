@@ -154,8 +154,8 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	smaa_weight.set_build_render_pass([&, area, search, edge = masked_edge, q = smaa_quality](Vulkan::CommandBuffer &cmd) {
 		auto &input_image = graph.get_physical_texture_resource(weight_input_res);
 		cmd.set_texture(0, 0, input_image, Vulkan::StockSampler::LinearClamp);
-		cmd.set_texture(0, 1, *cmd.get_device().get_texture_manager().get_image_view_blocking(area), Vulkan::StockSampler::LinearClamp);
-		cmd.set_texture(0, 2, *cmd.get_device().get_texture_manager().get_image_view_blocking(search), Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(0, 1, *cmd.get_device().get_resource_manager().get_image_view_blocking(area), Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(0, 2, *cmd.get_device().get_resource_manager().get_image_view_blocking(search), Vulkan::StockSampler::LinearClamp);
 		vec4 rt_metrics(1.0f / input_image.get_image().get_create_info().width,
 		                1.0f / input_image.get_image().get_create_info().height,
 		                float(input_image.get_image().get_create_info().width),

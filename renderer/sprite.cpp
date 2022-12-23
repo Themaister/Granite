@@ -142,9 +142,9 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	SpriteRenderInfo sprite;
 
 	if (texture)
-		sprite.textures[0] = queue.get_texture_manager().get_image_view(texture);
+		sprite.textures[0] = queue.get_resource_manager().get_image_view(texture);
 	if (texture_alt)
-		sprite.textures[1] = queue.get_texture_manager().get_image_view(texture_alt);
+		sprite.textures[1] = queue.get_resource_manager().get_image_view(texture_alt);
 	sprite.sampler = sampler;
 
 	auto *instance_data = queue.allocate_one<SpriteInstanceInfo>();

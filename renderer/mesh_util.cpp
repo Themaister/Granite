@@ -1025,7 +1025,7 @@ void SkyCylinder::get_render_info(const RenderContext &, const RenderInfoCompone
 {
 	SkyCylinderRenderInfo info;
 
-	info.view = queue.get_texture_manager().get_image_view(texture);
+	info.view = queue.get_resource_manager().get_image_view(texture);
 
 	Hasher h;
 	h.pointer(info.view);
@@ -1113,7 +1113,7 @@ void Skybox::get_render_info(const RenderContext &context, const RenderInfoCompo
 	SkyboxRenderInfo info;
 
 	if (texture)
-		info.view = queue.get_texture_manager().get_image_view(texture);
+		info.view = queue.get_resource_manager().get_image_view(texture);
 	else
 		info.view = nullptr;
 
@@ -1395,7 +1395,7 @@ void TexturePlane::get_render_info(const RenderContext &context_, const RenderIn
 	TexturePlaneInfo info;
 	info.reflection = reflection;
 	info.refraction = refraction;
-	info.normal = queue.get_texture_manager().get_image_view(normalmap);
+	info.normal = queue.get_resource_manager().get_image_view(normalmap);
 	info.push.normal = vec4(normalize(normal), 0.0f);
 	info.push.position = vec4(position, 0.0f);
 	info.push.dPdx = vec4(dpdx, 0.0f);

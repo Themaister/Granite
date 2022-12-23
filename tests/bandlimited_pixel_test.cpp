@@ -117,7 +117,7 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 				                 { "BANDLIMITED_PIXEL_USE_TRANSCENDENTAL", 1 },
 		                 });
 
-		auto *texture = device.get_texture_manager().request_texture("assets://textures/sprite.png");
+		auto *texture = device.get_resource_manager().request_texture("assets://textures/sprite.png");
 		cmd->set_texture(2, 0, texture->get_image()->get_view(), mode == 0 ? StockSampler::NearestWrap : StockSampler::TrilinearWrap);
 
 		CommandBufferUtil::set_quad_vertex_state(*cmd);

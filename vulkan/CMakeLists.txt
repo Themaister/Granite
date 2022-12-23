@@ -53,8 +53,8 @@ if (GRANITE_VULKAN_SYSTEM_HANDLES)
     target_sources(granite-vulkan PRIVATE
             managers/shader_manager.cpp
             managers/shader_manager.hpp
-            managers/texture_manager.cpp
-            managers/texture_manager.hpp)
+            managers/resource_manager.cpp
+            managers/resource_manager.hpp)
 
     target_sources(granite-vulkan PRIVATE
             texture/memory_mapped_texture.cpp texture/memory_mapped_texture.hpp

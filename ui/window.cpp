@@ -25,7 +25,7 @@
 #include "ui_manager.hpp"
 #include "widget.hpp"
 #include "device.hpp"
-#include "texture_manager.hpp"
+#include "resource_manager.hpp"
 
 namespace Granite
 {
@@ -108,7 +108,7 @@ float Window::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size
 	{
 		if (bg_image)
 		{
-			auto *view = renderer.get_device().get_texture_manager().get_image_view(bg_image);
+			auto *view = renderer.get_device().get_resource_manager().get_image_view(bg_image);
 			renderer.render_textured_quad(*view,
 			                              vec3(offset, layer), size,
 			                              vec2(0.0f), vec2(view->get_view_width(), view->get_view_height()),

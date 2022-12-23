@@ -63,7 +63,7 @@ void UIApplication::on_device_created(const DeviceCreatedEvent &e)
 	window->show_title_bar(false);
 	window->set_floating(false);
 	window->set_background_color(vec4(0.0f, 1.0f, 0.0f, 1.0f));
-	window->set_background_image(device.get_texture_manager().request_texture("builtin://textures/checkerboard.png"));
+	window->set_background_image(device.get_resource_manager().request_texture("builtin://textures/checkerboard.png"));
 
 	auto button = make_handle<UI::ClickButton>();
 	window->add_child(button);
@@ -102,7 +102,7 @@ void UIApplication::on_device_created(const DeviceCreatedEvent &e)
 		slider->show_value(false);
 		slider->set_margin(5.0f);
 		slider->show_tooltip(true);
-		slider->set_background_image(device.get_texture_manager().request_texture("builtin://textures/checkerboard.png"));
+		slider->set_background_image(device.get_resource_manager().request_texture("builtin://textures/checkerboard.png"));
 		slider->set_background_color(vec4(1.0f));
 	}
 
@@ -122,7 +122,7 @@ void UIApplication::on_device_created(const DeviceCreatedEvent &e)
 		sli.show_value(false);
 		sli.set_margin(5.0f);
 		sli.show_tooltip(true);
-		sli.set_background_image(device.get_texture_manager().request_texture("builtin://textures/checkerboard.png"));
+		sli.set_background_image(device.get_resource_manager().request_texture("builtin://textures/checkerboard.png"));
 		sli.set_background_color(vec4(1.0f));
 	}
 
@@ -136,7 +136,7 @@ void UIApplication::on_device_created(const DeviceCreatedEvent &e)
 		btn.set_text("Mjuu");
 		btn.set_toggled_font_color(vec4(0.0f, 1.0f, 0.0f, 1.0f));
 		btn.set_untoggled_font_color(vec4(1.0f, 0.0f, 0.0f, 1.0f));
-		btn.set_background_image(device.get_texture_manager().request_texture("builtin://textures/checkerboard.png"));
+		btn.set_background_image(device.get_resource_manager().request_texture("builtin://textures/checkerboard.png"));
 		btn.set_background_color(vec4(1.0f));
 	}
 }

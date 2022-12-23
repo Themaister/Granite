@@ -21,7 +21,7 @@
  */
 
 #define NOMINMAX
-#include "texture_manager.hpp"
+#include "resource_manager.hpp"
 #include "device.hpp"
 #include "memory_mapped_texture.hpp"
 #include "texture_files.hpp"
@@ -31,25 +31,25 @@
 
 namespace Vulkan
 {
-TextureManager::TextureManager(Device *device_)
+ResourceManager::ResourceManager(Device *device_)
 	: device(device_)
 {
 }
 
-TextureManager::~TextureManager()
+ResourceManager::~ResourceManager()
 {
 	// Also works as a teardown mechanism to make sure there are no async threads in flight.
 	if (manager)
 		manager->set_asset_instantiator_interface(nullptr);
 }
 
-void TextureManager::set_id_bounds(uint32_t bound)
+void ResourceManager::set_id_bounds(uint32_t bound)
 {
 	textures.resize(bound);
 	views.resize(bound);
 }
 
-void TextureManager::set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class)
+void ResourceManager::set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class)
 {
 	if (id)
 	{
@@ -59,19 +59,19 @@ void TextureManager::set_image_class(Granite::ImageAssetID id, Granite::ImageCla
 	}
 }
 
-void TextureManager::release_image_resource(Granite::ImageAssetID id)
+void ResourceManager::release_image_resource(Granite::ImageAssetID id)
 {
 	if (id)
 		textures[id.id].image.reset();
 }
 
-uint64_t TextureManager::estimate_cost_image_resource(Granite::ImageAssetID, Granite::File &file)
+uint64_t ResourceManager::estimate_cost_image_resource(Granite::ImageAssetID, Granite::File &file)
 {
 	// TODO: When we get compressed BC/ASTC, this will have to change.
 	return file.get_size();
 }
 
-void TextureManager::init()
+void ResourceManager::init()
 {
 	manager = device->get_system_handles().asset_manager;
 
@@ -124,7 +124,7 @@ void TextureManager::init()
 	}
 }
 
-ImageHandle TextureManager::create_gtx(const MemoryMappedTexture &mapped_file, Granite::ImageAssetID id)
+ImageHandle ResourceManager::create_gtx(const MemoryMappedTexture &mapped_file, Granite::ImageAssetID id)
 {
 	if (mapped_file.empty())
 		return {};
@@ -196,7 +196,7 @@ ImageHandle TextureManager::create_gtx(const MemoryMappedTexture &mapped_file, G
 	return image;
 }
 
-ImageHandle TextureManager::create_gtx(Granite::FileMappingHandle mapping, Granite::ImageAssetID id)
+ImageHandle ResourceManager::create_gtx(Granite::FileMappingHandle mapping, Granite::ImageAssetID id)
 {
 	MemoryMappedTexture mapped_file;
 	if (!mapped_file.map_read(std::move(mapping)))
@@ -208,8 +208,8 @@ ImageHandle TextureManager::create_gtx(Granite::FileMappingHandle mapping, Grani
 	return create_gtx(mapped_file, id);
 }
 
-ImageHandle TextureManager::create_other(const Granite::FileMapping &mapping, Granite::ImageClass image_class,
-                                         Granite::ImageAssetID id)
+ImageHandle ResourceManager::create_other(const Granite::FileMapping &mapping, Granite::ImageClass image_class,
+                                          Granite::ImageAssetID id)
 {
 	auto tex = load_texture_from_memory(mapping.data(),
 	                                    mapping.get_size(), image_class == Granite::ImageClass::Color ?
@@ -217,7 +217,7 @@ ImageHandle TextureManager::create_other(const Granite::FileMapping &mapping, Gr
 	return create_gtx(tex, id);
 }
 
-const Vulkan::ImageView *TextureManager::get_image_view_blocking(Granite::ImageAssetID id)
+const Vulkan::ImageView *ResourceManager::get_image_view_blocking(Granite::ImageAssetID id)
 {
 	std::unique_lock<std::mutex> holder{lock};
 
@@ -237,8 +237,8 @@ const Vulkan::ImageView *TextureManager::get_image_view_blocking(Granite::ImageA
 	return &textures[id.id].image->get_view();
 }
 
-void TextureManager::instantiate_image_resource(Granite::AssetManager &manager_, Granite::TaskGroup *task,
-                                                Granite::ImageAssetID id, Granite::File &file)
+void ResourceManager::instantiate_image_resource(Granite::AssetManager &manager_, Granite::TaskGroup *task,
+                                                 Granite::ImageAssetID id, Granite::File &file)
 {
 	if (task)
 	{
@@ -252,9 +252,9 @@ void TextureManager::instantiate_image_resource(Granite::AssetManager &manager_,
 	}
 }
 
-void TextureManager::instantiate_image_resource(Granite::AssetManager &manager_,
-                                                Granite::ImageAssetID id,
-                                                Granite::File &file)
+void ResourceManager::instantiate_image_resource(Granite::AssetManager &manager_,
+                                                 Granite::ImageAssetID id,
+                                                 Granite::File &file)
 {
 	ImageHandle image;
 	if (file.get_size())
@@ -283,7 +283,7 @@ void TextureManager::instantiate_image_resource(Granite::AssetManager &manager_,
 	cond.notify_all();
 }
 
-const ImageHandle &TextureManager::get_fallback_image(Granite::ImageClass image_class)
+const ImageHandle &ResourceManager::get_fallback_image(Granite::ImageClass image_class)
 {
 	switch (image_class)
 	{
@@ -299,7 +299,7 @@ const ImageHandle &TextureManager::get_fallback_image(Granite::ImageClass image_
 	}
 }
 
-void TextureManager::latch_handles()
+void ResourceManager::latch_handles()
 {
 	std::lock_guard<std::mutex> holder{lock};
 	for (auto &update : updates)

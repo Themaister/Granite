@@ -24,7 +24,7 @@
 #include "intrusive.hpp"
 #include "math.hpp"
 #include <vector>
-#include "texture_manager.hpp"
+#include "resource_manager.hpp"
 
 namespace Granite
 {

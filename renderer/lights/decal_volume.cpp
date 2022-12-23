@@ -22,7 +22,7 @@
 
 #include "decal_volume.hpp"
 #include "device.hpp"
-#include "texture_manager.hpp"
+#include "resource_manager.hpp"
 #include <random>
 
 namespace Granite
@@ -36,7 +36,7 @@ VolumetricDecal::VolumetricDecal()
 
 const Vulkan::ImageView *VolumetricDecal::get_decal_view(Vulkan::Device &device) const
 {
-	return device.get_texture_manager().get_image_view(tex);
+	return device.get_resource_manager().get_image_view(tex);
 }
 
 const AABB &VolumetricDecal::get_static_aabb()

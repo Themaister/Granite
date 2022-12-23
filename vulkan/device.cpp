@@ -88,7 +88,7 @@ Device::Device()
     , transient_allocator(this)
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	, shader_manager(this)
-	, texture_manager(this)
+	, resource_manager(this)
 #endif
 {
 	cookie.store(0);
@@ -894,7 +894,7 @@ void Device::set_context(const Context &context)
 		init_calibrated_timestamps();
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
-	texture_manager.init();
+	resource_manager.init();
 #endif
 }
 
@@ -5075,9 +5075,9 @@ PipelineEvent Device::begin_signal_event(VkPipelineStageFlags stages)
 }
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
-TextureManager &Device::get_texture_manager()
+ResourceManager &Device::get_resource_manager()
 {
-	return texture_manager;
+	return resource_manager;
 }
 
 ShaderManager &Device::get_shader_manager()

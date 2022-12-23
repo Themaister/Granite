@@ -23,7 +23,7 @@
 #pragma once
 
 #include "widget.hpp"
-#include "texture_manager.hpp"
+#include "resource_manager.hpp"
 #include "sampler.hpp"
 
 namespace Granite

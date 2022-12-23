@@ -323,12 +323,12 @@ void Ground::get_render_info(const RenderContext &context, const RenderInfoCompo
 	patch.ibo = quad_lod[base_lod].ibo.get();
 	patch.count = quad_lod[base_lod].count;
 
-	auto *heightmap = queue.get_texture_manager().get_image_view(heights);
-	auto *normal = queue.get_texture_manager().get_image_view(normals);
-	auto *occlusionmap = queue.get_texture_manager().get_image_view(occlusion);
-	auto *normal_fine = queue.get_texture_manager().get_image_view(normals_fine);
-	auto *base_color_image = queue.get_texture_manager().get_image_view(base_color);
-	auto *splatmap_image = queue.get_texture_manager().get_image_view(type_map);
+	auto *heightmap = queue.get_resource_manager().get_image_view(heights);
+	auto *normal = queue.get_resource_manager().get_image_view(normals);
+	auto *occlusionmap = queue.get_resource_manager().get_image_view(occlusion);
+	auto *normal_fine = queue.get_resource_manager().get_image_view(normals_fine);
+	auto *base_color_image = queue.get_resource_manager().get_image_view(base_color);
+	auto *splatmap_image = queue.get_resource_manager().get_image_view(type_map);
 
 	patch.heights = heightmap;
 	patch.normals = normal;

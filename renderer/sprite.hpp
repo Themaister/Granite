@@ -23,7 +23,7 @@
 #pragma once
 
 #include "abstract_renderable.hpp"
-#include "texture_manager.hpp"
+#include "resource_manager.hpp"
 #include "flat_renderer.hpp"
 
 namespace Granite

@@ -46,7 +46,7 @@
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 #include "shader_manager.hpp"
-#include "texture_manager.hpp"
+#include "resource_manager.hpp"
 #endif
 
 #include <atomic>
@@ -419,7 +419,7 @@ public:
 	// To obtain ShaderManager, ShaderModules must be observed to be complete
 	// in query_initialization_progress().
 	ShaderManager &get_shader_manager();
-	TextureManager &get_texture_manager();
+	ResourceManager &get_resource_manager();
 #endif
 
 	// Useful for loading screens or otherwise figuring out
@@ -801,7 +801,7 @@ private:
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	ShaderManager shader_manager;
-	TextureManager texture_manager;
+	ResourceManager resource_manager;
 	void init_shader_manager_cache();
 	void flush_shader_manager_cache();
 #endif

@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
 	device.set_context(context);
 	device.init_external_swapchain({ ImageHandle(nullptr) });
 
-	auto &textures = device.get_texture_manager();
+	auto &textures = device.get_resource_manager();
 	auto *cube = textures.request_texture(args.cube);
 	auto specular = convert_cube_to_ibl_specular(device, cube->get_image()->get_view());
 	auto diffuse = convert_cube_to_ibl_diffuse(device, cube->get_image()->get_view());

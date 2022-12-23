@@ -36,7 +36,7 @@
 namespace Vulkan
 {
 class Device;
-class TextureManager;
+class ResourceManager;
 }
 
 namespace Granite
@@ -257,14 +257,14 @@ public:
 
 	void set_device(Vulkan::Device *device);
 
-	Vulkan::TextureManager &get_texture_manager()
+	Vulkan::ResourceManager &get_resource_manager()
 	{
-		VK_ASSERT(texture_manager);
-		return *texture_manager;
+		VK_ASSERT(resource_manager);
+		return *resource_manager;
 	}
 
 private:
-	Vulkan::TextureManager *texture_manager = nullptr;
+	Vulkan::ResourceManager *resource_manager = nullptr;
 	void enqueue_queue_data(Queue queue, const RenderQueueData &data);
 
 	struct Block : Util::IntrusivePtrEnabled<Block>

@@ -161,8 +161,8 @@ void AABenchApplication::on_swapchain_destroyed(const SwapchainParameterEvent &)
 
 void AABenchApplication::on_device_created(const DeviceCreatedEvent &e)
 {
-	images[0] = input_path0.empty() ? nullptr : e.get_device().get_texture_manager().request_texture(input_path0);
-	images[1] = input_path1.empty() ? nullptr : e.get_device().get_texture_manager().request_texture(input_path1);
+	images[0] = input_path0.empty() ? nullptr : e.get_device().get_resource_manager().request_texture(input_path0);
+	images[1] = input_path1.empty() ? nullptr : e.get_device().get_resource_manager().request_texture(input_path1);
 	graph.set_device(&e.get_device());
 }
 

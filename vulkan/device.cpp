@@ -1860,14 +1860,13 @@ void Device::end_frame_context()
 void Device::end_frame_nolock()
 {
 	// Make sure we have a fence which covers all submissions in the frame.
-	InternalFence fence;
-
 	for (auto &i : queue_flush_order)
 	{
 		if (queue_data[i].need_fence ||
 		    !frame().submissions[i].empty() ||
 		    !frame().consumed_semaphores.empty())
 		{
+			InternalFence fence = {};
 			submit_queue(i, &fence);
 			if (fence.fence != VK_NULL_HANDLE)
 			{

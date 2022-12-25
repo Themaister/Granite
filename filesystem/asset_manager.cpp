@@ -232,7 +232,7 @@ void AssetManager::iterate(ThreadGroup *group)
 	if (current_count + 3 < timestamp)
 	{
 		iface->latch_handles();
-		LOGI("Asset manager skipping iteration due to doo much pending work.\n");
+		LOGI("Asset manager skipping iteration due to too much pending work.\n");
 		return;
 	}
 

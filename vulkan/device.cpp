@@ -75,14 +75,6 @@ static const QueueIndices queue_flush_order[] = {
 	QUEUE_INDEX_COMPUTE
 };
 
-#ifdef GRANITE_VULKAN_BETA
-static constexpr VkImageUsageFlags vk_video_image_usage_flags =
-		VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR | VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR | VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR |
-		VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR | VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR | VK_IMAGE_USAGE_VIDEO_ENCODE_DST_BIT_KHR;
-#else
-static constexpr VkImageUsageFlags vk_video_image_usage_flags = 0;
-#endif
-
 Device::Device()
     : framebuffer_allocator(this)
     , transient_allocator(this)
@@ -3159,7 +3151,9 @@ public:
 		                    VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
 		                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
 		                    VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
-		                    vk_video_image_usage_flags;
+		                    VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
+		                    VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
+		                    VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR;
 
 		if (format_is_srgb(create_info.format))
 			usage_info.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
@@ -3206,7 +3200,9 @@ public:
 
 		if ((create_info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 		                          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
-		                          vk_video_image_usage_flags)) == 0)
+		                          VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
+		                          VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
+		                          VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR)) == 0)
 		{
 			LOGE("Cannot create image view unless certain usage flags are present.\n");
 			return false;
@@ -3731,11 +3727,12 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 
 static void add_unique_family(uint32_t *sharing_indices, uint32_t &count, uint32_t family)
 {
+	if (family == VK_QUEUE_FAMILY_IGNORED)
+		return;
+
 	for (uint32_t i = 0; i < count; i++)
-	{
 		if (sharing_indices[i] == family)
 			return;
-	}
 	sharing_indices[count++] = family;
 }
 
@@ -3811,11 +3808,36 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	uint32_t queue_flags = create_info.misc & (IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
 	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
-	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT);
-	bool concurrent_queue = queue_flags != 0;
+	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
+	                                           IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT);
+	bool concurrent_queue = queue_flags != 0 ||
+	                        staging_buffer != nullptr ||
+	                        create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED;
+
 	if (concurrent_queue)
 	{
 		info.sharingMode = VK_SHARING_MODE_CONCURRENT;
+
+		// If we didn't specify queue usage,
+		// just enable every queue since we need to use transfer queue for initial upload.
+		if (staging_buffer && queue_flags == 0)
+		{
+			// We never imply video here.
+			constexpr ImageMiscFlags implicit_queues_all =
+					IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
+					IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
+					IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
+					IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
+
+			queue_flags |= implicit_queues_all;
+		}
+
+		if (staging_buffer)
+		{
+			queue_flags |= IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
+			if (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT)
+				queue_flags |= IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
+		}
 
 		if (queue_flags & (IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT))
 		{
@@ -3829,16 +3851,16 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			                  queue_info.family_indices[QUEUE_INDEX_COMPUTE]);
 		}
 
-		if (staging_buffer || (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT) != 0)
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT)
 		{
 			add_unique_family(sharing_indices, info.queueFamilyIndexCount,
 			                  queue_info.family_indices[QUEUE_INDEX_TRANSFER]);
 		}
 
-		if (staging_buffer)
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)
 		{
 			add_unique_family(sharing_indices, info.queueFamilyIndexCount,
-			                  queue_info.family_indices[QUEUE_INDEX_GRAPHICS]);
+			                  queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE]);
 		}
 
 		if (info.queueFamilyIndexCount > 1)
@@ -3850,6 +3872,9 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		}
 	}
+
+	if (queue_flags == 0)
+		queue_flags |= IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
 
 	VkFormatFeatureFlags check_extra_features = 0;
 	if ((create_info.misc & IMAGE_MISC_VERIFY_FORMAT_FEATURE_SAMPLED_LINEAR_FILTER_BIT) != 0)
@@ -3967,7 +3992,9 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 	bool has_view = (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
-	                               vk_video_image_usage_flags)) != 0 &&
+	                               VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
+	                               VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
+	                               VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR)) != 0 &&
 	                (create_info.misc & IMAGE_MISC_NO_DEFAULT_VIEWS_BIT) == 0;
 
 	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
@@ -3995,13 +4022,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		handle->set_access_flags(image_usage_to_possible_access(info.usage));
 	}
 
-	bool share_compute = (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT) != 0 &&
-	                     queue_info.queues[QUEUE_INDEX_GRAPHICS] != queue_info.queues[QUEUE_INDEX_COMPUTE];
-
-	bool share_async_graphics =
-		get_physical_queue_type(CommandBuffer::Type::AsyncGraphics) == QUEUE_INDEX_COMPUTE &&
-		(queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT) != 0;
-
 	CommandBufferHandle transition_cmd;
 
 	// Copy initial data to texture.
@@ -4011,151 +4031,127 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		VK_ASSERT(create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED);
 		bool generate_mips = (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
 
-		// If queue_info.graphics != queue_info.transfer, we will use a semaphore, so no srcAccess mask is necessary.
-		VkAccessFlags final_transition_src_access = 0;
-		if (generate_mips)
-			final_transition_src_access = VK_ACCESS_TRANSFER_READ_BIT; // Validation complains otherwise.
-		else if (queue_info.queues[QUEUE_INDEX_GRAPHICS] == queue_info.queues[QUEUE_INDEX_TRANSFER])
-			final_transition_src_access = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-		VkAccessFlags prepare_src_access = queue_info.queues[QUEUE_INDEX_GRAPHICS] == queue_info.queues[QUEUE_INDEX_TRANSFER] ?
-		                                   VK_ACCESS_TRANSFER_WRITE_BIT : 0;
-		bool need_mipmap_barrier = true;
-		bool need_initial_barrier = true;
-
 		// Now we've used the TRANSFER queue to copy data over to the GPU.
 		// For mipmapping, we're now moving over to graphics,
 		// the transfer queue is designed for CPU <-> GPU and that's it.
-
 		// For concurrent queue mode, we just need to inject a semaphore.
-		// For non-concurrent queue mode, we will have to inject ownership transfer barrier if the queue families do not match.
 
 		auto graphics_cmd = request_command_buffer(CommandBuffer::Type::Generic);
-		CommandBufferHandle transfer_cmd;
-
-		// Don't split the upload into multiple command buffers unless we have to.
-		if (queue_info.queues[QUEUE_INDEX_TRANSFER] != queue_info.queues[QUEUE_INDEX_GRAPHICS])
-			transfer_cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
-		else
-			transfer_cmd = graphics_cmd;
+		auto transfer_cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 
 		transfer_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
 		                            VK_ACCESS_TRANSFER_WRITE_BIT);
 
 		transfer_cmd->begin_region("copy-image-to-gpu");
-		transfer_cmd->copy_buffer_to_image(*handle, *staging_buffer->buffer, staging_buffer->blits.size(), staging_buffer->blits.data());
+		transfer_cmd->copy_buffer_to_image(*handle, *staging_buffer->buffer,
+		                                   staging_buffer->blits.size(), staging_buffer->blits.data());
 		transfer_cmd->end_region();
 
-		if (queue_info.queues[QUEUE_INDEX_TRANSFER] != queue_info.queues[QUEUE_INDEX_GRAPHICS])
-		{
-			VkPipelineStageFlags dst_stages =
-					generate_mips ? VkPipelineStageFlags(VK_PIPELINE_STAGE_TRANSFER_BIT) : handle->get_stage_flags();
+		VkPipelineStageFlags dst_stages =
+				generate_mips ? VkPipelineStageFlags(VK_PIPELINE_STAGE_TRANSFER_BIT) : handle->get_stage_flags();
 
-			// We can't just use semaphores, we will also need a release + acquire barrier to marshal ownership from
-			// transfer queue over to graphics ...
-			if (!concurrent_queue && queue_info.family_indices[QUEUE_INDEX_TRANSFER] != queue_info.family_indices[QUEUE_INDEX_GRAPHICS])
-			{
-				need_mipmap_barrier = false;
-
-				VkImageMemoryBarrier release = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-				release.image = handle->get_image();
-				release.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-				release.dstAccessMask = 0;
-				release.srcQueueFamilyIndex = queue_info.family_indices[QUEUE_INDEX_TRANSFER];
-				release.dstQueueFamilyIndex = queue_info.family_indices[QUEUE_INDEX_GRAPHICS];
-				release.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-
-				if (generate_mips)
-				{
-					release.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-					release.subresourceRange.levelCount = 1;
-				}
-				else
-				{
-					release.newLayout = create_info.initial_layout;
-					release.subresourceRange.levelCount = info.mipLevels;
-					need_initial_barrier = false;
-				}
-
-				release.subresourceRange.aspectMask = format_to_aspect_mask(info.format);
-				release.subresourceRange.layerCount = info.arrayLayers;
-
-				VkImageMemoryBarrier acquire = release;
-				acquire.srcAccessMask = 0;
-
-				if (generate_mips)
-					acquire.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-				else
-					acquire.dstAccessMask = handle->get_access_flags() & image_layout_to_possible_access(create_info.initial_layout);
-
-				transfer_cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
-				                      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-				                      0, nullptr, 0, nullptr, 1, &release);
-
-				graphics_cmd->barrier(dst_stages,
-				                      dst_stages,
-				                      0, nullptr, 0, nullptr, 1, &acquire);
-			}
-
-			Semaphore sem;
-			submit(transfer_cmd, nullptr, 1, &sem);
-			add_wait_semaphore(CommandBuffer::Type::Generic, sem, dst_stages, true);
-		}
+		Semaphore sem;
+		submit(transfer_cmd, nullptr, 1, &sem);
+		add_wait_semaphore(CommandBuffer::Type::Generic, sem, dst_stages, true);
 
 		if (generate_mips)
 		{
 			graphics_cmd->begin_region("mipgen");
 			graphics_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			                                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-			                                              prepare_src_access, need_mipmap_barrier);
+			                                              0, true);
 			graphics_cmd->generate_mipmap(*handle);
 			graphics_cmd->end_region();
 		}
 
-		if (need_initial_barrier)
-		{
-			graphics_cmd->image_barrier(
-					*handle, generate_mips ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					create_info.initial_layout,
-					VK_PIPELINE_STAGE_TRANSFER_BIT, final_transition_src_access,
-					handle->get_stage_flags(),
-					handle->get_access_flags() & image_layout_to_possible_access(create_info.initial_layout));
-		}
+		graphics_cmd->image_barrier(
+				*handle, generate_mips ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				create_info.initial_layout,
+				VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+				VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
 
 		transition_cmd = std::move(graphics_cmd);
 	}
 	else if (create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
 	{
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
-		auto cmd = request_command_buffer(CommandBuffer::Type::Generic);
+
+		// Need to perform the barrier in some command buffer, pick an appropriate one based on supported queues.
+		// Pick the most lenient queue first in case we need to transition to a weird layout.
+		CommandBuffer::Type type = CommandBuffer::Type::Count;
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT)
+			type = CommandBuffer::Type::Generic;
+		else if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT)
+			type = CommandBuffer::Type::AsyncGraphics;
+		else if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT)
+			type = CommandBuffer::Type::AsyncCompute;
+		else if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT)
+			type = CommandBuffer::Type::AsyncTransfer;
+		else if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)
+			type = CommandBuffer::Type::VideoDecode;
+		VK_ASSERT(type != CommandBuffer::Type::Count);
+
+		auto cmd = request_command_buffer(type);
 		cmd->image_barrier(*handle, info.initialLayout, create_info.initial_layout,
-		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, handle->get_stage_flags(),
-		                   handle->get_access_flags() &
-		                   image_layout_to_possible_access(create_info.initial_layout));
+		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+						   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
 		transition_cmd = std::move(cmd);
 	}
 
-	// For concurrent queue, make sure that compute can see the final image as well.
-	// Also add semaphore if the compute queue can be used for async graphics as well.
+	// For concurrent queue, make sure that compute, transfer or video decode can see the final image as well.
 	if (transition_cmd)
 	{
-		if (share_compute || share_async_graphics)
+		constexpr auto max_queues = Util::ecast(CommandBuffer::Type::Count);
+		VkPipelineStageFlags stages[max_queues];
+		CommandBuffer::Type types[max_queues];
+		Semaphore sem[max_queues];
+		uint32_t sem_count = 0;
+
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT)
 		{
-			Semaphore sem;
-			submit(transition_cmd, nullptr, 1, &sem);
-			VkPipelineStageFlags dst_stages = handle->get_stage_flags();
-			if (queue_info.family_indices[QUEUE_INDEX_GRAPHICS] != queue_info.family_indices[QUEUE_INDEX_COMPUTE])
-				dst_stages &= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
-			add_wait_semaphore(CommandBuffer::Type::AsyncCompute, sem, dst_stages, true);
+			types[sem_count] = CommandBuffer::Type::Generic;
+			stages[sem_count] = handle->get_stage_flags();
+			sem_count++;
 		}
-		else
+
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT)
 		{
-			LOCK();
-			submit_nolock(transition_cmd, nullptr, 0, nullptr);
-			if (concurrent_queue)
-				flush_frame(QUEUE_INDEX_GRAPHICS);
+			types[sem_count] = CommandBuffer::Type::AsyncGraphics;
+			stages[sem_count] = handle->get_stage_flags();
+			sem_count++;
 		}
+
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT)
+		{
+			types[sem_count] = CommandBuffer::Type::AsyncCompute;
+			stages[sem_count] = handle->get_stage_flags() & (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT);
+			if (stages[sem_count] != 0)
+				sem_count++;
+		}
+
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT)
+		{
+			types[sem_count] = CommandBuffer::Type::AsyncTransfer;
+			stages[sem_count] = handle->get_stage_flags() & VK_PIPELINE_STAGE_TRANSFER_BIT;
+			if (stages[sem_count] != 0)
+				sem_count++;
+		}
+
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)
+		{
+			types[sem_count] = CommandBuffer::Type::VideoDecode;
+			// TODO: Update to sync2 here?
+			stages[sem_count] = handle->get_stage_flags() & static_cast<VkPipelineStageFlagBits>(VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR);
+			if (stages[sem_count] != 0)
+				sem_count++;
+		}
+
+		VK_ASSERT(sem_count);
+
+		submit(transition_cmd, nullptr, sem_count, sem);
+		for (uint32_t i = 0; i < sem_count; i++)
+			add_wait_semaphore(types[i], sem[i], stages[i], true);
 	}
 
 	return handle;
@@ -4274,8 +4270,7 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 void Device::fill_buffer_sharing_indices(VkBufferCreateInfo &info, uint32_t *sharing_indices)
 {
 	for (auto &i : queue_info.family_indices)
-		if (i != VK_QUEUE_FAMILY_IGNORED)
-			add_unique_family(sharing_indices, info.queueFamilyIndexCount, i);
+		add_unique_family(sharing_indices, info.queueFamilyIndexCount, i);
 
 	if (info.queueFamilyIndexCount > 1)
 	{
@@ -5189,7 +5184,8 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 	                            (Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
 	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
-	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT)) != 0;
+	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
+	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)) != 0;
 	bool need_ownership_transfer = old_family != new_family && !image_is_concurrent;
 
 	VkImageMemoryBarrier ownership = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };

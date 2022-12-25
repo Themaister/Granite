@@ -586,24 +586,22 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	uint32_t queue_family_count = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties2(gpu, &queue_family_count, nullptr);
 	Util::SmallVector<VkQueueFamilyProperties2> queue_props(queue_family_count);
+	Util::SmallVector<VkQueueFamilyVideoPropertiesKHR> video_queue_props2(queue_family_count);
 
-#ifdef GRANITE_VULKAN_BETA
-	Util::SmallVector<VkVideoQueueFamilyProperties2KHR> video_queue_props2(queue_family_count);
-
-	if (has_extension(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME))
+	if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT) != 0 &&
+	    has_extension(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME))
+	{
 		ext.supports_video_queue = true;
-#endif
+	}
 
 	for (uint32_t i = 0; i < queue_family_count; i++)
 	{
 		queue_props[i].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
-#ifdef GRANITE_VULKAN_BETA
 		if (ext.supports_video_queue)
 		{
 			queue_props[i].pNext = &video_queue_props2[i];
-			video_queue_props2[i].sType = VK_STRUCTURE_TYPE_VIDEO_QUEUE_FAMILY_PROPERTIES_2_KHR;
+			video_queue_props2[i].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR;
 		}
-#endif
 	}
 
 	Util::SmallVector<uint32_t> queue_offsets(queue_family_count);
@@ -689,7 +687,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		queue_indices[QUEUE_INDEX_TRANSFER] = queue_indices[QUEUE_INDEX_COMPUTE];
 	}
 
-#ifdef GRANITE_VULKAN_BETA
 	if (ext.supports_video_queue)
 	{
 		if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE], queue_indices[QUEUE_INDEX_VIDEO_DECODE],
@@ -699,7 +696,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			queue_indices[QUEUE_INDEX_VIDEO_DECODE] = UINT32_MAX;
 		}
 	}
-#endif
 
 	VkDeviceCreateInfo device_info = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 
@@ -845,31 +841,44 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	if (has_extension(VK_EXT_TOOLING_INFO_EXTENSION_NAME))
 		ext.supports_tooling_info = true;
 
-#ifdef GRANITE_VULKAN_BETA
-	if (has_extension(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME))
+	if (ext.supports_video_queue)
 	{
 		enabled_extensions.push_back(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME);
 		ext.supports_video_queue = true;
 
-		if (has_extension(VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME))
+		if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT) != 0 &&
+		    has_extension(VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME))
 		{
 			enabled_extensions.push_back(VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME);
 			ext.supports_video_decode_queue = true;
 
-			if (has_extension(VK_EXT_VIDEO_DECODE_H264_EXTENSION_NAME))
+			if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT) != 0 &&
+			    has_extension(VK_KHR_VIDEO_DECODE_H264_EXTENSION_NAME))
 			{
-				enabled_extensions.push_back(VK_EXT_VIDEO_DECODE_H264_EXTENSION_NAME);
+				enabled_extensions.push_back(VK_KHR_VIDEO_DECODE_H264_EXTENSION_NAME);
 
 				if (queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE] != VK_QUEUE_FAMILY_IGNORED)
 				{
 					ext.supports_video_decode_h264 =
 							(video_queue_props2[queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE]].videoCodecOperations &
-							 VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_EXT) != 0;
+							 VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR) != 0;
+				}
+			}
+
+			if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT) != 0 &&
+			    has_extension(VK_KHR_VIDEO_DECODE_H265_EXTENSION_NAME))
+			{
+				enabled_extensions.push_back(VK_KHR_VIDEO_DECODE_H265_EXTENSION_NAME);
+
+				if (queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE] != VK_QUEUE_FAMILY_IGNORED)
+				{
+					ext.supports_video_decode_h265 =
+							(video_queue_props2[queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE]].videoCodecOperations &
+							 VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR) != 0;
 				}
 			}
 		}
 	}
-#endif
 
 	pdf2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 

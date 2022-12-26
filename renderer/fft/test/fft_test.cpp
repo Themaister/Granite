@@ -223,7 +223,7 @@ static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny,
 	if (input_texture)
 	{
 		cmd->image_barrier(*input_texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+		                   VK_PIPELINE_STAGE_NONE, 0,
 		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 
 		cmd->copy_buffer_to_image(*input_texture, *input_buffer,
@@ -251,7 +251,7 @@ static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny,
 	if (output_texture)
 	{
 		cmd->image_barrier(*output_texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+		                   VK_PIPELINE_STAGE_NONE, 0,
 		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
 		dst.image.view = &output_texture->get_view();
 	}

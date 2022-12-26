@@ -139,8 +139,8 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 	{
 		if (compute)
 		{
-			src_color = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-			src_depth = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			src_color = VK_PIPELINE_STAGE_NONE;
+			src_depth = VK_PIPELINE_STAGE_NONE;
 			dst_color = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 			dst_depth = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 		}
@@ -595,7 +595,7 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 
 			const auto clear = [](Vulkan::CommandBuffer &clear_cmd, Vulkan::Image &clear_image) {
 				clear_cmd.image_barrier(clear_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-				                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+				                        VK_PIPELINE_STAGE_NONE, 0,
 				                        VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 				clear_cmd.clear_image(clear_image, {});
 				clear_cmd.image_barrier(clear_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,

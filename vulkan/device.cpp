@@ -322,7 +322,7 @@ void Device::unmap_linear_host_image_and_sync(const LinearHostImage &image, Memo
 		// Kinda icky fallback, shouldn't really be used on discrete cards.
 		auto cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 		cmd->image_barrier(image.get_image(), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+		                   VK_PIPELINE_STAGE_NONE, 0,
 		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 		cmd->copy_buffer_to_image(image.get_image(), image.get_host_visible_buffer(),
 		                          0, {},
@@ -1267,7 +1267,7 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 
 	for (auto consume : frame().consumed_semaphores)
 	{
-		composer.add_wait_semaphore(consume, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+		composer.add_wait_semaphore(consume, VK_PIPELINE_STAGE_NONE);
 		frame().recycled_semaphores.push_back(consume);
 	}
 	frame().consumed_semaphores.clear();
@@ -1700,7 +1700,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 
 	for (auto consume : frame().consumed_semaphores)
 	{
-		composer.add_wait_semaphore(consume, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+		composer.add_wait_semaphore(consume, VK_PIPELINE_STAGE_NONE);
 		frame().recycled_semaphores.push_back(consume);
 	}
 	frame().consumed_semaphores.clear();
@@ -4011,8 +4011,8 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 		auto cmd = request_command_buffer(type);
 		cmd->image_barrier(*handle, info.initialLayout, create_info.initial_layout,
-		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-						   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
+		                   VK_PIPELINE_STAGE_NONE, 0,
+		                   VK_PIPELINE_STAGE_NONE, 0);
 		transition_cmd = std::move(cmd);
 	}
 
@@ -5134,7 +5134,7 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 		ownership.dstQueueFamilyIndex = new_family;
 
 		if (semaphore)
-			device.add_wait_semaphore(info.old_queue, semaphore, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, true);
+			device.add_wait_semaphore(info.old_queue, semaphore, VK_PIPELINE_STAGE_NONE, true);
 		auto release_cmd = device.request_command_buffer(info.old_queue);
 
 		release_cmd->image_barriers(1, &ownership);

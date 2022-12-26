@@ -990,7 +990,7 @@ void LightClusterer::render_atlas_spot(const RenderContext &context_)
 		if (vsm)
 		{
 			cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+			                   VK_PIPELINE_STAGE_NONE, 0,
 			                   VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 			cmd->clear_image(*legacy.spots.atlas, {});
 			cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,

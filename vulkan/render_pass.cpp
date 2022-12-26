@@ -686,6 +686,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		             dep.srcSubpass = VK_SUBPASS_EXTERNAL;
 		             dep.dstSubpass = subpass;
 
+		             // Could use sync2 NONE here, but we'd like to avoid letting render passes be keyed off sync2 support.
 		             if (external_bottom_of_pipe_dependencies & (1u << subpass))
 			             dep.srcStageMask |= VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 

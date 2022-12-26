@@ -145,7 +145,7 @@ ImageHandle ResourceManager::create_gtx(const MemoryMappedTexture &mapped_file, 
 		image = Granite::decode_compressed_image(*cmd, layout, VK_FORMAT_UNDEFINED, swizzle);
 		Semaphore sem;
 		device->submit(cmd, nullptr, 1, &sem);
-		device->add_wait_semaphore(CommandBuffer::Type::Generic, sem, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, true);
+		device->add_wait_semaphore(CommandBuffer::Type::Generic, sem, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
 	}
 	else
 	{

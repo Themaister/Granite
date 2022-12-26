@@ -133,8 +133,8 @@ public:
 
 	explicit BatchComposer(bool split_binary_timeline_semaphores);
 	void add_wait_submissions(WaitSemaphores &sem);
-	void add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags stage);
-	void add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags stage);
+	void add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags2 stage);
+	void add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags2 stage);
 	void add_signal_semaphore(VkSemaphore sem, uint64_t count);
 	void add_command_buffer(VkCommandBuffer cmd);
 
@@ -649,7 +649,7 @@ private:
 	struct QueueData
 	{
 		Util::SmallVector<Semaphore> wait_semaphores;
-		Util::SmallVector<VkPipelineStageFlags> wait_stages;
+		Util::SmallVector<VkPipelineStageFlags2> wait_stages;
 		bool need_fence = false;
 
 		VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
@@ -719,7 +719,7 @@ private:
 
 	PerformanceQueryPool &get_performance_query_pool(QueueIndices physical_type);
 	void clear_wait_semaphores();
-	void submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, bool flush);
+	void submit_staging(CommandBufferHandle &cmd, bool flush);
 	PipelineEvent request_pipeline_event();
 
 	std::function<void ()> queue_lock_callback;

@@ -122,8 +122,8 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 		gbuffer.pbr.get(),
 	};
 
-	VkPipelineStageFlags src_color, src_depth, dst_color, dst_depth;
-	VkAccessFlags src_access_color, src_access_depth, dst_access_color, dst_access_depth;
+	VkPipelineStageFlags2 src_color, src_depth, dst_color, dst_depth;
+	VkAccessFlags2 src_access_color, src_access_depth, dst_access_color, dst_access_depth;
 	VkImageLayout old_color, new_color, old_depth, new_depth;
 
 	bool compute = (gbuffer.emissive->get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0;

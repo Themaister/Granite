@@ -299,13 +299,13 @@ public:
 		return *device;
 	}
 
-	VkPipelineStageFlags swapchain_touched_in_stages() const
+	VkPipelineStageFlags2 swapchain_touched_in_stages() const
 	{
 		return uses_swapchain_in_stages;
 	}
 
 	// Only used when using swapchain in non-obvious ways, like compute or transfer.
-	void swapchain_touch_in_stages(VkPipelineStageFlags stages)
+	void swapchain_touch_in_stages(VkPipelineStageFlags2 stages)
 	{
 		uses_swapchain_in_stages |= stages;
 	}
@@ -790,7 +790,7 @@ private:
 	uint32_t dirty_sets_dynamic = 0;
 	uint32_t dirty_vbos = 0;
 	uint32_t active_vbos = 0;
-	VkPipelineStageFlags uses_swapchain_in_stages = 0;
+	VkPipelineStageFlags2 uses_swapchain_in_stages = 0;
 	bool is_compute = true;
 	bool is_secondary = false;
 	bool is_ended = false;

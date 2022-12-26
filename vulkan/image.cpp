@@ -199,12 +199,12 @@ size_t LinearHostImage::get_row_pitch_bytes() const
 	return row_pitch;
 }
 
-VkPipelineStageFlags LinearHostImage::get_used_pipeline_stages() const
+VkPipelineStageFlags2 LinearHostImage::get_used_pipeline_stages() const
 {
 	return stages;
 }
 
-LinearHostImage::LinearHostImage(Device *device_, ImageHandle gpu_image_, BufferHandle cpu_image_, VkPipelineStageFlags stages_)
+LinearHostImage::LinearHostImage(Device *device_, ImageHandle gpu_image_, BufferHandle cpu_image_, VkPipelineStageFlags2 stages_)
 	: device(device_), gpu_image(std::move(gpu_image_)), cpu_image(std::move(cpu_image_)), stages(stages_)
 {
 	if (gpu_image->get_create_info().domain == ImageDomain::LinearHostCached ||

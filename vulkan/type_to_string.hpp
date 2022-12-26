@@ -51,7 +51,7 @@ static inline const char *layout_to_string(VkImageLayout layout)
 	}
 }
 
-static inline std::string access_flags_to_string(VkAccessFlags flags)
+static inline std::string access_flags_to_string(VkAccessFlags2 flags)
 {
 	std::string result;
 
@@ -84,7 +84,7 @@ static inline std::string access_flags_to_string(VkAccessFlags flags)
 	return result;
 }
 
-static inline std::string stage_flags_to_string(VkPipelineStageFlags flags)
+static inline std::string stage_flags_to_string(VkPipelineStageFlags2 flags)
 {
 	std::string result;
 

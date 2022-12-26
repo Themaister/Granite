@@ -244,7 +244,7 @@ void Device::add_wait_semaphore_nolock(QueueIndices physical_type, Semaphore sem
 
 	semaphore->set_pending_wait();
 	data.wait_semaphores.push_back(semaphore);
-	data.wait_stages.push_back(convert_vk_dst_stage2(stages));
+	data.wait_stages.push_back(stages);
 	data.need_fence = true;
 
 	// Sanity check.
@@ -1302,88 +1302,14 @@ Fence Device::request_legacy_fence()
 	return Fence(handle_pool.fences.allocate(this, fence));
 }
 
-void Device::submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, bool flush)
+void Device::submit_staging(CommandBufferHandle &cmd, bool flush)
 {
-	auto access = buffer_usage_to_possible_access(usage);
-	auto stages = buffer_usage_to_possible_stages(usage);
-	VkQueue src_queue = queue_info.queues[get_physical_queue_type(cmd->get_command_buffer_type())];
-
-	if (src_queue == queue_info.queues[QUEUE_INDEX_GRAPHICS] && src_queue == queue_info.queues[QUEUE_INDEX_COMPUTE])
-	{
-		// For single-queue systems, just use a pipeline barrier.
-		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, stages, access);
-		submit_nolock(cmd, nullptr, 0, nullptr);
-	}
-	else
-	{
-		auto compute_stages = stages &
-		                      (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-		                       VK_PIPELINE_STAGE_TRANSFER_BIT |
-		                       VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT);
-
-		auto compute_access = access &
-		                      (VK_ACCESS_SHADER_READ_BIT |
-		                       VK_ACCESS_SHADER_WRITE_BIT |
-		                       VK_ACCESS_TRANSFER_READ_BIT |
-		                       VK_ACCESS_UNIFORM_READ_BIT |
-		                       VK_ACCESS_TRANSFER_WRITE_BIT |
-		                       VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
-
-		auto graphics_stages = stages;
-
-		if (src_queue == queue_info.queues[QUEUE_INDEX_GRAPHICS])
-		{
-			cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			             graphics_stages, access);
-
-			if (compute_stages != 0)
-			{
-				Semaphore sem;
-				submit_nolock(cmd, nullptr, 1, &sem);
-				add_wait_semaphore_nolock(QUEUE_INDEX_COMPUTE, sem, compute_stages, flush);
-			}
-			else
-				submit_nolock(cmd, nullptr, 0, nullptr);
-		}
-		else if (src_queue == queue_info.queues[QUEUE_INDEX_COMPUTE])
-		{
-			cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			             compute_stages, compute_access);
-
-			if (graphics_stages != 0)
-			{
-				Semaphore sem;
-				submit_nolock(cmd, nullptr, 1, &sem);
-				add_wait_semaphore_nolock(QUEUE_INDEX_GRAPHICS, sem, graphics_stages, flush);
-			}
-			else
-				submit_nolock(cmd, nullptr, 0, nullptr);
-		}
-		else
-		{
-			if (graphics_stages != 0 && compute_stages != 0)
-			{
-				Semaphore semaphores[2];
-				submit_nolock(cmd, nullptr, 2, semaphores);
-				add_wait_semaphore_nolock(QUEUE_INDEX_GRAPHICS, semaphores[0], graphics_stages, flush);
-				add_wait_semaphore_nolock(QUEUE_INDEX_COMPUTE, semaphores[1], compute_stages, flush);
-			}
-			else if (graphics_stages != 0)
-			{
-				Semaphore sem;
-				submit_nolock(cmd, nullptr, 1, &sem);
-				add_wait_semaphore_nolock(QUEUE_INDEX_GRAPHICS, sem, graphics_stages, flush);
-			}
-			else if (compute_stages != 0)
-			{
-				Semaphore sem;
-				submit_nolock(cmd, nullptr, 1, &sem);
-				add_wait_semaphore_nolock(QUEUE_INDEX_COMPUTE, sem, compute_stages, flush);
-			}
-			else
-				submit_nolock(cmd, nullptr, 0, nullptr);
-		}
-	}
+	Semaphore semaphores[2];
+	submit_nolock(cmd, nullptr, 2, semaphores);
+	semaphores[0]->set_internal_sync_object();
+	semaphores[1]->set_internal_sync_object();
+	add_wait_semaphore_nolock(QUEUE_INDEX_GRAPHICS, semaphores[0], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, flush);
+	add_wait_semaphore_nolock(QUEUE_INDEX_COMPUTE, semaphores[1], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, flush);
 }
 
 void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &sem)
@@ -1395,7 +1321,7 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 		if (semaphore->get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE_KHR)
 		{
 			sem.timeline_waits.push_back(vk_semaphore);
-			sem.timeline_wait_stages.push_back(data.wait_stages[i]);
+			sem.timeline_wait_stages.push_back(convert_vk_dst_stage2(data.wait_stages[i]));
 			sem.timeline_wait_counts.push_back(semaphore->get_timeline_value());
 		}
 		else
@@ -1406,7 +1332,7 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 				frame().recycled_semaphores.push_back(vk_semaphore);
 
 			sem.binary_waits.push_back(vk_semaphore);
-			sem.binary_wait_stages.push_back(data.wait_stages[i]);
+			sem.binary_wait_stages.push_back(convert_vk_dst_stage2(data.wait_stages[i]));
 		}
 	}
 
@@ -1572,7 +1498,7 @@ void Helper::BatchComposer::add_signal_semaphore(VkSemaphore sem, uint64_t timel
 	signal_counts[submit_index].push_back(timeline);
 }
 
-void Helper::BatchComposer::add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags stage)
+void Helper::BatchComposer::add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags2 stage)
 {
 	if (!cmds[submit_index].empty() || !signals[submit_index].empty())
 		begin_batch();
@@ -1591,7 +1517,7 @@ void Helper::BatchComposer::add_wait_semaphore(SemaphoreHolder &sem, VkPipelineS
 	wait_counts[submit_index].push_back(is_timeline ? sem.get_timeline_value() : 0);
 }
 
-void Helper::BatchComposer::add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags stage)
+void Helper::BatchComposer::add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags2 stage)
 {
 	if (!cmds[submit_index].empty() || !signals[submit_index].empty())
 		begin_batch();
@@ -1725,7 +1651,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 	for (size_t i = 0, submissions_size = submissions.size(); i < submissions_size; i++)
 	{
 		auto &cmd = submissions[i];
-		VkPipelineStageFlags wsi_stages = cmd->swapchain_touched_in_stages();
+		VkPipelineStageFlags2 wsi_stages = cmd->swapchain_touched_in_stages();
 
 		if (wsi_stages != 0 && !wsi.consumed)
 		{
@@ -1847,7 +1773,7 @@ void Device::sync_buffer_blocks()
 
 	// Do not flush graphics or compute in this context.
 	// We must be able to inject semaphores into all currently enqueued graphics / compute.
-	submit_staging(cmd, usage, false);
+	submit_staging(cmd, false);
 }
 
 void Device::end_frame_context()
@@ -4003,10 +3929,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			handle->get_view().set_unorm_view(holder.unorm_view);
 			handle->get_view().set_srgb_view(holder.srgb_view);
 		}
-
-		// Set possible dstStage and dstAccess.
-		handle->set_stage_flags(image_usage_to_possible_stages(info.usage));
-		handle->set_access_flags(image_usage_to_possible_access(info.usage));
 	}
 
 	CommandBufferHandle transition_cmd;
@@ -4098,7 +4020,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	if (transition_cmd)
 	{
 		constexpr auto max_queues = Util::ecast(CommandBuffer::Type::Count);
-		VkPipelineStageFlags stages[max_queues];
+		VkPipelineStageFlags2 stages[max_queues];
 		CommandBuffer::Type types[max_queues];
 		Semaphore sem[max_queues];
 		uint32_t sem_count = 0;
@@ -4118,21 +4040,21 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT)
 		{
 			types[sem_count] = CommandBuffer::Type::Generic;
-			stages[sem_count] = handle->get_stage_flags();
+			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 			sem_count++;
 		}
 
 		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT)
 		{
 			types[sem_count] = CommandBuffer::Type::AsyncGraphics;
-			stages[sem_count] = handle->get_stage_flags();
+			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 			sem_count++;
 		}
 
 		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT)
 		{
 			types[sem_count] = CommandBuffer::Type::AsyncCompute;
-			stages[sem_count] = handle->get_stage_flags() & (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT);
+			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 			if (stages[sem_count] != 0)
 				sem_count++;
 		}
@@ -4141,7 +4063,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (create_info.misc & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT)
 		{
 			types[sem_count] = CommandBuffer::Type::AsyncTransfer;
-			stages[sem_count] = handle->get_stage_flags() & VK_PIPELINE_STAGE_TRANSFER_BIT;
+			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 			if (stages[sem_count] != 0)
 				sem_count++;
 		}
@@ -4149,9 +4071,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (create_info.misc & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)
 		{
 			types[sem_count] = CommandBuffer::Type::VideoDecode;
-			// TODO: Update to sync2 here? This bitmask fits in 32-bits,
-			// but unsure if it's valid to use the stage with sync1 entry points.
-			stages[sem_count] = handle->get_stage_flags() & static_cast<VkPipelineStageFlagBits>(VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR);
+			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 			if (stages[sem_count] != 0)
 				sem_count++;
 		}
@@ -4592,7 +4512,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 		}
 
 		LOCK();
-		submit_staging(cmd, info.usage, true);
+		submit_staging(cmd, true);
 	}
 	else if (initial || zero_initialize)
 	{

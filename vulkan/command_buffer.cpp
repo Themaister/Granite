@@ -302,11 +302,12 @@ static void convert_vk_dependency_info(const VkDependencyInfo &dep, Sync1CompatD
 
 	for (uint32_t i = 0; i < dep.memoryBarrierCount; i++)
 	{
-		src_stages |= dep.pMemoryBarriers[i].srcStageMask;
-		dst_stages |= dep.pMemoryBarriers[i].dstStageMask;
+		auto &mem = dep.pMemoryBarriers[i];
+		src_stages |= mem.srcStageMask;
+		dst_stages |= mem.dstStageMask;
 		VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
-		barrier.srcAccessMask = convert_vk_access_flags2(dep.pMemoryBarriers[i].srcAccessMask);
-		barrier.dstAccessMask = convert_vk_access_flags2(dep.pMemoryBarriers[i].dstAccessMask);
+		barrier.srcAccessMask = convert_vk_access_flags2(mem.srcAccessMask);
+		barrier.dstAccessMask = convert_vk_access_flags2(mem.dstAccessMask);
 		sync1.mem_barriers.push_back(barrier);
 	}
 
@@ -356,6 +357,42 @@ void CommandBuffer::barrier(const VkDependencyInfo &dep)
 	VK_ASSERT(!framebuffer);
 
 #ifdef VULKAN_DEBUG
+	VkPipelineStageFlags2 stages = 0;
+	VkAccessFlags2 access = 0;
+
+	for (uint32_t i = 0; i < dep.memoryBarrierCount; i++)
+	{
+		auto &b = dep.pMemoryBarriers[i];
+		stages |= b.srcStageMask | b.dstStageMask;
+		access |= b.srcAccessMask | b.dstAccessMask;
+	}
+
+	for (uint32_t i = 0; i < dep.bufferMemoryBarrierCount; i++)
+	{
+		auto &b = dep.pBufferMemoryBarriers[i];
+		stages |= b.srcStageMask | b.dstStageMask;
+		access |= b.srcAccessMask | b.dstAccessMask;
+	}
+
+	for (uint32_t i = 0; i < dep.imageMemoryBarrierCount; i++)
+	{
+		auto &b = dep.pImageMemoryBarriers[i];
+		stages |= b.srcStageMask | b.dstStageMask;
+		access |= b.srcAccessMask | b.dstAccessMask;
+	}
+
+	if (stages & VK_PIPELINE_STAGE_TRANSFER_BIT)
+		LOGW("Using deprecated TRANSFER stage.\n");
+	if (stages & VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT)
+		LOGW("Using deprecated BOTTOM_OF_PIPE stage.\n");
+	if (stages & VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT)
+		LOGW("Using deprecated TOP_OF_PIPE stage.\n");
+
+	if (access & VK_ACCESS_SHADER_READ_BIT)
+		LOGW("Using deprecated SHADER_READ access.\n");
+	if (stages & VK_ACCESS_SHADER_WRITE_BIT)
+		LOGW("Using deprecated SHADER_WRITE access.\n");
+
 	// We cannot convert these automatically so easily to sync1 without more context.
 	for (uint32_t i = 0; i < dep.imageMemoryBarrierCount; i++)
 	{

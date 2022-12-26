@@ -104,8 +104,8 @@ RenderTextureResource &RenderPass::add_history_input(const std::string &name)
 	return res;
 }
 
-RenderBufferResource &RenderPass::add_generic_buffer_input(const std::string &name, VkPipelineStageFlags stages,
-                                                           VkAccessFlags access, VkBufferUsageFlags usage)
+RenderBufferResource &RenderPass::add_generic_buffer_input(const std::string &name, VkPipelineStageFlags2 stages,
+                                                           VkAccessFlags2 access, VkBufferUsageFlags usage)
 {
 	auto &res = graph.get_buffer_resource(name);
 	res.add_queue(queue);
@@ -145,7 +145,7 @@ RenderBufferResource &RenderPass::add_indirect_buffer_input(const std::string &n
 	                                VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT);
 }
 
-RenderBufferResource &RenderPass::add_uniform_input(const std::string &name, VkPipelineStageFlags stages)
+RenderBufferResource &RenderPass::add_uniform_input(const std::string &name, VkPipelineStageFlags2 stages)
 {
 	if (stages == 0)
 	{
@@ -158,7 +158,7 @@ RenderBufferResource &RenderPass::add_uniform_input(const std::string &name, VkP
 	return add_generic_buffer_input(name, stages, VK_ACCESS_UNIFORM_READ_BIT, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 }
 
-RenderBufferResource &RenderPass::add_storage_read_only_input(const std::string &name, VkPipelineStageFlags stages)
+RenderBufferResource &RenderPass::add_storage_read_only_input(const std::string &name, VkPipelineStageFlags2 stages)
 {
 	if (stages == 0)
 	{
@@ -204,7 +204,7 @@ RenderBufferResource &RenderPass::add_transfer_output(const std::string &name, c
 	return res;
 }
 
-RenderTextureResource &RenderPass::add_texture_input(const std::string &name, VkPipelineStageFlags stages)
+RenderTextureResource &RenderPass::add_texture_input(const std::string &name, VkPipelineStageFlags2 stages)
 {
 	auto &res = graph.get_texture_resource(name);
 	res.add_queue(queue);
@@ -299,7 +299,7 @@ RenderTextureResource &RenderPass::add_storage_texture_output(const std::string 
 	return res;
 }
 
-void RenderPass::add_proxy_output(const std::string &name, VkPipelineStageFlags stages)
+void RenderPass::add_proxy_output(const std::string &name, VkPipelineStageFlags2 stages)
 {
 	auto &res = graph.get_proxy_resource(name);
 	res.add_queue(queue);
@@ -313,7 +313,7 @@ void RenderPass::add_proxy_output(const std::string &name, VkPipelineStageFlags 
 	proxy_outputs.push_back(proxy);
 }
 
-void RenderPass::add_proxy_input(const std::string &name, VkPipelineStageFlags stages)
+void RenderPass::add_proxy_input(const std::string &name, VkPipelineStageFlags2 stages)
 {
 	auto &res = graph.get_proxy_resource(name);
 	res.add_queue(queue);
@@ -390,7 +390,7 @@ RenderTextureResource &RenderPass::set_depth_stencil_output(const std::string &n
 	return res;
 }
 
-void RenderPass::add_external_lock(const std::string &name, VkPipelineStageFlags stages)
+void RenderPass::add_external_lock(const std::string &name, VkPipelineStageFlags2 stages)
 {
 	auto *iface = graph.find_external_lock_interface(name);
 	if (iface)
@@ -1860,34 +1860,21 @@ void RenderGraph::PassSubmissionState::emit_pre_pass_barriers()
 	cmd->begin_region("render-graph-sync-pre");
 
 	// Submit barriers.
-	if (!semaphore_handover_barriers.empty() || !immediate_image_barriers.empty() ||
-	    !image_barriers.empty() || !buffer_barriers.empty())
+	if (!image_barriers.empty() || !buffer_barriers.empty())
 	{
-		Util::SmallVector<VkImageMemoryBarrier, 64> combined_barriers;
-		combined_barriers.reserve(semaphore_handover_barriers.size() +
-		                          immediate_image_barriers.size() +
-		                          image_barriers.size());
-		combined_barriers.insert(combined_barriers.end(), semaphore_handover_barriers.begin(), semaphore_handover_barriers.end());
-		combined_barriers.insert(combined_barriers.end(), immediate_image_barriers.begin(), immediate_image_barriers.end());
-		combined_barriers.insert(combined_barriers.end(), image_barriers.begin(), image_barriers.end());
-
-		auto src = handover_stages | pre_src_stages;
-		auto dst = handover_stages | immediate_dst_stages | pre_dst_stages;
-		if (!src)
-			src = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-
-		cmd->barrier(src, dst,
-		             0, nullptr,
-		             buffer_barriers.size(), buffer_barriers.empty() ? nullptr : buffer_barriers.data(),
-		             combined_barriers.size(),
-		             combined_barriers.empty() ? nullptr : combined_barriers.data());
+		VkDependencyInfo dep = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+		dep.bufferMemoryBarrierCount = uint32_t(buffer_barriers.size());
+		dep.pBufferMemoryBarriers = buffer_barriers.data();
+		dep.imageMemoryBarrierCount = uint32_t(image_barriers.size());
+		dep.pImageMemoryBarriers = image_barriers.data();
+		cmd->barrier(dep);
 	}
 
 	cmd->end_region();
 }
 
 static void wait_for_semaphore_in_queue(Vulkan::Device &device_, Vulkan::Semaphore &sem,
-                                        Vulkan::CommandBuffer::Type queue_type, VkPipelineStageFlags stages)
+                                        Vulkan::CommandBuffer::Type queue_type, VkPipelineStageFlags2 stages)
 {
 	if (sem->get_semaphore() != VK_NULL_HANDLE && !sem->is_pending_wait())
 		device_.add_wait_semaphore(queue_type, sem, stages, true);
@@ -1959,7 +1946,6 @@ void RenderGraph::physical_pass_invalidate_attachments(const PhysicalPass &physi
 void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state,
                                                           bool physical_graphics_queue)
 {
-
 	auto &event = barrier.history ? physical_history_events[barrier.resource_index] :
 	              physical_events[barrier.resource_index];
 
@@ -1985,7 +1971,7 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 		{
 			VK_ASSERT(physical_buffers[barrier.resource_index]);
 			auto &buffer = *physical_buffers[barrier.resource_index];
-			VkBufferMemoryBarrier b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
+			VkBufferMemoryBarrier2 b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
 
 			b.srcAccessMask = event.to_flush_access;
 			b.dstAccessMask = barrier.access;
@@ -1994,6 +1980,8 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 			b.buffer = buffer.get_buffer();
 			b.offset = 0;
 			b.size = VK_WHOLE_SIZE;
+			b.srcStageMask = event.pipeline_barrier_src_stages;
+			b.dstStageMask = barrier.stages;
 			state.buffer_barriers.push_back(b);
 		}
 	}
@@ -2010,11 +1998,13 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 			return;
 		}
 
-		VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+		VkImageMemoryBarrier2 b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 		b.oldLayout = event.layout;
 		b.newLayout = barrier.layout;
 		b.srcAccessMask = event.to_flush_access;
 		b.dstAccessMask = barrier.access;
+		b.srcStageMask = event.pipeline_barrier_src_stages;
+		b.dstStageMask = barrier.stages;
 
 		b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -2041,15 +2031,14 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 			}
 			else if (wait_semaphore)
 			{
-				// We wait for a semaphore ...
+				// When the semaphore was signalled, caches were flushed, so we don't need to do that again.
+				// We still need dstAccessMask however, because layout changes may perform writes.
+				b.srcAccessMask = 0;
+
+				// Only need the layout transition.
 				if (layout_change)
-				{
-					// When the semaphore was signalled, caches were flushed, so we don't need to do that again.
-					// We still need dstAccessMask however, because layout changes may perform writes.
-					b.srcAccessMask = 0;
-					state.semaphore_handover_barriers.push_back(b);
-					state.handover_stages |= barrier.stages;
-				}
+					state.image_barriers.push_back(b);
+
 				// If we don't need a layout transition, signalling and waiting for semaphores satisfies
 				// all requirements we have of srcAccessMask/dstAccessMask.
 				need_wait_semaphore = true;
@@ -2057,31 +2046,27 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 			else
 			{
 				// ... or vkCmdPipelineBarrier from TOP_OF_PIPE_BIT if this is the first time we use the resource.
-				state.immediate_image_barriers.push_back(b);
+				b.srcStageMask = VK_PIPELINE_STAGE_NONE;
+				b.srcAccessMask = 0;
+				state.image_barriers.push_back(b);
 				if (b.oldLayout != VK_IMAGE_LAYOUT_UNDEFINED)
 					throw std::logic_error("Cannot do immediate image barriers from a layout other than UNDEFINED.");
-				state.immediate_dst_stages |= barrier.stages;
 			}
 		}
 	}
 
 	// Any pending writes or layout changes means we have to invalidate caches.
 	if (event.to_flush_access || layout_change)
-	{
 		for (auto &e : event.invalidated_in_stage)
 			e = 0;
-	}
 	event.to_flush_access = 0;
 
 	if (need_pipeline_barrier)
 	{
-		state.pre_dst_stages |= barrier.stages;
-
 		assert(event.pipeline_barrier_src_stages != 0);
-		state.pre_src_stages |= event.pipeline_barrier_src_stages;
 
 		// Mark appropriate caches as invalidated now.
-		Util::for_each_bit(barrier.stages, [&](uint32_t bit) {
+		Util::for_each_bit64(barrier.stages, [&](uint32_t bit) {
 			event.invalidated_in_stage[bit] |= barrier.access;
 		});
 	}
@@ -2096,11 +2081,11 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 		// Waiting for a semaphore makes data visible to all access bits in relevant stages.
 		// The exception is if we perform a layout change ...
 		// In this case we only invalidate the access bits which we placed in the vkCmdPipelineBarrier.
-		Util::for_each_bit(barrier.stages, [&](uint32_t bit) {
+		Util::for_each_bit64(barrier.stages, [&](uint32_t bit) {
 			if (layout_change)
 				event.invalidated_in_stage[bit] |= barrier.access;
 			else
-				event.invalidated_in_stage[bit] |= ~0u;
+				event.invalidated_in_stage[bit] |= ~0ull;
 		});
 	}
 }
@@ -2108,12 +2093,8 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 void RenderGraph::physical_pass_handle_signal(Vulkan::Device &device_, const PhysicalPass &physical_pass, PassSubmissionState &state)
 {
 	for (auto &barrier : physical_pass.flush)
-	{
 		if (physical_dimensions[barrier.resource_index].uses_semaphore())
 			state.need_submission_semaphore = true;
-		else
-			state.post_pipeline_barrier_stages |= barrier.stages;
-	}
 
 	if (state.need_submission_semaphore)
 	{
@@ -2153,7 +2134,7 @@ void RenderGraph::physical_pass_handle_flush_barrier(const Barrier &barrier, Pas
 		event.pipeline_barrier_src_stages = 0;
 	}
 	else
-		event.pipeline_barrier_src_stages = state.post_pipeline_barrier_stages;
+		event.pipeline_barrier_src_stages = barrier.stages;
 }
 
 void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &physical_pass, PassSubmissionState &state)
@@ -2404,7 +2385,7 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 
 	if (physical_events[index].pipeline_barrier_src_stages != 0)
 	{
-		VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+		VkImageMemoryBarrier2 barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 		barrier.image = image.get_image();
 		barrier.oldLayout = physical_events[index].layout;
 
@@ -2416,12 +2397,10 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 		barrier.subresourceRange.levelCount = image.get_create_info().levels;
 		barrier.subresourceRange.layerCount = image.get_create_info().layers;
 		barrier.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(physical_attachments[index]->get_format());
+		barrier.srcStageMask = physical_events[index].pipeline_barrier_src_stages;
+		barrier.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 
-		cmd->barrier(physical_events[index].pipeline_barrier_src_stages,
-		             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-		             0, nullptr,
-		             0, nullptr,
-		             1, &barrier);
+		cmd->image_barriers(1, &barrier);
 
 		physical_events[index].layout = target_layout;
 	}
@@ -3155,7 +3134,7 @@ void RenderGraph::build_physical_barriers()
 {
 	auto barrier_itr = begin(pass_barriers);
 
-	const auto flush_access_to_invalidate = [](VkAccessFlags flags) -> VkAccessFlags {
+	const auto flush_access_to_invalidate = [](VkAccessFlags2 flags) -> VkAccessFlags2 {
 		if (flags & VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT)
 			flags |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 		if (flags & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
@@ -3165,7 +3144,7 @@ void RenderGraph::build_physical_barriers()
 		return flags;
 	};
 
-	const auto flush_stage_to_invalidate = [](VkPipelineStageFlags flags) -> VkPipelineStageFlags {
+	const auto flush_stage_to_invalidate = [](VkPipelineStageFlags2 flags) -> VkPipelineStageFlags2 {
 		if (flags & VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT)
 			flags |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
 		return flags;
@@ -3175,11 +3154,11 @@ void RenderGraph::build_physical_barriers()
 	{
 		VkImageLayout initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		VkImageLayout final_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		VkAccessFlags invalidated_types = 0;
-		VkAccessFlags flushed_types = 0;
+		VkAccessFlags2 invalidated_types = 0;
+		VkAccessFlags2 flushed_types = 0;
 
-		VkPipelineStageFlags invalidated_stages = 0;
-		VkPipelineStageFlags flushed_stages = 0;
+		VkPipelineStageFlags2 invalidated_stages = 0;
+		VkPipelineStageFlags2 flushed_stages = 0;
 	};
 
 	// To handle state inside a physical pass.

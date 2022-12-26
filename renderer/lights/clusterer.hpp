@@ -264,7 +264,7 @@ private:
 
 		std::vector<uvec2> volume_index_range;
 
-		std::vector<VkImageMemoryBarrier> shadow_barriers;
+		std::vector<VkImageMemoryBarrier2> shadow_barriers;
 		std::vector<const Vulkan::Image *> shadow_images;
 		std::vector<ShadowTaskHandle> shadow_task_handles;
 		std::vector<Util::Hash> light_transform_hashes;

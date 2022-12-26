@@ -407,8 +407,8 @@ public:
 
 	struct AccessedResource
 	{
-		VkPipelineStageFlags stages = 0;
-		VkAccessFlags access = 0;
+		VkPipelineStageFlags2 stages = 0;
+		VkAccessFlags2 access = 0;
 		VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	};
 
@@ -430,7 +430,7 @@ public:
 	struct AccessedExternalLockInterface
 	{
 		RenderPassExternalLockInterface *iface;
-		VkPipelineStageFlags stages;
+		VkPipelineStageFlags2 stages;
 	};
 
 	RenderGraphQueueFlagBits get_queue() const
@@ -448,7 +448,7 @@ public:
 		return index;
 	}
 
-	void add_external_lock(const std::string &name, VkPipelineStageFlags stages);
+	void add_external_lock(const std::string &name, VkPipelineStageFlags2 stages);
 
 	RenderTextureResource &set_depth_stencil_input(const std::string &name);
 	RenderTextureResource &set_depth_stencil_output(const std::string &name, const AttachmentInfo &info);
@@ -458,12 +458,12 @@ public:
 	RenderTextureResource &add_history_input(const std::string &name);
 
 	RenderTextureResource &add_texture_input(const std::string &name,
-	                                         VkPipelineStageFlags stages = 0);
+	                                         VkPipelineStageFlags2 stages = 0);
 	RenderTextureResource &add_blit_texture_read_only_input(const std::string &name);
 	RenderBufferResource &add_uniform_input(const std::string &name,
-	                                        VkPipelineStageFlags stages = 0);
+	                                        VkPipelineStageFlags2 stages = 0);
 	RenderBufferResource &add_storage_read_only_input(const std::string &name,
-	                                                  VkPipelineStageFlags stages = 0);
+	                                                  VkPipelineStageFlags2 stages = 0);
 
 	RenderBufferResource &add_storage_output(const std::string &name, const BufferInfo &info, const std::string &input = "");
 	RenderBufferResource &add_transfer_output(const std::string &name, const BufferInfo &info);
@@ -475,8 +475,8 @@ public:
 	RenderBufferResource &add_index_buffer_input(const std::string &name);
 	RenderBufferResource &add_indirect_buffer_input(const std::string &name);
 
-	void add_proxy_output(const std::string &name, VkPipelineStageFlags stages);
-	void add_proxy_input(const std::string &name, VkPipelineStageFlags stages);
+	void add_proxy_output(const std::string &name, VkPipelineStageFlags2 stages);
+	void add_proxy_input(const std::string &name, VkPipelineStageFlags2 stages);
 
 	void add_fake_resource_write_alias(const std::string &from, const std::string &to);
 
@@ -741,8 +741,8 @@ private:
 	std::string pass_name;
 
 	RenderBufferResource &add_generic_buffer_input(const std::string &name,
-	                                               VkPipelineStageFlags stages,
-	                                               VkAccessFlags access,
+	                                               VkPipelineStageFlags2 stages,
+	                                               VkAccessFlags2 access,
 	                                               VkBufferUsageFlags usage);
 };
 
@@ -892,8 +892,8 @@ private:
 	{
 		unsigned resource_index;
 		VkImageLayout layout;
-		VkAccessFlags access;
-		VkPipelineStageFlags stages;
+		VkAccessFlags2 access;
+		VkPipelineStageFlags2 stages;
 		bool history;
 	};
 
@@ -933,8 +933,8 @@ private:
 	struct MipmapRequests
 	{
 		unsigned physical_resource;
-		VkPipelineStageFlags stages;
-		VkAccessFlags access;
+		VkPipelineStageFlags2 stages;
+		VkAccessFlags2 access;
 		VkImageLayout layout;
 	};
 
@@ -977,7 +977,7 @@ private:
 
 	struct PipelineEvent
 	{
-		VkPipelineStageFlags pipeline_barrier_src_stages = 0;
+		VkPipelineStageFlags2 pipeline_barrier_src_stages = 0;
 
 		// Need two separate semaphores so we can wait in both queues independently.
 		// Waiting for a semaphore resets it.
@@ -985,8 +985,8 @@ private:
 		Vulkan::Semaphore wait_compute_semaphore;
 
 		// Stages to wait for are stored inside the events.
-		VkAccessFlags to_flush_access = 0;
-		VkAccessFlags invalidated_in_stage[32] = {};
+		VkAccessFlags2 to_flush_access = 0;
+		VkAccessFlags2 invalidated_in_stage[64] = {};
 		VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	};
 
@@ -1023,29 +1023,13 @@ private:
 
 	struct PassSubmissionState
 	{
-		Util::SmallVector<VkBufferMemoryBarrier> buffer_barriers;
-		Util::SmallVector<VkImageMemoryBarrier> image_barriers;
-
-		// Immediate buffer barriers are useless because they don't need any layout transition,
-		// and the API guarantees that submitting a batch makes memory visible to GPU resources.
-		// Immediate image barriers are purely for doing layout transitions without waiting (srcStage = TOP_OF_PIPE).
-		Util::SmallVector<VkImageMemoryBarrier> immediate_image_barriers;
-
-		// Barriers which are used when waiting for a semaphore, and then doing a transition.
-		// We need to use pipeline barriers here so we can have srcStage = dstStage,
-		// and hand over while not breaking the pipeline.
-		Util::SmallVector<VkImageMemoryBarrier> semaphore_handover_barriers;
+		Util::SmallVector<VkBufferMemoryBarrier2> buffer_barriers;
+		Util::SmallVector<VkImageMemoryBarrier2> image_barriers;
 
 		Util::SmallVector<VkSubpassContents> subpass_contents;
 
-		VkPipelineStageFlags post_pipeline_barrier_stages = 0;
-		VkPipelineStageFlags pre_dst_stages = 0;
-		VkPipelineStageFlags immediate_dst_stages = 0;
-		VkPipelineStageFlags pre_src_stages = 0;
-		VkPipelineStageFlags handover_stages = 0;
-
 		Util::SmallVector<Vulkan::Semaphore> wait_semaphores;
-		Util::SmallVector<VkPipelineStageFlags> wait_semaphore_stages;
+		Util::SmallVector<VkPipelineStageFlags2> wait_semaphore_stages;
 
 		Util::SmallVector<RenderPass::AccessedExternalLockInterface> external_locks;
 

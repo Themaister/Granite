@@ -3800,8 +3800,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		info.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 	}
 
-	// Only do this conditionally.
-	// On AMD, using CONCURRENT with async compute disables compression.
 	uint32_t sharing_indices[QUEUE_INDEX_COUNT];
 
 	uint32_t queue_flags = create_info.misc & (IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
@@ -3830,37 +3828,28 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 			queue_flags |= implicit_queues_all;
 		}
-
-		if (staging_buffer)
+		else if (staging_buffer)
 		{
+			// Make sure that these queues are included.
 			queue_flags |= IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
 			if (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT)
 				queue_flags |= IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
 		}
 
-		if (queue_flags & (IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT))
+		struct
 		{
-			add_unique_family(sharing_indices, info.queueFamilyIndexCount,
-			                  queue_info.family_indices[QUEUE_INDEX_GRAPHICS]);
-		}
+			uint32_t flags;
+			QueueIndices index;
+		} static const mappings[] = {
+			{ IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT, QUEUE_INDEX_GRAPHICS },
+			{ IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT, QUEUE_INDEX_COMPUTE },
+			{ IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT, QUEUE_INDEX_TRANSFER },
+			{ IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT, QUEUE_INDEX_VIDEO_DECODE },
+		};
 
-		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT)
-		{
-			add_unique_family(sharing_indices, info.queueFamilyIndexCount,
-			                  queue_info.family_indices[QUEUE_INDEX_COMPUTE]);
-		}
-
-		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT)
-		{
-			add_unique_family(sharing_indices, info.queueFamilyIndexCount,
-			                  queue_info.family_indices[QUEUE_INDEX_TRANSFER]);
-		}
-
-		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)
-		{
-			add_unique_family(sharing_indices, info.queueFamilyIndexCount,
-			                  queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE]);
-		}
+		for (auto &m : mappings)
+			if ((queue_flags & m.flags) != 0)
+				add_unique_family(sharing_indices, info.queueFamilyIndexCount, queue_info.family_indices[m.index]);
 
 		if (info.queueFamilyIndexCount > 1)
 			info.pQueueFamilyIndices = sharing_indices;
@@ -4035,7 +4024,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		// the transfer queue is designed for CPU <-> GPU and that's it.
 		// For concurrent queue mode, we just need to inject a semaphore.
 
-		auto graphics_cmd = request_command_buffer(CommandBuffer::Type::Generic);
 		auto transfer_cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 
 		transfer_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -4047,30 +4035,39 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		                                   staging_buffer->blits.size(), staging_buffer->blits.data());
 		transfer_cmd->end_region();
 
-		VkPipelineStageFlags dst_stages =
-				generate_mips ? VkPipelineStageFlags(VK_PIPELINE_STAGE_TRANSFER_BIT) : handle->get_stage_flags();
-
-		Semaphore sem;
-		submit(transfer_cmd, nullptr, 1, &sem);
-		add_wait_semaphore(CommandBuffer::Type::Generic, sem, dst_stages, true);
-
 		if (generate_mips)
 		{
+			auto graphics_cmd = request_command_buffer(CommandBuffer::Type::Generic);
+			Semaphore sem;
+
+			submit(transfer_cmd, nullptr, 1, &sem);
+			add_wait_semaphore(CommandBuffer::Type::Generic, sem, VK_PIPELINE_STAGE_TRANSFER_BIT, true);
+
 			graphics_cmd->begin_region("mipgen");
 			graphics_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			                                              VK_PIPELINE_STAGE_TRANSFER_BIT,
 			                                              0, true);
 			graphics_cmd->generate_mipmap(*handle);
 			graphics_cmd->end_region();
+
+			graphics_cmd->image_barrier(
+					*handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+					create_info.initial_layout,
+					VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+					VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
+
+			transition_cmd = std::move(graphics_cmd);
 		}
+		else
+		{
+			transfer_cmd->image_barrier(
+					*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+					create_info.initial_layout,
+					VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+					VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
 
-		graphics_cmd->image_barrier(
-				*handle, generate_mips ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				create_info.initial_layout,
-				VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-				VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
-
-		transition_cmd = std::move(graphics_cmd);
+			transition_cmd = std::move(transfer_cmd);
+		}
 	}
 	else if (create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
 	{
@@ -4107,6 +4104,18 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		Semaphore sem[max_queues];
 		uint32_t sem_count = 0;
 
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT)
+		{
+			// Avoid redundant submissions to same queue.
+			if (get_physical_queue_type(CommandBuffer::Type::AsyncGraphics) == QUEUE_INDEX_GRAPHICS)
+			{
+				queue_flags &= ~IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT;
+				queue_flags |= IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
+			}
+			else
+				queue_flags &= ~IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
+		}
+
 		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT)
 		{
 			types[sem_count] = CommandBuffer::Type::Generic;
@@ -4129,7 +4138,8 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 				sem_count++;
 		}
 
-		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT)
+		// Do not synchronize transfer/video queues here unless we explicitly asked for it.
+		if (create_info.misc & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT)
 		{
 			types[sem_count] = CommandBuffer::Type::AsyncTransfer;
 			stages[sem_count] = handle->get_stage_flags() & VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -4137,10 +4147,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 				sem_count++;
 		}
 
-		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)
+		if (create_info.misc & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)
 		{
 			types[sem_count] = CommandBuffer::Type::VideoDecode;
-			// TODO: Update to sync2 here?
+			// TODO: Update to sync2 here? This bitmask fits in 32-bits,
+			// but unsure if it's valid to use the stage with sync1 entry points.
 			stages[sem_count] = handle->get_stage_flags() & static_cast<VkPipelineStageFlagBits>(VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR);
 			if (stages[sem_count] != 0)
 				sem_count++;

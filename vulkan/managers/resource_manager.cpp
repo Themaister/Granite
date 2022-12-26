@@ -81,7 +81,6 @@ void ResourceManager::init()
 		auto info = ImageCreateInfo::immutable_2d_image(1, 1, VK_FORMAT_R8G8B8A8_UNORM);
 		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 		info.misc = IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
-		            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
 		            IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 		            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT;
 		ImageInitialData data = {buffer, 0, 0};

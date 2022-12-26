@@ -131,7 +131,7 @@ void Device::register_graphics_pipeline(Fossilize::Hash hash, const VkGraphicsPi
 		LOGW("Failed to register graphics pipeline.\n");
 }
 
-void Device::register_render_pass(VkRenderPass render_pass, Fossilize::Hash hash, const VkRenderPassCreateInfo &info)
+void Device::register_render_pass(VkRenderPass render_pass, Fossilize::Hash hash, const VkRenderPassCreateInfo2KHR &info)
 {
 	if (!recorder_state)
 		return;
@@ -142,7 +142,7 @@ void Device::register_render_pass(VkRenderPass render_pass, Fossilize::Hash hash
 		return;
 	}
 
-	if (!recorder_state->recorder.record_render_pass(render_pass, info, hash))
+	if (!recorder_state->recorder.record_render_pass2(render_pass, info, hash))
 		LOGW("Failed to register render pass.\n");
 }
 
@@ -344,11 +344,16 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash,
 	return true;
 }
 
-bool Device::enqueue_create_render_pass(Fossilize::Hash hash,
-                                        const VkRenderPassCreateInfo *create_info,
-                                        VkRenderPass *render_pass)
+bool Device::enqueue_create_render_pass(Fossilize::Hash,
+                                        const VkRenderPassCreateInfo *,
+                                        VkRenderPass *)
 {
-	if (!replayer_state->feature_filter->render_pass_is_supported(create_info))
+	return false;
+}
+
+bool Device::enqueue_create_render_pass2(Fossilize::Hash hash, const VkRenderPassCreateInfo2 *create_info, VkRenderPass *render_pass)
+{
+	if (!replayer_state->feature_filter->render_pass2_is_supported(create_info))
 	{
 		render_pass = VK_NULL_HANDLE;
 		return true;
@@ -357,11 +362,6 @@ bool Device::enqueue_create_render_pass(Fossilize::Hash hash,
 	auto *pass = render_passes.emplace_yield(hash, hash, this, *create_info);
 	*render_pass = pass->get_render_pass();
 	return true;
-}
-
-bool Device::enqueue_create_render_pass2(Fossilize::Hash, const VkRenderPassCreateInfo2 *, VkRenderPass *)
-{
-	return false;
 }
 
 bool Device::enqueue_create_raytracing_pipeline(

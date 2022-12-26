@@ -62,6 +62,7 @@ struct DeviceFeatures
 	bool supports_memory_budget = false;
 	bool supports_astc_decode_mode = false;
 	bool supports_sync2 = false;
+	bool supports_create_renderpass2 = false;
 	bool supports_video_queue = false;
 	bool supports_video_decode_queue = false;
 	bool supports_video_decode_h264 = false;

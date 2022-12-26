@@ -4791,6 +4791,9 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info, bool c
 	// Lazy flag can change external subpass dependencies, which is not compatible.
 	h.u32(lazy);
 
+	// Marked for v2 render passes.
+	h.u32(2);
+
 	auto hash = h.get();
 
 	auto *ret = render_passes.find(hash);

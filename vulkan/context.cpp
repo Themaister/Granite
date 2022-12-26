@@ -838,6 +838,17 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ext.supports_shader_float_control = true;
 	}
 
+	if (has_extension(VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME))
+	{
+		ext.supports_create_renderpass2 = true;
+		enabled_extensions.push_back(VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME);
+	}
+	else
+	{
+		LOGE("VK_KHR_create_renderpass2 is not supported.\n");
+		return false;
+	}
+
 	if (has_extension(VK_EXT_TOOLING_INFO_EXTENSION_NAME))
 		ext.supports_tooling_info = true;
 

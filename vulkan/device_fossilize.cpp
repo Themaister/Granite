@@ -717,7 +717,10 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 					continue;
 
 				if (!module_replayer.parse(*this, &db, buffer.data(), size))
+				{
+					replayer_state->progress.modules.fetch_add(1, std::memory_order_release);
 					LOGW("Failed to parse module.\n");
+				}
 			}
 		});
 	}
@@ -743,7 +746,10 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 				continue;
 
 			if (!replayer.parse(*this, &db, buffer.data(), size))
+			{
+				replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 				LOGW("Failed to parse graphics pipeline.\n");
+			}
 		}
 	});
 	parse_graphics_task->set_desc("foz-parse-graphics");
@@ -769,7 +775,10 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 				continue;
 
 			if (!replayer.parse(*this, &db, buffer.data(), size))
+			{
+				replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 				LOGW("Failed to parse compute pipeline.\n");
+			}
 		}
 	});
 	parse_compute_task->set_desc("foz-parse-compute");

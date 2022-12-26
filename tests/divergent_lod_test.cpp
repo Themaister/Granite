@@ -106,7 +106,7 @@ struct DivergentLOD : Granite::Application, Granite::EventHandler
 
 		cmd->image_barrier(*render_target, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 
 		BufferCreateInfo readback_buffer_info = {};
 		readback_buffer_info.domain = BufferDomain::CachedHost;
@@ -116,9 +116,9 @@ struct DivergentLOD : Granite::Application, Granite::EventHandler
 		cmd->copy_image_to_buffer(*readback_buffer, *render_target, 0, {}, { 2, 2, 1 }, 0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
 
 		cmd->image_barrier(*render_target, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, 0,
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::Depth);

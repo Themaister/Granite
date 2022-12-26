@@ -66,7 +66,7 @@ struct CoherencyTest : Granite::Application, Granite::EventHandler
 		auto cmd = device.request_command_buffer();
 
 		cmd->copy_buffer(*copied_buffer, *buffer);
-		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		             VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
 		{
 			auto *host_ptr = static_cast<u8vec4 *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));
@@ -82,7 +82,7 @@ struct CoherencyTest : Granite::Application, Granite::EventHandler
 		cmd = device.request_command_buffer();
 
 		cmd->copy_buffer(*copied_buffer, *buffer);
-		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		             VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
 		{
 			auto *host_ptr = static_cast<u8vec4 *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));

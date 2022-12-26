@@ -991,11 +991,11 @@ void LightClusterer::render_atlas_spot(const RenderContext &context_)
 		{
 			cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-			                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+			                   VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 			cmd->clear_image(*legacy.spots.atlas, {});
 			cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 		}
 	}
@@ -1922,7 +1922,7 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 void LightClusterer::build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd)
 {
 	update_bindless_data(cmd);
-	cmd.barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 	update_bindless_mask_buffer_gpu(cmd);
 	update_bindless_mask_buffer_decal_gpu(cmd);

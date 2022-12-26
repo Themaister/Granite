@@ -740,7 +740,7 @@ void SceneViewerApplication::capture_environment_probe()
 
 	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 	                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-	                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+	                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 	device.submit(cmd);
 	auto buffer = save_image_to_cpu_buffer(device, *handle, CommandBuffer::Type::Generic);
 	save_image_buffer_to_gtx(device, buffer, "cache://environment.gtx");

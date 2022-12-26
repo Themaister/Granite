@@ -585,7 +585,7 @@ void CommandBuffer::barrier_prepare_generate_mipmap(const Image &image, VkImageL
 		barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		barriers[i].srcStageMask = src_stage;
-		barriers[i].dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		barriers[i].dstStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT;
 
 		if (i == 0)
 		{
@@ -629,8 +629,8 @@ void CommandBuffer::generate_mipmap(const Image &image)
 	b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	b.srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
-	b.dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	b.srcStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT;
+	b.dstStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT;
 
 	for (unsigned i = 1; i < create_info.levels; i++)
 	{
@@ -2732,9 +2732,10 @@ void CommandBuffer::begin_debug_channel(DebugChannelInterface *iface, const char
 	debug_channel_buffer = device->create_buffer(info);
 
 	fill_buffer(*debug_channel_buffer, 0);
-	barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-	        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-	        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+	buffer_barrier(*debug_channel_buffer,
+	               VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	               VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+	               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
 
 	set_storage_buffer(VULKAN_NUM_DESCRIPTOR_SETS - 1, VULKAN_NUM_BINDINGS - 1, *debug_channel_buffer);
 }
@@ -2750,9 +2751,9 @@ void CommandBuffer::end_debug_channel()
 	info.domain = BufferDomain::CachedHost;
 	auto debug_channel_readback = device->create_buffer(info);
 	barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+	        VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 	copy_buffer(*debug_channel_readback, *debug_channel_buffer);
-	barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 	        VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 	debug_channel_buffer.reset();

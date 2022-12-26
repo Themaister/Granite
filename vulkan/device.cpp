@@ -323,7 +323,7 @@ void Device::unmap_linear_host_image_and_sync(const LinearHostImage &image, Memo
 		auto cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 		cmd->image_barrier(image.get_image(), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 		cmd->copy_buffer_to_image(image.get_image(), image.get_host_visible_buffer(),
 		                          0, {},
 		                          { image.get_image().get_width(), image.get_image().get_height(), 1 },
@@ -331,8 +331,8 @@ void Device::unmap_linear_host_image_and_sync(const LinearHostImage &image, Memo
 
 		// Don't care about dstAccessMask, semaphore takes care of everything.
 		cmd->image_barrier(image.get_image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_NONE, 0);
 
 		Semaphore sem;
 		submit(cmd, nullptr, 1, &sem);
@@ -3948,7 +3948,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		auto transfer_cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 
 		transfer_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		                            VK_PIPELINE_STAGE_NONE, 0, VK_PIPELINE_STAGE_2_COPY_BIT,
 		                            VK_ACCESS_TRANSFER_WRITE_BIT);
 
 		transfer_cmd->begin_region("copy-image-to-gpu");
@@ -3962,11 +3962,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			Semaphore sem;
 
 			submit(transfer_cmd, nullptr, 1, &sem);
-			add_wait_semaphore(CommandBuffer::Type::Generic, sem, VK_PIPELINE_STAGE_TRANSFER_BIT, true);
+			add_wait_semaphore(CommandBuffer::Type::Generic, sem, VK_PIPELINE_STAGE_2_BLIT_BIT, true);
 
 			graphics_cmd->begin_region("mipgen");
 			graphics_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			                                              VK_PIPELINE_STAGE_TRANSFER_BIT,
+			                                              VK_PIPELINE_STAGE_2_BLIT_BIT,
 			                                              0, true);
 			graphics_cmd->generate_mipmap(*handle);
 			graphics_cmd->end_region();
@@ -3974,8 +3974,8 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			graphics_cmd->image_barrier(
 					*handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 					create_info.initial_layout,
-					VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-					VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
+					VK_PIPELINE_STAGE_2_BLIT_BIT, 0,
+					VK_PIPELINE_STAGE_NONE, 0);
 
 			transition_cmd = std::move(graphics_cmd);
 		}
@@ -3984,8 +3984,8 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			transfer_cmd->image_barrier(
 					*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 					create_info.initial_layout,
-					VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-					VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
+					VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+					VK_PIPELINE_STAGE_NONE, 0);
 
 			transition_cmd = std::move(transfer_cmd);
 		}
@@ -4490,7 +4490,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	if (create_info.domain == BufferDomain::Device && (initial || zero_initialize) && !memory_type_is_host_visible(memory_type))
 	{
-		CommandBufferHandle cmd;
+		auto cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 		if (initial)
 		{
 			auto staging_info = create_info;
@@ -4498,14 +4498,12 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 			auto staging_buffer = create_buffer(staging_info, initial);
 			set_name(*staging_buffer, "buffer-upload-staging-buffer");
 
-			cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 			cmd->begin_region("copy-buffer-staging");
 			cmd->copy_buffer(*handle, *staging_buffer);
 			cmd->end_region();
 		}
 		else
 		{
-			cmd = request_command_buffer(CommandBuffer::Type::AsyncCompute);
 			cmd->begin_region("fill-buffer-staging");
 			cmd->fill_buffer(*handle, 0);
 			cmd->end_region();

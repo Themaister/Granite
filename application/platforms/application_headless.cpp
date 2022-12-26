@@ -367,7 +367,7 @@ public:
 				transfer_info.new_queue = CommandBuffer::Type::AsyncTransfer;
 				transfer_info.old_image_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 				transfer_info.new_image_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-				transfer_info.dst_pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+				transfer_info.dst_pipeline_stage = VK_PIPELINE_STAGE_2_COPY_BIT;
 				transfer_info.dst_access = VK_ACCESS_TRANSFER_READ_BIT;
 				auto cmd = request_command_buffer_with_ownership_transfer(device, *swapchain_images[frame_index],
 				                                                          transfer_info, release_semaphore);
@@ -376,7 +376,7 @@ public:
 				                          0, {}, {width, height, 1},
 				                          0, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
 
-				cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+				cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 				             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 				thread_latches[frame_index].wait_latch_cleared();

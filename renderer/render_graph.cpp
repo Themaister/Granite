@@ -350,7 +350,7 @@ RenderTextureResource &RenderPass::add_blit_texture_read_only_input(const std::s
 	acc.texture = &res;
 	acc.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 	acc.access = VK_ACCESS_TRANSFER_READ_BIT;
-	acc.stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	acc.stages = VK_PIPELINE_STAGE_2_BLIT_BIT;
 
 	generic_texture.push_back(acc);
 	return res;
@@ -3472,7 +3472,7 @@ void RenderGraph::build_barriers()
 
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_TRANSFER_WRITE_BIT;
-			barrier.stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+			barrier.stages |= VK_PIPELINE_STAGE_2_BLIT_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -3528,7 +3528,7 @@ void RenderGraph::build_barriers()
 			{
 				// access should be 0 here. generate_mipmaps will take care of invalidation needed.
 				barrier.access |= VK_ACCESS_TRANSFER_READ_BIT; // Validation layers complain without this.
-				barrier.stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+				barrier.stages |= VK_PIPELINE_STAGE_2_BLIT_BIT;
 				if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 					throw std::logic_error("Layout mismatch.");
 				barrier.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -3569,7 +3569,7 @@ void RenderGraph::build_barriers()
 		{
 			auto &barrier = get_invalidate_access(output->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_TRANSFER_WRITE_BIT;
-			barrier.stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+			barrier.stages |= VK_PIPELINE_STAGE_2_BLIT_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -3606,7 +3606,7 @@ void RenderGraph::build_barriers()
 		{
 			auto &barrier = get_flush_access(output->get_physical_index());
 			barrier.access |= VK_ACCESS_TRANSFER_WRITE_BIT;
-			barrier.stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+			barrier.stages |= VK_PIPELINE_STAGE_2_COPY_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;

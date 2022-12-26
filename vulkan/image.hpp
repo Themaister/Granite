@@ -66,7 +66,7 @@ static inline VkPipelineStageFlags image_usage_to_possible_stages(VkImageUsageFl
 	return flags;
 }
 
-static inline VkAccessFlags image_layout_to_possible_access(VkImageLayout layout)
+static inline VkAccessFlags2 image_layout_to_possible_access(VkImageLayout layout)
 {
 	switch (layout)
 	{
@@ -87,9 +87,9 @@ static inline VkAccessFlags image_layout_to_possible_access(VkImageLayout layout
 	}
 }
 
-static inline VkAccessFlags image_usage_to_possible_access(VkImageUsageFlags usage)
+static inline VkAccessFlags2 image_usage_to_possible_access(VkImageUsageFlags usage)
 {
-	VkAccessFlags flags = 0;
+	VkAccessFlags2 flags = 0;
 
 	if (usage & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT))
 		flags |= VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -544,22 +544,22 @@ public:
 		swapchain_layout = layout;
 	}
 
-	void set_stage_flags(VkPipelineStageFlags flags)
+	void set_stage_flags(VkPipelineStageFlags2 flags)
 	{
 		stage_flags = flags;
 	}
 
-	void set_access_flags(VkAccessFlags flags)
+	void set_access_flags(VkAccessFlags2 flags)
 	{
 		access_flags = flags;
 	}
 
-	VkPipelineStageFlags get_stage_flags() const
+	VkPipelineStageFlags2 get_stage_flags() const
 	{
 		return stage_flags;
 	}
 
-	VkAccessFlags get_access_flags() const
+	VkAccessFlags2 get_access_flags() const
 	{
 		return access_flags;
 	}
@@ -612,8 +612,8 @@ private:
 	ImageCreateInfo create_info;
 
 	Layout layout_type = Layout::Optimal;
-	VkPipelineStageFlags stage_flags = 0;
-	VkAccessFlags access_flags = 0;
+	VkPipelineStageFlags2 stage_flags = 0;
+	VkAccessFlags2 access_flags = 0;
 	VkImageLayout swapchain_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkSurfaceTransformFlagBitsKHR surface_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	bool owns_image = true;

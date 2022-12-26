@@ -49,9 +49,9 @@ static inline VkPipelineStageFlags buffer_usage_to_possible_stages(VkBufferUsage
 	return flags;
 }
 
-static inline VkAccessFlags buffer_usage_to_possible_access(VkBufferUsageFlags usage)
+static inline VkAccessFlags2 buffer_usage_to_possible_access(VkBufferUsageFlags usage)
 {
-	VkAccessFlags flags = 0;
+	VkAccessFlags2 flags = 0;
 	if (usage & (VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
 		flags |= VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
 	if (usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)

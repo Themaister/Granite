@@ -365,7 +365,7 @@ public:
 	//   For timelines, we need to know which handle type to use (OPAQUE or ID3D12Fence).
 	//   Binary external semaphore is always opaque with TEMPORARY semantics.
 
-	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
+	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags2 stages, bool flush);
 
 	// If transfer_ownership is set, Semaphore owns the VkSemaphore. Otherwise, application must
 	// free the semaphore when GPU usage of it is complete.
@@ -463,7 +463,7 @@ public:
 	QueryPoolHandle write_calibrated_timestamp();
 
 	// A split version of VkEvent handling which lets us record a wait command before signal is recorded.
-	PipelineEvent begin_signal_event(VkPipelineStageFlags stages);
+	PipelineEvent begin_signal_event();
 
 	const Context::SystemHandles &get_system_handles() const
 	{
@@ -776,8 +776,8 @@ private:
 	                   unsigned semaphore_count, Semaphore *semaphore);
 	void submit_empty_nolock(QueueIndices physical_type, Fence *fence,
 	                         SemaphoreHolder *semaphore, int profiling_iteration);
-	void add_wait_semaphore_nolock(QueueIndices type, Semaphore semaphore, VkPipelineStageFlags stages,
-	                               bool flush);
+	void add_wait_semaphore_nolock(QueueIndices type, Semaphore semaphore,
+	                               VkPipelineStageFlags2 stages, bool flush);
 
 	void request_vertex_block_nolock(BufferBlock &block, VkDeviceSize size);
 	void request_index_block_nolock(BufferBlock &block, VkDeviceSize size);
@@ -866,8 +866,8 @@ struct OwnershipTransferInfo
 	CommandBuffer::Type new_queue;
 	VkImageLayout old_image_layout;
 	VkImageLayout new_image_layout;
-	VkPipelineStageFlags dst_pipeline_stage;
-	VkAccessFlags dst_access;
+	VkPipelineStageFlags2 dst_pipeline_stage;
+	VkAccessFlags2 dst_access;
 };
 
 // For an image which was last accessed in old_queue, requests a command buffer

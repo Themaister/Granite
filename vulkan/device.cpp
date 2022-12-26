@@ -221,7 +221,7 @@ Semaphore Device::request_proxy_semaphore()
 	return ptr;
 }
 
-void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush)
+void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags2 stages, bool flush)
 {
 	VK_ASSERT(!semaphore->is_proxy_timeline());
 
@@ -229,8 +229,8 @@ void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, V
 	add_wait_semaphore_nolock(get_physical_queue_type(type), std::move(semaphore), stages, flush);
 }
 
-void Device::add_wait_semaphore_nolock(QueueIndices physical_type, Semaphore semaphore, VkPipelineStageFlags stages,
-                                       bool flush)
+void Device::add_wait_semaphore_nolock(QueueIndices physical_type, Semaphore semaphore,
+                                       VkPipelineStageFlags2 stages, bool flush)
 {
 	VK_ASSERT(stages != 0);
 	if (flush)
@@ -244,7 +244,7 @@ void Device::add_wait_semaphore_nolock(QueueIndices physical_type, Semaphore sem
 
 	semaphore->set_pending_wait();
 	data.wait_semaphores.push_back(semaphore);
-	data.wait_stages.push_back(stages);
+	data.wait_stages.push_back(convert_vk_dst_stage2(stages));
 	data.need_fence = true;
 
 	// Sanity check.
@@ -777,7 +777,6 @@ void Device::init_workarounds()
 
 		// Both are performance related workarounds.
 		workarounds.emulate_event_as_pipeline_barrier = true;
-		workarounds.optimize_all_graphics_barrier = true;
 
 		if (ext.timeline_semaphore_features.timelineSemaphore)
 		{
@@ -5075,11 +5074,9 @@ int64_t Device::convert_timestamp_to_absolute_nsec(const QueryPoolResult &handle
 	return ts;
 }
 
-PipelineEvent Device::begin_signal_event(VkPipelineStageFlags stages)
+PipelineEvent Device::begin_signal_event()
 {
-	auto event = request_pipeline_event();
-	event->set_stages(stages);
-	return event;
+	return request_pipeline_event();
 }
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
@@ -5201,7 +5198,7 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)) != 0;
 	bool need_ownership_transfer = old_family != new_family && !image_is_concurrent;
 
-	VkImageMemoryBarrier ownership = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+	VkImageMemoryBarrier2 ownership = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 	ownership.image = image.get_image();
 	ownership.srcAccessMask = 0;
 	ownership.dstAccessMask = 0;
@@ -5210,6 +5207,8 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 	ownership.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 	ownership.oldLayout = info.old_image_layout;
 	ownership.newLayout = info.new_image_layout;
+	ownership.srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	ownership.dstStageMask = VK_PIPELINE_STAGE_NONE;
 
 	if (need_ownership_transfer)
 	{
@@ -5220,9 +5219,7 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 			device.add_wait_semaphore(info.old_queue, semaphore, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, true);
 		auto release_cmd = device.request_command_buffer(info.old_queue);
 
-		release_cmd->image_barriers(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-		                            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-		                            1, &ownership);
+		release_cmd->image_barriers(1, &ownership);
 
 		Semaphore sem;
 		device.submit(release_cmd, nullptr, 1, &sem);
@@ -5245,7 +5242,9 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 	if (need_dst_barrier)
 	{
 		ownership.dstAccessMask = info.dst_access;
-		acquire_cmd->image_barriers(info.dst_pipeline_stage, info.dst_pipeline_stage, 1, &ownership);
+		ownership.srcStageMask = info.dst_pipeline_stage;
+		ownership.dstStageMask = info.dst_pipeline_stage;
+		acquire_cmd->image_barriers(1, &ownership);
 	}
 
 	return acquire_cmd;

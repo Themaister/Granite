@@ -119,11 +119,8 @@ namespace Helper
 {
 struct WaitSemaphores
 {
-	Util::SmallVector<VkSemaphore> binary_waits;
-	Util::SmallVector<VkPipelineStageFlags> binary_wait_stages;
-	Util::SmallVector<VkSemaphore> timeline_waits;
-	Util::SmallVector<VkPipelineStageFlags> timeline_wait_stages;
-	Util::SmallVector<uint64_t> timeline_wait_counts;
+	Util::SmallVector<VkSemaphoreSubmitInfo> binary_waits;
+	Util::SmallVector<VkSemaphoreSubmitInfo> timeline_waits;
 };
 
 class BatchComposer
@@ -135,23 +132,19 @@ public:
 	void add_wait_submissions(WaitSemaphores &sem);
 	void add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags2 stage);
 	void add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags2 stage);
-	void add_signal_semaphore(VkSemaphore sem, uint64_t count);
+	void add_signal_semaphore(VkSemaphore sem, VkPipelineStageFlags2 stage, uint64_t count);
 	void add_command_buffer(VkCommandBuffer cmd);
 
 	void begin_batch();
-	Util::SmallVector<VkSubmitInfo, MaxSubmissions> &bake(int profiling_iteration = -1);
+	Util::SmallVector<VkSubmitInfo2, MaxSubmissions> &bake(int profiling_iteration = -1);
 
 private:
-	Util::SmallVector<VkSubmitInfo, MaxSubmissions> submits;
-	VkTimelineSemaphoreSubmitInfoKHR timeline_infos[Helper::BatchComposer::MaxSubmissions];
+	Util::SmallVector<VkSubmitInfo2, MaxSubmissions> submits;
 	VkPerformanceQuerySubmitInfoKHR profiling_infos[Helper::BatchComposer::MaxSubmissions];
 
-	Util::SmallVector<VkSemaphore> waits[MaxSubmissions];
-	Util::SmallVector<uint64_t> wait_counts[MaxSubmissions];
-	Util::SmallVector<VkFlags> wait_stages[MaxSubmissions];
-	Util::SmallVector<VkSemaphore> signals[MaxSubmissions];
-	Util::SmallVector<uint64_t> signal_counts[MaxSubmissions];
-	Util::SmallVector<VkCommandBuffer> cmds[MaxSubmissions];
+	Util::SmallVector<VkSemaphoreSubmitInfo> waits[MaxSubmissions];
+	Util::SmallVector<VkSemaphoreSubmitInfo> signals[MaxSubmissions];
+	Util::SmallVector<VkCommandBufferSubmitInfo> cmds[MaxSubmissions];
 
 	unsigned submit_index = 0;
 	bool split_binary_timeline_semaphores = false;
@@ -738,6 +731,7 @@ private:
 	                        unsigned semaphore_count, Semaphore *semaphores);
 	VkResult submit_batches(Helper::BatchComposer &composer, VkQueue queue, VkFence fence,
 	                        int profiling_iteration = -1);
+	VkResult queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo2 *submits, VkFence fence);
 
 	void destroy_buffer(VkBuffer buffer);
 	void destroy_image(VkImage image);

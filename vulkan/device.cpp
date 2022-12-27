@@ -1288,7 +1288,7 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit", "");
 
 	if (result != VK_SUCCESS)
-		LOGE("vkQueueSubmit failed (code: %d).\n", int(result));
+		LOGE("vkQueueSubmit2KHR failed (code: %d).\n", int(result));
 	if (result == VK_ERROR_DEVICE_LOST)
 		report_checkpoints();
 
@@ -1314,15 +1314,18 @@ void Device::submit_staging(CommandBufferHandle &cmd, bool flush)
 
 void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &sem)
 {
+	VkSemaphoreSubmitInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+
 	for (size_t i = 0, n = data.wait_semaphores.size(); i < n; i++)
 	{
 		auto &semaphore = data.wait_semaphores[i];
 		auto vk_semaphore = semaphore->consume();
 		if (semaphore->get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE_KHR)
 		{
-			sem.timeline_waits.push_back(vk_semaphore);
-			sem.timeline_wait_stages.push_back(convert_vk_dst_stage2(data.wait_stages[i]));
-			sem.timeline_wait_counts.push_back(semaphore->get_timeline_value());
+			info.semaphore = vk_semaphore;
+			info.stageMask = data.wait_stages[i];
+			info.value = semaphore->get_timeline_value();
+			sem.timeline_waits.push_back(info);
 		}
 		else
 		{
@@ -1331,8 +1334,10 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 			else
 				frame().recycled_semaphores.push_back(vk_semaphore);
 
-			sem.binary_waits.push_back(vk_semaphore);
-			sem.binary_wait_stages.push_back(convert_vk_dst_stage2(data.wait_stages[i]));
+			info.semaphore = vk_semaphore;
+			info.stageMask = data.wait_stages[i];
+			info.value = 0;
+			sem.binary_waits.push_back(info);
 		}
 	}
 
@@ -1340,30 +1345,30 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 	data.wait_semaphores.clear();
 }
 
-static bool has_timeline_semaphore(const SmallVector<uint64_t> &counts)
+static bool has_timeline_semaphore(const SmallVector<VkSemaphoreSubmitInfo> &sems)
 {
-	return std::find_if(counts.begin(), counts.end(), [](uint64_t count) {
-		return count != 0;
-	}) != counts.end();
+	return std::find_if(sems.begin(), sems.end(), [](const VkSemaphoreSubmitInfo &info) {
+		return info.value != 0;
+	}) != sems.end();
 }
 
-static bool has_binary_semaphore(const SmallVector<uint64_t> &counts)
+static bool has_binary_semaphore(const SmallVector<VkSemaphoreSubmitInfo> &sems)
 {
-	return std::find_if(counts.begin(), counts.end(), [](uint64_t count) {
-		return count == 0;
-	}) != counts.end();
+	return std::find_if(sems.begin(), sems.end(), [](const VkSemaphoreSubmitInfo &info) {
+		return info.value != 0;
+	}) != sems.end();
 }
 
 bool Helper::BatchComposer::has_timeline_semaphore_in_batch(unsigned index) const
 {
-	return has_timeline_semaphore(wait_counts[index]) ||
-	       has_timeline_semaphore(signal_counts[index]);
+	return has_timeline_semaphore(waits[index]) ||
+	       has_timeline_semaphore(signals[index]);
 }
 
 bool Helper::BatchComposer::has_binary_semaphore_in_batch(unsigned index) const
 {
-	return has_binary_semaphore(wait_counts[index]) ||
-	       has_binary_semaphore(signal_counts[index]);
+	return has_binary_semaphore(waits[index]) ||
+	       has_binary_semaphore(signals[index]);
 }
 
 Helper::BatchComposer::BatchComposer(bool split_binary_timeline_semaphores_)
@@ -1384,18 +1389,14 @@ void Helper::BatchComposer::begin_batch()
 
 void Helper::BatchComposer::add_wait_submissions(WaitSemaphores &sem)
 {
+	auto &w = waits[submit_index];
+
 	if (!sem.binary_waits.empty())
 	{
 		// Split binary semaphore waits from timeline semaphore waits to work around driver bugs if needed.
 		if (split_binary_timeline_semaphores && has_timeline_semaphore_in_batch(submit_index))
 			begin_batch();
-
-		for (size_t i = 0, n = sem.binary_waits.size(); i < n; i++)
-		{
-			waits[submit_index].push_back(sem.binary_waits[i]);
-			wait_stages[submit_index].push_back(sem.binary_wait_stages[i]);
-			wait_counts[submit_index].push_back(0);
-		}
+		w.insert(w.end(), sem.binary_waits.begin(), sem.binary_waits.end());
 	}
 
 	if (!sem.timeline_waits.empty())
@@ -1403,70 +1404,39 @@ void Helper::BatchComposer::add_wait_submissions(WaitSemaphores &sem)
 		// Split binary semaphore waits from timeline semaphore waits to work around driver bugs if needed.
 		if (split_binary_timeline_semaphores && has_binary_semaphore_in_batch(submit_index))
 			begin_batch();
-
-		for (size_t i = 0, n = sem.timeline_waits.size(); i < n; i++)
-		{
-			waits[submit_index].push_back(sem.timeline_waits[i]);
-			wait_stages[submit_index].push_back(sem.timeline_wait_stages[i]);
-			wait_counts[submit_index].push_back(sem.timeline_wait_counts[i]);
-		}
+		w.insert(w.end(), sem.timeline_waits.begin(), sem.timeline_waits.end());
 	}
 }
 
-SmallVector<VkSubmitInfo, Helper::BatchComposer::MaxSubmissions> &
+SmallVector<VkSubmitInfo2, Helper::BatchComposer::MaxSubmissions> &
 Helper::BatchComposer::bake(int profiling_iteration)
 {
 	for (size_t i = 0, n = submits.size(); i < n; i++)
 	{
 		auto &submit = submits[i];
-		auto &timeline_submit = timeline_infos[i];
 
-		submit = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-
-		if (has_timeline_semaphore_in_batch(i))
-		{
-			timeline_submit = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO_KHR };
-			submit.pNext = &timeline_submit;
-
-			if (split_binary_timeline_semaphores && has_binary_semaphore_in_batch(i))
-				LOGE("Using timeline semaphore info, but have binary semaphores as well.\n");
-
-			timeline_submit.waitSemaphoreValueCount = wait_counts[i].size();
-			timeline_submit.pWaitSemaphoreValues = wait_counts[i].data();
-			if (wait_counts[i].size() != waits[i].size())
-				LOGE("Mismatch in wait counts and number of waits!\n");
-
-			timeline_submit.signalSemaphoreValueCount = signal_counts[i].size();
-			timeline_submit.pSignalSemaphoreValues = signal_counts[i].data();
-			if (signal_counts[i].size() != signals[i].size())
-				LOGE("Mismatch in signal counts and number of signals!\n");
-		}
+		submit = { VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
+		submit.commandBufferInfoCount = uint32_t(cmds[i].size());
+		submit.pCommandBufferInfos = cmds[i].data();
+		submit.signalSemaphoreInfoCount = uint32_t(signals[i].size());
+		submit.pSignalSemaphoreInfos = signals[i].data();
+		submit.waitSemaphoreInfoCount = uint32_t(waits[i].size());
+		submit.pWaitSemaphoreInfos = waits[i].data();
 
 		if (profiling_iteration >= 0)
 		{
 			profiling_infos[i] = { VK_STRUCTURE_TYPE_PERFORMANCE_QUERY_SUBMIT_INFO_KHR };
 			profiling_infos[i].counterPassIndex = uint32_t(profiling_iteration);
-
 			profiling_infos[i].pNext = submit.pNext;
 			submit.pNext = &profiling_infos[i];
 		}
-
-		submit.commandBufferCount = cmds[i].size();
-		submit.pCommandBuffers = cmds[i].data();
-
-		submit.waitSemaphoreCount = waits[i].size();
-		submit.pWaitSemaphores = waits[i].data();
-		submit.pWaitDstStageMask = wait_stages[i].data();
-
-		submit.signalSemaphoreCount = signals[i].size();
-		submit.pSignalSemaphores = signals[i].data();
 	}
 
 	// Compact the submission array to avoid empty submissions.
 	size_t submit_count = 0;
 	for (size_t i = 0, n = submits.size(); i < n; i++)
 	{
-		if (submits[i].waitSemaphoreCount || submits[i].signalSemaphoreCount || submits[i].commandBufferCount)
+		if (submits[i].waitSemaphoreInfoCount || submits[i].signalSemaphoreInfoCount || submits[i].commandBufferInfoCount)
 		{
 			if (i != submit_count)
 				submits[submit_count] = submits[i];
@@ -1482,10 +1452,13 @@ void Helper::BatchComposer::add_command_buffer(VkCommandBuffer cmd)
 {
 	if (!signals[submit_index].empty())
 		begin_batch();
-	cmds[submit_index].push_back(cmd);
+
+	VkCommandBufferSubmitInfo info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO };
+	info.commandBuffer = cmd;
+	cmds[submit_index].push_back(info);
 }
 
-void Helper::BatchComposer::add_signal_semaphore(VkSemaphore sem, uint64_t timeline)
+void Helper::BatchComposer::add_signal_semaphore(VkSemaphore sem, VkPipelineStageFlags2 stages, uint64_t timeline)
 {
 	if (split_binary_timeline_semaphores)
 	{
@@ -1494,8 +1467,11 @@ void Helper::BatchComposer::add_signal_semaphore(VkSemaphore sem, uint64_t timel
 			begin_batch();
 	}
 
-	signals[submit_index].push_back(sem);
-	signal_counts[submit_index].push_back(timeline);
+	VkSemaphoreSubmitInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+	info.semaphore = sem;
+	info.stageMask = stages;
+	info.value = timeline;
+	signals[submit_index].push_back(info);
 }
 
 void Helper::BatchComposer::add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags2 stage)
@@ -1512,9 +1488,11 @@ void Helper::BatchComposer::add_wait_semaphore(SemaphoreHolder &sem, VkPipelineS
 			begin_batch();
 	}
 
-	waits[submit_index].push_back(sem.get_semaphore());
-	wait_stages[submit_index].push_back(stage);
-	wait_counts[submit_index].push_back(is_timeline ? sem.get_timeline_value() : 0);
+	VkSemaphoreSubmitInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+	info.semaphore = sem.get_semaphore();
+	info.stageMask = stage;
+	info.value = is_timeline ? sem.get_timeline_value() : 0;
+	waits[submit_index].push_back(info);
 }
 
 void Helper::BatchComposer::add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags2 stage)
@@ -1525,9 +1503,11 @@ void Helper::BatchComposer::add_wait_semaphore(VkSemaphore sem, VkPipelineStageF
 	if (split_binary_timeline_semaphores && has_timeline_semaphore_in_batch(submit_index))
 		begin_batch();
 
-	waits[submit_index].push_back(sem);
-	wait_stages[submit_index].push_back(stage);
-	wait_counts[submit_index].push_back(0);
+	VkSemaphoreSubmitInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+	info.semaphore = sem;
+	info.stageMask = stage;
+	info.value = 0;
+	waits[submit_index].push_back(info);
 }
 
 void Device::emit_queue_signals(Helper::BatchComposer &composer,
@@ -1542,6 +1522,7 @@ void Device::emit_queue_signals(Helper::BatchComposer &composer,
 		VK_ASSERT(external_semaphore->get_semaphore());
 		external_semaphore->signal_external();
 		composer.add_signal_semaphore(external_semaphore->get_semaphore(),
+		                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
 		                              external_semaphore->get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE_KHR ?
 		                              external_semaphore->get_timeline_value() : 0);
 
@@ -1553,7 +1534,7 @@ void Device::emit_queue_signals(Helper::BatchComposer &composer,
 	if (ext.timeline_semaphore_features.timelineSemaphore)
 	{
 		// Signal once and distribute the timeline value to all.
-		composer.add_signal_semaphore(sem, timeline);
+		composer.add_signal_semaphore(sem, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, timeline);
 
 		if (fence)
 		{
@@ -1580,10 +1561,81 @@ void Device::emit_queue_signals(Helper::BatchComposer &composer,
 		for (unsigned i = 0; i < semaphore_count; i++)
 		{
 			VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore();
-			composer.add_signal_semaphore(cleared_semaphore, 0);
+			composer.add_signal_semaphore(cleared_semaphore, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0);
 			VK_ASSERT(!semaphores[i]);
 			semaphores[i] = Semaphore(handle_pool.semaphores.allocate(this, cleared_semaphore, true, true));
 		}
+	}
+}
+
+VkResult Device::queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo2 *submits, VkFence fence)
+{
+	if (ext.sync2_features.synchronization2)
+	{
+		return table->vkQueueSubmit2KHR(queue, count, submits, fence);
+	}
+	else
+	{
+		for (uint32_t submit_index = 0; submit_index < count; submit_index++)
+		{
+			VkTimelineSemaphoreSubmitInfoKHR timeline = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO_KHR };
+			const auto &submit = submits[submit_index];
+			VkSubmitInfo sub = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+			bool need_timeline = false;
+
+			Util::SmallVector<VkPipelineStageFlags> wait_stages;
+			Util::SmallVector<uint64_t> signal_values;
+			Util::SmallVector<uint64_t> wait_values;
+			Util::SmallVector<VkSemaphore> signals;
+			Util::SmallVector<VkCommandBuffer> cmd;
+			Util::SmallVector<VkSemaphore> waits;
+
+			for (uint32_t i = 0; i < submit.commandBufferInfoCount; i++)
+				cmd.push_back(submit.pCommandBufferInfos[i].commandBuffer);
+
+			for (uint32_t i = 0; i < submit.waitSemaphoreInfoCount; i++)
+			{
+				waits.push_back(submit.pWaitSemaphoreInfos[i].semaphore);
+				wait_stages.push_back(convert_vk_dst_stage2(submit.pWaitSemaphoreInfos[i].stageMask));
+				wait_values.push_back(submit.pWaitSemaphoreInfos[i].value);
+				if (wait_values.back() != 0)
+					need_timeline = true;
+			}
+
+			for (uint32_t i = 0; i < submit.signalSemaphoreInfoCount; i++)
+			{
+				signals.push_back(submit.pSignalSemaphoreInfos[i].semaphore);
+				signal_values.push_back(submit.pSignalSemaphoreInfos[i].value);
+				if (signal_values.back() != 0)
+					need_timeline = true;
+			}
+
+			sub.commandBufferCount = uint32_t(cmd.size());
+			sub.pCommandBuffers = cmd.data();
+			sub.signalSemaphoreCount = uint32_t(signals.size());
+			sub.pSignalSemaphores = signals.data();
+			sub.waitSemaphoreCount = uint32_t(waits.size());
+			sub.pWaitSemaphores = waits.data();
+			sub.pWaitDstStageMask = wait_stages.data();
+
+			sub.pNext = submit.pNext;
+			if (need_timeline)
+			{
+				timeline.pNext = sub.pNext;
+				sub.pNext = &timeline;
+
+				timeline.signalSemaphoreValueCount = uint32_t(signal_values.size());
+				timeline.pSignalSemaphoreValues = signal_values.data();
+				timeline.waitSemaphoreValueCount = uint32_t(wait_values.size());
+				timeline.pWaitSemaphoreValues = wait_values.data();
+			}
+
+			auto result = table->vkQueueSubmit(queue, 1, &sub, submit_index + 1 == count ? fence : VK_NULL_HANDLE);
+			if (result != VK_SUCCESS)
+				return result;
+		}
+
+		return VK_SUCCESS;
 	}
 }
 
@@ -1599,13 +1651,13 @@ VkResult Device::submit_batches(Helper::BatchComposer &composer, VkQueue queue, 
 		for (auto &submit : submits)
 		{
 			bool last_submit = &submit == &submits.back();
-			result = table->vkQueueSubmit(queue, 1, &submit, last_submit ? fence : VK_NULL_HANDLE);
+			result = queue_submit(queue, 1, &submit, last_submit ? fence : VK_NULL_HANDLE);
 			if (result != VK_SUCCESS)
 				break;
 		}
 	}
 	else
-		result = table->vkQueueSubmit(queue, submits.size(), submits.data(), fence);
+		result = queue_submit(queue, uint32_t(submits.size()), submits.data(), fence);
 
 	if (ImplementationQuirks::get().queue_wait_on_submission)
 		table->vkQueueWaitIdle(queue);
@@ -1678,7 +1730,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 			VkSemaphore release = managers.semaphore.request_cleared_semaphore();
 			wsi.release = Semaphore(handle_pool.semaphores.allocate(this, release, true, true));
 			wsi.release->set_internal_sync_object();
-			composer.add_signal_semaphore(release, 0);
+			composer.add_signal_semaphore(release, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0);
 			wsi.present_queue = queue;
 			wsi.consumed = true;
 		}
@@ -1714,7 +1766,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit", "");
 
 	if (result != VK_SUCCESS)
-		LOGE("vkQueueSubmit failed (code: %d).\n", int(result));
+		LOGE("vkQueueSubmit2KHR failed (code: %d).\n", int(result));
 	if (result == VK_ERROR_DEVICE_LOST)
 		report_checkpoints();
 	submissions.clear();

@@ -3141,6 +3141,8 @@ void RenderGraph::build_physical_barriers()
 			flags |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 		if (flags & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
 			flags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+		if (flags & VK_ACCESS_SHADER_WRITE_BIT)
+			flags |= VK_ACCESS_SHADER_READ_BIT;
 		if (flags & VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT)
 			flags |= VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
 		return flags;

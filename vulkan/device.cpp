@@ -5180,7 +5180,7 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 		ownership.dstQueueFamilyIndex = new_family;
 
 		if (semaphore)
-			device.add_wait_semaphore(info.old_queue, semaphore, VK_PIPELINE_STAGE_NONE, true);
+			device.add_wait_semaphore(info.old_queue, semaphore, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
 		auto release_cmd = device.request_command_buffer(info.old_queue);
 
 		release_cmd->image_barriers(1, &ownership);

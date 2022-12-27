@@ -111,6 +111,9 @@ double WSI::get_smooth_frame_time() const
 bool WSI::init_from_existing_context(ContextHandle existing_context)
 {
 	VK_ASSERT(platform);
+	if (platform && device)
+		platform->event_device_destroyed();
+	device.reset();
 	context = std::move(existing_context);
 	table = &context->get_device_table();
 	return true;
@@ -155,6 +158,7 @@ void WSI::set_platform(WSIPlatform *platform_)
 bool WSI::init_device()
 {
 	VK_ASSERT(context);
+	VK_ASSERT(!device);
 	device = Util::make_handle<Device>();
 	device->set_context(*context);
 	platform->event_device_created(device.get());

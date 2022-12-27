@@ -253,13 +253,13 @@ public:
 	{
 		app = app_;
 
-		auto &wsi = app->get_wsi();
 		auto context = Util::make_handle<Context>();
 
 		Context::SystemHandles system_handles;
 		system_handles.filesystem = GRANITE_FILESYSTEM();
 		system_handles.thread_group = GRANITE_THREAD_GROUP();
 		system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
+		system_handles.asset_manager = GRANITE_ASSET_MANAGER();
 		context->set_system_handles(system_handles);
 
 		context->set_num_thread_indices(GRANITE_THREAD_GROUP()->get_num_threads() + 1);
@@ -277,12 +277,10 @@ public:
 
 		if (!context->init_instance_and_device(&khr_surface, 1, &khr_swapchain, 1))
 			return false;
-		if (!wsi.init_from_existing_context(std::move(context)))
-			return false;
-		if (!wsi.init_device())
+		if (!app->init_wsi(std::move(context)))
 			return false;
 
-		auto &device = wsi.get_device();
+		auto &device = app->get_wsi().get_device();
 
 		auto info = ImageCreateInfo::render_target(width, height, VK_FORMAT_R8G8B8A8_SRGB);
 		info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -335,7 +333,7 @@ public:
 		}
 #endif
 
-		wsi.init_external_swapchain(swapchain_images);
+		app->get_wsi().init_external_swapchain(swapchain_images);
 		return true;
 	}
 
@@ -572,7 +570,7 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 
 		auto *p = platform.get();
 
-		if (!app->init_platform(std::move(platform)) || !app->init_wsi())
+		if (!app->init_platform(std::move(platform)))
 			return 1;
 
 		if (!args.png_path.empty())

@@ -203,7 +203,7 @@ bool VideoEncoder::Impl::enqueue_buffer_readback(
 	                                   { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
 
 	transfer_cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-						  VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+	                      VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 	device->submit(transfer_cmd, &frame.fence, 1, &release_semaphore);
 

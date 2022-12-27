@@ -276,7 +276,7 @@ void CommandBuffer::barrier(VkPipelineStageFlags2 src_stages, VkAccessFlags2 src
                             VkPipelineStageFlags2 dst_stages, VkAccessFlags2 dst_access)
 {
 	VkDependencyInfo dep = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
-	VkMemoryBarrier2 b = {VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
+	VkMemoryBarrier2 b = { VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
 	dep.memoryBarrierCount = 1;
 	dep.pMemoryBarriers = &b;
 	b.srcStageMask = src_stages;
@@ -421,7 +421,7 @@ void CommandBuffer::buffer_barrier(const Buffer &buffer,
                                    VkPipelineStageFlags2 src_stages, VkAccessFlags2 src_access,
                                    VkPipelineStageFlags2 dst_stages, VkAccessFlags2 dst_access)
 {
-	VkBufferMemoryBarrier2 b = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	VkBufferMemoryBarrier2 b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
 	VkDependencyInfo dep = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
 
 	b.srcAccessMask = src_access;
@@ -513,7 +513,7 @@ void CommandBuffer::acquire_external_image_barrier(
 		VkImageLayout old_layout, VkImageLayout new_layout,
 		VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access)
 {
-	VkImageMemoryBarrier2 b = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+	VkImageMemoryBarrier2 b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 	uint32_t family_index = device->get_queue_info().family_indices[device->get_physical_queue_type(type)];
 
 	b.image = image.get_image();
@@ -536,7 +536,7 @@ void CommandBuffer::release_external_buffer_barrier(
 		const Buffer &buffer,
 		VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access)
 {
-	VkBufferMemoryBarrier2 b = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	VkBufferMemoryBarrier2 b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
 	b.buffer = buffer.get_buffer();
 	b.size = buffer.get_create_info().size;
 	b.srcAccessMask = src_access;
@@ -551,7 +551,7 @@ void CommandBuffer::acquire_external_buffer_barrier(
 		const Buffer &buffer,
 		VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access)
 {
-	VkBufferMemoryBarrier2 b = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	VkBufferMemoryBarrier2 b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
 	b.buffer = buffer.get_buffer();
 	b.size = buffer.get_create_info().size;
 	b.dstAccessMask = dst_access;
@@ -571,7 +571,7 @@ void CommandBuffer::image_barrier(const Image &image,
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(image.get_create_info().domain != ImageDomain::Transient);
 
-	VkImageMemoryBarrier2 b = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+	VkImageMemoryBarrier2 b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 	b.srcAccessMask = src_access;
 	b.dstAccessMask = dst_access;
 	b.oldLayout = old_layout;
@@ -2772,7 +2772,7 @@ void CommandBuffer::begin_debug_channel(DebugChannelInterface *iface, const char
 	buffer_barrier(*debug_channel_buffer,
 	               VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 	               VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-	               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+	               VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT);
 
 	set_storage_buffer(VULKAN_NUM_DESCRIPTOR_SETS - 1, VULKAN_NUM_BINDINGS - 1, *debug_channel_buffer);
 }

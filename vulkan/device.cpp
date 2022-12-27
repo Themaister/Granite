@@ -2433,13 +2433,13 @@ void Device::next_frame_context()
 	frame_context_begin_ts = write_calibrated_timestamp_nolock();
 }
 
-QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage)
+QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlags2 stage)
 {
 	LOCK();
 	return write_timestamp_nolock(cmd, stage);
 }
 
-QueryPoolHandle Device::write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlagBits stage)
+QueryPoolHandle Device::write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlags2 stage)
 {
 	return frame().query_pool.write_timestamp(cmd, stage);
 }

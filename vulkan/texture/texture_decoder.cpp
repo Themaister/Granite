@@ -1385,7 +1385,7 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 
 	cmd.image_barrier(*decoded_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
 	                  VK_PIPELINE_STAGE_NONE, 0,
-	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
 	if (!set_compute_decoder(cmd, layout.get_format()))
 	{
@@ -1414,8 +1414,8 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 	}
 
 	cmd.image_barrier(*decoded_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	                  VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_SHADER_READ_BIT);
+	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	                  VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
 	auto end_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	cmd.get_device().register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "texture-decode");

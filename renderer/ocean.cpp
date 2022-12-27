@@ -406,8 +406,11 @@ void Ocean::update_lod_pass(Vulkan::CommandBuffer &cmd)
 	build_lod_map(cmd);
 	init_counter_buffer(cmd);
 
-	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT);
+	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
+	            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT |
+	            VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 	cull_blocks(cmd);
 }
@@ -510,8 +513,10 @@ void Ocean::compute_fft(Vulkan::CommandBuffer &cmd)
 			normal_fft.execute_iteration(cmd, dst, src, i);
 		}
 
-		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
+		            VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 	}
 }
 
@@ -574,8 +579,9 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 
 	for (unsigned i = 1; i < num_passes; i++)
 	{
-		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 		push.lod = float(i - 1);
 
@@ -701,8 +707,9 @@ void Ocean::update_fft_pass(Vulkan::CommandBuffer &cmd)
 {
 	update_fft_input(cmd);
 
-	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 	compute_fft(cmd);
 	bake_maps(cmd);

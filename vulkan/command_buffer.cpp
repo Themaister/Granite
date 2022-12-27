@@ -2650,7 +2650,7 @@ void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferS
 	state.flags = flags;
 }
 
-QueryPoolHandle CommandBuffer::write_timestamp(VkPipelineStageFlagBits stage)
+QueryPoolHandle CommandBuffer::write_timestamp(VkPipelineStageFlags2 stage)
 {
 	return device->write_timestamp(cmd, stage);
 }

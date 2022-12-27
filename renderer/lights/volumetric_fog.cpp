@@ -280,8 +280,9 @@ void VolumetricFog::add_render_passes(RenderGraph &graph)
 		auto *l_history = graph.get_physical_history_texture_resource(in_scatter_volume);
 
 		build_light_density(cmd, l, l_history);
-		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 		build_fog(cmd, f, l);
 	});
 }

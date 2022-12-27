@@ -500,7 +500,7 @@ private:
 	void request_uniform_block(BufferBlock &block, VkDeviceSize size);
 	void request_staging_block(BufferBlock &block, VkDeviceSize size);
 
-	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
+	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlags2 stage);
 
 	void set_acquire_semaphore(unsigned index, Semaphore acquire);
 	Semaphore consume_release_semaphore();
@@ -527,7 +527,7 @@ private:
 	int64_t convert_timestamp_to_absolute_nsec(const QueryPoolResult &handle);
 	Context::SystemHandles system_handles;
 
-	QueryPoolHandle write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
+	QueryPoolHandle write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlags2 stage);
 	QueryPoolHandle write_calibrated_timestamp_nolock();
 	void register_time_interval_nolock(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, std::string tag, std::string extra);
 

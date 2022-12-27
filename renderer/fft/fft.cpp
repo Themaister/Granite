@@ -685,8 +685,10 @@ void FFT::Impl::execute(CommandBuffer &cmd, const Resource &dst, const Resource 
 
 		if (i + 1 < n)
 		{
-			cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-			            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+			cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+			            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			            VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+			            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 		}
 	}
 }

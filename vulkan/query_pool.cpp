@@ -383,13 +383,15 @@ void QueryPool::add_pool()
 	pools.push_back(std::move(pool));
 }
 
-QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage)
+QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlags2 stage)
 {
 	if (!supports_timestamp)
 	{
 		LOGI("Timestamps are not supported on this implementation.\n");
 		return {};
 	}
+
+	VK_ASSERT((stage & (stage - 1)) == 0);
 
 	if (pools[pool_index].index >= pools[pool_index].size)
 		pool_index++;
@@ -404,7 +406,14 @@ QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageF
 
 	if (!device->get_device_features().host_query_reset_features.hostQueryReset)
 		table.vkCmdResetQueryPool(cmd, pool.pool, pool.index, 1);
-	table.vkCmdWriteTimestamp(cmd, stage, pool.pool, pool.index);
+
+	if (device->get_device_features().sync2_features.synchronization2)
+		table.vkCmdWriteTimestamp2KHR(cmd, stage, pool.pool, pool.index);
+	else
+	{
+		table.vkCmdWriteTimestamp(cmd, static_cast<VkPipelineStageFlagBits>(convert_vk_src_stage2(stage)),
+		                          pool.pool, pool.index);
+	}
 
 	pool.index++;
 	return cookie;

@@ -168,7 +168,7 @@ RenderBufferResource &RenderPass::add_storage_read_only_input(const std::string 
 			stages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 	}
 
-	return add_generic_buffer_input(name, stages, VK_ACCESS_SHADER_READ_BIT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+	return add_generic_buffer_input(name, stages, VK_ACCESS_2_SHADER_STORAGE_READ_BIT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 }
 
 RenderBufferResource &RenderPass::add_storage_output(const std::string &name, const BufferInfo &info, const std::string &input)
@@ -222,7 +222,7 @@ RenderTextureResource &RenderPass::add_texture_input(const std::string &name, Vk
 	AccessedTextureResource acc;
 	acc.texture = &res;
 	acc.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	acc.access = VK_ACCESS_SHADER_READ_BIT;
+	acc.access = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
 	if (stages != 0)
 		acc.stages = stages;
@@ -2003,7 +2003,6 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 		b.newLayout = barrier.layout;
 		b.srcAccessMask = event.to_flush_access;
 		b.dstAccessMask = barrier.access;
-		b.srcStageMask = event.pipeline_barrier_src_stages;
 		b.dstStageMask = barrier.stages;
 
 		b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -2026,18 +2025,21 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 			if (event.pipeline_barrier_src_stages)
 			{
 				// Either we wait for a pipeline barrier ...
+				b.srcStageMask = event.pipeline_barrier_src_stages;
 				state.image_barriers.push_back(b);
 				need_pipeline_barrier = true;
 			}
 			else if (wait_semaphore)
 			{
-				// When the semaphore was signalled, caches were flushed, so we don't need to do that again.
-				// We still need dstAccessMask however, because layout changes may perform writes.
-				b.srcAccessMask = 0;
-
 				// Only need the layout transition.
 				if (layout_change)
+				{
+					// When the semaphore was signalled, caches were flushed, so we don't need to do that again.
+					// We still need dstAccessMask however, because layout changes may perform writes.
+					b.srcAccessMask = 0;
+					b.srcStageMask = b.dstStageMask;
 					state.image_barriers.push_back(b);
+				}
 
 				// If we don't need a layout transition, signalling and waiting for semaphores satisfies
 				// all requirements we have of srcAccessMask/dstAccessMask.
@@ -2391,7 +2393,7 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 
 		barrier.newLayout = target_layout;
 		barrier.srcAccessMask = physical_events[index].to_flush_access;
-		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		barrier.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		barrier.subresourceRange.levelCount = image.get_create_info().levels;
@@ -2418,7 +2420,7 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 		{
 			cmd->image_barrier(image, physical_events[index].layout, target_layout,
 			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 			physical_events[index].layout = target_layout;
 		}
 	}
@@ -2441,7 +2443,7 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 	physical_events[index].to_flush_access = 0;
 	for (auto &e : physical_events[index].invalidated_in_stage)
 		e = 0;
-	physical_events[index].invalidated_in_stage[trailing_zeroes(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT)] = VK_ACCESS_SHADER_READ_BIT;
+	physical_events[index].invalidated_in_stage[trailing_zeroes(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT)] = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
 	cmd->end_region();
 	if (physical_dimensions[index].uses_semaphore())
@@ -3139,8 +3141,8 @@ void RenderGraph::build_physical_barriers()
 			flags |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 		if (flags & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
 			flags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-		if (flags & VK_ACCESS_SHADER_WRITE_BIT)
-			flags |= VK_ACCESS_SHADER_READ_BIT;
+		if (flags & VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT)
+			flags |= VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
 		return flags;
 	};
 
@@ -3380,7 +3382,7 @@ void RenderGraph::build_barriers()
 		for (auto *input : pass.get_history_inputs())
 		{
 			auto &barrier = get_invalidate_access(input->get_physical_index(), true);
-			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
+			barrier.access |= VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
 			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
@@ -3425,7 +3427,7 @@ void RenderGraph::build_barriers()
 				continue;
 
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
-			barrier.access |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+			barrier.access |= VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
 			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
 			else
@@ -3454,7 +3456,7 @@ void RenderGraph::build_barriers()
 				continue;
 
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
-			barrier.access |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+			barrier.access |= VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
 			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
 			else
@@ -3509,7 +3511,7 @@ void RenderGraph::build_barriers()
 				throw std::logic_error("Only graphics passes can have scaled color inputs.");
 
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
-			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
+			barrier.access |= VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 			barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
@@ -3578,7 +3580,7 @@ void RenderGraph::build_barriers()
 		for (auto *output : pass.get_storage_outputs())
 		{
 			auto &barrier = get_flush_access(output->get_physical_index());
-			barrier.access |= VK_ACCESS_SHADER_WRITE_BIT;
+			barrier.access |= VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
 
 			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
@@ -3615,7 +3617,7 @@ void RenderGraph::build_barriers()
 		for (auto *output : pass.get_storage_texture_outputs())
 		{
 			auto &barrier = get_flush_access(output->get_physical_index());
-			barrier.access |= VK_ACCESS_SHADER_WRITE_BIT;
+			barrier.access |= VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
 
 			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.

@@ -404,7 +404,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 
 		cmd.image_barrier(*scratch_vsm_rt, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
 		cmd.begin_region("shadow-map-vsm-blur-down");
 		{
@@ -425,7 +425,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 
 		cmd.image_barrier(*scratch_vsm_down, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
 		cmd.begin_region("shadow-map-vsm-blur-up");
 		{
@@ -639,7 +639,7 @@ void LightClusterer::render_atlas_point(const RenderContext &context_)
 				b.srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 			}
 
-			b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			b.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 			b.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 			b.subresourceRange.baseArrayLayer = 6u * legacy.points.index_remap[bit];
 			b.subresourceRange.layerCount = 6;
@@ -653,14 +653,14 @@ void LightClusterer::render_atlas_point(const RenderContext &context_)
 		cmd->image_barrier(*legacy.points.atlas, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 	}
 	else
 	{
 		cmd->image_barrier(*legacy.points.atlas, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 	}
 
 	device.submit(cmd);
@@ -1057,14 +1057,14 @@ void LightClusterer::render_atlas_spot(const RenderContext &context_)
 		cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 	}
 	else
 	{
 		cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 	}
 
 	device.submit(cmd);
@@ -1852,8 +1852,8 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 	}
 	cmd.dispatch((bindless.parameters.num_lights + 63) / 64, 1, 1);
 
-	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 	cmd.set_program("builtin://shaders/lights/clusterer_bindless_setup.comp");
 	{
@@ -1868,8 +1868,8 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 	}
 	cmd.dispatch((bindless.parameters.num_lights + 63) / 64, 1, 1);
 
-	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 	assert((resolution_x & 7) == 0);
 	assert((resolution_y & 7) == 0);
@@ -1923,7 +1923,7 @@ void LightClusterer::build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd)
 {
 	update_bindless_data(cmd);
 	cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 	update_bindless_mask_buffer_gpu(cmd);
 	update_bindless_mask_buffer_decal_gpu(cmd);
 	update_bindless_range_buffer_gpu(cmd);
@@ -2058,9 +2058,11 @@ void LightClusterer::add_render_passes_legacy(RenderGraph &graph)
 	pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		build_cluster(cmd, *legacy.pre_cull_target, nullptr);
 		cmd.image_barrier(legacy.pre_cull_target->get_image(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-						  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-						  VK_ACCESS_SHADER_WRITE_BIT,
-						  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		                  VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+		                  VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 		build_cluster(cmd, *legacy.target, legacy.pre_cull_target);
 	});
 }

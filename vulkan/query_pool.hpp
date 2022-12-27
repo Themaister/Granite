@@ -118,7 +118,7 @@ public:
 
 	void begin();
 
-	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
+	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlags2 stage);
 
 private:
 	Device *device;

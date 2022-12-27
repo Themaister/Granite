@@ -3610,7 +3610,7 @@ void RenderGraph::build_barriers()
 		{
 			auto &barrier = get_flush_access(output->get_physical_index());
 			barrier.access |= VK_ACCESS_TRANSFER_WRITE_BIT;
-			barrier.stages |= VK_PIPELINE_STAGE_2_COPY_BIT;
+			barrier.stages |= VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;

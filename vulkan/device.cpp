@@ -1738,31 +1738,25 @@ void Device::sync_buffer_blocks()
 	if (dma.vbo.empty() && dma.ibo.empty() && dma.ubo.empty())
 		return;
 
-	VkBufferUsageFlags usage = 0;
-
 	auto cmd = request_command_buffer_nolock(get_thread_index(), CommandBuffer::Type::AsyncTransfer, false);
-
 	cmd->begin_region("buffer-block-sync");
 
 	for (auto &block : dma.vbo)
 	{
 		VK_ASSERT(block.offset != 0);
 		cmd->copy_buffer(*block.gpu, 0, *block.cpu, 0, block.offset);
-		usage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 	}
 
 	for (auto &block : dma.ibo)
 	{
 		VK_ASSERT(block.offset != 0);
 		cmd->copy_buffer(*block.gpu, 0, *block.cpu, 0, block.offset);
-		usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	}
 
 	for (auto &block : dma.ubo)
 	{
 		VK_ASSERT(block.offset != 0);
 		cmd->copy_buffer(*block.gpu, 0, *block.cpu, 0, block.offset);
-		usage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 	}
 
 	dma.vbo.clear();

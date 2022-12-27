@@ -404,7 +404,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 
 		cmd.image_barrier(*scratch_vsm_rt, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
 		cmd.begin_region("shadow-map-vsm-blur-down");
 		{
@@ -425,7 +425,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 
 		cmd.image_barrier(*scratch_vsm_down, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
 		cmd.begin_region("shadow-map-vsm-blur-up");
 		{
@@ -526,13 +526,13 @@ void LightClusterer::render_atlas_point(const RenderContext &context_)
 	}
 	else if (partial_update)
 	{
-		VkImageMemoryBarrier barriers[32];
+		VkImageMemoryBarrier2 barriers[32];
 		unsigned barrier_count = 0;
 
 		Util::for_each_bit(partial_mask, [&](unsigned bit) {
 			auto &b = barriers[barrier_count++];
 			b = {};
-			b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
 			b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 			b.image = legacy.points.atlas->get_image();
 			b.srcAccessMask = 0;
@@ -543,6 +543,8 @@ void LightClusterer::render_atlas_point(const RenderContext &context_)
 				                  VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 				b.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 				b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				b.srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+				b.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			}
 			else
 			{
@@ -550,6 +552,8 @@ void LightClusterer::render_atlas_point(const RenderContext &context_)
 				                  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 				b.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 				b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+				b.srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+				b.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 			}
 
 			b.subresourceRange.baseArrayLayer = 6u * legacy.points.index_remap[bit];
@@ -557,18 +561,7 @@ void LightClusterer::render_atlas_point(const RenderContext &context_)
 			b.subresourceRange.levelCount = 1;
 		});
 
-		if (vsm)
-		{
-			cmd->barrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-			             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-			             0, nullptr, 0, nullptr, barrier_count, barriers);
-		}
-		else
-		{
-			cmd->barrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-			             VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-			             0, nullptr, 0, nullptr, barrier_count, barriers);
-		}
+		cmd->image_barriers(barrier_count, barriers);
 	}
 	else if (vsm)
 	{
@@ -622,13 +615,12 @@ void LightClusterer::render_atlas_point(const RenderContext &context_)
 
 	if (partial_update)
 	{
-		VkImageMemoryBarrier barriers[32];
+		VkImageMemoryBarrier2 barriers[32];
 		unsigned barrier_count = 0;
 
 		Util::for_each_bit(partial_mask, [&](unsigned bit) {
 			auto &b = barriers[barrier_count++];
-			b = {};
-			b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 			b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			b.image = legacy.points.atlas->get_image();
 
@@ -637,37 +629,38 @@ void LightClusterer::render_atlas_point(const RenderContext &context_)
 				b.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 				b.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 				b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				b.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			}
 			else
 			{
 				b.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 				b.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 				b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+				b.srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 			}
 
-			b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			b.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+			b.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 			b.subresourceRange.baseArrayLayer = 6u * legacy.points.index_remap[bit];
 			b.subresourceRange.layerCount = 6;
 			b.subresourceRange.levelCount = 1;
 		});
 
-		cmd->barrier(vsm ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-		             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-		             0, nullptr, 0, nullptr, barrier_count, barriers);
+		cmd->image_barriers(barrier_count, barriers);
 	}
 	else if (vsm)
 	{
 		cmd->image_barrier(*legacy.points.atlas, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 	}
 	else
 	{
 		cmd->image_barrier(*legacy.points.atlas, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 	}
 
 	device.submit(cmd);
@@ -693,7 +686,7 @@ void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 	bindless.shadow_images.resize(bindless.parameters.num_lights + bindless.global_transforms.num_lights);
 
 	const auto add_barrier = [&](VkImage image) {
-		VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+		VkImageMemoryBarrier2 barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 		barrier.image = image;
 		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		barrier.newLayout = vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -706,6 +699,8 @@ void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 				VkImageAspectFlags(vsm ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT),
 				0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS
 		};
+		barrier.srcStageMask = stage;
+		barrier.dstStageMask = stage;
 		bindless.shadow_barriers.push_back(barrier);
 	};
 
@@ -763,17 +758,15 @@ void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 	}
 
 	if (!bindless.shadow_barriers.empty())
-	{
-		cmd.barrier(stage, stage,
-		            0, nullptr,
-		            0, nullptr,
-		            bindless.shadow_barriers.size(), bindless.shadow_barriers.data());
-	}
+		cmd.image_barriers(uint32_t(bindless.shadow_barriers.size()), bindless.shadow_barriers.data());
 }
 
 void LightClusterer::end_bindless_barriers(Vulkan::CommandBuffer &cmd)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
+	auto src_stage = vsm ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	// We use semaphores to handle sync, so don't do access masks.
+
 	for (auto &barrier : bindless.shadow_barriers)
 	{
 		if (vsm)
@@ -783,20 +776,12 @@ void LightClusterer::end_bindless_barriers(Vulkan::CommandBuffer &cmd)
 		barrier.oldLayout = barrier.newLayout;
 		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		barrier.dstAccessMask = 0;
+		barrier.srcStageMask = src_stage;
+		barrier.dstStageMask = VK_PIPELINE_STAGE_NONE;
 	}
-
-	auto src_stage = vsm ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-
-	// We use semaphores to handle sync, so don't do access masks.
-	auto dst_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 
 	if (!bindless.shadow_barriers.empty())
-	{
-		cmd.barrier(src_stage, dst_stage,
-		            0, nullptr,
-		            0, nullptr,
-		            bindless.shadow_barriers.size(), bindless.shadow_barriers.data());
-	}
+		cmd.image_barriers(uint32_t(bindless.shadow_barriers.size()), bindless.shadow_barriers.data());
 }
 
 LightClusterer::ShadowTaskContextSpotHandle
@@ -1005,12 +990,12 @@ void LightClusterer::render_atlas_spot(const RenderContext &context_)
 		if (vsm)
 		{
 			cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-			                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+			                   VK_PIPELINE_STAGE_NONE, 0,
+			                   VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 			cmd->clear_image(*legacy.spots.atlas, {});
 			cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 		}
 	}
@@ -1072,14 +1057,14 @@ void LightClusterer::render_atlas_spot(const RenderContext &context_)
 		cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 	}
 	else
 	{
 		cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 	}
 
 	device.submit(cmd);
@@ -1867,8 +1852,8 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 	}
 	cmd.dispatch((bindless.parameters.num_lights + 63) / 64, 1, 1);
 
-	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 	cmd.set_program("builtin://shaders/lights/clusterer_bindless_setup.comp");
 	{
@@ -1883,8 +1868,8 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 	}
 	cmd.dispatch((bindless.parameters.num_lights + 63) / 64, 1, 1);
 
-	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 	assert((resolution_x & 7) == 0);
 	assert((resolution_y & 7) == 0);
@@ -1937,8 +1922,8 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 void LightClusterer::build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd)
 {
 	update_bindless_data(cmd);
-	cmd.barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 	update_bindless_mask_buffer_gpu(cmd);
 	update_bindless_mask_buffer_decal_gpu(cmd);
 	update_bindless_range_buffer_gpu(cmd);
@@ -2073,9 +2058,11 @@ void LightClusterer::add_render_passes_legacy(RenderGraph &graph)
 	pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		build_cluster(cmd, *legacy.pre_cull_target, nullptr);
 		cmd.image_barrier(legacy.pre_cull_target->get_image(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-						  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-						  VK_ACCESS_SHADER_WRITE_BIT,
-						  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		                  VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+		                  VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 		build_cluster(cmd, *legacy.target, legacy.pre_cull_target);
 	});
 }

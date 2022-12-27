@@ -34,7 +34,7 @@ using namespace Util;
 
 namespace Vulkan
 {
-void RenderPass::setup_subpasses(const VkRenderPassCreateInfo &create_info)
+void RenderPass::setup_subpasses(const VkRenderPassCreateInfo2KHR &create_info)
 {
 	auto *attachments = create_info.pAttachments;
 
@@ -78,7 +78,7 @@ void RenderPass::setup_subpasses(const VkRenderPassCreateInfo &create_info)
 	}
 }
 
-RenderPass::RenderPass(Hash hash, Device *device_, const VkRenderPassCreateInfo &create_info)
+RenderPass::RenderPass(Hash hash, Device *device_, const VkRenderPassCreateInfo2KHR &create_info)
 	: IntrusiveHashMapEnabled<RenderPass>(hash)
 	, device(device_)
 {
@@ -105,12 +105,8 @@ RenderPass::RenderPass(Hash hash, Device *device_, const VkRenderPassCreateInfo 
 #ifdef VULKAN_DEBUG
 	LOGI("Creating render pass.\n");
 #endif
-	if (table.vkCreateRenderPass(device->get_device(), &create_info, nullptr, &render_pass) != VK_SUCCESS)
+	if (table.vkCreateRenderPass2KHR(device->get_device(), &create_info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
-
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	device->register_render_pass(render_pass, get_hash(), create_info);
-#endif
 }
 
 RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
@@ -146,7 +142,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 
 	// First, set up attachment descriptions.
 	const unsigned num_attachments = info.num_color_attachments + (info.depth_stencil ? 1 : 0);
-	VkAttachmentDescription attachments[VULKAN_NUM_ATTACHMENTS + 1];
+	VkAttachmentDescription2KHR attachments[VULKAN_NUM_ATTACHMENTS + 1];
 	uint32_t implicit_transitions = 0;
 	uint32_t implicit_bottom_of_pipe = 0;
 
@@ -195,7 +191,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		color_attachments[i] = info.color_attachments[i]->get_format();
 		auto &image = info.color_attachments[i]->get_image();
 		auto &att = attachments[i];
-		att.flags = 0;
+		att = { VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2_KHR };
 		att.format = color_attachments[i];
 		att.samples = image.get_create_info().samples;
 		att.loadOp = color_load_op(i);
@@ -250,7 +246,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	{
 		auto &image = info.depth_stencil->get_image();
 		auto &att = attachments[info.num_color_attachments];
-		att.flags = 0;
+		att = { VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2_KHR };
 		att.format = depth_stencil;
 		att.samples = image.get_create_info().samples;
 		att.loadOp = ds_load_op;
@@ -300,11 +296,11 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 			att.initialLayout = depth_stencil_layout;
 	}
 
-	Util::StackAllocator<VkAttachmentReference, 1024> reference_allocator;
+	Util::StackAllocator<VkAttachmentReference2KHR, 1024> reference_allocator;
 	Util::StackAllocator<uint32_t, 1024> preserve_allocator;
+	std::vector<VkSubpassDescription2KHR> subpasses(num_subpasses);
+	std::vector<VkSubpassDependency2KHR> external_dependencies;
 
-	std::vector<VkSubpassDescription> subpasses(num_subpasses);
-	std::vector<VkSubpassDependency> external_dependencies;
 	for (unsigned i = 0; i < num_subpasses; i++)
 	{
 		auto *colors = reference_allocator.allocate_cleared(subpass_infos[i].num_color_attachments);
@@ -313,12 +309,18 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		auto *depth = reference_allocator.allocate_cleared(1);
 
 		auto &subpass = subpasses[i];
+		subpass = { VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_2_KHR };
 		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		subpass.colorAttachmentCount = subpass_infos[i].num_color_attachments;
 		subpass.pColorAttachments = colors;
 		subpass.inputAttachmentCount = subpass_infos[i].num_input_attachments;
 		subpass.pInputAttachments = inputs;
 		subpass.pDepthStencilAttachment = depth;
+
+		if (multiview && device->get_device_features().multiview_features.multiview)
+			subpass.viewMask = ((1u << info.num_layers) - 1u) << info.base_layer;
+		else if (multiview)
+			LOGE("Multiview not supported. Pretending render pass is not multiview.");
 
 		if (subpass_infos[i].num_resolve_attachments)
 		{
@@ -330,6 +332,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		{
 			auto att = subpass_infos[i].color_attachments[j];
 			VK_ASSERT(att == VK_ATTACHMENT_UNUSED || (att < num_attachments));
+			colors[j].sType = VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2_KHR;
 			colors[j].attachment = att;
 			// Fill in later.
 			colors[j].layout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -339,7 +342,15 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		{
 			auto att = subpass_infos[i].input_attachments[j];
 			VK_ASSERT(att == VK_ATTACHMENT_UNUSED || (att < num_attachments));
+			inputs[j].sType = VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2_KHR;
 			inputs[j].attachment = att;
+			if (att != VK_ATTACHMENT_UNUSED)
+			{
+				if (att < info.num_color_attachments)
+					inputs[j].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				else
+					inputs[j].aspectMask = format_to_aspect_mask(info.depth_stencil->get_format());
+			}
 			// Fill in later.
 			inputs[j].layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		}
@@ -350,11 +361,14 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 			{
 				auto att = subpass_infos[i].resolve_attachments[j];
 				VK_ASSERT(att == VK_ATTACHMENT_UNUSED || (att < num_attachments));
+				resolves[j].sType = VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2_KHR;
 				resolves[j].attachment = att;
 				// Fill in later.
 				resolves[j].layout = VK_IMAGE_LAYOUT_UNDEFINED;
 			}
 		}
+
+		depth->sType = VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2_KHR;
 
 		if (info.depth_stencil && subpass_infos[i].depth_stencil_mode != RenderPassInfo::DepthStencil::None)
 		{
@@ -369,36 +383,36 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		}
 	}
 
-	const auto find_color = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference * {
+	const auto find_color = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference2KHR * {
 		auto *colors = subpasses[subpass].pColorAttachments;
 		for (unsigned i = 0; i < subpasses[subpass].colorAttachmentCount; i++)
 			if (colors[i].attachment == attachment)
-				return const_cast<VkAttachmentReference *>(&colors[i]);
+				return const_cast<VkAttachmentReference2KHR *>(&colors[i]);
 		return nullptr;
 	};
 
-	const auto find_resolve = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference * {
+	const auto find_resolve = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference2KHR * {
 		if (!subpasses[subpass].pResolveAttachments)
 			return nullptr;
 
 		auto *resolves = subpasses[subpass].pResolveAttachments;
 		for (unsigned i = 0; i < subpasses[subpass].colorAttachmentCount; i++)
 			if (resolves[i].attachment == attachment)
-				return const_cast<VkAttachmentReference *>(&resolves[i]);
+				return const_cast<VkAttachmentReference2KHR *>(&resolves[i]);
 		return nullptr;
 	};
 
-	const auto find_input = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference * {
+	const auto find_input = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference2KHR * {
 		auto *inputs = subpasses[subpass].pInputAttachments;
 		for (unsigned i = 0; i < subpasses[subpass].inputAttachmentCount; i++)
 			if (inputs[i].attachment == attachment)
-				return const_cast<VkAttachmentReference *>(&inputs[i]);
+				return const_cast<VkAttachmentReference2KHR *>(&inputs[i]);
 		return nullptr;
 	};
 
-	const auto find_depth_stencil = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference * {
+	const auto find_depth_stencil = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference2KHR * {
 		if (subpasses[subpass].pDepthStencilAttachment->attachment == attachment)
-			return const_cast<VkAttachmentReference *>(subpasses[subpass].pDepthStencilAttachment);
+			return const_cast<VkAttachmentReference2KHR *>(subpasses[subpass].pDepthStencilAttachment);
 		else
 			return nullptr;
 	};
@@ -657,7 +671,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	}
 
 	VK_ASSERT(num_subpasses > 0);
-	VkRenderPassCreateInfo rp_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
+	VkRenderPassCreateInfo2KHR rp_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO_2_KHR };
 	rp_info.subpassCount = num_subpasses;
 	rp_info.pSubpasses = subpasses.data();
 	rp_info.pAttachments = attachments;
@@ -668,9 +682,11 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	             [&](unsigned subpass) {
 		             external_dependencies.emplace_back();
 		             auto &dep = external_dependencies.back();
+		             dep = { VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2_KHR };
 		             dep.srcSubpass = VK_SUBPASS_EXTERNAL;
 		             dep.dstSubpass = subpass;
 
+		             // Could use sync2 NONE here, but we'd like to avoid letting render passes be keyed off sync2 support.
 		             if (external_bottom_of_pipe_dependencies & (1u << subpass))
 			             dep.srcStageMask |= VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 
@@ -705,6 +721,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	for_each_bit(color_self_dependencies | depth_self_dependencies, [&](unsigned subpass) {
 		external_dependencies.emplace_back();
 		auto &dep = external_dependencies.back();
+		dep = { VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2_KHR };
 		dep.srcSubpass = subpass;
 		dep.dstSubpass = subpass;
 		dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
@@ -732,6 +749,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	{
 		external_dependencies.emplace_back();
 		auto &dep = external_dependencies.back();
+		dep = { VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2_KHR };
 		dep.srcSubpass = subpass - 1;
 		dep.dstSubpass = subpass;
 		dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
@@ -784,25 +802,11 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	// Store the important subpass information for later.
 	setup_subpasses(rp_info);
 
-	VkRenderPassMultiviewCreateInfo multiview_info = { VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO };
-	std::vector<uint32_t> multiview_view_mask;
-	if (multiview && device->get_device_features().multiview_features.multiview)
-	{
-		multiview_view_mask.resize(num_subpasses);
-		multiview_info.subpassCount = num_subpasses;
-		for (auto &mask : multiview_view_mask)
-			mask = ((1u << info.num_layers) - 1u) << info.base_layer;
-		multiview_info.pViewMasks = multiview_view_mask.data();
-		rp_info.pNext = &multiview_info;
-	}
-	else if (multiview)
-		LOGE("Multiview not supported. Pretending render pass is not multiview.");
-
 #ifdef VULKAN_DEBUG
 	LOGI("Creating render pass.\n");
 #endif
 	auto &table = device->get_device_table();
-	if (table.vkCreateRenderPass(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)
+	if (table.vkCreateRenderPass2KHR(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
 
 #ifdef GRANITE_VULKAN_FOSSILIZE

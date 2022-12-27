@@ -26,10 +26,6 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
 
-#if defined(GRANITE_VULKAN_BETA) && !defined(VK_ENABLE_BETA_EXTENSIONS)
-#define VK_ENABLE_BETA_EXTENSIONS
-#endif
-
 #if defined(VULKAN_H_) || defined(VULKAN_CORE_H_)
 #error "Must include vulkan_headers.hpp before Vulkan headers"
 #endif

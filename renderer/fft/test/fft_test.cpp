@@ -223,15 +223,15 @@ static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny,
 	if (input_texture)
 	{
 		cmd->image_barrier(*input_texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		                   VK_PIPELINE_STAGE_NONE, 0,
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 
 		cmd->copy_buffer_to_image(*input_texture, *input_buffer,
 		                          0, {}, { Nx, Ny, 1 },
 		                          0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
 		cmd->image_barrier(*input_texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
 		src.image.view = &input_texture->get_view();
 		src.image.stock_sampler = StockSampler::NearestClamp;
@@ -251,8 +251,8 @@ static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny,
 	if (output_texture)
 	{
 		cmd->image_barrier(*output_texture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+		                   VK_PIPELINE_STAGE_NONE, 0,
+		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 		dst.image.view = &output_texture->get_view();
 	}
 	else
@@ -268,17 +268,17 @@ static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny,
 	if (output_texture)
 	{
 		cmd->image_barrier(*output_texture, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 		cmd->copy_image_to_buffer(*output_buffer, *output_texture,
 		                          0, {}, { Nx, Ny, 1 },
 		                          0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
-		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	}
 	else
 	{
-		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 		             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	}
 
@@ -375,7 +375,7 @@ static bool test_fft_1d_c2r(Device &device, unsigned N, unsigned batch_count)
 
 	fft.execute(*cmd, dst, src);
 
-	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 	device.submit(cmd);
@@ -431,7 +431,7 @@ static bool test_fft_1d_r2c(Device &device, unsigned N, unsigned batch_count)
 
 	fft.execute(*cmd, dst, src);
 
-	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 	device.submit(cmd);
@@ -486,7 +486,7 @@ static bool test_fft_1d_c2c(Device &device, unsigned N, int dir, unsigned batch_
 
 	fft.execute(*cmd, dst, src);
 
-	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 	device.submit(cmd);

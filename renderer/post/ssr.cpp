@@ -97,16 +97,20 @@ struct SSRState : RenderPassInterface
 		cmd.dispatch((output_view->get_view_width() + 7) / 8, (output_view->get_view_height() + 7) / 8, 1);
 		cmd.enable_subgroup_size_control(false);
 
-		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 		// PrepareIndirectArgs.hlsl
 		cmd.set_program("builtin://shaders/post/ffx-sssr/build_indirect.comp");
 		cmd.dispatch(1, 1, 1);
 
-		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
-		            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+		            VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+		            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
+		            VK_ACCESS_INDIRECT_COMMAND_READ_BIT |
+		            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
 		// Intersect.hlsl
 		cmd.set_program("builtin://shaders/post/ffx-sssr/trace_primary.comp");
@@ -116,9 +120,11 @@ struct SSRState : RenderPassInterface
 		{
 			if (lighting->volumetric_diffuse)
 			{
-				cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+				cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 				            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-				            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+				            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT |
+				            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
+				            VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 				VkFormatProperties3KHR props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3_KHR };
 				cmd.get_device().get_format_properties(output_view->get_format(), &props3);

@@ -33,88 +33,6 @@ namespace Vulkan
 {
 class Device;
 
-static inline VkPipelineStageFlags image_usage_to_possible_stages(VkImageUsageFlags usage)
-{
-	VkPipelineStageFlags flags = 0;
-
-	if (usage & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT))
-		flags |= VK_PIPELINE_STAGE_TRANSFER_BIT;
-	if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
-		flags |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
-		         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-	if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
-		flags |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-	if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
-		flags |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-		flags |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-	if (usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)
-		flags |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-
-	if (usage & VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT)
-	{
-		VkPipelineStageFlags possible = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
-		                                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-		                                VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-
-		if (usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)
-			possible |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-
-		flags &= possible;
-	}
-
-	return flags;
-}
-
-static inline VkAccessFlags image_layout_to_possible_access(VkImageLayout layout)
-{
-	switch (layout)
-	{
-	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-		return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-		return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-		return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
-		return VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-		return VK_ACCESS_TRANSFER_READ_BIT;
-	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-		return VK_ACCESS_TRANSFER_WRITE_BIT;
-	default:
-		return ~0u;
-	}
-}
-
-static inline VkAccessFlags image_usage_to_possible_access(VkImageUsageFlags usage)
-{
-	VkAccessFlags flags = 0;
-
-	if (usage & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT))
-		flags |= VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
-	if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
-		flags |= VK_ACCESS_SHADER_READ_BIT;
-	if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
-		flags |= VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
-	if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
-		flags |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-	if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-		flags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-	if (usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)
-		flags |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-
-	// Transient attachments can only be attachments, and never other resources.
-	if (usage & VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT)
-	{
-		flags &= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-		         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-		         VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-	}
-
-	return flags;
-}
-
 static inline uint32_t image_num_miplevels(const VkExtent3D &extent)
 {
 	uint32_t size = std::max<uint32_t>(std::max<uint32_t>(extent.width, extent.height), extent.depth);
@@ -152,11 +70,12 @@ enum ImageMiscFlagBits
 	IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT = 1 << 4,
 	IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT = 1 << 5,
 	IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT = 1 << 6,
-	IMAGE_MISC_VERIFY_FORMAT_FEATURE_SAMPLED_LINEAR_FILTER_BIT = 1 << 7,
-	IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT = 1 << 8,
-	IMAGE_MISC_FORCE_NO_DEDICATED_BIT = 1 << 9,
-	IMAGE_MISC_NO_DEFAULT_VIEWS_BIT = 1 << 10,
-	IMAGE_MISC_EXTERNAL_MEMORY_BIT = 1 << 11
+	IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT = 1 << 7,
+	IMAGE_MISC_VERIFY_FORMAT_FEATURE_SAMPLED_LINEAR_FILTER_BIT = 1 << 8,
+	IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT = 1 << 9,
+	IMAGE_MISC_FORCE_NO_DEDICATED_BIT = 1 << 10,
+	IMAGE_MISC_NO_DEFAULT_VIEWS_BIT = 1 << 11,
+	IMAGE_MISC_EXTERNAL_MEMORY_BIT = 1 << 12
 };
 using ImageMiscFlags = uint32_t;
 
@@ -543,26 +462,6 @@ public:
 		swapchain_layout = layout;
 	}
 
-	void set_stage_flags(VkPipelineStageFlags flags)
-	{
-		stage_flags = flags;
-	}
-
-	void set_access_flags(VkAccessFlags flags)
-	{
-		access_flags = flags;
-	}
-
-	VkPipelineStageFlags get_stage_flags() const
-	{
-		return stage_flags;
-	}
-
-	VkAccessFlags get_access_flags() const
-	{
-		return access_flags;
-	}
-
 	const DeviceAllocation &get_allocation() const
 	{
 		return alloc;
@@ -611,8 +510,6 @@ private:
 	ImageCreateInfo create_info;
 
 	Layout layout_type = Layout::Optimal;
-	VkPipelineStageFlags stage_flags = 0;
-	VkAccessFlags access_flags = 0;
 	VkImageLayout swapchain_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkSurfaceTransformFlagBitsKHR surface_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	bool owns_image = true;
@@ -643,7 +540,7 @@ struct LinearHostImageCreateInfo
 	unsigned height = 0;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	VkImageUsageFlags usage = 0;
-	VkPipelineStageFlags stages = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 	LinearHostImageCreateInfoFlags flags = 0;
 };
 
@@ -663,16 +560,16 @@ public:
 	const DeviceAllocation &get_host_visible_allocation() const;
 	const Buffer &get_host_visible_buffer() const;
 	bool need_staging_copy() const;
-	VkPipelineStageFlags get_used_pipeline_stages() const;
+	VkPipelineStageFlags2 get_used_pipeline_stages() const;
 
 private:
 	friend class Util::ObjectPool<LinearHostImage>;
 	LinearHostImage(Device *device, ImageHandle gpu_image, Util::IntrusivePtr<Buffer> cpu_image,
-	                VkPipelineStageFlags stages);
+	                VkPipelineStageFlags2 stages);
 	Device *device;
 	ImageHandle gpu_image;
 	Util::IntrusivePtr<Buffer> cpu_image;
-	VkPipelineStageFlags stages;
+	VkPipelineStageFlags2 stages;
 	size_t row_pitch;
 	size_t row_offset;
 };

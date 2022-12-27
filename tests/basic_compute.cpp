@@ -64,10 +64,10 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		auto buffer = get_wsi().get_device().create_buffer(info);
 
 		auto cmd = get_wsi().get_device().request_command_buffer();
-		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
 		             VK_ACCESS_TRANSFER_READ_BIT);
 		cmd->copy_buffer(*buffer, src);
-		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_HOST_BIT,
 		             VK_ACCESS_HOST_READ_BIT);
 
 		Fence fence;

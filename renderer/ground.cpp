@@ -389,8 +389,8 @@ void Ground::refresh(const RenderContext &context, TaskComposer &)
 	auto cmd = device.request_command_buffer();
 
 	cmd->image_barrier(*lod_map, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-	                   VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-	                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+	                   VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_COPY_BIT, 0,
+	                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 	uint16_t *data = static_cast<uint16_t *>(cmd->update_image(*lod_map));
 
 	const auto quantize = [](float v) -> uint16_t {
@@ -401,8 +401,8 @@ void Ground::refresh(const RenderContext &context, TaskComposer &)
 		*data++ = quantize(lod);
 
 	cmd->image_barrier(*lod_map, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-	                   VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	                   VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 	device.submit(cmd);
 }
 

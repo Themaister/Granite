@@ -133,8 +133,8 @@ public:
 
 	explicit BatchComposer(bool split_binary_timeline_semaphores);
 	void add_wait_submissions(WaitSemaphores &sem);
-	void add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags stage);
-	void add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags stage);
+	void add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags2 stage);
+	void add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags2 stage);
 	void add_signal_semaphore(VkSemaphore sem, uint64_t count);
 	void add_command_buffer(VkCommandBuffer cmd);
 
@@ -365,7 +365,7 @@ public:
 	//   For timelines, we need to know which handle type to use (OPAQUE or ID3D12Fence).
 	//   Binary external semaphore is always opaque with TEMPORARY semantics.
 
-	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
+	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags2 stages, bool flush);
 
 	// If transfer_ownership is set, Semaphore owns the VkSemaphore. Otherwise, application must
 	// free the semaphore when GPU usage of it is complete.
@@ -463,7 +463,7 @@ public:
 	QueryPoolHandle write_calibrated_timestamp();
 
 	// A split version of VkEvent handling which lets us record a wait command before signal is recorded.
-	PipelineEvent begin_signal_event(VkPipelineStageFlags stages);
+	PipelineEvent begin_signal_event();
 
 	const Context::SystemHandles &get_system_handles() const
 	{
@@ -500,7 +500,7 @@ private:
 	void request_uniform_block(BufferBlock &block, VkDeviceSize size);
 	void request_staging_block(BufferBlock &block, VkDeviceSize size);
 
-	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
+	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlags2 stage);
 
 	void set_acquire_semaphore(unsigned index, Semaphore acquire);
 	Semaphore consume_release_semaphore();
@@ -527,7 +527,7 @@ private:
 	int64_t convert_timestamp_to_absolute_nsec(const QueryPoolResult &handle);
 	Context::SystemHandles system_handles;
 
-	QueryPoolHandle write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
+	QueryPoolHandle write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlags2 stage);
 	QueryPoolHandle write_calibrated_timestamp_nolock();
 	void register_time_interval_nolock(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, std::string tag, std::string extra);
 
@@ -649,7 +649,7 @@ private:
 	struct QueueData
 	{
 		Util::SmallVector<Semaphore> wait_semaphores;
-		Util::SmallVector<VkPipelineStageFlags> wait_stages;
+		Util::SmallVector<VkPipelineStageFlags2> wait_stages;
 		bool need_fence = false;
 
 		VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
@@ -719,7 +719,7 @@ private:
 
 	PerformanceQueryPool &get_performance_query_pool(QueueIndices physical_type);
 	void clear_wait_semaphores();
-	void submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, bool flush);
+	void submit_staging(CommandBufferHandle &cmd, bool flush);
 	PipelineEvent request_pipeline_event();
 
 	std::function<void ()> queue_lock_callback;
@@ -776,8 +776,8 @@ private:
 	                   unsigned semaphore_count, Semaphore *semaphore);
 	void submit_empty_nolock(QueueIndices physical_type, Fence *fence,
 	                         SemaphoreHolder *semaphore, int profiling_iteration);
-	void add_wait_semaphore_nolock(QueueIndices type, Semaphore semaphore, VkPipelineStageFlags stages,
-	                               bool flush);
+	void add_wait_semaphore_nolock(QueueIndices type, Semaphore semaphore,
+	                               VkPipelineStageFlags2 stages, bool flush);
 
 	void request_vertex_block_nolock(BufferBlock &block, VkDeviceSize size);
 	void request_index_block_nolock(BufferBlock &block, VkDeviceSize size);
@@ -823,7 +823,7 @@ private:
 
 	void register_graphics_pipeline(Fossilize::Hash hash, const VkGraphicsPipelineCreateInfo &info);
 	void register_compute_pipeline(Fossilize::Hash hash, const VkComputePipelineCreateInfo &info);
-	void register_render_pass(VkRenderPass render_pass, Fossilize::Hash hash, const VkRenderPassCreateInfo &info);
+	void register_render_pass(VkRenderPass render_pass, Fossilize::Hash hash, const VkRenderPassCreateInfo2KHR &info);
 	void register_descriptor_set_layout(VkDescriptorSetLayout layout, Fossilize::Hash hash, const VkDescriptorSetLayoutCreateInfo &info);
 	void register_pipeline_layout(VkPipelineLayout layout, Fossilize::Hash hash, const VkPipelineLayoutCreateInfo &info);
 	void register_shader_module(VkShaderModule module, Fossilize::Hash hash, const VkShaderModuleCreateInfo &info);
@@ -866,8 +866,8 @@ struct OwnershipTransferInfo
 	CommandBuffer::Type new_queue;
 	VkImageLayout old_image_layout;
 	VkImageLayout new_image_layout;
-	VkPipelineStageFlags dst_pipeline_stage;
-	VkAccessFlags dst_access;
+	VkPipelineStageFlags2 dst_pipeline_stage;
+	VkAccessFlags2 dst_access;
 };
 
 // For an image which was last accessed in old_queue, requests a command buffer

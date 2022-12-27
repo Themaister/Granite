@@ -62,9 +62,11 @@ struct DeviceFeatures
 	bool supports_memory_budget = false;
 	bool supports_astc_decode_mode = false;
 	bool supports_sync2 = false;
+	bool supports_create_renderpass2 = false;
 	bool supports_video_queue = false;
 	bool supports_video_decode_queue = false;
 	bool supports_video_decode_h264 = false;
+	bool supports_video_decode_h265 = false;
 	bool supports_pipeline_creation_cache_control = false;
 	bool supports_format_feature_flags2 = false;
 	bool supports_external = false;
@@ -129,7 +131,10 @@ enum VendorID
 enum ContextCreationFlagBits
 {
 	CONTEXT_CREATION_DISABLE_BINDLESS_BIT = 1 << 0,
-	CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT = 1 << 1
+	CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT = 1 << 1,
+	CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT = 1 << 2,
+	CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT = 1 << 3,
+	CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT = 1 << 4
 };
 using ContextCreationFlags = uint32_t;
 

@@ -38,6 +38,75 @@ namespace Vulkan
 {
 class DebugChannelInterface;
 
+static inline VkPipelineStageFlags convert_vk_stage2(VkPipelineStageFlags2 stages)
+{
+	constexpr VkPipelineStageFlags2 transfer_mask =
+			VK_PIPELINE_STAGE_2_COPY_BIT |
+			VK_PIPELINE_STAGE_2_BLIT_BIT |
+			VK_PIPELINE_STAGE_2_RESOLVE_BIT |
+			VK_PIPELINE_STAGE_2_CLEAR_BIT |
+			VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR;
+
+	constexpr VkPipelineStageFlags2 preraster_mask =
+			VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT;
+
+	if ((stages & transfer_mask) != 0)
+	{
+		stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+		stages &= ~transfer_mask;
+	}
+
+	if ((stages & preraster_mask) != 0)
+	{
+		// TODO: Augment if we add mesh shader support eventually.
+		stages |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+		stages &= ~preraster_mask;
+	}
+
+	return VkPipelineStageFlags(stages);
+}
+
+static inline VkPipelineStageFlags convert_vk_src_stage2(VkPipelineStageFlags2 stages)
+{
+	stages = convert_vk_stage2(stages);
+	if (stages == VK_PIPELINE_STAGE_NONE)
+		stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	return VkPipelineStageFlags(stages);
+}
+
+static inline VkPipelineStageFlags convert_vk_dst_stage2(VkPipelineStageFlags2 stages)
+{
+	stages = convert_vk_stage2(stages);
+	if (stages == VK_PIPELINE_STAGE_NONE)
+		stages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	return VkPipelineStageFlags(stages);
+}
+
+static inline VkAccessFlags convert_vk_access_flags2(VkAccessFlags2 access)
+{
+	constexpr VkAccessFlags2 sampled_mask =
+			VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
+			VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+			VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR;
+
+	constexpr VkAccessFlags2 storage_mask =
+			VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+
+	if ((access & sampled_mask) != 0)
+	{
+		access |= VK_ACCESS_SHADER_READ_BIT;
+		access &= ~sampled_mask;
+	}
+
+	if ((access & storage_mask) != 0)
+	{
+		access |= VK_ACCESS_SHADER_WRITE_BIT;
+		access &= ~storage_mask;
+	}
+
+	return VkAccessFlags(access);
+}
+
 enum CommandBufferDirtyBits
 {
 	COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT = 1 << 0,
@@ -230,13 +299,13 @@ public:
 		return *device;
 	}
 
-	VkPipelineStageFlags swapchain_touched_in_stages() const
+	VkPipelineStageFlags2 swapchain_touched_in_stages() const
 	{
 		return uses_swapchain_in_stages;
 	}
 
 	// Only used when using swapchain in non-obvious ways, like compute or transfer.
-	void swapchain_touch_in_stages(VkPipelineStageFlags stages)
+	void swapchain_touch_in_stages(VkPipelineStageFlags2 stages)
 	{
 		uses_swapchain_in_stages |= stages;
 	}
@@ -292,41 +361,36 @@ public:
 
 	void full_barrier();
 	void pixel_barrier();
-	void barrier(VkPipelineStageFlags src_stage, VkAccessFlags src_access, VkPipelineStageFlags dst_stage,
-	             VkAccessFlags dst_access);
 
-	PipelineEvent signal_event(VkPipelineStageFlags stages);
-	void complete_signal_event(const EventHolder &event);
+	// Simplified global memory barrier.
+	void barrier(VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
+	             VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access);
 
-	void wait_events(unsigned num_events, const VkEvent *events,
-	                 VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
-	                 unsigned barriers, const VkMemoryBarrier *globals,
-	                 unsigned buffer_barriers, const VkBufferMemoryBarrier *buffers,
-	                 unsigned image_barriers, const VkImageMemoryBarrier *images);
+	PipelineEvent signal_event(const VkDependencyInfo &dep);
+	void wait_events(uint32_t num_events, const PipelineEvent *events, const VkDependencyInfo *deps);
 
-	void barrier(VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
-	             unsigned barriers, const VkMemoryBarrier *globals,
-	             unsigned buffer_barriers, const VkBufferMemoryBarrier *buffers,
-	             unsigned image_barriers, const VkImageMemoryBarrier *images);
+	// Full expressive barrier.
+	void barrier(const VkDependencyInfo &dep);
 
-	void buffer_barrier(const Buffer &buffer, VkPipelineStageFlags src_stage, VkAccessFlags src_access,
-	                    VkPipelineStageFlags dst_stage, VkAccessFlags dst_access);
+	void buffer_barrier(const Buffer &buffer,
+	                    VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
+	                    VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access);
 
-	void image_barrier(const Image &image, VkImageLayout old_layout, VkImageLayout new_layout,
-	                   VkPipelineStageFlags src_stage, VkAccessFlags src_access, VkPipelineStageFlags dst_stage,
-	                   VkAccessFlags dst_access);
+	void image_barrier(const Image &image,
+	                   VkImageLayout old_layout, VkImageLayout new_layout,
+	                   VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
+	                   VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access);
 
-	void buffer_barriers(VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
-	                     unsigned buffer_barriers, const VkBufferMemoryBarrier *buffers);
-	void image_barriers(VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
-	                    unsigned image_barriers, const VkImageMemoryBarrier *images);
+	void buffer_barriers(uint32_t buffer_barriers, const VkBufferMemoryBarrier2 *buffers);
+	void image_barriers(uint32_t image_barriers, const VkImageMemoryBarrier2 *images);
 
-	void release_external_buffer_barrier(const Buffer &buffer, VkPipelineStageFlags src_stage, VkAccessFlags src_access);
-	void acquire_external_buffer_barrier(const Buffer &buffer, VkPipelineStageFlags dst_stage, VkAccessFlags dst_access);
-	void release_external_image_barrier(const Image &image, VkImageLayout old_layout, VkImageLayout new_layout,
-	                                    VkPipelineStageFlags src_stage, VkAccessFlags src_access);
+	void release_external_buffer_barrier(const Buffer &buffer, VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access);
+	void acquire_external_buffer_barrier(const Buffer &buffer, VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access);
+	void release_external_image_barrier(const Image &image,
+	                                    VkImageLayout old_layout, VkImageLayout new_layout,
+	                                    VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access);
 	void acquire_external_image_barrier(const Image &image, VkImageLayout old_layout, VkImageLayout new_layout,
-	                                    VkPipelineStageFlags dst_stage, VkAccessFlags dst_access);
+	                                    VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access);
 
 	void blit_image(const Image &dst,
 	                const Image &src,
@@ -337,7 +401,8 @@ public:
 
 	// Prepares an image to have its mipmap generated.
 	// Puts the top-level into TRANSFER_SRC_OPTIMAL, and all other levels are invalidated with an UNDEFINED -> TRANSFER_DST_OPTIMAL.
-	void barrier_prepare_generate_mipmap(const Image &image, VkImageLayout base_level_layout, VkPipelineStageFlags src_stage, VkAccessFlags src_access,
+	void barrier_prepare_generate_mipmap(const Image &image, VkImageLayout base_level_layout,
+	                                     VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
 	                                     bool need_top_level_barrier = true);
 
 	// The image must have been transitioned with barrier_prepare_generate_mipmap before calling this function.
@@ -665,7 +730,7 @@ public:
 		return type;
 	}
 
-	QueryPoolHandle write_timestamp(VkPipelineStageFlagBits stage);
+	QueryPoolHandle write_timestamp(VkPipelineStageFlags2 stage);
 	void add_checkpoint(const char *tag);
 	void set_backtrace_checkpoint();
 
@@ -725,7 +790,7 @@ private:
 	uint32_t dirty_sets_dynamic = 0;
 	uint32_t dirty_vbos = 0;
 	uint32_t active_vbos = 0;
-	VkPipelineStageFlags uses_swapchain_in_stages = 0;
+	VkPipelineStageFlags2 uses_swapchain_in_stages = 0;
 	bool is_compute = true;
 	bool is_secondary = false;
 	bool is_ended = false;

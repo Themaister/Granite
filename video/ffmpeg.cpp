@@ -192,7 +192,7 @@ bool VideoEncoder::Impl::enqueue_buffer_readback(
 	transfer_info.new_queue = Vulkan::CommandBuffer::Type::AsyncTransfer;
 	transfer_info.old_image_layout = layout;
 	transfer_info.new_image_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-	transfer_info.dst_pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	transfer_info.dst_pipeline_stage = VK_PIPELINE_STAGE_2_COPY_BIT;
 	transfer_info.dst_access = VK_ACCESS_TRANSFER_READ_BIT;
 
 	auto transfer_cmd = Vulkan::request_command_buffer_with_ownership_transfer(
@@ -202,8 +202,8 @@ bool VideoEncoder::Impl::enqueue_buffer_readback(
 	                                   aligned_width, height,
 	                                   { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
 
-	transfer_cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-						  VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+	transfer_cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	                      VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 	device->submit(transfer_cmd, &frame.fence, 1, &release_semaphore);
 

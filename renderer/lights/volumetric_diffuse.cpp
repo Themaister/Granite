@@ -122,16 +122,17 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 		gbuffer.pbr.get(),
 	};
 
-	VkPipelineStageFlags src_color, src_depth, dst_color, dst_depth;
-	VkAccessFlags src_access_color, src_access_depth, dst_access_color, dst_access_depth;
+	VkPipelineStageFlags2 src_color, src_depth, dst_color, dst_depth;
+	VkAccessFlags2 src_access_color, src_access_depth, dst_access_color, dst_access_depth;
 	VkImageLayout old_color, new_color, old_depth, new_depth;
 
 	bool compute = (gbuffer.emissive->get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0;
 
 	if (mode == TransitionMode::Read && compute)
 	{
-		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		            VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 		return;
 	}
 
@@ -139,8 +140,8 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 	{
 		if (compute)
 		{
-			src_color = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-			src_depth = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			src_color = VK_PIPELINE_STAGE_NONE;
+			src_depth = VK_PIPELINE_STAGE_NONE;
 			dst_color = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 			dst_depth = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 		}
@@ -157,7 +158,8 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 
 		if (compute)
 		{
-			dst_access_color = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+			dst_access_color = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
+			                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
 			dst_access_depth = dst_access_color;
 		}
 		else
@@ -190,8 +192,8 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 
 		dst_color = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 		dst_depth = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-		dst_access_color = VK_ACCESS_SHADER_READ_BIT;
-		dst_access_depth = VK_ACCESS_SHADER_READ_BIT;
+		dst_access_color = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+		dst_access_depth = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
 		old_color = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		old_depth = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -595,13 +597,13 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 
 			const auto clear = [](Vulkan::CommandBuffer &clear_cmd, Vulkan::Image &clear_image) {
 				clear_cmd.image_barrier(clear_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-				                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-				                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+				                        VK_PIPELINE_STAGE_NONE, 0,
+				                        VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 				clear_cmd.clear_image(clear_image, {});
 				clear_cmd.image_barrier(clear_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-				                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+				                        VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 				                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-				                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+				                        VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
 			};
 
 			clear(*cmd, *image);
@@ -755,8 +757,9 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 		// In parallel, light the sky cube.
 		update_sky_cube(cmd);
 
-		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 		// In parallel with culling, update the fallback volume.
 		update_fallback_volume(cmd);
@@ -769,9 +772,11 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 			cull_probe_buffer(cmd, *light);
 		}
 
-		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
-		            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+		            VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+		            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
+		            VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
 
 		// Relight probes.
 
@@ -801,8 +806,9 @@ void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 			light_probe_buffer(cmd, *light);
 		}
 
-		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 		for (auto &light_tuple : *volumetric_diffuse)
 		{

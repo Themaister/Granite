@@ -90,17 +90,17 @@ class RenderPass : public HashedObject<RenderPass>, public NoCopyNoMove
 public:
 	struct SubpassInfo
 	{
-		VkAttachmentReference color_attachments[VULKAN_NUM_ATTACHMENTS];
+		VkAttachmentReference2KHR color_attachments[VULKAN_NUM_ATTACHMENTS];
 		unsigned num_color_attachments;
-		VkAttachmentReference input_attachments[VULKAN_NUM_ATTACHMENTS];
+		VkAttachmentReference2KHR input_attachments[VULKAN_NUM_ATTACHMENTS];
 		unsigned num_input_attachments;
-		VkAttachmentReference depth_stencil_attachment;
+		VkAttachmentReference2KHR depth_stencil_attachment;
 
 		unsigned samples;
 	};
 
 	RenderPass(Util::Hash hash, Device *device, const RenderPassInfo &info);
-	RenderPass(Util::Hash hash, Device *device, const VkRenderPassCreateInfo &create_info);
+	RenderPass(Util::Hash hash, Device *device, const VkRenderPassCreateInfo2KHR &create_info);
 	~RenderPass();
 
 	unsigned get_num_subpasses() const
@@ -131,14 +131,14 @@ public:
 		return subpasses_info[subpass].num_input_attachments;
 	}
 
-	const VkAttachmentReference &get_color_attachment(unsigned subpass, unsigned index) const
+	const VkAttachmentReference2KHR &get_color_attachment(unsigned subpass, unsigned index) const
 	{
 		VK_ASSERT(subpass < subpasses_info.size());
 		VK_ASSERT(index < subpasses_info[subpass].num_color_attachments);
 		return subpasses_info[subpass].color_attachments[index];
 	}
 
-	const VkAttachmentReference &get_input_attachment(unsigned subpass, unsigned index) const
+	const VkAttachmentReference2KHR &get_input_attachment(unsigned subpass, unsigned index) const
 	{
 		VK_ASSERT(subpass < subpasses_info.size());
 		VK_ASSERT(index < subpasses_info[subpass].num_input_attachments);
@@ -167,7 +167,7 @@ private:
 	VkFormat depth_stencil = VK_FORMAT_UNDEFINED;
 	std::vector<SubpassInfo> subpasses_info;
 
-	void setup_subpasses(const VkRenderPassCreateInfo &create_info);
+	void setup_subpasses(const VkRenderPassCreateInfo2KHR &create_info);
 };
 
 class Framebuffer : public Cookie, public NoCopyNoMove, public InternalSyncEnabled

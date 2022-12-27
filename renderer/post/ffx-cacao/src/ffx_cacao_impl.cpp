@@ -759,8 +759,9 @@ static inline void setupDescriptors(FFX_CACAO_GraniteContext *context, Vulkan::C
 
 static inline void computeBarrier(Vulkan::CommandBuffer &cb)
 {
-	cb.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	cb.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	           VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 }
 
 FFX_CACAO_Status FFX_CACAO_GraniteDraw(FFX_CACAO_GraniteContext* context, Vulkan::CommandBuffer &cb,

@@ -89,8 +89,9 @@ static void bench(Device &device, const BenchParams &params)
 		for (unsigned j = 0; j < 10; j++)
 		{
 			fft.execute(*cmd, dst, src);
-			cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-			             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+			cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+			             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			             VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 		}
 		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		device.register_time_interval("GPU", std::move(begin_ts), std::move(end_ts), "FFT");

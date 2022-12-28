@@ -173,3 +173,8 @@ if (GRANITE_TEST_INTEROP)
         target_link_libraries(granite-d3d12-interop PRIVATE glfw granite-vulkan d3d12 dxgi)
     endif()
 endif()
+
+if (GRANITE_FFMPEG)
+    add_granite_application(video-player video_player.cpp)
+    target_link_libraries(video-player PRIVATE granite-video)
+endif()

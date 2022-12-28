@@ -132,8 +132,6 @@ void Filesystem::setup_default_filesystem(Filesystem *filesystem, const char *de
 	}
 
 	// These filesystems are core functionality.
-	if (!filesystem->get_backend("assets"))
-		throw std::runtime_error("assets filesystem was not initialized.");
 	if (!filesystem->get_backend("builtin"))
 		throw std::runtime_error("builtin filesystem was not initialized.");
 	if (!filesystem->get_backend("cache"))

@@ -1,0 +1,76 @@
+/* Copyright (c) 2017-2022 Hans-Kristian Arntzen
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+#include "ffmpeg.hpp"
+#include "application.hpp"
+#include "application_wsi_events.hpp"
+
+struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
+{
+	explicit VideoPlayerApplication(const char *path)
+	{
+		if (!decoder.init(nullptr, path))
+			throw std::runtime_error("Failed to open file");
+		EVENT_MANAGER_REGISTER_LATCH(VideoPlayerApplication, on_module_created, on_module_destroyed, Vulkan::DeviceShaderModuleReadyEvent);
+	}
+
+	void on_module_created(const Vulkan::DeviceShaderModuleReadyEvent &e)
+	{
+		if (!decoder.begin_device_context(&e.get_device()))
+			LOGE("Failed to begin device context.\n");
+	}
+
+	void on_module_destroyed(const Vulkan::DeviceShaderModuleReadyEvent &)
+	{
+		decoder.end_device_context();
+	}
+
+	void render_frame(double, double)
+	{
+
+	}
+
+	Granite::VideoDecoder decoder;
+};
+
+namespace Granite
+{
+Application *application_create(int argc, char **argv)
+{
+	GRANITE_APPLICATION_SETUP_FILESYSTEM();
+
+	if (argc != 2)
+		return nullptr;
+
+	try
+	{
+		auto *app = new VideoPlayerApplication(argv[1]);
+		return app;
+	}
+	catch (const std::exception &e)
+	{
+		LOGE("application_create() threw exception: %s\n", e.what());
+		return nullptr;
+	}
+}
+} // namespace Granite
+

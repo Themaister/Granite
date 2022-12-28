@@ -30,6 +30,7 @@ namespace Granite
 namespace Audio
 {
 class DumpBackend;
+class Mixer;
 }
 
 class VideoEncoder
@@ -58,6 +59,49 @@ public:
 	                Vulkan::CommandBuffer::Type type, const Vulkan::Semaphore &semaphore,
 					Vulkan::Semaphore &release_semaphore);
 	void drain();
+
+private:
+	struct Impl;
+	std::unique_ptr<Impl> impl;
+};
+
+struct VideoFrame
+{
+	const Vulkan::ImageView *view = nullptr;
+	Vulkan::Semaphore sem;
+	unsigned index = 0;
+	double pts = 0.0;
+};
+
+class VideoDecoder
+{
+public:
+	VideoDecoder();
+	~VideoDecoder();
+
+	bool init(Granite::Audio::Mixer *mixer, const char *path);
+	bool eof();
+
+	bool begin_device_context(Vulkan::Device *device);
+	void end_device_context();
+
+	bool play();
+
+	// Audio is played back with a certain amount of latency.
+	// Audio is played asynchronously if a mixer is provided and the stream has an audio track.
+	// A worker thread will ensure that the audio mixer can render audio on-demand.
+	double get_estimated_audio_playback_timestamp();
+
+	// This timestamp should be close to get_estimated_audio_timestamp() as possible,
+	// or a bit into the future if you intend to display with some delay.
+	// If ts = 0.0, the next frame will be returned.
+	void set_target_video_timestamp(double ts);
+
+	// Next acquire will aim to grab an image with PTS at least equal to target timestamp,
+	// and a PTS that is at least as large as one that has been previously acquired.
+	// Client is responsible for displaying the frame in due time.
+	bool acquire_video_frame(VideoFrame &frame);
+	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
 
 private:
 	struct Impl;

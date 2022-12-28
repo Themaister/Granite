@@ -1,0 +1,41 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0, rgba8) uniform writeonly mediump image2D uOutput;
+layout(set = 0, binding = 1) uniform mediump sampler2D uY;
+layout(set = 0, binding = 2) uniform mediump sampler2D uCb;
+layout(set = 0, binding = 3) uniform mediump sampler2D uCr;
+
+layout(push_constant) uniform Registers
+{
+    uvec2 resolution;
+    vec2 inv_resolution;
+    vec2 chroma_siting;
+} registers;
+
+layout(set = 1, binding = 0) uniform UBO
+{
+    mediump mat4 yuv_to_rgb;
+};
+
+void main()
+{
+    uvec2 coord = gl_GlobalInvocationID.xy;
+    if (all(lessThan(coord, registers.resolution)))
+    {
+        vec2 fcoord = vec2(coord);
+        vec2 chroma_coord = (fcoord + registers.chroma_siting) * registers.inv_resolution;
+        vec2 luma_coord = (fcoord + 0.5) * registers.inv_resolution;
+
+        mediump float y = textureLod(uY, luma_coord, 0.0).x;
+        mediump float cb = textureLod(uCb, chroma_coord, 0.0).x;
+        mediump float cr = textureLod(uCr, chroma_coord, 0.0).x;
+        mediump vec3 rgb = (yuv_to_rgb * vec4(y, cb, cr, 1.0)).rgb;
+
+        // Likely need to perform BT.1886 EOTF here, and then transform to sRGB / scRGB.
+        // After this, we would need to transform primaries as well if content has ST.2020 primaries.
+        // For now, just ignore this.
+
+        imageStore(uOutput, ivec2(coord), vec4(rgb, 1.0));
+    }
+}

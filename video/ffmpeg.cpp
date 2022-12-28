@@ -34,6 +34,8 @@ extern "C"
 #include "ffmpeg.hpp"
 #include "logging.hpp"
 #include "thread_latch.hpp"
+#include "math.hpp"
+#include "muglm/muglm_impl.hpp"
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -724,14 +726,16 @@ int VideoDecoder::Impl::find_decode_video_frame()
 		                                                        video.av_ctx->height,
 		                                                        VK_FORMAT_R8G8B8A8_SRGB);
 		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-		info.misc = Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		info.flags = VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
 		info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
 		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
-		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
+		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
+		            Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
 		img.rgb_image = device->create_image(info);
+
+		info.misc &= ~Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
 
 		for (unsigned plane = 0; plane < num_planes; plane++)
 		{
@@ -847,9 +851,11 @@ int VideoDecoder::Impl::find_acquire_video_frame_locked()
 	int best_index = -1;
 	for (unsigned i = 0; i < NumDecodeFrames; i++)
 	{
-		if (video_queue[i].sem_to_client && video_queue[i].pts > last_acquired_pts)
-			if (best_index < 0 || (video_queue[i].pts < video_queue[best_index].pts))
-				best_index = int(i);
+		if (video_queue[i].sem_to_client && video_queue[i].pts > last_acquired_pts &&
+		    (best_index < 0 || (video_queue[i].pts < video_queue[best_index].pts)))
+		{
+			best_index = int(i);
+		}
 	}
 
 	return best_index;
@@ -862,6 +868,9 @@ bool VideoDecoder::Impl::process_video_frame()
 		return false;
 
 	auto &img = video_queue[frame];
+
+	img.pts = double(video.av_frame->pts);
+
 	auto cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
 
 	for (unsigned i = 0; i < num_planes; i++)
@@ -876,7 +885,7 @@ bool VideoDecoder::Impl::process_video_frame()
 	{
 		auto *buf = static_cast<uint8_t *>(cmd->update_image(*img.planes[i]));
 
-		int byte_width = video.av_ctx->width;
+		int byte_width = int(img.planes[i]->get_width());
 		if (plane_formats[i] == VK_FORMAT_R8G8_UNORM)
 			byte_width *= 2;
 
@@ -904,8 +913,46 @@ bool VideoDecoder::Impl::process_video_frame()
 		                           true);
 		img.sem_from_client = {};
 	}
-	device->submit(cmd, nullptr, 1, &img.sem_to_client);
+	device->submit(cmd, nullptr, 1, &transfer_to_compute);
+	device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncCompute,
+	                           std::move(transfer_to_compute),
+	                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	                           true);
 
+	cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncCompute);
+	cmd->set_unorm_storage_texture(0, 0, img.rgb_image->get_view());
+	for (unsigned i = 0; i < num_planes; i++)
+	{
+		cmd->set_texture(0, 1 + i, img.planes[i]->get_view(),
+		                 i == 0 ? Vulkan::StockSampler::NearestClamp : Vulkan::StockSampler::LinearClamp);
+	}
+	for (unsigned i = num_planes; i < 3; i++)
+		cmd->set_texture(0, 1 + i, img.planes[0]->get_view(), Vulkan::StockSampler::NearestClamp);
+	cmd->set_program("builtin://shaders/util/yuv_to_rgb.comp");
+
+	*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = mat4(1.0f);
+
+	struct Push
+	{
+		uvec2 resolution;
+		vec2 inv_resolution;
+		vec2 chroma_siting;
+	} push = {};
+
+	push.resolution = uvec2(img.rgb_image->get_width(), img.rgb_image->get_height());
+	push.inv_resolution = vec2(1.0f / float(img.rgb_image->get_width()),
+	                           1.0f / float(img.rgb_image->get_height()));
+	push.chroma_siting = vec2(0.5f) * push.inv_resolution;
+	cmd->push_constants(&push, 0, sizeof(push));
+
+	cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+	cmd->dispatch((push.resolution.x + 7) / 8, (push.resolution.y + 7) / 8, 1);
+	cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	                   VK_PIPELINE_STAGE_NONE, 0);
+	device->submit(cmd, nullptr, 1, &img.sem_to_client);
 	return true;
 }
 
@@ -919,7 +966,7 @@ bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 		return true;
 	}
 
-	if (pkt && ret < 0)
+	if (pkt)
 	{
 		ret = avcodec_send_packet(video.av_ctx, pkt);
 		if (ret < 0)
@@ -948,11 +995,9 @@ bool VideoDecoder::Impl::iterate()
 		int ret;
 		while ((ret = av_read_frame(av_format_ctx, av_pkt)) >= 0)
 		{
-			if (av_pkt->stream_index == video.av_stream->index &&
-			    !decode_video_packet(av_pkt))
-			{
-				is_eof = true;
-			}
+			if (av_pkt->stream_index == video.av_stream->index)
+				if (!decode_video_packet(av_pkt))
+					is_eof = true;
 
 			av_packet_unref(av_pkt);
 			break;

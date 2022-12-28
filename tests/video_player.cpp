@@ -37,6 +37,8 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 	{
 		if (!decoder.begin_device_context(&e.get_device()))
 			LOGE("Failed to begin device context.\n");
+		if (!decoder.play())
+			LOGE("Failed to begin playback.\n");
 	}
 
 	void on_module_destroyed(const Vulkan::DeviceShaderModuleReadyEvent &)
@@ -46,7 +48,27 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 
 	void render_frame(double, double)
 	{
+		auto &device = get_wsi().get_device();
 
+		Granite::VideoFrame frame;
+		if (decoder.acquire_video_frame(frame))
+		{
+			auto cmd = device.request_command_buffer();
+			auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
+			cmd->begin_render_pass(rp);
+			cmd->set_texture(0, 0, *frame.view, Vulkan::StockSampler::LinearClamp);
+			Vulkan::CommandBufferUtil::draw_fullscreen_quad(
+					*cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
+			cmd->end_render_pass();
+
+			Vulkan::Semaphore sem;
+			device.add_wait_semaphore(Vulkan::CommandBuffer::Type::Generic, std::move(frame.sem),
+			                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, true);
+			device.submit(cmd, nullptr, 1, &sem);
+			decoder.release_video_frame(frame.index, std::move(sem));
+		}
+		else
+			request_shutdown();
 	}
 
 	Granite::VideoDecoder decoder;

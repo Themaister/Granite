@@ -869,7 +869,7 @@ bool VideoDecoder::Impl::process_video_frame()
 
 	auto &img = video_queue[frame];
 
-	img.pts = double(video.av_frame->pts);
+	img.pts = av_q2d(video.av_stream->time_base) * double(video.av_frame->pts);
 
 	auto cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
 

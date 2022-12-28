@@ -44,34 +44,54 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 	void on_module_destroyed(const Vulkan::DeviceShaderModuleReadyEvent &)
 	{
 		decoder.end_device_context();
+		sem.reset();
 	}
 
-	void render_frame(double, double)
+	void render_frame(double, double elapsed_time)
 	{
 		auto &device = get_wsi().get_device();
 
-		Granite::VideoFrame frame;
-		if (decoder.acquire_video_frame(frame))
+		if (frame.view && elapsed_time > frame.pts)
 		{
-			auto cmd = device.request_command_buffer();
-			auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
-			cmd->begin_render_pass(rp);
-			cmd->set_texture(0, 0, *frame.view, Vulkan::StockSampler::LinearClamp);
-			Vulkan::CommandBufferUtil::draw_fullscreen_quad(
-					*cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
-			cmd->end_render_pass();
-
-			Vulkan::Semaphore sem;
-			device.add_wait_semaphore(Vulkan::CommandBuffer::Type::Generic, std::move(frame.sem),
-			                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, true);
-			device.submit(cmd, nullptr, 1, &sem);
 			decoder.release_video_frame(frame.index, std::move(sem));
+			sem = {};
+			frame = {};
 		}
-		else
-			request_shutdown();
+
+		if (!frame.view)
+		{
+			if (!decoder.acquire_video_frame(frame))
+			{
+				request_shutdown();
+				return;
+			}
+
+			device.add_wait_semaphore(
+					Vulkan::CommandBuffer::Type::Generic, std::move(frame.sem),
+					VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, true);
+		}
+
+		auto cmd = device.request_command_buffer();
+		auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
+		cmd->begin_render_pass(rp);
+		cmd->set_texture(0, 0, *frame.view, Vulkan::StockSampler::LinearClamp);
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(
+				*cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
+		cmd->end_render_pass();
+
+		if (sem)
+		{
+			device.add_wait_semaphore(Vulkan::CommandBuffer::Type::Generic, std::move(sem),
+			                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, true);
+			sem = {};
+		}
+
+		device.submit(cmd, nullptr, 1, &sem);
 	}
 
 	Granite::VideoDecoder decoder;
+	Granite::VideoFrame frame;
+	Vulkan::Semaphore sem;
 };
 
 namespace Granite

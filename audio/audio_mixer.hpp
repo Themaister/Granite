@@ -133,6 +133,7 @@ public:
 private:
 	enum { MaxSources = 128 };
 	std::atomic_uint32_t active_channel_mask[MaxSources / 32];
+	std::atomic_uint32_t kill_channel_mask[MaxSources / 32];
 	MixerStream *mixer_streams[MaxSources] = {};
 
 	// Actually float, bitcasted.

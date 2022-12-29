@@ -632,7 +632,7 @@ struct VideoDecoder::Impl
 	Vulkan::Device *device = nullptr;
 	AVFormatContext *av_format_ctx = nullptr;
 	AVPacket *av_pkt = nullptr;
-	CodecStream video;
+	CodecStream video, audio;
 
 	struct DecodedImage
 	{
@@ -1238,12 +1238,10 @@ bool VideoDecoder::Impl::play()
 VideoDecoder::Impl::~Impl()
 {
 	free_av_objects(video);
+	free_av_objects(audio);
+
 	if (av_format_ctx)
-	{
-		if (!(av_format_ctx->flags & AVFMT_NOFILE))
-			avio_closep(&av_format_ctx->pb);
-		avformat_free_context(av_format_ctx);
-	}
+		avformat_close_input(&av_format_ctx);
 	if (av_pkt)
 		av_packet_free(&av_pkt);
 }

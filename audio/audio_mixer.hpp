@@ -70,15 +70,26 @@ public:
 		return stream_id;
 	}
 
+	bool dispose_on_short_render() const
+	{
+		return enable_dispose_on_short_render;
+	}
+
 protected:
 	Util::LockFreeMessageQueue &get_message_queue()
 	{
 		return *message_queue;
 	}
 
+	void set_dispose_on_short_render(bool state)
+	{
+		enable_dispose_on_short_render = state;
+	}
+
 private:
 	StreamID stream_id = StreamID(-1);
 	Util::LockFreeMessageQueue *message_queue = nullptr;
+	bool enable_dispose_on_short_render = true;
 };
 
 class Mixer final : public BackendCallback, public MixerInterface

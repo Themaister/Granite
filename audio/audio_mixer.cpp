@@ -213,8 +213,13 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 			continue;
 
 		uint32_t dead_mask = kill_channel_mask[i].exchange(0, std::memory_order_relaxed);
+		active_mask &= ~dead_mask;
 
-		Util::for_each_bit(active_mask & ~dead_mask, [&](unsigned bit) {
+		Util::for_each_bit(dead_mask, [&](unsigned bit) {
+			emplace_audio_event_on_queue<StreamStoppedEvent>(message_queue, bit + 32 * i);
+		});
+
+		Util::for_each_bit(active_mask, [&](unsigned bit) {
 			unsigned index = bit + 32 * i;
 			if (!stream_playing[index].load(std::memory_order_acquire))
 				return;
@@ -249,7 +254,7 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 			stream_raw_play_cursors[index] += got;
 			update_stream_play_cursor(index, current_latency);
 
-			if (got < num_frames)
+			if (got < num_frames && mixer_streams[index]->dispose_on_short_render())
 			{
 				dead_mask |= 1u << bit;
 				emplace_audio_event_on_queue<StreamStoppedEvent>(message_queue, bit + 32 * i);
@@ -331,7 +336,7 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 		stream_adjusted_play_cursors_usec[index].store(0, std::memory_order_relaxed);
 		gain_linear[index].store(f32_to_u32(std::pow(10.0f, initial_gain_db / 20.0f)), std::memory_order_relaxed);
 		panning[index].store(f32_to_u32(initial_panning), std::memory_order_relaxed);
-		kill_channel_mask[i].fetch_and(~(1u << subindex), std::memory_order_relaxed));
+		kill_channel_mask[i].fetch_and(~(1u << subindex), std::memory_order_relaxed);
 		stream_playing[index].store(start_playing, std::memory_order_relaxed);
 
 		// Kick mixer thread.

@@ -27,6 +27,13 @@ mediump vec3 srgb_oetf(mediump vec3 col)
     return mix(col * 12.92, 1.055 * pow(col, vec3(1.0 / 2.4) - 0.055), greaterThan(col, vec3(0.0031308)));
 }
 
+#define D(x) (((x) - 0.5) / 255.0)
+const mediump float dither[] = float[](
+    D(0.0625), D(0.5625), D(0.1875), D(0.6875),
+    D(0.8125), D(0.3125), D(0.9375), D(0.4375),
+    D(0.25), D(0.75), D(0.125), D(0.625),
+    D(1.00), D(0.5), D(0.875), D(0.375));
+
 void main()
 {
     uvec2 coord = gl_GlobalInvocationID.xy;
@@ -55,6 +62,9 @@ void main()
 
         // Encode to sRGB OETF.
         rgb = srgb_oetf(rgb);
+
+        // Dither the output to avoid banding in the OETF(EOTF(x)) conversion.
+        rgb += dither[4u * (gl_LocalInvocationID.y & 3u) + (gl_LocalInvocationID.x & 3u)];
 
         imageStore(uOutput, ivec2(coord), vec4(rgb, 1.0));
     }

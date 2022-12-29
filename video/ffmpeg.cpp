@@ -630,12 +630,100 @@ void VideoEncoder::drain()
 
 static constexpr unsigned NumDecodeFrames = 8;
 
+#ifdef HAVE_GRANITE_AUDIO
+struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePtrEnabled<AVFrameRingStream>
+{
+	AVFrameRingStream(float sample_rate, unsigned num_channels);
+	~AVFrameRingStream() override;
+
+	float sample_rate;
+	unsigned num_channels;
+
+	bool setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames) override;
+	size_t accumulate_samples(float * const *channels, const float *gain, size_t num_frames) noexcept override;
+	unsigned get_num_channels() const override;
+	float get_sample_rate() const override;
+	void dispose() override;
+
+	enum { Frames = 128, FramesHighWatermark = 96, FramesThreshold = 2 };
+	AVFrame *frames[Frames] = {};
+	std::atomic_uint32_t write_count;
+	std::atomic_uint32_t read_count;
+	uint32_t packet_frames = 0;
+	bool running_state = false;
+	unsigned get_num_buffered_audio_frames();
+	unsigned get_num_buffered_av_frames();
+};
+
+AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_)
+	: sample_rate(sample_rate_), num_channels(num_channels_)
+{
+	for (auto &f : frames)
+		f = av_frame_alloc();
+	write_count = 0;
+	read_count = 0;
+	set_dispose_on_short_render(false);
+}
+
+void AVFrameRingStream::dispose()
+{
+	release_reference();
+}
+
+float AVFrameRingStream::get_sample_rate() const
+{
+	return sample_rate;
+}
+
+unsigned AVFrameRingStream::get_num_channels() const
+{
+	return num_channels;
+}
+
+size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float *gain, size_t num_frames) noexcept
+{
+
+}
+
+unsigned AVFrameRingStream::get_num_buffered_av_frames()
+{
+	uint32_t read_index = read_count.load(std::memory_order_acquire);
+	uint32_t count = write_count - read_index;
+	return count;
+}
+
+unsigned AVFrameRingStream::get_num_buffered_audio_frames()
+{
+	unsigned audio_frames = 0;
+	uint32_t current_read_index = read_count.load(std::memory_order_acquire);
+	if (current_read_index == write_count)
+		return 0;
+
+	// Otherwise, we don't know how far into the current packet the queue is reading.
+	// Only consider packets that have not been consumed yet.
+	// It's not important we get the exact amount, this is just to have a rough idea
+	// how long we can sleep until we have to do some decode work.
+	current_read_index++;
+	while (current_read_index != write_count)
+	{
+		audio_frames += frames[current_read_index % Frames]->nb_samples;
+		current_read_index++;
+	}
+
+	return audio_frames;
+}
+
+AVFrameRingStream::~AVFrameRingStream()
+{
+	for (auto *f : frames)
+		av_frame_free(&f);
+}
+#endif
+
 struct VideoDecoder::Impl
-//#ifdef HAVE_GRANITE_AUDIO
-//	final : Audio::MixerStream
-//#endif
 {
 	Vulkan::Device *device = nullptr;
+	Audio::Mixer *mixer = nullptr;
 	AVFormatContext *av_format_ctx = nullptr;
 	AVPacket *av_pkt = nullptr;
 	CodecStream video, audio;
@@ -671,7 +759,9 @@ struct VideoDecoder::Impl
 	unsigned plane_subsample_log2[3] = {};
 	unsigned num_planes = 0;
 
-	bool init(Granite::Audio::Mixer *mixer, const char *path);
+	bool init(Audio::Mixer *mixer, const char *path);
+	bool init_video_decoder();
+	bool init_audio_decoder();
 
 	bool begin_device_context(Vulkan::Device *device);
 	void end_device_context();
@@ -728,15 +818,8 @@ struct VideoDecoder::Impl
 
 	~Impl();
 
-#if 0
 #ifdef HAVE_GRANITE_AUDIO
-	void dispose() override;
-	bool setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames) override;
-	size_t accumulate_samples(float * const *channels, const float *gain, size_t num_frames) noexcept override;
-	unsigned get_num_channels() const override;
-	float get_sample_rate() const override;
 	Audio::StreamID stream_id;
-#endif
 #endif
 };
 
@@ -861,7 +944,10 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	bool full_range = video.av_ctx->color_range == AVCOL_RANGE_JPEG;
 
 	// 16.3.9 from Vulkan spec.
-	// YUV is not universally supported, so we need to do this translation ourselves.
+	// YCbCr samplers is not universally supported,
+	// so we need to do this translation ourselves.
+	// This is ok, since we have to do EOTF and primary conversion manually either way,
+	// and those are not supported.
 
 	// Technically, this changes for 10-bit and 12-bit since 2^(n-1) must be treated
 	// as midpoint, not 128/255, but we don't really care about this for now.
@@ -873,9 +959,9 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	AVColorSpace col_space = video.av_ctx->colorspace;
 	if (col_space == AVCOL_SPC_UNSPECIFIED)
 	{
-		// Common case to have unspecified color space,
-		// we have to deduce the color space based on resolution since NTSC, PAL, HD and UHD all
-		// have different color spaces.
+		// The common case is when we have an unspecified color space.
+		// We have to deduce the color space based on resolution since NTSC, PAL, HD and UHD all
+		// have different conversions.
 		if (video.av_ctx->height < 625)
 			col_space = AVCOL_SPC_SMPTE170M; // 525 line NTSC
 		else if (video.av_ctx->height < 720)
@@ -893,6 +979,8 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	// E = pow(E', 2.4).
 	// We apply this to everything for now, but might not be correct for SD content, especially PAL.
 	// Can be adjusted as needed with spec constants.
+	// AVCodecContext::color_rtc can signal a specific EOTF,
+	// but I've only seen UNSPECIFIED here.
 
 	const Primaries bt709 = {
 		{ 0.640f, 0.330f },
@@ -964,20 +1052,51 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	ubo.yuv_to_rgb = ubo.yuv_to_rgb * scale(yuv_scale) * translate(yuv_bias);
 }
 
-bool VideoDecoder::Impl::init(Granite::Audio::Mixer *, const char *path)
+bool VideoDecoder::Impl::init_audio_decoder()
 {
-	if (avformat_open_input(&av_format_ctx, path, nullptr, nullptr) < 0)
+	// This is fine. We can support no-audio files.
+	int ret;
+	if ((ret = av_find_best_stream(av_format_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0)) < 0)
+		return true;
+
+	audio.av_stream = av_format_ctx->streams[ret];
+	const AVCodec *codec = avcodec_find_decoder(audio.av_stream->codecpar->codec_id);
+	if (!codec)
 	{
-		LOGE("Failed to open input %s.\n", path);
+		LOGE("Failed to find codec.\n");
 		return false;
 	}
 
-	if (avformat_find_stream_info(av_format_ctx, nullptr) < 0)
+	audio.av_ctx = avcodec_alloc_context3(codec);
+	if (!audio.av_ctx)
 	{
-		LOGE("Failed to find stream info.\n");
+		LOGE("Failed to allocate codec context.\n");
 		return false;
 	}
 
+	if (avcodec_parameters_to_context(audio.av_ctx, audio.av_stream->codecpar) < 0)
+	{
+		LOGE("Failed to copy codec parameters.\n");
+		return false;
+	}
+
+	if (avcodec_open2(audio.av_ctx, codec, nullptr) < 0)
+	{
+		LOGE("Failed to open codec.\n");
+		return false;
+	}
+
+	if (!(audio.av_frame = av_frame_alloc()))
+	{
+		LOGE("Failed to allocate audio frame.\n");
+		return false;
+	}
+
+	return true;
+}
+
+bool VideoDecoder::Impl::init_video_decoder()
+{
 	int ret;
 	if ((ret = av_find_best_stream(av_format_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0)) < 0)
 	{
@@ -1013,6 +1132,8 @@ bool VideoDecoder::Impl::init(Granite::Audio::Mixer *, const char *path)
 	}
 
 	// TODO: Is there a way to make this data driven?
+	// In practice, this isn't going to be used as a fully general purpose
+	// media player, so we only need to consider the FMVs that an application ships.
 	switch (video.av_ctx->pix_fmt)
 	{
 	case AV_PIX_FMT_YUV444P:
@@ -1038,12 +1159,29 @@ bool VideoDecoder::Impl::init(Granite::Audio::Mixer *, const char *path)
 	}
 
 	init_yuv_to_rgb();
+	return true;
+}
 
-	if (!(video.av_frame = av_frame_alloc()))
+bool VideoDecoder::Impl::init(Audio::Mixer *mixer_, const char *path)
+{
+	mixer = mixer_;
+
+	if (avformat_open_input(&av_format_ctx, path, nullptr, nullptr) < 0)
 	{
-		LOGE("Failed to allocate frame.\n");
+		LOGE("Failed to open input %s.\n", path);
 		return false;
 	}
+
+	if (avformat_find_stream_info(av_format_ctx, nullptr) < 0)
+	{
+		LOGE("Failed to find stream info.\n");
+		return false;
+	}
+
+	if (!init_video_decoder())
+		return false;
+	if (mixer && !init_audio_decoder())
+		return false;
 
 	if (!(av_pkt = av_packet_alloc()))
 	{
@@ -1479,7 +1617,7 @@ VideoDecoder::~VideoDecoder()
 {
 }
 
-bool VideoDecoder::init(Granite::Audio::Mixer *mixer, const char *path)
+bool VideoDecoder::init(Audio::Mixer *mixer, const char *path)
 {
 	return impl->init(mixer, path);
 }

@@ -43,6 +43,7 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 
 	void on_module_destroyed(const Vulkan::DeviceShaderModuleReadyEvent &)
 	{
+		decoder.stop();
 		decoder.end_device_context();
 		sem.reset();
 	}

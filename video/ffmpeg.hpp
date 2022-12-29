@@ -80,12 +80,15 @@ public:
 	~VideoDecoder();
 
 	bool init(Granite::Audio::Mixer *mixer, const char *path);
-	bool eof();
 
+	// Must be called before play().
 	bool begin_device_context(Vulkan::Device *device);
+	// Must be called after stop().
 	void end_device_context();
 
 	bool play();
+	bool stop();
+	bool rewind();
 
 	// Audio is played back with a certain amount of latency.
 	// Audio is played asynchronously if a mixer is provided and the stream has an audio track.

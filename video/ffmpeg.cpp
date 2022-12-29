@@ -38,11 +38,14 @@ extern "C"
 #include "muglm/muglm_impl.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "transforms.hpp"
+#include "thread_group.hpp"
+#include "global_managers.hpp"
 #include <condition_variable>
 #include <mutex>
 #include <thread>
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
+#include "audio_mixer.hpp"
 #endif
 
 namespace Granite
@@ -628,48 +631,53 @@ void VideoEncoder::drain()
 static constexpr unsigned NumDecodeFrames = 8;
 
 struct VideoDecoder::Impl
+//#ifdef HAVE_GRANITE_AUDIO
+//	final : Audio::MixerStream
+//#endif
 {
 	Vulkan::Device *device = nullptr;
 	AVFormatContext *av_format_ctx = nullptr;
 	AVPacket *av_pkt = nullptr;
 	CodecStream video, audio;
 
+	enum class ImageState
+	{
+		Idle, // Was released by application.
+		Locked, // Decode thread locked this image.
+		Ready, // Can be acquired.
+		Acquired // Acquired, can be released.
+	};
+
 	struct DecodedImage
 	{
 		Vulkan::ImageHandle rgb_image;
 		Vulkan::ImageHandle planes[3];
 
-		// Current buffer state can be deduced.
-		// release_order == 0, acquired by application.
-		// release_order != 0 && !sem_to_client, not yet rendered to.
-		// Rendering can select lowest release order when rendering video.
-		// release_order != 0 && sem_to_client, ready for application to render to.
-		// When sem_to_client is completely filled there is nothing for the rendering
-		// thread to do, and it should block.
-		// It can be kicked by audio rendering.
 		Vulkan::Semaphore sem_to_client;
 		Vulkan::Semaphore sem_from_client;
-		uint64_t release_order = 1;
+		uint64_t idle_order = 0;
 
 		double pts = 0.0;
+		ImageState state = ImageState::Idle;
 	};
 	DecodedImage video_queue[NumDecodeFrames];
-	uint64_t release_timestamps = 1;
+	uint64_t idle_timestamps = 0;
 	double last_acquired_pts = -1.0;
 	bool is_eof = false;
 	bool is_flushing = false;
+	bool acquire_is_eof = false;
 
 	VkFormat plane_formats[3] = {};
 	unsigned plane_subsample_log2[3] = {};
 	unsigned num_planes = 0;
-	int staging_image_size = 0;
 
 	bool init(Granite::Audio::Mixer *mixer, const char *path);
-	bool eof();
 
 	bool begin_device_context(Vulkan::Device *device);
 	void end_device_context();
 	bool play();
+	bool stop();
+	bool rewind();
 
 	double get_estimated_audio_playback_timestamp();
 	void set_target_video_timestamp(double ts);
@@ -677,14 +685,16 @@ struct VideoDecoder::Impl
 	bool acquire_video_frame(VideoFrame &frame);
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
 
-	int find_acquire_video_frame_locked();
-
 	bool decode_video_packet(AVPacket *pkt);
 
-	bool iterate();
+	int find_idle_decode_video_frame_locked() const;
+	int find_acquire_video_frame_locked() const;
 
-	int find_decode_video_frame();
-	bool process_video_frame();
+	unsigned acquire_decode_video_frame();
+	bool process_video_frame(AVFrame *frame);
+	void process_video_frame_in_task(unsigned frame, AVFrame *av_frame);
+
+	void flush_codecs();
 
 	struct Push
 	{
@@ -701,41 +711,80 @@ struct VideoDecoder::Impl
 	};
 	UBO ubo = {};
 
+	// The decoding thread.
+	std::thread decode_thread;
+	std::condition_variable cond;
+	std::mutex lock;
+	bool teardown = false;
+	bool acquire_blocking = false;
+	TaskSignal video_upload_signal;
+	uint64_t video_upload_count = 0;
+	ThreadGroup *thread_group = nullptr;
+	void thread_main();
+	bool iterate();
+	bool should_iterate_locked();
+
 	void init_yuv_to_rgb();
 
 	~Impl();
+
+#if 0
+#ifdef HAVE_GRANITE_AUDIO
+	void dispose() override;
+	bool setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames) override;
+	size_t accumulate_samples(float * const *channels, const float *gain, size_t num_frames) noexcept override;
+	unsigned get_num_channels() const override;
+	float get_sample_rate() const override;
+	Audio::StreamID stream_id;
+#endif
+#endif
 };
 
-int VideoDecoder::Impl::find_decode_video_frame()
+int VideoDecoder::Impl::find_idle_decode_video_frame_locked() const
 {
 	int best_index = -1;
 	for (unsigned i = 0; i < NumDecodeFrames; i++)
 	{
-		if (video_queue[i].release_order != 0 &&
-		    !video_queue[i].sem_to_client &&
-		    (best_index < 0 || video_queue[i].release_order < video_queue[best_index].release_order))
+		auto &img = video_queue[i];
+		if (img.state == ImageState::Idle &&
+		    (best_index < 0 || img.idle_order < video_queue[best_index].idle_order))
 		{
 			best_index = int(i);
 		}
 	}
 
-	// We have no choice but to trample on a frame we already decoded.
-	// This can happen if audio is running ahead, and we need to start catching up.
-	// For this reason, we should consume the produced image with lowest PTS.
-	if (best_index < 0)
+	return best_index;
+}
+
+unsigned VideoDecoder::Impl::acquire_decode_video_frame()
+{
+	int best_index;
+
 	{
-		for (unsigned i = 0; i < NumDecodeFrames; i++)
+		std::lock_guard<std::mutex> holder{lock};
+		best_index = find_idle_decode_video_frame_locked();
+
+		// We have no choice but to trample on a frame we already decoded.
+		// This can happen if audio is running ahead for whatever reason,
+		// and we need to start catching up due to massive stutters or similar.
+		// For this reason, we should consume the produced image with lowest PTS.
+		if (best_index < 0)
 		{
-			if (video_queue[i].release_order != 0 &&
-			    (best_index < 0 || video_queue[i].release_order < video_queue[best_index].release_order))
+			for (unsigned i = 0; i < NumDecodeFrames; i++)
 			{
-				best_index = int(i);
+				if (video_queue[i].state == ImageState::Ready &&
+				    (best_index < 0 || video_queue[i].pts < video_queue[best_index].pts))
+				{
+					best_index = int(i);
+					LOGW("FFmpeg decode: Trampling on decoded frame.\n");
+				}
 			}
 		}
-	}
 
-	// This shouldn't happen. Applications cannot acquire a ton of images like this.
-	assert(best_index >= 0);
+		// This shouldn't happen. Applications cannot acquire a ton of images like this.
+		assert(best_index >= 0);
+		video_queue[best_index].state = ImageState::Locked;
+	}
 
 	auto &img = video_queue[best_index];
 
@@ -977,7 +1026,6 @@ bool VideoDecoder::Impl::init(Granite::Audio::Mixer *, const char *path)
 		break;
 
 	case AV_PIX_FMT_NV12:
-	case AV_PIX_FMT_NV21:
 		plane_formats[0] = VK_FORMAT_R8_UNORM;
 		plane_formats[1] = VK_FORMAT_R8G8_UNORM;
 		num_planes = 2;
@@ -990,11 +1038,6 @@ bool VideoDecoder::Impl::init(Granite::Audio::Mixer *, const char *path)
 	}
 
 	init_yuv_to_rgb();
-
-	staging_image_size = av_image_get_buffer_size(video.av_ctx->pix_fmt,
-												  video.av_ctx->width,
-												  video.av_ctx->height,
-												  1);
 
 	if (!(video.av_frame = av_frame_alloc()))
 	{
@@ -1011,14 +1054,15 @@ bool VideoDecoder::Impl::init(Granite::Audio::Mixer *, const char *path)
 	return true;
 }
 
-int VideoDecoder::Impl::find_acquire_video_frame_locked()
+int VideoDecoder::Impl::find_acquire_video_frame_locked() const
 {
-	// Want frame with PTS > last_acquired_pts and sem_to_client is set.
+	// Want frame with PTS > last_acquired_pts and image in Ready state.
 	int best_index = -1;
 	for (unsigned i = 0; i < NumDecodeFrames; i++)
 	{
-		if (video_queue[i].sem_to_client && video_queue[i].pts > last_acquired_pts &&
-		    (best_index < 0 || (video_queue[i].pts < video_queue[best_index].pts)))
+		auto &img = video_queue[i];
+		if (img.state == ImageState::Ready && img.pts > last_acquired_pts &&
+		    (best_index < 0 || (img.pts < video_queue[best_index].pts)))
 		{
 			best_index = int(i);
 		}
@@ -1027,15 +1071,11 @@ int VideoDecoder::Impl::find_acquire_video_frame_locked()
 	return best_index;
 }
 
-bool VideoDecoder::Impl::process_video_frame()
+void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av_frame)
 {
-	int frame = find_decode_video_frame();
-	if (frame < 0)
-		return false;
-
 	auto &img = video_queue[frame];
-
-	img.pts = av_q2d(video.av_stream->time_base) * double(video.av_frame->pts);
+	img.pts = av_q2d(video.av_stream->time_base) * double(av_frame->pts);
+	assert(img.state == ImageState::Locked);
 
 	auto cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
 
@@ -1056,7 +1096,7 @@ bool VideoDecoder::Impl::process_video_frame()
 			byte_width *= 2;
 
 		av_image_copy_plane(buf, int(img.planes[i]->get_width()),
-		                    video.av_frame->data[i], video.av_frame->linesize[i],
+		                    av_frame->data[i], av_frame->linesize[i],
 		                    byte_width, int(img.planes[i]->get_height()));
 	}
 
@@ -1070,6 +1110,7 @@ bool VideoDecoder::Impl::process_video_frame()
 
 	img.sem_to_client.reset();
 	Vulkan::Semaphore transfer_to_compute;
+	Vulkan::Semaphore compute_to_user;
 
 	if (img.sem_from_client)
 	{
@@ -1106,17 +1147,49 @@ bool VideoDecoder::Impl::process_video_frame()
 	cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 	                   VK_PIPELINE_STAGE_NONE, 0);
-	device->submit(cmd, nullptr, 1, &img.sem_to_client);
+	device->submit(cmd, nullptr, 1, &compute_to_user);
+
+	av_frame_unref(av_frame);
+	av_frame_free(&av_frame);
+
+	// Can now acquire.
+	std::lock_guard<std::mutex> holder{lock};
+	img.sem_to_client = std::move(compute_to_user);
+	img.state = ImageState::Ready;
+	cond.notify_all();
+};
+
+bool VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
+{
+	// Need to make sure upload tasks are ordered to ensure that frames
+	// are acquired in order.
+	video_upload_signal.wait_until_at_least(video_upload_count);
+	unsigned frame = acquire_decode_video_frame();
+
+	// This decode thread does not have a TLS thread index allocated in the device,
+	// only main threads registered as such as well as task group threads satisfy this.
+	// Also, we can parallelize video decode and upload + conversion submission,
+	// so it's a good idea either way.
+	auto task = thread_group->create_task([this, frame, av_frame]() {
+		process_video_frame_in_task(frame, av_frame);
+	});
+	task->set_desc("ffmpeg-decode-upload");
+	task->set_task_class(TaskClass::Background);
+	task->set_fence_counter_signal(&video_upload_signal);
+	video_upload_count++;
 	return true;
 }
 
 bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 {
+	AVFrame *frame = av_frame_alloc();
+	if (!frame)
+		return false;
+
 	int ret;
-	if ((ret = avcodec_receive_frame(video.av_ctx, video.av_frame)) >= 0)
+	if ((ret = avcodec_receive_frame(video.av_ctx, frame)) >= 0)
 	{
-		process_video_frame();
-		av_frame_unref(video.av_frame);
+		process_video_frame(frame);
 		return true;
 	}
 
@@ -1129,11 +1202,8 @@ bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 			return false;
 		}
 
-		if ((ret = avcodec_receive_frame(video.av_ctx, video.av_frame)) >= 0)
-		{
-			process_video_frame();
-			av_frame_unref(video.av_frame);
-		}
+		if ((ret = avcodec_receive_frame(video.av_ctx, frame)) >= 0)
+			process_video_frame(frame);
 	}
 
 	return ret >= 0 || ret == AVERROR(EAGAIN);
@@ -1159,6 +1229,7 @@ bool VideoDecoder::Impl::iterate()
 
 		if (ret == AVERROR_EOF)
 		{
+			// Send a flush packet, so we can drain the codec.
 			avcodec_send_packet(video.av_ctx, nullptr);
 			is_flushing = true;
 		}
@@ -1172,37 +1243,116 @@ bool VideoDecoder::Impl::iterate()
 	return true;
 }
 
+bool VideoDecoder::Impl::should_iterate_locked()
+{
+	// If there are idle images and the audio ring isn't completely saturated, go ahead.
+	// The audio ring should be very large to soak variability. Audio does not consume a lot
+	// of memory either way.
+	// TODO: It is possible to use dynamic rate control techniques to ensure that
+	// audio ring does not underflow or overflow.
+
+	// TODO: If audio buffer saturation reached 75%, there is real risk of overflowing it.
+	// We should be far, far ahead at this point. We should easily be able to just sleep
+	// until the audio buffer has drained down to a reasonable level.
+	// if (audio_buffer_saturation > 75%) return false;
+
+	// If audio buffer saturation is at risk of draining, causing audio glitches,
+	// we need to catch up.
+	// This really shouldn't happen unless application is not actually acquiring images
+	// for a good while.
+	// When application is in a steady state, it will acquire images based on the audio timestamp.
+	// Thus, there is a natural self-regulating mechanism in place.
+	// if (audio_buffer_saturation < 10%) return true;
+
+	// If audio is in a stable situation, we can shift our attention to video.
+	// Video is more lenient w.r.t. drops and such.
+
+	// If acquire is blocking despite us having no idle images,
+	// it means it's not happy with whatever frames we have decoded,
+	// so we should go ahead, even if it means trampling on existing frames.
+	if (acquire_blocking)
+		return true;
+
+	// We're in a happy state where we only desire progress if there is anything
+	// meaningful to do.
+	return find_idle_decode_video_frame_locked() >= 0;
+}
+
+void VideoDecoder::Impl::thread_main()
+{
+	for (;;)
+	{
+		{
+			std::unique_lock<std::mutex> holder{lock};
+
+			// This should be a timeout based loop.
+			// For audio, we can maximum sleep duration.
+			cond.wait(holder, [this]() {
+				return should_iterate_locked() || teardown;
+			});
+		}
+
+		if (teardown)
+			break;
+
+		if (!iterate())
+		{
+			// Ensure acquire thread can observe last frame if it observes
+			// the acquire_is_eof flag.
+			video_upload_signal.wait_until_at_least(video_upload_count);
+
+			std::lock_guard<std::mutex> holder{lock};
+			teardown = true;
+			acquire_is_eof = true;
+			cond.notify_one();
+			break;
+		}
+	}
+}
+
 bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame)
 {
-	// Poll the video queue for new frames.
-	int index = find_acquire_video_frame_locked();
-	while (index < 0)
-	{
-		// TODO: Wait on progress from thread.
-		if (!iterate())
-			return false;
+	if (!decode_thread.joinable())
+		return false;
 
-		index = find_acquire_video_frame_locked();
-	}
+	std::unique_lock<std::mutex> holder{lock};
+
+	// Wake up decode thread to make sure it knows acquire thread
+	// is blocking and awaits forward progress.
+	acquire_blocking = true;
+	cond.notify_one();
+
+	int index = -1;
+	// Poll the video queue for new frames.
+	cond.wait(holder, [this, &index]() {
+		return (index = find_acquire_video_frame_locked()) >= 0 || acquire_is_eof || teardown;
+	});
+
+	if (index < 0)
+		return false;
 
 	// Now we can return a frame.
 	frame.sem.reset();
 	std::swap(frame.sem, video_queue[index].sem_to_client);
-	video_queue[index].release_order = 0;
+	video_queue[index].state = ImageState::Acquired;
 	frame.view = &video_queue[index].rgb_image->get_view();
 	frame.index = index;
 	frame.pts = video_queue[index].pts;
 	last_acquired_pts = frame.pts;
 
+	// Progress.
+	acquire_blocking = false;
+	cond.notify_one();
 	return true;
 }
 
 void VideoDecoder::Impl::release_video_frame(unsigned index, Vulkan::Semaphore sem)
 {
 	// Need to hold lock here.
-	assert(video_queue[index].release_order == 0);
+	assert(video_queue[index].state == ImageState::Acquired);
+	video_queue[index].state = ImageState::Idle;
 	video_queue[index].sem_from_client = std::move(sem);
-	video_queue[index].release_order = ++release_timestamps;
+	video_queue[index].idle_order = ++idle_timestamps;
 }
 
 void VideoDecoder::Impl::set_target_video_timestamp(double ts)
@@ -1212,6 +1362,7 @@ void VideoDecoder::Impl::set_target_video_timestamp(double ts)
 bool VideoDecoder::Impl::begin_device_context(Vulkan::Device *device_)
 {
 	device = device_;
+	thread_group = device->get_system_handles().thread_group;
 	return true;
 }
 
@@ -1220,23 +1371,96 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp()
 	return -1.0;
 }
 
-void VideoDecoder::Impl::end_device_context()
+void VideoDecoder::Impl::flush_codecs()
 {
-	device = nullptr;
+	for (auto &img : video_queue)
+	{
+		img.rgb_image.reset();
+		for (auto &plane : img.planes)
+			plane.reset();
+		img.sem_to_client.reset();
+		img.sem_from_client.reset();
+		img.idle_order = 0;
+		img.state = ImageState::Idle;
+		img.pts = 0.0;
+	}
+
+	if (video.av_ctx)
+		avcodec_flush_buffers(video.av_ctx);
+	if (audio.av_ctx)
+		avcodec_flush_buffers(audio.av_ctx);
+
+	last_acquired_pts = -1.0;
 }
 
-bool VideoDecoder::Impl::eof()
+void VideoDecoder::Impl::end_device_context()
 {
-	return false;
+	if (decode_thread.joinable())
+		std::terminate();
+	device = nullptr;
+	thread_group = nullptr;
+	flush_codecs();
 }
 
 bool VideoDecoder::Impl::play()
 {
-	return false;
+	if (!device)
+		return false;
+	if (decode_thread.joinable())
+		return false;
+
+	teardown = false;
+	flush_codecs();
+	decode_thread = std::thread(&Impl::thread_main, this);
+	return true;
 }
+
+bool VideoDecoder::Impl::stop()
+{
+	if (!decode_thread.joinable())
+		return false;
+
+	{
+		std::lock_guard<std::mutex> holder{lock};
+		teardown = true;
+		cond.notify_one();
+	}
+	decode_thread.join();
+	video_upload_signal.wait_until_at_least(video_upload_count);
+
+	return true;
+}
+
+bool VideoDecoder::Impl::rewind()
+{
+	if (!stop())
+		return false;
+
+	if (avformat_seek_file(av_format_ctx, -1, INT64_MIN, 0, INT64_MAX, 0) < 0)
+		LOGE("Failed to seek file.\n");
+
+	return play();
+}
+
+#if 0
+#ifdef HAVE_GRANITE_AUDIO
+void VideoDecoder::Impl::dispose()
+{
+	// Do nothing here, we're not going to free ourselves.
+}
+
+bool VideoDecoder::Impl::setup(float mixer_output_rate,
+                               unsigned mixer_channels,
+                               size_t max_num_frames)
+{
+}
+#endif
+#endif
 
 VideoDecoder::Impl::~Impl()
 {
+	stop();
+
 	free_av_objects(video);
 	free_av_objects(audio);
 
@@ -1275,14 +1499,19 @@ bool VideoDecoder::play()
 	return impl->play();
 }
 
+bool VideoDecoder::stop()
+{
+	return impl->stop();
+}
+
+bool VideoDecoder::rewind()
+{
+	return impl->rewind();
+}
+
 double VideoDecoder::get_estimated_audio_playback_timestamp()
 {
 	return impl->get_estimated_audio_playback_timestamp();
-}
-
-bool VideoDecoder::eof()
-{
-	return impl->eof();
 }
 
 bool VideoDecoder::acquire_video_frame(VideoFrame &frame)

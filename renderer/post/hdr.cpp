@@ -26,6 +26,7 @@
 #include "common_renderer_data.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "muglm/matrix_helper.hpp"
+#include "transforms.hpp"
 #include "render_context.hpp"
 
 namespace Granite
@@ -559,24 +560,21 @@ void setup_hdr_postprocess(RenderGraph &graph, const FrameParameters &frame,
 	}
 }
 
-// From https://mina86.com/2019/srgb-xyz-matrix/
-static vec3 convert_primary(const VkXYColorEXT &xy)
+static vec2 convert_xy(const VkXYColorEXT &xy)
 {
-	float X = xy.x / xy.y;
-	float Y = 1.0f;
-	float Z = (1.0f - xy.x - xy.y) / xy.y;
-	return vec3(X, Y, Z);
+	return { xy.x, xy.y };
 }
 
 static mat3 compute_xyz_matrix(const VkHdrMetadataEXT &metadata)
 {
-	vec3 red = convert_primary(metadata.displayPrimaryRed);
-	vec3 green = convert_primary(metadata.displayPrimaryGreen);
-	vec3 blue = convert_primary(metadata.displayPrimaryBlue);
-	vec3 white = convert_primary(metadata.whitePoint);
+	const Primaries p = {
+		convert_xy(metadata.displayPrimaryRed),
+		convert_xy(metadata.displayPrimaryGreen),
+		convert_xy(metadata.displayPrimaryBlue),
+		convert_xy(metadata.whitePoint),
+	};
 
-	vec3 component_scale = inverse(mat3(red, green, blue)) * white;
-	return mat3(red * component_scale.x, green * component_scale.y, blue * component_scale.z);
+	return compute_xyz_matrix(p);
 }
 
 static mat3 compute_rec709_to_st2020(const VkHdrMetadataEXT &metadata)

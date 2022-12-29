@@ -36,6 +36,8 @@ extern "C"
 #include "thread_latch.hpp"
 #include "math.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "muglm/matrix_helper.hpp"
+#include "transforms.hpp"
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -684,6 +686,23 @@ struct VideoDecoder::Impl
 	int find_decode_video_frame();
 	bool process_video_frame();
 
+	struct Push
+	{
+		uvec2 resolution;
+		vec2 inv_resolution;
+		vec2 chroma_siting;
+	};
+	Push push = {};
+
+	struct UBO
+	{
+		mat4 yuv_to_rgb;
+		mat4 primary_conversion;
+	};
+	UBO ubo = {};
+
+	void init_yuv_to_rgb();
+
 	~Impl();
 };
 
@@ -749,6 +768,151 @@ int VideoDecoder::Impl::find_decode_video_frame()
 	}
 
 	return best_index;
+}
+
+void VideoDecoder::Impl::init_yuv_to_rgb()
+{
+	push.resolution = uvec2(video.av_ctx->width, video.av_ctx->height);
+	push.inv_resolution = vec2(1.0f / float(video.av_ctx->width),
+	                           1.0f / float(video.av_ctx->height));
+
+	// Probably not valid for 444 to have anything other than CENTER.
+	AVChromaLocation loc = video.av_ctx->chroma_sample_location;
+	if (video.av_ctx->pix_fmt == AV_PIX_FMT_YUV444P)
+		loc = AVCHROMA_LOC_CENTER;
+
+	switch (loc)
+	{
+	case AVCHROMA_LOC_TOPLEFT:
+		push.chroma_siting = vec2(1.0f) * push.inv_resolution;
+		break;
+
+	case AVCHROMA_LOC_TOP:
+		push.chroma_siting = vec2(0.5f, 1.0f) * push.inv_resolution;
+		break;
+
+	case AVCHROMA_LOC_LEFT:
+		push.chroma_siting = vec2(1.0f, 0.5f) * push.inv_resolution;
+		break;
+
+	case AVCHROMA_LOC_CENTER:
+	default:
+		push.chroma_siting = vec2(0.5f) * push.inv_resolution;
+		break;
+
+	case AVCHROMA_LOC_BOTTOMLEFT:
+		push.chroma_siting = vec2(1.0f, 0.0f) * push.inv_resolution;
+		break;
+
+	case AVCHROMA_LOC_BOTTOM:
+		push.chroma_siting = vec2(0.5f, 0.0f) * push.inv_resolution;
+		break;
+	}
+
+	bool full_range = video.av_ctx->color_range == AVCOL_RANGE_JPEG;
+
+	// 16.3.9 from Vulkan spec.
+	// YUV is not universally supported, so we need to do this translation ourselves.
+
+	// Technically, this changes for 10-bit and 12-bit since 2^(n-1) must be treated
+	// as midpoint, not 128/255, but we don't really care about this for now.
+	const vec3 yuv_bias = vec3((full_range ? 0.0f : -16.0f) / 255.0f, -128.0f / 255.0f, -128.0f / 255.0f);
+	const vec3 yuv_scale = full_range ?
+	                       vec3(1.0f) :
+	                       vec3(255.0f / 219.0f, 255.0f / 224.0f, 255.0f / 224.0f);
+
+	AVColorSpace col_space = video.av_ctx->colorspace;
+	if (col_space == AVCOL_SPC_UNSPECIFIED)
+	{
+		// Common case to have unspecified color space,
+		// we have to deduce the color space based on resolution since NTSC, PAL, HD and UHD all
+		// have different color spaces.
+		if (video.av_ctx->height < 625)
+			col_space = AVCOL_SPC_SMPTE170M; // 525 line NTSC
+		else if (video.av_ctx->height < 720)
+			col_space = AVCOL_SPC_BT470BG; // 625 line PAL
+		else if (video.av_ctx->height < 2160)
+			col_space = AVCOL_SPC_BT709; // BT709 HD
+		else
+			col_space = AVCOL_SPC_BT2020_CL; // UHD
+	}
+
+	// Khronos Data Format Specification 15.1.1:
+
+	// EOTF is based on BT.2087 which recommends that an approximation to BT.1886 is used
+	// for purposes of color conversion.
+	// E = pow(E', 2.4).
+	// We apply this to everything for now, but might not be correct for SD content, especially PAL.
+	// Can be adjusted as needed with spec constants.
+
+	const Primaries bt709 = {
+		{ 0.640f, 0.330f },
+		{ 0.300f, 0.600f },
+		{ 0.150f, 0.060f },
+		{ 0.3127f, 0.3290f },
+	};
+
+	const Primaries bt601_625 = {
+		{ 0.640f, 0.330f },
+		{ 0.290f, 0.600f },
+		{ 0.150f, 0.060f },
+		{ 0.3127f, 0.3290f },
+	};
+
+	const Primaries bt601_525 = {
+		{ 0.630f, 0.340f },
+		{ 0.310f, 0.595f },
+		{ 0.155f, 0.070f },
+		{ 0.3127f, 0.3290f },
+	};
+
+	const Primaries bt2020 = {
+		{ 0.708f, 0.292f },
+		{ 0.170f, 0.797f },
+		{ 0.131f, 0.046f },
+		{ 0.3127f, 0.3290f },
+	};
+
+	switch (col_space)
+	{
+	default:
+		LOGW("Unknown color space: %u, assuming BT.709.\n", col_space);
+		// fallthrough
+	case AVCOL_SPC_BT709:
+		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
+		                           vec3(0.0f, -0.13397432f / 0.7152f, 1.8556f),
+		                           vec3(1.5748f, -0.33480248f / 0.7152f, 0.0f)));
+		ubo.primary_conversion = mat4(1.0f); // sRGB shares primaries.
+		break;
+
+	case AVCOL_SPC_BT2020_CL:
+	case AVCOL_SPC_BT2020_NCL:
+		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
+		                           vec3(0.0f, -0.11156702f / 0.6780f, 1.8814f),
+		                           vec3(1.4746f, -0.38737742f / 0.6780f, 0.0f)));
+		ubo.primary_conversion = mat4(inverse(compute_xyz_matrix(bt709)) * compute_xyz_matrix(bt2020));
+		break;
+
+	case AVCOL_SPC_SMPTE170M:
+	case AVCOL_SPC_BT470BG:
+		// BT.601. Primaries differ between EBU and SMPTE.
+		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
+		                           vec3(0.0f, -0.202008f / 0.587f, 1.772f),
+		                           vec3(1.402f, -0.419198f / 0.587f, 0.0f)));
+		ubo.primary_conversion = mat4(inverse(compute_xyz_matrix(bt709)) *
+		                              compute_xyz_matrix(col_space == AVCOL_SPC_BT470BG ? bt601_625 : bt601_525));
+		break;
+
+	case AVCOL_SPC_SMPTE240M:
+		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
+		                           vec3(0.0f, -0.58862f / 0.701f, 1.826f),
+		                           vec3(1.576f, -0.334112f / 0.701f, 0.0f)));
+		ubo.primary_conversion = mat4(inverse(compute_xyz_matrix(bt709)) *
+		                              compute_xyz_matrix(bt601_525));
+		break;
+	}
+
+	ubo.yuv_to_rgb = ubo.yuv_to_rgb * scale(yuv_scale) * translate(yuv_bias);
 }
 
 bool VideoDecoder::Impl::init(Granite::Audio::Mixer *, const char *path)
@@ -824,6 +988,8 @@ bool VideoDecoder::Impl::init(Granite::Audio::Mixer *, const char *path)
 		LOGE("Unrecognized pixel format.\n");
 		return false;
 	}
+
+	init_yuv_to_rgb();
 
 	staging_image_size = av_image_get_buffer_size(video.av_ctx->pix_fmt,
 												  video.av_ctx->width,
@@ -930,19 +1096,7 @@ bool VideoDecoder::Impl::process_video_frame()
 		cmd->set_texture(0, 1 + i, img.planes[0]->get_view(), Vulkan::StockSampler::NearestClamp);
 	cmd->set_program("builtin://shaders/util/yuv_to_rgb.comp");
 
-	*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = mat4(1.0f);
-
-	struct Push
-	{
-		uvec2 resolution;
-		vec2 inv_resolution;
-		vec2 chroma_siting;
-	} push = {};
-
-	push.resolution = uvec2(img.rgb_image->get_width(), img.rgb_image->get_height());
-	push.inv_resolution = vec2(1.0f / float(img.rgb_image->get_width()),
-	                           1.0f / float(img.rgb_image->get_height()));
-	push.chroma_siting = vec2(0.5f) * push.inv_resolution;
+	memcpy(cmd->allocate_typed_constant_data<UBO>(1, 0, 1), &ubo, sizeof(ubo));
 	cmd->push_constants(&push, 0, sizeof(push));
 
 	cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,

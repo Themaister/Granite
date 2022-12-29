@@ -16,7 +16,16 @@ layout(push_constant) uniform Registers
 layout(set = 1, binding = 0) uniform UBO
 {
     mediump mat4 yuv_to_rgb;
+    mediump mat4 primary_conversion;
 };
+
+const int EOTF_BT2087 = 0;
+layout(constant_id = 0) const int EOTF = 0;
+
+mediump vec3 srgb_oetf(mediump vec3 col)
+{
+    return mix(col * 12.92, 1.055 * pow(col, vec3(1.0 / 2.4) - 0.055), greaterThan(col, vec3(0.0031308)));
+}
 
 void main()
 {
@@ -27,14 +36,25 @@ void main()
         vec2 chroma_coord = (fcoord + registers.chroma_siting) * registers.inv_resolution;
         vec2 luma_coord = (fcoord + 0.5) * registers.inv_resolution;
 
+        // Reconstruct full resolution Y'CbCr.
         mediump float y = textureLod(uY, luma_coord, 0.0).x;
         mediump float cb = textureLod(uCb, chroma_coord, 0.0).x;
         mediump float cr = textureLod(uCr, chroma_coord, 0.0).x;
+
+        // Convert to R'G'B'.
         mediump vec3 rgb = (yuv_to_rgb * vec4(y, cb, cr, 1.0)).rgb;
 
-        // Likely need to perform BT.1886 EOTF here, and then transform to sRGB / scRGB.
-        // After this, we would need to transform primaries as well if content has ST.2020 primaries.
-        // For now, just ignore this.
+        // Apply EOTF.
+        rgb = clamp(rgb, vec3(0.0), vec3(1.0));
+        if (EOTF == EOTF_BT2087)
+            rgb = pow(rgb, vec3(2.4));
+
+        // Convert primaries to BT.709 (sRGB).
+        rgb = (primary_conversion * vec4(rgb, 0.0)).rgb;
+        rgb = clamp(rgb, vec3(0.0), vec3(1.0));
+
+        // Encode to sRGB OETF.
+        rgb = srgb_oetf(rgb);
 
         imageStore(uOutput, ivec2(coord), vec4(rgb, 1.0));
     }

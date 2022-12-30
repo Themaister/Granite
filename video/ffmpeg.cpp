@@ -897,6 +897,7 @@ struct VideoDecoder::Impl
 	double get_estimated_audio_playback_timestamp();
 
 	bool acquire_video_frame(VideoFrame &frame);
+	int try_acquire_video_frame(VideoFrame &frame);
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
 
 	bool decode_video_packet(AVPacket *pkt);
@@ -1709,6 +1710,34 @@ void VideoDecoder::Impl::thread_main()
 	}
 }
 
+int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
+{
+	if (!decode_thread.joinable())
+		return false;
+
+	std::unique_lock<std::mutex> holder{lock};
+	int index = find_acquire_video_frame_locked();
+
+	if (index >= 0)
+	{
+		// Now we can return a frame.
+		frame.sem.reset();
+		std::swap(frame.sem, video_queue[index].sem_to_client);
+		video_queue[index].state = ImageState::Acquired;
+		frame.view = &video_queue[index].rgb_image->get_view();
+		frame.index = index;
+		frame.pts = video_queue[index].pts;
+
+		// Progress.
+		cond.notify_one();
+		return 1;
+	}
+	else
+	{
+		return acquire_is_eof || teardown ? -1 : 0;
+	}
+}
+
 bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame)
 {
 	if (!decode_thread.joinable())
@@ -1989,6 +2018,11 @@ double VideoDecoder::get_estimated_audio_playback_timestamp()
 bool VideoDecoder::acquire_video_frame(VideoFrame &frame)
 {
 	return impl->acquire_video_frame(frame);
+}
+
+int VideoDecoder::try_acquire_video_frame(VideoFrame &frame)
+{
+	return impl->try_acquire_video_frame(frame);
 }
 
 void VideoDecoder::release_video_frame(unsigned index, Vulkan::Semaphore sem)

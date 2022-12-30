@@ -48,41 +48,43 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 	{
 		if (e.get_key_state() == Granite::KeyState::Pressed)
 		{
+			double seek_offset = 0.0;
+			bool drop_frame = false;
+
 			if (e.get_key() == Granite::Key::R)
 			{
-				frame = {};
 				if (!decoder.seek(0.0))
 					LOGE("Failed to rewind.\n");
+				else
+					drop_frame = true;
 			}
 			else if (e.get_key() == Granite::Key::Space)
 				decoder.set_paused(!decoder.get_paused());
 			else if (e.get_key() == Granite::Key::Left)
-			{
-				frame = {};
-				double ts = decoder.get_estimated_audio_playback_timestamp();
-				if (ts >= 0.0 && !decoder.seek(ts - 10.0))
-					LOGE("Failed to seek.\n");
-			}
+				seek_offset = -10.0;
 			else if (e.get_key() == Granite::Key::Right)
-			{
-				frame = {};
-				double ts = decoder.get_estimated_audio_playback_timestamp();
-				if (ts >= 0.0 && !decoder.seek(ts + 10.0))
-					LOGE("Failed to seek.\n");
-			}
+				seek_offset = +10.0;
 			else if (e.get_key() == Granite::Key::Up)
-			{
-				frame = {};
-				double ts = decoder.get_estimated_audio_playback_timestamp();
-				if (ts >= 0.0 && !decoder.seek(ts + 60.0))
-					LOGE("Failed to seek.\n");
-			}
+				seek_offset = +60.0;
 			else if (e.get_key() == Granite::Key::Down)
+				seek_offset = -60.0;
+
+			if (seek_offset != 0.0)
+			{
+				auto ts = decoder.get_estimated_audio_playback_timestamp();
+				if (ts >= 0.0)
+				{
+					if (decoder.seek(ts + seek_offset))
+						drop_frame = true;
+					else
+						LOGE("Failed to seek.\n");
+				}
+			}
+
+			if (drop_frame)
 			{
 				frame = {};
-				double ts = decoder.get_estimated_audio_playback_timestamp();
-				if (ts >= 0.0 && !decoder.seek(ts - 60.0))
-					LOGE("Failed to seek.\n");
+				next_frame = {};
 			}
 		}
 
@@ -99,60 +101,89 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 
 	void on_module_destroyed(const Vulkan::DeviceShaderModuleReadyEvent &)
 	{
+		frame = {};
+		next_frame = {};
 		decoder.stop();
 		decoder.end_device_context();
-		sem.reset();
+	}
+
+	void shift_frame()
+	{
+		if (frame.view)
+		{
+			// If we never actually read the image and discarded it,
+			// we just forward the acquire semaphore directly to release.
+			// This resolves any write-after-write hazard for the image.
+			VK_ASSERT(frame.sem);
+			decoder.release_video_frame(frame.index, std::move(frame.sem));
+		}
+
+		frame = std::move(next_frame);
+		next_frame = {};
+		need_acquire = true;
 	}
 
 	void render_frame(double, double elapsed_time) override
 	{
 		auto &device = get_wsi().get_device();
 
+		// Based on the audio PTS, we want to display a video frame that is slightly larger.
 		double target_pts = decoder.get_estimated_audio_playback_timestamp();
 		if (target_pts < 0.0)
 			target_pts = elapsed_time;
 
-		if (frame.view && target_pts > frame.pts)
+		// Update the latest frame. We want the closest PTS to target_pts.
+		if (!next_frame.view)
+			if (decoder.try_acquire_video_frame(next_frame) < 0 && target_pts > frame.pts)
+				request_shutdown();
+
+		while (next_frame.view)
 		{
-			decoder.release_video_frame(frame.index, std::move(sem));
-			sem = {};
-			frame = {};
+			// If we have two candidates, shift out frame if next_frame PTS is closer.
+			double d_current = std::abs(frame.pts - target_pts);
+			double d_next = std::abs(next_frame.pts - target_pts);
+			if (d_next < d_current || !frame.view)
+			{
+				shift_frame();
+
+				// Try to catch up quickly by skipping frames if we have to.
+				// Defer any EOF handling to next frame.
+				decoder.try_acquire_video_frame(next_frame);
+			}
+			else
+				break;
 		}
 
-		if (!frame.view)
+		if (need_acquire)
 		{
-			if (!decoder.acquire_video_frame(frame))
-			{
-				request_shutdown();
-				return;
-			}
-
+			// When we have committed to display this video frame,
+			// inject the wait semaphore.
 			device.add_wait_semaphore(
 					Vulkan::CommandBuffer::Type::Generic, std::move(frame.sem),
 					VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, true);
+			frame.sem = {};
+			need_acquire = false;
 		}
 
+		// Blit on screen.
 		auto cmd = device.request_command_buffer();
 		auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
 		cmd->begin_render_pass(rp);
-		cmd->set_texture(0, 0, *frame.view, Vulkan::StockSampler::LinearClamp);
-		Vulkan::CommandBufferUtil::draw_fullscreen_quad(
-				*cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
+		if (frame.view)
+		{
+			cmd->set_texture(0, 0, *frame.view, Vulkan::StockSampler::LinearClamp);
+			Vulkan::CommandBufferUtil::draw_fullscreen_quad(
+					*cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
+		}
 		cmd->end_render_pass();
 
-		if (sem)
-		{
-			device.add_wait_semaphore(Vulkan::CommandBuffer::Type::Generic, std::move(sem),
-			                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, true);
-			sem = {};
-		}
-
-		device.submit(cmd, nullptr, 1, &sem);
+		frame.sem.reset();
+		device.submit(cmd, nullptr, 1, &frame.sem);
 	}
 
 	Granite::VideoDecoder decoder;
-	Granite::VideoFrame frame;
-	Vulkan::Semaphore sem;
+	Granite::VideoFrame frame, next_frame;
+	bool need_acquire = false;
 };
 
 namespace Granite

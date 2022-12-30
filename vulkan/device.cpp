@@ -1235,7 +1235,7 @@ void Device::submit_empty_nolock(QueueIndices physical_type, Fence *fence,
 	if (physical_type != QUEUE_INDEX_TRANSFER)
 		flush_frame(QUEUE_INDEX_TRANSFER);
 
-	InternalFence signalled_fence;
+	InternalFence signalled_fence = {};
 
 	submit_queue(physical_type, fence ? &signalled_fence : nullptr, semaphore,
 	             0, nullptr, profiling_iteration);

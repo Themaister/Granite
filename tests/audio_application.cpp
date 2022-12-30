@@ -112,7 +112,7 @@ struct AudioApplication : Application, EventHandler
 	}
 
 	Mixer *mixer = nullptr;
-	StreamID id = 0;
+	StreamID id;
 
 	void on_mixer_start(const MixerStartEvent &e)
 	{

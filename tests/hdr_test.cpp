@@ -67,14 +67,6 @@ static float linear_to_srgb(float col)
 		return 1.055f * muglm::pow(col, 1.0f / 2.4f) - 0.055f;
 }
 
-static float srgb_to_linear(float col)
-{
-	if (col <= 0.04045f)
-		return col / 12.92f;
-	else
-		return muglm::pow((col + 0.055f) / 1.055f, 2.4f);
-}
-
 static float convert_nits(float nits, bool hdr10)
 {
 	if (hdr10)
@@ -205,58 +197,6 @@ struct HDRTest : Granite::Application, Granite::EventHandler
 			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
 		}
 
-		constexpr int num_bins = 1024;
-
-		{
-			snprintf(text, sizeof(text), "sRGB gradient [0, 100] nits (sRGB gamma curve)");
-			offset.y += 50.0f;
-			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text, offset, size,
-			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
-
-			offset.y += 30.0f;
-			const float element_width = cmd->get_viewport().width / float(num_bins - 1);
-			const float element_height = 100.0f;
-			for (unsigned i = 0; i < num_bins; i++)
-			{
-				float v = float(i) / float(num_bins - 1);
-				float linear_v = srgb_to_linear(v);
-				float c = convert_nits(linear_v * 100.0f, hdr10);
-
-				flat.render_quad(
-						vec3(element_width * float(i), offset.y, 0.0f),
-						vec2(element_width, element_height),
-						vec4(c, c, c, 1.0f));
-			}
-
-			offset.y += 120.0f;
-		}
-
-		{
-			snprintf(text, sizeof(text), "ST.2084 gradient [0, %d] nits (sRGB gamma curve)", nits);
-			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text, offset, size,
-			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
-
-			offset.y += 30.0f;
-			const float element_width = cmd->get_viewport().width / float(num_bins - 1);
-			const float element_height = 100.0f;
-			for (unsigned i = 0; i < num_bins; i++)
-			{
-				float v = float(i) / float(num_bins - 1);
-				float linear_v = srgb_to_linear(v);
-				float c = convert_nits(linear_v * float(nits), hdr10);
-
-				flat.render_quad(vec3(element_width * float(i), offset.y, 0.0f), vec2(element_width, element_height),
-				                 vec4(c, c, c, 1.0f));
-			}
-
-			offset.y += 120.0f;
-		}
-
-		cmd->set_opaque_state();
-		cmd->set_program("assets://shaders/hdrtest.vert", "assets://shaders/hdrtest.frag");
-		cmd->set_specialization_constant_mask(1);
-		cmd->set_specialization_constant(0, uint32_t(hdr10));
-
 		// D65 is always assumed in Vulkan. See Table 48. Color Spaces and Attributes.
 		// sRGB in Vulkan uses BT709 primaries.
 
@@ -270,6 +210,78 @@ struct HDRTest : Granite::Application, Granite::EventHandler
 
 		const mat3 st2020_to_xyz = compute_xyz_matrix(get_wsi().get_hdr_metadata());
 		const mat3 xyz_to_st2020 = inverse(st2020_to_xyz);
+
+		cmd->set_opaque_state();
+		cmd->set_program("assets://shaders/hdrtest_srgb_gradient.vert", "assets://shaders/hdrtest_srgb_gradient.frag");
+		cmd->set_specialization_constant_mask(1);
+		cmd->set_specialization_constant(0, uint32_t(hdr10));
+
+		{
+			snprintf(text, sizeof(text), "sRGB gradient [0, 100] nits (sRGB gamma curve)");
+			offset.y += 50.0f;
+			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text, offset, size,
+			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
+
+			offset.y += 30.0f;
+
+			vec2 vertex_coords[6] = { { 1280.0f, offset.y },
+									  { 0, offset.y },
+									  { 1280.0f, offset.y + 100.0f },
+									  { 0, offset.y + 100.0f },
+									  { 1280.0f, offset.y + 100.0f },
+									  { 0, offset.y } };
+
+			for (auto &v : vertex_coords)
+			{
+				v /= vec2(cmd->get_viewport().width, cmd->get_viewport().height);
+				v *= 2.0f;
+				v -= 1.0f;
+			}
+
+			memcpy(cmd->allocate_vertex_data(0, sizeof(vertex_coords), sizeof(vec2)), vertex_coords,
+			       sizeof(vertex_coords));
+			cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32G32_SFLOAT, 0);
+
+			*cmd->allocate_typed_constant_data<float>(0, 1, 1) = 100.0f;
+			cmd->draw(6);
+
+			offset.y += 120.0f;
+		}
+
+		{
+			snprintf(text, sizeof(text), "ST.2084 gradient [0, %d] nits (sRGB gamma curve)", nits);
+			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text, offset, size,
+			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
+			offset.y += 30.0f;
+
+			vec2 vertex_coords[6] = { { 1280.0f, offset.y },
+									  { 0, offset.y },
+									  { 1280.0f, offset.y + 100.0f },
+									  { 0, offset.y + 100.0f },
+									  { 1280.0f, offset.y + 100.0f },
+									  { 0, offset.y } };
+
+			for (auto &v : vertex_coords)
+			{
+				v /= vec2(cmd->get_viewport().width, cmd->get_viewport().height);
+				v *= 2.0f;
+				v -= 1.0f;
+			}
+
+			memcpy(cmd->allocate_vertex_data(0, sizeof(vertex_coords), sizeof(vec2)), vertex_coords,
+			       sizeof(vertex_coords));
+			cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32G32_SFLOAT, 0);
+
+			*cmd->allocate_typed_constant_data<float>(0, 1, 1) = float(nits);
+			cmd->draw(6);
+
+			offset.y += 120.0f;
+		}
+
+		cmd->set_opaque_state();
+		cmd->set_program("assets://shaders/hdrtest.vert", "assets://shaders/hdrtest.frag");
+		cmd->set_specialization_constant_mask(1);
+		cmd->set_specialization_constant(0, uint32_t(hdr10));
 
 		{
 			snprintf(text, sizeof(text), "sRGB/BT.709 gradient saturated triangle (%d nits)", nits);

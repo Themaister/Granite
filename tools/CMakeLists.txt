@@ -28,6 +28,13 @@ target_link_libraries(bitmap-to-mesh PRIVATE meshoptimizer granite-scene-export)
 
 add_granite_offline_tool(slangmosh slangmosh.cpp)
 target_link_libraries(slangmosh PRIVATE granite-compiler granite-rapidjson granite-vulkan)
+if (NOT WIN32)
+    target_link_libraries(slangmosh PUBLIC dl)
+	find_library(LIBRT_LIBRARY rt)
+	if (EXISTS ${LIBRT_LIBRARY})
+		target_link_libraries(slangmosh PUBLIC rt)
+    endif()
+endif()
 
 add_granite_application(aa-bench aa_bench.cpp)
 

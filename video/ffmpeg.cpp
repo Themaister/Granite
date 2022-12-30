@@ -665,6 +665,11 @@ AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_)
 	set_dispose_on_short_render(false);
 }
 
+bool AVFrameRingStream::setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames)
+{
+
+}
+
 void AVFrameRingStream::dispose()
 {
 	release_reference();

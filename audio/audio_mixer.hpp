@@ -42,11 +42,6 @@ struct StreamID
 class MixerStream
 {
 public:
-	inline MixerStream()
-	{
-		enable_dispose_on_short_render.store(true, std::memory_order_relaxed);
-	}
-
 	virtual ~MixerStream() = default;
 
 	// Basically, a destructor.
@@ -79,26 +74,15 @@ public:
 		return stream_id;
 	}
 
-	bool dispose_on_short_render() const
-	{
-		return enable_dispose_on_short_render.load(std::memory_order_relaxed);
-	}
-
 protected:
 	Util::LockFreeMessageQueue &get_message_queue()
 	{
 		return *message_queue;
 	}
 
-	void set_dispose_on_short_render(bool state)
-	{
-		enable_dispose_on_short_render.store(state, std::memory_order_relaxed);
-	}
-
 private:
 	StreamID stream_id;
 	Util::LockFreeMessageQueue *message_queue = nullptr;
-	std::atomic_bool enable_dispose_on_short_render;
 };
 
 class Mixer final : public BackendCallback, public MixerInterface

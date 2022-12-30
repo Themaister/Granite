@@ -66,7 +66,7 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 		if (target_pts < 0.0)
 			target_pts = elapsed_time;
 
-		if (frame.view && target_pts > frame.pts)
+		if (frame.view && target_pts > frame.pts + 0.5)
 		{
 			decoder.release_video_frame(frame.index, std::move(sem));
 			sem = {};

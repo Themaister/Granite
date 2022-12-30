@@ -45,6 +45,7 @@ extern "C"
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <chrono>
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
 #include "audio_mixer.hpp"
@@ -657,6 +658,7 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	AVFrame *frames[Frames] = {};
 	std::atomic_uint32_t write_count;
 	std::atomic_uint32_t read_count;
+	std::atomic_bool complete;
 	int packet_frames = 0;
 	bool running_state = false;
 	unsigned get_num_buffered_audio_frames();
@@ -682,7 +684,7 @@ AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_,
 	write_count = 0;
 	read_count = 0;
 	pts_index = 0;
-	set_dispose_on_short_render(false);
+	complete = false;
 }
 
 bool AVFrameRingStream::setup(float, unsigned mixer_channels, size_t)
@@ -713,7 +715,7 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 	if (!running_state)
 	{
 		if (written_count <= FramesThreshold)
-			return 0;
+			return complete.load(std::memory_order_relaxed) ? 0 : num_frames;
 		running_state = true;
 	}
 
@@ -773,8 +775,11 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 
 	read_count.store(buffer_index, std::memory_order_release);
 
+	if (write_offset < num_frames)
+		LOGW("Audio underrun.\n");
+
 	// If we underrun, we can return a lower value than num_frames.
-	return write_offset;
+	return complete.load(std::memory_order_relaxed) ? write_offset : num_frames;
 }
 
 AVFrame *AVFrameRingStream::acquire_write_frame()
@@ -794,7 +799,7 @@ void AVFrameRingStream::submit_write_frame()
 
 void AVFrameRingStream::mark_complete()
 {
-	set_dispose_on_short_render(true);
+	complete.store(true, std::memory_order_relaxed);
 }
 
 unsigned AVFrameRingStream::get_num_buffered_av_frames()
@@ -883,7 +888,6 @@ struct VideoDecoder::Impl
 	bool rewind();
 
 	double get_estimated_audio_playback_timestamp();
-	void set_target_video_timestamp(double ts);
 
 	bool acquire_video_frame(VideoFrame &frame);
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
@@ -1586,6 +1590,16 @@ bool VideoDecoder::Impl::should_iterate_locked()
 	// TODO: It is possible to use dynamic rate control techniques to ensure that
 	// audio ring does not underflow or overflow.
 
+	unsigned num_idle_frames = 0;
+	for (auto &q : video_queue)
+		if (q.state == ImageState::Idle)
+			num_idle_frames++;
+
+	unsigned num_av_frames = stream->get_num_buffered_av_frames();
+	unsigned num_audio_frames = stream->get_num_buffered_audio_frames();
+
+	LOGI("Worker: %d idle frames, %u AV frames, %u audio frames.\n", num_idle_frames, num_av_frames, num_audio_frames);
+
 #ifdef HAVE_GRANITE_AUDIO
 	if (stream)
 	{
@@ -1601,7 +1615,8 @@ bool VideoDecoder::Impl::should_iterate_locked()
 		// for a good while.
 		// When application is in a steady state, it will acquire images based on the audio timestamp.
 		// Thus, there is a natural self-regulating mechanism in place.
-		if (stream->get_num_buffered_av_frames() <= AVFrameRingStream::FramesThreshold * 2)
+		// Ensure that we have at least 50 ms of audio buffered up.
+		if (stream->get_num_buffered_audio_frames() <= unsigned(audio.av_ctx->sample_rate / 10))
 			return true;
 	}
 #endif
@@ -1629,11 +1644,24 @@ void VideoDecoder::Impl::thread_main()
 		{
 			std::unique_lock<std::mutex> holder{lock};
 
-			// This should be a timeout based loop.
-			// For audio, we can maximum sleep duration.
-			cond.wait(holder, [this]() {
-				return should_iterate_locked() || teardown;
-			});
+			while (!should_iterate_locked() && !teardown)
+			{
+#ifdef HAVE_GRANITE_AUDIO
+				// If we're going to sleep, we need to make sure we don't sleep for so long that we drain the audio queue.
+				if (stream)
+				{
+					// We want to sleep for maximum of half the duration we have buffered up.
+					// Reformulate the expression to avoid potential u32 overflow if multiplying. Shouldn't need floats here.
+					int sleep_ms = int(stream->get_num_buffered_audio_frames() / ((audio.av_ctx->sample_rate + 999) / 1000));
+					sleep_ms = std::max<int>(sleep_ms - 90, 0);
+					cond.wait_for(holder, std::chrono::milliseconds(sleep_ms));
+				}
+				else
+#endif
+				{
+					cond.wait(holder);
+				}
+			}
 		}
 
 		if (teardown)
@@ -1699,10 +1727,6 @@ void VideoDecoder::Impl::release_video_frame(unsigned index, Vulkan::Semaphore s
 	video_queue[index].idle_order = ++idle_timestamps;
 }
 
-void VideoDecoder::Impl::set_target_video_timestamp(double ts)
-{
-}
-
 bool VideoDecoder::Impl::begin_device_context(Vulkan::Device *device_)
 {
 	device = device_;
@@ -1727,7 +1751,6 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp()
 			uint64_t nsecs = std::max<uint64_t>(Util::get_current_time_nsecs(), sampled_ns);
 			uint64_t d = nsecs - sampled_ns;
 			pts += 1e-9 * double(d);
-			LOGI("Audio PTS: %.3f ms.\n", pts * 1e3);
 			return pts;
 		}
 	}
@@ -1839,21 +1862,6 @@ bool VideoDecoder::Impl::rewind()
 	return play();
 }
 
-#if 0
-#ifdef HAVE_GRANITE_AUDIO
-void VideoDecoder::Impl::dispose()
-{
-	// Do nothing here, we're not going to free ourselves.
-}
-
-bool VideoDecoder::Impl::setup(float mixer_output_rate,
-                               unsigned mixer_channels,
-                               size_t max_num_frames)
-{
-}
-#endif
-#endif
-
 VideoDecoder::Impl::~Impl()
 {
 	stop();
@@ -1919,10 +1927,5 @@ bool VideoDecoder::acquire_video_frame(VideoFrame &frame)
 void VideoDecoder::release_video_frame(unsigned index, Vulkan::Semaphore sem)
 {
 	impl->release_video_frame(index, std::move(sem));
-}
-
-void VideoDecoder::set_target_video_timestamp(double ts)
-{
-	impl->set_target_video_timestamp(ts);
 }
 }

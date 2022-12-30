@@ -95,11 +95,6 @@ public:
 	// A worker thread will ensure that the audio mixer can render audio on-demand.
 	double get_estimated_audio_playback_timestamp();
 
-	// This timestamp should be close to get_estimated_audio_timestamp() as possible,
-	// or a bit into the future if you intend to display with some delay.
-	// If ts = 0.0, the next frame will be returned.
-	void set_target_video_timestamp(double ts);
-
 	// Next acquire will aim to grab an image with PTS at least equal to target timestamp,
 	// and a PTS that is at least as large as one that has been previously acquired.
 	// Client is responsible for displaying the frame in due time.

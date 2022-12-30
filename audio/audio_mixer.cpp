@@ -254,7 +254,7 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 			stream_raw_play_cursors[index] += got;
 			update_stream_play_cursor(index, current_latency);
 
-			if (got < num_frames && mixer_streams[index]->dispose_on_short_render())
+			if (got < num_frames)
 			{
 				dead_mask |= 1u << bit;
 				emplace_audio_event_on_queue<StreamStoppedEvent>(message_queue, bit + 32 * i);

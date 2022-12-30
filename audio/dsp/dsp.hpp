@@ -32,6 +32,48 @@ namespace Audio
 {
 namespace DSP
 {
+static inline void accumulate_channel_deinterleave_stereo(float * __restrict left, float * __restrict right,
+                                                          const float * __restrict input,
+                                                          const float * __restrict gain,
+                                                          size_t count) noexcept
+{
+#if defined(__SSE__)
+	size_t rounded_count = count & ~4;
+	__m128 gain_left_splat = _mm_set1_ps(gain[0]);
+	__m128 gain_right_splat = _mm_set1_ps(gain[1]);
+	for (size_t i = 0; i < rounded_count; i += 4)
+	{
+		__m128 acc_l = _mm_loadu_ps(left);
+		__m128 acc_r = _mm_loadu_ps(right);
+		__m128 in0 = _mm_loadu_ps(input + 0);
+		__m128 in1 = _mm_loadu_ps(input + 4);
+		__m128 in_l = _mm_shuffle_ps(in0, in1, _MM_SHUFFLE(2, 0, 2, 0));
+		__m128 in_r = _mm_shuffle_ps(in0, in1, _MM_SHUFFLE(3, 1, 3, 1));
+		acc_l = _mm_add_ps(acc_l, _mm_mul_ps(in_l, gain_left_splat));
+		acc_r = _mm_add_ps(acc_r, _mm_mul_ps(in_r, gain_right_splat));
+		_mm_storeu_ps(left, acc_l);
+		_mm_storeu_ps(right, acc_r);
+
+		left += 4;
+		right += 4;
+		input += 8;
+	}
+
+	size_t overflow_count = count & 3;
+	for (size_t i = 0; i < overflow_count; i++)
+	{
+		left[i] += input[2 * i + 0] * gain[0];
+		right[i] += input[2 * i + 1] * gain[1];
+	}
+#else
+	for (size_t i = 0; i < count; i++)
+	{
+		left[i] += input[2 * i + 0] * gain[0];
+		right[i] += input[2 * i + 1] * gain[1];
+	}
+#endif
+}
+
 static inline void accumulate_channel(float * __restrict output, const float * __restrict input, float gain, size_t count) noexcept
 {
 #ifdef __ARM_NEON

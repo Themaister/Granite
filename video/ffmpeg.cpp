@@ -54,7 +54,7 @@ extern "C"
 
 namespace Granite
 {
-static constexpr unsigned NumFrames = 4;
+static constexpr unsigned NumEncodeFrames = 4;
 
 struct CodecStream
 {
@@ -92,7 +92,7 @@ struct VideoEncoder::Impl
 		int stride = 0;
 		std::vector<int16_t> audio_buffer;
 	};
-	Frame frames[NumFrames];
+	Frame frames[NumEncodeFrames];
 	unsigned frame_index = 0;
 	std::thread thr;
 
@@ -175,7 +175,7 @@ bool VideoEncoder::Impl::enqueue_buffer_readback(
 		const Vulkan::Semaphore &semaphore,
 		Vulkan::Semaphore &release_semaphore)
 {
-	frame_index = (frame_index + 1) % NumFrames;
+	frame_index = (frame_index + 1) % NumEncodeFrames;
 	auto &frame = frames[frame_index];
 
 	if (!frame.latch.wait_latch_cleared())
@@ -273,7 +273,7 @@ void VideoEncoder::Impl::thread_main()
 
 	for (;;)
 	{
-		index = (index + 1) % NumFrames;
+		index = (index + 1) % NumEncodeFrames;
 		auto &frame = frames[index];
 		if (!frame.latch.wait_latch_set())
 			return;
@@ -691,7 +691,7 @@ AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_,
 
 void AVFrameRingStream::mark_uncorked_audio_pts()
 {
-	uint32_t index = (pts_index.load(std::memory_order_acquire) - 1) % NumFrames;
+	uint32_t index = (pts_index.load(std::memory_order_acquire) - 1) % Frames;
 
 	// This is not a hazard, we know the mixer thread is done writing here.
 	if (progress[index].pts >= 0.0)
@@ -843,7 +843,7 @@ void AVFrameRingStream::submit_write_frame()
 {
 	uint32_t index = write_count.load(std::memory_order_relaxed);
 	write_count.store(index + 1, std::memory_order_release);
-	write_frames_count += uint32_t(frames[index]->nb_samples);
+	write_frames_count += uint32_t(frames[index % Frames]->nb_samples);
 }
 
 void AVFrameRingStream::mark_complete()

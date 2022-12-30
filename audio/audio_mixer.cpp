@@ -124,28 +124,28 @@ Mixer::~Mixer()
 unsigned Mixer::get_stream_index(StreamID id)
 {
 	static_assert((MaxSources & (MaxSources - 1)) == 0, "MaxSources must be POT.");
-	return unsigned(id & (MaxSources - 1));
+	return unsigned(id.id & (MaxSources - 1));
 }
 
 StreamID Mixer::generate_stream_id(unsigned index)
 {
-	uint64_t generation = ++stream_generation[index];
-	return generation * MaxSources + index;
+	uint32_t generation = stream_generation[index] = (stream_generation[index] + 1) & (uint32_t(-1) / MaxSources);
+	return { generation * MaxSources + index };
 }
 
-uint64_t Mixer::get_stream_generation(StreamID id)
+uint32_t Mixer::get_stream_generation(StreamID id) const
 {
-	return id / unsigned(MaxSources);
+	return id.id / unsigned(MaxSources);
 }
 
-bool Mixer::verify_stream_id(StreamID id)
+bool Mixer::verify_stream_id(StreamID id) const
 {
-	if (id == 0)
+	if (!id)
 		return false;
 
 	unsigned index = get_stream_index(id);
-	uint64_t generation = get_stream_generation(id);
-	uint64_t actual_generation = stream_generation[index];
+	uint32_t generation = get_stream_generation(id);
+	uint32_t actual_generation = stream_generation[index];
 	return actual_generation == generation;
 }
 
@@ -278,13 +278,13 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
                                  float initial_gain_db, float initial_panning)
 {
 	if (!stream)
-		return StreamID(-1);
+		return {};
 
 	if (!stream->setup(sample_rate, num_channels, max_num_samples))
 	{
 		LOGE("Failed to setup stream.\n");
 		stream->dispose();
-		return StreamID(-1);
+		return {};
 	}
 
 	if (stream->get_sample_rate() != sample_rate)
@@ -295,7 +295,7 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 		{
 			LOGE("Failed to setup resampled stream.\n");
 			stream->dispose();
-			return StreamID(-1);
+			return {};
 		}
 	}
 
@@ -304,7 +304,7 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 	{
 		LOGE("Number of audio channels in stream does not match mixer.\n");
 		stream->dispose();
-		return StreamID(-1);
+		return {};
 	}
 
 	// add_mixer_stream is only called by non-critical threads,
@@ -349,7 +349,7 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 	}
 
 	stream->dispose();
-	return StreamID(-1);
+	return {};
 }
 
 void Mixer::dispose_dead_streams()

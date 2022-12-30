@@ -1227,8 +1227,9 @@ void VideoDecoder::Impl::begin_audio_stream()
 
 	stream->add_reference();
 	stream_id = mixer->add_mixer_stream(stream);
-	if (!stream_id)
+	if (!stream_id || mixer->get_stream_state(stream_id) != Audio::Mixer::StreamState::Playing)
 	{
+		mixer->kill_stream(stream_id);
 		stream->release_reference();
 		stream = nullptr;
 	}

@@ -33,7 +33,11 @@ namespace Granite
 {
 namespace Audio
 {
-using StreamID = uint64_t;
+struct StreamID
+{
+	uint32_t id = uint32_t(-1);
+	explicit inline operator bool() const { return id != uint32_t(-1); }
+};
 
 class MixerStream
 {
@@ -92,7 +96,7 @@ protected:
 	}
 
 private:
-	StreamID stream_id = StreamID(-1);
+	StreamID stream_id;
 	Util::LockFreeMessageQueue *message_queue = nullptr;
 	std::atomic_bool enable_dispose_on_short_render;
 };
@@ -161,7 +165,7 @@ private:
 	uint64_t stream_raw_play_cursors[MaxSources];
 	std::atomic_uint64_t stream_adjusted_play_cursors_usec[MaxSources];
 
-	uint64_t stream_generation[MaxSources] = {};
+	uint32_t stream_generation[MaxSources] = {};
 	std::mutex non_critical_lock;
 
 	size_t max_num_samples = 0;
@@ -170,8 +174,8 @@ private:
 	double inv_sample_rate = 0.0;
 
 	StreamID generate_stream_id(unsigned index);
-	bool verify_stream_id(StreamID id);
-	uint64_t get_stream_generation(StreamID id);
+	bool verify_stream_id(StreamID id) const;
+	uint32_t get_stream_generation(StreamID id) const;
 
 	bool is_active = false;
 

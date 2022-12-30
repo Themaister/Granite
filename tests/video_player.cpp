@@ -23,13 +23,23 @@
 #include "ffmpeg.hpp"
 #include "application.hpp"
 #include "application_wsi_events.hpp"
+#ifdef HAVE_GRANITE_AUDIO
+#include "audio_mixer.hpp"
+#endif
 
 struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 {
 	explicit VideoPlayerApplication(const char *path)
 	{
+#ifdef HAVE_GRANITE_AUDIO
+		if (!decoder.init(GRANITE_AUDIO_MIXER(), path))
+#else
 		if (!decoder.init(nullptr, path))
+#endif
+		{
 			throw std::runtime_error("Failed to open file");
+		}
+
 		EVENT_MANAGER_REGISTER_LATCH(VideoPlayerApplication, on_module_created, on_module_destroyed, Vulkan::DeviceShaderModuleReadyEvent);
 	}
 
@@ -52,7 +62,11 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 	{
 		auto &device = get_wsi().get_device();
 
-		if (frame.view && elapsed_time > frame.pts)
+		double target_pts = decoder.get_estimated_audio_playback_timestamp();
+		if (target_pts < 0.0)
+			target_pts = elapsed_time;
+
+		if (frame.view && target_pts > frame.pts)
 		{
 			decoder.release_video_frame(frame.index, std::move(sem));
 			sem = {};

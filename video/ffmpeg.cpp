@@ -40,12 +40,14 @@ extern "C"
 #include "transforms.hpp"
 #include "thread_group.hpp"
 #include "global_managers.hpp"
+#include "thread_priority.hpp"
 #include <condition_variable>
 #include <mutex>
 #include <thread>
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
 #include "audio_mixer.hpp"
+#include "dsp/dsp.hpp"
 #endif
 
 namespace Granite
@@ -633,11 +635,12 @@ static constexpr unsigned NumDecodeFrames = 8;
 #ifdef HAVE_GRANITE_AUDIO
 struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePtrEnabled<AVFrameRingStream>
 {
-	AVFrameRingStream(float sample_rate, unsigned num_channels);
+	AVFrameRingStream(float sample_rate, unsigned num_channels, double timebase);
 	~AVFrameRingStream() override;
 
 	float sample_rate;
 	unsigned num_channels;
+	double timebase;
 
 	bool setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames) override;
 	size_t accumulate_samples(float * const *channels, const float *gain, size_t num_frames) noexcept override;
@@ -645,29 +648,41 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	float get_sample_rate() const override;
 	void dispose() override;
 
+	std::atomic_int64_t pts_usec;
+
+	// Buffering in terms of AVFrame is a little questionable since packet sizes can vary a fair bit,
+	// might have to revisit later.
+	// In practice, any codec will have a reasonably short packet window (10ms - 20ms),
+	// but not too long either.
 	enum { Frames = 128, FramesHighWatermark = 96, FramesThreshold = 2 };
 	AVFrame *frames[Frames] = {};
 	std::atomic_uint32_t write_count;
 	std::atomic_uint32_t read_count;
-	uint32_t packet_frames = 0;
+	int packet_frames = 0;
 	bool running_state = false;
 	unsigned get_num_buffered_audio_frames();
 	unsigned get_num_buffered_av_frames();
+
+	AVFrame *acquire_write_frame();
+	void submit_write_frame();
+	void mark_complete();
 };
 
-AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_)
-	: sample_rate(sample_rate_), num_channels(num_channels_)
+AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_, double timebase_)
+	: sample_rate(sample_rate_), num_channels(num_channels_), timebase(timebase_)
 {
 	for (auto &f : frames)
 		f = av_frame_alloc();
 	write_count = 0;
 	read_count = 0;
+	pts_usec.store(INT64_MIN, std::memory_order_relaxed);
 	set_dispose_on_short_render(false);
 }
 
-bool AVFrameRingStream::setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames)
+bool AVFrameRingStream::setup(float, unsigned mixer_channels, size_t)
 {
-
+	// TODO: Could promote mono to stereo.
+	return mixer_channels == num_channels;
 }
 
 void AVFrameRingStream::dispose()
@@ -687,7 +702,89 @@ unsigned AVFrameRingStream::get_num_channels() const
 
 size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float *gain, size_t num_frames) noexcept
 {
+	// Hold back playback until we have buffered enough to avoid instant underrun.
+	uint32_t written_count = write_count.load(std::memory_order_acquire);
+	if (!running_state)
+	{
+		if (written_count <= FramesThreshold)
+			return 0;
+		running_state = true;
+	}
 
+	size_t write_offset = 0;
+	uint32_t buffer_index = read_count.load(std::memory_order_relaxed);
+
+	while (write_offset < num_frames && buffer_index != written_count)
+	{
+		size_t to_write = num_frames - write_offset;
+		auto *frame = frames[buffer_index % Frames];
+		if (packet_frames < frame->nb_samples)
+		{
+			to_write = std::min<size_t>(frame->nb_samples - packet_frames, to_write);
+
+			// Update latest audio PTS.
+			// TODO: Might have to also mark when this PTS was written,
+			// along with some way to compensate for latency.
+			// However, the audio backend latency is fairly low and is comparable with
+			// video latency, so we might be able to get away with simply ignoring it.
+			if (packet_frames == 0)
+			{
+				auto new_pts_usec = int64_t(1e6 * double(frame->pts) * timebase);
+				pts_usec.store(new_pts_usec, std::memory_order_relaxed);
+			}
+
+			if (frame->format == AV_SAMPLE_FMT_FLTP || (frame->format == AV_SAMPLE_FMT_FLT && num_channels == 1))
+			{
+				for (unsigned i = 0; i < num_channels; i++)
+				{
+					Audio::DSP::accumulate_channel(channels[i] + write_offset,
+					                               reinterpret_cast<const float *>(frame->data[i]) + packet_frames,
+					                               gain[i], to_write);
+				}
+			}
+			else if (frame->format == AV_SAMPLE_FMT_FLT)
+			{
+				// We only care about supporting STEREO here.
+				Audio::DSP::accumulate_channel_deinterleave_stereo(channels[0] + write_offset, channels[1] + write_offset,
+				                                                   reinterpret_cast<const float *>(frame->data[0]) + 2 * packet_frames,
+				                                                   gain, to_write);
+			}
+
+			packet_frames += int(to_write);
+			write_offset += to_write;
+		}
+		else
+		{
+			// We've consumed this packet, retire it.
+			packet_frames = 0;
+			buffer_index++;
+		}
+	}
+
+	read_count.store(buffer_index, std::memory_order_release);
+
+	// If we underrun, we can return a lower value than num_frames.
+	return write_offset;
+}
+
+AVFrame *AVFrameRingStream::acquire_write_frame()
+{
+	auto index = write_count.load(std::memory_order_relaxed) % Frames;
+	auto *frame = frames[index];
+	// Have to unref here since we cannot have the audio mixer thread doing any memory frees.
+	// It seems okay to undef a freshly allocated frame based on docs.
+	av_frame_unref(frame);
+	return frame;
+}
+
+void AVFrameRingStream::submit_write_frame()
+{
+	write_count.store(write_count.load(std::memory_order_relaxed) + 1, std::memory_order_release);
+}
+
+void AVFrameRingStream::mark_complete()
+{
+	set_dispose_on_short_render(true);
 }
 
 unsigned AVFrameRingStream::get_num_buffered_av_frames()
@@ -756,7 +853,8 @@ struct VideoDecoder::Impl
 	DecodedImage video_queue[NumDecodeFrames];
 	uint64_t idle_timestamps = 0;
 	double last_acquired_pts = -1.0;
-	bool is_eof = false;
+	bool is_video_eof = false;
+	bool is_audio_eof = false;
 	bool is_flushing = false;
 	bool acquire_is_eof = false;
 
@@ -781,6 +879,7 @@ struct VideoDecoder::Impl
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
 
 	bool decode_video_packet(AVPacket *pkt);
+	bool decode_audio_packet(AVPacket *pkt);
 
 	int find_idle_decode_video_frame_locked() const;
 	int find_acquire_video_frame_locked() const;
@@ -790,6 +889,7 @@ struct VideoDecoder::Impl
 	void process_video_frame_in_task(unsigned frame, AVFrame *av_frame);
 
 	void flush_codecs();
+	void flush_device_handles();
 
 	struct Push
 	{
@@ -820,11 +920,13 @@ struct VideoDecoder::Impl
 	bool should_iterate_locked();
 
 	void init_yuv_to_rgb();
+	void begin_audio_stream();
 
 	~Impl();
 
 #ifdef HAVE_GRANITE_AUDIO
 	Audio::StreamID stream_id;
+	AVFrameRingStream *stream = nullptr;
 #endif
 };
 
@@ -1091,13 +1193,46 @@ bool VideoDecoder::Impl::init_audio_decoder()
 		return false;
 	}
 
-	if (!(audio.av_frame = av_frame_alloc()))
+	const AVChannelLayout mono = AV_CHANNEL_LAYOUT_MONO;
+	const AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
+	if (av_channel_layout_compare(&audio.av_ctx->ch_layout, &mono) != 0 &&
+	    av_channel_layout_compare(&audio.av_ctx->ch_layout, &stereo) != 0)
 	{
-		LOGE("Failed to allocate audio frame.\n");
+		LOGE("Unrecognized audio channel layout.\n");
+		return false;
+	}
+
+	if (audio.av_ctx->sample_fmt != AV_SAMPLE_FMT_S16 &&
+	    audio.av_ctx->sample_fmt != AV_SAMPLE_FMT_S16P &&
+	    audio.av_ctx->sample_fmt != AV_SAMPLE_FMT_FLT &&
+	    audio.av_ctx->sample_fmt != AV_SAMPLE_FMT_FLTP)
+	{
+		LOGE("Unsupported sample format.\n");
 		return false;
 	}
 
 	return true;
+}
+
+void VideoDecoder::Impl::begin_audio_stream()
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (!audio.av_ctx)
+		return;
+
+	stream = new AVFrameRingStream(
+			float(audio.av_ctx->sample_rate),
+			audio.av_ctx->ch_layout.nb_channels,
+			av_q2d(audio.av_stream->time_base));
+
+	stream->add_reference();
+	stream_id = mixer->add_mixer_stream(stream);
+	if (!stream_id)
+	{
+		stream->release_reference();
+		stream = nullptr;
+	}
+#endif
 }
 
 bool VideoDecoder::Impl::init_video_decoder()
@@ -1323,19 +1458,46 @@ bool VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 	return true;
 }
 
-bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
+bool VideoDecoder::Impl::decode_audio_packet(AVPacket *pkt)
 {
-	AVFrame *frame = av_frame_alloc();
-	if (!frame)
+#ifdef HAVE_GRANITE_AUDIO
+	if (!stream)
 		return false;
 
 	int ret;
-	if ((ret = avcodec_receive_frame(video.av_ctx, frame)) >= 0)
+	if (pkt)
 	{
-		process_video_frame(frame);
+		ret = avcodec_send_packet(audio.av_ctx, pkt);
+		if (ret < 0)
+		{
+			LOGE("Failed to send packet.\n");
+			return false;
+		}
+	}
+
+	// It's okay to acquire the same frame many times.
+	auto *av_frame = stream->acquire_write_frame();
+
+	if ((ret = avcodec_receive_frame(audio.av_ctx, av_frame)) >= 0)
+	{
+		stream->submit_write_frame();
 		return true;
 	}
 
+	// This marks the end of the stream. Let it die.
+	if (!pkt && ret < 0)
+		stream->mark_complete();
+
+	return ret >= 0 || ret == AVERROR(EAGAIN);
+#else
+	(void)pkt;
+	return false;
+#endif
+}
+
+bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
+{
+	int ret;
 	if (pkt)
 	{
 		ret = avcodec_send_packet(video.av_ctx, pkt);
@@ -1344,9 +1506,16 @@ bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 			LOGE("Failed to send packet.\n");
 			return false;
 		}
+	}
 
-		if ((ret = avcodec_receive_frame(video.av_ctx, frame)) >= 0)
-			process_video_frame(frame);
+	AVFrame *frame = av_frame_alloc();
+	if (!frame)
+		return false;
+
+	if ((ret = avcodec_receive_frame(video.av_ctx, frame)) >= 0)
+	{
+		process_video_frame(frame);
+		return true;
 	}
 
 	return ret >= 0 || ret == AVERROR(EAGAIN);
@@ -1354,34 +1523,46 @@ bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 
 bool VideoDecoder::Impl::iterate()
 {
-	if (is_eof)
+	if (is_video_eof && (is_audio_eof || !audio.av_ctx))
 		return false;
 
 	if (!is_flushing)
 	{
 		int ret;
-		while ((ret = av_read_frame(av_format_ctx, av_pkt)) >= 0)
+		if ((ret = av_read_frame(av_format_ctx, av_pkt)) >= 0)
 		{
 			if (av_pkt->stream_index == video.av_stream->index)
+			{
 				if (!decode_video_packet(av_pkt))
-					is_eof = true;
+					is_video_eof = true;
+			}
+			else if (audio.av_stream && av_pkt->stream_index == audio.av_stream->index)
+			{
+				if (!decode_audio_packet(av_pkt))
+					is_audio_eof = true;
+			}
 
 			av_packet_unref(av_pkt);
-			break;
 		}
 
 		if (ret == AVERROR_EOF)
 		{
-			// Send a flush packet, so we can drain the codec.
+			// Send a flush packet, so we can drain the codecs.
+			// There will be no more packets from the file.
 			avcodec_send_packet(video.av_ctx, nullptr);
+			if (audio.av_ctx)
+				avcodec_send_packet(audio.av_ctx, nullptr);
 			is_flushing = true;
 		}
 		else if (ret < 0)
 			return false;
 	}
 
-	if (is_flushing && !decode_video_packet(nullptr))
-		is_eof = true;
+	if (!is_video_eof && is_flushing && !decode_video_packet(nullptr))
+		is_video_eof = true;
+
+	if (!is_audio_eof && is_flushing && audio.av_ctx && !decode_audio_packet(nullptr))
+		is_audio_eof = true;
 
 	return true;
 }
@@ -1394,18 +1575,25 @@ bool VideoDecoder::Impl::should_iterate_locked()
 	// TODO: It is possible to use dynamic rate control techniques to ensure that
 	// audio ring does not underflow or overflow.
 
-	// TODO: If audio buffer saturation reached 75%, there is real risk of overflowing it.
-	// We should be far, far ahead at this point. We should easily be able to just sleep
-	// until the audio buffer has drained down to a reasonable level.
-	// if (audio_buffer_saturation > 75%) return false;
+#ifdef HAVE_GRANITE_AUDIO
+	if (stream)
+	{
+		// If audio buffer saturation reached 75%, there is real risk of overflowing it.
+		// We should be far, far ahead at this point. We should easily be able to just sleep
+		// until the audio buffer has drained down to a reasonable level.
+		if (stream->get_num_buffered_av_frames() > AVFrameRingStream::FramesHighWatermark)
+			return false;
 
-	// If audio buffer saturation is at risk of draining, causing audio glitches,
-	// we need to catch up.
-	// This really shouldn't happen unless application is not actually acquiring images
-	// for a good while.
-	// When application is in a steady state, it will acquire images based on the audio timestamp.
-	// Thus, there is a natural self-regulating mechanism in place.
-	// if (audio_buffer_saturation < 10%) return true;
+		// If audio buffer saturation is at risk of draining, causing audio glitches,
+		// we need to catch up.
+		// This really shouldn't happen unless application is not actually acquiring images
+		// for a good while.
+		// When application is in a steady state, it will acquire images based on the audio timestamp.
+		// Thus, there is a natural self-regulating mechanism in place.
+		if (stream->get_num_buffered_av_frames() <= AVFrameRingStream::FramesThreshold * 2)
+			return true;
+	}
+#endif
 
 	// If audio is in a stable situation, we can shift our attention to video.
 	// Video is more lenient w.r.t. drops and such.
@@ -1423,6 +1611,8 @@ bool VideoDecoder::Impl::should_iterate_locked()
 
 void VideoDecoder::Impl::thread_main()
 {
+	Util::set_current_thread_priority(Util::ThreadPriority::High);
+
 	for (;;)
 	{
 		{
@@ -1511,10 +1701,25 @@ bool VideoDecoder::Impl::begin_device_context(Vulkan::Device *device_)
 
 double VideoDecoder::Impl::get_estimated_audio_playback_timestamp()
 {
+#ifdef HAVE_GRANITE_AUDIO
+	if (stream)
+	{
+		int64_t pts_usec = stream->pts_usec.load(std::memory_order_relaxed);
+		if (pts_usec < 0)
+			return 0.0;
+		else
+			return double(pts_usec) * 1e-6;
+	}
+	else
+	{
+		return -1.0;
+	}
+#else
 	return -1.0;
+#endif
 }
 
-void VideoDecoder::Impl::flush_codecs()
+void VideoDecoder::Impl::flush_device_handles()
 {
 	for (auto &img : video_queue)
 	{
@@ -1523,6 +1728,13 @@ void VideoDecoder::Impl::flush_codecs()
 			plane.reset();
 		img.sem_to_client.reset();
 		img.sem_from_client.reset();
+	}
+}
+
+void VideoDecoder::Impl::flush_codecs()
+{
+	for (auto &img : video_queue)
+	{
 		img.idle_order = 0;
 		img.state = ImageState::Idle;
 		img.pts = 0.0;
@@ -1533,6 +1745,15 @@ void VideoDecoder::Impl::flush_codecs()
 	if (audio.av_ctx)
 		avcodec_flush_buffers(audio.av_ctx);
 
+#ifdef HAVE_GRANITE_AUDIO
+	if (stream)
+	{
+		mixer->kill_stream(stream_id);
+		stream->release_reference();
+		stream = nullptr;
+	}
+#endif
+
 	last_acquired_pts = -1.0;
 }
 
@@ -1540,6 +1761,7 @@ void VideoDecoder::Impl::end_device_context()
 {
 	if (decode_thread.joinable())
 		std::terminate();
+	flush_device_handles();
 	device = nullptr;
 	thread_group = nullptr;
 	flush_codecs();
@@ -1554,6 +1776,8 @@ bool VideoDecoder::Impl::play()
 
 	teardown = false;
 	flush_codecs();
+	begin_audio_stream();
+
 	decode_thread = std::thread(&Impl::thread_main, this);
 	return true;
 }
@@ -1570,6 +1794,15 @@ bool VideoDecoder::Impl::stop()
 	}
 	decode_thread.join();
 	video_upload_signal.wait_until_at_least(video_upload_count);
+
+#ifdef HAVE_GRANITE_AUDIO
+	if (stream)
+	{
+		mixer->kill_stream(stream_id);
+		stream->release_reference();
+		stream = nullptr;
+	}
+#endif
 
 	return true;
 }

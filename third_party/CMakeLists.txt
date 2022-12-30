@@ -62,6 +62,7 @@ if (GRANITE_VULKAN_FOSSILIZE)
             fossilize/path.hpp fossilize/path.cpp
             fossilize/miniz/miniz.h fossilize/miniz/miniz.c
             fossilize/cli/fossilize_feature_filter.hpp fossilize/cli/fossilize_feature_filter.cpp)
+    granite_setup_default_link_libraries(fossilize)
     target_include_directories(fossilize
             PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/fossilize
             PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/fossilize/miniz

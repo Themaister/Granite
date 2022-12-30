@@ -115,6 +115,27 @@ static inline void accumulate_channel(float * __restrict output, const float * _
 #endif
 }
 
+static inline void accumulate_channel_s32(float * __restrict output, const int32_t * __restrict input, float gain, size_t count) noexcept
+{
+	gain *= 1.0f / float(0x80000000u);
+	for (size_t i = 0; i < count; i++)
+		output[i] += float(input[i]) * gain;
+}
+
+static inline void accumulate_channel_deinterleave_stereo_s32(
+		float * __restrict left, float * __restrict right,
+		const int32_t * __restrict input, const float * __restrict gain,
+		size_t count) noexcept
+{
+	float left_gain = gain[0] * (1.0f / float(0x80000000u));
+	float right_gain = gain[1] * (1.0f / float(0x80000000u));
+	for (size_t i = 0; i < count; i++)
+	{
+		left[i] += float(input[2 * i + 0]) * left_gain;
+		right[i] += float(input[2 * i + 1]) * right_gain;
+	}
+}
+
 static inline void replace_channel(float * __restrict output, const float * __restrict input, float gain, size_t count) noexcept
 {
 #ifdef __ARM_NEON

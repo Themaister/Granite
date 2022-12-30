@@ -652,10 +652,12 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	// might have to revisit later.
 	// In practice, any codec will have a reasonably short packet window (10ms - 20ms),
 	// but not too long either.
-	enum { Frames = 128, FramesHighWatermark = 96, FramesThreshold = 2 };
+	enum { Frames = 128, FramesHighWatermark = 96 };
 	AVFrame *frames[Frames] = {};
 	std::atomic_uint32_t write_count;
 	std::atomic_uint32_t read_count;
+	std::atomic_uint32_t read_frames_count;
+	uint32_t write_frames_count = 0;
 	std::atomic_bool complete;
 	int packet_frames = 0;
 	bool running_state = false;
@@ -682,6 +684,7 @@ AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_,
 		f = av_frame_alloc();
 	write_count = 0;
 	read_count = 0;
+	read_frames_count = 0;
 	pts_index = 0;
 	complete = false;
 }
@@ -722,7 +725,12 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 	uint32_t written_count = write_count.load(std::memory_order_acquire);
 	if (!running_state)
 	{
-		if (written_count <= FramesThreshold)
+		int buffered_audio_frames = 0;
+		for (uint32_t i = 0; i < written_count; i++)
+			buffered_audio_frames += frames[i]->nb_samples;
+
+		// Wait until we have 50ms worth of audio buffered to avoid a potential instant underrun.
+		if (float(buffered_audio_frames) <= sample_rate * 0.05f)
 			return complete.load(std::memory_order_relaxed) ? 0 : num_frames;
 		running_state = true;
 	}
@@ -757,17 +765,53 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 			{
 				for (unsigned i = 0; i < num_channels; i++)
 				{
-					Audio::DSP::accumulate_channel(channels[i] + write_offset,
-					                               reinterpret_cast<const float *>(frame->data[i]) + packet_frames,
-					                               gain[i], to_write);
+					Audio::DSP::accumulate_channel(
+							channels[i] + write_offset,
+							reinterpret_cast<const float *>(frame->data[i]) + packet_frames,
+							gain[i], to_write);
 				}
 			}
 			else if (frame->format == AV_SAMPLE_FMT_FLT)
 			{
 				// We only care about supporting STEREO here.
-				Audio::DSP::accumulate_channel_deinterleave_stereo(channels[0] + write_offset, channels[1] + write_offset,
-				                                                   reinterpret_cast<const float *>(frame->data[0]) + 2 * packet_frames,
-				                                                   gain, to_write);
+				Audio::DSP::accumulate_channel_deinterleave_stereo(
+						channels[0] + write_offset, channels[1] + write_offset,
+						reinterpret_cast<const float *>(frame->data[0]) + 2 * packet_frames,
+						gain, to_write);
+			}
+			else if (frame->format == AV_SAMPLE_FMT_S32P || (frame->format == AV_SAMPLE_FMT_S32 && num_channels == 1))
+			{
+				for (unsigned i = 0; i < num_channels; i++)
+				{
+					Audio::DSP::accumulate_channel_s32(
+							channels[i] + write_offset,
+							reinterpret_cast<const int32_t *>(frame->data[i]) + packet_frames,
+							gain[i], to_write);
+				}
+			}
+			else if (frame->format == AV_SAMPLE_FMT_S32)
+			{
+				Audio::DSP::accumulate_channel_deinterleave_stereo_s32(
+						channels[0] + write_offset, channels[1] + write_offset,
+						reinterpret_cast<const int32_t *>(frame->data[0]) + 2 * packet_frames,
+						gain, to_write);
+			}
+			else if (frame->format == AV_SAMPLE_FMT_S16P || (frame->format == AV_SAMPLE_FMT_S16 && num_channels == 1))
+			{
+				for (unsigned i = 0; i < num_channels; i++)
+				{
+					Audio::DSP::accumulate_channel_s16(
+							channels[i] + write_offset,
+							reinterpret_cast<const int16_t *>(frame->data[i]) + packet_frames,
+							gain[i], to_write);
+				}
+			}
+			else if (frame->format == AV_SAMPLE_FMT_S16)
+			{
+				Audio::DSP::accumulate_channel_deinterleave_stereo_s16(
+						channels[0] + write_offset, channels[1] + write_offset,
+						reinterpret_cast<const int16_t *>(frame->data[0]) + 2 * packet_frames,
+						gain, to_write);
 			}
 
 			packet_frames += int(to_write);
@@ -782,11 +826,8 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 	}
 
 	read_count.store(buffer_index, std::memory_order_release);
-
-#ifdef VULKAN_DEBUG
-	if (write_offset < num_frames)
-		LOGW("FFmpeg: audio underrun.\n");
-#endif
+	read_frames_count.store(read_frames_count.load(std::memory_order_relaxed) + uint32_t(write_offset),
+	                        std::memory_order_release);
 
 	return complete.load(std::memory_order_relaxed) ? write_offset : num_frames;
 }
@@ -800,7 +841,9 @@ AVFrame *AVFrameRingStream::acquire_write_frame()
 
 void AVFrameRingStream::submit_write_frame()
 {
-	write_count.store(write_count.load(std::memory_order_relaxed) + 1, std::memory_order_release);
+	uint32_t index = write_count.load(std::memory_order_relaxed);
+	write_count.store(index + 1, std::memory_order_release);
+	write_frames_count += uint32_t(frames[index]->nb_samples);
 }
 
 void AVFrameRingStream::mark_complete()
@@ -817,23 +860,9 @@ unsigned AVFrameRingStream::get_num_buffered_av_frames()
 
 unsigned AVFrameRingStream::get_num_buffered_audio_frames()
 {
-	unsigned audio_frames = 0;
-	uint32_t current_read_index = read_count.load(std::memory_order_acquire);
-	if (current_read_index == write_count)
-		return 0;
-
-	// Otherwise, we don't know how far into the current packet the queue is reading.
-	// Only consider packets that have not been consumed yet.
-	// It's not important we get the exact amount, this is just to have a rough idea
-	// how long we can sleep until we have to do some decode work.
-	current_read_index++;
-	while (current_read_index != write_count)
-	{
-		audio_frames += frames[current_read_index % Frames]->nb_samples;
-		current_read_index++;
-	}
-
-	return audio_frames;
+	uint32_t result = write_frames_count - read_frames_count.load(std::memory_order_acquire);
+	VK_ASSERT(result < 0x80000000u);
+	return result;
 }
 
 AVFrameRingStream::~AVFrameRingStream()
@@ -1231,11 +1260,17 @@ bool VideoDecoder::Impl::init_audio_decoder()
 		return false;
 	}
 
-	if (audio.av_ctx->sample_fmt != AV_SAMPLE_FMT_S16 &&
-	    audio.av_ctx->sample_fmt != AV_SAMPLE_FMT_S16P &&
-	    audio.av_ctx->sample_fmt != AV_SAMPLE_FMT_FLT &&
-	    audio.av_ctx->sample_fmt != AV_SAMPLE_FMT_FLTP)
+	switch (audio.av_ctx->sample_fmt)
 	{
+	case AV_SAMPLE_FMT_S16:
+	case AV_SAMPLE_FMT_S16P:
+	case AV_SAMPLE_FMT_S32:
+	case AV_SAMPLE_FMT_S32P:
+	case AV_SAMPLE_FMT_FLT:
+	case AV_SAMPLE_FMT_FLTP:
+		break;
+
+	default:
 		LOGE("Unsupported sample format.\n");
 		return false;
 	}

@@ -652,7 +652,7 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	// might have to revisit later.
 	// In practice, any codec will have a reasonably short packet window (10ms - 20ms),
 	// but not too long either.
-	enum { Frames = 128, FramesHighWatermark = 96 };
+	enum { Frames = 64, FramesHighWatermark = 48 };
 	AVFrame *frames[Frames] = {};
 	std::atomic_uint32_t write_count;
 	std::atomic_uint32_t read_count;

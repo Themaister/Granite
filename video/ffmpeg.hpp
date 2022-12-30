@@ -83,21 +83,32 @@ public:
 
 	// Must be called before play().
 	bool begin_device_context(Vulkan::Device *device);
-	// Must be called after stop().
+	// Should be called after stop().
+	// If stop() is not called, this call with also do so.
 	void end_device_context();
 
+	// Starts decoding thread.
 	bool play();
+	// Stops decoding thread.
 	bool stop();
-	bool rewind();
+
+	// Somewhat heavy blocking operation.
+	// Needs to drain all decoding work, flush codecs and seek the AV file.
+	// All image references are invalidated.
+	bool seek(double ts);
+
+	void set_paused(bool paused);
+	bool get_paused() const;
 
 	// Audio is played back with a certain amount of latency.
 	// Audio is played asynchronously if a mixer is provided and the stream has an audio track.
 	// A worker thread will ensure that the audio mixer can render audio on-demand.
+	// If audio stream does not exist, returns negative number.
+	// Application should fall back to other means of timing in this scenario.
 	double get_estimated_audio_playback_timestamp();
 
-	// Next acquire will aim to grab an image with PTS at least equal to target timestamp,
-	// and a PTS that is at least as large as one that has been previously acquired.
 	// Client is responsible for displaying the frame in due time.
+	// A video frame can be released when the returned PTS is out of date.
 	bool acquire_video_frame(VideoFrame &frame);
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
 

@@ -672,6 +672,7 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	std::atomic_uint32_t pts_index;
 
 	AVFrame *acquire_write_frame();
+	void mark_uncorked_audio_pts();
 	void submit_write_frame();
 	void mark_complete();
 };
@@ -685,6 +686,15 @@ AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_,
 	read_count = 0;
 	pts_index = 0;
 	complete = false;
+}
+
+void AVFrameRingStream::mark_uncorked_audio_pts()
+{
+	uint32_t index = (pts_index.load(std::memory_order_acquire) - 1) % NumFrames;
+
+	// This is not a hazard, we know the mixer thread is done writing here.
+	if (progress[index].pts >= 0.0)
+		progress[index].sampled_ns = Util::get_current_time_nsecs();
 }
 
 bool AVFrameRingStream::setup(float, unsigned mixer_channels, size_t)
@@ -883,7 +893,9 @@ struct VideoDecoder::Impl
 	void end_device_context();
 	bool play();
 	bool stop();
-	bool rewind();
+	bool seek(double ts);
+	void set_paused(bool enable);
+	bool get_paused() const;
 
 	double get_estimated_audio_playback_timestamp();
 
@@ -901,7 +913,6 @@ struct VideoDecoder::Impl
 	void process_video_frame_in_task(unsigned frame, AVFrame *av_frame);
 
 	void flush_codecs();
-	void flush_device_handles();
 
 	struct Push
 	{
@@ -941,6 +952,8 @@ struct VideoDecoder::Impl
 	Audio::StreamID stream_id;
 	AVFrameRingStream *stream = nullptr;
 #endif
+
+	bool is_paused = false;
 };
 
 int VideoDecoder::Impl::find_idle_decode_video_frame_locked() const
@@ -1239,10 +1252,9 @@ void VideoDecoder::Impl::begin_audio_stream()
 			av_q2d(audio.av_stream->time_base));
 
 	stream->add_reference();
-	stream_id = mixer->add_mixer_stream(stream);
-	if (!stream_id || mixer->get_stream_state(stream_id) != Audio::Mixer::StreamState::Playing)
+	stream_id = mixer->add_mixer_stream(stream, !is_paused);
+	if (!stream_id)
 	{
-		mixer->kill_stream(stream_id);
 		stream->release_reference();
 		stream = nullptr;
 	}
@@ -1590,20 +1602,10 @@ bool VideoDecoder::Impl::should_iterate_locked()
 	// TODO: It is possible to use dynamic rate control techniques to ensure that
 	// audio ring does not underflow or overflow.
 
-	unsigned num_idle_frames = 0;
-	for (auto &q : video_queue)
-		if (q.state == ImageState::Idle)
-			num_idle_frames++;
-
-	unsigned num_av_frames = stream->get_num_buffered_av_frames();
-	unsigned num_audio_frames = stream->get_num_buffered_audio_frames();
-
-	LOGI("Worker: %d idle frames, %u AV frames, %u audio frames.\n", num_idle_frames, num_av_frames, num_audio_frames);
-
 #ifdef HAVE_GRANITE_AUDIO
 	if (stream)
 	{
-		// If audio buffer saturation reached 75%, there is real risk of overflowing it.
+		// If audio buffer saturation reached a high watermark, there is risk of overflowing it.
 		// We should be far, far ahead at this point. We should easily be able to just sleep
 		// until the audio buffer has drained down to a reasonable level.
 		if (stream->get_num_buffered_av_frames() > AVFrameRingStream::FramesHighWatermark)
@@ -1615,9 +1617,12 @@ bool VideoDecoder::Impl::should_iterate_locked()
 		// for a good while.
 		// When application is in a steady state, it will acquire images based on the audio timestamp.
 		// Thus, there is a natural self-regulating mechanism in place.
-		// Ensure that we have at least 50 ms of audio buffered up.
-		if (stream->get_num_buffered_audio_frames() <= unsigned(audio.av_ctx->sample_rate / 10))
+		// Ensure that we have at least 100 ms of audio buffered up.
+		if (mixer->get_stream_state(stream_id) == Audio::Mixer::StreamState::Playing &&
+		    stream->get_num_buffered_audio_frames() <= unsigned(audio.av_ctx->sample_rate / 10))
+		{
 			return true;
+		}
 	}
 #endif
 
@@ -1648,12 +1653,17 @@ void VideoDecoder::Impl::thread_main()
 			{
 #ifdef HAVE_GRANITE_AUDIO
 				// If we're going to sleep, we need to make sure we don't sleep for so long that we drain the audio queue.
-				if (stream)
+				if (stream && mixer->get_stream_state(stream_id) == Audio::Mixer::StreamState::Playing)
 				{
-					// We want to sleep for maximum of half the duration we have buffered up.
-					// Reformulate the expression to avoid potential u32 overflow if multiplying. Shouldn't need floats here.
+					// We want to sleep until there is ~100ms audio left.
+					// Need a decent amount of headroom since we might have to decode video before
+					// we can pump more audio frames.
+					// This could be improved with dedicated decoding threads audio and video,
+					// but that is a bit overkill.
+					// Reformulate the expression to avoid potential u32 overflow if multiplying.
+					// Shouldn't need floats here.
 					int sleep_ms = int(stream->get_num_buffered_audio_frames() / ((audio.av_ctx->sample_rate + 999) / 1000));
-					sleep_ms = std::max<int>(sleep_ms - 90, 0);
+					sleep_ms = std::max<int>(sleep_ms - 100 + 5, 0);
 					cond.wait_for(holder, std::chrono::milliseconds(sleep_ms));
 				}
 				else
@@ -1744,15 +1754,17 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp()
 
 		double pts = stream->progress[pts_buffer_index].pts;
 		if (pts < 0.0)
-			return 0.0;
-		else
+		{
+			pts = 0.0;
+		}
+		else if (!is_paused)
 		{
 			uint64_t sampled_ns = stream->progress[pts_buffer_index].sampled_ns;
 			uint64_t nsecs = std::max<uint64_t>(Util::get_current_time_nsecs(), sampled_ns);
 			uint64_t d = nsecs - sampled_ns;
 			pts += 1e-9 * double(d);
-			return pts;
 		}
+		return pts;
 	}
 	else
 #endif
@@ -1794,10 +1806,7 @@ void VideoDecoder::Impl::flush_codecs()
 
 void VideoDecoder::Impl::end_device_context()
 {
-	if (decode_thread.joinable())
-		std::terminate();
-
-	flush_codecs();
+	stop();
 	device = nullptr;
 	thread_group = nullptr;
 }
@@ -1829,28 +1838,58 @@ bool VideoDecoder::Impl::stop()
 	}
 	decode_thread.join();
 	video_upload_signal.wait_until_at_least(video_upload_count);
-
-#ifdef HAVE_GRANITE_AUDIO
-	if (stream)
-	{
-		mixer->kill_stream(stream_id);
-		stream->release_reference();
-		stream = nullptr;
-	}
-#endif
-
+	flush_codecs();
 	return true;
 }
 
-bool VideoDecoder::Impl::rewind()
+bool VideoDecoder::Impl::get_paused() const
+{
+	return is_paused;
+}
+
+void VideoDecoder::Impl::set_paused(bool enable)
+{
+	is_paused = enable;
+#ifdef HAVE_GRANITE_AUDIO
+	if (stream)
+	{
+		bool result;
+		if (enable)
+			result = mixer->pause_stream(stream_id);
+		else
+		{
+			// When we uncork, we need to ensure that estimated PTS
+			// picks off where we expect.
+			stream->mark_uncorked_audio_pts();
+
+			// If the thread went to deep sleep, we need to make sure it knows
+			// about the stream state being playing.
+			std::lock_guard<std::mutex> holder{lock};
+			result = mixer->play_stream(stream_id);
+			cond.notify_one();
+		}
+
+		if (!result)
+			LOGE("Failed to set stream state.\n");
+	}
+#endif
+}
+
+bool VideoDecoder::Impl::seek(double ts)
 {
 	std::lock_guard<std::mutex> holder{iteration_lock};
-	std::lock_guard<std::mutex> holder2{lock};
 
+	// Drain this before we take the global lock, since a video task needs to take the global lock to update state.
 	video_upload_signal.wait_until_at_least(video_upload_count);
+
+	std::lock_guard<std::mutex> holder2{lock};
 	cond.notify_one();
 
-	if (avformat_seek_file(av_format_ctx, -1, INT64_MIN, 0, INT64_MAX, 0) < 0)
+	if (ts < 0.0)
+		ts = 0.0;
+	auto target_ts = int64_t(AV_TIME_BASE * ts);
+
+	if (avformat_seek_file(av_format_ctx, -1, INT64_MIN, target_ts, INT64_MAX, 0) < 0)
 	{
 		LOGE("Failed to seek file.\n");
 		return false;
@@ -1913,9 +1952,19 @@ bool VideoDecoder::stop()
 	return impl->stop();
 }
 
-bool VideoDecoder::rewind()
+bool VideoDecoder::seek(double ts)
 {
-	return impl->rewind();
+	return impl->seek(ts);
+}
+
+void VideoDecoder::set_paused(bool state)
+{
+	return impl->set_paused(state);
+}
+
+bool VideoDecoder::get_paused() const
+{
+	return impl->get_paused();
 }
 
 double VideoDecoder::get_estimated_audio_playback_timestamp()

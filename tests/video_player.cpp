@@ -46,11 +46,44 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 
 	bool on_key_pressed(const Granite::KeyboardEvent &e)
 	{
-		if (e.get_key_state() == Granite::KeyState::Pressed && e.get_key() == Granite::Key::R)
+		if (e.get_key_state() == Granite::KeyState::Pressed)
 		{
-			frame = {};
-			if (!decoder.rewind())
-				LOGE("Failed to rewind.\n");
+			if (e.get_key() == Granite::Key::R)
+			{
+				frame = {};
+				if (!decoder.seek(0.0))
+					LOGE("Failed to rewind.\n");
+			}
+			else if (e.get_key() == Granite::Key::Space)
+				decoder.set_paused(!decoder.get_paused());
+			else if (e.get_key() == Granite::Key::Left)
+			{
+				frame = {};
+				double ts = decoder.get_estimated_audio_playback_timestamp();
+				if (ts >= 0.0 && !decoder.seek(ts - 10.0))
+					LOGE("Failed to seek.\n");
+			}
+			else if (e.get_key() == Granite::Key::Right)
+			{
+				frame = {};
+				double ts = decoder.get_estimated_audio_playback_timestamp();
+				if (ts >= 0.0 && !decoder.seek(ts + 10.0))
+					LOGE("Failed to seek.\n");
+			}
+			else if (e.get_key() == Granite::Key::Up)
+			{
+				frame = {};
+				double ts = decoder.get_estimated_audio_playback_timestamp();
+				if (ts >= 0.0 && !decoder.seek(ts + 60.0))
+					LOGE("Failed to seek.\n");
+			}
+			else if (e.get_key() == Granite::Key::Down)
+			{
+				frame = {};
+				double ts = decoder.get_estimated_audio_playback_timestamp();
+				if (ts >= 0.0 && !decoder.seek(ts - 60.0))
+					LOGE("Failed to seek.\n");
+			}
 		}
 
 		return true;
@@ -71,7 +104,7 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 		sem.reset();
 	}
 
-	void render_frame(double, double elapsed_time)
+	void render_frame(double, double elapsed_time) override
 	{
 		auto &device = get_wsi().get_device();
 

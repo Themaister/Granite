@@ -632,8 +632,6 @@ void VideoEncoder::drain()
 	impl->drain();
 }
 
-static constexpr unsigned NumDecodeFrames = 8;
-
 #ifdef HAVE_GRANITE_AUDIO
 struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePtrEnabled<AVFrameRingStream>
 {
@@ -873,9 +871,8 @@ struct VideoDecoder::Impl
 		double pts = 0.0;
 		ImageState state = ImageState::Idle;
 	};
-	DecodedImage video_queue[NumDecodeFrames];
+	std::vector<DecodedImage> video_queue;
 	uint64_t idle_timestamps = 0;
-	double last_acquired_pts = -1.0;
 	bool is_video_eof = false;
 	bool is_audio_eof = false;
 	bool is_flushing = false;
@@ -959,7 +956,7 @@ struct VideoDecoder::Impl
 int VideoDecoder::Impl::find_idle_decode_video_frame_locked() const
 {
 	int best_index = -1;
-	for (unsigned i = 0; i < NumDecodeFrames; i++)
+	for (size_t i = 0, n = video_queue.size(); i < n; i++)
 	{
 		auto &img = video_queue[i];
 		if (img.state == ImageState::Idle &&
@@ -986,7 +983,7 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 		// For this reason, we should consume the produced image with lowest PTS.
 		if (best_index < 0)
 		{
-			for (unsigned i = 0; i < NumDecodeFrames; i++)
+			for (size_t i = 0, n = video_queue.size(); i < n; i++)
 			{
 				if (video_queue[i].state == ImageState::Ready &&
 				    (best_index < 0 || video_queue[i].pts < video_queue[best_index].pts))
@@ -997,8 +994,13 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 			}
 		}
 
-		// This shouldn't happen. Applications cannot acquire a ton of images like this.
-		assert(best_index >= 0);
+		if (best_index < 0)
+		{
+			// This shouldn't happen. Applications cannot acquire a ton of images like this.
+			LOGE("Cannot find vacant image, illegal situation. Application has acquired too many images.\n");
+			std::terminate();
+		}
+
 		video_queue[best_index].state = ImageState::Locked;
 	}
 
@@ -1324,6 +1326,21 @@ bool VideoDecoder::Impl::init_video_decoder()
 		return false;
 	}
 
+	double fps = av_q2d(video.av_stream->avg_frame_rate);
+	// If FPS is not specified assume 60 as a "worst case scenario".
+	if (fps == 0.0)
+		fps = 60.0f;
+
+	// We need to buffer up enough frames without running into starvation scenarios.
+	// The low watermark for audio buffer is 100ms, which is where we will start forcing video frames to be decoded.
+	// If we allocate 200ms of video frames to absorb any jank, we should be fine.
+	// In a steady state, we will keep the audio buffer at 200ms saturation.
+	// It would be possible to add new video frames dynamically,
+	// but we don't want to end up in an unbounded memory usage situation, especially VRAM.
+
+	unsigned num_frames = std::max<unsigned>(unsigned(muglm::ceil(fps * 0.2)), 4);
+	video_queue.resize(num_frames);
+
 	init_yuv_to_rgb();
 	return true;
 }
@@ -1360,12 +1377,12 @@ bool VideoDecoder::Impl::init(Audio::Mixer *mixer_, const char *path)
 
 int VideoDecoder::Impl::find_acquire_video_frame_locked() const
 {
-	// Want frame with PTS > last_acquired_pts and image in Ready state.
+	// Want frame with lowest PTS and in Ready state.
 	int best_index = -1;
-	for (unsigned i = 0; i < NumDecodeFrames; i++)
+	for (size_t i = 0, n = video_queue.size(); i < n; i++)
 	{
 		auto &img = video_queue[i];
-		if (img.state == ImageState::Ready && img.pts > last_acquired_pts &&
+		if (img.state == ImageState::Ready &&
 		    (best_index < 0 || (img.pts < video_queue[best_index].pts)))
 		{
 			best_index = int(i);
@@ -1720,7 +1737,6 @@ bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame)
 	frame.view = &video_queue[index].rgb_image->get_view();
 	frame.index = index;
 	frame.pts = video_queue[index].pts;
-	last_acquired_pts = frame.pts;
 
 	// Progress.
 	acquire_blocking = false;
@@ -1791,8 +1807,6 @@ void VideoDecoder::Impl::flush_codecs()
 		avcodec_flush_buffers(video.av_ctx);
 	if (audio.av_ctx)
 		avcodec_flush_buffers(audio.av_ctx);
-
-	last_acquired_pts = -1.0;
 
 #ifdef HAVE_GRANITE_AUDIO
 	if (stream)

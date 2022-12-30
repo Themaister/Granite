@@ -775,10 +775,11 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 
 	read_count.store(buffer_index, std::memory_order_release);
 
+#ifdef VULKAN_DEBUG
 	if (write_offset < num_frames)
-		LOGW("Audio underrun.\n");
+		LOGW("FFmpeg: audio underrun.\n");
+#endif
 
-	// If we underrun, we can return a lower value than num_frames.
 	return complete.load(std::memory_order_relaxed) ? write_offset : num_frames;
 }
 
@@ -786,9 +787,6 @@ AVFrame *AVFrameRingStream::acquire_write_frame()
 {
 	auto index = write_count.load(std::memory_order_relaxed) % Frames;
 	auto *frame = frames[index];
-	// Have to unref here since we cannot have the audio mixer thread doing any memory frees.
-	// It seems okay to undef a freshly allocated frame based on docs.
-	av_frame_unref(frame);
 	return frame;
 }
 
@@ -924,6 +922,7 @@ struct VideoDecoder::Impl
 	std::thread decode_thread;
 	std::condition_variable cond;
 	std::mutex lock;
+	std::mutex iteration_lock;
 	bool teardown = false;
 	bool acquire_blocking = false;
 	TaskSignal video_upload_signal;
@@ -1442,7 +1441,6 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	                   VK_PIPELINE_STAGE_NONE, 0);
 	device->submit(cmd, nullptr, 1, &compute_to_user);
 
-	av_frame_unref(av_frame);
 	av_frame_free(&av_frame);
 
 	// Can now acquire.
@@ -1538,6 +1536,8 @@ bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 
 bool VideoDecoder::Impl::iterate()
 {
+	std::lock_guard<std::mutex> holder{iteration_lock};
+
 	if (is_video_eof && (is_audio_eof || !audio.av_ctx))
 		return false;
 
@@ -1755,15 +1755,13 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp()
 		}
 	}
 	else
+#endif
 	{
 		return -1.0;
 	}
-#else
-	return -1.0;
-#endif
 }
 
-void VideoDecoder::Impl::flush_device_handles()
+void VideoDecoder::Impl::flush_codecs()
 {
 	for (auto &img : video_queue)
 	{
@@ -1772,13 +1770,6 @@ void VideoDecoder::Impl::flush_device_handles()
 			plane.reset();
 		img.sem_to_client.reset();
 		img.sem_from_client.reset();
-	}
-}
-
-void VideoDecoder::Impl::flush_codecs()
-{
-	for (auto &img : video_queue)
-	{
 		img.idle_order = 0;
 		img.state = ImageState::Idle;
 		img.pts = 0.0;
@@ -1789,6 +1780,8 @@ void VideoDecoder::Impl::flush_codecs()
 	if (audio.av_ctx)
 		avcodec_flush_buffers(audio.av_ctx);
 
+	last_acquired_pts = -1.0;
+
 #ifdef HAVE_GRANITE_AUDIO
 	if (stream)
 	{
@@ -1797,18 +1790,16 @@ void VideoDecoder::Impl::flush_codecs()
 		stream = nullptr;
 	}
 #endif
-
-	last_acquired_pts = -1.0;
 }
 
 void VideoDecoder::Impl::end_device_context()
 {
 	if (decode_thread.joinable())
 		std::terminate();
-	flush_device_handles();
+
+	flush_codecs();
 	device = nullptr;
 	thread_group = nullptr;
-	flush_codecs();
 }
 
 bool VideoDecoder::Impl::play()
@@ -1853,13 +1844,26 @@ bool VideoDecoder::Impl::stop()
 
 bool VideoDecoder::Impl::rewind()
 {
-	if (!stop())
-		return false;
+	std::lock_guard<std::mutex> holder{iteration_lock};
+	std::lock_guard<std::mutex> holder2{lock};
+
+	video_upload_signal.wait_until_at_least(video_upload_count);
+	cond.notify_one();
 
 	if (avformat_seek_file(av_format_ctx, -1, INT64_MIN, 0, INT64_MAX, 0) < 0)
+	{
 		LOGE("Failed to seek file.\n");
+		return false;
+	}
 
-	return play();
+	if (decode_thread.joinable())
+	{
+		flush_codecs();
+		begin_audio_stream();
+		return true;
+	}
+	else
+		return play();
 }
 
 VideoDecoder::Impl::~Impl()

@@ -41,6 +41,19 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 		}
 
 		EVENT_MANAGER_REGISTER_LATCH(VideoPlayerApplication, on_module_created, on_module_destroyed, Vulkan::DeviceShaderModuleReadyEvent);
+		EVENT_MANAGER_REGISTER(VideoPlayerApplication, on_key_pressed, Granite::KeyboardEvent);
+	}
+
+	bool on_key_pressed(const Granite::KeyboardEvent &e)
+	{
+		if (e.get_key_state() == Granite::KeyState::Pressed && e.get_key() == Granite::Key::R)
+		{
+			frame = {};
+			if (!decoder.rewind())
+				LOGE("Failed to rewind.\n");
+		}
+
+		return true;
 	}
 
 	void on_module_created(const Vulkan::DeviceShaderModuleReadyEvent &e)
@@ -66,7 +79,7 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 		if (target_pts < 0.0)
 			target_pts = elapsed_time;
 
-		if (frame.view && target_pts > frame.pts + 0.5)
+		if (frame.view && target_pts > frame.pts)
 		{
 			decoder.release_video_frame(frame.index, std::move(sem));
 			sem = {};

@@ -41,6 +41,7 @@ extern "C"
 #include "thread_group.hpp"
 #include "global_managers.hpp"
 #include "thread_priority.hpp"
+#include "timer.hpp"
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -648,8 +649,6 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	float get_sample_rate() const override;
 	void dispose() override;
 
-	std::atomic_int64_t pts_usec;
-
 	// Buffering in terms of AVFrame is a little questionable since packet sizes can vary a fair bit,
 	// might have to revisit later.
 	// In practice, any codec will have a reasonably short packet window (10ms - 20ms),
@@ -663,6 +662,13 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	unsigned get_num_buffered_audio_frames();
 	unsigned get_num_buffered_av_frames();
 
+	struct
+	{
+		double pts = -1.0;
+		uint64_t sampled_ns = 0;
+	} progress[Frames];
+	std::atomic_uint32_t pts_index;
+
 	AVFrame *acquire_write_frame();
 	void submit_write_frame();
 	void mark_complete();
@@ -675,7 +681,7 @@ AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_,
 		f = av_frame_alloc();
 	write_count = 0;
 	read_count = 0;
-	pts_usec.store(INT64_MIN, std::memory_order_relaxed);
+	pts_index = 0;
 	set_dispose_on_short_render(false);
 }
 
@@ -729,8 +735,12 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 			// video latency, so we might be able to get away with simply ignoring it.
 			if (packet_frames == 0)
 			{
-				auto new_pts_usec = int64_t(1e6 * double(frame->pts) * timebase);
-				pts_usec.store(new_pts_usec, std::memory_order_relaxed);
+				uint32_t pts_buffer_index = pts_index.load(std::memory_order_relaxed);
+				auto new_pts = double(frame->pts) * timebase;
+				auto &p = progress[pts_buffer_index % Frames];
+				p.pts = new_pts;
+				p.sampled_ns = Util::get_current_time_nsecs();
+				pts_index.store(pts_buffer_index + 1, std::memory_order_release);
 			}
 
 			if (frame->format == AV_SAMPLE_FMT_FLTP || (frame->format == AV_SAMPLE_FMT_FLT && num_channels == 1))
@@ -1705,11 +1715,21 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp()
 #ifdef HAVE_GRANITE_AUDIO
 	if (stream)
 	{
-		int64_t pts_usec = stream->pts_usec.load(std::memory_order_relaxed);
-		if (pts_usec < 0)
+		uint32_t pts_buffer_index = (stream->pts_index.load(std::memory_order_acquire) - 1) %
+				AVFrameRingStream::Frames;
+
+		double pts = stream->progress[pts_buffer_index].pts;
+		if (pts < 0.0)
 			return 0.0;
 		else
-			return double(pts_usec) * 1e-6;
+		{
+			uint64_t sampled_ns = stream->progress[pts_buffer_index].sampled_ns;
+			uint64_t nsecs = std::max<uint64_t>(Util::get_current_time_nsecs(), sampled_ns);
+			uint64_t d = nsecs - sampled_ns;
+			pts += 1e-9 * double(d);
+			LOGI("Audio PTS: %.3f ms.\n", pts * 1e3);
+			return pts;
+		}
 	}
 	else
 	{

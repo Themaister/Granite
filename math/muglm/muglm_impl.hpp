@@ -758,10 +758,12 @@ inline T fract(const T &v) { return v - floor(v); }
 
 // ceil
 inline float ceil(float v) { return std::ceil(v); }
+inline double ceil(double v) { return std::ceil(v); }
 MUGLM_VECTORIZED_FUNC1(ceil)
 
 // round
 inline float round(float v) { return std::round(v); }
+inline double round(double v) { return std::round(v); }
 MUGLM_VECTORIZED_FUNC1(round)
 
 // mod

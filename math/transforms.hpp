@@ -74,4 +74,11 @@ struct SphericalSampler
 vec3 compute_inner_control_point_delta(const quat &q0, const quat &q1, const quat &q2,
                                        float dt0, float dt1);
 quat compute_inner_control_point(const quat &q, const vec3 &delta);
+
+struct Primaries
+{
+	vec2 red, green, blue, white_point;
+};
+
+mat3 compute_xyz_matrix(const Primaries &primaries);
 }

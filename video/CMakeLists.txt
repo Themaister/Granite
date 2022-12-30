@@ -5,7 +5,7 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
 add_granite_internal_lib(granite-video ffmpeg.cpp ffmpeg.hpp)
 target_link_libraries(granite-video
         PUBLIC granite-vulkan
-        PRIVATE PkgConfig::LIBAV granite-threading)
+        PRIVATE PkgConfig::LIBAV granite-threading granite-math)
 if (GRANITE_AUDIO)
     target_link_libraries(granite-video PRIVATE granite-audio)
 endif()

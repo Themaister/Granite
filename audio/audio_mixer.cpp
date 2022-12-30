@@ -102,6 +102,8 @@ Mixer::Mixer()
 		gain = f32_to_u32(1.0f);
 	for (auto &active : active_channel_mask)
 		active = 0;
+	for (auto &mask : kill_channel_mask)
+		mask = 0;
 	latency = 0;
 }
 
@@ -122,28 +124,28 @@ Mixer::~Mixer()
 unsigned Mixer::get_stream_index(StreamID id)
 {
 	static_assert((MaxSources & (MaxSources - 1)) == 0, "MaxSources must be POT.");
-	return unsigned(id & (MaxSources - 1));
+	return unsigned(id.id & (MaxSources - 1));
 }
 
 StreamID Mixer::generate_stream_id(unsigned index)
 {
-	uint64_t generation = ++stream_generation[index];
-	return generation * MaxSources + index;
+	uint32_t generation = stream_generation[index] = (stream_generation[index] + 1) & (uint32_t(-1) / MaxSources);
+	return { generation * MaxSources + index };
 }
 
-uint64_t Mixer::get_stream_generation(StreamID id)
+uint32_t Mixer::get_stream_generation(StreamID id) const
 {
-	return id / unsigned(MaxSources);
+	return id.id / unsigned(MaxSources);
 }
 
-bool Mixer::verify_stream_id(StreamID id)
+bool Mixer::verify_stream_id(StreamID id) const
 {
-	if (id == 0)
+	if (!id)
 		return false;
 
 	unsigned index = get_stream_index(id);
-	uint64_t generation = get_stream_generation(id);
-	uint64_t actual_generation = stream_generation[index];
+	uint32_t generation = get_stream_generation(id);
+	uint32_t actual_generation = stream_generation[index];
 	return actual_generation == generation;
 }
 
@@ -156,7 +158,7 @@ void Mixer::kill_stream(StreamID id)
 	unsigned index = get_stream_index(id);
 	unsigned subindex = index & 31;
 	index /= 32;
-	active_channel_mask[index].fetch_and(~(1u << subindex), std::memory_order_release);
+	kill_channel_mask[index].fetch_or(1u << subindex, std::memory_order_relaxed);
 }
 
 double Mixer::get_play_cursor(StreamID id)
@@ -210,7 +212,12 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 		if (!active_mask)
 			continue;
 
-		uint32_t dead_mask = 0;
+		uint32_t dead_mask = kill_channel_mask[i].exchange(0, std::memory_order_relaxed);
+		active_mask &= ~dead_mask;
+
+		Util::for_each_bit(dead_mask, [&](unsigned bit) {
+			emplace_audio_event_on_queue<StreamStoppedEvent>(message_queue, bit + 32 * i);
+		});
 
 		Util::for_each_bit(active_mask, [&](unsigned bit) {
 			unsigned index = bit + 32 * i;
@@ -271,13 +278,13 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
                                  float initial_gain_db, float initial_panning)
 {
 	if (!stream)
-		return StreamID(-1);
+		return {};
 
 	if (!stream->setup(sample_rate, num_channels, max_num_samples))
 	{
 		LOGE("Failed to setup stream.\n");
 		stream->dispose();
-		return StreamID(-1);
+		return {};
 	}
 
 	if (stream->get_sample_rate() != sample_rate)
@@ -288,7 +295,7 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 		{
 			LOGE("Failed to setup resampled stream.\n");
 			stream->dispose();
-			return StreamID(-1);
+			return {};
 		}
 	}
 
@@ -297,7 +304,7 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 	{
 		LOGE("Number of audio channels in stream does not match mixer.\n");
 		stream->dispose();
-		return StreamID(-1);
+		return {};
 	}
 
 	// add_mixer_stream is only called by non-critical threads,
@@ -329,6 +336,7 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 		stream_adjusted_play_cursors_usec[index].store(0, std::memory_order_relaxed);
 		gain_linear[index].store(f32_to_u32(std::pow(10.0f, initial_gain_db / 20.0f)), std::memory_order_relaxed);
 		panning[index].store(f32_to_u32(initial_panning), std::memory_order_relaxed);
+		kill_channel_mask[i].fetch_and(~(1u << subindex), std::memory_order_relaxed);
 		stream_playing[index].store(start_playing, std::memory_order_relaxed);
 
 		// Kick mixer thread.
@@ -341,7 +349,7 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 	}
 
 	stream->dispose();
-	return StreamID(-1);
+	return {};
 }
 
 void Mixer::dispose_dead_streams()

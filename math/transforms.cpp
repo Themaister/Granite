@@ -340,4 +340,24 @@ vec3 compute_inner_control_point_delta(const quat &q0, const quat &q1, const qua
 	vec3 delta = (0.25f * dt1 * dt1) * absolute_accel;
 	return delta;
 }
+
+// From https://mina86.com/2019/srgb-xyz-matrix/
+static vec3 convert_primary(const vec2 &xy)
+{
+	float X = xy.x / xy.y;
+	float Y = 1.0f;
+	float Z = (1.0f - xy.x - xy.y) / xy.y;
+	return vec3(X, Y, Z);
+}
+
+mat3 compute_xyz_matrix(const Primaries &primaries)
+{
+	vec3 red = convert_primary(primaries.red);
+	vec3 green = convert_primary(primaries.green);
+	vec3 blue = convert_primary(primaries.blue);
+	vec3 white = convert_primary(primaries.white_point);
+
+	vec3 component_scale = inverse(mat3(red, green, blue)) * white;
+	return mat3(red * component_scale.x, green * component_scale.y, blue * component_scale.z);
+}
 }

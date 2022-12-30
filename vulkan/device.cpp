@@ -1235,7 +1235,7 @@ void Device::submit_empty_nolock(QueueIndices physical_type, Fence *fence,
 	if (physical_type != QUEUE_INDEX_TRANSFER)
 		flush_frame(QUEUE_INDEX_TRANSFER);
 
-	InternalFence signalled_fence;
+	InternalFence signalled_fence = {};
 
 	submit_queue(physical_type, fence ? &signalled_fence : nullptr, semaphore,
 	             0, nullptr, profiling_iteration);
@@ -3765,11 +3765,8 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		}
 	}
 
-	if ((create_info.usage & VK_IMAGE_USAGE_STORAGE_BIT) ||
-	    (create_info.misc & IMAGE_MISC_MUTABLE_SRGB_BIT))
-	{
+	if ((create_info.misc & IMAGE_MISC_MUTABLE_SRGB_BIT) != 0)
 		info.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
-	}
 
 	uint32_t sharing_indices[QUEUE_INDEX_COUNT];
 

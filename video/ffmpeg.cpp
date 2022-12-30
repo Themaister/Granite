@@ -667,7 +667,7 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	struct
 	{
 		double pts = -1.0;
-		uint64_t sampled_ns = 0;
+		int64_t sampled_ns = 0;
 	} progress[Frames];
 	std::atomic_uint32_t pts_index;
 
@@ -981,6 +981,9 @@ struct VideoDecoder::Impl
 #endif
 
 	bool is_paused = false;
+
+	int64_t smooth_ns = 0;
+	double smooth_pts = 0.0;
 };
 
 int VideoDecoder::Impl::find_idle_decode_video_frame_locked() const
@@ -1296,6 +1299,10 @@ void VideoDecoder::Impl::begin_audio_stream()
 		stream->release_reference();
 		stream = nullptr;
 	}
+
+	// Reset PTS smoothing.
+	smooth_ns = 0;
+	smooth_pts = 0.0;
 #endif
 }
 
@@ -1832,19 +1839,54 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp()
 		uint32_t pts_buffer_index = (stream->pts_index.load(std::memory_order_acquire) - 1) %
 				AVFrameRingStream::Frames;
 
+		auto current_ns = Util::get_current_time_nsecs();
+
 		double pts = stream->progress[pts_buffer_index].pts;
 		if (pts < 0.0)
 		{
 			pts = 0.0;
+			smooth_ns = 0;
+			smooth_pts = 0.0;
 		}
 		else if (!is_paused)
 		{
-			uint64_t sampled_ns = stream->progress[pts_buffer_index].sampled_ns;
-			uint64_t nsecs = std::max<uint64_t>(Util::get_current_time_nsecs(), sampled_ns);
-			uint64_t d = nsecs - sampled_ns;
+			// Crude estimate based on last reported PTS, offset by time since reported.
+			int64_t sampled_ns = stream->progress[pts_buffer_index].sampled_ns;
+			int64_t d = std::max<int64_t>(current_ns, sampled_ns) - sampled_ns;
 			pts += 1e-9 * double(d);
 		}
-		return pts;
+
+		// Smooth out the reported PTS.
+		// The reported PTS should be tied to the host timer,
+		// but we need to gradually adjust the timer based on the reported audio PTS to be accurate.
+
+		if (smooth_ns == 0)
+		{
+			// Latch the PTS.
+			smooth_ns = current_ns;
+			smooth_pts = pts;
+		}
+		else if (current_ns > smooth_ns)
+		{
+			// This is the value we should get in principle if everything is steady.
+			smooth_pts += 1e-9 * double(current_ns - smooth_ns);
+			smooth_ns = current_ns;
+
+			if (muglm::abs(smooth_pts - pts) > 0.25)
+			{
+				// Massive spike somewhere, cannot smooth.
+				// Reset the PTS.
+				smooth_ns = current_ns;
+				smooth_pts = pts;
+			}
+			else
+			{
+				// Bias slightly towards the true estimated PTS.
+				smooth_pts += 0.005 * (pts - smooth_pts);
+			}
+		}
+
+		return smooth_pts;
 	}
 	else
 #endif
@@ -1939,6 +1981,10 @@ void VideoDecoder::Impl::set_paused(bool enable)
 			// When we uncork, we need to ensure that estimated PTS
 			// picks off where we expect.
 			stream->mark_uncorked_audio_pts();
+
+			// Reset PTS smoothing.
+			smooth_ns = 0;
+			smooth_pts = 0.0;
 
 			// If the thread went to deep sleep, we need to make sure it knows
 			// about the stream state being playing.

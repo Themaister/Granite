@@ -147,7 +147,7 @@ namespace Granite
 {
 Application *application_create(int argc, char **argv)
 {
-	Filesystem::setup_default_filesystem(GRANITE_FILESYSTEM(), ".");
+	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
 	if (argc != 2)
 	{

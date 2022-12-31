@@ -1129,6 +1129,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 		chroma_narrow_range <<= (bit_depth - 8);
 	}
 
+	// 10-bit and 12-bit YUV need special consideration for how to do scale and bias.
 	float midpoint = float(1 << (bit_depth - 1));
 	float unorm_range = float((1 << bit_depth) - 1);
 	float unorm_divider = 1.0f / unorm_range;
@@ -1518,6 +1519,16 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		plane_subsample_log2[2] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P10 ? 1 : 0;
 		// The high bits are zero, rescale to 1.0 range.
 		unorm_rescale = float(0xffff) / float(1023);
+		break;
+
+	case AV_PIX_FMT_P016:
+	case AV_PIX_FMT_P416:
+		plane_formats[0] = VK_FORMAT_R16_UNORM;
+		plane_formats[1] = VK_FORMAT_R16G16_UNORM;
+		num_planes = 2;
+		plane_subsample_log2[0] = 0;
+		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_P016 ? 1 : 0;
+		plane_subsample_log2[2] = active_upload_pix_fmt == AV_PIX_FMT_P016 ? 1 : 0;
 		break;
 
 	default:

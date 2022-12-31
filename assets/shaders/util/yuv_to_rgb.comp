@@ -21,6 +21,8 @@ layout(set = 1, binding = 0) uniform UBO
 
 const int EOTF_BT2087 = 0;
 layout(constant_id = 0) const int EOTF = 0;
+layout(constant_id = 1) const int NUM_PLANES = 3;
+layout(constant_id = 2) const bool NV21 = false;
 
 mediump vec3 srgb_oetf(mediump vec3 col)
 {
@@ -45,8 +47,33 @@ void main()
 
         // Reconstruct full resolution Y'CbCr.
         mediump float y = textureLod(uY, luma_coord, 0.0).x;
-        mediump float cb = textureLod(uCb, chroma_coord, 0.0).x;
-        mediump float cr = textureLod(uCr, chroma_coord, 0.0).x;
+        mediump float cb, cr;
+
+        if (NUM_PLANES == 3)
+        {
+            cb = textureLod(uCb, chroma_coord, 0.0).x;
+            cr = textureLod(uCr, chroma_coord, 0.0).x;
+        }
+        else if (NUM_PLANES == 2)
+        {
+            mediump vec2 cbcr = textureLod(uCb, chroma_coord, 0.0).xy;
+            if (NV21)
+            {
+                // Could use ImageView swizzles here, but eeeeeh.
+                cb = cbcr.y;
+                cr = cbcr.x;
+            }
+            else
+            {
+                cb = cbcr.x;
+                cr = cbcr.y;
+            }
+        }
+        else
+        {
+            cb = 128.0 / 255.0;
+            cr = 128.0 / 255.0;
+        }
 
         // Convert to R'G'B'.
         mediump vec3 rgb = (yuv_to_rgb * vec4(y, cb, cr, 1.0)).rgb;

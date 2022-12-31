@@ -2,7 +2,7 @@ include(FindPkgConfig)
 pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
         libavdevice libavformat libavcodec libswscale libavutil)
 
-add_granite_internal_lib(granite-video ffmpeg.cpp ffmpeg.hpp)
+add_granite_internal_lib(granite-video ffmpeg.cpp ffmpeg.hpp ffmpeg_decode.cpp ffmpeg_decode.hpp)
 target_link_libraries(granite-video
         PUBLIC granite-vulkan
         PRIVATE PkgConfig::LIBAV granite-threading granite-math)

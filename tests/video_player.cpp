@@ -20,7 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "ffmpeg.hpp"
+#include "ffmpeg_decode.hpp"
 #include "application.hpp"
 #include "application_wsi_events.hpp"
 #ifdef HAVE_GRANITE_AUDIO

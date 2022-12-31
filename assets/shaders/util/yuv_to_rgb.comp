@@ -11,6 +11,7 @@ layout(push_constant) uniform Registers
     uvec2 resolution;
     vec2 inv_resolution;
     vec2 chroma_siting;
+    float unorm_rescale;
 } registers;
 
 layout(set = 1, binding = 0) uniform UBO
@@ -19,8 +20,11 @@ layout(set = 1, binding = 0) uniform UBO
     mediump mat4 primary_conversion;
 };
 
-const int EOTF_BT2087 = 0;
-layout(constant_id = 0) const int EOTF = 0;
+const int PASSTHROUGH = 0;
+const int EOTF_BT2087_OETF_sRGB = 1;
+layout(constant_id = 0) const int TRANSFER = 0;
+layout(constant_id = 1) const int NUM_PLANES = 3;
+layout(constant_id = 2) const bool NV21 = false;
 
 mediump vec3 srgb_oetf(mediump vec3 col)
 {
@@ -45,23 +49,51 @@ void main()
 
         // Reconstruct full resolution Y'CbCr.
         mediump float y = textureLod(uY, luma_coord, 0.0).x;
-        mediump float cb = textureLod(uCb, chroma_coord, 0.0).x;
-        mediump float cr = textureLod(uCr, chroma_coord, 0.0).x;
+        mediump float cb, cr;
+
+        if (NUM_PLANES == 3)
+        {
+            cb = textureLod(uCb, chroma_coord, 0.0).x;
+            cr = textureLod(uCr, chroma_coord, 0.0).x;
+        }
+        else if (NUM_PLANES == 2)
+        {
+            mediump vec2 cbcr = textureLod(uCb, chroma_coord, 0.0).xy;
+            if (NV21)
+            {
+                // Could use ImageView swizzles here, but eeeeeh.
+                cb = cbcr.y;
+                cr = cbcr.x;
+            }
+            else
+            {
+                cb = cbcr.x;
+                cr = cbcr.y;
+            }
+        }
+        else
+        {
+            cb = 128.0 / 255.0;
+            cr = 128.0 / 255.0;
+        }
 
         // Convert to R'G'B'.
-        mediump vec3 rgb = (yuv_to_rgb * vec4(y, cb, cr, 1.0)).rgb;
+        mediump vec3 rgb = (yuv_to_rgb * vec4(vec3(y, cb, cr) * registers.unorm_rescale, 1.0)).rgb;
 
         // Apply EOTF.
         rgb = clamp(rgb, vec3(0.0), vec3(1.0));
-        if (EOTF == EOTF_BT2087)
+
+        if (TRANSFER == EOTF_BT2087_OETF_sRGB)
+        {
             rgb = pow(rgb, vec3(2.4));
 
-        // Convert primaries to BT.709 (sRGB).
-        rgb = (primary_conversion * vec4(rgb, 0.0)).rgb;
-        rgb = clamp(rgb, vec3(0.0), vec3(1.0));
+            // Convert primaries to BT.709 (sRGB).
+            rgb = (primary_conversion * vec4(rgb, 0.0)).rgb;
+            rgb = clamp(rgb, vec3(0.0), vec3(1.0));
 
-        // Encode to sRGB OETF.
-        rgb = srgb_oetf(rgb);
+            // Encode to sRGB OETF.
+            rgb = srgb_oetf(rgb);
+        }
 
         // Dither the output to avoid banding in the OETF(EOTF(x)) conversion.
         rgb += dither[4u * (gl_LocalInvocationID.y & 3u) + (gl_LocalInvocationID.x & 3u)];

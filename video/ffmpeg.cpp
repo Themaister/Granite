@@ -914,6 +914,7 @@ struct VideoDecoder::Impl
 	VkFormat plane_formats[3] = {};
 	unsigned plane_subsample_log2[3] = {};
 	unsigned num_planes = 0;
+	float unorm_rescale = 1.0f;
 
 	bool init(Audio::Mixer *mixer, const char *path);
 	bool init_video_decoder();
@@ -950,6 +951,7 @@ struct VideoDecoder::Impl
 		uvec2 resolution;
 		vec2 inv_resolution;
 		vec2 chroma_siting;
+		float unorm_rescale;
 	};
 	Push push = {};
 
@@ -970,12 +972,15 @@ struct VideoDecoder::Impl
 	TaskSignal video_upload_signal;
 	uint64_t video_upload_count = 0;
 	ThreadGroup *thread_group = nullptr;
+	TaskGroupHandle upload_dependency;
 	void thread_main();
 	bool iterate();
 	bool should_iterate_locked();
 
 	void init_yuv_to_rgb();
+	void setup_yuv_format_planes();
 	void begin_audio_stream();
+	AVPixelFormat active_upload_pix_fmt = AV_PIX_FMT_NONE;
 
 	~Impl();
 
@@ -983,6 +988,12 @@ struct VideoDecoder::Impl
 	Audio::StreamID stream_id;
 	AVFrameRingStream *stream = nullptr;
 #endif
+
+	struct
+	{
+		const AVCodecHWConfig *config = nullptr;
+		AVBufferRef *device = nullptr;
+	} hw;
 
 	bool is_paused = false;
 
@@ -1043,12 +1054,15 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 
 	auto &img = video_queue[best_index];
 
+	// Defer allocating the planar images until we know for sure what kind of
+	// format we're dealing with.
 	if (!img.rgb_image)
 	{
 		auto info = Vulkan::ImageCreateInfo::immutable_2d_image(video.av_ctx->width,
 		                                                        video.av_ctx->height,
 		                                                        VK_FORMAT_R8G8B8A8_SRGB);
-		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+		             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		info.flags = VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
 		info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
@@ -1057,18 +1071,6 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
 		            Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
 		img.rgb_image = device->create_image(info);
-
-		info.misc &= ~Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
-
-		for (unsigned plane = 0; plane < num_planes; plane++)
-		{
-			info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-			info.flags = 0;
-			info.format = plane_formats[plane];
-			info.width = video.av_ctx->width >> plane_subsample_log2[plane];
-			info.height = video.av_ctx->height >> plane_subsample_log2[plane];
-			img.planes[plane] = device->create_image(info);
-		}
 	}
 
 	return best_index;
@@ -1080,12 +1082,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	push.inv_resolution = vec2(1.0f / float(video.av_ctx->width),
 	                           1.0f / float(video.av_ctx->height));
 
-	// Probably not valid for 444 to have anything other than CENTER.
-	AVChromaLocation loc = video.av_ctx->chroma_sample_location;
-	if (video.av_ctx->pix_fmt == AV_PIX_FMT_YUV444P)
-		loc = AVCHROMA_LOC_CENTER;
-
-	switch (loc)
+	switch (video.av_ctx->chroma_sample_location)
 	{
 	case AVCHROMA_LOC_TOPLEFT:
 		push.chroma_siting = vec2(1.0f) * push.inv_resolution;
@@ -1121,12 +1118,29 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	// This is ok, since we have to do EOTF and primary conversion manually either way,
 	// and those are not supported.
 
-	// Technically, this changes for 10-bit and 12-bit since 2^(n-1) must be treated
-	// as midpoint, not 128/255, but we don't really care about this for now.
-	const vec3 yuv_bias = vec3((full_range ? 0.0f : -16.0f) / 255.0f, -128.0f / 255.0f, -128.0f / 255.0f);
-	const vec3 yuv_scale = full_range ?
-	                       vec3(1.0f) :
-	                       vec3(255.0f / 219.0f, 255.0f / 224.0f, 255.0f / 224.0f);
+	int luma_offset = full_range ? 0 : 16;
+	int chroma_narrow_range = 224;
+	int luma_narrow_range = 219;
+	int bit_depth = av_pix_fmt_desc_get(video.av_ctx->pix_fmt)->comp[0].depth;
+	if (bit_depth > 8)
+	{
+		luma_offset <<= (bit_depth - 8);
+		luma_narrow_range <<= (bit_depth - 8);
+		chroma_narrow_range <<= (bit_depth - 8);
+	}
+
+	// 10-bit and 12-bit YUV need special consideration for how to do scale and bias.
+	float midpoint = float(1 << (bit_depth - 1));
+	float unorm_range = float((1 << bit_depth) - 1);
+	float unorm_divider = 1.0f / unorm_range;
+	float chroma_shift = -midpoint * unorm_divider;
+
+	const float luma_scale = float(unorm_range) / float(luma_narrow_range);
+	const float chroma_scale = float(unorm_range) / float(chroma_narrow_range);
+
+	const vec3 yuv_bias = vec3(float(-luma_offset) * unorm_divider, chroma_shift, chroma_shift);
+	const vec3 yuv_scale = full_range ? vec3(1.0f) :
+	                       vec3(luma_scale, chroma_scale, chroma_scale);
 
 	AVColorSpace col_space = video.av_ctx->colorspace;
 	if (col_space == AVCOL_SPC_UNSPECIFIED)
@@ -1320,11 +1334,31 @@ bool VideoDecoder::Impl::init_video_decoder()
 	}
 
 	video.av_stream = av_format_ctx->streams[ret];
+
 	const AVCodec *codec = avcodec_find_decoder(video.av_stream->codecpar->codec_id);
 	if (!codec)
 	{
 		LOGE("Failed to find codec.\n");
 		return false;
+	}
+
+	for (int i = 0; ; i++)
+	{
+		const AVCodecHWConfig *config = avcodec_get_hw_config(codec, i);
+		if (!config)
+			break;
+
+		if ((config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0)
+		{
+			AVBufferRef *hw_dev = nullptr;
+			if (av_hwdevice_ctx_create(&hw_dev, config->device_type, nullptr, nullptr, 0) == 0)
+			{
+				LOGI("Created HW decoder: %s.\n", av_hwdevice_get_type_name(config->device_type));
+				hw.config = config;
+				hw.device = hw_dev;
+				break;
+			}
+		}
 	}
 
 	video.av_ctx = avcodec_alloc_context3(codec);
@@ -1340,36 +1374,30 @@ bool VideoDecoder::Impl::init_video_decoder()
 		return false;
 	}
 
+	video.av_ctx->opaque = this;
+
+	if (hw.device)
+	{
+		video.av_ctx->get_format = [](AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) -> AVPixelFormat
+		{
+			auto *self = static_cast<Impl *>(ctx->opaque);
+			while (*pix_fmts != AV_PIX_FMT_NONE)
+			{
+				if (*pix_fmts == self->hw.config->pix_fmt)
+					return *pix_fmts;
+				pix_fmts++;
+			}
+
+			return AV_PIX_FMT_NONE;
+		};
+		video.av_ctx->hw_device_ctx = av_buffer_ref(hw.device);
+	}
+
+	init_yuv_to_rgb();
+
 	if (avcodec_open2(video.av_ctx, codec, nullptr) < 0)
 	{
 		LOGE("Failed to open codec.\n");
-		return false;
-	}
-
-	// TODO: Is there a way to make this data driven?
-	// In practice, this isn't going to be used as a fully general purpose
-	// media player, so we only need to consider the FMVs that an application ships.
-	switch (video.av_ctx->pix_fmt)
-	{
-	case AV_PIX_FMT_YUV444P:
-	case AV_PIX_FMT_YUV420P:
-		plane_formats[0] = VK_FORMAT_R8_UNORM;
-		plane_formats[1] = VK_FORMAT_R8_UNORM;
-		plane_formats[2] = VK_FORMAT_R8_UNORM;
-		plane_subsample_log2[1] = video.av_ctx->pix_fmt == AV_PIX_FMT_YUV420P ? 1 : 0;
-		plane_subsample_log2[2] = video.av_ctx->pix_fmt == AV_PIX_FMT_YUV420P ? 1 : 0;
-		num_planes = 3;
-		break;
-
-	case AV_PIX_FMT_NV12:
-		plane_formats[0] = VK_FORMAT_R8_UNORM;
-		plane_formats[1] = VK_FORMAT_R8G8_UNORM;
-		num_planes = 2;
-		plane_subsample_log2[1] = 1;
-		break;
-
-	default:
-		LOGE("Unrecognized pixel format.\n");
 		return false;
 	}
 
@@ -1388,7 +1416,6 @@ bool VideoDecoder::Impl::init_video_decoder()
 	unsigned num_frames = std::max<unsigned>(unsigned(muglm::ceil(fps * 0.2)), 4);
 	video_queue.resize(num_frames);
 
-	init_yuv_to_rgb();
 	return true;
 }
 
@@ -1439,11 +1466,153 @@ int VideoDecoder::Impl::find_acquire_video_frame_locked() const
 	return best_index;
 }
 
+void VideoDecoder::Impl::setup_yuv_format_planes()
+{
+	// TODO: Is there a way to make this data driven from the FFmpeg API?
+	// In practice, this isn't going to be used as a fully general purpose
+	// media player, so we only need to consider the FMVs that an application ships.
+
+	unorm_rescale = 1.0f;
+
+	switch (active_upload_pix_fmt)
+	{
+	case AV_PIX_FMT_YUV444P:
+	case AV_PIX_FMT_YUV420P:
+		plane_formats[0] = VK_FORMAT_R8_UNORM;
+		plane_formats[1] = VK_FORMAT_R8_UNORM;
+		plane_formats[2] = VK_FORMAT_R8_UNORM;
+		plane_subsample_log2[0] = 0;
+		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P ? 1 : 0;
+		plane_subsample_log2[2] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P ? 1 : 0;
+		num_planes = 3;
+		break;
+
+	case AV_PIX_FMT_NV12:
+	case AV_PIX_FMT_NV21:
+		// NV21 is done by spec constant swizzle.
+		plane_formats[0] = VK_FORMAT_R8_UNORM;
+		plane_formats[1] = VK_FORMAT_R8G8_UNORM;
+		num_planes = 2;
+		plane_subsample_log2[0] = 0;
+		plane_subsample_log2[1] = 1;
+		break;
+
+	case AV_PIX_FMT_P010:
+	case AV_PIX_FMT_P410:
+		plane_formats[0] = VK_FORMAT_R16_UNORM;
+		plane_formats[1] = VK_FORMAT_R16G16_UNORM;
+		num_planes = 2;
+		plane_subsample_log2[0] = 0;
+		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_P010 ? 1 : 0;
+		// The low bits are zero, rescale to 1.0 range.
+		unorm_rescale = float(0xffff) / float(1023 << 6);
+		break;
+
+	case AV_PIX_FMT_YUV420P10:
+	case AV_PIX_FMT_YUV444P10:
+		plane_formats[0] = VK_FORMAT_R16_UNORM;
+		plane_formats[1] = VK_FORMAT_R16_UNORM;
+		plane_formats[2] = VK_FORMAT_R16_UNORM;
+		num_planes = 3;
+		plane_subsample_log2[0] = 0;
+		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P10 ? 1 : 0;
+		plane_subsample_log2[2] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P10 ? 1 : 0;
+		// The high bits are zero, rescale to 1.0 range.
+		unorm_rescale = float(0xffff) / float(1023);
+		break;
+
+	case AV_PIX_FMT_P016:
+	case AV_PIX_FMT_P416:
+		plane_formats[0] = VK_FORMAT_R16_UNORM;
+		plane_formats[1] = VK_FORMAT_R16G16_UNORM;
+		num_planes = 2;
+		plane_subsample_log2[0] = 0;
+		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_P016 ? 1 : 0;
+		plane_subsample_log2[2] = active_upload_pix_fmt == AV_PIX_FMT_P016 ? 1 : 0;
+		break;
+
+	default:
+		LOGE("Unrecognized pixel format: %d.\n", active_upload_pix_fmt);
+		num_planes = 0;
+		break;
+	}
+}
+
 void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av_frame)
 {
+	if (hw.device && av_frame->format == hw.config->pix_fmt)
+	{
+		AVFrame *sw_frame = av_frame_alloc();
+
+		// TODO: Is there a way we can somehow export this to an FD instead?
+		if (av_hwframe_transfer_data(sw_frame, av_frame, 0) < 0)
+		{
+			LOGE("Failed to transfer HW frame.\n");
+			av_frame_free(&sw_frame);
+			av_frame_free(&av_frame);
+		}
+		else
+		{
+			sw_frame->pts = av_frame->pts;
+			av_frame_free(&av_frame);
+			av_frame = sw_frame;
+		}
+	}
+
+	// Not sure if it's possible to just spuriously change the format like this,
+	// but be defensive.
+	if (!av_frame || active_upload_pix_fmt != av_frame->format)
+	{
+		active_upload_pix_fmt = AV_PIX_FMT_NONE;
+		num_planes = 0;
+		// Reset the planar images.
+		for (auto &i : video_queue)
+			for (auto &img : i.planes)
+				img.reset();
+	}
+
+	// We might not know our target decoding format until this point due to HW decode.
+	// Select an appropriate decoding setup.
+	if (active_upload_pix_fmt == AV_PIX_FMT_NONE && av_frame)
+	{
+		active_upload_pix_fmt = static_cast<AVPixelFormat>(av_frame->format);
+		setup_yuv_format_planes();
+	}
+
 	auto &img = video_queue[frame];
+
+	for (unsigned i = 0; i < num_planes; i++)
+	{
+		auto &plane = img.planes[i];
+		if (!plane)
+		{
+			auto info = Vulkan::ImageCreateInfo::immutable_2d_image(
+					video.av_ctx->width >> plane_subsample_log2[i],
+					video.av_ctx->height >> plane_subsample_log2[i],
+					plane_formats[i]);
+			info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
+			            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
+			plane = device->create_image(info);
+		}
+	}
+
 	img.pts = av_q2d(video.av_stream->time_base) * double(av_frame->pts);
 	assert(img.state == ImageState::Locked);
+
+	img.sem_to_client.reset();
+	Vulkan::Semaphore transfer_to_compute;
+	Vulkan::Semaphore compute_to_user;
+
+	if (img.sem_from_client)
+	{
+		device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncTransfer,
+		                           std::move(img.sem_from_client),
+		                           VK_PIPELINE_STAGE_2_COPY_BIT,
+		                           true);
+		img.sem_from_client = {};
+	}
 
 	auto cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
 
@@ -1458,12 +1627,10 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	for (unsigned i = 0; i < num_planes; i++)
 	{
 		auto *buf = static_cast<uint8_t *>(cmd->update_image(*img.planes[i]));
-
 		int byte_width = int(img.planes[i]->get_width());
-		if (plane_formats[i] == VK_FORMAT_R8G8_UNORM)
-			byte_width *= 2;
+		byte_width *= int(Vulkan::TextureFormatLayout::format_block_size(plane_formats[i], VK_IMAGE_ASPECT_COLOR_BIT));
 
-		av_image_copy_plane(buf, int(img.planes[i]->get_width()),
+		av_image_copy_plane(buf, byte_width,
 		                    av_frame->data[i], av_frame->linesize[i],
 		                    byte_width, int(img.planes[i]->get_height()));
 	}
@@ -1476,18 +1643,6 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 		                   VK_PIPELINE_STAGE_NONE, 0);
 	}
 
-	img.sem_to_client.reset();
-	Vulkan::Semaphore transfer_to_compute;
-	Vulkan::Semaphore compute_to_user;
-
-	if (img.sem_from_client)
-	{
-		device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncTransfer,
-		                           std::move(img.sem_from_client),
-		                           VK_PIPELINE_STAGE_2_COPY_BIT,
-		                           true);
-		img.sem_from_client = {};
-	}
 	device->submit(cmd, nullptr, 1, &transfer_to_compute);
 	device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncCompute,
 	                           std::move(transfer_to_compute),
@@ -1495,26 +1650,56 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	                           true);
 
 	cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncCompute);
-	cmd->set_unorm_storage_texture(0, 0, img.rgb_image->get_view());
-	for (unsigned i = 0; i < num_planes; i++)
+
+	if (num_planes)
 	{
-		cmd->set_texture(0, 1 + i, img.planes[i]->get_view(),
-		                 i == 0 ? Vulkan::StockSampler::NearestClamp : Vulkan::StockSampler::LinearClamp);
+		cmd->set_unorm_storage_texture(0, 0, img.rgb_image->get_view());
+		for (unsigned i = 0; i < num_planes; i++)
+		{
+			cmd->set_texture(0, 1 + i, img.planes[i]->get_view(),
+			                 i == 0 ? Vulkan::StockSampler::NearestClamp : Vulkan::StockSampler::LinearClamp);
+		}
+		for (unsigned i = num_planes; i < 3; i++)
+			cmd->set_texture(0, 1 + i, img.planes[0]->get_view(), Vulkan::StockSampler::NearestClamp);
+		cmd->set_program("builtin://shaders/util/yuv_to_rgb.comp");
+
+		cmd->set_specialization_constant_mask(3u << 1);
+		cmd->set_specialization_constant(1, num_planes);
+		cmd->set_specialization_constant(2, uint32_t(active_upload_pix_fmt == AV_PIX_FMT_NV21));
+
+		memcpy(cmd->allocate_typed_constant_data<UBO>(1, 0, 1), &ubo, sizeof(ubo));
+
+		push.unorm_rescale = unorm_rescale;
+		cmd->push_constants(&push, 0, sizeof(push));
+
+		cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+		cmd->dispatch((push.resolution.x + 7) / 8, (push.resolution.y + 7) / 8, 1);
+		cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_NONE, 0);
 	}
-	for (unsigned i = num_planes; i < 3; i++)
-		cmd->set_texture(0, 1 + i, img.planes[0]->get_view(), Vulkan::StockSampler::NearestClamp);
-	cmd->set_program("builtin://shaders/util/yuv_to_rgb.comp");
+	else
+	{
+		// Fallback, just clear to magenta to make it obvious what went wrong.
+		cmd->image_barrier(*img.rgb_image,
+		                   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+		                   VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 
-	memcpy(cmd->allocate_typed_constant_data<UBO>(1, 0, 1), &ubo, sizeof(ubo));
-	cmd->push_constants(&push, 0, sizeof(push));
+		VkClearValue color = {};
+		color.color.float32[0] = 1.0f;
+		color.color.float32[2] = 1.0f;
+		color.color.float32[3] = 1.0f;
+		cmd->clear_image(*img.rgb_image, color);
+		cmd->image_barrier(*img.rgb_image,
+		                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                   VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_NONE, 0);
+	}
 
-	cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-	cmd->dispatch((push.resolution.x + 7) / 8, (push.resolution.y + 7) / 8, 1);
-	cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-	                   VK_PIPELINE_STAGE_NONE, 0);
 	device->submit(cmd, nullptr, 1, &compute_to_user);
 
 	av_frame_free(&av_frame);
@@ -1528,9 +1713,6 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 
 bool VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 {
-	// Need to make sure upload tasks are ordered to ensure that frames
-	// are acquired in order.
-	video_upload_signal.wait_until_at_least(video_upload_count);
 	unsigned frame = acquire_decode_video_frame();
 
 	// This decode thread does not have a TLS thread index allocated in the device,
@@ -1543,6 +1725,14 @@ bool VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 	task->set_desc("ffmpeg-decode-upload");
 	task->set_task_class(TaskClass::Background);
 	task->set_fence_counter_signal(&video_upload_signal);
+
+	// Need to make sure upload tasks are ordered to ensure that frames
+	// are acquired in order.
+	if (upload_dependency)
+		thread_group->add_dependency(*task, *upload_dependency);
+	upload_dependency = thread_group->create_task();
+	thread_group->add_dependency(*upload_dependency, *task);
+
 	video_upload_count++;
 	return true;
 }
@@ -1762,6 +1952,7 @@ int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 		return false;
 
 	std::unique_lock<std::mutex> holder{lock};
+
 	int index = find_acquire_video_frame_locked();
 
 	if (index >= 0)
@@ -1776,6 +1967,7 @@ int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 
 		// Progress.
 		cond.notify_one();
+
 		return 1;
 	}
 	else
@@ -1962,6 +2154,7 @@ bool VideoDecoder::Impl::stop()
 	}
 	decode_thread.join();
 	video_upload_signal.wait_until_at_least(video_upload_count);
+	upload_dependency.reset();
 	flush_codecs();
 	return true;
 }
@@ -1977,6 +2170,10 @@ void VideoDecoder::Impl::set_paused(bool enable)
 #ifdef HAVE_GRANITE_AUDIO
 	if (stream)
 	{
+		// Reset PTS smoothing.
+		smooth_ns = 0;
+		smooth_pts = 0.0;
+
 		bool result;
 		if (enable)
 			result = mixer->pause_stream(stream_id);
@@ -1985,10 +2182,6 @@ void VideoDecoder::Impl::set_paused(bool enable)
 			// When we uncork, we need to ensure that estimated PTS
 			// picks off where we expect.
 			stream->mark_uncorked_audio_pts();
-
-			// Reset PTS smoothing.
-			smooth_ns = 0;
-			smooth_pts = 0.0;
 
 			// If the thread went to deep sleep, we need to make sure it knows
 			// about the stream state being playing.
@@ -2044,6 +2237,8 @@ VideoDecoder::Impl::~Impl()
 		avformat_close_input(&av_format_ctx);
 	if (av_pkt)
 		av_packet_free(&av_pkt);
+	if (hw.device)
+		av_buffer_unref(&hw.device);
 }
 
 VideoDecoder::VideoDecoder()

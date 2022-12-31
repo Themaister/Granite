@@ -52,6 +52,15 @@ extern "C"
 #include "dsp/dsp.hpp"
 #endif
 
+#ifndef AV_CHANNEL_LAYOUT_STEREO
+// Legacy API.
+#define AVChannelLayout uint64_t
+#define ch_layout channel_layout
+#define AV_CHANNEL_LAYOUT_STEREO AV_CH_LAYOUT_STEREO
+#define AV_CHANNEL_LAYOUT_MONO AV_CH_LAYOUT_MONO
+#define av_channel_layout_compare(pa, pb) ((*pa) != (*pb))
+#endif
+
 namespace Granite
 {
 static constexpr unsigned NumEncodeFrames = 4;
@@ -81,6 +90,7 @@ struct VideoEncoder::Impl
 
 	void drain_codec();
 	AVFrame *alloc_video_frame(AVPixelFormat pix_fmt, unsigned width, unsigned height);
+
 	AVFrame *alloc_audio_frame(AVSampleFormat samp_format, AVChannelLayout channel_layout,
 	                           unsigned sample_rate, unsigned sample_count);
 
@@ -1307,7 +1317,11 @@ void VideoDecoder::Impl::begin_audio_stream()
 
 	stream = new AVFrameRingStream(
 			float(audio.av_ctx->sample_rate),
+#ifdef ch_layout
+			audio.av_ctx->channels,
+#else
 			audio.av_ctx->ch_layout.nb_channels,
+#endif
 			av_q2d(audio.av_stream->time_base));
 
 	stream->add_reference();
@@ -1498,7 +1512,9 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		break;
 
 	case AV_PIX_FMT_P010:
+#ifdef AV_PIX_FMT_P410
 	case AV_PIX_FMT_P410:
+#endif
 		plane_formats[0] = VK_FORMAT_R16_UNORM;
 		plane_formats[1] = VK_FORMAT_R16G16_UNORM;
 		num_planes = 2;
@@ -1522,7 +1538,9 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		break;
 
 	case AV_PIX_FMT_P016:
+#ifdef AV_PIX_FMT_P416
 	case AV_PIX_FMT_P416:
+#endif
 		plane_formats[0] = VK_FORMAT_R16_UNORM;
 		plane_formats[1] = VK_FORMAT_R16G16_UNORM;
 		num_planes = 2;

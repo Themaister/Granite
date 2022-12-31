@@ -641,6 +641,7 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	float sample_rate;
 	unsigned num_channels;
 	double timebase;
+	double inv_sample_rate_ns;
 
 	bool setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames) override;
 	size_t accumulate_samples(float * const *channels, const float *gain, size_t num_frames) noexcept override;
@@ -678,7 +679,7 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 };
 
 AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_, double timebase_)
-	: sample_rate(sample_rate_), num_channels(num_channels_), timebase(timebase_)
+	: sample_rate(sample_rate_), num_channels(num_channels_), timebase(timebase_), inv_sample_rate_ns(1e9 / sample_rate)
 {
 	for (auto &f : frames)
 		f = av_frame_alloc();
@@ -758,6 +759,9 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 				auto &p = progress[pts_buffer_index % Frames];
 				p.pts = new_pts;
 				p.sampled_ns = Util::get_current_time_nsecs();
+				// If we're deep into mixing, we need to compensate for the fact that this PTS will be delayed
+				// a little when played back.
+				p.sampled_ns += int64_t(double(write_offset) * inv_sample_rate_ns);
 				pts_index.store(pts_buffer_index + 1, std::memory_order_release);
 			}
 

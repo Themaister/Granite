@@ -910,6 +910,7 @@ struct VideoDecoder::Impl
 		Vulkan::Semaphore sem_to_client;
 		Vulkan::Semaphore sem_from_client;
 		uint64_t idle_order = 0;
+		uint64_t lock_order = 0;
 
 		double pts = 0.0;
 		ImageState state = ImageState::Idle;
@@ -951,7 +952,7 @@ struct VideoDecoder::Impl
 	int find_acquire_video_frame_locked() const;
 
 	unsigned acquire_decode_video_frame();
-	bool process_video_frame(AVFrame *frame);
+	void process_video_frame(AVFrame *frame);
 	void process_video_frame_in_task(unsigned frame, AVFrame *av_frame);
 
 	void flush_codecs();
@@ -981,6 +982,7 @@ struct VideoDecoder::Impl
 	bool acquire_blocking = false;
 	TaskSignal video_upload_signal;
 	uint64_t video_upload_count = 0;
+	uint64_t lock_timestamp = 0;
 	ThreadGroup *thread_group = nullptr;
 	TaskGroupHandle upload_dependency;
 	void thread_main();
@@ -1031,8 +1033,9 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 {
 	int best_index;
 
+	do
 	{
-		std::lock_guard<std::mutex> holder{lock};
+		std::unique_lock<std::mutex> holder{lock};
 		best_index = find_idle_decode_video_frame_locked();
 
 		// We have no choice but to trample on a frame we already decoded.
@@ -1052,15 +1055,23 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 			}
 		}
 
+		// We have completely stalled.
 		if (best_index < 0)
 		{
-			// This shouldn't happen. Applications cannot acquire a ton of images like this.
-			LOGE("Cannot find vacant image, illegal situation. Application has acquired too many images.\n");
-			std::terminate();
-		}
+			uint64_t wait_count = UINT64_MAX;
+			for (size_t i = 0, n = video_queue.size(); i < n; i++)
+				if (video_queue[i].state == ImageState::Locked)
+					wait_count = std::min<uint64_t>(wait_count, video_queue[i].lock_order);
 
-		video_queue[best_index].state = ImageState::Locked;
-	}
+			// Completing the task needs to take lock.
+			holder.unlock();
+
+			// Could happen if application is acquiring images beyond all reason.
+			VK_ASSERT(wait_count != UINT64_MAX);
+			if (wait_count != UINT64_MAX)
+				video_upload_signal.wait_until_at_least(wait_count);
+		}
+	} while (best_index < 0);
 
 	auto &img = video_queue[best_index];
 
@@ -1729,9 +1740,13 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	cond.notify_all();
 };
 
-bool VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
+void VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 {
 	unsigned frame = acquire_decode_video_frame();
+
+	video_upload_count++;
+	video_queue[frame].state = ImageState::Locked;
+	video_queue[frame].lock_order = video_upload_count;
 
 	// This decode thread does not have a TLS thread index allocated in the device,
 	// only main threads registered as such as well as task group threads satisfy this.
@@ -1750,9 +1765,6 @@ bool VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 		thread_group->add_dependency(*task, *upload_dependency);
 	upload_dependency = thread_group->create_task();
 	thread_group->add_dependency(*upload_dependency, *task);
-
-	video_upload_count++;
-	return true;
 }
 
 bool VideoDecoder::Impl::decode_audio_packet(AVPacket *pkt)
@@ -2119,6 +2131,7 @@ void VideoDecoder::Impl::flush_codecs()
 		img.sem_to_client.reset();
 		img.sem_from_client.reset();
 		img.idle_order = 0;
+		img.lock_order = 0;
 		img.state = ImageState::Idle;
 		img.pts = 0.0;
 	}

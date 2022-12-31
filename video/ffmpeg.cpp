@@ -914,6 +914,7 @@ struct VideoDecoder::Impl
 	VkFormat plane_formats[3] = {};
 	unsigned plane_subsample_log2[3] = {};
 	unsigned num_planes = 0;
+	float unorm_rescale = 1.0f;
 
 	bool init(Audio::Mixer *mixer, const char *path);
 	bool init_video_decoder();
@@ -950,6 +951,7 @@ struct VideoDecoder::Impl
 		uvec2 resolution;
 		vec2 inv_resolution;
 		vec2 chroma_siting;
+		float unorm_rescale;
 	};
 	Push push = {};
 
@@ -970,6 +972,7 @@ struct VideoDecoder::Impl
 	TaskSignal video_upload_signal;
 	uint64_t video_upload_count = 0;
 	ThreadGroup *thread_group = nullptr;
+	TaskGroupHandle upload_dependency;
 	void thread_main();
 	bool iterate();
 	bool should_iterate_locked();
@@ -1448,9 +1451,12 @@ int VideoDecoder::Impl::find_acquire_video_frame_locked() const
 
 void VideoDecoder::Impl::setup_yuv_format_planes()
 {
-	// TODO: Is there a way to make this data driven?
+	// TODO: Is there a way to make this data driven from the FFmpeg API?
 	// In practice, this isn't going to be used as a fully general purpose
 	// media player, so we only need to consider the FMVs that an application ships.
+
+	unorm_rescale = 1.0f;
+
 	switch (active_upload_pix_fmt)
 	{
 	case AV_PIX_FMT_YUV444P:
@@ -1458,8 +1464,9 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		plane_formats[0] = VK_FORMAT_R8_UNORM;
 		plane_formats[1] = VK_FORMAT_R8_UNORM;
 		plane_formats[2] = VK_FORMAT_R8_UNORM;
-		plane_subsample_log2[1] = video.av_ctx->pix_fmt == AV_PIX_FMT_YUV420P ? 1 : 0;
-		plane_subsample_log2[2] = video.av_ctx->pix_fmt == AV_PIX_FMT_YUV420P ? 1 : 0;
+		plane_subsample_log2[0] = 0;
+		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P ? 1 : 0;
+		plane_subsample_log2[2] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P ? 1 : 0;
 		num_planes = 3;
 		break;
 
@@ -1469,7 +1476,19 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		plane_formats[0] = VK_FORMAT_R8_UNORM;
 		plane_formats[1] = VK_FORMAT_R8G8_UNORM;
 		num_planes = 2;
+		plane_subsample_log2[0] = 0;
 		plane_subsample_log2[1] = 1;
+		break;
+
+	case AV_PIX_FMT_P010LE:
+	case AV_PIX_FMT_P410LE:
+		plane_formats[0] = VK_FORMAT_R16_UNORM;
+		plane_formats[1] = VK_FORMAT_R16G16_UNORM;
+		num_planes = 2;
+		plane_subsample_log2[0] = 0;
+		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_P010LE ? 1 : 0;
+		// The low bits are zero, rescale to 1.0 range.
+		unorm_rescale = float(0xffff) / float(1023 << 6);
 		break;
 
 	default:
@@ -1568,10 +1587,8 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	for (unsigned i = 0; i < num_planes; i++)
 	{
 		auto *buf = static_cast<uint8_t *>(cmd->update_image(*img.planes[i]));
-
 		int byte_width = int(img.planes[i]->get_width());
-		if (plane_formats[i] == VK_FORMAT_R8G8_UNORM)
-			byte_width *= 2;
+		byte_width *= int(Vulkan::TextureFormatLayout::format_block_size(plane_formats[i], VK_IMAGE_ASPECT_COLOR_BIT));
 
 		av_image_copy_plane(buf, byte_width,
 		                    av_frame->data[i], av_frame->linesize[i],
@@ -1611,6 +1628,8 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 		cmd->set_specialization_constant(2, uint32_t(active_upload_pix_fmt == AV_PIX_FMT_NV21));
 
 		memcpy(cmd->allocate_typed_constant_data<UBO>(1, 0, 1), &ubo, sizeof(ubo));
+
+		push.unorm_rescale = unorm_rescale;
 		cmd->push_constants(&push, 0, sizeof(push));
 
 		cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
@@ -1654,9 +1673,6 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 
 bool VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 {
-	// Need to make sure upload tasks are ordered to ensure that frames
-	// are acquired in order.
-	video_upload_signal.wait_until_at_least(video_upload_count);
 	unsigned frame = acquire_decode_video_frame();
 
 	// This decode thread does not have a TLS thread index allocated in the device,
@@ -1669,6 +1685,14 @@ bool VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 	task->set_desc("ffmpeg-decode-upload");
 	task->set_task_class(TaskClass::Background);
 	task->set_fence_counter_signal(&video_upload_signal);
+
+	// Need to make sure upload tasks are ordered to ensure that frames
+	// are acquired in order.
+	if (upload_dependency)
+		thread_group->add_dependency(*task, *upload_dependency);
+	upload_dependency = thread_group->create_task();
+	thread_group->add_dependency(*upload_dependency, *task);
+
 	video_upload_count++;
 	return true;
 }
@@ -2088,6 +2112,7 @@ bool VideoDecoder::Impl::stop()
 	}
 	decode_thread.join();
 	video_upload_signal.wait_until_at_least(video_upload_count);
+	upload_dependency.reset();
 	flush_codecs();
 	return true;
 }
@@ -2103,6 +2128,10 @@ void VideoDecoder::Impl::set_paused(bool enable)
 #ifdef HAVE_GRANITE_AUDIO
 	if (stream)
 	{
+		// Reset PTS smoothing.
+		smooth_ns = 0;
+		smooth_pts = 0.0;
+
 		bool result;
 		if (enable)
 			result = mixer->pause_stream(stream_id);
@@ -2111,10 +2140,6 @@ void VideoDecoder::Impl::set_paused(bool enable)
 			// When we uncork, we need to ensure that estimated PTS
 			// picks off where we expect.
 			stream->mark_uncorked_audio_pts();
-
-			// Reset PTS smoothing.
-			smooth_ns = 0;
-			smooth_pts = 0.0;
 
 			// If the thread went to deep sleep, we need to make sure it knows
 			// about the stream state being playing.

@@ -1118,12 +1118,28 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	// This is ok, since we have to do EOTF and primary conversion manually either way,
 	// and those are not supported.
 
-	// Technically, this changes for 10-bit and 12-bit since 2^(n-1) must be treated
-	// as midpoint, not 128/255, but we don't really care about this for now.
-	const vec3 yuv_bias = vec3((full_range ? 0.0f : -16.0f) / 255.0f, -128.0f / 255.0f, -128.0f / 255.0f);
-	const vec3 yuv_scale = full_range ?
-	                       vec3(1.0f) :
-	                       vec3(255.0f / 219.0f, 255.0f / 224.0f, 255.0f / 224.0f);
+	int luma_offset = full_range ? 0 : 16;
+	int chroma_narrow_range = 224;
+	int luma_narrow_range = 219;
+	int bit_depth = av_pix_fmt_desc_get(video.av_ctx->pix_fmt)->comp[0].depth;
+	if (bit_depth > 8)
+	{
+		luma_offset <<= (bit_depth - 8);
+		luma_narrow_range <<= (bit_depth - 8);
+		chroma_narrow_range <<= (bit_depth - 8);
+	}
+
+	float midpoint = float(1 << (bit_depth - 1));
+	float unorm_range = float((1 << bit_depth) - 1);
+	float unorm_divider = 1.0f / unorm_range;
+	float chroma_shift = -midpoint * unorm_divider;
+
+	const float luma_scale = float(unorm_range) / float(luma_narrow_range);
+	const float chroma_scale = float(unorm_range) / float(chroma_narrow_range);
+
+	const vec3 yuv_bias = vec3(float(-luma_offset) * unorm_divider, chroma_shift, chroma_shift);
+	const vec3 yuv_scale = full_range ? vec3(1.0f) :
+	                       vec3(luma_scale, chroma_scale, chroma_scale);
 
 	AVColorSpace col_space = video.av_ctx->colorspace;
 	if (col_space == AVCOL_SPC_UNSPECIFIED)
@@ -1376,6 +1392,8 @@ bool VideoDecoder::Impl::init_video_decoder()
 		video.av_ctx->hw_device_ctx = av_buffer_ref(hw.device);
 	}
 
+	init_yuv_to_rgb();
+
 	if (avcodec_open2(video.av_ctx, codec, nullptr) < 0)
 	{
 		LOGE("Failed to open codec.\n");
@@ -1426,8 +1444,6 @@ bool VideoDecoder::Impl::init(Audio::Mixer *mixer_, const char *path)
 		LOGE("Failed to allocate packet.\n");
 		return false;
 	}
-
-	init_yuv_to_rgb();
 
 	return true;
 }
@@ -1480,15 +1496,28 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		plane_subsample_log2[1] = 1;
 		break;
 
-	case AV_PIX_FMT_P010LE:
-	case AV_PIX_FMT_P410LE:
+	case AV_PIX_FMT_P010:
+	case AV_PIX_FMT_P410:
 		plane_formats[0] = VK_FORMAT_R16_UNORM;
 		plane_formats[1] = VK_FORMAT_R16G16_UNORM;
 		num_planes = 2;
 		plane_subsample_log2[0] = 0;
-		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_P010LE ? 1 : 0;
+		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_P010 ? 1 : 0;
 		// The low bits are zero, rescale to 1.0 range.
 		unorm_rescale = float(0xffff) / float(1023 << 6);
+		break;
+
+	case AV_PIX_FMT_YUV420P10:
+	case AV_PIX_FMT_YUV444P10:
+		plane_formats[0] = VK_FORMAT_R16_UNORM;
+		plane_formats[1] = VK_FORMAT_R16_UNORM;
+		plane_formats[2] = VK_FORMAT_R16_UNORM;
+		num_planes = 3;
+		plane_subsample_log2[0] = 0;
+		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P10 ? 1 : 0;
+		plane_subsample_log2[2] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P10 ? 1 : 0;
+		// The high bits are zero, rescale to 1.0 range.
+		unorm_rescale = float(0xffff) / float(1023);
 		break;
 
 	default:
@@ -1912,6 +1941,7 @@ int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 		return false;
 
 	std::unique_lock<std::mutex> holder{lock};
+
 	int index = find_acquire_video_frame_locked();
 
 	if (index >= 0)
@@ -1926,6 +1956,7 @@ int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 
 		// Progress.
 		cond.notify_one();
+
 		return 1;
 	}
 	else

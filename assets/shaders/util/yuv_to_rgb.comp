@@ -20,8 +20,9 @@ layout(set = 1, binding = 0) uniform UBO
     mediump mat4 primary_conversion;
 };
 
-const int EOTF_BT2087 = 0;
-layout(constant_id = 0) const int EOTF = 0;
+const int PASSTHROUGH = 0;
+const int EOTF_BT2087_OETF_sRGB = 1;
+layout(constant_id = 0) const int TRANSFER = 0;
 layout(constant_id = 1) const int NUM_PLANES = 3;
 layout(constant_id = 2) const bool NV21 = false;
 
@@ -81,15 +82,18 @@ void main()
 
         // Apply EOTF.
         rgb = clamp(rgb, vec3(0.0), vec3(1.0));
-        if (EOTF == EOTF_BT2087)
+
+        if (TRANSFER == EOTF_BT2087_OETF_sRGB)
+        {
             rgb = pow(rgb, vec3(2.4));
 
-        // Convert primaries to BT.709 (sRGB).
-        rgb = (primary_conversion * vec4(rgb, 0.0)).rgb;
-        rgb = clamp(rgb, vec3(0.0), vec3(1.0));
+            // Convert primaries to BT.709 (sRGB).
+            rgb = (primary_conversion * vec4(rgb, 0.0)).rgb;
+            rgb = clamp(rgb, vec3(0.0), vec3(1.0));
 
-        // Encode to sRGB OETF.
-        rgb = srgb_oetf(rgb);
+            // Encode to sRGB OETF.
+            rgb = srgb_oetf(rgb);
+        }
 
         // Dither the output to avoid banding in the OETF(EOTF(x)) conversion.
         rgb += dither[4u * (gl_LocalInvocationID.y & 3u) + (gl_LocalInvocationID.x & 3u)];

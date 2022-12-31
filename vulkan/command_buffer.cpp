@@ -1031,6 +1031,9 @@ static void log_compile_time(const char *tag, Hash hash,
 Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile,
                                                CompileMode mode)
 {
+	// This can be called from outside a CommandBuffer content, so need to hold lock.
+	Util::RWSpinLockReadHolder holder{device->lock.read_only_cache};
+
 	// If we don't have pipeline creation cache control feature,
 	// we must assume compilation can be synchronous.
 	if (mode == CompileMode::FailOnCompileRequired &&
@@ -1160,6 +1163,9 @@ void CommandBuffer::extract_pipeline_state(DeferredPipelineCompile &compile) con
 Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile,
                                                 CompileMode mode)
 {
+	// This can be called from outside a CommandBuffer content, so need to hold lock.
+	Util::RWSpinLockReadHolder holder{device->lock.read_only_cache};
+
 	// If we don't have pipeline creation cache control feature,
 	// we must assume compilation can be synchronous.
 	if (mode == CompileMode::FailOnCompileRequired &&

@@ -31,7 +31,7 @@ extern "C"
 #include <libswscale/swscale.h>
 }
 
-#include "ffmpeg.hpp"
+#include "ffmpeg_encode.hpp"
 #include "logging.hpp"
 #include "thread_latch.hpp"
 #include "math.hpp"

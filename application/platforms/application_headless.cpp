@@ -40,7 +40,7 @@
 #include "path_utils.hpp"
 
 #ifdef HAVE_GRANITE_FFMPEG
-#include "ffmpeg.hpp"
+#include "ffmpeg_encode.hpp"
 #endif
 
 #ifdef HAVE_GRANITE_AUDIO

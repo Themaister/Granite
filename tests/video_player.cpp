@@ -71,7 +71,7 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 
 			if (seek_offset != 0.0)
 			{
-				auto ts = decoder.get_estimated_audio_playback_timestamp();
+				auto ts = decoder.get_estimated_audio_playback_timestamp_raw();
 				if (ts >= 0.0)
 				{
 					if (decoder.seek(ts + seek_offset))
@@ -128,7 +128,7 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 		auto &device = get_wsi().get_device();
 
 		// Based on the audio PTS, we want to display a video frame that is slightly larger.
-		double target_pts = decoder.get_estimated_audio_playback_timestamp();
+		double target_pts = decoder.get_estimated_audio_playback_timestamp(elapsed_time);
 		if (target_pts < 0.0)
 			target_pts = elapsed_time;
 

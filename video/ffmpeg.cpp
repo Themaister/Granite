@@ -939,7 +939,8 @@ struct VideoDecoder::Impl
 	void set_paused(bool enable);
 	bool get_paused() const;
 
-	double get_estimated_audio_playback_timestamp();
+	double get_estimated_audio_playback_timestamp(double elapsed_time);
+	double get_estimated_audio_playback_timestamp_raw();
 
 	bool acquire_video_frame(VideoFrame &frame);
 	int try_acquire_video_frame(VideoFrame &frame);
@@ -1009,7 +1010,7 @@ struct VideoDecoder::Impl
 
 	bool is_paused = false;
 
-	int64_t smooth_ns = 0;
+	double smooth_elapsed = 0.0;
 	double smooth_pts = 0.0;
 };
 
@@ -1344,7 +1345,7 @@ void VideoDecoder::Impl::begin_audio_stream()
 	}
 
 	// Reset PTS smoothing.
-	smooth_ns = 0;
+	smooth_elapsed = 0.0;
 	smooth_pts = 0.0;
 #endif
 }
@@ -2057,7 +2058,7 @@ bool VideoDecoder::Impl::begin_device_context(Vulkan::Device *device_)
 	return true;
 }
 
-double VideoDecoder::Impl::get_estimated_audio_playback_timestamp()
+double VideoDecoder::Impl::get_estimated_audio_playback_timestamp_raw()
 {
 #ifdef HAVE_GRANITE_AUDIO
 	if (stream)
@@ -2065,20 +2066,39 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp()
 		uint32_t pts_buffer_index = (stream->pts_index.load(std::memory_order_acquire) - 1) %
 				AVFrameRingStream::Frames;
 
-		auto current_ns = Util::get_current_time_nsecs();
+		double pts = stream->progress[pts_buffer_index].pts;
+		if (pts < 0.0)
+			pts = 0.0;
+
+		return pts;
+	}
+	else
+#endif
+	{
+		return -1.0;
+	}
+}
+
+double VideoDecoder::Impl::get_estimated_audio_playback_timestamp(double elapsed_time)
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (stream)
+	{
+		uint32_t pts_buffer_index = (stream->pts_index.load(std::memory_order_acquire) - 1) %
+				AVFrameRingStream::Frames;
 
 		double pts = stream->progress[pts_buffer_index].pts;
 		if (pts < 0.0)
 		{
 			pts = 0.0;
-			smooth_ns = 0;
+			smooth_elapsed = 0.0;
 			smooth_pts = 0.0;
 		}
 		else if (!is_paused)
 		{
 			// Crude estimate based on last reported PTS, offset by time since reported.
 			int64_t sampled_ns = stream->progress[pts_buffer_index].sampled_ns;
-			int64_t d = std::max<int64_t>(current_ns, sampled_ns) - sampled_ns;
+			int64_t d = std::max<int64_t>(Util::get_current_time_nsecs(), sampled_ns) - sampled_ns;
 			pts += 1e-9 * double(d);
 		}
 
@@ -2086,23 +2106,23 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp()
 		// The reported PTS should be tied to the host timer,
 		// but we need to gradually adjust the timer based on the reported audio PTS to be accurate.
 
-		if (smooth_ns == 0)
+		if (smooth_elapsed == 0.0)
 		{
 			// Latch the PTS.
-			smooth_ns = current_ns;
+			smooth_elapsed = elapsed_time;
 			smooth_pts = pts;
 		}
-		else if (current_ns > smooth_ns)
+		else
 		{
 			// This is the value we should get in principle if everything is steady.
-			smooth_pts += 1e-9 * double(current_ns - smooth_ns);
-			smooth_ns = current_ns;
+			smooth_pts += elapsed_time - smooth_elapsed;
+			smooth_elapsed = elapsed_time;
 
 			if (muglm::abs(smooth_pts - pts) > 0.25)
 			{
 				// Massive spike somewhere, cannot smooth.
 				// Reset the PTS.
-				smooth_ns = current_ns;
+				smooth_elapsed = elapsed_time;
 				smooth_pts = pts;
 			}
 			else
@@ -2202,7 +2222,7 @@ void VideoDecoder::Impl::set_paused(bool enable)
 	if (stream)
 	{
 		// Reset PTS smoothing.
-		smooth_ns = 0;
+		smooth_elapsed = 0.0;
 		smooth_pts = 0.0;
 
 		bool result;
@@ -2321,9 +2341,14 @@ bool VideoDecoder::get_paused() const
 	return impl->get_paused();
 }
 
-double VideoDecoder::get_estimated_audio_playback_timestamp()
+double VideoDecoder::get_estimated_audio_playback_timestamp(double elapsed_time)
 {
-	return impl->get_estimated_audio_playback_timestamp();
+	return impl->get_estimated_audio_playback_timestamp(elapsed_time);
+}
+
+double VideoDecoder::get_estimated_audio_playback_timestamp_raw()
+{
+	return impl->get_estimated_audio_playback_timestamp_raw();
 }
 
 bool VideoDecoder::acquire_video_frame(VideoFrame &frame)

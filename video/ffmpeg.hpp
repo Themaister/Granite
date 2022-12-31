@@ -105,7 +105,9 @@ public:
 	// A worker thread will ensure that the audio mixer can render audio on-demand.
 	// If audio stream does not exist, returns negative number.
 	// Application should fall back to other means of timing in this scenario.
-	double get_estimated_audio_playback_timestamp();
+	double get_estimated_audio_playback_timestamp(double elapsed_time);
+	// Only based on audio PTS.
+	double get_estimated_audio_playback_timestamp_raw();
 
 	// Client is responsible for displaying the frame in due time.
 	// A video frame can be released when the returned PTS is out of date.

@@ -21,14 +21,6 @@
  */
 
 #define __STDC_LIMIT_MACROS 1
-extern "C"
-{
-#include <libavformat/avformat.h>
-#include <libavcodec/avcodec.h>
-#include <libavutil/avutil.h>
-#include <libavutil/channel_layout.h>
-#include <libavutil/imgutils.h>
-}
 
 #include "ffmpeg_decode.hpp"
 #include "logging.hpp"
@@ -49,6 +41,18 @@ extern "C"
 #include "dsp/dsp.hpp"
 #endif
 
+extern "C"
+{
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/avutil.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/imgutils.h>
+#ifdef HAVE_FFMPEG_VULKAN
+#include <libavutil/hwcontext_vulkan.h>
+#endif
+}
+
 #ifndef AV_CHANNEL_LAYOUT_STEREO
 // Legacy API.
 #define AVChannelLayout uint64_t
@@ -64,6 +68,7 @@ struct CodecStream
 {
 	AVStream *av_stream = nullptr;
 	AVCodecContext *av_ctx = nullptr;
+	const AVCodec *av_codec = nullptr;
 };
 
 static void free_av_objects(CodecStream &stream)
@@ -362,7 +367,8 @@ struct VideoDecoder::Impl
 	bool init(Audio::Mixer *mixer, const char *path, const DecodeOptions &opts);
 	unsigned get_width() const;
 	unsigned get_height() const;
-	bool init_video_decoder();
+	bool init_video_decoder_pre_device();
+	bool init_video_decoder_post_device();
 	bool init_audio_decoder();
 
 	bool begin_device_context(Vulkan::Device *device);
@@ -794,67 +800,97 @@ void VideoDecoder::Impl::begin_audio_stream()
 #endif
 }
 
-bool VideoDecoder::Impl::init_video_decoder()
+bool VideoDecoder::Impl::init_video_decoder_post_device()
 {
-	int ret;
-	if ((ret = av_find_best_stream(av_format_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0)) < 0)
-	{
-		LOGE("Failed to find best stream.\n");
-		return false;
-	}
-
-	video.av_stream = av_format_ctx->streams[ret];
-
-	const AVCodec *codec = avcodec_find_decoder(video.av_stream->codecpar->codec_id);
-	if (!codec)
-	{
-		LOGE("Failed to find codec.\n");
-		return false;
-	}
-
+#ifdef HAVE_FFMPEG_VULKAN
 	bool use_vulkan = false;
 	const char *env = getenv("GRANITE_FFMPEG_VULKAN");
 	if (env && strtol(env, nullptr, 0) != 0)
 		use_vulkan = true;
+#endif
 
 	for (int i = 0; ; i++)
 	{
-		const AVCodecHWConfig *config = avcodec_get_hw_config(codec, i);
+		const AVCodecHWConfig *config = avcodec_get_hw_config(video.av_codec, i);
 		if (!config)
 			break;
 
+#ifdef HAVE_FFMPEG_VULKAN
 		if (config->device_type == AV_HWDEVICE_TYPE_VULKAN && !use_vulkan)
 			continue;
 		if (config->device_type != AV_HWDEVICE_TYPE_VULKAN && use_vulkan)
 			continue;
+#endif
 
 		if ((config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0)
 		{
-			AVBufferRef *hw_dev = nullptr;
-			if (av_hwdevice_ctx_create(&hw_dev, config->device_type, nullptr, nullptr, 0) == 0)
+#ifdef HAVE_FFMPEG_VULKAN
+			if (config->device_type == AV_HWDEVICE_TYPE_VULKAN)
 			{
-				LOGI("Created HW decoder: %s.\n", av_hwdevice_get_type_name(config->device_type));
-				hw.config = config;
-				hw.device = hw_dev;
-				break;
+				AVBufferRef *hw_dev = av_hwdevice_ctx_alloc(config->device_type);
+				auto *hwctx = reinterpret_cast<AVHWDeviceContext *>(hw_dev->data);
+				auto *vk = static_cast<AVVulkanDeviceContext *>(hwctx->hwctx);
+
+				hwctx->user_opaque = this;
+
+				vk->get_proc_addr = Vulkan::Context::get_instance_proc_addr();
+				vk->inst = device->get_instance();
+				vk->act_dev = device->get_device();
+				vk->phys_dev = device->get_physical_device();
+				vk->device_features = *device->get_device_features().pdf2;
+				vk->enabled_inst_extensions = device->get_device_features().instance_extensions;
+				vk->nb_enabled_inst_extensions = int(device->get_device_features().num_instance_extensions);
+				vk->enabled_dev_extensions = device->get_device_features().device_extensions;
+				vk->nb_enabled_dev_extensions = int(device->get_device_features().num_device_extensions);
+
+				auto &q = device->get_queue_info();
+
+				vk->queue_family_index = int(q.family_indices[Vulkan::QUEUE_INDEX_GRAPHICS]);
+				vk->queue_family_comp_index = int(q.family_indices[Vulkan::QUEUE_INDEX_COMPUTE]);
+				vk->queue_family_tx_index = int(q.family_indices[Vulkan::QUEUE_INDEX_TRANSFER]);
+				vk->queue_family_decode_index = int(q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_DECODE]);
+
+				vk->nb_graphics_queues = int(q.counts[Vulkan::QUEUE_INDEX_GRAPHICS]);
+				vk->nb_comp_queues = int(q.counts[Vulkan::QUEUE_INDEX_COMPUTE]);
+				vk->nb_tx_queues = int(q.counts[Vulkan::QUEUE_INDEX_TRANSFER]);
+				vk->nb_decode_queues = int(q.counts[Vulkan::QUEUE_INDEX_VIDEO_DECODE]);
+
+				vk->queue_family_encode_index = -1;
+				vk->nb_encode_queues = 0;
+
+				vk->lock_queue = [](AVHWDeviceContext *ctx, int, int) {
+					auto *self = static_cast<Impl *>(ctx->user_opaque);
+					self->device->external_queue_lock();
+				};
+
+				vk->unlock_queue = [](AVHWDeviceContext *ctx, int, int) {
+					auto *self = static_cast<Impl *>(ctx->user_opaque);
+					self->device->external_queue_unlock();
+				};
+
+				if (av_hwdevice_ctx_init(hw_dev) >= 0)
+				{
+					LOGI("Created custom Vulkan HW decoder.\n");
+					hw.config = config;
+					hw.device = hw_dev;
+				}
+				else
+					av_buffer_unref(&hw_dev);
+			}
+			else
+#endif
+			{
+				AVBufferRef *hw_dev = nullptr;
+				if (av_hwdevice_ctx_create(&hw_dev, config->device_type, nullptr, nullptr, 0) == 0)
+				{
+					LOGI("Created HW decoder: %s.\n", av_hwdevice_get_type_name(config->device_type));
+					hw.config = config;
+					hw.device = hw_dev;
+					break;
+				}
 			}
 		}
 	}
-
-	video.av_ctx = avcodec_alloc_context3(codec);
-	if (!video.av_ctx)
-	{
-		LOGE("Failed to allocate codec context.\n");
-		return false;
-	}
-
-	if (avcodec_parameters_to_context(video.av_ctx, video.av_stream->codecpar) < 0)
-	{
-		LOGE("Failed to copy codec parameters.\n");
-		return false;
-	}
-
-	video.av_ctx->opaque = this;
 
 	if (hw.device)
 	{
@@ -875,7 +911,7 @@ bool VideoDecoder::Impl::init_video_decoder()
 
 	init_yuv_to_rgb();
 
-	if (avcodec_open2(video.av_ctx, codec, nullptr) < 0)
+	if (avcodec_open2(video.av_ctx, video.av_codec, nullptr) < 0)
 	{
 		LOGE("Failed to open codec.\n");
 		return false;
@@ -896,6 +932,42 @@ bool VideoDecoder::Impl::init_video_decoder()
 	unsigned num_frames = std::max<unsigned>(unsigned(muglm::ceil(fps * 0.2)), 4);
 	video_queue.resize(num_frames);
 
+	return true;
+}
+
+bool VideoDecoder::Impl::init_video_decoder_pre_device()
+{
+	int ret;
+	if ((ret = av_find_best_stream(av_format_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0)) < 0)
+	{
+		LOGE("Failed to find best stream.\n");
+		return false;
+	}
+
+	video.av_stream = av_format_ctx->streams[ret];
+
+	const AVCodec *codec = avcodec_find_decoder(video.av_stream->codecpar->codec_id);
+	if (!codec)
+	{
+		LOGE("Failed to find codec.\n");
+		return false;
+	}
+
+	video.av_codec = codec;
+	video.av_ctx = avcodec_alloc_context3(codec);
+	if (!video.av_ctx)
+	{
+		LOGE("Failed to allocate codec context.\n");
+		return false;
+	}
+
+	if (avcodec_parameters_to_context(video.av_ctx, video.av_stream->codecpar) < 0)
+	{
+		LOGE("Failed to copy codec parameters.\n");
+		return false;
+	}
+
+	video.av_ctx->opaque = this;
 	return true;
 }
 
@@ -926,7 +998,7 @@ bool VideoDecoder::Impl::init(Audio::Mixer *mixer_, const char *path, const Deco
 		return false;
 	}
 
-	if (!init_video_decoder())
+	if (!init_video_decoder_pre_device())
 		return false;
 	if (mixer && !init_audio_decoder())
 		return false;
@@ -1536,6 +1608,11 @@ bool VideoDecoder::Impl::begin_device_context(Vulkan::Device *device_)
 {
 	device = device_;
 	thread_group = device->get_system_handles().thread_group;
+
+	// Potentially need device here if we're creating a Vulkan HW context.
+	if (!init_video_decoder_post_device())
+		return false;
+
 	return true;
 }
 
@@ -1656,6 +1733,17 @@ void VideoDecoder::Impl::flush_codecs()
 void VideoDecoder::Impl::end_device_context()
 {
 	stop();
+
+	free_av_objects(video);
+	free_av_objects(audio);
+
+	if (av_format_ctx)
+		avformat_close_input(&av_format_ctx);
+	if (av_pkt)
+		av_packet_free(&av_pkt);
+	if (hw.device)
+		av_buffer_unref(&hw.device);
+
 	device = nullptr;
 	thread_group = nullptr;
 }
@@ -1772,17 +1860,7 @@ bool VideoDecoder::Impl::seek(double ts)
 
 VideoDecoder::Impl::~Impl()
 {
-	stop();
-
-	free_av_objects(video);
-	free_av_objects(audio);
-
-	if (av_format_ctx)
-		avformat_close_input(&av_format_ctx);
-	if (av_pkt)
-		av_packet_free(&av_pkt);
-	if (hw.device)
-		av_buffer_unref(&hw.device);
+	end_device_context();
 }
 
 VideoDecoder::VideoDecoder()

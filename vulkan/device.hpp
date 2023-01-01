@@ -384,22 +384,27 @@ public:
 	// For compat with existing code that uses this entry point.
 	inline Semaphore request_legacy_semaphore() { return request_semaphore(VK_SEMAPHORE_TYPE_BINARY_KHR); }
 
-	VkDevice get_device() const
+	inline VkDevice get_device() const
 	{
 		return device;
 	}
 
-	VkPhysicalDevice get_physical_device() const
+	inline VkPhysicalDevice get_physical_device() const
 	{
 		return gpu;
 	}
 
-	const VkPhysicalDeviceMemoryProperties &get_memory_properties() const
+	inline VkInstance get_instance() const
+	{
+		return instance;
+	}
+
+	inline const VkPhysicalDeviceMemoryProperties &get_memory_properties() const
 	{
 		return mem_props;
 	}
 
-	const VkPhysicalDeviceProperties &get_gpu_properties() const
+	inline const VkPhysicalDeviceProperties &get_gpu_properties() const
 	{
 		return gpu_props;
 	}
@@ -438,6 +443,10 @@ public:
 	// lock the global device and queue.
 	void set_queue_lock(std::function<void ()> lock_callback,
 	                    std::function<void ()> unlock_callback);
+
+	// Alternative form, when we have to provide lock callbacks to external APIs.
+	void external_queue_lock();
+	void external_queue_unlock();
 
 	const ImplementationWorkarounds &get_workarounds() const
 	{

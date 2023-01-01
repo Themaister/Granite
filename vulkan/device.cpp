@@ -4841,6 +4841,16 @@ RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)
 	return info;
 }
 
+void Device::external_queue_lock()
+{
+	lock.lock.lock();
+}
+
+void Device::external_queue_unlock()
+{
+	lock.lock.unlock();
+}
+
 void Device::set_queue_lock(std::function<void()> lock_callback, std::function<void()> unlock_callback)
 {
 	queue_lock_callback = std::move(lock_callback);

@@ -244,13 +244,22 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 	auto device_ext = platform->get_device_extensions();
 	auto new_context = Util::make_handle<Context>();
 
+#ifdef HAVE_FFMPEG_VULKAN
+	constexpr ContextCreationFlags video_context_flags =
+			CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT |
+			CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT |
+			CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT;
+#else
+	constexpr ContextCreationFlags video_context_flags = 0;
+#endif
+
 	new_context->set_application_info(platform->get_application_info());
 	new_context->set_num_thread_indices(num_thread_indices);
 	new_context->set_system_handles(system_handles);
 	if (!new_context->init_instance_and_device(
 		instance_ext.data(), instance_ext.size(),
 		device_ext.data(), device_ext.size(),
-		CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT))
+		CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT | video_context_flags))
 	{
 		LOGE("Failed to create Vulkan device.\n");
 		return false;

@@ -305,6 +305,12 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_count, ContextCreationFlags flags)
 {
 	uint32_t target_instance_version = user_application_info ? user_application_info->apiVersion : VK_API_VERSION_1_1;
+
+	// Target an instance version of at least 1.3 for FFmpeg decode.
+	if (flags & CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT)
+		if (target_instance_version < VK_API_VERSION_1_3)
+			target_instance_version = VK_API_VERSION_1_3;
+
 	if (volkGetInstanceVersion() < target_instance_version)
 	{
 		LOGE("Vulkan loader does not support target Vulkan version.\n");
@@ -312,7 +318,10 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	}
 
 	VkInstanceCreateInfo info = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
-	info.pApplicationInfo = &get_application_info();
+	auto app_info = get_application_info();
+	if (app_info.apiVersion < target_instance_version)
+		app_info.apiVersion = target_instance_version;
+	info.pApplicationInfo = &app_info;
 
 	std::vector<const char *> instance_exts;
 	std::vector<const char *> instance_layers;
@@ -436,6 +445,10 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	if (instance == VK_NULL_HANDLE)
 		if (vkCreateInstance(&info, nullptr, &instance) != VK_SUCCESS)
 			return false;
+
+	enabled_instance_extensions = std::move(instance_exts);
+	ext.instance_extensions = enabled_instance_extensions.data();
+	ext.num_instance_extensions = uint32_t(enabled_instance_extensions.size());
 
 	volkLoadInstance(instance);
 
@@ -575,9 +588,15 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	gpu_props = gpu_props2.properties;
 	LOGI("Using Vulkan GPU: %s\n", gpu_props.deviceName);
 
-	if (gpu_props.apiVersion < VK_API_VERSION_1_1)
+	// FFmpeg integration requires Vulkan 1.3 core for physical device.
+	const uint32_t minimum_api_version =
+			(flags & CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT) ?
+			VK_API_VERSION_1_3 : VK_API_VERSION_1_1;
+
+	if (gpu_props.apiVersion < minimum_api_version)
 	{
-		LOGE("Found no Vulkan GPU which supports Vulkan 1.1.\n");
+		LOGE("Found no Vulkan GPU which supports Vulkan 1.%u.\n",
+		     VK_API_VERSION_MINOR(minimum_api_version));
 		return false;
 	}
 
@@ -855,7 +874,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	if (ext.supports_video_queue)
 	{
 		enabled_extensions.push_back(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME);
-		ext.supports_video_queue = true;
 
 		if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT) != 0 &&
 		    has_extension(VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME))
@@ -1233,9 +1251,15 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	if (vkCreateDevice(gpu, &device_info, nullptr, &device) != VK_SUCCESS)
 		return false;
 
+	enabled_device_extensions = std::move(enabled_extensions);
+	ext.device_extensions = enabled_device_extensions.data();
+	ext.num_device_extensions = uint32_t(enabled_device_extensions.size());
+	ext.pdf2 = &pdf2;
+
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	feature_filter.init(user_application_info ? user_application_info->apiVersion : VK_API_VERSION_1_1,
-	                    enabled_extensions.data(), device_info.enabledExtensionCount,
+	feature_filter.init(user_application_info ? user_application_info->apiVersion : minimum_api_version,
+	                    enabled_device_extensions.data(),
+	                    device_info.enabledExtensionCount,
 	                    &pdf2, &props);
 	feature_filter.set_device_query_interface(this);
 #endif
@@ -1248,6 +1272,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		{
 			device_table.vkGetDeviceQueue(device, queue_info.family_indices[i], queue_indices[i],
 			                              &queue_info.queues[i]);
+
+			queue_info.counts[i] = queue_offsets[queue_info.family_indices[i]];
 
 #if defined(ANDROID) && defined(HAVE_SWAPPY)
 			SwappyVk_setQueueFamilyIndex(device, queue_info.queues[i], queue_info.family_indices[i]);

@@ -93,3 +93,7 @@ endif()
 if (GRANITE_SHIPPING)
     target_compile_definitions(granite-vulkan PUBLIC GRANITE_SHIPPING)
 endif()
+
+if (GRANITE_FFMPEG_VULKAN)
+    target_compile_definitions(granite-vulkan PRIVATE HAVE_FFMPEG_VULKAN)
+endif()

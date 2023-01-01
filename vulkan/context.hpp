@@ -117,6 +117,13 @@ struct DeviceFeatures
 
 	// Vendor
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};
+
+	// References Vulkan::Context.
+	const VkPhysicalDeviceFeatures2 *pdf2 = nullptr;
+	const char * const * instance_extensions = nullptr;
+	uint32_t num_instance_extensions = 0;
+	const char * const * device_extensions = nullptr;
+	uint32_t num_device_extensions = 0;
 };
 
 enum VendorID
@@ -143,6 +150,7 @@ struct QueueInfo
 	QueueInfo();
 	VkQueue queues[QUEUE_INDEX_COUNT] = {};
 	uint32_t family_indices[QUEUE_INDEX_COUNT];
+	uint32_t counts[QUEUE_INDEX_COUNT] = {};
 	uint32_t timestamp_valid_bits = 0;
 };
 
@@ -291,6 +299,8 @@ private:
 	bool owned_device = false;
 	DeviceFeatures ext;
 	VkPhysicalDeviceFeatures2 pdf2;
+	std::vector<const char *> enabled_device_extensions;
+	std::vector<const char *> enabled_instance_extensions;
 
 #ifdef VULKAN_DEBUG
 	VkDebugUtilsMessengerEXT debug_messenger = VK_NULL_HANDLE;

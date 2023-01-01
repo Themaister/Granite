@@ -107,6 +107,10 @@ RenderPass::RenderPass(Hash hash, Device *device_, const VkRenderPassCreateInfo2
 #endif
 	if (table.vkCreateRenderPass2KHR(device->get_device(), &create_info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
+
+#ifdef GRANITE_VULKAN_FOSSILIZE
+	device->register_render_pass(render_pass, get_hash(), create_info);
+#endif
 }
 
 RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)

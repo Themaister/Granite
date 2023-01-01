@@ -23,15 +23,49 @@
 #include "ffmpeg_decode.hpp"
 #include "application.hpp"
 #include "application_wsi_events.hpp"
+#include "abstract_renderable.hpp"
+#include "render_context.hpp"
+#include "render_queue.hpp"
+#include "render_components.hpp"
+#include "renderer.hpp"
+#include "scene_loader.hpp"
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_mixer.hpp"
 #endif
 
-struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
+using namespace Granite;
+
+struct TexInstanceInfo
 {
-	explicit VideoPlayerApplication(const char *path)
+	mat4 mvp;
+	const Vulkan::ImageView *view;
+};
+
+struct TexStaticInfo
+{
+	Vulkan::Program *program;
+};
+
+static void video_frame_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
+{
+	cmd.set_program(static_cast<const TexStaticInfo *>(infos[0].render_info)->program);
+	for (unsigned i = 0; i < num_instances; i++)
 	{
-		Granite::VideoDecoder::DecodeOptions opts;
+		auto *instance = static_cast<const TexInstanceInfo *>(infos[i].instance_data);
+		cmd.set_texture(2, 0, *instance->view, Vulkan::StockSampler::DefaultGeometryFilterClamp);
+		*cmd.allocate_typed_constant_data<mat4>(3, 0, 1) = instance->mvp;
+
+		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+		cmd.set_cull_mode(VK_CULL_MODE_NONE);
+		cmd.draw(4);
+	}
+}
+
+struct VideoTextureRenderable : AbstractRenderable
+{
+	explicit VideoTextureRenderable(const char *path)
+	{
+		VideoDecoder::DecodeOptions opts;
 		opts.mipgen = true;
 #ifdef HAVE_GRANITE_AUDIO
 		if (!decoder.init(GRANITE_AUDIO_MIXER(), path, opts))
@@ -41,73 +75,40 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 		{
 			throw std::runtime_error("Failed to open file");
 		}
-
-		EVENT_MANAGER_REGISTER_LATCH(VideoPlayerApplication, on_module_created, on_module_destroyed, Vulkan::DeviceShaderModuleReadyEvent);
-		EVENT_MANAGER_REGISTER(VideoPlayerApplication, on_key_pressed, Granite::KeyboardEvent);
 	}
 
-	bool on_key_pressed(const Granite::KeyboardEvent &e)
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const override
 	{
-		if (e.get_key_state() == Granite::KeyState::Pressed)
+		if (!frame.view)
+			return;
+
+		auto mvp = context.get_render_parameters().view_projection * transform->get_world_transform();
+		auto *info = queue.allocate_one<TexInstanceInfo>();
+		info->mvp = mvp;
+		info->view = frame.view;
+
+		auto *static_info = queue.push<TexStaticInfo>(Queue::Opaque, 1, 1, video_frame_render, info);
+		if (static_info)
 		{
-			double seek_offset = 0.0;
-			bool drop_frame = false;
-
-			if (e.get_key() == Granite::Key::R)
-			{
-				if (!decoder.seek(0.0))
-					LOGE("Failed to rewind.\n");
-				else
-					drop_frame = true;
-			}
-			else if (e.get_key() == Granite::Key::Space)
-				decoder.set_paused(!decoder.get_paused());
-			else if (e.get_key() == Granite::Key::Left)
-				seek_offset = -10.0;
-			else if (e.get_key() == Granite::Key::Right)
-				seek_offset = +10.0;
-			else if (e.get_key() == Granite::Key::Up)
-				seek_offset = +60.0;
-			else if (e.get_key() == Granite::Key::Down)
-				seek_offset = -60.0;
-
-			if (seek_offset != 0.0)
-			{
-				auto ts = decoder.get_estimated_audio_playback_timestamp_raw();
-				if (ts >= 0.0)
-				{
-					if (decoder.seek(ts + seek_offset))
-						drop_frame = true;
-					else
-						LOGE("Failed to seek.\n");
-				}
-			}
-
-			if (drop_frame)
-			{
-				frame = {};
-				next_frame = {};
-			}
+			auto *temp = context.get_device().get_shader_manager().register_graphics(
+					"assets://shaders/video.vert", "assets://shaders/video.frag");
+			auto *variant = temp->register_variant({});
+			static_info->program = variant->get_program();
 		}
+	}
 
+	bool has_static_aabb() const override
+	{
 		return true;
 	}
 
-	void on_module_created(const Vulkan::DeviceShaderModuleReadyEvent &e)
+	const AABB *get_static_aabb() const override
 	{
-		if (!decoder.begin_device_context(&e.get_device()))
-			LOGE("Failed to begin device context.\n");
-		if (!decoder.play())
-			LOGE("Failed to begin playback.\n");
+		return &aabb;
 	}
 
-	void on_module_destroyed(const Vulkan::DeviceShaderModuleReadyEvent &)
-	{
-		frame = {};
-		next_frame = {};
-		decoder.stop();
-		decoder.end_device_context();
-	}
+	AABB aabb{vec3(-1.0f, -0.001f, -1.0f),
+	          vec3(1.0f, 0.001f, 1.0f)};
 
 	void shift_frame()
 	{
@@ -125,10 +126,8 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 		need_acquire = true;
 	}
 
-	void render_frame(double, double elapsed_time) override
+	bool update(Vulkan::Device &device, double elapsed_time)
 	{
-		auto &device = get_wsi().get_device();
-
 		// Based on the audio PTS, we want to display a video frame that is slightly larger.
 		double target_pts = decoder.get_estimated_audio_playback_timestamp(elapsed_time);
 		if (target_pts < 0.0)
@@ -137,7 +136,7 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 		// Update the latest frame. We want the closest PTS to target_pts.
 		if (!next_frame.view)
 			if (decoder.try_acquire_video_frame(next_frame) < 0 && target_pts > frame.pts)
-				request_shutdown();
+				return false;
 
 		while (next_frame.view)
 		{
@@ -167,25 +166,174 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 			need_acquire = false;
 		}
 
-		// Blit on screen.
-		auto cmd = device.request_command_buffer();
-		auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
-		cmd->begin_render_pass(rp);
-		if (frame.view)
-		{
-			cmd->set_texture(0, 0, *frame.view, Vulkan::StockSampler::LinearClamp);
-			Vulkan::CommandBufferUtil::draw_fullscreen_quad(
-					*cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
-		}
-		cmd->end_render_pass();
-
-		frame.sem.reset();
-		device.submit(cmd, nullptr, 1, &frame.sem);
+		return true;
 	}
 
-	Granite::VideoDecoder decoder;
-	Granite::VideoFrame frame, next_frame;
+	void begin(Vulkan::Device &device)
+	{
+		if (!decoder.begin_device_context(&device))
+			LOGE("Failed to begin device context.\n");
+		if (!decoder.play())
+			LOGE("Failed to begin playback.\n");
+	}
+
+	void end()
+	{
+		frame = {};
+		next_frame = {};
+		decoder.stop();
+		decoder.end_device_context();
+	}
+
+	VideoDecoder decoder;
+	VideoFrame frame, next_frame;
 	bool need_acquire = false;
+};
+
+struct VideoPlayerApplication : Application, EventHandler
+{
+	VideoPlayerApplication(const char *gltf_path, const char *video_path)
+		: renderer(RendererType::GeneralForward, nullptr)
+	{
+		scene_loader.load_scene(gltf_path);
+
+		auto &scene = scene_loader.get_scene();
+		auto video = Util::make_handle<VideoTextureRenderable>(video_path);
+		auto node = scene.create_node();
+		scene.create_renderable(video, node.get());
+
+		float x_scale = float(video->decoder.get_width()) / 600.0f;
+		float z_scale = float(video->decoder.get_height()) / 600.0f;
+		node->transform.scale = vec3(x_scale, 1.0f, z_scale);
+		node->transform.rotation = angleAxis(muglm::half_pi<float>(), vec3(1.0f, 0.0f, 0.0f));
+		node->transform.translation = vec3(0.0f, 2.0f, 0.0f);
+		node->invalidate_cached_transform();
+		scene.get_root_node()->add_child(std::move(node));
+
+		videos.push_back(std::move(video));
+
+		EVENT_MANAGER_REGISTER_LATCH(VideoPlayerApplication, on_module_created, on_module_destroyed, Vulkan::DeviceShaderModuleReadyEvent);
+		//EVENT_MANAGER_REGISTER(VideoPlayerApplication, on_key_pressed, KeyboardEvent);
+
+		fps_camera.set_position(vec3(0.0f, 2.0f, 5.0f));
+		fps_camera.look_at(vec3(0.0f, 2.0f, 5.0f), vec3(0.0f));
+		fps_camera.set_depth_range(0.1f, 500.0f);
+	}
+
+#if 0
+	bool on_key_pressed(const KeyboardEvent &e)
+	{
+		if (e.get_key_state() == KeyState::Pressed)
+		{
+			double seek_offset = 0.0;
+			bool drop_frame = false;
+
+			if (e.get_key() == Key::R)
+			{
+				if (!decoder.seek(0.0))
+					LOGE("Failed to rewind.\n");
+				else
+					drop_frame = true;
+			}
+			else if (e.get_key() == Key::Space)
+				decoder.set_paused(!decoder.get_paused());
+			else if (e.get_key() == Key::Left)
+				seek_offset = -10.0;
+			else if (e.get_key() == Key::Right)
+				seek_offset = +10.0;
+			else if (e.get_key() == Key::Up)
+				seek_offset = +60.0;
+			else if (e.get_key() == Key::Down)
+				seek_offset = -60.0;
+
+			if (seek_offset != 0.0)
+			{
+				auto ts = decoder.get_estimated_audio_playback_timestamp_raw();
+				if (ts >= 0.0)
+				{
+					if (decoder.seek(ts + seek_offset))
+						drop_frame = true;
+					else
+						LOGE("Failed to seek.\n");
+				}
+			}
+
+			if (drop_frame)
+			{
+				frame = {};
+				next_frame = {};
+			}
+		}
+
+		return true;
+	}
+#endif
+
+	void on_module_created(const Vulkan::DeviceShaderModuleReadyEvent &e)
+	{
+		for (auto &video : videos)
+			video->begin(e.get_device());
+	}
+
+	void on_module_destroyed(const Vulkan::DeviceShaderModuleReadyEvent &)
+	{
+		for (auto &video : videos)
+			video->end();
+	}
+
+	void render_frame(double, double elapsed_time) override
+	{
+		auto &device = get_wsi().get_device();
+
+		auto &scene = scene_loader.get_scene();
+		scene.update_all_transforms();
+
+		for (auto &video : videos)
+			if (!video->update(device, elapsed_time))
+				request_shutdown();
+
+		context.set_device(&device);
+		context.set_camera(fps_camera);
+		context.set_lighting_parameters(&lighting);
+		lighting.directional.direction = normalize(vec3(1.0f, 1.0f, 1.0f));
+		lighting.directional.color = normalize(vec3(2.0f, 1.5f, 1.0f));
+		renderer.set_mesh_renderer_options_from_lighting(lighting);
+
+		renderer.begin(queue);
+
+		visible.clear();
+		scene.gather_visible_opaque_renderables(context.get_visibility_frustum(),
+												visible);
+
+		queue.push_renderables(context, visible.data(), visible.size());
+
+		auto cmd = device.request_command_buffer();
+		auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::Depth);
+		rp.clear_color[0].float32[0] = 0.01f;
+		rp.clear_color[0].float32[1] = 0.02f;
+		rp.clear_color[0].float32[2] = 0.03f;
+
+		cmd->begin_render_pass(rp);
+		renderer.flush(*cmd, queue, context);
+		cmd->end_render_pass();
+
+		output_sems.resize(videos.size());
+		device.submit(cmd, nullptr, output_sems.size(), output_sems.data());
+		for (size_t i = 0, n = videos.size(); i < n; i++)
+			videos[i]->frame.sem = std::move(output_sems[i]);
+		output_sems.clear();
+	}
+
+	Util::SmallVector<Util::IntrusivePtr<VideoTextureRenderable>> videos;
+
+	SceneLoader scene_loader;
+	FPSCamera fps_camera;
+	RenderContext context;
+	RenderQueue queue;
+	Renderer renderer;
+	LightingParameters lighting = {};
+	VisibilityList visible;
+	Util::SmallVector<Vulkan::Semaphore> output_sems;
 };
 
 namespace Granite
@@ -194,12 +342,12 @@ Application *application_create(int argc, char **argv)
 {
 	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
-	if (argc != 2)
+	if (argc != 3)
 		return nullptr;
 
 	try
 	{
-		auto *app = new VideoPlayerApplication(argv[1]);
+		auto *app = new VideoPlayerApplication(argv[1], argv[2]);
 		return app;
 	}
 	catch (const std::exception &e)

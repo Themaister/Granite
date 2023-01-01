@@ -195,28 +195,34 @@ struct VideoPlayerApplication : Application, EventHandler
 	VideoPlayerApplication(const char *gltf_path, const char *video_path)
 		: renderer(RendererType::GeneralForward, nullptr)
 	{
-		scene_loader.load_scene(gltf_path);
+		if (gltf_path)
+			scene_loader.load_scene(gltf_path);
 
 		auto &scene = scene_loader.get_scene();
 		auto video = Util::make_handle<VideoTextureRenderable>(video_path);
 		auto node = scene.create_node();
 		scene.create_renderable(video, node.get());
 
-		float x_scale = float(video->decoder.get_width()) / 600.0f;
-		float z_scale = float(video->decoder.get_height()) / 600.0f;
+		float aspect = float(video->decoder.get_width()) / float(video->decoder.get_height());
+		float x_scale = 1.0f * aspect;
+		float z_scale = 1.0f;
 		node->transform.scale = vec3(x_scale, 1.0f, z_scale);
-		node->transform.rotation = angleAxis(muglm::half_pi<float>(), vec3(1.0f, 0.0f, 0.0f));
-		node->transform.translation = vec3(0.0f, 2.0f, 0.0f);
+		node->transform.rotation = angleAxis(muglm::half_pi<float>(), vec3(0.0f, 1.0f, 0.0f)) * angleAxis(muglm::half_pi<float>(), vec3(1.0f, 0.0f, 0.0f));
+		node->transform.translation = vec3(0.0f, 1.0f, -0.5f);
 		node->invalidate_cached_transform();
-		scene.get_root_node()->add_child(std::move(node));
+		auto root = scene.get_root_node();
+		if (root)
+			root->add_child(std::move(node));
+		else
+			scene.set_root_node(std::move(node));
 
 		videos.push_back(std::move(video));
 
 		EVENT_MANAGER_REGISTER_LATCH(VideoPlayerApplication, on_module_created, on_module_destroyed, Vulkan::DeviceShaderModuleReadyEvent);
 		EVENT_MANAGER_REGISTER(VideoPlayerApplication, on_key_pressed, KeyboardEvent);
 
-		fps_camera.set_position(vec3(0.0f, 2.0f, 5.0f));
-		fps_camera.look_at(vec3(0.0f, 2.0f, 5.0f), vec3(0.0f));
+		fps_camera.set_position(vec3(5.0f, 2.0f, 0.0f));
+		fps_camera.look_at(vec3(5.0f, 2.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f));
 		fps_camera.set_depth_range(0.1f, 500.0f);
 	}
 
@@ -352,12 +358,22 @@ Application *application_create(int argc, char **argv)
 {
 	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
-	if (argc != 3)
+	if (argc != 3 && argc != 2)
 		return nullptr;
 
 	try
 	{
-		auto *app = new VideoPlayerApplication(argv[1], argv[2]);
+		const char *gltf_path = nullptr;
+		const char *video_path = nullptr;
+		if (argc == 3)
+		{
+			gltf_path = argv[1];
+			video_path = argv[2];
+		}
+		else
+			video_path = argv[1];
+
+		auto *app = new VideoPlayerApplication(gltf_path, video_path);
 		return app;
 	}
 	catch (const std::exception &e)

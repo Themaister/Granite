@@ -46,6 +46,15 @@ extern "C"
 #include "dsp/dsp.hpp"
 #endif
 
+#ifndef AV_CHANNEL_LAYOUT_STEREO
+// Legacy API.
+#define AVChannelLayout uint64_t
+#define ch_layout channel_layout
+#define AV_CHANNEL_LAYOUT_STEREO AV_CH_LAYOUT_STEREO
+#define AV_CHANNEL_LAYOUT_MONO AV_CH_LAYOUT_MONO
+#define av_channel_layout_compare(pa, pb) ((*pa) != (*pb))
+#endif
+
 namespace Granite
 {
 static constexpr unsigned NumEncodeFrames = 4;

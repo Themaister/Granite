@@ -320,6 +320,7 @@ struct VideoDecoder::Impl
 {
 	Vulkan::Device *device = nullptr;
 	Audio::Mixer *mixer = nullptr;
+	DecodeOptions opts;
 	AVFormatContext *av_format_ctx = nullptr;
 	AVPacket *av_pkt = nullptr;
 	CodecStream video, audio;
@@ -335,6 +336,7 @@ struct VideoDecoder::Impl
 	struct DecodedImage
 	{
 		Vulkan::ImageHandle rgb_image;
+		Vulkan::ImageViewHandle rgb_storage_view;
 		Vulkan::ImageHandle planes[3];
 
 		Vulkan::Semaphore sem_to_client;
@@ -357,13 +359,16 @@ struct VideoDecoder::Impl
 	unsigned num_planes = 0;
 	float unorm_rescale = 1.0f;
 
-	bool init(Audio::Mixer *mixer, const char *path);
+	bool init(Audio::Mixer *mixer, const char *path, const DecodeOptions &opts);
+	unsigned get_width() const;
+	unsigned get_height() const;
 	bool init_video_decoder();
 	bool init_audio_decoder();
 
 	bool begin_device_context(Vulkan::Device *device);
 	void end_device_context();
 	bool play();
+	bool get_stream_id(Audio::StreamID &id) const;
 	bool stop();
 	bool seek(double ts);
 	void set_paused(bool enable);
@@ -413,7 +418,6 @@ struct VideoDecoder::Impl
 	bool acquire_blocking = false;
 	TaskSignal video_upload_signal;
 	uint64_t video_upload_count = 0;
-	uint64_t lock_timestamp = 0;
 	ThreadGroup *thread_group = nullptr;
 	TaskGroupHandle upload_dependency;
 	void thread_main();
@@ -522,7 +526,17 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
 		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
 		            Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
+		if (opts.mipgen)
+			info.levels = 0;
 		img.rgb_image = device->create_image(info);
+
+		Vulkan::ImageViewCreateInfo view = {};
+		view.image = img.rgb_image.get();
+		view.format = VK_FORMAT_R8G8B8A8_UNORM;
+		view.layers = 1;
+		view.levels = 1;
+		view.view_type = VK_IMAGE_VIEW_TYPE_2D;
+		img.rgb_storage_view = device->create_image_view(view);
 	}
 
 	return best_index;
@@ -875,9 +889,20 @@ bool VideoDecoder::Impl::init_video_decoder()
 	return true;
 }
 
-bool VideoDecoder::Impl::init(Audio::Mixer *mixer_, const char *path)
+unsigned VideoDecoder::Impl::get_width() const
+{
+	return video.av_ctx->width;
+}
+
+unsigned VideoDecoder::Impl::get_height() const
+{
+	return video.av_ctx->height;
+}
+
+bool VideoDecoder::Impl::init(Audio::Mixer *mixer_, const char *path, const DecodeOptions &opts_)
 {
 	mixer = mixer_;
+	opts = opts_;
 
 	if (avformat_open_input(&av_format_ctx, path, nullptr, nullptr) < 0)
 	{
@@ -1104,16 +1129,19 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	}
 
 	device->submit(cmd, nullptr, 1, &transfer_to_compute);
-	device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncCompute,
+
+	auto conversion_queue = opts.mipgen ?
+			Vulkan::CommandBuffer::Type::AsyncGraphics : Vulkan::CommandBuffer::Type::AsyncCompute;
+	device->add_wait_semaphore(conversion_queue,
 	                           std::move(transfer_to_compute),
 	                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 	                           true);
 
-	cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncCompute);
+	cmd = device->request_command_buffer(conversion_queue);
 
 	if (num_planes)
 	{
-		cmd->set_unorm_storage_texture(0, 0, img.rgb_image->get_view());
+		cmd->set_storage_texture(0, 0, *img.rgb_storage_view);
 		for (unsigned i = 0; i < num_planes; i++)
 		{
 			cmd->set_texture(0, 1 + i, img.planes[i]->get_view(),
@@ -1136,9 +1164,22 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
 		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 		cmd->dispatch((push.resolution.x + 7) / 8, (push.resolution.y + 7) / 8, 1);
-		cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_NONE, 0);
+
+		if (opts.mipgen)
+		{
+			cmd->barrier_prepare_generate_mipmap(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			                                     VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, true);
+			cmd->generate_mipmap(*img.rgb_image);
+			cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                   VK_PIPELINE_STAGE_2_BLIT_BIT, 0,
+			                   VK_PIPELINE_STAGE_NONE, 0);
+		}
+		else
+		{
+			cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_NONE, 0);
+		}
 	}
 	else
 	{
@@ -1576,6 +1617,7 @@ void VideoDecoder::Impl::flush_codecs()
 	for (auto &img : video_queue)
 	{
 		img.rgb_image.reset();
+		img.rgb_storage_view.reset();
 		for (auto &plane : img.planes)
 			plane.reset();
 		img.sem_to_client.reset();
@@ -1621,6 +1663,17 @@ bool VideoDecoder::Impl::play()
 
 	decode_thread = std::thread(&Impl::thread_main, this);
 	return true;
+}
+
+bool VideoDecoder::Impl::get_stream_id(Audio::StreamID &id) const
+{
+#ifdef HAVE_GRANITE_AUDIO
+	id = stream_id;
+	return bool(id);
+#else
+	(void)id;
+	return false;
+#endif
 }
 
 bool VideoDecoder::Impl::stop()
@@ -1731,9 +1784,19 @@ VideoDecoder::~VideoDecoder()
 {
 }
 
-bool VideoDecoder::init(Audio::Mixer *mixer, const char *path)
+bool VideoDecoder::init(Audio::Mixer *mixer, const char *path, const DecodeOptions &opts)
 {
-	return impl->init(mixer, path);
+	return impl->init(mixer, path, opts);
+}
+
+unsigned VideoDecoder::get_width() const
+{
+	return impl->get_width();
+}
+
+unsigned VideoDecoder::get_height() const
+{
+	return impl->get_height();
 }
 
 bool VideoDecoder::begin_device_context(Vulkan::Device *device)
@@ -1749,6 +1812,11 @@ void VideoDecoder::end_device_context()
 bool VideoDecoder::play()
 {
 	return impl->play();
+}
+
+bool VideoDecoder::get_stream_id(Audio::StreamID &id) const
+{
+	return impl->get_stream_id(id);
 }
 
 bool VideoDecoder::stop()

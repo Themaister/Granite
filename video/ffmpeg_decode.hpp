@@ -9,6 +9,7 @@ namespace Granite
 namespace Audio
 {
 class Mixer;
+struct StreamID;
 }
 
 struct VideoFrame
@@ -25,7 +26,14 @@ public:
 	VideoDecoder();
 	~VideoDecoder();
 
-	bool init(Audio::Mixer *mixer, const char *path);
+	struct DecodeOptions
+	{
+		bool mipgen = false;
+	};
+
+	bool init(Audio::Mixer *mixer, const char *path, const DecodeOptions &options);
+	unsigned get_width() const;
+	unsigned get_height() const;
 
 	// Must be called before play().
 	bool begin_device_context(Vulkan::Device *device);
@@ -34,8 +42,13 @@ public:
 	// If stop() is not called, this call with also do so.
 	void end_device_context();
 
-	// Starts decoding thread.
+	// Starts decoding thread and audio stream.
 	bool play();
+
+	// Can be called after play().
+	// When seeking or stopping the stream, the ID may change spuriously and must be re-queried.
+	// It's best to just query the ID for every operation.
+	bool get_stream_id(Audio::StreamID &id) const;
 
 	// Stops decoding thread.
 	bool stop();

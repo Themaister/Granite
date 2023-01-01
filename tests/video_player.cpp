@@ -31,10 +31,12 @@ struct VideoPlayerApplication : Granite::Application, Granite::EventHandler
 {
 	explicit VideoPlayerApplication(const char *path)
 	{
+		Granite::VideoDecoder::DecodeOptions opts;
+		opts.mipgen = true;
 #ifdef HAVE_GRANITE_AUDIO
-		if (!decoder.init(GRANITE_AUDIO_MIXER(), path))
+		if (!decoder.init(GRANITE_AUDIO_MIXER(), path, opts))
 #else
-		if (!decoder.init(nullptr, path))
+		if (!decoder.init(nullptr, path, opts))
 #endif
 		{
 			throw std::runtime_error("Failed to open file");

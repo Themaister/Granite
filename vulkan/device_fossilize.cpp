@@ -686,7 +686,7 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 	});
 	prepare_task->set_desc("foz-prepare");
 
-	group->add_dependency(*prepare_task, *cache_maintenance_task);
+	group->add_dependency(*prepare_task, *recorder_kick_task);
 
 	auto parse_modules_task = group->create_task();
 	parse_modules_task->set_desc("foz-parse-modules");
@@ -839,7 +839,6 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 	replayer_state->complete->set_desc("foz-replay-complete");
 	group->add_dependency(*replayer_state->complete, *compile_graphics_task);
 	group->add_dependency(*replayer_state->complete, *compile_compute_task);
-	group->add_dependency(*replayer_state->complete, *recorder_kick_task);
 	replayer_state->complete->flush();
 
 	replayer_state->module_ready = std::move(parse_modules_task);

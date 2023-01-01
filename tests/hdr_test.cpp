@@ -192,7 +192,12 @@ struct HDRTest : Granite::Application, Granite::EventHandler
 			auto &meta = get_wsi().get_hdr_metadata();
 			snprintf(text, sizeof(text), "Metadata: ST.2086 primaries [MaxCLL/MaxLum = %f] [MaxFALL = %f] [MinLum = %f] (M to toggle)",
 			         meta.maxContentLightLevel, meta.maxFrameAverageLightLevel, meta.minLuminance);
-			offset.y += 30.0f;
+		}
+
+		offset.y += 30.0f;
+
+		if (hdr10)
+		{
 			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text, offset, size,
 			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
 		}

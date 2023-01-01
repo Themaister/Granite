@@ -812,11 +812,21 @@ bool VideoDecoder::Impl::init_video_decoder()
 		return false;
 	}
 
+	bool use_vulkan = false;
+	const char *env = getenv("GRANITE_FFMPEG_VULKAN");
+	if (env && strtol(env, nullptr, 0) != 0)
+		use_vulkan = true;
+
 	for (int i = 0; ; i++)
 	{
 		const AVCodecHWConfig *config = avcodec_get_hw_config(codec, i);
 		if (!config)
 			break;
+
+		if (config->device_type == AV_HWDEVICE_TYPE_VULKAN && !use_vulkan)
+			continue;
+		if (config->device_type != AV_HWDEVICE_TYPE_VULKAN && use_vulkan)
+			continue;
 
 		if ((config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0)
 		{

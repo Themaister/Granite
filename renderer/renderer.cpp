@@ -518,6 +518,7 @@ void Renderer::on_pipeline_created(const DevicePipelineReadyEvent &created)
 
 void Renderer::on_pipeline_destroyed(const DevicePipelineReadyEvent &)
 {
+	device = nullptr;
 }
 
 void Renderer::begin(RenderQueue &queue) const

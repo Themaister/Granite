@@ -181,3 +181,5 @@ if (GRANITE_FFMPEG)
         target_link_libraries(video-player PRIVATE granite-audio)
     endif()
 endif()
+
+add_granite_application(gltf-viewer-simple gltf_viewer_simple.cpp)

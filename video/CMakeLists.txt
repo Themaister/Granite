@@ -11,5 +11,8 @@ target_link_libraries(granite-video
 if (GRANITE_AUDIO)
     target_link_libraries(granite-video PRIVATE granite-audio)
 endif()
+if (GRANITE_FFMPEG_VULKAN)
+    target_compile_definitions(granite-video PRIVATE HAVE_FFMPEG_VULKAN)
+endif()
 target_include_directories(granite-video PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(granite-video PUBLIC HAVE_GRANITE_FFMPEG)

@@ -3,7 +3,7 @@
 // Weird NV compiler bug when the SPIR-V is optimized. Works fine on Intel ANV, so ... *shrug*
 #pragma optimize off
 
-/* Copyright (c) 2015-2022 Hans-Kristian Arntzen
+/* Copyright (c) 2015-2023 Hans-Kristian Arntzen
  *
  * Permission is hereby granted, free of charge,
  * to any person obtaining a copy of this software and associated documentation files (the "Software"),

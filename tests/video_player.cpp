@@ -213,14 +213,13 @@ struct VideoPlayerApplication : Application, EventHandler
 		videos.push_back(std::move(video));
 
 		EVENT_MANAGER_REGISTER_LATCH(VideoPlayerApplication, on_module_created, on_module_destroyed, Vulkan::DeviceShaderModuleReadyEvent);
-		//EVENT_MANAGER_REGISTER(VideoPlayerApplication, on_key_pressed, KeyboardEvent);
+		EVENT_MANAGER_REGISTER(VideoPlayerApplication, on_key_pressed, KeyboardEvent);
 
 		fps_camera.set_position(vec3(0.0f, 2.0f, 5.0f));
 		fps_camera.look_at(vec3(0.0f, 2.0f, 5.0f), vec3(0.0f));
 		fps_camera.set_depth_range(0.1f, 500.0f);
 	}
 
-#if 0
 	bool on_key_pressed(const KeyboardEvent &e)
 	{
 		if (e.get_key_state() == KeyState::Pressed)
@@ -230,44 +229,55 @@ struct VideoPlayerApplication : Application, EventHandler
 
 			if (e.get_key() == Key::R)
 			{
-				if (!decoder.seek(0.0))
-					LOGE("Failed to rewind.\n");
-				else
-					drop_frame = true;
+				for (auto &video : videos)
+				{
+					if (!video->decoder.seek(0.0))
+						LOGE("Failed to rewind.\n");
+					else
+						drop_frame = true;
+				}
 			}
 			else if (e.get_key() == Key::Space)
-				decoder.set_paused(!decoder.get_paused());
-			else if (e.get_key() == Key::Left)
+			{
+				for (auto &video : videos)
+					video->decoder.set_paused(!video->decoder.get_paused());
+			}
+			else if (e.get_key() == Key::H)
 				seek_offset = -10.0;
-			else if (e.get_key() == Key::Right)
+			else if (e.get_key() == Key::L)
 				seek_offset = +10.0;
-			else if (e.get_key() == Key::Up)
+			else if (e.get_key() == Key::K)
 				seek_offset = +60.0;
-			else if (e.get_key() == Key::Down)
+			else if (e.get_key() == Key::J)
 				seek_offset = -60.0;
 
 			if (seek_offset != 0.0)
 			{
-				auto ts = decoder.get_estimated_audio_playback_timestamp_raw();
-				if (ts >= 0.0)
+				for (auto &video : videos)
 				{
-					if (decoder.seek(ts + seek_offset))
-						drop_frame = true;
-					else
-						LOGE("Failed to seek.\n");
+					auto ts = video->decoder.get_estimated_audio_playback_timestamp_raw();
+					if (ts >= 0.0)
+					{
+						if (video->decoder.seek(ts + seek_offset))
+							drop_frame = true;
+						else
+							LOGE("Failed to seek.\n");
+					}
 				}
 			}
 
 			if (drop_frame)
 			{
-				frame = {};
-				next_frame = {};
+				for (auto &video : videos)
+				{
+					video->frame = {};
+					video->next_frame = {};
+				}
 			}
 		}
 
 		return true;
 	}
-#endif
 
 	void on_module_created(const Vulkan::DeviceShaderModuleReadyEvent &e)
 	{

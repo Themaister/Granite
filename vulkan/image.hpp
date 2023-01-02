@@ -100,6 +100,7 @@ struct ImageViewCreateInfo
 	VkComponentMapping swizzle = {
 		VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
 	};
+	VkImageAspectFlags aspect = 0;
 };
 
 class ImageView;

@@ -177,7 +177,6 @@ private:
 		, semaphore_type(VK_SEMAPHORE_TYPE_TIMELINE_KHR)
 		, owned(owned_)
 	{
-		VK_ASSERT((owned && timeline == 0) || (!owned && timeline != 0));
 	}
 
 	explicit SemaphoreHolder(Device *device_)

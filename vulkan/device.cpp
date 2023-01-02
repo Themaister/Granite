@@ -2104,6 +2104,15 @@ void Device::set_swapchain_queue_family_support(uint32_t queue_family_support)
 	wsi.queue_family_support_mask = queue_family_support;
 }
 
+ImageHandle Device::wrap_image(const ImageCreateInfo &info, VkImage image)
+{
+	auto img = ImageHandle(handle_pool.images.allocate(
+			this, image, VK_NULL_HANDLE,
+			DeviceAllocation{}, info, VK_IMAGE_VIEW_TYPE_MAX_ENUM));
+	img->disown_image();
+	return img;
+}
+
 void Device::init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format,
                             VkSurfaceTransformFlagBitsKHR transform, VkImageUsageFlags usage)
 {
@@ -3352,7 +3361,8 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 	view_info.image = create_info.image->get_image();
 	view_info.format = format;
 	view_info.components = create_info.swizzle;
-	view_info.subresourceRange.aspectMask = format_to_aspect_mask(format);
+	view_info.subresourceRange.aspectMask =
+			create_info.aspect ? create_info.aspect : format_to_aspect_mask(format);
 	view_info.subresourceRange.baseMipLevel = create_info.base_level;
 	view_info.subresourceRange.baseArrayLayer = create_info.base_layer;
 	view_info.subresourceRange.levelCount = create_info.levels;

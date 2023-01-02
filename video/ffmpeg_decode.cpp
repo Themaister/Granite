@@ -1369,6 +1369,11 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 
 void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av_frame)
 {
+	auto &img = video_queue[frame];
+	img.pts = av_q2d(video.av_stream->time_base) * double(av_frame->pts);
+	img.sem_to_client.reset();
+	assert(img.state == ImageState::Locked);
+
 	if (hw.device
 #ifdef HAVE_FFMPEG_VULKAN
 	    && av_frame->format != AV_PIX_FMT_VULKAN
@@ -1420,7 +1425,10 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 		{
 			// Not sure if it's possible to just spuriously change the format like this,
 			// but be defensive.
-			active_upload_pix_fmt = static_cast<AVPixelFormat>(av_frame->format);
+			if (av_frame)
+				active_upload_pix_fmt = static_cast<AVPixelFormat>(av_frame->format);
+			else
+				active_upload_pix_fmt = AV_PIX_FMT_NONE;
 			reset_planes = true;
 		}
 	}
@@ -1430,19 +1438,14 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 		num_planes = 0;
 		// Reset the planar images.
 		for (auto &i: video_queue)
-			for (auto &img: i.planes)
-				img.reset();
+			for (auto &plane : i.planes)
+				plane.reset();
 
 		// We might not know our target decoding format until this point due to HW decode.
 		// Select an appropriate decoding setup.
 		if (active_upload_pix_fmt != AV_PIX_FMT_NONE)
 			setup_yuv_format_planes();
 	}
-
-	auto &img = video_queue[frame];
-	img.pts = av_q2d(video.av_stream->time_base) * double(av_frame->pts);
-	img.sem_to_client.reset();
-	assert(img.state == ImageState::Locked);
 
 #ifdef HAVE_FFMPEG_VULKAN
 	if (av_frame && av_frame->format == AV_PIX_FMT_VULKAN && video.av_ctx->hw_frames_ctx)
@@ -1455,7 +1458,8 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 		process_video_frame_in_task_upload(img, av_frame, img.sem_to_client);
 	}
 
-	av_frame_free(&av_frame);
+	if (av_frame)
+		av_frame_free(&av_frame);
 
 	// Can now acquire.
 	std::lock_guard<std::mutex> holder{lock};

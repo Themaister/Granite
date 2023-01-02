@@ -397,6 +397,12 @@ struct VideoDecoder::Impl
 	void process_video_frame(AVFrame *frame);
 	void process_video_frame_in_task(unsigned frame, AVFrame *av_frame);
 
+	void dispatch_conversion(Vulkan::CommandBuffer &cmd, DecodedImage &img, const Vulkan::ImageView * const *views);
+	void process_video_frame_in_task_upload(DecodedImage &img, AVFrame *av_frame, Vulkan::Semaphore &compute_to_user);
+#ifdef HAVE_FFMPEG_VULKAN
+	void process_video_frame_in_task_vulkan(DecodedImage &img, AVFrame *av_frame, Vulkan::Semaphore &compute_to_user);
+#endif
+
 	void flush_codecs();
 
 	struct Push
@@ -1105,49 +1111,183 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 	}
 }
 
-void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av_frame)
+#ifdef HAVE_FFMPEG_VULKAN
+void VideoDecoder::Impl::process_video_frame_in_task_vulkan(DecodedImage &img, AVFrame *av_frame,
+                                                            Vulkan::Semaphore &compute_to_user)
 {
-	if (hw.device && av_frame->format == hw.config->pix_fmt)
-	{
-		AVFrame *sw_frame = av_frame_alloc();
+	auto *frames = reinterpret_cast<AVHWFramesContext *>(video.av_ctx->hw_frames_ctx->data);
+	auto *vk = static_cast<AVVulkanFramesContext *>(frames->hwctx);
+	auto *vk_frame = reinterpret_cast<AVVkFrame *>(av_frame->data[0]);
 
-		// TODO: Is there a way we can somehow export this to an FD instead?
-		if (av_hwframe_transfer_data(sw_frame, av_frame, 0) < 0)
+	// Docs suggest we have to lock the AVVkFrame when accessing the frame struct.
+	struct FrameLock
+	{
+		AVHWFramesContext *frames;
+		AVVulkanFramesContext *vk;
+		AVVkFrame *vk_frame;
+		inline void lock() const { vk->lock_frame(frames, vk_frame); }
+		inline void unlock() const { vk->unlock_frame(frames, vk_frame); }
+	} l = { frames, vk, vk_frame };
+	std::lock_guard<FrameLock> holder{l};
+
+	// We're not guaranteed to receive the same VkImages over and over, so
+	// just recreate the views and throw them away every iteration.
+
+	Vulkan::ImageCreateInfo info = {};
+	info.width = video.av_ctx->width;
+	info.height = video.av_ctx->height;
+	info.depth = 1;
+	info.format = vk->format;
+	info.usage = vk->usage;
+	info.flags = vk->img_flags;
+	info.layers = 1;
+	info.levels = 1;
+	info.domain = Vulkan::ImageDomain::Physical;
+	info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	// Apparently, we are guaranteed a single multi-plane image here.
+	auto wrapped_image = device->wrap_image(info, vk_frame->img[0]);
+
+	// FIXME: Validation complains about lack of MUTABLE_FORMAT_BIT.
+	// To create per-plane views, we have to use that according to spec.
+	// AVVulkanFrameContext::img_flags can be overriden to make this work,
+	// but I don't know yet how to use that.
+	// Docs suggest that we can init the frame context ourselves in get_format() callback
+	// where we decide on the HW pix_fmt, but attempting that crashes the FFmpeg implementation.
+	Vulkan::ImageViewCreateInfo view_info = {};
+	view_info.image = wrapped_image.get();
+	view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
+	Vulkan::ImageViewHandle planes[3];
+	for (unsigned i = 0; i < num_planes; i++)
+	{
+		view_info.format = plane_formats[i];
+		view_info.aspect = VK_IMAGE_ASPECT_PLANE_0_BIT << i;
+		planes[i] = device->create_image_view(view_info);
+	}
+
+	auto conversion_queue = opts.mipgen ?
+	                        Vulkan::CommandBuffer::Type::AsyncGraphics :
+	                        Vulkan::CommandBuffer::Type::AsyncCompute;
+
+	if (img.sem_from_client)
+	{
+		device->add_wait_semaphore(conversion_queue,
+		                           std::move(img.sem_from_client),
+		                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		                           true);
+		img.sem_from_client = {};
+	}
+
+	if (vk_frame->queue_family[0] != VK_QUEUE_FAMILY_IGNORED)
+		LOGW("Unexpected queue family in Vulkan video processing.\n");
+
+	Vulkan::Semaphore wrapped_timeline;
+	if (vk_frame->sem[0] != VK_NULL_HANDLE)
+		wrapped_timeline = device->request_semaphore(VK_SEMAPHORE_TYPE_TIMELINE, vk_frame->sem[0], false);
+
+	// Acquire the image from FFmpeg.
+	if (vk_frame->sem[0] != VK_NULL_HANDLE && vk_frame->sem_value[0])
+	{
+		auto timeline = device->request_timeline_semaphore_as_binary(
+				*wrapped_timeline, vk_frame->sem_value[0]);
+		timeline->signal_external();
+		device->add_wait_semaphore(conversion_queue,
+		                           std::move(timeline),
+		                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		                           true);
+	}
+
+	auto cmd = device->request_command_buffer(conversion_queue);
+
+	cmd->image_barrier(*wrapped_image,
+	                   vk_frame->layout[0], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+	vk_frame->layout[0] = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	const Vulkan::ImageView *views[] = { planes[0].get(), planes[1].get(), planes[2].get() };
+	dispatch_conversion(*cmd, img, views);
+
+	device->submit(cmd, nullptr, 1, &compute_to_user);
+
+	// Release the image back to FFmpeg.
+	if (vk_frame->sem[0] != VK_NULL_HANDLE)
+	{
+		auto timeline = device->request_timeline_semaphore_as_binary(
+				*wrapped_timeline, ++vk_frame->sem_value[0]);
+		device->submit_empty(conversion_queue, nullptr, timeline.get());
+	}
+}
+#endif
+
+void VideoDecoder::Impl::dispatch_conversion(Vulkan::CommandBuffer &cmd, DecodedImage &img, const Vulkan::ImageView *const *views)
+{
+	if (num_planes)
+	{
+		cmd.set_storage_texture(0, 0, *img.rgb_storage_view);
+		for (unsigned i = 0; i < num_planes; i++)
 		{
-			LOGE("Failed to transfer HW frame.\n");
-			av_frame_free(&sw_frame);
-			av_frame_free(&av_frame);
+			cmd.set_texture(0, 1 + i, *views[i],
+			                i == 0 ? Vulkan::StockSampler::NearestClamp : Vulkan::StockSampler::LinearClamp);
+		}
+		for (unsigned i = num_planes; i < 3; i++)
+			cmd.set_texture(0, 1 + i, *views[0], Vulkan::StockSampler::NearestClamp);
+		cmd.set_program("builtin://shaders/util/yuv_to_rgb.comp");
+
+		cmd.set_specialization_constant_mask(3u << 1);
+		cmd.set_specialization_constant(1, num_planes);
+		cmd.set_specialization_constant(2, uint32_t(active_upload_pix_fmt == AV_PIX_FMT_NV21));
+
+		memcpy(cmd.allocate_typed_constant_data<UBO>(1, 0, 1), &ubo, sizeof(ubo));
+
+		push.unorm_rescale = unorm_rescale;
+		cmd.push_constants(&push, 0, sizeof(push));
+
+		cmd.image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+		cmd.dispatch((push.resolution.x + 7) / 8, (push.resolution.y + 7) / 8, 1);
+
+		if (opts.mipgen)
+		{
+			cmd.barrier_prepare_generate_mipmap(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			                                    VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, true);
+			cmd.generate_mipmap(*img.rgb_image);
+			cmd.image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                  VK_PIPELINE_STAGE_2_BLIT_BIT, 0,
+			                  VK_PIPELINE_STAGE_NONE, 0);
 		}
 		else
 		{
-			sw_frame->pts = av_frame->pts;
-			av_frame_free(&av_frame);
-			av_frame = sw_frame;
+			cmd.image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+			                  VK_PIPELINE_STAGE_NONE, 0);
 		}
 	}
-
-	// Not sure if it's possible to just spuriously change the format like this,
-	// but be defensive.
-	if (!av_frame || active_upload_pix_fmt != av_frame->format)
+	else
 	{
-		active_upload_pix_fmt = AV_PIX_FMT_NONE;
-		num_planes = 0;
-		// Reset the planar images.
-		for (auto &i : video_queue)
-			for (auto &img : i.planes)
-				img.reset();
+		// Fallback, just clear to magenta to make it obvious what went wrong.
+		cmd.image_barrier(*img.rgb_image,
+		                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+		                  VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+
+		VkClearValue color = {};
+		color.color.float32[0] = 1.0f;
+		color.color.float32[2] = 1.0f;
+		color.color.float32[3] = 1.0f;
+		cmd.clear_image(*img.rgb_image, color);
+		cmd.image_barrier(*img.rgb_image,
+		                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                  VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		                  VK_PIPELINE_STAGE_NONE, 0);
 	}
+}
 
-	// We might not know our target decoding format until this point due to HW decode.
-	// Select an appropriate decoding setup.
-	if (active_upload_pix_fmt == AV_PIX_FMT_NONE && av_frame)
-	{
-		active_upload_pix_fmt = static_cast<AVPixelFormat>(av_frame->format);
-		setup_yuv_format_planes();
-	}
-
-	auto &img = video_queue[frame];
-
+void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, AVFrame *av_frame,
+                                                            Vulkan::Semaphore &compute_to_user)
+{
 	for (unsigned i = 0; i < num_planes; i++)
 	{
 		auto &plane = img.planes[i];
@@ -1165,12 +1305,7 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 		}
 	}
 
-	img.pts = av_q2d(video.av_stream->time_base) * double(av_frame->pts);
-	assert(img.state == ImageState::Locked);
-
-	img.sem_to_client.reset();
 	Vulkan::Semaphore transfer_to_compute;
-	Vulkan::Semaphore compute_to_user;
 
 	if (img.sem_from_client)
 	{
@@ -1213,7 +1348,9 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	device->submit(cmd, nullptr, 1, &transfer_to_compute);
 
 	auto conversion_queue = opts.mipgen ?
-			Vulkan::CommandBuffer::Type::AsyncGraphics : Vulkan::CommandBuffer::Type::AsyncCompute;
+	                        Vulkan::CommandBuffer::Type::AsyncGraphics :
+	                        Vulkan::CommandBuffer::Type::AsyncCompute;
+
 	device->add_wait_semaphore(conversion_queue,
 	                           std::move(transfer_to_compute),
 	                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -1221,75 +1358,107 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 
 	cmd = device->request_command_buffer(conversion_queue);
 
-	if (num_planes)
+	const Vulkan::ImageView *views[3] = {};
+	for (unsigned i = 0; i < num_planes; i++)
+		views[i] = &img.planes[i]->get_view();
+
+	dispatch_conversion(*cmd, img, views);
+
+	device->submit(cmd, nullptr, 1, &compute_to_user);
+}
+
+void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av_frame)
+{
+	if (hw.device
+#ifdef HAVE_FFMPEG_VULKAN
+	    && av_frame->format != AV_PIX_FMT_VULKAN
+#endif
+	    && av_frame->format == hw.config->pix_fmt)
 	{
-		cmd->set_storage_texture(0, 0, *img.rgb_storage_view);
-		for (unsigned i = 0; i < num_planes; i++)
+		AVFrame *sw_frame = av_frame_alloc();
+
+		// If we have Vulkan video, we don't need to do anything complicated,
+		// but interfacing with any other API is a lot of work.
+		if (av_hwframe_transfer_data(sw_frame, av_frame, 0) < 0)
 		{
-			cmd->set_texture(0, 1 + i, img.planes[i]->get_view(),
-			                 i == 0 ? Vulkan::StockSampler::NearestClamp : Vulkan::StockSampler::LinearClamp);
-		}
-		for (unsigned i = num_planes; i < 3; i++)
-			cmd->set_texture(0, 1 + i, img.planes[0]->get_view(), Vulkan::StockSampler::NearestClamp);
-		cmd->set_program("builtin://shaders/util/yuv_to_rgb.comp");
-
-		cmd->set_specialization_constant_mask(3u << 1);
-		cmd->set_specialization_constant(1, num_planes);
-		cmd->set_specialization_constant(2, uint32_t(active_upload_pix_fmt == AV_PIX_FMT_NV21));
-
-		memcpy(cmd->allocate_typed_constant_data<UBO>(1, 0, 1), &ubo, sizeof(ubo));
-
-		push.unorm_rescale = unorm_rescale;
-		cmd->push_constants(&push, 0, sizeof(push));
-
-		cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-		cmd->dispatch((push.resolution.x + 7) / 8, (push.resolution.y + 7) / 8, 1);
-
-		if (opts.mipgen)
-		{
-			cmd->barrier_prepare_generate_mipmap(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			                                     VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, true);
-			cmd->generate_mipmap(*img.rgb_image);
-			cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			                   VK_PIPELINE_STAGE_2_BLIT_BIT, 0,
-			                   VK_PIPELINE_STAGE_NONE, 0);
+			LOGE("Failed to transfer HW frame.\n");
+			av_frame_free(&sw_frame);
+			av_frame_free(&av_frame);
 		}
 		else
 		{
-			cmd->image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-			                   VK_PIPELINE_STAGE_NONE, 0);
+			sw_frame->pts = av_frame->pts;
+			av_frame_free(&av_frame);
+			av_frame = sw_frame;
+		}
+	}
+
+	bool reset_planes = false;
+
+#ifdef HAVE_FFMPEG_VULKAN
+	if (av_frame && av_frame->format == AV_PIX_FMT_VULKAN && video.av_ctx->hw_frames_ctx)
+	{
+		// If we have Vulkan hwdecode we will bypass the readback + upload stage
+		// and go straight to AVVkFrame sharing.
+		// hw_frames_ctx is set by the decoder.
+		auto *frames = reinterpret_cast<AVHWFramesContext *>(video.av_ctx->hw_frames_ctx->data);
+
+		// As documented, the images in the frame context must be compatible
+		// with this SW format. We use the SW format to set up the planes.
+		// This is because for e.g. 10-bit we need to know if the bits are
+		// written to low order bits or high order bits.
+		if (active_upload_pix_fmt != frames->sw_format)
+		{
+			reset_planes = true;
+			active_upload_pix_fmt = frames->sw_format;
 		}
 	}
 	else
+#endif
 	{
-		// Fallback, just clear to magenta to make it obvious what went wrong.
-		cmd->image_barrier(*img.rgb_image,
-		                   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-		                   VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
-
-		VkClearValue color = {};
-		color.color.float32[0] = 1.0f;
-		color.color.float32[2] = 1.0f;
-		color.color.float32[3] = 1.0f;
-		cmd->clear_image(*img.rgb_image, color);
-		cmd->image_barrier(*img.rgb_image,
-		                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_NONE, 0);
+		if (!av_frame || active_upload_pix_fmt != av_frame->format)
+		{
+			// Not sure if it's possible to just spuriously change the format like this,
+			// but be defensive.
+			active_upload_pix_fmt = static_cast<AVPixelFormat>(av_frame->format);
+			reset_planes = true;
+		}
 	}
 
-	device->submit(cmd, nullptr, 1, &compute_to_user);
+	if (reset_planes)
+	{
+		num_planes = 0;
+		// Reset the planar images.
+		for (auto &i: video_queue)
+			for (auto &img: i.planes)
+				img.reset();
+
+		// We might not know our target decoding format until this point due to HW decode.
+		// Select an appropriate decoding setup.
+		if (active_upload_pix_fmt != AV_PIX_FMT_NONE)
+			setup_yuv_format_planes();
+	}
+
+	auto &img = video_queue[frame];
+	img.pts = av_q2d(video.av_stream->time_base) * double(av_frame->pts);
+	img.sem_to_client.reset();
+	assert(img.state == ImageState::Locked);
+
+#ifdef HAVE_FFMPEG_VULKAN
+	if (av_frame && av_frame->format == AV_PIX_FMT_VULKAN && video.av_ctx->hw_frames_ctx)
+	{
+		process_video_frame_in_task_vulkan(img, av_frame, img.sem_to_client);
+	}
+	else
+#endif
+	{
+		process_video_frame_in_task_upload(img, av_frame, img.sem_to_client);
+	}
 
 	av_frame_free(&av_frame);
 
 	// Can now acquire.
 	std::lock_guard<std::mutex> holder{lock};
-	img.sem_to_client = std::move(compute_to_user);
 	img.state = ImageState::Ready;
 	cond.notify_all();
 };

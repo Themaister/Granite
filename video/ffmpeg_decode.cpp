@@ -389,6 +389,8 @@ struct VideoDecoder::Impl
 
 	bool decode_video_packet(AVPacket *pkt);
 	bool decode_audio_packet(AVPacket *pkt);
+	bool drain_video_frame();
+	bool drain_audio_frame();
 
 	int find_idle_decode_video_frame_locked() const;
 	int find_acquire_video_frame_locked() const;
@@ -1495,6 +1497,26 @@ void VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 	thread_group->add_dependency(*upload_dependency, *task);
 }
 
+bool VideoDecoder::Impl::drain_audio_frame()
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (!stream)
+		return false;
+
+	// It's okay to acquire the same frame many times.
+	auto *av_frame = stream->acquire_write_frame();
+	if (avcodec_receive_frame(audio.av_ctx, av_frame) >= 0)
+	{
+		stream->submit_write_frame();
+		return true;
+	}
+	else
+#endif
+	{
+		return false;
+	}
+}
+
 bool VideoDecoder::Impl::decode_audio_packet(AVPacket *pkt)
 {
 #ifdef HAVE_GRANITE_AUDIO
@@ -1532,6 +1554,24 @@ bool VideoDecoder::Impl::decode_audio_packet(AVPacket *pkt)
 #endif
 }
 
+bool VideoDecoder::Impl::drain_video_frame()
+{
+	AVFrame *frame = av_frame_alloc();
+	if (!frame)
+		return false;
+
+	if (avcodec_receive_frame(video.av_ctx, frame) >= 0)
+	{
+		process_video_frame(frame);
+		return true;
+	}
+	else
+	{
+		av_frame_free(&frame);
+		return false;
+	}
+}
+
 bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 {
 	int ret;
@@ -1554,6 +1594,8 @@ bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 		process_video_frame(frame);
 		return true;
 	}
+	else
+		av_frame_free(&frame);
 
 	return ret >= 0 || ret == AVERROR(EAGAIN);
 }
@@ -1567,6 +1609,15 @@ bool VideoDecoder::Impl::iterate()
 
 	if (!is_flushing)
 	{
+		// When sending a packet, we might not be able to
+		// send more packets until we have ensured that
+		// all AVFrames have been consumed.
+		// If we did something useful in any of these, we've iterated successfully.
+		if (drain_video_frame())
+			return true;
+		if (drain_audio_frame())
+			return true;
+
 		int ret;
 		if ((ret = av_read_frame(av_format_ctx, av_pkt)) >= 0)
 		{

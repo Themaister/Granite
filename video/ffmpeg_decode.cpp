@@ -1134,6 +1134,7 @@ void VideoDecoder::Impl::process_video_frame_in_task_vulkan(DecodedImage &img, A
 	// just recreate the views and throw them away every iteration.
 
 	Vulkan::ImageCreateInfo info = {};
+	info.type = VK_IMAGE_TYPE_2D;
 	info.width = video.av_ctx->width;
 	info.height = video.av_ctx->height;
 	info.depth = 1;

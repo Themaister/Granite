@@ -313,6 +313,9 @@ public:
 	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial = nullptr);
 	ImageHandle create_image_from_staging_buffer(const ImageCreateInfo &info, const InitialImageBuffer *buffer);
 	LinearHostImageHandle create_linear_host_image(const LinearHostImageCreateInfo &info);
+	// Does not create any default image views. Only wraps the VkImage
+	// as a non-owned handle for purposes of API interop.
+	ImageHandle wrap_image(const ImageCreateInfo &info, VkImage img);
 	DeviceAllocationOwnerHandle take_device_allocation_ownership(Image &image);
 	DeviceAllocationOwnerHandle allocate_memory(const MemoryAllocateInfo &info);
 

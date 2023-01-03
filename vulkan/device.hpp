@@ -174,6 +174,7 @@ public:
 	friend class Sampler;
 	friend struct SamplerDeleter;
 	friend class ImmutableSampler;
+	friend class ImmutableYcbcrConversion;
 	friend class Buffer;
 	friend struct BufferDeleter;
 	friend class BufferView;
@@ -830,7 +831,8 @@ private:
 	void register_descriptor_set_layout(VkDescriptorSetLayout layout, Fossilize::Hash hash, const VkDescriptorSetLayoutCreateInfo &info);
 	void register_pipeline_layout(VkPipelineLayout layout, Fossilize::Hash hash, const VkPipelineLayoutCreateInfo &info);
 	void register_shader_module(VkShaderModule module, Fossilize::Hash hash, const VkShaderModuleCreateInfo &info);
-	//void register_sampler(VkSampler sampler, Fossilize::Hash hash, const VkSamplerCreateInfo &info);
+	void register_sampler(VkSampler sampler, Fossilize::Hash hash, const VkSamplerCreateInfo &info);
+	void register_sampler_ycbcr_conversion(VkSamplerYcbcrConversion ycbcr, const VkSamplerYcbcrConversionCreateInfo &info);
 
 	struct RecorderState;
 	std::unique_ptr<RecorderState> recorder_state;

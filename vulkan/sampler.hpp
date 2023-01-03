@@ -87,6 +87,7 @@ public:
 	}
 
 	static VkSamplerCreateInfo fill_vk_sampler_info(const SamplerCreateInfo &sampler_info);
+	static SamplerCreateInfo fill_sampler_info(const VkSamplerCreateInfo &sampler_info);
 
 private:
 	friend class Util::ObjectPool<Sampler>;

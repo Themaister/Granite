@@ -4174,6 +4174,7 @@ const ImmutableSampler *Device::request_immutable_sampler(const SamplerCreateInf
 	auto *sampler = immutable_samplers.find(h.get());
 	if (!sampler)
 		sampler = immutable_samplers.emplace_yield(h.get(), h.get(), this, sampler_info, ycbcr);
+
 	return sampler;
 }
 

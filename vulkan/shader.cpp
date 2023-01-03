@@ -34,21 +34,23 @@ namespace Vulkan
 {
 void ImmutableSamplerBank::hash(Util::Hasher &h, const ImmutableSamplerBank *sampler_bank)
 {
+	h.u32(0);
 	if (sampler_bank)
 	{
+		unsigned index = 0;
 		for (auto &set : sampler_bank->samplers)
 		{
 			for (auto *binding : set)
 			{
 				if (binding)
+				{
+					h.u32(index);
 					h.u64(binding->get_hash());
-				else
-					h.u32(0);
+				}
+				index++;
 			}
 		}
 	}
-	else
-		h.u32(0);
 }
 
 PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourceLayout &layout_,

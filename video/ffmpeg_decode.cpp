@@ -363,6 +363,11 @@ struct VideoDecoder::Impl
 	unsigned plane_subsample_log2[3] = {};
 	unsigned num_planes = 0;
 	float unorm_rescale = 1.0f;
+	const Vulkan::ImmutableYcbcrConversion *ycbcr = nullptr;
+	const Vulkan::ImmutableSampler *ycbcr_sampler = nullptr;
+	VkSamplerYcbcrConversionCreateInfo ycbcr_conv =
+			{ VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO };
+	Vulkan::Program *program = nullptr;
 
 	bool init(Audio::Mixer *mixer, const char *path, const DecodeOptions &opts);
 	unsigned get_width() const;
@@ -566,31 +571,44 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	{
 	case AVCHROMA_LOC_TOPLEFT:
 		push.chroma_siting = vec2(1.0f) * push.inv_resolution;
+		ycbcr_conv.xChromaOffset = VK_CHROMA_LOCATION_COSITED_EVEN;
+		ycbcr_conv.yChromaOffset = VK_CHROMA_LOCATION_COSITED_EVEN;
 		break;
 
 	case AVCHROMA_LOC_TOP:
 		push.chroma_siting = vec2(0.5f, 1.0f) * push.inv_resolution;
+		ycbcr_conv.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+		ycbcr_conv.yChromaOffset = VK_CHROMA_LOCATION_COSITED_EVEN;
 		break;
 
 	case AVCHROMA_LOC_LEFT:
 		push.chroma_siting = vec2(1.0f, 0.5f) * push.inv_resolution;
+		ycbcr_conv.xChromaOffset = VK_CHROMA_LOCATION_COSITED_EVEN;
+		ycbcr_conv.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
 		break;
 
 	case AVCHROMA_LOC_CENTER:
 	default:
 		push.chroma_siting = vec2(0.5f) * push.inv_resolution;
+		ycbcr_conv.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+		ycbcr_conv.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
 		break;
 
 	case AVCHROMA_LOC_BOTTOMLEFT:
 		push.chroma_siting = vec2(1.0f, 0.0f) * push.inv_resolution;
+		// This is not supported by Vulkan it seems? There is no cosited odd.
+		LOGW("Chroma siting BOTTOMLEFT is not supported by Vulkan.\n");
 		break;
 
 	case AVCHROMA_LOC_BOTTOM:
 		push.chroma_siting = vec2(0.5f, 0.0f) * push.inv_resolution;
+		// This is not supported by Vulkan it seems? There is no cosited odd.
+		LOGW("Chroma siting BOTTOM is not supported by Vulkan.\n");
 		break;
 	}
 
 	bool full_range = video.av_ctx->color_range == AVCOL_RANGE_JPEG;
+	ycbcr_conv.ycbcrRange = full_range ? VK_SAMPLER_YCBCR_RANGE_ITU_FULL : VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
 
 	// 16.3.9 from Vulkan spec.
 	// YCbCr samplers is not universally supported,
@@ -649,31 +667,31 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	// but I've only seen UNSPECIFIED here.
 
 	const Primaries bt709 = {
-			{ 0.640f, 0.330f },
-			{ 0.300f, 0.600f },
-			{ 0.150f, 0.060f },
-			{ 0.3127f, 0.3290f },
+		{ 0.640f, 0.330f },
+		{ 0.300f, 0.600f },
+		{ 0.150f, 0.060f },
+		{ 0.3127f, 0.3290f },
 	};
 
 	const Primaries bt601_625 = {
-			{ 0.640f, 0.330f },
-			{ 0.290f, 0.600f },
-			{ 0.150f, 0.060f },
-			{ 0.3127f, 0.3290f },
+		{ 0.640f, 0.330f },
+		{ 0.290f, 0.600f },
+		{ 0.150f, 0.060f },
+		{ 0.3127f, 0.3290f },
 	};
 
 	const Primaries bt601_525 = {
-			{ 0.630f, 0.340f },
-			{ 0.310f, 0.595f },
-			{ 0.155f, 0.070f },
-			{ 0.3127f, 0.3290f },
+		{ 0.630f, 0.340f },
+		{ 0.310f, 0.595f },
+		{ 0.155f, 0.070f },
+		{ 0.3127f, 0.3290f },
 	};
 
 	const Primaries bt2020 = {
-			{ 0.708f, 0.292f },
-			{ 0.170f, 0.797f },
-			{ 0.131f, 0.046f },
-			{ 0.3127f, 0.3290f },
+		{ 0.708f, 0.292f },
+		{ 0.170f, 0.797f },
+		{ 0.131f, 0.046f },
+		{ 0.3127f, 0.3290f },
 	};
 
 	switch (col_space)
@@ -682,6 +700,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 		LOGW("Unknown color space: %u, assuming BT.709.\n", col_space);
 		// fallthrough
 	case AVCOL_SPC_BT709:
+		ycbcr_conv.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
 		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
 		                           vec3(0.0f, -0.13397432f / 0.7152f, 1.8556f),
 		                           vec3(1.5748f, -0.33480248f / 0.7152f, 0.0f)));
@@ -690,6 +709,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 
 	case AVCOL_SPC_BT2020_CL:
 	case AVCOL_SPC_BT2020_NCL:
+		ycbcr_conv.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
 		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
 		                           vec3(0.0f, -0.11156702f / 0.6780f, 1.8814f),
 		                           vec3(1.4746f, -0.38737742f / 0.6780f, 0.0f)));
@@ -698,6 +718,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 
 	case AVCOL_SPC_SMPTE170M:
 	case AVCOL_SPC_BT470BG:
+		ycbcr_conv.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
 		// BT.601. Primaries differ between EBU and SMPTE.
 		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
 		                           vec3(0.0f, -0.202008f / 0.587f, 1.772f),
@@ -707,6 +728,8 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 		break;
 
 	case AVCOL_SPC_SMPTE240M:
+		ycbcr_conv.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY;
+		// This does not seem to have a corresponding model in Vulkan.
 		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
 		                           vec3(0.0f, -0.58862f / 0.701f, 1.826f),
 		                           vec3(1.576f, -0.334112f / 0.701f, 0.0f)));
@@ -815,6 +838,15 @@ bool VideoDecoder::Impl::init_video_decoder_post_device()
 	const char *env = getenv("GRANITE_FFMPEG_VULKAN");
 	if (env && strtol(env, nullptr, 0) != 0)
 		use_vulkan = true;
+
+	if (use_vulkan)
+	{
+		if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+		{
+			LOGW("Sampler YCbCr conversion not supported, disabling Vulkan interop.\n");
+			use_vulkan = false;
+		}
+	}
 #endif
 
 	for (int i = 0; ; i++)
@@ -908,7 +940,35 @@ bool VideoDecoder::Impl::init_video_decoder_post_device()
 			while (*pix_fmts != AV_PIX_FMT_NONE)
 			{
 				if (*pix_fmts == self->hw.config->pix_fmt)
+				{
+					// This currently crashes FFmpeg, leave it be for now.
+					// We want to set the img_flags to use MUTABLE, but for now we can work around it.
+#if defined(HAVE_FFMPEG_VULKAN) && 0
+					if (self->hw.config->pix_fmt == AV_PIX_FMT_VULKAN)
+					{
+						if (avcodec_get_hw_frames_parameters(
+								ctx, ctx->hw_device_ctx,
+								AV_PIX_FMT_VULKAN, &ctx->hw_frames_ctx) < 0)
+						{
+							LOGE("Failed to get HW frames parameters.\n");
+							return AV_PIX_FMT_NONE;
+						}
+
+						auto *frames = reinterpret_cast<AVHWFramesContext *>(ctx->hw_frames_ctx->data);
+						auto *vk = static_cast<AVVulkanFramesContext *>(frames->hwctx);
+						// We take views of individual planes, need this.
+						vk->img_flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+
+						if (av_hwframe_ctx_init(ctx->hw_frames_ctx) < 0)
+						{
+							LOGE("Failed to initialize HW frames context.\n");
+							av_buffer_unref(&ctx->hw_frames_ctx);
+							return AV_PIX_FMT_NONE;
+						}
+					}
+#endif
 					return *pix_fmts;
+				}
 				pix_fmts++;
 			}
 
@@ -1111,6 +1171,33 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		num_planes = 0;
 		break;
 	}
+
+#ifdef HAVE_FFMPEG_VULKAN
+	if (hw.config && hw.config->device_type == AV_HWDEVICE_TYPE_VULKAN)
+	{
+		auto *frames = reinterpret_cast<AVHWFramesContext *>(video.av_ctx->hw_frames_ctx->data);
+		auto *vk = static_cast<AVVulkanFramesContext *>(frames->hwctx);
+		ycbcr_conv.format = vk->format;
+		ycbcr_conv.chromaFilter = VK_FILTER_LINEAR;
+
+		ycbcr = device->request_immutable_ycbcr_conversion(ycbcr_conv);
+
+		Vulkan::SamplerCreateInfo samp = {};
+		samp.address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		samp.address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		samp.address_mode_w = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		samp.mag_filter = VK_FILTER_LINEAR;
+		samp.min_filter = VK_FILTER_LINEAR;
+		samp.mipmap_mode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+		ycbcr_sampler = device->request_immutable_sampler(samp, ycbcr);
+	}
+#endif
+
+	auto *comp = device->get_shader_manager().register_compute("builtin://shaders/util/yuv_to_rgb.comp");
+	Vulkan::ImmutableSamplerBank bank = {};
+	bank.samplers[0][1] = ycbcr_sampler;
+	program = comp->register_variant({{ "YCBCR", ycbcr_sampler ? 1 : 0 }},
+	                                 ycbcr_sampler ? &bank : nullptr)->get_program();
 }
 
 #ifdef HAVE_FFMPEG_VULKAN
@@ -1151,21 +1238,31 @@ void VideoDecoder::Impl::process_video_frame_in_task_vulkan(DecodedImage &img, A
 	// Apparently, we are guaranteed a single multi-plane image here.
 	auto wrapped_image = device->wrap_image(info, vk_frame->img[0]);
 
-	// FIXME: Validation complains about lack of MUTABLE_FORMAT_BIT.
-	// To create per-plane views, we have to use that according to spec.
-	// AVVulkanFrameContext::img_flags can be overriden to make this work,
-	// but I don't know yet how to use that.
-	// Docs suggest that we can init the frame context ourselves in get_format() callback
-	// where we decide on the HW pix_fmt, but attempting that crashes the FFmpeg implementation.
 	Vulkan::ImageViewCreateInfo view_info = {};
 	view_info.image = wrapped_image.get();
 	view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
 	Vulkan::ImageViewHandle planes[3];
-	for (unsigned i = 0; i < num_planes; i++)
+
+	if (ycbcr_sampler)
 	{
-		view_info.format = plane_formats[i];
-		view_info.aspect = VK_IMAGE_ASPECT_PLANE_0_BIT << i;
-		planes[i] = device->create_image_view(view_info);
+		view_info.ycbcr_conversion = ycbcr;
+		planes[0] = device->create_image_view(view_info);
+	}
+	else
+	{
+		// FIXME: Validation complains about lack of MUTABLE_FORMAT_BIT.
+		// To create per-plane views, we have to use that according to spec.
+		// AVVulkanFrameContext::img_flags can be overriden to make this work,
+		// but I don't know yet how to use that.
+		// Docs suggest that we can init the frame context ourselves in get_format() callback
+		// where we decide on the HW pix_fmt, but attempting that crashes the FFmpeg implementation.
+
+		for (unsigned i = 0; i < num_planes; i++)
+		{
+			view_info.format = plane_formats[i];
+			view_info.aspect = VK_IMAGE_ASPECT_PLANE_0_BIT << i;
+			planes[i] = device->create_image_view(view_info);
+		}
 	}
 
 	auto conversion_queue = opts.mipgen ?
@@ -1228,18 +1325,28 @@ void VideoDecoder::Impl::dispatch_conversion(Vulkan::CommandBuffer &cmd, Decoded
 	if (num_planes)
 	{
 		cmd.set_storage_texture(0, 0, *img.rgb_storage_view);
-		for (unsigned i = 0; i < num_planes; i++)
-		{
-			cmd.set_texture(0, 1 + i, *views[i],
-			                i == 0 ? Vulkan::StockSampler::NearestClamp : Vulkan::StockSampler::LinearClamp);
-		}
-		for (unsigned i = num_planes; i < 3; i++)
-			cmd.set_texture(0, 1 + i, *views[0], Vulkan::StockSampler::NearestClamp);
-		cmd.set_program("builtin://shaders/util/yuv_to_rgb.comp");
 
-		cmd.set_specialization_constant_mask(3u << 1);
+		if (ycbcr_sampler)
+		{
+			cmd.set_texture(0, 1, *views[0]);
+		}
+		else
+		{
+			for (unsigned i = 0; i < num_planes; i++)
+			{
+				cmd.set_texture(0, 1 + i, *views[i],
+				                i == 0 ? Vulkan::StockSampler::NearestClamp : Vulkan::StockSampler::LinearClamp);
+			}
+			for (unsigned i = num_planes; i < 3; i++)
+				cmd.set_texture(0, 1 + i, *views[0], Vulkan::StockSampler::NearestClamp);
+		}
+
+		cmd.set_program(program);
+
+		cmd.set_specialization_constant_mask(7u << 1);
 		cmd.set_specialization_constant(1, num_planes);
 		cmd.set_specialization_constant(2, uint32_t(active_upload_pix_fmt == AV_PIX_FMT_NV21));
+		cmd.set_specialization_constant(3, uint32_t(ycbcr_sampler && ycbcr_conv.ycbcrModel != VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY));
 
 		memcpy(cmd.allocate_typed_constant_data<UBO>(1, 0, 1), &ubo, sizeof(ubo));
 

@@ -69,7 +69,6 @@ struct ShaderTemplateVariant : public Util::IntrusiveHashMapEnabled<ShaderTempla
 	Util::Hash spirv_hash = 0;
 	std::vector<uint32_t> spirv;
 	std::vector<std::pair<std::string, int>> defines;
-	std::unique_ptr<ImmutableSamplerBank> sampler_bank;
 	unsigned instance = 0;
 
 	Vulkan::Shader *resolve(Vulkan::Device &device) const;
@@ -85,8 +84,7 @@ public:
 
 	bool init();
 
-	const ShaderTemplateVariant *register_variant(const std::vector<std::pair<std::string, int>> *defines = nullptr,
-	                                              const ImmutableSamplerBank *sampler_bank = nullptr);
+	const ShaderTemplateVariant *register_variant(const std::vector<std::pair<std::string, int>> *defines = nullptr);
 	void register_dependencies(ShaderManager &manager);
 
 	Util::Hash get_path_hash() const
@@ -129,6 +127,7 @@ private:
 	friend class ShaderProgram;
 	Device *device;
 	const ShaderTemplateVariant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
+	std::unique_ptr<ImmutableSamplerBank> sampler_bank;
 
 #ifndef GRANITE_SHIPPING
 	// We'll never want to recompile shaders in runtime outside a dev environment.

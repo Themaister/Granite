@@ -99,8 +99,7 @@ bool ShaderTemplate::init()
 	return true;
 }
 
-const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<std::pair<std::string, int>> *defines,
-                                                              const ImmutableSamplerBank *sampler_bank)
+const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<std::pair<std::string, int>> *defines)
 {
 	Hasher h;
 	if (defines)
@@ -114,8 +113,6 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<
 			h.s32(define.second);
 		}
 	}
-
-	ImmutableSamplerBank::hash(h, sampler_bank);
 
 	auto hash = h.get();
 	h.u64(path_hash);
@@ -201,9 +198,6 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<
 		if (defines)
 			variant->defines = *defines;
 
-		if (sampler_bank)
-			variant->sampler_bank.reset(new ImmutableSamplerBank(*sampler_bank));
-
 		ret = variants.insert_yield(hash, variant);
 	}
 	return ret;
@@ -235,8 +229,7 @@ void ShaderTemplate::update_variant_cache(const ShaderTemplateVariant &variant)
 		return;
 
 	auto shader_hash = Shader::hash(variant.spirv.data(),
-	                                variant.spirv.size() * sizeof(uint32_t),
-	                                variant.sampler_bank.get());
+	                                variant.spirv.size() * sizeof(uint32_t));
 
 	ResourceLayout layout;
 	Shader::reflect_resource_layout(layout, variant.spirv.data(), variant.spirv.size() * sizeof(uint32_t));
@@ -311,14 +304,9 @@ ShaderProgramVariant::ShaderProgramVariant(Device *device_)
 Vulkan::Shader *ShaderTemplateVariant::resolve(Vulkan::Device &device) const
 {
 	if (spirv.empty())
-	{
 		return device.request_shader_by_hash(spirv_hash);
-	}
 	else
-	{
-		return device.request_shader(spirv.data(), spirv.size() * sizeof(uint32_t),
-		                             nullptr, sampler_bank ? sampler_bank.get() : nullptr);
-	}
+		return device.request_shader(spirv.data(), spirv.size() * sizeof(uint32_t));
 }
 
 Vulkan::Program *ShaderProgramVariant::get_program_compute()
@@ -327,7 +315,7 @@ Vulkan::Program *ShaderProgramVariant::get_program_compute()
 
 	auto *comp = stages[Util::ecast(Vulkan::ShaderStage::Compute)];
 #ifdef GRANITE_SHIPPING
-	ret = device->request_program(comp->resolve(*device));
+	ret = device->request_program(comp->resolve(*device), sampler_bank.get());
 #else
 	auto &comp_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Compute)];
 
@@ -342,7 +330,7 @@ Vulkan::Program *ShaderProgramVariant::get_program_compute()
 	instance_lock.lock_write();
 	if (comp_instance.load(std::memory_order_relaxed) != comp->instance)
 	{
-		ret = device->request_program(comp->resolve(*device));
+		ret = device->request_program(comp->resolve(*device), sampler_bank.get());
 		program.store(ret, std::memory_order_relaxed);
 		comp_instance.store(comp->instance, std::memory_order_release);
 	}
@@ -363,7 +351,7 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 	auto *frag = stages[Util::ecast(Vulkan::ShaderStage::Fragment)];
 
 #ifdef GRANITE_SHIPPING
-	ret = device->request_program(vert->resolve(*device), frag->resolve(*device));
+	ret = device->request_program(vert->resolve(*device), frag->resolve(*device), sampler_bank.get());
 #else
 	auto &vert_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Vertex)];
 	auto &frag_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Fragment)];
@@ -382,7 +370,8 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 	if (vert_instance.load(std::memory_order_relaxed) != vert->instance ||
 	    frag_instance.load(std::memory_order_relaxed) != frag->instance)
 	{
-		ret = device->request_program(vert->resolve(*device), frag->resolve(*device));
+		ret = device->request_program(vert->resolve(*device), frag->resolve(*device),
+		                              sampler_bank.get());
 		program.store(ret, std::memory_order_relaxed);
 		vert_instance.store(vert->instance, std::memory_order_release);
 		frag_instance.store(frag->instance, std::memory_order_release);
@@ -429,10 +418,12 @@ ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pai
 		return variant;
 
 	auto *new_variant = variant_cache.allocate(device);
+	if (sampler_bank)
+		new_variant->sampler_bank.reset(new ImmutableSamplerBank(*sampler_bank));
 
 	for (unsigned i = 0; i < static_cast<unsigned>(Vulkan::ShaderStage::Count); i++)
 		if (stages[i])
-			new_variant->stages[i] = stages[i]->register_variant(&defines, sampler_bank);
+			new_variant->stages[i] = stages[i]->register_variant(&defines);
 
 	// Make sure it's compiled correctly.
 	new_variant->get_program();
@@ -641,7 +632,6 @@ static ResourceLayout parse_resource_layout(const rapidjson::Value &layout_obj)
 		set.storage_image_mask = set_obj["storageImageMask"].GetUint();
 		set.separate_image_mask = set_obj["separateImageMask"].GetUint();
 		set.sampler_mask = set_obj["samplerMask"].GetUint();
-		set.immutable_sampler_mask = set_obj["immutableSamplerMask"].GetUint();
 		set.input_attachment_mask = set_obj["inputAttachmentMask"].GetUint();
 		set.fp_mask = set_obj["fpMask"].GetUint();
 		auto &array_size = set_obj["arraySize"];
@@ -675,7 +665,6 @@ static rapidjson::Value serialize_resource_layout(const ResourceLayout &layout, 
 		set_obj.AddMember("storageImageMask", set.storage_image_mask, allocator);
 		set_obj.AddMember("separateImageMask", set.separate_image_mask, allocator);
 		set_obj.AddMember("samplerMask", set.sampler_mask, allocator);
-		set_obj.AddMember("immutableSamplerMask", set.immutable_sampler_mask, allocator);
 		set_obj.AddMember("inputAttachmentMask", set.input_attachment_mask, allocator);
 		set_obj.AddMember("fpMask", set.fp_mask, allocator);
 		Value array_size(kArrayType);

@@ -58,7 +58,7 @@ struct ResourceLayout
 	uint32_t push_constant_size = 0;
 	uint32_t spec_constant_mask = 0;
 	uint32_t bindless_set_mask = 0;
-	enum { Version = 3 };
+	enum { Version = 4 };
 
 	bool unserialize(const uint8_t *data, size_t size);
 	bool serialize(uint8_t *data, size_t size) const;
@@ -149,18 +149,12 @@ class Shader : public HashedObject<Shader>
 {
 public:
 	Shader(Util::Hash binding, Device *device, const uint32_t *data, size_t size,
-	       const ResourceLayout *layout = nullptr,
-	       const ImmutableSamplerBank *sampler_bank = nullptr);
+	       const ResourceLayout *layout = nullptr);
 	~Shader();
 
 	const ResourceLayout &get_layout() const
 	{
 		return layout;
-	}
-
-	const ImmutableSamplerBank &get_immutable_sampler_bank() const
-	{
-		return immutable_sampler_bank;
 	}
 
 	VkShaderModule get_module() const
@@ -170,13 +164,12 @@ public:
 
 	static bool reflect_resource_layout(ResourceLayout &layout, const uint32_t *spirv_data, size_t spirv_size);
 	static const char *stage_to_name(ShaderStage stage);
-	static Util::Hash hash(const uint32_t *data, size_t size, const ImmutableSamplerBank *sampler_bank);
+	static Util::Hash hash(const uint32_t *data, size_t size);
 
 private:
 	Device *device;
 	VkShaderModule module = VK_NULL_HANDLE;
 	ResourceLayout layout;
-	ImmutableSamplerBank immutable_sampler_bank;
 };
 
 struct Pipeline
@@ -188,8 +181,8 @@ struct Pipeline
 class Program : public HashedObject<Program>, public InternalSyncEnabled
 {
 public:
-	Program(Device *device, Shader *vertex, Shader *fragment);
-	Program(Device *device, Shader *compute);
+	Program(Device *device, Shader *vertex, Shader *fragment, const ImmutableSamplerBank *sampler_bank);
+	Program(Device *device, Shader *compute, const ImmutableSamplerBank *sampler_bank);
 	~Program();
 
 	inline const Shader *get_shader(ShaderStage stage) const

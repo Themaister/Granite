@@ -34,21 +34,23 @@ namespace Vulkan
 {
 void ImmutableSamplerBank::hash(Util::Hasher &h, const ImmutableSamplerBank *sampler_bank)
 {
+	h.u32(0);
 	if (sampler_bank)
 	{
+		unsigned index = 0;
 		for (auto &set : sampler_bank->samplers)
 		{
 			for (auto *binding : set)
 			{
 				if (binding)
+				{
+					h.u32(index);
 					h.u64(binding->get_hash());
-				else
-					h.u32(0);
+				}
+				index++;
 			}
 		}
 	}
-	else
-		h.u32(0);
 }
 
 PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourceLayout &layout_,
@@ -326,11 +328,10 @@ bool ResourceLayout::unserialize(const uint8_t *data, size_t size)
 	return true;
 }
 
-Util::Hash Shader::hash(const uint32_t *data, size_t size, const ImmutableSamplerBank *sampler_bank)
+Util::Hash Shader::hash(const uint32_t *data, size_t size)
 {
 	Util::Hasher hasher;
 	hasher.data(data, size);
-	ImmutableSamplerBank::hash(hasher, sampler_bank);
 	return hasher.get();
 }
 
@@ -532,7 +533,7 @@ bool Shader::reflect_resource_layout(ResourceLayout &, const uint32_t *, size_t)
 #endif
 
 Shader::Shader(Hash hash, Device *device_, const uint32_t *data, size_t size,
-               const ResourceLayout *resource_layout, const ImmutableSamplerBank *sampler_bank)
+               const ResourceLayout *resource_layout)
 	: IntrusiveHashMapEnabled<Shader>(hash)
 	, device(device_)
 {
@@ -558,17 +559,6 @@ Shader::Shader(Hash hash, Device *device_, const uint32_t *data, size_t size,
 		LOGE("Failed to reflect resource layout.\n");
 #endif
 
-	if (sampler_bank)
-		immutable_sampler_bank = *sampler_bank;
-
-	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
-	{
-		for_each_bit(layout.sets[set].sampler_mask | layout.sets[set].sampled_image_mask, [&](unsigned binding) {
-			if (sampler_bank && sampler_bank->samplers[set][binding])
-				layout.sets[set].immutable_sampler_mask |= 1u << binding;
-		});
-	}
-
 	if (layout.bindless_set_mask != 0 && !device->get_device_features().supports_descriptor_indexing)
 		LOGE("Sufficient features for descriptor indexing is not supported on this device.\n");
 }
@@ -585,19 +575,19 @@ void Program::set_shader(ShaderStage stage, Shader *handle)
 	shaders[Util::ecast(stage)] = handle;
 }
 
-Program::Program(Device *device_, Shader *vertex, Shader *fragment)
+Program::Program(Device *device_, Shader *vertex, Shader *fragment, const ImmutableSamplerBank *sampler_bank)
     : device(device_)
 {
 	set_shader(ShaderStage::Vertex, vertex);
 	set_shader(ShaderStage::Fragment, fragment);
-	device->bake_program(*this);
+	device->bake_program(*this, sampler_bank);
 }
 
-Program::Program(Device *device_, Shader *compute_shader)
+Program::Program(Device *device_, Shader *compute_shader, const ImmutableSamplerBank *sampler_bank)
     : device(device_)
 {
 	set_shader(ShaderStage::Compute, compute_shader);
-	device->bake_program(*this);
+	device->bake_program(*this, sampler_bank);
 }
 
 Pipeline Program::get_pipeline(Hash hash) const

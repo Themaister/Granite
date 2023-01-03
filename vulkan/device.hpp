@@ -174,6 +174,7 @@ public:
 	friend class Sampler;
 	friend struct SamplerDeleter;
 	friend class ImmutableSampler;
+	friend class ImmutableYcbcrConversion;
 	friend class Buffer;
 	friend struct BufferDeleter;
 	friend class BufferView;
@@ -281,19 +282,16 @@ public:
 	                            std::string tag, std::string extra = {});
 
 	// Request shaders and programs. These objects are owned by the Device.
-	Shader *request_shader(const uint32_t *code, size_t size,
-	                       const ResourceLayout *layout = nullptr,
-	                       const ImmutableSamplerBank *sampler_bank = nullptr);
+	Shader *request_shader(const uint32_t *code, size_t size, const ResourceLayout *layout = nullptr);
 	Shader *request_shader_by_hash(Util::Hash hash);
-	Program *request_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
-	                         size_t fragment_size,
+	Program *request_program(const uint32_t *vertex_data, size_t vertex_size,
+	                         const uint32_t *fragment_data, size_t fragment_size,
 	                         const ResourceLayout *vertex_layout = nullptr,
 	                         const ResourceLayout *fragment_layout = nullptr);
 	Program *request_program(const uint32_t *compute_data, size_t compute_size,
-	                         const ResourceLayout *layout = nullptr,
-	                         const ImmutableSamplerBank *sampler_bank = nullptr);
-	Program *request_program(Shader *vertex, Shader *fragment);
-	Program *request_program(Shader *compute);
+	                         const ResourceLayout *layout = nullptr);
+	Program *request_program(Shader *vertex, Shader *fragment, const ImmutableSamplerBank *sampler_bank = nullptr);
+	Program *request_program(Shader *compute, const ImmutableSamplerBank *sampler_bank = nullptr);
 
 	const ImmutableYcbcrConversion *request_immutable_ycbcr_conversion(const VkSamplerYcbcrConversionCreateInfo &info);
 	const ImmutableSampler *request_immutable_sampler(const SamplerCreateInfo &info, const ImmutableYcbcrConversion *ycbcr);
@@ -498,7 +496,7 @@ private:
 	std::atomic_uint64_t cookie;
 
 	uint64_t allocate_cookie();
-	void bake_program(Program &program);
+	void bake_program(Program &program, const ImmutableSamplerBank *sampler_bank);
 
 	void request_vertex_block(BufferBlock &block, VkDeviceSize size);
 	void request_index_block(BufferBlock &block, VkDeviceSize size);
@@ -833,7 +831,8 @@ private:
 	void register_descriptor_set_layout(VkDescriptorSetLayout layout, Fossilize::Hash hash, const VkDescriptorSetLayoutCreateInfo &info);
 	void register_pipeline_layout(VkPipelineLayout layout, Fossilize::Hash hash, const VkPipelineLayoutCreateInfo &info);
 	void register_shader_module(VkShaderModule module, Fossilize::Hash hash, const VkShaderModuleCreateInfo &info);
-	//void register_sampler(VkSampler sampler, Fossilize::Hash hash, const VkSamplerCreateInfo &info);
+	void register_sampler(VkSampler sampler, Fossilize::Hash hash, const VkSamplerCreateInfo &info);
+	void register_sampler_ycbcr_conversion(VkSamplerYcbcrConversion ycbcr, const VkSamplerYcbcrConversionCreateInfo &info);
 
 	struct RecorderState;
 	std::unique_ptr<RecorderState> recorder_state;

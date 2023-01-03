@@ -48,10 +48,10 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		file_offset = 0;
 		file_size = yuv_file->get_size();
 
-		EVENT_MANAGER_REGISTER_LATCH(YCbCrSamplingTest, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+		EVENT_MANAGER_REGISTER_LATCH(YCbCrSamplingTest, on_module_created, on_module_destroyed, DeviceShaderModuleReadyEvent);
 	}
 
-	void on_device_created(const DeviceCreatedEvent &e)
+	void on_module_created(const DeviceShaderModuleReadyEvent &e)
 	{
 		if (!e.get_device().get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
 		{
@@ -95,7 +95,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		}
 	}
 
-	void on_device_destroyed(const DeviceCreatedEvent &)
+	void on_module_destroyed(const DeviceShaderModuleReadyEvent &)
 	{
 		ycbcr_image.reset();
 	}

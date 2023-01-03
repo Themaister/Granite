@@ -366,15 +366,13 @@ void Device::unmap_host_buffer(const Buffer &buffer, MemoryAccessFlags access, V
 	managers.memory.unmap_memory(buffer.get_allocation(), access, offset, length);
 }
 
-Shader *Device::request_shader(const uint32_t *data, size_t size,
-                               const ResourceLayout *layout,
-                               const ImmutableSamplerBank *sampler_bank)
+Shader *Device::request_shader(const uint32_t *data, size_t size, const ResourceLayout *layout)
 {
-	auto hash = Shader::hash(data, size, sampler_bank);
+	auto hash = Shader::hash(data, size);
 	LOCK_CACHE();
 	auto *ret = shaders.find(hash);
 	if (!ret)
-		ret = shaders.emplace_yield(hash, hash, this, data, size, layout, sampler_bank);
+		ret = shaders.emplace_yield(hash, hash, this, data, size, layout);
 	return ret;
 }
 
@@ -384,34 +382,33 @@ Shader *Device::request_shader_by_hash(Hash hash)
 	return shaders.find(hash);
 }
 
-Program *Device::request_program(Vulkan::Shader *compute_shader)
+Program *Device::request_program(Vulkan::Shader *compute_shader, const ImmutableSamplerBank *sampler_bank)
 {
 	if (!compute_shader)
 		return nullptr;
 
 	Util::Hasher hasher;
 	hasher.u64(compute_shader->get_hash());
+	ImmutableSamplerBank::hash(hasher, sampler_bank);
 
 	LOCK_CACHE();
 	auto hash = hasher.get();
 	auto *ret = programs.find(hash);
 	if (!ret)
-		ret = programs.emplace_yield(hash, this, compute_shader);
+		ret = programs.emplace_yield(hash, this, compute_shader, sampler_bank);
 	return ret;
 }
 
-Program *Device::request_program(const uint32_t *compute_data, size_t compute_size,
-                                 const ResourceLayout *layout,
-                                 const ImmutableSamplerBank *sampler_bank)
+Program *Device::request_program(const uint32_t *compute_data, size_t compute_size, const ResourceLayout *layout)
 {
 	if (!compute_size)
 		return nullptr;
 
-	auto *compute_shader = request_shader(compute_data, compute_size, layout, sampler_bank);
+	auto *compute_shader = request_shader(compute_data, compute_size, layout);
 	return request_program(compute_shader);
 }
 
-Program *Device::request_program(Shader *vertex, Shader *fragment)
+Program *Device::request_program(Shader *vertex, Shader *fragment, const ImmutableSamplerBank *sampler_bank)
 {
 	if (!vertex || !fragment)
 		return nullptr;
@@ -419,18 +416,20 @@ Program *Device::request_program(Shader *vertex, Shader *fragment)
 	Util::Hasher hasher;
 	hasher.u64(vertex->get_hash());
 	hasher.u64(fragment->get_hash());
+	ImmutableSamplerBank::hash(hasher, sampler_bank);
 
 	auto hash = hasher.get();
 	LOCK_CACHE();
 	auto *ret = programs.find(hash);
 
 	if (!ret)
-		ret = programs.emplace_yield(hash, this, vertex, fragment);
+		ret = programs.emplace_yield(hash, this, vertex, fragment, sampler_bank);
 	return ret;
 }
 
-Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
-                                 size_t fragment_size, const ResourceLayout *vertex_layout,
+Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size,
+                                 const uint32_t *fragment_data, size_t fragment_size,
+                                 const ResourceLayout *vertex_layout,
                                  const ResourceLayout *fragment_layout)
 {
 	if (!vertex_size || !fragment_size)
@@ -486,7 +485,7 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 	return ret;
 }
 
-void Device::bake_program(Program &program)
+void Device::bake_program(Program &program, const ImmutableSamplerBank *sampler_bank)
 {
 	CombinedResourceLayout layout;
 	if (program.get_shader(ShaderStage::Vertex))
@@ -506,7 +505,6 @@ void Device::bake_program(Program &program)
 		uint32_t stage_mask = 1u << i;
 
 		auto &shader_layout = shader->get_layout();
-		auto &immutable_bank = shader->get_immutable_sampler_bank();
 
 		for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
 		{
@@ -520,22 +518,6 @@ void Device::bake_program(Program &program)
 			layout.sets[set].sampler_mask |= shader_layout.sets[set].sampler_mask;
 			layout.sets[set].separate_image_mask |= shader_layout.sets[set].separate_image_mask;
 			layout.sets[set].fp_mask |= shader_layout.sets[set].fp_mask;
-
-			auto immutable_mask = shader_layout.sets[set].immutable_sampler_mask;
-			layout.sets[set].immutable_sampler_mask |= immutable_mask;
-
-			for_each_bit(immutable_mask, [&](uint32_t binding) {
-				if (ext_immutable_samplers.samplers[set][binding] &&
-				    immutable_bank.samplers[set][binding] != ext_immutable_samplers.samplers[set][binding])
-				{
-					LOGE("Immutable sampler mismatch detected!\n");
-				}
-				else
-				{
-					VK_ASSERT(immutable_bank.samplers[set][binding]);
-					ext_immutable_samplers.samplers[set][binding] = immutable_bank.samplers[set][binding];
-				}
-			});
 
 			uint32_t active_binds =
 					shader_layout.sets[set].sampled_image_mask |
@@ -575,6 +557,21 @@ void Device::bake_program(Program &program)
 		layout.spec_constant_mask[i] = shader_layout.spec_constant_mask;
 		layout.combined_spec_constant_mask |= shader_layout.spec_constant_mask;
 		layout.bindless_descriptor_set_mask |= shader_layout.bindless_set_mask;
+	}
+
+	if (sampler_bank)
+	{
+		for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
+		{
+			for_each_bit(layout.sets[set].sampler_mask | layout.sets[set].sampled_image_mask, [&](uint32_t binding)
+			{
+				if (sampler_bank->samplers[set][binding])
+				{
+					ext_immutable_samplers.samplers[set][binding] = sampler_bank->samplers[set][binding];
+					layout.sets[set].immutable_sampler_mask |= 1u << binding;
+				}
+			});
+		}
 	}
 
 	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)

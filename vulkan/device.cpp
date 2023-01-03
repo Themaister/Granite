@@ -3173,6 +3173,7 @@ public:
 	}
 
 	bool create_default_views(const ImageCreateInfo &create_info, const VkImageViewCreateInfo *view_info,
+	                          const ImmutableYcbcrConversion *ycbcr_conversion,
 	                          bool create_unorm_srgb_views = false, const VkFormat *view_formats = nullptr)
 	{
 		VkDevice vkdevice = device->get_device();
@@ -3210,7 +3211,7 @@ public:
 			default_view_info = *view_info;
 
 		view_info = &default_view_info;
-		if (!setup_conversion_info(default_view_info, conversion_info, create_info.ycbcr_conversion))
+		if (!setup_conversion_info(default_view_info, conversion_info, ycbcr_conversion))
 			return false;
 
 		if (!setup_view_usage_info(default_view_info, create_info.usage, view_usage_info))
@@ -3388,8 +3389,11 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 	view_info.subresourceRange.levelCount = num_levels;
 	view_info.subresourceRange.layerCount = num_layers;
 
-	if (!holder.create_default_views(image_create_info, &view_info))
+	if (!holder.create_default_views(image_create_info, &view_info,
+	                                 create_info.ycbcr_conversion))
+	{
 		return ImageViewHandle(nullptr);
+	}
 
 	ImageViewCreateInfo tmp = create_info;
 	tmp.format = format;
@@ -3966,8 +3970,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
 	if (has_view)
 	{
-		if (!holder.create_default_views(tmpinfo, nullptr, create_unorm_srgb_views, view_formats))
+		if (!holder.create_default_views(tmpinfo, nullptr, create_info.ycbcr_conversion,
+		                                 create_unorm_srgb_views, view_formats))
+		{
 			return ImageHandle(nullptr);
+		}
 		view_type = holder.get_default_view_type();
 	}
 

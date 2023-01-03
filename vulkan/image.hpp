@@ -86,6 +86,7 @@ enum ImageViewMiscFlagBits
 using ImageViewMiscFlags = uint32_t;
 
 class Image;
+class ImmutableYcbcrConversion;
 
 struct ImageViewCreateInfo
 {
@@ -101,6 +102,7 @@ struct ImageViewCreateInfo
 		VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
 	};
 	VkImageAspectFlags aspect = 0;
+	const ImmutableYcbcrConversion *ycbcr_conversion = nullptr;
 };
 
 class ImageView;
@@ -220,8 +222,6 @@ enum class ImageDomain
 	LinearHostCached,
 	LinearHost
 };
-
-class ImmutableYcbcrConversion;
 
 struct ImageCreateInfo
 {

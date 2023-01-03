@@ -117,7 +117,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		cmd->image_barrier(*ycbcr_image, VK_IMAGE_LAYOUT_UNDEFINED,
 		                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 
 		uint8_t *y = static_cast<uint8_t *>(
 				cmd->update_image(*ycbcr_image, {}, { width, height, 1 },
@@ -143,8 +143,8 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 
 		cmd->image_barrier(*ycbcr_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
 		rp.clear_color[0].float32[0] = 0.2f;

@@ -1185,7 +1185,7 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 
 		auto *hwdev = reinterpret_cast<AVHWDeviceContext *>(hw.device->data);
 		const VkFormat *fmts = nullptr;
-		VkImageAspectFlagBits aspects;
+		VkImageAspectFlags aspects;
 		VkImageUsageFlags usage;
 		int nb_images;
 

@@ -1190,7 +1190,8 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		int nb_images;
 
 		int ret = av_vkfmt_from_pixfmt2(hwdev, active_upload_pix_fmt,
-		                                0, &fmts, &nb_images, &aspects, &usage);
+		                                VK_IMAGE_USAGE_SAMPLED_BIT, &fmts,
+		                                &nb_images, &aspects, &usage);
 
 		if (nb_images == 1 && ret == 0)
 		{

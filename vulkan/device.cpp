@@ -1677,7 +1677,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 
 	if (submissions.empty())
 	{
-		if (fence || semaphore_count)
+		if (fence || semaphore_count || external_semaphore)
 			submit_empty_inner(physical_type, fence, external_semaphore, semaphore_count, semaphores);
 		return;
 	}

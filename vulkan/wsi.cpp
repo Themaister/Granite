@@ -632,11 +632,13 @@ bool WSI::end_frame()
 
 		auto present_ts = device->write_calibrated_timestamp();
 
+		device->external_queue_lock();
 #if defined(ANDROID) && defined(HAVE_SWAPPY)
 		VkResult overall = SwappyVk_queuePresent(device->get_current_present_queue(), &info);
 #else
 		VkResult overall = table->vkQueuePresentKHR(device->get_current_present_queue(), &info);
 #endif
+		device->external_queue_unlock();
 
 		device->register_time_interval("WSI", std::move(present_ts), device->write_calibrated_timestamp(), "present");
 

@@ -1116,6 +1116,8 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P ? 1 : 0;
 		plane_subsample_log2[2] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P ? 1 : 0;
 		num_planes = 3;
+		ycbcr_conv.format = active_upload_pix_fmt == AV_PIX_FMT_YUV420P ?
+				VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM : VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
 		break;
 
 	case AV_PIX_FMT_NV12:
@@ -1126,6 +1128,7 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		num_planes = 2;
 		plane_subsample_log2[0] = 0;
 		plane_subsample_log2[1] = 1;
+		ycbcr_conv.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
 		break;
 
 	case AV_PIX_FMT_P010:
@@ -1139,6 +1142,9 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_P010 ? 1 : 0;
 		// The low bits are zero, rescale to 1.0 range.
 		unorm_rescale = float(0xffff) / float(1023 << 6);
+		ycbcr_conv.format = active_upload_pix_fmt == AV_PIX_FMT_P010 ?
+		                    VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16 :
+		                    VK_FORMAT_G10X6_B10X6R10X6_2PLANE_444_UNORM_3PACK16;
 		break;
 
 	case AV_PIX_FMT_YUV420P10:
@@ -1152,6 +1158,9 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		plane_subsample_log2[2] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P10 ? 1 : 0;
 		// The high bits are zero, rescale to 1.0 range.
 		unorm_rescale = float(0xffff) / float(1023);
+		ycbcr_conv.format = active_upload_pix_fmt == AV_PIX_FMT_YUV420P10 ?
+		                    VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM :
+		                    VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM;
 		break;
 
 	case AV_PIX_FMT_P016:
@@ -1164,6 +1173,9 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		plane_subsample_log2[0] = 0;
 		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_P016 ? 1 : 0;
 		plane_subsample_log2[2] = active_upload_pix_fmt == AV_PIX_FMT_P016 ? 1 : 0;
+		ycbcr_conv.format = active_upload_pix_fmt == AV_PIX_FMT_P016 ?
+		                    VK_FORMAT_G16_B16R16_2PLANE_420_UNORM :
+		                    VK_FORMAT_G16_B16R16_2PLANE_444_UNORM;
 		break;
 
 	default:
@@ -1175,11 +1187,7 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 #ifdef HAVE_FFMPEG_VULKAN
 	if (hw.config && hw.config->device_type == AV_HWDEVICE_TYPE_VULKAN)
 	{
-		auto *frames = reinterpret_cast<AVHWFramesContext *>(video.av_ctx->hw_frames_ctx->data);
-		auto *vk = static_cast<AVVulkanFramesContext *>(frames->hwctx);
-		ycbcr_conv.format = vk->format;
 		ycbcr_conv.chromaFilter = VK_FILTER_LINEAR;
-
 		ycbcr = device->request_immutable_ycbcr_conversion(ycbcr_conv);
 
 		Vulkan::SamplerCreateInfo samp = {};
@@ -1227,7 +1235,7 @@ void VideoDecoder::Impl::process_video_frame_in_task_vulkan(DecodedImage &img, A
 	info.width = video.av_ctx->width;
 	info.height = video.av_ctx->height;
 	info.depth = 1;
-	info.format = vk->format;
+	info.format = ycbcr_conv.format;
 	info.usage = vk->usage;
 	info.flags = vk->img_flags;
 	info.layers = 1;

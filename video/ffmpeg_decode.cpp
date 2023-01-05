@@ -781,7 +781,9 @@ bool VideoDecoder::Impl::init_audio_decoder()
 	    av_channel_layout_compare(&audio.av_ctx->ch_layout, &stereo) != 0)
 	{
 		LOGE("Unrecognized audio channel layout.\n");
-		return false;
+		avcodec_free_context(&audio.av_ctx);
+		audio.av_stream = nullptr;
+		return true;
 	}
 
 	switch (audio.av_ctx->sample_fmt)

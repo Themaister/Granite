@@ -193,6 +193,7 @@ bool WSI::init_surface_swapchain()
 	VkBool32 supported = VK_FALSE;
 	uint32_t queue_present_support = 0;
 
+	// TODO: Ideally we need to create surface earlier and negotiate physical device based on that support.
 	for (auto &index : context->get_queue_info().family_indices)
 	{
 		if (index != VK_QUEUE_FAMILY_IGNORED)
@@ -256,14 +257,28 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 	new_context->set_application_info(platform->get_application_info());
 	new_context->set_num_thread_indices(num_thread_indices);
 	new_context->set_system_handles(system_handles);
-	if (!new_context->init_instance_and_device(
-		instance_ext.data(), instance_ext.size(),
-		device_ext.data(), device_ext.size(),
-		CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT | video_context_flags))
+
+	if (!new_context->init_instance(
+			instance_ext.data(), instance_ext.size(),
+			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT | video_context_flags))
+	{
+		LOGE("Failed to create Vulkan instance.\n");
+		return false;
+	}
+
+	VkSurfaceKHR tmp_surface = platform->create_surface(new_context->get_instance(), VK_NULL_HANDLE);
+
+	if (!new_context->init_device(
+			VK_NULL_HANDLE, tmp_surface,
+			device_ext.data(), device_ext.size(),
+			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT | video_context_flags))
 	{
 		LOGE("Failed to create Vulkan device.\n");
 		return false;
 	}
+
+	if (tmp_surface)
+		platform->destroy_surface(new_context->get_instance(), tmp_surface);
 
 	return init_from_existing_context(std::move(new_context));
 }

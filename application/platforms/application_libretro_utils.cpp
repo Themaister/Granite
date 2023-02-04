@@ -106,12 +106,104 @@ bool libretro_create_device(
 	return true;
 }
 
+static VkInstance libretro_create_instance(
+		PFN_vkGetInstanceProcAddr get_instance_proc_addr,
+		const VkApplicationInfo *app,
+		retro_vulkan_create_instance_wrapper_t create_instance_wrapper,
+		void *opaque)
+{
+	if (!Vulkan::Context::init_loader(get_instance_proc_addr))
+		return VK_NULL_HANDLE;
+
+	vulkan_context = Util::make_handle<Vulkan::Context>();
+	Vulkan::Context::SystemHandles system_handles;
+	system_handles.filesystem = GRANITE_FILESYSTEM();
+	system_handles.thread_group = GRANITE_THREAD_GROUP();
+	system_handles.asset_manager = GRANITE_ASSET_MANAGER();
+	system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
+
+	vulkan_context->set_application_info(app);
+	vulkan_context->set_system_handles(system_handles);
+	vulkan_context->set_num_thread_indices(GRANITE_THREAD_GROUP()->get_num_threads() + 1);
+
+	struct Factory final : Vulkan::InstanceFactory
+	{
+		VkInstance create_instance(const VkInstanceCreateInfo *info) override
+		{
+			return wrapper(opaque, info);
+		}
+
+		retro_vulkan_create_instance_wrapper_t wrapper = nullptr;
+		void *opaque = nullptr;
+	} factory;
+
+	factory.wrapper = create_instance_wrapper;
+	factory.opaque = opaque;
+	vulkan_context->set_instance_factory(&factory);
+
+	if (!vulkan_context->init_instance(nullptr, 0))
+	{
+		vulkan_context.reset();
+		return VK_NULL_HANDLE;
+	}
+
+	vulkan_context->release_instance();
+	return vulkan_context->get_instance();
+}
+
+static bool libretro_create_device2(
+		struct retro_vulkan_context *context,
+		VkInstance instance,
+		VkPhysicalDevice gpu,
+		VkSurfaceKHR surface,
+		PFN_vkGetInstanceProcAddr get_instance_proc_addr,
+		retro_vulkan_create_device_wrapper_t create_device_wrapper,
+		void *opaque)
+{
+	// We are guaranteed that create_instance has been called here.
+	if (!vulkan_context)
+		return false;
+
+	// Sanity check inputs.
+	if (vulkan_context->get_instance() != instance)
+		return false;
+	if (Vulkan::Context::get_instance_proc_addr() != get_instance_proc_addr)
+		return false;
+
+	struct Factory final : Vulkan::DeviceFactory
+	{
+		VkDevice create_device(VkPhysicalDevice gpu, const VkDeviceCreateInfo *info) override
+		{
+			return wrapper(gpu, opaque, info);
+		}
+
+		retro_vulkan_create_device_wrapper_t wrapper = nullptr;
+		void *opaque = nullptr;
+	} factory;
+
+	factory.wrapper = create_device_wrapper;
+	factory.opaque = opaque;
+	vulkan_context->set_device_factory(&factory);
+
+	if (!vulkan_context->init_device(gpu, surface, nullptr, 0))
+		return false;
+
+	vulkan_context->release_device();
+	context->gpu = vulkan_context->get_gpu();
+	context->device = vulkan_context->get_device();
+	context->presentation_queue = vulkan_context->get_queue_info().queues[Vulkan::QUEUE_INDEX_GRAPHICS];
+	context->presentation_queue_family_index = vulkan_context->get_queue_info().family_indices[Vulkan::QUEUE_INDEX_GRAPHICS];
+	context->queue = vulkan_context->get_queue_info().queues[Vulkan::QUEUE_INDEX_GRAPHICS];
+	context->queue_family_index = vulkan_context->get_queue_info().family_indices[Vulkan::QUEUE_INDEX_GRAPHICS];
+	return true;
+}
+
 void libretro_begin_frame(Vulkan::WSI &wsi, retro_usec_t frame_time)
 {
 	// Setup the external frame.
 	vulkan_interface->wait_sync_index(vulkan_interface->handle);
-	wsi.set_external_frame(swapchain_frame_index, acquire_semaphore, frame_time * 1e-6);
-	acquire_semaphore.reset();
+	wsi.set_external_frame(swapchain_frame_index, std::move(acquire_semaphore), double(frame_time) * 1e-6);
+	acquire_semaphore = {};
 
 	swapchain_frame_index ^= 1;
 }
@@ -119,7 +211,7 @@ void libretro_begin_frame(Vulkan::WSI &wsi, retro_usec_t frame_time)
 void libretro_end_frame(retro_video_refresh_t video_cb, Vulkan::WSI &wsi)
 {
 	// Present to libretro frontend.
-	auto signal_semaphore = wsi.get_device().request_legacy_semaphore();
+	auto signal_semaphore = wsi.get_device().request_semaphore(VK_SEMAPHORE_TYPE_BINARY);
 	vulkan_interface->set_signal_semaphore(vulkan_interface->handle,
 	                                       signal_semaphore->get_semaphore());
 	signal_semaphore->signal_external();
@@ -131,6 +223,9 @@ void libretro_end_frame(retro_video_refresh_t video_cb, Vulkan::WSI &wsi)
 		                            &swapchain_image_info,
 		                            1, &acquire_semaphore->get_semaphore(),
 		                            VK_QUEUE_FAMILY_IGNORED);
+
+		// Lets us recycle the semaphore.
+		acquire_semaphore->wait_external();
 
 		video_cb(RETRO_HW_FRAME_BUFFER_VALID, swapchain_width, swapchain_height, 0);
 		can_dupe = true;
@@ -166,6 +261,9 @@ void libretro_end_frame(retro_video_refresh_t video_cb, Vulkan::WSI &wsi)
 			video_cb(nullptr, swapchain_width, swapchain_height, 0);
 		}
 	}
+
+	// Mark video_cb has having done work in our frame context.
+	wsi.get_device().submit_external(Vulkan::CommandBuffer::Type::Generic);
 
 	acquire_semaphore = signal_semaphore;
 }
@@ -251,8 +349,24 @@ static const VkApplicationInfo *get_application_info(void)
 bool libretro_load_game(retro_environment_t environ_cb)
 {
 	vulkan_negotiation.interface_type = RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN;
-	vulkan_negotiation.interface_version = RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN_VERSION;
+	if (!environ_cb(RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT, &vulkan_negotiation))
+	{
+		Granite::libretro_log(RETRO_LOG_WARN, "GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT failed, assuming v1 only.\n");
+		vulkan_negotiation.interface_version = 1;
+	}
+	else if (vulkan_negotiation.interface_version == 0)
+	{
+		Granite::libretro_log(RETRO_LOG_ERROR, "Vulkan is not supported, this core cannot run.\n");
+	}
+	else
+	{
+		Granite::libretro_log(RETRO_LOG_INFO, "GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT passed, exposing v2.\n");
+		vulkan_negotiation.interface_version = 2;
+	}
+
 	vulkan_negotiation.create_device = Granite::libretro_create_device;
+	vulkan_negotiation.create_device2 = Granite::libretro_create_device2;
+	vulkan_negotiation.create_instance = Granite::libretro_create_instance;
 	vulkan_negotiation.destroy_device = nullptr;
 	vulkan_negotiation.get_application_info = get_application_info;
 

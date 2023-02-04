@@ -154,6 +154,35 @@ struct QueueInfo
 	uint32_t timestamp_valid_bits = 0;
 };
 
+struct InstanceFactory
+{
+	virtual ~InstanceFactory() = default;
+	virtual VkInstance create_instance(const VkInstanceCreateInfo *info) = 0;
+};
+
+struct DeviceFactory
+{
+	virtual ~DeviceFactory() = default;
+	virtual VkDevice create_device(VkPhysicalDevice gpu, const VkDeviceCreateInfo *info) = 0;
+};
+
+class CopiedApplicationInfo
+{
+public:
+	CopiedApplicationInfo();
+	const VkApplicationInfo &get_application_info() const;
+	void copy_assign(const VkApplicationInfo *info);
+
+private:
+	std::string application;
+	std::string engine;
+	VkApplicationInfo app = {
+		VK_STRUCTURE_TYPE_APPLICATION_INFO, nullptr, "Granite", 0, "Granite", 0, VK_API_VERSION_1_1,
+	};
+
+	void set_default_app();
+};
+
 class Context
 	: public Util::IntrusivePtrEnabled<Context, std::default_delete<Context>, HandleCounter>
 #ifdef GRANITE_VULKAN_FOSSILIZE
@@ -161,16 +190,39 @@ class Context
 #endif
 {
 public:
-	// Call before initializing instances. Pointer must remain valid until instance and device creation completes.
+	// If these interface are set, factory->create() calls are used instead of global vkCreateInstance and vkCreateDevice.
+	// For deeper API interop scenarios.
+	void set_instance_factory(InstanceFactory *factory);
+	void set_device_factory(DeviceFactory *factory);
+
+	// Call before initializing instances. app_info may be freed after returning.
 	// API_VERSION must be at least 1.1.
 	// By default, a Vulkan 1.1 instance is created.
 	void set_application_info(const VkApplicationInfo *app_info);
 
-	bool init_instance_and_device(const char **instance_ext, uint32_t instance_ext_count, const char **device_ext, uint32_t device_ext_count,
+	// Recommended interface.
+	// InstanceFactory can be used to override enabled instance layers and extensions.
+	// For simple WSI use, it is enough to just enable VK_KHR_surface and the platform.
+	bool init_instance(const char * const *instance_ext, uint32_t instance_ext_count,
+	                   ContextCreationFlags flags = 0);
+	// DeviceFactory can be used to override enabled device extensions.
+	// For simple WSI use, it is enough to just enable VK_KHR_swapchain.
+	bool init_device(VkPhysicalDevice gpu, VkSurfaceKHR surface_compat,
+	                 const char * const *device_ext, uint32_t device_ext_count,
+	                 ContextCreationFlags flags = 0);
+
+	// Simplified initialization which calls init_instance and init_device in succession with NULL GPU and surface.
+	// Provided for compat with older code.
+	bool init_instance_and_device(const char * const *instance_ext, uint32_t instance_ext_count,
+	                              const char * const *device_ext, uint32_t device_ext_count,
 	                              ContextCreationFlags flags = 0);
-	bool init_from_instance_and_device(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, VkQueue queue, uint32_t queue_family);
-	bool init_device_from_instance(VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface, const char **required_device_extensions,
-	                               unsigned num_required_device_extensions, const VkPhysicalDeviceFeatures *required_features,
+
+	// Deprecated. For libretro Vulkan context negotiation v1.
+	// Use InstanceFactory and DeviceFactory for more advanced scenarios in v2.
+	bool init_device_from_instance(VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface,
+	                               const char **required_device_extensions,
+	                               unsigned num_required_device_extensions,
+	                               const VkPhysicalDeviceFeatures *required_features,
 	                               ContextCreationFlags flags = 0);
 
 	Context() = default;
@@ -277,6 +329,8 @@ public:
 	}
 
 private:
+	InstanceFactory *instance_factory = nullptr;
+	DeviceFactory *device_factory = nullptr;
 	VkDevice device = VK_NULL_HANDLE;
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -285,15 +339,16 @@ private:
 
 	VkPhysicalDeviceProperties gpu_props = {};
 	VkPhysicalDeviceMemoryProperties mem_props = {};
-	const VkApplicationInfo *user_application_info = nullptr;
+
+	CopiedApplicationInfo user_application_info;
 
 	QueueInfo queue_info;
 	unsigned num_thread_indices = 1;
 
-	bool create_instance(const char **instance_ext, uint32_t instance_ext_count, ContextCreationFlags flags);
-	bool create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const char **required_device_extensions,
-	                   unsigned num_required_device_extensions, const VkPhysicalDeviceFeatures *required_features,
-	                   ContextCreationFlags flags);
+	bool create_instance(const char * const *instance_ext, uint32_t instance_ext_count, ContextCreationFlags flags);
+	bool create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface,
+	                   const char * const *required_device_extensions, uint32_t num_required_device_extensions,
+	                   const VkPhysicalDeviceFeatures *required_features, ContextCreationFlags flags);
 
 	bool owned_instance = false;
 	bool owned_device = false;
@@ -310,6 +365,8 @@ private:
 
 	void destroy();
 	void check_descriptor_indexing_features();
+
+	static bool physical_device_supports_surface(VkPhysicalDevice gpu, VkSurfaceKHR surface);
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	Fossilize::FeatureFilter feature_filter;

@@ -275,9 +275,13 @@ public:
 
 	void submit(CommandBufferHandle &cmd, Fence *fence = nullptr,
 	            unsigned semaphore_count = 0, Semaphore *semaphore = nullptr);
+
 	void submit_empty(CommandBuffer::Type type,
 	                  Fence *fence = nullptr,
 	                  SemaphoreHolder *semaphore = nullptr);
+	// Mark that there have been work submitted in this frame context outside our control
+	// that accesses resources Vulkan::Device owns.
+	void submit_external(CommandBuffer::Type type);
 	void submit_discard(CommandBufferHandle &cmd);
 	QueueIndices get_physical_queue_type(CommandBuffer::Type queue_type) const;
 	void register_time_interval(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,

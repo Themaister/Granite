@@ -1219,6 +1219,13 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	decrement_frame_counter_nolock();
 }
 
+void Device::submit_external(CommandBuffer::Type type)
+{
+	LOCK();
+	auto &data = queue_data[get_physical_queue_type(type)];
+	data.need_fence = true;
+}
+
 void Device::submit_empty(CommandBuffer::Type type, Fence *fence, SemaphoreHolder *semaphore)
 {
 	VK_ASSERT(!semaphore || !semaphore->is_proxy_timeline());

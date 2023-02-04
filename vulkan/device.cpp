@@ -4876,43 +4876,33 @@ void Device::set_queue_lock(std::function<void()> lock_callback, std::function<v
 	queue_unlock_callback = std::move(unlock_callback);
 }
 
-void Device::set_name(const Buffer &buffer, const char *name)
+void Device::set_name(uint64_t object, VkObjectType type, const char *name)
 {
 	if (ext.supports_debug_utils)
 	{
 		VkDebugUtilsObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT };
-		info.objectType = VK_OBJECT_TYPE_BUFFER;
-		info.objectHandle = (uint64_t)buffer.get_buffer();
+		info.objectType = type;
+		info.objectHandle = object;
 		info.pObjectName = name;
+		// Be defensive against broken loaders (Android have been weird here in the past).
 		if (vkSetDebugUtilsObjectNameEXT)
 			vkSetDebugUtilsObjectNameEXT(device, &info);
 	}
+}
+
+void Device::set_name(const Buffer &buffer, const char *name)
+{
+	set_name((uint64_t)buffer.get_buffer(), VK_OBJECT_TYPE_BUFFER, name);
 }
 
 void Device::set_name(const Image &image, const char *name)
 {
-	if (ext.supports_debug_utils)
-	{
-		VkDebugUtilsObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT };
-		info.objectType = VK_OBJECT_TYPE_IMAGE;
-		info.objectHandle = (uint64_t)image.get_image();
-		info.pObjectName = name;
-		if (vkSetDebugUtilsObjectNameEXT)
-			vkSetDebugUtilsObjectNameEXT(device, &info);
-	}
+	set_name((uint64_t)image.get_image(), VK_OBJECT_TYPE_IMAGE, name);
 }
 
 void Device::set_name(const CommandBuffer &cmd, const char *name)
 {
-	if (ext.supports_debug_utils)
-	{
-		VkDebugUtilsObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT };
-		info.objectType = VK_OBJECT_TYPE_COMMAND_BUFFER;
-		info.objectHandle = (uint64_t)cmd.get_command_buffer();
-		info.pObjectName = name;
-		if (vkSetDebugUtilsObjectNameEXT)
-			vkSetDebugUtilsObjectNameEXT(device, &info);
-	}
+	set_name((uint64_t)cmd.get_command_buffer(), VK_OBJECT_TYPE_COMMAND_BUFFER, name);
 }
 
 void Device::report_checkpoints()

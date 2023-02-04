@@ -202,8 +202,8 @@ void libretro_begin_frame(Vulkan::WSI &wsi, retro_usec_t frame_time)
 {
 	// Setup the external frame.
 	vulkan_interface->wait_sync_index(vulkan_interface->handle);
-	wsi.set_external_frame(swapchain_frame_index, acquire_semaphore, frame_time * 1e-6);
-	acquire_semaphore.reset();
+	wsi.set_external_frame(swapchain_frame_index, std::move(acquire_semaphore), double(frame_time) * 1e-6);
+	acquire_semaphore = {};
 
 	swapchain_frame_index ^= 1;
 }
@@ -223,6 +223,9 @@ void libretro_end_frame(retro_video_refresh_t video_cb, Vulkan::WSI &wsi)
 		                            &swapchain_image_info,
 		                            1, &acquire_semaphore->get_semaphore(),
 		                            VK_QUEUE_FAMILY_IGNORED);
+
+		// Lets us recycle the semaphore.
+		acquire_semaphore->wait_external();
 
 		video_cb(RETRO_HW_FRAME_BUFFER_VALID, swapchain_width, swapchain_height, 0);
 		can_dupe = true;
@@ -258,6 +261,9 @@ void libretro_end_frame(retro_video_refresh_t video_cb, Vulkan::WSI &wsi)
 			video_cb(nullptr, swapchain_width, swapchain_height, 0);
 		}
 	}
+
+	// Mark video_cb has having done work in our frame context.
+	wsi.get_device().submit_external(Vulkan::CommandBuffer::Type::Generic);
 
 	acquire_semaphore = signal_semaphore;
 }

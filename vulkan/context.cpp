@@ -1185,18 +1185,28 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
-		if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
-			*ppNext = &ext.present_id_features;
-			ppNext = &ext.present_id_features.pNext;
-		}
+		bool broken_present_wait = ext.driver_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
+		                           VK_VERSION_MAJOR(gpu_props.driverVersion) == 525;
 
-		if (has_extension(VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
+		if (broken_present_wait)
 		{
-			enabled_extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
-			*ppNext = &ext.present_wait_features;
-			ppNext = &ext.present_wait_features.pNext;
+			LOGW("Disabling present_wait due to broken driver.\n");
+		}
+		else
+		{
+			if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
+			{
+				enabled_extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+				*ppNext = &ext.present_id_features;
+				ppNext = &ext.present_id_features.pNext;
+			}
+
+			if (has_extension(VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
+			{
+				enabled_extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+				*ppNext = &ext.present_wait_features;
+				ppNext = &ext.present_wait_features.pNext;
+			}
 		}
 
 		if (ext.supports_surface_maintenance1 && has_extension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME))

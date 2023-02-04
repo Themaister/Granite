@@ -211,7 +211,7 @@ void libretro_begin_frame(Vulkan::WSI &wsi, retro_usec_t frame_time)
 void libretro_end_frame(retro_video_refresh_t video_cb, Vulkan::WSI &wsi)
 {
 	// Present to libretro frontend.
-	auto signal_semaphore = wsi.get_device().request_legacy_semaphore();
+	auto signal_semaphore = wsi.get_device().request_semaphore(VK_SEMAPHORE_TYPE_BINARY);
 	vulkan_interface->set_signal_semaphore(vulkan_interface->handle,
 	                                       signal_semaphore->get_semaphore());
 	signal_semaphore->signal_external();

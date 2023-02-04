@@ -495,7 +495,7 @@ bool WSI::begin_frame()
 	VkResult result;
 	do
 	{
-		auto acquire = device->request_legacy_semaphore();
+		auto acquire = device->request_semaphore(VK_SEMAPHORE_TYPE_BINARY);
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto acquire_start = Util::get_current_time_nsecs();

@@ -403,7 +403,69 @@ void CommandBuffer::barrier(const VkDependencyInfo &dep)
 
 	if (device->get_device_features().sync2_features.synchronization2)
 	{
-		table.vkCmdPipelineBarrier2KHR(cmd, &dep);
+		Util::SmallVector<VkBufferMemoryBarrier2> tmp_buffer;
+		Util::SmallVector<VkImageMemoryBarrier2> tmp_image;
+		Util::SmallVector<VkMemoryBarrier2> tmp_memory;
+		const VkDependencyInfo *final_dep = &dep;
+		VkDependencyInfo tmp_dep;
+
+		if (device->get_workarounds().force_sync1_access)
+		{
+			VkAccessFlags2 merged_access = 0;
+			for (uint32_t i = 0; i < dep.memoryBarrierCount; i++)
+				merged_access |= dep.pMemoryBarriers[i].srcAccessMask | dep.pMemoryBarriers[i].dstAccessMask;
+			for (uint32_t i = 0; i < dep.bufferMemoryBarrierCount; i++)
+				merged_access |= dep.pBufferMemoryBarriers[i].srcAccessMask | dep.pBufferMemoryBarriers[i].dstAccessMask;
+			for (uint32_t i = 0; i < dep.imageMemoryBarrierCount; i++)
+				merged_access |= dep.pImageMemoryBarriers[i].srcAccessMask | dep.pImageMemoryBarriers[i].dstAccessMask;
+
+			if ((merged_access & (VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT |
+			                      VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
+			                      VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+			                      VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR)) != 0)
+			{
+				final_dep = &tmp_dep;
+				tmp_dep = dep;
+
+				if (dep.memoryBarrierCount != 0)
+				{
+					tmp_memory.insert(tmp_memory.end(), dep.pMemoryBarriers,
+					                  dep.pMemoryBarriers + dep.memoryBarrierCount);
+					for (auto &b : tmp_memory)
+					{
+						b.srcAccessMask = convert_vk_access_flags2(b.srcAccessMask);
+						b.dstAccessMask = convert_vk_access_flags2(b.dstAccessMask);
+					}
+					tmp_dep.pMemoryBarriers = tmp_memory.data();
+				}
+
+				if (dep.bufferMemoryBarrierCount != 0)
+				{
+					tmp_buffer.insert(tmp_buffer.end(), dep.pBufferMemoryBarriers,
+					                  dep.pBufferMemoryBarriers + dep.bufferMemoryBarrierCount);
+					for (auto &b : tmp_buffer)
+					{
+						b.srcAccessMask = convert_vk_access_flags2(b.srcAccessMask);
+						b.dstAccessMask = convert_vk_access_flags2(b.dstAccessMask);
+					}
+					tmp_dep.pBufferMemoryBarriers = tmp_buffer.data();
+				}
+
+				if (dep.imageMemoryBarrierCount != 0)
+				{
+					tmp_image.insert(tmp_image.end(), dep.pImageMemoryBarriers,
+					                 dep.pImageMemoryBarriers + dep.imageMemoryBarrierCount);
+					for (auto &b : tmp_image)
+					{
+						b.srcAccessMask = convert_vk_access_flags2(b.srcAccessMask);
+						b.dstAccessMask = convert_vk_access_flags2(b.dstAccessMask);
+					}
+					tmp_dep.pImageMemoryBarriers = tmp_image.data();
+				}
+			}
+		}
+
+		table.vkCmdPipelineBarrier2KHR(cmd, final_dep);
 	}
 	else
 	{

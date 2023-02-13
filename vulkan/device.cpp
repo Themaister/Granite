@@ -785,14 +785,17 @@ void Device::init_workarounds()
 		LOGW("Disabling pipeline cache control.\n");
 		workarounds.broken_pipeline_cache_control = true;
 	}
-	else if ((ext.driver_properties.driverID == VK_DRIVER_ID_MESA_RADV ||
-	          ext.driver_properties.driverID == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA ||
-	          ext.driver_properties.driverID == VK_DRIVER_ID_MESA_TURNIP) &&
-	         gpu_props.driverVersion < VK_MAKE_VERSION(23, 1, 0))
+	else if (((ext.driver_properties.driverID == VK_DRIVER_ID_MESA_RADV ||
+	           ext.driver_properties.driverID == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA ||
+	           ext.driver_properties.driverID == VK_DRIVER_ID_MESA_TURNIP) &&
+	          gpu_props.driverVersion < VK_MAKE_VERSION(23, 1, 0)) ||
+	         ext.driver_properties.driverID == VK_DRIVER_ID_AMD_PROPRIETARY ||
+	         ext.driver_properties.driverID == VK_DRIVER_ID_AMD_OPEN_SOURCE)
 	{
 		LOGW("Enabling workaround for sync2 access mask bugs.\n");
 		// https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/21271
 		// Found bug around 23.0. Should be fixed by 23.1.
+		// Also observed on AMD windows. Probably fails on open source too given it shares PAL ...
 		workarounds.force_sync1_access = true;
 		// Avoids having to add workaround path to events as well, just fallback to plain barriers.
 		workarounds.emulate_event_as_pipeline_barrier = true;

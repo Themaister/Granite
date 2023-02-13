@@ -186,3 +186,6 @@ if (GRANITE_FFMPEG)
 endif()
 
 add_granite_application(gltf-viewer-simple gltf_viewer_simple.cpp)
+
+add_granite_application(3d-uav-clear-test 3d_uav_clear_test.cpp)
+target_compile_definitions(3d-uav-clear-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")

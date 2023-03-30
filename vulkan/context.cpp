@@ -1280,7 +1280,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	device_info.pNext = &pdf2;
 
-	if (ext.supports_external && has_extension(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME))
+	if (has_extension(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME))
 	{
 		ext.supports_external_memory_host = true;
 		enabled_extensions.push_back(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);

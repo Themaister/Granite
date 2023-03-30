@@ -1653,6 +1653,13 @@ VkResult Device::queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo2
 				return result;
 		}
 
+		if (count == 0 && fence)
+		{
+			auto result = table->vkQueueSubmit(queue, 0, nullptr, fence);
+			if (result != VK_SUCCESS)
+				return result;
+		}
+
 		return VK_SUCCESS;
 	}
 }

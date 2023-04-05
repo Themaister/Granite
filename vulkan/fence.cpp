@@ -75,19 +75,42 @@ void FenceHolder::wait()
 
 bool FenceHolder::wait_timeout(uint64_t timeout)
 {
-	bool ret = false;
+	bool ret;
 	auto &table = device->get_device_table();
+
+	// Waiting for the same VkFence in parallel is not allowed, and there seems to be some shenanigans on Intel
+	// when waiting for a timeline semaphore in parallel with same value as well.
+	std::lock_guard<std::mutex> holder{lock};
+
+	if (observed_wait)
+		return true;
+
 	if (timeline_value != 0)
 	{
 		VK_ASSERT(timeline_semaphore);
-		VkSemaphoreWaitInfoKHR info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR };
-		info.semaphoreCount = 1;
-		info.pSemaphores = &timeline_semaphore;
-		info.pValues = &timeline_value;
-		ret = table.vkWaitSemaphoresKHR(device->get_device(), &info, timeout) == VK_SUCCESS;
+
+		if (timeout == 0)
+		{
+			uint64_t current_value = 0;
+			ret = table.vkGetSemaphoreCounterValueKHR(device->get_device(), timeline_semaphore, &current_value) == VK_SUCCESS &&
+			      current_value >= timeline_value;
+		}
+		else
+		{
+			VkSemaphoreWaitInfoKHR info = {VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR};
+			info.semaphoreCount = 1;
+			info.pSemaphores = &timeline_semaphore;
+			info.pValues = &timeline_value;
+			ret = table.vkWaitSemaphoresKHR(device->get_device(), &info, timeout) == VK_SUCCESS;
+		}
 	}
 	else
-		ret = table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, timeout) == VK_SUCCESS;
+	{
+		if (timeout == 0)
+			ret = table.vkGetFenceStatus(device->get_device(), fence) == VK_SUCCESS;
+		else
+			ret = table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, timeout) == VK_SUCCESS;
+	}
 
 	if (ret)
 		observed_wait = true;

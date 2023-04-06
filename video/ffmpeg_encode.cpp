@@ -421,8 +421,12 @@ bool VideoEncoder::Impl::init_video_codec()
 	video.av_stream->id = 0;
 	video.av_stream->time_base = video.av_ctx->time_base;
 
+	// Should be fine for streaming.
+	video.av_ctx->bit_rate = 6000000;
+	video.av_ctx->rc_buffer_size = video.av_ctx->bit_rate;
+	video.av_ctx->rc_max_rate = 8000000;
+
 	AVDictionary *opts = nullptr;
-	av_dict_set_int(&opts, "crf", 18, 0);
 	av_dict_set(&opts, "preset", "fast", 0);
 	int ret = avcodec_open2(video.av_ctx, codec, &opts);
 	av_dict_free(&opts);

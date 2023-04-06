@@ -514,6 +514,7 @@ private:
 	void set_acquire_semaphore(unsigned index, Semaphore acquire);
 	Semaphore consume_release_semaphore();
 	VkQueue get_current_present_queue() const;
+	CommandBuffer::Type get_current_present_queue_type() const;
 
 	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout,
 	                                        const ImmutableSamplerBank *immutable_samplers);
@@ -649,6 +650,7 @@ private:
 		Semaphore release;
 		std::vector<ImageHandle> swapchain;
 		VkQueue present_queue = VK_NULL_HANDLE;
+		Vulkan::CommandBuffer::Type present_queue_type = {};
 		uint32_t queue_family_support_mask = 0;
 		unsigned index = 0;
 		bool consumed = false;

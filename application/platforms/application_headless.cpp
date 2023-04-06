@@ -20,9 +20,6 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-// FIXME
-#undef HAVE_GRANITE_FFMPEG
-
 #define NOMINMAX
 #include "application.hpp"
 #include "application_events.hpp"
@@ -39,8 +36,8 @@
 #include <cmath>
 #include "thread_group.hpp"
 #include "global_managers_init.hpp"
-#include "thread_latch.hpp"
 #include "path_utils.hpp"
+#include "thread_group.hpp"
 
 #ifdef HAVE_GRANITE_FFMPEG
 #include "ffmpeg_encode.hpp"
@@ -52,94 +49,11 @@
 #endif
 
 using namespace rapidjson;
-
-#ifdef _WIN32
-#include <windows.h>
-#include <shellapi.h>
-#endif
-
 using namespace Vulkan;
 using namespace Util;
 
 namespace Granite
 {
-class FrameWorker
-{
-public:
-	FrameWorker();
-	~FrameWorker();
-
-	void wait();
-	void set_work(std::function<void ()> work);
-
-private:
-	std::thread thr;
-	std::condition_variable cond;
-	std::mutex cond_lock;
-	std::function<void ()> func;
-	bool working = false;
-	bool dead = false;
-
-	void thread_loop();
-};
-
-FrameWorker::FrameWorker()
-{
-	thr = std::thread(&FrameWorker::thread_loop, this);
-}
-
-void FrameWorker::wait()
-{
-	std::unique_lock<std::mutex> u{cond_lock};
-	cond.wait(u, [this]() -> bool {
-		return !working;
-	});
-}
-
-void FrameWorker::set_work(std::function<void()> work)
-{
-	wait();
-	func = std::move(work);
-	std::unique_lock<std::mutex> u{cond_lock};
-	working = true;
-	cond.notify_one();
-}
-
-void FrameWorker::thread_loop()
-{
-	for (;;)
-	{
-		{
-			std::unique_lock<std::mutex> u{cond_lock};
-			cond.wait(u, [this]() -> bool {
-				return working || dead;
-			});
-
-			if (dead)
-				return;
-		}
-
-		if (func)
-			func();
-
-		std::lock_guard<std::mutex> holder{cond_lock};
-		working = false;
-		cond.notify_one();
-	}
-}
-
-FrameWorker::~FrameWorker()
-{
-	{
-		std::lock_guard<std::mutex> holder{cond_lock};
-		dead = true;
-		cond.notify_one();
-	}
-
-	if (thr.joinable())
-		thr.join();
-}
-
 struct WSIPlatformHeadless : Granite::GraniteWSIPlatform
 {
 public:
@@ -150,8 +64,11 @@ public:
 
 	void release_resources() override
 	{
-		for (auto &thread : worker_threads)
-			thread->wait();
+		for (auto &t : swapchain_tasks)
+			t.reset();
+		if (last_task_dependency)
+			last_task_dependency->wait();
+		last_task_dependency.reset();
 
 		auto *em = GRANITE_EVENT_MANAGER();
 		if (em)
@@ -165,7 +82,9 @@ public:
 		swapchain_images.clear();
 		readback_buffers.clear();
 		acquire_semaphore.clear();
-		readback_fence.clear();
+#ifdef HAVE_GRANITE_FFMPEG
+		ycbcr_pipelines.clear();
+#endif
 	}
 
 	bool alive(Vulkan::WSI &) override
@@ -286,7 +205,8 @@ public:
 		auto &device = app->get_wsi().get_device();
 
 		auto info = ImageCreateInfo::render_target(width, height, VK_FORMAT_R8G8B8A8_SRGB);
-		info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		info.misc |= Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 		BufferCreateInfo readback = {};
@@ -298,9 +218,7 @@ public:
 		{
 			swapchain_images.push_back(device.create_image(info, nullptr));
 			readback_buffers.push_back(device.create_buffer(readback, nullptr));
-			acquire_semaphore.push_back(Semaphore(nullptr));
-			worker_threads.push_back(std::make_unique<FrameWorker>());
-			readback_fence.push_back({});
+			acquire_semaphore.emplace_back(nullptr);
 		}
 
 		// Target present layouts to be more accurate for timing in case PRESENT_SRC forces decompress,
@@ -333,6 +251,9 @@ public:
 				LOGE("Failed to initialize encoder.\n");
 				video_encode_path.clear();
 			}
+
+			for (unsigned i = 0; i < SwapchainImages; i++)
+				ycbcr_pipelines.push_back(encoder.create_ycbcr_pipeline());
 		}
 #endif
 
@@ -348,9 +269,8 @@ public:
 	void begin_frame()
 	{
 		auto &wsi = app->get_wsi();
-		wsi.set_external_frame(frame_index, acquire_semaphore[frame_index], time_step);
-		acquire_semaphore[frame_index].reset();
-		worker_threads[frame_index]->wait();
+		wsi.set_external_frame(frame_index, std::move(acquire_semaphore[frame_index]), time_step);
+		acquire_semaphore[frame_index] = {};
 	}
 
 	void end_frame()
@@ -361,10 +281,18 @@ public:
 
 		if (release_semaphore && release_semaphore->get_semaphore() != VK_NULL_HANDLE)
 		{
-			if (next_readback_cb || !png_readback.empty())
+			if (swapchain_tasks[frame_index])
+			{
+				swapchain_tasks[frame_index]->wait();
+				swapchain_tasks[frame_index].reset();
+			}
+
+			acquire_semaphore[frame_index] = {};
+
+			if (!next_readback_path.empty() || !png_readback.empty())
 			{
 				OwnershipTransferInfo transfer_info = {};
-				transfer_info.old_queue = CommandBuffer::Type::AsyncGraphics;
+				transfer_info.old_queue = wsi.get_current_present_queue_type();
 				transfer_info.new_queue = CommandBuffer::Type::AsyncTransfer;
 				transfer_info.old_image_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 				transfer_info.new_image_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -380,76 +308,86 @@ public:
 				cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 				             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
-				thread_latches[frame_index].wait_latch_cleared();
-				device.submit(cmd, &readback_fence[frame_index], 1, &acquire_semaphore[frame_index]);
-				thread_latches[frame_index].set_latch();
+				Fence readback_fence;
+				device.submit(cmd, &readback_fence, 1, &acquire_semaphore[frame_index]);
 
-				if (next_readback_cb)
+				if (!next_readback_path.empty())
 				{
-					worker_threads[frame_index]->set_work([this, cb = next_readback_cb, index = frame_index]() {
-						cb(index);
-						thread_latches[index].clear_latch();
-					});
-					next_readback_cb = {};
+					swapchain_tasks[frame_index] = GRANITE_THREAD_GROUP()->create_task(
+							[this, readback_fence, index = frame_index, frame = this->frames, p = std::make_unique<std::string>(next_readback_path)]() mutable {
+								readback_fence->wait();
+								dump_frame_single(*p, frame, index);
+							});
+					next_readback_path.clear();
 				}
 				else
 				{
-					worker_threads[frame_index]->set_work([this, index = frame_index, frame = this->frames]() {
-						dump_frame(frame, index);
-						thread_latches[index].clear_latch();
-					});
+					swapchain_tasks[frame_index] = GRANITE_THREAD_GROUP()->create_task(
+							[this, readback_fence, index = frame_index, frame = this->frames]() mutable {
+								readback_fence->wait();
+								dump_frame(frame, index);
+							});
 				}
 			}
 #ifdef HAVE_GRANITE_FFMPEG
 			else if (!video_encode_path.empty())
 			{
-				acquire_semaphore[frame_index].reset();
-				if (!encoder.push_frame(*swapchain_images[frame_index], VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-				                        Vulkan::CommandBuffer::Type::AsyncGraphics,
-				                        release_semaphore, acquire_semaphore[frame_index]))
-				{
-					LOGE("Failed to push frame to encoder.\n");
-					video_encode_path.clear();
-				}
+				OwnershipTransferInfo transfer_info = {};
+				transfer_info.old_queue = wsi.get_current_present_queue_type();
+				transfer_info.new_queue = CommandBuffer::Type::AsyncCompute;
+				transfer_info.old_image_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+				transfer_info.new_image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				transfer_info.dst_pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+				transfer_info.dst_access = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+				auto cmd = request_command_buffer_with_ownership_transfer(device, *swapchain_images[frame_index],
+				                                                          transfer_info, release_semaphore);
+
+				encoder.process_rgb(*cmd, ycbcr_pipelines[frame_index], swapchain_images[frame_index]->get_view());
+				ycbcr_pipelines[frame_index].fence.reset();
+				device.submit(cmd, &ycbcr_pipelines[frame_index].fence, 1, &acquire_semaphore[frame_index]);
+
+				swapchain_tasks[frame_index] = GRANITE_THREAD_GROUP()->create_task(
+						[this, index = frame_index]() mutable {
+							if (!encoder.encode_frame(ycbcr_pipelines[index]))
+								LOGE("Failed to push frame to encoder.\n");
+						});
 			}
 #endif
 			else
 			{
-				acquire_semaphore[frame_index] = release_semaphore;
+				// Do nothing.
+				acquire_semaphore[frame_index] = std::move(release_semaphore);
+			}
+
+			if (swapchain_tasks[frame_index])
+			{
+				swapchain_tasks[frame_index]->set_desc("application-headless-readback");
+				swapchain_tasks[frame_index]->set_task_class(TaskClass::Background);
+
+				if (last_task_dependency)
+					GRANITE_THREAD_GROUP()->add_dependency(*swapchain_tasks[frame_index], *last_task_dependency);
+
+				// Add a dummy task that only serves to chain dependencies.
+				last_task_dependency = GRANITE_THREAD_GROUP()->create_task();
+				last_task_dependency->set_task_class(TaskClass::Background);
+				GRANITE_THREAD_GROUP()->add_dependency(*last_task_dependency, *swapchain_tasks[frame_index]);
+				swapchain_tasks[frame_index]->flush();
 			}
 		}
 
-		release_semaphore.reset();
+		release_semaphore = {};
 		frame_index = (frame_index + 1) % SwapchainImages;
 		frames++;
 	}
 
-	void set_next_readback(const std::string &path)
+	void set_next_readback(std::string path)
 	{
-		next_readback_cb = [this, path](unsigned rb_index) {
-			auto &wsi = app->get_wsi();
-			auto &device = wsi.get_device();
-
-			readback_fence[rb_index]->wait();
-			readback_fence[rb_index].reset();
-
-			auto *ptr = static_cast<uint32_t *>(device.map_host_buffer(*readback_buffers[rb_index], MEMORY_ACCESS_READ_WRITE_BIT));
-			for (unsigned i = 0; i < width * height; i++)
-				ptr[i] |= 0xff000000u;
-
-			if (!stbi_write_png(path.c_str(), width, height, 4, ptr, width * 4))
-				LOGE("Failed to write PNG to disk.\n");
-			device.unmap_host_buffer(*readback_buffers[rb_index], MEMORY_ACCESS_READ_WRITE_BIT);
-		};
+		next_readback_path = std::move(path);
 	}
 
 	void wait_threads()
 	{
-		for (auto &thread : worker_threads)
-			thread->wait();
-#ifdef HAVE_GRANITE_FFMPEG
-		encoder.drain();
-#endif
+		GRANITE_THREAD_GROUP()->wait_idle();
 	}
 
 private:
@@ -466,22 +404,19 @@ private:
 	std::vector<ImageHandle> swapchain_images;
 	std::vector<BufferHandle> readback_buffers;
 	std::vector<Semaphore> acquire_semaphore;
-	std::vector<Fence> readback_fence;
-	std::vector<std::unique_ptr<FrameWorker>> worker_threads;
-	std::function<void (unsigned)> next_readback_cb;
-	ThreadLatch thread_latches[SwapchainImages];
+	std::string next_readback_path;
+	TaskGroupHandle swapchain_tasks[SwapchainImages];
+	TaskGroupHandle last_task_dependency;
 
 #ifdef HAVE_GRANITE_FFMPEG
 	VideoEncoder encoder;
+	std::vector<VideoEncoder::YCbCrPipeline> ycbcr_pipelines;
 #endif
 
-	void dump_frame(unsigned frame, unsigned index)
+	void dump_frame_single(const std::string &path, unsigned frame, unsigned index)
 	{
 		auto &wsi = app->get_wsi();
 		auto &device = wsi.get_device();
-
-		readback_fence[index]->wait();
-		readback_fence[index].reset();
 
 		LOGI("Dumping frame: %u (index: %u)\n", frame, index);
 
@@ -489,12 +424,17 @@ private:
 		for (unsigned i = 0; i < width * height; i++)
 			ptr[i] |= 0xff000000u;
 
-		char buffer[64];
-		sprintf(buffer, "_%05u.png", frame);
-		auto path = png_readback + buffer;
 		if (!stbi_write_png(path.c_str(), width, height, 4, ptr, width * 4))
 			LOGE("Failed to write PNG to disk.\n");
 		device.unmap_host_buffer(*readback_buffers[index], MEMORY_ACCESS_READ_WRITE_BIT);
+	}
+
+	void dump_frame(unsigned frame, unsigned index)
+	{
+		char buffer[64];
+		sprintf(buffer, "_%05u.png", frame);
+		auto path = png_readback + buffer;
+		dump_frame_single(path, frame, index);
 	}
 
 	Application *app = nullptr;

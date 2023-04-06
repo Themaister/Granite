@@ -243,6 +243,8 @@ public:
 	void set_external_frame(unsigned index, Semaphore acquire_semaphore, double frame_time);
 	Semaphore consume_external_release_semaphore();
 
+	CommandBuffer::Type get_current_present_queue_type() const;
+
 	// Equivalent to calling destructor.
 	void teardown();
 

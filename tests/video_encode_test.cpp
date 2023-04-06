@@ -24,7 +24,10 @@ int main()
 
 	if (!Vulkan::Context::init_loader(nullptr))
 		return 1;
+	Vulkan::Context::SystemHandles handles = {};
+	handles.filesystem = GRANITE_FILESYSTEM();
 	Vulkan::Context ctx;
+	ctx.set_system_handles(handles);
 	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0))
 		return 1;
 	Vulkan::Device device;
@@ -51,34 +54,23 @@ int main()
 		return 1;
 	}
 
-	Vulkan::ImageHandle images[2];
-	Vulkan::Semaphore sems[2];
-	for (auto &img : images)
-	{
-		auto info = Vulkan::ImageCreateInfo::render_target(640, 480, VK_FORMAT_R8G8B8A8_SRGB);
-		info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		img = device.create_image(info);
-	}
+	auto info = Vulkan::ImageCreateInfo::render_target(640, 480, VK_FORMAT_R8G8B8A8_UNORM);
+	info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	info.misc = Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
+	auto img = device.create_image(info);
+	auto pipe = encoder.create_ycbcr_pipeline();
 
 	for (unsigned i = 0; i < 1000; i++)
 	{
-		unsigned wrapped = i % 2;
-		if (sems[wrapped])
-		{
-			device.add_wait_semaphore(Vulkan::CommandBuffer::Type::Generic, sems[wrapped],
-			                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, true);
-			sems[wrapped].reset();
-		}
-
 		auto cmd = device.request_command_buffer();
 
-		cmd->image_barrier(*images[wrapped], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		cmd->image_barrier(*img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
 		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
 		Vulkan::RenderPassInfo rp;
-		rp.color_attachments[0] = &images[wrapped]->get_view();
+		rp.color_attachments[0] = &img->get_view();
 		rp.num_color_attachments = 1;
 		rp.store_attachments = 1;
 		rp.clear_attachments = 1;
@@ -99,21 +91,18 @@ int main()
 		cmd->clear_quad(0, rect, value);
 		cmd->end_render_pass();
 
-		Vulkan::Semaphore sem;
-		device.submit(cmd, nullptr, 1, &sem);
+		cmd->image_barrier(*img, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+						   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+						   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
-		encoder.push_frame(*images[wrapped], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		                   Vulkan::CommandBuffer::Type::Generic,
-		                   sem, sems[wrapped]);
-
+		encoder.process_rgb(*cmd, pipe, img->get_view());
+		pipe.fence.reset();
+		device.submit(cmd, &pipe.fence);
+		encoder.encode_frame(pipe);
 		device.next_frame_context();
 	}
-
-	encoder.drain();
 
 #ifdef HAVE_GRANITE_AUDIO
 	Global::stop_audio_system();
 #endif
-
-	Global::deinit();
 }

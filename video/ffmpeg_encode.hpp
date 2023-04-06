@@ -40,24 +40,70 @@ public:
 
 	struct Timebase
 	{
-		int num;
-		int den;
+		int num = 0;
+		int den = 0;
+	};
+
+	enum class Format
+	{
+		NV12
+	};
+
+	enum ChromaSiting
+	{
+		Center,
+		TopLeft,
+		Left
 	};
 
 	struct Options
 	{
-		unsigned width;
-		unsigned height;
-		Timebase frame_timebase;
+		unsigned width = 0;
+		unsigned height = 0;
+		Timebase frame_timebase = {};
+		Format format = Format::NV12; // Default for HW encode.
+		ChromaSiting siting = ChromaSiting::Left; // Default for H.264.
 	};
 
 	void set_audio_source(Audio::DumpBackend *backend);
 
 	bool init(Vulkan::Device *device, const char *path, const Options &options);
-	bool push_frame(const Vulkan::Image &image, VkImageLayout layout,
-	                Vulkan::CommandBuffer::Type type, const Vulkan::Semaphore &semaphore,
-					Vulkan::Semaphore &release_semaphore);
-	void drain();
+
+	struct PlaneLayout
+	{
+		size_t offset;
+		size_t stride;
+		size_t row_length;
+	};
+
+	struct YCbCrPipeline
+	{
+		Vulkan::ImageHandle luma;
+		Vulkan::ImageHandle chroma_full;
+		Vulkan::ImageHandle chroma;
+		Vulkan::BufferHandle buffer;
+		Vulkan::Fence fence;
+		Vulkan::Program *rgb_to_ycbcr = nullptr;
+		Vulkan::Program *chroma_downsample = nullptr;
+		PlaneLayout planes[3] = {};
+		unsigned num_planes = 0;
+
+		struct Constants
+		{
+			float inv_resolution_luma[2];
+			float inv_resolution_chroma[2];
+			float base_uv_luma[2];
+			float base_uv_chroma[2];
+			uint32_t luma_dispatch[2];
+			uint32_t chroma_dispatch[2];
+		} constants = {};
+	};
+
+	YCbCrPipeline create_ycbcr_pipeline() const;
+	void process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view);
+
+	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes);
+	bool encode_frame(YCbCrPipeline &pipeline);
 
 private:
 	struct Impl;

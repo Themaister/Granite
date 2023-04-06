@@ -20,6 +20,9 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+// FIXME
+#undef HAVE_GRANITE_FFMPEG
+
 #define NOMINMAX
 #include "application.hpp"
 #include "application_events.hpp"

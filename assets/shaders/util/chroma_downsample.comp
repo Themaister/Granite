@@ -1,0 +1,23 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0) uniform mediump sampler2D uInputChroma;
+layout(set = 0, binding = 1, rg8) uniform mediump image2D uOutputChroma;
+
+layout(push_constant) uniform Registers
+{
+    uvec2 resolution;
+    vec2 base_uv;
+    vec2 inv_resolution;
+} registers;
+
+void main()
+{
+    uvec2 coord = gl_GlobalInvocationID.xy;
+    if (all(lessThan(coord, registers.resolution)))
+    {
+        vec2 uv = registers.base_uv + vec2(coord) * registers.inv_resolution;
+        mediump vec2 chroma = textureLod(uInputChroma, uv, 0.0).xy;
+        imageStore(uOutputChroma, ivec2(coord), chroma.xyxy);
+    }
+}

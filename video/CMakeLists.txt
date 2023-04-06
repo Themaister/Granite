@@ -1,6 +1,6 @@
 include(FindPkgConfig)
 pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
-        libavdevice libavformat libavcodec libswscale libavutil)
+        libavdevice libavformat libavcodec libavutil)
 
 add_granite_internal_lib(granite-video
         ffmpeg_encode.cpp ffmpeg_encode.hpp

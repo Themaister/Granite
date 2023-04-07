@@ -605,7 +605,7 @@ bool PulseRecord::init(const char *ident, float sample_rate_, unsigned int chann
 	buffer_attr.tlength = -1u;
 	buffer_attr.prebuf = -1u;
 	buffer_attr.minreq = -1u;
-	buffer_attr.fragsize = pa_usec_to_bytes(50000, &spec);
+	buffer_attr.fragsize = pa_usec_to_bytes(10000, &spec);
 
 	if (pa_stream_connect_record(stream, nullptr, &buffer_attr,
 	                             static_cast<pa_stream_flags_t>(PA_STREAM_AUTO_TIMING_UPDATE |
@@ -631,9 +631,6 @@ bool PulseRecord::init(const char *ident, float sample_rate_, unsigned int chann
 	const auto *attr = pa_stream_get_buffer_attr(stream);
 	LOGI("attr->fragsize = %u\n", attr->fragsize);
 	LOGI("attr->maxlength = %u\n", attr->maxlength);
-	LOGI("attr->tlength = %u\n", attr->tlength);
-	LOGI("attr->prebuf = %u\n", attr->prebuf);
-	LOGI("attr->minreq = %u\n", attr->minreq);
 
 	pa_threaded_mainloop_unlock(mainloop);
 	return true;
@@ -689,6 +686,14 @@ bool PulseRecord::get_buffer_status(size_t &read_avail, uint32_t &latency_usec)
 	}
 
 	read_avail = avail / (sizeof(float) * num_channels);
+
+	if (pull_buffer_offset > read_avail)
+	{
+		LOGE("pull_buffer_offset %zu > read_avail %zu\n", pull_buffer_offset, read_avail);
+		read_avail = 0;
+	}
+	else
+		read_avail -= pull_buffer_offset;
 
 	pa_usec_t usecs;
 	int negative;

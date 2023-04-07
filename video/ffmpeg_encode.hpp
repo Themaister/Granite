@@ -64,6 +64,8 @@ public:
 		Timebase frame_timebase = {};
 		Format format = Format::NV12; // Default for HW encode.
 		ChromaSiting siting = ChromaSiting::Left; // Default for H.264.
+		// Correlate PTS with wall time.
+		bool realtime = false;
 	};
 
 	void set_audio_source(Audio::DumpBackend *backend);
@@ -104,8 +106,10 @@ public:
 	YCbCrPipeline create_ycbcr_pipeline() const;
 	void process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view);
 
-	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes);
-	bool encode_frame(YCbCrPipeline &pipeline);
+	int64_t sample_realtime_pts() const;
+
+	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes, int64_t pts);
+	bool encode_frame(YCbCrPipeline &pipeline, int64_t pts);
 
 private:
 	struct Impl;

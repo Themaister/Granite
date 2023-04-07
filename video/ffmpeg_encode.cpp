@@ -38,7 +38,6 @@ extern "C"
 #include "thread_group.hpp"
 #include "timer.hpp"
 #include <thread>
-#include <chrono>
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
 #include "dsp/dsp.hpp"
@@ -67,7 +66,7 @@ struct VideoEncoder::Impl
 {
 	Vulkan::Device *device = nullptr;
 	bool init(Vulkan::Device *device, const char *path, const Options &options);
-	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes);
+	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes, int64_t pts);
 	~Impl();
 
 	AVFormatContext *av_format_ctx = nullptr;
@@ -87,13 +86,20 @@ struct VideoEncoder::Impl
 	bool init_video_codec();
 	bool init_audio_codec();
 
-	int64_t audio_pts = 0;
-	int64_t last_stream_audio_pts = INT64_MIN;
 	std::vector<int16_t> audio_buffer_s16;
 
+	struct
+	{
+		int64_t next_lower_bound_pts = 0;
+		int64_t next_upper_bound_pts = 0;
+		int64_t base_pts = 0;
+	} realtime_pts;
 	int64_t encode_video_pts = 0;
 	int64_t encode_audio_pts = 0;
+	int64_t audio_pts = 0;
 	int current_audio_frames = 0;
+
+	int64_t sample_realtime_pts() const;
 };
 
 static void free_av_objects(CodecStream &stream)
@@ -155,7 +161,12 @@ static unsigned format_to_planes(VideoEncoder::Format fmt)
 	}
 }
 
-bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes)
+int64_t VideoEncoder::Impl::sample_realtime_pts() const
+{
+	return int64_t(Util::get_current_time_nsecs() / 1000) - realtime_pts.base_pts;
+}
+
+bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes, int64_t pts)
 {
 	if (num_planes != format_to_planes(options.format))
 	{
@@ -189,7 +200,10 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 			memcpy(dst_chroma, src_chroma, chroma_width);
 	}
 
-	video.av_frame->pts = encode_video_pts++;
+	if (options.realtime)
+		video.av_frame->pts = pts;
+	else
+		video.av_frame->pts = encode_video_pts++;
 
 	ret = avcodec_send_frame(video.av_ctx, video.av_frame);
 	if (ret < 0)
@@ -207,11 +221,10 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 #ifdef HAVE_GRANITE_AUDIO
 	if (audio_stream)
 	{
-		// TODO: Synchronization. Deal with clock drift and discontinuity somehow?
-
-		int64_t target_audio_samples = av_rescale_q_rnd(encode_video_pts, video.av_ctx->time_base, audio.av_ctx->time_base, AV_ROUND_UP);
-		int64_t to_render = std::max<int64_t>(target_audio_samples - audio_pts, 0);
-		while (to_render >= audio.av_frame->nb_samples)
+		size_t read_avail_frames;
+		uint32_t latency_us;
+		while (audio_stream->get_buffer_status(read_avail_frames, latency_us) &&
+		       read_avail_frames >= size_t(audio.av_frame->nb_samples))
 		{
 			if ((ret = av_frame_make_writable(audio.av_frame)) < 0)
 			{
@@ -221,18 +234,34 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 
 			size_t read_count = audio_stream->read_frames_f32(
 					reinterpret_cast<float * const *>(audio.av_frame->data),
-					audio.av_frame->nb_samples, true);
+					audio.av_frame->nb_samples, false);
 
 			if (read_count < size_t(audio.av_frame->nb_samples))
 			{
 				// Shouldn't happen ...
-				LOGW("Short read detected. Filling with silence.\n");
-				memset(audio.av_frame->data[0] + read_count * sizeof(float) * 2, 0,
-				       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float) * 2);
+				LOGW("Short read detected (%zu < %d). Filling with silence.\n", read_count, audio.av_frame->nb_samples);
+				for (unsigned c = 0; c < 2; c++)
+				{
+					memset(audio.av_frame->data[c] + read_count * sizeof(float), 0,
+					       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float));
+				}
 			}
 
-			audio_pts += to_render;
-			to_render -= audio.av_frame->nb_samples;
+			// Crude system for handling drift.
+			// Ensure monotonic PTS with maximum 5% clock drift.
+			auto absolute_ts = sample_realtime_pts();
+			absolute_ts -= latency_us;
+
+			// Detect large discontinuity and reset the PTS.
+			absolute_ts = std::max(absolute_ts, realtime_pts.next_lower_bound_pts);
+			if (absolute_ts < realtime_pts.next_upper_bound_pts + 200000)
+				absolute_ts = std::min(absolute_ts, realtime_pts.next_upper_bound_pts);
+
+			audio.av_frame->pts = absolute_ts;
+			realtime_pts.next_lower_bound_pts =
+					absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 950000, audio.av_ctx->sample_rate, AV_ROUND_DOWN);
+			realtime_pts.next_upper_bound_pts =
+					absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 1050000, audio.av_ctx->sample_rate, AV_ROUND_UP);
 
 			ret = avcodec_send_frame(audio.av_ctx, audio.av_frame);
 			if (ret < 0)
@@ -348,7 +377,9 @@ bool VideoEncoder::Impl::init_audio_codec()
 {
 #ifdef HAVE_GRANITE_AUDIO
 	AVCodecID codec_id;
-	if (audio_stream)
+
+	// Streaming wants AAC.
+	if (options.realtime)
 		codec_id = AV_CODEC_ID_AAC;
 	else
 		codec_id = AV_CODEC_ID_FLAC;
@@ -356,7 +387,7 @@ bool VideoEncoder::Impl::init_audio_codec()
 	const AVCodec *codec = avcodec_find_encoder(codec_id);
 	if (!codec)
 	{
-		LOGE("Could not find FLAC encoder.\n");
+		LOGE("Could not find audio encoder.\n");
 		return false;
 	}
 
@@ -374,15 +405,20 @@ bool VideoEncoder::Impl::init_audio_codec()
 		return false;
 	}
 
+	// Just hardcode for what FFmpeg supports. We control which encoders we care about.
 	audio.av_ctx->sample_fmt = audio_stream ? AV_SAMPLE_FMT_FLTP : AV_SAMPLE_FMT_S16;
 
-	if (audio_stream)
+	if (options.realtime)
 		audio.av_ctx->sample_rate = int(audio_stream->get_sample_rate());
 	else
 		audio.av_ctx->sample_rate = int(audio_source->get_sample_rate());
 
 	audio.av_ctx->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
-	audio.av_ctx->time_base = { 1, audio.av_ctx->sample_rate };
+
+	if (options.realtime)
+		audio.av_ctx->time_base = { 1, 1000000 };
+	else
+		audio.av_ctx->time_base = { 1, audio.av_ctx->sample_rate };
 
 	if (av_format_ctx->oformat->flags & AVFMT_GLOBALHEADER)
 		audio.av_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -390,7 +426,7 @@ bool VideoEncoder::Impl::init_audio_codec()
 	audio.av_stream->id = 1;
 	audio.av_stream->time_base = audio.av_ctx->time_base;
 
-	if (audio_stream)
+	if (options.realtime)
 		audio.av_ctx->bit_rate = 256 * 1024;
 
 	int ret = avcodec_open2(audio.av_ctx, codec, nullptr);
@@ -463,7 +499,12 @@ bool VideoEncoder::Impl::init_video_codec()
 	}
 
 	video.av_ctx->framerate = { options.frame_timebase.den, options.frame_timebase.num };
-	video.av_ctx->time_base = { options.frame_timebase.num, options.frame_timebase.den };
+
+	if (options.realtime)
+		video.av_ctx->time_base = { 1, 1000000 };
+	else
+		video.av_ctx->time_base = { options.frame_timebase.num, options.frame_timebase.den };
+
 	video.av_ctx->color_range = AVCOL_RANGE_MPEG;
 	video.av_ctx->colorspace = AVCOL_SPC_BT709;
 	video.av_ctx->color_primaries = AVCOL_PRI_BT709;
@@ -492,12 +533,17 @@ bool VideoEncoder::Impl::init_video_codec()
 	video.av_stream->id = 0;
 	video.av_stream->time_base = video.av_ctx->time_base;
 
-	// Should be fine for streaming.
-	video.av_ctx->bit_rate = 6000000;
-	video.av_ctx->rc_buffer_size = video.av_ctx->bit_rate;
-	video.av_ctx->rc_max_rate = 8000000;
-
 	AVDictionary *opts = nullptr;
+
+	// Should be fine for streaming.
+	if (options.realtime)
+	{
+		video.av_ctx->bit_rate = 6000000;
+		video.av_ctx->rc_buffer_size = video.av_ctx->bit_rate;
+		video.av_ctx->rc_max_rate = 8000000;
+		video.av_ctx->gop_size = int(av_rescale_rnd(2, video.av_ctx->framerate.num, video.av_ctx->framerate.den, AV_ROUND_UP));
+	}
+
 	av_dict_set(&opts, "preset", "fast", 0);
 	int ret = avcodec_open2(video.av_ctx, codec, &opts);
 	av_dict_free(&opts);
@@ -528,10 +574,9 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	device = device_;
 	options = options_;
 
-	// Crude. If the path is some kind of streaming protocol, use FLV since
-	// that seems to be what platforms support.
+	// If realtime (streaming) use FLV muxer since that seems to be what platforms support.
 	const char *muxer = nullptr;
-	if (strstr(path, "://"))
+	if (options.realtime)
 		muxer = "flv";
 
 	int ret;
@@ -541,14 +586,27 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		return false;
 	}
 
-	if (!init_video_codec() ||
-	    ((audio_source || audio_stream) && !init_audio_codec()))
+	const auto cleanup_format_context = [this]()
 	{
 		if (!(av_format_ctx->flags & AVFMT_NOFILE))
 			avio_closep(&av_format_ctx->pb);
 		avformat_free_context(av_format_ctx);
 		av_format_ctx = nullptr;
+	};
+
+	if (!init_video_codec())
+	{
+		cleanup_format_context();
 		return false;
+	}
+
+	if ((options.realtime && audio_stream) || (!options.realtime && audio_source))
+	{
+		if (!init_audio_codec())
+		{
+			cleanup_format_context();
+			return false;
+		}
 	}
 
 	av_dump_format(av_format_ctx, 0, path, 1);
@@ -559,6 +617,7 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		if (ret < 0)
 		{
 			LOGE("Could not open file: %d\n", ret);
+			cleanup_format_context();
 			return false;
 		}
 	}
@@ -566,8 +625,11 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	if ((ret = avformat_write_header(av_format_ctx, nullptr)) < 0)
 	{
 		LOGE("Failed to write format header: %d\n", ret);
+		cleanup_format_context();
 		return false;
 	}
+
+	realtime_pts.base_pts = int64_t(Util::get_current_time_nsecs() / 1000);
 
 	return true;
 }
@@ -631,9 +693,9 @@ bool VideoEncoder::init(Vulkan::Device *device, const char *path, const Options 
 	return impl->init(device, path, options);
 }
 
-bool VideoEncoder::encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes)
+bool VideoEncoder::encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes, int64_t pts)
 {
-	return impl->encode_frame(buffer, planes, num_planes);
+	return impl->encode_frame(buffer, planes, num_planes, pts);
 }
 
 void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view)
@@ -716,14 +778,14 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 				VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 }
 
-bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline)
+bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline, int64_t pts)
 {
 	if (!pipeline.fence)
 		return false;
 	pipeline.fence->wait();
 
 	auto *buf = static_cast<const uint8_t *>(impl->device->map_host_buffer(*pipeline.buffer, Vulkan::MEMORY_ACCESS_READ_BIT));
-	bool ret = encode_frame(buf, pipeline.planes, pipeline.num_planes);
+	bool ret = encode_frame(buf, pipeline.planes, pipeline.num_planes, pts);
 	impl->device->unmap_host_buffer(*pipeline.buffer, Vulkan::MEMORY_ACCESS_READ_BIT);
 	return ret;
 }
@@ -817,5 +879,10 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline() const
 	impl->device->set_name(*pipeline.buffer, "video-encode-readback");
 
 	return pipeline;
+}
+
+int64_t VideoEncoder::sample_realtime_pts() const
+{
+	return impl->sample_realtime_pts();
 }
 }

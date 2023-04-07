@@ -236,6 +236,7 @@ public:
 
 #ifdef HAVE_GRANITE_AUDIO
 #if 1
+		enc_opts.realtime = true;
 		record_stream.reset(Audio::create_default_audio_record_backend("headless", 44100.0f, 2));
 		if (record_stream)
 			encoder.set_audio_record_stream(record_stream.get());
@@ -333,6 +334,8 @@ public:
 #ifdef HAVE_GRANITE_FFMPEG
 			else if (!video_encode_path.empty())
 			{
+				auto pts = encoder.sample_realtime_pts();
+
 				OwnershipTransferInfo transfer_info = {};
 				transfer_info.old_queue = wsi.get_current_present_queue_type();
 				transfer_info.new_queue = CommandBuffer::Type::AsyncCompute;
@@ -348,8 +351,8 @@ public:
 				device.submit(cmd, &ycbcr_pipelines[frame_index].fence, 1, &acquire_semaphore[frame_index]);
 
 				swapchain_tasks[frame_index] = GRANITE_THREAD_GROUP()->create_task(
-						[this, index = frame_index]() mutable {
-							if (!encoder.encode_frame(ycbcr_pipelines[index]))
+						[this, index = frame_index, pts]() mutable {
+							if (!encoder.encode_frame(ycbcr_pipelines[index], pts))
 								LOGE("Failed to push frame to encoder.\n");
 						});
 			}

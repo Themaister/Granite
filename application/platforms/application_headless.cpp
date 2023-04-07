@@ -236,7 +236,7 @@ public:
 
 #ifdef HAVE_GRANITE_AUDIO
 #if 1
-		record_stream.reset(Audio::create_default_audio_record_backend("headless", 96000.0f, 2));
+		record_stream.reset(Audio::create_default_audio_record_backend("headless", 48000.0f, 2));
 		if (record_stream)
 			encoder.set_audio_record_stream(record_stream.get());
 #else

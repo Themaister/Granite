@@ -314,13 +314,16 @@ bool Pulse::init(float sample_rate_, unsigned channels_)
 		return false;
 	}
 
-	while (pa_stream_get_state(stream) < PA_STREAM_READY)
-		pa_threaded_mainloop_wait(mainloop);
-
-	if (pa_stream_get_state(stream) != PA_STREAM_READY)
+	pa_stream_state_t state;
+	while ((state = pa_stream_get_state(stream)) != PA_STREAM_READY)
 	{
-		pa_threaded_mainloop_unlock(mainloop);
-		return false;
+		if (!PA_STREAM_IS_GOOD(state))
+		{
+			pa_threaded_mainloop_unlock(mainloop);
+			return false;
+		}
+
+		pa_threaded_mainloop_wait(mainloop);
 	}
 
 	auto *stream_spec = pa_stream_get_sample_spec(stream);
@@ -344,7 +347,7 @@ bool Pulse::start()
 	pa_threaded_mainloop_lock(mainloop);
 	if (callback)
 		callback->on_backend_start();
-	pa_stream_cork(stream, 0, stream_success_cb, this);
+	pa_operation_unref(pa_stream_cork(stream, 0, stream_success_cb, this));
 
 	while (!has_success)
 		pa_threaded_mainloop_wait(mainloop);
@@ -364,7 +367,7 @@ bool Pulse::stop()
 
 	has_success = false;
 	pa_threaded_mainloop_lock(mainloop);
-	pa_stream_cork(stream, 1, stream_success_cb, this);
+	pa_operation_unref(pa_stream_cork(stream, 1, stream_success_cb, this));
 
 	while (!has_success)
 		pa_threaded_mainloop_wait(mainloop);
@@ -409,6 +412,282 @@ Backend *create_pulse_backend(BackendCallback *callback, float sample_rate, unsi
 {
 	auto *backend = new Pulse(callback);
 	if (!backend->init(sample_rate, channels))
+	{
+		delete backend;
+		return nullptr;
+	}
+
+	return backend;
+}
+
+struct PulseRecord final : RecordStream
+{
+	~PulseRecord() override;
+
+	const char *get_backend_name() override
+	{
+		return "pulse";
+	}
+
+	float get_sample_rate() override
+	{
+		return sample_rate;
+	}
+
+	unsigned get_num_channels() override
+	{
+		return num_channels;
+	}
+
+	size_t read_frames_interleaved_f32(float *data, size_t frames, bool blocking) override;
+	bool get_buffer_status(size_t &read_avail, uint32_t &latency_usec) override;
+	bool init(const char *ident, float sample_rate_, unsigned channels_);
+
+	pa_threaded_mainloop *mainloop = nullptr;
+	pa_context *context = nullptr;
+	pa_stream *stream = nullptr;
+	float sample_rate = 0.0f;
+	unsigned num_channels = 0;
+
+	const float *peek_buffer = nullptr;
+	size_t peek_buffer_frames = 0;
+	size_t pull_buffer_offset = 0;
+
+	void drop_current_peek_locked();
+};
+
+static void stream_record_context_state_cb(pa_context *, void *data)
+{
+	auto *pa = static_cast<PulseRecord *>(data);
+	pa_threaded_mainloop_signal(pa->mainloop, 0);
+}
+
+static void stream_record_state_cb(pa_stream *, void *data)
+{
+	auto *pa = static_cast<PulseRecord *>(data);
+	pa_threaded_mainloop_signal(pa->mainloop, 0);
+}
+
+static void stream_record_request_cb(pa_stream *, size_t, void *data)
+{
+	auto *pa = static_cast<PulseRecord *>(data);
+	pa_threaded_mainloop_signal(pa->mainloop, 0);
+}
+
+void PulseRecord::drop_current_peek_locked()
+{
+	if (peek_buffer_frames)
+	{
+		pa_stream_drop(stream);
+		peek_buffer_frames = 0;
+		pull_buffer_offset = 0;
+		peek_buffer = nullptr;
+	}
+}
+
+PulseRecord::~PulseRecord()
+{
+	if (mainloop)
+	{
+		pa_threaded_mainloop_lock(mainloop);
+		drop_current_peek_locked();
+		pa_threaded_mainloop_unlock(mainloop);
+	}
+
+	if (mainloop)
+		pa_threaded_mainloop_stop(mainloop);
+
+	if (stream)
+	{
+		pa_stream_disconnect(stream);
+		pa_stream_unref(stream);
+	}
+
+	if (context)
+	{
+		pa_context_disconnect(context);
+		pa_context_unref(context);
+	}
+
+	if (mainloop)
+		pa_threaded_mainloop_free(mainloop);
+}
+
+bool PulseRecord::init(const char *ident, float sample_rate_, unsigned int channels_)
+{
+	sample_rate = sample_rate_;
+	num_channels = channels_;
+
+	// Only bother with stereo recording for now.
+	if (channels_ != 2)
+		return false;
+
+	mainloop = pa_threaded_mainloop_new();
+	if (!mainloop)
+		return false;
+
+	context = pa_context_new(pa_threaded_mainloop_get_api(mainloop), "Granite");
+	if (!context)
+		return false;
+
+	pa_context_set_state_callback(context, stream_record_context_state_cb, this);
+
+	if (pa_context_connect(context, nullptr, PA_CONTEXT_NOFLAGS, nullptr) < 0)
+		return false;
+
+	pa_threaded_mainloop_lock(mainloop);
+	if (pa_threaded_mainloop_start(mainloop) < 0)
+		return false;
+
+	while (pa_context_get_state(context) < PA_CONTEXT_READY)
+		pa_threaded_mainloop_wait(mainloop);
+
+	if (pa_context_get_state(context) != PA_CONTEXT_READY)
+	{
+		pa_threaded_mainloop_unlock(mainloop);
+		return false;
+	}
+
+	pa_sample_spec spec = {};
+	spec.format = PA_SAMPLE_FLOAT32NE;
+	spec.channels = uint8_t(channels_);
+	spec.rate = uint32_t(sample_rate_);
+
+	stream = pa_stream_new(context, ident, &spec, nullptr);
+	if (!stream)
+	{
+		pa_threaded_mainloop_unlock(mainloop);
+		return false;
+	}
+
+	pa_stream_set_state_callback(stream, stream_record_state_cb, this);
+	pa_stream_set_read_callback(stream, stream_record_request_cb, this);
+	pa_stream_set_write_callback(stream, stream_record_request_cb, this);
+
+	pa_buffer_attr buffer_attr = {};
+	buffer_attr.maxlength = -1u;
+	buffer_attr.tlength = -1u;
+	buffer_attr.prebuf = -1u;
+	buffer_attr.minreq = -1u;
+	buffer_attr.fragsize = pa_usec_to_bytes(20000, &spec);
+
+	if (pa_stream_connect_record(stream, nullptr, &buffer_attr,
+	                             static_cast<pa_stream_flags_t>(PA_STREAM_AUTO_TIMING_UPDATE |
+	                                                            PA_STREAM_ADJUST_LATENCY |
+	                                                            PA_STREAM_INTERPOLATE_TIMING)) < 0)
+	{
+		pa_threaded_mainloop_unlock(mainloop);
+		return false;
+	}
+
+	pa_stream_state_t state;
+	while ((state = pa_stream_get_state(stream)) != PA_STREAM_READY)
+	{
+		if (!PA_STREAM_IS_GOOD(state))
+		{
+			pa_threaded_mainloop_unlock(mainloop);
+			return false;
+		}
+
+		pa_threaded_mainloop_wait(mainloop);
+	}
+
+	pa_threaded_mainloop_unlock(mainloop);
+	return true;
+}
+
+bool PulseRecord::get_buffer_status(size_t &read_avail, uint32_t &latency_usec)
+{
+	pa_threaded_mainloop_lock(mainloop);
+
+	size_t avail = pa_stream_readable_size(stream);
+	if (avail == size_t(-1))
+	{
+		pa_threaded_mainloop_unlock(mainloop);
+		return false;
+	}
+
+	read_avail = avail / (sizeof(float) * num_channels);
+
+	pa_usec_t usecs;
+	int negative;
+	if (pa_stream_get_latency(stream, &usecs, &negative) != 0)
+	{
+		pa_threaded_mainloop_unlock(mainloop);
+		return false;
+	}
+
+	auto buffer_latency_us = uint32_t(1e6 * float(avail) / sample_rate);
+
+	if (negative)
+	{
+		if (buffer_latency_us >= usecs)
+			latency_usec = buffer_latency_us - usecs;
+		else
+			latency_usec = 0;
+	}
+	else
+		latency_usec = uint32_t(usecs) + buffer_latency_us;
+
+	pa_threaded_mainloop_unlock(mainloop);
+	return true;
+}
+
+size_t PulseRecord::read_frames_interleaved_f32(float *data, size_t frames, bool blocking)
+{
+	size_t num_read_frames = 0;
+	pa_threaded_mainloop_lock(mainloop);
+
+	while (frames)
+	{
+		size_t peek_avail = peek_buffer_frames - pull_buffer_offset;
+		if (peek_avail)
+		{
+			size_t to_write = std::min(peek_avail, frames);
+
+			if (peek_buffer)
+				memcpy(data, peek_buffer + pull_buffer_offset * num_channels, to_write * num_channels * sizeof(float));
+			else
+				memset(data, 0, to_write * num_channels * sizeof(float));
+
+			pull_buffer_offset += to_write;
+			data += num_channels * to_write;
+			frames -= to_write;
+			num_read_frames += to_write;
+		}
+		else
+		{
+			// We've drained a fragment, peek into a new one.
+			drop_current_peek_locked();
+
+			size_t peek_size;
+			if (pa_stream_peek(stream, reinterpret_cast<const void **>(&peek_buffer), &peek_size) < 0)
+				break;
+
+			if (peek_size == 0)
+			{
+				if (blocking)
+					pa_threaded_mainloop_wait(mainloop);
+				else
+					break;
+			}
+
+			peek_buffer_frames = peek_size / (sizeof(float) * num_channels);
+		}
+	}
+
+	// If we ended up reading exactly one fragment, drop the fragment here.
+	if (peek_buffer_frames == pull_buffer_offset)
+		drop_current_peek_locked();
+
+	pa_threaded_mainloop_unlock(mainloop);
+	return num_read_frames;
+}
+
+RecordStream *create_pulse_record_backend(const char *ident, float sample_rate, unsigned channels)
+{
+	auto *backend = new PulseRecord();
+	if (!backend->init(ident, sample_rate, channels))
 	{
 		delete backend;
 		return nullptr;

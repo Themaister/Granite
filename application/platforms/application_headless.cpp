@@ -238,12 +238,18 @@ public:
 			enc_opts.frame_timebase.den = int(frame_rate);
 
 #ifdef HAVE_GRANITE_AUDIO
+#if 1
+			record_stream.reset(Audio::create_default_audio_record_backend("headless", 48000.0f, 2));
+			if (record_stream)
+				encoder.set_audio_record_stream(record_stream.get());
+#else
 			auto *mixer = new Audio::Mixer;
 			auto *audio_dumper = new Audio::DumpBackend(
 					mixer, 48000.0f, 2,
 					unsigned(std::ceil(48000.0f / frame_rate)));
 			Global::install_audio_system(audio_dumper, mixer);
 			encoder.set_audio_source(audio_dumper);
+#endif
 #endif
 
 			if (!encoder.init(&device, video_encode_path.c_str(), enc_opts))
@@ -400,6 +406,10 @@ private:
 	std::string png_readback;
 	std::string video_encode_path;
 	enum { SwapchainImages = 4 };
+
+#ifdef HAVE_GRANITE_AUDIO
+	std::unique_ptr<Audio::RecordStream> record_stream;
+#endif
 
 	std::vector<ImageHandle> swapchain_images;
 	std::vector<BufferHandle> readback_buffers;

@@ -30,6 +30,7 @@ namespace Granite
 namespace Audio
 {
 class DumpBackend;
+class RecordStream;
 }
 
 class VideoEncoder
@@ -66,6 +67,7 @@ public:
 	};
 
 	void set_audio_source(Audio::DumpBackend *backend);
+	void set_audio_record_stream(Audio::RecordStream *stream);
 
 	bool init(Vulkan::Device *device, const char *path, const Options &options);
 

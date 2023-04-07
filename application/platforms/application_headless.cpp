@@ -102,14 +102,6 @@ public:
 		png_readback = std::move(base_path);
 	}
 
-	void enable_video_encode(std::string path)
-	{
-		video_encode_path = std::move(path);
-#ifndef HAVE_GRANITE_FFMPEG
-		LOGE("HAVE_GRANITE_FFMPEG is not defined. Video encode not supported.\n");
-#endif
-	}
-
 	std::vector<const char *> get_instance_extensions() override
 	{
 		return {};
@@ -226,24 +218,29 @@ public:
 		for (auto &swap : swapchain_images)
 			swap->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-#ifdef HAVE_GRANITE_FFMPEG
-		if (!video_encode_path.empty())
-		{
-			VideoEncoder::Options enc_opts = {};
-			enc_opts.width = width;
-			enc_opts.height = height;
+		app->get_wsi().init_external_swapchain(swapchain_images);
+		return true;
+	}
 
-			double frame_rate = std::round(1.0 / time_step);
-			enc_opts.frame_timebase.num = 1;
-			enc_opts.frame_timebase.den = int(frame_rate);
+#ifdef HAVE_GRANITE_FFMPEG
+	void init_headless_recording(std::string path)
+	{
+		video_encode_path = std::move(path);
+		VideoEncoder::Options enc_opts = {};
+		enc_opts.width = width;
+		enc_opts.height = height;
+
+		double frame_rate = std::round(1.0 / time_step);
+		enc_opts.frame_timebase.num = 1;
+		enc_opts.frame_timebase.den = int(frame_rate);
 
 #ifdef HAVE_GRANITE_AUDIO
 #if 1
-			record_stream.reset(Audio::create_default_audio_record_backend("headless", 48000.0f, 2));
-			if (record_stream)
-				encoder.set_audio_record_stream(record_stream.get());
+		record_stream.reset(Audio::create_default_audio_record_backend("headless", 96000.0f, 2));
+		if (record_stream)
+			encoder.set_audio_record_stream(record_stream.get());
 #else
-			auto *mixer = new Audio::Mixer;
+		auto *mixer = new Audio::Mixer;
 			auto *audio_dumper = new Audio::DumpBackend(
 					mixer, 48000.0f, 2,
 					unsigned(std::ceil(48000.0f / frame_rate)));
@@ -252,20 +249,18 @@ public:
 #endif
 #endif
 
-			if (!encoder.init(&device, video_encode_path.c_str(), enc_opts))
-			{
-				LOGE("Failed to initialize encoder.\n");
-				video_encode_path.clear();
-			}
-
-			for (unsigned i = 0; i < SwapchainImages; i++)
-				ycbcr_pipelines.push_back(encoder.create_ycbcr_pipeline());
+		if (!encoder.init(&app->get_wsi().get_device(), video_encode_path.c_str(), enc_opts))
+		{
+			LOGE("Failed to initialize encoder.\n");
+			video_encode_path.clear();
 		}
-#endif
 
-		app->get_wsi().init_external_swapchain(swapchain_images);
-		return true;
+		for (unsigned i = 0; i < SwapchainImages; i++)
+			ycbcr_pipelines.push_back(encoder.create_ycbcr_pipeline());
+
+		record_stream->start();
 	}
+#endif
 
 	void set_time_step(double t)
 	{
@@ -526,13 +521,30 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		if (!app->init_platform(std::move(platform)))
 			return 1;
 
-		if (!args.png_path.empty())
-			p->enable_png_readback(args.png_path);
-		if (!args.video_encode_path.empty())
-			p->enable_video_encode(args.video_encode_path);
 		p->set_max_frames(args.max_frames);
 		p->set_time_step(args.time_step);
 		p->init_headless(app.get());
+
+		// Ensure all startup work is complete.
+		while (app->get_wsi().get_device().query_initialization_progress(Vulkan::Device::InitializationStage::Pipelines) < 100 &&
+		       app->poll())
+		{
+			p->begin_frame();
+			app->run_frame();
+			p->end_frame();
+		}
+
+		if (!args.png_path.empty())
+			p->enable_png_readback(args.png_path);
+
+		if (!args.video_encode_path.empty())
+		{
+#ifdef HAVE_GRANITE_FFMPEG
+			p->init_headless_recording(args.video_encode_path);
+#else
+			LOGE("FFmpeg is not enabled in build.\n");
+#endif
+		}
 
 #ifdef HAVE_GRANITE_AUDIO
 		Global::start_audio_system();

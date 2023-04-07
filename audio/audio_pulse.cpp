@@ -443,6 +443,9 @@ struct PulseRecord final : RecordStream
 	bool get_buffer_status(size_t &read_avail, uint32_t &latency_usec) override;
 	bool init(const char *ident, float sample_rate_, unsigned channels_);
 
+	bool start() override;
+	bool stop() override;
+
 	pa_threaded_mainloop *mainloop = nullptr;
 	pa_context *context = nullptr;
 	pa_stream *stream = nullptr;
@@ -454,7 +457,19 @@ struct PulseRecord final : RecordStream
 	size_t pull_buffer_offset = 0;
 
 	void drop_current_peek_locked();
+	bool is_running = false;
+
+	int success = 0;
+	bool has_success = false;
 };
+
+static void stream_record_success_cb(pa_stream *, int success, void *data)
+{
+	auto *pa = static_cast<PulseRecord *>(data);
+	pa->success = success;
+	pa->has_success = true;
+	pa_threaded_mainloop_signal(pa->mainloop, 0);
+}
 
 static void stream_record_context_state_cb(pa_context *, void *data)
 {
@@ -574,6 +589,7 @@ bool PulseRecord::init(const char *ident, float sample_rate_, unsigned int chann
 	if (pa_stream_connect_record(stream, nullptr, &buffer_attr,
 	                             static_cast<pa_stream_flags_t>(PA_STREAM_AUTO_TIMING_UPDATE |
 	                                                            PA_STREAM_ADJUST_LATENCY |
+	                                                            PA_STREAM_START_CORKED |
 	                                                            PA_STREAM_INTERPOLATE_TIMING)) < 0)
 	{
 		pa_threaded_mainloop_unlock(mainloop);
@@ -594,6 +610,44 @@ bool PulseRecord::init(const char *ident, float sample_rate_, unsigned int chann
 
 	pa_threaded_mainloop_unlock(mainloop);
 	return true;
+}
+
+bool PulseRecord::start()
+{
+	if (is_running)
+		return false;
+
+	has_success = false;
+	pa_threaded_mainloop_lock(mainloop);
+	pa_operation_unref(pa_stream_cork(stream, 0, stream_record_success_cb, this));
+	while (!has_success)
+		pa_threaded_mainloop_wait(mainloop);
+	pa_threaded_mainloop_unlock(mainloop);
+
+	has_success = false;
+	if (success < 0)
+		LOGE("PulseRecord::start() failed.\n");
+	is_running = success >= 0;
+	return is_running;
+}
+
+bool PulseRecord::stop()
+{
+	if (!is_running)
+		return false;
+
+	has_success = false;
+	pa_threaded_mainloop_lock(mainloop);
+	pa_operation_unref(pa_stream_cork(stream, 1, stream_record_success_cb, this));
+	while (!has_success)
+		pa_threaded_mainloop_wait(mainloop);
+	pa_threaded_mainloop_unlock(mainloop);
+
+	has_success = false;
+	if (success < 0)
+		LOGE("PulseRecord::stop() failed.\n");
+	is_running = success < 0;
+	return !is_running;
 }
 
 bool PulseRecord::get_buffer_status(size_t &read_avail, uint32_t &latency_usec)
@@ -635,6 +689,9 @@ bool PulseRecord::get_buffer_status(size_t &read_avail, uint32_t &latency_usec)
 
 size_t PulseRecord::read_frames_interleaved_f32(float *data, size_t frames, bool blocking)
 {
+	if (!is_running)
+		return 0;
+
 	size_t num_read_frames = 0;
 	pa_threaded_mainloop_lock(mainloop);
 
@@ -645,13 +702,19 @@ size_t PulseRecord::read_frames_interleaved_f32(float *data, size_t frames, bool
 		{
 			size_t to_write = std::min(peek_avail, frames);
 
-			if (peek_buffer)
-				memcpy(data, peek_buffer + pull_buffer_offset * num_channels, to_write * num_channels * sizeof(float));
-			else
-				memset(data, 0, to_write * num_channels * sizeof(float));
+			if (data)
+			{
+				if (peek_buffer)
+				{
+					memcpy(data, peek_buffer + pull_buffer_offset * num_channels,
+					       to_write * num_channels * sizeof(float));
+				}
+				else
+					memset(data, 0, to_write * num_channels * sizeof(float));
+				data += num_channels * to_write;
+			}
 
 			pull_buffer_offset += to_write;
-			data += num_channels * to_write;
 			frames -= to_write;
 			num_read_frames += to_write;
 		}

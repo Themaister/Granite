@@ -84,6 +84,8 @@ public:
 
 	virtual size_t read_frames_interleaved_f32(float *data, size_t frames, bool blocking) = 0;
 	virtual bool get_buffer_status(size_t &read_avail, uint32_t &latency_usec) = 0;
+	virtual bool start() = 0;
+	virtual bool stop() = 0;
 
 private:
 };

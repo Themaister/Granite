@@ -537,10 +537,15 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		return false;
 	}
 
-	if (!init_video_codec())
+	if (!init_video_codec() ||
+	    ((audio_source || audio_stream) && !init_audio_codec()))
+	{
+		if (!(av_format_ctx->flags & AVFMT_NOFILE))
+			avio_closep(&av_format_ctx->pb);
+		avformat_free_context(av_format_ctx);
+		av_format_ctx = nullptr;
 		return false;
-	if ((audio_source || audio_stream) && !init_audio_codec())
-		return false;
+	}
 
 	av_dump_format(av_format_ctx, 0, path, 1);
 

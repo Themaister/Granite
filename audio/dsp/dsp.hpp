@@ -264,6 +264,42 @@ static int16_t f32_to_i16(float v) noexcept
 		return int16_t(i);
 }
 
+static inline void deinterleave_stereo_f32(float * __restrict left,
+                                           float * __restrict right,
+                                           const float * __restrict input,
+                                           size_t count) noexcept
+{
+#ifdef __SSE__
+	size_t rounded_count = count & ~3;
+	for (size_t i = 0; i < rounded_count; i += 4)
+	{
+		__m128 s0 = _mm_loadu_ps(input);
+		input += 4;
+		__m128 s1 = _mm_loadu_ps(input);
+		input += 4;
+
+		__m128 l = _mm_shuffle_ps(s0, s1, _MM_SHUFFLE(2, 0, 2, 0));
+		__m128 r = _mm_shuffle_ps(s0, s1, _MM_SHUFFLE(3, 1, 3, 1));
+		_mm_storeu_ps(left, l);
+		_mm_storeu_ps(right, r);
+		left += 4;
+		right += 4;
+	}
+
+	for (size_t i = rounded_count; i < count; i++)
+	{
+		*left++ = *input++;
+		*right++ = *input++;
+	}
+#else
+	for (size_t i = 0; i < count; i++)
+	{
+		*left++ = *input++;
+		*right++ = *input++;
+	}
+#endif
+}
+
 static inline void interleave_stereo_f32(float * __restrict target,
                                          const float * __restrict left,
                                          const float * __restrict right,

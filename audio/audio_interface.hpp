@@ -82,7 +82,7 @@ public:
 	virtual float get_sample_rate() = 0;
 	virtual unsigned get_num_channels() = 0;
 
-	virtual size_t read_frames_interleaved_f32(float *data, size_t frames, bool blocking) = 0;
+	virtual size_t read_frames_f32(float * const *data, size_t frames, bool blocking) = 0;
 	virtual bool get_buffer_status(size_t &read_avail, uint32_t &latency_usec) = 0;
 	virtual bool start() = 0;
 	virtual bool stop() = 0;

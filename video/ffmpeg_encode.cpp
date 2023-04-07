@@ -219,8 +219,8 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 				return false;
 			}
 
-			size_t read_count = audio_stream->read_frames_interleaved_f32(
-					reinterpret_cast<float *>(audio.av_frame->data[0]),
+			size_t read_count = audio_stream->read_frames_f32(
+					reinterpret_cast<float * const *>(audio.av_frame->data),
 					audio.av_frame->nb_samples, true);
 
 			if (read_count < size_t(audio.av_frame->nb_samples))
@@ -347,10 +347,9 @@ void VideoEncoder::set_audio_record_stream(Audio::RecordStream *stream)
 bool VideoEncoder::Impl::init_audio_codec()
 {
 #ifdef HAVE_GRANITE_AUDIO
-	// Prefer something real-time for streaming.
 	AVCodecID codec_id;
 	if (audio_stream)
-		codec_id = AV_CODEC_ID_OPUS;
+		codec_id = AV_CODEC_ID_AAC;
 	else
 		codec_id = AV_CODEC_ID_FLAC;
 
@@ -375,7 +374,7 @@ bool VideoEncoder::Impl::init_audio_codec()
 		return false;
 	}
 
-	audio.av_ctx->sample_fmt = audio_stream ? AV_SAMPLE_FMT_FLT : AV_SAMPLE_FMT_S16;
+	audio.av_ctx->sample_fmt = audio_stream ? AV_SAMPLE_FMT_FLTP : AV_SAMPLE_FMT_S16;
 
 	if (audio_stream)
 		audio.av_ctx->sample_rate = int(audio_stream->get_sample_rate());
@@ -529,8 +528,14 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	device = device_;
 	options = options_;
 
+	// Crude. If the path is some kind of streaming protocol, use FLV since
+	// that seems to be what platforms support.
+	const char *muxer = nullptr;
+	if (strstr(path, "://"))
+		muxer = "flv";
+
 	int ret;
-	if ((ret = avformat_alloc_output_context2(&av_format_ctx, nullptr, nullptr, path)) < 0)
+	if ((ret = avformat_alloc_output_context2(&av_format_ctx, nullptr, muxer, path)) < 0)
 	{
 		LOGE("Failed to open format context: %d\n", ret);
 		return false;

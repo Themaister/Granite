@@ -439,7 +439,7 @@ struct PulseRecord final : RecordStream
 		return num_channels;
 	}
 
-	size_t read_frames_interleaved_f32(float *data, size_t frames, bool blocking) override;
+	size_t read_frames_f32(float * const *data, size_t frames, bool blocking) override;
 	bool get_buffer_status(size_t &read_avail, uint32_t &latency_usec) override;
 	bool init(const char *ident, float sample_rate_, unsigned channels_);
 
@@ -714,7 +714,7 @@ bool PulseRecord::get_buffer_status(size_t &read_avail, uint32_t &latency_usec)
 	return true;
 }
 
-size_t PulseRecord::read_frames_interleaved_f32(float *data, size_t frames, bool blocking)
+size_t PulseRecord::read_frames_f32(float * const *data, size_t frames, bool blocking)
 {
 	if (!is_running)
 		return 0;
@@ -733,12 +733,23 @@ size_t PulseRecord::read_frames_interleaved_f32(float *data, size_t frames, bool
 			{
 				if (peek_buffer)
 				{
-					memcpy(data, peek_buffer + pull_buffer_offset * num_channels,
-					       to_write * num_channels * sizeof(float));
+					if (num_channels == 2)
+					{
+						DSP::deinterleave_stereo_f32(data[0] + num_read_frames, data[1] + num_read_frames,
+													 peek_buffer + 2 * pull_buffer_offset, to_write);
+					}
+					else
+					{
+						for (size_t i = 0; i < to_write; i++)
+							for (unsigned c = 0; c < num_channels; c++)
+								data[c][num_read_frames + i] = peek_buffer[num_channels * (i + pull_buffer_offset) + c];
+					}
 				}
 				else
-					memset(data, 0, to_write * num_channels * sizeof(float));
-				data += num_channels * to_write;
+				{
+					for (unsigned c = 0; c < num_channels; c++)
+						memset(data[c] + num_read_frames, 0, to_write * sizeof(float));
+				}
 			}
 
 			pull_buffer_offset += to_write;

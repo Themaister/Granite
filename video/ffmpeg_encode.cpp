@@ -32,7 +32,6 @@ extern "C"
 
 #include "ffmpeg_encode.hpp"
 #include "logging.hpp"
-#include "thread_latch.hpp"
 #include "math.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "transforms.hpp"

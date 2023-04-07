@@ -489,6 +489,24 @@ static void stream_record_request_cb(pa_stream *, size_t, void *data)
 	pa_threaded_mainloop_signal(pa->mainloop, 0);
 }
 
+static void stream_record_moved_cb(pa_stream *, void *data)
+{
+	auto *pa = static_cast<PulseRecord *>(data);
+	pa_threaded_mainloop_signal(pa->mainloop, 0);
+}
+
+static void stream_record_suspended_cb(pa_stream *, void *data)
+{
+	auto *pa = static_cast<PulseRecord *>(data);
+	pa_threaded_mainloop_signal(pa->mainloop, 0);
+}
+
+static void stream_record_latency_update_cb(pa_stream *, void *data)
+{
+	auto *pa = static_cast<PulseRecord *>(data);
+	pa_threaded_mainloop_signal(pa->mainloop, 0);
+}
+
 void PulseRecord::drop_current_peek_locked()
 {
 	if (peek_buffer_frames)
@@ -578,17 +596,19 @@ bool PulseRecord::init(const char *ident, float sample_rate_, unsigned int chann
 	pa_stream_set_state_callback(stream, stream_record_state_cb, this);
 	pa_stream_set_read_callback(stream, stream_record_request_cb, this);
 	pa_stream_set_write_callback(stream, stream_record_request_cb, this);
+	pa_stream_set_moved_callback(stream, stream_record_moved_cb, this);
+	pa_stream_set_suspended_callback(stream, stream_record_suspended_cb, this);
+	pa_stream_set_latency_update_callback(stream, stream_record_latency_update_cb, this);
 
 	pa_buffer_attr buffer_attr = {};
-	buffer_attr.maxlength = -1u;
+	buffer_attr.maxlength = pa_usec_to_bytes(200000, &spec);
 	buffer_attr.tlength = -1u;
 	buffer_attr.prebuf = -1u;
 	buffer_attr.minreq = -1u;
-	buffer_attr.fragsize = pa_usec_to_bytes(20000, &spec);
+	buffer_attr.fragsize = pa_usec_to_bytes(50000, &spec);
 
 	if (pa_stream_connect_record(stream, nullptr, &buffer_attr,
 	                             static_cast<pa_stream_flags_t>(PA_STREAM_AUTO_TIMING_UPDATE |
-	                                                            PA_STREAM_ADJUST_LATENCY |
 	                                                            PA_STREAM_START_CORKED |
 	                                                            PA_STREAM_INTERPOLATE_TIMING)) < 0)
 	{
@@ -607,6 +627,13 @@ bool PulseRecord::init(const char *ident, float sample_rate_, unsigned int chann
 
 		pa_threaded_mainloop_wait(mainloop);
 	}
+
+	const auto *attr = pa_stream_get_buffer_attr(stream);
+	LOGI("attr->fragsize = %u\n", attr->fragsize);
+	LOGI("attr->maxlength = %u\n", attr->maxlength);
+	LOGI("attr->tlength = %u\n", attr->tlength);
+	LOGI("attr->prebuf = %u\n", attr->prebuf);
+	LOGI("attr->minreq = %u\n", attr->minreq);
 
 	pa_threaded_mainloop_unlock(mainloop);
 	return true;
@@ -671,7 +698,7 @@ bool PulseRecord::get_buffer_status(size_t &read_avail, uint32_t &latency_usec)
 		return false;
 	}
 
-	auto buffer_latency_us = uint32_t(1e6 * float(avail) / sample_rate);
+	auto buffer_latency_us = uint32_t(1e6 * float(read_avail) / sample_rate);
 
 	if (negative)
 	{

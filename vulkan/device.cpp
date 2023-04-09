@@ -3802,7 +3802,12 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (format_info.viewFormatCount != 0)
 		{
 			create_unorm_srgb_views = true;
-			if (ext.supports_image_format_list)
+
+			const auto *input_format_list = static_cast<const VkBaseInStructure *>(info.pNext);
+			while (input_format_list && input_format_list->sType != VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR)
+				input_format_list = static_cast<const VkBaseInStructure *>(input_format_list->pNext);
+
+			if (ext.supports_image_format_list && !input_format_list)
 			{
 				format_info.pNext = info.pNext;
 				info.pNext = &format_info;

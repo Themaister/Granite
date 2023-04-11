@@ -97,3 +97,12 @@ endif()
 if (GRANITE_FFMPEG_VULKAN)
     target_compile_definitions(granite-vulkan PRIVATE HAVE_FFMPEG_VULKAN)
 endif()
+
+if (GRANITE_VULKAN_PROFILES)
+    # Must be defined by caller as an INTERFACE library before including Granite.
+    if (NOT TARGET granite-vulkan-profiles)
+        message(FATAL_ERROR "granite-vulkan-profiles is not a target. This must be defined by caller before add_subdirectory(Granite).")
+    endif()
+    target_link_libraries(granite-vulkan PRIVATE granite-vulkan-profiles)
+    target_compile_definitions(granite-vulkan PRIVATE GRANITE_VULKAN_PROFILES)
+endif()

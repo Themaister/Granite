@@ -40,6 +40,42 @@
 
 //#undef VULKAN_DEBUG
 
+#ifdef GRANITE_VULKAN_PROFILES
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wshadow"
+#endif
+
+// We need to make sure profiles implementation sees volk symbols, not loader.
+#include "vulkan/vulkan_profiles.cpp"
+// Ideally there would be a vpQueryProfile which returns a const pointer to static VpProfileProperties,
+// so we wouldn't have to do this.
+struct ProfileHolder
+{
+	explicit ProfileHolder(const std::string &name)
+	{
+		if (name.empty())
+			return;
+
+		uint32_t count;
+		vpGetProfiles(&count, nullptr);
+		props.resize(count);
+		vpGetProfiles(&count, props.data());
+
+		for (auto &prop : props)
+			if (name == prop.profileName)
+				profile = &prop;
+	}
+	Util::SmallVector<VpProfileProperties> props;
+	const VpProfileProperties *profile = nullptr;
+};
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+#endif
+
 namespace Vulkan
 {
 void Context::set_instance_factory(InstanceFactory *factory)
@@ -262,6 +298,10 @@ void Context::destroy()
 		vkDestroyInstance(instance, nullptr);
 }
 
+Context::Context()
+{
+}
+
 Context::~Context()
 {
 	destroy();
@@ -348,6 +388,132 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 	return VK_FALSE;
 }
 #endif
+
+void Context::set_required_profile(const char *profile, bool strict)
+{
+	if (profile)
+		required_profile = profile;
+	else
+		required_profile.clear();
+	required_profile_strict = strict;
+}
+
+bool Context::init_profile()
+{
+#ifdef GRANITE_VULKAN_PROFILES
+	if (required_profile.empty())
+	{
+		if (const char *env = getenv("GRANITE_VULKAN_PROFILE"))
+		{
+			required_profile = env;
+			LOGI("Overriding profile: %s\n", env);
+		}
+
+		if (const char *strict_env = getenv("GRANITE_VULKAN_PROFILE_STRICT"))
+		{
+			required_profile_strict = strtoul(strict_env, nullptr, 0) != 0;
+			LOGI("Overriding profile strictness: %u\n", required_profile_strict);
+		}
+	}
+
+	if (required_profile.empty())
+		return true;
+
+	ProfileHolder profile{required_profile};
+
+	if (!profile.profile)
+	{
+		LOGW("No profile matches %s.\n", required_profile.c_str());
+		return false;
+	}
+
+	VkBool32 supported = VK_FALSE;
+	if (vpGetInstanceProfileSupport(nullptr, profile.profile, &supported) != VK_SUCCESS || !supported)
+	{
+		LOGE("Profile %s is not supported.\n", required_profile.c_str());
+		return false;
+	}
+#endif
+
+	return true;
+}
+
+VkResult Context::create_instance_from_profile(const VkInstanceCreateInfo &info, VkInstance *pInstance)
+{
+#ifdef GRANITE_VULKAN_PROFILES
+	ProfileHolder holder{required_profile};
+	if (!holder.profile)
+		return VK_ERROR_INITIALIZATION_FAILED;
+
+	if (instance_factory)
+	{
+		// Can override vkGetInstanceProcAddr (macro define) and override vkCreateInstance
+		// to a TLS magic trampoline if we really have to.
+		LOGE("Instance factory currently not supported with profiles.\n");
+		return VK_ERROR_INITIALIZATION_FAILED;
+	}
+
+	VpInstanceCreateInfo vp_info = {};
+	vp_info.pCreateInfo = &info;
+	vp_info.pProfile = holder.profile;
+	// Any extra extensions we add for instances are essential, like WSI stuff.
+	vp_info.flags = VP_INSTANCE_CREATE_MERGE_EXTENSIONS_BIT;
+
+	VkResult result;
+	if ((result = vpCreateInstance(&vp_info, nullptr, pInstance)) != VK_SUCCESS)
+		LOGE("Failed to create instance from profile.\n");
+
+	return result;
+#else
+	(void)info;
+	(void)pInstance;
+	return VK_ERROR_INITIALIZATION_FAILED;
+#endif
+}
+
+VkResult Context::create_device_from_profile(const VkDeviceCreateInfo &info, VkDevice *pDevice)
+{
+#ifdef GRANITE_VULKAN_PROFILES
+	ProfileHolder holder{required_profile};
+	if (!holder.profile)
+		return VK_ERROR_INITIALIZATION_FAILED;
+
+	if (device_factory)
+	{
+		// Need TLS hackery like instance.
+		LOGE("Device factory currently not supported with profiles.\n");
+		return VK_ERROR_INITIALIZATION_FAILED;
+	}
+
+	auto tmp_info = info;
+
+	VpDeviceCreateInfo vp_info = {};
+	vp_info.pProfile = holder.profile;
+	vp_info.pCreateInfo = &tmp_info;
+	vp_info.flags |= VP_DEVICE_CREATE_DISABLE_ROBUST_ACCESS;
+
+	if (required_profile_strict)
+	{
+		tmp_info.enabledExtensionCount = 0;
+		tmp_info.ppEnabledExtensionNames = nullptr;
+		tmp_info.pNext = nullptr;
+		tmp_info.pEnabledFeatures = nullptr;
+	}
+	else
+	{
+		vp_info.flags = VP_DEVICE_CREATE_MERGE_EXTENSIONS_BIT | VP_DEVICE_CREATE_OVERRIDE_FEATURES_BIT;
+	}
+
+	VkResult result;
+	if ((result = vpCreateDevice(gpu, &vp_info, nullptr, pDevice)) != VK_SUCCESS)
+		LOGE("Failed to create device from profile.\n");
+	return result;
+#else
+	(void)info;
+	(void)pDevice;
+	return VK_ERROR_INITIALIZATION_FAILED;
+#endif
+}
 
 bool Context::create_instance(const char * const *instance_ext, uint32_t instance_ext_count, ContextCreationFlags flags)
 {
@@ -489,6 +655,18 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 	for (auto *ext_name : instance_exts)
 		LOGI("Enabling instance extension: %s.\n", ext_name);
 
+#ifdef GRANITE_VULKAN_PROFILES
+	if (!init_profile())
+	{
+		LOGE("Profile is not supported.\n");
+		return false;
+	}
+
+	if (instance == VK_NULL_HANDLE && !required_profile.empty())
+		if (create_instance_from_profile(info, &instance) != VK_SUCCESS)
+			return false;
+#endif
+
 	// instance != VK_NULL_HANDLE here is deprecated and somewhat broken.
 	// For libretro Vulkan context negotiation v1.
 	if (instance == VK_NULL_HANDLE)
@@ -559,15 +737,31 @@ QueueInfo::QueueInfo()
 		index = VK_QUEUE_FAMILY_IGNORED;
 }
 
-bool Context::physical_device_supports_surface(VkPhysicalDevice gpu, VkSurfaceKHR surface)
+bool Context::physical_device_supports_surface_and_profile(VkPhysicalDevice candidate_gpu, VkSurfaceKHR surface) const
 {
+#ifdef GRANITE_VULKAN_PROFILES
+	if (!required_profile.empty())
+	{
+		ProfileHolder holder{required_profile};
+		if (!holder.profile)
+			return false;
+
+		VkBool32 supported = VK_FALSE;
+		if (vpGetPhysicalDeviceProfileSupport(instance, candidate_gpu, holder.profile, &supported) != VK_SUCCESS ||
+		    !supported)
+		{
+			return false;
+		}
+	}
+#endif
+
 	if (surface == VK_NULL_HANDLE)
 		return true;
 
 	uint32_t family_count = 0;
-	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &family_count, nullptr);
+	vkGetPhysicalDeviceQueueFamilyProperties(candidate_gpu, &family_count, nullptr);
 	Util::SmallVector<VkQueueFamilyProperties> props(family_count);
-	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &family_count, props.data());
+	vkGetPhysicalDeviceQueueFamilyProperties(candidate_gpu, &family_count, props.data());
 
 	for (uint32_t i = 0; i < family_count; i++)
 	{
@@ -575,7 +769,7 @@ bool Context::physical_device_supports_surface(VkPhysicalDevice gpu, VkSurfaceKH
 		if ((props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0)
 		{
 			VkBool32 supported = VK_FALSE;
-			if (vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &supported) == VK_SUCCESS && supported)
+			if (vkGetPhysicalDeviceSurfaceSupportKHR(candidate_gpu, i, surface, &supported) == VK_SUCCESS && supported)
 				return true;
 		}
 	}
@@ -627,7 +821,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 		if (gpu != VK_NULL_HANDLE)
 		{
-			if (!physical_device_supports_surface(gpu, surface))
+			if (!physical_device_supports_surface_and_profile(gpu, surface))
 			{
 				LOGE("Selected physical device which does not support surface.\n");
 				gpu = VK_NULL_HANDLE;
@@ -641,7 +835,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			for (size_t i = gpus.size(); i; i--)
 			{
 				unsigned score = device_score(gpus[i - 1]);
-				if (score >= max_score && physical_device_supports_surface(gpus[i - 1], surface))
+				if (score >= max_score && physical_device_supports_surface_and_profile(gpus[i - 1], surface))
 				{
 					max_score = score;
 					gpu = gpus[i - 1];
@@ -655,17 +849,34 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			return false;
 		}
 	}
-	else if (!physical_device_supports_surface(gpu, surface))
+	else if (!physical_device_supports_surface_and_profile(gpu, surface))
 	{
 		LOGE("Selected physical device does not support surface.\n");
 		return false;
 	}
 
-	uint32_t ext_count = 0;
-	vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, nullptr);
-	std::vector<VkExtensionProperties> queried_extensions(ext_count);
-	if (ext_count)
-		vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, queried_extensions.data());
+	std::vector<VkExtensionProperties> queried_extensions;
+
+#ifdef GRANITE_VULKAN_PROFILES
+	// Only allow extensions that profile declares.
+	ProfileHolder profile{required_profile};
+	if (profile.profile && required_profile_strict)
+	{
+		uint32_t ext_count = 0;
+		vpGetProfileDeviceExtensionProperties(profile.profile, &ext_count, nullptr);
+		queried_extensions.resize(ext_count);
+		if (ext_count)
+			vpGetProfileDeviceExtensionProperties(profile.profile, &ext_count, queried_extensions.data());
+	}
+	else
+#endif
+	{
+		uint32_t ext_count = 0;
+		vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, nullptr);
+		queried_extensions.resize(ext_count);
+		if (ext_count)
+			vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, queried_extensions.data());
+	}
 
 	const auto has_extension = [&](const char *name) -> bool {
 		auto itr = find_if(begin(queried_extensions), end(queried_extensions), [name](const VkExtensionProperties &e) -> bool {
@@ -1222,7 +1433,17 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		}
 	}
 
-	vkGetPhysicalDeviceFeatures2(gpu, &pdf2);
+#ifdef GRANITE_VULKAN_PROFILES
+	// Override any features in the profile in strict mode.
+	if (profile.profile && required_profile_strict)
+	{
+		vpGetProfileFeatures(profile.profile, &pdf2);
+	}
+	else
+#endif
+	{
+		vkGetPhysicalDeviceFeatures2(gpu, &pdf2);
+	}
 
 	// Enable device features we might care about.
 	{
@@ -1343,20 +1564,36 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	vkGetPhysicalDeviceProperties2(gpu, &props);
 
+#ifdef GRANITE_VULKAN_PROFILES
+	// Override any properties in the profile in strict mode.
+	if (profile.profile && required_profile_strict)
+		vpGetProfileProperties(profile.profile, &props);
+#endif
+
 	device_info.enabledExtensionCount = enabled_extensions.size();
 	device_info.ppEnabledExtensionNames = enabled_extensions.empty() ? nullptr : enabled_extensions.data();
 
 	for (auto *enabled_extension : enabled_extensions)
 		LOGI("Enabling device extension: %s.\n", enabled_extension);
 
-	if (device_factory)
+#ifdef GRANITE_VULKAN_PROFILES
+	if (!required_profile.empty())
 	{
-		device = device_factory->create_device(gpu, &device_info);
-		if (device == VK_NULL_HANDLE)
+		if (create_device_from_profile(device_info, &device) != VK_SUCCESS)
 			return false;
 	}
-	else if (vkCreateDevice(gpu, &device_info, nullptr, &device) != VK_SUCCESS)
-		return false;
+	else
+#endif
+	{
+		if (device_factory)
+		{
+			device = device_factory->create_device(gpu, &device_info);
+			if (device == VK_NULL_HANDLE)
+				return false;
+		}
+		else if (vkCreateDevice(gpu, &device_info, nullptr, &device) != VK_SUCCESS)
+			return false;
+	}
 
 	enabled_device_extensions = std::move(enabled_extensions);
 	ext.device_extensions = enabled_device_extensions.data();

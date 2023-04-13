@@ -1,0 +1,36 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0) uniform mediump sampler2D uImage;
+layout(set = 0, binding = 1, r8) uniform mediump image2D uLuma;
+layout(set = 0, binding = 2, rg8) uniform mediump image2D uChroma;
+
+layout(push_constant) uniform Registers
+{
+    uvec2 resolution;
+    vec2 base_uv;
+    vec2 inv_resolution;
+} registers;
+
+// BT709. Row-major.
+const mediump mat3 rgb_to_yuv = mat3(
+    vec3(0.2126, 0.7152, 0.0722),
+    vec3(-0.114572, -0.385428, 0.5),
+    vec3(0.5, -0.454153, -0.0458471));
+
+void main()
+{
+    uvec2 coord = gl_GlobalInvocationID.xy;
+    if (all(lessThan(coord, registers.resolution)))
+    {
+        vec2 uv = registers.base_uv + vec2(coord) * registers.inv_resolution;
+        mediump vec3 rgb = textureLod(uImage, uv, 0.0).rgb;
+
+        mediump vec3 ycbcr = rgb * rgb_to_yuv;
+        ycbcr *= vec3(219.0 / 255.0, 224.0 / 255.0, 224.0 / 255.0);
+        ycbcr += vec3(16.0 / 255.0, 128.0 / 255.0, 128.0 / 255.0);
+
+        imageStore(uLuma, ivec2(coord), ycbcr.xxxx);
+        imageStore(uChroma, ivec2(coord), ycbcr.yzyz);
+    }
+}

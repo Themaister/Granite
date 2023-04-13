@@ -1477,6 +1477,11 @@ VkSurfaceTransformFlagBitsKHR WSI::get_current_prerotate() const
 	return swapchain_current_prerotate;
 }
 
+CommandBuffer::Type WSI::get_current_present_queue_type() const
+{
+	return device->get_current_present_queue_type();
+}
+
 WSI::~WSI()
 {
 	teardown();

@@ -29,5 +29,6 @@ namespace Granite
 namespace Audio
 {
 Backend *create_pulse_backend(BackendCallback *callback, float sample_rate, unsigned channels);
+RecordStream *create_pulse_record_backend(const char *ident, float sample_rate, unsigned channels);
 }
 }

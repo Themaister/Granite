@@ -46,18 +46,26 @@ namespace Granite
 namespace Audio
 {
 using BackendCreationCallback = Backend *(*)(BackendCallback *, float, unsigned);
+using RecordBackendCreationCallback = RecordStream *(*)(const char *, float, unsigned);
 
 static const BackendCreationCallback backends[] = {
 #ifdef AUDIO_HAVE_PULSE
-		create_pulse_backend,
+	create_pulse_backend,
 #endif
 #ifdef AUDIO_HAVE_OBOE
-		create_oboe_backend,
+	create_oboe_backend,
 #endif
 #ifdef AUDIO_HAVE_WASAPI
-		create_wasapi_backend,
+	create_wasapi_backend,
 #endif
-		nullptr,
+	nullptr,
+};
+
+static const RecordBackendCreationCallback record_backends[] = {
+#ifdef AUDIO_HAVE_PULSE
+	create_pulse_record_backend,
+#endif
+	nullptr,
 };
 
 Backend::Backend(BackendCallback *callback_)
@@ -86,6 +94,20 @@ Backend *create_default_audio_backend(BackendCallback *callback, float target_sa
 		if (backend)
 		{
 			auto iface = backend(callback, target_sample_rate, target_channels);
+			if (iface)
+				return iface;
+		}
+	}
+	return nullptr;
+}
+
+RecordStream *create_default_audio_record_backend(const char *ident, float target_sample_rate, unsigned target_channels)
+{
+	for (auto &backend : record_backends)
+	{
+		if (backend)
+		{
+			auto iface = backend(ident, target_sample_rate, target_channels);
 			if (iface)
 				return iface;
 		}

@@ -1757,6 +1757,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 			wsi.release->set_internal_sync_object();
 			composer.add_signal_semaphore(release, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0);
 			wsi.present_queue = queue;
+			wsi.present_queue_type = cmd->get_command_buffer_type();
 			wsi.consumed = true;
 		}
 		else
@@ -2013,6 +2014,12 @@ VkQueue Device::get_current_present_queue() const
 {
 	VK_ASSERT(wsi.present_queue);
 	return wsi.present_queue;
+}
+
+CommandBuffer::Type Device::get_current_present_queue_type() const
+{
+	VK_ASSERT(wsi.present_queue);
+	return wsi.present_queue_type;
 }
 
 const Sampler &Device::get_stock_sampler(StockSampler sampler) const

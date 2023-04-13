@@ -71,7 +71,27 @@ protected:
 	BackendCallback *callback = nullptr;
 };
 
+// Simple blocking recorder interface.
+// Used together with FFmpeg recording.
+class RecordStream
+{
+public:
+	virtual ~RecordStream() = default;
+
+	virtual const char *get_backend_name() = 0;
+	virtual float get_sample_rate() = 0;
+	virtual unsigned get_num_channels() = 0;
+
+	virtual size_t read_frames_f32(float * const *data, size_t frames, bool blocking) = 0;
+	virtual bool get_buffer_status(size_t &read_avail, uint32_t &latency_usec) = 0;
+	virtual bool start() = 0;
+	virtual bool stop() = 0;
+
+private:
+};
+
 Backend *create_default_audio_backend(BackendCallback *callback, float target_sample_rate, unsigned target_channels);
+RecordStream *create_default_audio_record_backend(const char *ident, float target_sample_rate, unsigned target_channels);
 
 class DumpBackend : public Backend
 {

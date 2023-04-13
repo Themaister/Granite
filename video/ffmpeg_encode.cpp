@@ -66,7 +66,8 @@ struct VideoEncoder::Impl
 {
 	Vulkan::Device *device = nullptr;
 	bool init(Vulkan::Device *device, const char *path, const Options &options);
-	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes, int64_t pts);
+	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes,
+	                  int64_t pts, int compensate_audio_us);
 	~Impl();
 
 	AVFormatContext *av_format_ctx = nullptr;
@@ -166,7 +167,8 @@ int64_t VideoEncoder::Impl::sample_realtime_pts() const
 	return int64_t(Util::get_current_time_nsecs() / 1000) - realtime_pts.base_pts;
 }
 
-bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes, int64_t pts)
+bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes,
+                                      int64_t pts, int compensate_audio_us)
 {
 	if (num_planes != format_to_planes(options.format))
 	{
@@ -218,8 +220,9 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 		return false;
 	}
 
+	(void)compensate_audio_us;
 #ifdef HAVE_GRANITE_AUDIO
-	if (audio_stream)
+	if (options.realtime && audio_stream)
 	{
 		size_t read_avail_frames;
 		uint32_t latency_us;
@@ -248,8 +251,8 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 			}
 
 			// Crude system for handling drift.
-			// Ensure monotonic PTS with maximum 5% clock drift.
-			auto absolute_ts = sample_realtime_pts();
+			// Ensure monotonic PTS with maximum 1% clock drift.
+			auto absolute_ts = sample_realtime_pts() + compensate_audio_us;
 			absolute_ts -= latency_us;
 
 			// Detect large discontinuity and reset the PTS.
@@ -259,9 +262,9 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 
 			audio.av_frame->pts = absolute_ts;
 			realtime_pts.next_lower_bound_pts =
-					absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 950000, audio.av_ctx->sample_rate, AV_ROUND_DOWN);
+					absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 990000, audio.av_ctx->sample_rate, AV_ROUND_DOWN);
 			realtime_pts.next_upper_bound_pts =
-					absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 1050000, audio.av_ctx->sample_rate, AV_ROUND_UP);
+					absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 1010000, audio.av_ctx->sample_rate, AV_ROUND_UP);
 
 			ret = avcodec_send_frame(audio.av_ctx, audio.av_frame);
 			if (ret < 0)
@@ -277,7 +280,7 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 			}
 		}
 	}
-	else if (audio_source)
+	else if (!options.realtime && audio_source)
 	{
 		// Render out audio in the main thread to ensure exact reproducibility across runs.
 		// If we don't care about that, we can render audio directly in the thread worker.
@@ -693,9 +696,10 @@ bool VideoEncoder::init(Vulkan::Device *device, const char *path, const Options 
 	return impl->init(device, path, options);
 }
 
-bool VideoEncoder::encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes, int64_t pts)
+bool VideoEncoder::encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes,
+								int64_t pts, int compensate_audio_us)
 {
-	return impl->encode_frame(buffer, planes, num_planes, pts);
+	return impl->encode_frame(buffer, planes, num_planes, pts, compensate_audio_us);
 }
 
 void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view)
@@ -778,14 +782,14 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 				VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 }
 
-bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline, int64_t pts)
+bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline, int64_t pts, int compensate_audio_us)
 {
 	if (!pipeline.fence)
 		return false;
 	pipeline.fence->wait();
 
 	auto *buf = static_cast<const uint8_t *>(impl->device->map_host_buffer(*pipeline.buffer, Vulkan::MEMORY_ACCESS_READ_BIT));
-	bool ret = encode_frame(buf, pipeline.planes, pipeline.num_planes, pts);
+	bool ret = encode_frame(buf, pipeline.planes, pipeline.num_planes, pts, compensate_audio_us);
 	impl->device->unmap_host_buffer(*pipeline.buffer, Vulkan::MEMORY_ACCESS_READ_BIT);
 	return ret;
 }

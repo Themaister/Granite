@@ -108,8 +108,8 @@ public:
 
 	int64_t sample_realtime_pts() const;
 
-	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes, int64_t pts);
-	bool encode_frame(YCbCrPipeline &pipeline, int64_t pts);
+	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes, int64_t pts, int compensate_audio_us = 0);
+	bool encode_frame(YCbCrPipeline &pipeline, int64_t pts, int compensate_audio_us = 0);
 
 private:
 	struct Impl;

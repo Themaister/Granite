@@ -98,7 +98,7 @@ int main()
 		encoder.process_rgb(*cmd, pipe, img->get_view());
 		pipe.fence.reset();
 		device.submit(cmd, &pipe.fence);
-		encoder.encode_frame(pipe);
+		encoder.encode_frame(pipe, 0);
 		device.next_frame_context();
 	}
 

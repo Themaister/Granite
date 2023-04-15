@@ -66,6 +66,20 @@ public:
 		ChromaSiting siting = ChromaSiting::Left; // Default for H.264.
 		// Correlate PTS with wall time.
 		bool realtime = false;
+
+		struct
+		{
+			unsigned bitrate_kbits = 6000;
+			unsigned max_bitrate_kbits = 8000;
+			float gop_seconds = 2.0f;
+			unsigned vbv_size_kbits = 6000;
+			const char *x264_preset = "fast";
+			const char *x264_tune = nullptr;
+			const char *muxer_format = nullptr;
+			// Also writes packets to a local file.
+			const char *local_backup_path = nullptr;
+			unsigned threads = 0;
+		} realtime_options;
 	};
 
 	void set_audio_source(Audio::DumpBackend *backend);

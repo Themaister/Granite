@@ -57,6 +57,7 @@ namespace Granite
 struct CodecStream
 {
 	AVStream *av_stream = nullptr;
+	AVStream *av_stream_local = nullptr;
 	AVFrame *av_frame = nullptr;
 	AVCodecContext *av_ctx = nullptr;
 	AVPacket *av_pkt = nullptr;
@@ -71,6 +72,7 @@ struct VideoEncoder::Impl
 	~Impl();
 
 	AVFormatContext *av_format_ctx = nullptr;
+	AVFormatContext *av_format_ctx_local = nullptr;
 	CodecStream video, audio;
 	Options options;
 	Audio::DumpBackend *audio_source = nullptr;
@@ -135,10 +137,18 @@ void VideoEncoder::Impl::drain_codec()
 				LOGE("Failed to drain codec of packets.\n");
 		}
 
-		av_write_trailer(av_format_ctx);
-		if (!(av_format_ctx->flags & AVFMT_NOFILE))
-			avio_closep(&av_format_ctx->pb);
-		avformat_free_context(av_format_ctx);
+		const auto close_fmt_context = [](AVFormatContext *fmt_ctx) {
+			if (fmt_ctx)
+			{
+				av_write_trailer(fmt_ctx);
+				if (!(fmt_ctx->flags & AVFMT_NOFILE))
+					avio_closep(&fmt_ctx->pb);
+				avformat_free_context(fmt_ctx);
+			}
+		};
+
+		close_fmt_context(av_format_ctx);
+		close_fmt_context(av_format_ctx_local);
 	}
 
 	free_av_objects(video);
@@ -353,8 +363,23 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 			break;
 		}
 
-		av_packet_rescale_ts(stream.av_pkt, stream.av_ctx->time_base, stream.av_stream->time_base);
+		if (av_format_ctx_local)
+		{
+			auto *pkt_clone = av_packet_clone(stream.av_pkt);
+			pkt_clone->pts = stream.av_pkt->pts;
+			pkt_clone->stream_index = stream.av_stream_local->index;
+			av_packet_rescale_ts(pkt_clone, stream.av_ctx->time_base, stream.av_stream_local->time_base);
+			ret = av_interleaved_write_frame(av_format_ctx_local, pkt_clone);
+			av_packet_unref(pkt_clone);
+			if (ret < 0)
+			{
+				LOGE("Failed to write packet: %d\n", ret);
+				break;
+			}
+		}
+
 		stream.av_pkt->stream_index = stream.av_stream->index;
+		av_packet_rescale_ts(stream.av_pkt, stream.av_ctx->time_base, stream.av_stream->time_base);
 		ret = av_interleaved_write_frame(av_format_ctx, stream.av_pkt);
 		if (ret < 0)
 		{
@@ -401,6 +426,16 @@ bool VideoEncoder::Impl::init_audio_codec()
 		return false;
 	}
 
+	if (av_format_ctx_local)
+	{
+		audio.av_stream_local = avformat_new_stream(av_format_ctx_local, codec);
+		if (!audio.av_stream_local)
+		{
+			LOGE("Failed to add new stream.\n");
+			return false;
+		}
+	}
+
 	audio.av_ctx = avcodec_alloc_context3(codec);
 	if (!audio.av_ctx)
 	{
@@ -425,6 +460,8 @@ bool VideoEncoder::Impl::init_audio_codec()
 
 	if (av_format_ctx->oformat->flags & AVFMT_GLOBALHEADER)
 		audio.av_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+	if (av_format_ctx_local && (av_format_ctx_local->oformat->flags & AVFMT_GLOBALHEADER))
+		audio.av_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
 	audio.av_stream->id = 1;
 	audio.av_stream->time_base = audio.av_ctx->time_base;
@@ -440,9 +477,11 @@ bool VideoEncoder::Impl::init_audio_codec()
 	}
 
 	avcodec_parameters_from_context(audio.av_stream->codecpar, audio.av_ctx);
+	if (audio.av_stream_local)
+		avcodec_parameters_from_context(audio.av_stream_local->codecpar, audio.av_ctx);
 
 	unsigned samples_per_tick;
-	if ((codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE) != 0)
+	if (!options.realtime && (codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE) != 0)
 		samples_per_tick = audio_source->get_frames_per_tick();
 	else
 		samples_per_tick = audio.av_ctx->frame_size;
@@ -479,6 +518,16 @@ bool VideoEncoder::Impl::init_video_codec()
 	{
 		LOGE("Failed to add new stream.\n");
 		return false;
+	}
+
+	if (av_format_ctx_local)
+	{
+		video.av_stream_local = avformat_new_stream(av_format_ctx_local, codec);
+		if (!video.av_stream_local)
+		{
+			LOGE("Failed to add new stream.\n");
+			return false;
+		}
 	}
 
 	video.av_ctx = avcodec_alloc_context3(codec);
@@ -533,21 +582,43 @@ bool VideoEncoder::Impl::init_video_codec()
 	if (av_format_ctx->oformat->flags & AVFMT_GLOBALHEADER)
 		video.av_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
+	// TODO: Is mismatch a problem?
+	if (av_format_ctx_local && av_format_ctx_local->oformat->flags & AVFMT_GLOBALHEADER)
+		video.av_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+
 	video.av_stream->id = 0;
 	video.av_stream->time_base = video.av_ctx->time_base;
 
-	AVDictionary *opts = nullptr;
-
-	// Should be fine for streaming.
-	if (options.realtime)
+	if (video.av_stream_local)
 	{
-		video.av_ctx->bit_rate = 6000000;
-		video.av_ctx->rc_buffer_size = video.av_ctx->bit_rate;
-		video.av_ctx->rc_max_rate = 8000000;
-		video.av_ctx->gop_size = int(av_rescale_rnd(2, video.av_ctx->framerate.num, video.av_ctx->framerate.den, AV_ROUND_UP));
+		video.av_stream_local->id = 0;
+		video.av_stream_local->time_base = video.av_ctx->time_base;
 	}
 
-	av_dict_set(&opts, "preset", "fast", 0);
+	AVDictionary *opts = nullptr;
+
+	if (options.realtime)
+	{
+		video.av_ctx->bit_rate = options.realtime_options.bitrate_kbits * 1000;
+		video.av_ctx->rc_buffer_size = options.realtime_options.vbv_size_kbits * 1000;
+		video.av_ctx->rc_max_rate = options.realtime_options.max_bitrate_kbits * 1000;
+		video.av_ctx->gop_size = int(options.realtime_options.gop_seconds *
+				float(video.av_ctx->framerate.num) / float(video.av_ctx->framerate.den));
+		if (video.av_ctx->gop_size == 0)
+			video.av_ctx->gop_size = 1;
+		if (options.realtime_options.x264_preset)
+			av_dict_set(&opts, "preset", options.realtime_options.x264_preset, 0);
+		if (options.realtime_options.x264_tune)
+			av_dict_set(&opts, "tune", options.realtime_options.x264_tune, 0);
+		if (options.realtime_options.threads)
+			av_dict_set_int(&opts, "threads", options.realtime_options.threads, 0);
+	}
+	else
+	{
+		av_dict_set(&opts, "preset", "fast", 0);
+		av_dict_set_int(&opts, "crf", 18, 0);
+	}
+
 	int ret = avcodec_open2(video.av_ctx, codec, &opts);
 	av_dict_free(&opts);
 
@@ -558,6 +629,8 @@ bool VideoEncoder::Impl::init_video_codec()
 	}
 
 	avcodec_parameters_from_context(video.av_stream->codecpar, video.av_ctx);
+	if (video.av_stream_local)
+		avcodec_parameters_from_context(video.av_stream_local->codecpar, video.av_ctx);
 
 	video.av_frame = alloc_video_frame(video.av_ctx->pix_fmt, options.width, options.height);
 	if (!video.av_frame)
@@ -577,10 +650,29 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	device = device_;
 	options = options_;
 
-	// If realtime (streaming) use FLV muxer since that seems to be what platforms support.
+	// For file-less formats like RTMP need to specify muxer format.
 	const char *muxer = nullptr;
-	if (options.realtime)
-		muxer = "flv";
+	if (options.realtime && options.realtime_options.muxer_format)
+		muxer = options.realtime_options.muxer_format;
+
+	const auto cleanup_format_context = [this]()
+	{
+		if (av_format_ctx)
+		{
+			if (!(av_format_ctx->flags & AVFMT_NOFILE))
+				avio_closep(&av_format_ctx->pb);
+			avformat_free_context(av_format_ctx);
+			av_format_ctx = nullptr;
+		}
+
+		if (av_format_ctx_local)
+		{
+			if (!(av_format_ctx_local->flags & AVFMT_NOFILE))
+				avio_closep(&av_format_ctx_local->pb);
+			avformat_free_context(av_format_ctx_local);
+			av_format_ctx_local = nullptr;
+		}
+	};
 
 	int ret;
 	if ((ret = avformat_alloc_output_context2(&av_format_ctx, nullptr, muxer, path)) < 0)
@@ -589,13 +681,15 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		return false;
 	}
 
-	const auto cleanup_format_context = [this]()
+	if (options.realtime && options.realtime_options.local_backup_path)
 	{
-		if (!(av_format_ctx->flags & AVFMT_NOFILE))
-			avio_closep(&av_format_ctx->pb);
-		avformat_free_context(av_format_ctx);
-		av_format_ctx = nullptr;
-	};
+		if ((ret = avformat_alloc_output_context2(&av_format_ctx_local, nullptr, nullptr,
+		                                          options.realtime_options.local_backup_path)) < 0)
+		{
+			LOGE("Failed to open format context: %d\n", ret);
+			return false;
+		}
+	}
 
 	if (!init_video_codec())
 	{
@@ -613,21 +707,39 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	}
 
 	av_dump_format(av_format_ctx, 0, path, 1);
+	if (av_format_ctx_local)
+		av_dump_format(av_format_ctx_local, 0, options.realtime_options.local_backup_path, 1);
 
-	if (!(av_format_ctx->flags & AVFMT_NOFILE))
+	const auto open_file = [](AVFormatContext *ctx, const char *encode_path) -> bool
 	{
-		ret = avio_open(&av_format_ctx->pb, path, AVIO_FLAG_WRITE);
-		if (ret < 0)
+		int retval;
+		if (!(ctx->flags & AVFMT_NOFILE))
 		{
-			LOGE("Could not open file: %d\n", ret);
-			cleanup_format_context();
+			retval = avio_open(&ctx->pb, encode_path, AVIO_FLAG_WRITE);
+			if (retval < 0)
+			{
+				LOGE("Could not open file: %d\n", retval);
+				return false;
+			}
+		}
+
+		if ((retval = avformat_write_header(ctx, nullptr)) < 0)
+		{
+			LOGE("Failed to write format header: %d\n", retval);
 			return false;
 		}
+
+		return true;
+	};
+
+	if (!open_file(av_format_ctx, path))
+	{
+		cleanup_format_context();
+		return false;
 	}
 
-	if ((ret = avformat_write_header(av_format_ctx, nullptr)) < 0)
+	if (av_format_ctx_local && !open_file(av_format_ctx_local, options.realtime_options.local_backup_path))
 	{
-		LOGE("Failed to write format header: %d\n", ret);
 		cleanup_format_context();
 		return false;
 	}

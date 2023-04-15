@@ -232,7 +232,6 @@ void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, V
 void Device::add_wait_semaphore_nolock(QueueIndices physical_type, Semaphore semaphore,
                                        VkPipelineStageFlags2 stages, bool flush)
 {
-	VK_ASSERT(stages != 0);
 	if (flush)
 		flush_frame(physical_type);
 	auto &data = queue_data[physical_type];

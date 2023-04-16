@@ -117,7 +117,7 @@ public:
 		} constants = {};
 	};
 
-	YCbCrPipeline create_ycbcr_pipeline() const;
+	YCbCrPipeline create_ycbcr_pipeline(Vulkan::Program *rgb_to_ycbcr, Vulkan::Program *chroma_downsample) const;
 	void process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view);
 
 	int64_t sample_realtime_pts() const;

@@ -906,15 +906,12 @@ bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline, int64_t pts, int compen
 	return ret;
 }
 
-VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline() const
+VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(Vulkan::Program *rgb_to_ycbcr, Vulkan::Program *chroma_downsample) const
 {
 	YCbCrPipeline pipeline;
 
-	auto *rgb_to_yuv = impl->device->get_shader_manager().register_compute("builtin://shaders/util/rgb_to_yuv.comp");
-	pipeline.rgb_to_ycbcr = rgb_to_yuv->register_variant({})->get_program();
-
-	auto *chroma_downsample = impl->device->get_shader_manager().register_compute("builtin://shaders/util/chroma_downsample.comp");
-	pipeline.chroma_downsample = chroma_downsample->register_variant({})->get_program();
+	pipeline.rgb_to_ycbcr = rgb_to_ycbcr;
+	pipeline.chroma_downsample = chroma_downsample;
 
 	auto image_info = Vulkan::ImageCreateInfo::immutable_2d_image(impl->options.width, impl->options.height, VK_FORMAT_R8_UNORM);
 	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;

@@ -3,8 +3,11 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
         libavdevice libavformat libavcodec libavutil)
 
 add_granite_internal_lib(granite-video
-        ffmpeg_encode.cpp ffmpeg_encode.hpp
-        ffmpeg_decode.cpp ffmpeg_decode.hpp)
+        ffmpeg_encode.cpp ffmpeg_encode.hpp)
+if (GRANITE_VULKAN_SYSTEM_HANDLES)
+    target_sources(granite-video PRIVATE ffmpeg_decode.cpp ffmpeg_decode.hpp)
+endif()
+
 target_link_libraries(granite-video
         PUBLIC granite-vulkan
         PRIVATE PkgConfig::LIBAV granite-threading granite-math)

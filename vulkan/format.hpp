@@ -23,7 +23,7 @@
 #pragma once
 
 #include "vulkan_headers.hpp"
-#include "texture_format.hpp"
+#include "texture/texture_format.hpp"
 
 namespace Vulkan
 {

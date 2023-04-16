@@ -257,7 +257,14 @@ public:
 		}
 
 		for (unsigned i = 0; i < SwapchainImages; i++)
-			ycbcr_pipelines.push_back(encoder.create_ycbcr_pipeline());
+		{
+			auto &device = app->get_wsi().get_device();
+			auto *rgb_to_yuv = device.get_shader_manager().register_compute(
+					"builtin://shaders/util/rgb_to_yuv.comp")->register_variant({})->get_program();
+			auto *chroma_downsample = device.get_shader_manager().register_compute(
+					"builtin://shaders/util/chroma_downsample.comp")->register_variant({})->get_program();
+			ycbcr_pipelines.push_back(encoder.create_ycbcr_pipeline(rgb_to_yuv, chroma_downsample));
+		}
 
 		record_stream->start();
 	}

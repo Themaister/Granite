@@ -59,7 +59,12 @@ int main()
 	info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	info.misc = Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
 	auto img = device.create_image(info);
-	auto pipe = encoder.create_ycbcr_pipeline();
+
+	auto *rgb_to_yuv = device.get_shader_manager().register_compute(
+			"builtin://shaders/util/rgb_to_yuv.comp")->register_variant({})->get_program();
+	auto *chroma_downsample = device.get_shader_manager().register_compute(
+			"builtin://shaders/util/chroma_downsample.comp")->register_variant({})->get_program();
+	auto pipe = encoder.create_ycbcr_pipeline(rgb_to_yuv, chroma_downsample);
 
 	for (unsigned i = 0; i < 1000; i++)
 	{

@@ -114,8 +114,13 @@ struct FFmpegHWDevice::Impl
 					vk->nb_tx_queues = int(q.counts[Vulkan::QUEUE_INDEX_TRANSFER]);
 					vk->nb_decode_queues = int(q.counts[Vulkan::QUEUE_INDEX_VIDEO_DECODE]);
 
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+					vk->queue_family_encode_index = int(q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_ENCODE]);
+					vk->nb_encode_queues = int(q.counts[Vulkan::QUEUE_INDEX_VIDEO_ENCODE]);
+#else
 					vk->queue_family_encode_index = -1;
 					vk->nb_encode_queues = 0;
+#endif
 
 					vk->lock_queue = [](AVHWDeviceContext *ctx, int, int) {
 						auto *self = static_cast<Impl *>(ctx->user_opaque);

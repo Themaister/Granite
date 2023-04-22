@@ -3,7 +3,8 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
         libavdevice libavformat libavcodec libavutil)
 
 add_granite_internal_lib(granite-video
-        ffmpeg_encode.cpp ffmpeg_encode.hpp)
+        ffmpeg_encode.cpp ffmpeg_encode.hpp
+        ffmpeg_hw_device.cpp ffmpeg_hw_device.hpp)
 if (GRANITE_VULKAN_SYSTEM_HANDLES)
     target_sources(granite-video PRIVATE ffmpeg_decode.cpp ffmpeg_decode.hpp)
 endif()

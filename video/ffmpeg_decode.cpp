@@ -1525,7 +1525,7 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	std::lock_guard<std::mutex> holder{lock};
 	img.state = ImageState::Ready;
 	cond.notify_all();
-};
+}
 
 void VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 {

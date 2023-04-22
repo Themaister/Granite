@@ -78,6 +78,13 @@ struct ProfileHolder
 
 namespace Vulkan
 {
+static constexpr ContextCreationFlags video_context_flags =
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+		CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT | CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT;
+#else
+		CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT;
+#endif
+
 void Context::set_instance_factory(InstanceFactory *factory)
 {
 	instance_factory = factory;
@@ -520,7 +527,7 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 	uint32_t target_instance_version = user_application_info.get_application_info().apiVersion;
 
 	// Target an instance version of at least 1.3 for FFmpeg decode.
-	if (flags & CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT)
+	if ((flags & video_context_flags) != 0)
 		if (target_instance_version < VK_API_VERSION_1_3)
 			target_instance_version = VK_API_VERSION_1_3;
 
@@ -902,9 +909,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	LOGI("Using Vulkan GPU: %s\n", gpu_props.deviceName);
 
 	// FFmpeg integration requires Vulkan 1.3 core for physical device.
-	const uint32_t minimum_api_version =
-			(flags & CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT) ?
-			VK_API_VERSION_1_3 : VK_API_VERSION_1_1;
+	const uint32_t minimum_api_version = (flags & video_context_flags) ? VK_API_VERSION_1_3 : VK_API_VERSION_1_1;
 
 	if (gpu_props.apiVersion < minimum_api_version)
 	{
@@ -920,11 +925,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	Util::SmallVector<VkQueueFamilyProperties2> queue_props(queue_family_count);
 	Util::SmallVector<VkQueueFamilyVideoPropertiesKHR> video_queue_props2(queue_family_count);
 
-	if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT) != 0 &&
-	    has_extension(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME))
-	{
+	if ((flags & video_context_flags) != 0 && has_extension(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME))
 		ext.supports_video_queue = true;
-	}
 
 	for (uint32_t i = 0; i < queue_family_count; i++)
 	{
@@ -1021,12 +1023,29 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	if (ext.supports_video_queue)
 	{
-		if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE], queue_indices[QUEUE_INDEX_VIDEO_DECODE],
-		                       VK_QUEUE_VIDEO_DECODE_BIT_KHR, 0, 0.5f))
+		if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT) != 0)
 		{
-			queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE] = VK_QUEUE_FAMILY_IGNORED;
-			queue_indices[QUEUE_INDEX_VIDEO_DECODE] = UINT32_MAX;
+			if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE],
+			                       queue_indices[QUEUE_INDEX_VIDEO_DECODE],
+			                       VK_QUEUE_VIDEO_DECODE_BIT_KHR, 0, 0.5f))
+			{
+				queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE] = VK_QUEUE_FAMILY_IGNORED;
+				queue_indices[QUEUE_INDEX_VIDEO_DECODE] = UINT32_MAX;
+			}
 		}
+
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+		if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT) != 0)
+		{
+			if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE],
+			                       queue_indices[QUEUE_INDEX_VIDEO_ENCODE],
+			                       VK_QUEUE_VIDEO_ENCODE_BIT_KHR, 0, 0.5f))
+			{
+				queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE] = VK_QUEUE_FAMILY_IGNORED;
+				queue_indices[QUEUE_INDEX_VIDEO_ENCODE] = UINT32_MAX;
+			}
+		}
+#endif
 	}
 
 	VkDeviceCreateInfo device_info = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
@@ -1220,6 +1239,41 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 				}
 			}
 		}
+
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+		if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT) != 0 &&
+		    has_extension(VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME);
+			ext.supports_video_encode_queue = true;
+
+			if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT) != 0 &&
+			    has_extension(VK_EXT_VIDEO_ENCODE_H264_EXTENSION_NAME))
+			{
+				enabled_extensions.push_back(VK_EXT_VIDEO_ENCODE_H264_EXTENSION_NAME);
+
+				if (queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE] != VK_QUEUE_FAMILY_IGNORED)
+				{
+					ext.supports_video_encode_h264 =
+							(video_queue_props2[queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE]].videoCodecOperations &
+							 VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_EXT) != 0;
+				}
+			}
+
+			if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT) != 0 &&
+			    has_extension(VK_EXT_VIDEO_ENCODE_H265_EXTENSION_NAME))
+			{
+				enabled_extensions.push_back(VK_EXT_VIDEO_ENCODE_H265_EXTENSION_NAME);
+
+				if (queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE] != VK_QUEUE_FAMILY_IGNORED)
+				{
+					ext.supports_video_encode_h265 =
+							(video_queue_props2[queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE]].videoCodecOperations &
+							 VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_EXT) != 0;
+				}
+			}
+		}
+#endif
 	}
 
 	pdf2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
@@ -1630,7 +1684,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	}
 
 #ifdef VULKAN_DEBUG
-	static const char *family_names[QUEUE_INDEX_COUNT] = { "Graphics", "Compute", "Transfer", "Video decode" };
+	static const char *family_names[QUEUE_INDEX_COUNT] = { "Graphics", "Compute", "Transfer", "Video decode", "Video encode" };
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
 		if (queue_info.family_indices[i] != VK_QUEUE_FAMILY_IGNORED)
 			LOGI("%s queue: family %u, index %u.\n", family_names[i], queue_info.family_indices[i], queue_indices[i]);

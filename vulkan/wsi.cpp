@@ -248,6 +248,9 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 #ifdef HAVE_FFMPEG_VULKAN
 	constexpr ContextCreationFlags video_context_flags =
 			CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT |
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+			CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT |
+#endif
 			CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT |
 			CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT;
 #else

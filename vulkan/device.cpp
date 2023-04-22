@@ -61,18 +61,39 @@ using namespace Util;
 
 namespace Vulkan
 {
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+static constexpr VkImageUsageFlags image_usage_video_flags =
+		VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR |
+		VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR |
+		VK_IMAGE_USAGE_VIDEO_ENCODE_DST_BIT_KHR |
+		VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
+		VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
+		VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR;
+#else
+static constexpr VkImageUsageFlags image_usage_video_flags =
+		VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
+		VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
+		VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR;
+#endif
+
 static const char *queue_name_table[] = {
 	"Graphics",
 	"Compute",
 	"Transfer",
-	"Video decode"
+	"Video decode",
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+	"Video encode",
+#endif
 };
 
 static const QueueIndices queue_flush_order[] = {
 	QUEUE_INDEX_TRANSFER,
 	QUEUE_INDEX_VIDEO_DECODE,
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+	QUEUE_INDEX_VIDEO_ENCODE,
+#endif
 	QUEUE_INDEX_GRAPHICS,
-	QUEUE_INDEX_COMPUTE
+	QUEUE_INDEX_COMPUTE,
 };
 
 Device::Device()
@@ -3161,9 +3182,7 @@ public:
 		                    VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
 		                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
 		                    VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
-		                    VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
-		                    VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
-		                    VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR;
+							image_usage_video_flags;
 
 		if (format_is_srgb(create_info.format))
 			usage_info.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
@@ -3211,9 +3230,7 @@ public:
 
 		if ((create_info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 		                          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
-		                          VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
-		                          VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
-		                          VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR)) == 0)
+								  image_usage_video_flags)) == 0)
 		{
 			LOGE("Cannot create image view unless certain usage flags are present.\n");
 			return false;
@@ -3824,7 +3841,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
 	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
 	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
-	                                           IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT);
+	                                           IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DUPLEX);
 	bool concurrent_queue = queue_flags != 0 ||
 	                        staging_buffer != nullptr ||
 	                        create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED;
@@ -3863,6 +3880,9 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			{ IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT, QUEUE_INDEX_COMPUTE },
 			{ IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT, QUEUE_INDEX_TRANSFER },
 			{ IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT, QUEUE_INDEX_VIDEO_DECODE },
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+			{ IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_ENCODE_BIT, QUEUE_INDEX_VIDEO_ENCODE },
+#endif
 		};
 
 		for (auto &m : mappings)
@@ -3998,9 +4018,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 	bool has_view = (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
-	                               VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
-	                               VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
-	                               VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR)) != 0 &&
+								   image_usage_video_flags)) != 0 &&
 	                (create_info.misc & IMAGE_MISC_NO_DEFAULT_VIEWS_BIT) == 0;
 
 	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
@@ -4103,6 +4121,10 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			type = CommandBuffer::Type::AsyncTransfer;
 		else if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)
 			type = CommandBuffer::Type::VideoDecode;
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+		else if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_ENCODE_BIT)
+			type = CommandBuffer::Type::VideoEncode;
+#endif
 		VK_ASSERT(type != CommandBuffer::Type::Count);
 
 		auto cmd = request_command_buffer(type);
@@ -4171,6 +4193,16 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			if (stages[sem_count] != 0)
 				sem_count++;
 		}
+
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+		if (create_info.misc & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_ENCODE_BIT)
+		{
+			types[sem_count] = CommandBuffer::Type::VideoEncode;
+			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+			if (stages[sem_count] != 0)
+				sem_count++;
+		}
+#endif
 
 		VK_ASSERT(sem_count);
 
@@ -5214,7 +5246,7 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
 	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
-	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)) != 0;
+	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DUPLEX)) != 0;
 	bool need_ownership_transfer = old_family != new_family && !image_is_concurrent;
 
 	VkImageMemoryBarrier2 ownership = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };

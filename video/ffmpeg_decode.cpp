@@ -1202,7 +1202,7 @@ void VideoDecoder::Impl::process_video_frame_in_task_vulkan(DecodedImage &img, A
 	info.width = video.av_ctx->width;
 	info.height = video.av_ctx->height;
 	info.depth = 1;
-	info.format = VK_FORMAT_UNDEFINED;
+	info.format = vk->format[0];
 	info.usage = vk->usage;
 	info.flags = vk->img_flags;
 	info.layers = 1;

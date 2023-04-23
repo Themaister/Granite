@@ -41,8 +41,10 @@ public:
 	~FFmpegHWDevice();
 
 	bool init_codec_context(const AVCodec *codec, Vulkan::Device *device, AVCodecContext *ctx);
+	bool init_frame_context(AVCodecContext *ctx, unsigned width, unsigned height, int sw_pixel_format);
 	int get_hw_device_type() const;
 	int get_pix_fmt() const;
+	int get_sw_pix_fmt() const;
 	void reset();
 
 	struct Impl;

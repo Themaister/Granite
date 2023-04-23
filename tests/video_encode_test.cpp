@@ -28,7 +28,9 @@ int main()
 	handles.filesystem = GRANITE_FILESYSTEM();
 	Vulkan::Context ctx;
 	ctx.set_system_handles(handles);
-	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0))
+	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0,
+	                                  Vulkan::CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT |
+	                                  Vulkan::CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT))
 		return 1;
 	Vulkan::Device device;
 	device.set_context(ctx);

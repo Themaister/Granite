@@ -31,6 +31,7 @@ extern "C"
 }
 
 #include "ffmpeg_encode.hpp"
+#include "ffmpeg_hw_device.hpp"
 #include "logging.hpp"
 #include "math.hpp"
 #include "muglm/muglm_impl.hpp"
@@ -102,6 +103,8 @@ struct VideoEncoder::Impl
 	int64_t audio_pts = 0;
 	int current_audio_frames = 0;
 
+	FFmpegHWDevice hw;
+
 	int64_t sample_realtime_pts() const;
 };
 
@@ -158,6 +161,7 @@ void VideoEncoder::Impl::drain_codec()
 VideoEncoder::Impl::~Impl()
 {
 	drain_codec();
+	hw.reset();
 }
 
 static unsigned format_to_planes(VideoEncoder::Format fmt)
@@ -506,11 +510,29 @@ bool VideoEncoder::Impl::init_audio_codec()
 
 bool VideoEncoder::Impl::init_video_codec()
 {
-	const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+	const AVCodec *codec = nullptr;
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+	codec = avcodec_find_encoder_by_name("h264_vulkan");
+#endif
+
+	if (!codec)
+		codec = avcodec_find_encoder_by_name("libx264");
+
 	if (!codec)
 	{
 		LOGE("Could not find H.264 encoder.\n");
 		return false;
+	}
+
+	if (!hw.init_codec_context(codec, device, nullptr))
+	{
+		LOGW("Failed to init HW encoder context, falling back to software.\n");
+		codec = avcodec_find_encoder_by_name("libx264");
+		if (!codec)
+		{
+			LOGE("Could not find H.264 encoder.\n");
+			return false;
+		}
 	}
 
 	video.av_stream = avformat_new_stream(av_format_ctx, codec);
@@ -548,6 +570,14 @@ bool VideoEncoder::Impl::init_video_codec()
 
 	default:
 		return false;
+	}
+
+	if (hw.get_pix_fmt() != AV_PIX_FMT_NONE)
+	{
+		if (hw.init_frame_context(video.av_ctx, options.width, options.height, video.av_ctx->pix_fmt))
+			video.av_ctx->pix_fmt = AVPixelFormat(hw.get_pix_fmt());
+		else
+			hw.reset();
 	}
 
 	video.av_ctx->framerate = { options.frame_timebase.den, options.frame_timebase.num };
@@ -597,7 +627,7 @@ bool VideoEncoder::Impl::init_video_codec()
 
 	AVDictionary *opts = nullptr;
 
-	if (options.realtime)
+	if (options.realtime || hw.get_hw_device_type() != AV_HWDEVICE_TYPE_NONE)
 	{
 		video.av_ctx->bit_rate = options.realtime_options.bitrate_kbits * 1000;
 		video.av_ctx->rc_buffer_size = options.realtime_options.vbv_size_kbits * 1000;
@@ -606,12 +636,16 @@ bool VideoEncoder::Impl::init_video_codec()
 				float(video.av_ctx->framerate.num) / float(video.av_ctx->framerate.den));
 		if (video.av_ctx->gop_size == 0)
 			video.av_ctx->gop_size = 1;
-		if (options.realtime_options.x264_preset)
-			av_dict_set(&opts, "preset", options.realtime_options.x264_preset, 0);
-		if (options.realtime_options.x264_tune)
-			av_dict_set(&opts, "tune", options.realtime_options.x264_tune, 0);
-		if (options.realtime_options.threads)
-			av_dict_set_int(&opts, "threads", options.realtime_options.threads, 0);
+
+		if (hw.get_hw_device_type() == AV_HWDEVICE_TYPE_NONE)
+		{
+			if (options.realtime_options.x264_preset)
+				av_dict_set(&opts, "preset", options.realtime_options.x264_preset, 0);
+			if (options.realtime_options.x264_tune)
+				av_dict_set(&opts, "tune", options.realtime_options.x264_tune, 0);
+			if (options.realtime_options.threads)
+				av_dict_set_int(&opts, "threads", options.realtime_options.threads, 0);
+		}
 	}
 	else
 	{
@@ -632,11 +666,29 @@ bool VideoEncoder::Impl::init_video_codec()
 	if (video.av_stream_local)
 		avcodec_parameters_from_context(video.av_stream_local->codecpar, video.av_ctx);
 
-	video.av_frame = alloc_video_frame(video.av_ctx->pix_fmt, options.width, options.height);
-	if (!video.av_frame)
+	if (hw.get_hw_device_type() == AV_HWDEVICE_TYPE_NONE)
 	{
-		LOGE("Failed to allocate AVFrame.\n");
-		return false;
+		video.av_frame = alloc_video_frame(video.av_ctx->pix_fmt, options.width, options.height);
+		if (!video.av_frame)
+		{
+			LOGE("Failed to allocate AVFrame.\n");
+			return false;
+		}
+	}
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+	else if (hw.get_hw_device_type() == AV_HWDEVICE_TYPE_VULKAN)
+	{
+		// Do not allocate av_frame, we'll convert YUV into the frame context.
+	}
+#endif
+	else
+	{
+		video.av_frame = alloc_video_frame(AVPixelFormat(hw.get_sw_pix_fmt()), options.width, options.height);
+		if (!video.av_frame)
+		{
+			LOGE("Failed to allocate AVFrame.\n");
+			return false;
+		}
 	}
 
 	video.av_pkt = av_packet_alloc();

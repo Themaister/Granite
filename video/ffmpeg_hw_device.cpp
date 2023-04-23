@@ -41,13 +41,89 @@ struct FFmpegHWDevice::Impl
 {
 	const AVCodecHWConfig *hw_config = nullptr;
 	AVBufferRef *hw_device = nullptr;
+	AVBufferRef *frame_ctx = nullptr;
 	Vulkan::Device *device = nullptr;
 	const AVCodec *cached_av_codec = nullptr;
 
 	~Impl()
 	{
+		if (frame_ctx)
+			av_buffer_unref(&frame_ctx);
 		if (hw_device)
 			av_buffer_unref(&hw_device);
+	}
+
+	void init_hw_device_ctx(const AVCodecHWConfig *config)
+	{
+#ifdef HAVE_FFMPEG_VULKAN
+		if (config->device_type == AV_HWDEVICE_TYPE_VULKAN)
+		{
+			AVBufferRef *hw_dev = av_hwdevice_ctx_alloc(config->device_type);
+			auto *hwctx = reinterpret_cast<AVHWDeviceContext *>(hw_dev->data);
+			auto *vk = static_cast<AVVulkanDeviceContext *>(hwctx->hwctx);
+
+			hwctx->user_opaque = this;
+
+			vk->get_proc_addr = Vulkan::Context::get_instance_proc_addr();
+			vk->inst = device->get_instance();
+			vk->act_dev = device->get_device();
+			vk->phys_dev = device->get_physical_device();
+			vk->device_features = *device->get_device_features().pdf2;
+			vk->enabled_inst_extensions = device->get_device_features().instance_extensions;
+			vk->nb_enabled_inst_extensions = int(device->get_device_features().num_instance_extensions);
+			vk->enabled_dev_extensions = device->get_device_features().device_extensions;
+			vk->nb_enabled_dev_extensions = int(device->get_device_features().num_device_extensions);
+
+			auto &q = device->get_queue_info();
+
+			vk->queue_family_index = int(q.family_indices[Vulkan::QUEUE_INDEX_GRAPHICS]);
+			vk->queue_family_comp_index = int(q.family_indices[Vulkan::QUEUE_INDEX_COMPUTE]);
+			vk->queue_family_tx_index = int(q.family_indices[Vulkan::QUEUE_INDEX_TRANSFER]);
+			vk->queue_family_decode_index = int(q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_DECODE]);
+
+			vk->nb_graphics_queues = int(q.counts[Vulkan::QUEUE_INDEX_GRAPHICS]);
+			vk->nb_comp_queues = int(q.counts[Vulkan::QUEUE_INDEX_COMPUTE]);
+			vk->nb_tx_queues = int(q.counts[Vulkan::QUEUE_INDEX_TRANSFER]);
+			vk->nb_decode_queues = int(q.counts[Vulkan::QUEUE_INDEX_VIDEO_DECODE]);
+
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+			vk->queue_family_encode_index = int(q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_ENCODE]);
+			vk->nb_encode_queues = int(q.counts[Vulkan::QUEUE_INDEX_VIDEO_ENCODE]);
+#else
+			vk->queue_family_encode_index = -1;
+			vk->nb_encode_queues = 0;
+#endif
+
+			vk->lock_queue = [](AVHWDeviceContext *ctx, int, int) {
+				auto *self = static_cast<Impl *>(ctx->user_opaque);
+				self->device->external_queue_lock();
+			};
+
+			vk->unlock_queue = [](AVHWDeviceContext *ctx, int, int) {
+				auto *self = static_cast<Impl *>(ctx->user_opaque);
+				self->device->external_queue_unlock();
+			};
+
+			if (av_hwdevice_ctx_init(hw_dev) >= 0)
+			{
+				LOGI("Created custom Vulkan FFmpeg HW device.\n");
+				hw_config = config;
+				hw_device = hw_dev;
+			}
+			else
+				av_buffer_unref(&hw_dev);
+		}
+		else
+#endif
+		{
+			AVBufferRef *hw_dev = nullptr;
+			if (av_hwdevice_ctx_create(&hw_dev, config->device_type, nullptr, nullptr, 0) == 0)
+			{
+				LOGI("Created FFmpeg HW device: %s.\n", av_hwdevice_get_type_name(config->device_type));
+				hw_config = config;
+				hw_device = hw_dev;
+			}
+		}
 	}
 
 	bool init_hw_device(const AVCodec *av_codec)
@@ -81,82 +157,46 @@ struct FFmpegHWDevice::Impl
 				continue;
 #endif
 
-			if ((config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0)
-			{
-#ifdef HAVE_FFMPEG_VULKAN
-				if (config->device_type == AV_HWDEVICE_TYPE_VULKAN)
-				{
-					AVBufferRef *hw_dev = av_hwdevice_ctx_alloc(config->device_type);
-					auto *hwctx = reinterpret_cast<AVHWDeviceContext *>(hw_dev->data);
-					auto *vk = static_cast<AVVulkanDeviceContext *>(hwctx->hwctx);
-
-					hwctx->user_opaque = this;
-
-					vk->get_proc_addr = Vulkan::Context::get_instance_proc_addr();
-					vk->inst = device->get_instance();
-					vk->act_dev = device->get_device();
-					vk->phys_dev = device->get_physical_device();
-					vk->device_features = *device->get_device_features().pdf2;
-					vk->enabled_inst_extensions = device->get_device_features().instance_extensions;
-					vk->nb_enabled_inst_extensions = int(device->get_device_features().num_instance_extensions);
-					vk->enabled_dev_extensions = device->get_device_features().device_extensions;
-					vk->nb_enabled_dev_extensions = int(device->get_device_features().num_device_extensions);
-
-					auto &q = device->get_queue_info();
-
-					vk->queue_family_index = int(q.family_indices[Vulkan::QUEUE_INDEX_GRAPHICS]);
-					vk->queue_family_comp_index = int(q.family_indices[Vulkan::QUEUE_INDEX_COMPUTE]);
-					vk->queue_family_tx_index = int(q.family_indices[Vulkan::QUEUE_INDEX_TRANSFER]);
-					vk->queue_family_decode_index = int(q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_DECODE]);
-
-					vk->nb_graphics_queues = int(q.counts[Vulkan::QUEUE_INDEX_GRAPHICS]);
-					vk->nb_comp_queues = int(q.counts[Vulkan::QUEUE_INDEX_COMPUTE]);
-					vk->nb_tx_queues = int(q.counts[Vulkan::QUEUE_INDEX_TRANSFER]);
-					vk->nb_decode_queues = int(q.counts[Vulkan::QUEUE_INDEX_VIDEO_DECODE]);
-
-#ifdef VK_ENABLE_BETA_EXTENSIONS
-					vk->queue_family_encode_index = int(q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_ENCODE]);
-					vk->nb_encode_queues = int(q.counts[Vulkan::QUEUE_INDEX_VIDEO_ENCODE]);
-#else
-					vk->queue_family_encode_index = -1;
-					vk->nb_encode_queues = 0;
-#endif
-
-					vk->lock_queue = [](AVHWDeviceContext *ctx, int, int) {
-						auto *self = static_cast<Impl *>(ctx->user_opaque);
-						self->device->external_queue_lock();
-					};
-
-					vk->unlock_queue = [](AVHWDeviceContext *ctx, int, int) {
-						auto *self = static_cast<Impl *>(ctx->user_opaque);
-						self->device->external_queue_unlock();
-					};
-
-					if (av_hwdevice_ctx_init(hw_dev) >= 0)
-					{
-						LOGI("Created custom Vulkan HW decoder.\n");
-						hw_config = config;
-						hw_device = hw_dev;
-					}
-					else
-						av_buffer_unref(&hw_dev);
-				}
-				else
-#endif
-				{
-					AVBufferRef *hw_dev = nullptr;
-					if (av_hwdevice_ctx_create(&hw_dev, config->device_type, nullptr, nullptr, 0) == 0)
-					{
-						LOGI("Created HW decoder: %s.\n", av_hwdevice_get_type_name(config->device_type));
-						hw_config = config;
-						hw_device = hw_dev;
-						break;
-					}
-				}
-			}
+			if ((config->methods & (AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX | AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX)) != 0)
+				init_hw_device_ctx(config);
 		}
 
 		return hw_device != nullptr;
+	}
+
+	bool init_frame_context(AVCodecContext *av_ctx, unsigned width, unsigned height, AVPixelFormat sw_format)
+	{
+		if ((hw_config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX) == 0)
+			return false;
+
+		auto *frames = av_hwframe_ctx_alloc(hw_device);
+		if (!frames)
+			return false;
+
+		auto *ctx = reinterpret_cast<AVHWFramesContext *>(frames->data);
+		ctx->format = hw_config->pix_fmt;
+		ctx->width = width;
+		ctx->height = height;
+		ctx->sw_format = sw_format;
+
+#ifdef HAVE_FFMPEG_VULKAN
+		if (ctx->format == AV_PIX_FMT_VULKAN)
+		{
+			auto *vk = static_cast<AVVulkanFramesContext *>(ctx->hwctx);
+			vk->img_flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+		}
+#endif
+
+		if (av_hwframe_ctx_init(frames) != 0)
+		{
+			LOGE("Failed to initialize HW frame context.\n");
+			av_buffer_unref(&frames);
+			return false;
+		}
+
+		frame_ctx = frames;
+		av_ctx->hw_frames_ctx = av_buffer_ref(frame_ctx);
+		return true;
 	}
 
 	bool init_codec_context(const AVCodec *av_codec, Vulkan::Device *device_, AVCodecContext *av_ctx)
@@ -176,8 +216,11 @@ struct FFmpegHWDevice::Impl
 		if (!init_hw_device(av_codec))
 			return false;
 
-		av_ctx->get_format = get_pixel_format;
-		av_ctx->hw_device_ctx = av_buffer_ref(hw_device);
+		if (av_ctx && (hw_config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0)
+		{
+			av_ctx->get_format = get_pixel_format;
+			av_ctx->hw_device_ctx = av_buffer_ref(hw_device);
+		}
 		return true;
 	}
 };
@@ -194,7 +237,7 @@ static AVPixelFormat get_pixel_format(AVCodecContext *ctx, const enum AVPixelFor
 			{
 				if (avcodec_get_hw_frames_parameters(
 						ctx, ctx->hw_device_ctx,
-						AV_PIX_FMT_VULKAN, &ctx->hw_frames_ctx) < 0)
+						self->impl->hw_config->pix_fmt, &ctx->hw_frames_ctx) < 0)
 				{
 					LOGE("Failed to get HW frames parameters.\n");
 					return AV_PIX_FMT_NONE;
@@ -236,6 +279,15 @@ bool FFmpegHWDevice::init_codec_context(const AVCodec *codec, Vulkan::Device *de
 	return impl->init_codec_context(codec, device, ctx);
 }
 
+bool FFmpegHWDevice::init_frame_context(AVCodecContext *ctx,
+                                        unsigned width, unsigned height, int sw_pixel_format)
+{
+	if (!impl || !impl->hw_device || !impl->hw_config)
+		return false;
+
+	return impl->init_frame_context(ctx, width, height, AVPixelFormat(sw_pixel_format));
+}
+
 int FFmpegHWDevice::get_hw_device_type() const
 {
 	if (!impl || !impl->hw_device || !impl->hw_config)
@@ -250,6 +302,15 @@ int FFmpegHWDevice::get_pix_fmt() const
 		return AV_PIX_FMT_NONE;
 
 	return impl->hw_config->pix_fmt;
+}
+
+int FFmpegHWDevice::get_sw_pix_fmt() const
+{
+	if (!impl || !impl->frame_ctx)
+		return AV_PIX_FMT_NONE;
+
+	auto *frames = reinterpret_cast<AVHWFramesContext *>(impl->frame_ctx->data);
+	return frames->sw_format;
 }
 
 void FFmpegHWDevice::reset()

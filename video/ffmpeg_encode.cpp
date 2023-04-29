@@ -437,7 +437,28 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 	else
 		video.av_frame->pts = encode_video_pts++;
 
-	ret = avcodec_send_frame(video.av_ctx, video.av_frame);
+	AVFrame *hw_frame = nullptr;
+	if (hw.get_hw_device_type() != AV_HWDEVICE_TYPE_NONE)
+	{
+		hw_frame = av_frame_alloc();
+		if (av_hwframe_get_buffer(video.av_ctx->hw_frames_ctx, hw_frame, 0) < 0)
+		{
+			LOGE("Failed to get HW buffer.\n");
+			av_frame_free(&hw_frame);
+		}
+
+		if (hw_frame && av_hwframe_transfer_data(hw_frame, video.av_frame, 0) < 0)
+		{
+			LOGE("Failed to transfer HW buffer.\n");
+			av_frame_free(&hw_frame);
+		}
+
+		hw_frame->pts = video.av_frame->pts;
+	}
+
+	ret = avcodec_send_frame(video.av_ctx, hw_frame ? hw_frame : video.av_frame);
+	av_frame_free(&hw_frame);
+
 	if (ret < 0)
 	{
 		LOGE("Failed to send packet to codec: %d\n", ret);
@@ -619,28 +640,19 @@ bool VideoEncoder::Impl::init_audio_codec()
 
 bool VideoEncoder::Impl::init_video_codec()
 {
-#ifdef HAVE_FFMPEG_VULKAN_ENCODE
-	const AVCodec *codec = avcodec_find_encoder_by_name("h264_vulkan");
-#else
-	const AVCodec *codec = nullptr;
-#endif
-
-	if (!codec)
-		codec = avcodec_find_encoder_by_name("libx264");
+	const AVCodec *codec = avcodec_find_encoder_by_name(options.encoder);
 
 	if (!codec)
 	{
-		LOGE("Could not find H.264 encoder.\n");
+		LOGE("Could not find requested encoder \"%s\".\n", options.encoder);
 		return false;
 	}
 
-	if (!hw.init_codec_context(codec, device, nullptr))
+	if (avcodec_get_hw_config(codec, 0) != nullptr)
 	{
-		LOGW("Failed to init HW encoder context, falling back to software.\n");
-		codec = avcodec_find_encoder_by_name("libx264");
-		if (!codec)
+		if (!hw.init_codec_context(codec, device, nullptr))
 		{
-			LOGE("Could not find H.264 encoder.\n");
+			LOGW("Failed to init HW encoder context, falling back to software.\n");
 			return false;
 		}
 	}
@@ -737,7 +749,9 @@ bool VideoEncoder::Impl::init_video_codec()
 
 	AVDictionary *opts = nullptr;
 
-	if (options.realtime || hw.get_hw_device_type() != AV_HWDEVICE_TYPE_NONE)
+	bool is_x264 = strcmp(options.encoder, "libx264") == 0;
+
+	if (options.realtime || !is_x264)
 	{
 		video.av_ctx->bit_rate = options.realtime_options.bitrate_kbits * 1000;
 		video.av_ctx->rc_buffer_size = options.realtime_options.vbv_size_kbits * 1000;
@@ -747,7 +761,7 @@ bool VideoEncoder::Impl::init_video_codec()
 		if (video.av_ctx->gop_size == 0)
 			video.av_ctx->gop_size = 1;
 
-		if (hw.get_hw_device_type() == AV_HWDEVICE_TYPE_NONE)
+		if (is_x264)
 		{
 			if (options.realtime_options.x264_preset)
 				av_dict_set(&opts, "preset", options.realtime_options.x264_preset, 0);

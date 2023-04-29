@@ -66,6 +66,7 @@ public:
 		ChromaSiting siting = ChromaSiting::Left; // Default for H.264.
 		// Correlate PTS with wall time.
 		bool realtime = false;
+		const char *encoder = "libx264";
 
 		struct
 		{

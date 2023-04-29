@@ -354,8 +354,10 @@ public:
 				                                                          transfer_info, release_semaphore);
 
 				encoder.process_rgb(*cmd, ycbcr_pipelines[frame_index], swapchain_images[frame_index]->get_view());
-				ycbcr_pipelines[frame_index].fence.reset();
-				device.submit(cmd, &ycbcr_pipelines[frame_index].fence, 1, &acquire_semaphore[frame_index]);
+				encoder.submit_process_rgb(cmd, ycbcr_pipelines[frame_index]);
+
+				acquire_semaphore[frame_index] = device.request_semaphore(VK_SEMAPHORE_TYPE_BINARY);
+				device.submit_empty(CommandBuffer::Type::AsyncCompute, nullptr, acquire_semaphore[frame_index].get());
 
 				swapchain_tasks[frame_index] = GRANITE_THREAD_GROUP()->create_task(
 						[this, index = frame_index, pts]() mutable {

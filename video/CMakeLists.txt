@@ -3,7 +3,8 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
         libavdevice libavformat libavcodec libavutil)
 
 add_granite_internal_lib(granite-video
-        ffmpeg_encode.cpp ffmpeg_encode.hpp)
+        ffmpeg_encode.cpp ffmpeg_encode.hpp
+        ffmpeg_hw_device.cpp ffmpeg_hw_device.hpp)
 if (GRANITE_VULKAN_SYSTEM_HANDLES)
     target_sources(granite-video PRIVATE ffmpeg_decode.cpp ffmpeg_decode.hpp)
 endif()
@@ -16,6 +17,9 @@ if (GRANITE_AUDIO)
 endif()
 if (GRANITE_FFMPEG_VULKAN)
     target_compile_definitions(granite-video PRIVATE HAVE_FFMPEG_VULKAN)
+endif()
+if (GRANITE_FFMPEG_VULKAN_ENCODE)
+    target_compile_definitions(granite-video PRIVATE HAVE_FFMPEG_VULKAN_ENCODE)
 endif()
 target_include_directories(granite-video PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(granite-video PUBLIC HAVE_GRANITE_FFMPEG)

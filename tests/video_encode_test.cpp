@@ -28,8 +28,17 @@ int main()
 	handles.filesystem = GRANITE_FILESYSTEM();
 	Vulkan::Context ctx;
 	ctx.set_system_handles(handles);
-	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0))
+	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0,
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+	                                  Vulkan::CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT |
+	                                  Vulkan::CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT))
+#else
+                                      0))
+#endif
+	{
 		return 1;
+	}
+
 	Vulkan::Device device;
 	device.set_context(ctx);
 
@@ -101,8 +110,7 @@ int main()
 						   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
 		encoder.process_rgb(*cmd, pipe, img->get_view());
-		pipe.fence.reset();
-		device.submit(cmd, &pipe.fence);
+		encoder.submit_process_rgb(cmd, pipe);
 		encoder.encode_frame(pipe, 0);
 		device.next_frame_context();
 	}

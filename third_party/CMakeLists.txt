@@ -89,6 +89,11 @@ target_include_directories(granite-volk-headers INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}/khronos/vulkan-headers/include/vk_video
         ${CMAKE_CURRENT_SOURCE_DIR}/khronos/vulkan-headers/include/vulkan)
 
+if (GRANITE_FFMPEG_VULKAN_ENCODE)
+    # Encode is still not ratified.
+    target_compile_definitions(granite-volk-headers INTERFACE VK_ENABLE_BETA_EXTENSIONS)
+endif()
+
 # volk must be STATIC.
 add_library(granite-volk STATIC volk/volk.c volk/volk.h)
 if (WIN32)

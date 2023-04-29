@@ -23,6 +23,7 @@
 #define __STDC_LIMIT_MACROS 1
 
 #include "ffmpeg_decode.hpp"
+#include "ffmpeg_hw_device.hpp"
 #include "logging.hpp"
 #include "math.hpp"
 #include "muglm/muglm_impl.hpp"
@@ -447,11 +448,7 @@ struct VideoDecoder::Impl
 	AVFrameRingStream *stream = nullptr;
 #endif
 
-	struct
-	{
-		const AVCodecHWConfig *config = nullptr;
-		AVBufferRef *device = nullptr;
-	} hw;
+	FFmpegHWDevice hw;
 
 	bool is_paused = false;
 
@@ -557,7 +554,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 {
 	ubo.resolution = uvec2(video.av_ctx->width, video.av_ctx->height);
 
-	if (video.av_ctx->hw_frames_ctx && hw.config && hw.config->device_type == AV_HWDEVICE_TYPE_VULKAN)
+	if (video.av_ctx->hw_frames_ctx && hw.get_hw_device_type() == AV_HWDEVICE_TYPE_VULKAN)
 	{
 		// Frames may be padded.
 		auto *frames = reinterpret_cast<AVHWFramesContext *>(video.av_ctx->hw_frames_ctx->data);
@@ -824,147 +821,8 @@ void VideoDecoder::Impl::begin_audio_stream()
 
 bool VideoDecoder::Impl::init_video_decoder_post_device()
 {
-#ifdef HAVE_FFMPEG_VULKAN
-	bool use_vulkan = false;
-	const char *env = getenv("GRANITE_FFMPEG_VULKAN");
-	if (env && strtol(env, nullptr, 0) != 0)
-		use_vulkan = true;
-
-	if (use_vulkan)
-	{
-		if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
-		{
-			LOGW("Sampler YCbCr conversion not supported, disabling Vulkan interop.\n");
-			use_vulkan = false;
-		}
-	}
-#endif
-
-	for (int i = 0; ; i++)
-	{
-		const AVCodecHWConfig *config = avcodec_get_hw_config(video.av_codec, i);
-		if (!config)
-			break;
-
-#ifdef HAVE_FFMPEG_VULKAN
-		if (config->device_type == AV_HWDEVICE_TYPE_VULKAN && !use_vulkan)
-			continue;
-		if (config->device_type != AV_HWDEVICE_TYPE_VULKAN && use_vulkan)
-			continue;
-#endif
-
-		if ((config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0)
-		{
-#ifdef HAVE_FFMPEG_VULKAN
-			if (config->device_type == AV_HWDEVICE_TYPE_VULKAN)
-			{
-				AVBufferRef *hw_dev = av_hwdevice_ctx_alloc(config->device_type);
-				auto *hwctx = reinterpret_cast<AVHWDeviceContext *>(hw_dev->data);
-				auto *vk = static_cast<AVVulkanDeviceContext *>(hwctx->hwctx);
-
-				hwctx->user_opaque = this;
-
-				vk->get_proc_addr = Vulkan::Context::get_instance_proc_addr();
-				vk->inst = device->get_instance();
-				vk->act_dev = device->get_device();
-				vk->phys_dev = device->get_physical_device();
-				vk->device_features = *device->get_device_features().pdf2;
-				vk->enabled_inst_extensions = device->get_device_features().instance_extensions;
-				vk->nb_enabled_inst_extensions = int(device->get_device_features().num_instance_extensions);
-				vk->enabled_dev_extensions = device->get_device_features().device_extensions;
-				vk->nb_enabled_dev_extensions = int(device->get_device_features().num_device_extensions);
-
-				auto &q = device->get_queue_info();
-
-				vk->queue_family_index = int(q.family_indices[Vulkan::QUEUE_INDEX_GRAPHICS]);
-				vk->queue_family_comp_index = int(q.family_indices[Vulkan::QUEUE_INDEX_COMPUTE]);
-				vk->queue_family_tx_index = int(q.family_indices[Vulkan::QUEUE_INDEX_TRANSFER]);
-				vk->queue_family_decode_index = int(q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_DECODE]);
-
-				vk->nb_graphics_queues = int(q.counts[Vulkan::QUEUE_INDEX_GRAPHICS]);
-				vk->nb_comp_queues = int(q.counts[Vulkan::QUEUE_INDEX_COMPUTE]);
-				vk->nb_tx_queues = int(q.counts[Vulkan::QUEUE_INDEX_TRANSFER]);
-				vk->nb_decode_queues = int(q.counts[Vulkan::QUEUE_INDEX_VIDEO_DECODE]);
-
-				vk->queue_family_encode_index = -1;
-				vk->nb_encode_queues = 0;
-
-				vk->lock_queue = [](AVHWDeviceContext *ctx, int, int) {
-					auto *self = static_cast<Impl *>(ctx->user_opaque);
-					self->device->external_queue_lock();
-				};
-
-				vk->unlock_queue = [](AVHWDeviceContext *ctx, int, int) {
-					auto *self = static_cast<Impl *>(ctx->user_opaque);
-					self->device->external_queue_unlock();
-				};
-
-				if (av_hwdevice_ctx_init(hw_dev) >= 0)
-				{
-					LOGI("Created custom Vulkan HW decoder.\n");
-					hw.config = config;
-					hw.device = hw_dev;
-				}
-				else
-					av_buffer_unref(&hw_dev);
-			}
-			else
-#endif
-			{
-				AVBufferRef *hw_dev = nullptr;
-				if (av_hwdevice_ctx_create(&hw_dev, config->device_type, nullptr, nullptr, 0) == 0)
-				{
-					LOGI("Created HW decoder: %s.\n", av_hwdevice_get_type_name(config->device_type));
-					hw.config = config;
-					hw.device = hw_dev;
-					break;
-				}
-			}
-		}
-	}
-
-	if (hw.device)
-	{
-		video.av_ctx->get_format = [](AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) -> AVPixelFormat
-		{
-			auto *self = static_cast<Impl *>(ctx->opaque);
-			while (*pix_fmts != AV_PIX_FMT_NONE)
-			{
-				if (*pix_fmts == self->hw.config->pix_fmt)
-				{
-#ifdef HAVE_FFMPEG_VULKAN
-					if (self->hw.config->pix_fmt == AV_PIX_FMT_VULKAN)
-					{
-						if (avcodec_get_hw_frames_parameters(
-								ctx, ctx->hw_device_ctx,
-								AV_PIX_FMT_VULKAN, &ctx->hw_frames_ctx) < 0)
-						{
-							LOGE("Failed to get HW frames parameters.\n");
-							return AV_PIX_FMT_NONE;
-						}
-
-						auto *frames = reinterpret_cast<AVHWFramesContext *>(ctx->hw_frames_ctx->data);
-						auto *vk = static_cast<AVVulkanFramesContext *>(frames->hwctx);
-						// We take views of individual planes if we don't get a clean YCbCr sampler, need this.
-						vk->img_flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
-
-						if (av_hwframe_ctx_init(ctx->hw_frames_ctx) < 0)
-						{
-							LOGE("Failed to initialize HW frames context.\n");
-							av_buffer_unref(&ctx->hw_frames_ctx);
-							return AV_PIX_FMT_NONE;
-						}
-					}
-#endif
-					return *pix_fmts;
-				}
-				pix_fmts++;
-			}
-
-			return AV_PIX_FMT_NONE;
-		};
-		video.av_ctx->hw_device_ctx = av_buffer_ref(hw.device);
-	}
+	if (!hw.init_codec_context(video.av_codec, device, video.av_ctx))
+		LOGW("Failed to init hardware decode context. Falling back to software.\n");
 
 	if (avcodec_open2(video.av_ctx, video.av_codec, nullptr) < 0)
 	{
@@ -975,7 +833,7 @@ bool VideoDecoder::Impl::init_video_decoder_post_device()
 	double fps = av_q2d(video.av_stream->avg_frame_rate);
 	// If FPS is not specified assume 60 as a "worst case scenario".
 	if (fps == 0.0)
-		fps = 60.0f;
+		fps = 60.0;
 
 	// We need to buffer up enough frames without running into starvation scenarios.
 	// The low watermark for audio buffer is 100ms, which is where we will start forcing video frames to be decoded.
@@ -1022,7 +880,7 @@ bool VideoDecoder::Impl::init_video_decoder_pre_device()
 		return false;
 	}
 
-	video.av_ctx->opaque = this;
+	video.av_ctx->opaque = &hw;
 	return true;
 }
 
@@ -1199,6 +1057,8 @@ void VideoDecoder::Impl::process_video_frame_in_task_vulkan(DecodedImage &img, A
 
 	Vulkan::ImageCreateInfo info = {};
 	info.type = VK_IMAGE_TYPE_2D;
+	// Extent parameters aren't necessarily quite correct,
+	// but we don't really care since we're just creating temporary views.
 	info.width = video.av_ctx->width;
 	info.height = video.av_ctx->height;
 	info.depth = 1;
@@ -1434,11 +1294,11 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	img.sem_to_client.reset();
 	assert(img.state == ImageState::Locked);
 
-	if (hw.device
+	if (hw.get_hw_device_type() != AV_HWDEVICE_TYPE_NONE
 #ifdef HAVE_FFMPEG_VULKAN
 	    && av_frame->format != AV_PIX_FMT_VULKAN
 #endif
-	    && av_frame->format == hw.config->pix_fmt)
+	    && av_frame->format == hw.get_pix_fmt())
 	{
 		AVFrame *sw_frame = av_frame_alloc();
 
@@ -1525,7 +1385,7 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	std::lock_guard<std::mutex> holder{lock};
 	img.state = ImageState::Ready;
 	cond.notify_all();
-};
+}
 
 void VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 {
@@ -2023,9 +1883,8 @@ void VideoDecoder::Impl::end_device_context()
 		avformat_close_input(&av_format_ctx);
 	if (av_pkt)
 		av_packet_free(&av_pkt);
-	if (hw.device)
-		av_buffer_unref(&hw.device);
 
+	hw.reset();
 	device = nullptr;
 	thread_group = nullptr;
 }

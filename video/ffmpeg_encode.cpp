@@ -21,16 +21,9 @@
  */
 
 #define __STDC_LIMIT_MACROS 1
-extern "C"
-{
-#include <libavformat/avformat.h>
-#include <libavcodec/avcodec.h>
-#include <libavutil/avutil.h>
-#include <libavutil/channel_layout.h>
-#include <libavutil/imgutils.h>
-}
 
 #include "ffmpeg_encode.hpp"
+#include "ffmpeg_hw_device.hpp"
 #include "logging.hpp"
 #include "math.hpp"
 #include "muglm/muglm_impl.hpp"
@@ -42,6 +35,18 @@ extern "C"
 #include "audio_interface.hpp"
 #include "dsp/dsp.hpp"
 #endif
+
+extern "C"
+{
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/avutil.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/imgutils.h>
+#ifdef HAVE_FFMPEG_VULKAN
+#include <libavutil/hwcontext_vulkan.h>
+#endif
+}
 
 #ifndef AV_CHANNEL_LAYOUT_STEREO
 // Legacy API.
@@ -63,12 +68,48 @@ struct CodecStream
 	AVPacket *av_pkt = nullptr;
 };
 
+struct VideoEncoder::YCbCrPipelineData
+{
+	Vulkan::ImageHandle luma;
+	Vulkan::ImageHandle chroma_full;
+	Vulkan::ImageHandle chroma;
+	Vulkan::BufferHandle buffer;
+	Vulkan::Fence fence;
+	Vulkan::Program *rgb_to_ycbcr = nullptr;
+	Vulkan::Program *chroma_downsample = nullptr;
+	PlaneLayout planes[3] = {};
+	unsigned num_planes = 0;
+
+	struct Constants
+	{
+		float inv_resolution_luma[2];
+		float inv_resolution_chroma[2];
+		float base_uv_luma[2];
+		float base_uv_chroma[2];
+		uint32_t luma_dispatch[2];
+		uint32_t chroma_dispatch[2];
+	} constants = {};
+
+	AVFrame *hw_frame = nullptr;
+	~YCbCrPipelineData()
+	{
+		if (hw_frame)
+			av_frame_free(&hw_frame);
+	}
+};
+
+void VideoEncoder::YCbCrPipelineDataDeleter::operator()(YCbCrPipelineData *ptr)
+{
+	delete ptr;
+}
+
 struct VideoEncoder::Impl
 {
 	Vulkan::Device *device = nullptr;
 	bool init(Vulkan::Device *device, const char *path, const Options &options);
 	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes,
 	                  int64_t pts, int compensate_audio_us);
+	bool encode_frame(AVFrame *hw_frame, int64_t pts, int compensate_audio_us);
 	~Impl();
 
 	AVFormatContext *av_format_ctx = nullptr;
@@ -102,7 +143,20 @@ struct VideoEncoder::Impl
 	int64_t audio_pts = 0;
 	int current_audio_frames = 0;
 
+	FFmpegHWDevice hw;
+
 	int64_t sample_realtime_pts() const;
+
+#ifdef HAVE_GRANITE_AUDIO
+	bool encode_audio(int compensate_audio_us);
+	bool encode_audio_stream(int compensate_audio_us);
+	bool encode_audio_source();
+#endif
+
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+	void submit_process_rgb_vulkan(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
+#endif
+	void submit_process_rgb_readback(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
 };
 
 static void free_av_objects(CodecStream &stream)
@@ -158,6 +212,7 @@ void VideoEncoder::Impl::drain_codec()
 VideoEncoder::Impl::~Impl()
 {
 	drain_codec();
+	hw.reset();
 }
 
 static unsigned format_to_planes(VideoEncoder::Format fmt)
@@ -175,6 +230,171 @@ static unsigned format_to_planes(VideoEncoder::Format fmt)
 int64_t VideoEncoder::Impl::sample_realtime_pts() const
 {
 	return int64_t(Util::get_current_time_nsecs() / 1000) - realtime_pts.base_pts;
+}
+
+#ifdef HAVE_GRANITE_AUDIO
+bool VideoEncoder::Impl::encode_audio_source()
+{
+	// Render out audio in the main thread to ensure exact reproducibility across runs.
+	// If we don't care about that, we can render audio directly in the thread worker.
+	int64_t target_audio_samples = av_rescale_q_rnd(encode_video_pts, video.av_ctx->time_base, audio.av_ctx->time_base, AV_ROUND_UP);
+	int64_t to_render = std::max<int64_t>(target_audio_samples - audio_pts, 0);
+	audio_buffer_s16.resize(to_render * 2);
+	audio_source->drain_interleaved_s16(audio_buffer_s16.data(), to_render);
+	audio_pts += to_render;
+	int ret;
+
+	if (audio.av_pkt)
+	{
+		for (size_t i = 0, n = audio_buffer_s16.size() / 2; i < n; )
+		{
+			int to_copy = std::min<int>(int(n - i), audio.av_frame->nb_samples - current_audio_frames);
+
+			if (current_audio_frames == 0)
+			{
+				if ((ret = av_frame_make_writable(audio.av_frame)) < 0)
+				{
+					LOGE("Failed to make frame writable: %d.\n", ret);
+					return false;
+				}
+			}
+
+			memcpy(reinterpret_cast<int16_t *>(audio.av_frame->data[0]) + 2 * current_audio_frames,
+			       audio_buffer_s16.data() + 2 * i, to_copy * 2 * sizeof(int16_t));
+
+			current_audio_frames += to_copy;
+
+			if (current_audio_frames == audio.av_frame->nb_samples)
+			{
+				audio.av_frame->pts = encode_audio_pts;
+				encode_audio_pts += current_audio_frames;
+				current_audio_frames = 0;
+
+				ret = avcodec_send_frame(audio.av_ctx, audio.av_frame);
+				if (ret < 0)
+				{
+					LOGE("Failed to send packet to codec: %d\n", ret);
+					return false;
+				}
+
+				if (!drain_packets(audio))
+				{
+					LOGE("Failed to drain audio packets.\n");
+					return false;
+				}
+			}
+
+			i += to_copy;
+		}
+	}
+
+	return true;
+}
+
+bool VideoEncoder::Impl::encode_audio_stream(int compensate_audio_us)
+{
+	size_t read_avail_frames;
+	uint32_t latency_us;
+	int ret;
+
+	while (audio_stream->get_buffer_status(read_avail_frames, latency_us) &&
+	       read_avail_frames >= size_t(audio.av_frame->nb_samples))
+	{
+		if ((ret = av_frame_make_writable(audio.av_frame)) < 0)
+		{
+			LOGE("Failed to make frame writable: %d.\n", ret);
+			return false;
+		}
+
+		size_t read_count = audio_stream->read_frames_f32(
+				reinterpret_cast<float * const *>(audio.av_frame->data),
+				audio.av_frame->nb_samples, false);
+
+		if (read_count < size_t(audio.av_frame->nb_samples))
+		{
+			// Shouldn't happen ...
+			LOGW("Short read detected (%zu < %d). Filling with silence.\n", read_count, audio.av_frame->nb_samples);
+			for (unsigned c = 0; c < 2; c++)
+			{
+				memset(audio.av_frame->data[c] + read_count * sizeof(float), 0,
+				       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float));
+			}
+		}
+
+		// Crude system for handling drift.
+		// Ensure monotonic PTS with maximum 1% clock drift.
+		auto absolute_ts = sample_realtime_pts() + compensate_audio_us;
+		absolute_ts -= latency_us;
+
+		// Detect large discontinuity and reset the PTS.
+		absolute_ts = std::max(absolute_ts, realtime_pts.next_lower_bound_pts);
+		if (absolute_ts < realtime_pts.next_upper_bound_pts + 200000)
+			absolute_ts = std::min(absolute_ts, realtime_pts.next_upper_bound_pts);
+
+		audio.av_frame->pts = absolute_ts;
+		realtime_pts.next_lower_bound_pts =
+				absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 990000, audio.av_ctx->sample_rate, AV_ROUND_DOWN);
+		realtime_pts.next_upper_bound_pts =
+				absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 1010000, audio.av_ctx->sample_rate, AV_ROUND_UP);
+
+		ret = avcodec_send_frame(audio.av_ctx, audio.av_frame);
+		if (ret < 0)
+		{
+			LOGE("Failed to send packet to codec: %d\n", ret);
+			return false;
+		}
+
+		if (!drain_packets(audio))
+		{
+			LOGE("Failed to drain audio packets.\n");
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool VideoEncoder::Impl::encode_audio(int compensate_audio_us)
+{
+	if (options.realtime && audio_stream)
+		return encode_audio_stream(compensate_audio_us);
+	else if (!options.realtime && audio_source)
+		return encode_audio_source();
+	else
+		return true;
+}
+#endif
+
+bool VideoEncoder::Impl::encode_frame(AVFrame *hw_frame, int64_t pts, int compensate_audio_us)
+{
+	if (options.realtime)
+		hw_frame->pts = pts;
+	else
+		hw_frame->pts = encode_video_pts++;
+
+	int ret = avcodec_send_frame(video.av_ctx, hw_frame);
+	if (ret < 0)
+	{
+		LOGE("Failed to send packet to codec: %d\n", ret);
+		return false;
+	}
+
+	if (!drain_packets(video))
+	{
+		LOGE("Failed to drain video packets.\n");
+		return false;
+	}
+
+	(void)compensate_audio_us;
+#ifdef HAVE_GRANITE_AUDIO
+	if (!encode_audio(compensate_audio_us))
+	{
+		LOGE("Failed to encode audio.\n");
+		return false;
+	}
+#endif
+
+	return true;
 }
 
 bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes,
@@ -213,11 +433,32 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 	}
 
 	if (options.realtime)
-		video.av_frame->pts = pts;
+		video.av_frame->pts = av_rescale_q_rnd(pts, {1, AV_TIME_BASE}, video.av_ctx->time_base, AV_ROUND_ZERO);
 	else
 		video.av_frame->pts = encode_video_pts++;
 
-	ret = avcodec_send_frame(video.av_ctx, video.av_frame);
+	AVFrame *hw_frame = nullptr;
+	if (hw.get_hw_device_type() != AV_HWDEVICE_TYPE_NONE)
+	{
+		hw_frame = av_frame_alloc();
+		if (av_hwframe_get_buffer(video.av_ctx->hw_frames_ctx, hw_frame, 0) < 0)
+		{
+			LOGE("Failed to get HW buffer.\n");
+			av_frame_free(&hw_frame);
+		}
+
+		if (hw_frame && av_hwframe_transfer_data(hw_frame, video.av_frame, 0) < 0)
+		{
+			LOGE("Failed to transfer HW buffer.\n");
+			av_frame_free(&hw_frame);
+		}
+
+		hw_frame->pts = video.av_frame->pts;
+	}
+
+	ret = avcodec_send_frame(video.av_ctx, hw_frame ? hw_frame : video.av_frame);
+	av_frame_free(&hw_frame);
+
 	if (ret < 0)
 	{
 		LOGE("Failed to send packet to codec: %d\n", ret);
@@ -232,117 +473,10 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 
 	(void)compensate_audio_us;
 #ifdef HAVE_GRANITE_AUDIO
-	if (options.realtime && audio_stream)
+	if (!encode_audio(compensate_audio_us))
 	{
-		size_t read_avail_frames;
-		uint32_t latency_us;
-		while (audio_stream->get_buffer_status(read_avail_frames, latency_us) &&
-		       read_avail_frames >= size_t(audio.av_frame->nb_samples))
-		{
-			if ((ret = av_frame_make_writable(audio.av_frame)) < 0)
-			{
-				LOGE("Failed to make frame writable: %d.\n", ret);
-				return false;
-			}
-
-			size_t read_count = audio_stream->read_frames_f32(
-					reinterpret_cast<float * const *>(audio.av_frame->data),
-					audio.av_frame->nb_samples, false);
-
-			if (read_count < size_t(audio.av_frame->nb_samples))
-			{
-				// Shouldn't happen ...
-				LOGW("Short read detected (%zu < %d). Filling with silence.\n", read_count, audio.av_frame->nb_samples);
-				for (unsigned c = 0; c < 2; c++)
-				{
-					memset(audio.av_frame->data[c] + read_count * sizeof(float), 0,
-					       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float));
-				}
-			}
-
-			// Crude system for handling drift.
-			// Ensure monotonic PTS with maximum 1% clock drift.
-			auto absolute_ts = sample_realtime_pts() + compensate_audio_us;
-			absolute_ts -= latency_us;
-
-			// Detect large discontinuity and reset the PTS.
-			absolute_ts = std::max(absolute_ts, realtime_pts.next_lower_bound_pts);
-			if (absolute_ts < realtime_pts.next_upper_bound_pts + 200000)
-				absolute_ts = std::min(absolute_ts, realtime_pts.next_upper_bound_pts);
-
-			audio.av_frame->pts = absolute_ts;
-			realtime_pts.next_lower_bound_pts =
-					absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 990000, audio.av_ctx->sample_rate, AV_ROUND_DOWN);
-			realtime_pts.next_upper_bound_pts =
-					absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 1010000, audio.av_ctx->sample_rate, AV_ROUND_UP);
-
-			ret = avcodec_send_frame(audio.av_ctx, audio.av_frame);
-			if (ret < 0)
-			{
-				LOGE("Failed to send packet to codec: %d\n", ret);
-				return false;
-			}
-
-			if (!drain_packets(audio))
-			{
-				LOGE("Failed to drain audio packets.\n");
-				return false;
-			}
-		}
-	}
-	else if (!options.realtime && audio_source)
-	{
-		// Render out audio in the main thread to ensure exact reproducibility across runs.
-		// If we don't care about that, we can render audio directly in the thread worker.
-		int64_t target_audio_samples = av_rescale_q_rnd(encode_video_pts, video.av_ctx->time_base, audio.av_ctx->time_base, AV_ROUND_UP);
-		int64_t to_render = std::max<int64_t>(target_audio_samples - audio_pts, 0);
-		audio_buffer_s16.resize(to_render * 2);
-		audio_source->drain_interleaved_s16(audio_buffer_s16.data(), to_render);
-		audio_pts += to_render;
-
-		if (audio.av_pkt)
-		{
-			for (size_t i = 0, n = audio_buffer_s16.size() / 2; i < n; )
-			{
-				int to_copy = std::min<int>(int(n - i), audio.av_frame->nb_samples - current_audio_frames);
-
-				if (current_audio_frames == 0)
-				{
-					if ((ret = av_frame_make_writable(audio.av_frame)) < 0)
-					{
-						LOGE("Failed to make frame writable: %d.\n", ret);
-						return false;
-					}
-				}
-
-				memcpy(reinterpret_cast<int16_t *>(audio.av_frame->data[0]) + 2 * current_audio_frames,
-				       audio_buffer_s16.data() + 2 * i, to_copy * 2 * sizeof(int16_t));
-
-				current_audio_frames += to_copy;
-
-				if (current_audio_frames == audio.av_frame->nb_samples)
-				{
-					audio.av_frame->pts = encode_audio_pts;
-					encode_audio_pts += current_audio_frames;
-					current_audio_frames = 0;
-
-					ret = avcodec_send_frame(audio.av_ctx, audio.av_frame);
-					if (ret < 0)
-					{
-						LOGE("Failed to send packet to codec: %d\n", ret);
-						return false;
-					}
-
-					if (!drain_packets(audio))
-					{
-						LOGE("Failed to drain audio packets.\n");
-						return false;
-					}
-				}
-
-				i += to_copy;
-			}
-		}
+		LOGE("Failed to encode audio.\n");
+		return false;
 	}
 #endif
 
@@ -363,10 +497,16 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 			break;
 		}
 
+		if (options.realtime)
+			if (&stream == &video)
+				stream.av_pkt->duration = video.av_ctx->ticks_per_frame;
+
 		if (av_format_ctx_local)
 		{
 			auto *pkt_clone = av_packet_clone(stream.av_pkt);
 			pkt_clone->pts = stream.av_pkt->pts;
+			pkt_clone->dts = stream.av_pkt->dts;
+			pkt_clone->duration = stream.av_pkt->duration;
 			pkt_clone->stream_index = stream.av_stream_local->index;
 			av_packet_rescale_ts(pkt_clone, stream.av_ctx->time_base, stream.av_stream_local->time_base);
 			ret = av_interleaved_write_frame(av_format_ctx_local, pkt_clone);
@@ -506,11 +646,21 @@ bool VideoEncoder::Impl::init_audio_codec()
 
 bool VideoEncoder::Impl::init_video_codec()
 {
-	const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+	const AVCodec *codec = avcodec_find_encoder_by_name(options.encoder);
+
 	if (!codec)
 	{
-		LOGE("Could not find H.264 encoder.\n");
+		LOGE("Could not find requested encoder \"%s\".\n", options.encoder);
 		return false;
+	}
+
+	if (avcodec_get_hw_config(codec, 0) != nullptr)
+	{
+		if (!hw.init_codec_context(codec, device, nullptr))
+		{
+			LOGW("Failed to init HW encoder context, falling back to software.\n");
+			return false;
+		}
 	}
 
 	video.av_stream = avformat_new_stream(av_format_ctx, codec);
@@ -550,12 +700,28 @@ bool VideoEncoder::Impl::init_video_codec()
 		return false;
 	}
 
+	if (hw.get_pix_fmt() != AV_PIX_FMT_NONE)
+	{
+		if (hw.init_frame_context(video.av_ctx, options.width, options.height, video.av_ctx->pix_fmt))
+			video.av_ctx->pix_fmt = AVPixelFormat(hw.get_pix_fmt());
+		else
+			hw.reset();
+	}
+
 	video.av_ctx->framerate = { options.frame_timebase.den, options.frame_timebase.num };
 
 	if (options.realtime)
-		video.av_ctx->time_base = { 1, 1000000 };
+	{
+		video.av_ctx->time_base = { options.frame_timebase.num, options.frame_timebase.den * 4 };
+		// This seems to be important for NVENC.
+		// Need more fine-grained timebase to account for realtime jitter in PTS.
+		video.av_ctx->ticks_per_frame = 4;
+	}
 	else
+	{
 		video.av_ctx->time_base = { options.frame_timebase.num, options.frame_timebase.den };
+		video.av_ctx->ticks_per_frame = 1;
+	}
 
 	video.av_ctx->color_range = AVCOL_RANGE_MPEG;
 	video.av_ctx->colorspace = AVCOL_SPC_BT709;
@@ -597,7 +763,9 @@ bool VideoEncoder::Impl::init_video_codec()
 
 	AVDictionary *opts = nullptr;
 
-	if (options.realtime)
+	bool is_x264 = strcmp(options.encoder, "libx264") == 0;
+
+	if (options.realtime || !is_x264)
 	{
 		video.av_ctx->bit_rate = options.realtime_options.bitrate_kbits * 1000;
 		video.av_ctx->rc_buffer_size = options.realtime_options.vbv_size_kbits * 1000;
@@ -606,12 +774,16 @@ bool VideoEncoder::Impl::init_video_codec()
 				float(video.av_ctx->framerate.num) / float(video.av_ctx->framerate.den));
 		if (video.av_ctx->gop_size == 0)
 			video.av_ctx->gop_size = 1;
-		if (options.realtime_options.x264_preset)
-			av_dict_set(&opts, "preset", options.realtime_options.x264_preset, 0);
-		if (options.realtime_options.x264_tune)
-			av_dict_set(&opts, "tune", options.realtime_options.x264_tune, 0);
-		if (options.realtime_options.threads)
-			av_dict_set_int(&opts, "threads", options.realtime_options.threads, 0);
+
+		if (is_x264)
+		{
+			if (options.realtime_options.x264_preset)
+				av_dict_set(&opts, "preset", options.realtime_options.x264_preset, 0);
+			if (options.realtime_options.x264_tune)
+				av_dict_set(&opts, "tune", options.realtime_options.x264_tune, 0);
+			if (options.realtime_options.threads)
+				av_dict_set_int(&opts, "threads", options.realtime_options.threads, 0);
+		}
 	}
 	else
 	{
@@ -632,11 +804,29 @@ bool VideoEncoder::Impl::init_video_codec()
 	if (video.av_stream_local)
 		avcodec_parameters_from_context(video.av_stream_local->codecpar, video.av_ctx);
 
-	video.av_frame = alloc_video_frame(video.av_ctx->pix_fmt, options.width, options.height);
-	if (!video.av_frame)
+	if (hw.get_hw_device_type() == AV_HWDEVICE_TYPE_NONE)
 	{
-		LOGE("Failed to allocate AVFrame.\n");
-		return false;
+		video.av_frame = alloc_video_frame(video.av_ctx->pix_fmt, options.width, options.height);
+		if (!video.av_frame)
+		{
+			LOGE("Failed to allocate AVFrame.\n");
+			return false;
+		}
+	}
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+	else if (hw.get_hw_device_type() == AV_HWDEVICE_TYPE_VULKAN)
+	{
+		// Do not allocate av_frame, we'll convert YUV into the frame context.
+	}
+#endif
+	else
+	{
+		video.av_frame = alloc_video_frame(AVPixelFormat(hw.get_sw_pix_fmt()), options.width, options.height);
+		if (!video.av_frame)
+		{
+			LOGE("Failed to allocate AVFrame.\n");
+			return false;
+		}
 	}
 
 	video.av_pkt = av_packet_alloc();
@@ -794,6 +984,50 @@ AVFrame *VideoEncoder::Impl::alloc_video_frame(AVPixelFormat pix_fmt, unsigned w
 	return frame;
 }
 
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+struct FrameLock
+{
+	AVHWFramesContext *frames;
+	AVVulkanFramesContext *vk;
+	AVVkFrame *vk_frame;
+	inline void lock() const { if (vk && vk_frame) vk->lock_frame(frames, vk_frame); }
+	inline void unlock() const { if (vk && vk_frame) vk->unlock_frame(frames, vk_frame); }
+};
+
+void VideoEncoder::Impl::submit_process_rgb_vulkan(Vulkan::CommandBufferHandle &cmd,
+                                                   Granite::VideoEncoder::YCbCrPipelineData &pipeline)
+{
+	auto *frames = reinterpret_cast<AVHWFramesContext *>(video.av_ctx->hw_frames_ctx->data);
+	auto *vk = static_cast<AVVulkanFramesContext *>(frames->hwctx);
+	auto *vk_frame = reinterpret_cast<AVVkFrame *>(pipeline.hw_frame->data[0]);
+
+	// Docs suggest we have to lock the AVVkFrame when accessing the frame struct.
+	FrameLock l = { frames, vk, vk_frame };
+	std::lock_guard<FrameLock> holder{l};
+
+	auto sem = device->request_semaphore(VK_SEMAPHORE_TYPE_TIMELINE, vk_frame->sem[0], false);
+	auto acq_binary = device->request_timeline_semaphore_as_binary(*sem, vk_frame->sem_value[0]);
+	acq_binary->signal_external();
+	auto rel_binary = device->request_timeline_semaphore_as_binary(*sem, ++vk_frame->sem_value[0]);
+
+	device->add_wait_semaphore(cmd->get_command_buffer_type(), std::move(acq_binary),
+							   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, true);
+
+	auto type = cmd->get_command_buffer_type();
+	device->submit(cmd, &pipeline.fence);
+	device->submit_empty(type, nullptr, rel_binary.get());
+}
+#endif
+
+void VideoEncoder::Impl::submit_process_rgb_readback(Vulkan::CommandBufferHandle &cmd,
+                                                     Granite::VideoEncoder::YCbCrPipelineData &pipeline)
+{
+	if (pipeline.fence)
+		pipeline.fence->wait();
+	pipeline.fence.reset();
+	device->submit(cmd, &pipeline.fence);
+}
+
 VideoEncoder::VideoEncoder()
 {
 	impl.reset(new Impl);
@@ -808,23 +1042,103 @@ bool VideoEncoder::init(Vulkan::Device *device, const char *path, const Options 
 	return impl->init(device, path, options);
 }
 
-bool VideoEncoder::encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes,
-								int64_t pts, int compensate_audio_us)
+void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline_ptr, const Vulkan::ImageView &view)
 {
-	return impl->encode_frame(buffer, planes, num_planes, pts, compensate_audio_us);
-}
+	auto &pipeline = *pipeline_ptr;
 
-void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view)
-{
-	cmd.image_barrier(*pipeline.luma, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-					  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-					  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+	if (pipeline.fence)
+		pipeline.fence->wait();
+	pipeline.fence.reset();
+
+	if (pipeline.hw_frame)
+		av_frame_free(&pipeline.hw_frame);
+
+	Vulkan::ImageViewHandle wrapped_planes[2];
+	Vulkan::ImageHandle wrapped_image;
+
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+	auto &device = cmd.get_device();
+	AVHWFramesContext *frames = nullptr;
+	AVVulkanFramesContext *vk = nullptr;
+	AVVkFrame *vk_frame = nullptr;
+
+	if (impl->hw.get_pix_fmt() == AV_PIX_FMT_VULKAN)
+	{
+		frames = reinterpret_cast<AVHWFramesContext *>(impl->video.av_ctx->hw_frames_ctx->data);
+		vk = static_cast<AVVulkanFramesContext *>(frames->hwctx);
+
+		pipeline.hw_frame = av_frame_alloc();
+		if (av_hwframe_get_buffer(impl->video.av_ctx->hw_frames_ctx, pipeline.hw_frame, 0) < 0)
+			LOGE("Failed to get HW buffer.\n");
+		else
+			vk_frame = reinterpret_cast<AVVkFrame *>(pipeline.hw_frame->data[0]);
+	}
+
+	// Docs suggest we have to lock the AVVkFrame when accessing the frame struct.
+	FrameLock l = { frames, vk, vk_frame };
+	std::lock_guard<FrameLock> holder{l};
+
+	if (vk_frame)
+	{
+		Vulkan::ImageCreateInfo info = {};
+		info.type = VK_IMAGE_TYPE_2D;
+		// Extent parameters aren't necessarily quite correct,
+		// but we don't really care since we're just creating temporary views.
+		info.width = impl->video.av_ctx->width;
+		info.height = impl->video.av_ctx->height;
+		info.depth = 1;
+		info.format = vk->format[0];
+		info.usage = vk->usage;
+		info.flags = vk->img_flags;
+		info.layers = 1;
+		info.levels = 1;
+		info.domain = Vulkan::ImageDomain::Physical;
+		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		wrapped_image = device.wrap_image(info, vk_frame->img[0]);
+
+		Vulkan::ImageViewCreateInfo view_info = {};
+		view_info.image = wrapped_image.get();
+		view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
+
+		view_info.aspect = VK_IMAGE_ASPECT_PLANE_0_BIT;
+		view_info.format = VK_FORMAT_R8_UNORM;
+		wrapped_planes[0] = device.create_image_view(view_info);
+
+		view_info.aspect = VK_IMAGE_ASPECT_PLANE_1_BIT;
+		view_info.format = VK_FORMAT_R8G8_UNORM;
+		wrapped_planes[1] = device.create_image_view(view_info);
+
+		vk_frame->layout[0] = VK_IMAGE_LAYOUT_GENERAL;
+		// XXX: FFmpeg header bug.
+		// Semaphore ensures memory avail / vis.
+		vk_frame->access[0] = VkAccessFlagBits(0);
+	}
+#endif
+
+	if (wrapped_image)
+	{
+		cmd.image_barrier(*wrapped_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+	}
+
+	if (pipeline.luma)
+	{
+		cmd.image_barrier(*pipeline.luma, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+	}
+
 	cmd.image_barrier(*pipeline.chroma_full, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
 	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
 	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-	cmd.image_barrier(*pipeline.chroma, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+	if (pipeline.chroma)
+	{
+		cmd.image_barrier(*pipeline.chroma, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+	}
 
 	cmd.set_program(pipeline.rgb_to_ycbcr);
 
@@ -836,7 +1150,7 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	else
 		cmd.set_texture(0, 0, view, Vulkan::StockSampler::LinearClamp);
 
-	cmd.set_storage_texture(0, 1, pipeline.luma->get_view());
+	cmd.set_storage_texture(0, 1, wrapped_planes[0] ? *wrapped_planes[0] : pipeline.luma->get_view());
 	cmd.set_storage_texture(0, 2, pipeline.chroma_full->get_view());
 
 	struct Push
@@ -846,8 +1160,8 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		float inv_width, inv_height;
 	} push = {};
 
-	push.width = pipeline.luma->get_width();
-	push.height = pipeline.luma->get_width();
+	push.width = impl->video.av_ctx->width;
+	push.height = impl->video.av_ctx->height;
 	push.inv_width = pipeline.constants.inv_resolution_luma[0];
 	push.inv_height = pipeline.constants.inv_resolution_luma[1];
 	push.base_u = pipeline.constants.base_uv_luma[0];
@@ -855,16 +1169,20 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch(pipeline.constants.luma_dispatch[0], pipeline.constants.luma_dispatch[1], 1);
 
-	cmd.image_barrier(*pipeline.luma, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-	                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+	if (pipeline.luma)
+	{
+		cmd.image_barrier(*pipeline.luma, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+	}
+
 	cmd.image_barrier(*pipeline.chroma_full, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 					  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 					  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
 	cmd.set_program(pipeline.chroma_downsample);
 	cmd.set_texture(0, 0, pipeline.chroma_full->get_view(), Vulkan::StockSampler::LinearClamp);
-	cmd.set_storage_texture(0, 1, pipeline.chroma->get_view());
+	cmd.set_storage_texture(0, 1, wrapped_planes[1] ? *wrapped_planes[1] : pipeline.chroma->get_view());
 
 	push.inv_width = pipeline.constants.inv_resolution_chroma[0];
 	push.inv_height = pipeline.constants.inv_resolution_chroma[1];
@@ -873,42 +1191,80 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch(pipeline.constants.chroma_dispatch[0], pipeline.constants.chroma_dispatch[1], 1);
 
-	cmd.image_barrier(*pipeline.chroma, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-	                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-
-	cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.luma, pipeline.planes[0].offset,
-	                         {},
-	                         { pipeline.luma->get_width(), pipeline.luma->get_height(), 1 },
-	                         pipeline.planes[0].row_length, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
-
-	if (impl->options.format == Format::NV12)
+	if (pipeline.chroma)
 	{
-		cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma, pipeline.planes[1].offset,
-		                         {},
-		                         { pipeline.chroma->get_width(), pipeline.chroma->get_height(), 1 },
-		                         pipeline.planes[1].row_length, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
-	}
+		cmd.image_barrier(*pipeline.chroma, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 
-	cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-				VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+		cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.luma, pipeline.planes[0].offset,
+		                         {},
+		                         {pipeline.luma->get_width(), pipeline.luma->get_height(), 1},
+		                         pipeline.planes[0].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+
+		if (impl->options.format == Format::NV12)
+		{
+			cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma, pipeline.planes[1].offset,
+			                         {},
+			                         {pipeline.chroma->get_width(), pipeline.chroma->get_height(), 1},
+			                         pipeline.planes[1].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+		}
+
+		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+	}
 }
 
-bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline, int64_t pts, int compensate_audio_us)
+bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int compensate_audio_us)
 {
+	auto &pipeline = *pipeline_ptr;
 	if (!pipeline.fence)
 		return false;
-	pipeline.fence->wait();
 
-	auto *buf = static_cast<const uint8_t *>(impl->device->map_host_buffer(*pipeline.buffer, Vulkan::MEMORY_ACCESS_READ_BIT));
-	bool ret = encode_frame(buf, pipeline.planes, pipeline.num_planes, pts, compensate_audio_us);
-	impl->device->unmap_host_buffer(*pipeline.buffer, Vulkan::MEMORY_ACCESS_READ_BIT);
+	bool ret;
+
+	if (pipeline.hw_frame)
+	{
+		ret = impl->encode_frame(pipeline.hw_frame, pts, compensate_audio_us);
+		av_frame_free(&pipeline.hw_frame);
+
+		// We only wait for the YUV processing to complete here, not encoding itself.
+		// These encode tasks should run in threads anyway.
+		pipeline.fence->wait();
+	}
+	else
+	{
+		pipeline.fence->wait();
+		auto *buf = static_cast<const uint8_t *>(impl->device->map_host_buffer(
+				*pipeline.buffer, Vulkan::MEMORY_ACCESS_READ_BIT));
+		ret = impl->encode_frame(buf, pipeline.planes, pipeline.num_planes, pts, compensate_audio_us);
+		impl->device->unmap_host_buffer(*pipeline.buffer, Vulkan::MEMORY_ACCESS_READ_BIT);
+	}
+
 	return ret;
 }
 
-VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(Vulkan::Program *rgb_to_ycbcr, Vulkan::Program *chroma_downsample) const
+void VideoEncoder::submit_process_rgb(Vulkan::CommandBufferHandle &cmd, YCbCrPipeline &pipeline_ptr)
 {
-	YCbCrPipeline pipeline;
+	auto &pipeline = *pipeline_ptr;
+
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+	if (pipeline.hw_frame)
+	{
+		impl->submit_process_rgb_vulkan(cmd, pipeline);
+	}
+	else
+#endif
+	{
+		impl->submit_process_rgb_readback(cmd, pipeline);
+	}
+}
+
+VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(
+		Vulkan::Program *rgb_to_ycbcr, Vulkan::Program *chroma_downsample) const
+{
+	YCbCrPipeline pipeline_ptr{new YCbCrPipelineData};
+	auto &pipeline = *pipeline_ptr;
 
 	pipeline.rgb_to_ycbcr = rgb_to_ycbcr;
 	pipeline.chroma_downsample = chroma_downsample;
@@ -916,8 +1272,14 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(Vulkan::Program 
 	auto image_info = Vulkan::ImageCreateInfo::immutable_2d_image(impl->options.width, impl->options.height, VK_FORMAT_R8_UNORM);
 	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	image_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-	pipeline.luma = impl->device->create_image(image_info);
-	impl->device->set_name(*pipeline.luma, "video-encode-luma");
+
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+	if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)
+#endif
+	{
+		pipeline.luma = impl->device->create_image(image_info);
+		impl->device->set_name(*pipeline.luma, "video-encode-luma");
+	}
 
 	VkDeviceSize total_size = 0;
 	VkDeviceSize aligned_width = (image_info.width + 63) & ~63;
@@ -967,31 +1329,42 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(Vulkan::Program 
 		impl->device->set_name(*pipeline.chroma_full, "video-encode-chroma-full-res");
 		image_info.width = impl->options.width / 2;
 		image_info.height = impl->options.height / 2;
-		pipeline.chroma = impl->device->create_image(image_info);
-		impl->device->set_name(*pipeline.chroma, "video-encode-chroma-downsampled");
 
-		aligned_width = (image_info.width + 63) & ~63;
-		pipeline.planes[pipeline.num_planes].row_length = aligned_width;
-		aligned_width *= 2;
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+		if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)
+#endif
+		{
+			pipeline.chroma = impl->device->create_image(image_info);
+			impl->device->set_name(*pipeline.chroma, "video-encode-chroma-downsampled");
 
-		pipeline.planes[pipeline.num_planes].offset = total_size;
-		pipeline.planes[pipeline.num_planes].stride = aligned_width;
-		pipeline.num_planes++;
-		VkDeviceSize chroma_size = aligned_width * image_info.height;
-		total_size += chroma_size;
+			aligned_width = (image_info.width + 63) & ~63;
+			pipeline.planes[pipeline.num_planes].row_length = aligned_width;
+			aligned_width *= 2;
+
+			pipeline.planes[pipeline.num_planes].offset = total_size;
+			pipeline.planes[pipeline.num_planes].stride = aligned_width;
+			pipeline.num_planes++;
+			VkDeviceSize chroma_size = aligned_width * image_info.height;
+			total_size += chroma_size;
+		}
 
 		pipeline.constants.chroma_dispatch[0] = (image_info.width + 7) / 8;
 		pipeline.constants.chroma_dispatch[1] = (image_info.height + 7) / 8;
 	}
 
-	Vulkan::BufferCreateInfo buffer_info = {};
-	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	buffer_info.domain = Vulkan::BufferDomain::CachedHost;
-	buffer_info.size = total_size;
-	pipeline.buffer = impl->device->create_buffer(buffer_info);
-	impl->device->set_name(*pipeline.buffer, "video-encode-readback");
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+	if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)
+#endif
+	{
+		Vulkan::BufferCreateInfo buffer_info = {};
+		buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		buffer_info.domain = Vulkan::BufferDomain::CachedHost;
+		buffer_info.size = total_size;
+		pipeline.buffer = impl->device->create_buffer(buffer_info);
+		impl->device->set_name(*pipeline.buffer, "video-encode-readback");
+	}
 
-	return pipeline;
+	return pipeline_ptr;
 }
 
 int64_t VideoEncoder::sample_realtime_pts() const

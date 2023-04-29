@@ -47,6 +47,7 @@ option(GRANITE_INSTALL_TARGETS "Add install targets." ON)
 option(GRANITE_INSTALL_EXE_TARGETS "Add executable install targets." OFF)
 option(GRANITE_FFMPEG "Enable FFmpeg." OFF)
 option(GRANITE_FFMPEG_VULKAN "Enable experimental Vulkan HW decode support in FFmpeg." OFF)
+option(GRANITE_FFMPEG_VULKAN_ENCODE "Enable experimental Vulkan HW encode support in FFmpeg." OFF)
 option(GRANITE_FAST_MATH "Enable fast math." ON)
 option(GRANITE_SHIPPING "Disable code paths not related to development." OFF)
 

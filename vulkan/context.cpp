@@ -1684,7 +1684,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	}
 
 #ifdef VULKAN_DEBUG
-	static const char *family_names[QUEUE_INDEX_COUNT] = { "Graphics", "Compute", "Transfer", "Video decode", "Video encode" };
+
+	static const char *family_names[QUEUE_INDEX_COUNT] = { "Graphics", "Compute", "Transfer", "Video decode",
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+	                                                       "Video encode",
+#endif
+	};
+
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
 		if (queue_info.family_indices[i] != VK_QUEUE_FAMILY_IGNORED)
 			LOGI("%s queue: family %u, index %u.\n", family_names[i], queue_info.family_indices[i], queue_indices[i]);

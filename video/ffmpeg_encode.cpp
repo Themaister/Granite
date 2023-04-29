@@ -153,7 +153,9 @@ struct VideoEncoder::Impl
 	bool encode_audio_source();
 #endif
 
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
 	void submit_process_rgb_vulkan(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
+#endif
 	void submit_process_rgb_readback(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
 };
 
@@ -1015,7 +1017,6 @@ bool VideoEncoder::init(Vulkan::Device *device, const char *path, const Options 
 void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline_ptr, const Vulkan::ImageView &view)
 {
 	auto &pipeline = *pipeline_ptr;
-	auto &device = cmd.get_device();
 
 	if (pipeline.fence)
 		pipeline.fence->wait();
@@ -1028,6 +1029,7 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	Vulkan::ImageHandle wrapped_image;
 
 #ifdef HAVE_FFMPEG_VULKAN_ENCODE
+	auto &device = cmd.get_device();
 	AVHWFramesContext *frames = nullptr;
 	AVVulkanFramesContext *vk = nullptr;
 	AVVkFrame *vk_frame = nullptr;
@@ -1213,10 +1215,17 @@ bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int co
 void VideoEncoder::submit_process_rgb(Vulkan::CommandBufferHandle &cmd, YCbCrPipeline &pipeline_ptr)
 {
 	auto &pipeline = *pipeline_ptr;
+
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
 	if (pipeline.hw_frame)
+	{
 		impl->submit_process_rgb_vulkan(cmd, pipeline);
+	}
 	else
+#endif
+	{
 		impl->submit_process_rgb_readback(cmd, pipeline);
+	}
 }
 
 VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(

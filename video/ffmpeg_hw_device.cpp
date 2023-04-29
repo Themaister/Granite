@@ -45,9 +45,11 @@ struct FFmpegHWDevice::Impl
 	Vulkan::Device *device = nullptr;
 	const AVCodec *cached_av_codec = nullptr;
 
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
 	VkVideoProfileInfoKHR profile_info = { VK_STRUCTURE_TYPE_VIDEO_PROFILE_INFO_KHR };
 	VkVideoProfileListInfoKHR profile_list_info = { VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR };
 	VkVideoEncodeH264ProfileInfoEXT h264_encode = { VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_PROFILE_INFO_EXT };
+#endif
 
 	~Impl()
 	{

@@ -183,7 +183,9 @@ struct FFmpegHWDevice::Impl
 		if (ctx->format == AV_PIX_FMT_VULKAN)
 		{
 			auto *vk = static_cast<AVVulkanFramesContext *>(ctx->hwctx);
-			vk->img_flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+			vk->img_flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
+			// XXX: FFmpeg header type bug.
+			vk->usage = VkImageUsageFlagBits(vk->usage | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 		}
 #endif
 

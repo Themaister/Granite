@@ -1213,6 +1213,10 @@ bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int co
 	{
 		ret = impl->encode_frame(pipeline.hw_frame, pts, compensate_audio_us);
 		av_frame_free(&pipeline.hw_frame);
+
+		// We only wait for the YUV processing to complete here, not encoding itself.
+		// These encode tasks should run in threads anyway.
+		pipeline.fence->wait();
 	}
 	else
 	{

@@ -106,6 +106,12 @@ struct VideoEncoder::Impl
 	FFmpegHWDevice hw;
 
 	int64_t sample_realtime_pts() const;
+
+#ifdef HAVE_GRANITE_AUDIO
+	bool encode_audio(int compensate_audio_us);
+	bool encode_audio_stream(int compensate_audio_us);
+	bool encode_audio_source();
+#endif
 };
 
 static void free_av_objects(CodecStream &stream)
@@ -181,6 +187,139 @@ int64_t VideoEncoder::Impl::sample_realtime_pts() const
 	return int64_t(Util::get_current_time_nsecs() / 1000) - realtime_pts.base_pts;
 }
 
+#ifdef HAVE_GRANITE_AUDIO
+bool VideoEncoder::Impl::encode_audio_source()
+{
+	// Render out audio in the main thread to ensure exact reproducibility across runs.
+	// If we don't care about that, we can render audio directly in the thread worker.
+	int64_t target_audio_samples = av_rescale_q_rnd(encode_video_pts, video.av_ctx->time_base, audio.av_ctx->time_base, AV_ROUND_UP);
+	int64_t to_render = std::max<int64_t>(target_audio_samples - audio_pts, 0);
+	audio_buffer_s16.resize(to_render * 2);
+	audio_source->drain_interleaved_s16(audio_buffer_s16.data(), to_render);
+	audio_pts += to_render;
+	int ret;
+
+	if (audio.av_pkt)
+	{
+		for (size_t i = 0, n = audio_buffer_s16.size() / 2; i < n; )
+		{
+			int to_copy = std::min<int>(int(n - i), audio.av_frame->nb_samples - current_audio_frames);
+
+			if (current_audio_frames == 0)
+			{
+				if ((ret = av_frame_make_writable(audio.av_frame)) < 0)
+				{
+					LOGE("Failed to make frame writable: %d.\n", ret);
+					return false;
+				}
+			}
+
+			memcpy(reinterpret_cast<int16_t *>(audio.av_frame->data[0]) + 2 * current_audio_frames,
+			       audio_buffer_s16.data() + 2 * i, to_copy * 2 * sizeof(int16_t));
+
+			current_audio_frames += to_copy;
+
+			if (current_audio_frames == audio.av_frame->nb_samples)
+			{
+				audio.av_frame->pts = encode_audio_pts;
+				encode_audio_pts += current_audio_frames;
+				current_audio_frames = 0;
+
+				ret = avcodec_send_frame(audio.av_ctx, audio.av_frame);
+				if (ret < 0)
+				{
+					LOGE("Failed to send packet to codec: %d\n", ret);
+					return false;
+				}
+
+				if (!drain_packets(audio))
+				{
+					LOGE("Failed to drain audio packets.\n");
+					return false;
+				}
+			}
+
+			i += to_copy;
+		}
+	}
+
+	return true;
+}
+
+bool VideoEncoder::Impl::encode_audio_stream(int compensate_audio_us)
+{
+	size_t read_avail_frames;
+	uint32_t latency_us;
+	int ret;
+
+	while (audio_stream->get_buffer_status(read_avail_frames, latency_us) &&
+	       read_avail_frames >= size_t(audio.av_frame->nb_samples))
+	{
+		if ((ret = av_frame_make_writable(audio.av_frame)) < 0)
+		{
+			LOGE("Failed to make frame writable: %d.\n", ret);
+			return false;
+		}
+
+		size_t read_count = audio_stream->read_frames_f32(
+				reinterpret_cast<float * const *>(audio.av_frame->data),
+				audio.av_frame->nb_samples, false);
+
+		if (read_count < size_t(audio.av_frame->nb_samples))
+		{
+			// Shouldn't happen ...
+			LOGW("Short read detected (%zu < %d). Filling with silence.\n", read_count, audio.av_frame->nb_samples);
+			for (unsigned c = 0; c < 2; c++)
+			{
+				memset(audio.av_frame->data[c] + read_count * sizeof(float), 0,
+				       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float));
+			}
+		}
+
+		// Crude system for handling drift.
+		// Ensure monotonic PTS with maximum 1% clock drift.
+		auto absolute_ts = sample_realtime_pts() + compensate_audio_us;
+		absolute_ts -= latency_us;
+
+		// Detect large discontinuity and reset the PTS.
+		absolute_ts = std::max(absolute_ts, realtime_pts.next_lower_bound_pts);
+		if (absolute_ts < realtime_pts.next_upper_bound_pts + 200000)
+			absolute_ts = std::min(absolute_ts, realtime_pts.next_upper_bound_pts);
+
+		audio.av_frame->pts = absolute_ts;
+		realtime_pts.next_lower_bound_pts =
+				absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 990000, audio.av_ctx->sample_rate, AV_ROUND_DOWN);
+		realtime_pts.next_upper_bound_pts =
+				absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 1010000, audio.av_ctx->sample_rate, AV_ROUND_UP);
+
+		ret = avcodec_send_frame(audio.av_ctx, audio.av_frame);
+		if (ret < 0)
+		{
+			LOGE("Failed to send packet to codec: %d\n", ret);
+			return false;
+		}
+
+		if (!drain_packets(audio))
+		{
+			LOGE("Failed to drain audio packets.\n");
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool VideoEncoder::Impl::encode_audio(int compensate_audio_us)
+{
+	if (options.realtime && audio_stream)
+		return encode_audio_stream(compensate_audio_us);
+	else if (!options.realtime && audio_source)
+		return encode_audio_source();
+	else
+		return true;
+}
+#endif
+
 bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes,
                                       int64_t pts, int compensate_audio_us)
 {
@@ -236,117 +375,10 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 
 	(void)compensate_audio_us;
 #ifdef HAVE_GRANITE_AUDIO
-	if (options.realtime && audio_stream)
+	if (!encode_audio(compensate_audio_us))
 	{
-		size_t read_avail_frames;
-		uint32_t latency_us;
-		while (audio_stream->get_buffer_status(read_avail_frames, latency_us) &&
-		       read_avail_frames >= size_t(audio.av_frame->nb_samples))
-		{
-			if ((ret = av_frame_make_writable(audio.av_frame)) < 0)
-			{
-				LOGE("Failed to make frame writable: %d.\n", ret);
-				return false;
-			}
-
-			size_t read_count = audio_stream->read_frames_f32(
-					reinterpret_cast<float * const *>(audio.av_frame->data),
-					audio.av_frame->nb_samples, false);
-
-			if (read_count < size_t(audio.av_frame->nb_samples))
-			{
-				// Shouldn't happen ...
-				LOGW("Short read detected (%zu < %d). Filling with silence.\n", read_count, audio.av_frame->nb_samples);
-				for (unsigned c = 0; c < 2; c++)
-				{
-					memset(audio.av_frame->data[c] + read_count * sizeof(float), 0,
-					       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float));
-				}
-			}
-
-			// Crude system for handling drift.
-			// Ensure monotonic PTS with maximum 1% clock drift.
-			auto absolute_ts = sample_realtime_pts() + compensate_audio_us;
-			absolute_ts -= latency_us;
-
-			// Detect large discontinuity and reset the PTS.
-			absolute_ts = std::max(absolute_ts, realtime_pts.next_lower_bound_pts);
-			if (absolute_ts < realtime_pts.next_upper_bound_pts + 200000)
-				absolute_ts = std::min(absolute_ts, realtime_pts.next_upper_bound_pts);
-
-			audio.av_frame->pts = absolute_ts;
-			realtime_pts.next_lower_bound_pts =
-					absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 990000, audio.av_ctx->sample_rate, AV_ROUND_DOWN);
-			realtime_pts.next_upper_bound_pts =
-					absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 1010000, audio.av_ctx->sample_rate, AV_ROUND_UP);
-
-			ret = avcodec_send_frame(audio.av_ctx, audio.av_frame);
-			if (ret < 0)
-			{
-				LOGE("Failed to send packet to codec: %d\n", ret);
-				return false;
-			}
-
-			if (!drain_packets(audio))
-			{
-				LOGE("Failed to drain audio packets.\n");
-				return false;
-			}
-		}
-	}
-	else if (!options.realtime && audio_source)
-	{
-		// Render out audio in the main thread to ensure exact reproducibility across runs.
-		// If we don't care about that, we can render audio directly in the thread worker.
-		int64_t target_audio_samples = av_rescale_q_rnd(encode_video_pts, video.av_ctx->time_base, audio.av_ctx->time_base, AV_ROUND_UP);
-		int64_t to_render = std::max<int64_t>(target_audio_samples - audio_pts, 0);
-		audio_buffer_s16.resize(to_render * 2);
-		audio_source->drain_interleaved_s16(audio_buffer_s16.data(), to_render);
-		audio_pts += to_render;
-
-		if (audio.av_pkt)
-		{
-			for (size_t i = 0, n = audio_buffer_s16.size() / 2; i < n; )
-			{
-				int to_copy = std::min<int>(int(n - i), audio.av_frame->nb_samples - current_audio_frames);
-
-				if (current_audio_frames == 0)
-				{
-					if ((ret = av_frame_make_writable(audio.av_frame)) < 0)
-					{
-						LOGE("Failed to make frame writable: %d.\n", ret);
-						return false;
-					}
-				}
-
-				memcpy(reinterpret_cast<int16_t *>(audio.av_frame->data[0]) + 2 * current_audio_frames,
-				       audio_buffer_s16.data() + 2 * i, to_copy * 2 * sizeof(int16_t));
-
-				current_audio_frames += to_copy;
-
-				if (current_audio_frames == audio.av_frame->nb_samples)
-				{
-					audio.av_frame->pts = encode_audio_pts;
-					encode_audio_pts += current_audio_frames;
-					current_audio_frames = 0;
-
-					ret = avcodec_send_frame(audio.av_ctx, audio.av_frame);
-					if (ret < 0)
-					{
-						LOGE("Failed to send packet to codec: %d\n", ret);
-						return false;
-					}
-
-					if (!drain_packets(audio))
-					{
-						LOGE("Failed to drain audio packets.\n");
-						return false;
-					}
-				}
-
-				i += to_copy;
-			}
-		}
+		LOGE("Failed to encode audio.\n");
+		return false;
 	}
 #endif
 

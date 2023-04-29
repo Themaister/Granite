@@ -433,7 +433,7 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 	}
 
 	if (options.realtime)
-		video.av_frame->pts = pts;
+		video.av_frame->pts = av_rescale_q_rnd(pts, {1, AV_TIME_BASE}, video.av_ctx->time_base, AV_ROUND_ZERO);
 	else
 		video.av_frame->pts = encode_video_pts++;
 
@@ -497,10 +497,16 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 			break;
 		}
 
+		if (options.realtime)
+			if (&stream == &video)
+				stream.av_pkt->duration = video.av_ctx->ticks_per_frame;
+
 		if (av_format_ctx_local)
 		{
 			auto *pkt_clone = av_packet_clone(stream.av_pkt);
 			pkt_clone->pts = stream.av_pkt->pts;
+			pkt_clone->dts = stream.av_pkt->dts;
+			pkt_clone->duration = stream.av_pkt->duration;
 			pkt_clone->stream_index = stream.av_stream_local->index;
 			av_packet_rescale_ts(pkt_clone, stream.av_ctx->time_base, stream.av_stream_local->time_base);
 			ret = av_interleaved_write_frame(av_format_ctx_local, pkt_clone);
@@ -705,9 +711,17 @@ bool VideoEncoder::Impl::init_video_codec()
 	video.av_ctx->framerate = { options.frame_timebase.den, options.frame_timebase.num };
 
 	if (options.realtime)
-		video.av_ctx->time_base = { 1, 1000000 };
+	{
+		video.av_ctx->time_base = { options.frame_timebase.num, options.frame_timebase.den * 4 };
+		// This seems to be important for NVENC.
+		// Need more fine-grained timebase to account for realtime jitter in PTS.
+		video.av_ctx->ticks_per_frame = 4;
+	}
 	else
+	{
 		video.av_ctx->time_base = { options.frame_timebase.num, options.frame_timebase.den };
+		video.av_ctx->ticks_per_frame = 1;
+	}
 
 	video.av_ctx->color_range = AVCOL_RANGE_MPEG;
 	video.av_ctx->colorspace = AVCOL_SPC_BT709;

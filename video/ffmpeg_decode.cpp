@@ -1057,6 +1057,8 @@ void VideoDecoder::Impl::process_video_frame_in_task_vulkan(DecodedImage &img, A
 
 	Vulkan::ImageCreateInfo info = {};
 	info.type = VK_IMAGE_TYPE_2D;
+	// Extent parameters aren't necessarily quite correct,
+	// but we don't really care since we're just creating temporary views.
 	info.width = video.av_ctx->width;
 	info.height = video.av_ctx->height;
 	info.depth = 1;

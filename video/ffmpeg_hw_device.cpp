@@ -45,6 +45,10 @@ struct FFmpegHWDevice::Impl
 	Vulkan::Device *device = nullptr;
 	const AVCodec *cached_av_codec = nullptr;
 
+	VkVideoProfileInfoKHR profile_info = { VK_STRUCTURE_TYPE_VIDEO_PROFILE_INFO_KHR };
+	VkVideoProfileListInfoKHR profile_list_info = { VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR };
+	VkVideoEncodeH264ProfileInfoEXT h264_encode = { VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_PROFILE_INFO_EXT };
+
 	~Impl()
 	{
 		if (frame_ctx)
@@ -179,13 +183,27 @@ struct FFmpegHWDevice::Impl
 		ctx->height = height;
 		ctx->sw_format = sw_format;
 
-#ifdef HAVE_FFMPEG_VULKAN
+#ifdef HAVE_FFMPEG_VULKAN_ENCODE
 		if (ctx->format == AV_PIX_FMT_VULKAN)
 		{
 			auto *vk = static_cast<AVVulkanFramesContext *>(ctx->hwctx);
 			vk->img_flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
 			// XXX: FFmpeg header type bug.
-			vk->usage = VkImageUsageFlagBits(vk->usage | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+			vk->usage = VkImageUsageFlagBits(
+					vk->usage | VK_IMAGE_USAGE_STORAGE_BIT |
+					VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR);
+
+			h264_encode.stdProfileIdc = STD_VIDEO_H264_PROFILE_IDC_HIGH;
+
+			profile_info.videoCodecOperation = VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_EXT;
+			profile_info.chromaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR;
+			profile_info.lumaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR;
+			profile_info.chromaSubsampling = VK_VIDEO_CHROMA_SUBSAMPLING_420_BIT_KHR;
+			profile_info.pNext = &h264_encode;
+
+			profile_list_info.pProfiles = &profile_info;
+			profile_list_info.profileCount = 1;
+			vk->create_pnext = &profile_list_info;
 		}
 #endif
 

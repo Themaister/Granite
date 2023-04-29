@@ -103,8 +103,7 @@ int main()
 						   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
 		encoder.process_rgb(*cmd, pipe, img->get_view());
-		pipe.fence.reset();
-		device.submit(cmd, &pipe.fence);
+		encoder.submit_process_rgb(cmd, pipe);
 		encoder.encode_frame(pipe, 0);
 		device.next_frame_context();
 	}

@@ -94,35 +94,20 @@ public:
 		size_t row_length;
 	};
 
-	struct YCbCrPipeline
+	struct YCbCrPipelineData;
+	struct YCbCrPipelineDataDeleter
 	{
-		Vulkan::ImageHandle luma;
-		Vulkan::ImageHandle chroma_full;
-		Vulkan::ImageHandle chroma;
-		Vulkan::BufferHandle buffer;
-		Vulkan::Fence fence;
-		Vulkan::Program *rgb_to_ycbcr = nullptr;
-		Vulkan::Program *chroma_downsample = nullptr;
-		PlaneLayout planes[3] = {};
-		unsigned num_planes = 0;
-
-		struct Constants
-		{
-			float inv_resolution_luma[2];
-			float inv_resolution_chroma[2];
-			float base_uv_luma[2];
-			float base_uv_chroma[2];
-			uint32_t luma_dispatch[2];
-			uint32_t chroma_dispatch[2];
-		} constants = {};
+		void operator()(YCbCrPipelineData *ptr);
 	};
+	using YCbCrPipeline = std::unique_ptr<YCbCrPipelineData, YCbCrPipelineDataDeleter>;
 
 	YCbCrPipeline create_ycbcr_pipeline(Vulkan::Program *rgb_to_ycbcr, Vulkan::Program *chroma_downsample) const;
 	void process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view);
+	// Handles GPU synchronization if required.
+	void submit_process_rgb(Vulkan::CommandBufferHandle &cmd, YCbCrPipeline &pipeline);
 
 	int64_t sample_realtime_pts() const;
 
-	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes, int64_t pts, int compensate_audio_us = 0);
 	bool encode_frame(YCbCrPipeline &pipeline, int64_t pts, int compensate_audio_us = 0);
 
 private:

@@ -31,6 +31,7 @@
 #include "thread_group.hpp"
 #include "timer.hpp"
 #include <thread>
+#include <cstdlib>
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
 #include "dsp/dsp.hpp"
@@ -433,7 +434,40 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 	}
 
 	if (options.realtime)
-		video.av_frame->pts = av_rescale_q_rnd(pts, {1, AV_TIME_BASE}, video.av_ctx->time_base, AV_ROUND_ZERO);
+	{
+		int64_t target_pts = av_rescale_q_rnd(pts, {1, AV_TIME_BASE}, video.av_ctx->time_base, AV_ROUND_ZERO);
+
+		if (encode_video_pts)
+		{
+			int64_t delta = std::abs(target_pts - encode_video_pts);
+			if (delta > 8 * video.av_ctx->ticks_per_frame)
+			{
+				// If we're way off (8 frames), catch up instantly.
+				encode_video_pts = target_pts;
+
+				// Force an I-frame here since there is a large discontinuity.
+				video.av_frame->pict_type = AV_PICTURE_TYPE_I;
+			}
+			else if (delta >= video.av_ctx->ticks_per_frame / 4)
+			{
+				// If we're more than a quarter frame off, nudge the PTS by one subtick to catch up with real value.
+				// Nudging slowly avoids broken DTS timestamps.
+				encode_video_pts += target_pts > encode_video_pts ? 1 : -1;
+			}
+		}
+		else
+		{
+			// First frame is latched.
+			encode_video_pts = target_pts;
+		}
+
+		// Try to remain a steady PTS, adjust as necessary to account for drift and drops.
+		// This helps avoid DTS issues in misc hardware encoders since they treat DTS as just subtracted reordered PTS,
+		// or something weird like that ...
+		video.av_frame->pts = encode_video_pts;
+		video.av_frame->duration = video.av_ctx->ticks_per_frame;
+		encode_video_pts += video.av_ctx->ticks_per_frame;
+	}
 	else
 		video.av_frame->pts = encode_video_pts++;
 
@@ -712,10 +746,10 @@ bool VideoEncoder::Impl::init_video_codec()
 
 	if (options.realtime)
 	{
-		video.av_ctx->time_base = { options.frame_timebase.num, options.frame_timebase.den * 4 };
+		video.av_ctx->ticks_per_frame = 16;
+		video.av_ctx->time_base = { options.frame_timebase.num, options.frame_timebase.den * video.av_ctx->ticks_per_frame };
 		// This seems to be important for NVENC.
 		// Need more fine-grained timebase to account for realtime jitter in PTS.
-		video.av_ctx->ticks_per_frame = 4;
 	}
 	else
 	{

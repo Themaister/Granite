@@ -177,7 +177,12 @@ void Application::run_frame()
 
 	{
 		GRANITE_SCOPED_TIMELINE_EVENT("wsi-begin-frame");
-		application_wsi.begin_frame();
+		if (!application_wsi.begin_frame())
+		{
+			LOGE("Failed to begin frame. Fatal error. Shutting down.\n");
+			request_shutdown();
+			return;
+		}
 	}
 
 	double smooth_frame_time = application_wsi.get_smooth_frame_time();

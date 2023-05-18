@@ -36,7 +36,8 @@ using namespace Vulkan;
 
 struct LatencyTest : Granite::Application, Granite::EventHandler
 {
-	LatencyTest()
+	explicit LatencyTest(unsigned count_)
+		: count(count_)
 	{
 		EVENT_MANAGER_REGISTER(LatencyTest, on_key_down, KeyboardEvent);
 		frame_times.reserve(100);
@@ -91,8 +92,16 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		}
 
 		cmd->begin_render_pass(rp);
+		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
 		flat.begin();
+
+		for (unsigned i = 0; i < count; i++)
+		{
+			flat.render_quad({0.0f, 0.0f, 4.0f}, {cmd->get_viewport().width, cmd->get_viewport().height},
+			                 { 1.0f, 0.0f, 0.0f, 2.0f / 255.0f });
+		}
+
 		char avg_text[1024], min_text[1024], max_text[1024];
 		vec3 offset = { 10.0f, 10.0f, 0.0f };
 		vec2 size = { cmd->get_viewport().width - 20.0f, cmd->get_viewport().height - 20.0f };
@@ -134,26 +143,33 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		}
 		flat.render_line_strip(offsets, 0.0f, 100, vec4(1.0f, 1.0f, 0.0f, 1.0f));
 
-		flat.flush(*cmd, vec3(0.0f), { cmd->get_viewport().width, cmd->get_viewport().height, 1.0f });
+		flat.flush(*cmd, vec3(0.0f), { cmd->get_viewport().width, cmd->get_viewport().height, 5.0f });
 
 		cmd->end_render_pass();
+		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "RenderPass");
 		device.submit(cmd);
 	}
 
 	std::vector<double> frame_times;
 	bool state = false;
 	FlatRenderer flat;
+	unsigned count;
 };
 
 namespace Granite
 {
-Application *application_create(int, char **)
+Application *application_create(int argc, char **argv)
 {
 	application_setup_default_filesystem(".");
 
+	unsigned count = 0;
+	if (argc == 2)
+		count = strtoul(argv[1], nullptr, 0);
+
 	try
 	{
-		auto *app = new LatencyTest();
+		auto *app = new LatencyTest(count);
 		return app;
 	}
 	catch (const std::exception &e)

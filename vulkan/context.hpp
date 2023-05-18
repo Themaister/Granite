@@ -119,6 +119,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceTextureCompressionASTCHDRFeaturesEXT astc_hdr_features = {};
 	VkPhysicalDevicePipelineCreationCacheControlFeaturesEXT pipeline_creation_cache_control_features = {};
 	VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT swapchain_maintenance1_features = {};
+	VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT pageable_device_local_memory_features = {};
 
 	// Vendor
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};

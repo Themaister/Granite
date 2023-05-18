@@ -1302,6 +1302,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.astc_decode_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_FEATURES_EXT };
 	ext.astc_hdr_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES_EXT };
 	ext.pipeline_creation_cache_control_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_CREATION_CACHE_CONTROL_FEATURES_EXT };
+	ext.pageable_device_local_memory_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PAGEABLE_DEVICE_LOCAL_MEMORY_FEATURES_EXT };
 
 	ext.compute_shader_derivative_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV };
 
@@ -1440,6 +1441,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		enabled_extensions.push_back(VK_EXT_PIPELINE_CREATION_CACHE_CONTROL_EXTENSION_NAME);
 		*ppNext = &ext.pipeline_creation_cache_control_features;
 		ppNext = &ext.pipeline_creation_cache_control_features.pNext;
+	}
+
+	if (has_extension(VK_EXT_PAGEABLE_DEVICE_LOCAL_MEMORY_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_PAGEABLE_DEVICE_LOCAL_MEMORY_EXTENSION_NAME);
+		*ppNext = &ext.pageable_device_local_memory_features;
+		ppNext = &ext.pageable_device_local_memory_features.pNext;
 	}
 
 	if (has_extension(VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME))

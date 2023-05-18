@@ -1112,20 +1112,18 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 	baseline_image_count = std::max(3u, baseline_image_count);
 
 	// Make sure we query surface caps tied to the present mode for correct results.
-	if (ext.supports_surface_maintenance1 && ext.supports_surface_capabilities2)
+	if (ext.swapchain_maintenance1_features.swapchainMaintenance1 &&
+	    ext.supports_surface_capabilities2)
 	{
 		VkSurfaceCapabilities2KHR surface_capabilities2 = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR };
 		VkSurfacePresentModeCompatibilityEXT present_mode_caps =
 		    { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_COMPATIBILITY_EXT };
 		std::vector<VkPresentModeKHR> present_mode_compat_group;
 
-		if (ext.supports_surface_maintenance1)
-		{
-			present_mode_compat_group.resize(32);
-			present_mode_caps.presentModeCount = present_mode_compat_group.size();
-			present_mode_caps.pPresentModes = present_mode_compat_group.data();
-			surface_capabilities2.pNext = &present_mode_caps;
-		}
+		present_mode_compat_group.resize(32);
+		present_mode_caps.presentModeCount = present_mode_compat_group.size();
+		present_mode_caps.pPresentModes = present_mode_compat_group.data();
+		surface_capabilities2.pNext = &present_mode_caps;
 
 		info.present_mode.pNext = const_cast<void *>(info.surface_info.pNext);
 		info.surface_info.pNext = &info.present_mode;

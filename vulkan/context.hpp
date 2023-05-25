@@ -101,6 +101,7 @@ struct DeviceFeatures
 	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};
 	VkPhysicalDeviceFloat16Int8FeaturesKHR float16_int8_features = {};
 	VkPhysicalDeviceFloatControlsPropertiesKHR float_control_properties = {};
+	VkPhysicalDeviceBufferDeviceAddressFeaturesKHR buffer_device_address_features = {};
 	VkPhysicalDeviceIDProperties id_properties = {};
 
 	// EXT
@@ -123,6 +124,8 @@ struct DeviceFeatures
 
 	// Vendor
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};
+	VkPhysicalDeviceDeviceGeneratedCommandsFeaturesNV device_generated_commands_features = {};
+	VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV device_generated_commands_properties = {};
 
 	// References Vulkan::Context.
 	const VkPhysicalDeviceFeatures2 *pdf2 = nullptr;

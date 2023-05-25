@@ -1305,6 +1305,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.pageable_device_local_memory_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PAGEABLE_DEVICE_LOCAL_MEMORY_FEATURES_EXT };
 
 	ext.compute_shader_derivative_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV };
+	ext.device_generated_commands_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_GENERATED_COMMANDS_FEATURES_NV };
+	ext.buffer_device_address_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR };
 
 	void **ppNext = &pdf2.pNext;
 
@@ -1456,6 +1458,20 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		enabled_extensions.push_back(VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME);
 	}
 
+	if (has_extension(VK_NV_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_NV_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME);
+		*ppNext = &ext.device_generated_commands_features;
+		ppNext = &ext.device_generated_commands_features.pNext;
+	}
+
+	if (has_extension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+		*ppNext = &ext.buffer_device_address_features;
+		ppNext = &ext.buffer_device_address_features.pNext;
+	}
+
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
 		bool broken_present_wait = ext.driver_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY;
@@ -1580,6 +1596,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.conservative_rasterization_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT };
 	ext.float_control_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES_KHR };
 	ext.id_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES };
+	ext.device_generated_commands_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_GENERATED_COMMANDS_PROPERTIES_NV };
 
 	ppNext = &props.pNext;
 
@@ -1604,6 +1621,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		*ppNext = &ext.descriptor_indexing_properties;
 		ppNext = &ext.descriptor_indexing_properties.pNext;
+	}
+
+	if (has_extension(VK_NV_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME))
+	{
+		*ppNext = &ext.device_generated_commands_properties;
+		ppNext = &ext.device_generated_commands_properties.pNext;
 	}
 
 	if (ext.supports_conservative_rasterization)

@@ -1632,10 +1632,10 @@ void CommandBuffer::bind_pipeline(VkPipelineBindPoint bind_point, VkPipeline pip
 	set_dirty(static_state_clobber);
 }
 
-bool CommandBuffer::flush_compute_state(bool synchronous)
+VkPipeline CommandBuffer::flush_compute_state(bool synchronous)
 {
 	if (!pipeline_state.program)
-		return false;
+		return VK_NULL_HANDLE;
 	VK_ASSERT(current_layout);
 
 	if (current_pipeline.pipeline == VK_NULL_HANDLE)
@@ -1645,14 +1645,14 @@ bool CommandBuffer::flush_compute_state(bool synchronous)
 	{
 		VkPipeline old_pipe = current_pipeline.pipeline;
 		if (!flush_compute_pipeline(synchronous))
-			return false;
+			return VK_NULL_HANDLE;
 
 		if (old_pipe != current_pipeline.pipeline)
 			bind_pipeline(VK_PIPELINE_BIND_POINT_COMPUTE, current_pipeline.pipeline, current_pipeline.dynamic_mask);
 	}
 
 	if (current_pipeline.pipeline == VK_NULL_HANDLE)
-		return false;
+		return VK_NULL_HANDLE;
 
 	flush_descriptor_sets();
 
@@ -1668,13 +1668,13 @@ bool CommandBuffer::flush_compute_state(bool synchronous)
 		}
 	}
 
-	return true;
+	return current_pipeline.pipeline;
 }
 
-bool CommandBuffer::flush_render_state(bool synchronous)
+VkPipeline CommandBuffer::flush_render_state(bool synchronous)
 {
 	if (!pipeline_state.program)
-		return false;
+		return VK_NULL_HANDLE;
 	VK_ASSERT(current_layout);
 
 	if (current_pipeline.pipeline == VK_NULL_HANDLE)
@@ -1686,7 +1686,7 @@ bool CommandBuffer::flush_render_state(bool synchronous)
 	{
 		VkPipeline old_pipe = current_pipeline.pipeline;
 		if (!flush_graphics_pipeline(synchronous))
-			return false;
+			return VK_NULL_HANDLE;
 
 		if (old_pipe != current_pipeline.pipeline)
 			bind_pipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, current_pipeline.pipeline, current_pipeline.dynamic_mask);
@@ -1703,7 +1703,7 @@ bool CommandBuffer::flush_render_state(bool synchronous)
 	}
 
 	if (current_pipeline.pipeline == VK_NULL_HANDLE)
-		return false;
+		return VK_NULL_HANDLE;
 
 	flush_descriptor_sets();
 
@@ -1763,15 +1763,25 @@ bool CommandBuffer::flush_render_state(bool synchronous)
 	});
 	dirty_vbos &= ~update_vbo_mask;
 
-	return true;
+	return current_pipeline.pipeline;
 }
 
 bool CommandBuffer::flush_pipeline_state_without_blocking()
 {
 	if (is_compute)
-		return flush_compute_state(false);
+		return flush_compute_state(false) != VK_NULL_HANDLE;
 	else
-		return flush_render_state(false);
+		return flush_render_state(false) != VK_NULL_HANDLE;
+}
+
+VkPipeline CommandBuffer::get_current_compute_pipeline()
+{
+	return flush_compute_state(true);
+}
+
+VkPipeline CommandBuffer::get_current_graphics_pipeline()
+{
+	return flush_render_state(true);
 }
 
 void CommandBuffer::wait_events(uint32_t count, const PipelineEvent *events, const VkDependencyInfo *deps)
@@ -2487,7 +2497,7 @@ void CommandBuffer::flush_descriptor_sets()
 void CommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance)
 {
 	VK_ASSERT(!is_compute);
-	if (flush_render_state(true))
+	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
@@ -2501,7 +2511,7 @@ void CommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_count, 
 {
 	VK_ASSERT(!is_compute);
 	VK_ASSERT(index_state.buffer != VK_NULL_HANDLE);
-	if (flush_render_state(true))
+	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
@@ -2514,7 +2524,7 @@ void CommandBuffer::draw_indirect(const Vulkan::Buffer &buffer,
                                   uint32_t offset, uint32_t draw_count, uint32_t stride)
 {
 	VK_ASSERT(!is_compute);
-	if (flush_render_state(true))
+	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDrawIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
@@ -2533,7 +2543,7 @@ void CommandBuffer::draw_multi_indirect(const Buffer &buffer, uint32_t offset, u
 		return;
 	}
 
-	if (flush_render_state(true))
+	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDrawIndirectCountKHR(cmd, buffer.get_buffer(), offset,
@@ -2554,7 +2564,7 @@ void CommandBuffer::draw_indexed_multi_indirect(const Buffer &buffer, uint32_t o
 		return;
 	}
 
-	if (flush_render_state(true))
+	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDrawIndexedIndirectCountKHR(cmd, buffer.get_buffer(), offset,
@@ -2569,7 +2579,7 @@ void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
                                           uint32_t offset, uint32_t draw_count, uint32_t stride)
 {
 	VK_ASSERT(!is_compute);
-	if (flush_render_state(true))
+	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		table.vkCmdDrawIndexedIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
 		set_backtrace_checkpoint();
@@ -2581,7 +2591,7 @@ void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
 void CommandBuffer::dispatch_indirect(const Buffer &buffer, uint32_t offset)
 {
 	VK_ASSERT(is_compute);
-	if (flush_compute_state(true))
+	if (flush_compute_state(true) != VK_NULL_HANDLE)
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDispatchIndirect(cmd, buffer.get_buffer(), offset);
@@ -2593,7 +2603,7 @@ void CommandBuffer::dispatch_indirect(const Buffer &buffer, uint32_t offset)
 void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z)
 {
 	VK_ASSERT(is_compute);
-	if (flush_compute_state(true))
+	if (flush_compute_state(true) != VK_NULL_HANDLE)
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDispatch(cmd, groups_x, groups_y, groups_z);

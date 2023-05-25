@@ -770,6 +770,9 @@ public:
 	static Pipeline build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile, CompileMode mode);
 	bool flush_pipeline_state_without_blocking();
 
+	VkPipeline get_current_compute_pipeline();
+	VkPipeline get_current_graphics_pipeline();
+
 private:
 	friend class Util::ObjectPool<CommandBuffer>;
 	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type);
@@ -827,8 +830,8 @@ private:
 	              "Hashable pipeline state is not large enough!");
 #endif
 
-	bool flush_render_state(bool synchronous);
-	bool flush_compute_state(bool synchronous);
+	VkPipeline flush_render_state(bool synchronous);
+	VkPipeline flush_compute_state(bool synchronous);
 	void clear_render_state();
 
 	bool flush_graphics_pipeline(bool synchronous);

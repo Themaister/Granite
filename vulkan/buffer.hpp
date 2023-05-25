@@ -55,6 +55,7 @@ struct BufferCreateInfo
 	VkDeviceSize size = 0;
 	VkBufferUsageFlags usage = 0;
 	BufferMiscFlags misc = 0;
+	VkMemoryRequirements allocation_requirements = {};
 	ExternalHandle external;
 };
 

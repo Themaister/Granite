@@ -4540,6 +4540,16 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	req_info.buffer = buffer;
 	table->vkGetBufferMemoryRequirements2(device, &req_info, &reqs);
 
+	if (create_info.allocation_requirements.size)
+	{
+		reqs.memoryRequirements.memoryTypeBits &=
+				create_info.allocation_requirements.memoryTypeBits;
+		reqs.memoryRequirements.size =
+				std::max<VkDeviceSize>(reqs.memoryRequirements.size, create_info.allocation_requirements.size);
+		reqs.memoryRequirements.alignment =
+				std::max<VkDeviceSize>(reqs.memoryRequirements.alignment, create_info.allocation_requirements.alignment);
+	}
+
 	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryRequirements.memoryTypeBits);
 	if (memory_type == UINT32_MAX)
 	{

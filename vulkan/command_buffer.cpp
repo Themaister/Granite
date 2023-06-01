@@ -846,7 +846,7 @@ void CommandBuffer::begin_context()
 	dirty_vbos = ~0u;
 	current_pipeline = {};
 	current_pipeline_layout = VK_NULL_HANDLE;
-	current_layout = nullptr;
+	pipeline_state.layout = nullptr;
 	pipeline_state.program = nullptr;
 	pipeline_state.potential_static_state.spec_constant_mask = 0;
 	pipeline_state.potential_static_state.internal_spec_constant_mask = 0;
@@ -1159,7 +1159,7 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 
 	auto &shader = *compile.program->get_shader(ShaderStage::Compute);
 	VkComputePipelineCreateInfo info = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
-	info.layout = compile.program->get_pipeline_layout()->get_layout();
+	info.layout = compile.layout->get_layout();
 	info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	info.stage.module = shader.get_module();
 	info.stage.pName = "main";
@@ -1167,7 +1167,7 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 
 	VkSpecializationInfo spec_info = {};
 	VkSpecializationMapEntry spec_entries[VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
-	auto mask = compile.program->get_pipeline_layout()->get_resource_layout().combined_spec_constant_mask &
+	auto mask = compile.layout->get_resource_layout().combined_spec_constant_mask &
 	            get_combined_spec_constant_mask(compile);
 
 	uint32_t spec_constants[VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
@@ -1329,7 +1329,7 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 		att = {};
 
 		if (compile.compatible_render_pass->get_color_attachment(compile.subpass_index, i).attachment != VK_ATTACHMENT_UNUSED &&
-			(compile.program->get_pipeline_layout()->get_resource_layout().render_target_mask & (1u << i)))
+			(compile.layout->get_resource_layout().render_target_mask & (1u << i)))
 		{
 			att.colorWriteMask = (compile.static_state.state.write_mask >> (4 * i)) & 0xf;
 			att.blendEnable = compile.static_state.state.blend_enable;
@@ -1371,7 +1371,7 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	VkPipelineVertexInputStateCreateInfo vi = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 	VkVertexInputAttributeDescription vi_attribs[VULKAN_NUM_VERTEX_ATTRIBS];
 	vi.pVertexAttributeDescriptions = vi_attribs;
-	uint32_t attr_mask = compile.program->get_pipeline_layout()->get_resource_layout().attribute_mask;
+	uint32_t attr_mask = compile.layout->get_resource_layout().attribute_mask;
 	uint32_t binding_mask = 0;
 	for_each_bit(attr_mask, [&](uint32_t bit) {
 		auto &attr = vi_attribs[vi.vertexAttributeDescriptionCount++];
@@ -1434,14 +1434,37 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	}
 
 	// Stages
-	VkPipelineShaderStageCreateInfo stages[static_cast<unsigned>(ShaderStage::Count)];
+	VkPipelineShaderStageCreateInfo stages[Util::ecast(ShaderStage::Count)];
 	unsigned num_stages = 0;
 
 	VkSpecializationInfo spec_info[ecast(ShaderStage::Count)] = {};
 	VkSpecializationMapEntry spec_entries[ecast(ShaderStage::Count)][VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
-	uint32_t spec_constants[static_cast<unsigned>(ShaderStage::Count)][VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
+	uint32_t spec_constants[Util::ecast(ShaderStage::Count)][VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
 
-	for (unsigned i = 0; i < static_cast<unsigned>(ShaderStage::Count); i++)
+	for (unsigned i = 0; i < Util::ecast(ShaderStage::Count); i++)
+	{
+		auto mask = compile.layout->get_resource_layout().spec_constant_mask[i] &
+		            get_combined_spec_constant_mask(compile);
+
+		if (mask)
+		{
+			spec_info[i].pData = spec_constants[i];
+			spec_info[i].pMapEntries = spec_entries[i];
+
+			for_each_bit(mask, [&](uint32_t bit)
+			{
+				auto &entry = spec_entries[i][spec_info[i].mapEntryCount];
+				entry.offset = sizeof(uint32_t) * spec_info[i].mapEntryCount;
+				entry.size = sizeof(uint32_t);
+				entry.constantID = bit;
+				spec_constants[i][spec_info[i].mapEntryCount] = compile.potential_static_state.spec_constants[bit];
+				spec_info[i].mapEntryCount++;
+			});
+			spec_info[i].dataSize = spec_info[i].mapEntryCount * sizeof(uint32_t);
+		}
+	}
+
+	for (unsigned i = 0; i < Util::ecast(ShaderStage::Count); i++)
 	{
 		auto stage = static_cast<ShaderStage>(i);
 		if (compile.program->get_shader(stage))
@@ -1451,31 +1474,13 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 			s.module = compile.program->get_shader(stage)->get_module();
 			s.pName = "main";
 			s.stage = static_cast<VkShaderStageFlagBits>(1u << i);
-
-			auto mask = compile.program->get_pipeline_layout()->get_resource_layout().spec_constant_mask[i] &
-			            get_combined_spec_constant_mask(compile);
-
-			if (mask)
-			{
+			if (spec_info[i].mapEntryCount)
 				s.pSpecializationInfo = &spec_info[i];
-				spec_info[i].pData = spec_constants[i];
-				spec_info[i].pMapEntries = spec_entries[i];
-
-				for_each_bit(mask, [&](uint32_t bit) {
-					auto &entry = spec_entries[i][spec_info[i].mapEntryCount];
-					entry.offset = sizeof(uint32_t) * spec_info[i].mapEntryCount;
-					entry.size = sizeof(uint32_t);
-					entry.constantID = bit;
-					spec_constants[i][spec_info[i].mapEntryCount] = compile.potential_static_state.spec_constants[bit];
-					spec_info[i].mapEntryCount++;
-				});
-				spec_info[i].dataSize = spec_info[i].mapEntryCount * sizeof(uint32_t);
-			}
 		}
 	}
 
 	VkGraphicsPipelineCreateInfo pipe = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-	pipe.layout = compile.program->get_pipeline_layout()->get_layout();
+	pipe.layout = compile.layout->get_layout();
 	pipe.renderPass = compile.compatible_render_pass->get_render_pass();
 	pipe.subpass = compile.subpass_index;
 
@@ -1489,6 +1494,68 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	pipe.pRasterizationState = &raster;
 	pipe.pStages = stages;
 	pipe.stageCount = num_stages;
+
+	VkGraphicsPipelineShaderGroupsCreateInfoNV groups_info =
+			{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_SHADER_GROUPS_CREATE_INFO_NV };
+	Util::SmallVector<VkGraphicsShaderGroupCreateInfoNV, 64> groups;
+	Util::SmallVector<VkPipelineShaderStageCreateInfo, 128> group_stages;
+
+	// Simple monolithic compile.
+	// Avoids having to do state validation later.
+	if (!compile.program_group.empty())
+	{
+		pipe.flags |= VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV;
+
+		unsigned group_stage_count = 0;
+		for (auto *p : compile.program_group)
+		{
+			for (unsigned i = 0; i < Util::ecast(ShaderStage::Count); i++)
+			{
+				auto stage = static_cast<ShaderStage>(i);
+				if (p->get_shader(stage))
+					group_stage_count++;
+			}
+		}
+
+		// Reserve early to avoid pointer invalidation.
+		group_stages.resize(group_stage_count);
+
+		VkGraphicsShaderGroupCreateInfoNV group = { VK_STRUCTURE_TYPE_GRAPHICS_SHADER_GROUP_CREATE_INFO_NV };
+		// TODO: Can this be NULL if we just want to reuse the existing vertex input state?
+		group.pVertexInputState = pipe.pVertexInputState;
+		group_stage_count = 0;
+		groups.reserve(compile.program_group.size());
+
+		for (auto *p : compile.program_group)
+		{
+			group.pStages = &group_stages[group_stage_count];
+			group.stageCount = 0;
+
+			for (unsigned i = 0; i < Util::ecast(ShaderStage::Count); i++)
+			{
+				auto stage = static_cast<ShaderStage>(i);
+				if (p->get_shader(stage))
+				{
+					auto &s = group_stages[group_stage_count++];
+					s = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
+					s.module = p->get_shader(stage)->get_module();
+					s.pName = "main";
+					s.stage = static_cast<VkShaderStageFlagBits>(1u << i);
+					if (spec_info[i].mapEntryCount)
+						s.pSpecializationInfo = &spec_info[i];
+
+					group.stageCount++;
+				}
+			}
+
+			groups.push_back(group);
+		}
+
+		groups_info.pNext = pipe.pNext;
+		pipe.pNext = &groups_info;
+		groups_info.groupCount = uint32_t(groups.size());
+		groups_info.pGroups = groups.data();
+	}
 
 	VkPipeline pipeline = VK_NULL_HANDLE;
 #ifdef GRANITE_VULKAN_FOSSILIZE
@@ -1535,9 +1602,10 @@ void CommandBuffer::update_hash_compute_pipeline(DeferredPipelineCompile &compil
 {
 	Hasher h;
 	h.u64(compile.program->get_hash());
+	h.u64(compile.layout->get_hash());
 
 	// Spec constants.
-	auto &layout = compile.program->get_pipeline_layout()->get_resource_layout();
+	auto &layout = compile.layout->get_resource_layout();
 	uint32_t combined_spec_constant = layout.combined_spec_constant_mask;
 	combined_spec_constant &= get_combined_spec_constant_mask(compile);
 	h.u32(combined_spec_constant);
@@ -1565,7 +1633,7 @@ void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compi
 {
 	Hasher h;
 	active_vbos = 0;
-	auto &layout = compile.program->get_pipeline_layout()->get_resource_layout();
+	auto &layout = compile.layout->get_resource_layout();
 	for_each_bit(layout.attribute_mask, [&](uint32_t bit) {
 		h.u32(bit);
 		active_vbos |= 1u << compile.attribs[bit].binding;
@@ -1582,6 +1650,9 @@ void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compi
 	h.u64(compile.compatible_render_pass->get_hash());
 	h.u32(compile.subpass_index);
 	h.u64(compile.program->get_hash());
+	for (auto *p : compile.program_group)
+		h.u64(p->get_hash());
+	h.u64(compile.layout->get_hash());
 	h.data(compile.static_state.words, sizeof(compile.static_state.words));
 
 	if (compile.static_state.state.blend_enable)
@@ -1636,7 +1707,7 @@ VkPipeline CommandBuffer::flush_compute_state(bool synchronous)
 {
 	if (!pipeline_state.program)
 		return VK_NULL_HANDLE;
-	VK_ASSERT(current_layout);
+	VK_ASSERT(pipeline_state.layout);
 
 	if (current_pipeline.pipeline == VK_NULL_HANDLE)
 		set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
@@ -1658,7 +1729,7 @@ VkPipeline CommandBuffer::flush_compute_state(bool synchronous)
 
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT))
 	{
-		auto &range = current_layout->get_resource_layout().push_constant_range;
+		auto &range = pipeline_state.layout->get_resource_layout().push_constant_range;
 		if (range.stageFlags != 0)
 		{
 			VK_ASSERT(range.offset == 0);
@@ -1675,7 +1746,7 @@ VkPipeline CommandBuffer::flush_render_state(bool synchronous)
 {
 	if (!pipeline_state.program)
 		return VK_NULL_HANDLE;
-	VK_ASSERT(current_layout);
+	VK_ASSERT(pipeline_state.layout);
 
 	if (current_pipeline.pipeline == VK_NULL_HANDLE)
 		set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
@@ -1695,7 +1766,7 @@ VkPipeline CommandBuffer::flush_render_state(bool synchronous)
 		if (current_framebuffer_surface_transform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
 		{
 			// Make sure that if we're using prerotate, our vertex shaders have prerotate.
-			auto spec_constant_mask = current_layout->get_resource_layout().combined_spec_constant_mask;
+			auto spec_constant_mask = pipeline_state.layout->get_resource_layout().combined_spec_constant_mask;
 			constexpr uint32_t expected_mask = 0xfu << VULKAN_NUM_USER_SPEC_CONSTANTS;
 			VK_ASSERT((spec_constant_mask & expected_mask) == expected_mask);
 		}
@@ -1709,7 +1780,7 @@ VkPipeline CommandBuffer::flush_render_state(bool synchronous)
 
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT))
 	{
-		auto &range = current_layout->get_resource_layout().push_constant_range;
+		auto &range = pipeline_state.layout->get_resource_layout().push_constant_range;
 		if (range.stageFlags != 0)
 		{
 			VK_ASSERT(range.offset == 0);
@@ -1943,12 +2014,43 @@ void CommandBuffer::set_program(const std::string &vertex, const std::string &fr
 }
 #endif
 
+void CommandBuffer::set_program_group(Program *const *programs, unsigned num_programs,
+                                      const PipelineLayout *layout)
+{
+	pipeline_state.program = num_programs ? programs[0] : nullptr;
+	pipeline_state.program_group = { programs, programs + num_programs };
+	current_pipeline = {};
+	set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
+
+	VK_ASSERT(device->get_device_features().device_generated_commands_features.deviceGeneratedCommands);
+
+	if (!num_programs)
+		return;
+
+	VK_ASSERT(framebuffer && pipeline_state.program->get_shader(ShaderStage::Vertex));
+#ifdef VULKAN_DEBUG
+	for (unsigned i = 0; i < num_programs; i++)
+		VK_ASSERT(pipeline_state.program_group[i]->get_shader(ShaderStage::Vertex));
+#endif
+
+	if (!layout && pipeline_state.program)
+	{
+		CombinedResourceLayout combined_layout = programs[0]->get_pipeline_layout()->get_resource_layout();
+		for (unsigned i = 1; i < num_programs; i++)
+			device->merge_combined_resource_layout(combined_layout, *programs[i]);
+		layout = device->request_pipeline_layout(combined_layout, nullptr);
+	}
+
+	set_program_layout(layout);
+}
+
 void CommandBuffer::set_program(Program *program)
 {
 	if (pipeline_state.program == program)
 		return;
 
 	pipeline_state.program = program;
+	pipeline_state.program_group.clear();
 	current_pipeline = {};
 
 	set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
@@ -1958,18 +2060,21 @@ void CommandBuffer::set_program(Program *program)
 	VK_ASSERT((framebuffer && pipeline_state.program->get_shader(ShaderStage::Vertex)) ||
 	          (!framebuffer && pipeline_state.program->get_shader(ShaderStage::Compute)));
 
-	if (!current_layout)
+	set_program_layout(program->get_pipeline_layout());
+}
+
+void CommandBuffer::set_program_layout(const PipelineLayout *layout)
+{
+	VK_ASSERT(layout);
+	if (!pipeline_state.layout)
 	{
 		dirty_sets = ~0u;
 		set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
-
-		current_layout = program->get_pipeline_layout();
-		current_pipeline_layout = current_layout->get_layout();
 	}
-	else if (program->get_pipeline_layout()->get_hash() != current_layout->get_hash())
+	else if (layout->get_hash() != pipeline_state.layout->get_hash())
 	{
-		auto &new_layout = program->get_pipeline_layout()->get_resource_layout();
-		auto &old_layout = current_layout->get_resource_layout();
+		auto &new_layout = layout->get_resource_layout();
+		auto &old_layout = pipeline_state.layout->get_resource_layout();
 
 		// If the push constant layout changes, all descriptor sets
 		// are invalidated.
@@ -1981,19 +2086,19 @@ void CommandBuffer::set_program(Program *program)
 		else
 		{
 			// Find the first set whose descriptor set layout differs.
-			auto *new_pipe_layout = program->get_pipeline_layout();
 			for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
 			{
-				if (new_pipe_layout->get_allocator(set) != current_layout->get_allocator(set))
+				if (layout->get_allocator(set) != pipeline_state.layout->get_allocator(set))
 				{
 					dirty_sets |= ~((1u << set) - 1);
 					break;
 				}
 			}
 		}
-		current_layout = program->get_pipeline_layout();
-		current_pipeline_layout = current_layout->get_layout();
 	}
+
+	pipeline_state.layout = layout;
+	current_pipeline_layout = pipeline_state.layout->get_layout();
 }
 
 void *CommandBuffer::allocate_constant_data(unsigned set, unsigned binding, VkDeviceSize size)
@@ -2320,7 +2425,7 @@ void CommandBuffer::set_unorm_storage_texture(unsigned set, unsigned binding, co
 
 void CommandBuffer::rebind_descriptor_set(uint32_t set)
 {
-	auto &layout = current_layout->get_resource_layout();
+	auto &layout = pipeline_state.layout->get_resource_layout();
 	if (layout.bindless_descriptor_set_mask & (1u << set))
 	{
 		VK_ASSERT(bindless_sets[set]);
@@ -2349,7 +2454,7 @@ void CommandBuffer::rebind_descriptor_set(uint32_t set)
 
 void CommandBuffer::flush_descriptor_set(uint32_t set)
 {
-	auto &layout = current_layout->get_resource_layout();
+	auto &layout = pipeline_state.layout->get_resource_layout();
 	if (layout.bindless_descriptor_set_mask & (1u << set))
 	{
 		VK_ASSERT(bindless_sets[set]);
@@ -2461,12 +2566,12 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 	});
 
 	Hash hash = h.get();
-	auto allocated = current_layout->get_allocator(set)->find(thread_index, hash);
+	auto allocated = pipeline_state.layout->get_allocator(set)->find(thread_index, hash);
 
 	// The descriptor set was not successfully cached, rebuild.
 	if (!allocated.second)
 	{
-		auto update_template = current_layout->get_update_template(set);
+		auto update_template = pipeline_state.layout->get_update_template(set);
 		VK_ASSERT(update_template);
 		table.vkUpdateDescriptorSetWithTemplate(device->get_device(), allocated.first,
 		                                        update_template, bindings.bindings[set]);
@@ -2479,7 +2584,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 
 void CommandBuffer::flush_descriptor_sets()
 {
-	auto &layout = current_layout->get_resource_layout();
+	auto &layout = pipeline_state.layout->get_resource_layout();
 
 	uint32_t set_update = layout.descriptor_set_mask & dirty_sets;
 	for_each_bit(set_update, [&](uint32_t set) { flush_descriptor_set(set); });

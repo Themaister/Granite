@@ -503,6 +503,7 @@ private:
 
 	uint64_t allocate_cookie();
 	void bake_program(Program &program, const ImmutableSamplerBank *sampler_bank);
+	void merge_combined_resource_layout(CombinedResourceLayout &layout, const Program &program);
 
 	void request_vertex_block(BufferBlock &block, VkDeviceSize size);
 	void request_index_block(BufferBlock &block, VkDeviceSize size);

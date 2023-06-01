@@ -505,16 +505,12 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 	return ret;
 }
 
-void Device::bake_program(Program &program, const ImmutableSamplerBank *sampler_bank)
+void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, const Program &program)
 {
-	CombinedResourceLayout layout;
 	if (program.get_shader(ShaderStage::Vertex))
-		layout.attribute_mask = program.get_shader(ShaderStage::Vertex)->get_layout().input_mask;
+		layout.attribute_mask |= program.get_shader(ShaderStage::Vertex)->get_layout().input_mask;
 	if (program.get_shader(ShaderStage::Fragment))
-		layout.render_target_mask = program.get_shader(ShaderStage::Fragment)->get_layout().output_mask;
-
-	ImmutableSamplerBank ext_immutable_samplers = {};
-	layout.descriptor_set_mask = 0;
+		layout.render_target_mask |= program.get_shader(ShaderStage::Fragment)->get_layout().output_mask;
 
 	for (unsigned i = 0; i < static_cast<unsigned>(ShaderStage::Count); i++)
 	{
@@ -579,6 +575,58 @@ void Device::bake_program(Program &program, const ImmutableSamplerBank *sampler_
 		layout.bindless_descriptor_set_mask |= shader_layout.bindless_set_mask;
 	}
 
+	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
+	{
+		if (layout.stages_for_sets[set] == 0)
+			continue;
+
+		layout.descriptor_set_mask |= 1u << set;
+
+		for (unsigned binding = 0; binding < VULKAN_NUM_BINDINGS; binding++)
+		{
+			auto &array_size = layout.sets[set].array_size[binding];
+			if (array_size == DescriptorSetLayout::UNSIZED_ARRAY)
+			{
+				for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
+				{
+					if (layout.stages_for_bindings[set][i] != 0)
+						LOGE("Using bindless for set = %u, but binding = %u has a descriptor attached to it.\n", set, i);
+				}
+
+				// Allows us to have one unified descriptor set layout for bindless.
+				layout.stages_for_bindings[set][binding] = VK_SHADER_STAGE_ALL;
+			}
+			else if (array_size == 0)
+			{
+				array_size = 1;
+			}
+			else
+			{
+				for (unsigned i = 1; i < array_size; i++)
+				{
+					if (layout.stages_for_bindings[set][binding + i] != 0)
+					{
+						LOGE("Detected binding aliasing for (%u, %u). Binding array with %u elements starting at (%u, %u) overlaps.\n",
+							 set, binding + i, array_size, set, binding);
+					}
+				}
+			}
+		}
+	}
+
+	Hasher h;
+	h.u32(layout.push_constant_range.stageFlags);
+	h.u32(layout.push_constant_range.size);
+	layout.push_constant_layout_hash = h.get();
+}
+
+void Device::bake_program(Program &program, const ImmutableSamplerBank *sampler_bank)
+{
+	CombinedResourceLayout layout;
+	ImmutableSamplerBank ext_immutable_samplers = {};
+
+	merge_combined_resource_layout(layout, program);
+
 	if (sampler_bank)
 	{
 		for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
@@ -594,49 +642,6 @@ void Device::bake_program(Program &program, const ImmutableSamplerBank *sampler_
 		}
 	}
 
-	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
-	{
-		if (layout.stages_for_sets[set] != 0)
-		{
-			layout.descriptor_set_mask |= 1u << set;
-
-			for (unsigned binding = 0; binding < VULKAN_NUM_BINDINGS; binding++)
-			{
-				auto &array_size = layout.sets[set].array_size[binding];
-				if (array_size == DescriptorSetLayout::UNSIZED_ARRAY)
-				{
-					for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
-					{
-						if (layout.stages_for_bindings[set][i] != 0)
-							LOGE("Using bindless for set = %u, but binding = %u has a descriptor attached to it.\n", set, i);
-					}
-
-					// Allows us to have one unified descriptor set layout for bindless.
-					layout.stages_for_bindings[set][binding] = VK_SHADER_STAGE_ALL;
-				}
-				else if (array_size == 0)
-				{
-					array_size = 1;
-				}
-				else
-				{
-					for (unsigned i = 1; i < array_size; i++)
-					{
-						if (layout.stages_for_bindings[set][binding + i] != 0)
-						{
-							LOGE("Detected binding aliasing for (%u, %u). Binding array with %u elements starting at (%u, %u) overlaps.\n",
-							     set, binding + i, array_size, set, binding);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	Hasher h;
-	h.u32(layout.push_constant_range.stageFlags);
-	h.u32(layout.push_constant_range.size);
-	layout.push_constant_layout_hash = h.get();
 	program.set_pipeline_layout(request_pipeline_layout(layout, &ext_immutable_samplers));
 }
 

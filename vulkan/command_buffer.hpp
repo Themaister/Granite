@@ -251,6 +251,9 @@ struct CommandBufferSavedState
 struct DeferredPipelineCompile
 {
 	Program *program;
+	const PipelineLayout *layout;
+	std::vector<Program *> program_group;
+
 	const RenderPass *compatible_render_pass;
 	PipelineState static_state;
 	PotentialState potential_static_state;
@@ -436,6 +439,7 @@ public:
 	                                                                          const RenderPassInfo &rp, unsigned thread_index, unsigned subpass);
 
 	void set_program(Program *program);
+	void set_program_group(Program * const *programs, unsigned num_programs, const PipelineLayout *layout);
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	// Convenience functions for one-off shader binds.
@@ -794,7 +798,6 @@ private:
 
 	Pipeline current_pipeline = {};
 	VkPipelineLayout current_pipeline_layout = VK_NULL_HANDLE;
-	PipelineLayout *current_layout = nullptr;
 	VkSubpassContents current_contents = VK_SUBPASS_CONTENTS_INLINE;
 	unsigned thread_index = 0;
 
@@ -867,6 +870,8 @@ private:
 	static void update_hash_graphics_pipeline(DeferredPipelineCompile &compile, uint32_t &active_vbos);
 	static void update_hash_compute_pipeline(DeferredPipelineCompile &compile);
 	void set_surface_transform_specialization_constants();
+
+	void set_program_layout(const PipelineLayout *layout);
 };
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES

@@ -100,14 +100,22 @@ public:
 
 	ExternalHandle export_handle();
 
+	VkDeviceAddress get_device_address() const
+	{
+		VK_ASSERT(bda);
+		return bda;
+	}
+
 private:
 	friend class Util::ObjectPool<Buffer>;
-	Buffer(Device *device, VkBuffer buffer, const DeviceAllocation &alloc, const BufferCreateInfo &info);
+	Buffer(Device *device, VkBuffer buffer, const DeviceAllocation &alloc, const BufferCreateInfo &info,
+		   VkDeviceAddress bda);
 
 	Device *device;
 	VkBuffer buffer;
 	DeviceAllocation alloc;
 	BufferCreateInfo info;
+	VkDeviceAddress bda;
 };
 using BufferHandle = Util::IntrusivePtr<Buffer>;
 

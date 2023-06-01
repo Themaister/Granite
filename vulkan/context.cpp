@@ -1522,6 +1522,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		vkGetPhysicalDeviceFeatures2(gpu, &pdf2);
 	}
 
+	ext.buffer_device_address_features.bufferDeviceAddressCaptureReplay = VK_FALSE;
+	ext.buffer_device_address_features.bufferDeviceAddressMultiDevice = VK_FALSE;
+
 	// Enable device features we might care about.
 	{
 		VkPhysicalDeviceFeatures enabled_features = *required_features;

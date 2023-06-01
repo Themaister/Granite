@@ -4375,6 +4375,8 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	info.size = create_info.size;
 	info.usage = create_info.usage;
+	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+		info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.pNext = &external_info;
 
@@ -4428,6 +4430,13 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	                            ~(ext.host_memory_properties.minImportedHostPointerAlignment - 1);
 	alloc_info.memoryTypeIndex = memory_type;
 
+	VkMemoryAllocateFlagsInfo flags_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO };
+	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+	{
+		alloc_info.pNext = &flags_info;
+		flags_info.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
+	}
+
 	VkImportMemoryHostPointerInfoEXT import = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT };
 	import.handleType = type;
 	import.pHostPointer = host_buffer;
@@ -4461,7 +4470,15 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 		return BufferHandle{};
 	}
 
-	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, create_info));
+	VkDeviceAddress bda = 0;
+	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+	{
+		VkBufferDeviceAddressInfoKHR bda_info = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_KHR };
+		bda_info.buffer = buffer;
+		bda = table->vkGetBufferDeviceAddressKHR(device, &bda_info);
+	}
+
+	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, create_info, bda));
 	return handle;
 }
 
@@ -4487,6 +4504,8 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	info.size = create_info.size;
 	info.usage = create_info.usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+		info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	uint32_t sharing_indices[QUEUE_INDEX_COUNT];
@@ -4625,7 +4644,16 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	auto tmpinfo = create_info;
 	tmpinfo.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, tmpinfo));
+
+	VkDeviceAddress bda = 0;
+	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+	{
+		VkBufferDeviceAddressInfoKHR bda_info = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_KHR };
+		bda_info.buffer = buffer;
+		bda = table->vkGetBufferDeviceAddressKHR(device, &bda_info);
+	}
+
+	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, tmpinfo, bda));
 
 	if (create_info.domain == BufferDomain::Device && (initial || zero_initialize) && !memory_type_is_host_visible(memory_type))
 	{

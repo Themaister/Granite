@@ -76,6 +76,8 @@ struct ProfileHolder
 #endif
 #endif
 
+#define NV_DRIVER_VERSION_MAJOR(v) (uint32_t(v) >> 22)
+
 namespace Vulkan
 {
 static constexpr ContextCreationFlags video_context_flags =
@@ -1474,7 +1476,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
-		bool broken_present_wait = ext.driver_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY;
+		bool broken_present_wait = ext.driver_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
+		                           NV_DRIVER_VERSION_MAJOR(gpu_props.driverVersion) < 535;
 
 		if (broken_present_wait)
 		{

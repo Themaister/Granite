@@ -1,161 +1,175 @@
-#include "global_managers_init.hpp"
-#include "filesystem.hpp"
+#include "application.hpp"
+#include "command_buffer.hpp"
 #include "device.hpp"
-#include "context.hpp"
+#include "os_filesystem.hpp"
+#include "muglm/muglm_impl.hpp"
+#include <string.h>
 
 using namespace Granite;
 using namespace Vulkan;
 
-static int main_inner()
+struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 {
-	Context::SystemHandles handles;
-	Context ctx;
-	Device device;
-
-	VkApplicationInfo app = {};
-	app.apiVersion = VK_API_VERSION_1_1;
-	app.pEngineName = "vkd3d";
-	ctx.set_application_info(&app);
-
-	handles.filesystem = GRANITE_FILESYSTEM();
-	ctx.set_system_handles(handles);
-
-	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0))
-		return EXIT_FAILURE;
-
-	device.set_context(ctx);
-	auto &table = device.get_device_table();
-
-	VkIndirectCommandsLayoutCreateInfoNV info = { VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_CREATE_INFO_NV };
-
-	info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
-	const uint32_t stride = 16;
-	info.pStreamStrides = &stride;
-	info.streamCount = 1;
-
-	VkIndirectCommandsLayoutTokenNV tokens[2] = {};
-
-	auto *cs = device.get_shader_manager().register_compute("assets://shaders/atomic_increment.comp")->register_variant({})->get_program();
-
-	tokens[0].sType = VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_TOKEN_NV;
-	tokens[0].tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV;
-	tokens[0].pushconstantShaderStageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-	tokens[0].pushconstantPipelineLayout = cs->get_pipeline_layout()->get_layout();
-	tokens[0].pushconstantSize = 4;
-	tokens[1].sType = VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_TOKEN_NV;
-	tokens[1].tokenType = (VkIndirectCommandsTokenTypeNV)8; // Magic froggery.
-	tokens[1].offset = 4;
-	info.pTokens = &tokens[1];
-	info.tokenCount = 1;
-
-	VkIndirectCommandsLayoutNV layout;
-	if (table.vkCreateIndirectCommandsLayoutNV(device.get_device(), &info, nullptr, &layout) != VK_SUCCESS)
+	DGCTriangleApplication()
 	{
-		LOGI("Failed to create layout.\n");
-		return EXIT_FAILURE;
+		EVENT_MANAGER_REGISTER_LATCH(DGCTriangleApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 	}
 
-	BufferCreateInfo atomic_info = {};
-	atomic_info.size = 4;
-	atomic_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	atomic_info.domain = BufferDomain::CachedHost;
-	atomic_info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
-	auto atomic_buffer = device.create_buffer(atomic_info);
+	VkIndirectCommandsLayoutNV indirect_layout = VK_NULL_HANDLE;
+	Vulkan::BufferHandle dgc_buffer;
 
-	const uint32_t dispatch_count_data[] = { 1, 1, 2, 3, 1, 4, 4, 4 };
-	uint32_t count_value = 2;
-
-	BufferCreateInfo count_info = {};
-	count_info.size = 4;
-	count_info.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-	count_info.domain = BufferDomain::LinkedDeviceHost;
-	auto count_buffer = device.create_buffer(count_info, &count_value);
-
-#define ACE 1
-	auto cmd = device.request_command_buffer(ACE ? CommandBuffer::Type::AsyncCompute : CommandBuffer::Type::Generic);
-
+	void on_device_created(const DeviceCreatedEvent &e)
 	{
-		cmd->set_program(cs);
-		cmd->set_storage_buffer(0, 0, *atomic_buffer);
+		VkIndirectCommandsLayoutCreateInfoNV info = { VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_CREATE_INFO_NV };
 
-		VkPipeline pipeline = cmd->get_current_compute_pipeline();
+		struct DGC
+		{
+			VkBindShaderGroupIndirectCommandNV shader;
+			VkDrawIndirectCommand draw;
+		};
 
-		VkGeneratedCommandsMemoryRequirementsInfoNV generated =
-				{ VK_STRUCTURE_TYPE_GENERATED_COMMANDS_MEMORY_REQUIREMENTS_INFO_NV };
-		VkMemoryRequirements2 reqs = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
+		info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		const uint32_t stride = sizeof(DGC);
+		info.pStreamStrides = &stride;
+		info.streamCount = 1;
 
-		generated.pipeline = pipeline;
-		generated.pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
-		generated.indirectCommandsLayout = layout;
-		generated.maxSequencesCount = 1;
+		VkIndirectCommandsLayoutTokenNV tokens[2] = {};
 
-		table.vkGetGeneratedCommandsMemoryRequirementsNV(device.get_device(), &generated, &reqs);
+		tokens[0].sType = VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_TOKEN_NV;
+		tokens[0].tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_SHADER_GROUP_NV;
+		tokens[0].offset = offsetof(DGC, shader);
+		tokens[1].sType = VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_TOKEN_NV;
+		tokens[1].tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NV;
+		tokens[1].offset = offsetof(DGC, draw);
+		info.pTokens = tokens;
+		info.tokenCount = 2;
 
-		BufferCreateInfo bufinfo = {};
-		bufinfo.size = reqs.memoryRequirements.size;
-		bufinfo.domain = BufferDomain::Device;
-		bufinfo.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-		bufinfo.allocation_requirements = reqs.memoryRequirements;
-		auto preprocess_buffer = device.create_buffer(bufinfo);
+		auto &table = e.get_device().get_device_table();
+		if (table.vkCreateIndirectCommandsLayoutNV(e.get_device().get_device(), &info,
+												   nullptr, &indirect_layout) != VK_SUCCESS)
+		{
+			LOGI("Failed to create layout.\n");
+			return;
+		}
 
-		bufinfo.allocation_requirements = {};
-		bufinfo.size = sizeof(dispatch_count_data);
-		bufinfo.domain = BufferDomain::LinkedDeviceHost;
-		auto indirect_buffer = device.create_buffer(bufinfo, dispatch_count_data);
+		static const DGC dgc_data[] = {
+			{ { 0 }, { 3, 1, 0, 0 } },
+			{ { 1 }, { 3, 1, 0, 0 } },
+			{ { 2 }, { 3, 1, 0, 0 } },
+		};
 
-		VkGeneratedCommandsInfoNV exec_info = { VK_STRUCTURE_TYPE_GENERATED_COMMANDS_INFO_NV };
-
-		VkIndirectCommandsStreamNV stream = {};
-		stream.buffer = indirect_buffer->get_buffer();
-		stream.offset = 0;
-
-		uint32_t c = 1;
-		cmd->push_constants(&c, 0, sizeof(c));
-
-		exec_info.indirectCommandsLayout = layout;
-		exec_info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
-		exec_info.streamCount = 1;
-		exec_info.pStreams = &stream;
-		exec_info.preprocessSize = preprocess_buffer->get_create_info().size;
-		exec_info.preprocessBuffer = preprocess_buffer->get_buffer();
-		exec_info.sequencesCount = sizeof(dispatch_count_data) / 16;
-		exec_info.pipeline = cmd->get_current_compute_pipeline();
-		exec_info.sequencesCountBuffer = count_buffer->get_buffer();
-		exec_info.sequencesCountOffset = 0;
-		table.vkCmdExecuteGeneratedCommandsNV(cmd->get_command_buffer(), VK_FALSE, &exec_info);
-
-		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-					 VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+		BufferCreateInfo buf_info = {};
+		buf_info.domain = BufferDomain::LinkedDeviceHost;
+		buf_info.size = sizeof(dgc_data);
+		buf_info.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+		dgc_buffer = e.get_device().create_buffer(buf_info, dgc_data);
 	}
 
-	Fence fence;
-	device.submit(cmd, &fence);
-	fence->wait();
-
-	auto *mapped = static_cast<uint32_t *>(device.map_host_buffer(*atomic_buffer, MEMORY_ACCESS_READ_BIT));
-	LOGI("Result: %u\n", mapped[0]);
-
-	uint32_t expected = 0;
-	for (unsigned i = 0; i < std::min<uint32_t>(count_value, sizeof(dispatch_count_data) / 16); i++)
+	void on_device_destroyed(const DeviceCreatedEvent &e)
 	{
-		expected += 64 * dispatch_count_data[4 * i + 0] *
-		            dispatch_count_data[4 * i + 1] *
-		            dispatch_count_data[4 * i + 2] *
-		            dispatch_count_data[4 * i + 3];
-	}
-	LOGI("Expected result: %u\n", expected);
+		dgc_buffer.reset();
 
-	table.vkDestroyIndirectCommandsLayoutNV(device.get_device(), layout, nullptr);
-	return EXIT_SUCCESS;
+		e.get_device().wait_idle();
+		e.get_device().get_device_table().vkDestroyIndirectCommandsLayoutNV(
+				e.get_device().get_device(), indirect_layout, nullptr);
+		indirect_layout = VK_NULL_HANDLE;
+	}
+
+	void render_frame(double, double elapsed_time) override
+	{
+		auto &wsi = get_wsi();
+		auto &device = wsi.get_device();
+
+		auto cmd = device.request_command_buffer();
+
+		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly));
+		cmd->set_program("assets://shaders/dgc.vert", "assets://shaders/dgc.frag");
+		cmd->set_opaque_state();
+		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+
+		auto *base = device.get_shader_manager().register_graphics("assets://shaders/dgc.vert", "assets://shaders/dgc.frag");
+		Program * const programs[] = {
+			base->register_variant({{ "DGC", 0 }})->get_program(),
+			base->register_variant({{ "DGC", 1 }})->get_program(),
+			base->register_variant({{ "DGC", 2 }})->get_program(),
+		};
+
+		cmd->set_program_group(programs, 3, nullptr);
+
+		vec2 vertices[] = {
+			vec2(-0.5f, -0.5f),
+			vec2(-0.5f, +0.5f),
+			vec2(+0.5f, -0.5f),
+		};
+
+		auto c = float(muglm::cos(elapsed_time * 2.0));
+		auto s = float(muglm::sin(elapsed_time * 2.0));
+		mat2 m{vec2(c, -s), vec2(s, c)};
+		for (auto &v : vertices)
+			v = m * v;
+
+		auto *verts = static_cast<vec2 *>(cmd->allocate_vertex_data(0, sizeof(vertices), sizeof(vec2)));
+		memcpy(verts, vertices, sizeof(vertices));
+		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32G32_SFLOAT, 0);
+
+		auto &table = device.get_device_table();
+
+		{
+			// TODO: automate this.
+			VkGeneratedCommandsMemoryRequirementsInfoNV generated =
+					{ VK_STRUCTURE_TYPE_GENERATED_COMMANDS_MEMORY_REQUIREMENTS_INFO_NV };
+			VkMemoryRequirements2 reqs = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
+
+			generated.pipeline = cmd->get_current_graphics_pipeline();
+			generated.pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
+			generated.indirectCommandsLayout = indirect_layout;
+			generated.maxSequencesCount = 3;
+
+			table.vkGetGeneratedCommandsMemoryRequirementsNV(device.get_device(), &generated, &reqs);
+
+			BufferCreateInfo bufinfo = {};
+			bufinfo.size = reqs.memoryRequirements.size;
+			bufinfo.domain = BufferDomain::Device;
+			bufinfo.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+			bufinfo.allocation_requirements = reqs.memoryRequirements;
+			auto preprocess_buffer = device.create_buffer(bufinfo);
+
+			VkIndirectCommandsStreamNV stream = {};
+			stream.buffer = dgc_buffer->get_buffer();
+			stream.offset = 0;
+
+			VkGeneratedCommandsInfoNV exec_info = { VK_STRUCTURE_TYPE_GENERATED_COMMANDS_INFO_NV };
+			exec_info.indirectCommandsLayout = indirect_layout;
+			exec_info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+			exec_info.streamCount = 1;
+			exec_info.pStreams = &stream;
+			exec_info.preprocessSize = preprocess_buffer->get_create_info().size;
+			exec_info.preprocessBuffer = preprocess_buffer->get_buffer();
+			exec_info.sequencesCount = 3;
+			exec_info.pipeline = cmd->get_current_graphics_pipeline();
+			device.get_device_table().vkCmdExecuteGeneratedCommandsNV(cmd->get_command_buffer(), VK_FALSE, &exec_info);
+		}
+
+		cmd->end_render_pass();
+		device.submit(cmd);
+	}
+};
+
+namespace Granite
+{
+Application *application_create(int, char **)
+{
+	GRANITE_APPLICATION_SETUP_FILESYSTEM();
+
+	try
+	{
+		auto *app = new DGCTriangleApplication();
+		return app;
+	}
+	catch (const std::exception &e)
+	{
+		LOGE("application_create() threw exception: %s\n", e.what());
+		return nullptr;
+	}
 }
-
-int main()
-{
-	Global::init(Global::MANAGER_FEATURE_FILESYSTEM_BIT);
-	if (!Context::init_loader(nullptr))
-		return EXIT_FAILURE;
-	Filesystem::setup_default_filesystem(GRANITE_FILESYSTEM(), ASSET_DIRECTORY);
-	int ret = main_inner();
-	Global::deinit();
-	return ret;
 }

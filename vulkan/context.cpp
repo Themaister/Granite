@@ -1082,10 +1082,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		{
 			flags |= CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT;
 		}
-		else if (strcmp(required_device_extensions[i], VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME) == 0)
-		{
-			flags &= ~CONTEXT_CREATION_DISABLE_BINDLESS_BIT;
-		}
 	}
 
 #if defined(ANDROID) && defined(HAVE_SWAPPY)
@@ -1389,7 +1385,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ppNext = &ext.timeline_semaphore_features.pNext;
 	}
 
-	if ((flags & CONTEXT_CREATION_DISABLE_BINDLESS_BIT) == 0 && has_extension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
+	if (has_extension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
 		*ppNext = &ext.descriptor_indexing_features;

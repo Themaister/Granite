@@ -190,12 +190,12 @@ public:
 		return shaders[Util::ecast(stage)];
 	}
 
-	void set_pipeline_layout(PipelineLayout *new_layout)
+	void set_pipeline_layout(const PipelineLayout *new_layout)
 	{
 		layout = new_layout;
 	}
 
-	PipelineLayout *get_pipeline_layout() const
+	const PipelineLayout *get_pipeline_layout() const
 	{
 		return layout;
 	}
@@ -209,7 +209,7 @@ private:
 	void set_shader(ShaderStage stage, Shader *handle);
 	Device *device;
 	Shader *shaders[Util::ecast(ShaderStage::Count)] = {};
-	PipelineLayout *layout = nullptr;
+	const PipelineLayout *layout = nullptr;
 	VulkanCache<Util::IntrusivePODWrapper<Pipeline>> pipelines;
 	void destroy_pipeline(const Pipeline &pipeline);
 };

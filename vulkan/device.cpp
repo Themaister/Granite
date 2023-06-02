@@ -460,8 +460,8 @@ Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size
 	return request_program(vertex, fragment);
 }
 
-PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &layout,
-                                                const ImmutableSamplerBank *sampler_bank)
+const PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &layout,
+                                                      const ImmutableSamplerBank *sampler_bank)
 {
 	Hasher h;
 	h.data(reinterpret_cast<const uint32_t *>(layout.sets), sizeof(layout.sets));

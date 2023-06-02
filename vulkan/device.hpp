@@ -517,8 +517,8 @@ private:
 	VkQueue get_current_present_queue() const;
 	CommandBuffer::Type get_current_present_queue_type() const;
 
-	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout,
-	                                        const ImmutableSamplerBank *immutable_samplers);
+	const PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout,
+	                                              const ImmutableSamplerBank *immutable_samplers);
 	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout,
 	                                                         const uint32_t *stages_for_sets,
 	                                                         const ImmutableSampler * const *immutable_samplers);

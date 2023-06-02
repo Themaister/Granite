@@ -17,6 +17,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 
 	VkIndirectCommandsLayoutNV indirect_layout = VK_NULL_HANDLE;
 	Vulkan::BufferHandle dgc_buffer;
+	Vulkan::BufferHandle vbo;
 
 	void on_device_created(const DeviceCreatedEvent &e)
 	{
@@ -25,6 +26,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		struct DGC
 		{
 			VkBindShaderGroupIndirectCommandNV shader;
+			alignas(8) VkBindVertexBufferIndirectCommandNV vbo;
 			VkDrawIndirectCommand draw;
 		};
 
@@ -33,16 +35,19 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		info.pStreamStrides = &stride;
 		info.streamCount = 1;
 
-		VkIndirectCommandsLayoutTokenNV tokens[2] = {};
+		VkIndirectCommandsLayoutTokenNV tokens[3] = {};
 
 		tokens[0].sType = VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_TOKEN_NV;
 		tokens[0].tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_SHADER_GROUP_NV;
 		tokens[0].offset = offsetof(DGC, shader);
 		tokens[1].sType = VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_TOKEN_NV;
-		tokens[1].tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NV;
-		tokens[1].offset = offsetof(DGC, draw);
+		tokens[1].offset = offsetof(DGC, vbo);
+		tokens[1].tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_NV;
+		tokens[2].sType = VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_TOKEN_NV;
+		tokens[2].tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NV;
+		tokens[2].offset = offsetof(DGC, draw);
 		info.pTokens = tokens;
-		info.tokenCount = 2;
+		info.tokenCount = 3;
 
 		auto &table = e.get_device().get_device_table();
 		if (table.vkCreateIndirectCommandsLayoutNV(e.get_device().get_device(), &info,
@@ -52,10 +57,33 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 			return;
 		}
 
+		const vec2 base_vertices[] = {
+			vec2(-0.5f, -0.5f),
+			vec2(-0.5f, +0.5f),
+			vec2(+0.5f, -0.5f),
+		};
+
+		const vec2 offsets[] = {
+			vec2(0.5f, 0.5f),
+			vec2(-0.5f, -0.5f),
+			vec2(-0.5f, 0.5f),
+		};
+
+		vec2 vertices[3][3];
+		for (unsigned prim = 0; prim < 3; prim++)
+			for (unsigned i = 0; i < 3; i++)
+				vertices[prim][i] = base_vertices[i] * 0.125f + offsets[prim];
+
+		BufferCreateInfo vbo_info = {};
+		vbo_info.size = sizeof(vertices);
+		vbo_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		vbo_info.domain = BufferDomain::Device;
+		vbo = e.get_device().create_buffer(vbo_info, vertices);
+
 		static const DGC dgc_data[] = {
-			{ { 0 }, { 3, 1, 0, 0 } },
-			{ { 1 }, { 3, 1, 0, 0 } },
-			{ { 2 }, { 3, 1, 0, 0 } },
+			{ { 0 }, { vbo->get_device_address(), 3 * sizeof(vec2) }, { 3, 4, 0, 0 } },
+			{ { 1 }, { vbo->get_device_address() + 3 * sizeof(vec2), 3 * sizeof(vec2) }, { 3, 4, 0, 0 } },
+			{ { 2 }, { vbo->get_device_address() + 2 * 3 * sizeof(vec2), 3 * sizeof(vec2) }, { 3, 4, 0, 0 } },
 		};
 
 		BufferCreateInfo buf_info = {};
@@ -68,6 +96,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 	void on_device_destroyed(const DeviceCreatedEvent &e)
 	{
 		dgc_buffer.reset();
+		vbo.reset();
 
 		e.get_device().wait_idle();
 		e.get_device().get_device_table().vkDestroyIndirectCommandsLayoutNV(
@@ -75,7 +104,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		indirect_layout = VK_NULL_HANDLE;
 	}
 
-	void render_frame(double, double elapsed_time) override
+	void render_frame(double, double) override
 	{
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
@@ -96,21 +125,16 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 
 		cmd->set_program_group(programs, 3, nullptr);
 
-		vec2 vertices[] = {
-			vec2(-0.5f, -0.5f),
-			vec2(-0.5f, +0.5f),
-			vec2(+0.5f, -0.5f),
-		};
-
-		auto c = float(muglm::cos(elapsed_time * 2.0));
-		auto s = float(muglm::sin(elapsed_time * 2.0));
-		mat2 m{vec2(c, -s), vec2(s, c)};
-		for (auto &v : vertices)
-			v = m * v;
-
-		auto *verts = static_cast<vec2 *>(cmd->allocate_vertex_data(0, sizeof(vertices), sizeof(vec2)));
-		memcpy(verts, vertices, sizeof(vertices));
+		cmd->set_vertex_binding(0, *vbo, 0, sizeof(vec2));
 		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32G32_SFLOAT, 0);
+
+		auto *offsets = static_cast<vec2 *>(cmd->allocate_vertex_data(
+				1, 4 * sizeof(vec2), sizeof(vec2), VK_VERTEX_INPUT_RATE_INSTANCE));
+		offsets[0] = vec2(-0.1f, -0.1f);
+		offsets[1] = vec2(+0.1f, -0.1f);
+		offsets[2] = vec2(-0.1f, +0.1f);
+		offsets[3] = vec2(+0.1f, +0.1f);
+		cmd->set_vertex_attrib(1, 1, VK_FORMAT_R32G32_SFLOAT, 0);
 
 		auto &table = device.get_device_table();
 

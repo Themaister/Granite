@@ -26,6 +26,7 @@
 #include "format.hpp"
 #include "thread_id.hpp"
 #include "vulkan_prerotate.hpp"
+#include "indirect_layout.hpp"
 #include "timer.hpp"
 #include <string.h>
 
@@ -2695,7 +2696,7 @@ void CommandBuffer::dispatch_indirect(const Buffer &buffer, uint32_t offset)
 }
 
 void CommandBuffer::execute_indirect_commands(
-		VkIndirectCommandsLayoutNV layout, uint32_t sequences,
+		const IndirectLayout *indirect_layout, uint32_t sequences,
 		const Vulkan::Buffer &indirect, VkDeviceSize offset,
 		const Vulkan::Buffer *count, size_t count_offset)
 {
@@ -2715,8 +2716,8 @@ void CommandBuffer::execute_indirect_commands(
 	VkMemoryRequirements2 reqs = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
 
 	generated.pipeline = current_pipeline.pipeline;
-	generated.pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
-	generated.indirectCommandsLayout = layout;
+	generated.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	generated.indirectCommandsLayout = indirect_layout->get_layout();
 	generated.maxSequencesCount = sequences;
 
 	table.vkGetGeneratedCommandsMemoryRequirementsNV(device->get_device(), &generated, &reqs);
@@ -2733,7 +2734,7 @@ void CommandBuffer::execute_indirect_commands(
 	stream.offset = offset;
 
 	VkGeneratedCommandsInfoNV exec_info = { VK_STRUCTURE_TYPE_GENERATED_COMMANDS_INFO_NV };
-	exec_info.indirectCommandsLayout = layout;
+	exec_info.indirectCommandsLayout = indirect_layout->get_layout();
 	exec_info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	exec_info.streamCount = 1;
 	exec_info.pStreams = &stream;

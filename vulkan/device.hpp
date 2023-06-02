@@ -38,6 +38,7 @@
 #include "context.hpp"
 #include "query_pool.hpp"
 #include "buffer_pool.hpp"
+#include "indirect_layout.hpp"
 #include <memory>
 #include <vector>
 #include <functional>
@@ -298,6 +299,8 @@ public:
 	                         const ResourceLayout *layout = nullptr);
 	Program *request_program(Shader *vertex, Shader *fragment, const ImmutableSamplerBank *sampler_bank = nullptr);
 	Program *request_program(Shader *compute, const ImmutableSamplerBank *sampler_bank = nullptr);
+	const IndirectLayout *request_indirect_layout(const IndirectLayoutToken *tokens,
+	                                              uint32_t num_tokens, uint32_t stride);
 
 	const ImmutableYcbcrConversion *request_immutable_ycbcr_conversion(const VkSamplerYcbcrConversionCreateInfo &info);
 	const ImmutableSampler *request_immutable_sampler(const SamplerCreateInfo &info, const ImmutableYcbcrConversion *ycbcr);
@@ -609,7 +612,6 @@ private:
 		std::vector<DeviceAllocation> allocations;
 		std::vector<VkFramebuffer> destroyed_framebuffers;
 		std::vector<VkSampler> destroyed_samplers;
-		std::vector<VkPipeline> destroyed_pipelines;
 		std::vector<VkImageView> destroyed_image_views;
 		std::vector<VkBufferView> destroyed_buffer_views;
 		std::vector<VkImage> destroyed_images;
@@ -721,6 +723,7 @@ private:
 	VulkanCache<Program> programs;
 	VulkanCache<ImmutableSampler> immutable_samplers;
 	VulkanCache<ImmutableYcbcrConversion> immutable_ycbcr_conversions;
+	VulkanCache<IndirectLayout> indirect_layouts;
 
 	FramebufferAllocator framebuffer_allocator;
 	TransientAttachmentAllocator transient_allocator;
@@ -756,7 +759,6 @@ private:
 	void destroy_image(VkImage image);
 	void destroy_image_view(VkImageView view);
 	void destroy_buffer_view(VkBufferView view);
-	void destroy_pipeline(VkPipeline pipeline);
 	void destroy_sampler(VkSampler sampler);
 	void destroy_framebuffer(VkFramebuffer framebuffer);
 	void destroy_semaphore(VkSemaphore semaphore);
@@ -771,7 +773,6 @@ private:
 	void destroy_image_nolock(VkImage image);
 	void destroy_image_view_nolock(VkImageView view);
 	void destroy_buffer_view_nolock(VkBufferView view);
-	void destroy_pipeline_nolock(VkPipeline pipeline);
 	void destroy_sampler_nolock(VkSampler sampler);
 	void destroy_framebuffer_nolock(VkFramebuffer framebuffer);
 	void destroy_semaphore_nolock(VkSemaphore semaphore);

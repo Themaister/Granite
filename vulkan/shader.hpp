@@ -178,7 +178,7 @@ struct Pipeline
 	uint32_t dynamic_mask;
 };
 
-class Program : public HashedObject<Program>, public InternalSyncEnabled
+class Program : public HashedObject<Program>
 {
 public:
 	Program(Device *device, Shader *vertex, Shader *fragment, const ImmutableSamplerBank *sampler_bank);

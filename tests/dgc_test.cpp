@@ -15,14 +15,12 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		EVENT_MANAGER_REGISTER_LATCH(DGCTriangleApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 	}
 
-	VkIndirectCommandsLayoutNV indirect_layout = VK_NULL_HANDLE;
+	const IndirectLayout *indirect_layout = nullptr;
 	Vulkan::BufferHandle dgc_buffer;
 	Vulkan::BufferHandle vbo;
 
 	void on_device_created(const DeviceCreatedEvent &e)
 	{
-		VkIndirectCommandsLayoutCreateInfoNV info = { VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_CREATE_INFO_NV };
-
 		struct DGC
 		{
 			VkBindShaderGroupIndirectCommandNV shader;
@@ -30,32 +28,17 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 			VkDrawIndirectCommand draw;
 		};
 
-		info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-		const uint32_t stride = sizeof(DGC);
-		info.pStreamStrides = &stride;
-		info.streamCount = 1;
+		IndirectLayoutToken tokens[3] = {};
 
-		VkIndirectCommandsLayoutTokenNV tokens[3] = {};
-
-		tokens[0].sType = VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_TOKEN_NV;
-		tokens[0].tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_SHADER_GROUP_NV;
+		tokens[0].type = IndirectLayoutToken::Type::Shader;
 		tokens[0].offset = offsetof(DGC, shader);
-		tokens[1].sType = VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_TOKEN_NV;
+		tokens[1].type = IndirectLayoutToken::Type::VBO;
 		tokens[1].offset = offsetof(DGC, vbo);
-		tokens[1].tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_NV;
-		tokens[2].sType = VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_TOKEN_NV;
-		tokens[2].tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NV;
+		tokens[1].data.vbo.binding = 0;
+		tokens[2].type = IndirectLayoutToken::Type::Draw;
 		tokens[2].offset = offsetof(DGC, draw);
-		info.pTokens = tokens;
-		info.tokenCount = 3;
 
-		auto &table = e.get_device().get_device_table();
-		if (table.vkCreateIndirectCommandsLayoutNV(e.get_device().get_device(), &info,
-												   nullptr, &indirect_layout) != VK_SUCCESS)
-		{
-			LOGI("Failed to create layout.\n");
-			return;
-		}
+		indirect_layout = e.get_device().request_indirect_layout(tokens, 3, sizeof(DGC));
 
 		const vec2 base_vertices[] = {
 			vec2(-0.5f, -0.5f),
@@ -93,15 +76,11 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		dgc_buffer = e.get_device().create_buffer(buf_info, dgc_data);
 	}
 
-	void on_device_destroyed(const DeviceCreatedEvent &e)
+	void on_device_destroyed(const DeviceCreatedEvent &)
 	{
 		dgc_buffer.reset();
 		vbo.reset();
-
-		e.get_device().wait_idle();
-		e.get_device().get_device_table().vkDestroyIndirectCommandsLayoutNV(
-				e.get_device().get_device(), indirect_layout, nullptr);
-		indirect_layout = VK_NULL_HANDLE;
+		indirect_layout = nullptr;
 	}
 
 	void render_frame(double, double) override

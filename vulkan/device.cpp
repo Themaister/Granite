@@ -505,6 +505,38 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 	return ret;
 }
 
+const IndirectLayout *Device::request_indirect_layout(
+		const Vulkan::IndirectLayoutToken *tokens, uint32_t num_tokens, uint32_t stride)
+{
+	Hasher h;
+	for (uint32_t i = 0; i < num_tokens; i++)
+		h.u32(Util::ecast(tokens[i].type));
+
+	for (uint32_t i = 0; i < num_tokens; i++)
+	{
+		h.u32(tokens[i].offset);
+		if (tokens[i].type == IndirectLayoutToken::Type::PushConstant)
+		{
+			h.u64(tokens[i].data.push.layout->get_hash());
+			h.u32(tokens[i].data.push.offset);
+			h.u32(tokens[i].data.push.range);
+		}
+		else if (tokens[i].type == IndirectLayoutToken::Type::VBO)
+		{
+			h.u32(tokens[i].data.vbo.binding);
+		}
+	}
+
+	h.u32(stride);
+	auto hash = h.get();
+
+	LOCK_CACHE();
+	auto *ret = indirect_layouts.find(hash);
+	if (!ret)
+		ret = indirect_layouts.emplace_yield(hash, this, tokens, num_tokens, stride);
+	return ret;
+}
+
 void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, const Program &program)
 {
 	if (program.get_shader(ShaderStage::Vertex))
@@ -2244,12 +2276,6 @@ static inline bool exists(const T &container, const U &value)
 
 #endif
 
-void Device::destroy_pipeline(VkPipeline pipeline)
-{
-	LOCK();
-	destroy_pipeline_nolock(pipeline);
-}
-
 void Device::reset_fence(VkFence fence, bool observed_wait)
 {
 	LOCK();
@@ -2326,12 +2352,6 @@ void Device::destroy_image_view(VkImageView view)
 {
 	LOCK();
 	destroy_image_view_nolock(view);
-}
-
-void Device::destroy_pipeline_nolock(VkPipeline pipeline)
-{
-	VK_ASSERT(!exists(frame().destroyed_pipelines, pipeline));
-	frame().destroyed_pipelines.push_back(pipeline);
 }
 
 void Device::destroy_image_view_nolock(VkImageView view)
@@ -2825,8 +2845,6 @@ void Device::PerFrame::begin()
 		table.vkDestroyFramebuffer(vkdevice, framebuffer, nullptr);
 	for (auto &sampler : destroyed_samplers)
 		table.vkDestroySampler(vkdevice, sampler, nullptr);
-	for (auto &pipeline : destroyed_pipelines)
-		table.vkDestroyPipeline(vkdevice, pipeline, nullptr);
 	for (auto &view : destroyed_image_views)
 		table.vkDestroyImageView(vkdevice, view, nullptr);
 	for (auto &view : destroyed_buffer_views)
@@ -2854,7 +2872,6 @@ void Device::PerFrame::begin()
 
 	destroyed_framebuffers.clear();
 	destroyed_samplers.clear();
-	destroyed_pipelines.clear();
 	destroyed_image_views.clear();
 	destroyed_buffer_views.clear();
 	destroyed_images.clear();

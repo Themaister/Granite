@@ -101,6 +101,7 @@ struct DeviceFeatures
 	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};
 	VkPhysicalDeviceFloat16Int8FeaturesKHR float16_int8_features = {};
 	VkPhysicalDeviceFloatControlsPropertiesKHR float_control_properties = {};
+	VkPhysicalDeviceBufferDeviceAddressFeaturesKHR buffer_device_address_features = {};
 	VkPhysicalDeviceIDProperties id_properties = {};
 
 	// EXT
@@ -123,6 +124,8 @@ struct DeviceFeatures
 
 	// Vendor
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};
+	VkPhysicalDeviceDeviceGeneratedCommandsFeaturesNV device_generated_commands_features = {};
+	VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV device_generated_commands_properties = {};
 
 	// References Vulkan::Context.
 	const VkPhysicalDeviceFeatures2 *pdf2 = nullptr;
@@ -143,14 +146,13 @@ enum VendorID
 
 enum ContextCreationFlagBits
 {
-	CONTEXT_CREATION_DISABLE_BINDLESS_BIT = 1 << 0,
-	CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT = 1 << 1,
-	CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT = 1 << 2,
+	CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT = 1 << 0,
+	CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT = 1 << 1,
 #ifdef VK_ENABLE_BETA_EXTENSIONS
-	CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT = 1 << 3,
+	CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT = 1 << 2,
 #endif
-	CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT = 1 << 4,
-	CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT = 1 << 5
+	CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT = 1 << 3,
+	CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT = 1 << 4
 };
 using ContextCreationFlags = uint32_t;
 

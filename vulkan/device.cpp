@@ -460,8 +460,8 @@ Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size
 	return request_program(vertex, fragment);
 }
 
-PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &layout,
-                                                const ImmutableSamplerBank *sampler_bank)
+const PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &layout,
+                                                      const ImmutableSamplerBank *sampler_bank)
 {
 	Hasher h;
 	h.data(reinterpret_cast<const uint32_t *>(layout.sets), sizeof(layout.sets));
@@ -505,16 +505,44 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 	return ret;
 }
 
-void Device::bake_program(Program &program, const ImmutableSamplerBank *sampler_bank)
+const IndirectLayout *Device::request_indirect_layout(
+		const Vulkan::IndirectLayoutToken *tokens, uint32_t num_tokens, uint32_t stride)
 {
-	CombinedResourceLayout layout;
-	if (program.get_shader(ShaderStage::Vertex))
-		layout.attribute_mask = program.get_shader(ShaderStage::Vertex)->get_layout().input_mask;
-	if (program.get_shader(ShaderStage::Fragment))
-		layout.render_target_mask = program.get_shader(ShaderStage::Fragment)->get_layout().output_mask;
+	Hasher h;
+	for (uint32_t i = 0; i < num_tokens; i++)
+		h.u32(Util::ecast(tokens[i].type));
 
-	ImmutableSamplerBank ext_immutable_samplers = {};
-	layout.descriptor_set_mask = 0;
+	for (uint32_t i = 0; i < num_tokens; i++)
+	{
+		h.u32(tokens[i].offset);
+		if (tokens[i].type == IndirectLayoutToken::Type::PushConstant)
+		{
+			h.u64(tokens[i].data.push.layout->get_hash());
+			h.u32(tokens[i].data.push.offset);
+			h.u32(tokens[i].data.push.range);
+		}
+		else if (tokens[i].type == IndirectLayoutToken::Type::VBO)
+		{
+			h.u32(tokens[i].data.vbo.binding);
+		}
+	}
+
+	h.u32(stride);
+	auto hash = h.get();
+
+	LOCK_CACHE();
+	auto *ret = indirect_layouts.find(hash);
+	if (!ret)
+		ret = indirect_layouts.emplace_yield(hash, this, tokens, num_tokens, stride);
+	return ret;
+}
+
+void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, const Program &program)
+{
+	if (program.get_shader(ShaderStage::Vertex))
+		layout.attribute_mask |= program.get_shader(ShaderStage::Vertex)->get_layout().input_mask;
+	if (program.get_shader(ShaderStage::Fragment))
+		layout.render_target_mask |= program.get_shader(ShaderStage::Fragment)->get_layout().output_mask;
 
 	for (unsigned i = 0; i < static_cast<unsigned>(ShaderStage::Count); i++)
 	{
@@ -579,6 +607,58 @@ void Device::bake_program(Program &program, const ImmutableSamplerBank *sampler_
 		layout.bindless_descriptor_set_mask |= shader_layout.bindless_set_mask;
 	}
 
+	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
+	{
+		if (layout.stages_for_sets[set] == 0)
+			continue;
+
+		layout.descriptor_set_mask |= 1u << set;
+
+		for (unsigned binding = 0; binding < VULKAN_NUM_BINDINGS; binding++)
+		{
+			auto &array_size = layout.sets[set].array_size[binding];
+			if (array_size == DescriptorSetLayout::UNSIZED_ARRAY)
+			{
+				for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
+				{
+					if (layout.stages_for_bindings[set][i] != 0)
+						LOGE("Using bindless for set = %u, but binding = %u has a descriptor attached to it.\n", set, i);
+				}
+
+				// Allows us to have one unified descriptor set layout for bindless.
+				layout.stages_for_bindings[set][binding] = VK_SHADER_STAGE_ALL;
+			}
+			else if (array_size == 0)
+			{
+				array_size = 1;
+			}
+			else
+			{
+				for (unsigned i = 1; i < array_size; i++)
+				{
+					if (layout.stages_for_bindings[set][binding + i] != 0)
+					{
+						LOGE("Detected binding aliasing for (%u, %u). Binding array with %u elements starting at (%u, %u) overlaps.\n",
+							 set, binding + i, array_size, set, binding);
+					}
+				}
+			}
+		}
+	}
+
+	Hasher h;
+	h.u32(layout.push_constant_range.stageFlags);
+	h.u32(layout.push_constant_range.size);
+	layout.push_constant_layout_hash = h.get();
+}
+
+void Device::bake_program(Program &program, const ImmutableSamplerBank *sampler_bank)
+{
+	CombinedResourceLayout layout;
+	ImmutableSamplerBank ext_immutable_samplers = {};
+
+	merge_combined_resource_layout(layout, program);
+
 	if (sampler_bank)
 	{
 		for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
@@ -594,49 +674,6 @@ void Device::bake_program(Program &program, const ImmutableSamplerBank *sampler_
 		}
 	}
 
-	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
-	{
-		if (layout.stages_for_sets[set] != 0)
-		{
-			layout.descriptor_set_mask |= 1u << set;
-
-			for (unsigned binding = 0; binding < VULKAN_NUM_BINDINGS; binding++)
-			{
-				auto &array_size = layout.sets[set].array_size[binding];
-				if (array_size == DescriptorSetLayout::UNSIZED_ARRAY)
-				{
-					for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
-					{
-						if (layout.stages_for_bindings[set][i] != 0)
-							LOGE("Using bindless for set = %u, but binding = %u has a descriptor attached to it.\n", set, i);
-					}
-
-					// Allows us to have one unified descriptor set layout for bindless.
-					layout.stages_for_bindings[set][binding] = VK_SHADER_STAGE_ALL;
-				}
-				else if (array_size == 0)
-				{
-					array_size = 1;
-				}
-				else
-				{
-					for (unsigned i = 1; i < array_size; i++)
-					{
-						if (layout.stages_for_bindings[set][binding + i] != 0)
-						{
-							LOGE("Detected binding aliasing for (%u, %u). Binding array with %u elements starting at (%u, %u) overlaps.\n",
-							     set, binding + i, array_size, set, binding);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	Hasher h;
-	h.u32(layout.push_constant_range.stageFlags);
-	h.u32(layout.push_constant_range.size);
-	layout.push_constant_layout_hash = h.get();
 	program.set_pipeline_layout(request_pipeline_layout(layout, &ext_immutable_samplers));
 }
 
@@ -2239,12 +2276,6 @@ static inline bool exists(const T &container, const U &value)
 
 #endif
 
-void Device::destroy_pipeline(VkPipeline pipeline)
-{
-	LOCK();
-	destroy_pipeline_nolock(pipeline);
-}
-
 void Device::reset_fence(VkFence fence, bool observed_wait)
 {
 	LOCK();
@@ -2321,12 +2352,6 @@ void Device::destroy_image_view(VkImageView view)
 {
 	LOCK();
 	destroy_image_view_nolock(view);
-}
-
-void Device::destroy_pipeline_nolock(VkPipeline pipeline)
-{
-	VK_ASSERT(!exists(frame().destroyed_pipelines, pipeline));
-	frame().destroyed_pipelines.push_back(pipeline);
 }
 
 void Device::destroy_image_view_nolock(VkImageView view)
@@ -2820,8 +2845,6 @@ void Device::PerFrame::begin()
 		table.vkDestroyFramebuffer(vkdevice, framebuffer, nullptr);
 	for (auto &sampler : destroyed_samplers)
 		table.vkDestroySampler(vkdevice, sampler, nullptr);
-	for (auto &pipeline : destroyed_pipelines)
-		table.vkDestroyPipeline(vkdevice, pipeline, nullptr);
 	for (auto &view : destroyed_image_views)
 		table.vkDestroyImageView(vkdevice, view, nullptr);
 	for (auto &view : destroyed_buffer_views)
@@ -2849,7 +2872,6 @@ void Device::PerFrame::begin()
 
 	destroyed_framebuffers.clear();
 	destroyed_samplers.clear();
-	destroyed_pipelines.clear();
 	destroyed_image_views.clear();
 	destroyed_buffer_views.clear();
 	destroyed_images.clear();
@@ -4375,6 +4397,8 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	info.size = create_info.size;
 	info.usage = create_info.usage;
+	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+		info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.pNext = &external_info;
 
@@ -4428,6 +4452,13 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	                            ~(ext.host_memory_properties.minImportedHostPointerAlignment - 1);
 	alloc_info.memoryTypeIndex = memory_type;
 
+	VkMemoryAllocateFlagsInfo flags_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO };
+	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+	{
+		alloc_info.pNext = &flags_info;
+		flags_info.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
+	}
+
 	VkImportMemoryHostPointerInfoEXT import = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT };
 	import.handleType = type;
 	import.pHostPointer = host_buffer;
@@ -4461,7 +4492,15 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 		return BufferHandle{};
 	}
 
-	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, create_info));
+	VkDeviceAddress bda = 0;
+	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+	{
+		VkBufferDeviceAddressInfoKHR bda_info = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_KHR };
+		bda_info.buffer = buffer;
+		bda = table->vkGetBufferDeviceAddressKHR(device, &bda_info);
+	}
+
+	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, create_info, bda));
 	return handle;
 }
 
@@ -4487,6 +4526,8 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	info.size = create_info.size;
 	info.usage = create_info.usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+		info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	uint32_t sharing_indices[QUEUE_INDEX_COUNT];
@@ -4539,6 +4580,16 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	VkBufferMemoryRequirementsInfo2 req_info = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2 };
 	req_info.buffer = buffer;
 	table->vkGetBufferMemoryRequirements2(device, &req_info, &reqs);
+
+	if (create_info.allocation_requirements.size)
+	{
+		reqs.memoryRequirements.memoryTypeBits &=
+				create_info.allocation_requirements.memoryTypeBits;
+		reqs.memoryRequirements.size =
+				std::max<VkDeviceSize>(reqs.memoryRequirements.size, create_info.allocation_requirements.size);
+		reqs.memoryRequirements.alignment =
+				std::max<VkDeviceSize>(reqs.memoryRequirements.alignment, create_info.allocation_requirements.alignment);
+	}
 
 	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryRequirements.memoryTypeBits);
 	if (memory_type == UINT32_MAX)
@@ -4615,7 +4666,16 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	auto tmpinfo = create_info;
 	tmpinfo.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, tmpinfo));
+
+	VkDeviceAddress bda = 0;
+	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+	{
+		VkBufferDeviceAddressInfoKHR bda_info = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_KHR };
+		bda_info.buffer = buffer;
+		bda = table->vkGetBufferDeviceAddressKHR(device, &bda_info);
+	}
+
+	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, tmpinfo, bda));
 
 	if (create_info.domain == BufferDomain::Device && (initial || zero_initialize) && !memory_type_is_host_visible(memory_type))
 	{

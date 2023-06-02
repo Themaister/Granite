@@ -34,6 +34,22 @@
 
 namespace Vulkan
 {
+static bool allocation_mode_supports_bda(AllocationMode mode)
+{
+	switch (mode)
+	{
+	case AllocationMode::LinearDevice:
+	case AllocationMode::LinearHostMappable:
+	case AllocationMode::LinearDeviceHighPriority:
+		return true;
+
+	default:
+		break;
+	}
+
+	return false;
+}
+
 void DeviceAllocation::free_immediate()
 {
 	if (!alloc)
@@ -634,6 +650,7 @@ bool DeviceAllocator::internal_allocate(
 	VkMemoryDedicatedAllocateInfo dedicated = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO };
 	VkExportMemoryAllocateInfo export_info = { VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO };
 	VkMemoryPriorityAllocateInfoEXT priority_info = { VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT };
+	VkMemoryAllocateFlagsInfo flags_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO };
 #ifdef _WIN32
 	VkImportMemoryWin32HandleInfoKHR import_info = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR };
 #else
@@ -695,6 +712,14 @@ bool DeviceAllocator::internal_allocate(
 
 		priority_info.pNext = info.pNext;
 		info.pNext = &priority_info;
+	}
+
+	if (device->get_device_features().buffer_device_address_features.bufferDeviceAddress &&
+	    allocation_mode_supports_bda(mode))
+	{
+		flags_info.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
+		flags_info.pNext = info.pNext;
+		info.pNext = &flags_info;
 	}
 
 	VkDeviceMemory device_memory;

@@ -603,10 +603,7 @@ Pipeline Program::add_pipeline(Hash hash, const Pipeline &pipeline)
 
 void Program::destroy_pipeline(const Pipeline &pipeline)
 {
-	if (internal_sync)
-		device->destroy_pipeline_nolock(pipeline.pipeline);
-	else
-		device->destroy_pipeline(pipeline.pipeline);
+	device->get_device_table().vkDestroyPipeline(device->get_device(), pipeline.pipeline, nullptr);
 }
 
 void Program::promote_read_write_to_read_only()

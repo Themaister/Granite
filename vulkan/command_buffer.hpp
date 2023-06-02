@@ -37,6 +37,7 @@
 namespace Vulkan
 {
 class DebugChannelInterface;
+class IndirectLayout;
 
 static inline VkPipelineStageFlags convert_vk_stage2(VkPipelineStageFlags2 stages)
 {
@@ -251,6 +252,9 @@ struct CommandBufferSavedState
 struct DeferredPipelineCompile
 {
 	Program *program;
+	const PipelineLayout *layout;
+	std::vector<Program *> program_group;
+
 	const RenderPass *compatible_render_pass;
 	PipelineState static_state;
 	PotentialState potential_static_state;
@@ -436,6 +440,7 @@ public:
 	                                                                          const RenderPassInfo &rp, unsigned thread_index, unsigned subpass);
 
 	void set_program(Program *program);
+	void set_program_group(Program * const *programs, unsigned num_programs, const PipelineLayout *layout);
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	// Convenience functions for one-off shader binds.
@@ -506,6 +511,10 @@ public:
 	void draw_indexed_multi_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride,
 	                                 const Buffer &count, uint32_t count_offset);
 	void dispatch_indirect(const Buffer &buffer, uint32_t offset);
+	void execute_indirect_commands(const IndirectLayout *indirect_layout,
+	                               uint32_t sequences,
+	                               const Buffer &indirect, VkDeviceSize offset,
+	                               const Buffer *count, size_t count_offset);
 
 	void set_opaque_state();
 	void set_quad_state();
@@ -764,11 +773,15 @@ public:
 	{
 		Sync,
 		FailOnCompileRequired,
-		AsyncThread
+		AsyncThread,
+		IndirectBindable
 	};
 	static Pipeline build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile, CompileMode mode);
 	static Pipeline build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile, CompileMode mode);
 	bool flush_pipeline_state_without_blocking();
+
+	VkPipeline get_current_compute_pipeline();
+	VkPipeline get_current_graphics_pipeline();
 
 private:
 	friend class Util::ObjectPool<CommandBuffer>;
@@ -791,7 +804,6 @@ private:
 
 	Pipeline current_pipeline = {};
 	VkPipelineLayout current_pipeline_layout = VK_NULL_HANDLE;
-	PipelineLayout *current_layout = nullptr;
 	VkSubpassContents current_contents = VK_SUBPASS_CONTENTS_INLINE;
 	unsigned thread_index = 0;
 
@@ -827,8 +839,8 @@ private:
 	              "Hashable pipeline state is not large enough!");
 #endif
 
-	bool flush_render_state(bool synchronous);
-	bool flush_compute_state(bool synchronous);
+	VkPipeline flush_render_state(bool synchronous);
+	VkPipeline flush_compute_state(bool synchronous);
 	void clear_render_state();
 
 	bool flush_graphics_pipeline(bool synchronous);
@@ -861,9 +873,11 @@ private:
 
 	void bind_pipeline(VkPipelineBindPoint bind_point, VkPipeline pipeline, uint32_t active_dynamic_state);
 
-	static void update_hash_graphics_pipeline(DeferredPipelineCompile &compile, uint32_t &active_vbos);
+	static void update_hash_graphics_pipeline(DeferredPipelineCompile &compile, CompileMode mode, uint32_t *active_vbos);
 	static void update_hash_compute_pipeline(DeferredPipelineCompile &compile);
 	void set_surface_transform_specialization_constants();
+
+	void set_program_layout(const PipelineLayout *layout);
 };
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES

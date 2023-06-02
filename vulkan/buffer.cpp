@@ -32,7 +32,7 @@ Buffer::Buffer(Device *device_, VkBuffer buffer_, const DeviceAllocation &alloc_
     , buffer(buffer_)
     , alloc(alloc_)
     , info(info_)
-	, bda(bda_)
+    , bda(bda_)
 {
 }
 

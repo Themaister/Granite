@@ -109,7 +109,7 @@ public:
 private:
 	friend class Util::ObjectPool<Buffer>;
 	Buffer(Device *device, VkBuffer buffer, const DeviceAllocation &alloc, const BufferCreateInfo &info,
-		   VkDeviceAddress bda);
+	       VkDeviceAddress bda);
 
 	Device *device;
 	VkBuffer buffer;

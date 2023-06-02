@@ -136,44 +136,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		offsets[3] = vec2(+0.1f, +0.1f);
 		cmd->set_vertex_attrib(1, 1, VK_FORMAT_R32G32_SFLOAT, 0);
 
-		auto &table = device.get_device_table();
-
-		{
-			// TODO: automate this.
-			VkGeneratedCommandsMemoryRequirementsInfoNV generated =
-					{ VK_STRUCTURE_TYPE_GENERATED_COMMANDS_MEMORY_REQUIREMENTS_INFO_NV };
-			VkMemoryRequirements2 reqs = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
-
-			generated.pipeline = cmd->get_current_graphics_pipeline();
-			generated.pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
-			generated.indirectCommandsLayout = indirect_layout;
-			generated.maxSequencesCount = 3;
-
-			table.vkGetGeneratedCommandsMemoryRequirementsNV(device.get_device(), &generated, &reqs);
-
-			BufferCreateInfo bufinfo = {};
-			bufinfo.size = reqs.memoryRequirements.size;
-			bufinfo.domain = BufferDomain::Device;
-			bufinfo.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-			bufinfo.allocation_requirements = reqs.memoryRequirements;
-			auto preprocess_buffer = device.create_buffer(bufinfo);
-
-			VkIndirectCommandsStreamNV stream = {};
-			stream.buffer = dgc_buffer->get_buffer();
-			stream.offset = 0;
-
-			VkGeneratedCommandsInfoNV exec_info = { VK_STRUCTURE_TYPE_GENERATED_COMMANDS_INFO_NV };
-			exec_info.indirectCommandsLayout = indirect_layout;
-			exec_info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-			exec_info.streamCount = 1;
-			exec_info.pStreams = &stream;
-			exec_info.preprocessSize = preprocess_buffer->get_create_info().size;
-			exec_info.preprocessBuffer = preprocess_buffer->get_buffer();
-			exec_info.sequencesCount = 3;
-			exec_info.pipeline = cmd->get_current_graphics_pipeline();
-			device.get_device_table().vkCmdExecuteGeneratedCommandsNV(cmd->get_command_buffer(), VK_FALSE, &exec_info);
-		}
-
+		cmd->execute_indirect_commands(indirect_layout, 3, *dgc_buffer, 0, nullptr, 0);
 		cmd->end_render_pass();
 		device.submit(cmd);
 	}

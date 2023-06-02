@@ -2705,6 +2705,68 @@ void CommandBuffer::dispatch_indirect(const Buffer &buffer, uint32_t offset)
 		LOGE("Failed to flush render state, dispatch will be dropped.\n");
 }
 
+void CommandBuffer::execute_indirect_commands(
+		VkIndirectCommandsLayoutNV layout, uint32_t sequences,
+		const Vulkan::Buffer &indirect, VkDeviceSize offset,
+		const Vulkan::Buffer *count, size_t count_offset)
+{
+	VK_ASSERT(!is_compute);
+	VK_ASSERT(device->get_device_features().device_generated_commands_features.deviceGeneratedCommands);
+
+	if (flush_render_state(true) == VK_NULL_HANDLE)
+	{
+		LOGE("Failed to flush render state, draw call will be dropped.\n");
+		return;
+	}
+
+	// TODO: Linearly allocate these, but big indirect commands like these
+	// should only be done once per render pass anyways.
+	VkGeneratedCommandsMemoryRequirementsInfoNV generated =
+			{ VK_STRUCTURE_TYPE_GENERATED_COMMANDS_MEMORY_REQUIREMENTS_INFO_NV };
+	VkMemoryRequirements2 reqs = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
+
+	generated.pipeline = current_pipeline.pipeline;
+	generated.pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
+	generated.indirectCommandsLayout = layout;
+	generated.maxSequencesCount = sequences;
+
+	table.vkGetGeneratedCommandsMemoryRequirementsNV(device->get_device(), &generated, &reqs);
+
+	BufferCreateInfo bufinfo = {};
+	bufinfo.size = reqs.memoryRequirements.size;
+	bufinfo.domain = BufferDomain::Device;
+	bufinfo.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+	bufinfo.allocation_requirements = reqs.memoryRequirements;
+	auto preprocess_buffer = device->create_buffer(bufinfo);
+
+	VkIndirectCommandsStreamNV stream = {};
+	stream.buffer = indirect.get_buffer();
+	stream.offset = offset;
+
+	VkGeneratedCommandsInfoNV exec_info = { VK_STRUCTURE_TYPE_GENERATED_COMMANDS_INFO_NV };
+	exec_info.indirectCommandsLayout = layout;
+	exec_info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	exec_info.streamCount = 1;
+	exec_info.pStreams = &stream;
+	exec_info.preprocessSize = reqs.memoryRequirements.size;
+	exec_info.preprocessBuffer = preprocess_buffer->get_buffer();
+	exec_info.sequencesCount = sequences;
+	exec_info.pipeline = current_pipeline.pipeline;
+	if (count)
+	{
+		exec_info.sequencesCountBuffer = count->get_buffer();
+		exec_info.sequencesCountOffset = count_offset;
+	}
+	table.vkCmdExecuteGeneratedCommandsNV(cmd, VK_FALSE, &exec_info);
+
+	// Everything is nuked after execute generated commands.
+	set_dirty(COMMAND_BUFFER_DYNAMIC_BITS |
+	          COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT |
+	          COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
+
+	set_backtrace_checkpoint();
+}
+
 void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z)
 {
 	VK_ASSERT(is_compute);

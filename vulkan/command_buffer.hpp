@@ -510,6 +510,10 @@ public:
 	void draw_indexed_multi_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride,
 	                                 const Buffer &count, uint32_t count_offset);
 	void dispatch_indirect(const Buffer &buffer, uint32_t offset);
+	void execute_indirect_commands(VkIndirectCommandsLayoutNV layout,
+	                               uint32_t sequences,
+	                               const Buffer &indirect, VkDeviceSize offset,
+	                               const Buffer *count, size_t count_offset);
 
 	void set_opaque_state();
 	void set_quad_state();

@@ -1268,10 +1268,7 @@ void CommandBuffer::extract_pipeline_state(DeferredPipelineCompile &compile) con
 	if (is_compute)
 		update_hash_compute_pipeline(compile);
 	else
-	{
-		uint32_t active_vbo = 0;
-		update_hash_graphics_pipeline(compile, active_vbo);
-	}
+		update_hash_graphics_pipeline(compile, CompileMode::AsyncThread, nullptr);
 }
 
 Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile,
@@ -1288,6 +1285,10 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	{
 		return {};
 	}
+
+	// Unsupported. Gets pretty complicated since if any dependent pipeline fails, we have to abort.
+	if (mode == CompileMode::FailOnCompileRequired && !compile.program_group.empty())
+		return {};
 
 	// Viewport state
 	VkPipelineViewportStateCreateInfo vp = { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
@@ -1497,64 +1498,50 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 
 	VkGraphicsPipelineShaderGroupsCreateInfoNV groups_info =
 			{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_SHADER_GROUPS_CREATE_INFO_NV };
-	Util::SmallVector<VkGraphicsShaderGroupCreateInfoNV, 64> groups;
-	Util::SmallVector<VkPipelineShaderStageCreateInfo, 128> group_stages;
+	VkGraphicsShaderGroupCreateInfoNV self_group =
+			{ VK_STRUCTURE_TYPE_GRAPHICS_SHADER_GROUP_CREATE_INFO_NV };
+	Util::SmallVector<VkPipeline, 64> pipelines;
 
-	// Simple monolithic compile.
-	// Avoids having to do state validation later.
-	if (!compile.program_group.empty())
-	{
+	if (mode == CompileMode::IndirectBindable)
 		pipe.flags |= VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV;
 
-		unsigned group_stage_count = 0;
-		for (auto *p : compile.program_group)
-		{
-			for (unsigned i = 0; i < Util::ecast(ShaderStage::Count); i++)
-			{
-				auto stage = static_cast<ShaderStage>(i);
-				if (p->get_shader(stage))
-					group_stage_count++;
-			}
-		}
-
-		// Reserve early to avoid pointer invalidation.
-		group_stages.resize(group_stage_count);
-
-		VkGraphicsShaderGroupCreateInfoNV group = { VK_STRUCTURE_TYPE_GRAPHICS_SHADER_GROUP_CREATE_INFO_NV };
-		// TODO: Can this be NULL if we just want to reuse the existing vertex input state?
-		group.pVertexInputState = pipe.pVertexInputState;
-		group_stage_count = 0;
-		groups.reserve(compile.program_group.size());
+	if (!compile.program_group.empty())
+	{
+		DeferredPipelineCompile tmp_compile = compile;
+		tmp_compile.program_group.clear();
+		pipelines.reserve(compile.program_group.size());
 
 		for (auto *p : compile.program_group)
 		{
-			group.pStages = &group_stages[group_stage_count];
-			group.stageCount = 0;
+			tmp_compile.program = p;
+			update_hash_graphics_pipeline(tmp_compile, CompileMode::IndirectBindable, nullptr);
+			auto group_pipeline = p->get_pipeline(tmp_compile.hash);
+			if (group_pipeline.pipeline == VK_NULL_HANDLE)
+				group_pipeline = build_graphics_pipeline(device, tmp_compile, CompileMode::IndirectBindable);
 
-			for (unsigned i = 0; i < Util::ecast(ShaderStage::Count); i++)
+			if (group_pipeline.pipeline == VK_NULL_HANDLE)
 			{
-				auto stage = static_cast<ShaderStage>(i);
-				if (p->get_shader(stage))
-				{
-					auto &s = group_stages[group_stage_count++];
-					s = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
-					s.module = p->get_shader(stage)->get_module();
-					s.pName = "main";
-					s.stage = static_cast<VkShaderStageFlagBits>(1u << i);
-					if (spec_info[i].mapEntryCount)
-						s.pSpecializationInfo = &spec_info[i];
-
-					group.stageCount++;
-				}
+				LOGE("Failed to compile group pipeline.\n");
+				return {};
 			}
 
-			groups.push_back(group);
+			pipelines.push_back(group_pipeline.pipeline);
 		}
+
+		self_group.stageCount = pipe.stageCount;
+		self_group.pStages = pipe.pStages;
+		self_group.pVertexInputState = pipe.pVertexInputState;
+
+		// Compile each program individually. Then we just link them.
+		pipe.flags |= VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV;
 
 		groups_info.pNext = pipe.pNext;
 		pipe.pNext = &groups_info;
-		groups_info.groupCount = uint32_t(groups.size());
-		groups_info.pGroups = groups.data();
+		// Trying to use pGroups[0] through self pPipeline reference crashes NV driver.
+		groups_info.pPipelines = pipelines.data() + 1;
+		groups_info.pipelineCount = uint32_t(pipelines.size() - 1);
+		groups_info.pGroups = &self_group;
+		groups_info.groupCount = 1;
 	}
 
 	VkPipeline pipeline = VK_NULL_HANDLE;
@@ -1629,10 +1616,11 @@ void CommandBuffer::update_hash_compute_pipeline(DeferredPipelineCompile &compil
 	compile.hash = h.get();
 }
 
-void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compile, uint32_t &active_vbos)
+void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compile,
+                                                  CompileMode mode, uint32_t *out_active_vbos)
 {
 	Hasher h;
-	active_vbos = 0;
+	uint32_t active_vbos = 0;
 	auto &layout = compile.layout->get_resource_layout();
 	for_each_bit(layout.attribute_mask, [&](uint32_t bit) {
 		h.u32(bit);
@@ -1646,6 +1634,9 @@ void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compi
 		h.u32(compile.input_rates[bit]);
 		h.u32(compile.strides[bit]);
 	});
+
+	if (out_active_vbos)
+		*out_active_vbos = active_vbos;
 
 	h.u64(compile.compatible_render_pass->get_hash());
 	h.u32(compile.subpass_index);
@@ -1676,20 +1667,18 @@ void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compi
 	for_each_bit(combined_spec_constant, [&](uint32_t bit) {
 		h.u32(compile.potential_static_state.spec_constants[bit]);
 	});
+	h.s32(mode == CompileMode::IndirectBindable);
 
 	compile.hash = h.get();
 }
 
 bool CommandBuffer::flush_graphics_pipeline(bool synchronous)
 {
-	update_hash_graphics_pipeline(pipeline_state, active_vbos);
+	auto mode = synchronous ? CompileMode::Sync : CompileMode::FailOnCompileRequired;
+	update_hash_graphics_pipeline(pipeline_state, mode, &active_vbos);
 	current_pipeline = pipeline_state.program->get_pipeline(pipeline_state.hash);
 	if (current_pipeline.pipeline == VK_NULL_HANDLE)
-	{
-		current_pipeline = build_graphics_pipeline(
-			device, pipeline_state,
-			synchronous ? CompileMode::Sync : CompileMode::FailOnCompileRequired);
-	}
+		current_pipeline = build_graphics_pipeline(device, pipeline_state, mode);
 	return current_pipeline.pipeline != VK_NULL_HANDLE;
 }
 

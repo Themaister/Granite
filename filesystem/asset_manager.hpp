@@ -42,6 +42,16 @@ struct ImageAssetID
 	inline bool operator!=(const ImageAssetID &other) const { return !(*this == other); }
 };
 
+struct MeshAssetID
+{
+	uint32_t id = uint32_t(-1);
+	MeshAssetID() = default;
+	explicit MeshAssetID(uint32_t id_) : id{id_} {}
+	explicit inline operator bool() const { return id != uint32_t(-1); }
+	inline bool operator==(const MeshAssetID &other) const { return id == other.id; }
+	inline bool operator!=(const MeshAssetID &other) const { return !(*this == other); }
+};
+
 class AssetManager;
 
 // If we have to fall back due to no image being present,

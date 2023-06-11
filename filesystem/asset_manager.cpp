@@ -100,7 +100,7 @@ void AssetManager::set_asset_instantiator_interface(AssetInstantiatorInterface *
 	{
 		signal->wait_until_at_least(timestamp);
 		for (uint32_t id = 0; id < id_count; id++)
-			iface->release_image_resource({ id });
+			iface->release_image_resource(ImageAssetID{id});
 	}
 
 	for (auto *a : asset_bank)
@@ -116,7 +116,7 @@ void AssetManager::set_asset_instantiator_interface(AssetInstantiatorInterface *
 	{
 		iface->set_id_bounds(id_count);
 		for (uint32_t i = 0; i < id_count; i++)
-			iface->set_image_class({ i }, asset_bank[i]->image_class);
+			iface->set_image_class(ImageAssetID{i}, asset_bank[i]->image_class);
 	}
 }
 

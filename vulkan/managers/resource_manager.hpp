@@ -31,11 +31,11 @@ namespace Vulkan
 {
 class MemoryMappedTexture;
 
-class ResourceManager : private Granite::AssetInstantiatorInterface
+class ResourceManager final : private Granite::AssetInstantiatorInterface
 {
 public:
 	explicit ResourceManager(Device *device);
-	~ResourceManager();
+	~ResourceManager() override;
 	void init();
 
 	inline const Vulkan::ImageView *get_image_view(Granite::ImageAssetID id) const

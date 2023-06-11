@@ -35,7 +35,11 @@ namespace Granite
 struct ImageAssetID
 {
 	uint32_t id = uint32_t(-1);
+	ImageAssetID() = default;
+	explicit ImageAssetID(uint32_t id_) : id{id_} {}
 	explicit inline operator bool() const { return id != uint32_t(-1); }
+	inline bool operator==(const ImageAssetID &other) const { return id == other.id; }
+	inline bool operator!=(const ImageAssetID &other) const { return !(*this == other); }
 };
 
 class AssetManager;

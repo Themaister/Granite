@@ -286,7 +286,7 @@ public:
 	void submit_discard(CommandBufferHandle &cmd);
 	QueueIndices get_physical_queue_type(CommandBuffer::Type queue_type) const;
 	void register_time_interval(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,
-	                            std::string tag, std::string extra = {});
+	                            const std::string &tag);
 
 	// Request shaders and programs. These objects are owned by the Device.
 	Shader *request_shader(const uint32_t *code, size_t size, const ResourceLayout *layout = nullptr);
@@ -551,7 +551,8 @@ private:
 
 	QueryPoolHandle write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlags2 stage);
 	QueryPoolHandle write_calibrated_timestamp_nolock();
-	void register_time_interval_nolock(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, std::string tag, std::string extra);
+	void register_time_interval_nolock(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,
+	                                   const std::string &tag);
 
 	// Make sure this is deleted last.
 	HandlePool handle_pool;
@@ -645,7 +646,6 @@ private:
 			QueryPoolHandle start_ts;
 			QueryPoolHandle end_ts;
 			TimestampInterval *timestamp_tag;
-			std::string extra;
 		};
 		std::vector<TimestampIntervalHandles> timestamp_intervals;
 

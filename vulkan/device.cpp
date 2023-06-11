@@ -1400,7 +1400,7 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 	auto start_ts = write_calibrated_timestamp_nolock();
 	auto result = submit_batches(composer, queue, cleared_fence);
 	auto end_ts = write_calibrated_timestamp_nolock();
-	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit", "");
+	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit");
 
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit2KHR failed (code: %d).\n", int(result));
@@ -1884,7 +1884,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 	auto start_ts = write_calibrated_timestamp_nolock();
 	auto result = submit_batches(composer, queue, cleared_fence, profiling_iteration);
 	auto end_ts = write_calibrated_timestamp_nolock();
-	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit", "");
+	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit");
 
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit2KHR failed (code: %d).\n", int(result));
@@ -2572,7 +2572,7 @@ void Device::next_frame_context()
 	if (frame_context_begin_ts)
 	{
 		auto frame_context_end_ts = write_calibrated_timestamp_nolock();
-		register_time_interval_nolock("CPU", std::move(frame_context_begin_ts), std::move(frame_context_end_ts), "command submissions", "");
+		register_time_interval_nolock("CPU", std::move(frame_context_begin_ts), std::move(frame_context_end_ts), "command submissions");
 		frame_context_begin_ts = {};
 	}
 
@@ -2754,14 +2754,15 @@ void Device::recalibrate_timestamps()
 		resample_calibrated_timestamps();
 }
 
-void Device::register_time_interval(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, std::string tag, std::string extra)
+void Device::register_time_interval(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,
+                                    const std::string &tag)
 {
 	LOCK();
-	register_time_interval_nolock(std::move(tid), std::move(start_ts), std::move(end_ts), std::move(tag), std::move(extra));
+	register_time_interval_nolock(std::move(tid), std::move(start_ts), std::move(end_ts), tag);
 }
 
 void Device::register_time_interval_nolock(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,
-                                           std::string tag, std::string extra)
+                                           const std::string &tag)
 {
 	if (start_ts && end_ts)
 	{
@@ -2770,7 +2771,7 @@ void Device::register_time_interval_nolock(std::string tid, QueryPoolHandle star
 		if (start_ts->is_signalled() && end_ts->is_signalled())
 			VK_ASSERT(end_ts->get_timestamp_ticks() >= start_ts->get_timestamp_ticks());
 #endif
-		frame().timestamp_intervals.push_back({ std::move(tid), std::move(start_ts), std::move(end_ts), timestamp_tag, std::move(extra) });
+		frame().timestamp_intervals.push_back({ std::move(tid), std::move(start_ts), std::move(end_ts), timestamp_tag });
 	}
 }
 
@@ -2917,7 +2918,7 @@ void Device::PerFrame::begin()
 	allocations.clear();
 
 	if (!in_destructor)
-		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence + recycle", "");
+		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence + recycle");
 
 	int64_t min_timestamp_us = std::numeric_limits<int64_t>::max();
 	int64_t max_timestamp_us = 0;

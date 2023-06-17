@@ -18,7 +18,7 @@ static constexpr unsigned MaxVertices = MaxElements;
 struct MeshletStream
 {
 	uint32_t offset_from_base_u32;
-	uint16_t predictor[4 * 2];
+	uint16_t predictor[4 * 2 + 2];
 	uint16_t bitplane_meta[MaxElements / 32];
 };
 
@@ -119,7 +119,7 @@ static uint32_t extract_bit_plane(const uint8_t *bytes, unsigned bit_index)
 	return u32;
 }
 
-static void find_linear_predictor(uint16_t (&predictor)[8],
+static void find_linear_predictor(uint16_t *predictor,
                                   const u8vec4 (&stream_buffer)[MaxElements],
                                   unsigned num_elements)
 {
@@ -158,15 +158,19 @@ static void encode_stream(std::vector<uint32_t> &out_payload_buffer,
                           unsigned num_elements)
 {
 	stream.offset_from_base_u32 = uint32_t(out_payload_buffer.size());
+
 	// Simple linear predictor, base equal elements[0], gradient = 0.
-	stream.predictor[0] = uint16_t(stream_buffer[0].x) << 8;
-	stream.predictor[1] = uint16_t(stream_buffer[0].y) << 8;
-	stream.predictor[2] = uint16_t(stream_buffer[0].z) << 8;
-	stream.predictor[3] = uint16_t(stream_buffer[0].w) << 8;
-	stream.predictor[4] = 0;
-	stream.predictor[5] = 0;
-	stream.predictor[6] = 0;
-	stream.predictor[7] = 0;
+	stream.predictor[8] = uint16_t((stream_buffer[0].x << 8) | stream_buffer[0].y);
+	stream.predictor[9] = uint16_t((stream_buffer[0].z << 8) | stream_buffer[0].w);
+
+	// Delta-encode
+	u8vec4 current_value = stream_buffer[0];
+	for (unsigned i = 0; i < num_elements; i++)
+	{
+		u8vec4 next_value = stream_buffer[i];
+		stream_buffer[i] = next_value - current_value;
+		current_value = next_value;
+	}
 
 	// Find optimal predictor.
 	find_linear_predictor(stream.predictor, stream_buffer, num_elements);
@@ -175,17 +179,11 @@ static void encode_stream(std::vector<uint32_t> &out_payload_buffer,
 	auto base_predictor = u16vec4(stream.predictor[0], stream.predictor[1], stream.predictor[2], stream.predictor[3]);
 	auto linear_predictor = u16vec4(stream.predictor[4], stream.predictor[5], stream.predictor[6], stream.predictor[7]);
 
-	// Delta-encode
-	u8vec4 current_value{0};
 	for (unsigned i = 0; i < num_elements; i++)
 	{
-		// Only predict-in bounds elements, since we want all out of bounds elements to be encoded to 0 delta
+		// Only predict in-bounds elements, since we want all out of bounds elements to be encoded to 0 delta
 		// without having them affect the predictor.
 		stream_buffer[i] -= u8vec4((base_predictor + linear_predictor * uint16_t(i)) >> uint16_t(8));
-
-		u8vec4 next_value = stream_buffer[i];
-		stream_buffer[i] = next_value - current_value;
-		current_value = next_value;
 	}
 
 	for (unsigned i = num_elements; i < MaxElements; i++)

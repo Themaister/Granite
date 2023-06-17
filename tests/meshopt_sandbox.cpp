@@ -119,8 +119,43 @@ static uint32_t extract_bit_plane(const uint8_t *bytes, unsigned bit_index)
 	return u32;
 }
 
+static void find_linear_predictor(uint16_t (&predictor)[8],
+                                  const u8vec4 (&stream_buffer)[MaxElements],
+                                  unsigned num_elements)
+{
+	// Sign-extend since the deltas are considered to be signed ints.
+	ivec4 unrolled_data[MaxElements];
+	for (unsigned i = 0; i < num_elements; i++)
+		unrolled_data[i] = ivec4(i8vec4(stream_buffer[i]));
+
+	// Simple linear regression.
+	// Pilfered from: https://www.codesansar.com/numerical-methods/linear-regression-method-using-c-programming.htm
+	ivec4 x{0}, x2{0}, y{0}, xy{0};
+	for (unsigned i = 0; i < num_elements; i++)
+	{
+		x += int(i);
+		x2 += int(i * i);
+		y += unrolled_data[i];
+		xy += int(i) * unrolled_data[i];
+	}
+
+	int n = int(num_elements);
+	ivec4 b_denom = (n * x2 - x * x);
+	b_denom = select(b_denom, ivec4(1), equal(ivec4(0), b_denom));
+
+	// Encode in u8.8 fixed point.
+	ivec4 b = (ivec4(256) * (n * xy - x * y)) / b_denom;
+	ivec4 a = ((ivec4(256) * y - b * x)) / n;
+
+	for (unsigned i = 0; i < 4; i++)
+		predictor[i] = uint16_t(a[i]);
+	for (unsigned i = 0; i < 4; i++)
+		predictor[4 + i] = uint16_t(b[i]);
+}
+
 static void encode_stream(std::vector<uint32_t> &out_payload_buffer,
-                          MeshletStream &stream, u8vec4 (&stream_buffer)[MaxElements])
+                          MeshletStream &stream, u8vec4 (&stream_buffer)[MaxElements],
+                          unsigned num_elements)
 {
 	stream.offset_from_base_u32 = uint32_t(out_payload_buffer.size());
 	// Simple linear predictor, base equal elements[0], gradient = 0.
@@ -133,14 +168,28 @@ static void encode_stream(std::vector<uint32_t> &out_payload_buffer,
 	stream.predictor[6] = 0;
 	stream.predictor[7] = 0;
 
+	// Find optimal predictor.
+	find_linear_predictor(stream.predictor, stream_buffer, num_elements);
+
+	// u8.8 fixed point.
+	auto base_predictor = u16vec4(stream.predictor[0], stream.predictor[1], stream.predictor[2], stream.predictor[3]);
+	auto linear_predictor = u16vec4(stream.predictor[4], stream.predictor[5], stream.predictor[6], stream.predictor[7]);
+
 	// Delta-encode
-	u8vec4 current_value = stream_buffer[0];
-	for (unsigned i = 0; i < MaxElements; i++)
+	u8vec4 current_value{0};
+	for (unsigned i = 0; i < num_elements; i++)
 	{
+		// Only predict-in bounds elements, since we want all out of bounds elements to be encoded to 0 delta
+		// without having them affect the predictor.
+		stream_buffer[i] -= u8vec4((base_predictor + linear_predictor * uint16_t(i)) >> uint16_t(8));
+
 		u8vec4 next_value = stream_buffer[i];
 		stream_buffer[i] = next_value - current_value;
 		current_value = next_value;
 	}
+
+	for (unsigned i = num_elements; i < MaxElements; i++)
+		stream_buffer[i] = u8vec4(0);
 
 	// Encode 32 elements at once.
 	for (unsigned chunk_index = 0; chunk_index < MaxElements / 32; chunk_index++)
@@ -169,9 +218,10 @@ static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata 
                         const uint32_t *attributes,
                         unsigned num_u32_streams)
 {
-	u8vec4 stream_buffer[MaxElements] = {};
+	mesh = {};
 	mesh.stream_count = num_u32_streams + 1;
 	mesh.data_stream_offset_u32 = 0; // Can be adjusted in isolation later to pack multiple payload streams into one buffer.
+	mesh.meshlets.reserve((primitive_count + MaxPrimitives - 1) / MaxPrimitives);
 	uint32_t base_vertex_offset = 0;
 
 	std::unordered_map<uint32_t, uint32_t> vbo_remap;
@@ -183,6 +233,7 @@ static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata 
 		primitives_to_process = analysis_result.num_primitives;
 
 		MeshletMetadata meshlet = {};
+		u8vec4 stream_buffer[MaxElements];
 
 		meshlet.base_vertex_offset = base_vertex_offset;
 		meshlet.num_primitives_minus_1 = analysis_result.num_primitives - 1;
@@ -198,10 +249,7 @@ static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata 
 			stream_buffer[i] = u8vec4(i0, i1, i2, 0);
 		}
 
-		for (uint32_t i = analysis_result.num_primitives; i < MaxElements; i++)
-			stream_buffer[i] = stream_buffer[analysis_result.num_primitives - 1];
-
-		encode_stream(out_payload_buffer, meshlet.u32_streams[0], stream_buffer);
+		encode_stream(out_payload_buffer, meshlet.u32_streams[0], stream_buffer, analysis_result.num_primitives);
 
 		uint64_t vbo_remapping[MaxVertices];
 		unsigned vbo_index = 0;
@@ -219,10 +267,8 @@ static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata 
 				                          uint8_t(payload >> 16), uint8_t(payload >> 24));
 			}
 
-			for (uint32_t i = analysis_result.num_vertices; i < MaxElements; i++)
-				stream_buffer[i] = stream_buffer[analysis_result.num_vertices - 1];
-
-			encode_stream(out_payload_buffer, meshlet.u32_streams[stream_index + 1], stream_buffer);
+			encode_stream(out_payload_buffer, meshlet.u32_streams[stream_index + 1], stream_buffer,
+			              analysis_result.num_vertices);
 		}
 
 		mesh.meshlets.push_back(meshlet);
@@ -236,4 +282,20 @@ static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata 
 
 int main()
 {
+	std::vector<uint32_t> out_payload_buffer;
+
+	const uint32_t index_buffer[] = {
+		0, 2, 4,
+		6, 4, 2,
+	};
+
+	const uint32_t u32_stream[] = {
+		0, 1, 2, 3, 4, 5, 6, 7,
+	};
+
+	MeshMetadata mesh;
+	encode_mesh(out_payload_buffer, mesh, index_buffer, sizeof(index_buffer) / (3 * sizeof(index_buffer[0])),
+				u32_stream, 1);
+
+	return 0;
 }

@@ -5,6 +5,9 @@
 #include "muglm/muglm_impl.hpp"
 #include <unordered_map>
 #include "bitops.hpp"
+#include "gltf.hpp"
+#include "meshoptimizer.h"
+#include "global_managers_init.hpp"
 #include <assert.h>
 #include <algorithm>
 using namespace Granite;
@@ -295,6 +298,7 @@ static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata 
 			uint8_t i0 = vbo_remap[index_buffer[3 * (primitive_index + i) + 0]];
 			uint8_t i1 = vbo_remap[index_buffer[3 * (primitive_index + i) + 1]];
 			uint8_t i2 = vbo_remap[index_buffer[3 * (primitive_index + i) + 2]];
+			//LOGI("Prim %u = { %u, %u, %u }\n", i, i0, i1, i2);
 			stream_buffer[i] = u8vec4(i0, i1, i2, 0);
 		}
 
@@ -308,7 +312,7 @@ static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata 
 			assert(vbo_index < MaxVertices + 3);
 			vbo_remapping[vbo_index++] = (uint64_t(v.second) << 32) | v.first;
 		}
-		std::sort(vbo_remapping, vbo_remapping + analysis_result.num_vertices);
+		std::sort(vbo_remapping, vbo_remapping + vbo_index);
 
 		for (uint32_t stream_index = 0; stream_index < num_u32_streams; stream_index++)
 		{
@@ -316,8 +320,7 @@ static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata 
 			{
 				auto vertex_index = uint32_t(vbo_remapping[i]);
 				uint32_t payload = attributes[stream_index + num_u32_streams * vertex_index];
-				stream_buffer[i] = u8vec4(uint8_t(payload >> 0), uint8_t(payload >> 8),
-				                          uint8_t(payload >> 16), uint8_t(payload >> 24));
+				memcpy(stream_buffer[i].data, &payload, sizeof(payload));
 			}
 
 			encode_stream(out_payload_buffer, meshlet.u32_streams[stream_index + 1], stream_buffer,
@@ -381,6 +384,7 @@ static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uin
 				{
 					for (unsigned bit = 0; bit < bits_per_u8[comp]; bit++)
 						bitplanes[bit][comp] = *pdata++;
+
 					// Sign-extend.
 
 					unsigned bit_count = bits_per_u8[comp];
@@ -425,26 +429,142 @@ static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uin
 	}
 }
 
-int main()
+static bool validate_mesh_decode(const std::vector<uint32_t> &decoded_index_buffer,
+                                 const std::vector<uint32_t> &decoded_u32_stream,
+                                 const std::vector<uint32_t> &reference_index_buffer,
+                                 const std::vector<uint32_t> &reference_u32_stream, unsigned u32_stride)
 {
-	std::vector<uint32_t> out_payload_buffer;
+	std::vector<uint32_t> decoded_output;
+	std::vector<uint32_t> reference_output;
 
-	uint32_t index_buffer[32 * 3];
-	uint32_t u32_stream[32 * 3];
-	for (unsigned i = 0; i < 32 * 3; i++)
+	if (decoded_index_buffer.size() != reference_index_buffer.size())
+		return false;
+
+	size_t count = decoded_index_buffer.size();
+
+	decoded_output.reserve(count * u32_stride);
+	reference_output.reserve(count * u32_stride);
+	for (size_t i = 0; i < count; i++)
 	{
-		index_buffer[i] = i;
-		u32_stream[i] = 3 * i;
+		uint32_t decoded_index = decoded_index_buffer[i];
+		decoded_output.insert(decoded_output.end(),
+		                      decoded_u32_stream.data() + decoded_index * u32_stride,
+		                      decoded_u32_stream.data() + (decoded_index + 1) * u32_stride);
+
+		uint32_t reference_index = reference_index_buffer[i];
+		reference_output.insert(reference_output.end(),
+		                        reference_u32_stream.data() + reference_index * u32_stride,
+		                        reference_u32_stream.data() + (reference_index + 1) * u32_stride);
 	}
 
-	MeshMetadata mesh;
-	encode_mesh(out_payload_buffer, mesh, index_buffer,
-	            sizeof(index_buffer) / (3 * sizeof(index_buffer[0])),
-	            u32_stream, 1);
+	for (size_t i = 0; i < count; i++)
+	{
+		for (unsigned j = 0; j < u32_stride; j++)
+		{
+			uint32_t decoded_value = decoded_output[i * u32_stride + j];
+			uint32_t reference_value = reference_output[i * u32_stride + j];
+			if (decoded_value != reference_value)
+			{
+				LOGI("Error in index %zu (prim %zu), word %u, expected %x, got %x.\n",
+				     i, i / 3, j, reference_value, decoded_value);
+				return false;
+			}
+		}
+	}
 
-	std::vector<uint32_t> out_index_buffer;
-	std::vector<uint32_t> out_u32_stream;
-	decode_mesh(out_index_buffer, out_u32_stream, out_payload_buffer, mesh);
+	return true;
+}
+
+int main(int argc, char *argv[])
+{
+	if (argc != 2)
+		return EXIT_FAILURE;
+
+	Global::init(Global::MANAGER_FEATURE_FILESYSTEM_BIT);
+
+	GLTF::Parser parser(argv[1]);
+
+	for (auto &mesh_ : parser.get_meshes())
+	{
+		auto mesh = mesh_;
+		unsigned u32_stride = (mesh.position_stride + mesh.attribute_stride) / sizeof(uint32_t);
+
+		if (mesh.indices.empty() || mesh.primitive_restart || mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+		{
+			LOGI("Unexpected mesh.\n");
+			continue;
+		}
+
+		std::vector<uint32_t> index_buffer;
+		std::vector<uint32_t> attr_buffer;
+		size_t vertex_count = mesh.positions.size() / mesh.position_stride;
+		attr_buffer.resize(u32_stride * vertex_count);
+		index_buffer.resize(mesh.count);
+
+		if (mesh.index_type == VK_INDEX_TYPE_UINT32)
+		{
+			memcpy(index_buffer.data(), mesh.indices.data(), mesh.count * sizeof(uint32_t));
+		}
+		else if (mesh.index_type == VK_INDEX_TYPE_UINT16)
+		{
+			auto *indices = reinterpret_cast<const uint16_t *>(mesh.indices.data());
+			for (unsigned i = 0; i < mesh.count; i++)
+				index_buffer[i] = indices[i];
+		}
+		else if (mesh.index_type == VK_INDEX_TYPE_UINT8_EXT)
+		{
+			auto *indices = reinterpret_cast<const uint8_t *>(mesh.indices.data());
+			for (unsigned i = 0; i < mesh.count; i++)
+				index_buffer[i] = indices[i];
+		}
+		else
+			continue;
+
+		LOGI("=== Testing mesh ===\n");
+
+		for (size_t i = 0; i < vertex_count; i++)
+		{
+			memcpy(attr_buffer.data() + u32_stride * i, mesh.positions.data() + i * mesh.position_stride, mesh.position_stride);
+			memcpy(attr_buffer.data() + u32_stride * i + mesh.position_stride / sizeof(uint32_t),
+				   mesh.attributes.data() + i * mesh.attribute_stride, mesh.attribute_stride);
+		}
+
+		LOGI("Mesh payload size = %zu bytes.\n", (index_buffer.size() + attr_buffer.size()) * sizeof(uint32_t));
+
+		std::vector<uint32_t> optimized_index_buffer(index_buffer.size());
+		meshopt_optimizeVertexCache(optimized_index_buffer.data(), index_buffer.data(), mesh.count, vertex_count);
+
+		std::vector<uint32_t> out_payload_buffer;
+		MeshMetadata encoded_mesh;
+		encode_mesh(out_payload_buffer, encoded_mesh,
+		            optimized_index_buffer.data(), optimized_index_buffer.size() / 3,
+		            attr_buffer.data(), u32_stride);
+
+		unsigned prim_offset = 0;
+		unsigned meshlet_index = 0;
+		for (auto &meshlet : encoded_mesh.meshlets)
+		{
+			LOGI("Meshlet #%u (%u prims, %u attrs), offset %u.\n",
+				 meshlet_index, meshlet.num_primitives_minus_1 + 1, meshlet.num_attributes_minus_1 + 1, prim_offset);
+			prim_offset += meshlet.num_primitives_minus_1 + 1;
+			meshlet_index++;
+		}
+
+		LOGI("Encoded payload size = %zu bytes.\n", out_payload_buffer.size() * sizeof(uint32_t));
+		LOGI("u32 stride = %u\n", u32_stride);
+
+		std::vector<uint32_t> decoded_index_buffer;
+		std::vector<uint32_t> decoded_u32_stream;
+		decode_mesh(decoded_index_buffer, decoded_u32_stream, out_payload_buffer, encoded_mesh);
+
+		if (!validate_mesh_decode(decoded_index_buffer, decoded_u32_stream, optimized_index_buffer, attr_buffer, u32_stride))
+		{
+			LOGE("Failed to validate mesh.\n");
+			return EXIT_FAILURE;
+		}
+
+		LOGI("=====================\n");
+	}
 
 	return 0;
 }

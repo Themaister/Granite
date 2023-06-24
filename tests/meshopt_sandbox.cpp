@@ -98,15 +98,34 @@ static PrimitiveAnalysisResult analyze_primitive_count(std::unordered_map<uint32
 }
 
 // Analyze bits required to encode a signed delta.
-static uvec4 compute_required_bits(u8vec4 delta)
+static uvec4 compute_required_bits_unsigned(u8vec4 delta)
 {
 	uvec4 result;
 	for (unsigned i = 0; i < 4; i++)
 	{
 		uint32_t v = delta[i];
-		if (v >= 0x80u)
-			v ^= 0xffu;
 		result[i] = v == 0 ? 0 : (32 - leading_zeroes(v));
+	}
+	return result;
+}
+
+static uvec4 compute_required_bits_signed(u8vec4 delta)
+{
+	uvec4 result;
+	for (unsigned i = 0; i < 4; i++)
+	{
+		uint32_t v = delta[i];
+
+		if (v == 0)
+		{
+			result[i] = 0;
+		}
+		else
+		{
+			if (v >= 0x80u)
+				v ^= 0xffu;
+			result[i] = v == 0 ? 1 : (33 - leading_zeroes(v));
+		}
 	}
 	return result;
 }
@@ -159,12 +178,14 @@ static void encode_stream(std::vector<uint32_t> &out_payload_buffer,
 {
 	stream.offset_from_base_u32 = uint32_t(out_payload_buffer.size());
 
-	// Simple linear predictor, base equal elements[0], gradient = 0.
-	stream.predictor[8] = uint16_t((stream_buffer[0].x << 8) | stream_buffer[0].y);
-	stream.predictor[9] = uint16_t((stream_buffer[0].z << 8) | stream_buffer[0].w);
-
 	// Delta-encode
-	u8vec4 current_value = stream_buffer[0];
+	u8vec4 current_value;
+	if (num_elements > 1)
+		current_value = u8vec4(2) * stream_buffer[0] - stream_buffer[1];
+	else
+		current_value = stream_buffer[0];
+	u8vec4 bias_value = current_value;
+
 	for (unsigned i = 0; i < num_elements; i++)
 	{
 		u8vec4 next_value = stream_buffer[i];
@@ -172,7 +193,7 @@ static void encode_stream(std::vector<uint32_t> &out_payload_buffer,
 		current_value = next_value;
 	}
 
-	// Find optimal predictor.
+	// Find optimal linear predictor.
 	find_linear_predictor(stream.predictor, stream_buffer, num_elements);
 
 	// u8.8 fixed point.
@@ -189,12 +210,42 @@ static void encode_stream(std::vector<uint32_t> &out_payload_buffer,
 	for (unsigned i = num_elements; i < MaxElements; i++)
 		stream_buffer[i] = u8vec4(0);
 
+	// Try to adjust the range such that it can fit in fewer bits.
+	// We can use the constant term in the linear predictor to nudge values in place.
+	i8vec4 lo(127);
+	i8vec4 hi(-128);
+
+	for (unsigned i = 0; i < num_elements; i++)
+	{
+		lo = min(lo, i8vec4(stream_buffer[i]));
+		hi = max(hi, i8vec4(stream_buffer[i]));
+	}
+
+	uvec4 full_bits = compute_required_bits_unsigned(u8vec4(hi - lo));
+	u8vec4 target_lo_value = u8vec4(-((uvec4(1) << full_bits) >> 1u));
+	u8vec4 bias = target_lo_value - u8vec4(lo);
+
+	for (unsigned i = 0; i < num_elements; i++)
+		stream_buffer[i] += bias;
+
+	for (unsigned i = 0; i < 4; i++)
+		stream.predictor[i] -= uint16_t(bias[i]) << 8;
+
+	// Based on the linear predictor, it's possible that the encoded value in stream_buffer[0] becomes non-zero again.
+	// This is undesirable, since we can use the initial value to force a delta of 0 here, saving precious bits.
+	bias_value += stream_buffer[0];
+	stream_buffer[0] = u8vec4(0);
+
+	// Simple linear predictor, base equal elements[0], gradient = 0.
+	stream.predictor[8] = uint16_t((bias_value.y << 8) | bias_value.x);
+	stream.predictor[9] = uint16_t((bias_value.w << 8) | bias_value.z);
+
 	// Encode 32 elements at once.
 	for (unsigned chunk_index = 0; chunk_index < MaxElements / 32; chunk_index++)
 	{
 		uvec4 required_bits = {};
 		for (unsigned i = 0; i < 32; i++)
-			required_bits = max(required_bits, compute_required_bits(stream_buffer[chunk_index * 32 + i]));
+			required_bits = max(required_bits, compute_required_bits_signed(stream_buffer[chunk_index * 32 + i]));
 
 		// Encode bit counts.
 		stream.bitplane_meta[chunk_index] = uint16_t((required_bits.x << 0) | (required_bits.y << 4) |
@@ -278,22 +329,131 @@ static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata 
 	mesh.data_stream_size_u32 = uint32_t(out_payload_buffer.size());
 }
 
+static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uint32_t> &out_u32_stream,
+                        const std::vector<uint32_t> &payload, const MeshMetadata &mesh)
+{
+	assert(mesh.stream_count > 1);
+	assert(mesh.stream_meta[0].type == StreamType::Primitive);
+	assert(mesh.stream_meta[0].stream_index_component == 0);
+
+	const unsigned u32_stride = mesh.stream_count - 1;
+	unsigned index_count = 0;
+	unsigned attr_count = 0;
+
+	for (auto &meshlet : mesh.meshlets)
+	{
+		index_count += (meshlet.num_primitives_minus_1 + 1) * 3;
+		attr_count += meshlet.num_attributes_minus_1 + 1;
+	}
+
+	out_index_buffer.clear();
+	out_u32_stream.clear();
+	out_index_buffer.reserve(index_count);
+	out_u32_stream.resize(attr_count * (mesh.stream_count - 1));
+
+	for (auto &meshlet : mesh.meshlets)
+	{
+		for (unsigned stream_index = 0; stream_index < mesh.stream_count; stream_index++)
+		{
+			auto &stream = meshlet.u32_streams[stream_index];
+			const uint32_t *pdata = payload.data() + mesh.data_stream_offset_u32 + stream.offset_from_base_u32;
+
+			u8vec4 deltas[MaxElements] = {};
+			const u16vec4 base_predictor = u16vec4(
+					stream.predictor[0], stream.predictor[1],
+					stream.predictor[2], stream.predictor[3]);
+			const u16vec4 linear_predictor = u16vec4(
+					stream.predictor[4], stream.predictor[5],
+					stream.predictor[6], stream.predictor[7]);
+			const u8vec4 initial_value =
+					u8vec4(u16vec2(stream.predictor[8], stream.predictor[9]).xxyy() >> u16vec4(0, 8, 0, 8));
+
+			for (unsigned chunk = 0; chunk < (MaxElements / 32); chunk++)
+			{
+				auto bits_per_u8 = (uvec4(stream.bitplane_meta[chunk]) >> uvec4(0, 4, 8, 12)) & 0xfu;
+				uvec4 bitplanes[8] = {};
+
+				for (unsigned comp = 0; comp < 4; comp++)
+				{
+					for (unsigned bit = 0; bit < bits_per_u8[comp]; bit++)
+						bitplanes[bit][comp] = *pdata++;
+					// Sign-extend.
+
+					unsigned bit_count = bits_per_u8[comp];
+					if (bit_count)
+						for (unsigned bit = bit_count; bit < 8; bit++)
+							bitplanes[bit][comp] = bitplanes[bit_count - 1][comp];
+				}
+
+				for (unsigned i = 0; i < 32; i++)
+				{
+					for (uint32_t bit = 0; bit < 8; bit++)
+						deltas[i] |= u8vec4(((bitplanes[bit] >> i) & 1u) << bit);
+				}
+			}
+
+			// Apply predictors.
+			deltas[0] += initial_value;
+			for (unsigned i = 0; i < MaxElements; i++)
+				deltas[i] += u8vec4((base_predictor + linear_predictor * u16vec4(i)) >> u16vec4(8));
+
+			// Resolve deltas.
+			for (unsigned i = 1; i < MaxElements; i++)
+				deltas[i] += deltas[i - 1];
+
+			if (stream_index == 0)
+			{
+				// Index decode.
+				unsigned num_primitives = meshlet.num_primitives_minus_1 + 1;
+				for (unsigned i = 0; i < num_primitives; i++)
+					for (unsigned j = 0; j < 3; j++)
+						out_index_buffer.push_back(deltas[i][j]);
+			}
+			else
+			{
+				// Attributes.
+				unsigned num_attributes = meshlet.num_attributes_minus_1 + 1;
+				auto *out_attr = out_u32_stream.data() + meshlet.base_vertex_offset * u32_stride + (stream_index - 1);
+				for (unsigned i = 0; i < num_attributes; i++, out_attr += u32_stride)
+					memcpy(out_attr, deltas[i].data, sizeof(*out_attr));
+			}
+		}
+	}
+}
+
 int main()
 {
 	std::vector<uint32_t> out_payload_buffer;
 
 	const uint32_t index_buffer[] = {
-		0, 2, 4,
-		6, 4, 2,
+		0, 0, 0,
+		1, 1, 1,
+		2, 2, 2,
+		3, 3, 3,
+		4, 4, 4,
+		5, 5, 5,
+		6, 6, 6,
+		7, 7, 7,
+		8, 8, 8,
+		9, 9, 9,
+		10, 10, 10,
+		11, 11, 11,
 	};
 
 	const uint32_t u32_stream[] = {
-		0, 1, 2, 3, 4, 5, 6, 7,
+		189, 24, 26, 96,
+		500, 800, 400, 300,
+		891, 1242, 8654, 14324,
 	};
 
 	MeshMetadata mesh;
-	encode_mesh(out_payload_buffer, mesh, index_buffer, sizeof(index_buffer) / (3 * sizeof(index_buffer[0])),
-				u32_stream, 1);
+	encode_mesh(out_payload_buffer, mesh, index_buffer,
+	            sizeof(index_buffer) / (3 * sizeof(index_buffer[0])),
+	            u32_stream, 1);
+
+	std::vector<uint32_t> out_index_buffer;
+	std::vector<uint32_t> out_u32_stream;
+	decode_mesh(out_index_buffer, out_u32_stream, out_payload_buffer, mesh);
 
 	return 0;
 }

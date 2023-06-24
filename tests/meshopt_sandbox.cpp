@@ -292,18 +292,22 @@ static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata 
 		// Encode index buffer.
 		for (uint32_t i = 0; i < analysis_result.num_primitives; i++)
 		{
-			uint8_t i0 = vbo_remap[index_buffer[3 * i + 0]];
-			uint8_t i1 = vbo_remap[index_buffer[3 * i + 1]];
-			uint8_t i2 = vbo_remap[index_buffer[3 * i + 2]];
+			uint8_t i0 = vbo_remap[index_buffer[3 * (primitive_index + i) + 0]];
+			uint8_t i1 = vbo_remap[index_buffer[3 * (primitive_index + i) + 1]];
+			uint8_t i2 = vbo_remap[index_buffer[3 * (primitive_index + i) + 2]];
 			stream_buffer[i] = u8vec4(i0, i1, i2, 0);
 		}
 
 		encode_stream(out_payload_buffer, meshlet.u32_streams[0], stream_buffer, analysis_result.num_primitives);
 
-		uint64_t vbo_remapping[MaxVertices];
+		// Handle spill region just in case.
+		uint64_t vbo_remapping[MaxVertices + 3];
 		unsigned vbo_index = 0;
 		for (auto &v : vbo_remap)
+		{
+			assert(vbo_index < MaxVertices + 3);
 			vbo_remapping[vbo_index++] = (uint64_t(v.second) << 32) | v.first;
+		}
 		std::sort(vbo_remapping, vbo_remapping + analysis_result.num_vertices);
 
 		for (uint32_t stream_index = 0; stream_index < num_u32_streams; stream_index++)
@@ -388,7 +392,7 @@ static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uin
 				for (unsigned i = 0; i < 32; i++)
 				{
 					for (uint32_t bit = 0; bit < 8; bit++)
-						deltas[i] |= u8vec4(((bitplanes[bit] >> i) & 1u) << bit);
+						deltas[chunk * 32 + i] |= u8vec4(((bitplanes[bit] >> i) & 1u) << bit);
 				}
 			}
 
@@ -407,7 +411,7 @@ static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uin
 				unsigned num_primitives = meshlet.num_primitives_minus_1 + 1;
 				for (unsigned i = 0; i < num_primitives; i++)
 					for (unsigned j = 0; j < 3; j++)
-						out_index_buffer.push_back(deltas[i][j]);
+						out_index_buffer.push_back(deltas[i][j] + meshlet.base_vertex_offset);
 			}
 			else
 			{
@@ -425,26 +429,13 @@ int main()
 {
 	std::vector<uint32_t> out_payload_buffer;
 
-	const uint32_t index_buffer[] = {
-		0, 0, 0,
-		1, 1, 1,
-		2, 2, 2,
-		3, 3, 3,
-		4, 4, 4,
-		5, 5, 5,
-		6, 6, 6,
-		7, 7, 7,
-		8, 8, 8,
-		9, 9, 9,
-		10, 10, 10,
-		11, 11, 11,
-	};
-
-	const uint32_t u32_stream[] = {
-		189, 24, 26, 96,
-		500, 800, 400, 300,
-		891, 1242, 8654, 14324,
-	};
+	uint32_t index_buffer[32 * 3];
+	uint32_t u32_stream[32 * 3];
+	for (unsigned i = 0; i < 32 * 3; i++)
+	{
+		index_buffer[i] = i;
+		u32_stream[i] = 3 * i;
+	}
 
 	MeshMetadata mesh;
 	encode_mesh(out_payload_buffer, mesh, index_buffer,

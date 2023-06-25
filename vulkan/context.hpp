@@ -103,6 +103,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceFloatControlsPropertiesKHR float_control_properties = {};
 	VkPhysicalDeviceBufferDeviceAddressFeaturesKHR buffer_device_address_features = {};
 	VkPhysicalDeviceIDProperties id_properties = {};
+	VkPhysicalDeviceShaderSubgroupExtendedTypesFeaturesKHR shader_subgroup_extended_types_features = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};

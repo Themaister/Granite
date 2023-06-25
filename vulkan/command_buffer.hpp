@@ -444,8 +444,12 @@ public:
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	// Convenience functions for one-off shader binds.
-	void set_program(const std::string &vertex, const std::string &fragment, const std::vector<std::pair<std::string, int>> &defines = {});
-	void set_program(const std::string &compute, const std::vector<std::pair<std::string, int>> &defines = {});
+	void set_program(const std::string &task, const std::string &mesh, const std::string &fragment,
+	                 const std::vector<std::pair<std::string, int>> &defines = {});
+	void set_program(const std::string &vertex, const std::string &fragment,
+	                 const std::vector<std::pair<std::string, int>> &defines = {});
+	void set_program(const std::string &compute,
+	                 const std::vector<std::pair<std::string, int>> &defines = {});
 #endif
 
 	void set_buffer_view(unsigned set, unsigned binding, const BufferView &view);
@@ -501,16 +505,20 @@ public:
 	          uint32_t first_instance = 0);
 	void draw_indexed(uint32_t index_count, uint32_t instance_count = 1, uint32_t first_index = 0,
 	                  int32_t vertex_offset = 0, uint32_t first_instance = 0);
+	void draw_mesh_tasks(uint32_t tasks_x, uint32_t tasks_y, uint32_t tasks_z);
 
 	void dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z);
 
-	void draw_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride);
-	void draw_indexed_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride);
-	void draw_multi_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride,
-	                         const Buffer &count, uint32_t count_offset);
-	void draw_indexed_multi_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride,
-	                                 const Buffer &count, uint32_t count_offset);
-	void dispatch_indirect(const Buffer &buffer, uint32_t offset);
+	void draw_indirect(const Buffer &buffer, VkDeviceSize offset, uint32_t draw_count, uint32_t stride);
+	void draw_indexed_indirect(const Buffer &buffer, VkDeviceSize offset, uint32_t draw_count, uint32_t stride);
+	void draw_multi_indirect(const Buffer &buffer, VkDeviceSize offset, uint32_t draw_count, uint32_t stride,
+	                         const Buffer &count, VkDeviceSize count_offset);
+	void draw_indexed_multi_indirect(const Buffer &buffer, VkDeviceSize offset, uint32_t draw_count, uint32_t stride,
+	                                 const Buffer &count, VkDeviceSize count_offset);
+	void dispatch_indirect(const Buffer &buffer, VkDeviceSize offset);
+	void draw_mesh_tasks_indirect(const Buffer &buffer, VkDeviceSize offset, uint32_t draw_count, uint32_t stride);
+	void draw_mesh_tasks_multi_indirect(const Buffer &buffer, VkDeviceSize offset, uint32_t draw_count, uint32_t stride,
+										const Buffer &count, VkDeviceSize count_offset);
 	void execute_indirect_commands(const IndirectLayout *indirect_layout,
 	                               uint32_t sequences,
 	                               const Buffer &indirect, VkDeviceSize offset,
@@ -819,6 +827,7 @@ private:
 	bool is_compute = true;
 	bool is_secondary = false;
 	bool is_ended = false;
+	bool framebuffer_is_multiview = false;
 
 	void set_dirty(CommandBufferDirtyFlags flags)
 	{

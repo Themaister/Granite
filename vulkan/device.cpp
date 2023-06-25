@@ -447,6 +447,38 @@ Program *Device::request_program(Shader *vertex, Shader *fragment, const Immutab
 	return ret;
 }
 
+Program *Device::request_program(Shader *task, Shader *mesh, Shader *fragment, const ImmutableSamplerBank *sampler_bank)
+{
+	if (!mesh || !fragment)
+		return nullptr;
+
+	if (!get_device_features().mesh_shader_features.meshShader)
+	{
+		LOGE("meshShader not supported.\n");
+		return nullptr;
+	}
+
+	if (task && !get_device_features().mesh_shader_features.taskShader)
+	{
+		LOGE("taskShader not supported.\n");
+		return nullptr;
+	}
+
+	Util::Hasher hasher;
+	hasher.u64(task ? task->get_hash() : 0);
+	hasher.u64(mesh->get_hash());
+	hasher.u64(fragment->get_hash());
+	ImmutableSamplerBank::hash(hasher, sampler_bank);
+
+	auto hash = hasher.get();
+	LOCK_CACHE();
+	auto *ret = programs.find(hash);
+
+	if (!ret)
+		ret = programs.emplace_yield(hash, this, task, mesh, fragment, sampler_bank);
+	return ret;
+}
+
 Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size,
                                  const uint32_t *fragment_data, size_t fragment_size,
                                  const ResourceLayout *vertex_layout,
@@ -458,6 +490,24 @@ Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size
 	auto *vertex = request_shader(vertex_data, vertex_size, vertex_layout);
 	auto *fragment = request_shader(fragment_data, fragment_size, fragment_layout);
 	return request_program(vertex, fragment);
+}
+
+Program *Device::request_program(const uint32_t *task_data, size_t task_size,
+                                 const uint32_t *mesh_data, size_t mesh_size,
+                                 const uint32_t *fragment_data, size_t fragment_size,
+                                 const ResourceLayout *task_layout,
+                                 const ResourceLayout *mesh_layout,
+                                 const ResourceLayout *fragment_layout)
+{
+	if (!mesh_size || !fragment_size)
+		return nullptr;
+
+	Shader *task = nullptr;
+	if (task_size)
+		task = request_shader(task_data, task_size, task_layout);
+	auto *mesh = request_shader(mesh_data, mesh_size, mesh_layout);
+	auto *fragment = request_shader(fragment_data, fragment_size, fragment_layout);
+	return request_program(task, mesh, fragment);
 }
 
 const PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &layout,

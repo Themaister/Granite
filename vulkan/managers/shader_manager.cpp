@@ -83,7 +83,8 @@ bool ShaderTemplate::init()
 	GRANITE_SCOPED_TIMELINE_EVENT_FILE(device->get_system_handles().timeline_trace_file, "glsl-preprocess");
 
 	compiler = std::make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
-	compiler->set_target(Granite::Target::Vulkan11);
+	compiler->set_target(device->get_device_features().supports_spirv_1_4 ?
+	                     Granite::Target::Vulkan11_Spirv14 : Granite::Target::Vulkan11);
 	if (!compiler->set_source_from_file(path, force_stage))
 		return false;
 	compiler->set_include_directories(&include_directories);
@@ -258,7 +259,8 @@ void ShaderTemplate::recompile()
 	if (!device->get_system_handles().filesystem)
 		return;
 	auto newcompiler = std::make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
-	newcompiler->set_target(Granite::Target::Vulkan11);
+	newcompiler->set_target(device->get_device_features().supports_spirv_1_4 ?
+	                        Granite::Target::Vulkan11_Spirv14 : Granite::Target::Vulkan11);
 	if (!newcompiler->set_source_from_file(path, force_stage))
 		return;
 	newcompiler->set_include_directories(&include_directories);
@@ -348,38 +350,95 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 {
 	Vulkan::Program *ret;
 	auto *vert = stages[Util::ecast(Vulkan::ShaderStage::Vertex)];
+	auto *mesh = stages[Util::ecast(Vulkan::ShaderStage::Mesh)];
+	auto *task = stages[Util::ecast(Vulkan::ShaderStage::Task)];
 	auto *frag = stages[Util::ecast(Vulkan::ShaderStage::Fragment)];
 
 #ifdef GRANITE_SHIPPING
-	ret = device->request_program(vert->resolve(*device), frag->resolve(*device), sampler_bank.get());
+	if (mesh)
+	{
+		ret = device->request_program(task ? task->resolve(*device) : nullptr,
+		                              mesh->resolve(*device),
+		                              frag->resolve(*device),
+		                              sampler_bank.get());
+	}
+	else
+	{
+		ret = device->request_program(vert->resolve(*device),
+		                              frag->resolve(*device),
+		                              sampler_bank.get());
+	}
 #else
 	auto &vert_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Vertex)];
 	auto &frag_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Fragment)];
+	auto &mesh_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Mesh)];
+	auto &task_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Task)];
 
 	unsigned loaded_vert_instance = vert_instance.load(std::memory_order_acquire);
+	unsigned loaded_mesh_instance = mesh_instance.load(std::memory_order_acquire);
+	unsigned loaded_task_instance = task_instance.load(std::memory_order_acquire);
 	unsigned loaded_frag_instance = frag_instance.load(std::memory_order_acquire);
 
 	// If we have observed all possible compilation instances,
 	// we can safely read program directly.
 	// comp->instance will only ever be incremented in the main thread on an inotify, so this is fine.
 	// If comp->instance changes in the interim, we are at least guaranteed to read a sensible value for program.
-	if (loaded_vert_instance == vert->instance && loaded_frag_instance == frag->instance)
-		return program.load(std::memory_order_relaxed);
-
-	instance_lock.lock_write();
-	if (vert_instance.load(std::memory_order_relaxed) != vert->instance ||
-	    frag_instance.load(std::memory_order_relaxed) != frag->instance)
+	if (mesh)
 	{
-		ret = device->request_program(vert->resolve(*device), frag->resolve(*device),
-		                              sampler_bank.get());
-		program.store(ret, std::memory_order_relaxed);
-		vert_instance.store(vert->instance, std::memory_order_release);
-		frag_instance.store(frag->instance, std::memory_order_release);
+		if ((!task || (loaded_task_instance == task->instance)) &&
+		    loaded_mesh_instance == mesh->instance &&
+		    loaded_frag_instance == frag->instance)
+		{
+			return program.load(std::memory_order_relaxed);
+		}
 	}
 	else
 	{
-		ret = program.load(std::memory_order_relaxed);
+		if (loaded_vert_instance == vert->instance && loaded_frag_instance == frag->instance)
+			return program.load(std::memory_order_relaxed);
 	}
+
+	instance_lock.lock_write();
+
+	if (mesh)
+	{
+		if ((task && task_instance.load(std::memory_order_relaxed) != task->instance) ||
+		    mesh_instance.load(std::memory_order_relaxed) != mesh->instance ||
+		    frag_instance.load(std::memory_order_relaxed) != frag->instance)
+		{
+			ret = device->request_program(task ? task->resolve(*device) : nullptr,
+			                              mesh->resolve(*device),
+			                              frag->resolve(*device),
+			                              sampler_bank.get());
+			program.store(ret, std::memory_order_relaxed);
+			if (task)
+				task_instance.store(task->instance, std::memory_order_release);
+			mesh_instance.store(mesh->instance, std::memory_order_release);
+			frag_instance.store(frag->instance, std::memory_order_release);
+		}
+		else
+		{
+			ret = program.load(std::memory_order_relaxed);
+		}
+	}
+	else
+	{
+		if (vert_instance.load(std::memory_order_relaxed) != vert->instance ||
+		    frag_instance.load(std::memory_order_relaxed) != frag->instance)
+		{
+			ret = device->request_program(vert->resolve(*device),
+			                              frag->resolve(*device),
+			                              sampler_bank.get());
+			program.store(ret, std::memory_order_relaxed);
+			vert_instance.store(vert->instance, std::memory_order_release);
+			frag_instance.store(frag->instance, std::memory_order_release);
+		}
+		else
+		{
+			ret = program.load(std::memory_order_relaxed);
+		}
+	}
+
 	instance_lock.unlock_write();
 #endif
 
@@ -388,13 +447,12 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 
 Vulkan::Program *ShaderProgramVariant::get_program()
 {
-	auto *vert = stages[static_cast<unsigned>(Vulkan::ShaderStage::Vertex)];
 	auto *frag = stages[static_cast<unsigned>(Vulkan::ShaderStage::Fragment)];
 	auto *comp = stages[static_cast<unsigned>(Vulkan::ShaderStage::Compute)];
 
 	if (comp)
 		return get_program_compute();
-	else if (vert && frag)
+	else if (frag)
 		return get_program_graphics();
 	else
 		return nullptr;
@@ -492,6 +550,28 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const
 	auto *ret = programs.find(hash);
 	if (!ret)
 		ret = programs.emplace_yield(hash, device, vert_tmpl, frag_tmpl);
+	return ret;
+}
+
+ShaderProgram *ShaderManager::register_graphics(const std::string &task, const std::string &mesh, const std::string &fragment)
+{
+	ShaderTemplate *task_tmpl = nullptr;
+	if (!task.empty())
+		task_tmpl = get_template(task, Granite::Stage::Task);
+	auto *mesh_tmpl = get_template(mesh, Granite::Stage::Mesh);
+	auto *frag_tmpl = get_template(fragment, Granite::Stage::Fragment);
+	if (!mesh_tmpl || !frag_tmpl)
+		return nullptr;
+
+	Util::Hasher h;
+	h.u64(task_tmpl ? task_tmpl->get_path_hash() : 0);
+	h.u64(mesh_tmpl->get_path_hash());
+	h.u64(frag_tmpl->get_path_hash());
+	auto hash = h.get();
+
+	auto *ret = programs.find(hash);
+	if (!ret)
+		ret = programs.emplace_yield(hash, device, task_tmpl, mesh_tmpl, frag_tmpl);
 	return ret;
 }
 

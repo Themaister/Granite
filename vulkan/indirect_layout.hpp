@@ -41,7 +41,8 @@ struct IndirectLayoutToken
 		VBO,
 		IBO,
 		Draw,
-		DrawIndexed
+		DrawIndexed,
+		MeshTasks,
 	};
 
 	Type type = Type::Invalid;

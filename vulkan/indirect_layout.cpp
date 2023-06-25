@@ -71,6 +71,10 @@ IndirectLayout::IndirectLayout(Device *device_, const IndirectLayoutToken *token
 			token.tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_SHADER_GROUP_NV;
 			break;
 
+		case IndirectLayoutToken::Type::MeshTasks:
+			token.tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV;
+			break;
+
 		default:
 			LOGE("Invalid token type.\n");
 			break;

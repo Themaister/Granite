@@ -40,13 +40,15 @@ enum class Stage
 	Geometry,
 	Fragment,
 	Compute,
+	Task,
+	Mesh,
 	Unknown
 };
 
 enum class Target
 {
-	Vulkan10,
-	Vulkan11
+	Vulkan11,
+	Vulkan11_Spirv14
 };
 
 class GLSLCompiler
@@ -126,7 +128,7 @@ private:
 	std::vector<std::pair<size_t, size_t>> preprocessed_lines;
 	std::vector<std::string> pragmas;
 
-	Target target = Target::Vulkan10;
+	Target target = Target::Vulkan11;
 
 	bool parse_variants(const std::string &source, const std::string &path);
 

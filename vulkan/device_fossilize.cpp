@@ -195,32 +195,78 @@ bool Device::enqueue_create_shader_module(Fossilize::Hash hash, const VkShaderMo
 
 bool Device::fossilize_replay_graphics_pipeline(Fossilize::Hash hash, VkGraphicsPipelineCreateInfo &info)
 {
-	if (info.stageCount != 2 ||
-	    info.pStages[0].stage != VK_SHADER_STAGE_VERTEX_BIT ||
-	    info.pStages[1].stage != VK_SHADER_STAGE_FRAGMENT_BIT)
+	int vert_index = -1;
+	int task_index = -1;
+	int mesh_index = -1;
+	int frag_index = -1;
+
+	for (uint32_t i = 0; i < info.stageCount; i++)
+	{
+		switch (info.pStages[i].stage)
+		{
+		case VK_SHADER_STAGE_VERTEX_BIT:
+			vert_index = int(i);
+			break;
+
+		case VK_SHADER_STAGE_TASK_BIT_EXT:
+			task_index = int(i);
+			break;
+
+		case VK_SHADER_STAGE_MESH_BIT_EXT:
+			mesh_index = int(i);
+			break;
+
+		case VK_SHADER_STAGE_FRAGMENT_BIT:
+			frag_index = int(i);
+			break;
+
+		default:
+			replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
+			return false;
+		}
+	}
+
+	if (frag_index < 0 || (mesh_index < 0 && vert_index < 0) ||
+	    (mesh_index >= 0 && vert_index >= 0))
 	{
 		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return false;
 	}
 
-	auto *vert_shader = shaders.find((Fossilize::Hash)info.pStages[0].module);
-	auto *frag_shader = shaders.find((Fossilize::Hash)info.pStages[1].module);
+	auto *vert_shader = vert_index >= 0 ? shaders.find((Fossilize::Hash)info.pStages[vert_index].module) : nullptr;
+	auto *task_shader = task_index >= 0 ? shaders.find((Fossilize::Hash)info.pStages[task_index].module) : nullptr;
+	auto *mesh_shader = mesh_index >= 0 ? shaders.find((Fossilize::Hash)info.pStages[mesh_index].module) : nullptr;
+	auto *frag_shader = shaders.find((Fossilize::Hash)info.pStages[frag_index].module);
 
-	if (!vert_shader || !frag_shader)
+	if ((!vert_shader && !mesh_shader) || !frag_shader)
 	{
 		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return false;
 	}
 
-	auto *ret = request_program(vert_shader, frag_shader,
-	                            reinterpret_cast<const ImmutableSamplerBank *>(info.layout));
+	Program *ret;
+	if (mesh_shader)
+	{
+		ret = request_program(task_shader, mesh_shader, frag_shader,
+		                      reinterpret_cast<const ImmutableSamplerBank *>(info.layout));
+	}
+	else
+	{
+		ret = request_program(vert_shader, frag_shader,
+		                      reinterpret_cast<const ImmutableSamplerBank *>(info.layout));
+	}
 
 	// The layout is dummy, resolve it here.
 	info.layout = ret->get_pipeline_layout()->get_layout();
 
 	// Resolve shader modules.
-	const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[0].module = vert_shader->get_module();
-	const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[1].module = frag_shader->get_module();
+	if (vert_index >= 0)
+		const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[vert_index].module = vert_shader->get_module();
+	if (task_index >= 0)
+		const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[task_index].module = task_shader->get_module();
+	if (mesh_index >= 0)
+		const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[mesh_index].module = mesh_shader->get_module();
+	const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[frag_index].module = frag_shader->get_module();
 
 #ifdef VULKAN_DEBUG
 	LOGI("Replaying graphics pipeline.\n");

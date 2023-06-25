@@ -1,0 +1,34 @@
+#version 450
+#extension GL_EXT_mesh_shader : require
+layout(max_primitives = 4, max_vertices = 12, triangles) out;
+layout(local_size_x = 3, local_size_y = 4) in;
+
+layout(set = 0, binding = 0) readonly buffer VBO
+{
+    vec2 positions[];
+};
+
+layout(set = 0, binding = 1) readonly buffer VBOOffsets
+{
+    vec2 offsets[];
+};
+
+layout(set = 0, binding = 2) readonly buffer VBOPerPrim
+{
+    vec4 colors[];
+};
+
+layout(location = 0) perprimitiveEXT out vec4 vColor[];
+taskPayloadSharedEXT vec2 task_offsets[4];
+
+void main()
+{
+    SetMeshOutputsEXT(12, 4);
+    gl_MeshVerticesEXT[gl_LocalInvocationIndex].gl_Position =
+        vec4(positions[gl_LocalInvocationID.x] + offsets[gl_LocalInvocationID.y] + task_offsets[gl_WorkGroupID.x], 0.0, 1.0);
+    if (gl_WorkGroupID.y == 0u)
+    {
+        gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = 3u * gl_LocalInvocationIndex + uvec3(0, 1, 2);
+        vColor[gl_LocalInvocationIndex] = colors[gl_LocalInvocationIndex];
+    }
+}

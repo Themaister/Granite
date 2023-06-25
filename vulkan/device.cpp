@@ -76,16 +76,6 @@ static constexpr VkImageUsageFlags image_usage_video_flags =
 		VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR;
 #endif
 
-static const char *queue_name_table[] = {
-	"Graphics",
-	"Compute",
-	"Transfer",
-	"Video decode",
-#ifdef VK_ENABLE_BETA_EXTENSIONS
-	"Video encode",
-#endif
-};
-
 static const QueueIndices queue_flush_order[] = {
 	QUEUE_INDEX_TRANSFER,
 	QUEUE_INDEX_VIDEO_DECODE,
@@ -1414,8 +1404,6 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit2KHR failed (code: %d).\n", int(result));
-	if (result == VK_ERROR_DEVICE_LOST)
-		report_checkpoints();
 
 	if (!ext.timeline_semaphore_features.timelineSemaphore)
 		data.need_fence = true;
@@ -1900,8 +1888,6 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit2KHR failed (code: %d).\n", int(result));
-	if (result == VK_ERROR_DEVICE_LOST)
-		report_checkpoints();
 	submissions.clear();
 
 	if (!ext.timeline_semaphore_features.timelineSemaphore)
@@ -2515,8 +2501,6 @@ void Device::wait_idle_nolock()
 		auto result = table->vkDeviceWaitIdle(device);
 		if (result != VK_SUCCESS)
 			LOGE("vkDeviceWaitIdle failed with code: %d\n", result);
-		if (result == VK_ERROR_DEVICE_LOST)
-			report_checkpoints();
 		if (queue_unlock_callback)
 			queue_unlock_callback();
 	}
@@ -5084,32 +5068,6 @@ void Device::set_name(const Image &image, const char *name)
 void Device::set_name(const CommandBuffer &cmd, const char *name)
 {
 	set_name((uint64_t)cmd.get_command_buffer(), VK_OBJECT_TYPE_COMMAND_BUFFER, name);
-}
-
-void Device::report_checkpoints()
-{
-	if (!ext.supports_nv_device_diagnostic_checkpoints)
-		return;
-
-	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
-	{
-		if (queue_info.queues[i] == VK_NULL_HANDLE)
-			continue;
-
-		uint32_t count;
-		table->vkGetQueueCheckpointDataNV(queue_info.queues[i], &count, nullptr);
-		std::vector<VkCheckpointDataNV> checkpoint_data(count);
-		for (auto &data : checkpoint_data)
-			data.sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV;
-		table->vkGetQueueCheckpointDataNV(queue_info.queues[i], &count, checkpoint_data.data());
-
-		if (!checkpoint_data.empty())
-		{
-			LOGI("Checkpoints for %s queue:\n", queue_name_table[i]);
-			for (auto &d : checkpoint_data)
-				LOGI("Stage %u:\n%s\n", d.stage, static_cast<const char *>(d.pCheckpointMarker));
-		}
-	}
 }
 
 void Device::query_available_performance_counters(CommandBuffer::Type type, uint32_t *count,

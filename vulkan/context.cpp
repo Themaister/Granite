@@ -1127,14 +1127,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	}
 #endif
 
-#ifdef VULKAN_DEBUG
-	if (has_extension(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME))
-	{
-		ext.supports_nv_device_diagnostic_checkpoints = true;
-		enabled_extensions.push_back(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME);
-	}
-#endif
-
 	if (
 #ifdef _WIN32
 	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME) &&

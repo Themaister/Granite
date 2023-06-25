@@ -761,8 +761,6 @@ public:
 	}
 
 	QueryPoolHandle write_timestamp(VkPipelineStageFlags2 stage);
-	void add_checkpoint(const char *tag);
-	void set_backtrace_checkpoint();
 
 	// Used when recording command buffers in a thread, and submitting them in a different thread.
 	// Need to make sure that no further commands on the VkCommandBuffer happen.

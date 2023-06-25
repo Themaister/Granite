@@ -30,14 +30,6 @@
 #include "timer.hpp"
 #include <string.h>
 
-//#define FULL_BACKTRACE_CHECKPOINTS
-#ifdef FULL_BACKTRACE_CHECKPOINTS
-#ifdef __linux__
-#include <execinfo.h>
-#endif
-#include <sstream>
-#endif
-
 using namespace Util;
 
 namespace Vulkan
@@ -2616,7 +2608,6 @@ void CommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
-		set_backtrace_checkpoint();
 		table.vkCmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
 	}
 	else
@@ -2631,7 +2622,6 @@ void CommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_count, 
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
-		set_backtrace_checkpoint();
 		table.vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
 	}
 	else
@@ -2651,7 +2641,6 @@ void CommandBuffer::draw_mesh_tasks(uint32_t tasks_x, uint32_t tasks_y, uint32_t
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Mesh) != nullptr);
-		set_backtrace_checkpoint();
 		table.vkCmdDrawMeshTasksEXT(cmd, tasks_x, tasks_y, tasks_z);
 	}
 	else
@@ -2672,7 +2661,6 @@ void CommandBuffer::draw_mesh_tasks_indirect(const Buffer &buffer, VkDeviceSize 
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Mesh) != nullptr);
-		set_backtrace_checkpoint();
 		table.vkCmdDrawMeshTasksIndirectEXT(cmd, buffer.get_buffer(), offset, draw_count, stride);
 	}
 	else
@@ -2694,7 +2682,6 @@ void CommandBuffer::draw_mesh_tasks_multi_indirect(const Buffer &buffer, VkDevic
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Mesh) != nullptr);
-		set_backtrace_checkpoint();
 		table.vkCmdDrawMeshTasksIndirectCountEXT(cmd, buffer.get_buffer(), offset,
 		                                         count.get_buffer(), count_offset,
 		                                         draw_count, stride);
@@ -2710,7 +2697,6 @@ void CommandBuffer::draw_indirect(const Vulkan::Buffer &buffer,
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
-		set_backtrace_checkpoint();
 		table.vkCmdDrawIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
 	}
 	else
@@ -2730,7 +2716,6 @@ void CommandBuffer::draw_multi_indirect(const Buffer &buffer, VkDeviceSize offse
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
-		set_backtrace_checkpoint();
 		table.vkCmdDrawIndirectCountKHR(cmd, buffer.get_buffer(), offset,
 		                                count.get_buffer(), count_offset,
 		                                draw_count, stride);
@@ -2752,7 +2737,6 @@ void CommandBuffer::draw_indexed_multi_indirect(const Buffer &buffer, VkDeviceSi
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
-		set_backtrace_checkpoint();
 		table.vkCmdDrawIndexedIndirectCountKHR(cmd, buffer.get_buffer(), offset,
 		                                       count.get_buffer(), count_offset,
 		                                       draw_count, stride);
@@ -2769,7 +2753,6 @@ void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
 		table.vkCmdDrawIndexedIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
-		set_backtrace_checkpoint();
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -2780,7 +2763,6 @@ void CommandBuffer::dispatch_indirect(const Buffer &buffer, VkDeviceSize offset)
 	VK_ASSERT(is_compute);
 	if (flush_compute_state(true) != VK_NULL_HANDLE)
 	{
-		set_backtrace_checkpoint();
 		table.vkCmdDispatchIndirect(cmd, buffer.get_buffer(), offset);
 	}
 	else
@@ -2845,18 +2827,13 @@ void CommandBuffer::execute_indirect_commands(
 	set_dirty(COMMAND_BUFFER_DYNAMIC_BITS |
 	          COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT |
 	          COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
-
-	set_backtrace_checkpoint();
 }
 
 void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z)
 {
 	VK_ASSERT(is_compute);
 	if (flush_compute_state(true) != VK_NULL_HANDLE)
-	{
-		set_backtrace_checkpoint();
 		table.vkCmdDispatch(cmd, groups_x, groups_y, groups_z);
-	}
 	else
 		LOGE("Failed to flush render state, dispatch will be dropped.\n");
 }
@@ -3032,28 +3009,6 @@ void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferS
 QueryPoolHandle CommandBuffer::write_timestamp(VkPipelineStageFlags2 stage)
 {
 	return device->write_timestamp(cmd, stage);
-}
-
-void CommandBuffer::add_checkpoint(const char *tag)
-{
-	if (device->get_device_features().supports_nv_device_diagnostic_checkpoints)
-		table.vkCmdSetCheckpointNV(cmd, tag);
-}
-
-void CommandBuffer::set_backtrace_checkpoint()
-{
-#if defined(FULL_BACKTRACE_CHECKPOINTS) && defined(__linux__)
-	void *arr[1024];
-	int ret = backtrace(arr, 1024);
-
-	ostringstream str;
-	for (int i = 0; i < ret; i++)
-		str << arr[i] << endl;
-	auto s = str.str();
-
-	// Never free the duped string for now.
-	add_checkpoint(strdup(s.c_str()));
-#endif
 }
 
 void CommandBuffer::end_threaded_recording()

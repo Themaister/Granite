@@ -50,7 +50,6 @@ struct DeviceFeatures
 {
 	bool supports_debug_utils = false;
 	bool supports_mirror_clamp_to_edge = false;
-	bool supports_nv_device_diagnostic_checkpoints = false;
 	bool supports_external_memory_host = false;
 	bool supports_surface_capabilities2 = false;
 	bool supports_full_screen_exclusive = false;

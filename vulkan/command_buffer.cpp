@@ -30,14 +30,6 @@
 #include "timer.hpp"
 #include <string.h>
 
-//#define FULL_BACKTRACE_CHECKPOINTS
-#ifdef FULL_BACKTRACE_CHECKPOINTS
-#ifdef __linux__
-#include <execinfo.h>
-#endif
-#include <sstream>
-#endif
-
 using namespace Util;
 
 namespace Vulkan
@@ -1031,6 +1023,7 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassConte
 	pipeline_state.compatible_render_pass = &framebuffer->get_compatible_render_pass();
 	actual_render_pass = &device->request_render_pass(info, false);
 	pipeline_state.subpass_index = 0;
+	framebuffer_is_multiview = info.num_layers > 1;
 
 	memset(framebuffer_attachments, 0, sizeof(framebuffer_attachments));
 	unsigned att;
@@ -1372,26 +1365,30 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	// Vertex input
 	VkPipelineVertexInputStateCreateInfo vi = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 	VkVertexInputAttributeDescription vi_attribs[VULKAN_NUM_VERTEX_ATTRIBS];
-	vi.pVertexAttributeDescriptions = vi_attribs;
-	uint32_t attr_mask = compile.layout->get_resource_layout().attribute_mask;
-	uint32_t binding_mask = 0;
-	for_each_bit(attr_mask, [&](uint32_t bit) {
-		auto &attr = vi_attribs[vi.vertexAttributeDescriptionCount++];
-		attr.location = bit;
-		attr.binding = compile.attribs[bit].binding;
-		attr.format = compile.attribs[bit].format;
-		attr.offset = compile.attribs[bit].offset;
-		binding_mask |= 1u << attr.binding;
-	});
-
 	VkVertexInputBindingDescription vi_bindings[VULKAN_NUM_VERTEX_BUFFERS];
-	vi.pVertexBindingDescriptions = vi_bindings;
-	for_each_bit(binding_mask, [&](uint32_t bit) {
-		auto &bind = vi_bindings[vi.vertexBindingDescriptionCount++];
-		bind.binding = bit;
-		bind.inputRate = compile.input_rates[bit];
-		bind.stride = compile.strides[bit];
-	});
+
+	if (compile.program->get_shader(ShaderStage::Vertex))
+	{
+		vi.pVertexAttributeDescriptions = vi_attribs;
+		uint32_t attr_mask = compile.layout->get_resource_layout().attribute_mask;
+		uint32_t binding_mask = 0;
+		for_each_bit(attr_mask, [&](uint32_t bit) {
+			auto &attr = vi_attribs[vi.vertexAttributeDescriptionCount++];
+			attr.location = bit;
+			attr.binding = compile.attribs[bit].binding;
+			attr.format = compile.attribs[bit].format;
+			attr.offset = compile.attribs[bit].offset;
+			binding_mask |= 1u << attr.binding;
+		});
+
+		vi.pVertexBindingDescriptions = vi_bindings;
+		for_each_bit(binding_mask, [&](uint32_t bit) {
+			auto &bind = vi_bindings[vi.vertexBindingDescriptionCount++];
+			bind.binding = bit;
+			bind.inputRate = compile.input_rates[bit];
+			bind.stride = compile.strides[bit];
+		});
+	}
 
 	// Input assembly
 	VkPipelineInputAssemblyStateCreateInfo ia = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
@@ -1490,8 +1487,11 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	pipe.pDynamicState = &dyn;
 	pipe.pColorBlendState = &blend;
 	pipe.pDepthStencilState = &ds;
-	pipe.pVertexInputState = &vi;
-	pipe.pInputAssemblyState = &ia;
+	if (compile.program->get_shader(ShaderStage::Vertex))
+	{
+		pipe.pVertexInputState = &vi;
+		pipe.pInputAssemblyState = &ia;
+	}
 	pipe.pMultisampleState = &ms;
 	pipe.pRasterizationState = &raster;
 	pipe.pStages = stages;
@@ -2002,6 +2002,19 @@ void CommandBuffer::set_program(const std::string &vertex, const std::string &fr
 	else
 		set_program(nullptr);
 }
+
+void CommandBuffer::set_program(const std::string &task, const std::string &mesh, const std::string &fragment,
+                                const std::vector<std::pair<std::string, int>> &defines)
+{
+	auto *p = device->get_shader_manager().register_graphics(task, mesh, fragment);
+	if (p)
+	{
+		auto *variant = p->register_variant(defines);
+		set_program(variant->get_program());
+	}
+	else
+		set_program(nullptr);
+}
 #endif
 
 void CommandBuffer::set_program_group(Program *const *programs, unsigned num_programs,
@@ -2017,10 +2030,10 @@ void CommandBuffer::set_program_group(Program *const *programs, unsigned num_pro
 	if (!num_programs)
 		return;
 
-	VK_ASSERT(framebuffer && pipeline_state.program->get_shader(ShaderStage::Vertex));
+	VK_ASSERT(framebuffer && pipeline_state.program->get_shader(ShaderStage::Fragment));
 #ifdef VULKAN_DEBUG
 	for (unsigned i = 0; i < num_programs; i++)
-		VK_ASSERT(pipeline_state.program_group[i]->get_shader(ShaderStage::Vertex));
+		VK_ASSERT(pipeline_state.program_group[i]->get_shader(ShaderStage::Fragment));
 #endif
 
 	if (!layout && pipeline_state.program)
@@ -2047,7 +2060,7 @@ void CommandBuffer::set_program(Program *program)
 	if (!program)
 		return;
 
-	VK_ASSERT((framebuffer && pipeline_state.program->get_shader(ShaderStage::Vertex)) ||
+	VK_ASSERT((framebuffer && pipeline_state.program->get_shader(ShaderStage::Fragment)) ||
 	          (!framebuffer && pipeline_state.program->get_shader(ShaderStage::Compute)));
 
 	set_program_layout(program->get_pipeline_layout());
@@ -2594,7 +2607,7 @@ void CommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_
 	VK_ASSERT(!is_compute);
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
-		set_backtrace_checkpoint();
+		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
 		table.vkCmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
 	}
 	else
@@ -2608,28 +2621,90 @@ void CommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_count, 
 	VK_ASSERT(index_state.buffer != VK_NULL_HANDLE);
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
-		set_backtrace_checkpoint();
+		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
 		table.vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
 
+void CommandBuffer::draw_mesh_tasks(uint32_t tasks_x, uint32_t tasks_y, uint32_t tasks_z)
+{
+	VK_ASSERT(!is_compute);
+
+	if (framebuffer_is_multiview && !get_device().get_device_features().mesh_shader_features.multiviewMeshShader)
+	{
+		LOGE("meshShader not supported in multiview, dropping draw call.\n");
+		return;
+	}
+
+	if (flush_render_state(true) != VK_NULL_HANDLE)
+	{
+		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Mesh) != nullptr);
+		table.vkCmdDrawMeshTasksEXT(cmd, tasks_x, tasks_y, tasks_z);
+	}
+	else
+		LOGE("Failed to flush render state, draw call will be dropped.\n");
+}
+
+void CommandBuffer::draw_mesh_tasks_indirect(const Buffer &buffer, VkDeviceSize offset,
+                                             uint32_t draw_count, uint32_t stride)
+{
+	VK_ASSERT(!is_compute);
+
+	if (framebuffer_is_multiview && !get_device().get_device_features().mesh_shader_features.multiviewMeshShader)
+	{
+		LOGE("meshShader not supported in multiview, dropping draw call.\n");
+		return;
+	}
+
+	if (flush_render_state(true) != VK_NULL_HANDLE)
+	{
+		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Mesh) != nullptr);
+		table.vkCmdDrawMeshTasksIndirectEXT(cmd, buffer.get_buffer(), offset, draw_count, stride);
+	}
+	else
+		LOGE("Failed to flush render state, draw call will be dropped.\n");
+}
+
+void CommandBuffer::draw_mesh_tasks_multi_indirect(const Buffer &buffer, VkDeviceSize offset,
+                                                   uint32_t draw_count, uint32_t stride,
+                                                   const Buffer &count, VkDeviceSize count_offset)
+{
+	VK_ASSERT(!is_compute);
+
+	if (framebuffer_is_multiview && !get_device().get_device_features().mesh_shader_features.multiviewMeshShader)
+	{
+		LOGE("meshShader not supported in multiview, dropping draw call.\n");
+		return;
+	}
+
+	if (flush_render_state(true) != VK_NULL_HANDLE)
+	{
+		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Mesh) != nullptr);
+		table.vkCmdDrawMeshTasksIndirectCountEXT(cmd, buffer.get_buffer(), offset,
+		                                         count.get_buffer(), count_offset,
+		                                         draw_count, stride);
+	}
+	else
+		LOGE("Failed to flush render state, draw call will be dropped.\n");
+}
+
 void CommandBuffer::draw_indirect(const Vulkan::Buffer &buffer,
-                                  uint32_t offset, uint32_t draw_count, uint32_t stride)
+                                  VkDeviceSize offset, uint32_t draw_count, uint32_t stride)
 {
 	VK_ASSERT(!is_compute);
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
-		set_backtrace_checkpoint();
+		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
 		table.vkCmdDrawIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
 
-void CommandBuffer::draw_multi_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride,
-                                        const Buffer &count, uint32_t count_offset)
+void CommandBuffer::draw_multi_indirect(const Buffer &buffer, VkDeviceSize offset, uint32_t draw_count, uint32_t stride,
+                                        const Buffer &count, VkDeviceSize count_offset)
 {
 	VK_ASSERT(!is_compute);
 	if (!get_device().get_device_features().supports_draw_indirect_count)
@@ -2640,7 +2715,7 @@ void CommandBuffer::draw_multi_indirect(const Buffer &buffer, uint32_t offset, u
 
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
-		set_backtrace_checkpoint();
+		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
 		table.vkCmdDrawIndirectCountKHR(cmd, buffer.get_buffer(), offset,
 		                                count.get_buffer(), count_offset,
 		                                draw_count, stride);
@@ -2649,8 +2724,8 @@ void CommandBuffer::draw_multi_indirect(const Buffer &buffer, uint32_t offset, u
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
 
-void CommandBuffer::draw_indexed_multi_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride,
-                                                const Buffer &count, uint32_t count_offset)
+void CommandBuffer::draw_indexed_multi_indirect(const Buffer &buffer, VkDeviceSize offset, uint32_t draw_count, uint32_t stride,
+                                                const Buffer &count, VkDeviceSize count_offset)
 {
 	VK_ASSERT(!is_compute);
 	if (!get_device().get_device_features().supports_draw_indirect_count)
@@ -2661,7 +2736,7 @@ void CommandBuffer::draw_indexed_multi_indirect(const Buffer &buffer, uint32_t o
 
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
-		set_backtrace_checkpoint();
+		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
 		table.vkCmdDrawIndexedIndirectCountKHR(cmd, buffer.get_buffer(), offset,
 		                                       count.get_buffer(), count_offset,
 		                                       draw_count, stride);
@@ -2671,24 +2746,23 @@ void CommandBuffer::draw_indexed_multi_indirect(const Buffer &buffer, uint32_t o
 }
 
 void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
-                                          uint32_t offset, uint32_t draw_count, uint32_t stride)
+                                          VkDeviceSize offset, uint32_t draw_count, uint32_t stride)
 {
 	VK_ASSERT(!is_compute);
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
+		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
 		table.vkCmdDrawIndexedIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
-		set_backtrace_checkpoint();
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
 
-void CommandBuffer::dispatch_indirect(const Buffer &buffer, uint32_t offset)
+void CommandBuffer::dispatch_indirect(const Buffer &buffer, VkDeviceSize offset)
 {
 	VK_ASSERT(is_compute);
 	if (flush_compute_state(true) != VK_NULL_HANDLE)
 	{
-		set_backtrace_checkpoint();
 		table.vkCmdDispatchIndirect(cmd, buffer.get_buffer(), offset);
 	}
 	else
@@ -2753,18 +2827,13 @@ void CommandBuffer::execute_indirect_commands(
 	set_dirty(COMMAND_BUFFER_DYNAMIC_BITS |
 	          COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT |
 	          COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
-
-	set_backtrace_checkpoint();
 }
 
 void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z)
 {
 	VK_ASSERT(is_compute);
 	if (flush_compute_state(true) != VK_NULL_HANDLE)
-	{
-		set_backtrace_checkpoint();
 		table.vkCmdDispatch(cmd, groups_x, groups_y, groups_z);
-	}
 	else
 		LOGE("Failed to flush render state, dispatch will be dropped.\n");
 }
@@ -2940,28 +3009,6 @@ void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferS
 QueryPoolHandle CommandBuffer::write_timestamp(VkPipelineStageFlags2 stage)
 {
 	return device->write_timestamp(cmd, stage);
-}
-
-void CommandBuffer::add_checkpoint(const char *tag)
-{
-	if (device->get_device_features().supports_nv_device_diagnostic_checkpoints)
-		table.vkCmdSetCheckpointNV(cmd, tag);
-}
-
-void CommandBuffer::set_backtrace_checkpoint()
-{
-#if defined(FULL_BACKTRACE_CHECKPOINTS) && defined(__linux__)
-	void *arr[1024];
-	int ret = backtrace(arr, 1024);
-
-	ostringstream str;
-	for (int i = 0; i < ret; i++)
-		str << arr[i] << endl;
-	auto s = str.str();
-
-	// Never free the duped string for now.
-	add_checkpoint(strdup(s.c_str()));
-#endif
 }
 
 void CommandBuffer::end_threaded_recording()

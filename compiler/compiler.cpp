@@ -50,6 +50,10 @@ static Stage stage_from_path(const std::string &path)
 		return Stage::Fragment;
 	else if (ext == "comp")
 		return Stage::Compute;
+	else if (ext == "task")
+		return Stage::Task;
+	else if (ext == "mesh")
+		return Stage::Mesh;
 	else
 		return Stage::Unknown;
 }
@@ -68,6 +72,10 @@ static Stage convert_stage(const std::string &stage)
 		return Stage::Compute;
 	else if (stage == "fragment")
 		return Stage::Fragment;
+	else if (stage == "task")
+		return Stage::Task;
+	else if (stage == "mesh")
+		return Stage::Mesh;
 	else
 		return Stage::Unknown;
 }
@@ -283,13 +291,6 @@ std::vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const st
 		options.SetGenerateDebugInfo();
 	}
 
-	options.SetTargetEnvironment(shaderc_target_env_vulkan,
-	                             target == Target::Vulkan11 ?
-	                             shaderc_env_version_vulkan_1_1 :
-	                             shaderc_env_version_vulkan_1_0);
-
-	options.SetSourceLanguage(shaderc_source_language_glsl);
-
 	shaderc_shader_kind kind;
 	switch (stage)
 	{
@@ -317,10 +318,24 @@ std::vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const st
 		kind = shaderc_glsl_compute_shader;
 		break;
 
+	case Stage::Task:
+		kind = shaderc_glsl_task_shader;
+		break;
+
+	case Stage::Mesh:
+		kind = shaderc_glsl_mesh_shader;
+		break;
+
 	default:
 		error_message = "Invalid shader stage.";
 		return {};
 	}
+
+	options.SetTargetEnvironment(shaderc_target_env_vulkan,
+	                             target == Target::Vulkan11_Spirv14 ?
+	                             shaderc_env_version_vulkan_1_2 : shaderc_env_version_vulkan_1_1);
+	options.SetTargetSpirv(target == Target::Vulkan11_Spirv14 ? shaderc_spirv_version_1_4 : shaderc_spirv_version_1_3);
+	options.SetSourceLanguage(shaderc_source_language_glsl);
 
 	shaderc::SpvCompilationResult result;
 
@@ -355,9 +370,7 @@ std::vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const st
 	}
 
 	std::vector<uint32_t> compiled_spirv(result.cbegin(), result.cend());
-
-	spvtools::SpirvTools core(target == Target::Vulkan11 ? SPV_ENV_VULKAN_1_1 : SPV_ENV_VULKAN_1_0);
-
+	spvtools::SpirvTools core(target == Target::Vulkan11_Spirv14 ? SPV_ENV_VULKAN_1_1_SPIRV_1_4 : SPV_ENV_VULKAN_1_1);
 	core.SetMessageConsumer([&error_message](spv_message_level_t, const char *, const spv_position_t&, const char *message) {
 		error_message = message;
 	});

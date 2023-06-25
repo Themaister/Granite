@@ -50,7 +50,6 @@ struct DeviceFeatures
 {
 	bool supports_debug_utils = false;
 	bool supports_mirror_clamp_to_edge = false;
-	bool supports_nv_device_diagnostic_checkpoints = false;
 	bool supports_external_memory_host = false;
 	bool supports_surface_capabilities2 = false;
 	bool supports_full_screen_exclusive = false;
@@ -81,6 +80,7 @@ struct DeviceFeatures
 	bool supports_hdr_metadata = false;
 	bool supports_swapchain_colorspace = false;
 	bool supports_surface_maintenance1 = false;
+	bool supports_spirv_1_4 = false;
 
 	// Vulkan 1.1 core
 	VkPhysicalDeviceFeatures enabled_features = {};
@@ -121,6 +121,8 @@ struct DeviceFeatures
 	VkPhysicalDevicePipelineCreationCacheControlFeaturesEXT pipeline_creation_cache_control_features = {};
 	VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT swapchain_maintenance1_features = {};
 	VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT pageable_device_local_memory_features = {};
+	VkPhysicalDeviceMeshShaderFeaturesEXT mesh_shader_features = {};
+	VkPhysicalDeviceMeshShaderPropertiesEXT mesh_shader_properties = {};
 
 	// Vendor
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};

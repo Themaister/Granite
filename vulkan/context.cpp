@@ -1127,14 +1127,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	}
 #endif
 
-#ifdef VULKAN_DEBUG
-	if (has_extension(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME))
-	{
-		ext.supports_nv_device_diagnostic_checkpoints = true;
-		enabled_extensions.push_back(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME);
-	}
-#endif
-
 	if (
 #ifdef _WIN32
 	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME) &&
@@ -1301,6 +1293,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.astc_hdr_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES_EXT };
 	ext.pipeline_creation_cache_control_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_CREATION_CACHE_CONTROL_FEATURES_EXT };
 	ext.pageable_device_local_memory_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PAGEABLE_DEVICE_LOCAL_MEMORY_FEATURES_EXT };
+	ext.mesh_shader_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT };
 
 	ext.compute_shader_derivative_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV };
 	ext.device_generated_commands_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_GENERATED_COMMANDS_FEATURES_NV };
@@ -1470,6 +1463,19 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ppNext = &ext.buffer_device_address_features.pNext;
 	}
 
+	if (has_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
+		*ppNext = &ext.mesh_shader_features;
+		ppNext = &ext.mesh_shader_features.pNext;
+	}
+
+	if (has_extension(VK_KHR_SPIRV_1_4_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
+		ext.supports_spirv_1_4 = true;
+	}
+
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
 		bool broken_present_wait = ext.driver_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
@@ -1599,6 +1605,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.float_control_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES_KHR };
 	ext.id_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES };
 	ext.device_generated_commands_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_GENERATED_COMMANDS_PROPERTIES_NV };
+	ext.mesh_shader_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT };
 
 	ppNext = &props.pNext;
 
@@ -1647,6 +1654,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		*ppNext = &ext.id_properties;
 		ppNext = &ext.id_properties.pNext;
+	}
+
+	if (has_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
+	{
+		*ppNext = &ext.mesh_shader_properties;
+		ppNext = &ext.mesh_shader_properties.pNext;
 	}
 
 	vkGetPhysicalDeviceProperties2(gpu, &props);

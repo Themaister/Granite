@@ -76,16 +76,6 @@ static constexpr VkImageUsageFlags image_usage_video_flags =
 		VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR;
 #endif
 
-static const char *queue_name_table[] = {
-	"Graphics",
-	"Compute",
-	"Transfer",
-	"Video decode",
-#ifdef VK_ENABLE_BETA_EXTENSIONS
-	"Video encode",
-#endif
-};
-
 static const QueueIndices queue_flush_order[] = {
 	QUEUE_INDEX_TRANSFER,
 	QUEUE_INDEX_VIDEO_DECODE,
@@ -447,6 +437,38 @@ Program *Device::request_program(Shader *vertex, Shader *fragment, const Immutab
 	return ret;
 }
 
+Program *Device::request_program(Shader *task, Shader *mesh, Shader *fragment, const ImmutableSamplerBank *sampler_bank)
+{
+	if (!mesh || !fragment)
+		return nullptr;
+
+	if (!get_device_features().mesh_shader_features.meshShader)
+	{
+		LOGE("meshShader not supported.\n");
+		return nullptr;
+	}
+
+	if (task && !get_device_features().mesh_shader_features.taskShader)
+	{
+		LOGE("taskShader not supported.\n");
+		return nullptr;
+	}
+
+	Util::Hasher hasher;
+	hasher.u64(task ? task->get_hash() : 0);
+	hasher.u64(mesh->get_hash());
+	hasher.u64(fragment->get_hash());
+	ImmutableSamplerBank::hash(hasher, sampler_bank);
+
+	auto hash = hasher.get();
+	LOCK_CACHE();
+	auto *ret = programs.find(hash);
+
+	if (!ret)
+		ret = programs.emplace_yield(hash, this, task, mesh, fragment, sampler_bank);
+	return ret;
+}
+
 Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size,
                                  const uint32_t *fragment_data, size_t fragment_size,
                                  const ResourceLayout *vertex_layout,
@@ -458,6 +480,24 @@ Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size
 	auto *vertex = request_shader(vertex_data, vertex_size, vertex_layout);
 	auto *fragment = request_shader(fragment_data, fragment_size, fragment_layout);
 	return request_program(vertex, fragment);
+}
+
+Program *Device::request_program(const uint32_t *task_data, size_t task_size,
+                                 const uint32_t *mesh_data, size_t mesh_size,
+                                 const uint32_t *fragment_data, size_t fragment_size,
+                                 const ResourceLayout *task_layout,
+                                 const ResourceLayout *mesh_layout,
+                                 const ResourceLayout *fragment_layout)
+{
+	if (!mesh_size || !fragment_size)
+		return nullptr;
+
+	Shader *task = nullptr;
+	if (task_size)
+		task = request_shader(task_data, task_size, task_layout);
+	auto *mesh = request_shader(mesh_data, mesh_size, mesh_layout);
+	auto *fragment = request_shader(fragment_data, fragment_size, fragment_layout);
+	return request_program(task, mesh, fragment);
 }
 
 const PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &layout,
@@ -1364,8 +1404,6 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit2KHR failed (code: %d).\n", int(result));
-	if (result == VK_ERROR_DEVICE_LOST)
-		report_checkpoints();
 
 	if (!ext.timeline_semaphore_features.timelineSemaphore)
 		data.need_fence = true;
@@ -1850,8 +1888,6 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit2KHR failed (code: %d).\n", int(result));
-	if (result == VK_ERROR_DEVICE_LOST)
-		report_checkpoints();
 	submissions.clear();
 
 	if (!ext.timeline_semaphore_features.timelineSemaphore)
@@ -2465,8 +2501,6 @@ void Device::wait_idle_nolock()
 		auto result = table->vkDeviceWaitIdle(device);
 		if (result != VK_SUCCESS)
 			LOGE("vkDeviceWaitIdle failed with code: %d\n", result);
-		if (result == VK_ERROR_DEVICE_LOST)
-			report_checkpoints();
 		if (queue_unlock_callback)
 			queue_unlock_callback();
 	}
@@ -5034,32 +5068,6 @@ void Device::set_name(const Image &image, const char *name)
 void Device::set_name(const CommandBuffer &cmd, const char *name)
 {
 	set_name((uint64_t)cmd.get_command_buffer(), VK_OBJECT_TYPE_COMMAND_BUFFER, name);
-}
-
-void Device::report_checkpoints()
-{
-	if (!ext.supports_nv_device_diagnostic_checkpoints)
-		return;
-
-	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
-	{
-		if (queue_info.queues[i] == VK_NULL_HANDLE)
-			continue;
-
-		uint32_t count;
-		table->vkGetQueueCheckpointDataNV(queue_info.queues[i], &count, nullptr);
-		std::vector<VkCheckpointDataNV> checkpoint_data(count);
-		for (auto &data : checkpoint_data)
-			data.sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV;
-		table->vkGetQueueCheckpointDataNV(queue_info.queues[i], &count, checkpoint_data.data());
-
-		if (!checkpoint_data.empty())
-		{
-			LOGI("Checkpoints for %s queue:\n", queue_name_table[i]);
-			for (auto &d : checkpoint_data)
-				LOGI("Stage %u:\n%s\n", d.stage, static_cast<const char *>(d.pCheckpointMarker));
-		}
-	}
 }
 
 void Device::query_available_performance_counters(CommandBuffer::Type type, uint32_t *count,

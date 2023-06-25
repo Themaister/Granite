@@ -291,12 +291,19 @@ public:
 	// Request shaders and programs. These objects are owned by the Device.
 	Shader *request_shader(const uint32_t *code, size_t size, const ResourceLayout *layout = nullptr);
 	Shader *request_shader_by_hash(Util::Hash hash);
+	Program *request_program(const uint32_t *task_data, size_t task_size,
+	                         const uint32_t *mesh_data, size_t mesh_size,
+	                         const uint32_t *fragment_data, size_t fragment_size,
+	                         const ResourceLayout *task_layout = nullptr,
+	                         const ResourceLayout *mesh_layout = nullptr,
+	                         const ResourceLayout *fragment_layout = nullptr);
 	Program *request_program(const uint32_t *vertex_data, size_t vertex_size,
 	                         const uint32_t *fragment_data, size_t fragment_size,
 	                         const ResourceLayout *vertex_layout = nullptr,
 	                         const ResourceLayout *fragment_layout = nullptr);
 	Program *request_program(const uint32_t *compute_data, size_t compute_size,
 	                         const ResourceLayout *layout = nullptr);
+	Program *request_program(Shader *task, Shader *mesh, Shader *fragment, const ImmutableSamplerBank *sampler_bank = nullptr);
 	Program *request_program(Shader *vertex, Shader *fragment, const ImmutableSamplerBank *sampler_bank = nullptr);
 	Program *request_program(Shader *compute, const ImmutableSamplerBank *sampler_bank = nullptr);
 	const IndirectLayout *request_indirect_layout(const IndirectLayoutToken *tokens,
@@ -863,7 +870,6 @@ private:
 
 	ImplementationWorkarounds workarounds;
 	void init_workarounds();
-	void report_checkpoints();
 
 	void fill_buffer_sharing_indices(VkBufferCreateInfo &create_info, uint32_t *sharing_indices);
 

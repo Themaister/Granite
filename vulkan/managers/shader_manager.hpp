@@ -156,6 +156,15 @@ public:
 		set_stage(Vulkan::ShaderStage::Fragment, frag);
 	}
 
+	ShaderProgram(Device *device_, ShaderTemplate *task, ShaderTemplate *mesh, ShaderTemplate *frag)
+		: device(device_)
+	{
+		if (task)
+			set_stage(Vulkan::ShaderStage::Task, task);
+		set_stage(Vulkan::ShaderStage::Mesh, mesh);
+		set_stage(Vulkan::ShaderStage::Fragment, frag);
+	}
+
 	void set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader);
 	ShaderProgramVariant *register_variant(const std::vector<std::pair<std::string, int>> &defines,
 	                                       const ImmutableSamplerBank *sampler_bank = nullptr);
@@ -180,6 +189,7 @@ public:
 	void add_include_directory(const std::string &path);
 
 	~ShaderManager();
+	ShaderProgram *register_graphics(const std::string &task, const std::string &mesh, const std::string &fragment);
 	ShaderProgram *register_graphics(const std::string &vertex, const std::string &fragment);
 	ShaderProgram *register_compute(const std::string &compute);
 

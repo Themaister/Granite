@@ -134,50 +134,55 @@ using CommandBufferDirtyFlags = uint32_t;
 #define BLEND_OP_BITS 3
 #define CULL_MODE_BITS 2
 #define FRONT_FACE_BITS 1
+#define TOPOLOGY_BITS 4
 union PipelineState {
 	struct
 	{
-		// Depth state.
-		unsigned depth_write : 1;
-		unsigned depth_test : 1;
-		unsigned blend_enable : 1;
+		// Word 0, tightly packed.
+		uint32_t depth_write : 1;
+		uint32_t depth_test : 1;
+		uint32_t blend_enable : 1;
+		uint32_t cull_mode : CULL_MODE_BITS;
+		uint32_t front_face : FRONT_FACE_BITS;
+		uint32_t depth_compare : COMPARE_OP_BITS;
+		uint32_t depth_bias_enable : 1;
+		uint32_t stencil_test : 1;
+		uint32_t stencil_front_fail : STENCIL_OP_BITS;
+		uint32_t stencil_front_pass : STENCIL_OP_BITS;
+		uint32_t stencil_front_depth_fail : STENCIL_OP_BITS;
+		uint32_t stencil_front_compare_op : COMPARE_OP_BITS;
+		uint32_t stencil_back_fail : STENCIL_OP_BITS;
+		uint32_t stencil_back_pass : STENCIL_OP_BITS;
+		uint32_t stencil_back_depth_fail : STENCIL_OP_BITS;
 
-		unsigned cull_mode : CULL_MODE_BITS;
-		unsigned front_face : FRONT_FACE_BITS;
-		unsigned depth_bias_enable : 1;
+		// Word 1, tightly packed.
+		uint32_t stencil_back_compare_op : COMPARE_OP_BITS;
+		uint32_t alpha_to_coverage : 1;
+		uint32_t alpha_to_one : 1;
+		uint32_t sample_shading : 1;
+		uint32_t src_color_blend : BLEND_FACTOR_BITS;
+		uint32_t dst_color_blend : BLEND_FACTOR_BITS;
+		uint32_t color_blend_op : BLEND_OP_BITS;
+		uint32_t src_alpha_blend : BLEND_FACTOR_BITS;
+		uint32_t dst_alpha_blend : BLEND_FACTOR_BITS;
+		uint32_t alpha_blend_op : BLEND_OP_BITS;
 
-		unsigned depth_compare : COMPARE_OP_BITS;
+		// Word 2, tightly packed.
+		uint32_t primitive_restart : 1;
+		uint32_t topology : TOPOLOGY_BITS;
+		uint32_t wireframe : 1;
+		uint32_t subgroup_control_size : 1;
+		uint32_t subgroup_full_group : 1;
+		uint32_t subgroup_minimum_size_log2 : 3;
+		uint32_t subgroup_maximum_size_log2 : 3;
+		uint32_t subgroup_control_size_task : 1;
+		uint32_t subgroup_full_group_task : 1;
+		uint32_t subgroup_minimum_size_log2_task : 3;
+		uint32_t subgroup_maximum_size_log2_task : 3;
+		uint32_t conservative_raster : 1;
+		uint32_t padding : 9;
 
-		unsigned stencil_test : 1;
-		unsigned stencil_front_fail : STENCIL_OP_BITS;
-		unsigned stencil_front_pass : STENCIL_OP_BITS;
-		unsigned stencil_front_depth_fail : STENCIL_OP_BITS;
-		unsigned stencil_front_compare_op : COMPARE_OP_BITS;
-		unsigned stencil_back_fail : STENCIL_OP_BITS;
-		unsigned stencil_back_pass : STENCIL_OP_BITS;
-		unsigned stencil_back_depth_fail : STENCIL_OP_BITS;
-		unsigned stencil_back_compare_op : COMPARE_OP_BITS;
-
-		unsigned alpha_to_coverage : 1;
-		unsigned alpha_to_one : 1;
-		unsigned sample_shading : 1;
-
-		unsigned src_color_blend : BLEND_FACTOR_BITS;
-		unsigned dst_color_blend : BLEND_FACTOR_BITS;
-		unsigned color_blend_op : BLEND_OP_BITS;
-		unsigned src_alpha_blend : BLEND_FACTOR_BITS;
-		unsigned dst_alpha_blend : BLEND_FACTOR_BITS;
-		unsigned alpha_blend_op : BLEND_OP_BITS;
-		unsigned primitive_restart : 1;
-		unsigned topology : 4;
-
-		unsigned wireframe : 1;
-		unsigned subgroup_control_size : 1;
-		unsigned subgroup_full_group : 1;
-		unsigned subgroup_minimum_size_log2 : 3;
-		unsigned subgroup_maximum_size_log2 : 3;
-		unsigned conservative_raster : 1;
-
+		// Word 3
 		uint32_t write_mask;
 	} state;
 	uint32_t words[4];
@@ -697,20 +702,51 @@ public:
 		set_specialization_constant(index, uint32_t(value));
 	}
 
-	inline void enable_subgroup_size_control(bool subgroup_control_size)
+	inline void enable_subgroup_size_control(bool subgroup_control_size,
+	                                         VkShaderStageFlagBits stage = VK_SHADER_STAGE_COMPUTE_BIT)
 	{
-		SET_STATIC_STATE(subgroup_control_size);
+		VK_ASSERT(stage == VK_SHADER_STAGE_TASK_BIT_EXT ||
+		          stage == VK_SHADER_STAGE_MESH_BIT_EXT ||
+		          stage == VK_SHADER_STAGE_COMPUTE_BIT);
+
+		if (stage != VK_SHADER_STAGE_TASK_BIT_EXT)
+		{
+			SET_STATIC_STATE(subgroup_control_size);
+		}
+		else
+		{
+			auto subgroup_control_size_task = subgroup_control_size;
+			SET_STATIC_STATE(subgroup_control_size_task);
+		}
 	}
 
 	inline void set_subgroup_size_log2(bool subgroup_full_group,
 	                                   uint8_t subgroup_minimum_size_log2,
-	                                   uint8_t subgroup_maximum_size_log2)
+	                                   uint8_t subgroup_maximum_size_log2,
+	                                   VkShaderStageFlagBits stage = VK_SHADER_STAGE_COMPUTE_BIT)
 	{
+		VK_ASSERT(stage == VK_SHADER_STAGE_TASK_BIT_EXT ||
+		          stage == VK_SHADER_STAGE_MESH_BIT_EXT ||
+		          stage == VK_SHADER_STAGE_COMPUTE_BIT);
+
 		VK_ASSERT(subgroup_minimum_size_log2 < 8);
 		VK_ASSERT(subgroup_maximum_size_log2 < 8);
-		SET_STATIC_STATE(subgroup_full_group);
-		SET_STATIC_STATE(subgroup_minimum_size_log2);
-		SET_STATIC_STATE(subgroup_maximum_size_log2);
+
+		if (stage != VK_SHADER_STAGE_TASK_BIT_EXT)
+		{
+			SET_STATIC_STATE(subgroup_full_group);
+			SET_STATIC_STATE(subgroup_minimum_size_log2);
+			SET_STATIC_STATE(subgroup_maximum_size_log2);
+		}
+		else
+		{
+			auto subgroup_full_group_task = subgroup_full_group;
+			auto subgroup_minimum_size_log2_task = subgroup_minimum_size_log2;
+			auto subgroup_maximum_size_log2_task = subgroup_maximum_size_log2;
+			SET_STATIC_STATE(subgroup_full_group_task);
+			SET_STATIC_STATE(subgroup_minimum_size_log2_task);
+			SET_STATIC_STATE(subgroup_maximum_size_log2_task);
+		}
 	}
 
 	inline void set_conservative_rasterization(bool conservative_raster)
@@ -885,6 +921,11 @@ private:
 	void set_surface_transform_specialization_constants();
 
 	void set_program_layout(const PipelineLayout *layout);
+
+	static bool setup_subgroup_size_control(Device &device, VkPipelineShaderStageCreateInfo &stage_info,
+	                                        VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT &required_info,
+	                                        VkShaderStageFlagBits stage,
+	                                        bool full_group, unsigned min_size_log2, unsigned max_size_log2);
 };
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES

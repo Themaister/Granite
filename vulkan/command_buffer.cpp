@@ -1166,40 +1166,18 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 		spec_info.dataSize = spec_info.mapEntryCount * sizeof(uint32_t);
 	}
 
-	VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT subgroup_size_info = {
-		VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT
-	};
+	VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT subgroup_size_info;
 
 	if (compile.static_state.state.subgroup_control_size)
 	{
-		if (!device->supports_subgroup_size_log2(compile.static_state.state.subgroup_full_group,
-		                                         compile.static_state.state.subgroup_minimum_size_log2,
-		                                         compile.static_state.state.subgroup_maximum_size_log2))
+		if (!setup_subgroup_size_control(*device, info.stage, subgroup_size_info,
+		                                 VK_SHADER_STAGE_COMPUTE_BIT,
+		                                 compile.static_state.state.subgroup_full_group,
+		                                 compile.static_state.state.subgroup_minimum_size_log2,
+		                                 compile.static_state.state.subgroup_maximum_size_log2))
 		{
 			LOGE("Subgroup size configuration not supported.\n");
 			return {};
-		}
-		auto &features = device->get_device_features();
-
-		if (compile.static_state.state.subgroup_full_group)
-			info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
-
-		uint32_t min_subgroups = 1u << compile.static_state.state.subgroup_minimum_size_log2;
-		uint32_t max_subgroups = 1u << compile.static_state.state.subgroup_maximum_size_log2;
-		if (min_subgroups <= features.subgroup_size_control_properties.minSubgroupSize &&
-		    max_subgroups >= features.subgroup_size_control_properties.maxSubgroupSize)
-		{
-			info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT_EXT;
-		}
-		else
-		{
-			// Pick a fixed subgroup size. Prefer smallest subgroup size.
-			if (min_subgroups < features.subgroup_size_control_properties.minSubgroupSize)
-				subgroup_size_info.requiredSubgroupSize = features.subgroup_size_control_properties.minSubgroupSize;
-			else
-				subgroup_size_info.requiredSubgroupSize = min_subgroups;
-
-			info.stage.pNext = &subgroup_size_info;
 		}
 	}
 
@@ -1245,6 +1223,44 @@ void CommandBuffer::extract_pipeline_state(DeferredPipelineCompile &compile) con
 		update_hash_compute_pipeline(compile);
 	else
 		update_hash_graphics_pipeline(compile, CompileMode::AsyncThread, nullptr);
+}
+
+bool CommandBuffer::setup_subgroup_size_control(
+		Vulkan::Device &device, VkPipelineShaderStageCreateInfo &stage_info,
+		VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT &required_info,
+		VkShaderStageFlagBits stage, bool full_group,
+		unsigned min_size_log2, unsigned max_size_log2)
+{
+	if (!device.supports_subgroup_size_log2(full_group, min_size_log2, max_size_log2, stage))
+		return false;
+
+	auto &features = device.get_device_features();
+
+	if (full_group)
+		stage_info.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
+
+	uint32_t min_subgroups = 1u << min_size_log2;
+	uint32_t max_subgroups = 1u << max_size_log2;
+	if (min_subgroups <= features.subgroup_size_control_properties.minSubgroupSize &&
+	    max_subgroups >= features.subgroup_size_control_properties.maxSubgroupSize)
+	{
+		stage_info.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT_EXT;
+	}
+	else
+	{
+		required_info = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT };
+
+		// Pick a fixed subgroup size. Prefer smallest subgroup size.
+		if (min_subgroups < features.subgroup_size_control_properties.minSubgroupSize)
+			required_info.requiredSubgroupSize = features.subgroup_size_control_properties.minSubgroupSize;
+		else
+			required_info.requiredSubgroupSize = min_subgroups;
+
+		required_info.pNext = const_cast<void *>(stage_info.pNext);
+		stage_info.pNext = &required_info;
+	}
+
+	return true;
 }
 
 Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile,
@@ -1422,6 +1438,9 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	VkSpecializationMapEntry spec_entries[ecast(ShaderStage::Count)][VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
 	uint32_t spec_constants[Util::ecast(ShaderStage::Count)][VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
 
+	VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT subgroup_size_info_task;
+	VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT subgroup_size_info_mesh;
+
 	for (unsigned i = 0; i < Util::ecast(ShaderStage::Count); i++)
 	{
 		auto mask = compile.layout->get_resource_layout().spec_constant_mask[i] &
@@ -1457,6 +1476,41 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 			s.stage = static_cast<VkShaderStageFlagBits>(1u << i);
 			if (spec_info[i].mapEntryCount)
 				s.pSpecializationInfo = &spec_info[i];
+
+			if (stage == ShaderStage::Mesh || stage == ShaderStage::Task)
+			{
+				VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT *required_info;
+				unsigned min_size_log2, max_size_log2;
+				bool size_enabled, full_group;
+
+				if (stage == ShaderStage::Mesh)
+				{
+					size_enabled = compile.static_state.state.subgroup_control_size;
+					full_group = compile.static_state.state.subgroup_full_group;
+					min_size_log2 = compile.static_state.state.subgroup_minimum_size_log2;
+					max_size_log2 = compile.static_state.state.subgroup_maximum_size_log2;
+					required_info = &subgroup_size_info_mesh;
+				}
+				else
+				{
+					size_enabled = compile.static_state.state.subgroup_control_size_task;
+					full_group = compile.static_state.state.subgroup_full_group_task;
+					min_size_log2 = compile.static_state.state.subgroup_minimum_size_log2_task;
+					max_size_log2 = compile.static_state.state.subgroup_maximum_size_log2_task;
+					required_info = &subgroup_size_info_task;
+				}
+
+				if (size_enabled)
+				{
+					if (!setup_subgroup_size_control(
+							*device, s, *required_info, s.stage,
+							full_group, min_size_log2, max_size_log2))
+					{
+						LOGE("Subgroup size configuration not supported.\n");
+						return {};
+					}
+				}
+			}
 		}
 	}
 
@@ -1651,6 +1705,38 @@ void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compi
 		h.u32(compile.potential_static_state.spec_constants[bit]);
 	});
 	h.s32(mode == CompileMode::IndirectBindable);
+
+	if (compile.program->get_shader(ShaderStage::Task))
+	{
+		if (compile.static_state.state.subgroup_control_size_task)
+		{
+			h.s32(1);
+			h.u32(compile.static_state.state.subgroup_minimum_size_log2_task);
+			h.u32(compile.static_state.state.subgroup_maximum_size_log2_task);
+			h.u32(compile.static_state.state.subgroup_full_group_task);
+			// Required for Fossilize since we don't know exactly how to lower these requirements to a PSO
+			// without knowing some device state.
+			h.u32(compile.subgroup_size_tag);
+		}
+		else
+			h.s32(0);
+	}
+
+	if (compile.program->get_shader(ShaderStage::Mesh))
+	{
+		if (compile.static_state.state.subgroup_control_size)
+		{
+			h.s32(1);
+			h.u32(compile.static_state.state.subgroup_minimum_size_log2);
+			h.u32(compile.static_state.state.subgroup_maximum_size_log2);
+			h.u32(compile.static_state.state.subgroup_full_group);
+			// Required for Fossilize since we don't know exactly how to lower these requirements to a PSO
+			// without knowing some device state.
+			h.u32(compile.subgroup_size_tag);
+		}
+		else
+			h.s32(0);
+	}
 
 	compile.hash = h.get();
 }

@@ -1,9 +1,14 @@
 #version 450
+
+#define PACKED_WAVEOPS 0
+
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
 #extension GL_KHR_shader_subgroup_arithmetic : require
 #extension GL_KHR_shader_subgroup_basic : require
+#if PACKED_WAVEOPS
 #extension GL_EXT_shader_subgroup_extended_types_int8 : require
+#endif
 #extension GL_EXT_scalar_block_layout : require
 
 #define MAX_ELEMENTS 256
@@ -60,11 +65,20 @@ layout(set = 0, binding = 5, std430) readonly buffer OutputOffsets
     uvec2 data[];
 } output_offset_strides;
 
-shared u16vec4 shared_chunk_bit_counts[NUM_U32_STREAMS][NUM_CHUNKS];
+shared u8vec4 shared_chunk_bit_counts[NUM_U32_STREAMS][NUM_CHUNKS];
 shared uint shared_chunk_offset[NUM_U32_STREAMS][NUM_CHUNKS];
+#if PACKED_WAVEOPS
 shared u8vec4 chunk_values[NUM_CHUNKS];
+#else
+shared uvec2 chunk_values[NUM_CHUNKS];
+#endif
 
 // Hardcodes wave32 atm. Need fallback.
+
+uvec2 pack_u16vec2_to_uvec2(u16vec4 v)
+{
+    return uvec2(pack32(v.xy), pack32(v.zw));
+}
 
 void main()
 {
@@ -82,7 +96,7 @@ void main()
             uint total_bits = bit_counts2.x + bit_counts2.y;
             uint offset = meshlet_streams.data[stream_index + NUM_U32_STREAMS * meshlet_index].offset_from_base;
             shared_chunk_offset[stream_index][subgroup_lane] = subgroupExclusiveAdd(total_bits) + offset;
-            shared_chunk_bit_counts[stream_index][subgroup_lane] = bit_counts;
+            shared_chunk_bit_counts[stream_index][subgroup_lane] = u8vec4(bit_counts);
         }
     }
 
@@ -97,7 +111,12 @@ void main()
         uint offset_from_base = meshlet_streams.data[unrolled_stream_index].offset_from_base;
         u16vec4 predictor_a = meshlet_streams.data[unrolled_stream_index].predictor_a;
         u16vec4 predictor_b = meshlet_streams.data[unrolled_stream_index].predictor_b;
+#if PACKED_WAVEOPS
         u8vec4 initial_value = meshlet_streams.data[unrolled_stream_index].initial_value;
+#else
+        u8vec4 initial_value_ = meshlet_streams.data[unrolled_stream_index].initial_value;
+        uvec2 initial_value = pack_u16vec2_to_uvec2(u16vec4(initial_value_));
+#endif
 
         uint chunk_id = gl_SubgroupID;
         uint bitplane_offsets = shared_chunk_offset[i][chunk_id];
@@ -133,6 +152,7 @@ void main()
         }
         decoded.w = bitfieldExtract(int(decoded.w), 0, bit_counts.w);
 
+#if PACKED_WAVEOPS
         // Resolve deltas in packed 4x8 math.
         u8vec4 packed_decoded = u8vec4(decoded);
         uint linear_index = chunk_id * gl_WorkGroupSize.x + subgroup_lane;
@@ -168,5 +188,49 @@ void main()
             if (linear_index <= uint(meta.num_attributes_minus_1))
                 output_payload.data[output_offset_stride.x + linear_index * output_offset_stride.y] = pack32(packed_decoded);
         }
+#else
+        // Resolve deltas in packed 4x8 math.
+        uvec2 packed_decoded = pack_u16vec2_to_uvec2(u16vec4(decoded)) & 0xff00ffu;
+        uint linear_index = chunk_id * gl_WorkGroupSize.x + subgroup_lane;
+        if (linear_index == 0)
+            packed_decoded += initial_value;
+        packed_decoded += pack_u16vec2_to_uvec2((predictor_a + predictor_b * uint16_t(linear_index)) >> 8us);
+        packed_decoded = subgroupInclusiveAdd(packed_decoded);
+
+        if (i > 0)
+            barrier(); // Resolve WAR hazard from last iteration.
+        if (subgroup_lane == int(gl_SubgroupSize) - 1)
+            chunk_values[chunk_id] = packed_decoded & 0xff00ffu;
+        barrier();
+        if (gl_SubgroupID == 0u && subgroup_lane < int(gl_WorkGroupSize.y))
+            chunk_values[subgroup_lane] = subgroupInclusiveAdd(chunk_values[subgroup_lane]);
+        barrier();
+        if (chunk_id != 0)
+            packed_decoded += chunk_values[chunk_id - 1];
+
+        if (i == 0)
+        {
+            // Write index buffer.
+            uvec3 indices = uvec3(
+                bitfieldExtract(packed_decoded.x, 0, 8),
+                bitfieldExtract(packed_decoded.x, 16, 8),
+                bitfieldExtract(packed_decoded.y, 0, 8));
+            indices += meta.base_vertex_offset;
+            uint output_offset = output_offset_strides.data[unrolled_stream_index].x;
+            if (linear_index <= uint(meta.num_primitives_minus_1))
+            output_indices.data[output_offset + linear_index] = indices;
+        }
+        else
+        {
+            // TODO: decode filters? Should probably be deferred to vertex / mesh shader.
+            uvec2 output_offset_stride = output_offset_strides.data[unrolled_stream_index];
+            if (linear_index <= uint(meta.num_attributes_minus_1))
+            output_payload.data[output_offset_stride.x + linear_index * output_offset_stride.y] =
+                bitfieldExtract(packed_decoded.x, 0, 8) |
+                (bitfieldExtract(packed_decoded.x, 16, 8) << 8) |
+                (bitfieldExtract(packed_decoded.y, 0, 8) << 16) |
+                (bitfieldExtract(packed_decoded.y, 16, 8) << 24);
+        }
+#endif
     }
 }

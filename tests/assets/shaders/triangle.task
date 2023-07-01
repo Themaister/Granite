@@ -1,14 +1,26 @@
 #version 450
 #extension GL_EXT_mesh_shader : require
-layout(local_size_x = 1) in;
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+layout(local_size_x = 64) in;
 
 taskPayloadSharedEXT vec2 offsets[4];
 
 void main()
 {
-    offsets[0] = vec2(-0.1, -0.1);
-    offsets[1] = vec2(+0.1, -0.1);
-    offsets[2] = vec2(-0.1, +0.1);
-    offsets[3] = vec2(+0.1, +0.1);
-    EmitMeshTasksEXT(4, 1, 1);
+    if (gl_LocalInvocationIndex == 0)
+    {
+        offsets[0] = vec2(-0.1, -0.1);
+        offsets[1] = vec2(+0.1, -0.1);
+        offsets[2] = vec2(-0.1, +0.1);
+        offsets[3] = vec2(+0.1, +0.1);
+    }
+
+    uint num_invocations = subgroupBallotBitCount(subgroupBallot(true));
+    uint expected_groups = gl_WorkGroupSize.x / gl_SubgroupSize;
+
+    bool valid_invocations = num_invocations == gl_SubgroupSize;
+    bool valid_groups = gl_NumSubgroups == expected_groups;
+
+    EmitMeshTasksEXT(gl_SubgroupSize == 32 ? 2 : 4, uint(valid_invocations && valid_groups), 1);
 }

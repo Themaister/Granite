@@ -22,8 +22,8 @@ static constexpr unsigned MaxVertices = MaxElements;
 
 struct MeshletStream
 {
-	uint32_t offset_from_base_u32;
 	uint16_t predictor[4 * 2 + 2];
+	uint32_t offset_from_base_u32;
 	uint16_t bitplane_meta[MaxElements / 32];
 };
 
@@ -466,11 +466,13 @@ static void decode_mesh_gpu(
 	for (auto &meshlet : mesh.meshlets)
 		for (unsigned i = 0; i < mesh.stream_count; i++)
 			meshlet_streams.push_back(meshlet.u32_streams[i]);
-	buf_info.size = mesh.meshlets.size() * sizeof(MeshletMetadataGPU);
+	buf_info.size = meshlet_streams.size() * sizeof(MeshletStream);
 	auto meshlet_stream_buffer = dev.create_buffer(buf_info, meshlet_streams.data());
 
 	buf_info.size = payload.size() * sizeof(uint32_t);
-	auto payload_buffer = dev.create_buffer(buf_info, payload.data());
+	if (buf_info.size == 0)
+		buf_info.size = 4;
+	auto payload_buffer = dev.create_buffer(buf_info, payload.empty() ? nullptr : payload.data());
 
 	buf_info.size = out_index_buffer.size() * sizeof(uint32_t);
 	buf_info.domain = Vulkan::BufferDomain::CachedHost;
@@ -496,20 +498,27 @@ static void decode_mesh_gpu(
 	buf_info.size = output_offset_strides.size() * sizeof(uvec2);
 	auto output_offset_strides_buffer = dev.create_buffer(buf_info, output_offset_strides.data());
 
+	Vulkan::Device::init_renderdoc_capture();
+	dev.begin_renderdoc_capture();
+
 	auto cmd = dev.request_command_buffer();
 	cmd->set_program("builtin://shaders/decode/meshlet_decode.comp");
+	cmd->enable_subgroup_size_control(true);
 	cmd->set_subgroup_size_log2(true, 5, 5);
 	cmd->set_storage_buffer(0, 0, *meshlet_meta_buffer);
 	cmd->set_storage_buffer(0, 1, *meshlet_stream_buffer);
-	cmd->set_storage_buffer(0, 2, *payload_buffer);
+	cmd->set_storage_buffer(0, 2, *decoded_u32_buffer);
 	cmd->set_storage_buffer(0, 3, *decoded_index_buffer);
-	cmd->set_storage_buffer(0, 4, *decoded_u32_buffer);
+	cmd->set_storage_buffer(0, 4, *payload_buffer);
 	cmd->set_storage_buffer(0, 5, *output_offset_strides_buffer);
+	cmd->set_specialization_constant_mask(1);
+	cmd->set_specialization_constant(0, mesh.stream_count);
 	cmd->dispatch(uint32_t(mesh.meshlets.size()), 1, 1);
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	dev.submit(cmd);
 	dev.wait_idle();
+	dev.end_renderdoc_capture();
 
 	memcpy(out_index_buffer.data(),
 	       dev.map_host_buffer(*decoded_index_buffer, Vulkan::MEMORY_ACCESS_READ_BIT),
@@ -588,6 +597,58 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	dev.set_context(ctx);
 
+#if 0
+	LOGI("=== Test ====\n");
+	{
+		std::vector<uint32_t> out_payload_buffer;
+		const std::vector<uint32_t> index_buffer = {
+			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+		};
+		const std::vector<uint32_t> attr_buffer = {
+			9, 11, 4, 4, 2, 9,
+			9, 7, 4, 29, 2, 9,
+			9, 7, 4, 29, 2, 9,
+			9, 7, 4, 29, 2, 9,
+		};
+		MeshMetadata encoded_mesh;
+		const uint32_t u32_stride = 2;
+
+		encode_mesh(out_payload_buffer, encoded_mesh,
+		            index_buffer.data(), index_buffer.size() / 3,
+		            attr_buffer.data(), u32_stride);
+
+		LOGI("Encoded payload size = %zu bytes.\n", out_payload_buffer.size() * sizeof(uint32_t));
+		LOGI("u32 stride = %u\n", u32_stride);
+
+		std::vector<uint32_t> decoded_index_buffer;
+		std::vector<uint32_t> decoded_u32_stream;
+		std::vector<uint32_t> gpu_decoded_index_buffer;
+		std::vector<uint32_t> gpu_decoded_u32_stream;
+		decode_mesh(decoded_index_buffer, decoded_u32_stream, out_payload_buffer, encoded_mesh);
+
+		if (!validate_mesh_decode(decoded_index_buffer, decoded_u32_stream, index_buffer, attr_buffer, u32_stride))
+		{
+			LOGE("Failed to validate mesh.\n");
+			return EXIT_FAILURE;
+		}
+
+		decode_mesh_gpu(dev, gpu_decoded_index_buffer, gpu_decoded_u32_stream, out_payload_buffer, encoded_mesh);
+		if (!validate_mesh_decode(gpu_decoded_index_buffer, gpu_decoded_u32_stream, decoded_index_buffer, decoded_u32_stream, u32_stride))
+		{
+			LOGE("Failed to validate GPU decoded mesh.\n");
+			return EXIT_FAILURE;
+		}
+	}
+	LOGI("===============\n");
+#endif
+
+#if 1
 	for (auto &mesh : parser.get_meshes())
 	{
 		unsigned u32_stride = (mesh.position_stride + mesh.attribute_stride) / sizeof(uint32_t);
@@ -658,6 +719,8 @@ int main(int argc, char *argv[])
 
 		std::vector<uint32_t> decoded_index_buffer;
 		std::vector<uint32_t> decoded_u32_stream;
+		std::vector<uint32_t> gpu_decoded_index_buffer;
+		std::vector<uint32_t> gpu_decoded_u32_stream;
 		decode_mesh(decoded_index_buffer, decoded_u32_stream, out_payload_buffer, encoded_mesh);
 
 		if (!validate_mesh_decode(decoded_index_buffer, decoded_u32_stream, optimized_index_buffer, attr_buffer, u32_stride))
@@ -666,8 +729,8 @@ int main(int argc, char *argv[])
 			return EXIT_FAILURE;
 		}
 
-		decode_mesh_gpu(dev, decoded_index_buffer, decoded_u32_stream, out_payload_buffer, encoded_mesh);
-		if (!validate_mesh_decode(decoded_index_buffer, decoded_u32_stream, optimized_index_buffer, attr_buffer, u32_stride))
+		decode_mesh_gpu(dev, gpu_decoded_index_buffer, gpu_decoded_u32_stream, out_payload_buffer, encoded_mesh);
+		if (!validate_mesh_decode(gpu_decoded_index_buffer, gpu_decoded_u32_stream, decoded_index_buffer, decoded_u32_stream, u32_stride))
 		{
 			LOGE("Failed to validate GPU decoded mesh.\n");
 			return EXIT_FAILURE;
@@ -675,6 +738,7 @@ int main(int argc, char *argv[])
 
 		LOGI("=====================\n");
 	}
+#endif
 
 	return 0;
 }

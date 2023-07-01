@@ -15,10 +15,10 @@ layout(constant_id = 0) const uint NUM_U32_STREAMS = 1;
 
 struct MeshletStream
 {
-    uint offset_from_base;
     u16vec4 predictor_a;
     u16vec4 predictor_b;
     u8vec4 initial_value;
+    uint offset_from_base;
     uint16_t bitplane_meta[NUM_CHUNKS];
 };
 
@@ -135,22 +135,23 @@ void main()
 
         // Resolve deltas in packed 4x8 math.
         u8vec4 packed_decoded = u8vec4(decoded);
-        if (gl_LocalInvocationID.x == 0u)
+        uint linear_index = chunk_id * gl_WorkGroupSize.x + subgroup_lane;
+        if (linear_index == 0)
             packed_decoded += initial_value;
-        packed_decoded += u8vec4((predictor_a + predictor_b * uint16_t(subgroup_lane)) >> 8us);
+        packed_decoded += u8vec4((predictor_a + predictor_b * uint16_t(linear_index)) >> 8us);
         packed_decoded = subgroupInclusiveAdd(packed_decoded);
 
         if (i > 0)
             barrier(); // Resolve WAR hazard from last iteration.
-        if (subgroup_lane == int(gl_WorkGroupSize.x) - 1)
+        if (subgroup_lane == int(gl_SubgroupSize) - 1)
             chunk_values[chunk_id] = packed_decoded;
         barrier();
         if (gl_SubgroupID == 0u && subgroup_lane < int(gl_WorkGroupSize.y))
-            chunk_values[subgroup_lane] = subgroupExclusiveAdd(chunk_values[subgroup_lane]);
+            chunk_values[subgroup_lane] = subgroupInclusiveAdd(chunk_values[subgroup_lane]);
         barrier();
-        packed_decoded += chunk_values[chunk_id];
+        if (chunk_id != 0)
+            packed_decoded += chunk_values[chunk_id - 1];
 
-        uint linear_index = chunk_id * gl_WorkGroupSize.x + subgroup_lane;
         if (i == 0)
         {
             // Write index buffer.

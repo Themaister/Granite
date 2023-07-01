@@ -45,6 +45,31 @@ struct TriangleMeshApplication : Granite::Application, Granite::EventHandler
 	{
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
+		auto &features = device.get_device_features();
+
+		if ((features.subgroup_properties.supportedStages & VK_SHADER_STAGE_MESH_BIT_EXT) == 0)
+		{
+			LOGE("Subgroups not supported in mesh.\n");
+			return;
+		}
+
+		if ((features.subgroup_properties.supportedStages & VK_SHADER_STAGE_TASK_BIT_EXT) == 0)
+		{
+			LOGE("Subgroups not supported in task.\n");
+			return;
+		}
+
+		if (!device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT))
+		{
+			LOGE("Wave32 not supported in task shader.\n");
+			return;
+		}
+
+		if (!device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT))
+		{
+			LOGE("Wave32 not supported in mesh shader.\n");
+			return;
+		}
 
 		auto cmd = device.request_command_buffer();
 
@@ -53,6 +78,11 @@ struct TriangleMeshApplication : Granite::Application, Granite::EventHandler
 		                 "assets://shaders/triangle.mesh",
 		                 "assets://shaders/triangle_mesh.frag");
 		cmd->set_opaque_state();
+
+		cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_TASK_BIT_EXT);
+		cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
+		cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
+		cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
 
 		vec2 vertices[] = {
 			vec2(-0.2f, -0.2f),

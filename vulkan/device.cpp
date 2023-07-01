@@ -5254,10 +5254,17 @@ void Device::end_renderdoc_capture()
 #endif
 
 bool Device::supports_subgroup_size_log2(bool subgroup_full_group, uint8_t subgroup_minimum_size_log2,
-                                         uint8_t subgroup_maximum_size_log2) const
+                                         uint8_t subgroup_maximum_size_log2, VkShaderStageFlagBits stage) const
 {
 	if (ImplementationQuirks::get().force_no_subgroup_size_control)
 		return false;
+
+	if (stage != VK_SHADER_STAGE_COMPUTE_BIT &&
+	    stage != VK_SHADER_STAGE_MESH_BIT_EXT &&
+	    stage != VK_SHADER_STAGE_TASK_BIT_EXT)
+	{
+		return false;
+	}
 
 	if (!ext.subgroup_size_control_features.subgroupSizeControl)
 		return false;
@@ -5282,7 +5289,7 @@ bool Device::supports_subgroup_size_log2(bool subgroup_full_group, uint8_t subgr
 	}
 
 	// We need requiredSubgroupSizeStages support here.
-	return (ext.subgroup_size_control_properties.requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0;
+	return (ext.subgroup_size_control_properties.requiredSubgroupSizeStages & stage) != 0;
 }
 
 const QueueInfo &Device::get_queue_info() const

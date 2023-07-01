@@ -60,7 +60,7 @@ layout(set = 0, binding = 5, std430) readonly buffer OutputOffsets
     uvec2 data[];
 } output_offset_strides;
 
-shared i16vec4 shared_chunk_bit_counts[NUM_U32_STREAMS][NUM_CHUNKS];
+shared u16vec4 shared_chunk_bit_counts[NUM_U32_STREAMS][NUM_CHUNKS];
 shared uint shared_chunk_offset[NUM_U32_STREAMS][NUM_CHUNKS];
 shared u8vec4 chunk_values[NUM_CHUNKS];
 
@@ -77,8 +77,8 @@ void main()
         if (subgroup_lane < int(gl_WorkGroupSize.y))
         {
             uint bitplane_value = uint(meshlet_streams.data[stream_index + NUM_U32_STREAMS * meshlet_index].bitplane_meta[subgroup_lane]);
-            i16vec4 bit_counts = (i16vec4(bitplane_value) >> i16vec4(0, 4, 8, 12)) & 0xfus;
-            i16vec2 bit_counts2 = bit_counts.xy + bit_counts.zw;
+            u16vec4 bit_counts = (u16vec4(bitplane_value) >> u16vec4(0, 4, 8, 12)) & 0xfus;
+            u16vec2 bit_counts2 = bit_counts.xy + bit_counts.zw;
             uint total_bits = bit_counts2.x + bit_counts2.y;
             uint offset = meshlet_streams.data[stream_index + NUM_U32_STREAMS * meshlet_index].offset_from_base;
             shared_chunk_offset[stream_index][subgroup_lane] = subgroupExclusiveAdd(total_bits) + offset;

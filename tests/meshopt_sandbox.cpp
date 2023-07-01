@@ -360,7 +360,7 @@ static void decode_mesh_setup_buffers(
 
 	out_index_buffer.clear();
 	out_u32_stream.clear();
-	out_index_buffer.reserve(index_count);
+	out_index_buffer.resize(index_count);
 	out_u32_stream.resize(attr_count * (mesh.stream_count - 1));
 }
 
@@ -368,6 +368,7 @@ static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uin
                         const std::vector<uint32_t> &payload, const MeshMetadata &mesh)
 {
 	decode_mesh_setup_buffers(out_index_buffer, out_u32_stream, mesh);
+	out_index_buffer.clear();
 	const unsigned u32_stride = mesh.stream_count - 1;
 
 	for (auto &meshlet : mesh.meshlets)
@@ -473,11 +474,11 @@ static void decode_mesh_gpu(
 
 	buf_info.size = out_index_buffer.size() * sizeof(uint32_t);
 	buf_info.domain = Vulkan::BufferDomain::CachedHost;
-	auto decoded_index_buffer = dev.create_buffer(buf_info, out_index_buffer.data());
+	auto decoded_index_buffer = dev.create_buffer(buf_info);
 
 	buf_info.size = out_u32_stream.size() * sizeof(uint32_t);
 	buf_info.domain = Vulkan::BufferDomain::CachedHost;
-	auto decoded_u32_buffer = dev.create_buffer(buf_info, out_u32_stream.data());
+	auto decoded_u32_buffer = dev.create_buffer(buf_info);
 
 	std::vector<uvec2> output_offset_strides;
 	output_offset_strides.reserve(mesh.meshlets.size() * mesh.stream_count);
@@ -496,7 +497,7 @@ static void decode_mesh_gpu(
 	auto output_offset_strides_buffer = dev.create_buffer(buf_info, output_offset_strides.data());
 
 	auto cmd = dev.request_command_buffer();
-	cmd->set_program("assets://shaders/decode/meshlet_decode.comp");
+	cmd->set_program("builtin://shaders/decode/meshlet_decode.comp");
 	cmd->set_subgroup_size_log2(true, 5, 5);
 	cmd->set_storage_buffer(0, 0, *meshlet_meta_buffer);
 	cmd->set_storage_buffer(0, 1, *meshlet_stream_buffer);
@@ -571,6 +572,7 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 
 	Global::init(Global::MANAGER_FEATURE_FILESYSTEM_BIT);
+	Filesystem::setup_default_filesystem(GRANITE_FILESYSTEM(), ASSET_DIRECTORY);
 
 	GLTF::Parser parser(argv[1]);
 

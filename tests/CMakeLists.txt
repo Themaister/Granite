@@ -163,6 +163,9 @@ add_granite_offline_tool(performance-query performance_query.cpp)
 add_granite_offline_tool(asset-manager-test asset_manager_test.cpp)
 
 add_granite_offline_tool(meshopt-sandbox meshopt_sandbox.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(meshopt-sandbox PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
 target_link_libraries(meshopt-sandbox PRIVATE meshoptimizer)
 
 add_granite_application(dgc-test dgc_test.cpp)

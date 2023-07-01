@@ -99,7 +99,7 @@ void main()
         u16vec4 predictor_b = meshlet_streams.data[unrolled_stream_index].predictor_b;
         u8vec4 initial_value = meshlet_streams.data[unrolled_stream_index].initial_value;
 
-        uint chunk_id = gl_LocalInvocationID.y;
+        uint chunk_id = gl_SubgroupID;
         uint bitplane_offsets = shared_chunk_offset[i][chunk_id];
         ivec4 bit_counts = ivec4(shared_chunk_bit_counts[i][chunk_id]);
 

@@ -475,12 +475,19 @@ static void decode_mesh_gpu(
 	auto payload_buffer = dev.create_buffer(buf_info, payload.empty() ? nullptr : payload.data());
 
 	buf_info.size = out_index_buffer.size() * sizeof(uint32_t);
-	buf_info.domain = Vulkan::BufferDomain::CachedHost;
+	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+	                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+	                 VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	buf_info.domain = Vulkan::BufferDomain::Device;
 	auto decoded_index_buffer = dev.create_buffer(buf_info);
+	buf_info.domain = Vulkan::BufferDomain::CachedHost;
+	auto readback_decoded_index_buffer = dev.create_buffer(buf_info);
 
 	buf_info.size = out_u32_stream.size() * sizeof(uint32_t);
-	buf_info.domain = Vulkan::BufferDomain::CachedHost;
+	buf_info.domain = Vulkan::BufferDomain::Device;
 	auto decoded_u32_buffer = dev.create_buffer(buf_info);
+	buf_info.domain = Vulkan::BufferDomain::CachedHost;
+	auto readback_decoded_u32_buffer = dev.create_buffer(buf_info);
 
 	std::vector<uvec2> output_offset_strides;
 	output_offset_strides.reserve(mesh.meshlets.size() * mesh.stream_count);
@@ -498,8 +505,9 @@ static void decode_mesh_gpu(
 	buf_info.size = output_offset_strides.size() * sizeof(uvec2);
 	auto output_offset_strides_buffer = dev.create_buffer(buf_info, output_offset_strides.data());
 
-	Vulkan::Device::init_renderdoc_capture();
-	dev.begin_renderdoc_capture();
+	bool has_renderdoc = Vulkan::Device::init_renderdoc_capture();
+	if (has_renderdoc)
+		dev.begin_renderdoc_capture();
 
 	auto cmd = dev.request_command_buffer();
 	cmd->set_program("builtin://shaders/decode/meshlet_decode.comp");
@@ -514,18 +522,27 @@ static void decode_mesh_gpu(
 	cmd->set_specialization_constant_mask(1);
 	cmd->set_specialization_constant(0, mesh.stream_count);
 	cmd->dispatch(uint32_t(mesh.meshlets.size()), 1, 1);
+
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+				 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+
+	cmd->copy_buffer(*readback_decoded_index_buffer, *decoded_index_buffer);
+	cmd->copy_buffer(*readback_decoded_u32_buffer, *decoded_u32_buffer);
+	cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	dev.submit(cmd);
+
 	dev.wait_idle();
-	dev.end_renderdoc_capture();
+
+	if (has_renderdoc)
+		dev.end_renderdoc_capture();
 
 	memcpy(out_index_buffer.data(),
-	       dev.map_host_buffer(*decoded_index_buffer, Vulkan::MEMORY_ACCESS_READ_BIT),
+	       dev.map_host_buffer(*readback_decoded_index_buffer, Vulkan::MEMORY_ACCESS_READ_BIT),
 	       out_index_buffer.size() * sizeof(uint32_t));
 
 	memcpy(out_u32_stream.data(),
-	       dev.map_host_buffer(*decoded_u32_buffer, Vulkan::MEMORY_ACCESS_READ_BIT),
+	       dev.map_host_buffer(*readback_decoded_u32_buffer, Vulkan::MEMORY_ACCESS_READ_BIT),
 	       out_u32_stream.size() * sizeof(uint32_t));
 }
 
@@ -596,6 +613,7 @@ int main(int argc, char *argv[])
 	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0))
 		return EXIT_FAILURE;
 	dev.set_context(ctx);
+	dev.init_frame_contexts(4);
 
 #if 0
 	LOGI("=== Test ====\n");

@@ -2,13 +2,11 @@
 
 #define PACKED_WAVEOPS 0
 
-#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+#extension GL_EXT_shader_subgroup_extended_types_int8 : require
 #extension GL_KHR_shader_subgroup_arithmetic : require
 #extension GL_KHR_shader_subgroup_basic : require
-#if PACKED_WAVEOPS
-#extension GL_EXT_shader_subgroup_extended_types_int8 : require
-#endif
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_EXT_scalar_block_layout : require
 
 #define MAX_ELEMENTS 256
@@ -124,31 +122,35 @@ void main()
 
         uvec4 decoded = ivec4(0);
 
+        // Overlap load with consumption.
+        // Helps RDNA2 quite a lot here!
+        uint value = payload.data[bitplane_offsets];
+
         for (int i = 0; i < bit_counts.x; i++)
         {
-            uint value = payload.data[bitplane_offsets++];
             decoded.x |= bitfieldExtract(value, subgroup_lane, 1) << i;
+            value = payload.data[++bitplane_offsets];
         }
         decoded.x = bitfieldExtract(int(decoded.x), 0, bit_counts.x);
 
         for (int i = 0; i < bit_counts.y; i++)
         {
-            uint value = payload.data[bitplane_offsets++];
             decoded.y |= bitfieldExtract(value, subgroup_lane, 1) << i;
+            value = payload.data[++bitplane_offsets];
         }
         decoded.y = bitfieldExtract(int(decoded.y), 0, bit_counts.y);
 
         for (int i = 0; i < bit_counts.z; i++)
         {
-            uint value = payload.data[bitplane_offsets++];
             decoded.z |= bitfieldExtract(value, subgroup_lane, 1) << i;
+            value = payload.data[++bitplane_offsets];
         }
         decoded.z = bitfieldExtract(int(decoded.z), 0, bit_counts.z);
 
         for (int i = 0; i < bit_counts.w; i++)
         {
-            uint value = payload.data[bitplane_offsets++];
             decoded.w |= bitfieldExtract(value, subgroup_lane, 1) << i;
+            value = payload.data[++bitplane_offsets];
         }
         decoded.w = bitfieldExtract(int(decoded.w), 0, bit_counts.w);
 

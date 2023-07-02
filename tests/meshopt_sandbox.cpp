@@ -592,6 +592,105 @@ static bool validate_mesh_decode(const std::vector<uint32_t> &decoded_index_buff
 	return true;
 }
 
+struct Meshlet
+{
+	uint32_t offset;
+	uint32_t count;
+};
+
+static bool convert_meshlets(std::vector<Meshlet> &out_meshlets, std::vector<meshopt_Bounds> &bounds,
+                             std::vector<uvec3> &out_index_buffer, const SceneFormats::Mesh &mesh)
+{
+	if (mesh.indices.empty() || mesh.primitive_restart || mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+		return false;
+
+	size_t vertex_count = mesh.positions.size() / mesh.position_stride;
+	std::vector<vec3> position_buffer(vertex_count);
+	std::vector<unsigned> index_buffer(mesh.count);
+
+	if (mesh.index_type == VK_INDEX_TYPE_UINT32)
+	{
+		auto *indices = reinterpret_cast<const uint32_t *>(mesh.indices.data());
+		for (unsigned i = 0; i < mesh.count; i++)
+			index_buffer[i] = indices[i];
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT16)
+	{
+		auto *indices = reinterpret_cast<const uint16_t *>(mesh.indices.data());
+		for (unsigned i = 0; i < mesh.count; i++)
+			index_buffer[i] = indices[i];
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT8_EXT)
+	{
+		auto *indices = reinterpret_cast<const uint8_t *>(mesh.indices.data());
+		for (unsigned i = 0; i < mesh.count; i++)
+			index_buffer[i] = indices[i];
+	}
+	else
+		return false;
+
+	switch (mesh.attribute_layout[Util::ecast(MeshAttribute::Position)].format)
+	{
+	case VK_FORMAT_R32G32B32A32_SFLOAT:
+	case VK_FORMAT_R32G32B32_SFLOAT:
+		for (unsigned i = 0; i < vertex_count; i++)
+			memcpy(position_buffer[i].data, mesh.positions.data() + mesh.position_stride * i, sizeof(float) * 3);
+		break;
+
+	default:
+		return false;
+	}
+
+	constexpr unsigned max_vertices = 255;
+	constexpr unsigned max_primitives = 256;
+	std::vector<uint32_t> optimized_index_buffer(index_buffer.size());
+	meshopt_optimizeVertexCache(optimized_index_buffer.data(), index_buffer.data(), mesh.count, vertex_count);
+	index_buffer = std::move(optimized_index_buffer);
+	size_t num_meshlets = meshopt_buildMeshletsBound(mesh.count, max_vertices, max_primitives);
+
+	std::vector<unsigned> out_vertex_redirection_buffer(num_meshlets * max_vertices);
+	std::vector<unsigned char> local_index_buffer(num_meshlets * max_primitives * 3);
+	std::vector<meshopt_Meshlet> meshlets(num_meshlets);
+
+	num_meshlets = meshopt_buildMeshlets(meshlets.data(),
+	                                     out_vertex_redirection_buffer.data(), local_index_buffer.data(),
+	                                     index_buffer.data(), mesh.count,
+	                                     position_buffer[0].data, vertex_count, sizeof(vec3),
+	                                     max_vertices, max_primitives, 1.0f);
+
+	meshlets.resize(num_meshlets);
+
+	out_meshlets.clear();
+	out_meshlets.reserve(num_meshlets);
+	for (auto &meshlet : meshlets)
+	{
+		Meshlet m = {};
+		m.offset = uint32_t(out_index_buffer.size());
+		m.count = meshlet.triangle_count;
+		out_meshlets.push_back(m);
+
+		auto *local_indices = index_buffer.data() + meshlet.triangle_offset;
+		for (unsigned i = 0; i < meshlet.triangle_count; i++)
+		{
+			out_index_buffer.emplace_back(
+					out_vertex_redirection_buffer[local_indices[3 * i + 0] + meshlet.vertex_offset],
+					out_vertex_redirection_buffer[local_indices[3 * i + 1] + meshlet.vertex_offset],
+					out_vertex_redirection_buffer[local_indices[3 * i + 2] + meshlet.vertex_offset]);
+		}
+	}
+
+	bounds.clear();
+	bounds.reserve(num_meshlets);
+	for (auto &meshlet : out_meshlets)
+	{
+		auto bound = meshopt_computeClusterBounds(out_index_buffer[0].data, meshlet.count * 3,
+		                                          position_buffer[0].data, vertex_count, sizeof(vec3));
+		bounds.push_back(bound);
+	}
+
+	return true;
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc != 2)
@@ -614,6 +713,23 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	dev.set_context(ctx);
 	dev.init_frame_contexts(4);
+
+#if 1
+	{
+		std::vector<uvec3> index_buffer;
+		std::vector<Meshlet> meshlets;
+		std::vector<meshopt_Bounds> bounds;
+
+		for (auto &mesh : parser.get_meshes())
+		{
+			if (mesh.count < 60000)
+				continue;
+			if (!convert_meshlets(meshlets, bounds, index_buffer, mesh))
+				return EXIT_FAILURE;
+			break;
+		}
+	}
+#endif
 
 #if 0
 	LOGI("=== Test ====\n");
@@ -666,7 +782,7 @@ int main(int argc, char *argv[])
 	LOGI("===============\n");
 #endif
 
-#if 1
+#if 0
 	for (auto &mesh : parser.get_meshes())
 	{
 		unsigned u32_stride = (mesh.position_stride + mesh.attribute_stride) / sizeof(uint32_t);

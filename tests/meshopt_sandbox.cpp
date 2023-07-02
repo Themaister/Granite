@@ -70,6 +70,12 @@ struct PrimitiveAnalysisResult
 	uint32_t num_vertices;
 };
 
+struct Meshlet
+{
+	uint32_t offset;
+	uint32_t count;
+};
+
 static PrimitiveAnalysisResult analyze_primitive_count(std::unordered_map<uint32_t, uint32_t> &vertex_remap,
 													   const uint32_t *index_buffer, uint32_t max_num_primitives)
 {
@@ -272,6 +278,7 @@ static void encode_stream(std::vector<uint32_t> &out_payload_buffer,
 }
 
 static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata &mesh,
+                        const Meshlet *meshlets, size_t num_meshlets,
                         const uint32_t *index_buffer, uint32_t primitive_count,
                         const uint32_t *attributes,
                         unsigned num_u32_streams)
@@ -283,11 +290,23 @@ static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata 
 	uint32_t base_vertex_offset = 0;
 
 	std::unordered_map<uint32_t, uint32_t> vbo_remap;
+	uint32_t primitive_index = 0;
+	unsigned meshlet_index = 0;
+	bool done = false;
 
-	for (uint32_t primitive_index = 0; primitive_index < primitive_count; )
+	while (!done)
 	{
-		uint32_t primitives_to_process = min(primitive_count - primitive_index, MaxPrimitives);
-		auto analysis_result = analyze_primitive_count(vbo_remap, index_buffer + 3 * primitive_index, primitives_to_process);
+		uint32_t primitives_to_process = min(primitive_count - primitive_index,
+											 num_meshlets ? meshlets[meshlet_index].count : MaxPrimitives);
+
+		PrimitiveAnalysisResult analysis_result = {};
+		if (num_meshlets)
+			primitive_index = meshlets[meshlet_index].offset;
+
+		analysis_result = analyze_primitive_count(
+				vbo_remap, index_buffer + 3 * primitive_index,
+				primitives_to_process);
+
 		primitives_to_process = analysis_result.num_primitives;
 
 		MeshletMetadata meshlet = {};
@@ -334,9 +353,19 @@ static void encode_mesh(std::vector<uint32_t> &out_payload_buffer, MeshMetadata 
 		}
 
 		mesh.meshlets.push_back(meshlet);
-
-		primitive_index += primitives_to_process;
 		base_vertex_offset += analysis_result.num_vertices;
+
+		if (num_meshlets)
+		{
+			primitive_index += primitives_to_process;
+			meshlet_index++;
+			done = meshlet_index >= num_meshlets;
+		}
+		else
+		{
+			primitive_index += primitives_to_process;
+			done = primitive_index >= primitive_count;
+		}
 	}
 
 	mesh.data_stream_size_u32 = uint32_t(out_payload_buffer.size());
@@ -591,12 +620,6 @@ static bool validate_mesh_decode(const std::vector<uint32_t> &decoded_index_buff
 
 	return true;
 }
-
-struct Meshlet
-{
-	uint32_t offset;
-	uint32_t count;
-};
 
 static bool convert_meshlets(std::vector<Meshlet> &out_meshlets, std::vector<meshopt_Bounds> &bounds,
                              std::vector<uvec3> &out_index_buffer, const SceneFormats::Mesh &mesh)

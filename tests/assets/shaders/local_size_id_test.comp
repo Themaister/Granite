@@ -1,0 +1,17 @@
+#version 450
+#extension GL_KHR_shader_subgroup_basic : require
+
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+layout(set = 0, binding = 0, std430) writeonly buffer ReadbackData
+{
+    uvec4 local_invocation_ids[1024];
+    uint subgroup_ids[1024];
+    uint subgroup_invocation_ids[1024];
+};
+
+void main()
+{
+    local_invocation_ids[gl_LocalInvocationIndex] = uvec4(gl_LocalInvocationID, 0);
+    subgroup_ids[gl_LocalInvocationIndex] = gl_SubgroupID;
+    subgroup_invocation_ids[gl_LocalInvocationIndex] = gl_SubgroupInvocationID;
+}

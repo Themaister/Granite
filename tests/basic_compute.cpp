@@ -33,6 +33,7 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 {
 	BasicComputeTest()
 	{
+		get_wsi().set_present_mode(Vulkan::PresentMode::UnlockedMaybeTear);
 		EVENT_MANAGER_REGISTER_LATCH(BasicComputeTest, on_device_create, on_device_destroy, DeviceCreatedEvent);
 	}
 
@@ -44,79 +45,67 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 	{
 	}
 
-	BufferHandle create_ssbo(const void *data, size_t size)
-	{
-		BufferCreateInfo info = {};
-		info.size = size;
-		info.domain = BufferDomain::Device;
-		info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-		if (!data)
-			info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
-		return get_wsi().get_device().create_buffer(info, data);
-	}
-
-	void readback_ssbo(void *data, size_t size, const Buffer &src)
-	{
-		BufferCreateInfo info = {};
-		info.size = size;
-		info.domain = BufferDomain::CachedHost;
-		info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-		auto buffer = get_wsi().get_device().create_buffer(info);
-
-		auto cmd = get_wsi().get_device().request_command_buffer();
-		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
-		             VK_ACCESS_TRANSFER_READ_BIT);
-		cmd->copy_buffer(*buffer, src);
-		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_HOST_BIT,
-		             VK_ACCESS_HOST_READ_BIT);
-
-		Fence fence;
-		get_wsi().get_device().submit(cmd, &fence);
-		fence->wait();
-
-		auto *mapped = get_wsi().get_device().map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
-		memcpy(data, mapped, size);
-		get_wsi().get_device().unmap_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
-	}
-
 	void render_frame(double, double) override
 	{
 		auto &device = get_wsi().get_device();
-		auto cmd = device.request_command_buffer();
+		auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncCompute);
 
-		cmd->barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-		             VK_ACCESS_MEMORY_READ_BIT);
+		struct ReadbackData
+		{
+			uvec4 local_invocation_ids[1024];
+			uint subgroup_ids[1024];
+			uint subgroup_invocation_ids[1024];
+		};
 
-		uint32_t variants[64];
-		for (unsigned i = 0; i < 64; i++)
-			variants[i] = i & 3;
-		auto variant_buffer = create_ssbo(variants, sizeof(variants));
+		uint32_t local_size_x = 64;
+		uint32_t local_size_y = 2;
+		uint32_t local_size_z = 2;
+		uint32_t wave_size = 32;
 
-		auto work_list_buffer = create_ssbo(nullptr, 64 * 64 * sizeof(uint32_t));
+		Vulkan::BufferCreateInfo buf_info = {};
+		buf_info.size = sizeof(ReadbackData);
+		buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		buf_info.domain = Vulkan::BufferDomain::CachedHost;
+		auto output_buffer = device.create_buffer(buf_info);
 
-		uint32_t counts[64] = {};
-		auto work_list_count = create_ssbo(counts, sizeof(counts));
-
-		cmd->set_program("assets://shaders/compute_bucket_allocate.comp");
-		cmd->set_storage_buffer(0, 0, *variant_buffer);
-		cmd->set_storage_buffer(0, 1, *work_list_buffer);
-		cmd->set_storage_buffer(0, 2, *work_list_count);
+		cmd->set_program("assets://shaders/local_size_id_test.comp");
+		cmd->set_storage_buffer(0, 0, *output_buffer);
+		cmd->set_specialization_constant_mask(0x7);
+		cmd->set_specialization_constant(0, local_size_x);
+		cmd->set_specialization_constant(1, local_size_y);
+		cmd->set_specialization_constant(2, local_size_z);
+		cmd->enable_subgroup_size_control(true);
+		cmd->set_subgroup_size_log2(true, 5, 5);
 		cmd->dispatch(1, 1, 1);
 		device.submit(cmd);
+		device.wait_idle();
 
-		uint32_t readback_work_list[64][64];
-		readback_ssbo(readback_work_list, sizeof(readback_work_list), *work_list_buffer);
+		auto *ptr = static_cast<const ReadbackData *>(device.map_host_buffer(*output_buffer, Vulkan::MEMORY_ACCESS_READ_BIT));
 
-		uint32_t readback_counts[64];
-		readback_ssbo(readback_counts, sizeof(readback_counts), *work_list_count);
-
-		for (unsigned i = 0; i < 64; i++)
+		for (unsigned i = 0; i < local_size_x * local_size_y * local_size_z; i++)
 		{
-			LOGI("Variant: %u\n", i);
-			LOGI("  Count: %u\n", readback_counts[i]);
-			for (unsigned j = 0; j < readback_counts[i]; j++)
-				LOGI("    %u\n", readback_work_list[i][j]);
+			auto invocation_id = ptr->local_invocation_ids[i].xyz();
+			auto subgroup_id = ptr->subgroup_ids[i];
+			auto subgroup_invocation_id = ptr->subgroup_invocation_ids[i];
+
+			uvec3 expected_local_invocation{
+				i % local_size_x,
+				(i / local_size_x) % local_size_y,
+				i / (local_size_x * local_size_y)
+			};
+
+			uint32_t expected_subgroup_id = i / wave_size;
+			uint32_t expected_subgroup_invocation_id = i % wave_size;
+
+			if (!all(equal(invocation_id, expected_local_invocation)))
+				LOGE("Wrong invocation ID.\n");
+			if (subgroup_id != expected_subgroup_id)
+				LOGE("Wrong subgroup ID\n");
+			if (subgroup_invocation_id != expected_subgroup_invocation_id)
+				LOGE("Wrong subgroup invocation ID.\n");
 		}
+		LOGI("Done!\n");
+		request_shutdown();
 
 		cmd = device.request_command_buffer();
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);

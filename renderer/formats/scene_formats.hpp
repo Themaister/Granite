@@ -251,6 +251,8 @@ struct SceneInformation
 // Ensures that a Mesh has a TRIANGLE_LIST + uint32_t indices for easy consumption later.
 bool mesh_canonicalize_indices(Mesh &mesh);
 
+std::vector<i16vec4> mesh_extract_position_snorm_exp(const Mesh &mesh);
+
 bool mesh_recompute_normals(Mesh &mesh);
 bool mesh_recompute_tangents(Mesh &mesh);
 bool mesh_renormalize_normals(Mesh &mesh);

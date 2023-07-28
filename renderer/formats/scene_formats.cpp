@@ -252,6 +252,50 @@ bool mesh_canonicalize_indices(Mesh &mesh)
 	return true;
 }
 
+static i16vec4 encode_vec3_to_snorm_exp(vec3 v)
+{
+	vec3 vabs = abs(v);
+	float max_scale = max(max(vabs.x, vabs.y), vabs.z);
+	int max_scale_log2 = int(floor(log2(max_scale)));
+	int scale_log2 = 14 - max_scale_log2;
+
+	// Maximum component should have range of [1, 2) since we use floor of log2, so scale with 2^14 instead of 15.
+	v.x = ldexpf(v.x, scale_log2);
+	v.y = ldexpf(v.y, scale_log2);
+	v.z = ldexpf(v.z, scale_log2);
+	v = clamp(round(v), vec3(-0x8000), vec3(0x7fff));
+
+	return i16vec4(i16vec3(v), int16_t(-scale_log2));
+}
+
+std::vector<i16vec4> mesh_extract_position_snorm_exp(const Mesh &mesh)
+{
+	std::vector<i16vec4> encoded_positions;
+	std::vector<vec3> positions;
+
+	size_t num_positions = mesh.positions.size() / mesh.position_stride;
+	positions.resize(num_positions);
+	auto &layout = mesh.attribute_layout[ecast(MeshAttribute::Position)];
+	auto fmt = layout.format;
+
+	if (fmt == VK_FORMAT_R32G32B32A32_SFLOAT || fmt == VK_FORMAT_R32G32B32_SFLOAT)
+	{
+		for (size_t i = 0; i < num_positions; i++)
+			memcpy(positions[i].data, mesh.positions.data() + i * mesh.position_stride + layout.offset, sizeof(float) * 3);
+	}
+	else
+	{
+		LOGE("Unexpected format %u.\n", fmt);
+		return {};
+	}
+
+	encoded_positions.reserve(positions.size());
+	for (auto &pos : positions)
+		encoded_positions.push_back(encode_vec3_to_snorm_exp(pos));
+
+	return encoded_positions;
+}
+
 static bool mesh_unroll_vertices(Mesh &mesh)
 {
 	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)

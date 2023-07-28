@@ -14,7 +14,6 @@
 #include <algorithm>
 using namespace Granite;
 
-static constexpr unsigned MaxStreams = 16;
 static constexpr unsigned MaxU32Streams = 16;
 static constexpr unsigned MaxElements = 256;
 static constexpr unsigned MaxPrimitives = MaxElements;
@@ -42,14 +41,21 @@ struct MeshletMetadata : MeshletMetadataGPU
 
 enum class StreamType : uint8_t
 {
-	Primitive, // R8G8B8X8_UINT
-	PositionF16, // R16G16B16X16_FLOAT
+	Primitive = 0, // R8G8B8X8_UINT
+	PositionE16, // RGB16_SSCALED * 2^(A16_SINT)
+	NormalOct8, // Octahedron encoding in RG8.
+	TangentOct8, // Octahedron encoding in RG8, sign bit in B8 (if not zero, +1, otherwise -1).
+	UV, // R16G16_SNORM * B16_SSCALED
+	BoneIndices, // RGBA8_UINT
+	BoneWeights, // RGB8_UNORM (sums to 1, A is implied).
 };
 
-struct StreamMeta
+enum class MeshStyle : uint32_t
 {
-	StreamType type;
-	uint8_t stream_index_component;
+	Wireframe = 0, // Primitive + Position
+	Untextured, // Wireframe + NormalOct8
+	Textured, // Untextured + TangentOct8 + UV
+	Skinned // Textured + Bone*
 };
 
 struct MeshMetadata
@@ -57,9 +63,7 @@ struct MeshMetadata
 	uint32_t stream_count;
 	uint32_t data_stream_offset_u32;
 	uint32_t data_stream_size_u32;
-
-	// Stream meta is used to configure the decode shader.
-	StreamMeta stream_meta[MaxStreams];
+	MeshStyle mesh_style;
 
 	std::vector<MeshletMetadata> meshlets;
 };
@@ -375,8 +379,6 @@ static void decode_mesh_setup_buffers(
 		std::vector<uint32_t> &out_index_buffer, std::vector<uint32_t> &out_u32_stream, const MeshMetadata &mesh)
 {
 	assert(mesh.stream_count > 1);
-	assert(mesh.stream_meta[0].type == StreamType::Primitive);
-	assert(mesh.stream_meta[0].stream_index_component == 0);
 
 	unsigned index_count = 0;
 	unsigned attr_count = 0;

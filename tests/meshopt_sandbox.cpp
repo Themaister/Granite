@@ -741,6 +741,17 @@ int main(int argc, char *argv[])
 
 #if 1
 	{
+		auto mesh = parser.get_meshes().front();
+		SceneFormats::mesh_canonicalize_indices(mesh);
+		auto positions = SceneFormats::mesh_extract_position_snorm_exp(mesh);
+		auto normals = SceneFormats::mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Normal);
+		auto tangent = SceneFormats::mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Tangent);
+		auto uv = SceneFormats::mesh_extract_uv_snorm_scale(mesh);
+	}
+#endif
+
+#if 0
+	{
 		std::vector<uvec3> index_buffer;
 		std::vector<Meshlet> meshlets;
 		std::vector<meshopt_Bounds> bounds;

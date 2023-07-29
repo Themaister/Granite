@@ -248,10 +248,12 @@ struct SceneInformation
 	const SceneNodes *scene_nodes = nullptr;
 };
 
-// Ensures that a Mesh has a TRIANGLE_LIST + uint32_t indices for easy consumption later.
+// Ensures that a Mesh has a TRIANGLE_LIST + uint32_t indices for easy consumption later (by meshlet encoding).
 bool mesh_canonicalize_indices(Mesh &mesh);
 
 std::vector<i16vec4> mesh_extract_position_snorm_exp(const Mesh &mesh);
+std::vector<i8vec4> mesh_extract_normal_tangent_oct8(const Mesh &mesh, MeshAttribute attr);
+std::vector<i16vec4> mesh_extract_uv_snorm_scale(const Mesh &mesh);
 
 bool mesh_recompute_normals(Mesh &mesh);
 bool mesh_recompute_tangents(Mesh &mesh);

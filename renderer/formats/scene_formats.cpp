@@ -268,6 +268,25 @@ static i16vec4 encode_vec3_to_snorm_exp(vec3 v)
 	return i16vec4(i16vec3(v), int16_t(-scale_log2));
 }
 
+static i16vec3 encode_vec2_to_snorm_exp(vec2 v)
+{
+	vec2 vabs = abs(v);
+	float max_scale = max(vabs.x, vabs.y);
+	int max_scale_log2 = int(floor(log2(max_scale)));
+	int scale_log2 = 14 - max_scale_log2;
+
+	// UVs are unorm scaled, don't need more accuracy than this.
+	// If all UVs are in range of [0, 1] space, we should get a constant exponent which aids compression.
+	scale_log2 = min(scale_log2, 15);
+
+	// Maximum component should have range of [1, 2) since we use floor of log2, so scale with 2^14 instead of 15.
+	v.x = ldexpf(v.x, scale_log2);
+	v.y = ldexpf(v.y, scale_log2);
+	v = clamp(round(v), vec2(-0x8000), vec2(0x7fff));
+
+	return i16vec3(i16vec2(v), int16_t(-scale_log2));
+}
+
 std::vector<i16vec4> mesh_extract_position_snorm_exp(const Mesh &mesh)
 {
 	std::vector<i16vec4> encoded_positions;
@@ -283,6 +302,8 @@ std::vector<i16vec4> mesh_extract_position_snorm_exp(const Mesh &mesh)
 		for (size_t i = 0; i < num_positions; i++)
 			memcpy(positions[i].data, mesh.positions.data() + i * mesh.position_stride + layout.offset, sizeof(float) * 3);
 	}
+	else if (fmt == VK_FORMAT_UNDEFINED)
+		return {};
 	else
 	{
 		LOGE("Unexpected format %u.\n", fmt);
@@ -294,6 +315,99 @@ std::vector<i16vec4> mesh_extract_position_snorm_exp(const Mesh &mesh)
 		encoded_positions.push_back(encode_vec3_to_snorm_exp(pos));
 
 	return encoded_positions;
+}
+
+std::vector<i8vec4> mesh_extract_normal_tangent_oct8(const Mesh &mesh, MeshAttribute attr)
+{
+	std::vector<i8vec4> encoded_attributes;
+	std::vector<vec4> normals;
+
+	auto &layout = mesh.attribute_layout[ecast(attr)];
+	auto fmt = layout.format;
+
+	size_t num_attrs = mesh.attributes.size() / mesh.attribute_stride;
+	normals.resize(num_attrs);
+
+	if (fmt == VK_FORMAT_R32G32B32_SFLOAT)
+	{
+		for (size_t i = 0; i < num_attrs; i++)
+		{
+			memcpy(normals[i].data,
+			       mesh.attributes.data() + i * mesh.attribute_stride + layout.offset,
+			       sizeof(float) * 3);
+			normals[i].w = 0.0f;
+		}
+	}
+	else if (fmt == VK_FORMAT_R32G32B32A32_SFLOAT)
+	{
+		for (size_t i = 0; i < num_attrs; i++)
+		{
+			memcpy(normals[i].data,
+			       mesh.attributes.data() + i * mesh.attribute_stride + layout.offset,
+			       sizeof(float) * 4);
+		}
+	}
+	else if (fmt == VK_FORMAT_UNDEFINED)
+		return {};
+	else
+	{
+		LOGE("Unexpected format %u.\n", fmt);
+		return {};
+	}
+
+	encoded_attributes.reserve(normals.size());
+	meshopt_encodeFilterOct(encoded_attributes.data(), encoded_attributes.size(),
+	                        sizeof(i8vec4), 8, normals[0].data);
+	for (auto &n : encoded_attributes)
+		n.w = n.w <= 0 ? -1 : 0;
+
+	return encoded_attributes;
+}
+
+static i16vec4 encode_uv_to_snorm_scale(vec2 uv)
+{
+	// UVs tend to be in [0, 1] range. Readjust to use more of the available range.
+	uv = 2.0f * uv - 1.0f;
+	return i16vec4(encode_vec2_to_snorm_exp(uv), 0);
+}
+
+std::vector<i16vec4> mesh_extract_uv_snorm_scale(const Mesh &mesh)
+{
+	std::vector<i16vec4> encoded_uvs;
+	std::vector<vec2> uvs;
+
+	size_t num_uvs = mesh.attributes.size() / mesh.attribute_stride;
+	uvs.resize(num_uvs);
+	auto &layout = mesh.attribute_layout[ecast(MeshAttribute::UV)];
+	auto fmt = layout.format;
+
+	if (fmt == VK_FORMAT_R32G32_SFLOAT)
+	{
+		for (size_t i = 0; i < num_uvs; i++)
+			memcpy(uvs[i].data, mesh.attributes.data() + i * mesh.attribute_stride + layout.offset, sizeof(float) * 2);
+	}
+	else if (fmt == VK_FORMAT_R16G16_UNORM)
+	{
+		for (size_t i = 0; i < num_uvs; i++)
+		{
+			u16vec2 u16;
+			memcpy(u16.data, mesh.attributes.data() + i * mesh.attribute_stride + layout.offset, sizeof(uint16_t) * 2);
+			uvs[i] = vec2(u16) * float(1.0f / 0xffff);
+		}
+	}
+	else if (fmt == VK_FORMAT_UNDEFINED)
+		return {};
+	else
+	{
+		LOGE("Unexpected format %u.\n", fmt);
+		return {};
+	}
+
+	encoded_uvs.reserve(uvs.size());
+	for (auto &uv : uvs)
+		encoded_uvs.push_back(encode_uv_to_snorm_scale(uv));
+
+	return encoded_uvs;
 }
 
 static bool mesh_unroll_vertices(Mesh &mesh)

@@ -410,6 +410,96 @@ std::vector<i16vec4> mesh_extract_uv_snorm_scale(const Mesh &mesh)
 	return encoded_uvs;
 }
 
+namespace Meshlet
+{
+static vec3 decode_snorm_exp(i16vec4 p)
+{
+	vec3 result;
+	result.x = ldexpf(float(p.x), p.w);
+	result.y = ldexpf(float(p.y), p.w);
+	result.z = ldexpf(float(p.z), p.w);
+	return result;
+}
+
+Encoded encode_mesh(const Mesh &mesh_)
+{
+	auto mesh = mesh_;
+	mesh_canonicalize_indices(mesh);
+
+	auto positions = SceneFormats::mesh_extract_position_snorm_exp(mesh);
+	auto normals = SceneFormats::mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Normal);
+	auto tangent = SceneFormats::mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Tangent);
+	auto uv = SceneFormats::mesh_extract_uv_snorm_scale(mesh);
+
+	// Use quantized position to guide the clustering.
+	std::vector<vec3> position_buffer;
+	position_buffer.reserve(positions.size());
+	for (auto &p : positions)
+		position_buffer.push_back(decode_snorm_exp(p));
+
+	constexpr unsigned max_vertices = 255;
+	constexpr unsigned max_primitives = 256;
+	std::vector<uint32_t> optimized_index_buffer(mesh.count);
+	meshopt_optimizeVertexCache(
+			optimized_index_buffer.data(), reinterpret_cast<const uint32_t *>(mesh.indices.data()),
+			mesh.count, positions.size());
+	size_t num_meshlets = meshopt_buildMeshletsBound(mesh.count, max_vertices, max_primitives);
+
+	std::vector<unsigned> out_vertex_redirection_buffer(num_meshlets * max_vertices);
+	std::vector<unsigned char> local_index_buffer(num_meshlets * max_primitives * 3);
+	std::vector<meshopt_Meshlet> meshlets(num_meshlets);
+
+	num_meshlets = meshopt_buildMeshlets(meshlets.data(),
+	                                     out_vertex_redirection_buffer.data(), local_index_buffer.data(),
+	                                     optimized_index_buffer.data(), mesh.count,
+	                                     position_buffer[0].data, positions.size(), sizeof(vec3),
+	                                     max_vertices, max_primitives, 0.75f);
+
+	meshlets.resize(num_meshlets);
+
+	struct Meshlet
+	{
+		uint32_t offset;
+		uint32_t count;
+	};
+	std::vector<Meshlet> out_meshlets;
+	std::vector<uvec3> out_index_buffer;
+
+	out_meshlets.clear();
+	out_meshlets.reserve(num_meshlets);
+	for (auto &meshlet : meshlets)
+	{
+		Meshlet m = {};
+		m.offset = uint32_t(out_index_buffer.size());
+		m.count = meshlet.triangle_count;
+		out_meshlets.push_back(m);
+
+		auto *local_indices = optimized_index_buffer.data() + meshlet.triangle_offset;
+		for (unsigned i = 0; i < meshlet.triangle_count; i++)
+		{
+			out_index_buffer.emplace_back(
+					out_vertex_redirection_buffer[local_indices[3 * i + 0] + meshlet.vertex_offset],
+					out_vertex_redirection_buffer[local_indices[3 * i + 1] + meshlet.vertex_offset],
+					out_vertex_redirection_buffer[local_indices[3 * i + 2] + meshlet.vertex_offset]);
+		}
+	}
+
+	std::vector<meshopt_Bounds> bounds;
+	bounds.clear();
+	bounds.reserve(num_meshlets);
+	for (auto &meshlet : out_meshlets)
+	{
+		auto bound = meshopt_computeClusterBounds(
+				out_index_buffer[0].data, meshlet.count * 3,
+				position_buffer[0].data, positions.size(), sizeof(vec3));
+		bounds.push_back(bound);
+	}
+
+	Encoded encoded;
+	return encoded;
+}
+}
+
 static bool mesh_unroll_vertices(Mesh &mesh)
 {
 	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)

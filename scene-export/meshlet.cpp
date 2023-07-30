@@ -24,6 +24,7 @@
 #include "meshoptimizer.h"
 #include "enum_cast.hpp"
 #include "math.hpp"
+#include "filesystem.hpp"
 
 namespace Granite
 {
@@ -84,8 +85,6 @@ enum class MeshStyle : uint32_t
 struct CombinedMesh
 {
 	uint32_t stream_count;
-	uint32_t data_stream_offset_u32;
-	uint32_t data_stream_size_u32;
 	MeshStyle mesh_style;
 
 	std::vector<Metadata> meshlets;
@@ -559,7 +558,6 @@ static void encode_mesh(Encoded &encoded,
 	encoded = {};
 	auto &mesh = encoded.mesh;
 	mesh.stream_count = num_u32_streams + 1;
-	mesh.data_stream_offset_u32 = 0; // Can be adjusted in isolation later to pack multiple payload streams into one buffer.
 	mesh.meshlets.reserve(num_meshlets);
 	uint32_t base_vertex_offset = 0;
 
@@ -631,8 +629,81 @@ static void encode_mesh(Encoded &encoded,
 		base_vertex_offset += analysis_result.num_vertices;
 		primitive_index += primitives_to_process;
 	}
+}
 
-	mesh.data_stream_size_u32 = uint32_t(encoded.payload.size());
+static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
+{
+	size_t required_size = 0;
+	static const char magic[8] = { 'M', 'E', 'S', 'H', 'L', 'E', 'T', '1' };
+
+	struct MeshletHeader
+	{
+		MeshStyle style;
+		uint32_t u32_stream_count;
+		uint32_t meshlet_count;
+		uint32_t payload_size_words;
+	} header = {};
+
+	header.style = encoded.mesh.mesh_style;
+	header.u32_stream_count = encoded.mesh.stream_count;
+	header.meshlet_count = uint32_t(encoded.mesh.meshlets.size());
+	header.payload_size_words = uint32_t(encoded.payload.size());
+
+	required_size += sizeof(magic);
+	required_size += sizeof(MeshletHeader);
+
+	// Per-meshlet metadata.
+	required_size += encoded.mesh.meshlets.size() * sizeof(MetadataGPU);
+
+	// Bounds.
+	required_size += encoded.mesh.meshlets.size() * sizeof(Bound);
+
+	// Stream metadata.
+	required_size += encoded.mesh.stream_count * encoded.mesh.meshlets.size() * sizeof(Stream);
+
+	// Payload.
+	required_size += encoded.payload.size() * sizeof(uint32_t);
+
+	auto file = GRANITE_FILESYSTEM()->open(path, FileMode::WriteOnly);
+	if (!file)
+		return false;
+
+	auto mapping = file->map_write(required_size);
+	if (!mapping)
+		return false;
+
+	auto *ptr = mapping->mutable_data<unsigned char>();
+
+	memcpy(ptr, magic, sizeof(magic));
+	ptr += sizeof(magic);
+	memcpy(ptr, &header, sizeof(header));
+	ptr += sizeof(header);
+
+	for (uint32_t i = 0; i < header.meshlet_count; i++)
+	{
+		auto &gpu = static_cast<const MetadataGPU>(encoded.mesh.meshlets[i]);
+		memcpy(ptr, &gpu, sizeof(gpu));
+		ptr += sizeof(gpu);
+	}
+
+	for (uint32_t i = 0; i < header.meshlet_count; i++)
+	{
+		auto &bound = encoded.mesh.meshlets[i].bound;
+		memcpy(ptr, &bound, sizeof(bound));
+		ptr += sizeof(bound);
+	}
+
+	for (uint32_t i = 0; i < header.meshlet_count; i++)
+	{
+		for (uint32_t j = 0; j < header.u32_stream_count; j++)
+		{
+			memcpy(ptr, &encoded.mesh.meshlets[i].u32_streams[j], sizeof(Stream));
+			ptr += sizeof(Stream);
+		}
+	}
+
+	memcpy(ptr, encoded.payload.data(), encoded.payload.size() * sizeof(uint32_t));
+	return true;
 }
 
 bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh)
@@ -738,7 +809,8 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh)
 				pbounds->cone_axis_s8[0], pbounds->cone_axis_s8[1],
 				pbounds->cone_axis_s8[2], pbounds->cone_cutoff_s8);
 	}
-	return true;
+
+	return export_encoded_mesh(path, encoded);
 }
 }
 }

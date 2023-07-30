@@ -281,5 +281,20 @@ int main(int argc, char *argv[])
 
 	auto mesh = SceneFormats::Meshlet::create_mesh_view(*mapped);
 
+	std::vector<uint32_t> reference_index_buffer;
+	std::vector<uint32_t> reference_attributes;
+	std::vector<uint32_t> gpu_index_buffer;
+	std::vector<uint32_t> gpu_attributes;
+
+	decode_mesh(reference_index_buffer, reference_attributes, mesh);
+	decode_mesh_gpu(dev, gpu_index_buffer, gpu_attributes, mesh);
+
+	if (!validate_mesh_decode(gpu_index_buffer, gpu_attributes,
+	                          reference_index_buffer, reference_attributes,
+	                          mesh.format_header->u32_stream_count - 1))
+	{
+		return EXIT_FAILURE;
+	}
+
 	return 0;
 }

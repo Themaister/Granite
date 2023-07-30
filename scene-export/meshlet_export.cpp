@@ -20,66 +20,23 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "meshlet.hpp"
+#include "meshlet_export.hpp"
 #include "meshoptimizer.h"
 #include "enum_cast.hpp"
 #include "math.hpp"
 #include "filesystem.hpp"
+#include "meshlet.hpp"
 
 namespace Granite
 {
 namespace Meshlet
 {
-static constexpr unsigned MaxU32Streams = 16;
-static constexpr unsigned MaxElements = 256;
-static constexpr unsigned MaxPrimitives = MaxElements;
-static constexpr unsigned MaxVertices = MaxElements;
+using namespace ::Granite::SceneFormats::Meshlet;
 
-struct Stream
-{
-	uint16_t predictor[4 * 2 + 2];
-	uint32_t offset_from_base_u32;
-	uint16_t bitplane_meta[MaxElements / 32];
-};
-
-struct MetadataGPU
-{
-	uint32_t base_vertex_offset;
-	uint8_t num_primitives_minus_1;
-	uint8_t num_attributes_minus_1;
-	uint16_t reserved;
-};
-
-struct Bound
-{
-	vec3 center;
-	float radius;
-	i8vec4 cone_axis_cutoff;
-};
-
-struct Metadata : MetadataGPU
+struct Metadata : Header
 {
 	Bound bound;
 	Stream u32_streams[MaxU32Streams];
-};
-
-enum class StreamType : uint8_t
-{
-	Primitive = 0, // R8G8B8X8_UINT
-	PositionE16, // RGB16_SSCALED * 2^(A16_SINT)
-	NormalOct8, // Octahedron encoding in RG8.
-	TangentOct8, // Octahedron encoding in RG8, sign bit in B8 (if not zero, +1, otherwise -1).
-	UV, // R16G16_SNORM * B16_SSCALED
-	BoneIndices, // RGBA8_UINT
-	BoneWeights, // RGB8_UNORM (sums to 1, A is implied).
-};
-
-enum class MeshStyle : uint32_t
-{
-	Wireframe = 0, // Primitive + Position
-	Untextured, // Wireframe + NormalOct8
-	Textured, // Untextured + TangentOct8 + UV
-	Skinned // Textured + Bone*
 };
 
 struct CombinedMesh
@@ -570,10 +527,9 @@ static void encode_mesh(Encoded &encoded,
 		assert(primitives_to_process);
 		assert(primitive_count > primitive_index);
 
-		PrimitiveAnalysisResult analysis_result = {};
 		primitive_index = meshlets[meshlet_index].offset;
 
-		analysis_result = analyze_primitive_count(
+		auto analysis_result = analyze_primitive_count(
 				vbo_remap, index_buffer + 3 * primitive_index,
 				primitives_to_process);
 
@@ -596,7 +552,6 @@ static void encode_mesh(Encoded &encoded,
 			uint8_t i0 = vbo_remap[index_buffer[3 * (primitive_index + i) + 0]];
 			uint8_t i1 = vbo_remap[index_buffer[3 * (primitive_index + i) + 1]];
 			uint8_t i2 = vbo_remap[index_buffer[3 * (primitive_index + i) + 2]];
-			//LOGI("Prim %u = { %u, %u, %u }\n", i, i0, i1, i2);
 			stream_buffer[i] = u8vec4(i0, i1, i2, 0);
 		}
 
@@ -634,15 +589,8 @@ static void encode_mesh(Encoded &encoded,
 static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 {
 	size_t required_size = 0;
-	static const char magic[8] = { 'M', 'E', 'S', 'H', 'L', 'E', 'T', '1' };
 
-	struct MeshletHeader
-	{
-		MeshStyle style;
-		uint32_t u32_stream_count;
-		uint32_t meshlet_count;
-		uint32_t payload_size_words;
-	} header = {};
+	FormatHeader header = {};
 
 	header.style = encoded.mesh.mesh_style;
 	header.u32_stream_count = encoded.mesh.stream_count;
@@ -650,10 +598,10 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 	header.payload_size_words = uint32_t(encoded.payload.size());
 
 	required_size += sizeof(magic);
-	required_size += sizeof(MeshletHeader);
+	required_size += sizeof(FormatHeader);
 
 	// Per-meshlet metadata.
-	required_size += encoded.mesh.meshlets.size() * sizeof(MetadataGPU);
+	required_size += encoded.mesh.meshlets.size() * sizeof(Header);
 
 	// Bounds.
 	required_size += encoded.mesh.meshlets.size() * sizeof(Bound);
@@ -662,7 +610,8 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 	required_size += encoded.mesh.stream_count * encoded.mesh.meshlets.size() * sizeof(Stream);
 
 	// Payload.
-	required_size += encoded.payload.size() * sizeof(uint32_t);
+	// Need a padding word to speed up decoder.
+	required_size += (encoded.payload.size() + 1) * sizeof(uint32_t);
 
 	auto file = GRANITE_FILESYSTEM()->open(path, FileMode::WriteOnly);
 	if (!file)
@@ -681,7 +630,7 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 
 	for (uint32_t i = 0; i < header.meshlet_count; i++)
 	{
-		auto &gpu = static_cast<const MetadataGPU>(encoded.mesh.meshlets[i]);
+		auto &gpu = static_cast<const Header &>(encoded.mesh.meshlets[i]);
 		memcpy(ptr, &gpu, sizeof(gpu));
 		ptr += sizeof(gpu);
 	}
@@ -703,6 +652,8 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 	}
 
 	memcpy(ptr, encoded.payload.data(), encoded.payload.size() * sizeof(uint32_t));
+	ptr += encoded.payload.size() * sizeof(uint32_t);
+	memset(ptr, 0, sizeof(uint32_t));
 	return true;
 }
 
@@ -710,7 +661,6 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh)
 {
 	if (!mesh_canonicalize_indices(mesh))
 		return false;
-	mesh_deduplicate_vertices(mesh);
 
 	auto positions = mesh_extract_position_snorm_exp(mesh);
 	auto normals = mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Normal);

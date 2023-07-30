@@ -6,7 +6,7 @@ add_granite_internal_lib(granite-scene-export
         gltf_export.cpp gltf_export.hpp
         rgtc_compressor.cpp rgtc_compressor.hpp
         tmx_parser.cpp tmx_parser.hpp
-        meshlet.cpp meshlet.hpp
+        meshlet_export.cpp meshlet_export.hpp
         texture_utils.cpp texture_utils.hpp)
 
 target_include_directories(granite-scene-export PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

@@ -38,6 +38,7 @@ add_granite_internal_lib(granite-renderer
         lights/volumetric_diffuse.hpp lights/volumetric_diffuse.cpp
         lights/decal_volume.hpp lights/decal_volume.cpp
         formats/scene_formats.hpp formats/scene_formats.cpp
+        formats/meshlet.hpp formats/meshlet.cpp
         formats/gltf.hpp formats/gltf.cpp
         scene_loader.cpp scene_loader.hpp
         ocean.hpp ocean.cpp

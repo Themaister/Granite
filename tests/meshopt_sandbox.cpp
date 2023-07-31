@@ -1,18 +1,14 @@
 #include "logging.hpp"
-#include <stdint.h>
 #include <vector>
 #include "math.hpp"
 #include "device.hpp"
 #include "context.hpp"
 #include "muglm/muglm_impl.hpp"
-#include <unordered_map>
-#include "bitops.hpp"
 #include "gltf.hpp"
 #include "global_managers_init.hpp"
 #include "meshlet_export.hpp"
 #include "meshlet.hpp"
 #include <assert.h>
-#include <algorithm>
 using namespace Granite;
 
 static void decode_mesh_setup_buffers(
@@ -112,79 +108,33 @@ static void decode_mesh_gpu(
 		const SceneFormats::Meshlet::MeshView &mesh)
 {
 	decode_mesh_setup_buffers(out_index_buffer, out_u32_stream, mesh);
-	const uint32_t u32_stride = mesh.format_header->u32_stream_count - 1;
 
 	Vulkan::BufferCreateInfo buf_info = {};
 	buf_info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
 	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-
-	buf_info.size = mesh.format_header->meshlet_count * sizeof(*mesh.headers);
-	auto meshlet_meta_buffer = dev.create_buffer(buf_info, mesh.headers);
-
-	buf_info.size = mesh.format_header->meshlet_count * mesh.format_header->u32_stream_count * sizeof(*mesh.streams);
-	auto meshlet_stream_buffer = dev.create_buffer(buf_info, mesh.streams);
-
 	buf_info.size = mesh.format_header->payload_size_words * sizeof(uint32_t);
 	auto payload_buffer = dev.create_buffer(buf_info, mesh.payload);
 
 	buf_info.size = out_index_buffer.size() * sizeof(uint32_t);
-	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-	                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-	                 VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	buf_info.domain = Vulkan::BufferDomain::Device;
-	auto decoded_index_buffer = dev.create_buffer(buf_info);
+	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	buf_info.domain = Vulkan::BufferDomain::CachedHost;
 	auto readback_decoded_index_buffer = dev.create_buffer(buf_info);
 
 	buf_info.size = out_u32_stream.size() * sizeof(uint32_t);
-	buf_info.domain = Vulkan::BufferDomain::Device;
-	auto decoded_u32_buffer = dev.create_buffer(buf_info);
 	buf_info.domain = Vulkan::BufferDomain::CachedHost;
 	auto readback_decoded_u32_buffer = dev.create_buffer(buf_info);
-
-	std::vector<uvec2> output_offset_strides;
-	output_offset_strides.reserve(mesh.format_header->meshlet_count * mesh.format_header->u32_stream_count);
-
-	uint32_t index_count = 0;
-	for (uint32_t i = 0; i < mesh.format_header->meshlet_count; i++)
-	{
-		output_offset_strides.emplace_back(index_count, 0);
-		index_count += mesh.headers[i].num_primitives_minus_1 + 1;
-		for (uint32_t j = 1; j < mesh.format_header->u32_stream_count; j++)
-			output_offset_strides.emplace_back(mesh.headers[i].base_vertex_offset * u32_stride + (j - 1), u32_stride);
-	}
-
-	buf_info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
-	buf_info.size = output_offset_strides.size() * sizeof(uvec2);
-	auto output_offset_strides_buffer = dev.create_buffer(buf_info, output_offset_strides.data());
 
 	bool has_renderdoc = Vulkan::Device::init_renderdoc_capture();
 	if (has_renderdoc)
 		dev.begin_renderdoc_capture();
 
 	auto cmd = dev.request_command_buffer();
-	cmd->set_program("builtin://shaders/decode/meshlet_decode.comp");
-	cmd->enable_subgroup_size_control(true);
-	cmd->set_subgroup_size_log2(true, 5, 5);
-	cmd->set_storage_buffer(0, 0, *meshlet_meta_buffer);
-	cmd->set_storage_buffer(0, 1, *meshlet_stream_buffer);
-	cmd->set_storage_buffer(0, 2, *decoded_u32_buffer);
-	cmd->set_storage_buffer(0, 3, *decoded_index_buffer);
-	cmd->set_storage_buffer(0, 4, *payload_buffer);
-	cmd->set_storage_buffer(0, 5, *output_offset_strides_buffer);
-	cmd->set_specialization_constant_mask(1);
-	cmd->set_specialization_constant(0, mesh.format_header->u32_stream_count);
-	cmd->dispatch(mesh.format_header->meshlet_count, 1, 1);
-
+	SceneFormats::Meshlet::decode_mesh(*cmd, *readback_decoded_index_buffer, 0,
+	                                   *readback_decoded_u32_buffer, 0,
+	                                   *payload_buffer, 0, mesh);
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-				 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-
-	cmd->copy_buffer(*readback_decoded_index_buffer, *decoded_index_buffer);
-	cmd->copy_buffer(*readback_decoded_u32_buffer, *decoded_u32_buffer);
-	cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	dev.submit(cmd);
-
 	dev.wait_idle();
 
 	if (has_renderdoc)

@@ -58,11 +58,15 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 	Vulkan::BufferHandle ibo;
 	Vulkan::BufferHandle vbo;
 	Vulkan::BufferHandle payload;
+	Vulkan::BufferHandle meshlet_meta_buffer;
+	Vulkan::BufferHandle meshlet_stream_buffer;
 	AABB aabb;
 	FPSCamera camera;
 
 	void on_device_create(const DeviceCreatedEvent &e)
 	{
+		e.get_device().get_shader_manager().add_include_directory("builtin://shaders/inc");
+
 		auto view = SceneFormats::Meshlet::create_mesh_view(*mapping);
 		if (!view.format_header)
 			throw std::runtime_error("Failed to load meshlet.");
@@ -106,8 +110,18 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 
 		camera.set_depth_range(0.1f, 200.0f);
 		camera.set_fovy(0.4f * pi<float>());
-		camera.look_at(aabb.get_center() + vec3(0.1f, 0.2f, 1.1f) * aabb.get_radius(),
+		camera.look_at(aabb.get_center() + vec3(0.1f, 0.2f, 2.1f) * aabb.get_radius(),
 		               aabb.get_center(), vec3(0.0f, 1.0f, 0.0f));
+
+		Vulkan::BufferCreateInfo buf_info = {};
+		buf_info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
+		buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+		buf_info.size = view.format_header->meshlet_count * sizeof(*view.headers);
+		meshlet_meta_buffer = e.get_device().create_buffer(buf_info, view.headers);
+
+		buf_info.size = view.format_header->meshlet_count * view.format_header->u32_stream_count * sizeof(*view.streams);
+		meshlet_stream_buffer = e.get_device().create_buffer(buf_info, view.streams);
 	}
 
 	void on_device_destroy(const DeviceCreatedEvent &)
@@ -115,6 +129,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		ibo.reset();
 		vbo.reset();
 		payload.reset();
+		meshlet_meta_buffer.reset();
+		meshlet_stream_buffer.reset();
 	}
 
 	void render_frame(double, double) override
@@ -126,19 +142,21 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
 		camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
 
-		cmd->set_program("assets://shaders/meshlet_debug.vert",
-		                 "assets://shaders/meshlet_debug.frag");
+		cmd->set_program("", "assets://shaders/meshlet_debug.mesh",
+		                 "assets://shaders/meshlet_debug.mesh.frag");
 		cmd->set_opaque_state();
 
 		auto vp = camera.get_projection() * camera.get_view();
-		*cmd->allocate_typed_constant_data<mat4>(0, 0, 1) = vp;
+		*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = vp;
 
-		cmd->set_index_buffer(*ibo, 0, VK_INDEX_TYPE_UINT32);
-		cmd->set_vertex_binding(0, *vbo, 0, 6 * sizeof(uint32_t));
-		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32A32_UINT, 0);
-		cmd->set_vertex_attrib(1, 0, VK_FORMAT_R32G32_UINT, 4 * sizeof(uint32_t));
+		cmd->set_storage_buffer(0, 0, *meshlet_meta_buffer);
+		cmd->set_storage_buffer(0, 1, *meshlet_stream_buffer);
+		cmd->set_storage_buffer(0, 2, *payload);
 
-		cmd->draw_indexed(ibo->get_create_info().size / sizeof(uint32_t), 1);
+		cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
+		cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
+		cmd->draw_mesh_tasks(meshlet_meta_buffer->get_create_info().size / sizeof(SceneFormats::Meshlet::Header), 1, 1);
+
 		cmd->end_render_pass();
 		device.submit(cmd);
 	}

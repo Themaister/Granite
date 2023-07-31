@@ -137,8 +137,9 @@ bool decode_mesh(Vulkan::CommandBuffer &cmd,
 	cmd.set_storage_buffer(0, 3, ibo, ibo_offset, view.total_primitives * 3 * sizeof(uint32_t));
 	cmd.set_storage_buffer(0, 4, payload, payload_offset, view.format_header->payload_size_words * sizeof(uint32_t));
 	cmd.set_storage_buffer(0, 5, *output_offset_strides_buffer);
-	cmd.set_specialization_constant_mask(1);
+	cmd.set_specialization_constant_mask(3);
 	cmd.set_specialization_constant(0, view.format_header->u32_stream_count);
+	cmd.set_specialization_constant(1, Meshlet::MaxElements / 32);
 
 	// TODO: Split dispatches for big chungus meshes.
 	// (Starts to become a problem around 8-16 million primitives per dispatch).

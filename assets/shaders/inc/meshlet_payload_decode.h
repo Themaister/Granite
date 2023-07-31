@@ -63,11 +63,8 @@ layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_PAYLOAD_B
 
 shared u8vec4 shared_chunk_bit_counts[MESHLET_PAYLOAD_NUM_U32_STREAMS][MESHLET_PAYLOAD_NUM_CHUNKS];
 shared uint shared_chunk_offset[MESHLET_PAYLOAD_NUM_U32_STREAMS][MESHLET_PAYLOAD_NUM_CHUNKS];
-#if MESHLET_PAYLOAD_PACKED_WAVEOPS
-shared u8vec4 chunk_values[MESHLET_PAYLOAD_NUM_CHUNKS];
-#else
-shared uvec2 chunk_values[MESHLET_PAYLOAD_NUM_CHUNKS];
-#endif
+shared uvec2 chunk_values0[MESHLET_PAYLOAD_NUM_CHUNKS];
+shared uvec2 chunk_values1[MESHLET_PAYLOAD_NUM_CHUNKS];
 
 // Hardcodes wave32 atm. Need fallback.
 
@@ -80,6 +77,14 @@ uint repack_uint(uvec2 v)
 {
 	u16vec4 v16 = u16vec4(unpack16(v.x), unpack16(v.y));
 	return pack32(u8vec4(v16));
+}
+
+void meshlet_barrier()
+{
+	if (gl_WorkGroupSize.y == 1)
+		subgroupBarrier();
+	else
+		barrier();
 }
 
 void meshlet_init_workgroup(uint meshlet_index)
@@ -101,24 +106,34 @@ void meshlet_init_workgroup(uint meshlet_index)
 		}
 	}
 
-	barrier();
+	meshlet_barrier();
 }
 
 uint meshlet_get_linear_index()
 {
-	return gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
+	// Rely on SubgroupInvocationID == LocalInvocationID.x here.
+	return gl_WorkGroupSize.x * gl_LocalInvocationID.y + gl_SubgroupInvocationID;
 }
 
-uint meshlet_decode_stream(uint meshlet_index, uint stream_index)
+#define MESHLET_FETCH_BITPLANES(decoded_value, counts, payload_value, offset) \
+	for (int i = 0; i < counts; i++) \
+	{ \
+		decoded_value |= bitfieldExtract(payload_value, subgroup_lane, 1) << i; \
+		payload_value = payload.data[++offset]; \
+	} \
+	decoded_value = bitfieldExtract(int(decoded_value), 0, counts)
+
+// Add some specialized variants.
+
+uint meshlet_decode_stream_32_wg256(uint meshlet_index, uint stream_index)
 {
 	uint unrolled_stream_index = MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index + stream_index;
-	uint offset_from_base = meshlet_streams.data[unrolled_stream_index].offset_from_base;
 	u16vec4 predictor_a = meshlet_streams.data[unrolled_stream_index].predictor_a;
 	u16vec4 predictor_b = meshlet_streams.data[unrolled_stream_index].predictor_b;
 	u8vec4 initial_value_ = meshlet_streams.data[unrolled_stream_index].initial_value;
 	uvec2 initial_value = pack_u16vec4_to_uvec2(u16vec4(initial_value_));
 
-	uint chunk_id = gl_SubgroupID;
+	uint chunk_id = gl_LocalInvocationID.y;
 	int subgroup_lane = int(gl_SubgroupInvocationID);
 	uint bitplane_offsets = shared_chunk_offset[stream_index][chunk_id];
 	ivec4 bit_counts = ivec4(shared_chunk_bit_counts[stream_index][chunk_id]);
@@ -128,34 +143,10 @@ uint meshlet_decode_stream(uint meshlet_index, uint stream_index)
 	// Overlap load with consumption.
 	// Helps RDNA2 quite a lot here!
 	uint value = payload.data[bitplane_offsets];
-
-	for (int i = 0; i < bit_counts.x; i++)
-	{
-		decoded.x |= bitfieldExtract(value, subgroup_lane, 1) << i;
-		value = payload.data[++bitplane_offsets];
-	}
-	decoded.x = bitfieldExtract(int(decoded.x), 0, bit_counts.x);
-
-	for (int i = 0; i < bit_counts.y; i++)
-	{
-		decoded.y |= bitfieldExtract(value, subgroup_lane, 1) << i;
-		value = payload.data[++bitplane_offsets];
-	}
-	decoded.y = bitfieldExtract(int(decoded.y), 0, bit_counts.y);
-
-	for (int i = 0; i < bit_counts.z; i++)
-	{
-		decoded.z |= bitfieldExtract(value, subgroup_lane, 1) << i;
-		value = payload.data[++bitplane_offsets];
-	}
-	decoded.z = bitfieldExtract(int(decoded.z), 0, bit_counts.z);
-
-	for (int i = 0; i < bit_counts.w; i++)
-	{
-		decoded.w |= bitfieldExtract(value, subgroup_lane, 1) << i;
-		value = payload.data[++bitplane_offsets];
-	}
-	decoded.w = bitfieldExtract(int(decoded.w), 0, bit_counts.w);
+	MESHLET_FETCH_BITPLANES(decoded.x, bit_counts.x, value, bitplane_offsets);
+	MESHLET_FETCH_BITPLANES(decoded.y, bit_counts.y, value, bitplane_offsets);
+	MESHLET_FETCH_BITPLANES(decoded.z, bit_counts.z, value, bitplane_offsets);
+	MESHLET_FETCH_BITPLANES(decoded.w, bit_counts.w, value, bitplane_offsets);
 
 	// Resolve deltas in packed 4x8 math.
 	uvec2 packed_decoded = pack_u16vec4_to_uvec2(u16vec4(decoded)) & 0xff00ffu;
@@ -165,18 +156,91 @@ uint meshlet_decode_stream(uint meshlet_index, uint stream_index)
 	packed_decoded += pack_u16vec4_to_uvec2((predictor_a + predictor_b * uint16_t(linear_index)) >> 8us);
 	packed_decoded = subgroupInclusiveAdd(packed_decoded);
 
-	if (stream_index > 0)
-		barrier(); // Resolve WAR hazard from last iteration.
+	barrier(); // Resolve WAR hazard from last iteration.
 	if (subgroup_lane == int(gl_SubgroupSize) - 1)
-		chunk_values[chunk_id] = packed_decoded & 0xff00ffu;
+		chunk_values0[chunk_id] = packed_decoded & 0xff00ffu;
 	barrier();
 	if (gl_SubgroupID == 0u && subgroup_lane < int(gl_WorkGroupSize.y))
-		chunk_values[subgroup_lane] = subgroupInclusiveAdd(chunk_values[subgroup_lane]);
+		chunk_values0[subgroup_lane] = subgroupInclusiveAdd(chunk_values0[subgroup_lane]);
 	barrier();
 	if (chunk_id != 0)
-		packed_decoded += chunk_values[chunk_id - 1];
+		packed_decoded += chunk_values0[chunk_id - 1];
 
 	return repack_uint(packed_decoded);
+}
+
+uvec2 meshlet_decode_stream_64_wg256(uint meshlet_index, uint stream_index)
+{
+	// Dual-pump the computation. VGPR use is quite low either way, so this is fine.
+	uint unrolled_stream_index = MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index + stream_index;
+	u8vec4 initial_value_;
+
+	uint chunk_id = gl_LocalInvocationID.y;
+	int subgroup_lane = int(gl_SubgroupInvocationID);
+
+	u16vec4 predictor_a0 = meshlet_streams.data[unrolled_stream_index].predictor_a;
+	u16vec4 predictor_b0 = meshlet_streams.data[unrolled_stream_index].predictor_b;
+	initial_value_ = meshlet_streams.data[unrolled_stream_index].initial_value;
+	uvec2 initial_value0 = pack_u16vec4_to_uvec2(u16vec4(initial_value_));
+	uint bitplane_offsets0 = shared_chunk_offset[stream_index][chunk_id];
+	ivec4 bit_counts0 = ivec4(shared_chunk_bit_counts[stream_index][chunk_id]);
+	uvec4 decoded0 = ivec4(0);
+
+	u16vec4 predictor_a1 = meshlet_streams.data[unrolled_stream_index + 1].predictor_a;
+	u16vec4 predictor_b1 = meshlet_streams.data[unrolled_stream_index + 1].predictor_b;
+	initial_value_ = meshlet_streams.data[unrolled_stream_index + 1].initial_value;
+	uvec2 initial_value1 = pack_u16vec4_to_uvec2(u16vec4(initial_value_));
+	uint bitplane_offsets1 = shared_chunk_offset[stream_index + 1][chunk_id];
+	ivec4 bit_counts1 = ivec4(shared_chunk_bit_counts[stream_index + 1][chunk_id]);
+	uvec4 decoded1 = ivec4(0);
+
+	// Overlap load with consumption.
+	// Helps RDNA2 quite a lot here!
+	uint value0 = payload.data[bitplane_offsets0];
+	uint value1 = payload.data[bitplane_offsets1];
+	MESHLET_FETCH_BITPLANES(decoded0.x, bit_counts0.x, value0, bitplane_offsets0);
+	MESHLET_FETCH_BITPLANES(decoded0.y, bit_counts0.y, value0, bitplane_offsets0);
+	MESHLET_FETCH_BITPLANES(decoded0.z, bit_counts0.z, value0, bitplane_offsets0);
+	MESHLET_FETCH_BITPLANES(decoded0.w, bit_counts0.w, value0, bitplane_offsets0);
+	MESHLET_FETCH_BITPLANES(decoded1.x, bit_counts1.x, value1, bitplane_offsets1);
+	MESHLET_FETCH_BITPLANES(decoded1.y, bit_counts1.y, value1, bitplane_offsets1);
+	MESHLET_FETCH_BITPLANES(decoded1.z, bit_counts1.z, value1, bitplane_offsets1);
+	MESHLET_FETCH_BITPLANES(decoded1.w, bit_counts1.w, value1, bitplane_offsets1);
+
+	// Resolve deltas in packed 4x8 math.
+	uvec2 packed_decoded0 = pack_u16vec4_to_uvec2(u16vec4(decoded0)) & 0xff00ffu;
+	uvec2 packed_decoded1 = pack_u16vec4_to_uvec2(u16vec4(decoded1)) & 0xff00ffu;
+	uint linear_index = meshlet_get_linear_index();
+	if (linear_index == 0)
+	{
+		packed_decoded0 += initial_value0;
+		packed_decoded1 += initial_value1;
+	}
+
+	packed_decoded0 += pack_u16vec4_to_uvec2((predictor_a0 + predictor_b0 * uint16_t(linear_index)) >> 8us);
+	packed_decoded0 = subgroupInclusiveAdd(packed_decoded0);
+	packed_decoded1 += pack_u16vec4_to_uvec2((predictor_a1 + predictor_b1 * uint16_t(linear_index)) >> 8us);
+	packed_decoded1 = subgroupInclusiveAdd(packed_decoded1);
+
+	barrier(); // Resolve WAR hazard from last iteration.
+	if (subgroup_lane == int(gl_SubgroupSize) - 1)
+	{
+		chunk_values0[chunk_id] = packed_decoded0 & 0xff00ffu;
+		chunk_values1[chunk_id] = packed_decoded1 & 0xff00ffu;
+	}
+	barrier();
+	if (gl_SubgroupID == 0u && subgroup_lane < int(gl_WorkGroupSize.y))
+		chunk_values0[subgroup_lane] = subgroupInclusiveAdd(chunk_values0[subgroup_lane]);
+	else if (gl_SubgroupID == 1u && subgroup_lane < int(gl_WorkGroupSize.y))
+		chunk_values1[subgroup_lane] = subgroupInclusiveAdd(chunk_values1[subgroup_lane]);
+	barrier();
+	if (chunk_id != 0)
+	{
+		packed_decoded0 += chunk_values0[chunk_id - 1];
+		packed_decoded1 += chunk_values1[chunk_id - 1];
+	}
+
+	return uvec2(repack_uint(packed_decoded0), repack_uint(packed_decoded1));
 }
 
 #endif

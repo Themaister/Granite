@@ -2,7 +2,7 @@
 
 #extension GL_EXT_scalar_block_layout : require
 #include "../inc/meshlet_payload_constants.h"
-layout(local_size_x = 32, local_size_y = MESHLET_PAYLOAD_NUM_CHUNKS) in;
+layout(local_size_x = 32, local_size_y_id = 1) in;
 layout(constant_id = 0) const uint NUM_U32_STREAMS = 1;
 #define MESHLET_PAYLOAD_NUM_U32_STREAMS NUM_U32_STREAMS
 #define MESHLET_PAYLOAD_DESCRIPTOR_SET 0
@@ -31,26 +31,23 @@ void main()
     uint meshlet_index = gl_WorkGroupID.x;
     meshlet_init_workgroup(meshlet_index);
     MeshletMeta meta = meshlet_metas.data[meshlet_index];
+    uint linear_index = meshlet_get_linear_index();
 
-    for (uint i = 0; i < NUM_U32_STREAMS; i++)
     {
-        uint packed_decoded = meshlet_decode_stream(meshlet_index, i);
-        uint linear_index = meshlet_get_linear_index();
+        uint packed_indices = meshlet_decode_stream_32_wg256(meshlet_index, 0);
+        // Write index buffer.
+        uvec3 indices = uvec4(unpack8(packed_indices)).xyz;
+        indices += meta.base_vertex_offset;
+        uint output_offset = output_offset_strides.data[meshlet_index * NUM_U32_STREAMS].x;
+        if (linear_index <= uint(meta.num_primitives_minus_1))
+            output_indices.data[output_offset + linear_index] = indices;
+    }
 
-        if (i == 0)
-        {
-            // Write index buffer.
-            uvec3 indices = uvec4(unpack8(packed_decoded)).xyz;
-            indices += meta.base_vertex_offset;
-            uint output_offset = output_offset_strides.data[meshlet_index * NUM_U32_STREAMS + i].x;
-            if (linear_index <= uint(meta.num_primitives_minus_1))
-                output_indices.data[output_offset + linear_index] = indices;
-        }
-        else
-        {
-            uvec2 output_offset_stride = output_offset_strides.data[meshlet_index * NUM_U32_STREAMS + i];
-            if (linear_index <= uint(meta.num_attributes_minus_1))
-                output_payload.data[output_offset_stride.x + linear_index * output_offset_stride.y] = packed_decoded;
-        }
+    for (uint i = 1; i < NUM_U32_STREAMS; i++)
+    {
+        uint packed_decoded = meshlet_decode_stream_32_wg256(meshlet_index, i);
+        uvec2 output_offset_stride0 = output_offset_strides.data[meshlet_index * NUM_U32_STREAMS + i];
+        if (linear_index <= uint(meta.num_attributes_minus_1))
+            output_payload.data[output_offset_stride0.x + linear_index * output_offset_stride0.y] = packed_decoded;
     }
 }

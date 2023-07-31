@@ -26,6 +26,12 @@
 #include "filesystem.hpp"
 #include "math.hpp"
 
+namespace Vulkan
+{
+class CommandBuffer;
+class Buffer;
+}
+
 namespace Granite
 {
 namespace SceneFormats
@@ -101,6 +107,12 @@ struct MeshView
 static const char magic[8] = { 'M', 'E', 'S', 'H', 'L', 'E', 'T', '1' };
 
 MeshView create_mesh_view(const FileMapping &mapping);
+
+bool decode_mesh(Vulkan::CommandBuffer &cmd,
+                 const Vulkan::Buffer &ibo, uint64_t ibo_offset,
+                 const Vulkan::Buffer &vbo, uint64_t vbo_offset,
+                 const Vulkan::Buffer &payload, uint64_t payload_offset,
+                 const MeshView &view);
 }
 }
 }

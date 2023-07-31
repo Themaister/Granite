@@ -355,19 +355,21 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 	auto *frag = stages[Util::ecast(Vulkan::ShaderStage::Fragment)];
 
 #ifdef GRANITE_SHIPPING
-	if (mesh)
+	if (mesh && frag)
 	{
 		ret = device->request_program(task ? task->resolve(*device) : nullptr,
 		                              mesh->resolve(*device),
 		                              frag->resolve(*device),
 		                              sampler_bank.get());
 	}
-	else
+	else if (vert && frag)
 	{
 		ret = device->request_program(vert->resolve(*device),
 		                              frag->resolve(*device),
 		                              sampler_bank.get());
 	}
+	else
+		return nullptr;
 #else
 	auto &vert_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Vertex)];
 	auto &frag_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Fragment)];
@@ -383,7 +385,7 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 	// we can safely read program directly.
 	// comp->instance will only ever be incremented in the main thread on an inotify, so this is fine.
 	// If comp->instance changes in the interim, we are at least guaranteed to read a sensible value for program.
-	if (mesh)
+	if (mesh && frag)
 	{
 		if ((!task || (loaded_task_instance == task->instance)) &&
 		    loaded_mesh_instance == mesh->instance &&
@@ -392,11 +394,13 @@ Vulkan::Program *ShaderProgramVariant::get_program_graphics()
 			return program.load(std::memory_order_relaxed);
 		}
 	}
-	else
+	else if (vert && frag)
 	{
 		if (loaded_vert_instance == vert->instance && loaded_frag_instance == frag->instance)
 			return program.load(std::memory_order_relaxed);
 	}
+	else
+		return nullptr;
 
 	instance_lock.lock_write();
 

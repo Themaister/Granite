@@ -168,6 +168,12 @@ if (NOT ANDROID)
 endif()
 target_link_libraries(meshopt-sandbox PRIVATE granite-scene-export)
 
+add_granite_application(meshlet-viewer meshlet_viewer.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(meshlet-viewer PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+target_link_libraries(meshlet-viewer PRIVATE granite-scene-export)
+
 add_granite_application(dgc-test dgc_test.cpp)
 if (NOT ANDROID)
     target_compile_definitions(dgc-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")

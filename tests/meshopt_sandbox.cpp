@@ -268,10 +268,13 @@ int main(int argc, char *argv[])
 	dev.set_context(ctx);
 	dev.init_frame_contexts(4);
 
-	if (!Meshlet::export_mesh_to_meshlet("/tmp/export.mesh", parser.get_meshes().front()))
+	if (!Meshlet::export_mesh_to_meshlet("/tmp/export.msh1",
+	                                     parser.get_meshes().front(), SceneFormats::Meshlet::MeshStyle::Textured))
+	{
 		return EXIT_FAILURE;
+	}
 
-	auto file = GRANITE_FILESYSTEM()->open("/tmp/export.mesh", FileMode::ReadOnly);
+	auto file = GRANITE_FILESYSTEM()->open("/tmp/export.msh1", FileMode::ReadOnly);
 	if (!file)
 		return EXIT_FAILURE;
 

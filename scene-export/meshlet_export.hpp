@@ -25,11 +25,12 @@
 #include <vector>
 #include <string>
 #include "scene_formats.hpp"
+#include "meshlet.hpp"
 
 namespace Granite
 {
 namespace Meshlet
 {
-bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh);
+bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, SceneFormats::Meshlet::MeshStyle style);
 }
 }

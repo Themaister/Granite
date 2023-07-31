@@ -657,18 +657,54 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 	return true;
 }
 
-bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh)
+bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, SceneFormats::Meshlet::MeshStyle style)
 {
 	if (!mesh_canonicalize_indices(mesh))
 		return false;
 
-	auto positions = mesh_extract_position_snorm_exp(mesh);
-	auto normals = mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Normal);
-	auto tangent = mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Tangent);
-	auto uv = mesh_extract_uv_snorm_scale(mesh);
+	std::vector<i16vec4> positions, uv;
+	std::vector<i8vec4> normals, tangent;
 
-	unsigned num_u32_streams = (sizeof(positions.front()) + sizeof(normals.front()) +
-	                            sizeof(tangent.front()) + sizeof(uv.front())) / sizeof(uint32_t);
+	unsigned num_u32_streams = 0;
+
+	switch (style)
+	{
+	case SceneFormats::Meshlet::MeshStyle::Skinned:
+		LOGE("Unimplemented.\n");
+		return false;
+	case SceneFormats::Meshlet::MeshStyle::Textured:
+		uv = mesh_extract_uv_snorm_scale(mesh);
+		num_u32_streams += 2;
+		if (uv.empty())
+		{
+			LOGE("No UVs.\n");
+			return false;
+		}
+		// Fallthrough
+	case SceneFormats::Meshlet::MeshStyle::Untextured:
+		normals = mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Normal);
+		tangent = mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Tangent);
+		if (normals.empty() || tangent.empty())
+		{
+			LOGE("No normal or tangent.\n");
+			return false;
+		}
+		num_u32_streams += 2;
+		// Fallthrough
+	case SceneFormats::Meshlet::MeshStyle::Wireframe:
+		positions = mesh_extract_position_snorm_exp(mesh);
+		if (positions.empty())
+		{
+			LOGE("No positions.\n");
+			return false;
+		}
+		num_u32_streams += 2;
+		break;
+
+	default:
+		LOGE("Unknown mesh style.\n");
+		return false;
+	}
 
 	std::vector <uint32_t> attributes(num_u32_streams * positions.size());
 	uint32_t *ptr = attributes.data();
@@ -676,23 +712,36 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh)
 	{
 		memcpy(ptr, positions[i].data, sizeof(positions.front()));
 		ptr += sizeof(positions.front()) / sizeof(uint32_t);
-		memcpy(ptr, normals[i].data, sizeof(normals.front()));
-		ptr += sizeof(normals.front()) / sizeof(uint32_t);
-		memcpy(ptr, tangent[i].data, sizeof(tangent.front()));
-		ptr += sizeof(tangent.front()) / sizeof(uint32_t);
-		memcpy(ptr, uv[i].data, sizeof(uv.front()));
-		ptr += sizeof(uv.front()) / sizeof(uint32_t);
+
+		if (!normals.empty())
+		{
+			memcpy(ptr, normals[i].data, sizeof(normals.front()));
+			ptr += sizeof(normals.front()) / sizeof(uint32_t);
+		}
+
+		if (!tangent.empty())
+		{
+			memcpy(ptr, tangent[i].data, sizeof(tangent.front()));
+			ptr += sizeof(tangent.front()) / sizeof(uint32_t);
+		}
+
+		if (!uv.empty())
+		{
+			memcpy(ptr, uv[i].data, sizeof(uv.front()));
+			ptr += sizeof(uv.front()) / sizeof(uint32_t);
+		}
 	}
 
 	// Use quantized position to guide the clustering.
-	std::vector <vec3> position_buffer;
+	std::vector<vec3> position_buffer;
 	position_buffer.reserve(positions.size());
 	for (auto &p: positions)
 		position_buffer.push_back(decode_snorm_exp(p));
 
+	// Special meshoptimizer limit.
 	constexpr unsigned max_vertices = 255;
 	constexpr unsigned max_primitives = 256;
-	std::vector <uint32_t> optimized_index_buffer(mesh.count);
+	std::vector<uint32_t> optimized_index_buffer(mesh.count);
 	meshopt_optimizeVertexCache(
 			optimized_index_buffer.data(), reinterpret_cast<const uint32_t *>(mesh.indices.data()),
 			mesh.count, positions.size());
@@ -710,8 +759,8 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh)
 
 	meshlets.resize(num_meshlets);
 
-	std::vector <Meshlet> out_meshlets;
-	std::vector <uvec3> out_index_buffer;
+	std::vector<Meshlet> out_meshlets;
+	std::vector<uvec3> out_index_buffer;
 
 	out_meshlets.reserve(num_meshlets);
 	for (auto &meshlet: meshlets)
@@ -731,7 +780,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh)
 		}
 	}
 
-	std::vector <meshopt_Bounds> bounds;
+	std::vector<meshopt_Bounds> bounds;
 	bounds.clear();
 	bounds.reserve(num_meshlets);
 	for (auto &meshlet: out_meshlets)

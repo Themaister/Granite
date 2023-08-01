@@ -33,21 +33,26 @@ void main()
     MeshletMeta meta = meshlet_metas.data[meshlet_index];
     uint linear_index = meshlet_get_linear_index();
 
+#define INDEX(linear_index, packed_indices) { \
+    uvec3 indices = uvec4(unpack8(packed_indices)).xyz; \
+    indices += meta.base_vertex_offset; \
+    uint output_offset = output_offset_strides.data[meshlet_index * NUM_U32_STREAMS].x; \
+    if (linear_index <= uint(meta.num_primitives_minus_1)) \
+        output_indices.data[output_offset + linear_index] = indices; \
+}
+
+#define ATTR(linear_index, packed_decoded) { \
+    uvec2 output_offset_stride0 = output_offset_strides.data[meshlet_index * NUM_U32_STREAMS + i]; \
+    if (linear_index <= uint(meta.num_attributes_minus_1)) \
+        output_payload.data[output_offset_stride0.x + linear_index * output_offset_stride0.y] = packed_decoded; \
+}
+
     {
-        uint packed_indices = meshlet_decode_stream_32_wg256(meshlet_index, 0);
-        // Write index buffer.
-        uvec3 indices = uvec4(unpack8(packed_indices)).xyz;
-        indices += meta.base_vertex_offset;
-        uint output_offset = output_offset_strides.data[meshlet_index * NUM_U32_STREAMS].x;
-        if (linear_index <= uint(meta.num_primitives_minus_1))
-            output_indices.data[output_offset + linear_index] = indices;
+        MESHLET_DECODE_STREAM_32(meshlet_index, 0, INDEX);
     }
 
     for (uint i = 1; i < NUM_U32_STREAMS; i++)
     {
-        uint packed_decoded = meshlet_decode_stream_32_wg256(meshlet_index, i);
-        uvec2 output_offset_stride0 = output_offset_strides.data[meshlet_index * NUM_U32_STREAMS + i];
-        if (linear_index <= uint(meta.num_attributes_minus_1))
-            output_payload.data[output_offset_stride0.x + linear_index * output_offset_stride0.y] = packed_decoded;
+        MESHLET_DECODE_STREAM_32(meshlet_index, i, ATTR);
     }
 }

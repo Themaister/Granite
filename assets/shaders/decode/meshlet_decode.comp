@@ -10,7 +10,7 @@
 #endif
 layout(local_size_x = 32, local_size_y = MESHLET_PAYLOAD_WG_Y) in;
 
-layout(constant_id = 0) const uint NUM_U32_STREAMS = 1;
+layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS;
 #define MESHLET_PAYLOAD_NUM_U32_STREAMS NUM_U32_STREAMS
 #define MESHLET_PAYLOAD_DESCRIPTOR_SET 0
 #define MESHLET_PAYLOAD_META_BINDING 0

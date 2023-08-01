@@ -216,6 +216,8 @@ uvec2 meshlet_decode_stream_64_wg256(uint meshlet_index, uint stream_index)
 	return uvec2(repack_uint(packed_decoded0), repack_uint(packed_decoded1));
 }
 
+// For large workgroups, we imply AMD, where LocalInvocationIndex indexing is preferred.
+// We assume that SubgroupInvocationID == LocalInvocationID.x here since it's the only reasonable it would work.
 #define MESHLET_DECODE_STREAM_32(meshlet_index, stream_index, report_cb) { \
 	uint value = meshlet_decode_stream_32_wg256(meshlet_index, stream_index); \
 	report_cb(gl_LocalInvocationIndex, value); }
@@ -238,6 +240,27 @@ uvec2 meshlet_decode_stream_64_wg256(uint meshlet_index, uint stream_index)
 		packed_decoded0 += prev_value0; \
 		prev_value0 = subgroupBroadcast(packed_decoded0, 31) & 0xff00ffu; \
 		report_cb(linear_index, repack_uint(packed_decoded0)); \
+		linear_index += gl_SubgroupSize; \
+	} \
+}
+
+// Have to iterate and report once per chunk. Avoids having to spend a lot of LDS memory.
+#define MESHLET_DECODE_STREAM_64(meshlet_index, stream_index, report_cb) { \
+	uint unrolled_stream_index = MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index + stream_index; \
+	uint linear_index = meshlet_get_linear_index(); \
+	uvec2 prev_value0 = uvec2(0); \
+	uvec2 prev_value1 = uvec2(0); \
+	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0); \
+	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index + 1, 1); \
+	for (uint chunk_id = 0; chunk_id < MESHLET_PAYLOAD_NUM_CHUNKS; chunk_id++) \
+	{ \
+		MESHLET_PAYLOAD_PROCESS_CHUNK(stream_index, chunk_id, 0); \
+		MESHLET_PAYLOAD_PROCESS_CHUNK(stream_index + 1, chunk_id, 1); \
+		packed_decoded0 += prev_value0; \
+		packed_decoded1 += prev_value1; \
+		prev_value0 = subgroupBroadcast(packed_decoded0, 31) & 0xff00ffu; \
+		prev_value1 = subgroupBroadcast(packed_decoded1, 31) & 0xff00ffu; \
+		report_cb(linear_index, uvec2(repack_uint(packed_decoded0), repack_uint(packed_decoded1))); \
 		linear_index += gl_SubgroupSize; \
 	} \
 }

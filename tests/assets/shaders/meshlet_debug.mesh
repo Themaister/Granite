@@ -4,8 +4,15 @@
 layout(max_primitives = 256, max_vertices = 255, triangles) out;
 
 #include "meshlet_payload_constants.h"
-layout(local_size_x = 32, local_size_y = MESHLET_PAYLOAD_NUM_CHUNKS) in;
-layout(constant_id = 0) const uint NUM_U32_STREAMS = 1;
+
+#if MESHLET_PAYLOAD_LARGE_WORKGROUP
+#define MESHLET_PAYLOAD_WG_Y MESHLET_PAYLOAD_NUM_CHUNKS
+#else
+#define MESHLET_PAYLOAD_WG_Y 1
+#endif
+layout(local_size_x = 32, local_size_y = MESHLET_PAYLOAD_WG_Y) in;
+
+layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS;
 #define MESHLET_PAYLOAD_NUM_U32_STREAMS NUM_U32_STREAMS
 #define MESHLET_PAYLOAD_DESCRIPTOR_SET 0
 #define MESHLET_PAYLOAD_META_BINDING 0
@@ -30,41 +37,42 @@ void main()
     meshlet_init_workgroup(meshlet_index);
     MeshletMeta meta = meshlet_metas.data[meshlet_index];
 
-    meshlet_init_workgroup(meshlet_index);
-    uint linear_index = meshlet_get_linear_index();
-    uint packed_indices = meshlet_decode_stream(meshlet_index, 0);
-
     SetMeshOutputsEXT(meta.num_attributes_minus_1 + 1, meta.num_primitives_minus_1 + 1);
 
-    // Mildly questionable reliance on LocalInvocationIndex mapping well to SubgroupInvocationID here.
-    // There is basically no way this will not work in practice however ...
-    // We have full subgroups and workgroup size X == SubgroupSize.
-    // Using LocalInvocationIndex specifically is important for AMD perf.
-
-    if (linear_index <= meta.num_primitives_minus_1)
-    {
-        gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec4(unpack8(packed_indices)).xyz;
-        vMeshletIndex[gl_LocalInvocationIndex] = meshlet_index;
+#define INDEX(index, value) \
+    if (index <= meta.num_primitives_minus_1) \
+    { \
+        gl_PrimitiveTriangleIndicesEXT[index] = uvec4(unpack8(value)).xyz; \
+        vMeshletIndex[index] = meshlet_index; \
     }
+    MESHLET_DECODE_STREAM_32(meshlet_index, 0, INDEX);
 
-    uint pos0 = meshlet_decode_stream(meshlet_index, 1);
-    uint pos1 = meshlet_decode_stream(meshlet_index, 2);
-    if (linear_index <= meta.num_attributes_minus_1)
-    {
-        vec3 pos = attribute_decode_snorm_exp_position(uvec2(pos0, pos1));
-        gl_MeshVerticesEXT[gl_LocalInvocationIndex].gl_Position = VP * vec4(pos, 1.0);
+#define POSITION(index, value) \
+    if (index <= meta.num_attributes_minus_1) \
+    { \
+        vec3 pos = attribute_decode_snorm_exp_position(value); \
+        gl_MeshVerticesEXT[index].gl_Position = VP * vec4(pos, 1.0); \
     }
+    MESHLET_DECODE_STREAM_64(meshlet_index, 1, POSITION);
 
-    uint n = meshlet_decode_stream(meshlet_index, 3);
-    if (linear_index <= meta.num_attributes_minus_1)
-        vNormal[gl_LocalInvocationIndex] = attribute_decode_oct8_normal_tangent(n).xyz;
+#define NORMAL(index, value) \
+    if (index <= meta.num_attributes_minus_1) \
+    { \
+        vNormal[index] = attribute_decode_oct8_normal_tangent(value).xyz; \
+    }
+    MESHLET_DECODE_STREAM_32(meshlet_index, 3, NORMAL);
 
-    uint t = meshlet_decode_stream(meshlet_index, 4);
-    if (linear_index <= meta.num_attributes_minus_1)
-        vTangent[gl_LocalInvocationIndex] = attribute_decode_oct8_normal_tangent(t);
+#define TANGENT(index, value) \
+    if (index <= meta.num_attributes_minus_1) \
+    { \
+        vTangent[index] = attribute_decode_oct8_normal_tangent(value); \
+    }
+    MESHLET_DECODE_STREAM_32(meshlet_index, 4, TANGENT);
 
-    uint uv0 = meshlet_decode_stream(meshlet_index, 5);
-    uint uv1 = meshlet_decode_stream(meshlet_index, 6);
-    if (linear_index <= meta.num_attributes_minus_1)
-        vUV[gl_LocalInvocationIndex] = attribute_decode_snorm_exp_uv(uvec2(uv0, uv1));
+#define UV(index, value) \
+    if (index <= meta.num_attributes_minus_1) \
+    { \
+        vUV[index] = attribute_decode_snorm_exp_uv(value); \
+    }
+    MESHLET_DECODE_STREAM_64(meshlet_index, 5, UV);
 }

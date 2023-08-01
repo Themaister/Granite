@@ -62,6 +62,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 	Vulkan::BufferHandle meshlet_stream_buffer;
 	AABB aabb;
 	FPSCamera camera;
+	SceneFormats::Meshlet::FormatHeader header;
 
 	void on_device_create(const DeviceCreatedEvent &e)
 	{
@@ -70,6 +71,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		auto view = SceneFormats::Meshlet::create_mesh_view(*mapping);
 		if (!view.format_header)
 			throw std::runtime_error("Failed to load meshlet.");
+
+		header = *view.format_header;
 
 		Vulkan::BufferCreateInfo info = {};
 		info.size = view.total_primitives * sizeof(uvec3);
@@ -142,8 +145,14 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
 		camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
 
+		bool large_workgroup =
+				device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32 &&
+				device.get_device_features().mesh_shader_properties.maxMeshWorkGroupInvocations >= 256;
+
 		cmd->set_program("", "assets://shaders/meshlet_debug.mesh",
-		                 "assets://shaders/meshlet_debug.mesh.frag");
+		                 "assets://shaders/meshlet_debug.mesh.frag",
+		                 {{"MESHLET_PAYLOAD_LARGE_WORKGROUP", int(large_workgroup)}});
+
 		cmd->set_opaque_state();
 
 		auto vp = camera.get_projection() * camera.get_view();
@@ -155,7 +164,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 
 		cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
 		cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
-		cmd->draw_mesh_tasks(meshlet_meta_buffer->get_create_info().size / sizeof(SceneFormats::Meshlet::Header), 1, 1);
+		cmd->set_specialization_constant_mask(1);
+		cmd->set_specialization_constant(0, header.u32_stream_count);
+		cmd->draw_mesh_tasks(header.meshlet_count, 1, 1);
 
 		cmd->end_render_pass();
 		device.submit(cmd);

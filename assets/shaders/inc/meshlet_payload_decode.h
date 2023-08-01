@@ -3,6 +3,7 @@
 
 #extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
 #extension GL_KHR_shader_subgroup_arithmetic : require
+#extension GL_KHR_shader_subgroup_ballot : require
 #extension GL_KHR_shader_subgroup_basic : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_EXT_scalar_block_layout : require
@@ -142,10 +143,10 @@ uint meshlet_get_linear_index()
 	u16vec4 predictor_a##iter = meshlet_streams.data[unrolled_stream_index].predictor_a; \
 	u16vec4 predictor_b##iter = meshlet_streams.data[unrolled_stream_index].predictor_b; \
 	u8vec4 initial_value_##iter = meshlet_streams.data[unrolled_stream_index].initial_value; \
-	uvec2 initial_value##iter = pack_u16vec4_to_uvec2(u16vec4(initial_value_##iter)); \
-	uvec4 decoded##iter = ivec4(0)
+	uvec2 initial_value##iter = pack_u16vec4_to_uvec2(u16vec4(initial_value_##iter))
 
 #define MESHLET_PAYLOAD_PROCESS_CHUNK(stream_index, chunk_id, iter) \
+	uvec4 decoded##iter = ivec4(0); \
 	uint bitplane_offsets##iter = shared_chunk_offset[stream_index][chunk_id]; \
 	ivec4 bit_counts##iter = ivec4(shared_chunk_bit_counts[stream_index][chunk_id]); \
 	uint value##iter = payload.data[bitplane_offsets##iter]; \
@@ -224,6 +225,22 @@ uvec2 meshlet_decode_stream_64_wg256(uint meshlet_index, uint stream_index)
 	report_cb(gl_LocalInvocationIndex, value); }
 
 #else
+
+// Have to iterate and report once per chunk. Avoids having to spend a lot of LDS memory.
+#define MESHLET_DECODE_STREAM_32(meshlet_index, stream_index, report_cb) { \
+	uint unrolled_stream_index = MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index + stream_index; \
+	uint linear_index = meshlet_get_linear_index(); \
+	uvec2 prev_value0 = uvec2(0); \
+	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0); \
+	for (uint chunk_id = 0; chunk_id < MESHLET_PAYLOAD_NUM_CHUNKS; chunk_id++) \
+	{ \
+		MESHLET_PAYLOAD_PROCESS_CHUNK(stream_index, chunk_id, 0); \
+		packed_decoded0 += prev_value0; \
+		prev_value0 = subgroupBroadcast(packed_decoded0, 31) & 0xff00ffu; \
+		report_cb(linear_index, repack_uint(packed_decoded0)); \
+		linear_index += gl_SubgroupSize; \
+	} \
+}
 
 #endif
 

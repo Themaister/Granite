@@ -44,15 +44,20 @@ static vec3 compute_normal(const vec3 &a, const vec3 &b, const vec3 &c)
 
 struct IndexRemapping
 {
-	std::vector<unsigned> index_remap;
-	std::vector<unsigned> unique_attrib_to_source_index;
+	std::vector<uint32_t> index_remap;
+	std::vector<uint32_t> unique_attrib_to_source_index;
 };
 
 // Find duplicate indices.
-static IndexRemapping build_index_remap_list(const Mesh &mesh)
+static IndexRemapping build_attribute_remap_indices(const Mesh &mesh)
 {
 	auto attribute_count = unsigned(mesh.positions.size() / mesh.position_stride);
-	std::unordered_map<Hash, unsigned> attribute_remapper;
+	struct RemappedAttribute
+	{
+		unsigned unique_index;
+		unsigned source_index;
+	};
+	std::unordered_map<Hash, RemappedAttribute> attribute_remapper;
 	IndexRemapping remapped;
 	remapped.index_remap.reserve(attribute_count);
 
@@ -72,7 +77,7 @@ static IndexRemapping build_index_remap_list(const Mesh &mesh)
 		{
 			bool match = true;
 			if (memcmp(mesh.positions.data() + i * mesh.position_stride,
-			           mesh.positions.data() + itr->second * mesh.position_stride,
+			           mesh.positions.data() + itr->second.source_index * mesh.position_stride,
 			           mesh.position_stride) != 0)
 			{
 				match = false;
@@ -80,14 +85,14 @@ static IndexRemapping build_index_remap_list(const Mesh &mesh)
 
 			if (match && !mesh.attributes.empty() &&
 			    memcmp(mesh.attributes.data() + i * mesh.attribute_stride,
-			           mesh.attributes.data() + itr->second * mesh.attribute_stride,
+			           mesh.attributes.data() + itr->second.source_index * mesh.attribute_stride,
 			           mesh.attribute_stride) != 0)
 			{
 				match = false;
 			}
 
 			if (match)
-				remapped.index_remap.push_back(itr->second);
+				remapped.index_remap.push_back(itr->second.unique_index);
 			else
 				LOGW("Hash collision in vertex dedup.\n");
 
@@ -95,7 +100,7 @@ static IndexRemapping build_index_remap_list(const Mesh &mesh)
 		}
 		else
 		{
-			attribute_remapper[hash] = unique_count;
+			attribute_remapper[hash] = { unique_count, i };
 			is_unique = true;
 		}
 
@@ -110,33 +115,15 @@ static IndexRemapping build_index_remap_list(const Mesh &mesh)
 	return remapped;
 }
 
-static std::vector<uint32_t> build_canonical_index_buffer(const Mesh &mesh, const std::vector<unsigned> &index_remap)
+static std::vector<uint32_t> build_remapped_index_buffer(const Mesh &mesh, const std::vector<uint32_t> &index_remap)
 {
-	assert(mesh.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	assert(mesh.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST && mesh.index_type == VK_INDEX_TYPE_UINT32);
 
 	std::vector<uint32_t> index_buffer;
 	index_buffer.reserve(mesh.count);
-	if (mesh.indices.empty())
-	{
-		for (unsigned i = 0; i < mesh.count; i++)
-			index_buffer.push_back(index_remap[i]);
-	}
-	else if (mesh.index_type == VK_INDEX_TYPE_UINT32)
-	{
-		for (unsigned i = 0; i < mesh.count; i++)
-			index_buffer.push_back(index_remap[reinterpret_cast<const uint32_t *>(mesh.indices.data())[i]]);
-	}
-	else if (mesh.index_type == VK_INDEX_TYPE_UINT16)
-	{
-		for (unsigned i = 0; i < mesh.count; i++)
-			index_buffer.push_back(index_remap[reinterpret_cast<const uint16_t *>(mesh.indices.data())[i]]);
-	}
-	else if (mesh.index_type == VK_INDEX_TYPE_UINT8_EXT)
-	{
-		for (unsigned i = 0; i < mesh.count; i++)
-			index_buffer.push_back(index_remap[reinterpret_cast<const uint8_t *>(mesh.indices.data())[i]]);
-	}
-
+	const auto *indices = reinterpret_cast<const uint32_t *>(mesh.indices.data());
+	for (unsigned i = 0; i < mesh.count; i++)
+		index_buffer.push_back(index_remap[indices[i]]);
 	return index_buffer;
 }
 
@@ -223,7 +210,7 @@ static bool mesh_unroll_vertices(Mesh &mesh)
 
 	if (mesh.index_type == VK_INDEX_TYPE_UINT32)
 	{
-		const uint32_t *ibo = reinterpret_cast<const uint32_t *>(mesh.indices.data());
+		const auto *ibo = reinterpret_cast<const uint32_t *>(mesh.indices.data());
 		for (unsigned i = 0; i < mesh.count; i++)
 		{
 			uint32_t index = ibo[i];
@@ -237,7 +224,21 @@ static bool mesh_unroll_vertices(Mesh &mesh)
 	}
 	else if (mesh.index_type == VK_INDEX_TYPE_UINT16)
 	{
-		const uint16_t *ibo = reinterpret_cast<const uint16_t *>(mesh.indices.data());
+		const auto *ibo = reinterpret_cast<const uint16_t *>(mesh.indices.data());
+		for (unsigned i = 0; i < mesh.count; i++)
+		{
+			uint16_t index = ibo[i];
+			memcpy(positions.data() + i * mesh.position_stride,
+			       mesh.positions.data() + index * mesh.position_stride,
+			       mesh.position_stride);
+			memcpy(attributes.data() + i * mesh.attribute_stride,
+			       mesh.attributes.data() + index * mesh.attribute_stride,
+			       mesh.attribute_stride);
+		}
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT8_EXT)
+	{
+		const auto *ibo = mesh.indices.data();
 		for (unsigned i = 0; i < mesh.count; i++)
 		{
 			uint16_t index = ibo[i];
@@ -256,54 +257,122 @@ static bool mesh_unroll_vertices(Mesh &mesh)
 	return true;
 }
 
+bool mesh_canonicalize_indices(SceneFormats::Mesh &mesh)
+{
+	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST &&
+	    mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP)
+	{
+		LOGE("Topology must be trilist or tristrip.\n");
+		return false;
+	}
+
+	std::vector<uint32_t> unrolled_indices;
+	unrolled_indices.reserve(mesh.count);
+
+	if (mesh.indices.empty())
+	{
+		for (unsigned i = 0; i < mesh.count; i++)
+			unrolled_indices.push_back(i);
+		mesh.index_type = VK_INDEX_TYPE_UINT32;
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT32)
+	{
+		auto *indices = reinterpret_cast<const uint32_t *>(mesh.indices.data());
+		for (unsigned i = 0; i < mesh.count; i++)
+			unrolled_indices.push_back(indices[i]);
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT16)
+	{
+		auto *indices = reinterpret_cast<const uint16_t *>(mesh.indices.data());
+		for (unsigned i = 0; i < mesh.count; i++)
+			unrolled_indices.push_back(mesh.primitive_restart && indices[i] == UINT16_MAX ? UINT32_MAX : indices[i]);
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT8_EXT)
+	{
+		auto *indices = reinterpret_cast<const uint8_t *>(mesh.indices.data());
+		for (unsigned i = 0; i < mesh.count; i++)
+			unrolled_indices.push_back(mesh.primitive_restart && indices[i] == UINT8_MAX ? UINT32_MAX : indices[i]);
+	}
+
+	if (mesh.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP)
+	{
+		std::vector<uint32_t> unstripped_indices;
+		unstripped_indices.reserve(mesh.count * 3);
+		unsigned primitive_count_since_restart = 0;
+
+		for (unsigned i = 2; i < mesh.count; i++)
+		{
+			bool emit_primitive = true;
+			if (mesh.primitive_restart &&
+			    unrolled_indices[i - 2] == UINT32_MAX &&
+			    unrolled_indices[i - 1] == UINT32_MAX &&
+			    unrolled_indices[i - 0] == UINT32_MAX)
+			{
+				emit_primitive = false;
+				primitive_count_since_restart = 0;
+			}
+
+			if (emit_primitive)
+			{
+				unstripped_indices.push_back(unrolled_indices[i - 2]);
+				unstripped_indices.push_back(unrolled_indices[i - (1 ^ (primitive_count_since_restart & 1))]);
+				unstripped_indices.push_back(unrolled_indices[i - (primitive_count_since_restart & 1)]);
+				primitive_count_since_restart++;
+			}
+		}
+
+		unrolled_indices = std::move(unstripped_indices);
+		mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	}
+
+	mesh.index_type = VK_INDEX_TYPE_UINT32;
+	mesh.count = uint32_t(unrolled_indices.size());
+	mesh.indices.resize(unrolled_indices.size() * sizeof(uint32_t));
+	memcpy(mesh.indices.data(), unrolled_indices.data(), mesh.indices.size());
+	return true;
+}
+
 void mesh_deduplicate_vertices(Mesh &mesh)
 {
-	auto index_remap = build_index_remap_list(mesh);
-	auto index_buffer = build_canonical_index_buffer(mesh, index_remap.index_remap);
+	mesh_canonicalize_indices(mesh);
+	auto index_remap = build_attribute_remap_indices(mesh);
+	auto index_buffer = build_remapped_index_buffer(mesh, index_remap.index_remap);
 	rebuild_new_attributes_remap_src(mesh.positions, mesh.position_stride,
 	                                 mesh.attributes, mesh.attribute_stride,
 	                                 mesh.positions, mesh.attributes, index_remap.unique_attrib_to_source_index);
 
-	mesh.index_type = VK_INDEX_TYPE_UINT32;
 	mesh.indices.resize(index_buffer.size() * sizeof(uint32_t));
 	memcpy(mesh.indices.data(), index_buffer.data(), index_buffer.size() * sizeof(uint32_t));
 	mesh.count = unsigned(index_buffer.size());
 }
 
-Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify)
+bool mesh_optimize_index_buffer(Mesh &mesh, const IndexBufferOptimizeOptions &options)
 {
-	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-		return mesh;
-
-	Mesh optimized;
-	optimized.position_stride = mesh.position_stride;
-	optimized.attribute_stride = mesh.attribute_stride;
+	if (!mesh_canonicalize_indices(mesh) || mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+		return false;
 
 	// Remove redundant indices and rewrite index and attribute buffers.
-	auto index_remap = build_index_remap_list(mesh);
-	auto index_buffer = build_canonical_index_buffer(mesh, index_remap.index_remap);
-	rebuild_new_attributes_remap_src(optimized.positions, optimized.position_stride,
-	                                 optimized.attributes, optimized.attribute_stride,
+	auto index_remap = build_attribute_remap_indices(mesh);
+	auto index_buffer = build_remapped_index_buffer(mesh, index_remap.index_remap);
+	rebuild_new_attributes_remap_src(mesh.positions, mesh.position_stride,
+	                                 mesh.attributes, mesh.attribute_stride,
 	                                 mesh.positions, mesh.attributes, index_remap.unique_attrib_to_source_index);
 
-	size_t vertex_count = optimized.positions.size() / optimized.position_stride;
+	size_t vertex_count = mesh.positions.size() / mesh.position_stride;
 
 	// Optimize for vertex cache.
 	meshopt_optimizeVertexCache(index_buffer.data(), index_buffer.data(), index_buffer.size(),
 	                            vertex_count);
 
 	// Remap vertex fetch to get contiguous indices as much as possible.
-	std::vector<uint32_t> remap_table(optimized.positions.size() / optimized.position_stride);
+	std::vector<uint32_t> remap_table(mesh.positions.size() / mesh.position_stride);
 	meshopt_optimizeVertexFetchRemap(remap_table.data(), index_buffer.data(), index_buffer.size(), vertex_count);
 	index_buffer = remap_indices(index_buffer, remap_table);
-	rebuild_new_attributes_remap_dst(optimized.positions, optimized.position_stride,
-	                                 optimized.attributes, optimized.attribute_stride,
-	                                 optimized.positions, optimized.attributes, remap_table);
+	rebuild_new_attributes_remap_dst(mesh.positions, mesh.position_stride,
+	                                 mesh.attributes, mesh.attribute_stride,
+	                                 mesh.positions, mesh.attributes, remap_table);
 
-	optimized.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	optimized.primitive_restart = false;
-
-	if (stripify)
+	if (options.stripify)
 	{
 		// Try to stripify the mesh. If we end up with fewer indices, use that.
 		std::vector<uint32_t> stripped_index_buffer((index_buffer.size() / 3) * 4);
@@ -314,45 +383,41 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify)
 		stripped_index_buffer.resize(stripped_index_count);
 		if (stripped_index_count < index_buffer.size())
 		{
-			optimized.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+			mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
 			index_buffer = std::move(stripped_index_buffer);
-			optimized.primitive_restart = true;
+			mesh.primitive_restart = true;
 		}
 	}
 
-	uint32_t max_index = 0;
-	for (auto &i : index_buffer)
-		if (i != ~0u)
-			max_index = muglm::max(max_index, i);
-
-	if (max_index <= 0xffff) // 16-bit indices are enough.
+	bool emit_u32 = true;
+	if (options.narrow_index_buffer)
 	{
-		optimized.index_type = VK_INDEX_TYPE_UINT16;
-		optimized.indices.resize(index_buffer.size() * sizeof(uint16_t));
-		size_t count = index_buffer.size();
-		for (size_t i = 0; i < count; i++)
+		uint32_t max_index = 0;
+		for (auto &i: index_buffer)
+			if (i != ~0u)
+				max_index = muglm::max(max_index, i);
+
+		if (max_index <= 0xffff) // 16-bit indices are enough.
 		{
-			reinterpret_cast<uint16_t *>(optimized.indices.data())[i] =
-					index_buffer[i] == ~0u ? uint16_t(0xffffu) : uint16_t(index_buffer[i]);
+			mesh.index_type = VK_INDEX_TYPE_UINT16;
+			mesh.indices.resize(index_buffer.size() * sizeof(uint16_t));
+			size_t count = index_buffer.size();
+			emit_u32 = false;
+
+			auto *out_indices = reinterpret_cast<uint16_t *>(mesh.indices.data());
+			for (size_t i = 0; i < count; i++)
+				out_indices[i] = index_buffer[i] == ~0u ? uint16_t(0xffffu) : uint16_t(index_buffer[i]);
 		}
 	}
-	else
+
+	if (emit_u32)
 	{
-		optimized.index_type = VK_INDEX_TYPE_UINT32;
-		optimized.indices.resize(index_buffer.size() * sizeof(uint32_t));
-		size_t count = index_buffer.size();
-		for (size_t i = 0; i < count; i++)
-			reinterpret_cast<uint32_t *>(optimized.indices.data())[i] = index_buffer[i];
+		mesh.indices.resize(index_buffer.size() * sizeof(uint32_t));
+		memcpy(mesh.indices.data(), index_buffer.data(), index_buffer.size() * sizeof(uint32_t));
 	}
 
-	optimized.count = unsigned(index_buffer.size());
-
-	memcpy(optimized.attribute_layout, mesh.attribute_layout, sizeof(mesh.attribute_layout));
-	optimized.material_index = mesh.material_index;
-	optimized.has_material = mesh.has_material;
-	optimized.static_aabb = mesh.static_aabb;
-
-	return optimized;
+	mesh.count = unsigned(index_buffer.size());
+	return true;
 }
 
 bool mesh_recompute_tangents(Mesh &mesh)

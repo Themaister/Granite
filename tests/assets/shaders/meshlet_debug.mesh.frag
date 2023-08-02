@@ -15,7 +15,8 @@ vec3 decode_mesh_color()
     uint r = bitfieldExtract(index, 0, 2);
     uint g = bitfieldExtract(index, 2, 2);
     uint b = bitfieldExtract(index, 4, 2);
-    return (vec3(r, g, b) + 1.0 / 3.0) / 4.0;
+    //return (vec3(r, g, b) + 1.0 / 3.0) / 4.0;
+    return vec3(1.0);
 }
 
 void main()

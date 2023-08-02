@@ -65,80 +65,6 @@ struct PrimitiveAnalysisResult
 	uint32_t num_vertices;
 };
 
-static bool mesh_canonicalize_indices(SceneFormats::Mesh &mesh)
-{
-	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST &&
-	    mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP)
-	{
-		LOGE("Topology must be trilist or tristrip.\n");
-		return false;
-	}
-
-	std::vector<uint32_t> unrolled_indices;
-	unrolled_indices.reserve(mesh.count);
-
-	if (mesh.indices.empty())
-	{
-		for (unsigned i = 0; i < mesh.count; i++)
-			unrolled_indices.push_back(i);
-		mesh.index_type = VK_INDEX_TYPE_UINT32;
-	}
-	else if (mesh.index_type == VK_INDEX_TYPE_UINT32)
-	{
-		auto *indices = reinterpret_cast<const uint32_t *>(mesh.indices.data());
-		for (unsigned i = 0; i < mesh.count; i++)
-			unrolled_indices.push_back(indices[i]);
-	}
-	else if (mesh.index_type == VK_INDEX_TYPE_UINT16)
-	{
-		auto *indices = reinterpret_cast<const uint16_t *>(mesh.indices.data());
-		for (unsigned i = 0; i < mesh.count; i++)
-			unrolled_indices.push_back(mesh.primitive_restart && indices[i] == UINT16_MAX ? UINT32_MAX : indices[i]);
-	}
-	else if (mesh.index_type == VK_INDEX_TYPE_UINT8_EXT)
-	{
-		auto *indices = reinterpret_cast<const uint8_t *>(mesh.indices.data());
-		for (unsigned i = 0; i < mesh.count; i++)
-			unrolled_indices.push_back(mesh.primitive_restart && indices[i] == UINT8_MAX ? UINT32_MAX : indices[i]);
-	}
-
-	if (mesh.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP)
-	{
-		std::vector<uint32_t> unstripped_indices;
-		unstripped_indices.reserve(mesh.count * 3);
-		unsigned primitive_count_since_restart = 0;
-
-		for (unsigned i = 2; i < mesh.count; i++)
-		{
-			bool emit_primitive = true;
-			if (mesh.primitive_restart &&
-			    unrolled_indices[i - 2] == UINT32_MAX &&
-			    unrolled_indices[i - 1] == UINT32_MAX &&
-			    unrolled_indices[i - 0] == UINT32_MAX)
-			{
-				emit_primitive = false;
-				primitive_count_since_restart = 0;
-			}
-
-			if (emit_primitive)
-			{
-				unstripped_indices.push_back(unrolled_indices[i - 2]);
-				unstripped_indices.push_back(unrolled_indices[i - (1 ^ (primitive_count_since_restart & 1))]);
-				unstripped_indices.push_back(unrolled_indices[i - (primitive_count_since_restart & 1)]);
-				primitive_count_since_restart++;
-			}
-		}
-
-		unrolled_indices = std::move(unstripped_indices);
-		mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	}
-
-	mesh.count = uint32_t(unrolled_indices.size());
-	mesh.indices.resize(unrolled_indices.size() * sizeof(uint32_t));
-	memcpy(mesh.indices.data(), unrolled_indices.data(), mesh.indices.size());
-	return true;
-}
-
 static i16vec4 encode_vec3_to_snorm_exp(vec3 v)
 {
 	vec3 vabs = abs(v);
@@ -659,7 +585,7 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 
 bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, SceneFormats::Meshlet::MeshStyle style)
 {
-	if (!mesh_canonicalize_indices(mesh))
+	if (!mesh_optimize_index_buffer(mesh, {}))
 		return false;
 
 	std::vector<i16vec4> positions, uv;
@@ -706,7 +632,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Sc
 		return false;
 	}
 
-	std::vector <uint32_t> attributes(num_u32_streams * positions.size());
+	std::vector<uint32_t> attributes(num_u32_streams * positions.size());
 	uint32_t *ptr = attributes.data();
 	for (size_t i = 0, n = positions.size(); i < n; i++)
 	{

@@ -892,7 +892,17 @@ void RemapState::emit_mesh(unsigned remapped_index)
 {
 	Mesh new_mesh;
 	if (options->optimize_meshes)
-		new_mesh = mesh_optimize_index_buffer(*mesh.info[remapped_index], options->stripify_meshes);
+	{
+		new_mesh = *mesh.info[remapped_index];
+		IndexBufferOptimizeOptions opts = {};
+		opts.narrow_index_buffer = true;
+		opts.stripify = options->stripify_meshes;
+		if (!mesh_optimize_index_buffer(new_mesh, opts))
+		{
+			LOGE("Failed to optimize index buffer.\n");
+			return;
+		}
+	}
 	auto &output_mesh = options->optimize_meshes ? new_mesh : *mesh.info[remapped_index];
 
 	mesh_cache.resize(std::max<size_t>(mesh_cache.size(), remapped_index + 1));

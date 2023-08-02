@@ -218,8 +218,10 @@ int main(int argc, char *argv[])
 	dev.set_context(ctx);
 	dev.init_frame_contexts(4);
 
+	auto mesh = parser.get_meshes().front();
+
 	if (!Meshlet::export_mesh_to_meshlet("/tmp/export.msh1",
-	                                     parser.get_meshes().front(), SceneFormats::Meshlet::MeshStyle::Textured))
+	                                     mesh, SceneFormats::Meshlet::MeshStyle::Textured))
 	{
 		return EXIT_FAILURE;
 	}
@@ -232,21 +234,36 @@ int main(int argc, char *argv[])
 	if (!mapped)
 		return EXIT_FAILURE;
 
-	auto mesh = SceneFormats::Meshlet::create_mesh_view(*mapped);
+	auto view = SceneFormats::Meshlet::create_mesh_view(*mapped);
 
 	std::vector<uint32_t> reference_index_buffer;
 	std::vector<uint32_t> reference_attributes;
 	std::vector<uint32_t> gpu_index_buffer;
 	std::vector<uint32_t> gpu_attributes;
 
-	decode_mesh(reference_index_buffer, reference_attributes, mesh);
-	decode_mesh_gpu(dev, gpu_index_buffer, gpu_attributes, mesh);
+	decode_mesh(reference_index_buffer, reference_attributes, view);
+	decode_mesh_gpu(dev, gpu_index_buffer, gpu_attributes, view);
 
 	if (!validate_mesh_decode(gpu_index_buffer, gpu_attributes,
 	                          reference_index_buffer, reference_attributes,
-	                          mesh.format_header->u32_stream_count - 1))
+	                          view.format_header->u32_stream_count - 1))
 	{
 		return EXIT_FAILURE;
+	}
+
+	{
+		LOGI("Total primitives: %u\n", view.total_primitives);
+		LOGI("Total vertices: %u\n", view.total_vertices);
+		LOGI("Payload size: %llu bytes.\n", static_cast<unsigned long long>(view.format_header->payload_size_words * sizeof(uint32_t)));
+
+		unsigned long long uncompressed_mesh_size =
+				view.total_primitives * sizeof(uint32_t) * 3 +
+				view.total_vertices * (view.format_header->u32_stream_count - 1) * sizeof(uint32_t);
+		unsigned long long uncompressed_payload_size =
+				view.total_primitives * sizeof(uint32_t) +
+				view.total_vertices * (view.format_header->u32_stream_count - 1) * sizeof(uint32_t);
+		LOGI("Uncompressed mesh size: %llu bytes.\n", uncompressed_mesh_size);
+		LOGI("Uncompressed payload size: %llu bytes.\n", uncompressed_payload_size);
 	}
 
 	return 0;

@@ -667,19 +667,15 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Sc
 	// Special meshoptimizer limit.
 	constexpr unsigned max_vertices = 255;
 	constexpr unsigned max_primitives = 256;
-	std::vector<uint32_t> optimized_index_buffer(mesh.count);
-	meshopt_optimizeVertexCache(
-			optimized_index_buffer.data(), reinterpret_cast<const uint32_t *>(mesh.indices.data()),
-			mesh.count, positions.size());
 	size_t num_meshlets = meshopt_buildMeshletsBound(mesh.count, max_vertices, max_primitives);
 
 	std::vector<unsigned> out_vertex_redirection_buffer(num_meshlets * max_vertices);
 	std::vector<unsigned char> local_index_buffer(num_meshlets * max_primitives * 3);
-	std::vector <meshopt_Meshlet> meshlets(num_meshlets);
+	std::vector<meshopt_Meshlet> meshlets(num_meshlets);
 
 	num_meshlets = meshopt_buildMeshlets(meshlets.data(),
 	                                     out_vertex_redirection_buffer.data(), local_index_buffer.data(),
-	                                     optimized_index_buffer.data(), mesh.count,
+	                                     reinterpret_cast<const uint32_t *>(mesh.indices.data()), mesh.count,
 	                                     position_buffer[0].data, positions.size(), sizeof(vec3),
 	                                     max_vertices, max_primitives, 0.75f);
 

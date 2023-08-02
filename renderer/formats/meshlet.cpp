@@ -127,7 +127,7 @@ bool decode_mesh(Vulkan::CommandBuffer &cmd,
 	buf_info.size = output_offset_strides.size() * sizeof(uvec2);
 	auto output_offset_strides_buffer = cmd.get_device().create_buffer(buf_info, output_offset_strides.data());
 
-	cmd.set_program("builtin://shaders/decode/meshlet_decode.comp", {{"MESHLET_PAYLOAD_LARGE_WORKGROUP", 0}});
+	cmd.set_program("builtin://shaders/decode/meshlet_decode.comp");
 	cmd.enable_subgroup_size_control(true);
 	cmd.set_subgroup_size_log2(true, 5, 5);
 

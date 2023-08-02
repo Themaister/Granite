@@ -4,9 +4,11 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
 #extension GL_KHR_shader_subgroup_arithmetic : require
 #extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_shuffle : require
 #extension GL_KHR_shader_subgroup_basic : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_shader_subgroup_extended_types_int8 : require
 
 #include "meshlet_payload_constants.h"
 
@@ -66,9 +68,9 @@ layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_PAYLOAD_B
 	uint data[];
 } payload;
 
+#if MESHLET_PAYLOAD_LARGE_WORKGROUP
 shared u8vec4 shared_chunk_bit_counts[MESHLET_PAYLOAD_NUM_U32_STREAMS][MESHLET_PAYLOAD_NUM_CHUNKS];
 shared uint shared_chunk_offset[MESHLET_PAYLOAD_NUM_U32_STREAMS][MESHLET_PAYLOAD_NUM_CHUNKS];
-#if MESHLET_PAYLOAD_LARGE_WORKGROUP
 shared uvec2 chunk_values0[MESHLET_PAYLOAD_NUM_CHUNKS];
 shared uvec2 chunk_values1[MESHLET_PAYLOAD_NUM_CHUNKS];
 #endif
@@ -86,35 +88,38 @@ uint repack_uint(uvec2 v)
 	return pack32(u8vec4(v16));
 }
 
-void meshlet_barrier()
+void meshlet_compute_stream_offsets(uint meshlet_index, uint stream_index,
+                                    out uint out_stream_chunk_offset, out u8vec4 out_bit_counts)
 {
-#if MESHLET_PAYLOAD_LARGE_WORKGROUP
-	barrier();
-#else
-	subgroupBarrier();
-#endif
+	if (gl_SubgroupInvocationID < MESHLET_PAYLOAD_NUM_CHUNKS)
+	{
+		uint bitplane_value = uint(meshlet_streams.data[stream_index + MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index].bitplane_meta[gl_SubgroupInvocationID]);
+		u16vec4 bit_counts = (u16vec4(bitplane_value) >> u16vec4(0, 4, 8, 12)) & 0xfus;
+		u16vec2 bit_counts2 = bit_counts.xy + bit_counts.zw;
+		uint total_bits = bit_counts2.x + bit_counts2.y;
+		uint offset = meshlet_streams.data[stream_index + MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index].offset_from_base;
+		out_stream_chunk_offset = subgroupExclusiveAdd(total_bits) + offset;
+		out_bit_counts = u8vec4(bit_counts);
+	}
 }
 
 void meshlet_init_workgroup(uint meshlet_index)
 {
-	int subgroup_lane = int(gl_SubgroupInvocationID);
+#if MESHLET_PAYLOAD_LARGE_WORKGROUP
 
 	for (uint stream_index = gl_SubgroupID; stream_index < MESHLET_PAYLOAD_NUM_U32_STREAMS; stream_index += gl_NumSubgroups)
 	{
-		// Start by decoding the offset for bitplanes for all u32 streams.
-		if (subgroup_lane < MESHLET_PAYLOAD_NUM_CHUNKS)
+		if (gl_SubgroupInvocationID < MESHLET_PAYLOAD_NUM_CHUNKS)
 		{
-			uint bitplane_value = uint(meshlet_streams.data[stream_index + MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index].bitplane_meta[subgroup_lane]);
-			u16vec4 bit_counts = (u16vec4(bitplane_value) >> u16vec4(0, 4, 8, 12)) & 0xfus;
-			u16vec2 bit_counts2 = bit_counts.xy + bit_counts.zw;
-			uint total_bits = bit_counts2.x + bit_counts2.y;
-			uint offset = meshlet_streams.data[stream_index + MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index].offset_from_base;
-			shared_chunk_offset[stream_index][subgroup_lane] = subgroupExclusiveAdd(total_bits) + offset;
-			shared_chunk_bit_counts[stream_index][subgroup_lane] = u8vec4(bit_counts);
+			// Start by decoding the offset for bitplanes for all u32 streams.
+			meshlet_compute_stream_offsets(meshlet_index, stream_index,
+										   shared_chunk_offset[stream_index][gl_SubgroupInvocationID],
+										   shared_chunk_bit_counts[stream_index][gl_SubgroupInvocationID]);
 		}
 	}
 
-	meshlet_barrier();
+	barrier();
+#endif
 }
 
 uint meshlet_get_linear_index()
@@ -145,10 +150,19 @@ uint meshlet_get_linear_index()
 	u8vec4 initial_value_##iter = meshlet_streams.data[unrolled_stream_index].initial_value; \
 	uvec2 initial_value##iter = pack_u16vec4_to_uvec2(u16vec4(initial_value_##iter))
 
+#if MESHLET_PAYLOAD_LARGE_WORKGROUP
+#define MESHLET_PAYLOAD_DECL_CHUNK_OFFSETS(stream_index, chunk_id, iter) \
+	uint bitplane_offsets##iter = shared_chunk_offset[stream_index][chunk_id]; \
+	ivec4 bit_counts##iter = ivec4(shared_chunk_bit_counts[stream_index][chunk_id])
+#else
+#define MESHLET_PAYLOAD_DECL_CHUNK_OFFSETS(stream_index, chunk_id, iter) \
+	uint bitplane_offsets##iter = subgroupShuffle(shared_chunk_offset##iter, chunk_id); \
+	ivec4 bit_counts##iter = ivec4(subgroupShuffle(shared_chunk_bit_counts##iter, chunk_id))
+#endif
+
 #define MESHLET_PAYLOAD_PROCESS_CHUNK(stream_index, chunk_id, iter) \
 	uvec4 decoded##iter = ivec4(0); \
-	uint bitplane_offsets##iter = shared_chunk_offset[stream_index][chunk_id]; \
-	ivec4 bit_counts##iter = ivec4(shared_chunk_bit_counts[stream_index][chunk_id]); \
+	MESHLET_PAYLOAD_DECL_CHUNK_OFFSETS(stream_index, chunk_id, iter); \
 	uint value##iter = payload.data[bitplane_offsets##iter]; \
 	MESHLET_FETCH_BITPLANES(decoded##iter.x, bit_counts##iter.x, value##iter, bitplane_offsets##iter); \
 	MESHLET_FETCH_BITPLANES(decoded##iter.y, bit_counts##iter.y, value##iter, bitplane_offsets##iter); \
@@ -233,6 +247,9 @@ uvec2 meshlet_decode_stream_64_wg256(uint meshlet_index, uint stream_index)
 	uint unrolled_stream_index = MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index + stream_index; \
 	uint linear_index = meshlet_get_linear_index(); \
 	uvec2 prev_value0 = uvec2(0); \
+	uint shared_chunk_offset0; \
+	u8vec4 shared_chunk_bit_counts0; \
+	meshlet_compute_stream_offsets(meshlet_index, stream_index, shared_chunk_offset0, shared_chunk_bit_counts0); \
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0); \
 	for (uint chunk_id = 0; chunk_id < MESHLET_PAYLOAD_NUM_CHUNKS; chunk_id++) \
 	{ \
@@ -250,6 +267,12 @@ uvec2 meshlet_decode_stream_64_wg256(uint meshlet_index, uint stream_index)
 	uint linear_index = meshlet_get_linear_index(); \
 	uvec2 prev_value0 = uvec2(0); \
 	uvec2 prev_value1 = uvec2(0); \
+	uint shared_chunk_offset0; \
+	u8vec4 shared_chunk_bit_counts0; \
+	meshlet_compute_stream_offsets(meshlet_index, stream_index, shared_chunk_offset0, shared_chunk_bit_counts0); \
+	uint shared_chunk_offset1; \
+	u8vec4 shared_chunk_bit_counts1; \
+	meshlet_compute_stream_offsets(meshlet_index, stream_index + 1, shared_chunk_offset1, shared_chunk_bit_counts1); \
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0); \
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index + 1, 1); \
 	for (uint chunk_id = 0; chunk_id < MESHLET_PAYLOAD_NUM_CHUNKS; chunk_id++) \

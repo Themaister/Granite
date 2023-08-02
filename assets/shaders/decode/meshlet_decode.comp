@@ -3,6 +3,8 @@
 #extension GL_EXT_scalar_block_layout : require
 #include "../inc/meshlet_payload_constants.h"
 
+#define MESHLET_PAYLOAD_LARGE_WORKGROUP 1
+
 #if MESHLET_PAYLOAD_LARGE_WORKGROUP
 #define MESHLET_PAYLOAD_WG_Y MESHLET_PAYLOAD_NUM_CHUNKS
 #else

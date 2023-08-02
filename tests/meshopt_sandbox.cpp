@@ -266,5 +266,13 @@ int main(int argc, char *argv[])
 		LOGI("Uncompressed payload size: %llu bytes.\n", uncompressed_payload_size);
 	}
 
+	{
+		file = GRANITE_FILESYSTEM()->open("/tmp/export.bin", FileMode::WriteOnly);
+		mapped = file->map_write((reference_index_buffer.size() + reference_attributes.size()) * sizeof(uint32_t));
+		auto *ptr = mapped->mutable_data<uint32_t>();
+		memcpy(ptr, reference_index_buffer.data(), reference_index_buffer.size() * sizeof(uint32_t));
+		memcpy(ptr + reference_index_buffer.size(), reference_attributes.data(), reference_attributes.size() * sizeof(uint32_t));
+	}
+
 	return 0;
 }

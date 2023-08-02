@@ -717,7 +717,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Sc
 	encode_mesh(encoded, out_meshlets.data(), out_meshlets.size(),
 	            out_index_buffer[0].data, out_index_buffer.size(),
 	            attributes.data(), num_u32_streams);
-	encoded.mesh.mesh_style = MeshStyle::Textured;
+	encoded.mesh.mesh_style = style;
 
 	assert(bounds.size() == encoded.mesh.meshlets.size());
 	const auto *pbounds = bounds.data();

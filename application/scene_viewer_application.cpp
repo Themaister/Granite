@@ -1419,7 +1419,7 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 	snprintf(pos_text, sizeof(pos_text), "Pos: %.3f, %.3f, %.3f", cam_pos.x, cam_pos.y, cam_pos.z);
 	snprintf(rot_text, sizeof(rot_text), "Rot: %.3f, %.3f, %.3f, %.3f", cam_ori.x, cam_ori.y, cam_ori.z, cam_ori.w);
 	snprintf(tex_text, sizeof(tex_text), "Texture: %u MiB",
-	         unsigned(GRANITE_ASSET_MANAGER()->get_current_total_consumed() / (1024 * 1024)));
+	         unsigned(GRANITE_ASSET_MANAGER_IMAGES()->get_current_total_consumed() / (1024 * 1024)));
 
 	vec3 offset(5.0f, 5.0f, 0.0f);
 	vec2 size(cmd.get_viewport().width - 10.0f, cmd.get_viewport().height - 10.0f);

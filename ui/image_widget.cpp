@@ -33,7 +33,7 @@ namespace UI
 {
 Image::Image(const std::string &path, vec2 target)
 {
-	texture = GRANITE_ASSET_MANAGER()->register_image_resource(
+	texture = GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(
 			*GRANITE_FILESYSTEM(), path,
 			ImageClass::Color);
 

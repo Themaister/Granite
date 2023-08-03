@@ -890,7 +890,7 @@ SkyCylinder::SkyCylinder(const std::string &bg_path)
 {
 	if (!bg_path.empty())
 	{
-		texture = GRANITE_ASSET_MANAGER()->register_image_resource(
+		texture = GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(
 				*GRANITE_FILESYSTEM(), bg_path, ImageClass::Color);
 	}
 
@@ -1056,7 +1056,7 @@ Skybox::Skybox(const std::string &bg_path)
 {
 	if (!bg_path.empty())
 	{
-		texture = GRANITE_ASSET_MANAGER()->register_image_resource(
+		texture = GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(
 				*GRANITE_FILESYSTEM(), bg_path, ImageClass::Color);
 	}
 }
@@ -1195,7 +1195,7 @@ static void texture_plane_render(CommandBuffer &cmd, const RenderQueueData *info
 
 TexturePlane::TexturePlane(const std::string &normal_path)
 {
-	normalmap = GRANITE_ASSET_MANAGER()->register_image_resource(
+	normalmap = GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(
 			*GRANITE_FILESYSTEM(), normal_path, ImageClass::Normal);
 }
 

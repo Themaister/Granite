@@ -61,7 +61,7 @@ public:
 	virtual ~Factory() = default;
 
 	virtual FilesystemInterface *create_filesystem();
-	virtual AssetManagerInterface *create_asset_manager();
+	virtual AssetManagerImagesInterface *create_asset_manager_images();
 	virtual EventManagerInterface *create_event_manager();
 	virtual ThreadGroupInterface *create_thread_group();
 	virtual CommonRendererDataInterface *create_common_renderer_data();
@@ -97,7 +97,7 @@ void install_audio_system(Audio::BackendInterface *backend, Audio::MixerInterfac
 
 Util::MessageQueueInterface *message_queue();
 FilesystemInterface *filesystem();
-AssetManagerInterface *asset_manager();
+AssetManagerImagesInterface *asset_manager_images();
 EventManagerInterface *event_manager();
 ThreadGroupInterface *thread_group();
 UI::UIManagerInterface *ui_manager();
@@ -110,7 +110,7 @@ PhysicsSystemInterface *physics();
 
 #define GRANITE_MESSAGE_QUEUE() static_cast<::Util::MessageQueue *>(::Granite::Global::message_queue())
 #define GRANITE_FILESYSTEM() static_cast<::Granite::Filesystem *>(::Granite::Global::filesystem())
-#define GRANITE_ASSET_MANAGER() static_cast<::Granite::AssetManager *>(::Granite::Global::asset_manager())
+#define GRANITE_ASSET_MANAGER_IMAGES() static_cast<::Granite::AssetManagerImages *>(::Granite::Global::asset_manager_images())
 #define GRANITE_EVENT_MANAGER() static_cast<::Granite::EventManager *>(::Granite::Global::event_manager())
 #define GRANITE_THREAD_GROUP() static_cast<::Granite::ThreadGroup *>(::Granite::Global::thread_group())
 #define GRANITE_UI_MANAGER() static_cast<::Granite::UI::UIManager *>(::Granite::Global::ui_manager())

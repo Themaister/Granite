@@ -4,14 +4,14 @@
 
 using namespace Granite;
 
-struct ActivationInterface final : AssetInstantiatorInterface
+struct ActivationInterface final : AssetInstantiatorImagesInterface
 {
 	uint64_t estimate_cost_image_resource(ImageAssetID, File &mapping) override
 	{
 		return mapping.get_size();
 	}
 
-	void instantiate_image_resource(AssetManager &manager, TaskGroup *, ImageAssetID id, File &mapping) override
+	void instantiate_image_resource(AssetManagerImages &manager, TaskGroup *, ImageAssetID id, File &mapping) override
 	{
 		LOGI("Instantiating ID: %u\n", id.id);
 		manager.update_cost(id, mapping.get_size());
@@ -38,7 +38,7 @@ struct ActivationInterface final : AssetInstantiatorInterface
 int main()
 {
 	Filesystem fs;
-	AssetManager manager;
+	AssetManagerImages manager;
 	ActivationInterface iface;
 	fs.register_protocol("tmp", std::make_unique<ScratchFilesystem>());
 

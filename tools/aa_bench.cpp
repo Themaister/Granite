@@ -39,8 +39,8 @@ AABenchApplication::AABenchApplication(const std::string &input0, const std::str
 	: input_path0(input0), input_path1(input1), scale(scale_)
 {
 	type = string_to_post_antialiasing_type(method);
-	images[0] = input_path0.empty() ? ImageAssetID{} : GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), input_path0, ImageClass::Color);
-	images[1] = input_path1.empty() ? ImageAssetID{} : GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), input_path1, ImageClass::Color);
+	images[0] = input_path0.empty() ? ImageAssetID{} : GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(*GRANITE_FILESYSTEM(), input_path0, ImageClass::Color);
+	images[1] = input_path1.empty() ? ImageAssetID{} : GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(*GRANITE_FILESYSTEM(), input_path1, ImageClass::Color);
 	EVENT_MANAGER_REGISTER_LATCH(AABenchApplication, on_swapchain_changed, on_swapchain_destroyed, SwapchainParameterEvent);
 	EVENT_MANAGER_REGISTER_LATCH(AABenchApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }

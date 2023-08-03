@@ -53,7 +53,7 @@ ImageAssetID AssetManagerImages::register_image_resource_nolock(FileHandle file,
 	sorted_assets.reserve(asset_bank.size());
 	if (iface)
 	{
-		iface->set_id_bounds(id_count);
+		iface->set_image_id_bounds(id_count);
 		iface->set_image_class(info->id, image_class);
 	}
 	return ret;
@@ -115,7 +115,7 @@ void AssetManagerImages::set_asset_instantiator_interface(AssetInstantiatorImage
 	iface = iface_;
 	if (iface)
 	{
-		iface->set_id_bounds(id_count);
+		iface->set_image_id_bounds(id_count);
 		for (uint32_t i = 0; i < id_count; i++)
 			iface->set_image_class(ImageAssetID{i}, asset_bank[i]->image_class);
 	}
@@ -232,7 +232,7 @@ void AssetManagerImages::iterate(ThreadGroup *group)
 	uint64_t current_count = signal->get_count();
 	if (current_count + 3 < timestamp)
 	{
-		iface->latch_handles();
+		iface->latch_image_handles();
 		LOGI("Asset manager skipping iteration due to too much pending work.\n");
 		return;
 	}
@@ -241,7 +241,7 @@ void AssetManagerImages::iterate(ThreadGroup *group)
 	if (group)
 	{
 		task = group->create_task();
-		task->set_desc("asset-manager-instantiate");
+		task->set_desc("asset-manager-instantiate-image");
 		task->set_fence_counter_signal(signal.get());
 		task->set_task_class(TaskClass::Background);
 	}
@@ -365,7 +365,80 @@ void AssetManagerImages::iterate(ThreadGroup *group)
 		     static_cast<unsigned long long>(activated_cost_this_iteration / 1024));
 	}
 
-	iface->latch_handles();
+	iface->latch_image_handles();
 	timestamp++;
+}
+
+AssetManagerMeshes::AssetManagerMeshes()
+{
+	signal = std::make_unique<TaskSignal>();
+	for (uint64_t i = 0; i < timestamp; i++)
+		signal->signal_increment();
+}
+
+AssetManagerMeshes::~AssetManagerMeshes()
+{
+	signal->wait_until_at_least(timestamp);
+	for (auto *a : asset_bank)
+		pool.free(a);
+}
+
+MeshAssetID AssetManagerMeshes::register_mesh_resource_nolock(FileHandle file)
+{
+	auto *info = pool.allocate();
+	info->handle = std::move(file);
+	info->id.id = id_count++;
+	MeshAssetID ret = info->id;
+	asset_bank.push_back(info);
+	if (iface)
+		iface->set_mesh_id_bounds(id_count);
+	return ret;
+}
+
+MeshAssetID AssetManagerMeshes::register_mesh_resource(FileHandle file)
+{
+	std::lock_guard<std::mutex> holder{asset_bank_lock};
+	return register_mesh_resource_nolock(std::move(file));
+}
+
+MeshAssetID AssetManagerMeshes::register_mesh_resource(Filesystem &fs, const std::string &path)
+{
+	std::lock_guard<std::mutex> holder{asset_bank_lock};
+
+	Util::Hasher h;
+	h.string(path);
+	if (auto *asset = file_to_assets.find(h.get()))
+		return asset->id;
+
+	auto file = fs.open(path);
+	if (!file)
+		return {};
+
+	auto id = register_mesh_resource_nolock(std::move(file));
+	asset_bank[id.id]->set_hash(h.get());
+	file_to_assets.insert_replace(asset_bank[id.id]);
+	return id;
+}
+
+void AssetManagerMeshes::set_asset_instantiator_interface(AssetInstantiatorMeshesInterface *iface_)
+{
+	if (iface)
+	{
+		signal->wait_until_at_least(timestamp);
+		for (uint32_t id = 0; id < id_count; id++)
+			iface->release_mesh_resource(MeshAssetID{id});
+	}
+
+	for (auto *a : asset_bank)
+	{
+		a->consumed = 0;
+		a->pending_consumed = 0;
+		a->last_used = 0;
+	}
+	total_consumed = 0;
+
+	iface = iface_;
+	if (iface)
+		iface->set_mesh_id_bounds(id_count);
 }
 }

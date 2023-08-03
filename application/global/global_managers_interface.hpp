@@ -50,6 +50,12 @@ public:
 	virtual ~AssetManagerImagesInterface() = default;
 };
 
+class AssetManagerMeshesInterface
+{
+public:
+	virtual ~AssetManagerMeshesInterface() = default;
+};
+
 class ThreadGroupInterface
 {
 public:

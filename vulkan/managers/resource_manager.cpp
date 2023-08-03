@@ -43,7 +43,7 @@ ResourceManager::~ResourceManager()
 		manager->set_asset_instantiator_interface(nullptr);
 }
 
-void ResourceManager::set_id_bounds(uint32_t bound)
+void ResourceManager::set_image_id_bounds(uint32_t bound)
 {
 	textures.resize(bound);
 	views.resize(bound);
@@ -304,7 +304,7 @@ const ImageHandle &ResourceManager::get_fallback_image(Granite::ImageClass image
 	}
 }
 
-void ResourceManager::latch_handles()
+void ResourceManager::latch_image_handles()
 {
 	std::lock_guard<std::mutex> holder{lock};
 	for (auto &update : updates)

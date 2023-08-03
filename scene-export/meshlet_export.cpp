@@ -69,7 +69,7 @@ static i16vec4 encode_vec3_to_snorm_exp(vec3 v)
 {
 	vec3 vabs = abs(v);
 	float max_scale = max(max(vabs.x, vabs.y), vabs.z);
-	int max_scale_log2 = int(floor(log2(max_scale)));
+	int max_scale_log2 = int(muglm::floor(log2(max_scale)));
 	int scale_log2 = 14 - max_scale_log2;
 
 	// Maximum component should have range of [1, 2) since we use floor of log2, so scale with 2^14 instead of 15.
@@ -85,7 +85,7 @@ static i16vec3 encode_vec2_to_snorm_exp(vec2 v)
 {
 	vec2 vabs = abs(v);
 	float max_scale = max(vabs.x, vabs.y);
-	int max_scale_log2 = int(floor(log2(max_scale)));
+	int max_scale_log2 = int(muglm::floor(log2(max_scale)));
 	int scale_log2 = 14 - max_scale_log2;
 
 	// UVs are unorm scaled, don't need more accuracy than this.

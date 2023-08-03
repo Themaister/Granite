@@ -220,13 +220,13 @@ int main(int argc, char *argv[])
 
 	auto mesh = parser.get_meshes().front();
 
-	if (!Meshlet::export_mesh_to_meshlet("/tmp/export.msh1",
+	if (!Meshlet::export_mesh_to_meshlet("export.msh1",
 	                                     mesh, SceneFormats::Meshlet::MeshStyle::Textured))
 	{
 		return EXIT_FAILURE;
 	}
 
-	auto file = GRANITE_FILESYSTEM()->open("/tmp/export.msh1", FileMode::ReadOnly);
+	auto file = GRANITE_FILESYSTEM()->open("export.msh1", FileMode::ReadOnly);
 	if (!file)
 		return EXIT_FAILURE;
 
@@ -267,7 +267,7 @@ int main(int argc, char *argv[])
 	}
 
 	{
-		file = GRANITE_FILESYSTEM()->open("/tmp/export.bin", FileMode::WriteOnly);
+		file = GRANITE_FILESYSTEM()->open("export.bin", FileMode::WriteOnly);
 		mapped = file->map_write((reference_index_buffer.size() + reference_attributes.size()) * sizeof(uint32_t));
 		auto *ptr = mapped->mutable_data<uint32_t>();
 		memcpy(ptr, reference_index_buffer.data(), reference_index_buffer.size() * sizeof(uint32_t));

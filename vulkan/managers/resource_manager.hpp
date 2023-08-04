@@ -125,16 +125,20 @@ private:
 	void set_id_bounds(uint32_t bound) override;
 	void set_asset_class(Granite::AssetID id, Granite::AssetClass asset_class) override;
 
-	struct Texture
+	struct Asset
 	{
 		ImageHandle image;
+		struct
+		{
+			Internal::AllocatedSlice index, pos, attr;
+		} mesh;
 		Granite::AssetClass asset_class = Granite::AssetClass::ImageZeroable;
 	};
 
 	std::mutex lock;
 	std::condition_variable cond;
 
-	std::vector<Texture> assets;
+	std::vector<Asset> assets;
 	std::vector<const ImageView *> views;
 	std::vector<Granite::AssetID> updates;
 
@@ -150,6 +154,7 @@ private:
 
 	void instantiate_asset(Granite::AssetManager &manager, Granite::AssetID id, Granite::File &file);
 
+	std::mutex mesh_allocator_lock;
 	MeshBufferAllocator index_buffer_allocator;
 	MeshBufferAllocator position_buffer_allocator;
 	MeshBufferAllocator attribute_buffer_allocator;

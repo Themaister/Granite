@@ -26,6 +26,7 @@
 #include "filesystem.hpp"
 #include "object_pool.hpp"
 #include "intrusive_hash_map.hpp"
+#include "dynamic_array.hpp"
 #include <vector>
 #include <mutex>
 #include <memory>
@@ -35,6 +36,7 @@ namespace Granite
 struct AssetID
 {
 	uint32_t id = uint32_t(-1);
+	enum { MaxIDs = 1u << 20 };
 	AssetID() = default;
 	explicit AssetID(uint32_t id_) : id{id_} {}
 	explicit inline operator bool() const { return id != uint32_t(-1); }
@@ -80,6 +82,7 @@ public:
 
 	// Will only be called after an upload completes through manager.update_cost().
 	virtual void release_asset(AssetID id) = 0;
+
 	virtual void set_id_bounds(uint32_t bound) = 0;
 	virtual void set_asset_class(AssetID id, AssetClass asset_class);
 
@@ -138,9 +141,9 @@ private:
 		int prio = 0;
 	};
 
-	std::vector<AssetInfo *> sorted_assets;
+	Util::DynamicArray<AssetInfo *> sorted_assets;
+	Util::DynamicArray<AssetInfo *> asset_bank;
 	std::mutex asset_bank_lock;
-	std::vector<AssetInfo *> asset_bank;
 	Util::ObjectPool<AssetInfo> pool;
 	Util::AtomicAppendBuffer<AssetID> lru_append;
 	Util::IntrusiveHashMapHolder<AssetInfo> file_to_assets;

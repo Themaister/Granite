@@ -41,6 +41,7 @@ ResourceManager::ResourceManager(Device *device_)
 	index_buffer_allocator.set_element_size(sizeof(uint32_t) * 3);
 	position_buffer_allocator.set_element_size(sizeof(float) * 3);
 	attribute_buffer_allocator.set_element_size(sizeof(float) * 2 + sizeof(uint32_t) * 2);
+	assets.reserve(Granite::AssetID::MaxIDs);
 }
 
 ResourceManager::~ResourceManager()
@@ -52,6 +53,8 @@ ResourceManager::~ResourceManager()
 
 void ResourceManager::set_id_bounds(uint32_t bound)
 {
+	// We must avoid reallocation here to avoid a ton of extra silly locking.
+	VK_ASSERT(bound <= Granite::AssetID::MaxIDs);
 	assets.resize(bound);
 	views.resize(bound);
 }
@@ -69,7 +72,22 @@ void ResourceManager::set_asset_class(Granite::AssetID id, Granite::AssetClass a
 void ResourceManager::release_asset(Granite::AssetID id)
 {
 	if (id)
-		assets[id.id].image.reset();
+	{
+		auto &a = assets[id.id];
+		if (a.asset_class == Granite::AssetClass::Mesh)
+		{
+			if (a.mesh.index.count)
+			{
+				std::lock_guard<std::mutex> holder{mesh_allocator_lock};
+				index_buffer_allocator.free(a.mesh.index);
+				position_buffer_allocator.free(a.mesh.pos);
+				attribute_buffer_allocator.free(a.mesh.attr);
+				a.mesh = {};
+			}
+		}
+		else
+			a.image.reset();
+	}
 }
 
 uint64_t ResourceManager::estimate_cost_asset(Granite::AssetID, Granite::File &file)
@@ -268,6 +286,8 @@ void ResourceManager::instantiate_asset(Granite::AssetManager &manager_,
                                         Granite::AssetID id,
                                         Granite::File &file)
 {
+	auto &asset = assets[id.id];
+
 	ImageHandle image;
 	if (file.get_size())
 	{
@@ -277,7 +297,7 @@ void ResourceManager::instantiate_asset(Granite::AssetManager &manager_,
 			if (MemoryMappedTexture::is_header(mapping->data(), mapping->get_size()))
 				image = create_gtx(std::move(mapping), id);
 			else
-				image = create_other(*mapping, assets[id.id].asset_class, id);
+				image = create_other(*mapping, asset.asset_class, id);
 		}
 		else
 			LOGE("Failed to map file.\n");
@@ -287,7 +307,7 @@ void ResourceManager::instantiate_asset(Granite::AssetManager &manager_,
 
 	// Have to signal something.
 	if (!image)
-		image = get_fallback_image(assets[id.id].asset_class);
+		image = get_fallback_image(asset.asset_class);
 
 	std::lock_guard<std::mutex> holder{lock};
 	updates.push_back(id);

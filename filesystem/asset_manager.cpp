@@ -29,6 +29,8 @@ namespace Granite
 {
 AssetManager::AssetManager()
 {
+	asset_bank.reserve(AssetID::MaxIDs);
+	sorted_assets.reserve(AssetID::MaxIDs);
 	signal = std::make_unique<TaskSignal>();
 	for (uint64_t i = 0; i < timestamp; i++)
 		signal->signal_increment();
@@ -36,21 +38,21 @@ AssetManager::AssetManager()
 
 AssetManager::~AssetManager()
 {
+	set_asset_instantiator_interface(nullptr);
 	signal->wait_until_at_least(timestamp);
-	for (auto *a : asset_bank)
-		pool.free(a);
+	for (uint32_t i = 0; i < id_count; i++)
+		pool.free(asset_bank[i]);
 }
 
 AssetID AssetManager::register_asset_nolock(FileHandle file, AssetClass asset_class, int prio)
 {
 	auto *info = pool.allocate();
 	info->handle = std::move(file);
-	info->id.id = id_count++;
+	info->id.id = id_count;
 	info->prio = prio;
 	info->asset_class = asset_class;
 	AssetID ret = info->id;
-	asset_bank.push_back(info);
-	sorted_assets.reserve(asset_bank.size());
+	asset_bank[id_count++] = info;
 	if (iface)
 	{
 		iface->set_id_bounds(id_count);
@@ -103,8 +105,9 @@ void AssetManager::set_asset_instantiator_interface(AssetInstantiatorInterface *
 			iface->release_asset(AssetID{id});
 	}
 
-	for (auto *a : asset_bank)
+	for (uint32_t i = 0; i < id_count; i++)
 	{
+		auto *a = asset_bank[i];
 		a->consumed = 0;
 		a->pending_consumed = 0;
 		a->last_used = 0;
@@ -138,7 +141,7 @@ void AssetManager::set_asset_budget_per_iteration(uint64_t cost)
 bool AssetManager::set_asset_residency_priority(AssetID id, int prio)
 {
 	std::lock_guard<std::mutex> holder{asset_bank_lock};
-	if (id.id >= asset_bank.size())
+	if (id.id >= id_count)
 		return false;
 	asset_bank[id.id]->prio = prio;
 	return true;
@@ -146,7 +149,7 @@ bool AssetManager::set_asset_residency_priority(AssetID id, int prio)
 
 void AssetManager::adjust_update(const CostUpdate &update)
 {
-	if (update.id.id < asset_bank.size())
+	if (update.id.id < id_count)
 	{
 		auto *a = asset_bank[update.id.id];
 		total_consumed += update.cost - (a->consumed + a->pending_consumed);
@@ -180,7 +183,7 @@ void AssetManager::update_lru_locked_assets()
 {
 	lru_append.for_each_ranged([this](const AssetID *id, size_t count) {
 		for (size_t i = 0; i < count; i++)
-			if (id[i].id < asset_bank.size())
+			if (id[i].id < id_count)
 				asset_bank[id[i].id]->last_used = timestamp;
 	});
 	lru_append.clear();
@@ -251,8 +254,8 @@ void AssetManager::iterate(ThreadGroup *group)
 	update_costs_locked_assets();
 	update_lru_locked_assets();
 
-	sorted_assets = asset_bank;
-	std::sort(sorted_assets.begin(), sorted_assets.end(), [](const AssetInfo *a, const AssetInfo *b) -> bool {
+	memcpy(sorted_assets.data(), asset_bank.data(), id_count * sizeof(sorted_assets[0]));
+	std::sort(sorted_assets.data(), sorted_assets.data() + id_count, [](const AssetInfo *a, const AssetInfo *b) -> bool {
 		// High prios come first since they will be activated.
 		// Then we sort by LRU.
 		// High consumption should be moved last, so they are candidates to be paged out if we're over budget.
@@ -272,7 +275,7 @@ void AssetManager::iterate(ThreadGroup *group)
 			return a->id.id < b->id.id;
 	});
 
-	size_t release_index = sorted_assets.size();
+	size_t release_index = id_count;
 	uint64_t activated_cost_this_iteration = 0;
 	unsigned activation_count = 0;
 	size_t activate_index = 0;

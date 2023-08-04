@@ -48,15 +48,13 @@ struct AllocatedSlice
 	Util::IntrusiveList<Util::LegionHeap<AllocatedSlice>>::Iterator heap = {};
 };
 
-class MeshGlobalAllocator
+struct MeshGlobalAllocator
 {
-public:
 	explicit MeshGlobalAllocator(Device &device);
 	void set_element_size(uint32_t element_size);
 	uint32_t allocate(uint32_t count);
 	void free(uint32_t index);
 
-private:
 	Device &device;
 	uint32_t element_size = 0;
 	Util::SmallVector<BufferHandle> global_buffers;
@@ -70,7 +68,7 @@ struct SliceAllocator : Util::ArenaAllocator<SliceAllocator, AllocatedSlice>
 
 	// Implements curious recurring template pattern calls.
 	bool allocate_backing_heap(AllocatedSlice *allocation);
-	void free_backing_heap(AllocatedSlice *allocation);
+	void free_backing_heap(AllocatedSlice *allocation) const;
 	void prepare_allocation(AllocatedSlice *allocation, Util::IntrusiveList<MiniHeap>::Iterator heap,
 	                        const Util::SuballocationResult &suballoc);
 };
@@ -83,6 +81,8 @@ public:
 	bool allocate(uint32_t count, Internal::AllocatedSlice *slice);
 	void free(const Internal::AllocatedSlice &slice);
 	void set_element_size(uint32_t element_size);
+
+	const Buffer *get_buffer(unsigned index) const;
 
 private:
 	Util::ObjectPool<Util::LegionHeap<Internal::AllocatedSlice>> object_pool;
@@ -107,6 +107,11 @@ public:
 	}
 
 	const Vulkan::ImageView *get_image_view_blocking(Granite::AssetID id);
+
+	VkDrawIndexedIndirectCommand get_mesh_indexed_draw(Granite::AssetID id) const;
+	const Buffer *get_index_buffer() const;
+	const Buffer *get_position_buffer() const;
+	const Buffer *get_attribute_buffer() const;
 
 private:
 	Device *device;
@@ -146,5 +151,7 @@ private:
 	void instantiate_asset(Granite::AssetManager &manager, Granite::AssetID id, Granite::File &file);
 
 	MeshBufferAllocator index_buffer_allocator;
+	MeshBufferAllocator position_buffer_allocator;
+	MeshBufferAllocator attribute_buffer_allocator;
 };
 }

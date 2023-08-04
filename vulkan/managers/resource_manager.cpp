@@ -32,8 +32,15 @@
 namespace Vulkan
 {
 ResourceManager::ResourceManager(Device *device_)
-	: device(device_), index_buffer_allocator(*device_)
+	: device(device_)
+	, index_buffer_allocator(*device_)
+	, position_buffer_allocator(*device_)
+	, attribute_buffer_allocator(*device_)
 {
+	// Simplified style.
+	index_buffer_allocator.set_element_size(sizeof(uint32_t) * 3);
+	position_buffer_allocator.set_element_size(sizeof(float) * 3);
+	attribute_buffer_allocator.set_element_size(sizeof(float) * 2 + sizeof(uint32_t) * 2);
 }
 
 ResourceManager::~ResourceManager()
@@ -329,6 +336,21 @@ void ResourceManager::latch_handles()
 	updates.clear();
 }
 
+const Buffer *ResourceManager::get_index_buffer() const
+{
+	return index_buffer_allocator.get_buffer(0);
+}
+
+const Buffer *ResourceManager::get_position_buffer() const
+{
+	return position_buffer_allocator.get_buffer(0);
+}
+
+const Buffer *ResourceManager::get_attribute_buffer() const
+{
+	return attribute_buffer_allocator.get_buffer(0);
+}
+
 MeshBufferAllocator::MeshBufferAllocator(Device &device)
 	: global_allocator(device)
 {
@@ -346,6 +368,14 @@ MeshBufferAllocator::MeshBufferAllocator(Device &device)
 void MeshBufferAllocator::set_element_size(uint32_t element_size)
 {
 	global_allocator.set_element_size(element_size);
+}
+
+const Buffer *MeshBufferAllocator::get_buffer(unsigned index) const
+{
+	if (index < global_allocator.global_buffers.size())
+		return global_allocator.global_buffers[index].get();
+	else
+		return nullptr;
 }
 
 namespace Internal
@@ -418,7 +448,7 @@ bool SliceAllocator::allocate_backing_heap(AllocatedSlice *allocation)
 	}
 }
 
-void SliceAllocator::free_backing_heap(AllocatedSlice *allocation)
+void SliceAllocator::free_backing_heap(AllocatedSlice *allocation) const
 {
 	if (parent)
 		parent->free(allocation->heap, allocation->mask);

@@ -50,7 +50,7 @@ UIApplication::UIApplication()
 	window->show_title_bar(false);
 	window->set_floating(false);
 	window->set_background_color(vec4(0.0f, 1.0f, 0.0f, 1.0f));
-	window->set_background_image(GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(
+	window->set_background_image(GRANITE_ASSET_MANAGER()->register_image_resource(
 			*GRANITE_FILESYSTEM(), "builtin://textures/checkerboard.png", ImageClass::Color));
 
 	auto button = make_handle<UI::ClickButton>();
@@ -90,7 +90,7 @@ UIApplication::UIApplication()
 		slider->show_value(false);
 		slider->set_margin(5.0f);
 		slider->show_tooltip(true);
-		slider->set_background_image(GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(
+		slider->set_background_image(GRANITE_ASSET_MANAGER()->register_image_resource(
 				*GRANITE_FILESYSTEM(), "builtin://textures/checkerboard.png", ImageClass::Color));
 		slider->set_background_color(vec4(1.0f));
 	}
@@ -111,7 +111,7 @@ UIApplication::UIApplication()
 		sli.show_value(false);
 		sli.set_margin(5.0f);
 		sli.show_tooltip(true);
-		sli.set_background_image(GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(
+		sli.set_background_image(GRANITE_ASSET_MANAGER()->register_image_resource(
 				*GRANITE_FILESYSTEM(), "builtin://textures/checkerboard.png", ImageClass::Color));
 		sli.set_background_color(vec4(1.0f));
 	}
@@ -126,7 +126,7 @@ UIApplication::UIApplication()
 		btn.set_text("Mjuu");
 		btn.set_toggled_font_color(vec4(0.0f, 1.0f, 0.0f, 1.0f));
 		btn.set_untoggled_font_color(vec4(1.0f, 0.0f, 0.0f, 1.0f));
-		btn.set_background_image(GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(
+		btn.set_background_image(GRANITE_ASSET_MANAGER()->register_image_resource(
 				*GRANITE_FILESYSTEM(), "builtin://textures/checkerboard.png", ImageClass::Color));
 		btn.set_background_color(vec4(1.0f));
 	}

@@ -149,7 +149,7 @@ private:
 
 	void refresh(const RenderContext &context, TaskComposer &composer) override;
 
-	ImageAssetID heights, normals, occlusion, normals_fine, base_color, type_map;
+	AssetID heights, normals, occlusion, normals_fine, base_color, type_map;
 	Vulkan::ImageHandle lod_map;
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);

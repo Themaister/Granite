@@ -57,7 +57,7 @@ class CommonRendererData final : public CommonRendererDataInterface
 {
 public:
 	LightMesh light_mesh;
-	ImageAssetID brdf_tables;
+	AssetID brdf_tables;
 	void initialize_static_assets(AssetManager *iface, Filesystem *file_iface);
 };
 }

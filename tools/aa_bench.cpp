@@ -27,7 +27,7 @@ private:
 	void on_swapchain_changed(const SwapchainParameterEvent &e);
 	void on_swapchain_destroyed(const SwapchainParameterEvent &e);
 
-	ImageAssetID images[2] = {};
+	AssetID images[2] = {};
 	RenderGraph graph;
 	TemporalJitter jitter;
 	RenderContext render_context;
@@ -39,8 +39,12 @@ AABenchApplication::AABenchApplication(const std::string &input0, const std::str
 	: input_path0(input0), input_path1(input1), scale(scale_)
 {
 	type = string_to_post_antialiasing_type(method);
-	images[0] = input_path0.empty() ? ImageAssetID{} : GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), input_path0, ImageClass::Color);
-	images[1] = input_path1.empty() ? ImageAssetID{} : GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), input_path1, ImageClass::Color);
+	images[0] = input_path0.empty() ? AssetID{} : GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(),
+	                                                                                      input_path0,
+	                                                                                      AssetClass::ImageColor);
+	images[1] = input_path1.empty() ? AssetID{} : GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(),
+	                                                                                      input_path1,
+	                                                                                      AssetClass::ImageColor);
 	EVENT_MANAGER_REGISTER_LATCH(AABenchApplication, on_swapchain_changed, on_swapchain_destroyed, SwapchainParameterEvent);
 	EVENT_MANAGER_REGISTER_LATCH(AABenchApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }

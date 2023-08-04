@@ -41,35 +41,35 @@ AssetManager::~AssetManager()
 		pool.free(a);
 }
 
-ImageAssetID AssetManager::register_image_resource_nolock(FileHandle file, ImageClass image_class, int prio)
+AssetID AssetManager::register_asset_nolock(FileHandle file, AssetClass asset_class, int prio)
 {
 	auto *info = pool.allocate();
 	info->handle = std::move(file);
 	info->id.id = id_count++;
 	info->prio = prio;
-	info->image_class = image_class;
-	ImageAssetID ret = info->id;
+	info->asset_class = asset_class;
+	AssetID ret = info->id;
 	asset_bank.push_back(info);
 	sorted_assets.reserve(asset_bank.size());
 	if (iface)
 	{
 		iface->set_id_bounds(id_count);
-		iface->set_image_class(info->id, image_class);
+		iface->set_asset_class(info->id, asset_class);
 	}
 	return ret;
 }
 
-void AssetInstantiatorInterface::set_image_class(ImageAssetID, ImageClass)
+void AssetInstantiatorInterface::set_asset_class(AssetID, AssetClass)
 {
 }
 
-ImageAssetID AssetManager::register_image_resource(FileHandle file, ImageClass image_class, int prio)
+AssetID AssetManager::register_asset(FileHandle file, AssetClass asset_class, int prio)
 {
 	std::lock_guard<std::mutex> holder{asset_bank_lock};
-	return register_image_resource_nolock(std::move(file), image_class, prio);
+	return register_asset_nolock(std::move(file), asset_class, prio);
 }
 
-ImageAssetID AssetManager::register_image_resource(Filesystem &fs, const std::string &path, ImageClass image_class, int prio)
+AssetID AssetManager::register_asset(Filesystem &fs, const std::string &path, AssetClass asset_class, int prio)
 {
 	std::lock_guard<std::mutex> holder{asset_bank_lock};
 
@@ -82,13 +82,13 @@ ImageAssetID AssetManager::register_image_resource(Filesystem &fs, const std::st
 	if (!file)
 		return {};
 
-	auto id = register_image_resource_nolock(std::move(file), image_class, prio);
+	auto id = register_asset_nolock(std::move(file), asset_class, prio);
 	asset_bank[id.id]->set_hash(h.get());
 	file_to_assets.insert_replace(asset_bank[id.id]);
 	return id;
 }
 
-void AssetManager::update_cost(ImageAssetID id, uint64_t cost)
+void AssetManager::update_cost(AssetID id, uint64_t cost)
 {
 	std::lock_guard<std::mutex> holder{cost_update_lock};
 	thread_cost_updates.push_back({ id, cost });
@@ -100,7 +100,7 @@ void AssetManager::set_asset_instantiator_interface(AssetInstantiatorInterface *
 	{
 		signal->wait_until_at_least(timestamp);
 		for (uint32_t id = 0; id < id_count; id++)
-			iface->release_image_resource(ImageAssetID{id});
+			iface->release_asset(AssetID{id});
 	}
 
 	for (auto *a : asset_bank)
@@ -116,26 +116,26 @@ void AssetManager::set_asset_instantiator_interface(AssetInstantiatorInterface *
 	{
 		iface->set_id_bounds(id_count);
 		for (uint32_t i = 0; i < id_count; i++)
-			iface->set_image_class(ImageAssetID{i}, asset_bank[i]->image_class);
+			iface->set_asset_class(AssetID{i}, asset_bank[i]->asset_class);
 	}
 }
 
-void AssetManager::mark_used_resource(ImageAssetID id)
+void AssetManager::mark_used_asset(AssetID id)
 {
 	lru_append.push(id);
 }
 
-void AssetManager::set_image_budget(uint64_t cost)
+void AssetManager::set_asset_budget(uint64_t cost)
 {
-	image_budget = cost;
+	transfer_budget = cost;
 }
 
-void AssetManager::set_image_budget_per_iteration(uint64_t cost)
+void AssetManager::set_asset_budget_per_iteration(uint64_t cost)
 {
-	image_budget_per_iteration = cost;
+	transfer_budget_per_iteration = cost;
 }
 
-bool AssetManager::set_image_residency_priority(ImageAssetID id, int prio)
+bool AssetManager::set_asset_residency_priority(AssetID id, int prio)
 {
 	std::lock_guard<std::mutex> holder{asset_bank_lock};
 	if (id.id >= asset_bank.size())
@@ -178,7 +178,7 @@ void AssetManager::update_costs_locked_assets()
 
 void AssetManager::update_lru_locked_assets()
 {
-	lru_append.for_each_ranged([this](const ImageAssetID *id, size_t count) {
+	lru_append.for_each_ranged([this](const AssetID *id, size_t count) {
 		for (size_t i = 0; i < count; i++)
 			if (id[i].id < asset_bank.size())
 				asset_bank[id[i].id]->last_used = timestamp;
@@ -186,7 +186,7 @@ void AssetManager::update_lru_locked_assets()
 	lru_append.clear();
 }
 
-bool AssetManager::iterate_blocking(ThreadGroup &group, ImageAssetID id)
+bool AssetManager::iterate_blocking(ThreadGroup &group, AssetID id)
 {
 	if (!iface)
 		return false;
@@ -202,12 +202,12 @@ bool AssetManager::iterate_blocking(ThreadGroup &group, ImageAssetID id)
 	if (candidate->consumed != 0 || candidate->pending_consumed != 0)
 		return true;
 
-	uint64_t estimate = iface->estimate_cost_image_resource(candidate->id, *candidate->handle);
+	uint64_t estimate = iface->estimate_cost_asset(candidate->id, *candidate->handle);
 	auto task = group.create_task();
 	task->set_task_class(TaskClass::Background);
 	task->set_fence_counter_signal(signal.get());
 	task->set_desc("asset-manager-instantiate-single");
-	iface->instantiate_image_resource(*this, task.get(), candidate->id, *candidate->handle);
+	iface->instantiate_asset(*this, task.get(), candidate->id, *candidate->handle);
 	candidate->pending_consumed = estimate;
 	candidate->last_used = timestamp;
 	total_consumed += estimate;
@@ -281,8 +281,8 @@ void AssetManager::iterate(ThreadGroup *group)
 	// Activate in order from highest priority to lowest.
 	bool can_activate = true;
 	while (can_activate &&
-	       total_consumed < image_budget &&
-	       activated_cost_this_iteration < image_budget_per_iteration &&
+	       total_consumed < transfer_budget &&
+	       activated_cost_this_iteration < transfer_budget_per_iteration &&
 	       activate_index != release_index)
 	{
 		auto *candidate = sorted_assets[activate_index];
@@ -296,26 +296,26 @@ void AssetManager::iterate(ThreadGroup *group)
 			continue;
 		}
 
-		uint64_t estimate = iface->estimate_cost_image_resource(candidate->id, *candidate->handle);
+		uint64_t estimate = iface->estimate_cost_asset(candidate->id, *candidate->handle);
 
-		can_activate = (total_consumed + estimate <= image_budget) || (candidate->prio >= persistent_prio());
+		can_activate = (total_consumed + estimate <= transfer_budget) || (candidate->prio >= persistent_prio());
 		while (!can_activate && activate_index + 1 != release_index)
 		{
 			auto *release_candidate = sorted_assets[--release_index];
 			if (release_candidate->consumed)
 			{
 				LOGI("Releasing ID %u due to page-in pressure.\n", release_candidate->id.id);
-				iface->release_image_resource(release_candidate->id);
+				iface->release_asset(release_candidate->id);
 				total_consumed -= release_candidate->consumed;
 				release_candidate->consumed = 0;
 			}
-			can_activate = total_consumed + estimate <= image_budget;
+			can_activate = total_consumed + estimate <= transfer_budget;
 		}
 
 		if (can_activate)
 		{
 			// We're trivially in budget.
-			iface->instantiate_image_resource(*this, task.get(), candidate->id, *candidate->handle);
+			iface->instantiate_asset(*this, task.get(), candidate->id, *candidate->handle);
 			activation_count++;
 
 			candidate->pending_consumed = estimate;
@@ -328,7 +328,7 @@ void AssetManager::iterate(ThreadGroup *group)
 	}
 
 	// If we're 75% of budget, start garbage collecting non-resident resources ahead of time.
-	const uint64_t low_image_budget = (image_budget * 3) / 4;
+	const uint64_t low_image_budget = (transfer_budget * 3) / 4;
 
 	const auto should_release = [&]() -> bool {
 		if (release_index == activate_index)
@@ -336,7 +336,7 @@ void AssetManager::iterate(ThreadGroup *group)
 		if (sorted_assets[release_index - 1]->prio == persistent_prio())
 			return false;
 
-		if (total_consumed > image_budget)
+		if (total_consumed > transfer_budget)
 			return true;
 		else if (total_consumed > low_image_budget && sorted_assets[release_index - 1]->prio == 0)
 			return true;
@@ -351,7 +351,7 @@ void AssetManager::iterate(ThreadGroup *group)
 		if (candidate->consumed)
 		{
 			LOGI("Releasing 0-prio ID %u due to page-in pressure.\n", candidate->id.id);
-			iface->release_image_resource(candidate->id);
+			iface->release_asset(candidate->id);
 			total_consumed -= candidate->consumed;
 			candidate->consumed = 0;
 			candidate->last_used = 0;

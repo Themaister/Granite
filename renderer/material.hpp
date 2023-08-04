@@ -85,19 +85,19 @@ struct Material
 	{
 		info = std::move(info_);
 
-		static const ImageClass image_classes[] = {
-			ImageClass::Color,
-			ImageClass::Normal,
-			ImageClass::MetallicRoughness,
-			ImageClass::Color,
-			ImageClass::Color,
+		static const AssetClass image_classes[] = {
+			AssetClass::ImageColor,
+			AssetClass::ImageNormal,
+			AssetClass::ImageMetallicRoughness,
+			AssetClass::ImageColor,
+			AssetClass::ImageColor,
 		};
 
 		for (unsigned i = 0; i < Util::ecast(TextureKind::Count); i++)
 		{
 			if (!info.paths[i].empty())
 			{
-				textures[i] = GRANITE_ASSET_MANAGER()->register_image_resource(
+				textures[i] = GRANITE_ASSET_MANAGER()->register_asset(
 						*GRANITE_FILESYSTEM(), info.paths[i], image_classes[i]);
 			}
 		}
@@ -116,7 +116,7 @@ struct Material
 		return info;
 	}
 
-	ImageAssetID textures[Util::ecast(TextureKind::Count)];
+	AssetID textures[Util::ecast(TextureKind::Count)];
 	bool needs_emissive = false;
 	uint32_t shader_variant = 0;
 

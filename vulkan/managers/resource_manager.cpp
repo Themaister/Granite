@@ -45,27 +45,27 @@ ResourceManager::~ResourceManager()
 
 void ResourceManager::set_id_bounds(uint32_t bound)
 {
-	textures.resize(bound);
+	assets.resize(bound);
 	views.resize(bound);
 }
 
-void ResourceManager::set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class)
+void ResourceManager::set_asset_class(Granite::AssetID id, Granite::AssetClass asset_class)
 {
 	if (id)
 	{
-		textures[id.id].image_class = image_class;
+		assets[id.id].asset_class = asset_class;
 		if (!views[id.id])
-			views[id.id] = &get_fallback_image(image_class)->get_view();
+			views[id.id] = &get_fallback_image(asset_class)->get_view();
 	}
 }
 
-void ResourceManager::release_image_resource(Granite::ImageAssetID id)
+void ResourceManager::release_asset(Granite::AssetID id)
 {
 	if (id)
-		textures[id.id].image.reset();
+		assets[id.id].image.reset();
 }
 
-uint64_t ResourceManager::estimate_cost_image_resource(Granite::ImageAssetID, Granite::File &file)
+uint64_t ResourceManager::estimate_cost_asset(Granite::AssetID, Granite::File &file)
 {
 	// TODO: When we get compressed BC/ASTC, this will have to change.
 	return file.get_size();
@@ -116,14 +116,14 @@ void ResourceManager::init()
 		}
 
 		LOGI("Using texture budget of %u MiB.\n", unsigned(size / (1024 * 1024)));
-		manager->set_image_budget(size);
+		manager->set_asset_budget(size);
 
 		// This is somewhat arbitrary.
-		manager->set_image_budget_per_iteration(2 * 1000 * 1000);
+		manager->set_asset_budget_per_iteration(2 * 1000 * 1000);
 	}
 }
 
-ImageHandle ResourceManager::create_gtx(const MemoryMappedTexture &mapped_file, Granite::ImageAssetID id)
+ImageHandle ResourceManager::create_gtx(const MemoryMappedTexture &mapped_file, Granite::AssetID id)
 {
 	if (mapped_file.empty())
 		return {};
@@ -189,13 +189,13 @@ ImageHandle ResourceManager::create_gtx(const MemoryMappedTexture &mapped_file, 
 
 	if (image)
 	{
-		auto name = Util::join("ImageAssetID-", id.id);
+		auto name = Util::join("AssetID-", id.id);
 		device->set_name(*image, name.c_str());
 	}
 	return image;
 }
 
-ImageHandle ResourceManager::create_gtx(Granite::FileMappingHandle mapping, Granite::ImageAssetID id)
+ImageHandle ResourceManager::create_gtx(Granite::FileMappingHandle mapping, Granite::AssetID id)
 {
 	MemoryMappedTexture mapped_file;
 	if (!mapped_file.map_read(std::move(mapping)))
@@ -207,27 +207,27 @@ ImageHandle ResourceManager::create_gtx(Granite::FileMappingHandle mapping, Gran
 	return create_gtx(mapped_file, id);
 }
 
-ImageHandle ResourceManager::create_other(const Granite::FileMapping &mapping, Granite::ImageClass image_class,
-                                          Granite::ImageAssetID id)
+ImageHandle ResourceManager::create_other(const Granite::FileMapping &mapping, Granite::AssetClass asset_class,
+                                          Granite::AssetID id)
 {
 	auto tex = load_texture_from_memory(mapping.data(),
-	                                    mapping.get_size(), image_class == Granite::ImageClass::Color ?
+	                                    mapping.get_size(), asset_class == Granite::AssetClass::ImageColor ?
 	                                                        ColorSpace::sRGB : ColorSpace::Linear);
 	return create_gtx(tex, id);
 }
 
-const Vulkan::ImageView *ResourceManager::get_image_view_blocking(Granite::ImageAssetID id)
+const Vulkan::ImageView *ResourceManager::get_image_view_blocking(Granite::AssetID id)
 {
 	std::unique_lock<std::mutex> holder{lock};
 
-	if (id.id >= textures.size())
+	if (id.id >= assets.size())
 	{
 		LOGE("ID %u is out of bounds.\n", id.id);
 		return nullptr;
 	}
 
-	if (textures[id.id].image)
-		return &textures[id.id].image->get_view();
+	if (assets[id.id].image)
+		return &assets[id.id].image->get_view();
 
 	if (!manager->iterate_blocking(*device->get_system_handles().thread_group, id))
 	{
@@ -236,30 +236,30 @@ const Vulkan::ImageView *ResourceManager::get_image_view_blocking(Granite::Image
 	}
 
 	cond.wait(holder, [this, id]() -> bool {
-		return bool(textures[id.id].image);
+		return bool(assets[id.id].image);
 	});
 
-	return &textures[id.id].image->get_view();
+	return &assets[id.id].image->get_view();
 }
 
-void ResourceManager::instantiate_image_resource(Granite::AssetManager &manager_, Granite::TaskGroup *task,
-                                                 Granite::ImageAssetID id, Granite::File &file)
+void ResourceManager::instantiate_asset(Granite::AssetManager &manager_, Granite::TaskGroup *task,
+                                        Granite::AssetID id, Granite::File &file)
 {
 	if (task)
 	{
 		task->enqueue_task([this, &manager_, &file, id]() {
-			instantiate_image_resource(manager_, id, file);
+			instantiate_asset(manager_, id, file);
 		});
 	}
 	else
 	{
-		instantiate_image_resource(manager_, id, file);
+		instantiate_asset(manager_, id, file);
 	}
 }
 
-void ResourceManager::instantiate_image_resource(Granite::AssetManager &manager_,
-                                                 Granite::ImageAssetID id,
-                                                 Granite::File &file)
+void ResourceManager::instantiate_asset(Granite::AssetManager &manager_,
+                                        Granite::AssetID id,
+                                        Granite::File &file)
 {
 	ImageHandle image;
 	if (file.get_size())
@@ -270,7 +270,7 @@ void ResourceManager::instantiate_image_resource(Granite::AssetManager &manager_
 			if (MemoryMappedTexture::is_header(mapping->data(), mapping->get_size()))
 				image = create_gtx(std::move(mapping), id);
 			else
-				image = create_other(*mapping, textures[id.id].image_class, id);
+				image = create_other(*mapping, assets[id.id].asset_class, id);
 		}
 		else
 			LOGE("Failed to map file.\n");
@@ -280,26 +280,26 @@ void ResourceManager::instantiate_image_resource(Granite::AssetManager &manager_
 
 	// Have to signal something.
 	if (!image)
-		image = get_fallback_image(textures[id.id].image_class);
+		image = get_fallback_image(assets[id.id].asset_class);
 
 	std::lock_guard<std::mutex> holder{lock};
 	updates.push_back(id);
-	textures[id.id].image = std::move(image);
+	assets[id.id].image = std::move(image);
 	cond.notify_all();
 }
 
-const ImageHandle &ResourceManager::get_fallback_image(Granite::ImageClass image_class)
+const ImageHandle &ResourceManager::get_fallback_image(Granite::AssetClass asset_class)
 {
-	switch (image_class)
+	switch (asset_class)
 	{
 	default:
-	case Granite::ImageClass::Zeroable:
+	case Granite::AssetClass::ImageZeroable:
 		return fallback_zero;
-	case Granite::ImageClass::Color:
+	case Granite::AssetClass::ImageColor:
 		return fallback_color;
-	case Granite::ImageClass::Normal:
+	case Granite::AssetClass::ImageNormal:
 		return fallback_normal;
-	case Granite::ImageClass::MetallicRoughness:
+	case Granite::AssetClass::ImageMetallicRoughness:
 		return fallback_pbr;
 	}
 }
@@ -314,13 +314,13 @@ void ResourceManager::latch_handles()
 
 		const ImageView *view;
 
-		if (textures[update.id].image)
+		if (assets[update.id].image)
 		{
-			view = &textures[update.id].image->get_view();
+			view = &assets[update.id].image->get_view();
 		}
 		else
 		{
-			auto &img = get_fallback_image(textures[update.id].image_class);
+			auto &img = get_fallback_image(assets[update.id].asset_class);
 			view = &img->get_view();
 		}
 

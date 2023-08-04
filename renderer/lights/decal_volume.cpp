@@ -29,9 +29,9 @@ namespace Granite
 {
 VolumetricDecal::VolumetricDecal()
 {
-	tex = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(),
-	                                                       "builtin://textures/decal.png",
-	                                                       ImageClass::Color);
+	tex = GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(),
+	                                              "builtin://textures/decal.png",
+	                                              AssetClass::ImageColor);
 }
 
 const Vulkan::ImageView *VolumetricDecal::get_decal_view(Vulkan::Device &device) const

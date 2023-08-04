@@ -32,43 +32,34 @@
 
 namespace Granite
 {
-struct ImageAssetID
+struct AssetID
 {
 	uint32_t id = uint32_t(-1);
-	ImageAssetID() = default;
-	explicit ImageAssetID(uint32_t id_) : id{id_} {}
+	AssetID() = default;
+	explicit AssetID(uint32_t id_) : id{id_} {}
 	explicit inline operator bool() const { return id != uint32_t(-1); }
-	inline bool operator==(const ImageAssetID &other) const { return id == other.id; }
-	inline bool operator!=(const ImageAssetID &other) const { return !(*this == other); }
-};
-
-struct MeshAssetID
-{
-	uint32_t id = uint32_t(-1);
-	MeshAssetID() = default;
-	explicit MeshAssetID(uint32_t id_) : id{id_} {}
-	explicit inline operator bool() const { return id != uint32_t(-1); }
-	inline bool operator==(const MeshAssetID &other) const { return id == other.id; }
-	inline bool operator!=(const MeshAssetID &other) const { return !(*this == other); }
+	inline bool operator==(const AssetID &other) const { return id == other.id; }
+	inline bool operator!=(const AssetID &other) const { return !(*this == other); }
 };
 
 class AssetManager;
 
 // If we have to fall back due to no image being present,
 // lets asset instantiator know what to substitute.
-enum class ImageClass
+enum class AssetClass
 {
 	// Substitute with 0.
-	Zeroable,
+	ImageZeroable,
 	// Substitute with missing color.
-	Color,
+	ImageColor,
 	// Substitute with RG8_UNORM 0.5
-	Normal,
+	ImageNormal,
 	// Substitute with M = 0, R = 1.
-	MetallicRoughness,
+	ImageMetallicRoughness,
 	// Substitute with mid-gray (0.5, 0.5, 0.5, 1.0) UNORM8.
 	// Somewhat compatible with everything.
-	Generic
+	ImageGeneric,
+	Mesh
 };
 
 class ThreadGroup;
@@ -81,16 +72,16 @@ public:
 	virtual ~AssetInstantiatorInterface() = default;
 
 	// This estimate should be an upper bound.
-	virtual uint64_t estimate_cost_image_resource(ImageAssetID id, File &mapping) = 0;
+	virtual uint64_t estimate_cost_asset(AssetID id, File &mapping) = 0;
 
 	// When instantiation completes, manager.update_cost() must be called with the real cost.
 	// The real cost may only be known after async parsing of the file.
-	virtual void instantiate_image_resource(AssetManager &manager, TaskGroup *group, ImageAssetID id, File &mapping) = 0;
+	virtual void instantiate_asset(AssetManager &manager, TaskGroup *group, AssetID id, File &mapping) = 0;
 
 	// Will only be called after an upload completes through manager.update_cost().
-	virtual void release_image_resource(ImageAssetID id) = 0;
+	virtual void release_asset(AssetID id) = 0;
 	virtual void set_id_bounds(uint32_t bound) = 0;
-	virtual void set_image_class(ImageAssetID id, ImageClass image_class);
+	virtual void set_asset_class(AssetID id, AssetClass asset_class);
 
 	// Called in AssetManager::iterate().
 	virtual void latch_handles() = 0;
@@ -106,24 +97,26 @@ public:
 	~AssetManager() override;
 
 	void set_asset_instantiator_interface(AssetInstantiatorInterface *iface);
-	void set_image_budget(uint64_t cost);
-	void set_image_budget_per_iteration(uint64_t cost);
+
+	// We might want to consider different budgets per asset class.
+	void set_asset_budget(uint64_t cost);
+	void set_asset_budget_per_iteration(uint64_t cost);
 
 	// FileHandle is intended to be used with FileSlice or similar here so that we don't need
 	// a ton of open files at once.
-	ImageAssetID register_image_resource(FileHandle file, ImageClass image_class, int prio = 1);
-	ImageAssetID register_image_resource(Filesystem &fs, const std::string &path, ImageClass image_class, int prio = 1);
+	AssetID register_asset(FileHandle file, AssetClass asset_class, int prio = 1);
+	AssetID register_asset(Filesystem &fs, const std::string &path, AssetClass asset_class, int prio = 1);
 
 	// Prio 0: Not resident, resource may not exist.
-	bool set_image_residency_priority(ImageAssetID id, int prio);
+	bool set_asset_residency_priority(AssetID id, int prio);
 
 	// Intended to be called in Application::post_frame(). Not thread safe.
 	// This function updates internal state.
 	void iterate(ThreadGroup *group);
-	bool iterate_blocking(ThreadGroup &group, ImageAssetID id);
+	bool iterate_blocking(ThreadGroup &group, AssetID id);
 
 	// Always thread safe, used by AssetInstantiatorInterfaces to update cost estimates.
-	void update_cost(ImageAssetID id, uint64_t cost);
+	void update_cost(AssetID id, uint64_t cost);
 
 	// May be called concurrently, except when calling iterate().
 	uint64_t get_current_total_consumed() const;
@@ -131,7 +124,7 @@ public:
 	// May be called concurrently, except when calling iterate().
 	// Intended to be called by asset instantiator interface or similar.
 	// When a resource is actually accessed, this is called.
-	void mark_used_resource(ImageAssetID id);
+	void mark_used_asset(AssetID id);
 
 private:
 	struct AssetInfo : Util::IntrusiveHashMapEnabled<AssetInfo>
@@ -140,8 +133,8 @@ private:
 		uint64_t consumed = 0;
 		uint64_t last_used = 0;
 		FileHandle handle;
-		ImageAssetID id = {};
-		ImageClass image_class = ImageClass::Zeroable;
+		AssetID id = {};
+		AssetClass asset_class = AssetClass::ImageZeroable;
 		int prio = 0;
 	};
 
@@ -149,20 +142,20 @@ private:
 	std::mutex asset_bank_lock;
 	std::vector<AssetInfo *> asset_bank;
 	Util::ObjectPool<AssetInfo> pool;
-	Util::AtomicAppendBuffer<ImageAssetID> lru_append;
+	Util::AtomicAppendBuffer<AssetID> lru_append;
 	Util::IntrusiveHashMapHolder<AssetInfo> file_to_assets;
 
 	AssetInstantiatorInterface *iface = nullptr;
 	uint32_t id_count = 0;
 	uint64_t total_consumed = 0;
-	uint64_t image_budget = 0;
-	uint64_t image_budget_per_iteration = 0;
+	uint64_t transfer_budget = 0;
+	uint64_t transfer_budget_per_iteration = 0;
 	uint64_t timestamp = 1;
 	uint32_t blocking_signals = 0;
 
 	struct CostUpdate
 	{
-		ImageAssetID id;
+		AssetID id;
 		uint64_t cost = 0;
 	};
 	std::mutex cost_update_lock;
@@ -171,7 +164,7 @@ private:
 
 	void adjust_update(const CostUpdate &update);
 	std::unique_ptr<TaskSignal> signal;
-	ImageAssetID register_image_resource_nolock(FileHandle file, ImageClass image_class, int prio);
+	AssetID register_asset_nolock(FileHandle file, AssetClass asset_class, int prio);
 
 	void update_costs_locked_assets();
 	void update_lru_locked_assets();

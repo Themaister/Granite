@@ -38,6 +38,6 @@ public:
 	static const AABB &get_static_aabb();
 
 private:
-	ImageAssetID tex;
+	AssetID tex;
 };
 }

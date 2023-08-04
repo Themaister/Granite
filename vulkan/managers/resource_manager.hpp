@@ -38,7 +38,7 @@ public:
 	~ResourceManager() override;
 	void init();
 
-	inline const Vulkan::ImageView *get_image_view(Granite::ImageAssetID id) const
+	inline const Vulkan::ImageView *get_image_view(Granite::AssetID id) const
 	{
 		if (id.id < views.size())
 			return views[id.id];
@@ -46,43 +46,43 @@ public:
 			return nullptr;
 	}
 
-	const Vulkan::ImageView *get_image_view_blocking(Granite::ImageAssetID id);
+	const Vulkan::ImageView *get_image_view_blocking(Granite::AssetID id);
 
 private:
 	Device *device;
 	Granite::AssetManager *manager = nullptr;
 
 	void latch_handles() override;
-	uint64_t estimate_cost_image_resource(Granite::ImageAssetID id, Granite::File &file) override;
-	void instantiate_image_resource(Granite::AssetManager &manager, Granite::TaskGroup *task,
-	                                Granite::ImageAssetID id, Granite::File &file) override;
-	void release_image_resource(Granite::ImageAssetID id) override;
+	uint64_t estimate_cost_asset(Granite::AssetID id, Granite::File &file) override;
+	void instantiate_asset(Granite::AssetManager &manager, Granite::TaskGroup *task,
+	                       Granite::AssetID id, Granite::File &file) override;
+	void release_asset(Granite::AssetID id) override;
 	void set_id_bounds(uint32_t bound) override;
-	void set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class) override;
+	void set_asset_class(Granite::AssetID id, Granite::AssetClass asset_class) override;
 
 	struct Texture
 	{
 		ImageHandle image;
-		Granite::ImageClass image_class = Granite::ImageClass::Zeroable;
+		Granite::AssetClass asset_class = Granite::AssetClass::ImageZeroable;
 	};
 
 	std::mutex lock;
 	std::condition_variable cond;
 
-	std::vector<Texture> textures;
+	std::vector<Texture> assets;
 	std::vector<const ImageView *> views;
-	std::vector<Granite::ImageAssetID> updates;
+	std::vector<Granite::AssetID> updates;
 
 	ImageHandle fallback_color;
 	ImageHandle fallback_normal;
 	ImageHandle fallback_zero;
 	ImageHandle fallback_pbr;
 
-	ImageHandle create_gtx(Granite::FileMappingHandle mapping, Granite::ImageAssetID id);
-	ImageHandle create_gtx(const MemoryMappedTexture &mapping, Granite::ImageAssetID id);
-	ImageHandle create_other(const Granite::FileMapping &mapping, Granite::ImageClass image_class, Granite::ImageAssetID id);
-	const ImageHandle &get_fallback_image(Granite::ImageClass image_class);
+	ImageHandle create_gtx(Granite::FileMappingHandle mapping, Granite::AssetID id);
+	ImageHandle create_gtx(const MemoryMappedTexture &mapping, Granite::AssetID id);
+	ImageHandle create_other(const Granite::FileMapping &mapping, Granite::AssetClass asset_class, Granite::AssetID id);
+	const ImageHandle &get_fallback_image(Granite::AssetClass asset_class);
 
-	void instantiate_image_resource(Granite::AssetManager &manager, Granite::ImageAssetID id, Granite::File &file);
+	void instantiate_asset(Granite::AssetManager &manager, Granite::AssetID id, Granite::File &file);
 };
 }

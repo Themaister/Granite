@@ -117,7 +117,8 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 				                 { "BANDLIMITED_PIXEL_USE_TRANSCENDENTAL", 1 },
 		                 });
 
-		auto texture = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), "assets://textures/sprite.png", ImageClass::Color);
+		auto texture = GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(), "assets://textures/sprite.png",
+		                                                       AssetClass::ImageColor);
 		auto *view = cmd->get_device().get_resource_manager().get_image_view_blocking(texture);
 		cmd->set_texture(2, 0, *view, mode == 0 ? StockSampler::NearestWrap : StockSampler::TrilinearWrap);
 

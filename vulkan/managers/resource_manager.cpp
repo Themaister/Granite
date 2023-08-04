@@ -73,20 +73,21 @@ void ResourceManager::release_asset(Granite::AssetID id)
 {
 	if (id)
 	{
-		auto &a = assets[id.id];
-		if (a.asset_class == Granite::AssetClass::Mesh)
+		std::unique_lock<std::mutex> holder{lock};
+		auto &asset = assets[id.id];
+		if (asset.asset_class == Granite::AssetClass::Mesh)
 		{
-			if (a.mesh.index.count)
+			if (asset.mesh.index.count)
 			{
-				std::lock_guard<std::mutex> holder{mesh_allocator_lock};
-				index_buffer_allocator.free(a.mesh.index);
-				position_buffer_allocator.free(a.mesh.pos);
-				attribute_buffer_allocator.free(a.mesh.attr);
-				a.mesh = {};
+				std::lock_guard<std::mutex> holder_alloc{mesh_allocator_lock};
+				index_buffer_allocator.free(asset.mesh.index);
+				position_buffer_allocator.free(asset.mesh.pos);
+				attribute_buffer_allocator.free(asset.mesh.attr);
+				asset.mesh = {};
 			}
 		}
 		else
-			a.image.reset();
+			asset.image.reset();
 	}
 }
 
@@ -251,8 +252,10 @@ const ImageView *ResourceManager::get_image_view_blocking(Granite::AssetID id)
 		return nullptr;
 	}
 
-	if (assets[id.id].image)
-		return &assets[id.id].image->get_view();
+	auto &asset = assets[id.id];
+
+	if (asset.image)
+		return &asset.image->get_view();
 
 	if (!manager->iterate_blocking(*device->get_system_handles().thread_group, id))
 	{
@@ -260,11 +263,11 @@ const ImageView *ResourceManager::get_image_view_blocking(Granite::AssetID id)
 		return nullptr;
 	}
 
-	cond.wait(holder, [this, id]() -> bool {
-		return bool(assets[id.id].image);
+	cond.wait(holder, [&asset]() -> bool {
+		return bool(asset.image);
 	});
 
-	return &assets[id.id].image->get_view();
+	return &asset.image->get_view();
 }
 
 void ResourceManager::instantiate_asset(Granite::AssetManager &manager_, Granite::TaskGroup *task,
@@ -287,6 +290,17 @@ void ResourceManager::instantiate_asset(Granite::AssetManager &manager_,
                                         Granite::File &file)
 {
 	auto &asset = assets[id.id];
+	if (asset.asset_class == Granite::AssetClass::Mesh)
+		instantiate_asset_mesh(manager_, id, file);
+	else
+		instantiate_asset_image(manager_, id, file);
+}
+
+void ResourceManager::instantiate_asset_image(Granite::AssetManager &manager_,
+                                              Granite::AssetID id,
+                                              Granite::File &file)
+{
+	auto &asset = assets[id.id];
 
 	ImageHandle image;
 	if (file.get_size())
@@ -303,15 +317,14 @@ void ResourceManager::instantiate_asset(Granite::AssetManager &manager_,
 			LOGE("Failed to map file.\n");
 	}
 
-	manager_.update_cost(id, image ? image->get_allocation().get_size() : 0);
-
 	// Have to signal something.
 	if (!image)
 		image = get_fallback_image(asset.asset_class);
 
 	std::lock_guard<std::mutex> holder{lock};
 	updates.push_back(id);
-	assets[id.id].image = std::move(image);
+	asset.image = std::move(image);
+	manager_.update_cost(id, asset.image ? asset.image->get_allocation().get_size() : 0);
 	cond.notify_all();
 }
 

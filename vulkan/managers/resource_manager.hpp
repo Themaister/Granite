@@ -153,6 +153,8 @@ private:
 	const ImageHandle &get_fallback_image(Granite::AssetClass asset_class);
 
 	void instantiate_asset(Granite::AssetManager &manager, Granite::AssetID id, Granite::File &file);
+	void instantiate_asset_image(Granite::AssetManager &manager, Granite::AssetID id, Granite::File &file);
+	void instantiate_asset_mesh(Granite::AssetManager &manager, Granite::AssetID id, Granite::File &file);
 
 	std::mutex mesh_allocator_lock;
 	MeshBufferAllocator index_buffer_allocator;

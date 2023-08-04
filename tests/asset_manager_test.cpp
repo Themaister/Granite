@@ -22,13 +22,13 @@ struct ActivationInterface final : AssetInstantiatorImagesInterface
 		LOGI("Releasing ID: %u\n", id.id);
 	}
 
-	void set_image_id_bounds(uint32_t bound_) override
+	void set_id_bounds(uint32_t bound_) override
 	{
 		bound = bound_;
 		LOGI("ID bound: %u\n", bound);
 	}
 
-	void latch_image_handles() override
+	void latch_handles() override
 	{
 	}
 

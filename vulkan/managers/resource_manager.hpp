@@ -52,12 +52,12 @@ private:
 	Device *device;
 	Granite::AssetManagerImages *manager = nullptr;
 
-	void latch_image_handles() override;
+	void latch_handles() override;
 	uint64_t estimate_cost_image_resource(Granite::ImageAssetID id, Granite::File &file) override;
 	void instantiate_image_resource(Granite::AssetManagerImages &manager, Granite::TaskGroup *task,
 	                                Granite::ImageAssetID id, Granite::File &file) override;
 	void release_image_resource(Granite::ImageAssetID id) override;
-	void set_image_id_bounds(uint32_t bound) override;
+	void set_id_bounds(uint32_t bound) override;
 	void set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class) override;
 
 	struct Texture

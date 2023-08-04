@@ -52,18 +52,7 @@ struct MeshAssetID
 	inline bool operator!=(const MeshAssetID &other) const { return !(*this == other); }
 };
 
-struct MaterialAssetID
-{
-	uint32_t id = uint32_t(-1);
-	MaterialAssetID() = default;
-	explicit MaterialAssetID(uint32_t id_) : id{ id_ } {}
-	explicit inline operator bool() const { return id != uint32_t(-1); }
-	inline bool operator==(const MaterialAssetID &other) const { return id == other.id; }
-	inline bool operator!=(const MaterialAssetID &other) const { return !(*this == other); }
-};
-
 class AssetManagerImages;
-class AssetManagerMeshes;
 
 // If we have to fall back due to no image being present,
 // lets asset instantiator know what to substitute.
@@ -100,21 +89,11 @@ public:
 
 	// Will only be called after an upload completes through manager.update_cost().
 	virtual void release_image_resource(ImageAssetID id) = 0;
-	virtual void set_image_id_bounds(uint32_t bound) = 0;
+	virtual void set_id_bounds(uint32_t bound) = 0;
 	virtual void set_image_class(ImageAssetID id, ImageClass image_class);
 
-	// Called in AssetManagerImages::iterate().
-	virtual void latch_image_handles() = 0;
-};
-
-class AssetInstantiatorMeshesInterface
-{
-public:
-	virtual ~AssetInstantiatorMeshesInterface() = default;
-	virtual void instantiate_mesh_resource(AssetManagerMeshes &manager, TaskGroup *group, MeshAssetID id, File &mapping) = 0;
-	virtual void set_mesh_id_bounds(uint32_t bound) = 0;
-	virtual void release_mesh_resource(MeshAssetID id) = 0;
-	virtual void latch_mesh_handles() = 0;
+	// Called in AssetManager::iterate().
+	virtual void latch_handles() = 0;
 };
 
 class AssetManagerImages final : public AssetManagerImagesInterface
@@ -196,45 +175,5 @@ private:
 
 	void update_costs_locked_assets();
 	void update_lru_locked_assets();
-};
-
-class AssetManagerMeshes final : public AssetManagerMeshesInterface
-{
-public:
-	AssetManagerMeshes();
-	~AssetManagerMeshes() override;
-
-	// FileHandle is intended to be used with FileSlice or similar here so that we don't need
-	// a ton of open files at once.
-	MeshAssetID register_mesh_resource(FileHandle file);
-	MeshAssetID register_mesh_resource(Filesystem &fs, const std::string &path);
-
-	void iterate(ThreadGroup *group);
-
-	void set_asset_instantiator_interface(AssetInstantiatorMeshesInterface *iface);
-
-private:
-	struct AssetInfo : Util::IntrusiveHashMapEnabled<AssetInfo>
-	{
-		uint64_t pending_consumed = 0;
-		uint64_t consumed = 0;
-		uint64_t last_used = 0;
-		FileHandle handle;
-		MeshAssetID id = {};
-		int prio = 0;
-	};
-	uint32_t id_count = 0;
-	std::vector<AssetInfo *> sorted_assets;
-	std::mutex asset_bank_lock;
-	std::vector<AssetInfo *> asset_bank;
-	Util::ObjectPool<AssetInfo> pool;
-	Util::IntrusiveHashMapHolder<AssetInfo> file_to_assets;
-	AssetInstantiatorMeshesInterface *iface = nullptr;
-	uint64_t timestamp = 1;
-	uint64_t total_consumed = 0;
-	uint32_t blocking_signals = 0;
-	std::unique_ptr<TaskSignal> signal;
-
-	MeshAssetID register_mesh_resource_nolock(FileHandle file);
 };
 }

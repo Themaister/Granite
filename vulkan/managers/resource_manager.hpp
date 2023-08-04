@@ -23,13 +23,73 @@
 #pragma once
 
 #include "image.hpp"
+#include "buffer.hpp"
 #include "asset_manager.hpp"
+#include "arena_allocator.hpp"
+#include "small_vector.hpp"
 #include <mutex>
 #include <condition_variable>
 
 namespace Vulkan
 {
 class MemoryMappedTexture;
+
+namespace Internal
+{
+struct SliceAllocator;
+struct AllocatedSlice
+{
+	uint32_t buffer_index = 0;
+	uint32_t offset = 0;
+	uint32_t count = 0;
+	uint32_t mask = 0;
+
+	SliceAllocator *alloc = nullptr;
+	Util::IntrusiveList<Util::LegionHeap<AllocatedSlice>>::Iterator heap = {};
+};
+
+class MeshGlobalAllocator
+{
+public:
+	explicit MeshGlobalAllocator(Device &device);
+	void set_element_size(uint32_t element_size);
+	uint32_t allocate(uint32_t count);
+	void free(uint32_t index);
+
+private:
+	Device &device;
+	uint32_t element_size = 0;
+	Util::SmallVector<BufferHandle> global_buffers;
+};
+
+struct SliceAllocator : Util::ArenaAllocator<SliceAllocator, AllocatedSlice>
+{
+	SliceAllocator *parent = nullptr;
+	MeshGlobalAllocator *global_allocator = nullptr;
+	uint32_t sub_block_size = 0;
+
+	// Implements curious recurring template pattern calls.
+	bool allocate_backing_heap(AllocatedSlice *allocation);
+	void free_backing_heap(AllocatedSlice *allocation);
+	void prepare_allocation(AllocatedSlice *allocation, Util::IntrusiveList<MiniHeap>::Iterator heap,
+	                        const Util::SuballocationResult &suballoc);
+};
+}
+
+class MeshBufferAllocator
+{
+public:
+	explicit MeshBufferAllocator(Device &device);
+	bool allocate(uint32_t count, Internal::AllocatedSlice *slice);
+	void free(const Internal::AllocatedSlice &slice);
+	void set_element_size(uint32_t element_size);
+
+private:
+	Util::ObjectPool<Util::LegionHeap<Internal::AllocatedSlice>> object_pool;
+	Internal::MeshGlobalAllocator global_allocator;
+	enum { SliceAllocatorCount = 4 };
+	Internal::SliceAllocator allocators[SliceAllocatorCount];
+};
 
 class ResourceManager final : private Granite::AssetInstantiatorInterface
 {
@@ -84,5 +144,7 @@ private:
 	const ImageHandle &get_fallback_image(Granite::AssetClass asset_class);
 
 	void instantiate_asset(Granite::AssetManager &manager, Granite::AssetID id, Granite::File &file);
+
+	MeshBufferAllocator index_buffer_allocator;
 };
 }

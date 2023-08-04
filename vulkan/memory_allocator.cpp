@@ -123,8 +123,11 @@ void DeviceAllocation::free_global(DeviceAllocator &allocator, uint32_t size_, u
 	}
 }
 
-void ClassAllocator::prepare_allocation(DeviceAllocation *alloc, MiniHeap &heap, const SuballocationResult &suballoc)
+void ClassAllocator::prepare_allocation(DeviceAllocation *alloc, Util::IntrusiveList<MiniHeap>::Iterator heap_itr,
+                                        const Util::SuballocationResult &suballoc)
 {
+	auto &heap = *heap_itr;
+	alloc->heap = heap_itr;
 	alloc->base = heap.allocation.base;
 	alloc->offset = suballoc.offset + heap.allocation.offset;
 	alloc->mask = suballoc.mask;

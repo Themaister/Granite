@@ -32,7 +32,7 @@
 namespace Vulkan
 {
 ResourceManager::ResourceManager(Device *device_)
-	: device(device_)
+	: device(device_), index_buffer_allocator(*device_)
 {
 }
 
@@ -133,7 +133,7 @@ ImageHandle ResourceManager::create_gtx(const MemoryMappedTexture &mapped_file, 
 	VkComponentMapping swizzle = {};
 	mapped_file.remap_swizzle(swizzle);
 
-	Vulkan::ImageHandle image;
+	ImageHandle image;
 	if (!device->image_format_is_supported(layout.get_format(), VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) &&
 	    format_compression_type(layout.get_format()) != FormatCompressionType::Uncompressed)
 	{
@@ -216,7 +216,7 @@ ImageHandle ResourceManager::create_other(const Granite::FileMapping &mapping, G
 	return create_gtx(tex, id);
 }
 
-const Vulkan::ImageView *ResourceManager::get_image_view_blocking(Granite::AssetID id)
+const ImageView *ResourceManager::get_image_view_blocking(Granite::AssetID id)
 {
 	std::unique_lock<std::mutex> holder{lock};
 
@@ -327,5 +327,132 @@ void ResourceManager::latch_handles()
 		views[update.id] = view;
 	}
 	updates.clear();
+}
+
+MeshBufferAllocator::MeshBufferAllocator(Device &device)
+	: global_allocator(device)
+{
+	for (int i = 0; i < SliceAllocatorCount - 1; i++)
+		allocators[i].parent = &allocators[i + 1];
+	allocators[SliceAllocatorCount - 1].global_allocator = &global_allocator;
+
+	// Basic unit of a meshlet is 256 prims / attributes.
+	// Maximum element count = 32M prims.
+	allocators[0].sub_block_size = 256;
+	for (int i = 1; i < SliceAllocatorCount; i++)
+		allocators[i].sub_block_size = allocators[i - 1].sub_block_size * (Util::LegionAllocator::NumSubBlocks / 2);
+}
+
+void MeshBufferAllocator::set_element_size(uint32_t element_size)
+{
+	global_allocator.set_element_size(element_size);
+}
+
+namespace Internal
+{
+uint32_t MeshGlobalAllocator::allocate(uint32_t count)
+{
+	BufferCreateInfo info = {};
+	info.size = VkDeviceSize(count) * element_size;
+	info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+	             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+	             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	info.domain = BufferDomain::Device;
+	auto buf = device.create_buffer(info);
+
+	for (uint32_t i = 0, n = global_buffers.size(); i < n; i++)
+	{
+		if (!global_buffers[i])
+		{
+			global_buffers[i] = std::move(buf);
+			return i;
+		}
+	}
+
+	// For now, have one global buffer for VBO / IBO.
+	if (!global_buffers.empty())
+		return UINT32_MAX;
+
+	uint32_t ret = global_buffers.size();
+	global_buffers.push_back(std::move(buf));
+	return ret;
+}
+
+void MeshGlobalAllocator::set_element_size(uint32_t element_size_)
+{
+	element_size = element_size_;
+}
+
+void MeshGlobalAllocator::free(uint32_t index)
+{
+	VK_ASSERT(index < global_buffers.size());
+	global_buffers[index].reset();
+}
+
+MeshGlobalAllocator::MeshGlobalAllocator(Device &device_)
+	: device(device_)
+{}
+
+bool SliceAllocator::allocate_backing_heap(AllocatedSlice *allocation)
+{
+	uint32_t count = sub_block_size * Util::LegionAllocator::NumSubBlocks;
+
+	if (parent)
+	{
+		return parent->allocate(count, allocation);
+	}
+	else if (global_allocator)
+	{
+		uint32_t index = global_allocator->allocate(count);
+		if (index == UINT32_MAX)
+			return false;
+
+		*allocation = {};
+		allocation->count = count;
+		allocation->buffer_index = index;
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+void SliceAllocator::free_backing_heap(AllocatedSlice *allocation)
+{
+	if (parent)
+		parent->free(allocation->heap, allocation->mask);
+	else if (global_allocator)
+		global_allocator->free(allocation->buffer_index);
+}
+
+void SliceAllocator::prepare_allocation(AllocatedSlice *allocation, Util::IntrusiveList<MiniHeap>::Iterator heap,
+                                        const Util::SuballocationResult &suballoc)
+{
+	allocation->buffer_index = heap->allocation.buffer_index;
+	allocation->offset = heap->allocation.offset + suballoc.offset;
+	allocation->count = suballoc.size;
+	allocation->mask = suballoc.mask;
+	allocation->heap = heap;
+	allocation->alloc = this;
+}
+}
+
+bool MeshBufferAllocator::allocate(uint32_t count, Internal::AllocatedSlice *slice)
+{
+	for (auto &alloc : allocators)
+		if (count <= alloc.get_max_allocation_size())
+			return alloc.allocate(count, slice);
+
+	LOGE("Allocation of %u elements is too large for MeshBufferAllocator.\n", count);
+	return false;
+}
+
+void MeshBufferAllocator::free(const Internal::AllocatedSlice &slice)
+{
+	if (slice.alloc)
+		slice.alloc->free(slice.heap, slice.mask);
+	else
+		global_allocator.free(slice.buffer_index);
 }
 }

@@ -52,7 +52,7 @@ struct MeshAssetID
 	inline bool operator!=(const MeshAssetID &other) const { return !(*this == other); }
 };
 
-class AssetManagerImages;
+class AssetManager;
 
 // If we have to fall back due to no image being present,
 // lets asset instantiator know what to substitute.
@@ -75,17 +75,17 @@ class ThreadGroup;
 struct TaskGroup;
 struct TaskSignal;
 
-class AssetInstantiatorImagesInterface
+class AssetInstantiatorInterface
 {
 public:
-	virtual ~AssetInstantiatorImagesInterface() = default;
+	virtual ~AssetInstantiatorInterface() = default;
 
 	// This estimate should be an upper bound.
 	virtual uint64_t estimate_cost_image_resource(ImageAssetID id, File &mapping) = 0;
 
 	// When instantiation completes, manager.update_cost() must be called with the real cost.
 	// The real cost may only be known after async parsing of the file.
-	virtual void instantiate_image_resource(AssetManagerImages &manager, TaskGroup *group, ImageAssetID id, File &mapping) = 0;
+	virtual void instantiate_image_resource(AssetManager &manager, TaskGroup *group, ImageAssetID id, File &mapping) = 0;
 
 	// Will only be called after an upload completes through manager.update_cost().
 	virtual void release_image_resource(ImageAssetID id) = 0;
@@ -96,16 +96,16 @@ public:
 	virtual void latch_handles() = 0;
 };
 
-class AssetManagerImages final : public AssetManagerImagesInterface
+class AssetManager final : public AssetManagerInterface
 {
 public:
 	// Persistent prio means the resource is treated as an internal LUT that must always be resident, no matter what.
 	constexpr static int persistent_prio() { return 0x7fffffff; }
 
-	AssetManagerImages();
-	~AssetManagerImages() override;
+	AssetManager();
+	~AssetManager() override;
 
-	void set_asset_instantiator_interface(AssetInstantiatorImagesInterface *iface);
+	void set_asset_instantiator_interface(AssetInstantiatorInterface *iface);
 	void set_image_budget(uint64_t cost);
 	void set_image_budget_per_iteration(uint64_t cost);
 
@@ -152,7 +152,7 @@ private:
 	Util::AtomicAppendBuffer<ImageAssetID> lru_append;
 	Util::IntrusiveHashMapHolder<AssetInfo> file_to_assets;
 
-	AssetInstantiatorImagesInterface *iface = nullptr;
+	AssetInstantiatorInterface *iface = nullptr;
 	uint32_t id_count = 0;
 	uint64_t total_consumed = 0;
 	uint64_t image_budget = 0;

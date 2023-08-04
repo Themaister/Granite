@@ -97,7 +97,7 @@ struct Material
 		{
 			if (!info.paths[i].empty())
 			{
-				textures[i] = GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(
+				textures[i] = GRANITE_ASSET_MANAGER()->register_image_resource(
 						*GRANITE_FILESYSTEM(), info.paths[i], image_classes[i]);
 			}
 		}

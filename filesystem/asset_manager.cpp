@@ -27,21 +27,21 @@
 
 namespace Granite
 {
-AssetManagerImages::AssetManagerImages()
+AssetManager::AssetManager()
 {
 	signal = std::make_unique<TaskSignal>();
 	for (uint64_t i = 0; i < timestamp; i++)
 		signal->signal_increment();
 }
 
-AssetManagerImages::~AssetManagerImages()
+AssetManager::~AssetManager()
 {
 	signal->wait_until_at_least(timestamp);
 	for (auto *a : asset_bank)
 		pool.free(a);
 }
 
-ImageAssetID AssetManagerImages::register_image_resource_nolock(FileHandle file, ImageClass image_class, int prio)
+ImageAssetID AssetManager::register_image_resource_nolock(FileHandle file, ImageClass image_class, int prio)
 {
 	auto *info = pool.allocate();
 	info->handle = std::move(file);
@@ -59,18 +59,17 @@ ImageAssetID AssetManagerImages::register_image_resource_nolock(FileHandle file,
 	return ret;
 }
 
-void AssetInstantiatorImagesInterface::set_image_class(ImageAssetID, ImageClass)
+void AssetInstantiatorInterface::set_image_class(ImageAssetID, ImageClass)
 {
 }
 
-ImageAssetID AssetManagerImages::register_image_resource(FileHandle file, ImageClass image_class, int prio)
+ImageAssetID AssetManager::register_image_resource(FileHandle file, ImageClass image_class, int prio)
 {
 	std::lock_guard<std::mutex> holder{asset_bank_lock};
 	return register_image_resource_nolock(std::move(file), image_class, prio);
 }
 
-ImageAssetID AssetManagerImages::register_image_resource(Filesystem &fs, const std::string &path,
-                                                         ImageClass image_class, int prio)
+ImageAssetID AssetManager::register_image_resource(Filesystem &fs, const std::string &path, ImageClass image_class, int prio)
 {
 	std::lock_guard<std::mutex> holder{asset_bank_lock};
 
@@ -89,13 +88,13 @@ ImageAssetID AssetManagerImages::register_image_resource(Filesystem &fs, const s
 	return id;
 }
 
-void AssetManagerImages::update_cost(ImageAssetID id, uint64_t cost)
+void AssetManager::update_cost(ImageAssetID id, uint64_t cost)
 {
 	std::lock_guard<std::mutex> holder{cost_update_lock};
 	thread_cost_updates.push_back({ id, cost });
 }
 
-void AssetManagerImages::set_asset_instantiator_interface(AssetInstantiatorImagesInterface *iface_)
+void AssetManager::set_asset_instantiator_interface(AssetInstantiatorInterface *iface_)
 {
 	if (iface)
 	{
@@ -121,22 +120,22 @@ void AssetManagerImages::set_asset_instantiator_interface(AssetInstantiatorImage
 	}
 }
 
-void AssetManagerImages::mark_used_resource(ImageAssetID id)
+void AssetManager::mark_used_resource(ImageAssetID id)
 {
 	lru_append.push(id);
 }
 
-void AssetManagerImages::set_image_budget(uint64_t cost)
+void AssetManager::set_image_budget(uint64_t cost)
 {
 	image_budget = cost;
 }
 
-void AssetManagerImages::set_image_budget_per_iteration(uint64_t cost)
+void AssetManager::set_image_budget_per_iteration(uint64_t cost)
 {
 	image_budget_per_iteration = cost;
 }
 
-bool AssetManagerImages::set_image_residency_priority(ImageAssetID id, int prio)
+bool AssetManager::set_image_residency_priority(ImageAssetID id, int prio)
 {
 	std::lock_guard<std::mutex> holder{asset_bank_lock};
 	if (id.id >= asset_bank.size())
@@ -145,7 +144,7 @@ bool AssetManagerImages::set_image_residency_priority(ImageAssetID id, int prio)
 	return true;
 }
 
-void AssetManagerImages::adjust_update(const CostUpdate &update)
+void AssetManager::adjust_update(const CostUpdate &update)
 {
 	if (update.id.id < asset_bank.size())
 	{
@@ -160,12 +159,12 @@ void AssetManagerImages::adjust_update(const CostUpdate &update)
 	}
 }
 
-uint64_t AssetManagerImages::get_current_total_consumed() const
+uint64_t AssetManager::get_current_total_consumed() const
 {
 	return total_consumed;
 }
 
-void AssetManagerImages::update_costs_locked_assets()
+void AssetManager::update_costs_locked_assets()
 {
 	{
 		std::lock_guard<std::mutex> holder_cost{cost_update_lock};
@@ -177,7 +176,7 @@ void AssetManagerImages::update_costs_locked_assets()
 	cost_updates.clear();
 }
 
-void AssetManagerImages::update_lru_locked_assets()
+void AssetManager::update_lru_locked_assets()
 {
 	lru_append.for_each_ranged([this](const ImageAssetID *id, size_t count) {
 		for (size_t i = 0; i < count; i++)
@@ -187,7 +186,7 @@ void AssetManagerImages::update_lru_locked_assets()
 	lru_append.clear();
 }
 
-bool AssetManagerImages::iterate_blocking(ThreadGroup &group, ImageAssetID id)
+bool AssetManager::iterate_blocking(ThreadGroup &group, ImageAssetID id)
 {
 	if (!iface)
 		return false;
@@ -220,7 +219,7 @@ bool AssetManagerImages::iterate_blocking(ThreadGroup &group, ImageAssetID id)
 	return true;
 }
 
-void AssetManagerImages::iterate(ThreadGroup *group)
+void AssetManager::iterate(ThreadGroup *group)
 {
 	if (!iface)
 		return;

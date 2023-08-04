@@ -31,7 +31,7 @@ namespace Vulkan
 {
 class MemoryMappedTexture;
 
-class ResourceManager final : private Granite::AssetInstantiatorImagesInterface
+class ResourceManager final : private Granite::AssetInstantiatorInterface
 {
 public:
 	explicit ResourceManager(Device *device);
@@ -50,11 +50,11 @@ public:
 
 private:
 	Device *device;
-	Granite::AssetManagerImages *manager = nullptr;
+	Granite::AssetManager *manager = nullptr;
 
 	void latch_handles() override;
 	uint64_t estimate_cost_image_resource(Granite::ImageAssetID id, Granite::File &file) override;
-	void instantiate_image_resource(Granite::AssetManagerImages &manager, Granite::TaskGroup *task,
+	void instantiate_image_resource(Granite::AssetManager &manager, Granite::TaskGroup *task,
 	                                Granite::ImageAssetID id, Granite::File &file) override;
 	void release_image_resource(Granite::ImageAssetID id) override;
 	void set_id_bounds(uint32_t bound) override;
@@ -83,6 +83,6 @@ private:
 	ImageHandle create_other(const Granite::FileMapping &mapping, Granite::ImageClass image_class, Granite::ImageAssetID id);
 	const ImageHandle &get_fallback_image(Granite::ImageClass image_class);
 
-	void instantiate_image_resource(Granite::AssetManagerImages &manager, Granite::ImageAssetID id, Granite::File &file);
+	void instantiate_image_resource(Granite::AssetManager &manager, Granite::ImageAssetID id, Granite::File &file);
 };
 }

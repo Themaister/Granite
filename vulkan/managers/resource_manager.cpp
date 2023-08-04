@@ -73,7 +73,7 @@ uint64_t ResourceManager::estimate_cost_image_resource(Granite::ImageAssetID, Gr
 
 void ResourceManager::init()
 {
-	manager = device->get_system_handles().asset_manager_images;
+	manager = device->get_system_handles().asset_manager;
 
 	// Need to initialize these before setting the interface.
 	{
@@ -242,7 +242,7 @@ const Vulkan::ImageView *ResourceManager::get_image_view_blocking(Granite::Image
 	return &textures[id.id].image->get_view();
 }
 
-void ResourceManager::instantiate_image_resource(Granite::AssetManagerImages &manager_, Granite::TaskGroup *task,
+void ResourceManager::instantiate_image_resource(Granite::AssetManager &manager_, Granite::TaskGroup *task,
                                                  Granite::ImageAssetID id, Granite::File &file)
 {
 	if (task)
@@ -257,7 +257,7 @@ void ResourceManager::instantiate_image_resource(Granite::AssetManagerImages &ma
 	}
 }
 
-void ResourceManager::instantiate_image_resource(Granite::AssetManagerImages &manager_,
+void ResourceManager::instantiate_image_resource(Granite::AssetManager &manager_,
                                                  Granite::ImageAssetID id,
                                                  Granite::File &file)
 {

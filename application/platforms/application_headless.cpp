@@ -173,7 +173,7 @@ public:
 		system_handles.filesystem = GRANITE_FILESYSTEM();
 		system_handles.thread_group = GRANITE_THREAD_GROUP();
 		system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
-		system_handles.asset_manager_images = GRANITE_ASSET_MANAGER_IMAGES();
+		system_handles.asset_manager = GRANITE_ASSET_MANAGER();
 		context->set_system_handles(system_handles);
 
 		context->set_num_thread_indices(GRANITE_THREAD_GROUP()->get_num_threads() + 1);

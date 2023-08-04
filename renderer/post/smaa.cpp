@@ -145,10 +145,10 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		return true;
 	});
 
-	auto area = GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(
-			*GRANITE_FILESYSTEM(), "builtin://textures/smaa/area.gtx", ImageClass::Zeroable, AssetManagerImages::persistent_prio());
-	auto search = GRANITE_ASSET_MANAGER_IMAGES()->register_image_resource(
-			*GRANITE_FILESYSTEM(), "builtin://textures/smaa/search.gtx", ImageClass::Zeroable, AssetManagerImages::persistent_prio());
+	auto area = GRANITE_ASSET_MANAGER()->register_image_resource(
+			*GRANITE_FILESYSTEM(), "builtin://textures/smaa/area.gtx", ImageClass::Zeroable, AssetManager::persistent_prio());
+	auto search = GRANITE_ASSET_MANAGER()->register_image_resource(
+			*GRANITE_FILESYSTEM(), "builtin://textures/smaa/search.gtx", ImageClass::Zeroable, AssetManager::persistent_prio());
 
 	smaa_weight.set_build_render_pass([&, area, search, edge = masked_edge, q = smaa_quality](Vulkan::CommandBuffer &cmd) {
 		auto &input_image = graph.get_physical_texture_resource(weight_input_res);

@@ -44,10 +44,10 @@ public:
 	virtual bool load_text_file(const std::string &path, std::string &str) = 0;
 };
 
-class AssetManagerImagesInterface
+class AssetManagerInterface
 {
 public:
-	virtual ~AssetManagerImagesInterface() = default;
+	virtual ~AssetManagerInterface() = default;
 };
 
 class ThreadGroupInterface

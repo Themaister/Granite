@@ -47,9 +47,9 @@ struct FactoryImplementation : Factory
 		return new Filesystem;
 	}
 
-	AssetManagerImagesInterface *create_asset_manager_images() override
+	AssetManagerInterface *create_asset_manager() override
 	{
-		return new AssetManagerImages;
+		return new AssetManager;
 	}
 
 	EventManagerInterface *create_event_manager() override

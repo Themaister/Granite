@@ -109,10 +109,25 @@ static const char magic[8] = { 'M', 'E', 'S', 'H', 'L', 'E', 'T', '1' };
 
 MeshView create_mesh_view(const Granite::FileMapping &mapping);
 
-bool decode_mesh(Vulkan::CommandBuffer &cmd,
-                 const Vulkan::Buffer &ibo, uint64_t ibo_offset,
-                 const Vulkan::Buffer &vbo, uint64_t vbo_offset,
-                 const Vulkan::Buffer &payload, uint64_t payload_offset,
-                 const MeshView &view);
+struct DecodeBuffer
+{
+	const Vulkan::Buffer *buffer;
+	uint64_t offset;
+};
+
+enum DecodeModeFlagBits : uint32_t
+{
+	DECODE_MODE_RAW_PAYLOAD = 1 << 0,
+};
+using DecodeModeFlags = uint32_t;
+
+struct DecodeInfo
+{
+	DecodeBuffer ibo, streams[3], payload;
+	DecodeModeFlags flags;
+	MeshStyle target_style;
+};
+
+bool decode_mesh(Vulkan::CommandBuffer &cmd, const DecodeInfo &decode_info, const MeshView &view);
 }
 }

@@ -55,8 +55,11 @@ struct MeshGlobalAllocator
 	uint32_t allocate(uint32_t count);
 	void free(uint32_t index);
 
+	enum { MaxSoACount = 3 }; // Position, attribute, skinning.
+
 	Device &device;
-	uint32_t element_size = 0;
+	uint32_t element_size[MaxSoACount] = {};
+	uint32_t soa_count = 1;
 	Util::SmallVector<BufferHandle> global_buffers;
 };
 
@@ -79,10 +82,11 @@ public:
 	explicit MeshBufferAllocator(Device &device);
 	bool allocate(uint32_t count, Internal::AllocatedSlice *slice);
 	void free(const Internal::AllocatedSlice &slice);
-	void set_element_size(uint32_t element_size);
-	uint32_t get_element_size() const;
+	void set_soa_count(unsigned soa_count);
+	void set_element_size(unsigned soa_index, uint32_t element_size);
+	uint32_t get_element_size(unsigned soa_index) const;
 
-	const Buffer *get_buffer(unsigned index) const;
+	const Buffer *get_buffer(unsigned index, unsigned soa_index) const;
 
 private:
 	Util::ObjectPool<Util::LegionHeap<Internal::AllocatedSlice>> object_pool;
@@ -128,7 +132,9 @@ public:
 	}
 
 	const Buffer *get_index_buffer() const;
+	const Buffer *get_position_buffer() const;
 	const Buffer *get_attribute_buffer() const;
+	const Buffer *get_skinning_buffer() const;
 
 private:
 	Device *device;

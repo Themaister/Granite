@@ -94,14 +94,18 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		cmd->draw_mesh_tasks(header.meshlet_count, 1, 1);
 #else
 		auto *ibo = device.get_resource_manager().get_index_buffer();
-		auto *vbo = device.get_resource_manager().get_attribute_buffer();
-		if (ibo && vbo)
+		auto *pos = device.get_resource_manager().get_position_buffer();
+		auto *attr = device.get_resource_manager().get_attribute_buffer();
+		if (ibo && pos && attr)
 		{
 			cmd->set_program("assets://shaders/meshlet_debug.vert", "assets://shaders/meshlet_debug.frag");
 			cmd->set_index_buffer(*ibo, 0, VK_INDEX_TYPE_UINT32);
-			cmd->set_vertex_binding(0, *vbo, 0, 6 * sizeof(uint32_t));
-			cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32A32_UINT, 0);
-			cmd->set_vertex_attrib(1, 0, VK_FORMAT_R32G32_UINT, 4 * sizeof(uint32_t));
+			cmd->set_vertex_binding(0, *pos, 0, 12);
+			cmd->set_vertex_binding(1, *attr, 0, 16);
+			cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
+			cmd->set_vertex_attrib(1, 1, VK_FORMAT_A2B10G10R10_SNORM_PACK32, 0);
+			cmd->set_vertex_attrib(2, 1, VK_FORMAT_A2B10G10R10_SNORM_PACK32, 4);
+			cmd->set_vertex_attrib(3, 1, VK_FORMAT_R32G32_SFLOAT, 8);
 
 			auto draw = device.get_resource_manager().get_mesh_indexed_draw(mesh_id);
 			cmd->draw_indexed(draw.indexCount, draw.instanceCount, draw.firstIndex, draw.vertexOffset,

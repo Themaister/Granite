@@ -1,12 +1,13 @@
 #version 450
 
-layout(location = 0) in uvec4 ATTR0;
-layout(location = 1) in uvec2 ATTR1;
+layout(location = 0) in vec3 POS;
+layout(location = 1) in mediump vec3 N;
+layout(location = 2) in mediump vec4 T;
+layout(location = 3) in vec2 UV;
+
 layout(location = 0) out mediump vec3 vNormal;
 layout(location = 1) out mediump vec4 vTangent;
 layout(location = 2) out vec2 vUV;
-
-#include "meshlet_attribute_decode.h"
 
 layout(set = 1, binding = 0) uniform UBO
 {
@@ -15,9 +16,8 @@ layout(set = 1, binding = 0) uniform UBO
 
 void main()
 {
-    vec3 pos = attribute_decode_snorm_exp_position(ATTR0.xy);
-    vNormal = attribute_decode_oct8_normal_tangent(ATTR0.z).xyz;
-    vTangent = attribute_decode_oct8_normal_tangent(ATTR0.w);
-    vUV = attribute_decode_snorm_exp_uv(ATTR1);
-    gl_Position = VP * vec4(pos, 1.0);
+    vNormal = N;
+    vTangent = T;
+    vUV = UV;
+    gl_Position = VP * vec4(POS, 1.0);
 }

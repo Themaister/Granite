@@ -13,27 +13,74 @@
 layout(local_size_x = 32, local_size_y = MESHLET_PAYLOAD_WG_Y) in;
 
 layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS;
+layout(constant_id = 1) const uint NUM_OUTPUT_U32_STREAMS = 1;
+layout(constant_id = 2) const bool RAW_PAYLOAD = false;
 #define MESHLET_PAYLOAD_NUM_U32_STREAMS NUM_U32_STREAMS
 #define MESHLET_PAYLOAD_DESCRIPTOR_SET 0
 #define MESHLET_PAYLOAD_META_BINDING 0
 #define MESHLET_PAYLOAD_STREAM_BINDING 1
-#define MESHLET_PAYLOAD_PAYLOAD_BINDING 4
+#define MESHLET_PAYLOAD_PAYLOAD_BINDING 2
 #include "../inc/meshlet_payload_decode.h"
+#include "../inc/meshlet_attribute_decode.h"
 
-layout(set = 0, binding = 2, std430) writeonly buffer OutputAttributes
-{
-    uint data[];
-} output_payload;
+const int MESH_STYLE = int(NUM_OUTPUT_U32_STREAMS);
+const int MESH_STYLE_WIREFRAME = 0;
+const int MESH_STYLE_UNTEXTURED = 1;
+const int MESH_STYLE_TEXTURED = 2;
+const int MESH_STYLE_SKINNED = 3;
 
 layout(set = 0, binding = 3, scalar) writeonly buffer OutputIndices
 {
     uvec3 data[];
-} output_indices;
+} output_indices32;
 
-layout(set = 0, binding = 5, std430) readonly buffer OutputOffsets
+layout(set = 0, binding = 4, std430) writeonly buffer OutputStream0
+{
+    uint data[];
+} output_stream_raw;
+
+layout(set = 0, binding = 4, scalar) writeonly buffer OutputStreamPos
+{
+    vec3 data[];
+} output_stream_pos;
+
+struct UntexturedAttr
+{
+    uint normal;
+};
+
+layout(set = 0, binding = 5, std430) writeonly buffer OutputStreamUntextured
+{
+    UntexturedAttr data[];
+} output_stream_untextured_attr;
+
+struct TexturedAttr
+{
+    uint normal;
+    uint tangent;
+    vec2 uv;
+};
+
+layout(set = 0, binding = 5, std430) writeonly buffer OutputStreamTextured
+{
+    TexturedAttr data[];
+} output_stream_textured_attr;
+
+layout(set = 0, binding = 6, std430) writeonly buffer OutputStreamSkin
+{
+    uvec2 data[];
+} output_stream_skin;
+
+layout(set = 0, binding = 7, std430) readonly buffer OutputOffsets
 {
     uvec2 data[];
 } output_offset_strides;
+
+uint pack_a2bgr10(vec4 v)
+{
+    ivec4 quantized = ivec4(round(clamp(v, vec4(-1.0), vec4(1.0)) * vec4(511.0, 511.0, 511.0, 1.0))) & ivec4(1023, 1023, 1023, 3);
+    return (quantized.a << 30) | (quantized.b << 20) | (quantized.g << 10) | (quantized.r << 0);
+}
 
 void main()
 {
@@ -44,23 +91,85 @@ void main()
 #define INDEX(linear_index, packed_indices) { \
     uvec3 indices = uvec4(unpack8(packed_indices)).xyz; \
     indices += meta.base_vertex_offset; \
-    uint output_offset = output_offset_strides.data[meshlet_index * NUM_U32_STREAMS].x; \
+    uint output_offset; \
+    if (RAW_PAYLOAD) \
+        output_offset = output_offset_strides.data[meshlet_index * NUM_OUTPUT_U32_STREAMS].x; \
+    else \
+        output_offset = output_offset_strides.data[meshlet_index].x; \
     if (linear_index <= uint(meta.num_primitives_minus_1)) \
-        output_indices.data[output_offset + linear_index] = indices; \
-}
-
-#define ATTR(linear_index, packed_decoded) { \
-    uvec2 output_offset_stride0 = output_offset_strides.data[meshlet_index * NUM_U32_STREAMS + i]; \
-    if (linear_index <= uint(meta.num_attributes_minus_1)) \
-        output_payload.data[output_offset_stride0.x + linear_index * output_offset_stride0.y] = packed_decoded; \
+        output_indices32.data[output_offset + linear_index] = indices; \
 }
 
     {
         MESHLET_DECODE_STREAM_32(meshlet_index, 0, INDEX);
     }
 
-    for (uint i = 1; i < NUM_U32_STREAMS; i++)
+    if (RAW_PAYLOAD)
     {
-        MESHLET_DECODE_STREAM_32(meshlet_index, i, ATTR);
+#define ATTR(linear_index, packed_decoded) { \
+    uvec2 output_offset_stride0 = output_offset_strides.data[meshlet_index * NUM_OUTPUT_U32_STREAMS + i]; \
+    if (linear_index <= uint(meta.num_attributes_minus_1)) \
+        output_stream_raw.data[output_offset_stride0.x + linear_index * output_offset_stride0.y] = packed_decoded; \
+}
+
+        for (uint i = 1; i < NUM_OUTPUT_U32_STREAMS; i++)
+        {
+            MESHLET_DECODE_STREAM_32(meshlet_index, i, ATTR);
+        }
+    }
+    else
+    {
+        uint output_offset = output_offset_strides.data[meshlet_index].y;
+
+#define POS(linear_index, packed_decoded) { \
+    if (linear_index <= uint(meta.num_attributes_minus_1)) \
+        output_stream_pos.data[output_offset + linear_index] = attribute_decode_snorm_exp_position(packed_decoded); \
+}
+
+#define NORMAL(linear_index, packed_decoded) { \
+    if (linear_index <= uint(meta.num_attributes_minus_1)) { \
+        if (MESH_STYLE >= MESH_STYLE_TEXTURED) \
+            output_stream_textured_attr.data[output_offset + linear_index].normal = pack_a2bgr10(attribute_decode_oct8_normal_tangent(packed_decoded)); \
+        else \
+            output_stream_untextured_attr.data[output_offset + linear_index].normal = pack_a2bgr10(attribute_decode_oct8_normal_tangent(packed_decoded)); \
+    } \
+}
+
+#define TANGENT(linear_index, packed_decoded) { \
+    if (linear_index <= uint(meta.num_attributes_minus_1)) { \
+        output_stream_textured_attr.data[output_offset + linear_index].tangent = pack_a2bgr10(attribute_decode_oct8_normal_tangent(packed_decoded)); \
+    } \
+}
+
+#define UV(linear_index, packed_decoded) { \
+    if (linear_index <= uint(meta.num_attributes_minus_1)) { \
+        output_stream_textured_attr.data[output_offset + linear_index].uv = attribute_decode_snorm_exp_uv(packed_decoded); \
+    } \
+}
+
+#define SKIN(linear_index, packed_decoded) { \
+    if (linear_index <= uint(meta.num_attributes_minus_1)) { \
+        output_stream_skin.data[output_offset + linear_index] = packed_decoded; \
+    } \
+}
+        {
+            MESHLET_DECODE_STREAM_64(meshlet_index, 1, POS);
+        }
+
+        if (MESH_STYLE >= MESH_STYLE_UNTEXTURED)
+        {
+            MESHLET_DECODE_STREAM_32(meshlet_index, 3, NORMAL);
+        }
+
+        if (MESH_STYLE >= MESH_STYLE_TEXTURED)
+        {
+            MESHLET_DECODE_STREAM_32(meshlet_index, 4, TANGENT);
+            MESHLET_DECODE_STREAM_64(meshlet_index, 5, UV);
+        }
+
+        if (MESH_STYLE >= MESH_STYLE_SKINNED)
+        {
+            MESHLET_DECODE_STREAM_64(meshlet_index, 7, SKIN);
+        }
     }
 }

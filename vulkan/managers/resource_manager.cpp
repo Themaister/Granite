@@ -38,8 +38,11 @@ ResourceManager::ResourceManager(Device *device_)
 	, attribute_buffer_allocator(*device_)
 {
 	// Simplified style.
-	index_buffer_allocator.set_element_size(sizeof(uint32_t) * 3);
-	attribute_buffer_allocator.set_element_size(sizeof(float) * 3 + sizeof(float) * 2 + sizeof(uint32_t) * 2);
+	index_buffer_allocator.set_element_size(0, sizeof(uint32_t) * 3);
+	attribute_buffer_allocator.set_soa_count(3);
+	attribute_buffer_allocator.set_element_size(0, sizeof(float) * 3);
+	attribute_buffer_allocator.set_element_size(1, sizeof(float) * 2 + sizeof(uint32_t) * 2);
+	attribute_buffer_allocator.set_element_size(2, sizeof(uint32_t) * 2);
 	assets.reserve(Granite::AssetID::MaxIDs);
 }
 
@@ -364,11 +367,24 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 		buf.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 		auto payload = device->create_buffer(buf, view.payload);
 
-		Meshlet::decode_mesh(*cmd, *index_buffer_allocator.get_buffer(0),
-		                     asset.mesh.index.offset * index_buffer_allocator.get_element_size(),
-		                     *attribute_buffer_allocator.get_buffer(0),
-		                     asset.mesh.attr.offset * attribute_buffer_allocator.get_element_size(),
-		                     *payload, 0, view);
+		Meshlet::DecodeInfo info = {};
+		info.target_style = Meshlet::MeshStyle::Textured;
+		info.ibo = {
+			index_buffer_allocator.get_buffer(0, 0),
+			asset.mesh.index.offset * index_buffer_allocator.get_element_size(0),
+		};
+
+		for (unsigned i = 0; i < 3; i++)
+		{
+			info.streams[i] = {
+				attribute_buffer_allocator.get_buffer(0, i),
+				asset.mesh.index.offset * attribute_buffer_allocator.get_element_size(i),
+			};
+		}
+
+		info.payload = { payload.get(), 0 };
+
+		Meshlet::decode_mesh(*cmd, info, view);
 
 		Semaphore sem[2];
 		device->submit(cmd, nullptr, 2, sem);
@@ -381,8 +397,13 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 	}
 
 	uint64_t cost = 0;
-	cost += view.total_primitives * index_buffer_allocator.get_element_size();
-	cost += view.total_vertices * attribute_buffer_allocator.get_element_size();
+	if (ret)
+	{
+		cost += view.total_primitives * index_buffer_allocator.get_element_size(0);
+		cost += view.total_vertices * attribute_buffer_allocator.get_element_size(0);
+		cost += view.total_vertices * attribute_buffer_allocator.get_element_size(1);
+		cost += view.total_vertices * attribute_buffer_allocator.get_element_size(2);
+	}
 
 	std::lock_guard<std::mutex> holder{lock};
 	updates.push_back(id);
@@ -484,12 +505,22 @@ void ResourceManager::latch_handles()
 
 const Buffer *ResourceManager::get_index_buffer() const
 {
-	return index_buffer_allocator.get_buffer(0);
+	return index_buffer_allocator.get_buffer(0, 0);
+}
+
+const Buffer *ResourceManager::get_position_buffer() const
+{
+	return attribute_buffer_allocator.get_buffer(0, 0);
 }
 
 const Buffer *ResourceManager::get_attribute_buffer() const
 {
-	return attribute_buffer_allocator.get_buffer(0);
+	return attribute_buffer_allocator.get_buffer(0, 1);
+}
+
+const Buffer *ResourceManager::get_skinning_buffer() const
+{
+	return attribute_buffer_allocator.get_buffer(0, 2);
 }
 
 MeshBufferAllocator::MeshBufferAllocator(Device &device)
@@ -509,18 +540,29 @@ MeshBufferAllocator::MeshBufferAllocator(Device &device)
 		alloc.set_object_pool(&object_pool);
 }
 
-void MeshBufferAllocator::set_element_size(uint32_t element_size)
+void MeshBufferAllocator::set_soa_count(unsigned soa_count)
 {
-	global_allocator.element_size = element_size;
+	VK_ASSERT(soa_count <= Internal::MeshGlobalAllocator::MaxSoACount);
+	global_allocator.soa_count = soa_count;
 }
 
-uint32_t MeshBufferAllocator::get_element_size() const
+void MeshBufferAllocator::set_element_size(unsigned soa_index, uint32_t element_size)
 {
-	return global_allocator.element_size;
+	VK_ASSERT(soa_index < global_allocator.soa_count);
+	global_allocator.element_size[soa_index] = element_size;
 }
 
-const Buffer *MeshBufferAllocator::get_buffer(unsigned index) const
+uint32_t MeshBufferAllocator::get_element_size(unsigned soa_index) const
 {
+	VK_ASSERT(soa_index < global_allocator.soa_count);
+	return global_allocator.element_size[soa_index];
+}
+
+const Buffer *MeshBufferAllocator::get_buffer(unsigned index, unsigned soa_index) const
+{
+	VK_ASSERT(soa_index < global_allocator.soa_count);
+	index = index * global_allocator.soa_count + soa_index;
+
 	if (index < global_allocator.global_buffers.size())
 		return global_allocator.global_buffers[index].get();
 	else
@@ -532,35 +574,48 @@ namespace Internal
 uint32_t MeshGlobalAllocator::allocate(uint32_t count)
 {
 	BufferCreateInfo info = {};
-	info.size = VkDeviceSize(count) * element_size;
-	info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-	             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-	             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	info.domain = BufferDomain::Device;
-	auto buf = device.create_buffer(info);
 
-	for (uint32_t i = 0, n = global_buffers.size(); i < n; i++)
+	uint32_t target_index = UINT32_MAX;
+	uint32_t search_index = 0;
+
+	for (uint32_t i = 0, n = global_buffers.size(); i < n; i += soa_count, search_index++)
 	{
 		if (!global_buffers[i])
 		{
-			global_buffers[i] = std::move(buf);
-			return i;
+			target_index = search_index;
+			break;
 		}
 	}
 
-	// For now, have one global buffer for VBO / IBO.
-	if (!global_buffers.empty())
-		return UINT32_MAX;
+	if (target_index == UINT32_MAX)
+	{
+		if (!global_buffers.empty())
+			return UINT32_MAX;
 
-	uint32_t ret = global_buffers.size();
-	global_buffers.push_back(std::move(buf));
-	return ret;
+		target_index = search_index;
+		for (uint32_t i = 0; i < soa_count; i++)
+			global_buffers.emplace_back();
+	}
+
+	for (uint32_t soa_index = 0; soa_index < soa_count; soa_index++)
+	{
+		info.size = VkDeviceSize(count) * element_size[soa_index];
+		info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+		             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+		             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+		info.domain = BufferDomain::Device;
+		global_buffers[target_index * soa_count + soa_index] = device.create_buffer(info);
+	}
+
+	return target_index;
 }
 
 void MeshGlobalAllocator::free(uint32_t index)
 {
+	index *= soa_count;
 	VK_ASSERT(index < global_buffers.size());
-	global_buffers[index].reset();
+	for (uint32_t i = 0; i < soa_count; i++)
+		global_buffers[index + i].reset();
 }
 
 MeshGlobalAllocator::MeshGlobalAllocator(Device &device_)

@@ -85,11 +85,7 @@ MeshView create_mesh_view(const Granite::FileMapping &mapping)
 	return view;
 }
 
-bool decode_mesh(CommandBuffer &cmd,
-                 const Buffer &ibo, uint64_t ibo_offset,
-                 const Buffer &vbo, uint64_t vbo_offset,
-                 const Buffer &payload, uint64_t payload_offset,
-                 const MeshView &view)
+bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &view)
 {
 	// TODO: Implement LDS fallback.
 	if (!cmd.get_device().supports_subgroup_size_log2(true, 5, 5))
@@ -98,7 +94,17 @@ bool decode_mesh(CommandBuffer &cmd,
 		return false;
 	}
 
-	const uint32_t u32_stride = view.format_header->u32_stream_count - 1;
+	if (!info.streams[0].buffer)
+	{
+		LOGE("Decode stream 0 must be set.\n");
+		return false;
+	}
+
+	if (!info.ibo.buffer)
+	{
+		LOGE("Output IBO must be set.\n");
+		return false;
+	}
 
 	BufferCreateInfo buf_info = {};
 	buf_info.domain = BufferDomain::LinkedDeviceHost;
@@ -110,22 +116,10 @@ bool decode_mesh(CommandBuffer &cmd,
 	buf_info.size = view.format_header->meshlet_count * view.format_header->u32_stream_count * sizeof(*view.streams);
 	auto meshlet_stream_buffer = cmd.get_device().create_buffer(buf_info, view.streams);
 
-	struct OffsetStride { uint32_t offset, stride; };
-	std::vector<OffsetStride> output_offset_strides;
-	output_offset_strides.reserve(view.format_header->meshlet_count * view.format_header->u32_stream_count);
-
-	uint32_t index_count = 0;
-	for (uint32_t i = 0; i < view.format_header->meshlet_count; i++)
-	{
-		output_offset_strides.push_back({ index_count, 0 });
-		index_count += view.headers[i].num_primitives_minus_1 + 1;
-		for (uint32_t j = 1; j < view.format_header->u32_stream_count; j++)
-			output_offset_strides.push_back({ view.headers[i].base_vertex_offset * u32_stride + (j - 1), u32_stride });
-	}
-
-	buf_info.domain = BufferDomain::LinkedDeviceHost;
-	buf_info.size = output_offset_strides.size() * sizeof(OffsetStride);
-	auto output_offset_strides_buffer = cmd.get_device().create_buffer(buf_info, output_offset_strides.data());
+	// For Raw mode -> offset/stride
+	// For typed mode -> index offset / vertex offset
+	struct DecodeOffset { uint32_t arg0, arg1; };
+	std::vector<DecodeOffset> decode_offsets;
 
 	cmd.set_program("builtin://shaders/decode/meshlet_decode.comp");
 	cmd.enable_subgroup_size_control(true);
@@ -133,12 +127,106 @@ bool decode_mesh(CommandBuffer &cmd,
 
 	cmd.set_storage_buffer(0, 0, *meshlet_meta_buffer);
 	cmd.set_storage_buffer(0, 1, *meshlet_stream_buffer);
-	cmd.set_storage_buffer(0, 2, vbo, vbo_offset, view.total_vertices * u32_stride * sizeof(uint32_t));
-	cmd.set_storage_buffer(0, 3, ibo, ibo_offset, view.total_primitives * 3 * sizeof(uint32_t));
-	cmd.set_storage_buffer(0, 4, payload, payload_offset, view.format_header->payload_size_words * sizeof(uint32_t));
-	cmd.set_storage_buffer(0, 5, *output_offset_strides_buffer);
-	cmd.set_specialization_constant_mask(1);
+	cmd.set_storage_buffer(0, 2, *info.payload.buffer,
+	                       info.payload.offset,
+	                       view.format_header->payload_size_words * sizeof(uint32_t));
+	cmd.set_storage_buffer(0, 3, *info.ibo.buffer, info.ibo.offset, view.total_primitives * sizeof(uint32_t) * 3);
+
+	cmd.set_specialization_constant_mask(0x7);
 	cmd.set_specialization_constant(0, view.format_header->u32_stream_count);
+	cmd.set_specialization_constant(2, (info.flags & DECODE_MODE_RAW_PAYLOAD) != 0);
+
+	if ((info.flags & DECODE_MODE_RAW_PAYLOAD) != 0)
+	{
+		uint32_t output_u32_streams;
+		switch (info.target_style)
+		{
+		case MeshStyle::Wireframe:
+			output_u32_streams = 2;
+			break;
+
+		case MeshStyle::Untextured:
+			output_u32_streams = 3;
+			break;
+
+		case MeshStyle::Textured:
+			output_u32_streams = 6;
+			break;
+
+		case MeshStyle::Skinned:
+			output_u32_streams = 8;
+			break;
+
+		default:
+			return false;
+		}
+
+		if (output_u32_streams + 1 > view.format_header->u32_stream_count)
+		{
+			LOGE("Trying to decode more streams than exist in payload.\n");
+			return false;
+		}
+
+		for (unsigned i = 0; i < 3; i++)
+		{
+			cmd.set_storage_buffer(0, 4 + i, *info.streams[0].buffer, info.streams[0].offset,
+			                       view.total_vertices * output_u32_streams * sizeof(uint32_t));
+		}
+
+		decode_offsets.reserve(view.format_header->meshlet_count * (output_u32_streams + 1));
+		uint32_t index_count = 0;
+
+		for (uint32_t i = 0; i < view.format_header->meshlet_count; i++)
+		{
+			decode_offsets.push_back({ index_count, 0 });
+			index_count += view.headers[i].num_primitives_minus_1 + 1;
+			for (uint32_t j = 0; j < output_u32_streams; j++)
+				decode_offsets.push_back({ view.headers[i].base_vertex_offset * output_u32_streams + j, output_u32_streams });
+		}
+
+		cmd.set_specialization_constant(1, output_u32_streams + 1);
+	}
+	else
+	{
+		for (unsigned i = 0; i < 3; i++)
+			cmd.set_storage_buffer(0, 4 + i, *info.streams[0].buffer);
+
+		switch (info.target_style)
+		{
+		case MeshStyle::Skinned:
+			cmd.set_storage_buffer(0, 6, *info.streams[2].buffer, info.streams[2].offset,
+			                       view.total_vertices * sizeof(uint32_t) * 2);
+			// Fallthrough
+		case MeshStyle::Untextured:
+		case MeshStyle::Textured:
+			cmd.set_storage_buffer(0, 5, *info.streams[1].buffer, info.streams[1].offset,
+			                       view.total_vertices * sizeof(uint32_t) *
+			                       (info.target_style == MeshStyle::Textured ? 4 : 1));
+			// Fallthrough
+		case MeshStyle::Wireframe:
+			cmd.set_storage_buffer(0, 4, *info.streams[0].buffer, info.streams[0].offset,
+			                       view.total_vertices * sizeof(float) * 3);
+			break;
+
+		default:
+			return false;
+		}
+
+		decode_offsets.reserve(view.format_header->meshlet_count);
+		uint32_t index_count = 0;
+		for (uint32_t i = 0; i < view.format_header->meshlet_count; i++)
+		{
+			decode_offsets.push_back({ index_count, view.headers[i].base_vertex_offset });
+			index_count += view.headers[i].num_primitives_minus_1 + 1;
+		}
+		cmd.set_specialization_constant(1, uint32_t(info.target_style));
+	}
+
+	buf_info.domain = BufferDomain::LinkedDeviceHost;
+	buf_info.size = decode_offsets.size() * sizeof(DecodeOffset);
+	auto output_offset_strides_buffer = cmd.get_device().create_buffer(buf_info, decode_offsets.data());
+
+	cmd.set_storage_buffer(0, 7, *output_offset_strides_buffer);
 
 	// TODO: Split dispatches for big chungus meshes.
 	// (Starts to become a problem around 8-16 million primitives per dispatch).

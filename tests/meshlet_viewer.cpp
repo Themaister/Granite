@@ -36,6 +36,7 @@
 
 using namespace Granite;
 using namespace Vulkan;
+using namespace Vulkan::Meshlet;
 
 struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 {
@@ -62,13 +63,13 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 	Vulkan::BufferHandle meshlet_stream_buffer;
 	AABB aabb;
 	FPSCamera camera;
-	SceneFormats::Meshlet::FormatHeader header;
+	FormatHeader header;
 
 	void on_device_create(const DeviceCreatedEvent &e)
 	{
 		e.get_device().get_shader_manager().add_include_directory("builtin://shaders/inc");
 
-		auto view = SceneFormats::Meshlet::create_mesh_view(*mapping);
+		auto view = create_mesh_view(*mapping);
 		if (!view.format_header)
 			throw std::runtime_error("Failed to load meshlet.");
 
@@ -91,7 +92,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		payload = e.get_device().create_buffer(info, view.payload);
 
 		auto cmd = e.get_device().request_command_buffer();
-		if (!SceneFormats::Meshlet::decode_mesh(*cmd, *ibo, 0, *vbo, 0, *payload, 0, view))
+		if (!decode_mesh(*cmd, *ibo, 0, *vbo, 0, *payload, 0, view))
 		{
 			e.get_device().submit_discard(cmd);
 			throw std::runtime_error("Failed to decode mesh.\n");

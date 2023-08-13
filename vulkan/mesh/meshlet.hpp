@@ -23,8 +23,11 @@
 #pragma once
 
 #include <stdint.h>
-#include "filesystem.hpp"
-#include "math.hpp"
+
+namespace Granite
+{
+class FileMapping;
+}
 
 namespace Vulkan
 {
@@ -32,9 +35,7 @@ class CommandBuffer;
 class Buffer;
 }
 
-namespace Granite
-{
-namespace SceneFormats
+namespace Vulkan
 {
 // MESHLET1 format.
 namespace Meshlet
@@ -61,9 +62,9 @@ struct Header
 
 struct Bound
 {
-	vec3 center;
+	float center[3];
 	float radius;
-	i8vec4 cone_axis_cutoff;
+	int8_t cone_axis_cutoff[4];
 };
 
 enum class StreamType
@@ -106,13 +107,12 @@ struct MeshView
 
 static const char magic[8] = { 'M', 'E', 'S', 'H', 'L', 'E', 'T', '1' };
 
-MeshView create_mesh_view(const FileMapping &mapping);
+MeshView create_mesh_view(const Granite::FileMapping &mapping);
 
 bool decode_mesh(Vulkan::CommandBuffer &cmd,
                  const Vulkan::Buffer &ibo, uint64_t ibo_offset,
                  const Vulkan::Buffer &vbo, uint64_t vbo_offset,
                  const Vulkan::Buffer &payload, uint64_t payload_offset,
                  const MeshView &view);
-}
 }
 }

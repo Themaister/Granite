@@ -36,7 +36,7 @@ namespace Granite
 struct AssetID
 {
 	uint32_t id = uint32_t(-1);
-	enum { MaxIDs = 1u << 20 };
+	enum { MaxIDs = 1u << 18 };
 	AssetID() = default;
 	explicit AssetID(uint32_t id_) : id{id_} {}
 	explicit inline operator bool() const { return id != uint32_t(-1); }

@@ -31,6 +31,6 @@ namespace Granite
 {
 namespace Meshlet
 {
-bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, SceneFormats::Meshlet::MeshStyle style);
+bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Vulkan::Meshlet::MeshStyle style);
 }
 }

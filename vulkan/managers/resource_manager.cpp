@@ -28,19 +28,18 @@
 #include "texture_decoder.hpp"
 #include "string_helpers.hpp"
 #include "thread_group.hpp"
+#include "meshlet.hpp"
 
 namespace Vulkan
 {
 ResourceManager::ResourceManager(Device *device_)
 	: device(device_)
 	, index_buffer_allocator(*device_)
-	, position_buffer_allocator(*device_)
 	, attribute_buffer_allocator(*device_)
 {
 	// Simplified style.
 	index_buffer_allocator.set_element_size(sizeof(uint32_t) * 3);
-	position_buffer_allocator.set_element_size(sizeof(float) * 3);
-	attribute_buffer_allocator.set_element_size(sizeof(float) * 2 + sizeof(uint32_t) * 2);
+	attribute_buffer_allocator.set_element_size(sizeof(float) * 3 + sizeof(float) * 2 + sizeof(uint32_t) * 2);
 	assets.reserve(Granite::AssetID::MaxIDs);
 }
 
@@ -56,7 +55,6 @@ void ResourceManager::set_id_bounds(uint32_t bound)
 	// We must avoid reallocation here to avoid a ton of extra silly locking.
 	VK_ASSERT(bound <= Granite::AssetID::MaxIDs);
 	assets.resize(bound);
-	views.resize(bound);
 }
 
 void ResourceManager::set_asset_class(Granite::AssetID id, Granite::AssetClass asset_class)
@@ -64,8 +62,14 @@ void ResourceManager::set_asset_class(Granite::AssetID id, Granite::AssetClass a
 	if (id)
 	{
 		assets[id.id].asset_class = asset_class;
-		if (!views[id.id])
-			views[id.id] = &get_fallback_image(asset_class)->get_view();
+		if (asset_class != Granite::AssetClass::Mesh)
+		{
+			std::unique_lock<std::mutex> holder{lock};
+			views.resize(assets.size());
+
+			if (!views[id.id])
+				views[id.id] = &get_fallback_image(asset_class)->get_view();
+		}
 	}
 }
 
@@ -75,13 +79,13 @@ void ResourceManager::release_asset(Granite::AssetID id)
 	{
 		std::unique_lock<std::mutex> holder{lock};
 		auto &asset = assets[id.id];
+		asset.latchable = false;
 		if (asset.asset_class == Granite::AssetClass::Mesh)
 		{
 			if (asset.mesh.index.count)
 			{
 				std::lock_guard<std::mutex> holder_alloc{mesh_allocator_lock};
 				index_buffer_allocator.free(asset.mesh.index);
-				position_buffer_allocator.free(asset.mesh.pos);
 				attribute_buffer_allocator.free(asset.mesh.attr);
 				asset.mesh = {};
 			}
@@ -91,10 +95,18 @@ void ResourceManager::release_asset(Granite::AssetID id)
 	}
 }
 
-uint64_t ResourceManager::estimate_cost_asset(Granite::AssetID, Granite::File &file)
+uint64_t ResourceManager::estimate_cost_asset(Granite::AssetID id, Granite::File &file)
 {
-	// TODO: When we get compressed BC/ASTC, this will have to change.
-	return file.get_size();
+	if (assets[id.id].asset_class == Granite::AssetClass::Mesh)
+	{
+		// Compression factor of 2x is reasonable to assume.
+		return file.get_size() * 2;
+	}
+	else
+	{
+		// TODO: When we get compressed BC/ASTC, this will have to change.
+		return file.get_size();
+	}
 }
 
 void ResourceManager::init()
@@ -129,7 +141,7 @@ void ResourceManager::init()
 		HeapBudget budget[VK_MAX_MEMORY_HEAPS] = {};
 		device->get_memory_budget(budget);
 
-		// Try to set aside 50% of budgetable VRAM for the texture manager. Seems reasonable.
+		// Try to set aside 50% of budgetable VRAM for the resource manager. Seems reasonable.
 		VkDeviceSize size = 0;
 		for (uint32_t i = 0; i < device->get_memory_properties().memoryHeapCount; i++)
 			if ((device->get_memory_properties().memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0)
@@ -264,7 +276,7 @@ const ImageView *ResourceManager::get_image_view_blocking(Granite::AssetID id)
 	}
 
 	cond.wait(holder, [&asset]() -> bool {
-		return bool(asset.image);
+		return bool(asset.latchable);
 	});
 
 	return &asset.image->get_view();
@@ -296,6 +308,89 @@ void ResourceManager::instantiate_asset(Granite::AssetManager &manager_,
 		instantiate_asset_image(manager_, id, file);
 }
 
+bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::MeshView &view)
+{
+	if (!view.format_header)
+		return false;
+
+	Internal::AllocatedSlice index_slice, attribute_slice;
+	{
+		std::lock_guard<std::mutex> holder{mesh_allocator_lock};
+		if (!index_buffer_allocator.allocate(view.total_primitives, &index_slice))
+			return false;
+
+		if (!attribute_buffer_allocator.allocate(view.total_vertices, &attribute_slice))
+		{
+			index_buffer_allocator.free(index_slice);
+			return false;
+		}
+	}
+
+	auto &asset = assets[id.id];
+	asset.mesh.index = index_slice;
+	asset.mesh.attr = attribute_slice;
+	return true;
+}
+
+void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
+                                             Granite::AssetID id,
+                                             Granite::File &file)
+{
+	Granite::FileMappingHandle mapping;
+	if (file.get_size())
+		mapping = file.map();
+
+	Meshlet::MeshView view = {};
+	if (mapping)
+		view = Meshlet::create_mesh_view(*mapping);
+	bool ret = allocate_asset_mesh(id, view);
+
+	// Decode the meshlet. Later, we'll have to do a lot of device specific stuff here to select optimal
+	// processing:
+	// - Native meshlets
+	// - Encoded attribute
+	// - Decoded attributes
+	// - Optimize for multi-draw-indirect or not? (8-bit indices).
+
+	auto &asset = assets[id.id];
+
+	if (ret)
+	{
+		auto cmd = device->request_command_buffer(CommandBuffer::Type::AsyncCompute);
+
+		BufferCreateInfo buf = {};
+		buf.domain = BufferDomain::Host;
+		buf.size = view.format_header->payload_size_words * sizeof(uint32_t);
+		buf.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		auto payload = device->create_buffer(buf, view.payload);
+
+		Meshlet::decode_mesh(*cmd, *index_buffer_allocator.get_buffer(0),
+		                     asset.mesh.index.offset * index_buffer_allocator.get_element_size(),
+		                     *attribute_buffer_allocator.get_buffer(0),
+		                     asset.mesh.attr.offset * attribute_buffer_allocator.get_element_size(),
+		                     *payload, 0, view);
+
+		Semaphore sem[2];
+		device->submit(cmd, nullptr, 2, sem);
+		device->add_wait_semaphore(CommandBuffer::Type::Generic, std::move(sem[0]),
+		                           VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT |
+		                           VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT, false);
+		device->add_wait_semaphore(CommandBuffer::Type::AsyncGraphics, std::move(sem[1]),
+		                           VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT |
+		                           VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT, false);
+	}
+
+	uint64_t cost = 0;
+	cost += view.total_primitives * index_buffer_allocator.get_element_size();
+	cost += view.total_vertices * attribute_buffer_allocator.get_element_size();
+
+	std::lock_guard<std::mutex> holder{lock};
+	updates.push_back(id);
+	manager_.update_cost(id, ret ? cost : 0);
+	asset.latchable = true;
+	cond.notify_all();
+}
+
 void ResourceManager::instantiate_asset_image(Granite::AssetManager &manager_,
                                               Granite::AssetID id,
                                               Granite::File &file)
@@ -324,6 +419,7 @@ void ResourceManager::instantiate_asset_image(Granite::AssetManager &manager_,
 	std::lock_guard<std::mutex> holder{lock};
 	updates.push_back(id);
 	asset.image = std::move(image);
+	asset.latchable = true;
 	manager_.update_cost(id, asset.image ? asset.image->get_allocation().get_size() : 0);
 	cond.notify_all();
 }
@@ -347,24 +443,41 @@ const ImageHandle &ResourceManager::get_fallback_image(Granite::AssetClass asset
 void ResourceManager::latch_handles()
 {
 	std::lock_guard<std::mutex> holder{lock};
+
+	views.resize(assets.size());
+	draws.resize(assets.size());
+
 	for (auto &update : updates)
 	{
 		if (update.id >= views.size())
 			continue;
+		auto &asset = assets[update.id];
 
-		const ImageView *view;
-
-		if (assets[update.id].image)
+		if (asset.asset_class == Granite::AssetClass::Mesh)
 		{
-			view = &assets[update.id].image->get_view();
+			auto &d = draws[update.id];
+			d.firstIndex = asset.mesh.index.offset * 3;
+			d.indexCount = asset.mesh.index.count * 3;
+			d.firstInstance = 0;
+			d.instanceCount = 1;
+			d.vertexOffset = int32_t(asset.mesh.attr.offset);
 		}
 		else
 		{
-			auto &img = get_fallback_image(assets[update.id].asset_class);
-			view = &img->get_view();
-		}
+			const ImageView *view;
 
-		views[update.id] = view;
+			if (asset.image)
+			{
+				view = &asset.image->get_view();
+			}
+			else
+			{
+				auto &img = get_fallback_image(asset.asset_class);
+				view = &img->get_view();
+			}
+
+			views[update.id] = view;
+		}
 	}
 	updates.clear();
 }
@@ -374,14 +487,19 @@ const Buffer *ResourceManager::get_index_buffer() const
 	return index_buffer_allocator.get_buffer(0);
 }
 
-const Buffer *ResourceManager::get_position_buffer() const
-{
-	return position_buffer_allocator.get_buffer(0);
-}
-
 const Buffer *ResourceManager::get_attribute_buffer() const
 {
 	return attribute_buffer_allocator.get_buffer(0);
+}
+
+static const VkDrawIndexedIndirectCommand empty_draw = {};
+
+const VkDrawIndexedIndirectCommand &ResourceManager::get_mesh_indexed_draw(Granite::AssetID id) const
+{
+	if (id.id < draws.size())
+		return draws[id.id];
+	else
+		return empty_draw;
 }
 
 MeshBufferAllocator::MeshBufferAllocator(Device &device)
@@ -400,7 +518,12 @@ MeshBufferAllocator::MeshBufferAllocator(Device &device)
 
 void MeshBufferAllocator::set_element_size(uint32_t element_size)
 {
-	global_allocator.set_element_size(element_size);
+	global_allocator.element_size = element_size;
+}
+
+uint32_t MeshBufferAllocator::get_element_size() const
+{
+	return global_allocator.element_size;
 }
 
 const Buffer *MeshBufferAllocator::get_buffer(unsigned index) const
@@ -439,11 +562,6 @@ uint32_t MeshGlobalAllocator::allocate(uint32_t count)
 	uint32_t ret = global_buffers.size();
 	global_buffers.push_back(std::move(buf));
 	return ret;
-}
-
-void MeshGlobalAllocator::set_element_size(uint32_t element_size_)
-{
-	element_size = element_size_;
 }
 
 void MeshGlobalAllocator::free(uint32_t index)

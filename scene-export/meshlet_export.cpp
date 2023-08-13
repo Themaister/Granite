@@ -31,7 +31,7 @@ namespace Granite
 {
 namespace Meshlet
 {
-using namespace ::Granite::SceneFormats::Meshlet;
+using namespace Vulkan::Meshlet;
 
 struct Metadata : Header
 {
@@ -583,7 +583,7 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 	return true;
 }
 
-bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, SceneFormats::Meshlet::MeshStyle style)
+bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, MeshStyle style)
 {
 	if (!mesh_optimize_index_buffer(mesh, {}))
 		return false;
@@ -595,10 +595,10 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Sc
 
 	switch (style)
 	{
-	case SceneFormats::Meshlet::MeshStyle::Skinned:
+	case MeshStyle::Skinned:
 		LOGE("Unimplemented.\n");
 		return false;
-	case SceneFormats::Meshlet::MeshStyle::Textured:
+	case MeshStyle::Textured:
 		uv = mesh_extract_uv_snorm_scale(mesh);
 		num_u32_streams += 2;
 		if (uv.empty())
@@ -607,7 +607,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Sc
 			return false;
 		}
 		// Fallthrough
-	case SceneFormats::Meshlet::MeshStyle::Untextured:
+	case MeshStyle::Untextured:
 		normals = mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Normal);
 		tangent = mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Tangent);
 		if (normals.empty() || tangent.empty())
@@ -617,7 +617,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Sc
 		}
 		num_u32_streams += 2;
 		// Fallthrough
-	case SceneFormats::Meshlet::MeshStyle::Wireframe:
+	case MeshStyle::Wireframe:
 		positions = mesh_extract_position_snorm_exp(mesh);
 		if (positions.empty())
 		{
@@ -723,12 +723,10 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Sc
 	const auto *pbounds = bounds.data();
 	for (auto &meshlet: encoded.mesh.meshlets)
 	{
-		meshlet.bound.center = vec3(
-				pbounds->center[0], pbounds->center[1], pbounds->center[2]);
+		memcpy(meshlet.bound.center, pbounds->center, sizeof(float) * 3);
 		meshlet.bound.radius = pbounds->radius;
-		meshlet.bound.cone_axis_cutoff = i8vec4(
-				pbounds->cone_axis_s8[0], pbounds->cone_axis_s8[1],
-				pbounds->cone_axis_s8[2], pbounds->cone_cutoff_s8);
+		memcpy(meshlet.bound.cone_axis_cutoff, pbounds->cone_axis_s8, sizeof(pbounds->cone_axis_s8));
+		meshlet.bound.cone_axis_cutoff[3] = pbounds->cone_cutoff_s8;
 	}
 
 	return export_encoded_mesh(path, encoded);

@@ -25,6 +25,7 @@
 #include "image.hpp"
 #include "buffer.hpp"
 #include "asset_manager.hpp"
+#include "meshlet.hpp"
 #include "arena_allocator.hpp"
 #include "small_vector.hpp"
 #include <mutex>
@@ -51,7 +52,6 @@ struct AllocatedSlice
 struct MeshGlobalAllocator
 {
 	explicit MeshGlobalAllocator(Device &device);
-	void set_element_size(uint32_t element_size);
 	uint32_t allocate(uint32_t count);
 	void free(uint32_t index);
 
@@ -81,6 +81,7 @@ public:
 	bool allocate(uint32_t count, Internal::AllocatedSlice *slice);
 	void free(const Internal::AllocatedSlice &slice);
 	void set_element_size(uint32_t element_size);
+	uint32_t get_element_size() const;
 
 	const Buffer *get_buffer(unsigned index) const;
 
@@ -108,9 +109,8 @@ public:
 
 	const Vulkan::ImageView *get_image_view_blocking(Granite::AssetID id);
 
-	VkDrawIndexedIndirectCommand get_mesh_indexed_draw(Granite::AssetID id) const;
+	const VkDrawIndexedIndirectCommand &get_mesh_indexed_draw(Granite::AssetID id) const;
 	const Buffer *get_index_buffer() const;
-	const Buffer *get_position_buffer() const;
 	const Buffer *get_attribute_buffer() const;
 
 private:
@@ -130,9 +130,10 @@ private:
 		ImageHandle image;
 		struct
 		{
-			Internal::AllocatedSlice index, pos, attr;
+			Internal::AllocatedSlice index, attr;
 		} mesh;
 		Granite::AssetClass asset_class = Granite::AssetClass::ImageZeroable;
+		bool latchable = false;
 	};
 
 	std::mutex lock;
@@ -140,6 +141,7 @@ private:
 
 	std::vector<Asset> assets;
 	std::vector<const ImageView *> views;
+	std::vector<VkDrawIndexedIndirectCommand> draws;
 	std::vector<Granite::AssetID> updates;
 
 	ImageHandle fallback_color;
@@ -158,7 +160,8 @@ private:
 
 	std::mutex mesh_allocator_lock;
 	MeshBufferAllocator index_buffer_allocator;
-	MeshBufferAllocator position_buffer_allocator;
 	MeshBufferAllocator attribute_buffer_allocator;
+
+	bool allocate_asset_mesh(Granite::AssetID id, const Meshlet::MeshView &view);
 };
 }

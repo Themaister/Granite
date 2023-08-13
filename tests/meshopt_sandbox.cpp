@@ -10,10 +10,11 @@
 #include "meshlet.hpp"
 #include <assert.h>
 using namespace Granite;
+using namespace Vulkan::Meshlet;
 
 static void decode_mesh_setup_buffers(
 		std::vector<uint32_t> &out_index_buffer, std::vector<uint32_t> &out_u32_stream,
-		const SceneFormats::Meshlet::MeshView &mesh)
+		const MeshView &mesh)
 {
 	assert(mesh.format_header->u32_stream_count > 1);
 
@@ -24,7 +25,7 @@ static void decode_mesh_setup_buffers(
 }
 
 static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uint32_t> &out_u32_stream,
-                        const SceneFormats::Meshlet::MeshView &mesh)
+                        const MeshView &mesh)
 {
 	decode_mesh_setup_buffers(out_index_buffer, out_u32_stream, mesh);
 	out_index_buffer.clear();
@@ -38,7 +39,7 @@ static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uin
 			auto &stream = mesh.streams[meshlet_index * mesh.format_header->u32_stream_count + stream_index];
 			const uint32_t *pdata = mesh.payload + stream.offset_from_base_u32;
 
-			u8vec4 deltas[SceneFormats::Meshlet::MaxElements] = {};
+			u8vec4 deltas[MaxElements] = {};
 			const u16vec4 base_predictor = u16vec4(
 					stream.predictor[0], stream.predictor[1],
 					stream.predictor[2], stream.predictor[3]);
@@ -48,7 +49,7 @@ static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uin
 			const u8vec4 initial_value =
 					u8vec4(u16vec2(stream.predictor[8], stream.predictor[9]).xxyy() >> u16vec4(0, 8, 0, 8));
 
-			for (unsigned chunk = 0; chunk < (SceneFormats::Meshlet::MaxElements / 32); chunk++)
+			for (unsigned chunk = 0; chunk < (MaxElements / 32); chunk++)
 			{
 				auto bits_per_u8 = (uvec4(stream.bitplane_meta[chunk]) >> uvec4(0, 4, 8, 12)) & 0xfu;
 				uvec4 bitplanes[8] = {};
@@ -75,11 +76,11 @@ static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uin
 
 			// Apply predictors.
 			deltas[0] += initial_value;
-			for (unsigned i = 0; i < SceneFormats::Meshlet::MaxElements; i++)
+			for (unsigned i = 0; i < MaxElements; i++)
 				deltas[i] += u8vec4((base_predictor + linear_predictor * u16vec4(i)) >> u16vec4(8));
 
 			// Resolve deltas.
-			for (unsigned i = 1; i < SceneFormats::Meshlet::MaxElements; i++)
+			for (unsigned i = 1; i < MaxElements; i++)
 				deltas[i] += deltas[i - 1];
 
 			if (stream_index == 0)
@@ -105,7 +106,7 @@ static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uin
 static void decode_mesh_gpu(
 		Vulkan::Device &dev,
 		std::vector<uint32_t> &out_index_buffer, std::vector<uint32_t> &out_u32_stream,
-		const SceneFormats::Meshlet::MeshView &mesh)
+		const MeshView &mesh)
 {
 	decode_mesh_setup_buffers(out_index_buffer, out_u32_stream, mesh);
 
@@ -129,9 +130,9 @@ static void decode_mesh_gpu(
 		dev.begin_renderdoc_capture();
 
 	auto cmd = dev.request_command_buffer();
-	SceneFormats::Meshlet::decode_mesh(*cmd, *readback_decoded_index_buffer, 0,
-	                                   *readback_decoded_u32_buffer, 0,
-	                                   *payload_buffer, 0, mesh);
+	decode_mesh(*cmd, *readback_decoded_index_buffer, 0,
+	            *readback_decoded_u32_buffer, 0,
+	            *payload_buffer, 0, mesh);
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	dev.submit(cmd);
@@ -221,7 +222,7 @@ int main(int argc, char *argv[])
 	auto mesh = parser.get_meshes().front();
 
 	if (!Meshlet::export_mesh_to_meshlet("export.msh1",
-	                                     mesh, SceneFormats::Meshlet::MeshStyle::Textured))
+	                                     mesh, MeshStyle::Textured))
 	{
 		return EXIT_FAILURE;
 	}
@@ -234,7 +235,7 @@ int main(int argc, char *argv[])
 	if (!mapped)
 		return EXIT_FAILURE;
 
-	auto view = SceneFormats::Meshlet::create_mesh_view(*mapped);
+	auto view = create_mesh_view(*mapped);
 
 	std::vector<uint32_t> reference_index_buffer;
 	std::vector<uint32_t> reference_attributes;

@@ -55,6 +55,7 @@ if (GRANITE_VULKAN_SYSTEM_HANDLES)
 
     target_sources(granite-vulkan PRIVATE
             texture/memory_mapped_texture.cpp texture/memory_mapped_texture.hpp
+            mesh/meshlet.hpp mesh/meshlet.cpp
             texture/texture_files.cpp texture/texture_files.hpp
             texture/texture_decoder.cpp texture/texture_decoder.hpp)
 
@@ -64,7 +65,8 @@ if (GRANITE_VULKAN_SYSTEM_HANDLES)
 
     target_include_directories(granite-vulkan PUBLIC
             ${CMAKE_CURRENT_SOURCE_DIR}/managers
-            ${CMAKE_CURRENT_SOURCE_DIR}/texture)
+            ${CMAKE_CURRENT_SOURCE_DIR}/texture
+            ${CMAKE_CURRENT_SOURCE_DIR}/mesh)
 
     if (GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER)
         target_compile_definitions(granite-vulkan PUBLIC GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER=1)

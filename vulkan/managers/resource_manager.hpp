@@ -64,7 +64,6 @@ struct SliceAllocator : Util::ArenaAllocator<SliceAllocator, AllocatedSlice>
 {
 	SliceAllocator *parent = nullptr;
 	MeshGlobalAllocator *global_allocator = nullptr;
-	uint32_t sub_block_size = 0;
 
 	// Implements curious recurring template pattern calls.
 	bool allocate_backing_heap(AllocatedSlice *allocation);
@@ -99,6 +98,12 @@ public:
 	~ResourceManager() override;
 	void init();
 
+	enum class MeshEncoding
+	{
+		Meshlet,
+		EncodedVBOAndIBO,
+	};
+
 	inline const Vulkan::ImageView *get_image_view(Granite::AssetID id) const
 	{
 		if (id.id < views.size())
@@ -109,7 +114,19 @@ public:
 
 	const Vulkan::ImageView *get_image_view_blocking(Granite::AssetID id);
 
-	const VkDrawIndexedIndirectCommand &get_mesh_indexed_draw(Granite::AssetID id) const;
+	inline VkDrawIndexedIndirectCommand get_mesh_indexed_draw(Granite::AssetID id) const
+	{
+		if (id.id < draws.size())
+			return draws[id.id];
+		else
+			return {};
+	}
+
+	inline MeshEncoding get_mesh_encoding() const
+	{
+		return MeshEncoding::EncodedVBOAndIBO;
+	}
+
 	const Buffer *get_index_buffer() const;
 	const Buffer *get_attribute_buffer() const;
 

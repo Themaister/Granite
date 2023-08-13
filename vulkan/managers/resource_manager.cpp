@@ -492,16 +492,6 @@ const Buffer *ResourceManager::get_attribute_buffer() const
 	return attribute_buffer_allocator.get_buffer(0);
 }
 
-static const VkDrawIndexedIndirectCommand empty_draw = {};
-
-const VkDrawIndexedIndirectCommand &ResourceManager::get_mesh_indexed_draw(Granite::AssetID id) const
-{
-	if (id.id < draws.size())
-		return draws[id.id];
-	else
-		return empty_draw;
-}
-
 MeshBufferAllocator::MeshBufferAllocator(Device &device)
 	: global_allocator(device)
 {
@@ -511,9 +501,12 @@ MeshBufferAllocator::MeshBufferAllocator(Device &device)
 
 	// Basic unit of a meshlet is 256 prims / attributes.
 	// Maximum element count = 32M prims.
-	allocators[0].sub_block_size = 256;
+	allocators[0].set_sub_block_size(256);
 	for (int i = 1; i < SliceAllocatorCount; i++)
-		allocators[i].sub_block_size = allocators[i - 1].sub_block_size * (Util::LegionAllocator::NumSubBlocks / 2);
+		allocators[i].set_sub_block_size(allocators[i - 1].get_sub_block_size() * (Util::LegionAllocator::NumSubBlocks / 2));
+
+	for (auto &alloc : allocators)
+		alloc.set_object_pool(&object_pool);
 }
 
 void MeshBufferAllocator::set_element_size(uint32_t element_size)
@@ -622,8 +615,11 @@ void SliceAllocator::prepare_allocation(AllocatedSlice *allocation, Util::Intrus
 bool MeshBufferAllocator::allocate(uint32_t count, Internal::AllocatedSlice *slice)
 {
 	for (auto &alloc : allocators)
-		if (count <= alloc.get_max_allocation_size())
+	{
+		uint32_t max_alloc_size = alloc.get_max_allocation_size();
+		if (count <= max_alloc_size)
 			return alloc.allocate(count, slice);
+	}
 
 	LOGE("Allocation of %u elements is too large for MeshBufferAllocator.\n", count);
 	return false;

@@ -138,9 +138,14 @@ public:
 		return sub_block_size * Util::LegionAllocator::NumSubBlocks;
 	}
 
-	inline uint32_t get_block_alignment() const
+	inline uint32_t get_sub_block_size() const
 	{
 		return sub_block_size;
+	}
+
+	inline uint32_t get_block_alignment() const
+	{
+		return get_sub_block_size();
 	}
 
 	inline bool allocate(uint32_t size, BackingAllocation *alloc)

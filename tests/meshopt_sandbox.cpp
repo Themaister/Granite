@@ -130,9 +130,15 @@ static void decode_mesh_gpu(
 		dev.begin_renderdoc_capture();
 
 	auto cmd = dev.request_command_buffer();
-	decode_mesh(*cmd, *readback_decoded_index_buffer, 0,
-	            *readback_decoded_u32_buffer, 0,
-	            *payload_buffer, 0, mesh);
+
+	DecodeInfo info = {};
+	info.ibo.buffer = readback_decoded_index_buffer.get();
+	info.streams[0].buffer = readback_decoded_u32_buffer.get();
+	info.target_style = mesh.format_header->style;
+	info.payload.buffer = payload_buffer.get();
+	info.flags = DECODE_MODE_RAW_PAYLOAD;
+
+	decode_mesh(*cmd, info, mesh);
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	dev.submit(cmd);

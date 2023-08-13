@@ -238,6 +238,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 
 	cmd.dispatch(view.format_header->meshlet_count, 1, 1);
 	cmd.set_specialization_constant_mask(0);
+	cmd.enable_subgroup_size_control(false);
 	return true;
 }
 }

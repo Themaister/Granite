@@ -56,11 +56,11 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 
 		indirect_layout = e.get_device().request_indirect_layout(tokens, 2, sizeof(DGC));
 
-		static const DGC dgc_data[] = {
-			{ 0, { 3 * 1000000, 1 } },
-			{ 1, { 3 * 2000000, 1 } },
-			{ 2, { 3 * 3000000, 1 } },
-			{ 3, { 3 * 4000000, 1 } },
+		static const DGC dgc_data[4096] = {
+			{ 0, { 3 * 1000, 1 } },
+			{ 1, { 3 * 2000, 1 } },
+			{ 2, { 3 * 3000, 1 } },
+			{ 3, { 3 * 4000, 1 } },
 		};
 
 		BufferCreateInfo buf_info = {};
@@ -108,48 +108,29 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		rp_info.store_attachments = 1u << 0;
 		rp_info.clear_attachments = 1u << 0;
 
-		{
-			cmd->begin_render_pass(rp_info);
-			cmd->set_storage_buffer(0, 0, *ssbo);
-			cmd->set_opaque_state();
-			cmd->set_program("assets://shaders/dgc.vert", "assets://shaders/dgc.frag");
-			cmd->execute_indirect_commands(indirect_layout, 1, *dgc_buffer, 0, nullptr, 0);
-			cmd->end_render_pass();
-		}
-		rp_info.clear_attachments = 0;
-
-		cmd->barrier(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-					 VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT, VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
-
-		{
-			cmd->begin_render_pass(rp_info);
-			cmd->set_storage_buffer(0, 0, *ssbo);
-			cmd->set_opaque_state();
-			cmd->set_program("assets://shaders/dgc.vert", "assets://shaders/dgc.frag");
-			cmd->execute_indirect_commands(indirect_layout, 1, *dgc_buffer, 0, nullptr, 0);
-			cmd->end_render_pass();
-		}
-
-		cmd->barrier(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-		             VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT, VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
-
-		{
-			cmd->begin_render_pass(rp_info);
-			cmd->set_storage_buffer(0, 0, *ssbo);
-			cmd->set_opaque_state();
-			cmd->set_program("assets://shaders/dgc.vert", "assets://shaders/dgc.frag");
-			cmd->execute_indirect_commands(indirect_layout, 1, *dgc_buffer, 0, nullptr, 0);
-			cmd->end_render_pass();
-		}
-
-		cmd->barrier(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-					 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-		cmd->copy_buffer(*ssbo_readback, *ssbo);
-		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-					 VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+		cmd->begin_render_pass(rp_info);
+		cmd->set_storage_buffer(0, 0, *ssbo);
+		cmd->set_opaque_state();
+		cmd->set_program("assets://shaders/dgc.vert", "assets://shaders/dgc.frag");
+		constexpr unsigned max_count = 2048;
+		cmd->execute_indirect_commands(indirect_layout, max_count, *dgc_buffer, 0, dgc_count_buffer.get(), 4);
+		cmd->execute_indirect_commands(indirect_layout, max_count, *dgc_buffer, 0, dgc_count_buffer.get(), 8);
+		cmd->execute_indirect_commands(indirect_layout, max_count, *dgc_buffer, 0, dgc_count_buffer.get(), 4);
+		cmd->execute_indirect_commands(indirect_layout, max_count, *dgc_buffer, 0, dgc_count_buffer.get(), 8);
+		cmd->execute_indirect_commands(indirect_layout, max_count, *dgc_buffer, 0, dgc_count_buffer.get(), 4);
+		cmd->execute_indirect_commands(indirect_layout, max_count, *dgc_buffer, 0, dgc_count_buffer.get(), 8);
+		cmd->execute_indirect_commands(indirect_layout, max_count, *dgc_buffer, 0, dgc_count_buffer.get(), 4);
+		cmd->execute_indirect_commands(indirect_layout, max_count, *dgc_buffer, 0, dgc_count_buffer.get(), 8);
+		cmd->end_render_pass();
 
 		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly));
 		cmd->end_render_pass();
+
+		cmd->barrier(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+					 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+		cmd->copy_buffer(*ssbo_readback, *ssbo);
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+		             VK_PIPELINE_STAGE_2_HOST_BIT, VK_ACCESS_2_HOST_READ_BIT);
 
 		Fence fence;
 		device.submit(cmd, &fence);

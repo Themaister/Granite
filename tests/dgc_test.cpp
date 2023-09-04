@@ -20,6 +20,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 	Vulkan::BufferHandle dgc_count_buffer;
 	Vulkan::BufferHandle ssbo;
 	Vulkan::BufferHandle ssbo_readback;
+	Vulkan::ImageHandle image;
 
 	void on_device_created(const DeviceCreatedEvent &e)
 	{
@@ -71,6 +72,13 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		static const uint32_t count_data[] = { 1, 2, 3, 4 };
 		buf_info.size = sizeof(count_data);
 		dgc_count_buffer = e.get_device().create_buffer(buf_info, count_data);
+
+		{
+			auto img = ImageCreateInfo::render_target(64, 64, VK_FORMAT_R8_UNORM);
+			img.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			img.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+			image = e.get_device().create_image(img);
+		}
 	}
 
 	void on_device_destroyed(const DeviceCreatedEvent &)
@@ -79,6 +87,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		dgc_count_buffer.reset();
 		ssbo.reset();
 		ssbo_readback.reset();
+		image.reset();
 		indirect_layout = nullptr;
 	}
 
@@ -89,24 +98,58 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 
 		auto cmd = device.request_command_buffer();
 
-		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly));
-		cmd->set_storage_buffer(0, 0, *ssbo);
-		cmd->set_opaque_state();
-		cmd->set_program("assets://shaders/dgc.vert", "assets://shaders/dgc.frag");
-		cmd->execute_indirect_commands(indirect_layout, 1, *dgc_buffer, 0, nullptr, 0);
-		cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, dgc_count_buffer.get(), 0);
-		cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, dgc_count_buffer.get(), 4);
-		cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, dgc_count_buffer.get(), 8);
-		//cmd->execute_indirect_commands(indirect_layout, 2, *dgc_buffer, 0, nullptr, 0);
-		//cmd->execute_indirect_commands(indirect_layout, 3, *dgc_buffer, 0, nullptr, 0);
-		//cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, nullptr, 0);
-		cmd->end_render_pass();
+		cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+						   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+						   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+		RenderPassInfo rp_info;
+		rp_info.num_color_attachments = 1;
+		rp_info.color_attachments[0] = &image->get_view();
+		rp_info.store_attachments = 1u << 0;
+		rp_info.clear_attachments = 1u << 0;
+
+		{
+			cmd->begin_render_pass(rp_info);
+			cmd->set_storage_buffer(0, 0, *ssbo);
+			cmd->set_opaque_state();
+			cmd->set_program("assets://shaders/dgc.vert", "assets://shaders/dgc.frag");
+			cmd->execute_indirect_commands(indirect_layout, 1, *dgc_buffer, 0, nullptr, 0);
+			cmd->end_render_pass();
+		}
+		rp_info.clear_attachments = 0;
+
+		cmd->barrier(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+					 VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT, VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+
+		{
+			cmd->begin_render_pass(rp_info);
+			cmd->set_storage_buffer(0, 0, *ssbo);
+			cmd->set_opaque_state();
+			cmd->set_program("assets://shaders/dgc.vert", "assets://shaders/dgc.frag");
+			cmd->execute_indirect_commands(indirect_layout, 1, *dgc_buffer, 0, nullptr, 0);
+			cmd->end_render_pass();
+		}
+
+		cmd->barrier(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		             VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT, VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+
+		{
+			cmd->begin_render_pass(rp_info);
+			cmd->set_storage_buffer(0, 0, *ssbo);
+			cmd->set_opaque_state();
+			cmd->set_program("assets://shaders/dgc.vert", "assets://shaders/dgc.frag");
+			cmd->execute_indirect_commands(indirect_layout, 1, *dgc_buffer, 0, nullptr, 0);
+			cmd->end_render_pass();
+		}
 
 		cmd->barrier(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 					 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 		cmd->copy_buffer(*ssbo_readback, *ssbo);
 		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 					 VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+
+		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly));
+		cmd->end_render_pass();
 
 		Fence fence;
 		device.submit(cmd, &fence);

@@ -26,7 +26,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		struct DGC
 		{
 			uint32_t push;
-			VkDispatchIndirectCommand dispatch;
+			VkDrawIndirectCommand draw;
 		};
 
 		IndirectLayoutToken tokens[2] = {};
@@ -41,24 +41,25 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 			ssbo_readback = e.get_device().create_buffer(buf_info, nullptr);
 		}
 
-		auto *layout = e.get_device().get_shader_manager().register_compute("assets://shaders/dgc_compute.comp")->
+		auto *layout = e.get_device().get_shader_manager().register_graphics(
+				"assets://shaders/dgc.vert", "assets://shaders/dgc.frag")->
 				register_variant({})->get_program()->get_pipeline_layout();
 
 		tokens[0].type = IndirectLayoutToken::Type::PushConstant;
 		tokens[0].offset = offsetof(DGC, push);
-		tokens[0].data.push.range = 8;
+		tokens[0].data.push.range = 4;
 		tokens[0].data.push.offset = 0;
 		tokens[0].data.push.layout = layout;
-		tokens[1].type = IndirectLayoutToken::Type::Dispatch;
-		tokens[1].offset = offsetof(DGC, dispatch);
+		tokens[1].type = IndirectLayoutToken::Type::Draw;
+		tokens[1].offset = offsetof(DGC, draw);
 
 		indirect_layout = e.get_device().request_indirect_layout(tokens, 2, sizeof(DGC));
 
 		static const DGC dgc_data[] = {
-			{ 0, { 100, 200, 30 } },
-			{ 1, { 300, 200, 30 } },
-			{ 2, { 500, 200, 30 } },
-			{ 3, { 600, 200, 30 } },
+			{ 0, { 3 * 1000000, 1 } },
+			{ 1, { 3 * 2000000, 1 } },
+			{ 2, { 3 * 3000000, 1 } },
+			{ 3, { 3 * 4000000, 1 } },
 		};
 
 		BufferCreateInfo buf_info = {};
@@ -88,20 +89,20 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 
 		auto cmd = device.request_command_buffer();
 
+		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly));
 		cmd->set_storage_buffer(0, 0, *ssbo);
-		cmd->set_program("assets://shaders/dgc_compute.comp");
-		cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, dgc_count_buffer.get(), 4);
+		cmd->set_opaque_state();
+		cmd->set_program("assets://shaders/dgc.vert", "assets://shaders/dgc.frag");
+		cmd->execute_indirect_commands(indirect_layout, 1, *dgc_buffer, 0, nullptr, 0);
 		cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, dgc_count_buffer.get(), 0);
 		cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, dgc_count_buffer.get(), 4);
 		cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, dgc_count_buffer.get(), 8);
 		//cmd->execute_indirect_commands(indirect_layout, 2, *dgc_buffer, 0, nullptr, 0);
 		//cmd->execute_indirect_commands(indirect_layout, 3, *dgc_buffer, 0, nullptr, 0);
 		//cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, nullptr, 0);
-
-		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly));
 		cmd->end_render_pass();
 
-		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		cmd->barrier(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 					 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 		cmd->copy_buffer(*ssbo_readback, *ssbo);
 		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,

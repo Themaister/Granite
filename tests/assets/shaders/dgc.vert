@@ -1,9 +1,10 @@
 #version 450
 
-layout(location = 0) in vec2 aPos;
-layout(location = 1) in vec2 aOffset;
+layout(push_constant) uniform Registers { uint index; };
+layout(set = 0, binding = 0) buffer SSBO { uint data[]; };
 
 void main()
 {
-    gl_Position = vec4(aPos + aOffset, 0.0, 1.0);
+    atomicAdd(data[index], 1u);
+    gl_Position = vec4(-1.0);
 }

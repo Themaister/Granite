@@ -1,0 +1,20 @@
+#version 450
+#extension GL_EXT_buffer_reference_uvec2 : require
+#extension GL_EXT_buffer_reference : require
+
+layout(local_size_x = 64) in;
+
+layout(set = 0, binding = 0) buffer SSBO
+{
+    uint data[];
+};
+
+layout(push_constant) uniform Registers
+{
+    uint index;
+};
+
+void main()
+{
+    atomicAdd(data[index], 1u);
+}

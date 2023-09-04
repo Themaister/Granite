@@ -17,6 +17,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 
 	const IndirectLayout *indirect_layout = nullptr;
 	Vulkan::BufferHandle dgc_buffer;
+	Vulkan::BufferHandle dgc_count_buffer;
 	Vulkan::BufferHandle ssbo;
 
 	void on_device_created(const DeviceCreatedEvent &e)
@@ -62,11 +63,16 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		buf_info.size = sizeof(dgc_data);
 		buf_info.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 		dgc_buffer = e.get_device().create_buffer(buf_info, dgc_data);
+
+		static const uint32_t count_data[] = { 1, 2, 3, 4 };
+		buf_info.size = sizeof(count_data);
+		dgc_count_buffer = e.get_device().create_buffer(buf_info, count_data);
 	}
 
 	void on_device_destroyed(const DeviceCreatedEvent &)
 	{
 		dgc_buffer.reset();
+		dgc_count_buffer.reset();
 		ssbo.reset();
 		indirect_layout = nullptr;
 	}
@@ -80,7 +86,10 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 
 		cmd->set_storage_buffer(0, 0, *ssbo);
 		cmd->set_program("assets://shaders/dgc_compute.comp");
-		cmd->execute_indirect_commands(indirect_layout, 1, *dgc_buffer, 0, nullptr, 0);
+		cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, dgc_count_buffer.get(), 4);
+		cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, dgc_count_buffer.get(), 0);
+		cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, dgc_count_buffer.get(), 4);
+		cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, dgc_count_buffer.get(), 8);
 		//cmd->execute_indirect_commands(indirect_layout, 2, *dgc_buffer, 0, nullptr, 0);
 		//cmd->execute_indirect_commands(indirect_layout, 3, *dgc_buffer, 0, nullptr, 0);
 		//cmd->execute_indirect_commands(indirect_layout, 4, *dgc_buffer, 0, nullptr, 0);

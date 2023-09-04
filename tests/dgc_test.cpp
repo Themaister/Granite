@@ -19,6 +19,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 	Vulkan::BufferHandle dgc_buffer;
 	Vulkan::BufferHandle dgc_count_buffer;
 	Vulkan::BufferHandle ssbo;
+	Vulkan::BufferHandle ssbo_readback;
 
 	void on_device_created(const DeviceCreatedEvent &e)
 	{
@@ -32,10 +33,12 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 
 		{
 			BufferCreateInfo buf_info = {};
-			buf_info.domain = BufferDomain::CachedHost;
+			buf_info.domain = BufferDomain::Device;
 			buf_info.size = 64 * sizeof(uint32_t);
 			buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 			ssbo = e.get_device().create_buffer(buf_info, nullptr);
+			buf_info.domain = BufferDomain::CachedHost;
+			ssbo_readback = e.get_device().create_buffer(buf_info, nullptr);
 		}
 
 		auto *layout = e.get_device().get_shader_manager().register_compute("assets://shaders/dgc_compute.comp")->
@@ -74,6 +77,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		dgc_buffer.reset();
 		dgc_count_buffer.reset();
 		ssbo.reset();
+		ssbo_readback.reset();
 		indirect_layout = nullptr;
 	}
 
@@ -97,10 +101,16 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly));
 		cmd->end_render_pass();
 
+		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+					 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		cmd->copy_buffer(*ssbo_readback, *ssbo);
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+					 VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+
 		Fence fence;
 		device.submit(cmd, &fence);
 		fence->wait();
-		auto *ptr = static_cast<const uint32_t *>(device.map_host_buffer(*ssbo, MEMORY_ACCESS_READ_BIT));
+		auto *ptr = static_cast<const uint32_t *>(device.map_host_buffer(*ssbo_readback, MEMORY_ACCESS_READ_BIT));
 		LOGI("ptr[0] = %u\n", ptr[0]);
 		LOGI("ptr[1] = %u\n", ptr[1]);
 		LOGI("ptr[2] = %u\n", ptr[2]);

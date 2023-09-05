@@ -12,9 +12,13 @@ do
 	# Direct count
 	echo "=== NV_dgcc direct count || $wgs workgroups per dispatch || direct count = $SEQ || dispatches = 10 || maxSequenceCount $SEQ ==="
 	./tests/dgc-test-compute --dgcc --iterations 10 --max-count $SEQ --indirect $wgs_cmd --frames $frames 2>/dev/null
+	echo "=== NV_dgcc direct count (async compute) || $wgs workgroups per dispatch || direct count = $SEQ || dispatches = 10 || maxSequenceCount $SEQ ==="
+	./tests/dgc-test-compute --dgcc --iterations 10 --max-count $SEQ --indirect $wgs_cmd --frames $frames --async 2>/dev/null
 	# Indirect count with no empty subdraws.
 	echo "=== NV_dgcc indirect count || $wgs workgroups per dispatch || indirect count = $SEQ || dispatches = 10 || maxSequenceCount $SEQ ==="
 	./tests/dgc-test-compute --dgcc --iterations 10 --indirect-count $SEQ --max-count $SEQ --indirect $wgs_cmd --frames $frames 2>/dev/null
+	echo "=== NV_dgcc indirect count (async compute) || $wgs workgroups per dispatch || indirect count = $SEQ || dispatches = 10 || maxSequenceCount $SEQ ==="
+	./tests/dgc-test-compute --dgcc --iterations 10 --indirect-count $SEQ --max-count $SEQ --indirect $wgs_cmd --frames $frames --async 2>/dev/null
 	# Indirect count with mostly empty subdraws.
 	echo "=== NV_dgcc indirect count || $wgs workgroups per dispatch || indirect count = 4 || dispatches = 250 || maxSequenceCount $SEQ ==="
 	./tests/dgc-test-compute --dgcc --iterations 250 --indirect-count 4 --max-count $SEQ --indirect $wgs_cmd --frames $frames 2>/dev/null

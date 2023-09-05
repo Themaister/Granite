@@ -73,7 +73,8 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		tokens[1].type = IndirectLayoutToken::Type::Draw;
 		tokens[1].offset = offsetof(DGC, draw);
 
-		indirect_layout = e.get_device().request_indirect_layout(tokens, 2, sizeof(DGC));
+		if (e.get_device().get_device_features().device_generated_commands_features.deviceGeneratedCommands)
+			indirect_layout = e.get_device().request_indirect_layout(tokens, 2, sizeof(DGC));
 
 		std::vector<DGC> dgc_data(options.max_count);
 		for (unsigned i = 0; i < options.max_count; i++)
@@ -233,12 +234,7 @@ Application *application_create(int argc, char **argv)
 	});
 
 	Util::CLIParser parser(std::move(cbs), argc - 1, argv + 1);
-	if (!parser.parse())
-	{
-		print_help();
-		return nullptr;
-	}
-	else if (parser.is_ended_state())
+	if (!parser.parse() || parser.is_ended_state())
 	{
 		print_help();
 		return nullptr;

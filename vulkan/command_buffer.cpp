@@ -2842,13 +2842,26 @@ void CommandBuffer::execute_indirect_commands(
 		const Vulkan::Buffer &indirect, VkDeviceSize offset,
 		const Vulkan::Buffer *count, size_t count_offset)
 {
-	VK_ASSERT(!is_compute);
+	VK_ASSERT((is_compute && indirect_layout->get_bind_point() == VK_PIPELINE_BIND_POINT_COMPUTE) ||
+	          (!is_compute && indirect_layout->get_bind_point() == VK_PIPELINE_BIND_POINT_GRAPHICS));
 	VK_ASSERT(device->get_device_features().device_generated_commands_features.deviceGeneratedCommands);
+	VK_ASSERT(!is_compute || device->get_device_features().device_generated_commands_compute_features.deviceGeneratedCompute);
 
-	if (flush_render_state(true) == VK_NULL_HANDLE)
+	if (is_compute)
 	{
-		LOGE("Failed to flush render state, draw call will be dropped.\n");
-		return;
+		if (flush_compute_state(true) == VK_NULL_HANDLE)
+		{
+			LOGE("Failed to flush compute state, dispatch will be dropped.\n");
+			return;
+		}
+	}
+	else
+	{
+		if (flush_render_state(true) == VK_NULL_HANDLE)
+		{
+			LOGE("Failed to flush render state, draw call will be dropped.\n");
+			return;
+		}
 	}
 
 	// TODO: Linearly allocate these, but big indirect commands like these
@@ -2858,7 +2871,7 @@ void CommandBuffer::execute_indirect_commands(
 	VkMemoryRequirements2 reqs = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
 
 	generated.pipeline = current_pipeline.pipeline;
-	generated.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	generated.pipelineBindPoint = indirect_layout->get_bind_point();
 	generated.indirectCommandsLayout = indirect_layout->get_layout();
 	generated.maxSequencesCount = sequences;
 
@@ -2877,7 +2890,7 @@ void CommandBuffer::execute_indirect_commands(
 
 	VkGeneratedCommandsInfoNV exec_info = { VK_STRUCTURE_TYPE_GENERATED_COMMANDS_INFO_NV };
 	exec_info.indirectCommandsLayout = indirect_layout->get_layout();
-	exec_info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	exec_info.pipelineBindPoint = indirect_layout->get_bind_point();
 	exec_info.streamCount = 1;
 	exec_info.pStreams = &stream;
 	exec_info.preprocessSize = reqs.memoryRequirements.size;

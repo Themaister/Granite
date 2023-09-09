@@ -1,0 +1,18 @@
+#version 450
+
+layout(local_size_x = 32) in;
+
+layout(set = 0, binding = 0) buffer SSBO
+{
+    uint data[];
+};
+
+layout(push_constant) uniform Registers
+{
+    uint index;
+};
+
+void main()
+{
+    atomicAdd(data[index], 1u);
+}

@@ -174,9 +174,12 @@ if (NOT ANDROID)
 endif()
 target_link_libraries(meshlet-viewer PRIVATE granite-scene-export)
 
-add_granite_application(dgc-test dgc_test.cpp)
+add_granite_application(dgc-test-graphics dgc_test_graphics.cpp)
+add_granite_application(dgc-test-compute dgc_test_compute.cpp)
+
 if (NOT ANDROID)
-    target_compile_definitions(dgc-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+    target_compile_definitions(dgc-test-graphics PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+    target_compile_definitions(dgc-test-compute PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
 option(GRANITE_TEST_INTEROP "Enable interop tests." OFF)

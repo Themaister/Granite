@@ -1299,6 +1299,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	ext.compute_shader_derivative_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV };
 	ext.device_generated_commands_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_GENERATED_COMMANDS_FEATURES_NV };
+	ext.device_generated_commands_compute_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_GENERATED_COMMANDS_COMPUTE_FEATURES_NV };
 	ext.buffer_device_address_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR };
 
 	void **ppNext = &pdf2.pNext;
@@ -1458,6 +1459,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ppNext = &ext.device_generated_commands_features.pNext;
 	}
 
+	if (has_extension(VK_NV_DEVICE_GENERATED_COMMANDS_COMPUTE_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_NV_DEVICE_GENERATED_COMMANDS_COMPUTE_EXTENSION_NAME);
+		*ppNext = &ext.device_generated_commands_compute_features;
+		ppNext = &ext.device_generated_commands_compute_features.pNext;
+	}
+
 	if (has_extension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
@@ -1546,6 +1554,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	ext.buffer_device_address_features.bufferDeviceAddressCaptureReplay = VK_FALSE;
 	ext.buffer_device_address_features.bufferDeviceAddressMultiDevice = VK_FALSE;
+	ext.device_generated_commands_compute_features.deviceGeneratedComputeCaptureReplay = VK_FALSE;
+	// TODO
+	ext.device_generated_commands_compute_features.deviceGeneratedComputePipelines = VK_FALSE;
 
 	// Enable device features we might care about.
 	{

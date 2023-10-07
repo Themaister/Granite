@@ -75,6 +75,11 @@ IndirectLayout::IndirectLayout(Device *device_, const IndirectLayoutToken *token
 			token.tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV;
 			break;
 
+		case IndirectLayoutToken::Type::Dispatch:
+			token.tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_NV;
+			info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
+			break;
+
 		default:
 			LOGE("Invalid token type.\n");
 			break;
@@ -87,6 +92,7 @@ IndirectLayout::IndirectLayout(Device *device_, const IndirectLayoutToken *token
 
 	info.pTokens = nv_tokens.data();
 	info.tokenCount = num_tokens;
+	bind_point = info.pipelineBindPoint;
 
 	auto &table = device->get_device_table();
 	if (table.vkCreateIndirectCommandsLayoutNV(device->get_device(), &info, nullptr, &layout) != VK_SUCCESS)

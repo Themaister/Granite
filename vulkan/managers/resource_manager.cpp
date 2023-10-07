@@ -81,20 +81,10 @@ void ResourceManager::release_asset(Granite::AssetID id)
 	if (id)
 	{
 		std::unique_lock<std::mutex> holder{lock};
+		VK_ASSERT(id.id < assets.size());
 		auto &asset = assets[id.id];
 		asset.latchable = false;
-		if (asset.asset_class == Granite::AssetClass::Mesh)
-		{
-			if (asset.mesh.index.count)
-			{
-				std::lock_guard<std::mutex> holder_alloc{mesh_allocator_lock};
-				index_buffer_allocator.free(asset.mesh.index);
-				attribute_buffer_allocator.free(asset.mesh.attr);
-				asset.mesh = {};
-			}
-		}
-		else
-			asset.image.reset();
+		updates.push_back(id);
 	}
 }
 
@@ -476,6 +466,16 @@ void ResourceManager::latch_handles()
 
 		if (asset.asset_class == Granite::AssetClass::Mesh)
 		{
+			if (!asset.latchable)
+			{
+				{
+					std::lock_guard<std::mutex> holder_alloc{mesh_allocator_lock};
+					index_buffer_allocator.free(asset.mesh.index);
+					attribute_buffer_allocator.free(asset.mesh.attr);
+				}
+				asset.mesh = {};
+			}
+
 			auto &d = draws[update.id];
 			d.firstIndex = asset.mesh.index.offset * 3;
 			d.indexCount = asset.mesh.index.count * 3;
@@ -486,6 +486,8 @@ void ResourceManager::latch_handles()
 		else
 		{
 			const ImageView *view;
+			if (!asset.latchable)
+				asset.image.reset();
 
 			if (asset.image)
 			{

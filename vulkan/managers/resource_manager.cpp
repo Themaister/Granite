@@ -36,6 +36,7 @@ ResourceManager::ResourceManager(Device *device_)
 	: device(device_)
 	, index_buffer_allocator(*device_)
 	, attribute_buffer_allocator(*device_)
+	, indirect_buffer_allocator(*device_)
 {
 	// Simplified style.
 	index_buffer_allocator.set_element_size(0, sizeof(uint32_t) * 3);
@@ -43,6 +44,7 @@ ResourceManager::ResourceManager(Device *device_)
 	attribute_buffer_allocator.set_element_size(0, sizeof(float) * 3);
 	attribute_buffer_allocator.set_element_size(1, sizeof(float) * 2 + sizeof(uint32_t) * 2);
 	attribute_buffer_allocator.set_element_size(2, sizeof(uint32_t) * 2);
+	indirect_buffer_allocator.set_element_size(0, sizeof(VkDrawIndexedIndirectCommand));
 	assets.reserve(Granite::AssetID::MaxIDs);
 }
 
@@ -393,6 +395,7 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 		cost += view.total_vertices * attribute_buffer_allocator.get_element_size(0);
 		cost += view.total_vertices * attribute_buffer_allocator.get_element_size(1);
 		cost += view.total_vertices * attribute_buffer_allocator.get_element_size(2);
+		cost += view.format_header->meshlet_count * indirect_buffer_allocator.get_element_size(0);
 	}
 
 	std::lock_guard<std::mutex> holder{lock};
@@ -472,6 +475,7 @@ void ResourceManager::latch_handles()
 					std::lock_guard<std::mutex> holder_alloc{mesh_allocator_lock};
 					index_buffer_allocator.free(asset.mesh.index);
 					attribute_buffer_allocator.free(asset.mesh.attr);
+					indirect_buffer_allocator.free(asset.mesh.indirect);
 				}
 				asset.mesh = {};
 			}
@@ -523,6 +527,11 @@ const Buffer *ResourceManager::get_attribute_buffer() const
 const Buffer *ResourceManager::get_skinning_buffer() const
 {
 	return attribute_buffer_allocator.get_buffer(0, 2);
+}
+
+const Buffer *ResourceManager::get_indirect_buffer() const
+{
+	return indirect_buffer_allocator.get_buffer(0, 0);
 }
 
 MeshBufferAllocator::MeshBufferAllocator(Device &device)
@@ -604,7 +613,8 @@ uint32_t MeshGlobalAllocator::allocate(uint32_t count)
 		info.size = VkDeviceSize(count) * element_size[soa_index];
 		info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
 		             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-		             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+		             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+		             VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 		info.domain = BufferDomain::Device;
 		global_buffers[target_index * soa_count + soa_index] = device.create_buffer(info);
 	}

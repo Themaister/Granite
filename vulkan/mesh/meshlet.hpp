@@ -123,7 +123,7 @@ using DecodeModeFlags = uint32_t;
 
 struct DecodeInfo
 {
-	DecodeBuffer ibo, streams[3], payload;
+	DecodeBuffer ibo, streams[3], indirect, payload;
 	DecodeModeFlags flags;
 	MeshStyle target_style;
 };

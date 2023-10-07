@@ -135,6 +135,7 @@ public:
 	const Buffer *get_position_buffer() const;
 	const Buffer *get_attribute_buffer() const;
 	const Buffer *get_skinning_buffer() const;
+	const Buffer *get_indirect_buffer() const;
 
 private:
 	Device *device;
@@ -153,7 +154,7 @@ private:
 		ImageHandle image;
 		struct
 		{
-			Internal::AllocatedSlice index, attr;
+			Internal::AllocatedSlice index, attr, indirect;
 		} mesh;
 		Granite::AssetClass asset_class = Granite::AssetClass::ImageZeroable;
 		bool latchable = false;
@@ -184,6 +185,7 @@ private:
 	std::mutex mesh_allocator_lock;
 	MeshBufferAllocator index_buffer_allocator;
 	MeshBufferAllocator attribute_buffer_allocator;
+	MeshBufferAllocator indirect_buffer_allocator;
 
 	bool allocate_asset_mesh(Granite::AssetID id, const Meshlet::MeshView &view);
 };

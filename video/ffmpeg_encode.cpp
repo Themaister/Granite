@@ -194,12 +194,20 @@ void VideoEncoder::Impl::drain_codec()
 				LOGE("Failed to drain codec of packets.\n");
 		}
 
-		const auto close_fmt_context = [](AVFormatContext *fmt_ctx) {
+		const auto close_fmt_context = [this](AVFormatContext *fmt_ctx) {
 			if (fmt_ctx)
 			{
 				av_write_trailer(fmt_ctx);
 				if (!(fmt_ctx->flags & AVFMT_NOFILE))
-					avio_closep(&fmt_ctx->pb);
+				{
+					if (fmt_ctx == av_format_ctx && mux_stream_callback)
+					{
+						av_freep(&fmt_ctx->pb->buffer);
+						avio_context_free(&fmt_ctx->pb);
+					}
+					else
+						avio_closep(&fmt_ctx->pb);
+				}
 				avformat_free_context(fmt_ctx);
 			}
 		};

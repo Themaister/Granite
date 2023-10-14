@@ -121,7 +121,6 @@ struct VideoEncoder::Impl
 	Audio::DumpBackend *audio_source = nullptr;
 	Audio::RecordStream *audio_stream = nullptr;
 	MuxStreamCallback *mux_stream_callback = nullptr;
-	void *mux_stream_callback_buffer = nullptr;
 
 	void drain_codec();
 	AVFrame *alloc_video_frame(AVPixelFormat pix_fmt, unsigned width, unsigned height);
@@ -222,8 +221,6 @@ VideoEncoder::Impl::~Impl()
 {
 	drain_codec();
 	hw.reset();
-	if (mux_stream_callback_buffer)
-		av_free(mux_stream_callback_buffer);
 }
 
 static unsigned format_to_planes(VideoEncoder::Format fmt)
@@ -1001,7 +998,7 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		{
 			if (ctx == av_format_ctx && mux_stream_callback)
 			{
-				mux_stream_callback_buffer = av_malloc(1024);
+				auto *mux_stream_callback_buffer = av_malloc(1024);
 				AVIOContext *avio = avio_alloc_context(
 						static_cast<unsigned char *>(mux_stream_callback_buffer), 1024, AVIO_FLAG_WRITE,
 						this, nullptr, [](void *opaque, uint8_t *buf, int buf_size) -> int

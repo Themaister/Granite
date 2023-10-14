@@ -33,6 +33,13 @@ class DumpBackend;
 class RecordStream;
 }
 
+class MuxStreamCallback
+{
+public:
+	virtual ~MuxStreamCallback() = default;
+	virtual bool write_stream(const void *data, size_t size) = 0;
+};
+
 class VideoEncoder
 {
 public:
@@ -85,6 +92,7 @@ public:
 
 	void set_audio_source(Audio::DumpBackend *backend);
 	void set_audio_record_stream(Audio::RecordStream *stream);
+	void set_mux_stream_callback(MuxStreamCallback *callback);
 
 	bool init(Vulkan::Device *device, const char *path, const Options &options);
 

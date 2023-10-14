@@ -108,6 +108,7 @@ struct VideoEncoder::Impl
 {
 	Vulkan::Device *device = nullptr;
 	bool init(Vulkan::Device *device, const char *path, const Options &options);
+	void set_mux_stream_callback(MuxStreamCallback *callback);
 	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes,
 	                  int64_t pts, int compensate_audio_us);
 	bool encode_frame(AVFrame *hw_frame, int64_t pts, int compensate_audio_us);
@@ -119,6 +120,8 @@ struct VideoEncoder::Impl
 	Options options;
 	Audio::DumpBackend *audio_source = nullptr;
 	Audio::RecordStream *audio_stream = nullptr;
+	MuxStreamCallback *mux_stream_callback = nullptr;
+	void *mux_stream_callback_buffer = nullptr;
 
 	void drain_codec();
 	AVFrame *alloc_video_frame(AVPixelFormat pix_fmt, unsigned width, unsigned height);
@@ -210,10 +213,17 @@ void VideoEncoder::Impl::drain_codec()
 	free_av_objects(audio);
 }
 
+void VideoEncoder::Impl::set_mux_stream_callback(Granite::MuxStreamCallback *callback)
+{
+	mux_stream_callback = callback;
+}
+
 VideoEncoder::Impl::~Impl()
 {
 	drain_codec();
 	hw.reset();
+	if (mux_stream_callback_buffer)
+		av_free(mux_stream_callback_buffer);
 }
 
 static unsigned format_to_planes(VideoEncoder::Format fmt)
@@ -307,18 +317,41 @@ bool VideoEncoder::Impl::encode_audio_stream(int compensate_audio_us)
 			return false;
 		}
 
-		size_t read_count = audio_stream->read_frames_f32(
-				reinterpret_cast<float * const *>(audio.av_frame->data),
-				audio.av_frame->nb_samples, false);
+		size_t read_count;
+		if (audio.av_frame->format == AV_SAMPLE_FMT_FLT)
+		{
+			read_count = audio_stream->read_frames_interleaved_f32(
+					reinterpret_cast<float *>(audio.av_frame->data[0]),
+					audio.av_frame->nb_samples, false);
+		}
+		else if (audio.av_frame->format == AV_SAMPLE_FMT_FLTP)
+		{
+			read_count = audio_stream->read_frames_deinterleaved_f32(
+					reinterpret_cast<float *const *>(audio.av_frame->data),
+					audio.av_frame->nb_samples, false);
+		}
+		else
+		{
+			LOGE("Unknown sample format.\n");
+			read_count = 0;
+		}
 
 		if (read_count < size_t(audio.av_frame->nb_samples))
 		{
 			// Shouldn't happen ...
 			LOGW("Short read detected (%zu < %d). Filling with silence.\n", read_count, audio.av_frame->nb_samples);
-			for (unsigned c = 0; c < 2; c++)
+			if (audio.av_frame->format == AV_SAMPLE_FMT_FLTP)
 			{
-				memset(audio.av_frame->data[c] + read_count * sizeof(float), 0,
-				       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float));
+				for (unsigned c = 0; c < 2; c++)
+				{
+					memset(audio.av_frame->data[c] + read_count * sizeof(float), 0,
+					       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float));
+				}
+			}
+			else
+			{
+				memset(audio.av_frame->data[0] + read_count * sizeof(float) * 2, 0,
+				       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float) * 2);
 			}
 		}
 
@@ -560,6 +593,9 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 			LOGE("Failed to write packet: %d\n", ret);
 			break;
 		}
+
+		if (mux_stream_callback)
+			avio_flush(av_format_ctx->pb);
 	}
 
 	return ret == AVERROR_EOF || ret == AVERROR(EAGAIN);
@@ -578,13 +614,31 @@ void VideoEncoder::set_audio_record_stream(Audio::RecordStream *stream)
 bool VideoEncoder::Impl::init_audio_codec()
 {
 #ifdef HAVE_GRANITE_AUDIO
+	AVSampleFormat sample_fmt;
 	AVCodecID codec_id;
 
 	// Streaming wants AAC.
+	// Just hardcode sample format for what FFmpeg supports.
+	// We control which encoders we care about.
 	if (options.realtime)
-		codec_id = AV_CODEC_ID_AAC;
+	{
+		if (mux_stream_callback)
+		{
+			// Don't care about streaming platform limitations, so just use the ideal format.
+			codec_id = AV_CODEC_ID_OPUS;
+			sample_fmt = AV_SAMPLE_FMT_FLT;
+		}
+		else
+		{
+			codec_id = AV_CODEC_ID_AAC;
+			sample_fmt = AV_SAMPLE_FMT_FLTP;
+		}
+	}
 	else
+	{
 		codec_id = AV_CODEC_ID_FLAC;
+		sample_fmt = AV_SAMPLE_FMT_S16;
+	}
 
 	const AVCodec *codec = avcodec_find_encoder(codec_id);
 	if (!codec)
@@ -617,8 +671,7 @@ bool VideoEncoder::Impl::init_audio_codec()
 		return false;
 	}
 
-	// Just hardcode for what FFmpeg supports. We control which encoders we care about.
-	audio.av_ctx->sample_fmt = audio_stream ? AV_SAMPLE_FMT_FLTP : AV_SAMPLE_FMT_S16;
+	audio.av_ctx->sample_fmt = sample_fmt;
 
 	if (options.realtime)
 		audio.av_ctx->sample_rate = int(audio_stream->get_sample_rate());
@@ -879,6 +932,12 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	if (options.realtime && options.realtime_options.muxer_format)
 		muxer = options.realtime_options.muxer_format;
 
+	if (!path && !mux_stream_callback)
+	{
+		LOGE("Must either use a proper encode path, or mux stream callback.\n");
+		return false;
+	}
+
 	const auto cleanup_format_context = [this]()
 	{
 		if (av_format_ctx)
@@ -934,16 +993,42 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	if (av_format_ctx_local)
 		av_dump_format(av_format_ctx_local, 0, options.realtime_options.local_backup_path, 1);
 
-	const auto open_file = [](AVFormatContext *ctx, const char *encode_path) -> bool
+	const auto open_file = [this](AVFormatContext *ctx, const char *encode_path) -> bool
 	{
 		int retval;
+
 		if (!(ctx->flags & AVFMT_NOFILE))
 		{
-			retval = avio_open(&ctx->pb, encode_path, AVIO_FLAG_WRITE);
-			if (retval < 0)
+			if (ctx == av_format_ctx && mux_stream_callback)
 			{
-				LOGE("Could not open file: %d\n", retval);
-				return false;
+				mux_stream_callback_buffer = av_malloc(1024);
+				AVIOContext *avio = avio_alloc_context(
+						static_cast<unsigned char *>(mux_stream_callback_buffer), 1024, AVIO_FLAG_WRITE,
+						this, nullptr, [](void *opaque, uint8_t *buf, int buf_size) -> int
+						{
+							auto *self = static_cast<VideoEncoder::Impl *>(opaque);
+							if (self->mux_stream_callback)
+								if (!self->mux_stream_callback->write_stream(buf, buf_size))
+									self->mux_stream_callback = nullptr;
+							return 0;
+						}, nullptr);
+
+				if (!avio)
+				{
+					LOGE("Could not create AVIO context.\n");
+					return false;
+				}
+
+				ctx->pb = avio;
+			}
+			else
+			{
+				retval = avio_open(&ctx->pb, encode_path, AVIO_FLAG_WRITE);
+				if (retval < 0)
+				{
+					LOGE("Could not open file: %d\n", retval);
+					return false;
+				}
 			}
 		}
 
@@ -1074,6 +1159,11 @@ VideoEncoder::~VideoEncoder()
 bool VideoEncoder::init(Vulkan::Device *device, const char *path, const Options &options)
 {
 	return impl->init(device, path, options);
+}
+
+void VideoEncoder::set_mux_stream_callback(Granite::MuxStreamCallback *callback)
+{
+	impl->set_mux_stream_callback(callback);
 }
 
 void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline_ptr, const Vulkan::ImageView &view)

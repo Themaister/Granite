@@ -439,7 +439,9 @@ struct PulseRecord final : RecordStream
 		return num_channels;
 	}
 
-	size_t read_frames_f32(float * const *data, size_t frames, bool blocking) override;
+	size_t read_frames_deinterleaved_f32(float * const *data, size_t frames, bool blocking) override;
+	size_t read_frames_interleaved_f32(float *data, size_t frames, bool blocking) override;
+	size_t read_frames_f32(float * const *data, size_t frames, bool blocking, bool interleaved);
 	bool get_buffer_status(size_t &read_avail, uint32_t &latency_usec) override;
 	bool init(const char *ident, float sample_rate_, unsigned channels_);
 
@@ -719,7 +721,7 @@ bool PulseRecord::get_buffer_status(size_t &read_avail, uint32_t &latency_usec)
 	return true;
 }
 
-size_t PulseRecord::read_frames_f32(float * const *data, size_t frames, bool blocking)
+size_t PulseRecord::read_frames_f32(float * const *data, size_t frames, bool blocking, bool interleaved)
 {
 	if (!is_running)
 		return 0;
@@ -736,12 +738,25 @@ size_t PulseRecord::read_frames_f32(float * const *data, size_t frames, bool blo
 
 			if (data)
 			{
-				if (peek_buffer)
+				if (interleaved)
+				{
+					if (peek_buffer)
+					{
+						memcpy(data[0] + num_read_frames * num_channels,
+						       peek_buffer + num_channels * pull_buffer_offset,
+						       to_write * num_channels * sizeof(float));
+					}
+					else
+					{
+						memset(data[0] + num_read_frames * num_channels, 0, to_write * num_channels * sizeof(float));
+					}
+				}
+				else if (peek_buffer)
 				{
 					if (num_channels == 2)
 					{
 						DSP::deinterleave_stereo_f32(data[0] + num_read_frames, data[1] + num_read_frames,
-													 peek_buffer + 2 * pull_buffer_offset, to_write);
+						                             peek_buffer + 2 * pull_buffer_offset, to_write);
 					}
 					else
 					{
@@ -788,6 +803,16 @@ size_t PulseRecord::read_frames_f32(float * const *data, size_t frames, bool blo
 
 	pa_threaded_mainloop_unlock(mainloop);
 	return num_read_frames;
+}
+
+size_t PulseRecord::read_frames_deinterleaved_f32(float *const *data, size_t frames, bool blocking)
+{
+	return read_frames_f32(data, frames, blocking, false);
+}
+
+size_t PulseRecord::read_frames_interleaved_f32(float *data, size_t frames, bool blocking)
+{
+	return read_frames_f32(&data, frames, blocking, true);
 }
 
 RecordStream *create_pulse_record_backend(const char *ident, float sample_rate, unsigned channels)

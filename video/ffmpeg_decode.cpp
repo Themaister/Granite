@@ -104,7 +104,7 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	std::atomic_uint32_t write_count;
 	std::atomic_uint32_t read_count;
 	std::atomic_uint32_t read_frames_count;
-	uint32_t write_frames_count = 0;
+	std::atomic_uint32_t write_frames_count;
 	std::atomic_bool complete;
 	int packet_frames = 0;
 	bool running_state = false;
@@ -132,6 +132,7 @@ AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_,
 	write_count = 0;
 	read_count = 0;
 	read_frames_count = 0;
+	write_frames_count = 0;
 	pts_index = 0;
 	complete = false;
 }
@@ -292,8 +293,8 @@ AVFrame *AVFrameRingStream::acquire_write_frame()
 void AVFrameRingStream::submit_write_frame()
 {
 	uint32_t index = write_count.load(std::memory_order_relaxed);
+	write_frames_count.store(write_frames_count.load(std::memory_order_relaxed) + uint32_t(frames[index % Frames]->nb_samples));
 	write_count.store(index + 1, std::memory_order_release);
-	write_frames_count += uint32_t(frames[index % Frames]->nb_samples);
 }
 
 void AVFrameRingStream::mark_complete()
@@ -310,7 +311,7 @@ unsigned AVFrameRingStream::get_num_buffered_av_frames()
 
 unsigned AVFrameRingStream::get_num_buffered_audio_frames()
 {
-	uint32_t result = write_frames_count - read_frames_count.load(std::memory_order_acquire);
+	uint32_t result = write_frames_count.load(std::memory_order_relaxed) - read_frames_count.load(std::memory_order_acquire);
 	VK_ASSERT(result < 0x80000000u);
 	return result;
 }
@@ -383,6 +384,8 @@ struct VideoDecoder::Impl
 	bool get_paused() const;
 
 	double get_estimated_audio_playback_timestamp(double elapsed_time);
+	double get_audio_buffering_duration();
+	double get_last_video_buffering_pts();
 	double get_estimated_audio_playback_timestamp_raw();
 
 	bool acquire_video_frame(VideoFrame &frame);
@@ -1420,18 +1423,41 @@ bool VideoDecoder::Impl::drain_audio_frame()
 	if (!stream)
 		return false;
 
-	// It's okay to acquire the same frame many times.
-	auto *av_frame = stream->acquire_write_frame();
-	if (avcodec_receive_frame(audio.av_ctx, av_frame) >= 0)
+	AVFrame *av_frame;
+	bool stream_frame;
+	if (stream->get_num_buffered_av_frames() <= AVFrameRingStream::FramesHighWatermark)
 	{
-		stream->submit_write_frame();
-		return true;
+		// It's okay to acquire the same frame many times.
+		av_frame = stream->acquire_write_frame();
+		stream_frame = true;
 	}
 	else
-#endif
 	{
-		return false;
+		// This should only happen in real-time mode.
+		assert(opts.realtime);
+
+		// Give decoder a dummy frame. We drop audio here.
+		av_frame = av_frame_alloc();
+		LOGW("Dropping audio frame.\n");
+		stream_frame = false;
 	}
+
+	int ret;
+	if ((ret = avcodec_receive_frame(audio.av_ctx, av_frame)) >= 0)
+		if (stream_frame)
+			stream->submit_write_frame();
+
+	// This marks the end of the stream. Let it die.
+	if (ret == AVERROR_EOF)
+		stream->mark_complete();
+
+	if (!stream_frame)
+		av_frame_free(&av_frame);
+
+	return ret >= 0;
+#else
+	return false;
+#endif
 }
 
 bool VideoDecoder::Impl::decode_audio_packet(AVPacket *pkt)
@@ -1451,20 +1477,7 @@ bool VideoDecoder::Impl::decode_audio_packet(AVPacket *pkt)
 		}
 	}
 
-	// It's okay to acquire the same frame many times.
-	auto *av_frame = stream->acquire_write_frame();
-
-	if ((ret = avcodec_receive_frame(audio.av_ctx, av_frame)) >= 0)
-	{
-		stream->submit_write_frame();
-		return true;
-	}
-
-	// This marks the end of the stream. Let it die.
-	if (!pkt && ret < 0)
-		stream->mark_complete();
-
-	return ret >= 0 || ret == AVERROR(EAGAIN);
+	return true;
 #else
 	(void)pkt;
 	return false;
@@ -1502,19 +1515,7 @@ bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 		}
 	}
 
-	AVFrame *frame = av_frame_alloc();
-	if (!frame)
-		return false;
-
-	if ((ret = avcodec_receive_frame(video.av_ctx, frame)) >= 0)
-	{
-		process_video_frame(frame);
-		return true;
-	}
-	else
-		av_frame_free(&frame);
-
-	return ret >= 0 || ret == AVERROR(EAGAIN);
+	return true;
 }
 
 bool VideoDecoder::Impl::iterate()
@@ -1565,10 +1566,10 @@ bool VideoDecoder::Impl::iterate()
 			return false;
 	}
 
-	if (!is_video_eof && is_flushing && !decode_video_packet(nullptr))
+	if (!is_video_eof && is_flushing && !drain_video_frame())
 		is_video_eof = true;
 
-	if (!is_audio_eof && is_flushing && audio.av_ctx && !decode_audio_packet(nullptr))
+	if (!is_audio_eof && is_flushing && audio.av_ctx && !drain_audio_frame())
 		is_audio_eof = true;
 
 	return true;
@@ -1581,6 +1582,11 @@ bool VideoDecoder::Impl::should_iterate_locked()
 	// of memory either way.
 	// TODO: It is possible to use dynamic rate control techniques to ensure that
 	// audio ring does not underflow or overflow.
+
+	// We will never stop decoding, since we have to drain UDP/TDP queues.
+	// If player cannot keep up or won't keep up, we drop frames.
+	if (opts.realtime)
+		return true;
 
 #ifdef HAVE_GRANITE_AUDIO
 	if (stream)
@@ -1778,6 +1784,29 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp_raw()
 	{
 		return -1.0;
 	}
+}
+
+double VideoDecoder::Impl::get_audio_buffering_duration()
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (stream)
+		return double(stream->get_num_buffered_audio_frames()) / stream->sample_rate;
+	else
+		return -1.0;
+#else
+	return -1.0;
+#endif
+}
+
+double VideoDecoder::Impl::get_last_video_buffering_pts()
+{
+	double last_pts = -1.0;
+	std::unique_lock<std::mutex> holder{lock};
+	for (auto &q : video_queue)
+		if (q.state == ImageState::Ready)
+			if (q.pts > last_pts)
+				last_pts = q.pts;
+	return last_pts;
 }
 
 double VideoDecoder::Impl::get_estimated_audio_playback_timestamp(double elapsed_time)
@@ -2071,6 +2100,16 @@ bool VideoDecoder::get_paused() const
 double VideoDecoder::get_estimated_audio_playback_timestamp(double elapsed_time)
 {
 	return impl->get_estimated_audio_playback_timestamp(elapsed_time);
+}
+
+double VideoDecoder::get_audio_buffering_duration()
+{
+	return impl->get_audio_buffering_duration();
+}
+
+double VideoDecoder::get_last_video_buffering_pts()
+{
+	return impl->get_last_video_buffering_pts();
 }
 
 double VideoDecoder::get_estimated_audio_playback_timestamp_raw()

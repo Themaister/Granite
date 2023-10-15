@@ -30,6 +30,7 @@ public:
 	struct DecodeOptions
 	{
 		bool mipgen = false;
+		bool realtime = false;
 	};
 
 	bool init(Audio::Mixer *mixer, const char *path, const DecodeOptions &options);
@@ -72,6 +73,13 @@ public:
 
 	// Only based on audio PTS.
 	double get_estimated_audio_playback_timestamp_raw();
+
+	// Reports difference between last buffered PTS and current PTS.
+	// Useful to figure out how much latency there is.
+	double get_audio_buffering_duration();
+
+	// Reports PTS of the last decoded frame.
+	double get_last_video_buffering_pts();
 
 	// Client is responsible for displaying the frame in due time.
 	// A video frame can be released when the returned PTS is out of date.

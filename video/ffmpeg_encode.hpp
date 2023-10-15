@@ -75,6 +75,7 @@ public:
 		// Correlate PTS with wall time.
 		bool realtime = false;
 		const char *encoder = "libx264";
+		bool low_latency = false;
 
 		struct
 		{

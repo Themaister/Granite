@@ -67,6 +67,7 @@ struct CodecStream
 	AVFrame *av_frame = nullptr;
 	AVCodecContext *av_ctx = nullptr;
 	AVPacket *av_pkt = nullptr;
+	int ticks_per_frame = 1;
 };
 
 struct VideoEncoder::YCbCrPipelineData
@@ -478,7 +479,7 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 		if (encode_video_pts)
 		{
 			int64_t delta = std::abs(target_pts - encode_video_pts);
-			if (delta > 8 * video.av_ctx->ticks_per_frame)
+			if (delta > 8 * video.ticks_per_frame)
 			{
 				// If we're way off (8 frames), catch up instantly.
 				encode_video_pts = target_pts;
@@ -486,7 +487,7 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 				// Force an I-frame here since there is a large discontinuity.
 				video.av_frame->pict_type = AV_PICTURE_TYPE_I;
 			}
-			else if (delta >= video.av_ctx->ticks_per_frame / 4)
+			else if (delta >= video.ticks_per_frame / 4)
 			{
 				// If we're more than a quarter frame off, nudge the PTS by one subtick to catch up with real value.
 				// Nudging slowly avoids broken DTS timestamps.
@@ -503,8 +504,8 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 		// This helps avoid DTS issues in misc hardware encoders since they treat DTS as just subtracted reordered PTS,
 		// or something weird like that ...
 		video.av_frame->pts = encode_video_pts;
-		video.av_frame->duration = video.av_ctx->ticks_per_frame;
-		encode_video_pts += video.av_ctx->ticks_per_frame;
+		video.av_frame->duration = video.ticks_per_frame;
+		encode_video_pts += video.ticks_per_frame;
 	}
 	else
 		video.av_frame->pts = encode_video_pts++;
@@ -571,7 +572,7 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 
 		if (options.realtime)
 			if (&stream == &video)
-				stream.av_pkt->duration = video.av_ctx->ticks_per_frame;
+				stream.av_pkt->duration = video.ticks_per_frame;
 
 		if (av_format_ctx_local)
 		{
@@ -802,17 +803,18 @@ bool VideoEncoder::Impl::init_video_codec()
 
 	video.av_ctx->framerate = { options.frame_timebase.den, options.frame_timebase.num };
 
+	if (options.low_latency)
+		video.av_ctx->max_b_frames = 0;
+
 	if (options.realtime)
 	{
-		video.av_ctx->ticks_per_frame = 16;
-		video.av_ctx->time_base = { options.frame_timebase.num, options.frame_timebase.den * video.av_ctx->ticks_per_frame };
-		// This seems to be important for NVENC.
-		// Need more fine-grained timebase to account for realtime jitter in PTS.
+		video.ticks_per_frame = 16;
+		video.av_ctx->time_base = { options.frame_timebase.num, options.frame_timebase.den * video.ticks_per_frame };
 	}
 	else
 	{
 		video.av_ctx->time_base = { options.frame_timebase.num, options.frame_timebase.den };
-		video.av_ctx->ticks_per_frame = 1;
+		video.ticks_per_frame = 1;
 	}
 
 	video.av_ctx->color_range = AVCOL_RANGE_MPEG;

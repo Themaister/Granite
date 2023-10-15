@@ -1,0 +1,10 @@
+{
+	"include": [ "../assets/shaders/inc" ],
+	"shaders": [
+		{
+			"name": "yuv_to_rgb",
+			"compute": true,
+			"path": "../assets/shaders/util/yuv_to_rgb.comp"
+		}
+	]
+}

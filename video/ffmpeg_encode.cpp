@@ -1389,14 +1389,13 @@ void VideoEncoder::submit_process_rgb(Vulkan::CommandBufferHandle &cmd, YCbCrPip
 	}
 }
 
-VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(
-		Vulkan::Program *rgb_to_ycbcr, Vulkan::Program *chroma_downsample) const
+VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEncode::Shaders<> &shaders) const
 {
 	YCbCrPipeline pipeline_ptr{new YCbCrPipelineData};
 	auto &pipeline = *pipeline_ptr;
 
-	pipeline.rgb_to_ycbcr = rgb_to_ycbcr;
-	pipeline.chroma_downsample = chroma_downsample;
+	pipeline.rgb_to_ycbcr = shaders.rgb_to_yuv;
+	pipeline.chroma_downsample = shaders.chroma_downsample;
 
 	auto image_info = Vulkan::ImageCreateInfo::immutable_2d_image(impl->options.width, impl->options.height, VK_FORMAT_R8_UNORM);
 	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;

@@ -3,6 +3,7 @@
 #include "device.hpp"
 #include "image.hpp"
 #include "semaphore.hpp"
+#include "slangmosh_decode_iface.hpp"
 
 namespace Granite
 {
@@ -36,7 +37,7 @@ public:
 	unsigned get_height() const;
 
 	// Must be called before play().
-	bool begin_device_context(Vulkan::Device *device);
+	bool begin_device_context(Vulkan::Device *device, const FFmpegDecode::Shaders<> &shaders);
 
 	// Should be called after stop().
 	// If stop() is not called, this call with also do so.

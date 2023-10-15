@@ -24,6 +24,7 @@
 
 #include "device.hpp"
 #include "image.hpp"
+#include "slangmosh_encode_iface.hpp"
 
 namespace Granite
 {
@@ -110,7 +111,7 @@ public:
 	};
 	using YCbCrPipeline = std::unique_ptr<YCbCrPipelineData, YCbCrPipelineDataDeleter>;
 
-	YCbCrPipeline create_ycbcr_pipeline(Vulkan::Program *rgb_to_ycbcr, Vulkan::Program *chroma_downsample) const;
+	YCbCrPipeline create_ycbcr_pipeline(const FFmpegEncode::Shaders<> &shaders) const;
 	void process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view);
 	// Handles GPU synchronization if required.
 	void submit_process_rgb(Vulkan::CommandBufferHandle &cmd, YCbCrPipeline &pipeline);

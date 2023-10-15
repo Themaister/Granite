@@ -171,7 +171,11 @@ struct VideoTextureRenderable : AbstractRenderable
 
 	void begin(Vulkan::Device &device)
 	{
-		if (!decoder.begin_device_context(&device))
+		FFmpegDecode::Shaders<> shaders;
+		auto *comp = device.get_shader_manager().register_compute("builtin://shaders/util/yuv_to_rgb.comp");
+		shaders.yuv_to_rgb = comp->register_variant({})->get_program();
+
+		if (!decoder.begin_device_context(&device, shaders))
 			LOGE("Failed to begin device context.\n");
 		if (!decoder.play())
 			LOGE("Failed to begin playback.\n");

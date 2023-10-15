@@ -325,6 +325,7 @@ AVFrameRingStream::~AVFrameRingStream()
 struct VideoDecoder::Impl
 {
 	Vulkan::Device *device = nullptr;
+	FFmpegDecode::Shaders<> shaders;
 	Audio::Mixer *mixer = nullptr;
 	DecodeOptions opts;
 	AVFormatContext *av_format_ctx = nullptr;
@@ -372,7 +373,7 @@ struct VideoDecoder::Impl
 	bool init_video_decoder_post_device();
 	bool init_audio_decoder();
 
-	bool begin_device_context(Vulkan::Device *device);
+	bool begin_device_context(Vulkan::Device *device, const FFmpegDecode::Shaders<> &shaders);
 	void end_device_context();
 	bool play();
 	bool get_stream_id(Audio::StreamID &id) const;
@@ -1029,8 +1030,7 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 
 	init_yuv_to_rgb();
 
-	auto *comp = device->get_shader_manager().register_compute("builtin://shaders/util/yuv_to_rgb.comp");
-	program = comp->register_variant({})->get_program();
+	program = shaders.yuv_to_rgb;
 }
 
 #ifdef HAVE_FFMPEG_VULKAN
@@ -1746,9 +1746,10 @@ void VideoDecoder::Impl::release_video_frame(unsigned index, Vulkan::Semaphore s
 	video_queue[index].idle_order = ++idle_timestamps;
 }
 
-bool VideoDecoder::Impl::begin_device_context(Vulkan::Device *device_)
+bool VideoDecoder::Impl::begin_device_context(Vulkan::Device *device_, const FFmpegDecode::Shaders<> &shaders_)
 {
 	device = device_;
+	shaders = shaders_;
 	thread_group = device->get_system_handles().thread_group;
 
 	// Potentially need device here if we're creating a Vulkan HW context.
@@ -2027,9 +2028,9 @@ unsigned VideoDecoder::get_height() const
 	return impl->get_height();
 }
 
-bool VideoDecoder::begin_device_context(Vulkan::Device *device)
+bool VideoDecoder::begin_device_context(Vulkan::Device *device, const FFmpegDecode::Shaders<> &shaders)
 {
-	return impl->begin_device_context(device);
+	return impl->begin_device_context(device, shaders);
 }
 
 void VideoDecoder::end_device_context()

@@ -69,11 +69,12 @@ int main()
 	info.misc = Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
 	auto img = device.create_image(info);
 
-	auto *rgb_to_yuv = device.get_shader_manager().register_compute(
+	FFmpegEncode::Shaders<> shaders;
+	shaders.rgb_to_yuv = device.get_shader_manager().register_compute(
 			"builtin://shaders/util/rgb_to_yuv.comp")->register_variant({})->get_program();
-	auto *chroma_downsample = device.get_shader_manager().register_compute(
+	shaders.chroma_downsample = device.get_shader_manager().register_compute(
 			"builtin://shaders/util/chroma_downsample.comp")->register_variant({})->get_program();
-	auto pipe = encoder.create_ycbcr_pipeline(rgb_to_yuv, chroma_downsample);
+	auto pipe = encoder.create_ycbcr_pipeline(shaders);
 
 	for (unsigned i = 0; i < 1000; i++)
 	{

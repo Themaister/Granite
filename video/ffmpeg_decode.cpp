@@ -40,6 +40,7 @@
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_mixer.hpp"
 #include "dsp/dsp.hpp"
+#include "dsp/sinc_resampler.hpp"
 #endif
 
 extern "C"
@@ -81,7 +82,7 @@ static void free_av_objects(CodecStream &stream)
 #ifdef HAVE_GRANITE_AUDIO
 struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePtrEnabled<AVFrameRingStream>
 {
-	AVFrameRingStream(float sample_rate, unsigned num_channels, double timebase);
+	AVFrameRingStream(float sample_rate, unsigned num_channels, double timebase, bool support_resample);
 	~AVFrameRingStream() override;
 
 	float sample_rate;
@@ -89,8 +90,12 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	double timebase;
 	double inv_sample_rate_ns;
 
+	void set_rate_factor(float factor);
+	float get_rate_factor() const noexcept;
+
 	bool setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames) override;
 	size_t accumulate_samples(float * const *channels, const float *gain, size_t num_frames) noexcept override;
+	size_t accumulate_samples_inner(float * const *channels, const float *gain, size_t num_frames) noexcept;
 	unsigned get_num_channels() const override;
 	float get_sample_rate() const override;
 	void dispose() override;
@@ -105,11 +110,17 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	std::atomic_uint32_t read_count;
 	std::atomic_uint32_t read_frames_count;
 	std::atomic_uint32_t write_frames_count;
+	std::atomic_uint32_t rate_factor_u32;
 	std::atomic_bool complete;
 	int packet_frames = 0;
 	bool running_state = false;
 	unsigned get_num_buffered_audio_frames();
 	unsigned get_num_buffered_av_frames();
+
+	enum { MaxChannels = 8 };
+	std::unique_ptr<Audio::DSP::SincResampler> resamplers[MaxChannels];
+	std::vector<float> tmp_resampler_buffer[MaxChannels];
+	float *tmp_resampler_ptrs[MaxChannels] = {};
 
 	struct
 	{
@@ -124,8 +135,11 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	void mark_complete();
 };
 
-AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_, double timebase_)
-		: sample_rate(sample_rate_), num_channels(num_channels_), timebase(timebase_), inv_sample_rate_ns(1e9 / sample_rate)
+AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_, double timebase_, bool support_resample)
+	: sample_rate(sample_rate_)
+	, num_channels(num_channels_)
+	, timebase(timebase_)
+	, inv_sample_rate_ns(1e9 / sample_rate)
 {
 	for (auto &f : frames)
 		f = av_frame_alloc();
@@ -135,6 +149,27 @@ AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_,
 	write_frames_count = 0;
 	pts_index = 0;
 	complete = false;
+	set_rate_factor(1.0f);
+
+	if (support_resample)
+		for (unsigned i = 0; i < num_channels; i++)
+			resamplers[i] = std::make_unique<Audio::DSP::SincResampler>(sample_rate, sample_rate, Audio::DSP::SincResampler::Quality::High);
+}
+
+void AVFrameRingStream::set_rate_factor(float factor)
+{
+	factor = 1.0f / factor;
+	uint32_t v;
+	memcpy(&v, &factor, sizeof(uint32_t));
+	rate_factor_u32.store(v, std::memory_order_relaxed);
+}
+
+float AVFrameRingStream::get_rate_factor() const noexcept
+{
+	float v;
+	uint32_t u = rate_factor_u32.load(std::memory_order_relaxed);
+	memcpy(&v, &u, sizeof(uint32_t));
+	return v;
 }
 
 void AVFrameRingStream::mark_uncorked_audio_pts()
@@ -146,10 +181,22 @@ void AVFrameRingStream::mark_uncorked_audio_pts()
 		progress[index].sampled_ns = Util::get_current_time_nsecs();
 }
 
-bool AVFrameRingStream::setup(float, unsigned mixer_channels, size_t)
+bool AVFrameRingStream::setup(float, unsigned mixer_channels, size_t num_frames)
 {
 	// TODO: Could promote mono to stereo.
-	return mixer_channels == num_channels;
+	if (mixer_channels != num_channels)
+		return false;
+
+	for (unsigned i = 0; i < MaxChannels; i++)
+	{
+		if (resamplers[i])
+		{
+			tmp_resampler_buffer[i].resize(num_frames * 2); // Maximum ratio distortion is 1.5x.
+			tmp_resampler_ptrs[i] = tmp_resampler_buffer[i].data();
+		}
+	}
+
+	return true;
 }
 
 void AVFrameRingStream::dispose()
@@ -168,6 +215,41 @@ unsigned AVFrameRingStream::get_num_channels() const
 }
 
 size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float *gain, size_t num_frames) noexcept
+{
+	if (resamplers[0])
+	{
+		float ratio = get_rate_factor();
+
+		// Safeguard when we're starting to hit underruns.
+		if (get_num_buffered_av_frames() <= 1 && ratio > 1.0f)
+			ratio = 1.0f;
+
+		for (unsigned i = 0; i < num_channels; i++)
+			resamplers[i]->set_sample_rate_ratio(ratio);
+		size_t required = resamplers[0]->get_maximum_input_for_output_frames(num_frames);
+		for (unsigned i = 0; i < num_channels; i++)
+		{
+			assert(required <= tmp_resampler_buffer[i].size());
+			// Should have a no-accumulation variant, but eeeeeeh.
+			// We need to clear out to zero anyway for underruns, etc.
+			memset(tmp_resampler_ptrs[i], 0, required * sizeof(float));
+		}
+		size_t accum = accumulate_samples_inner(tmp_resampler_ptrs, gain, required);
+		for (unsigned i = 0; i < num_channels; i++)
+		{
+			resamplers[i]->set_sample_rate_ratio(ratio);
+			resamplers[i]->process_and_accumulate_output_frames(channels[i], tmp_resampler_ptrs[i], num_frames);
+		}
+
+		return complete.load(std::memory_order_relaxed) && accum == 0 ? 0 : num_frames;
+	}
+	else
+	{
+		return accumulate_samples_inner(channels, gain, num_channels);
+	}
+}
+
+size_t AVFrameRingStream::accumulate_samples_inner(float *const *channels, const float *gain, size_t num_frames) noexcept
 {
 	// Hold back playback until we have buffered enough to avoid instant underrun.
 	uint32_t written_count = write_count.load(std::memory_order_acquire);
@@ -387,6 +469,7 @@ struct VideoDecoder::Impl
 	double get_audio_buffering_duration();
 	double get_last_video_buffering_pts();
 	double get_estimated_audio_playback_timestamp_raw();
+	void latch_audio_presentation_target(double pts);
 
 	bool acquire_video_frame(VideoFrame &frame);
 	int try_acquire_video_frame(VideoFrame &frame);
@@ -807,7 +890,8 @@ void VideoDecoder::Impl::begin_audio_stream()
 #else
 			audio.av_ctx->ch_layout.nb_channels,
 #endif
-			av_q2d(audio.av_stream->time_base));
+			av_q2d(audio.av_stream->time_base),
+			opts.realtime);
 
 	stream->add_reference();
 	stream_id = mixer->add_mixer_stream(stream, !is_paused);
@@ -1775,7 +1859,16 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp_raw()
 
 		double pts = stream->progress[pts_buffer_index].pts;
 		if (pts < 0.0)
+		{
 			pts = 0.0;
+		}
+		else if (!is_paused)
+		{
+			// Crude estimate based on last reported PTS, offset by time since reported.
+			int64_t sampled_ns = stream->progress[pts_buffer_index].sampled_ns;
+			int64_t d = std::max<int64_t>(Util::get_current_time_nsecs(), sampled_ns) - sampled_ns;
+			pts += 1e-9 * double(d);
+		}
 
 		return pts;
 	}
@@ -1798,6 +1891,37 @@ double VideoDecoder::Impl::get_audio_buffering_duration()
 #endif
 }
 
+void VideoDecoder::Impl::latch_audio_presentation_target(double pts)
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (!stream)
+		return;
+
+	double raw_pts = get_estimated_audio_playback_timestamp_raw();
+	auto delta = float(pts - raw_pts);
+
+	LOGI("Delta: %.4f\n", delta);
+
+	if (delta > 0.1f)
+	{
+		// Need to catch up.
+		stream->set_rate_factor(1.2f);
+	}
+	else if (delta < -0.1f)
+	{
+		// Shouldn't really happen in real-time mode ... Slow down a little to let us catch up.
+		stream->set_rate_factor(0.995f);
+	}
+	else
+	{
+		// Max rate distortion: 0.2% (3.45 cents).
+		// This is inaudible in practice. Practical distortion will be much lower.
+		// And should be less than 1 cent on average.
+		stream->set_rate_factor(1.0f + delta * 0.02f);
+	}
+#endif
+}
+
 double VideoDecoder::Impl::get_last_video_buffering_pts()
 {
 	double last_pts = -1.0;
@@ -1814,29 +1938,10 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp(double elapsed
 #ifdef HAVE_GRANITE_AUDIO
 	if (stream)
 	{
-		uint32_t pts_buffer_index = (stream->pts_index.load(std::memory_order_acquire) - 1) %
-		                            AVFrameRingStream::Frames;
+		// Unsmoothed PTS.
+		auto pts = get_estimated_audio_playback_timestamp_raw();
 
-		double pts = stream->progress[pts_buffer_index].pts;
-		if (pts < 0.0)
-		{
-			pts = 0.0;
-			smooth_elapsed = 0.0;
-			smooth_pts = 0.0;
-		}
-		else if (!is_paused)
-		{
-			// Crude estimate based on last reported PTS, offset by time since reported.
-			int64_t sampled_ns = stream->progress[pts_buffer_index].sampled_ns;
-			int64_t d = std::max<int64_t>(Util::get_current_time_nsecs(), sampled_ns) - sampled_ns;
-			pts += 1e-9 * double(d);
-		}
-
-		// Smooth out the reported PTS.
-		// The reported PTS should be tied to the host timer,
-		// but we need to gradually adjust the timer based on the reported audio PTS to be accurate.
-
-		if (smooth_elapsed == 0.0)
+		if (pts == 0.0)
 		{
 			// Latch the PTS.
 			smooth_elapsed = elapsed_time;
@@ -1844,6 +1949,10 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp(double elapsed
 		}
 		else
 		{
+			// Smooth out the reported PTS.
+			// The reported PTS should be tied to the host timer,
+			// but we need to gradually adjust the timer based on the reported audio PTS to be accurate over time.
+
 			// This is the value we should get in principle if everything is steady.
 			smooth_pts += elapsed_time - smooth_elapsed;
 			smooth_elapsed = elapsed_time;
@@ -2130,5 +2239,10 @@ int VideoDecoder::try_acquire_video_frame(VideoFrame &frame)
 void VideoDecoder::release_video_frame(unsigned index, Vulkan::Semaphore sem)
 {
 	impl->release_video_frame(index, std::move(sem));
+}
+
+void VideoDecoder::latch_audio_presentation_target(double pts)
+{
+	impl->latch_audio_presentation_target(pts);
 }
 }

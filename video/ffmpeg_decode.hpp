@@ -90,6 +90,10 @@ public:
 
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
 
+	// Should be called after every acquire in realtime mode.
+	// Lets audio buffer speed up or slow down appropriately to try to match video.
+	void latch_audio_presentation_target(double pts);
+
 private:
 	struct Impl;
 	std::unique_ptr<Impl> impl;

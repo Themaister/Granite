@@ -295,6 +295,10 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 	str << "#ifndef SLANGMOSH_GENERATED_" << generated_namespace << (interface_header ? "iface_H" : "H") << "\n";
 	str << "#define SLANGMOSH_GENERATED_" << generated_namespace << (interface_header ? "iface_H" : "H") << "\n";
 	str << "#include <stdint.h>\n";
+	str << "namespace Vulkan\n{\n";
+	str << "class Program;\n";
+	str << "class Shader;\n";
+	str << "}\n\n";
 	str << "namespace ";
 	if (generated_namespace.empty())
 		str << "ShaderBank";
@@ -343,7 +347,7 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 
 	if (interface_header)
 	{
-		str << "template <typename Program, typename Shader>\n";
+		str << "template <typename Program = Vulkan::Program *, typename Shader = Vulkan::Shader *>\n";
 		str << "struct Shaders\n{\n";
 
 		for (auto &shader: shaders)

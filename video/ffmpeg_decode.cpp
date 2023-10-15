@@ -1900,8 +1900,6 @@ void VideoDecoder::Impl::latch_audio_presentation_target(double pts)
 	double raw_pts = get_estimated_audio_playback_timestamp_raw();
 	auto delta = float(pts - raw_pts);
 
-	LOGI("Delta: %.4f\n", delta);
-
 	if (delta > 0.1f)
 	{
 		// Need to catch up.

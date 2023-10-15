@@ -235,6 +235,10 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 			memset(tmp_resampler_ptrs[i], 0, required * sizeof(float));
 		}
 		size_t accum = accumulate_samples_inner(tmp_resampler_ptrs, gain, required);
+
+		if (accum < required)
+			LOGW("Underflow in audio thread (%zu < %zu).\n", accum, required);
+
 		for (unsigned i = 0; i < num_channels; i++)
 		{
 			resamplers[i]->set_sample_rate_ratio(ratio);

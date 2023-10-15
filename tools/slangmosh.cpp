@@ -364,6 +364,7 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 					str << "[" << var.count << "]";
 			str << " = {};\n";
 		}
+		str << "\tShaders() = default;\n";
 		str << "\n\ttemplate <typename Device, typename Layout, typename Resolver>\n";
 		str << "\tShaders(Device &device, Layout &layout, const Resolver &resolver);\n";
 		str << "};\n";

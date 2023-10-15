@@ -143,7 +143,10 @@ struct VideoTextureRenderable : AbstractRenderable
 			// If we have two candidates, shift out frame if next_frame PTS is closer.
 			double d_current = std::abs(frame.pts - target_pts);
 			double d_next = std::abs(next_frame.pts - target_pts);
-			if (d_next < d_current || !frame.view)
+
+			// In case we get two frames with same PTS for whatever reason, ensure forward progress.
+			// The less-equal check is load-bearing.
+			if (d_next <= d_current || !frame.view)
 			{
 				shift_frame();
 

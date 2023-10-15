@@ -113,8 +113,6 @@ ThreadGroupInterface *thread_group()
 
 UI::UIManagerInterface *ui_manager()
 {
-	if (!global_managers.ui_manager)
-		LOGE("UI manager was not initialized.\n");
 	return global_managers.ui_manager;
 }
 

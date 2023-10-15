@@ -38,6 +38,7 @@
 #include "global_managers_init.hpp"
 #include "path_utils.hpp"
 #include "thread_group.hpp"
+#include "asset_manager.hpp"
 
 #ifdef HAVE_GRANITE_FFMPEG
 #include "ffmpeg_encode.hpp"
@@ -225,6 +226,11 @@ public:
 #ifdef HAVE_GRANITE_FFMPEG
 	void init_headless_recording(std::string path)
 	{
+#ifndef HAVE_GRANITE_RENDERER
+		LOGE("Need to include system handles in build to encode.\n");
+		return;
+#endif
+
 		video_encode_path = std::move(path);
 		VideoEncoder::Options enc_opts = {};
 		enc_opts.width = width;
@@ -256,10 +262,12 @@ public:
 			video_encode_path.clear();
 		}
 
+#ifdef HAVE_GRANITE_RENDERER
 		for (unsigned i = 0; i < SwapchainImages; i++)
 		{
 			auto &device = app->get_wsi().get_device();
 			FFmpegEncode::Shaders<> shaders;
+
 			shaders.rgb_to_yuv = device.get_shader_manager().register_compute(
 					"builtin://shaders/util/rgb_to_yuv.comp")->register_variant({})->get_program();
 			shaders.chroma_downsample = device.get_shader_manager().register_compute(
@@ -267,6 +275,7 @@ public:
 
 			ycbcr_pipelines.push_back(encoder.create_ycbcr_pipeline(shaders));
 		}
+#endif
 
 		record_stream->start();
 	}

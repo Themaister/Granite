@@ -24,7 +24,9 @@
 #include "application.hpp"
 #include "asset_manager.hpp"
 #include "thread_group.hpp"
+#ifdef HAVE_GRANITE_RENDERER
 #include "common_renderer_data.hpp"
+#endif
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_mixer.hpp"
 #endif
@@ -35,7 +37,9 @@ namespace Granite
 {
 Application::Application()
 {
+#ifdef HAVE_GRANITE_RENDERER
 	GRANITE_COMMON_RENDERER_DATA()->initialize_static_assets(GRANITE_ASSET_MANAGER(), GRANITE_FILESYSTEM());
+#endif
 }
 
 Application::~Application()
@@ -155,7 +159,12 @@ void Application::check_initialization_progress()
 			GRANITE_ASSET_MANAGER()->iterate(GRANITE_THREAD_GROUP());
 
 			GRANITE_SCOPED_TIMELINE_EVENT("dispatch-ready-modules");
-			GRANITE_EVENT_MANAGER()->enqueue_latched<DeviceShaderModuleReadyEvent>(&device, &device.get_shader_manager());
+#ifdef HAVE_GRANITE_RENDERER
+			auto *manager = &device.get_shader_manager();
+#else
+			constexpr Vulkan::ShaderManager *manager = nullptr;
+#endif
+			GRANITE_EVENT_MANAGER()->enqueue_latched<DeviceShaderModuleReadyEvent>(&device, manager);
 			ready_modules = true;
 		}
 	}
@@ -165,7 +174,12 @@ void Application::check_initialization_progress()
 		if (device.query_initialization_progress(Device::InitializationStage::Pipelines) >= 100)
 		{
 			GRANITE_SCOPED_TIMELINE_EVENT("dispatch-ready-pipelines");
-			GRANITE_EVENT_MANAGER()->enqueue_latched<DevicePipelineReadyEvent>(&device, &device.get_shader_manager());
+#ifdef HAVE_GRANITE_RENDERER
+			auto *manager = &device.get_shader_manager();
+#else
+			constexpr Vulkan::ShaderManager *manager = nullptr;
+#endif
+			GRANITE_EVENT_MANAGER()->enqueue_latched<DevicePipelineReadyEvent>(&device, manager);
 			ready_pipelines = true;
 		}
 	}

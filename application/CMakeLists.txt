@@ -13,17 +13,21 @@ target_link_libraries(granite-application PUBLIC
         granite-input
         granite-application-global-init
         granite-application-events
-        granite-renderer
         granite-threading
-        PRIVATE granite-stb granite-rapidjson granite-ui)
+        PRIVATE granite-stb granite-rapidjson)
 
 target_include_directories(granite-application PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_granite_internal_lib(granite-scene-viewer scene_viewer_application.cpp scene_viewer_application.hpp)
-target_include_directories(granite-scene-viewer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(granite-scene-viewer
-        PUBLIC granite-scene-export granite-ui granite-application
-        PRIVATE granite-rapidjson)
+if (TARGET granite-renderer)
+    target_link_libraries(granite-application PUBLIC granite-renderer PRIVATE granite-ui)
+    target_compile_definitions(granite-application PRIVATE HAVE_GRANITE_RENDERER)
+
+    add_granite_internal_lib(granite-scene-viewer scene_viewer_application.cpp scene_viewer_application.hpp)
+    target_include_directories(granite-scene-viewer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(granite-scene-viewer
+            PUBLIC granite-scene-export granite-ui granite-application
+            PRIVATE granite-rapidjson)
+endif()
 
 if (NOT ANDROID)
     add_granite_internal_lib(granite-application-entry STATIC application_entry.cpp)

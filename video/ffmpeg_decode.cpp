@@ -249,7 +249,7 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 	}
 	else
 	{
-		return accumulate_samples_inner(channels, gain, num_channels);
+		return accumulate_samples_inner(channels, gain, num_frames);
 	}
 }
 

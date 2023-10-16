@@ -1911,20 +1911,19 @@ void VideoDecoder::Impl::latch_audio_presentation_target(double pts)
 	double raw_pts = get_estimated_audio_playback_timestamp_raw();
 	auto delta = float(pts - raw_pts);
 
-	if (delta > 0.1f)
+	if (delta > 0.25f)
 	{
 		// Need to catch up.
-		stream->set_rate_factor(1.2f);
+		stream->set_rate_factor(1.005f);
 	}
-	else if (delta < -0.1f)
+	else if (delta < -0.25f)
 	{
 		// Shouldn't really happen in real-time mode ... Slow down a little to let us catch up.
 		stream->set_rate_factor(0.995f);
 	}
 	else
 	{
-		// Max rate distortion: 0.2% (3.45 cents).
-		// This is inaudible in practice. Practical distortion will be much lower.
+		// This is inaudible in practice. Practical distortion will be much lower than outer limits.
 		// And should be less than 1 cent on average.
 		stream->set_rate_factor(1.0f + delta * 0.02f);
 	}
@@ -1971,7 +1970,7 @@ double VideoDecoder::Impl::latch_estimated_video_playback_timestamp(double elaps
 		else
 		{
 			// Bias slightly towards the true estimated PTS.
-			smooth_pts += 0.005 * (target_pts - smooth_pts);
+			smooth_pts += 0.002 * (target_pts - smooth_pts);
 		}
 	}
 

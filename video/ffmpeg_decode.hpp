@@ -64,12 +64,22 @@ public:
 
 	bool get_paused() const;
 
+	// Sync strategies, do not mix and match!
+	// Sync strategy #1 (non-realtime) - Optimal smoothness, high latency.
 	// Audio is played back with a certain amount of latency.
 	// Audio is played asynchronously if a mixer is provided and the stream has an audio track.
 	// A worker thread will ensure that the audio mixer can render audio on-demand.
 	// If audio stream does not exist, returns negative number.
 	// Application should fall back to other means of timing in this scenario.
 	double get_estimated_audio_playback_timestamp(double elapsed_time);
+
+	// Sync strategy #2 (realtime) - Prioritize latency, bad pacing.
+	// Should be called after every acquire in realtime mode.
+	// Lets audio buffer speed up or slow down appropriately to try to match video.
+	void latch_audio_presentation_target(double pts);
+
+	// Sync strategy #3 (realtime) - Balanced. Try to lock to a fixed latency while retaining smoothness.
+	double latch_estimated_video_playback_timestamp(double elapsed_time, double target_latency);
 
 	// Only based on audio PTS.
 	double get_estimated_audio_playback_timestamp_raw();
@@ -89,10 +99,6 @@ public:
 	int try_acquire_video_frame(VideoFrame &frame);
 
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
-
-	// Should be called after every acquire in realtime mode.
-	// Lets audio buffer speed up or slow down appropriately to try to match video.
-	void latch_audio_presentation_target(double pts);
 
 private:
 	struct Impl;

@@ -470,6 +470,7 @@ struct VideoDecoder::Impl
 	bool get_paused() const;
 
 	double get_estimated_audio_playback_timestamp(double elapsed_time);
+	double latch_estimated_video_playback_timestamp(double elapsed_time, double target_latency);
 	double get_audio_buffering_duration();
 	double get_last_video_buffering_pts();
 	double get_estimated_audio_playback_timestamp_raw();
@@ -935,6 +936,12 @@ bool VideoDecoder::Impl::init_video_decoder_post_device()
 	// but we don't want to end up in an unbounded memory usage situation, especially VRAM.
 
 	unsigned num_frames = std::max<unsigned>(unsigned(muglm::ceil(fps * 0.2)), 4);
+
+	// Buffer a bit more in realtime mode.
+	// Allows us to absorb network issues better.
+	if (opts.realtime)
+		num_frames *= 2;
+
 	video_queue.resize(num_frames);
 
 	return true;
@@ -1935,6 +1942,43 @@ double VideoDecoder::Impl::get_last_video_buffering_pts()
 	return last_pts;
 }
 
+double VideoDecoder::Impl::latch_estimated_video_playback_timestamp(double elapsed_time, double target_latency)
+{
+	if (smooth_elapsed == 0.0)
+	{
+		smooth_elapsed = elapsed_time;
+		smooth_pts = get_last_video_buffering_pts() - target_latency;
+		if (smooth_pts < 0.0)
+			smooth_pts = 0.0;
+	}
+	else
+	{
+		double target_pts = get_last_video_buffering_pts() - target_latency;
+		if (target_pts < 0.0)
+			target_pts = 0.0;
+
+		// This is the value we should get in principle if everything is steady.
+		smooth_pts += elapsed_time - smooth_elapsed;
+		smooth_elapsed = elapsed_time;
+
+		if (muglm::abs(smooth_pts - target_pts) > 0.25)
+		{
+			// Massive spike somewhere, cannot smooth.
+			// Reset the PTS.
+			smooth_elapsed = elapsed_time;
+			smooth_pts = target_pts;
+		}
+		else
+		{
+			// Bias slightly towards the true estimated PTS.
+			smooth_pts += 0.005 * (target_pts - smooth_pts);
+		}
+	}
+
+	latch_audio_presentation_target(smooth_pts);
+	return smooth_pts;
+}
+
 double VideoDecoder::Impl::get_estimated_audio_playback_timestamp(double elapsed_time)
 {
 #ifdef HAVE_GRANITE_AUDIO
@@ -1943,7 +1987,7 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp(double elapsed
 		// Unsmoothed PTS.
 		auto pts = get_estimated_audio_playback_timestamp_raw();
 
-		if (pts == 0.0)
+		if (pts == 0.0 || smooth_elapsed == 0.0)
 		{
 			// Latch the PTS.
 			smooth_elapsed = elapsed_time;
@@ -2211,6 +2255,11 @@ bool VideoDecoder::get_paused() const
 double VideoDecoder::get_estimated_audio_playback_timestamp(double elapsed_time)
 {
 	return impl->get_estimated_audio_playback_timestamp(elapsed_time);
+}
+
+double VideoDecoder::latch_estimated_video_playback_timestamp(double elapsed_time, double target_latency)
+{
+	return impl->latch_estimated_video_playback_timestamp(elapsed_time, target_latency);
 }
 
 double VideoDecoder::get_audio_buffering_duration()

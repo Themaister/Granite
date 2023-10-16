@@ -1518,9 +1518,14 @@ bool VideoDecoder::Impl::drain_audio_frame()
 	if (!stream)
 		return false;
 
+	// Don't buffer too much. Prefer dropping audio in lieu of massive latency.
+	bool drop_high_latency = false;
+	if (opts.realtime && float(stream->get_num_buffered_audio_frames()) > 0.3f * stream->get_sample_rate())
+		drop_high_latency = true;
+
 	AVFrame *av_frame;
 	bool stream_frame;
-	if (stream->get_num_buffered_av_frames() <= AVFrameRingStream::FramesHighWatermark)
+	if (stream->get_num_buffered_av_frames() <= AVFrameRingStream::FramesHighWatermark && !drop_high_latency)
 	{
 		// It's okay to acquire the same frame many times.
 		av_frame = stream->acquire_write_frame();

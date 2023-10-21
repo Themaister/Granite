@@ -100,6 +100,8 @@ public:
 
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
 
+	float get_audio_sample_rate() const;
+
 private:
 	struct Impl;
 	std::unique_ptr<Impl> impl;

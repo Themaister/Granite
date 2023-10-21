@@ -86,6 +86,8 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	~AVFrameRingStream() override;
 
 	float sample_rate;
+	float out_sample_rate;
+	float resampling_ratio = 1.0f;
 	unsigned num_channels;
 	double timebase;
 	double inv_sample_rate_ns;
@@ -158,7 +160,7 @@ AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_,
 
 void AVFrameRingStream::set_rate_factor(float factor)
 {
-	factor = 1.0f / factor;
+	factor = resampling_ratio / factor;
 	uint32_t v;
 	memcpy(&v, &factor, sizeof(uint32_t));
 	rate_factor_u32.store(v, std::memory_order_relaxed);
@@ -181,11 +183,13 @@ void AVFrameRingStream::mark_uncorked_audio_pts()
 		progress[index].sampled_ns = Util::get_current_time_nsecs();
 }
 
-bool AVFrameRingStream::setup(float, unsigned mixer_channels, size_t num_frames)
+bool AVFrameRingStream::setup(float mixer_output_rate, unsigned mixer_channels, size_t num_frames)
 {
 	// TODO: Could promote mono to stereo.
 	if (mixer_channels != num_channels)
 		return false;
+
+	out_sample_rate = sample_rate;
 
 	for (unsigned i = 0; i < MaxChannels; i++)
 	{
@@ -193,6 +197,10 @@ bool AVFrameRingStream::setup(float, unsigned mixer_channels, size_t num_frames)
 		{
 			tmp_resampler_buffer[i].resize(num_frames * 2); // Maximum ratio distortion is 1.5x.
 			tmp_resampler_ptrs[i] = tmp_resampler_buffer[i].data();
+
+			// If we're resampling anyway, target native mixer rate.
+			out_sample_rate = mixer_output_rate;
+			resampling_ratio = out_sample_rate / sample_rate;
 		}
 	}
 
@@ -206,7 +214,7 @@ void AVFrameRingStream::dispose()
 
 float AVFrameRingStream::get_sample_rate() const
 {
-	return sample_rate;
+	return out_sample_rate;
 }
 
 unsigned AVFrameRingStream::get_num_channels() const
@@ -219,10 +227,6 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 	if (resamplers[0])
 	{
 		float ratio = get_rate_factor();
-
-		// Safeguard when we're starting to hit underruns.
-		if (get_num_buffered_av_frames() <= 1 && ratio > 1.0f)
-			ratio = 1.0f;
 
 		for (unsigned i = 0; i < num_channels; i++)
 			resamplers[i]->set_sample_rate_ratio(ratio);
@@ -1520,7 +1524,7 @@ bool VideoDecoder::Impl::drain_audio_frame()
 
 	// Don't buffer too much. Prefer dropping audio in lieu of massive latency.
 	bool drop_high_latency = false;
-	if (opts.realtime && float(stream->get_num_buffered_audio_frames()) > 0.3f * stream->get_sample_rate())
+	if (opts.realtime && float(stream->get_num_buffered_audio_frames()) > 0.5f * stream->get_sample_rate())
 		drop_high_latency = true;
 
 	AVFrame *av_frame;
@@ -2299,5 +2303,17 @@ void VideoDecoder::release_video_frame(unsigned index, Vulkan::Semaphore sem)
 void VideoDecoder::latch_audio_presentation_target(double pts)
 {
 	impl->latch_audio_presentation_target(pts);
+}
+
+float VideoDecoder::get_audio_sample_rate() const
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (impl->audio.av_ctx)
+		return float(impl->audio.av_ctx->sample_rate);
+	else
+		return -1.0f;
+#else
+	return -1.0f;
+#endif
 }
 }

@@ -47,7 +47,8 @@ Application::~Application()
 bool Application::init_platform(std::unique_ptr<WSIPlatform> new_platform)
 {
 #ifdef HAVE_GRANITE_RENDERER
-	GRANITE_COMMON_RENDERER_DATA()->initialize_static_assets(GRANITE_ASSET_MANAGER(), GRANITE_FILESYSTEM());
+	if (auto *common = GRANITE_COMMON_RENDERER_DATA())
+		common->initialize_static_assets(GRANITE_ASSET_MANAGER(), GRANITE_FILESYSTEM());
 #endif
 	platform = std::move(new_platform);
 	application_wsi.set_platform(platform.get());
@@ -56,8 +57,11 @@ bool Application::init_platform(std::unique_ptr<WSIPlatform> new_platform)
 
 void Application::teardown_wsi()
 {
-	GRANITE_EVENT_MANAGER()->dequeue_all_latched(DevicePipelineReadyEvent::get_type_id());
-	GRANITE_EVENT_MANAGER()->dequeue_all_latched(DeviceShaderModuleReadyEvent::get_type_id());
+	if (auto *event = GRANITE_EVENT_MANAGER())
+	{
+		event->dequeue_all_latched(DevicePipelineReadyEvent::get_type_id());
+		event->dequeue_all_latched(DeviceShaderModuleReadyEvent::get_type_id());
+	}
 	application_wsi.teardown();
 	ready_modules = false;
 	ready_pipelines = false;
@@ -151,16 +155,22 @@ void Application::check_initialization_progress()
 		if (device.query_initialization_progress(Device::InitializationStage::CacheMaintenance) >= 100 &&
 		    device.query_initialization_progress(Device::InitializationStage::ShaderModules) >= 100)
 		{
-			// Now is a good time to kick shader manager since it might require compute shaders for decode.
-			GRANITE_ASSET_MANAGER()->iterate(GRANITE_THREAD_GROUP());
+			if (auto *manager = GRANITE_ASSET_MANAGER())
+			{
+				// Now is a good time to kick shader manager since it might require compute shaders for decode.
+				manager->iterate(GRANITE_THREAD_GROUP());
+			}
 
-			GRANITE_SCOPED_TIMELINE_EVENT("dispatch-ready-modules");
+			if (auto *event = GRANITE_EVENT_MANAGER())
+			{
+				GRANITE_SCOPED_TIMELINE_EVENT("dispatch-ready-modules");
 #ifdef HAVE_GRANITE_RENDERER
-			auto *manager = &device.get_shader_manager();
+				auto *manager = &device.get_shader_manager();
 #else
-			constexpr Vulkan::ShaderManager *manager = nullptr;
+				constexpr Vulkan::ShaderManager *manager = nullptr;
 #endif
-			GRANITE_EVENT_MANAGER()->enqueue_latched<DeviceShaderModuleReadyEvent>(&device, manager);
+				event->enqueue_latched<DeviceShaderModuleReadyEvent>(&device, manager);
+			}
 			ready_modules = true;
 		}
 	}
@@ -169,13 +179,16 @@ void Application::check_initialization_progress()
 	{
 		if (device.query_initialization_progress(Device::InitializationStage::Pipelines) >= 100)
 		{
-			GRANITE_SCOPED_TIMELINE_EVENT("dispatch-ready-pipelines");
+			if (auto *event = GRANITE_EVENT_MANAGER())
+			{
+				GRANITE_SCOPED_TIMELINE_EVENT("dispatch-ready-pipelines");
 #ifdef HAVE_GRANITE_RENDERER
-			auto *manager = &device.get_shader_manager();
+				auto *manager = &device.get_shader_manager();
 #else
-			constexpr Vulkan::ShaderManager *manager = nullptr;
+				constexpr Vulkan::ShaderManager *manager = nullptr;
 #endif
-			GRANITE_EVENT_MANAGER()->enqueue_latched<DevicePipelineReadyEvent>(&device, manager);
+				event->enqueue_latched<DevicePipelineReadyEvent>(&device, manager);
+			}
 			ready_pipelines = true;
 		}
 	}
@@ -288,6 +301,9 @@ void Application::post_frame()
 {
 	// Texture manager might require shaders to be ready before we can submit work.
 	if (ready_modules)
-		GRANITE_ASSET_MANAGER()->iterate(GRANITE_THREAD_GROUP());
+	{
+		if (auto *manager = GRANITE_ASSET_MANAGER())
+			manager->iterate(GRANITE_THREAD_GROUP());
+	}
 }
 }

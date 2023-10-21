@@ -939,7 +939,7 @@ bool VideoDecoder::Impl::init_video_decoder_post_device()
 	// It would be possible to add new video frames dynamically,
 	// but we don't want to end up in an unbounded memory usage situation, especially VRAM.
 
-	unsigned num_frames = std::max<unsigned>(unsigned(muglm::ceil(fps * 0.2)), 4);
+	unsigned num_frames = std::max<unsigned>(unsigned(muglm::ceil(fps * 0.2)), 8);
 
 	// Buffer a bit more in realtime mode.
 	// Allows us to absorb network issues better.

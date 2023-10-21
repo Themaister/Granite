@@ -199,10 +199,14 @@ void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads, flo
 			global_managers.physics = factory.create_physics_system();
 	}
 
-	if (flags & MANAGER_FEATURE_AUDIO_BIT)
+	if (flags & MANAGER_FEATURE_AUDIO_MIXER_BIT)
 	{
 		if (!global_managers.audio_mixer)
 			global_managers.audio_mixer = factory.create_audio_mixer();
+	}
+
+	if (flags & MANAGER_FEATURE_AUDIO_BACKEND_BIT)
+	{
 		if (!global_managers.audio_backend)
 			global_managers.audio_backend = factory.create_audio_backend(global_managers.audio_mixer, audio_sample_rate, 2);
 	}

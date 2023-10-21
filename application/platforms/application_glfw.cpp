@@ -659,9 +659,13 @@ static void close_cb(GLFWwindow *window)
 
 namespace Granite
 {
-int application_main(Application *(*create_application)(int, char **), int argc, char *argv[])
+int application_main(
+		bool (*query_application_interface)(ApplicationQuery, void *, size_t),
+		Application *(*create_application)(int, char **), int argc, char *argv[])
 {
-	Granite::Global::init();
+	ApplicationQueryDefaultManagerFlags flags{Global::MANAGER_FEATURE_DEFAULT_BITS};
+	query_application_interface(ApplicationQuery::DefaultManagerFlags, &flags, sizeof(flags));
+	Granite::Global::init(flags.manager_feature_flags);
 
 	Granite::WSIPlatformGLFW::Options options;
 	int exit_code;

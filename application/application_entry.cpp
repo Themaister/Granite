@@ -86,9 +86,13 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef APPLICATION_ENTRY_HEADLESS
-	int ret = Granite::application_main_headless(Granite::application_create, argc, argv);
+	int ret = Granite::application_main_headless(Granite::query_application_interface,
+												 Granite::application_create,
+												 argc, argv);
 #else
-	int ret = Granite::application_main(Granite::application_create, argc, argv);
+	int ret = Granite::application_main(Granite::query_application_interface,
+	                                    Granite::application_create,
+	                                    argc, argv);
 #endif
 
 	return ret;

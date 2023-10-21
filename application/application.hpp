@@ -24,13 +24,13 @@
 #include "wsi.hpp"
 #include "application_wsi_events.hpp"
 #include "input.hpp"
+#include "application_glue.hpp"
 
 namespace Granite
 {
 class Application
 {
 public:
-	Application();
 	virtual ~Application();
 	virtual void render_frame(double frame_time, double elapsed_time) = 0;
 	bool init_platform(std::unique_ptr<Vulkan::WSIPlatform> platform);
@@ -100,20 +100,4 @@ private:
 	bool ready_pipelines = false;
 	void check_initialization_progress();
 };
-
-int application_main(Application *(*create_application)(int, char **), int argc, char **argv);
-int application_main_headless(Application *(*create_application)(int, char **), int argc, char **argv);
-
-extern Application *application_create(int argc, char *argv[]);
-
-// Call this or setup_default_filesystem to ensure application-main is linked in correctly without having to mess around
-// with -Wl,--whole-archive.
-void application_dummy();
-void application_setup_default_filesystem(const char *default_asset_directory);
 }
-
-#ifdef ASSET_DIRECTORY
-#define GRANITE_APPLICATION_SETUP_FILESYSTEM() ::Granite::application_setup_default_filesystem(ASSET_DIRECTORY)
-#else
-#define GRANITE_APPLICATION_SETUP_FILESYSTEM() ::Granite::application_setup_default_filesystem(nullptr)
-#endif

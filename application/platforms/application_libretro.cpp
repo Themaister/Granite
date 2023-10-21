@@ -132,7 +132,9 @@ static retro_hw_render_callback hw_render;
 
 RETRO_API void retro_init(void)
 {
-	Global::init();
+	ApplicationQueryDefaultManagerFlags flags{Global::MANAGER_FEATURE_DEFAULT_BITS};
+	query_application_interface(ApplicationQuery::DefaultManagerFlags, &flags, sizeof(flags));
+	Global::init(flags.manager_feature_flags);
 }
 
 RETRO_API void retro_deinit(void)

@@ -1,5 +1,6 @@
 add_granite_internal_lib(granite-application
         application.hpp
+        application_glue.hpp
         application.cpp
         platforms/application_headless.cpp)
 
@@ -41,6 +42,14 @@ target_compile_definitions(granite-application-entry-headless PRIVATE APPLICATIO
 target_link_libraries(granite-application-entry-headless
         PRIVATE granite-application granite-platform granite-filesystem)
 target_compile_options(granite-application-entry-headless PRIVATE ${GRANITE_CXX_FLAGS})
+
+# Can be defined by application to get a custom entry point.
+# Otherwise, get a default one.
+if (NOT TARGET granite-application-interface-query)
+    add_granite_internal_lib(granite-application-interface-query STATIC application_interface_query.cpp)
+    target_compile_options(granite-application-interface-query PRIVATE ${GRANITE_CXX_FLAGS})
+endif()
+target_link_libraries(granite-application PRIVATE granite-application-interface-query)
 
 add_subdirectory(events)
 add_subdirectory(input)

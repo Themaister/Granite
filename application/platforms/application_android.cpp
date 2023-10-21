@@ -1071,7 +1071,10 @@ void android_main(android_app *app)
 	global_state.app = app;
 
 	init_jni();
-	Global::init();
+
+	ApplicationQueryDefaultManagerFlags flags{Global::MANAGER_FEATURE_DEFAULT_BITS};
+	query_application_interface(ApplicationQuery::DefaultManagerFlags, &flags, sizeof(flags));
+	Global::init(flags.manager_feature_flags);
 
 	LOGI("Starting Granite!\n");
 

@@ -479,7 +479,10 @@ static void print_help()
 
 namespace Granite
 {
-int application_main_headless(Application *(*create_application)(int, char **), int argc, char *argv[])
+int application_main_headless(
+		bool (*query_application_interface)(ApplicationQuery, void *, size_t),
+		Application *(*create_application)(int, char **),
+		int argc, char *argv[])
 {
 	if (argc < 1)
 		return 1;
@@ -522,14 +525,19 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 	if (!Util::parse_cli_filtered(std::move(cbs), argc, argv, exit_code))
 		return exit_code;
 
-	Granite::Global::init(Granite::Global::MANAGER_FEATURE_DEFAULT_BITS);
+	ApplicationQueryDefaultManagerFlags flags{Global::MANAGER_FEATURE_DEFAULT_BITS};
+	query_application_interface(ApplicationQuery::DefaultManagerFlags, &flags, sizeof(flags));
+	Granite::Global::init(flags.manager_feature_flags);
 
-	if (!args.assets.empty())
-		GRANITE_FILESYSTEM()->register_protocol("assets", std::make_unique<OSFilesystem>(args.assets));
-	if (!args.builtin.empty())
-		GRANITE_FILESYSTEM()->register_protocol("builtin", std::make_unique<OSFilesystem>(args.builtin));
-	if (!args.cache.empty())
-		GRANITE_FILESYSTEM()->register_protocol("cache", std::make_unique<OSFilesystem>(args.cache));
+	if (flags.manager_feature_flags & Global::MANAGER_FEATURE_FILESYSTEM_BIT)
+	{
+		if (!args.assets.empty())
+			GRANITE_FILESYSTEM()->register_protocol("assets", std::make_unique<OSFilesystem>(args.assets));
+		if (!args.builtin.empty())
+			GRANITE_FILESYSTEM()->register_protocol("builtin", std::make_unique<OSFilesystem>(args.builtin));
+		if (!args.cache.empty())
+			GRANITE_FILESYSTEM()->register_protocol("cache", std::make_unique<OSFilesystem>(args.cache));
+	}
 
 	auto app = std::unique_ptr<Application>(create_application(argc, argv));
 

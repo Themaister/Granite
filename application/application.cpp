@@ -35,13 +35,6 @@ using namespace Vulkan;
 
 namespace Granite
 {
-Application::Application()
-{
-#ifdef HAVE_GRANITE_RENDERER
-	GRANITE_COMMON_RENDERER_DATA()->initialize_static_assets(GRANITE_ASSET_MANAGER(), GRANITE_FILESYSTEM());
-#endif
-}
-
 Application::~Application()
 {
 	auto *group = GRANITE_THREAD_GROUP();
@@ -53,6 +46,9 @@ Application::~Application()
 
 bool Application::init_platform(std::unique_ptr<WSIPlatform> new_platform)
 {
+#ifdef HAVE_GRANITE_RENDERER
+	GRANITE_COMMON_RENDERER_DATA()->initialize_static_assets(GRANITE_ASSET_MANAGER(), GRANITE_FILESYSTEM());
+#endif
 	platform = std::move(new_platform);
 	application_wsi.set_platform(platform.get());
 	return true;

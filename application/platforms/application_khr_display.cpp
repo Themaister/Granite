@@ -358,9 +358,14 @@ static void signal_handler(int)
 
 namespace Granite
 {
-int application_main(Application *(*create_application)(int, char **), int argc, char *argv[])
+int application_main(
+		bool (*query_application_interface)(ApplicationQuery, void *, size_t),
+		Application *(*create_application)(int, char **), int argc, char *argv[])
 {
-	Global::init();
+	ApplicationQueryDefaultManagerFlags flags{Global::MANAGER_FEATURE_DEFAULT_BITS};
+	query_application_interface(ApplicationQuery::DefaultManagerFlags, &flags, sizeof(flags));
+	Global::init(flags.manager_feature_flags);
+
 	auto app = std::unique_ptr<Granite::Application>(create_application(argc, argv));
 	if (app)
 	{

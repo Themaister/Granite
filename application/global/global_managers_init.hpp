@@ -28,6 +28,7 @@ namespace Granite
 {
 namespace Global
 {
-void init(ManagerFeatureFlags flags = MANAGER_FEATURE_DEFAULT_BITS, unsigned max_threads = UINT_MAX);
+void init(ManagerFeatureFlags flags = MANAGER_FEATURE_DEFAULT_BITS,
+          unsigned max_threads = UINT_MAX, float audio_sample_rate = -1.0f);
 }
 }

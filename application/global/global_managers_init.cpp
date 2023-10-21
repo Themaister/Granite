@@ -118,9 +118,9 @@ struct FactoryImplementation : Factory
 
 static FactoryImplementation factory;
 
-void init(ManagerFeatureFlags flags, unsigned max_threads)
+void init(ManagerFeatureFlags flags, unsigned max_threads, float audio_sample_rate)
 {
-	init(factory, flags, max_threads);
+	init(factory, flags, max_threads, audio_sample_rate);
 }
 }
 }

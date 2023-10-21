@@ -141,7 +141,7 @@ PhysicsSystemInterface *physics()
 	return global_managers.physics;
 }
 
-void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads)
+void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads, float audio_sample_rate)
 {
 	assert(!global_managers.factory || global_managers.factory == &factory);
 	global_managers.factory = &factory;
@@ -204,7 +204,7 @@ void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads)
 		if (!global_managers.audio_mixer)
 			global_managers.audio_mixer = factory.create_audio_mixer();
 		if (!global_managers.audio_backend)
-			global_managers.audio_backend = factory.create_audio_backend(global_managers.audio_mixer, 44100.0f, 2);
+			global_managers.audio_backend = factory.create_audio_backend(global_managers.audio_mixer, audio_sample_rate, 2);
 	}
 
 	// Kick threads after all global managers are set up.

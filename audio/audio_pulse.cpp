@@ -246,7 +246,6 @@ void Pulse::update_buffer_attr(const pa_buffer_attr &attr) noexcept
 
 bool Pulse::init(float sample_rate_, unsigned channels_)
 {
-	sample_rate = sample_rate_;
 	channels = channels_;
 
 	if (channels_ > MaxAudioChannels)
@@ -277,6 +276,9 @@ bool Pulse::init(float sample_rate_, unsigned channels_)
 		pa_threaded_mainloop_unlock(mainloop);
 		return false;
 	}
+
+	if (sample_rate_ <= 0.0f)
+		sample_rate_ = 48000.0f;
 
 	pa_sample_spec spec = {};
 	spec.format = PA_SAMPLE_FLOAT32NE;
@@ -327,9 +329,9 @@ bool Pulse::init(float sample_rate_, unsigned channels_)
 	}
 
 	auto *stream_spec = pa_stream_get_sample_spec(stream);
-	this->sample_rate = float(stream_spec->rate);
+	sample_rate = float(stream_spec->rate);
 	if (callback)
-		callback->set_backend_parameters(this->sample_rate, channels_, MAX_NUM_SAMPLES);
+		callback->set_backend_parameters(sample_rate, channels_, MAX_NUM_SAMPLES);
 
 	if (const auto *attr = pa_stream_get_buffer_attr(stream))
 		update_buffer_attr(*attr);

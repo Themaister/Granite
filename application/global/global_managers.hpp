@@ -75,7 +75,7 @@ public:
 };
 
 void init(Factory &factory, ManagerFeatureFlags flags = MANAGER_FEATURE_DEFAULT_BITS,
-          unsigned max_threads = UINT_MAX);
+          unsigned max_threads = UINT_MAX, float audio_sample_rate = -1.0f);
 void deinit();
 
 // Used if the application wants to use multiple instances of Granite in the same process.

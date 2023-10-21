@@ -175,14 +175,19 @@ void OboeBackend::setup_stream_builder(oboe::AudioStreamBuilder &builder)
 		builder.setFormat(oboe::AudioFormat::Float);
 
 	// If we have already committed to a sample rate, keep using it.
-	if (sample_rate != 0.0f)
+	if (sample_rate != 0.0f && builder.getSampleRate() != sample_rate)
+	{
 		builder.setSampleRate(int32_t(sample_rate));
+		builder.setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium);
+	}
 }
 
-bool OboeBackend::init(float, unsigned channels)
+bool OboeBackend::init(float sample_rate_, unsigned channels)
 {
 	num_channels = channels;
 	oboe::AudioStreamBuilder builder;
+	if (sample_rate_ > 0.0f)
+		sample_rate = sample_rate_;
 	setup_stream_builder(builder);
 
 	if (builder.openStream(&stream) != oboe::Result::OK)

@@ -127,7 +127,7 @@ static double reference_time_to_seconds(REFERENCE_TIME t)
 	return double(t) / 10000000.0;
 }
 
-bool WASAPIBackend::init(float, unsigned channels)
+bool WASAPIBackend::init(float sample_rate, unsigned channels)
 {
 	if (FAILED(CoInitialize(nullptr)))
 	{
@@ -177,6 +177,8 @@ bool WASAPIBackend::init(float, unsigned channels)
 	}
 
 	format->nChannels = WORD(channels);
+	if (sample_rate > 0.0f)
+		format->nSamplesPerSec = DWORD(sample_rate);
 
 	const double target_latency = 0.050;
 	auto reference_time = seconds_to_reference_time(target_latency);

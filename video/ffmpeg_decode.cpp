@@ -938,13 +938,7 @@ bool VideoDecoder::Impl::init_video_decoder_post_device()
 	// In a steady state, we will keep the audio buffer at 200ms saturation.
 	// It would be possible to add new video frames dynamically,
 	// but we don't want to end up in an unbounded memory usage situation, especially VRAM.
-
-	unsigned num_frames = std::max<unsigned>(unsigned(muglm::ceil(fps * 0.2)), 8);
-
-	// Buffer a bit more in realtime mode.
-	// Allows us to absorb network issues better.
-	if (opts.realtime)
-		num_frames *= 2;
+	unsigned num_frames = std::max<unsigned>(unsigned(muglm::ceil(fps * opts.target_video_buffer_time)), 8);
 
 	video_queue.resize(num_frames);
 
@@ -1524,7 +1518,8 @@ bool VideoDecoder::Impl::drain_audio_frame()
 
 	// Don't buffer too much. Prefer dropping audio in lieu of massive latency.
 	bool drop_high_latency = false;
-	if (opts.realtime && float(stream->get_num_buffered_audio_frames()) > 0.5f * stream->get_sample_rate())
+	if (opts.realtime && float(stream->get_num_buffered_audio_frames()) >
+	                     (opts.target_realtime_audio_buffer_time * stream->get_sample_rate()))
 		drop_high_latency = true;
 
 	AVFrame *av_frame;

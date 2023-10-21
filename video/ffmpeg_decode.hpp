@@ -31,6 +31,8 @@ public:
 	{
 		bool mipgen = false;
 		bool realtime = false;
+		float target_video_buffer_time = 0.2f;
+		float target_realtime_audio_buffer_time = 0.5f;
 	};
 
 	bool init(Audio::Mixer *mixer, const char *path, const DecodeOptions &options);

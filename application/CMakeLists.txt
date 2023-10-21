@@ -30,26 +30,25 @@ if (TARGET granite-renderer)
             PRIVATE granite-rapidjson)
 endif()
 
-if (NOT ANDROID)
-    add_granite_internal_lib(granite-application-entry STATIC application_entry.cpp)
-    target_compile_options(granite-application-entry PRIVATE ${GRANITE_CXX_FLAGS})
-    target_link_libraries(granite-application-entry
-            PRIVATE granite-application granite-platform granite-filesystem)
-endif()
-
-add_library(granite-application-entry-headless STATIC application_entry.cpp)
-target_compile_definitions(granite-application-entry-headless PRIVATE APPLICATION_ENTRY_HEADLESS=1)
-target_link_libraries(granite-application-entry-headless
-        PRIVATE granite-application granite-platform granite-filesystem)
-target_compile_options(granite-application-entry-headless PRIVATE ${GRANITE_CXX_FLAGS})
-
 # Can be defined by application to get a custom entry point.
 # Otherwise, get a default one.
 if (NOT TARGET granite-application-interface-query)
     add_granite_internal_lib(granite-application-interface-query STATIC application_interface_query.cpp)
     target_compile_options(granite-application-interface-query PRIVATE ${GRANITE_CXX_FLAGS})
 endif()
-target_link_libraries(granite-application PRIVATE granite-application-interface-query)
+
+if (NOT ANDROID)
+    add_granite_internal_lib(granite-application-entry STATIC application_entry.cpp)
+    target_compile_options(granite-application-entry PRIVATE ${GRANITE_CXX_FLAGS})
+    target_link_libraries(granite-application-entry
+            PRIVATE granite-application-interface-query granite-application granite-platform granite-filesystem)
+endif()
+
+add_library(granite-application-entry-headless STATIC application_entry.cpp)
+target_compile_definitions(granite-application-entry-headless PRIVATE APPLICATION_ENTRY_HEADLESS=1)
+target_link_libraries(granite-application-entry-headless
+        PRIVATE granite-application-interface-query granite-application granite-platform granite-filesystem)
+target_compile_options(granite-application-entry-headless PRIVATE ${GRANITE_CXX_FLAGS})
 
 add_subdirectory(events)
 add_subdirectory(input)

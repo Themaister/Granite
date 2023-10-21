@@ -41,7 +41,7 @@ else()
     message(FATAL "GRANITE_PLATFORM is not set.")
 endif()
 
-target_link_libraries(granite-platform PRIVATE granite-application granite-input granite-application-global-init)
+target_link_libraries(granite-platform PRIVATE granite-application-interface-query granite-application granite-input granite-application-global-init)
 
 if (GRANITE_AUDIO)
     target_link_libraries(granite-platform PRIVATE granite-audio)

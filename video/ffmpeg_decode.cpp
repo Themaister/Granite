@@ -230,7 +230,7 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 
 		for (unsigned i = 0; i < num_channels; i++)
 			resamplers[i]->set_sample_rate_ratio(ratio);
-		size_t required = resamplers[0]->get_maximum_input_for_output_frames(num_frames);
+		size_t required = resamplers[0]->get_current_input_for_output_frames(num_frames);
 		for (unsigned i = 0; i < num_channels; i++)
 		{
 			assert(required <= tmp_resampler_buffer[i].size());

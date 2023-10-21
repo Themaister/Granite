@@ -114,5 +114,7 @@ if (ANDROID AND GRANITE_AUDIO)
     target_compile_features(oboe PRIVATE cxx_std_17)
 endif()
 
-# Custom integration, bypass all the noise.
-add_subdirectory(fsr2/src/ffx-fsr2-api/granite)
+if (GRANITE_VULKAN_SYSTEM_HANDLES AND GRANITE_RENDERER)
+    # Custom integration, bypass all the noise.
+    add_subdirectory(fsr2/src/ffx-fsr2-api/granite)
+endif()

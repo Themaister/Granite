@@ -1,3 +1,4 @@
+#define NOMINMAX
 #include "application.hpp"
 #include "command_buffer.hpp"
 #include "device.hpp"

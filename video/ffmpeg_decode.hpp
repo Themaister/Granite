@@ -38,6 +38,7 @@ public:
 	{
 		bool mipgen = false;
 		bool realtime = false;
+		bool blocking = false;
 		float target_video_buffer_time = 0.2f;
 		float target_realtime_audio_buffer_time = 0.5f;
 	};

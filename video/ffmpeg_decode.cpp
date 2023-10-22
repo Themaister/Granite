@@ -83,7 +83,7 @@ static void free_av_objects(CodecStream &stream)
 #ifdef HAVE_GRANITE_AUDIO
 struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePtrEnabled<AVFrameRingStream>
 {
-	AVFrameRingStream(float sample_rate, unsigned num_channels, double timebase, bool support_resample);
+	AVFrameRingStream(float sample_rate, unsigned num_channels, double timebase, bool support_resample, bool blocking_mix);
 	~AVFrameRingStream() override;
 
 	float sample_rate;
@@ -92,6 +92,7 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	unsigned num_channels;
 	double timebase;
 	double inv_sample_rate_ns;
+	bool blocking_mix;
 
 	void set_rate_factor(float factor);
 	float get_rate_factor() const noexcept;
@@ -102,6 +103,8 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	unsigned get_num_channels() const override;
 	float get_sample_rate() const override;
 	void dispose() override;
+
+	uint32_t get_current_write_count();
 
 	// Buffering in terms of AVFrame is a little questionable since packet sizes can vary a fair bit,
 	// might have to revisit later.
@@ -136,13 +139,18 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	void mark_uncorked_audio_pts();
 	void submit_write_frame();
 	void mark_complete();
+
+	std::condition_variable cond;
+	std::mutex lock;
 };
 
-AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_, double timebase_, bool support_resample)
+AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_, double timebase_,
+                                     bool support_resample, bool blocking_mix_)
 	: sample_rate(sample_rate_)
 	, num_channels(num_channels_)
 	, timebase(timebase_)
 	, inv_sample_rate_ns(1e9 / sample_rate)
+	, blocking_mix(blocking_mix_)
 {
 	for (auto &f : frames)
 		f = av_frame_alloc();
@@ -258,6 +266,29 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 	}
 }
 
+uint32_t AVFrameRingStream::get_current_write_count()
+{
+	if (blocking_mix)
+	{
+		uint32_t r_count = read_count.load(std::memory_order_relaxed);
+		uint32_t w_count = write_count.load(std::memory_order_acquire);
+		if (r_count != w_count)
+			return w_count;
+
+		// Stall. This will block the mixer, so this should only be used when this audio stream is exclusive,
+		// e.g. a standalone video player.
+		// We never expect to wait more than a few milliseconds here, otherwise the audio buffer is drained already.
+		std::unique_lock<std::mutex> holder{lock};
+		cond.wait_for(holder, std::chrono::milliseconds(50), [this, r_count]() {
+			return complete.load(std::memory_order_relaxed) ||
+			       write_count.load(std::memory_order_relaxed) != r_count;
+		});
+		return write_count.load(std::memory_order_relaxed);
+	}
+	else
+		return write_count.load(std::memory_order_acquire);
+}
+
 size_t AVFrameRingStream::accumulate_samples_inner(float *const *channels, const float *gain, size_t num_frames) noexcept
 {
 	// Hold back playback until we have buffered enough to avoid instant underrun.
@@ -277,7 +308,7 @@ size_t AVFrameRingStream::accumulate_samples_inner(float *const *channels, const
 	size_t write_offset = 0;
 	uint32_t buffer_index = read_count.load(std::memory_order_relaxed);
 
-	while (write_offset < num_frames && buffer_index != written_count)
+	while (write_offset < num_frames && buffer_index != (written_count = get_current_write_count()))
 	{
 		size_t to_write = num_frames - write_offset;
 		auto *frame = frames[buffer_index % Frames];
@@ -383,14 +414,30 @@ AVFrame *AVFrameRingStream::acquire_write_frame()
 
 void AVFrameRingStream::submit_write_frame()
 {
+	if (blocking_mix)
+		lock.lock();
+
 	uint32_t index = write_count.load(std::memory_order_relaxed);
 	write_frames_count.store(write_frames_count.load(std::memory_order_relaxed) + uint32_t(frames[index % Frames]->nb_samples));
 	write_count.store(index + 1, std::memory_order_release);
+
+	if (blocking_mix)
+	{
+		cond.notify_one();
+		lock.unlock();
+	}
 }
 
 void AVFrameRingStream::mark_complete()
 {
-	complete.store(true, std::memory_order_relaxed);
+	if (blocking_mix)
+	{
+		std::lock_guard<std::mutex> holder{lock};
+		complete.store(true, std::memory_order_relaxed);
+		cond.notify_one();
+	}
+	else
+		complete.store(true, std::memory_order_relaxed);
 }
 
 unsigned AVFrameRingStream::get_num_buffered_av_frames()
@@ -969,7 +1016,7 @@ void VideoDecoder::Impl::begin_audio_stream()
 #else
 			audio.av_ctx->ch_layout.nb_channels,
 #endif
-			time_base, opts.realtime);
+			time_base, opts.realtime, opts.blocking);
 
 	stream->add_reference();
 	stream_id = mixer->add_mixer_stream(stream, !is_paused);
@@ -1827,9 +1874,8 @@ int VideoDecoder::Impl::read_frame(AVPacket *pkt)
 			header.payload_size -= sizeof(pkt_header);
 
 			pkt->size = header.payload_size;
+
 			if (av_new_packet(pkt, pkt->size) < 0)
-				return AVERROR_EOF;
-			if (av_packet_make_writable(pkt) < 0)
 				return AVERROR_EOF;
 
 			if (!io_interface->read(pkt->data, header.payload_size))

@@ -707,17 +707,10 @@ bool PulseRecord::get_buffer_status(size_t &read_avail, uint32_t &latency_usec)
 		return false;
 	}
 
-	auto buffer_latency_us = uint32_t(1e6 * float(read_avail) / sample_rate);
-
 	if (negative)
-	{
-		if (buffer_latency_us >= usecs)
-			latency_usec = buffer_latency_us - usecs;
-		else
-			latency_usec = 0;
-	}
+		latency_usec = 0;
 	else
-		latency_usec = uint32_t(usecs) + buffer_latency_us;
+		latency_usec = uint32_t(usecs);
 
 	pa_threaded_mainloop_unlock(mainloop);
 	return true;

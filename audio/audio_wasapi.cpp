@@ -180,7 +180,7 @@ bool WASAPIBackend::init(float sample_rate, unsigned channels)
 	if (sample_rate > 0.0f)
 		format->nSamplesPerSec = DWORD(sample_rate);
 
-	const double target_latency = 0.050;
+	const double target_latency = 0.030;
 	auto reference_time = seconds_to_reference_time(target_latency);
 
 	if (FAILED(pAudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED,

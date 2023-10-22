@@ -24,12 +24,14 @@
 
 #include "ffmpeg_encode.hpp"
 #include "ffmpeg_hw_device.hpp"
+#include "ffmpeg_raw_packet.hpp"
 #include "logging.hpp"
 #include "math.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "transforms.hpp"
 #include "thread_group.hpp"
 #include "timer.hpp"
+#include "dynamic_array.hpp"
 #include <thread>
 #include <cstdlib>
 #ifdef HAVE_GRANITE_AUDIO
@@ -135,6 +137,7 @@ struct VideoEncoder::Impl
 	bool init_audio_codec();
 
 	std::vector<int16_t> audio_buffer_s16;
+	Util::DynamicArray<float> float_buffer;
 
 	struct
 	{
@@ -161,6 +164,15 @@ struct VideoEncoder::Impl
 	void submit_process_rgb_vulkan(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
 #endif
 	void submit_process_rgb_readback(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
+
+	struct PyroHeader
+	{
+		PacketHeader param_header;
+		CodecParams codec_params;
+		PacketHeader payload_packet_header;
+		PayloadHeader payload_header;
+	} raw_header = {};
+	Util::DynamicArray<uint8_t> packet_buffer;
 };
 
 static void free_av_objects(CodecStream &stream)
@@ -336,6 +348,14 @@ bool VideoEncoder::Impl::encode_audio_stream(int compensate_audio_us)
 					reinterpret_cast<float *const *>(audio.av_frame->data),
 					audio.av_frame->nb_samples, false);
 		}
+		else if (audio.av_frame->format == AV_SAMPLE_FMT_S16)
+		{
+			float_buffer.reserve(audio.av_frame->nb_samples * 2);
+			read_count = audio_stream->read_frames_interleaved_f32(
+					float_buffer.data(), audio.av_frame->nb_samples, false);
+			Audio::DSP::f32_to_i16(reinterpret_cast<int16_t *>(audio.av_frame->data[0]),
+			                       float_buffer.data(), read_count * 2);
+		}
 		else
 		{
 			LOGE("Unknown sample format.\n");
@@ -354,10 +374,15 @@ bool VideoEncoder::Impl::encode_audio_stream(int compensate_audio_us)
 					       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float));
 				}
 			}
-			else
+			else if (audio.av_frame->format == AV_SAMPLE_FMT_FLT)
 			{
 				memset(audio.av_frame->data[0] + read_count * sizeof(float) * 2, 0,
 				       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float) * 2);
+			}
+			else if (audio.av_frame->format == AV_SAMPLE_FMT_S16)
+			{
+				memset(audio.av_frame->data[0] + read_count * sizeof(int16_t) * 2, 0,
+				       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(int16_t) * 2);
 			}
 		}
 
@@ -583,7 +608,7 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 			pkt_clone->stream_index = stream.av_stream_local->index;
 			av_packet_rescale_ts(pkt_clone, stream.av_ctx->time_base, stream.av_stream_local->time_base);
 			ret = av_interleaved_write_frame(av_format_ctx_local, pkt_clone);
-			av_packet_unref(pkt_clone);
+			av_packet_free(&pkt_clone);
 			if (ret < 0)
 			{
 				LOGE("Failed to write packet: %d\n", ret);
@@ -591,17 +616,52 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 			}
 		}
 
-		stream.av_pkt->stream_index = stream.av_stream->index;
-		av_packet_rescale_ts(stream.av_pkt, stream.av_ctx->time_base, stream.av_stream->time_base);
-		ret = av_interleaved_write_frame(av_format_ctx, stream.av_pkt);
-		if (ret < 0)
+		if (stream.av_stream)
 		{
-			LOGE("Failed to write packet: %d\n", ret);
-			break;
+			stream.av_pkt->stream_index = stream.av_stream->index;
+			av_packet_rescale_ts(stream.av_pkt, stream.av_ctx->time_base, stream.av_stream->time_base);
+		}
+		else
+		{
+			av_packet_rescale_ts(stream.av_pkt, stream.av_ctx->time_base, AV_TIME_BASE_Q);
 		}
 
-		if (mux_stream_callback)
-			avio_flush(av_format_ctx->pb);
+		if (av_format_ctx)
+		{
+			ret = av_interleaved_write_frame(av_format_ctx, stream.av_pkt);
+			if (ret < 0)
+			{
+				LOGE("Failed to write packet: %d\n", ret);
+				break;
+			}
+		}
+		else if (mux_stream_callback)
+		{
+			size_t write_size = sizeof(raw_header) + stream.av_pkt->size;
+			packet_buffer.reserve(write_size);
+			raw_header.payload_header.pts = stream.av_pkt->pts;
+			raw_header.payload_header.dts = stream.av_pkt->dts;
+			raw_header.payload_header.flags = 0;
+			raw_header.payload_packet_header.payload_size =
+					stream.av_pkt->size + sizeof(raw_header.payload_header);
+
+			if (&stream == &video)
+			{
+				if (stream.av_pkt->flags & AV_PKT_FLAG_KEY)
+					raw_header.payload_header.flags |= PAYLOAD_KEY_FRAME_BIT;
+				raw_header.payload_packet_header.endpoint = Endpoint::VideoPacket;
+			}
+			else if (&stream == &audio)
+				raw_header.payload_packet_header.endpoint = Endpoint::AudioPacket;
+			else
+				raw_header.payload_packet_header.endpoint = Endpoint::None;
+
+			memcpy(packet_buffer.data(), &raw_header, sizeof(raw_header));
+			memcpy(packet_buffer.data() + sizeof(raw_header),
+			       stream.av_pkt->data, stream.av_pkt->size);
+
+			mux_stream_callback->write_stream(packet_buffer.data(), write_size);
+		}
 	}
 
 	return ret == AVERROR_EOF || ret == AVERROR(EAGAIN);
@@ -630,9 +690,18 @@ bool VideoEncoder::Impl::init_audio_codec()
 	{
 		if (mux_stream_callback)
 		{
-			// Don't care about streaming platform limitations, so just use the ideal format.
-			codec_id = AV_CODEC_ID_OPUS;
-			sample_fmt = AV_SAMPLE_FMT_FLT;
+			// Don't care about streaming platform limitations, so just use the ideal format, ... uncompressed!
+			// It's the only true low latency solution. 20ms packets is too much :<
+			// Uncompressed stereo audio is about 1.5 mbit/s, no big deal for our purposes.
+			codec_id = AV_CODEC_ID_PCM_S16LE;
+			sample_fmt = AV_SAMPLE_FMT_S16;
+
+			raw_header.codec_params.audio_codec = AudioCodec::S16LE;
+			raw_header.codec_params.channels = 2;
+			if (options.realtime)
+				raw_header.codec_params.rate = uint32_t(audio_stream->get_sample_rate());
+			else
+				raw_header.codec_params.rate = uint32_t(audio_source->get_sample_rate());
 		}
 		else
 		{
@@ -653,11 +722,14 @@ bool VideoEncoder::Impl::init_audio_codec()
 		return false;
 	}
 
-	audio.av_stream = avformat_new_stream(av_format_ctx, codec);
-	if (!audio.av_stream)
+	if (av_format_ctx)
 	{
-		LOGE("Failed to add new stream.\n");
-		return false;
+		audio.av_stream = avformat_new_stream(av_format_ctx, codec);
+		if (!audio.av_stream)
+		{
+			LOGE("Failed to add new stream.\n");
+			return false;
+		}
 	}
 
 	if (av_format_ctx_local)
@@ -687,17 +759,26 @@ bool VideoEncoder::Impl::init_audio_codec()
 	audio.av_ctx->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
 
 	if (options.realtime)
-		audio.av_ctx->time_base = { 1, 1000000 };
+		audio.av_ctx->time_base = {1, 1000000};
 	else
-		audio.av_ctx->time_base = { 1, audio.av_ctx->sample_rate };
+		audio.av_ctx->time_base = {1, audio.av_ctx->sample_rate};
 
-	if (av_format_ctx->oformat->flags & AVFMT_GLOBALHEADER)
+	if (av_format_ctx && (av_format_ctx->oformat->flags & AVFMT_GLOBALHEADER))
 		audio.av_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 	if (av_format_ctx_local && (av_format_ctx_local->oformat->flags & AVFMT_GLOBALHEADER))
 		audio.av_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
-	audio.av_stream->id = 1;
-	audio.av_stream->time_base = audio.av_ctx->time_base;
+	if (audio.av_stream)
+	{
+		audio.av_stream->id = 1;
+		audio.av_stream->time_base = audio.av_ctx->time_base;
+	}
+
+	if (audio.av_stream_local)
+	{
+		audio.av_stream_local->id = 1;
+		audio.av_stream_local->time_base = audio.av_ctx->time_base;
+	}
 
 	if (options.realtime)
 		audio.av_ctx->bit_rate = 256 * 1024;
@@ -709,7 +790,8 @@ bool VideoEncoder::Impl::init_audio_codec()
 		return false;
 	}
 
-	avcodec_parameters_from_context(audio.av_stream->codecpar, audio.av_ctx);
+	if (audio.av_stream)
+		avcodec_parameters_from_context(audio.av_stream->codecpar, audio.av_ctx);
 	if (audio.av_stream_local)
 		avcodec_parameters_from_context(audio.av_stream_local->codecpar, audio.av_ctx);
 
@@ -717,7 +799,11 @@ bool VideoEncoder::Impl::init_audio_codec()
 	if (!options.realtime && (codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE) != 0)
 		samples_per_tick = audio_source->get_frames_per_tick();
 	else
+	{
 		samples_per_tick = audio.av_ctx->frame_size;
+		if (samples_per_tick == 0)
+			samples_per_tick = 512; // About 10ms packets is fine.
+	}
 
 	audio.av_frame = alloc_audio_frame(audio.av_ctx->sample_fmt, audio.av_ctx->ch_layout,
 	                                   audio.av_ctx->sample_rate, samples_per_tick);
@@ -756,11 +842,14 @@ bool VideoEncoder::Impl::init_video_codec()
 		}
 	}
 
-	video.av_stream = avformat_new_stream(av_format_ctx, codec);
-	if (!video.av_stream)
+	if (av_format_ctx)
 	{
-		LOGE("Failed to add new stream.\n");
-		return false;
+		video.av_stream = avformat_new_stream(av_format_ctx, codec);
+		if (!video.av_stream)
+		{
+			LOGE("Failed to add new stream.\n");
+			return false;
+		}
 	}
 
 	if (av_format_ctx_local)
@@ -839,15 +928,18 @@ bool VideoEncoder::Impl::init_video_codec()
 		return false;
 	}
 
-	if (av_format_ctx->oformat->flags & AVFMT_GLOBALHEADER)
+	if (av_format_ctx && (av_format_ctx->oformat->flags & AVFMT_GLOBALHEADER))
 		video.av_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
 	// TODO: Is mismatch a problem?
-	if (av_format_ctx_local && av_format_ctx_local->oformat->flags & AVFMT_GLOBALHEADER)
+	if (av_format_ctx_local && (av_format_ctx_local->oformat->flags & AVFMT_GLOBALHEADER))
 		video.av_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
-	video.av_stream->id = 0;
-	video.av_stream->time_base = video.av_ctx->time_base;
+	if (video.av_stream)
+	{
+		video.av_stream->id = 0;
+		video.av_stream->time_base = video.av_ctx->time_base;
+	}
 
 	if (video.av_stream_local)
 	{
@@ -902,7 +994,8 @@ bool VideoEncoder::Impl::init_video_codec()
 		return false;
 	}
 
-	avcodec_parameters_from_context(video.av_stream->codecpar, video.av_ctx);
+	if (video.av_stream)
+		avcodec_parameters_from_context(video.av_stream->codecpar, video.av_ctx);
 	if (video.av_stream_local)
 		avcodec_parameters_from_context(video.av_stream_local->codecpar, video.av_ctx);
 
@@ -931,6 +1024,27 @@ bool VideoEncoder::Impl::init_video_codec()
 		}
 	}
 
+	const auto translate_codec_id = [](AVCodecID id) {
+		switch (id)
+		{
+		case AV_CODEC_ID_H264:
+			return VideoCodec::H264;
+		case AV_CODEC_ID_H265:
+			return VideoCodec::H265;
+		case AV_CODEC_ID_AV1:
+			return VideoCodec::AV1;
+		default:
+			LOGW("Unknown video codec %d.\n", id);
+			return VideoCodec::None;
+		}
+	};
+
+	raw_header.codec_params.video_codec = translate_codec_id(video.av_ctx->codec_id);
+	raw_header.codec_params.width = video.av_ctx->width;
+	raw_header.codec_params.height = video.av_ctx->height;
+	raw_header.codec_params.frame_rate_num = video.av_ctx->framerate.num;
+	raw_header.codec_params.frame_rate_den = video.av_ctx->framerate.den;
+
 	video.av_pkt = av_packet_alloc();
 	if (!video.av_pkt)
 		return false;
@@ -947,7 +1061,7 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	if (options.realtime && options.realtime_options.muxer_format)
 		muxer = options.realtime_options.muxer_format;
 
-	if (!path && !mux_stream_callback)
+	if ((!path && !mux_stream_callback) || (path && mux_stream_callback))
 	{
 		LOGE("Must either use a proper encode path, or mux stream callback.\n");
 		return false;
@@ -973,10 +1087,13 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	};
 
 	int ret;
-	if ((ret = avformat_alloc_output_context2(&av_format_ctx, nullptr, muxer, path)) < 0)
+	if (path)
 	{
-		LOGE("Failed to open format context: %d\n", ret);
-		return false;
+		if ((ret = avformat_alloc_output_context2(&av_format_ctx, nullptr, muxer, path)) < 0)
+		{
+			LOGE("Failed to open format context: %d\n", ret);
+			return false;
+		}
 	}
 
 	if (options.realtime && options.realtime_options.local_backup_path)
@@ -988,6 +1105,11 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 			return false;
 		}
 	}
+
+	raw_header.param_header.header_magic = PyroMagic;
+	raw_header.param_header.endpoint = Endpoint::CodecParam;
+	raw_header.param_header.payload_size = sizeof(raw_header.codec_params);
+	raw_header.payload_packet_header.header_magic = PyroMagic;
 
 	if (!init_video_codec())
 	{
@@ -1004,7 +1126,8 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		}
 	}
 
-	av_dump_format(av_format_ctx, 0, path, 1);
+	if (av_format_ctx)
+		av_dump_format(av_format_ctx, 0, path, 1);
 	if (av_format_ctx_local)
 		av_dump_format(av_format_ctx_local, 0, options.realtime_options.local_backup_path, 1);
 
@@ -1020,36 +1143,11 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 
 		if (!(ctx->flags & AVFMT_NOFILE))
 		{
-			if (ctx == av_format_ctx && mux_stream_callback)
+			retval = avio_open(&ctx->pb, encode_path, AVIO_FLAG_WRITE);
+			if (retval < 0)
 			{
-				auto *mux_stream_callback_buffer = av_malloc(1024);
-				AVIOContext *avio = avio_alloc_context(
-						static_cast<unsigned char *>(mux_stream_callback_buffer), 1024, AVIO_FLAG_WRITE,
-						this, nullptr, [](void *opaque, uint8_t *buf, int buf_size) -> int
-						{
-							auto *self = static_cast<VideoEncoder::Impl *>(opaque);
-							if (self->mux_stream_callback)
-								if (!self->mux_stream_callback->write_stream(buf, buf_size))
-									self->mux_stream_callback = nullptr;
-							return 0;
-						}, nullptr);
-
-				if (!avio)
-				{
-					LOGE("Could not create AVIO context.\n");
-					return false;
-				}
-
-				ctx->pb = avio;
-			}
-			else
-			{
-				retval = avio_open(&ctx->pb, encode_path, AVIO_FLAG_WRITE);
-				if (retval < 0)
-				{
-					LOGE("Could not open file: %d\n", retval);
-					return false;
-				}
+				LOGE("Could not open file: %d\n", retval);
+				return false;
 			}
 		}
 
@@ -1062,7 +1160,7 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		return true;
 	};
 
-	if (!open_file(av_format_ctx, path))
+	if (av_format_ctx && !open_file(av_format_ctx, path))
 	{
 		cleanup_format_context();
 		return false;

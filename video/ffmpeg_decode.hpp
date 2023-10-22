@@ -21,6 +21,13 @@ struct VideoFrame
 	double pts = 0.0;
 };
 
+class DemuxerIOInterface
+{
+public:
+	virtual ~DemuxerIOInterface() = default;
+	virtual bool read(void *data, size_t size) = 0;
+};
+
 class VideoDecoder
 {
 public:
@@ -31,9 +38,12 @@ public:
 	{
 		bool mipgen = false;
 		bool realtime = false;
+		bool blocking = false;
 		float target_video_buffer_time = 0.2f;
 		float target_realtime_audio_buffer_time = 0.5f;
 	};
+
+	void set_io_interface(DemuxerIOInterface *iface);
 
 	bool init(Audio::Mixer *mixer, const char *path, const DecodeOptions &options);
 	unsigned get_width() const;

@@ -137,6 +137,7 @@ struct VideoEncoder::Impl
 	bool init_audio_codec();
 
 	std::vector<int16_t> audio_buffer_s16;
+	Util::DynamicArray<float> float_buffer;
 
 	struct
 	{
@@ -347,6 +348,14 @@ bool VideoEncoder::Impl::encode_audio_stream(int compensate_audio_us)
 					reinterpret_cast<float *const *>(audio.av_frame->data),
 					audio.av_frame->nb_samples, false);
 		}
+		else if (audio.av_frame->format == AV_SAMPLE_FMT_S16)
+		{
+			float_buffer.reserve(audio.av_frame->nb_samples * 2);
+			read_count = audio_stream->read_frames_interleaved_f32(
+					float_buffer.data(), audio.av_frame->nb_samples, false);
+			Audio::DSP::f32_to_i16(reinterpret_cast<int16_t *>(audio.av_frame->data[0]),
+			                       float_buffer.data(), read_count * 2);
+		}
 		else
 		{
 			LOGE("Unknown sample format.\n");
@@ -365,10 +374,15 @@ bool VideoEncoder::Impl::encode_audio_stream(int compensate_audio_us)
 					       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float));
 				}
 			}
-			else
+			else if (audio.av_frame->format == AV_SAMPLE_FMT_FLT)
 			{
 				memset(audio.av_frame->data[0] + read_count * sizeof(float) * 2, 0,
 				       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float) * 2);
+			}
+			else if (audio.av_frame->format == AV_SAMPLE_FMT_S16)
+			{
+				memset(audio.av_frame->data[0] + read_count * sizeof(int16_t) * 2, 0,
+				       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(int16_t) * 2);
 			}
 		}
 
@@ -676,9 +690,18 @@ bool VideoEncoder::Impl::init_audio_codec()
 	{
 		if (mux_stream_callback)
 		{
-			// Don't care about streaming platform limitations, so just use the ideal format.
-			codec_id = AV_CODEC_ID_OPUS;
-			sample_fmt = AV_SAMPLE_FMT_FLT;
+			// Don't care about streaming platform limitations, so just use the ideal format, ... uncompressed!
+			// It's the only true low latency solution. 20ms packets is too much :<
+			// Uncompressed stereo audio is about 1.5 mbit/s, no big deal for our purposes.
+			codec_id = AV_CODEC_ID_PCM_S16LE;
+			sample_fmt = AV_SAMPLE_FMT_S16;
+
+			raw_header.codec_params.audio_codec = AudioCodec::S16LE;
+			raw_header.codec_params.channels = 2;
+			if (options.realtime)
+				raw_header.codec_params.rate = uint32_t(audio_stream->get_sample_rate());
+			else
+				raw_header.codec_params.rate = uint32_t(audio_source->get_sample_rate());
 		}
 		else
 		{
@@ -736,9 +759,9 @@ bool VideoEncoder::Impl::init_audio_codec()
 	audio.av_ctx->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
 
 	if (options.realtime)
-		audio.av_ctx->time_base = { 1, 1000000 };
+		audio.av_ctx->time_base = {1, 1000000};
 	else
-		audio.av_ctx->time_base = { 1, audio.av_ctx->sample_rate };
+		audio.av_ctx->time_base = {1, audio.av_ctx->sample_rate};
 
 	if (av_format_ctx && (av_format_ctx->oformat->flags & AVFMT_GLOBALHEADER))
 		audio.av_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -776,7 +799,11 @@ bool VideoEncoder::Impl::init_audio_codec()
 	if (!options.realtime && (codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE) != 0)
 		samples_per_tick = audio_source->get_frames_per_tick();
 	else
+	{
 		samples_per_tick = audio.av_ctx->frame_size;
+		if (samples_per_tick == 0)
+			samples_per_tick = 512; // About 10ms packets is fine.
+	}
 
 	audio.av_frame = alloc_audio_frame(audio.av_ctx->sample_fmt, audio.av_ctx->ch_layout,
 	                                   audio.av_ctx->sample_rate, samples_per_tick);
@@ -789,25 +816,6 @@ bool VideoEncoder::Impl::init_audio_codec()
 	audio.av_pkt = av_packet_alloc();
 	if (!audio.av_pkt)
 		return false;
-
-	const auto translate_codec_id = [](AVCodecID id) {
-		switch (id)
-		{
-		case AV_CODEC_ID_OPUS:
-			return AudioCodec::Opus;
-		case AV_CODEC_ID_AAC:
-			return AudioCodec::AAC;
-		case AV_CODEC_ID_PCM_S16LE:
-			return AudioCodec::S16LE;
-		default:
-			LOGW("Unknown audio codec %d.\n", id);
-			return AudioCodec::None;
-		}
-	};
-
-	raw_header.codec_params.audio_codec = translate_codec_id(audio.av_ctx->codec_id);
-	raw_header.codec_params.rate = audio.av_ctx->sample_rate;
-	raw_header.codec_params.channels = 2;
 
 	return true;
 #else

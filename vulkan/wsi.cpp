@@ -975,7 +975,7 @@ struct SurfaceInfo
 
 static bool init_surface_info(Device &device, WSIPlatform &platform,
 	VkSurfaceKHR surface, BackbufferFormat format,
-	PresentMode present_mode, SurfaceInfo &info)
+	PresentMode present_mode, SurfaceInfo &info, bool low_latency_mode_enable)
 {
 	if (surface == VK_NULL_HANDLE)
 	{
@@ -1008,7 +1008,7 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 			LOGI("Win32: Not running full-screen.\n");
 
 		const char *exclusive = getenv("GRANITE_EXCLUSIVE_FULL_SCREEN");
-		bool prefer_exclusive = exclusive && strtoul(exclusive, nullptr, 0) != 0;
+		bool prefer_exclusive = (exclusive && strtoul(exclusive, nullptr, 0) != 0) || low_latency_mode_enable;
 
 		if (ext.driver_properties.driverID == VK_DRIVER_ID_AMD_PROPRIETARY_KHR && format == BackbufferFormat::HDR10)
 		{
@@ -1041,7 +1041,8 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		else
 		{
 			LOGI("Win32: Opting out of exclusive full-screen!\n");
-			info.exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+			info.exclusive_info.fullScreenExclusive =
+				prefer_exclusive ? VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT : VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
 		}
 	}
 #else
@@ -1237,7 +1238,7 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 {
 	SurfaceInfo surface_info = {};
-	if (!init_surface_info(*device, *platform, surface, current_backbuffer_format, current_present_mode, surface_info))
+	if (!init_surface_info(*device, *platform, surface, current_backbuffer_format, current_present_mode, surface_info, low_latency_mode_enable))
 		return SwapchainError::Error;
 	const auto &caps = surface_info.surface_capabilities;
 

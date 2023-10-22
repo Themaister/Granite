@@ -150,6 +150,11 @@ public:
 	void set_platform(WSIPlatform *platform);
 	void set_present_mode(PresentMode mode);
 	void set_backbuffer_format(BackbufferFormat format);
+
+	// Latency is normally pretty low, but this aims to target
+	// really low latency. Only suitable for cases where rendering loads are extremely simple.
+	void set_low_latency_mode(bool enable);
+
 	inline BackbufferFormat get_backbuffer_format() const
 	{
 		return backbuffer_format;
@@ -282,6 +287,7 @@ private:
 	VkSurfaceFormatKHR swapchain_surface_format = { VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
 	PresentMode current_present_mode = PresentMode::SyncToVBlank;
 	PresentMode present_mode = PresentMode::SyncToVBlank;
+	bool low_latency_mode_enable = false;
 
 	VkPresentModeKHR active_present_mode = VK_PRESENT_MODE_FIFO_KHR;
 	std::vector<VkPresentModeKHR> present_mode_compat_group;

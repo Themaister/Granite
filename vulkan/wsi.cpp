@@ -440,14 +440,16 @@ Semaphore WSI::consume_external_release_semaphore()
 
 void WSI::wait_swapchain_latency()
 {
+	unsigned effective_latency = low_latency_mode_enable ? 0 : present_frame_latency;
+
 	if (device->get_device_features().present_wait_features.presentWait &&
-	    present_last_id > present_frame_latency &&
+	    present_last_id > effective_latency &&
 	    current_present_mode == PresentMode::SyncToVBlank)
 	{
 		// The effective latency is more like present_frame_latency + 1.
 		// If 0, we wait for vblank, and we must do CPU work and GPU work in one frame
 		// to hit next vblank.
-		uint64_t target = present_last_id - present_frame_latency;
+		uint64_t target = present_last_id - effective_latency;
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto begin_wait = Util::get_current_time_nsecs();
@@ -463,6 +465,11 @@ void WSI::wait_swapchain_latency()
 				LOGI("WaitForPresentKHR took %.3f ms.\n", 1e-6 * double(end_wait - begin_wait));
 #endif
 	}
+}
+
+void WSI::set_low_latency_mode(bool enable)
+{
+	low_latency_mode_enable = enable;
 }
 
 bool WSI::begin_frame()
@@ -504,10 +511,19 @@ bool WSI::begin_frame()
 		auto acquire_start = Util::get_current_time_nsecs();
 #endif
 
+		Fence fence;
+
+		// TODO: Improve this with fancier approaches as needed.
+		if (low_latency_mode_enable)
+			fence = device->request_legacy_fence();
+
 		auto acquire_ts = device->write_calibrated_timestamp();
 		result = table->vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX, acquire->get_semaphore(),
-		                                      VK_NULL_HANDLE, &swapchain_index);
+		                                      fence->get_fence(), &swapchain_index);
 		device->register_time_interval("WSI", std::move(acquire_ts), device->write_calibrated_timestamp(), "acquire");
+
+		if (low_latency_mode_enable)
+			fence->wait();
 
 #if defined(ANDROID)
 		// Android 10 can return suboptimal here, only because of pre-transform.
@@ -1356,7 +1372,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	swapchain_size.height =
 	    std::max(std::min(height, caps.maxImageExtent.height), caps.minImageExtent.height);
 
-	uint32_t desired_swapchain_images = 3;
+	uint32_t desired_swapchain_images = low_latency_mode_enable ? 2 : 3;
 	{
 		const char *num_images = getenv("GRANITE_VULKAN_SWAPCHAIN_IMAGES");
 		if (num_images)

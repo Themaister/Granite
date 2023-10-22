@@ -50,7 +50,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		return true;
 	}
 
-	void render_frame(double frame_time, double) override
+	void render_frame(double frame_time, double elapsed_time) override
 	{
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
@@ -143,6 +143,12 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		}
 		flat.render_line_strip(offsets, 0.0f, 100, vec4(1.0f, 1.0f, 0.0f, 1.0f));
 
+		char elapsed_text[256];
+		snprintf(elapsed_text, sizeof(elapsed_text), "Elapsed: %.3f, Frame: %u", elapsed_time, counter++);
+		flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large),
+						 elapsed_text, { 0, 0, 0 }, { cmd->get_viewport().width, cmd->get_viewport().height },
+						 vec4(1.0f), Font::Alignment::Center, 1.0f);
+
 		flat.flush(*cmd, vec3(0.0f), { cmd->get_viewport().width, cmd->get_viewport().height, 5.0f });
 
 		cmd->end_render_pass();
@@ -151,6 +157,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		device.submit(cmd);
 	}
 
+	unsigned counter = 0;
 	std::vector<double> frame_times;
 	bool state = false;
 	FlatRenderer flat;

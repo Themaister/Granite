@@ -858,6 +858,7 @@ bool VideoEncoder::Impl::init_video_codec()
 	AVDictionary *opts = nullptr;
 
 	bool is_x264 = strcmp(options.encoder, "libx264") == 0;
+	bool is_nvenc = strstr(options.encoder, "nvenc") != nullptr;
 
 	if (options.realtime || !is_x264)
 	{
@@ -877,6 +878,11 @@ bool VideoEncoder::Impl::init_video_codec()
 				av_dict_set(&opts, "tune", options.realtime_options.x264_tune, 0);
 			if (options.realtime_options.threads)
 				av_dict_set_int(&opts, "threads", options.realtime_options.threads, 0);
+		}
+		else if (is_nvenc)
+		{
+			// Codec delay. We want blocking realtime.
+			av_dict_set_int(&opts, "delay", 0, 0);
 		}
 	}
 	else

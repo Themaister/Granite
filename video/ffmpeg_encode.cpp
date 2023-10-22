@@ -883,6 +883,8 @@ bool VideoEncoder::Impl::init_video_codec()
 		{
 			// Codec delay. We want blocking realtime.
 			av_dict_set_int(&opts, "delay", 0, 0);
+			if (options.low_latency)
+				av_dict_set_int(&opts, "zerolatency", 1, 0);
 		}
 	}
 	else

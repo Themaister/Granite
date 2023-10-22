@@ -1000,7 +1000,13 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	if (av_format_ctx_local)
 		av_dump_format(av_format_ctx_local, 0, options.realtime_options.local_backup_path, 1);
 
-	const auto open_file = [this](AVFormatContext *ctx, const char *encode_path) -> bool
+	AVDictionary *muxer_opts = nullptr;
+
+	// Special flag for mpegts that lowers latency according to the intertubes.
+	if (muxer && strcmp(muxer, "mpegts") == 0)
+		av_dict_set_int(&muxer_opts, "omit_video_pes_length", 0, 0);
+
+	const auto open_file = [this, &muxer_opts](AVFormatContext *ctx, const char *encode_path) -> bool
 	{
 		int retval;
 
@@ -1039,7 +1045,7 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 			}
 		}
 
-		if ((retval = avformat_write_header(ctx, nullptr)) < 0)
+		if ((retval = avformat_write_header(ctx, ctx == av_format_ctx ? &muxer_opts : nullptr)) < 0)
 		{
 			LOGE("Failed to write format header: %d\n", retval);
 			return false;
@@ -1059,6 +1065,8 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		cleanup_format_context();
 		return false;
 	}
+
+	av_dict_free(&muxer_opts);
 
 	realtime_pts.base_pts = int64_t(Util::get_current_time_nsecs() / 1000);
 

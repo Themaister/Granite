@@ -519,7 +519,7 @@ bool WSI::begin_frame()
 
 		auto acquire_ts = device->write_calibrated_timestamp();
 		result = table->vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX, acquire->get_semaphore(),
-		                                      fence->get_fence(), &swapchain_index);
+		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
 		device->register_time_interval("WSI", std::move(acquire_ts), device->write_calibrated_timestamp(), "acquire");
 
 		if (low_latency_mode_enable)

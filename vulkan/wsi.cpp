@@ -977,6 +977,7 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 	VkSurfaceKHR surface, BackbufferFormat format,
 	PresentMode present_mode, SurfaceInfo &info, bool low_latency_mode_enable)
 {
+	(void)low_latency_mode_enable;
 	if (surface == VK_NULL_HANDLE)
 	{
 		LOGE("Cannot create swapchain with surface == VK_NULL_HANDLE.\n");

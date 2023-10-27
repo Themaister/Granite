@@ -24,7 +24,6 @@
 
 #include "ffmpeg_encode.hpp"
 #include "ffmpeg_hw_device.hpp"
-#include "ffmpeg_raw_packet.hpp"
 #include "logging.hpp"
 #include "math.hpp"
 #include "muglm/muglm_impl.hpp"
@@ -165,14 +164,7 @@ struct VideoEncoder::Impl
 #endif
 	void submit_process_rgb_readback(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
 
-	struct PyroHeader
-	{
-		PacketHeader param_header;
-		CodecParams codec_params;
-		PacketHeader payload_packet_header;
-		PayloadHeader payload_header;
-	} raw_header = {};
-	Util::DynamicArray<uint8_t> packet_buffer;
+	pyro_codec_parameters pyro_codec = {};
 };
 
 static void free_av_objects(CodecStream &stream)
@@ -637,30 +629,22 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 		}
 		else if (mux_stream_callback)
 		{
-			size_t write_size = sizeof(raw_header) + stream.av_pkt->size;
-			packet_buffer.reserve(write_size);
-			raw_header.payload_header.pts = stream.av_pkt->pts;
-			raw_header.payload_header.dts = stream.av_pkt->dts;
-			raw_header.payload_header.flags = 0;
-			raw_header.payload_packet_header.payload_size =
-					stream.av_pkt->size + sizeof(raw_header.payload_header);
-
 			if (&stream == &video)
 			{
-				if (stream.av_pkt->flags & AV_PKT_FLAG_KEY)
-					raw_header.payload_header.flags |= PAYLOAD_KEY_FRAME_BIT;
-				raw_header.payload_packet_header.endpoint = Endpoint::VideoPacket;
+				// Avoid negative values in the beginning by biasing.
+				mux_stream_callback->write_video_packet(
+						stream.av_pkt->pts,
+						stream.av_pkt->dts,
+						stream.av_pkt->data, stream.av_pkt->size,
+						(stream.av_pkt->flags & AV_PKT_FLAG_KEY) != 0);
 			}
 			else if (&stream == &audio)
-				raw_header.payload_packet_header.endpoint = Endpoint::AudioPacket;
-			else
-				raw_header.payload_packet_header.endpoint = Endpoint::None;
-
-			memcpy(packet_buffer.data(), &raw_header, sizeof(raw_header));
-			memcpy(packet_buffer.data() + sizeof(raw_header),
-			       stream.av_pkt->data, stream.av_pkt->size);
-
-			mux_stream_callback->write_stream(packet_buffer.data(), write_size);
+			{
+				mux_stream_callback->write_audio_packet(
+						stream.av_pkt->pts,
+						stream.av_pkt->dts,
+						stream.av_pkt->data, stream.av_pkt->size);
+			}
 		}
 	}
 
@@ -696,12 +680,12 @@ bool VideoEncoder::Impl::init_audio_codec()
 			codec_id = AV_CODEC_ID_PCM_S16LE;
 			sample_fmt = AV_SAMPLE_FMT_S16;
 
-			raw_header.codec_params.audio_codec = AudioCodec::S16LE;
-			raw_header.codec_params.channels = 2;
+			pyro_codec.audio_codec = PYRO_AUDIO_CODEC_RAW_S16LE;
+			pyro_codec.channels = 2;
 			if (options.realtime)
-				raw_header.codec_params.rate = uint32_t(audio_stream->get_sample_rate());
+				pyro_codec.rate = uint32_t(audio_stream->get_sample_rate());
 			else
-				raw_header.codec_params.rate = uint32_t(audio_source->get_sample_rate());
+				pyro_codec.rate = uint32_t(audio_source->get_sample_rate());
 		}
 		else
 		{
@@ -802,7 +786,7 @@ bool VideoEncoder::Impl::init_audio_codec()
 	{
 		samples_per_tick = audio.av_ctx->frame_size;
 		if (samples_per_tick == 0)
-			samples_per_tick = 512; // About 10ms packets is fine.
+			samples_per_tick = 256; // About 5ms packets is fine and fits into one pyro UDP packet.
 	}
 
 	audio.av_frame = alloc_audio_frame(audio.av_ctx->sample_fmt, audio.av_ctx->ch_layout,
@@ -1028,22 +1012,22 @@ bool VideoEncoder::Impl::init_video_codec()
 		switch (id)
 		{
 		case AV_CODEC_ID_H264:
-			return VideoCodec::H264;
+			return PYRO_VIDEO_CODEC_H264;
 		case AV_CODEC_ID_H265:
-			return VideoCodec::H265;
+			return PYRO_VIDEO_CODEC_H265;
 		case AV_CODEC_ID_AV1:
-			return VideoCodec::AV1;
+			return PYRO_VIDEO_CODEC_AV1;
 		default:
 			LOGW("Unknown video codec %d.\n", id);
-			return VideoCodec::None;
+			return PYRO_VIDEO_CODEC_NONE;
 		}
 	};
 
-	raw_header.codec_params.video_codec = translate_codec_id(video.av_ctx->codec_id);
-	raw_header.codec_params.width = video.av_ctx->width;
-	raw_header.codec_params.height = video.av_ctx->height;
-	raw_header.codec_params.frame_rate_num = video.av_ctx->framerate.num;
-	raw_header.codec_params.frame_rate_den = video.av_ctx->framerate.den;
+	pyro_codec.video_codec = translate_codec_id(video.av_ctx->codec_id);
+	pyro_codec.width = video.av_ctx->width;
+	pyro_codec.height = video.av_ctx->height;
+	pyro_codec.frame_rate_num = video.av_ctx->framerate.num;
+	pyro_codec.frame_rate_den = video.av_ctx->framerate.den;
 
 	video.av_pkt = av_packet_alloc();
 	if (!video.av_pkt)
@@ -1106,11 +1090,6 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		}
 	}
 
-	raw_header.param_header.header_magic = PyroMagic;
-	raw_header.param_header.endpoint = Endpoint::CodecParam;
-	raw_header.param_header.payload_size = sizeof(raw_header.codec_params);
-	raw_header.payload_packet_header.header_magic = PyroMagic;
-
 	if (!init_video_codec())
 	{
 		cleanup_format_context();
@@ -1125,6 +1104,9 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 			return false;
 		}
 	}
+
+	if (mux_stream_callback)
+		mux_stream_callback->set_codec_parameters(pyro_codec);
 
 	if (av_format_ctx)
 		av_dump_format(av_format_ctx, 0, path, 1);

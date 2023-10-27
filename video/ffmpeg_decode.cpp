@@ -32,7 +32,6 @@
 #include "thread_group.hpp"
 #include "global_managers.hpp"
 #include "thread_priority.hpp"
-#include "ffmpeg_raw_packet.hpp"
 #include "timer.hpp"
 #include <condition_variable>
 #include <mutex>
@@ -600,15 +599,8 @@ struct VideoDecoder::Impl
 	double smooth_pts = 0.0;
 	DemuxerIOInterface *io_interface = nullptr;
 
-	struct CodecParameters
-	{
-		PacketHeader header;
-		CodecParams params;
-	} raw_codec_params = {};
+	pyro_codec_parameters pyro_codec = {};
 	bool has_observed_keyframe = false;
-	bool find_raw_codec_parameters();
-	bool read_raw_skip(uint32_t size) const;
-
 	int read_frame(AVPacket *av_pkt);
 };
 
@@ -904,21 +896,21 @@ bool VideoDecoder::Impl::init_audio_decoder()
 	}
 	else
 	{
-		switch (raw_codec_params.params.audio_codec)
+		switch (pyro_codec.audio_codec)
 		{
-		case AudioCodec::Opus:
+		case PYRO_AUDIO_CODEC_OPUS:
 			codec = avcodec_find_decoder(AV_CODEC_ID_OPUS);
 			break;
 
-		case AudioCodec::AAC:
+		case PYRO_AUDIO_CODEC_AAC:
 			codec = avcodec_find_decoder(AV_CODEC_ID_AAC);
 			break;
 
-		case AudioCodec::S16LE:
+		case PYRO_AUDIO_CODEC_RAW_S16LE:
 			codec = avcodec_find_decoder(AV_CODEC_ID_PCM_S16LE);
 			break;
 
-		case AudioCodec::None:
+		case PYRO_AUDIO_CODEC_NONE:
 			return true;
 
 		default:
@@ -952,14 +944,14 @@ bool VideoDecoder::Impl::init_audio_decoder()
 	}
 	else
 	{
-		audio.av_ctx->sample_rate = raw_codec_params.params.rate;
-		if (raw_codec_params.params.channels == 2)
+		audio.av_ctx->sample_rate = pyro_codec.rate;
+		if (pyro_codec.channels == 2)
 			audio.av_ctx->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
-		else if (raw_codec_params.params.channels == 1)
+		else if (pyro_codec.channels == 1)
 			audio.av_ctx->ch_layout = AV_CHANNEL_LAYOUT_MONO;
 		else
 		{
-			LOGE("Unexpected audio channel count %u.\n", raw_codec_params.params.channels);
+			LOGE("Unexpected audio channel count %u.\n", pyro_codec.channels);
 			return false;
 		}
 	}
@@ -1049,8 +1041,8 @@ bool VideoDecoder::Impl::init_video_decoder_post_device()
 	else
 	{
 		AVRational q;
-		q.num = raw_codec_params.params.frame_rate_num;
-		q.den = raw_codec_params.params.frame_rate_den;
+		q.num = pyro_codec.frame_rate_num;
+		q.den = pyro_codec.frame_rate_den;
 		fps = av_q2d(q);
 	}
 
@@ -1094,17 +1086,17 @@ bool VideoDecoder::Impl::init_video_decoder_pre_device()
 	}
 	else if (io_interface)
 	{
-		switch (raw_codec_params.params.video_codec)
+		switch (pyro_codec.video_codec)
 		{
-		case VideoCodec::H264:
+		case PYRO_VIDEO_CODEC_H264:
 			codec = avcodec_find_decoder(AV_CODEC_ID_H264);
 			break;
 
-		case VideoCodec::H265:
+		case PYRO_VIDEO_CODEC_H265:
 			codec = avcodec_find_decoder(AV_CODEC_ID_H265);
 			break;
 
-		case VideoCodec::AV1:
+		case PYRO_VIDEO_CODEC_AV1:
 			codec = avcodec_find_decoder(AV_CODEC_ID_AV1);
 			break;
 
@@ -1138,10 +1130,12 @@ bool VideoDecoder::Impl::init_video_decoder_pre_device()
 	}
 	else
 	{
-		video.av_ctx->width = raw_codec_params.params.width;
-		video.av_ctx->height = raw_codec_params.params.height;
-		video.av_ctx->framerate.num = raw_codec_params.params.frame_rate_num;
-		video.av_ctx->framerate.den = raw_codec_params.params.frame_rate_den;
+		video.av_ctx->width = pyro_codec.width;
+		video.av_ctx->height = pyro_codec.height;
+		video.av_ctx->framerate.num = pyro_codec.frame_rate_num;
+		video.av_ctx->framerate.den = pyro_codec.frame_rate_den;
+		// Packet loss is expected, and we'd rather have something on screen than nothing.
+		video.av_ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT;
 	}
 
 	video.av_ctx->opaque = &hw;
@@ -1156,46 +1150,6 @@ unsigned VideoDecoder::Impl::get_width() const
 unsigned VideoDecoder::Impl::get_height() const
 {
 	return video.av_ctx->height;
-}
-
-bool VideoDecoder::Impl::read_raw_skip(uint32_t size) const
-{
-	uint8_t dummy[1024];
-	for (uint32_t i = 0; i < size; i += sizeof(dummy))
-		if (!io_interface->read(dummy, std::min<size_t>(size - i, sizeof(dummy))))
-			return false;
-	return true;
-}
-
-bool VideoDecoder::Impl::find_raw_codec_parameters()
-{
-	for (;;)
-	{
-		if (!io_interface->read(&raw_codec_params.header, sizeof(raw_codec_params.header)))
-			return false;
-
-		if (raw_codec_params.header.header_magic != PyroMagic)
-		{
-			LOGE("Invalid Pyro magic.\n");
-			return false;
-		}
-
-		if (raw_codec_params.header.endpoint == Endpoint::CodecParam)
-		{
-			if (raw_codec_params.header.payload_size != sizeof(raw_codec_params.params))
-			{
-				LOGE("Invalid size for CodecParameters.\n");
-				return false;
-			}
-
-			if (!io_interface->read(&raw_codec_params.params, sizeof(raw_codec_params.params)))
-				return false;
-
-			return true;
-		}
-		else if (!read_raw_skip(raw_codec_params.header.payload_size))
-			return false;
-	}
 }
 
 bool VideoDecoder::Impl::init(Audio::Mixer *mixer_, const char *path, const DecodeOptions &opts_)
@@ -1217,10 +1171,14 @@ bool VideoDecoder::Impl::init(Audio::Mixer *mixer_, const char *path, const Deco
 			return false;
 		}
 	}
-	else if (!find_raw_codec_parameters())
+	else
 	{
-		LOGE("Failed to get raw codec parameters.\n");
-		return false;
+		pyro_codec = io_interface->get_codec_parameters();
+		if (pyro_codec.video_codec == PYRO_VIDEO_CODEC_NONE)
+		{
+			LOGE("Failed to get raw codec parameters.\n");
+			return false;
+		}
 	}
 
 	if (!init_video_decoder_pre_device())
@@ -1843,48 +1801,20 @@ int VideoDecoder::Impl::read_frame(AVPacket *pkt)
 	{
 		av_packet_unref(pkt);
 
-		PacketHeader header;
-		for (;;)
+		do
 		{
-			if (!io_interface->read(&header, sizeof(header)))
-				return false;
-			if (header.header_magic != PyroMagic)
-			{
-				LOGE("Invalid Pyro magic.\n");
-				return AVERROR_EOF;
-			}
-
-			if (header.endpoint != Endpoint::VideoPacket && header.endpoint != Endpoint::AudioPacket)
-			{
-				if (!read_raw_skip(header.payload_size))
-					return AVERROR_EOF;
-				continue;
-			}
-
-			PayloadHeader pkt_header;
-			if (header.payload_size < sizeof(pkt_header))
-			{
-				LOGE("Invalid packet header.\n");
-				return AVERROR_EOF;
-			}
-
-			if (!io_interface->read(&pkt_header, sizeof(pkt_header)))
+			if (!io_interface->wait_next_packet())
 				return AVERROR_EOF;
 
-			header.payload_size -= sizeof(pkt_header);
-
-			pkt->size = header.payload_size;
-
-			if (av_new_packet(pkt, pkt->size) < 0)
+			if (av_new_packet(pkt, int(io_interface->get_size())) < 0)
 				return AVERROR_EOF;
 
-			if (!io_interface->read(pkt->data, header.payload_size))
-				return AVERROR_EOF;
+			memcpy(pkt->data, io_interface->get_data(), pkt->size);
+			auto header = io_interface->get_payload_header();
+			pkt->pts = header.pts_lo | (int64_t(header.pts_hi) << 32);
+			pkt->dts = pkt->pts - header.dts_delta;
 
-			pkt->pts = pkt_header.pts;
-			pkt->dts = pkt_header.dts;
-
-			if (pkt_header.flags & PAYLOAD_KEY_FRAME_BIT)
+			if ((header.encoded & PYRO_PAYLOAD_KEY_FRAME_BIT) != 0)
 			{
 				av_pkt->flags = AV_PKT_FLAG_KEY;
 				has_observed_keyframe = true;
@@ -1892,14 +1822,8 @@ int VideoDecoder::Impl::read_frame(AVPacket *pkt)
 			else
 				av_pkt->flags = 0;
 
-			if (header.endpoint == Endpoint::VideoPacket)
-				pkt->stream_index = 0;
-			else if (header.endpoint == Endpoint::AudioPacket)
-				pkt->stream_index = 1;
-
-			if (has_observed_keyframe)
-				break;
-		}
+			pkt->stream_index = (header.encoded & PYRO_PAYLOAD_STREAM_TYPE_BIT) != 0 ? 1 : 0;
+		} while (!has_observed_keyframe);
 
 		return 0;
 	}

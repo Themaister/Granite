@@ -25,6 +25,7 @@
 #include "device.hpp"
 #include "image.hpp"
 #include "slangmosh_encode_iface.hpp"
+#include "pyro_protocol.h"
 
 namespace Granite
 {
@@ -38,7 +39,9 @@ class MuxStreamCallback
 {
 public:
 	virtual ~MuxStreamCallback() = default;
-	virtual bool write_stream(const void *data, size_t size) = 0;
+	virtual void set_codec_parameters(const pyro_codec_parameters &codec) = 0;
+	virtual void write_video_packet(int64_t pts, int64_t dts, const void *data, size_t size, bool is_key_frame) = 0;
+	virtual void write_audio_packet(int64_t pts, int64_t dts, const void *data, size_t size) = 0;
 };
 
 class VideoEncoder

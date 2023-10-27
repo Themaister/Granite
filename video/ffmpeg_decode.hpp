@@ -4,6 +4,7 @@
 #include "image.hpp"
 #include "semaphore.hpp"
 #include "slangmosh_decode_iface.hpp"
+#include "pyro_protocol.h"
 
 namespace Granite
 {
@@ -25,7 +26,11 @@ class DemuxerIOInterface
 {
 public:
 	virtual ~DemuxerIOInterface() = default;
-	virtual bool read(void *data, size_t size) = 0;
+	virtual pyro_codec_parameters get_codec_parameters() = 0;
+	virtual bool wait_next_packet() = 0;
+	virtual const void *get_data() = 0;
+	virtual size_t get_size() = 0;
+	virtual pyro_payload_header get_payload_header() = 0;
 };
 
 class VideoDecoder

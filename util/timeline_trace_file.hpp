@@ -79,10 +79,13 @@ private:
 };
 
 #ifndef GRANITE_SHIPPING
+
+#define GRANITE_MACRO_CONCAT_IMPL(a, b) a##b
+#define GRANITE_MACRO_CONCAT(a, b) GRANITE_MACRO_CONCAT_IMPL(a, b)
 #define GRANITE_SCOPED_TIMELINE_EVENT(str) \
-	::Util::TimelineTraceFile::ScopedEvent _timeline_scoped_count_##__COUNTER__{GRANITE_THREAD_GROUP()->get_timeline_trace_file(), str}
+	::Util::TimelineTraceFile::ScopedEvent GRANITE_MACRO_CONCAT(_timeline_scoped_count_, __COUNTER__){GRANITE_THREAD_GROUP()->get_timeline_trace_file(), str}
 #define GRANITE_SCOPED_TIMELINE_EVENT_FILE(file, str) \
-	::Util::TimelineTraceFile::ScopedEvent _timeline_scoped_count_##__COUNTER__{file, str}
+	::Util::TimelineTraceFile::ScopedEvent GRANITE_MACRO_CONCAT(_timeline_scoped_count_, __COUNTER__){file, str}
 #else
 #define GRANITE_SCOPED_TIMELINE_EVENT(...) ((void)0)
 #define GRANITE_SCOPED_TIMELINE_EVENT_FILE(...) ((void)0)

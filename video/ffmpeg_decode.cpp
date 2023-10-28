@@ -1561,6 +1561,13 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 	dispatch_conversion(*cmd, img, views);
 
 	device->submit(cmd, nullptr, 1, &compute_to_user);
+
+	// When running in realtime mode we will run
+	// completely unlocked from the main loop, so make sure
+	// we don't leak unbounded memory when the window is minimized on Windows.
+	// In that scenario the main thread will not pump frame contexts regularly.
+	if (opts.realtime)
+		device->next_frame_context();
 }
 
 void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av_frame)

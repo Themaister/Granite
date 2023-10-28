@@ -489,6 +489,8 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 			memcpy(dst_chroma, src_chroma, chroma_width);
 	}
 
+	video.av_frame->pict_type = AV_PICTURE_TYPE_NONE;
+
 	if (options.realtime)
 	{
 		int64_t target_pts = av_rescale_q_rnd(pts, {1, AV_TIME_BASE}, video.av_ctx->time_base, AV_ROUND_ZERO);
@@ -527,6 +529,12 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 	else
 		video.av_frame->pts = encode_video_pts++;
 
+	// When new stream clients come in we need to force IDR frames.
+	// This is not necessary for x264 apparently, but NVENC does ...
+	// Callback is responsible for controlling how often an IDR should be sent.
+	if (mux_stream_callback && mux_stream_callback->should_force_idr())
+		video.av_frame->pict_type = AV_PICTURE_TYPE_I;
+
 	AVFrame *hw_frame = nullptr;
 	if (hw.get_hw_device_type() != AV_HWDEVICE_TYPE_NONE)
 	{
@@ -544,6 +552,7 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 		}
 
 		hw_frame->pts = video.av_frame->pts;
+		hw_frame->pict_type = video.av_frame->pict_type;
 	}
 
 	ret = avcodec_send_frame(video.av_ctx, hw_frame ? hw_frame : video.av_frame);
@@ -631,7 +640,6 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 		{
 			if (&stream == &video)
 			{
-				// Avoid negative values in the beginning by biasing.
 				mux_stream_callback->write_video_packet(
 						stream.av_pkt->pts,
 						stream.av_pkt->dts,
@@ -961,6 +969,12 @@ bool VideoEncoder::Impl::init_video_codec()
 			av_dict_set_int(&opts, "delay", 0, 0);
 			if (options.low_latency)
 				av_dict_set_int(&opts, "zerolatency", 1, 0);
+		}
+
+		if ((is_x264 || is_nvenc) && options.low_latency)
+		{
+			av_dict_set_int(&opts, "intra-refresh", 1, 0);
+			av_dict_set_int(&opts, "forced-idr", 1, 0);
 		}
 	}
 	else

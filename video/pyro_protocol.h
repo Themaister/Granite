@@ -48,6 +48,7 @@ struct pyro_progress_report
 {
 	uint64_t total_received_packets;
 	uint64_t total_dropped_packets;
+	uint64_t total_received_key_frames;
 };
 
 #define PYRO_MAX_UDP_DATAGRAM_SIZE (PYRO_MAX_PAYLOAD_SIZE + sizeof(struct pyro_codec_parameters))

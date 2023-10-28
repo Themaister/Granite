@@ -32,7 +32,9 @@
 #include "thread_group.hpp"
 #include "global_managers.hpp"
 #include "thread_priority.hpp"
+#include "timeline_trace_file.hpp"
 #include "timer.hpp"
+#include "thread_name.hpp"
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -603,6 +605,8 @@ struct VideoDecoder::Impl
 	pyro_codec_parameters pyro_codec = {};
 	bool has_observed_keyframe = false;
 	int read_frame(AVPacket *av_pkt);
+
+	Granite::Global::GlobalManagersHandle managers;
 };
 
 int VideoDecoder::Impl::find_idle_decode_video_frame_locked() const
@@ -1157,6 +1161,7 @@ bool VideoDecoder::Impl::init(Audio::Mixer *mixer_, const char *path, const Deco
 {
 	mixer = mixer_;
 	opts = opts_;
+	managers = Granite::Global::create_thread_context();
 
 	if (!io_interface)
 	{
@@ -1687,6 +1692,7 @@ void VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 
 bool VideoDecoder::Impl::drain_audio_frame()
 {
+	GRANITE_SCOPED_TIMELINE_EVENT("drain-audio-frame");
 #ifdef HAVE_GRANITE_AUDIO
 	if (!stream)
 		return false;
@@ -1736,6 +1742,7 @@ bool VideoDecoder::Impl::drain_audio_frame()
 
 bool VideoDecoder::Impl::decode_audio_packet(AVPacket *pkt)
 {
+	GRANITE_SCOPED_TIMELINE_EVENT("decode-audio-packet");
 #ifdef HAVE_GRANITE_AUDIO
 	if (!stream)
 		return false;
@@ -1760,6 +1767,7 @@ bool VideoDecoder::Impl::decode_audio_packet(AVPacket *pkt)
 
 bool VideoDecoder::Impl::drain_video_frame()
 {
+	GRANITE_SCOPED_TIMELINE_EVENT("drain-video-frame");
 	AVFrame *frame = av_frame_alloc();
 	if (!frame)
 		return false;
@@ -1778,6 +1786,7 @@ bool VideoDecoder::Impl::drain_video_frame()
 
 bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 {
+	GRANITE_SCOPED_TIMELINE_EVENT("decode-video-packet");
 	int ret;
 	if (pkt)
 	{
@@ -1794,6 +1803,7 @@ bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 
 int VideoDecoder::Impl::read_frame(AVPacket *pkt)
 {
+	GRANITE_SCOPED_TIMELINE_EVENT("read-frame");
 	if (av_format_ctx)
 	{
 		return av_read_frame(av_format_ctx, pkt);
@@ -1804,8 +1814,11 @@ int VideoDecoder::Impl::read_frame(AVPacket *pkt)
 
 		do
 		{
-			if (!io_interface->wait_next_packet())
-				return AVERROR_EOF;
+			{
+				GRANITE_SCOPED_TIMELINE_EVENT("wait-next-packet");
+				if (!io_interface->wait_next_packet())
+					return AVERROR_EOF;
+			}
 
 			if (av_new_packet(pkt, int(io_interface->get_size())) < 0)
 				return AVERROR_EOF;
@@ -1957,6 +1970,11 @@ bool VideoDecoder::Impl::should_iterate_locked()
 void VideoDecoder::Impl::thread_main()
 {
 	Util::set_current_thread_priority(Util::ThreadPriority::High);
+	Util::set_current_thread_name("ffmpeg-decode");
+	Util::TimelineTraceFile::set_tid("ffmpeg-decode");
+	Global::set_thread_context(*managers);
+	if (auto *tg = GRANITE_THREAD_GROUP())
+		tg->refresh_global_timeline_trace_file();
 
 	for (;;)
 	{

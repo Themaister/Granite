@@ -110,7 +110,7 @@ public:
 
 	// Client is responsible for displaying the frame in due time.
 	// A video frame can be released when the returned PTS is out of date.
-	bool acquire_video_frame(VideoFrame &frame);
+	bool acquire_video_frame(VideoFrame &frame, int timeout_ms = -1);
 
 	// Poll acquire. Returns positive on success, 0 on no available image, negative number on EOF.
 	int try_acquire_video_frame(VideoFrame &frame);

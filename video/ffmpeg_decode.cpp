@@ -527,7 +527,7 @@ struct VideoDecoder::Impl
 	double get_estimated_audio_playback_timestamp_raw();
 	void latch_audio_presentation_target(double pts);
 
-	bool acquire_video_frame(VideoFrame &frame);
+	bool acquire_video_frame(VideoFrame &frame, int timeout_ms);
 	int try_acquire_video_frame(VideoFrame &frame);
 	bool is_eof();
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
@@ -2045,7 +2045,7 @@ int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 	}
 }
 
-bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame)
+bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame, int timeout_ms)
 {
 	if (!decode_thread.joinable())
 		return false;
@@ -2058,10 +2058,23 @@ bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame)
 	cond.notify_one();
 
 	int index = -1;
+
 	// Poll the video queue for new frames.
-	cond.wait(holder, [this, &index]() {
-		return (index = find_acquire_video_frame_locked()) >= 0 || acquire_is_eof || teardown;
-	});
+	if (timeout_ms >= 0)
+	{
+		auto target_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+		bool success = cond.wait_until(holder, target_time, [this, &index]() {
+			return (index = find_acquire_video_frame_locked()) >= 0 || acquire_is_eof || teardown;
+		});
+		if (!success)
+			return false;
+	}
+	else
+	{
+		cond.wait(holder, [this, &index]() {
+			return (index = find_acquire_video_frame_locked()) >= 0 || acquire_is_eof || teardown;
+		});
+	}
 
 	if (index < 0)
 		return false;
@@ -2526,9 +2539,9 @@ double VideoDecoder::get_estimated_audio_playback_timestamp_raw()
 	return impl->get_estimated_audio_playback_timestamp_raw();
 }
 
-bool VideoDecoder::acquire_video_frame(VideoFrame &frame)
+bool VideoDecoder::acquire_video_frame(VideoFrame &frame, int timeout_ms)
 {
-	return impl->acquire_video_frame(frame);
+	return impl->acquire_video_frame(frame, timeout_ms);
 }
 
 int VideoDecoder::try_acquire_video_frame(VideoFrame &frame)

@@ -20,6 +20,7 @@ struct VideoFrame
 	Vulkan::Semaphore sem;
 	unsigned index = 0;
 	double pts = 0.0;
+	double done_ts = 0.0;
 };
 
 class DemuxerIOInterface

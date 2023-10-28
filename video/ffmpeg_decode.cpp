@@ -492,6 +492,7 @@ struct VideoDecoder::Impl
 		uint64_t lock_order = 0;
 
 		double pts = 0.0;
+		double done_ts = 0.0;
 		ImageState state = ImageState::Idle;
 	};
 	std::vector<DecodedImage> video_queue;
@@ -1660,6 +1661,7 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	// Can now acquire.
 	std::lock_guard<std::mutex> holder{lock};
 	img.state = ImageState::Ready;
+	img.done_ts = double(Util::get_current_time_nsecs()) * 1e-9;
 	cond.notify_all();
 }
 
@@ -2051,6 +2053,7 @@ int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 		frame.view = &video_queue[index].rgb_image->get_view();
 		frame.index = index;
 		frame.pts = video_queue[index].pts;
+		frame.done_ts = video_queue[index].done_ts;
 
 		// Progress.
 		cond.notify_one();
@@ -2104,6 +2107,7 @@ bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame, int timeout_ms)
 	frame.view = &video_queue[index].rgb_image->get_view();
 	frame.index = index;
 	frame.pts = video_queue[index].pts;
+	frame.done_ts = video_queue[index].done_ts;
 
 	// Progress.
 	acquire_blocking = false;
@@ -2312,6 +2316,7 @@ void VideoDecoder::Impl::flush_codecs()
 		img.lock_order = 0;
 		img.state = ImageState::Idle;
 		img.pts = 0.0;
+		img.done_ts = 0.0;
 	}
 
 	if (video.av_ctx)

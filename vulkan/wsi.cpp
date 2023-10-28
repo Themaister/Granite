@@ -1374,7 +1374,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	swapchain_size.height =
 	    std::max(std::min(height, caps.maxImageExtent.height), caps.minImageExtent.height);
 
-	uint32_t desired_swapchain_images = low_latency_mode_enable ? 2 : 3;
+	uint32_t desired_swapchain_images =
+		low_latency_mode_enable && current_present_mode == PresentMode::SyncToVBlank ? 2 : 3;
 	{
 		const char *num_images = getenv("GRANITE_VULKAN_SWAPCHAIN_IMAGES");
 		if (num_images)

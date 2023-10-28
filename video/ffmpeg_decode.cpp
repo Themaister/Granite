@@ -529,6 +529,7 @@ struct VideoDecoder::Impl
 
 	bool acquire_video_frame(VideoFrame &frame);
 	int try_acquire_video_frame(VideoFrame &frame);
+	bool is_eof();
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
 
 	bool decode_video_packet(AVPacket *pkt);
@@ -2005,6 +2006,15 @@ void VideoDecoder::Impl::thread_main()
 	}
 }
 
+bool VideoDecoder::Impl::is_eof()
+{
+	if (!decode_thread.joinable())
+		return true;
+
+	std::unique_lock<std::mutex> holder{lock};
+	return acquire_is_eof;
+}
+
 int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 {
 	if (!decode_thread.joinable())
@@ -2524,6 +2534,11 @@ bool VideoDecoder::acquire_video_frame(VideoFrame &frame)
 int VideoDecoder::try_acquire_video_frame(VideoFrame &frame)
 {
 	return impl->try_acquire_video_frame(frame);
+}
+
+bool VideoDecoder::is_eof()
+{
+	return impl->is_eof();
 }
 
 void VideoDecoder::release_video_frame(unsigned index, Vulkan::Semaphore sem)

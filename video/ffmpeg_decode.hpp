@@ -115,6 +115,8 @@ public:
 	// Poll acquire. Returns positive on success, 0 on no available image, negative number on EOF.
 	int try_acquire_video_frame(VideoFrame &frame);
 
+	bool is_eof();
+
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
 
 	float get_audio_sample_rate() const;

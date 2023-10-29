@@ -188,7 +188,7 @@ bool WASAPIBackend::init(float sample_rate, unsigned channels)
 	}
 
 	// Sanity check, but you'd think default period should "just werk".
-	if (fundamental_period == 0 && default_period % fundamental_period != 0)
+	if (fundamental_period != 0 && default_period % fundamental_period != 0)
 	{
 		LOGE("WASAPI: Nonsensical default period.\n");
 		return false;

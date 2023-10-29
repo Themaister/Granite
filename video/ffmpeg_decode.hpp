@@ -94,7 +94,7 @@ public:
 	// Sync strategy #2 (realtime) - Prioritize latency, bad pacing.
 	// Should be called after every acquire in realtime mode.
 	// Lets audio buffer speed up or slow down appropriately to try to match video.
-	void latch_audio_presentation_target(double pts);
+	void latch_audio_buffering_target(double buffer_time);
 
 	// Sync strategy #3 (realtime) - Balanced. Try to lock to a fixed latency while retaining smoothness.
 	double latch_estimated_video_playback_timestamp(double elapsed_time, double target_latency);
@@ -121,6 +121,8 @@ public:
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
 
 	float get_audio_sample_rate() const;
+
+	uint32_t get_audio_underflow_counter() const;
 
 private:
 	struct Impl;

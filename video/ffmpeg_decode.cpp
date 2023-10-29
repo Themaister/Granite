@@ -98,6 +98,8 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	void set_rate_factor(float factor);
 	float get_rate_factor() const noexcept;
 
+	uint32_t get_underflow_counter() const;
+
 	bool setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames) override;
 	size_t accumulate_samples(float * const *channels, const float *gain, size_t num_frames) noexcept override;
 	size_t accumulate_samples_inner(float * const *channels, const float *gain, size_t num_frames) noexcept;
@@ -118,6 +120,7 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	std::atomic_uint32_t read_frames_count;
 	std::atomic_uint32_t write_frames_count;
 	std::atomic_uint32_t rate_factor_u32;
+	std::atomic_uint32_t underflows;
 	std::atomic_bool complete;
 	int packet_frames = 0;
 	bool running_state = false;
@@ -160,6 +163,7 @@ AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_,
 	read_frames_count = 0;
 	write_frames_count = 0;
 	pts_index = 0;
+	underflows = 0;
 	complete = false;
 	set_rate_factor(1.0f);
 
@@ -182,6 +186,11 @@ float AVFrameRingStream::get_rate_factor() const noexcept
 	uint32_t u = rate_factor_u32.load(std::memory_order_relaxed);
 	memcpy(&v, &u, sizeof(uint32_t));
 	return v;
+}
+
+uint32_t AVFrameRingStream::get_underflow_counter() const
+{
+	return underflows.load(std::memory_order_relaxed);
 }
 
 void AVFrameRingStream::mark_uncorked_audio_pts()
@@ -251,7 +260,7 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 		size_t accum = accumulate_samples_inner(tmp_resampler_ptrs, gain, required);
 
 		if (accum < required)
-			LOGW("Underflow in audio thread (%zu < %zu).\n", accum, required);
+			underflows.store(underflows.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
 
 		for (unsigned i = 0; i < num_channels; i++)
 		{
@@ -528,7 +537,7 @@ struct VideoDecoder::Impl
 	double get_audio_buffering_duration();
 	double get_last_video_buffering_pts();
 	double get_estimated_audio_playback_timestamp_raw();
-	void latch_audio_presentation_target(double pts);
+	void latch_audio_buffering_target(double target_buffer_time);
 
 	bool acquire_video_frame(VideoFrame &frame, int timeout_ms);
 	int try_acquire_video_frame(VideoFrame &frame);
@@ -2186,23 +2195,23 @@ double VideoDecoder::Impl::get_audio_buffering_duration()
 #endif
 }
 
-void VideoDecoder::Impl::latch_audio_presentation_target(double pts)
+void VideoDecoder::Impl::latch_audio_buffering_target(double target_buffer_time)
 {
 #ifdef HAVE_GRANITE_AUDIO
 	if (!stream)
 		return;
 
-	double raw_pts = get_estimated_audio_playback_timestamp_raw();
-	auto delta = float(pts - raw_pts);
+	double current_time = get_audio_buffering_duration();
+	auto delta = float(current_time - target_buffer_time);
 
 	if (delta > 0.25f)
 	{
-		// Need to catch up.
+		// Speed up, audio buffer is too large.
 		stream->set_rate_factor(1.005f);
 	}
 	else if (delta < -0.25f)
 	{
-		// Shouldn't really happen in real-time mode ... Slow down a little to let us catch up.
+		// Slow down.
 		stream->set_rate_factor(0.995f);
 	}
 	else
@@ -2258,7 +2267,7 @@ double VideoDecoder::Impl::latch_estimated_video_playback_timestamp(double elaps
 		}
 	}
 
-	latch_audio_presentation_target(smooth_pts);
+	latch_audio_buffering_target(smooth_pts);
 	return smooth_pts;
 }
 
@@ -2589,9 +2598,9 @@ void VideoDecoder::release_video_frame(unsigned index, Vulkan::Semaphore sem)
 	impl->release_video_frame(index, std::move(sem));
 }
 
-void VideoDecoder::latch_audio_presentation_target(double pts)
+void VideoDecoder::latch_audio_buffering_target(double buffer_time)
 {
-	impl->latch_audio_presentation_target(pts);
+	impl->latch_audio_buffering_target(buffer_time);
 }
 
 float VideoDecoder::get_audio_sample_rate() const
@@ -2603,6 +2612,18 @@ float VideoDecoder::get_audio_sample_rate() const
 		return -1.0f;
 #else
 	return -1.0f;
+#endif
+}
+
+uint32_t VideoDecoder::get_audio_underflow_counter() const
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (impl->stream)
+		return impl->stream->get_underflow_counter();
+	else
+		return 0;
+#else
+	return 0;
 #endif
 }
 }

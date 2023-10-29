@@ -514,8 +514,12 @@ bool WSI::begin_frame()
 		Fence fence;
 
 		// TODO: Improve this with fancier approaches as needed.
-		if (low_latency_mode_enable)
+		if (low_latency_mode_enable &&
+		    !device->get_device_features().present_wait_features.presentWait &&
+		    current_present_mode == PresentMode::SyncToVBlank)
+		{
 			fence = device->request_legacy_fence();
+		}
 
 		auto acquire_ts = device->write_calibrated_timestamp();
 		result = table->vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX, acquire->get_semaphore(),

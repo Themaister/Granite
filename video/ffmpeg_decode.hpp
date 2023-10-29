@@ -109,6 +109,8 @@ public:
 	// Reports PTS of the last decoded frame.
 	double get_last_video_buffering_pts();
 
+	unsigned get_num_ready_video_frames();
+
 	// Client is responsible for displaying the frame in due time.
 	// A video frame can be released when the returned PTS is out of date.
 	bool acquire_video_frame(VideoFrame &frame, int timeout_ms = -1);

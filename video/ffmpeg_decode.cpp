@@ -501,7 +501,7 @@ struct VideoDecoder::Impl
 		uint64_t lock_order = 0;
 
 		double pts = 0.0;
-		double done_ts = 0.0;
+		uint64_t done_ts = 0;
 		ImageState state = ImageState::Idle;
 	};
 	std::vector<DecodedImage> video_queue;
@@ -536,6 +536,7 @@ struct VideoDecoder::Impl
 	double latch_estimated_video_playback_timestamp(double elapsed_time, double target_latency);
 	double get_audio_buffering_duration();
 	double get_last_video_buffering_pts();
+	unsigned get_num_ready_video_frames();
 	double get_estimated_audio_playback_timestamp_raw();
 	void latch_audio_buffering_target(double target_buffer_time);
 
@@ -1677,7 +1678,7 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	// Can now acquire.
 	std::lock_guard<std::mutex> holder{lock};
 	img.state = ImageState::Ready;
-	img.done_ts = double(Util::get_current_time_nsecs()) * 1e-9;
+	img.done_ts = Util::get_current_time_nsecs();
 	cond.notify_all();
 }
 
@@ -2234,6 +2235,16 @@ double VideoDecoder::Impl::get_last_video_buffering_pts()
 	return last_pts;
 }
 
+unsigned VideoDecoder::Impl::get_num_ready_video_frames()
+{
+	std::unique_lock<std::mutex> holder{lock};
+	unsigned count = 0;
+	for (auto &q : video_queue)
+		if (q.state == ImageState::Ready)
+			count++;
+	return count;
+}
+
 double VideoDecoder::Impl::latch_estimated_video_playback_timestamp(double elapsed_time, double target_latency)
 {
 	if (smooth_elapsed == 0.0)
@@ -2332,7 +2343,7 @@ void VideoDecoder::Impl::flush_codecs()
 		img.lock_order = 0;
 		img.state = ImageState::Idle;
 		img.pts = 0.0;
-		img.done_ts = 0.0;
+		img.done_ts = 0;
 	}
 
 	if (video.av_ctx)
@@ -2571,6 +2582,11 @@ double VideoDecoder::get_audio_buffering_duration()
 double VideoDecoder::get_last_video_buffering_pts()
 {
 	return impl->get_last_video_buffering_pts();
+}
+
+unsigned int VideoDecoder::get_num_ready_video_frames()
+{
+	return impl->get_num_ready_video_frames();
 }
 
 double VideoDecoder::get_estimated_audio_playback_timestamp_raw()

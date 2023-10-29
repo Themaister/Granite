@@ -491,9 +491,18 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 
 	video.av_frame->pict_type = AV_PICTURE_TYPE_NONE;
 
-	if (options.realtime)
+	if (mux_stream_callback && options.low_latency)
 	{
-		int64_t target_pts = av_rescale_q_rnd(pts, {1, AV_TIME_BASE}, video.av_ctx->time_base, AV_ROUND_ZERO);
+		// Ensure monotonic PTS, or codecs blow up.
+		if (pts <= encode_video_pts)
+			pts = encode_video_pts + 1;
+
+		video.av_frame->pts = pts;
+		encode_video_pts = pts;
+	}
+	else if (options.realtime)
+	{
+		int64_t target_pts = av_rescale_q_rnd(pts, AV_TIME_BASE_Q, video.av_ctx->time_base, AV_ROUND_ZERO);
 
 		if (encode_video_pts)
 		{
@@ -887,10 +896,15 @@ bool VideoEncoder::Impl::init_video_codec()
 	if (options.low_latency)
 		video.av_ctx->max_b_frames = 0;
 
-	if (options.realtime)
+	if (mux_stream_callback && options.low_latency)
+	{
+		// Don't attempt to smooth out PTS values.
+		video.av_ctx->time_base = AV_TIME_BASE_Q;
+	}
+	else if (options.realtime)
 	{
 		video.ticks_per_frame = 16;
-		video.av_ctx->time_base = { options.frame_timebase.num, options.frame_timebase.den * video.ticks_per_frame };
+		video.av_ctx->time_base = {options.frame_timebase.num, options.frame_timebase.den * video.ticks_per_frame};
 	}
 	else
 	{

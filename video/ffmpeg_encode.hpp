@@ -59,7 +59,8 @@ public:
 
 	enum class Format
 	{
-		NV12
+		NV12,
+		P016
 	};
 
 	enum ChromaSiting

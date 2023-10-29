@@ -526,7 +526,7 @@ bool WSI::begin_frame()
 		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
 		device->register_time_interval("WSI", std::move(acquire_ts), device->write_calibrated_timestamp(), "acquire");
 
-		if (low_latency_mode_enable)
+		if (fence)
 			fence->wait();
 
 #if defined(ANDROID)

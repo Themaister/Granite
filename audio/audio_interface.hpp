@@ -71,6 +71,12 @@ protected:
 	BackendCallback *callback = nullptr;
 };
 
+class RecordCallback
+{
+public:
+	virtual void write_frames_interleaved_f32(const float *data, size_t frames) = 0;
+};
+
 // Simple blocking recorder interface.
 // Used together with FFmpeg recording.
 class RecordStream
@@ -88,7 +94,7 @@ public:
 	virtual bool start() = 0;
 	virtual bool stop() = 0;
 
-private:
+	virtual void set_record_callback(RecordCallback *callback) = 0;
 };
 
 Backend *create_default_audio_backend(BackendCallback *callback, float target_sample_rate, unsigned target_channels);

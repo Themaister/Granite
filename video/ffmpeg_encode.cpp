@@ -106,7 +106,10 @@ void VideoEncoder::YCbCrPipelineDataDeleter::operator()(YCbCrPipelineData *ptr)
 	delete ptr;
 }
 
-struct VideoEncoder::Impl
+struct VideoEncoder::Impl final
+#ifdef HAVE_GRANITE_AUDIO
+		: public Audio::RecordCallback
+#endif
 {
 	Vulkan::Device *device = nullptr;
 	bool init(Vulkan::Device *device, const char *path, const Options &options);
@@ -157,6 +160,7 @@ struct VideoEncoder::Impl
 	bool encode_audio(int compensate_audio_us);
 	bool encode_audio_stream(int compensate_audio_us);
 	bool encode_audio_source();
+	void write_frames_interleaved_f32(const float *data, size_t frames) override;
 #endif
 
 #ifdef HAVE_FFMPEG_VULKAN_ENCODE
@@ -414,11 +418,34 @@ bool VideoEncoder::Impl::encode_audio_stream(int compensate_audio_us)
 bool VideoEncoder::Impl::encode_audio(int compensate_audio_us)
 {
 	if (options.realtime && audio_stream)
-		return encode_audio_stream(compensate_audio_us);
+	{
+		// If we have mux callback + raw audio, we'll pump audio data straight from record callback,
+		// don't do anything here.
+		if (mux_stream_callback && pyro_codec.audio_codec == PYRO_AUDIO_CODEC_RAW_S16LE)
+			return true;
+		else
+			return encode_audio_stream(compensate_audio_us);
+	}
 	else if (!options.realtime && audio_source)
 		return encode_audio_source();
 	else
 		return true;
+}
+
+void VideoEncoder::Impl::write_frames_interleaved_f32(const float *data, size_t frames)
+{
+	assert(pyro_codec.audio_codec == PYRO_AUDIO_CODEC_RAW_S16LE && mux_stream_callback);
+
+	audio_buffer_s16.resize(frames * pyro_codec.channels);
+	if (data)
+		Audio::DSP::f32_to_i16(audio_buffer_s16.data(), data, frames * pyro_codec.channels);
+	else
+		memset(audio_buffer_s16.data(), 0, frames * pyro_codec.channels);
+
+	// In this mode, we don't care about smoothing the PTS at all or compensating for latency.
+	int64_t pts = sample_realtime_pts();
+	mux_stream_callback->write_audio_packet(
+			pts, pts, audio_buffer_s16.data(), audio_buffer_s16.size() * sizeof(int16_t));
 }
 #endif
 
@@ -1134,7 +1161,14 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	}
 
 	if (mux_stream_callback)
+	{
 		mux_stream_callback->set_codec_parameters(pyro_codec);
+
+		// Just dump raw audio as fast as we can over UDP.
+		// For the more proper codecs, the block sizes are large enough that we need to buffer a bit anyway.
+		if (audio_stream && pyro_codec.audio_codec == PYRO_AUDIO_CODEC_RAW_S16LE)
+			audio_stream->set_record_callback(this);
+	}
 
 	if (av_format_ctx)
 		av_dump_format(av_format_ctx, 0, path, 1);

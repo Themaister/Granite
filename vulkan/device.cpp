@@ -2565,6 +2565,24 @@ void Device::promote_read_write_caches_to_read_only()
 	}
 }
 
+bool Device::set_enable_async_thread_frame_context(bool enable)
+{
+	LOCK();
+	lock.async_frame_context = enable;
+}
+
+void Device::next_frame_context_in_async_thread()
+{
+	bool do_next_frame_context;
+	{
+		LOCK();
+		do_next_frame_context = lock.async_frame_context;
+	}
+
+	if (do_next_frame_context)
+		next_frame_context();
+}
+
 void Device::next_frame_context()
 {
 	DRAIN_FRAME_LOCK();

@@ -1576,7 +1576,7 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 	// we don't leak unbounded memory when the window is minimized on Windows.
 	// In that scenario the main thread will not pump frame contexts regularly.
 	if (opts.realtime)
-		device->next_frame_context();
+		device->next_frame_context_in_async_thread();
 }
 
 void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av_frame)

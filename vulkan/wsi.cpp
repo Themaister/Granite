@@ -886,7 +886,9 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 		else if (err == SwapchainError::NoSurface)
 		{
 			LOGW("WSI cannot make forward progress due to minimization, blocking ...\n");
+			device->set_enable_async_thread_frame_context(true);
 			platform->block_until_wsi_forward_progress(*this);
+			device->set_enable_async_thread_frame_context(false);
 			LOGW("Woke up!\n");
 		}
 	} while (err != SwapchainError::None);

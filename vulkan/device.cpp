@@ -2565,7 +2565,7 @@ void Device::promote_read_write_caches_to_read_only()
 	}
 }
 
-bool Device::set_enable_async_thread_frame_context(bool enable)
+void Device::set_enable_async_thread_frame_context(bool enable)
 {
 	LOCK();
 	lock.async_frame_context = enable;

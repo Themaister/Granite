@@ -89,7 +89,7 @@ static bool vulkan_update_display_mode(unsigned *width, unsigned *height, const 
 struct WSIPlatformDisplay : Granite::GraniteWSIPlatform
 {
 public:
-	bool init(unsigned width_, unsigned height_)
+	bool init(unsigned width_, unsigned height_, bool enable_joypad)
 	{
 		width = width_;
 		height = height_;
@@ -125,7 +125,7 @@ public:
 
 #ifdef HAVE_LINUX_INPUT
 		if (!input_manager.init(
-				LINUX_INPUT_MANAGER_JOYPAD_BIT |
+				(enable_joypad ? LINUX_INPUT_MANAGER_JOYPAD_BIT : 0) |
 				LINUX_INPUT_MANAGER_KEYBOARD_BIT |
 				LINUX_INPUT_MANAGER_MOUSE_BIT |
 				LINUX_INPUT_MANAGER_TOUCHPAD_BIT,
@@ -370,7 +370,7 @@ int application_main(
 	if (app)
 	{
 		auto platform = std::make_unique<Granite::WSIPlatformDisplay>();
-		if (!platform->init(1280, 720))
+		if (!platform->init(1280, 720, app->enable_joypad_input_manager()))
 			return 1;
 		if (!app->init_platform(std::move(platform)) || !app->init_wsi())
 			return 1;

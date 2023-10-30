@@ -171,17 +171,21 @@ public:
 	bool alive(Vulkan::WSI &) override
 	{
 		process_events_async_thread();
+
+		if (enabled_input_manager)
+		{
 #if defined(HAVE_LINUX_INPUT) || defined(HAVE_XINPUT_WINDOWS)
-		input_manager.poll();
+			input_manager.poll();
 #endif
 
-		// Convenient equivalent to pressing escape on the keyboard or something.
-		if (get_input_tracker().joykey_pressed(0, JoypadKey::Start) &&
-		    get_input_tracker().joykey_pressed(0, JoypadKey::Select) &&
-		    get_input_tracker().joykey_pressed(0, JoypadKey::LeftShoulder) &&
-		    get_input_tracker().joykey_pressed(0, JoypadKey::RightShoulder))
-		{
-			return false;
+			// Convenient equivalent to pressing escape on the keyboard or something.
+			if (get_input_tracker().joykey_pressed(0, JoypadKey::Start) &&
+			    get_input_tracker().joykey_pressed(0, JoypadKey::Select) &&
+			    get_input_tracker().joykey_pressed(0, JoypadKey::LeftShoulder) &&
+			    get_input_tracker().joykey_pressed(0, JoypadKey::RightShoulder))
+			{
+				return false;
+			}
 		}
 
 		return !request_tear_down.load();
@@ -191,7 +195,8 @@ public:
 	{
 		process_events_async_thread();
 #if defined(HAVE_LINUX_INPUT) || defined(HAVE_XINPUT_WINDOWS)
-		input_manager.poll();
+		if (enabled_input_manager)
+			input_manager.poll();
 #endif
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 	}
@@ -368,9 +373,11 @@ public:
 			dispatch_running_events();
 		}
 
+		if (app->enable_joypad_input_manager())
 		{
 			GRANITE_SCOPED_TIMELINE_EVENT("glfw-init-input-managers");
 			init_input_managers();
+			enabled_input_manager = true;
 		}
 
 		{
@@ -482,6 +489,7 @@ private:
 
 	std::atomic_bool request_tear_down;
 	bool async_loop_alive = false;
+	bool enabled_input_manager = false;
 
 #ifdef HAVE_LINUX_INPUT
 	LinuxInputManager input_manager;

@@ -14,6 +14,7 @@ if (${CMAKE_SYSTEM} MATCHES "Linux")
     endif()
 elseif (WIN32)
     target_sources(granite-input PRIVATE xinput_windows.cpp xinput_windows.hpp)
+    target_link_libraries(granite-input PRIVATE dinput8 dxguid)
 endif()
 
 if (HOTPLUG_UDEV_FOUND)

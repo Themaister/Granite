@@ -355,7 +355,7 @@ public:
 		if (!input_manager.init(LINUX_INPUT_MANAGER_JOYPAD_BIT, &get_input_tracker()))
 			LOGE("Failed to initialize input manager.\n");
 #elif defined(HAVE_XINPUT_WINDOWS)
-		if (!input_manager.init(&get_input_tracker()))
+		if (!input_manager.init(&get_input_tracker(), glfwGetWin32Window(window)))
 			LOGE("Failed to initialize input manager.\n");
 #endif
 	}

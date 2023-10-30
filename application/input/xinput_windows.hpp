@@ -27,6 +27,9 @@
 #include <windows.h>
 #include <xinput.h>
 
+#define DIRECTINPUT_VERSION 0x800
+#include <dinput.h>
+
 #include "dynamic_library.hpp"
 
 namespace Granite
@@ -34,13 +37,24 @@ namespace Granite
 class XInputManager
 {
 public:
-	bool init(InputTracker *tracker);
+	~XInputManager();
+	bool init(InputTracker *tracker, HWND hwnd);
 	bool poll();
 
+	void operator=(const XInputManager &) = delete;
+	XInputManager(const XInputManager &) = delete;
+	XInputManager() = default;
+
+	BOOL di_enum_callback(const DIDEVICEINSTANCEA *inst);
+
 private:
+	HWND hwnd = nullptr;
 	InputTracker *tracker = nullptr;
 	uint8_t active_pads = 0;
 	XINPUT_STATE pads[4] = {};
+
+	IDirectInput8A *pDI = nullptr;
+	IDirectInputDevice8A *pDevice[4] = {};
 
 	void create_events(unsigned index, const XINPUT_STATE &state);
 	void try_polling_device(unsigned index);

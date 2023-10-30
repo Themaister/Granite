@@ -32,8 +32,63 @@ using namespace Util;
 
 namespace Granite
 {
-bool XInputManager::init(Granite::InputTracker *tracker_)
+XInputManager::~XInputManager()
 {
+	for (auto *dev : pDevice)
+		if (dev)
+			dev->Release();
+	if (pDI)
+		pDI->Release();
+}
+
+// Really should just move to SDL ... But need quick hack to make PS4 controllers work :')
+
+static BOOL CALLBACK enum_callback(const DIDEVICEINSTANCEA *inst, void *p)
+{
+	auto *manager = static_cast<XInputManager *>(p);
+	return manager->di_enum_callback(inst);
+}
+
+BOOL XInputManager::di_enum_callback(const DIDEVICEINSTANCEA *inst)
+{
+	// Different PIDs for wireless dongle and cabled connection.
+	if (inst->guidProduct.Data1 != 195036492 && inst->guidProduct.Data1 != 164365644)
+	{
+		LOGI("Enumerated DI input device that is not PS4 controller. Bailing ...\n");
+		return DIENUM_CONTINUE;
+	}
+
+	LOGI("Enumerated PS4 controller.\n");
+
+	unsigned index = trailing_ones(active_pads);
+	if (index >= 4)
+		return DIENUM_STOP;
+
+	if (FAILED(pDI->CreateDevice(inst->guidInstance, &pDevice[index], nullptr)))
+		return DIENUM_CONTINUE;
+
+	if (FAILED(pDevice[index]->SetDataFormat(&c_dfDIJoystick2)))
+	{
+		pDevice[index]->Release();
+		pDevice[index] = nullptr;
+		return DIENUM_CONTINUE;
+	}
+
+	if (FAILED(pDevice[index]->SetCooperativeLevel(hwnd, DISCL_BACKGROUND | DISCL_NONEXCLUSIVE)))
+	{
+		pDevice[index]->Release();
+		pDevice[index] = nullptr;
+		return DIENUM_CONTINUE;
+	}
+
+	active_pads |= 1u << index;
+	tracker->enable_joypad(index);
+	return DIENUM_CONTINUE;
+}
+
+bool XInputManager::init(Granite::InputTracker *tracker_, HWND hwnd_)
+{
+	hwnd = hwnd_;
 	if (!lib)
 		lib = DynamicLibrary("xinput1_4");
 	if (!lib)
@@ -46,6 +101,13 @@ bool XInputManager::init(Granite::InputTracker *tracker_)
 
 	for (unsigned i = 0; i < 4; i++)
 		try_polling_device(i);
+
+	HRESULT hr;
+	if (FAILED(hr = DirectInput8Create(GetModuleHandle(nullptr), DIRECTINPUT_VERSION, IID_IDirectInput8A, (void**)&pDI, nullptr)))
+		return false;
+
+	if (FAILED(pDI->EnumDevices(DI8DEVCLASS_GAMECTRL, enum_callback, this, DIEDFL_ATTACHEDONLY)))
+		return false;
 
 	return true;
 }
@@ -77,15 +139,85 @@ bool XInputManager::poll()
 		if ((active_pads & (1u << i)) == 0)
 			continue;
 
-		XINPUT_STATE new_state;
-		memset(&new_state, 0, sizeof(new_state));
-		if (pXInputGetState(i, &new_state) != ERROR_DEVICE_NOT_CONNECTED)
-			create_events(i, new_state);
+		if (pDevice[i])
+		{
+			if (FAILED(pDevice[i]->Poll()) && FAILED(pDevice[i]->Acquire()) && FAILED(pDevice[i]->Poll()))
+			{
+				tracker->disable_joypad(i);
+				active_pads &= ~(1u << i);
+				pDevice[i]->Release();
+				pDevice[i] = nullptr;
+			}
+			else
+			{
+				DIJOYSTATE2 joy_state = {};
+				if (SUCCEEDED(pDevice[i]->GetDeviceState(sizeof(DIJOYSTATE2), &joy_state)))
+				{
+					// Hardcoded for PS4 dinput, yaaaay <_<
+					static const JoypadKey joykey_mapping[] =
+					{
+						JoypadKey::West, JoypadKey::South, JoypadKey::East, JoypadKey::North,
+						JoypadKey::LeftShoulder, JoypadKey::RightShoulder,
+						JoypadKey::Unknown, JoypadKey::Unknown,
+						JoypadKey::Select, JoypadKey::Start,
+						JoypadKey::LeftThumb, JoypadKey::RightThumb,
+						JoypadKey::Mode
+					};
+
+					for (unsigned j = 0; j < sizeof(joykey_mapping) / sizeof(joykey_mapping[0]); j++)
+					{
+						if (joykey_mapping[j] == JoypadKey::Unknown)
+							continue;
+
+						tracker->joypad_key_state(
+							i, joykey_mapping[j], joy_state.rgbButtons[j] ? JoypadKeyState::Pressed : JoypadKeyState::Released);
+					}
+
+					float lx = 2.0f * joy_state.lX / float(0xffff) - 1.0f;
+					float ly = 2.0f * joy_state.lY / float(0xffff) - 1.0f;
+					float rx = 2.0f * joy_state.lZ / float(0xffff) - 1.0f;
+					float ry = 2.0f * joy_state.lRz / float(0xffff) - 1.0f;
+					float lt = joy_state.lRx / float(0xffff);
+					float rt = joy_state.lRy / float(0xffff);
+
+					tracker->joyaxis_state(i, JoypadAxis::LeftX, lx);
+					tracker->joyaxis_state(i, JoypadAxis::LeftY, ly);
+					tracker->joyaxis_state(i, JoypadAxis::RightX, rx);
+					tracker->joyaxis_state(i, JoypadAxis::RightY, ry);
+					tracker->joyaxis_state(i, JoypadAxis::LeftTrigger, lt);
+					tracker->joyaxis_state(i, JoypadAxis::RightTrigger, rt);
+
+					int pov = joy_state.rgdwPOV[0];
+
+					bool left = false, right = false, up = false, down = false;
+					if (pov >= 0)
+					{
+						pov /= 100;
+						up = pov > 270 || pov < 90;
+						right = pov > 0 && pov < 180;
+						down = pov > 90 && pov < 270;
+						left = pov > 180;
+					}
+
+					tracker->joypad_key_state(i, JoypadKey::Right, right ? JoypadKeyState::Pressed : JoypadKeyState::Released);
+					tracker->joypad_key_state(i, JoypadKey::Down, down ? JoypadKeyState::Pressed : JoypadKeyState::Released);
+					tracker->joypad_key_state(i, JoypadKey::Up, up ? JoypadKeyState::Pressed : JoypadKeyState::Released);
+					tracker->joypad_key_state(i, JoypadKey::Left, left ? JoypadKeyState::Pressed : JoypadKeyState::Released);
+				}
+			}
+		}
 		else
 		{
-			tracker->disable_joypad(i);
-			memset(&pads[i], 0, sizeof(pads[i]));
-			active_pads &= ~(1u << i);
+			XINPUT_STATE new_state;
+			memset(&new_state, 0, sizeof(new_state));
+			if (pXInputGetState(i, &new_state) != ERROR_DEVICE_NOT_CONNECTED)
+				create_events(i, new_state);
+			else
+			{
+				tracker->disable_joypad(i);
+				memset(&pads[i], 0, sizeof(pads[i]));
+				active_pads &= ~(1u << i);
+			}
 		}
 	}
 

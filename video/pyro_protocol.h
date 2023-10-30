@@ -76,6 +76,7 @@ typedef enum pyro_pad_button_bits
 
 struct pyro_gamepad_state
 {
+	uint16_t seq;
 	uint16_t buttons;
 	int16_t axis_lx, axis_ly;
 	int16_t axis_rx, axis_ry;

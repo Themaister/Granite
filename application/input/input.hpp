@@ -47,6 +47,7 @@ enum class JoypadKey
 	RightThumb,
 	Start,
 	Select,
+	Mode,
 	Count,
 	Unknown
 };

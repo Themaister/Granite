@@ -189,6 +189,7 @@ void LinuxInputManager::setup_joypad_remapper(int fd, unsigned index)
 	remapper.register_button(BTN_THUMBR, JoypadKey::RightThumb, JoypadAxis::Unknown);
 	remapper.register_button(BTN_TL, JoypadKey::LeftShoulder, JoypadAxis::Unknown);
 	remapper.register_button(BTN_TR, JoypadKey::RightShoulder, JoypadAxis::Unknown);
+	remapper.register_button(BTN_MODE, JoypadKey::Mode, JoypadAxis::Unknown);
 	remapper.register_axis(ABS_X, JoypadAxis::LeftX, 1.0f, JoypadKey::Unknown, JoypadKey::Unknown);
 	remapper.register_axis(ABS_Y, JoypadAxis::LeftY, 1.0f, JoypadKey::Unknown, JoypadKey::Unknown);
 	remapper.register_axis(ABS_RX, JoypadAxis::RightX, 1.0f, JoypadKey::Unknown, JoypadKey::Unknown);

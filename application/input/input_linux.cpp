@@ -189,6 +189,7 @@ void LinuxInputManager::setup_joypad_remapper(int fd, unsigned index)
 	remapper.register_button(BTN_THUMBR, JoypadKey::RightThumb, JoypadAxis::Unknown);
 	remapper.register_button(BTN_TL, JoypadKey::LeftShoulder, JoypadAxis::Unknown);
 	remapper.register_button(BTN_TR, JoypadKey::RightShoulder, JoypadAxis::Unknown);
+	remapper.register_button(BTN_MODE, JoypadKey::Mode, JoypadAxis::Unknown);
 	remapper.register_axis(ABS_X, JoypadAxis::LeftX, 1.0f, JoypadKey::Unknown, JoypadKey::Unknown);
 	remapper.register_axis(ABS_Y, JoypadAxis::LeftY, 1.0f, JoypadKey::Unknown, JoypadKey::Unknown);
 	remapper.register_axis(ABS_RX, JoypadAxis::RightX, 1.0f, JoypadKey::Unknown, JoypadKey::Unknown);
@@ -449,15 +450,26 @@ bool LinuxInputManager::enqueue_open_devices(DeviceType type, InputCallback call
 	if (!deferred.enumerate)
 		return false;
 
-	// This can take 200ms or so for some reason ...
-	deferred.task = GRANITE_THREAD_GROUP()->create_task([type, enumerate = deferred.enumerate.get()] {
+	if (auto *tg = GRANITE_THREAD_GROUP())
+	{
+		// This can take 200ms or so for some reason ...
+		deferred.task = tg->create_task([type, enumerate = deferred.enumerate.get()] {
+			const char *type_str = get_device_type_string(type);
+			udev_enumerate_add_match_property(enumerate, type_str, "1");
+			udev_enumerate_scan_devices(enumerate);
+		});
+		deferred.task->set_desc("udev-scan-devices");
+		deferred.task->flush();
+		deferred_init.push_back(std::move(deferred));
+	}
+	else
+	{
 		const char *type_str = get_device_type_string(type);
-		udev_enumerate_add_match_property(enumerate, type_str, "1");
-		udev_enumerate_scan_devices(enumerate);
-	});
-	deferred.task->set_desc("udev-scan-devices");
-	deferred.task->flush();
-	deferred_init.push_back(std::move(deferred));
+		udev_enumerate_add_match_property(deferred.enumerate.get(), type_str, "1");
+		udev_enumerate_scan_devices(deferred.enumerate.get());
+		deferred_init.push_back(std::move(deferred));
+	}
+
 	return true;
 }
 

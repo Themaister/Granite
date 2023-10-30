@@ -51,6 +51,39 @@ struct pyro_progress_report
 	uint64_t total_received_key_frames;
 };
 
+struct pyro_phase_offset
+{
+	// Tells server that ideally we should have received frame at
+	// an offset from the time it was actually received.
+	// If positive, server will slow down slightly, if negative, speed up.
+	int32_t ideal_phase_offset_us;
+};
+
+typedef enum pyro_pad_button_bits
+{
+	PYRO_PAD_SOUTH_BIT = 1 << 0,
+	PYRO_PAD_EAST_BIT = 1 << 1,
+	PYRO_PAD_WEST_BIT = 1 << 2,
+	PYRO_PAD_NORTH_BIT = 1 << 3,
+	PYRO_PAD_TL_BIT = 1 << 4,
+	PYRO_PAD_TR_BIT = 1 << 5,
+	PYRO_PAD_THUMBL_BIT = 1 << 6,
+	PYRO_PAD_THUMBR_BIT = 1 << 7,
+	PYRO_PAD_START_BIT = 1 << 8,
+	PYRO_PAD_SELECT_BIT = 1 << 9,
+	PYRO_PAD_MODE_BIT = 1 << 10
+} pyro_pad_button_bits;
+
+struct pyro_gamepad_state
+{
+	uint16_t seq;
+	uint16_t buttons;
+	int16_t axis_lx, axis_ly;
+	int16_t axis_rx, axis_ry;
+	uint8_t lz, rz;
+	int8_t hat_x, hat_y;
+};
+
 #define PYRO_MAX_UDP_DATAGRAM_SIZE (PYRO_MAX_PAYLOAD_SIZE + sizeof(struct pyro_codec_parameters))
 
 // TCP: Server to client
@@ -71,6 +104,8 @@ typedef enum pyro_message_type
 	// Returns nothing. Must be received by server every 5 seconds or connection is dropped.
 	PYRO_MESSAGE_PROGRESS = PYRO_MAKE_MESSAGE_TYPE(6, sizeof(struct pyro_progress_report)),
 	PYRO_MESSAGE_CODEC_PARAMETERS = PYRO_MAKE_MESSAGE_TYPE(7, sizeof(struct pyro_codec_parameters)),
+	PYRO_MESSAGE_PHASE_OFFSET = PYRO_MAKE_MESSAGE_TYPE(8, sizeof(struct pyro_phase_offset)),
+	PYRO_MESSAGE_GAMEPAD_STATE = PYRO_MAKE_MESSAGE_TYPE(9, sizeof(struct pyro_gamepad_state)),
 	PYRO_MESSAGE_MAX_INT = INT32_MAX,
 } pyro_message_type;
 

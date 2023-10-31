@@ -1376,7 +1376,8 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 
 	// Add external wait semaphores.
 	Helper::WaitSemaphores wait_semaphores;
-	Helper::BatchComposer composer(get_workarounds().split_binary_timeline_semaphores);
+	Helper::BatchComposer composer(get_workarounds().split_binary_timeline_semaphores,
+	                               ext.supports_low_latency2_nv ? wsi.present_id : 0);
 	collect_wait_semaphores(data, wait_semaphores);
 	composer.add_wait_submissions(wait_semaphores);
 
@@ -1484,10 +1485,12 @@ bool Helper::BatchComposer::has_binary_semaphore_in_batch(unsigned index) const
 	       has_binary_semaphore(signals[index]);
 }
 
-Helper::BatchComposer::BatchComposer(bool split_binary_timeline_semaphores_)
+Helper::BatchComposer::BatchComposer(bool split_binary_timeline_semaphores_, uint64_t id)
 	: split_binary_timeline_semaphores(split_binary_timeline_semaphores_)
 {
 	submits.emplace_back();
+	latency_submission_present_id_nv = { VK_STRUCTURE_TYPE_LATENCY_SUBMISSION_PRESENT_ID_NV };
+	latency_submission_present_id_nv.presentID = id;
 }
 
 void Helper::BatchComposer::begin_batch()
@@ -1535,6 +1538,9 @@ Helper::BatchComposer::bake(int profiling_iteration)
 		submit.pSignalSemaphoreInfos = signals[i].data();
 		submit.waitSemaphoreInfoCount = uint32_t(waits[i].size());
 		submit.pWaitSemaphoreInfos = waits[i].data();
+
+		if (latency_submission_present_id_nv.presentID != 0)
+			submit.pNext = &latency_submission_present_id_nv;
 
 		if (profiling_iteration >= 0)
 		{
@@ -1811,7 +1817,8 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 	VkQueue queue = queue_info.queues[physical_type];
 	frame().timeline_fences[physical_type] = data.current_timeline;
 
-	Helper::BatchComposer composer(workarounds.split_binary_timeline_semaphores);
+	Helper::BatchComposer composer(workarounds.split_binary_timeline_semaphores,
+	                               ext.supports_low_latency2_nv ? wsi.present_id : 0);
 	Helper::WaitSemaphores wait_semaphores;
 	collect_wait_semaphores(data, wait_semaphores);
 
@@ -1941,13 +1948,18 @@ void Device::sync_buffer_blocks()
 	submit_staging(cmd, false);
 }
 
-void Device::end_frame_context()
+uint64_t Device::get_current_present_id() const
 {
-	DRAIN_FRAME_LOCK();
-	end_frame_nolock();
+	return wsi.present_id;
 }
 
-void Device::end_frame_nolock()
+uint64_t Device::end_frame_context(bool commit_present_id)
+{
+	DRAIN_FRAME_LOCK();
+	return end_frame_nolock(commit_present_id);
+}
+
+uint64_t Device::end_frame_nolock(bool commit_present_id)
 {
 	// Make sure we have a fence which covers all submissions in the frame.
 	for (auto &i : queue_flush_order)
@@ -1966,6 +1978,11 @@ void Device::end_frame_nolock()
 			queue_data[i].need_fence = false;
 		}
 	}
+
+	uint64_t current_id = wsi.present_id;
+	if (commit_present_id && swapchain_touched())
+		wsi.present_id++;
+	return current_id;
 }
 
 void Device::flush_frame()
@@ -2492,7 +2509,7 @@ void Device::wait_idle()
 void Device::wait_idle_nolock()
 {
 	if (!per_frame.empty())
-		end_frame_nolock();
+		end_frame_nolock(false);
 
 	if (device != VK_NULL_HANDLE)
 	{
@@ -2595,7 +2612,7 @@ void Device::next_frame_context()
 	}
 
 	// Flush the frame here as we might have pending staging command buffers from init stage.
-	end_frame_nolock();
+	end_frame_nolock(false);
 
 	framebuffer_allocator.begin_frame();
 	transient_allocator.begin_frame();

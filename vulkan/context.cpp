@@ -1485,6 +1485,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ext.supports_spirv_1_4 = true;
 	}
 
+	if (has_extension(VK_NV_LOW_LATENCY_2_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_NV_LOW_LATENCY_2_EXTENSION_NAME);
+		ext.supports_low_latency2_nv = true;
+	}
+
 	if (has_extension(VK_KHR_SHADER_SUBGROUP_EXTENDED_TYPES_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_KHR_SHADER_SUBGROUP_EXTENDED_TYPES_EXTENSION_NAME);

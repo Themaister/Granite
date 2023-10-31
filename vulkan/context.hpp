@@ -81,6 +81,7 @@ struct DeviceFeatures
 	bool supports_swapchain_colorspace = false;
 	bool supports_surface_maintenance1 = false;
 	bool supports_spirv_1_4 = false;
+	bool supports_low_latency2_nv = false;
 
 	// Vulkan 1.1 core
 	VkPhysicalDeviceFeatures enabled_features = {};

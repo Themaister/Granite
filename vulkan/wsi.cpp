@@ -336,6 +336,7 @@ void WSI::drain_swapchain(bool in_tear_down)
 	release_semaphores.clear();
 	device->set_acquire_semaphore(0, Semaphore{});
 	device->consume_release_semaphore();
+	nv_ll2_timeline_semaphore.reset();
 
 	if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
 	{
@@ -358,12 +359,14 @@ void WSI::drain_swapchain(bool in_tear_down)
 			deferred_swapchains.clear();
 		}
 	}
-	else if (swapchain != VK_NULL_HANDLE && device->get_device_features().present_wait_features.presentWait && present_last_id)
+	else if (swapchain != VK_NULL_HANDLE &&
+	         device->get_device_features().present_wait_features.presentWait &&
+	         present_last_success_id)
 	{
-		table->vkWaitForPresentKHR(context->get_device(), swapchain, present_last_id, UINT64_MAX);
+		table->vkWaitForPresentKHR(context->get_device(), swapchain, present_last_success_id, UINT64_MAX);
 		// If the last present was not successful,
 		// it's not clear that the present ID will be signalled, so wait idle as a fallback.
-		if (present_id != present_last_id)
+		if (present_last_submit_id != present_last_success_id)
 			device->wait_idle();
 	}
 	else
@@ -377,8 +380,8 @@ void WSI::tear_down_swapchain()
 	table->vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
 	swapchain = VK_NULL_HANDLE;
 	has_acquired_swapchain_index = false;
-	present_id = 0;
-	present_last_id = 0;
+	present_last_success_id = 0;
+	present_last_submit_id = 0;
 }
 
 void WSI::deinit_surface_and_swapchain()
@@ -440,16 +443,16 @@ Semaphore WSI::consume_external_release_semaphore()
 
 void WSI::wait_swapchain_latency()
 {
-	unsigned effective_latency = low_latency_mode_enable ? 0 : present_frame_latency;
+	unsigned effective_latency = low_latency_mode_enable && !swapchain_is_nv_ll2 ? 0 : present_frame_latency;
 
 	if (device->get_device_features().present_wait_features.presentWait &&
-	    present_last_id > effective_latency &&
+	    present_last_success_id > effective_latency &&
 	    current_present_mode == PresentMode::SyncToVBlank)
 	{
 		// The effective latency is more like present_frame_latency + 1.
 		// If 0, we wait for vblank, and we must do CPU work and GPU work in one frame
 		// to hit next vblank.
-		uint64_t target = present_last_id - effective_latency;
+		uint64_t target = present_last_success_id - effective_latency;
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto begin_wait = Util::get_current_time_nsecs();
@@ -462,8 +465,25 @@ void WSI::wait_swapchain_latency()
 			LOGE("vkWaitForPresentKHR failed, vr %d.\n", wait_result);
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto end_wait = Util::get_current_time_nsecs();
-				LOGI("WaitForPresentKHR took %.3f ms.\n", 1e-6 * double(end_wait - begin_wait));
+		LOGI("WaitForPresentKHR took %.3f ms.\n", 1e-6 * double(end_wait - begin_wait));
 #endif
+	}
+
+	if (swapchain_is_nv_ll2)
+	{
+		auto wait_ts = device->write_calibrated_timestamp();
+		VkLatencySleepInfoNV sleep_info = { VK_STRUCTURE_TYPE_LATENCY_SLEEP_INFO_NV };
+		sleep_info.signalSemaphore = nv_ll2_timeline_semaphore->get_semaphore();
+		sleep_info.value = present_last_submit_id;
+		if (present_last_submit_id && table->vkLatencySleepNV(device->get_device(), swapchain, &sleep_info) == VK_SUCCESS)
+		{
+			VkSemaphoreWaitInfoKHR wait_info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR };
+			wait_info.pSemaphores = &nv_ll2_timeline_semaphore->get_semaphore();
+			wait_info.pValues = &present_last_submit_id;
+			wait_info.semaphoreCount = 1;
+			table->vkWaitSemaphoresKHR(device->get_device(), &wait_info, UINT64_MAX);
+		}
+		device->register_time_interval("WSI", std::move(wait_ts), device->write_calibrated_timestamp(), "latency-sleep");
 	}
 }
 
@@ -513,8 +533,7 @@ bool WSI::begin_frame()
 
 		Fence fence;
 
-		// TODO: Improve this with fancier approaches as needed.
-		if (low_latency_mode_enable &&
+		if (low_latency_mode_enable && !swapchain_is_nv_ll2 &&
 		    !device->get_device_features().present_wait_features.presentWait &&
 		    current_present_mode == PresentMode::SyncToVBlank)
 		{
@@ -557,6 +576,7 @@ bool WSI::begin_frame()
 		if (result >= 0)
 		{
 			has_acquired_swapchain_index = true;
+
 			acquire->signal_external();
 
 			// WSI signals this, which exists outside the domain of our Vulkan queues.
@@ -572,10 +592,10 @@ bool WSI::begin_frame()
 
 			// Poll after acquire as well for optimal latency.
 			platform->poll_input();
+
 			platform->event_frame_tick(frame_time, elapsed_time);
 
 			platform->event_swapchain_index(device.get(), swapchain_index);
-
 			device->set_acquire_semaphore(swapchain_index, acquire);
 		}
 		else if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
@@ -601,7 +621,7 @@ bool WSI::begin_frame()
 
 bool WSI::end_frame()
 {
-	device->end_frame_context();
+	uint64_t present_id = device->end_frame_context(true);
 
 	// Take ownership of the release semaphore so that the external user can use it.
 	if (frame_is_external)
@@ -640,9 +660,9 @@ bool WSI::end_frame()
 
 		if (device->get_device_features().present_id_features.presentId)
 		{
+			present_last_submit_id = present_id;
 			present_id_info.swapchainCount = 1;
 			present_id_info.pPresentIds = &present_id;
-			present_id++;
 			present_id_info.pNext = info.pNext;
 			info.pNext = &present_id_info;
 		}
@@ -703,10 +723,10 @@ bool WSI::end_frame()
 		// The presentID only seems to get updated if QueuePresent returns success.
 		// This makes sense I guess. Record the latest present ID which was successfully presented
 		// so we don't risk deadlock.
-		if ((result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) &&
-		    device->get_device_features().present_id_features.presentId)
+		if (device->get_device_features().present_id_features.presentId &&
+		    (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR))
 		{
-			present_last_id = present_id;
+			present_last_success_id = present_id;
 		}
 
 		if (overall == VK_SUBOPTIMAL_KHR || result == VK_SUBOPTIMAL_KHR)
@@ -972,6 +992,7 @@ struct SurfaceInfo
 	std::vector<VkSurfaceFormatKHR> formats;
 	VkSwapchainPresentModesCreateInfoEXT present_modes_info;
 	std::vector<VkPresentModeKHR> present_mode_compat_group;
+	VkSwapchainLatencyCreateInfoNV latency_create_info;
 	const void *swapchain_pnext;
 #ifdef _WIN32
 	VkSurfaceFullScreenExclusiveInfoEXT exclusive_info;
@@ -983,7 +1004,6 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 	VkSurfaceKHR surface, BackbufferFormat format,
 	PresentMode present_mode, SurfaceInfo &info, bool low_latency_mode_enable)
 {
-	(void)low_latency_mode_enable;
 	if (surface == VK_NULL_HANDLE)
 	{
 		LOGE("Cannot create swapchain with surface == VK_NULL_HANDLE.\n");
@@ -1113,6 +1133,40 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		}
 	}
 
+	// For low latency, there is decent risk of missing vblanks, so FIFO_RELAXED makes sense.
+	if (low_latency_mode_enable && swapchain_present_mode == VK_PRESENT_MODE_FIFO_KHR)
+		for (auto &mode : present_modes)
+			if (mode == VK_PRESENT_MODE_FIFO_RELAXED_KHR)
+				swapchain_present_mode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+
+	if (low_latency_mode_enable && ext.supports_low_latency2_nv &&
+	    (swapchain_present_mode == VK_PRESENT_MODE_FIFO_KHR ||
+	     swapchain_present_mode == VK_PRESENT_MODE_FIFO_RELAXED_KHR))
+	{
+		VkPresentModeKHR modes[256];
+		VkLatencySurfaceCapabilitiesNV latency_caps = { VK_STRUCTURE_TYPE_LATENCY_SURFACE_CAPABILITIES_NV };
+		VkSurfaceCapabilities2KHR caps = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR };
+		latency_caps.presentModeCount = 256; // Sentinel value to check if driver is broken.
+		latency_caps.pPresentModes = modes;
+		caps.pNext = &latency_caps;
+		vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &caps);
+
+		if (latency_caps.presentModeCount == 256)
+			LOGW("Driver ignores VkLatencySurfaceCapabilitiesNV (NV bug). Assume it works ...\n");
+
+		bool supported = latency_caps.presentModeCount == 256;
+		for (unsigned i = 0; i < latency_caps.presentModeCount && !supported; i++)
+			supported = modes[i] == swapchain_present_mode;
+
+		if (supported)
+		{
+			info.latency_create_info = {VK_STRUCTURE_TYPE_SWAPCHAIN_LATENCY_CREATE_INFO_NV};
+			info.latency_create_info.latencyModeEnable = VK_TRUE;
+			info.latency_create_info.pNext = info.swapchain_pnext;
+			info.swapchain_pnext = &info.latency_create_info;
+		}
+	}
+
 	// First, query minImageCount without any present mode.
 	// Avoid opting for present mode compat that is pathological in nature,
 	// e.g. Xorg MAILBOX where minImageCount shoots up to 5 for stupid reasons.
@@ -1162,35 +1216,41 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		info.present_mode_compat_group.reserve(present_mode_caps.presentModeCount);
 		info.present_mode_compat_group.push_back(swapchain_present_mode);
 
-		for (auto mode : present_mode_compat_group)
+		// In low latency mode, we only intend to use the desired present mode.
+		if (!low_latency_mode_enable)
 		{
-			if (mode == swapchain_present_mode)
-				continue;
-
-			// Only allow sensible present modes that we know of.
-			if (mode != VK_PRESENT_MODE_FIFO_KHR &&
-			    mode != VK_PRESENT_MODE_IMMEDIATE_KHR &&
-			    mode != VK_PRESENT_MODE_MAILBOX_KHR)
+			for (auto mode: present_mode_compat_group)
 			{
-				continue;
-			}
+				if (mode == swapchain_present_mode)
+					continue;
 
-			info.present_mode.presentMode = mode;
-			if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
-				return false;
+				// Only allow sensible present modes that we know of.
+				if (mode != VK_PRESENT_MODE_FIFO_KHR &&
+				    mode != VK_PRESENT_MODE_IMMEDIATE_KHR &&
+				    mode != VK_PRESENT_MODE_MAILBOX_KHR)
+				{
+					continue;
+				}
 
-			// Accept the present mode if it does not increment minImageCount beyond our expectation.
-			// When we use present groups, minImageCount == max(presentMode's minImageCount).
-			// Accept a bump to 3 images, since that's what we expect to use either way.
-			if (surface_capabilities2.surfaceCapabilities.minImageCount <=
-			    std::max(baseline_image_count, info.surface_capabilities.minImageCount))
-			{
-				info.present_mode_compat_group.push_back(mode);
-				info.surface_capabilities.minImageCount =
-					std::max(surface_capabilities2.surfaceCapabilities.minImageCount,
-					         info.surface_capabilities.minImageCount);
+				info.present_mode.presentMode = mode;
+				if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
+					return false;
+
+				// Accept the present mode if it does not increment minImageCount beyond our expectation.
+				// When we use present groups, minImageCount == max(presentMode's minImageCount).
+				// Accept a bump to 3 images, since that's what we expect to use either way.
+				if (surface_capabilities2.surfaceCapabilities.minImageCount <=
+				    std::max(baseline_image_count, info.surface_capabilities.minImageCount))
+				{
+					info.present_mode_compat_group.push_back(mode);
+					info.surface_capabilities.minImageCount =
+							std::max(surface_capabilities2.surfaceCapabilities.minImageCount,
+							         info.surface_capabilities.minImageCount);
+				}
 			}
 		}
+
+		info.present_mode.presentMode = swapchain_present_mode;
 	}
 
 	uint32_t format_count = 0;
@@ -1238,7 +1298,7 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 	}
 
 	info.present_mode.presentMode = swapchain_present_mode;
-
+	LOGI("Using present mode: %u\n", info.present_mode.presentMode);
 	return true;
 }
 
@@ -1382,6 +1442,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	uint32_t desired_swapchain_images =
 		low_latency_mode_enable && current_present_mode == PresentMode::SyncToVBlank ? 2 : 3;
+
 	{
 		const char *num_images = getenv("GRANITE_VULKAN_SWAPCHAIN_IMAGES");
 		if (num_images)
@@ -1439,8 +1500,25 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	auto res = table->vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
 	table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
-	present_id = 0;
-	present_last_id = 0;
+	present_last_success_id = 0;
+	present_last_submit_id = 0;
+
+	swapchain_is_nv_ll2 = surface_info.latency_create_info.latencyModeEnable == VK_TRUE;
+	if (swapchain_is_nv_ll2)
+	{
+		VkLatencySleepModeInfoNV mode_info = { VK_STRUCTURE_TYPE_LATENCY_SLEEP_MODE_INFO_NV };
+		mode_info.lowLatencyBoost = VK_TRUE;
+		mode_info.lowLatencyMode = VK_TRUE;
+		mode_info.minimumIntervalUs = 0; // TODO: Can use for pacing?
+		if (table->vkSetLatencySleepModeNV(device->get_device(), swapchain, &mode_info) != VK_SUCCESS)
+		{
+			swapchain_is_nv_ll2 = false;
+			LOGW("Failed to set latency sleep mode.\n");
+		}
+	}
+
+	if (swapchain_is_nv_ll2)
+		nv_ll2_timeline_semaphore = device->request_semaphore(VK_SEMAPHORE_TYPE_TIMELINE);
 
 	active_present_mode = info.presentMode;
 	present_mode_compat_group = std::move(surface_info.present_mode_compat_group);

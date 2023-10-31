@@ -289,6 +289,9 @@ private:
 	PresentMode present_mode = PresentMode::SyncToVBlank;
 	bool low_latency_mode_enable = false;
 
+	Semaphore nv_ll2_timeline_semaphore;
+	bool swapchain_is_nv_ll2 = false;
+
 	VkPresentModeKHR active_present_mode = VK_PRESENT_MODE_FIFO_KHR;
 	std::vector<VkPresentModeKHR> present_mode_compat_group;
 	bool update_active_presentation_mode(PresentMode mode);
@@ -330,8 +333,8 @@ private:
 	double smooth_frame_time = 0.0;
 	double smooth_elapsed_time = 0.0;
 
-	uint64_t present_id = 0;
-	uint64_t present_last_id = 0;
+	uint64_t present_last_submit_id = 0;
+	uint64_t present_last_success_id = 0;
 	unsigned present_frame_latency = 0;
 
 	void tear_down_swapchain();

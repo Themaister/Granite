@@ -129,7 +129,7 @@ class BatchComposer
 public:
 	enum { MaxSubmissions = 8 };
 
-	explicit BatchComposer(bool split_binary_timeline_semaphores);
+	BatchComposer(bool split_binary_timeline_semaphores, uint64_t present_id);
 	void add_wait_submissions(WaitSemaphores &sem);
 	void add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags2 stage);
 	void add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags2 stage);
@@ -152,6 +152,8 @@ private:
 
 	bool has_timeline_semaphore_in_batch(unsigned index) const;
 	bool has_binary_semaphore_in_batch(unsigned index) const;
+
+	VkLatencySubmissionPresentIdNV latency_submission_present_id_nv;
 };
 }
 
@@ -258,7 +260,8 @@ public:
 	void set_enable_async_thread_frame_context(bool enable);
 
 	void wait_idle();
-	void end_frame_context();
+	uint64_t end_frame_context(bool commit_present_id = false);
+	uint64_t get_current_present_id() const;
 
 	// RenderDoc integration API for app-guided captures.
 	static bool init_renderdoc_capture();
@@ -672,6 +675,7 @@ private:
 		VkQueue present_queue = VK_NULL_HANDLE;
 		Vulkan::CommandBuffer::Type present_queue_type = {};
 		uint32_t queue_family_support_mask = 0;
+		uint64_t present_id = 1;
 		unsigned index = 0;
 		bool consumed = false;
 	} wsi;
@@ -823,7 +827,7 @@ private:
 	void decrement_frame_counter_nolock();
 	void submit_secondary(CommandBuffer &primary, CommandBuffer &secondary);
 	void wait_idle_nolock();
-	void end_frame_nolock();
+	uint64_t end_frame_nolock(bool commit_present_id);
 
 	void add_debug_channel_buffer(DebugChannelInterface *iface, std::string tag, BufferHandle buffer);
 	void parse_debug_channel(const PerFrame::DebugChannel &channel);

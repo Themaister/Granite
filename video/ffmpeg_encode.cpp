@@ -246,6 +246,7 @@ static unsigned format_to_planes(VideoEncoder::Format fmt)
 	{
 	case VideoEncoder::Format::NV12:
 	case VideoEncoder::Format::P016:
+	case VideoEncoder::Format::P010:
 		return 2;
 
 	default:
@@ -502,21 +503,18 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 	// Feels a bit dumb to use swscale just to copy.
 	// Ideally we'd be able to set the data pointers directly in AVFrame,
 	// but encoder reference buffers probably require a copy anyways ...
-	if (options.format == VideoEncoder::Format::NV12 || options.format == VideoEncoder::Format::P016)
-	{
-		unsigned pix_size = options.format == VideoEncoder::Format::P016 ? 2 : 1;
-		const auto *src_luma = buffer + planes[0].offset;
-		const auto *src_chroma = buffer + planes[1].offset;
-		auto *dst_luma = video.av_frame->data[0];
-		auto *dst_chroma = video.av_frame->data[1];
+	unsigned pix_size = options.format != VideoEncoder::Format::NV12 ? 2 : 1;
+	const auto *src_luma = buffer + planes[0].offset;
+	const auto *src_chroma = buffer + planes[1].offset;
+	auto *dst_luma = video.av_frame->data[0];
+	auto *dst_chroma = video.av_frame->data[1];
 
-		unsigned chroma_width = (options.width >> 1) * 2;
-		unsigned chroma_height = options.height >> 1;
-		for (unsigned y = 0; y < options.height; y++, dst_luma += video.av_frame->linesize[0], src_luma += planes[0].stride)
-			memcpy(dst_luma, src_luma, options.width * pix_size);
-		for (unsigned y = 0; y < chroma_height; y++, dst_chroma += video.av_frame->linesize[1], src_chroma += planes[1].stride)
-			memcpy(dst_chroma, src_chroma, chroma_width * pix_size);
-	}
+	unsigned chroma_width = (options.width >> 1) * 2;
+	unsigned chroma_height = options.height >> 1;
+	for (unsigned y = 0; y < options.height; y++, dst_luma += video.av_frame->linesize[0], src_luma += planes[0].stride)
+		memcpy(dst_luma, src_luma, options.width * pix_size);
+	for (unsigned y = 0; y < chroma_height; y++, dst_chroma += video.av_frame->linesize[1], src_chroma += planes[1].stride)
+		memcpy(dst_chroma, src_chroma, chroma_width * pix_size);
 
 	video.av_frame->pict_type = AV_PICTURE_TYPE_NONE;
 
@@ -910,6 +908,10 @@ bool VideoEncoder::Impl::init_video_codec()
 
 	case Format::P016:
 		video.av_ctx->pix_fmt = AV_PIX_FMT_P016;
+		break;
+
+	case Format::P010:
+		video.av_ctx->pix_fmt = AV_PIX_FMT_P010;
 		break;
 
 	default:
@@ -1497,13 +1499,10 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		                         {pipeline.luma->get_width(), pipeline.luma->get_height(), 1},
 		                         pipeline.planes[0].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
 
-		if (impl->options.format == Format::NV12 || impl->options.format == Format::P016)
-		{
-			cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma, pipeline.planes[1].offset,
-			                         {},
-			                         {pipeline.chroma->get_width(), pipeline.chroma->get_height(), 1},
-			                         pipeline.planes[1].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
-		}
+		cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma, pipeline.planes[1].offset,
+		                         {},
+		                         {pipeline.chroma->get_width(), pipeline.chroma->get_height(), 1},
+		                         pipeline.planes[1].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
 
 		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
@@ -1566,7 +1565,7 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 	VkFormat luma_format, chroma_format;
 	unsigned pixel_size;
 
-	if (impl->options.format == Format::P016)
+	if (impl->options.format != Format::NV12)
 	{
 		luma_format = VK_FORMAT_R16_UNORM;
 		chroma_format = VK_FORMAT_R16G16_UNORM;
@@ -1608,59 +1607,56 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 	pipeline.constants.luma_dispatch[0] = (image_info.width + 7) / 8;
 	pipeline.constants.luma_dispatch[1] = (image_info.height + 7) / 8;
 
-	if (impl->options.format == Format::NV12 || impl->options.format == Format::P016)
+	pipeline.constants.inv_resolution_chroma[0] = 2.0f * pipeline.constants.inv_resolution_luma[0];
+	pipeline.constants.inv_resolution_chroma[1] = 2.0f * pipeline.constants.inv_resolution_luma[1];
+
+	switch (impl->options.siting)
 	{
-		pipeline.constants.inv_resolution_chroma[0] = 2.0f * pipeline.constants.inv_resolution_luma[0];
-		pipeline.constants.inv_resolution_chroma[1] = 2.0f * pipeline.constants.inv_resolution_luma[1];
+	case ChromaSiting::Center:
+		pipeline.constants.base_uv_chroma[0] = 1.0f / float(image_info.width);
+		pipeline.constants.base_uv_chroma[1] = 1.0f / float(image_info.height);
+		break;
 
-		switch (impl->options.siting)
-		{
-		case ChromaSiting::Center:
-			pipeline.constants.base_uv_chroma[0] = 1.0f / float(image_info.width);
-			pipeline.constants.base_uv_chroma[1] = 1.0f / float(image_info.height);
-			break;
+	case ChromaSiting::TopLeft:
+		pipeline.constants.base_uv_chroma[0] = 0.5f / float(image_info.width);
+		pipeline.constants.base_uv_chroma[1] = 0.5f / float(image_info.height);
+		break;
 
-		case ChromaSiting::TopLeft:
-			pipeline.constants.base_uv_chroma[0] = 0.5f / float(image_info.width);
-			pipeline.constants.base_uv_chroma[1] = 0.5f / float(image_info.height);
-			break;
+	case ChromaSiting::Left:
+		pipeline.constants.base_uv_chroma[0] = 0.5f / float(image_info.width);
+		pipeline.constants.base_uv_chroma[1] = 1.0f / float(image_info.height);
+		break;
 
-		case ChromaSiting::Left:
-			pipeline.constants.base_uv_chroma[0] = 0.5f / float(image_info.width);
-			pipeline.constants.base_uv_chroma[1] = 1.0f / float(image_info.height);
-			break;
+	default:
+		break;
+	}
 
-		default:
-			break;
-		}
-
-		image_info.format = chroma_format;
-		pipeline.chroma_full = impl->device->create_image(image_info);
-		impl->device->set_name(*pipeline.chroma_full, "video-encode-chroma-full-res");
-		image_info.width = impl->options.width / 2;
-		image_info.height = impl->options.height / 2;
+	image_info.format = chroma_format;
+	pipeline.chroma_full = impl->device->create_image(image_info);
+	impl->device->set_name(*pipeline.chroma_full, "video-encode-chroma-full-res");
+	image_info.width = impl->options.width / 2;
+	image_info.height = impl->options.height / 2;
 
 #ifdef HAVE_FFMPEG_VULKAN_ENCODE
-		if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)
+	if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)
 #endif
-		{
-			pipeline.chroma = impl->device->create_image(image_info);
-			impl->device->set_name(*pipeline.chroma, "video-encode-chroma-downsampled");
+	{
+		pipeline.chroma = impl->device->create_image(image_info);
+		impl->device->set_name(*pipeline.chroma, "video-encode-chroma-downsampled");
 
-			aligned_width = (image_info.width + 63) & ~63;
-			pipeline.planes[pipeline.num_planes].row_length = aligned_width;
-			aligned_width *= 2;
+		aligned_width = (image_info.width + 63) & ~63;
+		pipeline.planes[pipeline.num_planes].row_length = aligned_width;
+		aligned_width *= 2;
 
-			pipeline.planes[pipeline.num_planes].offset = total_size;
-			pipeline.planes[pipeline.num_planes].stride = aligned_width * pixel_size;
-			pipeline.num_planes++;
-			VkDeviceSize chroma_size = aligned_width * image_info.height * pixel_size;
-			total_size += chroma_size;
-		}
-
-		pipeline.constants.chroma_dispatch[0] = (image_info.width + 7) / 8;
-		pipeline.constants.chroma_dispatch[1] = (image_info.height + 7) / 8;
+		pipeline.planes[pipeline.num_planes].offset = total_size;
+		pipeline.planes[pipeline.num_planes].stride = aligned_width * pixel_size;
+		pipeline.num_planes++;
+		VkDeviceSize chroma_size = aligned_width * image_info.height * pixel_size;
+		total_size += chroma_size;
 	}
+
+	pipeline.constants.chroma_dispatch[0] = (image_info.width + 7) / 8;
+	pipeline.constants.chroma_dispatch[1] = (image_info.height + 7) / 8;
 
 #ifdef HAVE_FFMPEG_VULKAN_ENCODE
 	if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)

@@ -100,12 +100,12 @@ struct FFmpegHWDevice::Impl
 			vk->nb_encode_queues = 0;
 #endif
 
-			vk->lock_queue = [](AVHWDeviceContext *ctx, int, int) {
+			vk->lock_queue = [](AVHWDeviceContext *ctx, uint32_t, uint32_t) {
 				auto *self = static_cast<Impl *>(ctx->user_opaque);
 				self->device->external_queue_lock();
 			};
 
-			vk->unlock_queue = [](AVHWDeviceContext *ctx, int, int) {
+			vk->unlock_queue = [](AVHWDeviceContext *ctx, uint32_t, uint32_t) {
 				auto *self = static_cast<Impl *>(ctx->user_opaque);
 				self->device->external_queue_unlock();
 			};

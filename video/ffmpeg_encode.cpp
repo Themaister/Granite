@@ -940,6 +940,21 @@ bool VideoEncoder::Impl::init_video_codec()
 	{
 		video.ticks_per_frame = 16;
 		video.av_ctx->time_base = {options.frame_timebase.num, options.frame_timebase.den * video.ticks_per_frame};
+
+#if defined(_MSC_VER)
+#define DISABLE_DEPRECATION_WARNINGS __pragma(warning(push)) __pragma(warning(disable:4996))
+#define ENABLE_DEPRECATION_WARNINGS  __pragma(warning(pop))
+#else
+#define DISABLE_DEPRECATION_WARNINGS _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"")
+#define ENABLE_DEPRECATION_WARNINGS  _Pragma("GCC diagnostic pop")
+#endif
+
+		// NVENC B-frames break without this since it computes DTS by subtracting PTS by ticks_per_frame * N factor.
+		DISABLE_DEPRECATION_WARNINGS
+#if defined(FF_API_TICKS_PER_FRAME) && FF_API_TICKS_PER_FRAME
+		video.av_ctx->ticks_per_frame = 16;
+#endif
+		ENABLE_DEPRECATION_WARNINGS
 	}
 	else
 	{

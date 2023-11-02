@@ -139,7 +139,6 @@ struct VideoEncoder::Impl final
 	bool init_audio_codec();
 
 	std::vector<int16_t> audio_buffer_s16;
-	Util::DynamicArray<float> float_buffer;
 
 	struct
 	{
@@ -155,10 +154,11 @@ struct VideoEncoder::Impl final
 	FFmpegHWDevice hw;
 
 	int64_t sample_realtime_pts() const;
+	std::atomic_int audio_compensate_us;
 
 #ifdef HAVE_GRANITE_AUDIO
-	bool encode_audio(int compensate_audio_us);
-	bool encode_audio_stream(int compensate_audio_us);
+	bool encode_audio();
+	bool encode_audio_stream(const float *data, size_t frames, int compensate_audio_us);
 	bool encode_audio_source();
 	void write_frames_interleaved_f32(const float *data, size_t frames) override;
 #endif
@@ -169,6 +169,7 @@ struct VideoEncoder::Impl final
 	void submit_process_rgb_readback(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
 
 	pyro_codec_parameters pyro_codec = {};
+	std::mutex mux_lock;
 };
 
 static void free_av_objects(CodecStream &stream)
@@ -318,117 +319,86 @@ bool VideoEncoder::Impl::encode_audio_source()
 	return true;
 }
 
-bool VideoEncoder::Impl::encode_audio_stream(int compensate_audio_us)
+bool VideoEncoder::Impl::encode_audio_stream(const float *data, size_t frames, int compensate_audio_us)
 {
-	size_t read_avail_frames;
-	uint32_t latency_us;
+	constexpr int channels = 2;
 	int ret;
 
-	while (audio_stream->get_buffer_status(read_avail_frames, latency_us) &&
-	       read_avail_frames >= size_t(audio.av_frame->nb_samples))
+	while (frames)
 	{
-		if ((ret = av_frame_make_writable(audio.av_frame)) < 0)
+		if (current_audio_frames == 0)
 		{
-			LOGE("Failed to make frame writable: %d.\n", ret);
-			return false;
+			if ((ret = av_frame_make_writable(audio.av_frame)) < 0)
+			{
+				LOGE("Failed to make frame writable: %d.\n", ret);
+				return false;
+			}
 		}
+		int to_write = std::min<int>(int(frames), audio.av_frame->nb_samples - current_audio_frames);
 
-		size_t read_count;
 		if (audio.av_frame->format == AV_SAMPLE_FMT_FLT)
 		{
-			read_count = audio_stream->read_frames_interleaved_f32(
-					reinterpret_cast<float *>(audio.av_frame->data[0]),
-					audio.av_frame->nb_samples, false);
+			memcpy(audio.av_frame->data[0] + current_audio_frames * sizeof(float) * channels,
+			       data, to_write * sizeof(float) * channels);
 		}
 		else if (audio.av_frame->format == AV_SAMPLE_FMT_FLTP)
 		{
-			read_count = audio_stream->read_frames_deinterleaved_f32(
-					reinterpret_cast<float *const *>(audio.av_frame->data),
-					audio.av_frame->nb_samples, false);
-		}
-		else if (audio.av_frame->format == AV_SAMPLE_FMT_S16)
-		{
-			float_buffer.reserve(audio.av_frame->nb_samples * 2);
-			read_count = audio_stream->read_frames_interleaved_f32(
-					float_buffer.data(), audio.av_frame->nb_samples, false);
-			Audio::DSP::f32_to_i16(reinterpret_cast<int16_t *>(audio.av_frame->data[0]),
-			                       float_buffer.data(), read_count * 2);
+			Audio::DSP::deinterleave_stereo_f32(
+					reinterpret_cast<float *>(audio.av_frame->data[0]) + current_audio_frames,
+					reinterpret_cast<float *>(audio.av_frame->data[1]) + current_audio_frames,
+					data, to_write);
 		}
 		else
 		{
-			LOGE("Unknown sample format.\n");
-			read_count = 0;
+			Audio::DSP::f32_to_i16(reinterpret_cast<int16_t *>(audio.av_frame->data[0]) + current_audio_frames * 2,
+			                       data, to_write * 2);
 		}
 
-		if (read_count < size_t(audio.av_frame->nb_samples))
+		current_audio_frames += to_write;
+		frames -= to_write;
+		data += to_write * channels;
+
+		if (current_audio_frames == audio.av_frame->nb_samples)
 		{
-			// Shouldn't happen ...
-			LOGW("Short read detected (%zu < %d). Filling with silence.\n", read_count, audio.av_frame->nb_samples);
-			if (audio.av_frame->format == AV_SAMPLE_FMT_FLTP)
+			// Crude system for handling drift.
+			// Ensure monotonic PTS with maximum 1% clock drift.
+			auto absolute_ts = sample_realtime_pts() + compensate_audio_us;
+
+			// Detect large discontinuity and reset the PTS.
+			absolute_ts = std::max(absolute_ts, realtime_pts.next_lower_bound_pts);
+			if (absolute_ts < realtime_pts.next_upper_bound_pts + 200000)
+				absolute_ts = std::min(absolute_ts, realtime_pts.next_upper_bound_pts);
+
+			audio.av_frame->pts = absolute_ts;
+			realtime_pts.next_lower_bound_pts =
+					absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 990000, audio.av_ctx->sample_rate, AV_ROUND_DOWN);
+			realtime_pts.next_upper_bound_pts =
+					absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 1010000, audio.av_ctx->sample_rate, AV_ROUND_UP);
+
+			ret = avcodec_send_frame(audio.av_ctx, audio.av_frame);
+			if (ret < 0)
 			{
-				for (unsigned c = 0; c < 2; c++)
-				{
-					memset(audio.av_frame->data[c] + read_count * sizeof(float), 0,
-					       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float));
-				}
+				LOGE("Failed to send packet to codec: %d\n", ret);
+				return false;
 			}
-			else if (audio.av_frame->format == AV_SAMPLE_FMT_FLT)
+
+			if (!drain_packets(audio))
 			{
-				memset(audio.av_frame->data[0] + read_count * sizeof(float) * 2, 0,
-				       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(float) * 2);
+				LOGE("Failed to drain audio packets.\n");
+				return false;
 			}
-			else if (audio.av_frame->format == AV_SAMPLE_FMT_S16)
-			{
-				memset(audio.av_frame->data[0] + read_count * sizeof(int16_t) * 2, 0,
-				       (size_t(audio.av_frame->nb_samples) - read_count) * sizeof(int16_t) * 2);
-			}
-		}
 
-		// Crude system for handling drift.
-		// Ensure monotonic PTS with maximum 1% clock drift.
-		auto absolute_ts = sample_realtime_pts() + compensate_audio_us;
-		absolute_ts -= latency_us;
-
-		// Detect large discontinuity and reset the PTS.
-		absolute_ts = std::max(absolute_ts, realtime_pts.next_lower_bound_pts);
-		if (absolute_ts < realtime_pts.next_upper_bound_pts + 200000)
-			absolute_ts = std::min(absolute_ts, realtime_pts.next_upper_bound_pts);
-
-		audio.av_frame->pts = absolute_ts;
-		realtime_pts.next_lower_bound_pts =
-				absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 990000, audio.av_ctx->sample_rate, AV_ROUND_DOWN);
-		realtime_pts.next_upper_bound_pts =
-				absolute_ts + av_rescale_rnd(audio.av_frame->nb_samples, 1010000, audio.av_ctx->sample_rate, AV_ROUND_UP);
-
-		ret = avcodec_send_frame(audio.av_ctx, audio.av_frame);
-		if (ret < 0)
-		{
-			LOGE("Failed to send packet to codec: %d\n", ret);
-			return false;
-		}
-
-		if (!drain_packets(audio))
-		{
-			LOGE("Failed to drain audio packets.\n");
-			return false;
+			current_audio_frames = 0;
 		}
 	}
 
 	return true;
 }
 
-bool VideoEncoder::Impl::encode_audio(int compensate_audio_us)
+bool VideoEncoder::Impl::encode_audio()
 {
-	if (options.realtime && audio_stream)
-	{
-		// If we have mux callback + raw audio, we'll pump audio data straight from record callback,
-		// don't do anything here.
-		if (mux_stream_callback && pyro_codec.audio_codec == PYRO_AUDIO_CODEC_RAW_S16LE)
-			return true;
-		else
-			return encode_audio_stream(compensate_audio_us);
-	}
-	else if (!options.realtime && audio_source)
+	// For realtime, we'll pump from a record callback.
+	if (!options.realtime && audio_source)
 		return encode_audio_source();
 	else
 		return true;
@@ -436,18 +406,23 @@ bool VideoEncoder::Impl::encode_audio(int compensate_audio_us)
 
 void VideoEncoder::Impl::write_frames_interleaved_f32(const float *data, size_t frames)
 {
-	assert(pyro_codec.audio_codec == PYRO_AUDIO_CODEC_RAW_S16LE && mux_stream_callback);
+	if (mux_stream_callback && pyro_codec.audio_codec == PYRO_AUDIO_CODEC_RAW_S16LE)
+	{
+		audio_buffer_s16.resize(frames * pyro_codec.channels);
+		if (data)
+			Audio::DSP::f32_to_i16(audio_buffer_s16.data(), data, frames * pyro_codec.channels);
+		else
+			memset(audio_buffer_s16.data(), 0, frames * pyro_codec.channels);
 
-	audio_buffer_s16.resize(frames * pyro_codec.channels);
-	if (data)
-		Audio::DSP::f32_to_i16(audio_buffer_s16.data(), data, frames * pyro_codec.channels);
+		// In this mode, we don't care about smoothing the PTS at all or compensating for latency.
+		int64_t pts = sample_realtime_pts();
+		mux_stream_callback->write_audio_packet(
+				pts, pts, audio_buffer_s16.data(), audio_buffer_s16.size() * sizeof(int16_t));
+	}
 	else
-		memset(audio_buffer_s16.data(), 0, frames * pyro_codec.channels);
-
-	// In this mode, we don't care about smoothing the PTS at all or compensating for latency.
-	int64_t pts = sample_realtime_pts();
-	mux_stream_callback->write_audio_packet(
-			pts, pts, audio_buffer_s16.data(), audio_buffer_s16.size() * sizeof(int16_t));
+	{
+		encode_audio_stream(data, frames, audio_compensate_us.load(std::memory_order_relaxed));
+	}
 }
 #endif
 
@@ -471,9 +446,10 @@ bool VideoEncoder::Impl::encode_frame(AVFrame *hw_frame, int64_t pts, int compen
 		return false;
 	}
 
-	(void)compensate_audio_us;
+	audio_compensate_us.store(compensate_audio_us, std::memory_order_relaxed);
+
 #ifdef HAVE_GRANITE_AUDIO
-	if (!encode_audio(compensate_audio_us))
+	if (!encode_audio())
 	{
 		LOGE("Failed to encode audio.\n");
 		return false;
@@ -606,9 +582,10 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 		return false;
 	}
 
-	(void)compensate_audio_us;
+	audio_compensate_us.store(compensate_audio_us, std::memory_order_relaxed);
+
 #ifdef HAVE_GRANITE_AUDIO
-	if (!encode_audio(compensate_audio_us))
+	if (!encode_audio())
 	{
 		LOGE("Failed to encode audio.\n");
 		return false;
@@ -620,7 +597,7 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 
 bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 {
-	int ret = 0;
+	int ret;
 	for (;;)
 	{
 		ret = avcodec_receive_packet(stream.av_ctx, stream.av_pkt);
@@ -644,7 +621,10 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 			pkt_clone->duration = stream.av_pkt->duration;
 			pkt_clone->stream_index = stream.av_stream_local->index;
 			av_packet_rescale_ts(pkt_clone, stream.av_ctx->time_base, stream.av_stream_local->time_base);
-			ret = av_interleaved_write_frame(av_format_ctx_local, pkt_clone);
+			{
+				std::lock_guard<std::mutex> holder{mux_lock};
+				ret = av_interleaved_write_frame(av_format_ctx_local, pkt_clone);
+			}
 			av_packet_free(&pkt_clone);
 			if (ret < 0)
 			{
@@ -665,6 +645,7 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 
 		if (av_format_ctx)
 		{
+			std::lock_guard<std::mutex> holder{mux_lock};
 			ret = av_interleaved_write_frame(av_format_ctx, stream.av_pkt);
 			if (ret < 0)
 			{
@@ -1127,6 +1108,7 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 {
 	device = device_;
 	options = options_;
+	audio_compensate_us = 0;
 
 	// For file-less formats like RTMP need to specify muxer format.
 	const char *muxer = nullptr;
@@ -1194,14 +1176,10 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	}
 
 	if (mux_stream_callback)
-	{
 		mux_stream_callback->set_codec_parameters(pyro_codec);
 
-		// Just dump raw audio as fast as we can over UDP.
-		// For the more proper codecs, the block sizes are large enough that we need to buffer a bit anyway.
-		if (audio_stream && pyro_codec.audio_codec == PYRO_AUDIO_CODEC_RAW_S16LE)
-			audio_stream->set_record_callback(this);
-	}
+	if (audio_stream)
+		audio_stream->set_record_callback(this);
 
 	if (av_format_ctx)
 		av_dump_format(av_format_ctx, 0, path, 1);

@@ -1007,6 +1007,16 @@ bool VideoEncoder::Impl::init_video_codec()
 
 	bool is_x264 = strcmp(options.encoder, "libx264") == 0;
 	bool is_nvenc = strstr(options.encoder, "nvenc") != nullptr;
+	bool is_av1_vaapi = strcmp(options.encoder, "av1_vaapi") == 0;
+
+	if (is_av1_vaapi)
+	{
+		av_dict_set(&opts, "profile", "main", 0);
+		av_dict_set(&opts, "level", "6.3", 0);
+		av_dict_set(&opts, "tier", "high", 0);
+		if (options.low_latency)
+			av_dict_set_int(&opts, "async_depth", 1, 0);
+	}
 
 	if (options.realtime || !is_x264)
 	{

@@ -150,10 +150,35 @@ public:
 		else
 		{
 			// Windowed -> fullscreen
-			auto *primary = glfwGetPrimaryMonitor();
-			if (primary)
+			int count;
+
+			GLFWmonitor **monitors = glfwGetMonitors(&count);
+			GLFWmonitor *target_monitor = nullptr;
+
+			int xpos, ypos, w, h;
+			glfwGetWindowPos(window, &xpos, &ypos);
+			glfwGetWindowSize(window, &w, &h);
+			xpos += w / 2;
+			ypos += h / 2;
+
+			for (int i = 0; i < count; i++)
 			{
-				auto *mode = glfwGetVideoMode(primary);
+				int x, y;
+				// Find monitor where center of window lies within it. Use that monitor as fullscreen target.
+				glfwGetMonitorWorkarea(monitors[i], &x, &y, &w, &h);
+				if (xpos >= x && ypos >= y && xpos < x + w && ypos < y + h)
+				{
+					target_monitor = monitors[i];
+					break;
+				}
+			}
+
+			if (!target_monitor)
+				target_monitor = glfwGetPrimaryMonitor();
+
+			if (target_monitor)
+			{
+				auto *mode = glfwGetVideoMode(target_monitor);
 				WSIPlatformGLFW::CachedWindow win;
 				glfwGetWindowPos(window, &win.x, &win.y);
 				glfwGetWindowSize(window, &win.width, &win.height);
@@ -163,7 +188,7 @@ public:
 					set_hmonitor(MonitorFromWindow(glfwGetWin32Window(window), MONITOR_DEFAULTTOPRIMARY));
 				});
 #endif
-				glfwSetWindowMonitor(window, primary, 0, 0, mode->width, mode->height, mode->refreshRate);
+				glfwSetWindowMonitor(window, target_monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
 			}
 		}
 	}

@@ -983,7 +983,6 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 	VkSurfaceKHR surface, BackbufferFormat format,
 	PresentMode present_mode, SurfaceInfo &info, bool low_latency_mode_enable)
 {
-	(void)low_latency_mode_enable;
 	if (surface == VK_NULL_HANDLE)
 	{
 		LOGE("Cannot create swapchain with surface == VK_NULL_HANDLE.\n");
@@ -1112,6 +1111,13 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 			}
 		}
 	}
+
+	if (swapchain_present_mode == VK_PRESENT_MODE_FIFO_KHR && low_latency_mode_enable)
+		for (auto mode : present_modes)
+			if (mode == VK_PRESENT_MODE_FIFO_RELAXED_KHR)
+				swapchain_present_mode = mode;
+
+	LOGI("Using present mode: %u.\n", swapchain_present_mode);
 
 	// First, query minImageCount without any present mode.
 	// Avoid opting for present mode compat that is pathological in nature,

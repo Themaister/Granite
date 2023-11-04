@@ -375,6 +375,7 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 		str << "template <typename Program, typename Shader>\n";
 		str << "template <typename Device, typename Layout, typename Resolver>\n";
 		str << "Shaders<Program, Shader>::Shaders(Device &device, Layout &layout, const Resolver &resolver)\n{\n";
+		str << "\t(void)resolver;\n";
 
 		for (size_t i = 0; i < shaders.size(); i++)
 		{

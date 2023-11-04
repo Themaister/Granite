@@ -204,6 +204,18 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(
 				return nullptr;
 #else
 			LOGE("Could not find shader variant for %s in cache.\n", path.c_str());
+			{
+				std::string str;
+				str += "[";
+				for (size_t i = 0, n = defines ? defines->size() : 0; i < n; i++)
+				{
+					str += "\n\t{ \"define\" : \"" + defines->operator[](i).first + "\", \"value\" : " + std::to_string(defines->operator[](i).second) + "}";
+					if (i + 1 < n)
+						str += ",";
+				}
+				str += "\n]";
+				LOGE("Slangmosh variant:\n%s\n", str.c_str());
+			}
 			variants.free(variant);
 			return nullptr;
 #endif

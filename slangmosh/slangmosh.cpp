@@ -328,21 +328,21 @@ static std::string resolve_shader(const ProgramVariant &variant, const Shader *s
 			                        return define.first == shader_variant.define;
 		                        });
 
-		if (itr == variant.defines.end())
-		{
-			LOGE("Shader \"%s\" requires define \"%s\", but program variant does not define it.\n",
-			     shader->name.c_str(), shader_variant.define.c_str());
-			return {};
-		}
-		else if (itr->second >= int(shader_variant.count) || itr->second < 0)
-		{
-			LOGE("Shader \"%s\" requires define \"%s\" in range [0, %u), but program variant requires value = %d.\n",
-			     shader->name.c_str(), shader_variant.define.c_str(),
-			     shader_variant.count, itr->second);
-			return {};
-		}
+		int value = 0;
 
-		str + "[" + std::to_string(itr->second) + "]";
+		if (itr != variant.defines.end())
+		{
+			if (itr->second >= int(shader_variant.count) || itr->second < 0)
+			{
+				LOGE("Shader \"%s\" requires define \"%s\" in range [0, %u), but program variant requires value = %d.\n",
+					 shader->name.c_str(), shader_variant.define.c_str(),
+					 shader_variant.count, itr->second);
+				return {};
+			}
+
+			value = itr->second;
+		}
+		str += "[" + std::to_string(value) + "]";
 	}
 
 	return str;

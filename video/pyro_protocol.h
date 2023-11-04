@@ -84,6 +84,11 @@ struct pyro_gamepad_state
 	int8_t hat_x, hat_y;
 };
 
+struct pyro_ping_state
+{
+	uint16_t seq;
+};
+
 #define PYRO_MAX_UDP_DATAGRAM_SIZE (PYRO_MAX_PAYLOAD_SIZE + sizeof(struct pyro_codec_parameters))
 
 // TCP: Server to client
@@ -106,6 +111,7 @@ typedef enum pyro_message_type
 	PYRO_MESSAGE_CODEC_PARAMETERS = PYRO_MAKE_MESSAGE_TYPE(7, sizeof(struct pyro_codec_parameters)),
 	PYRO_MESSAGE_PHASE_OFFSET = PYRO_MAKE_MESSAGE_TYPE(8, sizeof(struct pyro_phase_offset)),
 	PYRO_MESSAGE_GAMEPAD_STATE = PYRO_MAKE_MESSAGE_TYPE(9, sizeof(struct pyro_gamepad_state)),
+	PYRO_MESSAGE_PING = PYRO_MAKE_MESSAGE_TYPE(10, sizeof(struct pyro_ping_state)),
 	PYRO_MESSAGE_MAX_INT = INT32_MAX,
 } pyro_message_type;
 

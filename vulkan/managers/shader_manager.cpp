@@ -63,7 +63,7 @@ bool ShaderTemplate::init()
 			return false;
 
 		auto precompiled_file = device->get_system_handles().filesystem->open_readonly_mapping(path);
-		const uint32_t *ptr = nullptr;
+		const uint32_t *ptr;
 
 		if (!precompiled_file || !(ptr = precompiled_file->data<uint32_t>()))
 		{
@@ -100,7 +100,8 @@ bool ShaderTemplate::init()
 	return true;
 }
 
-const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<std::pair<std::string, int>> *defines)
+const ShaderTemplateVariant *ShaderTemplate::register_variant(
+		const std::vector<std::pair<std::string, int>> *defines, Shader *precompiled_shader)
 {
 	Hasher h;
 	if (defines)
@@ -125,23 +126,31 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<
 		auto *variant = variants.allocate();
 		variant->hash = complete_hash;
 
-		auto *precompiled_spirv = cache.variant_to_shader.find(complete_hash);
-
-		if (precompiled_spirv)
+		PrecomputedMeta *precompiled_spirv = nullptr;
+		if (!precompiled_shader)
 		{
-			if (!device->request_shader_by_hash(precompiled_spirv->shader_hash))
+			precompiled_spirv = cache.variant_to_shader.find(complete_hash);
+
+			if (precompiled_spirv)
 			{
-				LOGW("Got precompiled SPIR-V hash for variant, but it does not exist, is Fossilize archive incomplete?\n");
-				precompiled_spirv = nullptr;
-			}
-			else if (source_hash != precompiled_spirv->source_hash)
-			{
-				LOGW("Source hash is invalidated for %s, recompiling.\n", path.c_str());
-				precompiled_spirv = nullptr;
+				if (!device->request_shader_by_hash(precompiled_spirv->shader_hash))
+				{
+					LOGW("Got precompiled SPIR-V hash for variant, but it does not exist, is Fossilize archive incomplete?\n");
+					precompiled_spirv = nullptr;
+				}
+				else if (source_hash != precompiled_spirv->source_hash)
+				{
+					LOGW("Source hash is invalidated for %s, recompiling.\n", path.c_str());
+					precompiled_spirv = nullptr;
+				}
 			}
 		}
 
-		if (!precompiled_spirv)
+		if (precompiled_shader)
+		{
+			variant->precompiled_shader = precompiled_shader;
+		}
+		else if (!precompiled_spirv)
 		{
 			if (!static_shader.empty())
 			{
@@ -305,7 +314,9 @@ ShaderProgramVariant::ShaderProgramVariant(Device *device_)
 
 Vulkan::Shader *ShaderTemplateVariant::resolve(Vulkan::Device &device) const
 {
-	if (spirv.empty())
+	if (precompiled_shader)
+		return precompiled_shader;
+	else if (spirv.empty())
 		return device.request_shader_by_hash(spirv_hash);
 	else
 		return device.request_shader(spirv.data(), spirv.size() * sizeof(uint32_t));
@@ -461,6 +472,43 @@ Vulkan::Program *ShaderProgramVariant::get_program()
 ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pair<std::string, int>> &defines,
                                                       const ImmutableSamplerBank *sampler_bank)
 {
+	return register_variant(nullptr, defines, sampler_bank);
+}
+
+ShaderProgramVariant *ShaderProgram::register_precompiled_variant(Shader *comp,
+                                                                  const std::vector<std::pair<std::string, int>> &defines,
+                                                                  const ImmutableSamplerBank *sampler_bank)
+{
+	Shader *shaders[int(ShaderStage::Count)] = {};
+	shaders[int(ShaderStage::Compute)] = comp;
+	return register_variant(shaders, defines, sampler_bank);
+}
+
+ShaderProgramVariant *ShaderProgram::register_precompiled_variant(Shader *task, Shader *mesh, Shader *frag,
+                                                                  const std::vector<std::pair<std::string, int>> &defines,
+                                                                  const ImmutableSamplerBank *sampler_bank)
+{
+	Shader *shaders[int(ShaderStage::Count)] = {};
+	shaders[int(ShaderStage::Task)] = task;
+	shaders[int(ShaderStage::Mesh)] = mesh;
+	shaders[int(ShaderStage::Fragment)] = frag;
+	return register_variant(shaders, defines, sampler_bank);
+}
+
+ShaderProgramVariant *ShaderProgram::register_precompiled_variant(Vulkan::Shader *vert, Vulkan::Shader *frag,
+                                                                  const std::vector<std::pair<std::string, int>> &defines,
+                                                                  const Vulkan::ImmutableSamplerBank *sampler_bank)
+{
+	Shader *shaders[int(ShaderStage::Count)] = {};
+	shaders[int(ShaderStage::Vertex)] = vert;
+	shaders[int(ShaderStage::Fragment)] = frag;
+	return register_variant(shaders, defines, sampler_bank);
+}
+
+ShaderProgramVariant *ShaderProgram::register_variant(Shader * const *precompiled_shaders,
+                                                      const std::vector<std::pair<std::string, int>> &defines,
+                                                      const ImmutableSamplerBank *sampler_bank)
+{
 	Hasher h;
 	for (auto &define : defines)
 	{
@@ -479,9 +527,14 @@ ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pai
 	if (sampler_bank)
 		new_variant->sampler_bank.reset(new ImmutableSamplerBank(*sampler_bank));
 
-	for (unsigned i = 0; i < static_cast<unsigned>(Vulkan::ShaderStage::Count); i++)
+	for (int i = 0; i < int(Vulkan::ShaderStage::Count); i++)
+	{
 		if (stages[i])
-			new_variant->stages[i] = stages[i]->register_variant(&defines);
+		{
+			new_variant->stages[i] = stages[i]->register_variant(
+					&defines, precompiled_shaders ? precompiled_shaders[i] : nullptr);
+		}
+	}
 
 	// Make sure it's compiled correctly.
 	new_variant->get_program();

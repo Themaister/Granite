@@ -69,6 +69,7 @@ struct ShaderTemplateVariant : public Util::IntrusiveHashMapEnabled<ShaderTempla
 	Util::Hash spirv_hash = 0;
 	std::vector<uint32_t> spirv;
 	std::vector<std::pair<std::string, int>> defines;
+	Shader *precompiled_shader = nullptr;
 	unsigned instance = 0;
 
 	Vulkan::Shader *resolve(Vulkan::Device &device) const;
@@ -84,7 +85,8 @@ public:
 
 	bool init();
 
-	const ShaderTemplateVariant *register_variant(const std::vector<std::pair<std::string, int>> *defines = nullptr);
+	const ShaderTemplateVariant *register_variant(const std::vector<std::pair<std::string, int>> *defines,
+	                                              Shader *precompiled_shader);
 	void register_dependencies(ShaderManager &manager);
 
 	Util::Hash get_path_hash() const
@@ -169,10 +171,29 @@ public:
 	ShaderProgramVariant *register_variant(const std::vector<std::pair<std::string, int>> &defines,
 	                                       const ImmutableSamplerBank *sampler_bank = nullptr);
 
+	ShaderProgramVariant *register_precompiled_variant(
+			Shader *vert, Shader *frag,
+			const std::vector<std::pair<std::string, int>> &defines,
+			const ImmutableSamplerBank *sampler_bank = nullptr);
+
+	ShaderProgramVariant *register_precompiled_variant(
+			Shader *comp,
+			const std::vector<std::pair<std::string, int>> &defines,
+			const ImmutableSamplerBank *sampler_bank = nullptr);
+
+	ShaderProgramVariant *register_precompiled_variant(
+			Shader *task, Shader *mesh, Shader *frag,
+			const std::vector<std::pair<std::string, int>> &defines,
+			const ImmutableSamplerBank *sampler_bank = nullptr);
+
 private:
 	Device *device;
 	ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	VulkanCacheReadWrite<ShaderProgramVariant> variant_cache;
+
+	ShaderProgramVariant *register_variant(Shader * const *precompiled_shaders,
+	                                       const std::vector<std::pair<std::string, int>> &defines,
+	                                       const ImmutableSamplerBank *sampler_bank);
 };
 
 class ShaderManager

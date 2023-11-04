@@ -40,7 +40,7 @@ namespace Vulkan
 {
 ShaderTemplate::ShaderTemplate(Device *device_,
                                const std::string &shader_path,
-                               Granite::Stage force_stage_,
+                               ShaderStage force_stage_,
                                MetaCache &cache_,
                                Util::Hash path_hash_,
                                const std::vector<std::string> &include_directories_)
@@ -49,6 +49,7 @@ ShaderTemplate::ShaderTemplate(Device *device_,
 	, include_directories(include_directories_)
 #endif
 {
+	(void)include_directories_;
 }
 
 ShaderTemplate::~ShaderTemplate()
@@ -72,7 +73,9 @@ bool ShaderTemplate::init()
 		}
 
 		static_shader = { ptr, ptr + precompiled_file->get_size() / sizeof(uint32_t) };
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 		source_hash = 0;
+#endif
 		return true;
 	}
 
@@ -85,7 +88,7 @@ bool ShaderTemplate::init()
 	compiler = std::make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
 	compiler->set_target(device->get_device_features().supports_spirv_1_4 ?
 	                     Granite::Target::Vulkan11_Spirv14 : Granite::Target::Vulkan11);
-	if (!compiler->set_source_from_file(path, force_stage))
+	if (!compiler->set_source_from_file(path, Granite::Stage(force_stage)))
 		return false;
 	compiler->set_include_directories(&include_directories);
 	if (!compiler->preprocess())
@@ -138,11 +141,13 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(
 					LOGW("Got precompiled SPIR-V hash for variant, but it does not exist, is Fossilize archive incomplete?\n");
 					precompiled_spirv = nullptr;
 				}
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 				else if (source_hash != precompiled_spirv->source_hash)
 				{
 					LOGW("Source hash is invalidated for %s, recompiling.\n", path.c_str());
 					precompiled_spirv = nullptr;
 				}
+#endif
 			}
 		}
 
@@ -155,7 +160,9 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(
 			if (!static_shader.empty())
 			{
 				variant->spirv = static_shader;
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 				update_variant_cache(*variant);
+#endif
 			}
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 			else if (compiler)
@@ -270,7 +277,7 @@ void ShaderTemplate::recompile()
 	auto newcompiler = std::make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
 	newcompiler->set_target(device->get_device_features().supports_spirv_1_4 ?
 	                        Granite::Target::Vulkan11_Spirv14 : Granite::Target::Vulkan11);
-	if (!newcompiler->set_source_from_file(path, force_stage))
+	if (!newcompiler->set_source_from_file(path, Granite::Stage(force_stage)))
 		return;
 	newcompiler->set_include_directories(&include_directories);
 	if (!newcompiler->preprocess())
@@ -545,7 +552,7 @@ ShaderProgramVariant *ShaderProgram::register_variant(Shader * const *precompile
 
 ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 {
-	auto *tmpl = get_template(compute, Granite::Stage::Compute);
+	auto *tmpl = get_template(compute, ShaderStage::Compute);
 	if (!tmpl)
 		return nullptr;
 
@@ -559,7 +566,7 @@ ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 	return ret;
 }
 
-ShaderTemplate *ShaderManager::get_template(const std::string &path, Granite::Stage force_stage)
+ShaderTemplate *ShaderManager::get_template(const std::string &path, ShaderStage force_stage)
 {
 	Hasher hasher;
 	hasher.string(path);
@@ -590,8 +597,8 @@ ShaderTemplate *ShaderManager::get_template(const std::string &path, Granite::St
 
 ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const std::string &fragment)
 {
-	auto *vert_tmpl = get_template(vertex, Granite::Stage::Vertex);
-	auto *frag_tmpl = get_template(fragment, Granite::Stage::Fragment);
+	auto *vert_tmpl = get_template(vertex, ShaderStage::Vertex);
+	auto *frag_tmpl = get_template(fragment, ShaderStage::Fragment);
 	if (!vert_tmpl || !frag_tmpl)
 		return nullptr;
 
@@ -610,9 +617,9 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &task, const s
 {
 	ShaderTemplate *task_tmpl = nullptr;
 	if (!task.empty())
-		task_tmpl = get_template(task, Granite::Stage::Task);
-	auto *mesh_tmpl = get_template(mesh, Granite::Stage::Mesh);
-	auto *frag_tmpl = get_template(fragment, Granite::Stage::Fragment);
+		task_tmpl = get_template(task, ShaderStage::Task);
+	auto *mesh_tmpl = get_template(mesh, ShaderStage::Mesh);
+	auto *frag_tmpl = get_template(fragment, ShaderStage::Fragment);
 	if (!mesh_tmpl || !frag_tmpl)
 		return nullptr;
 

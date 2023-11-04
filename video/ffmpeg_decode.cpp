@@ -534,6 +534,7 @@ struct VideoDecoder::Impl
 
 	double get_estimated_audio_playback_timestamp(double elapsed_time);
 	double latch_estimated_video_playback_timestamp(double elapsed_time, double target_latency);
+	void latch_estimated_audio_playback_timestamp(double pts);
 	double get_audio_buffering_duration();
 	double get_last_video_buffering_pts();
 	unsigned get_num_ready_video_frames();
@@ -2196,6 +2197,35 @@ double VideoDecoder::Impl::get_audio_buffering_duration()
 #endif
 }
 
+void VideoDecoder::Impl::latch_estimated_audio_playback_timestamp(double pts)
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (!stream)
+		return;
+
+	auto delta = float(pts - get_estimated_audio_playback_timestamp_raw());
+
+	if (delta > 0.25f)
+	{
+		// Speed up, audio buffer is too large.
+		stream->set_rate_factor(1.005f);
+	}
+	else if (delta < -0.25f)
+	{
+		// Slow down.
+		stream->set_rate_factor(0.995f);
+	}
+	else
+	{
+		// This is inaudible in practice. Practical distortion will be much lower than outer limits.
+		// And should be less than 1 cent on average.
+		stream->set_rate_factor(1.0f + delta * 0.02f);
+	}
+#else
+	(void)target_buffer_time;
+#endif
+}
+
 void VideoDecoder::Impl::latch_audio_buffering_target(double target_buffer_time)
 {
 #ifdef HAVE_GRANITE_AUDIO
@@ -2221,6 +2251,8 @@ void VideoDecoder::Impl::latch_audio_buffering_target(double target_buffer_time)
 		// And should be less than 1 cent on average.
 		stream->set_rate_factor(1.0f + delta * 0.02f);
 	}
+#else
+	(void)target_buffer_time;
 #endif
 }
 
@@ -2278,7 +2310,7 @@ double VideoDecoder::Impl::latch_estimated_video_playback_timestamp(double elaps
 		}
 	}
 
-	latch_audio_buffering_target(smooth_pts);
+	latch_estimated_audio_playback_timestamp(smooth_pts);
 	return smooth_pts;
 }
 

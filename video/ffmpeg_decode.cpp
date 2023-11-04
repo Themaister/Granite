@@ -2222,7 +2222,7 @@ void VideoDecoder::Impl::latch_estimated_audio_playback_timestamp(double pts)
 		stream->set_rate_factor(1.0f + delta * 0.02f);
 	}
 #else
-	(void)target_buffer_time;
+	(void)pts;
 #endif
 }
 

@@ -69,6 +69,7 @@ struct ShaderTemplateVariant : public Util::IntrusiveHashMapEnabled<ShaderTempla
 	Util::Hash spirv_hash = 0;
 	std::vector<uint32_t> spirv;
 	std::vector<std::pair<std::string, int>> defines;
+	Shader *precompiled_shader = nullptr;
 	unsigned instance = 0;
 
 	Vulkan::Shader *resolve(Vulkan::Device &device) const;
@@ -78,13 +79,14 @@ class ShaderTemplate : public Util::IntrusiveHashMapEnabled<ShaderTemplate>
 {
 public:
 	ShaderTemplate(Device *device, const std::string &shader_path,
-	               Granite::Stage force_stage, MetaCache &cache,
+	               ShaderStage force_stage, MetaCache &cache,
 	               Util::Hash path_hash, const std::vector<std::string> &include_directories);
 	~ShaderTemplate();
 
 	bool init();
 
-	const ShaderTemplateVariant *register_variant(const std::vector<std::pair<std::string, int>> *defines = nullptr);
+	const ShaderTemplateVariant *register_variant(const std::vector<std::pair<std::string, int>> *defines,
+	                                              Shader *precompiled_shader);
 	void register_dependencies(ShaderManager &manager);
 
 	Util::Hash get_path_hash() const
@@ -100,7 +102,7 @@ public:
 private:
 	Device *device;
 	std::string path;
-	Granite::Stage force_stage;
+	ShaderStage force_stage;
 	MetaCache &cache;
 	Util::Hash path_hash = 0;
 	std::vector<uint32_t> static_shader;
@@ -169,10 +171,29 @@ public:
 	ShaderProgramVariant *register_variant(const std::vector<std::pair<std::string, int>> &defines,
 	                                       const ImmutableSamplerBank *sampler_bank = nullptr);
 
+	ShaderProgramVariant *register_precompiled_variant(
+			Shader *vert, Shader *frag,
+			const std::vector<std::pair<std::string, int>> &defines,
+			const ImmutableSamplerBank *sampler_bank = nullptr);
+
+	ShaderProgramVariant *register_precompiled_variant(
+			Shader *comp,
+			const std::vector<std::pair<std::string, int>> &defines,
+			const ImmutableSamplerBank *sampler_bank = nullptr);
+
+	ShaderProgramVariant *register_precompiled_variant(
+			Shader *task, Shader *mesh, Shader *frag,
+			const std::vector<std::pair<std::string, int>> &defines,
+			const ImmutableSamplerBank *sampler_bank = nullptr);
+
 private:
 	Device *device;
 	ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	VulkanCacheReadWrite<ShaderProgramVariant> variant_cache;
+
+	ShaderProgramVariant *register_variant(Shader * const *precompiled_shaders,
+	                                       const std::vector<std::pair<std::string, int>> &defines,
+	                                       const ImmutableSamplerBank *sampler_bank);
 };
 
 class ShaderManager
@@ -218,7 +239,7 @@ private:
 	VulkanCache<ShaderProgram> programs;
 	std::vector<std::string> include_directories;
 
-	ShaderTemplate *get_template(const std::string &source, Granite::Stage force_stage);
+	ShaderTemplate *get_template(const std::string &source, ShaderStage force_stage);
 
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	std::unordered_map<std::string, std::unordered_set<ShaderTemplate *>> dependees;

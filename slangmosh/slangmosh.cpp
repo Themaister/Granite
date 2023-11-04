@@ -44,7 +44,7 @@ using namespace Granite;
 
 static void print_help()
 {
-	LOGE("slangmosh <desc.json> [-O] [--strip] [--output header.hpp] [--help] [--output-interface interface.hpp]\n");
+	LOGE("slangmosh <desc.json> [-O] [--strip] [--spv14] [--output header.hpp] [--help] [--output-interface interface.hpp]\n");
 }
 
 struct ShaderVariant
@@ -162,15 +162,38 @@ size_t Shader::total_permutations() const
 	return perm;
 }
 
-static std::vector<Shader> parse_shaders(const std::string &path)
+struct ShaderReference
 {
-	std::vector<Shader> parsed_shaders;
+	std::string name;
+	std::string manager_path;
+};
+
+struct ProgramVariant
+{
+	std::vector<std::pair<std::string, int>> defines;
+};
+
+struct Program
+{
+	ShaderReference vert, mesh, task, frag, comp;
+	std::vector<ProgramVariant> variants;
+};
+
+struct ParseResult
+{
+	std::vector<Shader> shaders;
+	std::vector<Program> programs;
+};
+
+static ParseResult parse_shaders(const std::string &path)
+{
+	ParseResult parsed;
 
 	std::string input_json;
 	if (!GRANITE_FILESYSTEM()->read_file_to_string(path, input_json))
 	{
 		LOGE("Failed to read file: %s.\n", path.c_str());
-		return parsed_shaders;
+		return parsed;
 	}
 
 	rapidjson::Document doc;
@@ -179,7 +202,7 @@ static std::vector<Shader> parse_shaders(const std::string &path)
 	if (doc.HasParseError())
 	{
 		LOGE("Failed to parse JSON.\n");
-		return parsed_shaders;
+		return parsed;
 	}
 
 	std::vector<std::string> base_include;
@@ -224,13 +247,108 @@ static std::vector<Shader> parse_shaders(const std::string &path)
 				parsed_shader.include.emplace_back(Path::relpath(path, include_itr->GetString()));
 		}
 
-		parsed_shaders.push_back(std::move(parsed_shader));
+		parsed.shaders.push_back(std::move(parsed_shader));
 	}
 
-	return parsed_shaders;
+	if (doc.HasMember("programs"))
+	{
+		auto &programs = doc["programs"];
+
+		const auto parse_reference = [](const rapidjson::Value &v) {
+			ShaderReference ref;
+			ref.name = v["name"].GetString();
+			ref.manager_path = v["manager_path"].GetString();
+			return ref;
+		};
+
+		for (auto itr = programs.Begin(); itr != programs.End(); ++itr)
+		{
+			Program prog;
+			if (itr->HasMember("vert"))
+				prog.vert = parse_reference((*itr)["vert"]);
+			if (itr->HasMember("task"))
+				prog.task = parse_reference((*itr)["task"]);
+			if (itr->HasMember("mesh"))
+				prog.mesh = parse_reference((*itr)["mesh"]);
+			if (itr->HasMember("frag"))
+				prog.frag = parse_reference((*itr)["frag"]);
+			if (itr->HasMember("comp"))
+				prog.comp = parse_reference((*itr)["comp"]);
+
+			if (itr->HasMember("variants"))
+			{
+				auto &v = (*itr)["variants"];
+				for (auto variant_itr = v.Begin(); variant_itr != v.End(); ++variant_itr)
+				{
+					ProgramVariant program_variant;
+					for (auto define_itr = variant_itr->Begin(); define_itr != variant_itr->End(); ++define_itr)
+					{
+						program_variant.defines.emplace_back((*define_itr)["define"].GetString(),
+						                                     (*define_itr)["value"].GetInt());
+					}
+					prog.variants.push_back(std::move(program_variant));
+				}
+			}
+			parsed.programs.push_back(std::move(prog));
+		}
+	}
+
+	return parsed;
 }
 
-static std::string generate_header(const std::vector<Shader> &shaders,
+static const Shader *find_shader(const ParseResult &parsed, const std::string &name)
+{
+	auto itr = std::find_if(parsed.shaders.begin(), parsed.shaders.end(), [&name](const Shader &s) {
+		return s.name == name;
+	});
+
+	if (itr == parsed.shaders.end())
+	{
+		LOGE("Shader \"%s\" does not exist.\n", name.c_str());
+		return nullptr;
+	}
+
+	return &*itr;
+}
+
+static std::string resolve_shader(const ProgramVariant &variant, const Shader *shader)
+{
+	if (!shader)
+		return "{}";
+
+	std::string str = "this->" + shader->name;
+	for (auto &shader_variant : shader->variants)
+	{
+		// This define is already collapsed, so ignore it.
+		if (shader_variant.resolve)
+			continue;
+
+		auto itr = std::find_if(variant.defines.begin(), variant.defines.end(),
+		                        [&shader_variant](const std::pair<std::string, int> &define) {
+			                        return define.first == shader_variant.define;
+		                        });
+
+		int value = 0;
+
+		if (itr != variant.defines.end())
+		{
+			if (itr->second >= int(shader_variant.count) || itr->second < 0)
+			{
+				LOGE("Shader \"%s\" requires define \"%s\" in range [0, %u), but program variant requires value = %d.\n",
+					 shader->name.c_str(), shader_variant.define.c_str(),
+					 shader_variant.count, itr->second);
+				return {};
+			}
+
+			value = itr->second;
+		}
+		str += "[" + std::to_string(value) + "]";
+	}
+
+	return str;
+}
+
+static std::string generate_header(const ParseResult &parsed,
                                    const std::vector<std::vector<std::vector<uint32_t>>> &spirv_for_shaders_and_variants,
                                    const std::string &generated_namespace, bool interface_header)
 {
@@ -350,7 +468,7 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 		str << "template <typename Program = Vulkan::Program *, typename Shader = Vulkan::Shader *>\n";
 		str << "struct Shaders\n{\n";
 
-		for (auto &shader: shaders)
+		for (auto &shader : parsed.shaders)
 		{
 			str << "\t";
 			if (shader.compute)
@@ -375,10 +493,11 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 		str << "template <typename Program, typename Shader>\n";
 		str << "template <typename Device, typename Layout, typename Resolver>\n";
 		str << "Shaders<Program, Shader>::Shaders(Device &device, Layout &layout, const Resolver &resolver)\n{\n";
+		str << "\t(void)resolver;\n";
 
-		for (size_t i = 0; i < shaders.size(); i++)
+		for (size_t i = 0; i < parsed.shaders.size(); i++)
 		{
-			auto &shader = shaders[i];
+			auto &shader = parsed.shaders[i];
 
 			if (!shader.variants.empty())
 			{
@@ -443,6 +562,96 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 				    variant_to_output[i][0].shader_size * sizeof(uint32_t) << ", &layout);\n";
 			}
 		}
+
+		for (auto &program : parsed.programs)
+		{
+			str << "\t{\n";
+			const char *kind = program.comp.name.empty() ? "graphics" : "compute";
+			str << "\t\tauto *program = device.get_shader_manager().register_" << kind << "(";
+
+			const Shader *shaders[3] = {};
+			unsigned shader_count = 0;
+			unsigned start_verify_index = 0;
+
+			if (!program.comp.name.empty())
+			{
+				str << '\"' << program.comp.manager_path << "\");\n";
+				shaders[shader_count] = find_shader(parsed, program.comp.name);
+				if (!shaders[shader_count])
+					return {};
+				shader_count++;
+			}
+			else if (!program.mesh.name.empty())
+			{
+				str << '\"' << program.task.manager_path << "\", ";
+				str << '\"' << program.mesh.manager_path << "\", ";
+				str << '\"' << program.frag.manager_path << "\");\n";
+
+				if (!program.task.name.empty())
+				{
+					shaders[shader_count++] = find_shader(parsed, program.task.name);
+				}
+				else
+				{
+					shader_count++;
+					start_verify_index = shader_count;
+				}
+
+				shaders[shader_count++] = find_shader(parsed, program.mesh.name);
+				shaders[shader_count++] = find_shader(parsed, program.frag.name);
+			}
+			else
+			{
+				str << '\"' << program.vert.manager_path << "\", ";
+				str << '\"' << program.frag.manager_path << "\");\n";
+				shaders[shader_count++] = find_shader(parsed, program.vert.name);
+				shaders[shader_count++] = find_shader(parsed, program.frag.name);
+			}
+
+			for (unsigned i = start_verify_index; i < shader_count; i++)
+				if (!shaders[i])
+					return {};
+
+			if (!program.variants.empty())
+			{
+				for (auto &variant : program.variants)
+				{
+					str << "\t\tprogram->register_precompiled_variant(";
+
+					for (unsigned i = 0; i < shader_count; i++)
+					{
+						auto resolved = resolve_shader(variant, shaders[i]);
+						if (shaders[i] && resolved.empty())
+							return {};
+						str << resolved << ", ";
+					}
+					str << "{";
+					for (auto &define : variant.defines)
+					{
+						str << "{\"" << define.first << "\", " << define.second << "}";
+						if (&define != &variant.defines.back())
+							str << ", ";
+					}
+					str << "}";
+					str << ");\n";
+				}
+			}
+			else
+			{
+				str << "\t\tprogram->register_precompiled_variant(";
+				for (unsigned i = 0; i < shader_count; i++)
+				{
+					auto resolved = resolve_shader({}, shaders[i]);
+					if (shaders[i] && resolved.empty())
+						return {};
+					str << resolved << ", ";
+				}
+				str << "{});\n";
+			}
+
+			str << "\t}\n";
+		}
+
 		str << "}\n";
 		str << "}\n";
 	}
@@ -459,12 +668,14 @@ static int main_inner(int argc, char **argv)
 	std::string output_interface_path;
 	bool strip = false;
 	bool opt = false;
+	Target target = Target::Vulkan11;
 
 	CLICallbacks cbs;
 	cbs.add("--help", [](CLIParser &parser) { parser.end(); });
 	cbs.add("--output", [&](CLIParser &parser) { output_path = parser.next_string(); });
 	cbs.add("-O", [&](CLIParser &) { opt = true; });
 	cbs.add("--strip", [&](CLIParser &) { strip = true; });
+	cbs.add("--spv14", [&](CLIParser &) { target = Target::Vulkan11_Spirv14; });
 	cbs.add("--namespace", [&](CLIParser &parser) { generated_namespace = parser.next_string(); });
 	cbs.add("--output-interface", [&](CLIParser &parser) { output_interface_path = parser.next_string(); });
 	cbs.default_handler = [&](const char *str) { input_path = str; };
@@ -485,22 +696,22 @@ static int main_inner(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	auto parsed_shaders = parse_shaders(input_path);
-	if (parsed_shaders.empty())
+	auto parsed = parse_shaders(input_path);
+	if (parsed.shaders.empty())
 	{
 		LOGE("Failed to parse shaders.\n");
 		return EXIT_FAILURE;
 	}
 
 	std::vector<std::vector<std::vector<uint32_t>>> spirv_for_shaders_and_variants;
-	spirv_for_shaders_and_variants.resize(parsed_shaders.size());
+	spirv_for_shaders_and_variants.resize(parsed.shaders.size());
 
-	for (size_t shader_index = 0; shader_index < parsed_shaders.size(); shader_index++)
+	for (size_t shader_index = 0; shader_index < parsed.shaders.size(); shader_index++)
 	{
 		auto &shader_variants = spirv_for_shaders_and_variants[shader_index];
-		auto &parsed_shader = parsed_shaders[shader_index];
+		auto &parsed_shader = parsed.shaders[shader_index];
 		shader_variants.resize(parsed_shader.total_permutations());
-		parsed_shader.dispatch_variants(shader_variants.data(), Target::Vulkan11, opt, strip);
+		parsed_shader.dispatch_variants(shader_variants.data(), target, opt, strip);
 	}
 
 	GRANITE_THREAD_GROUP()->wait_idle();
@@ -510,8 +721,8 @@ static int main_inner(int argc, char **argv)
 			if (perm.empty())
 				return EXIT_FAILURE;
 
-	auto interface_code = generate_header(parsed_shaders, spirv_for_shaders_and_variants, generated_namespace, true);
-	auto generated_code = generate_header(parsed_shaders, spirv_for_shaders_and_variants, generated_namespace, false);
+	auto interface_code = generate_header(parsed, spirv_for_shaders_and_variants, generated_namespace, true);
+	auto generated_code = generate_header(parsed, spirv_for_shaders_and_variants, generated_namespace, false);
 
 	if (output_interface_path.empty())
 	{

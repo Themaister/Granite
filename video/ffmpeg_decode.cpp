@@ -2229,7 +2229,7 @@ double VideoDecoder::Impl::get_last_video_buffering_pts()
 	double last_pts = -1.0;
 	std::unique_lock<std::mutex> holder{lock};
 	for (auto &q : video_queue)
-		if (q.state == ImageState::Ready)
+		if (q.state == ImageState::Ready || q.state == ImageState::Acquired)
 			if (q.pts > last_pts)
 				last_pts = q.pts;
 	return last_pts;

@@ -377,7 +377,7 @@ if (TARGET granite-renderer)
     endif()
 endif()
 
-if (GRANITE_TOOLS)
+if (GRANITE_TOOLS AND GRANITE_VULKAN_SPIRV_CROSS AND GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER)
     add_subdirectory(slangmosh)
 endif()
 

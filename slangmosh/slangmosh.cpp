@@ -44,7 +44,7 @@ using namespace Granite;
 
 static void print_help()
 {
-	LOGE("slangmosh <desc.json> [-O] [--strip] [--output header.hpp] [--help] [--output-interface interface.hpp]\n");
+	LOGE("slangmosh <desc.json> [-O] [--strip] [--spv14] [--output header.hpp] [--help] [--output-interface interface.hpp]\n");
 }
 
 struct ShaderVariant
@@ -460,12 +460,14 @@ static int main_inner(int argc, char **argv)
 	std::string output_interface_path;
 	bool strip = false;
 	bool opt = false;
+	Target target = Target::Vulkan11;
 
 	CLICallbacks cbs;
 	cbs.add("--help", [](CLIParser &parser) { parser.end(); });
 	cbs.add("--output", [&](CLIParser &parser) { output_path = parser.next_string(); });
 	cbs.add("-O", [&](CLIParser &) { opt = true; });
 	cbs.add("--strip", [&](CLIParser &) { strip = true; });
+	cbs.add("--spv14", [&](CLIParser &) { target = Target::Vulkan11_Spirv14; });
 	cbs.add("--namespace", [&](CLIParser &parser) { generated_namespace = parser.next_string(); });
 	cbs.add("--output-interface", [&](CLIParser &parser) { output_interface_path = parser.next_string(); });
 	cbs.default_handler = [&](const char *str) { input_path = str; };
@@ -501,7 +503,7 @@ static int main_inner(int argc, char **argv)
 		auto &shader_variants = spirv_for_shaders_and_variants[shader_index];
 		auto &parsed_shader = parsed_shaders[shader_index];
 		shader_variants.resize(parsed_shader.total_permutations());
-		parsed_shader.dispatch_variants(shader_variants.data(), Target::Vulkan11, opt, strip);
+		parsed_shader.dispatch_variants(shader_variants.data(), target, opt, strip);
 	}
 
 	GRANITE_THREAD_GROUP()->wait_idle();

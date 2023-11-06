@@ -1023,7 +1023,11 @@ bool VideoEncoder::Impl::init_video_codec()
 			// Codec delay. We want blocking realtime.
 			av_dict_set_int(&opts, "delay", 0, 0);
 			if (options.low_latency)
+			{
 				av_dict_set_int(&opts, "zerolatency", 1, 0);
+				av_dict_set(&opts, "tune", "ull", 0);
+				av_dict_set(&opts, "rc", "cbr", 0);
+			}
 		}
 
 		if ((is_x264 || is_nvenc) && options.low_latency)

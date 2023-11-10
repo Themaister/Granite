@@ -1025,8 +1025,15 @@ bool VideoEncoder::Impl::init_video_codec()
 			if (options.low_latency)
 			{
 				av_dict_set_int(&opts, "zerolatency", 1, 0);
-				av_dict_set(&opts, "tune", "ull", 0);
 				av_dict_set(&opts, "rc", "cbr", 0);
+				av_dict_set(&opts, "preset", "p1", 0);
+				av_dict_set(&opts, "tune", "ll", 0);
+			}
+			else
+			{
+				av_dict_set(&opts, "rc", "vbr", 0);
+				av_dict_set(&opts, "tune", "hq", 0);
+				av_dict_set(&opts, "preset", "p7", 0);
 			}
 		}
 

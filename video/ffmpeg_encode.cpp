@@ -1051,6 +1051,7 @@ bool VideoEncoder::Impl::init_video_codec()
 		{
 			av_dict_set_int(&opts, "intra-refresh", 1, 0);
 			av_dict_set_int(&opts, "forced-idr", 1, 0);
+			video.av_ctx->refs = 1;
 		}
 	}
 	else

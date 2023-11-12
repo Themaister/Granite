@@ -702,10 +702,20 @@ bool VideoEncoder::Impl::init_audio_codec()
 			// Don't care about streaming platform limitations, so just use the ideal format, ... uncompressed!
 			// It's the only true low latency solution. 20ms packets is too much :<
 			// Uncompressed stereo audio is about 1.5 mbit/s, no big deal for our purposes.
-			codec_id = AV_CODEC_ID_PCM_S16LE;
-			sample_fmt = AV_SAMPLE_FMT_S16;
 
-			pyro_codec.audio_codec = PYRO_AUDIO_CODEC_RAW_S16LE;
+			if (av_format_ctx_local)
+			{
+				codec_id = AV_CODEC_ID_OPUS;
+				sample_fmt = AV_SAMPLE_FMT_FLT;
+				pyro_codec.audio_codec = PYRO_AUDIO_CODEC_OPUS;
+			}
+			else
+			{
+				codec_id = AV_CODEC_ID_PCM_S16LE;
+				sample_fmt = AV_SAMPLE_FMT_S16;
+				pyro_codec.audio_codec = PYRO_AUDIO_CODEC_RAW_S16LE;
+			}
+
 			pyro_codec.channels = 2;
 			if (options.realtime)
 				pyro_codec.rate = uint32_t(audio_stream->get_sample_rate());

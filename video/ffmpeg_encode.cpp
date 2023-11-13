@@ -91,6 +91,7 @@ struct VideoEncoder::YCbCrPipelineData
 		float base_uv_chroma[2];
 		uint32_t luma_dispatch[2];
 		uint32_t chroma_dispatch[2];
+		float dither_strength;
 	} constants = {};
 
 	AVFrame *hw_frame = nullptr;
@@ -1482,14 +1483,22 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		uint32_t width, height;
 		float base_u, base_v;
 		float inv_width, inv_height;
+		float input_width, input_height;
+		float inv_input_width, inv_input_height;
+		float dither_strength;
 	} push = {};
 
 	push.width = impl->video.av_ctx->width;
 	push.height = impl->video.av_ctx->height;
 	push.inv_width = pipeline.constants.inv_resolution_luma[0];
 	push.inv_height = pipeline.constants.inv_resolution_luma[1];
+	push.input_width = float(view.get_view_width());
+	push.input_height = float(view.get_view_height());
+	push.inv_input_width = 1.0f / push.input_width;
+	push.inv_input_height = 1.0f / push.input_height;
 	push.base_u = pipeline.constants.base_uv_luma[0];
 	push.base_v = pipeline.constants.base_uv_luma[1];
+	push.dither_strength = pipeline.constants.dither_strength;
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch(pipeline.constants.luma_dispatch[0], pipeline.constants.luma_dispatch[1], 1);
 
@@ -1597,12 +1606,14 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 		luma_format = VK_FORMAT_R16_UNORM;
 		chroma_format = VK_FORMAT_R16G16_UNORM;
 		pixel_size = 2;
+		pipeline.constants.dither_strength = 1.0f / 1023.0f;
 	}
 	else
 	{
 		luma_format = VK_FORMAT_R8_UNORM;
 		chroma_format = VK_FORMAT_R8G8_UNORM;
 		pixel_size = 1;
+		pipeline.constants.dither_strength = 1.0f / 255.0f;
 	}
 
 	auto image_info = Vulkan::ImageCreateInfo::immutable_2d_image(impl->options.width, impl->options.height, luma_format);

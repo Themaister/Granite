@@ -942,8 +942,10 @@ bool VideoEncoder::Impl::init_video_codec()
 
 		// NVENC B-frames break without this since it computes DTS by subtracting PTS by ticks_per_frame * N factor.
 		DISABLE_DEPRECATION_WARNINGS
-#if defined(FF_API_TICKS_PER_FRAME) && FF_API_TICKS_PER_FRAME
+#if !defined(FF_API_TICKS_PER_FRAME) || FF_API_TICKS_PER_FRAME
 		video.av_ctx->ticks_per_frame = 16;
+#else
+#warning "Not using av_ctx->ticks_per_frame, NVENC b-frames will break!"
 #endif
 		ENABLE_DEPRECATION_WARNINGS
 	}

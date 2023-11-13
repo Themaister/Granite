@@ -1470,10 +1470,10 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	if (Vulkan::format_is_srgb(view.get_format()))
 	{
 		cmd.set_unorm_texture(0, 0, view);
-		cmd.set_sampler(0, 0, Vulkan::StockSampler::LinearClamp);
+		cmd.set_sampler(0, 0, Vulkan::StockSampler::NearestClamp);
 	}
 	else
-		cmd.set_texture(0, 0, view, Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(0, 0, view, Vulkan::StockSampler::NearestClamp);
 
 	cmd.set_storage_texture(0, 1, wrapped_planes[0] ? *wrapped_planes[0] : pipeline.luma->get_view());
 	cmd.set_storage_texture(0, 2, pipeline.chroma_full->get_view());

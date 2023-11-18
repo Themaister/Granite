@@ -51,14 +51,7 @@ static BOOL CALLBACK enum_callback(const DIDEVICEINSTANCEA *inst, void *p)
 
 BOOL XInputManager::di_enum_callback(const DIDEVICEINSTANCEA *inst)
 {
-	// Different PIDs for wireless dongle and cabled connection.
-	if (inst->guidProduct.Data1 != 195036492 && inst->guidProduct.Data1 != 164365644)
-	{
-		LOGI("Enumerated DI input device that is not PS4 controller. Bailing ...\n");
-		return DIENUM_CONTINUE;
-	}
-
-	LOGI("Enumerated PS4 controller.\n");
+	LOGI("Enumerated DI controller.\n");
 
 	unsigned index = trailing_ones(active_pads);
 	if (index >= 4)

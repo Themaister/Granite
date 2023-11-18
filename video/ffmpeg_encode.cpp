@@ -536,7 +536,6 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 		// This helps avoid DTS issues in misc hardware encoders since they treat DTS as just subtracted reordered PTS,
 		// or something weird like that ...
 		video.av_frame->pts = encode_video_pts;
-		video.av_frame->duration = video.ticks_per_frame;
 		encode_video_pts += video.ticks_per_frame;
 	}
 	else
@@ -610,16 +609,11 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 			break;
 		}
 
-		if (options.realtime)
-			if (&stream == &video)
-				stream.av_pkt->duration = video.ticks_per_frame;
-
 		if (av_format_ctx_local)
 		{
 			auto *pkt_clone = av_packet_clone(stream.av_pkt);
 			pkt_clone->pts = stream.av_pkt->pts;
 			pkt_clone->dts = stream.av_pkt->dts;
-			pkt_clone->duration = stream.av_pkt->duration;
 			pkt_clone->stream_index = stream.av_stream_local->index;
 			av_packet_rescale_ts(pkt_clone, stream.av_ctx->time_base, stream.av_stream_local->time_base);
 			{

@@ -89,6 +89,19 @@ struct pyro_ping_state
 	uint16_t seq;
 };
 
+typedef enum pyro_kick_state_bits
+{
+	PYRO_KICK_STATE_VIDEO_BIT = 1 << 0,
+	PYRO_KICK_STATE_AUDIO_BIT = 1 << 1,
+	PYRO_KICK_STATE_GAMEPAD_BIT = 1 << 2
+} pyro_kick_state_bits;
+typedef uint32_t pyro_kick_state_flags;
+
+struct pyro_kick_state
+{
+	pyro_kick_state_flags flags;
+};
+
 #define PYRO_MAX_UDP_DATAGRAM_SIZE (PYRO_MAX_PAYLOAD_SIZE + sizeof(struct pyro_codec_parameters))
 
 // TCP: Server to client
@@ -105,7 +118,7 @@ typedef enum pyro_message_type
 	PYRO_MESSAGE_COOKIE = PYRO_MAKE_MESSAGE_TYPE(4, sizeof(uint64_t)),
 	// Sent by client: Replies: CODEC_PARAMETERS if UDP cookie was received, NAK if not yet received or invalid.
 	// AGAIN is sent if UDP client is acknowledged, but stream is not ready yet (i.e. codec parameters are not known yet).
-	PYRO_MESSAGE_KICK = PYRO_MAKE_MESSAGE_TYPE(5, 0),
+	PYRO_MESSAGE_KICK = PYRO_MAKE_MESSAGE_TYPE(5, sizeof(struct pyro_kick_state)),
 	// Returns nothing. Must be received by server every 5 seconds or connection is dropped.
 	PYRO_MESSAGE_PROGRESS = PYRO_MAKE_MESSAGE_TYPE(6, sizeof(struct pyro_progress_report)),
 	PYRO_MESSAGE_CODEC_PARAMETERS = PYRO_MAKE_MESSAGE_TYPE(7, sizeof(struct pyro_codec_parameters)),

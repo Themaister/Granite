@@ -75,7 +75,7 @@ BOOL XInputManager::di_enum_callback(const DIDEVICEINSTANCEA *inst)
 	}
 
 	active_pads |= 1u << index;
-	tracker->enable_joypad(index);
+	tracker->enable_joypad(index, 0, 0 /* todo */);
 	return DIENUM_CONTINUE;
 }
 
@@ -116,7 +116,7 @@ void XInputManager::try_polling_device(unsigned index)
 	memset(&new_state, 0, sizeof(new_state));
 	if (pXInputGetState(index, &new_state) != ERROR_DEVICE_NOT_CONNECTED)
 	{
-		tracker->enable_joypad(index);
+		tracker->enable_joypad(index, 0, 0 /* todo */);
 		create_events(index, new_state);
 		active_pads |= 1u << index;
 	}
@@ -136,7 +136,7 @@ bool XInputManager::poll()
 		{
 			if (FAILED(pDevice[i]->Poll()) && FAILED(pDevice[i]->Acquire()) && FAILED(pDevice[i]->Poll()))
 			{
-				tracker->disable_joypad(i);
+				tracker->disable_joypad(i, 0, 0);
 				active_pads &= ~(1u << i);
 				pDevice[i]->Release();
 				pDevice[i] = nullptr;
@@ -207,7 +207,7 @@ bool XInputManager::poll()
 				create_events(i, new_state);
 			else
 			{
-				tracker->disable_joypad(i);
+				tracker->disable_joypad(i, 0, 0);
 				memset(&pads[i], 0, sizeof(pads[i]));
 				active_pads &= ~(1u << i);
 			}

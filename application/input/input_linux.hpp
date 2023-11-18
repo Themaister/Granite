@@ -77,6 +77,7 @@ private:
 	{
 		unsigned index = 0;
 		JoyaxisInfo axis_x, axis_y, axis_rx, axis_ry, axis_z, axis_rz;
+		uint32_t vid = 0, pid = 0;
 	};
 
 	struct Device;
@@ -108,7 +109,7 @@ private:
 	void init_key_table();
 	Key keyboard_to_key[KEY_MAX];
 
-	void setup_joypad_remapper(int fd, unsigned index);
+	void setup_joypad_remapper(unsigned index, uint32_t vid, uint32_t pid);
 
 	// Enumerating udev devices takes a long time, do it async.
 	struct UdevDeleter { inline void operator()(udev_enumerate *e) { if (e) udev_enumerate_unref(e); } };

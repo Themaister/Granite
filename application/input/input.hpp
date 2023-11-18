@@ -137,6 +137,8 @@ struct JoypadState
 
 	float axis[Util::ecast(JoypadAxis::Count)] = {};
 	uint32_t button_mask = 0;
+	uint32_t vid = 0;
+	uint32_t pid = 0;
 };
 static_assert(Util::ecast(JoypadKey::Count) <= 32, "Cannot have more than 32 joypad buttons.");
 
@@ -241,8 +243,8 @@ public:
 		mouse_speed_y = speed_y;
 	}
 
-	void enable_joypad(unsigned index);
-	void disable_joypad(unsigned index);
+	void enable_joypad(unsigned index, uint32_t vid, uint32_t pid);
+	void disable_joypad(unsigned index, uint32_t vid, uint32_t pid);
 	int find_vacant_joypad_index() const;
 
 	void set_touch_resolution(unsigned width, unsigned height)
@@ -292,8 +294,8 @@ class JoypadConnectionEvent : public Granite::Event
 {
 public:
 	GRANITE_EVENT_TYPE_DECL(JoypadConnectionEvent)
-	JoypadConnectionEvent(unsigned index_, bool connected_)
-	    : index(index_), connected(connected_)
+	JoypadConnectionEvent(unsigned index_, bool connected_, uint32_t vid_, uint32_t pid_)
+	    : index(index_), connected(connected_), vid(vid_), pid(pid_)
 	{
 	}
 
@@ -307,9 +309,20 @@ public:
 		return connected;
 	}
 
+	uint32_t get_vid() const
+	{
+		return vid;
+	}
+
+	uint32_t get_pid() const
+	{
+		return pid;
+	}
+
 private:
 	unsigned index;
 	bool connected;
+	uint32_t vid, pid;
 };
 
 class TouchGestureEvent : public Granite::Event

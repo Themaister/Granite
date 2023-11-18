@@ -129,22 +129,10 @@ const char *LinuxInputManager::get_device_type_string(DeviceType type)
 	return nullptr;
 }
 
-void LinuxInputManager::setup_joypad_remapper(int fd, unsigned index)
+void LinuxInputManager::setup_joypad_remapper(unsigned index, uint32_t vid, uint32_t pid)
 {
 	auto &remapper = tracker->get_joypad_remapper(index);
 	remapper.reset();
-
-	char ident[1024];
-	if (ioctl(fd, EVIOCGNAME(sizeof(ident)), ident) < 0)
-		return;
-
-	LOGI("Plugged joypad: %s\n", ident);
-
-	input_id id;
-	if (ioctl(fd, EVIOCGID, &id) < 0)
-		return;
-
-	LOGI("    VID: 0x%x, PID: 0x%x\n", id.vendor, id.product);
 
 	// TODO: Make this data-driven.
 	// This seems to be the "standard" layout however. It's the same for both Xbox and DS4 controllers.
@@ -166,7 +154,7 @@ void LinuxInputManager::setup_joypad_remapper(int fd, unsigned index)
 #define BTN_WEST 0x134
 #endif
 
-	if (id.vendor == 0x28de && id.product == 0x11ff)
+	if (vid == 0x28de && pid == 0x11ff)
 	{
 		LOGI("Detected X-Box 360 gamepad.\n");
 		remapper.register_button(BTN_A, JoypadKey::South, JoypadAxis::Unknown);
@@ -264,6 +252,19 @@ bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode,
 		test_bit(ABS_RY, absbit, &dev->joystate.axis_ry);
 		test_bit(ABS_Z, absbit, &dev->joystate.axis_z);
 		test_bit(ABS_RZ, absbit, &dev->joystate.axis_rz);
+
+		input_id id = {};
+		if (ioctl(fd, EVIOCGID, &id) < 0)
+			return false;
+
+		dev->joystate.vid = id.vendor;
+		dev->joystate.pid = id.product;
+
+		char ident[1024];
+		if (ioctl(fd, EVIOCGNAME(sizeof(ident)), ident) < 0)
+			return false;
+		LOGI("Plugged joypad: %s\n", ident);
+		LOGI("    VID: 0x%x, PID: 0x%x\n", id.vendor, id.product);
 	}
 
 	dev->fd = fd;
@@ -272,8 +273,8 @@ bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode,
 
 	if (type == DeviceType::Joystick)
 	{
-		tracker->enable_joypad(dev->joystate.index);
-		setup_joypad_remapper(fd, dev->joystate.index);
+		tracker->enable_joypad(dev->joystate.index, dev->joystate.vid, dev->joystate.pid);
+		setup_joypad_remapper(dev->joystate.index, dev->joystate.vid, dev->joystate.pid);
 	}
 
 	if (epoll_ctl(queue_fd, EPOLL_CTL_ADD, fd, &event) < 0)
@@ -732,7 +733,7 @@ LinuxInputManager::Device::~Device()
 	if (fd >= 0)
 	{
 		if (type == DeviceType::Joystick)
-			tracker->disable_joypad(joystate.index);
+			tracker->disable_joypad(joystate.index, joystate.vid, joystate.pid);
 		close(fd);
 	}
 }

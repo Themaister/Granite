@@ -356,7 +356,7 @@ int InputTracker::find_vacant_joypad_index() const
 	return -1;
 }
 
-void InputTracker::enable_joypad(unsigned index)
+void InputTracker::enable_joypad(unsigned index, uint32_t vid, uint32_t pid)
 {
 	if (index >= Joypads)
 		return;
@@ -366,12 +366,14 @@ void InputTracker::enable_joypad(unsigned index)
 
 	active_joypads |= 1u << index;
 	joypads[index] = {};
-	JoypadConnectionEvent event(index, true);
+	joypads[index].vid = vid;
+	joypads[index].pid = pid;
+	JoypadConnectionEvent event(index, true, vid, pid);
 	if (handler)
 		handler->dispatch(event);
 }
 
-void InputTracker::disable_joypad(unsigned index)
+void InputTracker::disable_joypad(unsigned index, uint32_t vid, uint32_t pid)
 {
 	if (index >= Joypads)
 		return;
@@ -381,7 +383,7 @@ void InputTracker::disable_joypad(unsigned index)
 
 	active_joypads &= ~(1u << index);
 	joypads[index] = {};
-	JoypadConnectionEvent event(index, false);
+	JoypadConnectionEvent event(index, false, vid, pid);
 	if (handler)
 		handler->dispatch(event);
 }

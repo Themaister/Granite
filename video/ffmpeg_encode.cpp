@@ -849,7 +849,7 @@ bool VideoEncoder::Impl::init_video_codec()
 
 	if (avcodec_get_hw_config(codec, 0) != nullptr)
 	{
-		if (!hw.init_codec_context(codec, device, nullptr))
+		if (!hw.init_codec_context(codec, device, nullptr, nullptr))
 		{
 			LOGW("Failed to init HW encoder context, falling back to software.\n");
 			return false;

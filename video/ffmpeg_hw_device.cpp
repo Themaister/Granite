@@ -132,7 +132,7 @@ struct FFmpegHWDevice::Impl
 		}
 	}
 
-	bool init_hw_device(const AVCodec *av_codec)
+	bool init_hw_device(const AVCodec *av_codec, const char *type)
 	{
 #ifdef HAVE_FFMPEG_VULKAN
 		bool use_vulkan = false;
@@ -159,9 +159,14 @@ struct FFmpegHWDevice::Impl
 #ifdef HAVE_FFMPEG_VULKAN
 			if (config->device_type == AV_HWDEVICE_TYPE_VULKAN && !use_vulkan)
 				continue;
-			if (config->device_type != AV_HWDEVICE_TYPE_VULKAN && use_vulkan)
-				continue;
 #endif
+
+			if (type)
+			{
+				const char *hwdevice_name = av_hwdevice_get_type_name(config->device_type);
+				if (strcmp(type, hwdevice_name) != 0)
+					continue;
+			}
 
 			if ((config->methods & (AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX | AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX)) != 0)
 				init_hw_device_ctx(config);
@@ -221,7 +226,8 @@ struct FFmpegHWDevice::Impl
 		return true;
 	}
 
-	bool init_codec_context(const AVCodec *av_codec, Vulkan::Device *device_, AVCodecContext *av_ctx)
+	bool init_codec_context(const AVCodec *av_codec, Vulkan::Device *device_,
+	                        AVCodecContext *av_ctx, const char *type)
 	{
 		if (device && (device != device_ || av_codec != cached_av_codec))
 		{
@@ -235,7 +241,7 @@ struct FFmpegHWDevice::Impl
 		device = device_;
 		cached_av_codec = av_codec;
 
-		if (!init_hw_device(av_codec))
+		if (!init_hw_device(av_codec, type))
 			return false;
 
 		if (av_ctx && (hw_config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0)
@@ -294,11 +300,12 @@ FFmpegHWDevice::~FFmpegHWDevice()
 {
 }
 
-bool FFmpegHWDevice::init_codec_context(const AVCodec *codec, Vulkan::Device *device, AVCodecContext *ctx)
+bool FFmpegHWDevice::init_codec_context(const AVCodec *codec, Vulkan::Device *device,
+                                        AVCodecContext *ctx, const char *type)
 {
 	if (!impl)
 		impl.reset(new Impl);
-	return impl->init_codec_context(codec, device, ctx);
+	return impl->init_codec_context(codec, device, ctx, type);
 }
 
 bool FFmpegHWDevice::init_frame_context(AVCodecContext *ctx,

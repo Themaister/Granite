@@ -47,6 +47,7 @@ public:
 		bool blocking = false;
 		float target_video_buffer_time = 0.2f;
 		float target_realtime_audio_buffer_time = 0.5f;
+		const char *hwdevice = nullptr;
 	};
 
 	void set_io_interface(DemuxerIOInterface *iface);

@@ -381,11 +381,14 @@ bool LinuxInputManager::poll()
 	{
 		for (int i = 0; i < ret; i++)
 		{
-			if (events[i].events & EPOLLIN)
+			auto &device = *static_cast<Device *>(events[i].data.ptr);
+			if ((events[i].events & (EPOLLHUP | EPOLLERR)) != 0)
+			{
+				remove_device(device.devnode.c_str());
+			}
+			else if ((events[i].events & EPOLLIN) != 0)
 			{
 				struct input_event input_events[32];
-				auto &device = *static_cast<Device *>(events[i].data.ptr);
-
 				ssize_t len;
 				while ((len = read(device.fd, input_events, sizeof(input_events))) > 0)
 				{

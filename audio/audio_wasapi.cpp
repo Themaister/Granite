@@ -117,11 +117,6 @@ WASAPIBackend::~WASAPIBackend()
 		CloseHandle(audio_event);
 }
 
-static REFERENCE_TIME seconds_to_reference_time(double t)
-{
-	return REFERENCE_TIME(t * 10000000.0 + 0.5);
-}
-
 static double reference_time_to_seconds(REFERENCE_TIME t)
 {
 	return double(t) / 10000000.0;

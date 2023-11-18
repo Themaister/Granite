@@ -387,7 +387,7 @@ bool LinuxInputManager::poll()
 				auto &device = *static_cast<Device *>(events[i].data.ptr);
 
 				ssize_t len;
-				while ((len = read(device.fd, input_events, 32)) > 0)
+				while ((len = read(device.fd, input_events, sizeof(input_events))) > 0)
 				{
 					len /= sizeof(input_events[0]);
 					for (ssize_t j = 0; j < len; j++)

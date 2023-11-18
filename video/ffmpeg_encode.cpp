@@ -1494,7 +1494,10 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	push.base_v = pipeline.constants.base_uv_luma[1];
 	push.dither_strength = pipeline.constants.dither_strength;
 	cmd.push_constants(&push, 0, sizeof(push));
+
+	auto start_yuv_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	cmd.dispatch(pipeline.constants.luma_dispatch[0], pipeline.constants.luma_dispatch[1], 1);
+	auto end_yuv_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
 	if (pipeline.luma)
 	{
@@ -1516,7 +1519,9 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	push.base_u = pipeline.constants.base_uv_chroma[0];
 	push.base_v = pipeline.constants.base_uv_chroma[1];
 	cmd.push_constants(&push, 0, sizeof(push));
+	auto start_chroma_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	cmd.dispatch(pipeline.constants.chroma_dispatch[0], pipeline.constants.chroma_dispatch[1], 1);
+	auto end_chroma_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
 	if (pipeline.chroma)
 	{
@@ -1537,6 +1542,9 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	}
+
+	cmd.get_device().register_time_interval("GPU", std::move(start_yuv_ts), std::move(end_yuv_ts), "rgb-to-yuv");
+	cmd.get_device().register_time_interval("GPU", std::move(start_chroma_ts), std::move(end_chroma_ts), "chroma-downsample");
 }
 
 bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int compensate_audio_us)

@@ -60,10 +60,13 @@ public:
 
 	struct ScopedEvent
 	{
-		ScopedEvent(TimelineTraceFile *file, const char *tag);
+		ScopedEvent(TimelineTraceFile *file, const char *tag, uint32_t pid = 0);
+		ScopedEvent() = default;
 		~ScopedEvent();
 		void operator=(const ScopedEvent &) = delete;
 		ScopedEvent(const ScopedEvent &) = delete;
+		ScopedEvent(ScopedEvent &&other) noexcept;
+		ScopedEvent &operator=(ScopedEvent &&other) noexcept;
 		TimelineTraceFile *file = nullptr;
 		Event *event = nullptr;
 	};

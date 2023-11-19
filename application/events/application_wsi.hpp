@@ -73,7 +73,7 @@ private:
 	template <typename T>
 	void dispatch_template(const T &t);
 	template <typename Func>
-	void dispatch_or_defer(const Func &func);
+	void dispatch_or_defer(Func &&func);
 
 	bool in_async_input = false;
 	std::vector<std::function<void ()>> captured;

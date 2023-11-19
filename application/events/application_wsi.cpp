@@ -98,15 +98,15 @@ void GraniteWSIPlatform::dispatch_template_filter(const T &t)
 }
 
 template <typename Func>
-void GraniteWSIPlatform::dispatch_or_defer(const Func &func)
+void GraniteWSIPlatform::dispatch_or_defer(Func &&func)
 {
 	if (in_async_input)
-		captured.emplace_back(std::move(func));
+		captured.emplace_back(std::forward<Func>(func));
 	else
 		func();
 }
 
-#define WORK(work) dispatch_or_defer([this, &e]() { work; })
+#define WORK(work) dispatch_or_defer([this, e]() { work; })
 
 void GraniteWSIPlatform::dispatch(const TouchDownEvent &e)
 {
@@ -180,6 +180,7 @@ void GraniteWSIPlatform::end_async_input_handling()
 
 void GraniteWSIPlatform::flush_deferred_input_events()
 {
+	VK_ASSERT(!in_async_input);
 	for (auto &func : captured)
 		func();
 	captured.clear();

@@ -259,8 +259,16 @@ public:
 
 	void poll_input() override
 	{
+		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
 		process_events_async_thread();
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
+	}
+
+	void poll_input_async(Granite::InputTrackerHandler *override_handler) override
+	{
+		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
+		process_events_async_thread();
+		get_input_tracker().dispatch_current_state(0.0, override_handler);
 	}
 
 	std::vector<const char *> get_instance_extensions() override

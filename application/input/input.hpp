@@ -28,6 +28,7 @@
 #include "math.hpp"
 #include <limits.h>
 #include <float.h>
+#include <mutex>
 
 namespace Granite
 {
@@ -193,7 +194,7 @@ public:
 	void mouse_button_event(MouseButton button, bool pressed);
 	void mouse_move_event_absolute(double x, double y);
 	void mouse_move_event_relative(double x, double y);
-	void dispatch_current_state(double delta_time);
+	void dispatch_current_state(double delta_time, InputTrackerHandler *override_handler = nullptr);
 	void orientation_event(quat rot);
 	void joypad_key_state(unsigned index, JoypadKey key, JoypadKeyState state);
 	void joyaxis_state(unsigned index, JoypadAxis axis, float value);
@@ -268,11 +269,15 @@ public:
 		handler = handler_;
 	}
 
+	// To support dispatching input manager (i.e. polling) state from async threads.
+	std::mutex &get_lock();
+
 	enum { TouchCount = 16 };
 	enum { Joypads = 8 };
 
 private:
 	InputTrackerHandler *handler = nullptr;
+	std::mutex dispatch_lock;
 	uint64_t key_state = 0;
 	uint8_t mouse_button_state = 0;
 	bool mouse_active = false;

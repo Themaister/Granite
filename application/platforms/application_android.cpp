@@ -267,6 +267,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	void update_orientation();
 	bool alive(Vulkan::WSI &wsi) override;
 	void poll_input() override;
+	void poll_input_async(Granite::InputTrackerHandler *override_handler) override;
 
 	void request_teardown();
 	void gamepad_update();
@@ -789,6 +790,7 @@ void WSIPlatformAndroid::gamepad_update()
 
 void WSIPlatformAndroid::poll_input()
 {
+	std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
 	int events;
 	int ident;
 	android_poll_source *source;
@@ -809,6 +811,13 @@ void WSIPlatformAndroid::poll_input()
 	gamepad_update();
 	engine_handle_input(*this);
 	get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
+}
+
+void WSIPlatformAndroid::poll_input_async(Granite::InputTrackerHandler *override_handler)
+{
+	// Not really used on Android, so implement it in the trivial way.
+	std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
+	get_input_tracker().dispatch_current_state(0.0, override_handler);
 }
 
 bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)

@@ -30,6 +30,11 @@
 #include <thread>
 #include <chrono>
 
+namespace Granite
+{
+class InputTrackerHandler;
+}
+
 namespace Vulkan
 {
 class WSI;
@@ -76,6 +81,7 @@ public:
 
 	virtual bool alive(WSI &wsi) = 0;
 	virtual void poll_input() = 0;
+	virtual void poll_input_async(Granite::InputTrackerHandler *handler) = 0;
 	virtual bool has_external_swapchain()
 	{
 		return false;

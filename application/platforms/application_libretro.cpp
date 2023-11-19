@@ -71,6 +71,7 @@ struct WSIPlatformLibretro : Granite::GraniteWSIPlatform
 
 	void poll_input() override
 	{
+		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
 		input_poll_cb();
 
 		auto &tracker = get_input_tracker();
@@ -120,6 +121,12 @@ struct WSIPlatformLibretro : Granite::GraniteWSIPlatform
 		}
 
 		tracker.dispatch_current_state(app->get_platform().get_frame_timer().get_frame_time());
+	}
+
+	void poll_input_async(Granite::InputTrackerHandler *override_handler) override
+	{
+		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
+		get_input_tracker().dispatch_current_state(0.0, override_handler);
 	}
 
 	bool has_external_swapchain() override

@@ -81,15 +81,6 @@ public:
 		return 720;
 	}
 
-	virtual bool enable_joypad_input_manager()
-	{
-		// If false, disable polling for gamepads and other devices.
-		// Keyboard/mouse input is still handled as normal.
-		// Only relevant to override for special use cases.
-		// TODO: Figure out something more elegant when more use cases arise.
-		return true;
-	}
-
 	bool poll();
 	void run_frame();
 
@@ -98,6 +89,8 @@ protected:
 	{
 		requested_shutdown = true;
 	}
+
+	void poll_input_tracker_async(InputTrackerHandler *override_handler);
 
 private:
 	std::unique_ptr<Vulkan::WSIPlatform> platform;

@@ -104,6 +104,11 @@ bool Application::init_wsi(Vulkan::ContextHandle context)
 	return true;
 }
 
+void Application::poll_input_tracker_async(Granite::InputTrackerHandler *override_handler)
+{
+	get_platform().poll_input_async(override_handler);
+}
+
 bool Application::poll()
 {
 	auto &wsi = get_wsi();

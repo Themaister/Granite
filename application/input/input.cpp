@@ -378,13 +378,16 @@ void InputTracker::mouse_leave()
 	mouse_active = false;
 }
 
-void InputTracker::dispatch_current_state(double delta_time)
+void InputTracker::dispatch_current_state(double delta_time, InputTrackerHandler *override_handler)
 {
-	if (handler)
+	if (!override_handler)
+		override_handler = handler;
+
+	if (override_handler)
 	{
-		handler->dispatch(JoypadStateEvent{active_joypads, joypads, Joypads, delta_time});
-		handler->dispatch(InputStateEvent{last_mouse_x, last_mouse_y,
-		                                  delta_time, key_state, mouse_button_state, mouse_active});
+		override_handler->dispatch(JoypadStateEvent{active_joypads, joypads, Joypads, delta_time});
+		override_handler->dispatch(InputStateEvent{last_mouse_x, last_mouse_y,
+		                                           delta_time, key_state, mouse_button_state, mouse_active});
 	}
 }
 
@@ -429,5 +432,10 @@ void InputTracker::disable_joypad(unsigned index, uint32_t vid, uint32_t pid)
 	JoypadConnectionEvent event(index, false, vid, pid);
 	if (handler)
 		handler->dispatch(event);
+}
+
+std::mutex &InputTracker::get_lock()
+{
+	return dispatch_lock;
 }
 }

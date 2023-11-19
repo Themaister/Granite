@@ -95,7 +95,14 @@ public:
 
 	void poll_input() override
 	{
+		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
+	}
+
+	void poll_input_async(Granite::InputTrackerHandler *override_handler) override
+	{
+		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
+		get_input_tracker().dispatch_current_state(0.0, override_handler);
 	}
 
 	void enable_png_readback(std::string base_path)

@@ -97,63 +97,91 @@ void GraniteWSIPlatform::dispatch_template_filter(const T &t)
 	dispatch_template(t);
 }
 
+template <typename Func>
+void GraniteWSIPlatform::dispatch_or_defer(const Func &func)
+{
+	if (in_async_input)
+		captured.emplace_back(std::move(func));
+	else
+		func();
+}
+
+#define WORK(work) dispatch_or_defer([this, &e]() { work; })
+
 void GraniteWSIPlatform::dispatch(const TouchDownEvent &e)
 {
-	dispatch_template_filter(e);
+	WORK(dispatch_template_filter(e));
 }
 
 void GraniteWSIPlatform::dispatch(const TouchUpEvent &e)
 {
-	dispatch_template_filter(e);
+	WORK(dispatch_template_filter(e));
 }
 
 void GraniteWSIPlatform::dispatch(const TouchGestureEvent &e)
 {
-	dispatch_template_filter(e);
+	WORK(dispatch_template_filter(e));
 }
 
 void GraniteWSIPlatform::dispatch(const JoypadButtonEvent &e)
 {
-	dispatch_template_filter(e);
+	WORK(dispatch_template_filter(e));
 }
 
 void GraniteWSIPlatform::dispatch(const JoypadAxisEvent &e)
 {
-	dispatch_template_filter(e);
+	WORK(dispatch_template_filter(e));
 }
 
 void GraniteWSIPlatform::dispatch(const KeyboardEvent &e)
 {
-	dispatch_template_filter(e);
+	WORK(dispatch_template_filter(e));
 }
 
 void GraniteWSIPlatform::dispatch(const OrientationEvent &e)
 {
-	dispatch_template_filter(e);
+	WORK(dispatch_template_filter(e));
 }
 
 void GraniteWSIPlatform::dispatch(const MouseButtonEvent &e)
 {
-	dispatch_template_filter(e);
+	WORK(dispatch_template_filter(e));
 }
 
 void GraniteWSIPlatform::dispatch(const MouseMoveEvent &e)
 {
-	dispatch_template_filter(e);
+	WORK(dispatch_template_filter(e));
 }
 
 void GraniteWSIPlatform::dispatch(const JoypadStateEvent &e)
 {
-	dispatch_template(e);
+	WORK(dispatch_template(e));
 }
 
 void GraniteWSIPlatform::dispatch(const InputStateEvent &e)
 {
-	dispatch_template(e);
+	WORK(dispatch_template(e));
 }
 
 void GraniteWSIPlatform::dispatch(const JoypadConnectionEvent &e)
 {
-	dispatch_template(e);
+	WORK(dispatch_template(e));
+}
+
+void GraniteWSIPlatform::begin_async_input_handling()
+{
+	in_async_input = true;
+}
+
+void GraniteWSIPlatform::end_async_input_handling()
+{
+	in_async_input = false;
+}
+
+void GraniteWSIPlatform::flush_deferred_input_events()
+{
+	for (auto &func : captured)
+		func();
+	captured.clear();
 }
 }

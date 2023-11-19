@@ -190,6 +190,8 @@ public:
 
 	bool alive(Vulkan::WSI &) override
 	{
+		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
+		flush_deferred_input_events();
 		process_events_async_thread();
 		return !request_tear_down.load();
 	}
@@ -197,6 +199,7 @@ public:
 	void poll_input() override
 	{
 		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
+		flush_deferred_input_events();
 		process_events_async_thread();
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 	}
@@ -204,7 +207,9 @@ public:
 	void poll_input_async(Granite::InputTrackerHandler *override_handler) override
 	{
 		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
+		begin_async_input_handling();
 		process_events_async_thread();
+		end_async_input_handling();
 		get_input_tracker().dispatch_current_state(0.0, override_handler);
 	}
 

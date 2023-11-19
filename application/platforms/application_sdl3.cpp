@@ -480,9 +480,6 @@ public:
 				auto state = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ?
 				             JoypadKeyState::Pressed : JoypadKeyState::Released;
 
-				LOGI("Joykey: %s -> %s\n", joypad_key_to_tag(key),
-				     state == JoypadKeyState::Pressed ? "Pressed" : "Released");
-
 				push_task_to_async_thread([=]() {
 					get_input_tracker().joypad_key_state(player, key, state);
 				});
@@ -509,9 +506,6 @@ public:
 					        float(SDL_JOYSTICK_AXIS_MAX - SDL_JOYSTICK_AXIS_MIN);
 					value = 2.0f * value - 1.0f;
 				}
-
-				if (value < -0.5f || value > 0.5f)
-					LOGI("Joyaxis: %s -> %.3f\n", joypad_axis_to_tag(axis), value);
 
 				push_task_to_async_thread([=]() {
 					get_input_tracker().joyaxis_state(player, axis, value);

@@ -30,7 +30,7 @@ elseif (${GRANITE_PLATFORM} MATCHES "SDL")
     # For non-vendored version, but SDL3 is not stable yet as far as I can tell.
     #find_package(SDL3 REQUIRED CONFIG REQUIRED COMPONENTS SDL3-shared)
     #target_link_libraries(granite-platform PRIVATE SDL3::SDL3-shared)
-    target_link_libraries(granite-platform PRIVATE SDL3-static)
+    target_link_libraries(granite-platform PRIVATE SDL3-static granite-input-sdl)
 else()
     message(FATAL "GRANITE_PLATFORM is not set.")
 endif()

@@ -27,6 +27,7 @@
 #include "application_wsi.hpp"
 #include "application_events.hpp"
 #include "input.hpp"
+#include "input_sdl.hpp"
 #include "cli_parser.hpp"
 #include "global_managers_init.hpp"
 #include "timeline_trace_file.hpp"
@@ -70,66 +71,6 @@ static Key sdl_key_to_granite_key(SDL_Keycode key)
 		return Key::Unknown;
 	}
 #undef k
-}
-
-static JoypadKey sdl_gamepad_button_to_granite(SDL_GamepadButton button)
-{
-	switch (button)
-	{
-	case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
-		return JoypadKey::Down;
-	case SDL_GAMEPAD_BUTTON_DPAD_UP:
-		return JoypadKey::Up;
-	case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
-		return JoypadKey::Left;
-	case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
-		return JoypadKey::Right;
-	case SDL_GAMEPAD_BUTTON_GUIDE:
-		return JoypadKey::Mode;
-	case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
-		return JoypadKey::LeftShoulder;
-	case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:
-		return JoypadKey::RightShoulder;
-	case SDL_GAMEPAD_BUTTON_WEST:
-		return JoypadKey::West;
-	case SDL_GAMEPAD_BUTTON_EAST:
-		return JoypadKey::East;
-	case SDL_GAMEPAD_BUTTON_NORTH:
-		return JoypadKey::North;
-	case SDL_GAMEPAD_BUTTON_SOUTH:
-		return JoypadKey::South;
-	case SDL_GAMEPAD_BUTTON_START:
-		return JoypadKey::Start;
-	case SDL_GAMEPAD_BUTTON_BACK:
-		return JoypadKey::Select;
-	case SDL_GAMEPAD_BUTTON_LEFT_STICK:
-		return JoypadKey::LeftThumb;
-	case SDL_GAMEPAD_BUTTON_RIGHT_STICK:
-		return JoypadKey::RightThumb;
-	default:
-		return JoypadKey::Unknown;
-	}
-}
-
-static JoypadAxis sdl_gamepad_axis_to_granite(SDL_GamepadAxis axis)
-{
-	switch (axis)
-	{
-	case SDL_GAMEPAD_AXIS_LEFTX:
-		return JoypadAxis::LeftX;
-	case SDL_GAMEPAD_AXIS_LEFTY:
-		return JoypadAxis::LeftY;
-	case SDL_GAMEPAD_AXIS_RIGHTX:
-		return JoypadAxis::RightX;
-	case SDL_GAMEPAD_AXIS_RIGHTY:
-		return JoypadAxis::RightY;
-	case SDL_GAMEPAD_AXIS_LEFT_TRIGGER:
-		return JoypadAxis::LeftTrigger;
-	case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER:
-		return JoypadAxis::RightTrigger;
-	default:
-		return JoypadAxis::Unknown;
-	}
 }
 
 struct WSIPlatformSDL : GraniteWSIPlatform
@@ -199,16 +140,7 @@ public:
 		application.info.pApplicationName = application.name.empty() ? "Granite" : application.name.c_str();
 		application.info.apiVersion = VK_API_VERSION_1_1;
 
-		// Open existing gamepads.
-		int num_pads = 0;
-		SDL_JoystickID *ids = SDL_GetGamepads(&num_pads);
-		for (int i = 0; i < num_pads; i++)
-			add_gamepad(ids[i]);
-		if (ids)
-			SDL_free(ids);
-		SDL_SetGamepadEventsEnabled(SDL_TRUE);
-
-		return true;
+		return pad.init(get_input_tracker(), [](std::function<void ()> func) { func(); });
 	}
 
 	const VkApplicationInfo *get_application_info() override
@@ -305,11 +237,7 @@ public:
 	{
 		if (window)
 			SDL_DestroyWindow(window);
-
-		for (auto *pad : pads)
-			if (pad)
-				SDL_CloseGamepad(pad);
-
+		pad.close();
 		SDL_Quit();
 	}
 
@@ -361,6 +289,10 @@ public:
 		bool alive = true;
 		SDL_Event e;
 
+		const auto dispatcher = [this](std::function<void ()> func) {
+			push_task_to_async_thread(std::move(func));
+		};
+
 		while (alive && SDL_WaitEvent(&e))
 		{
 			if (e.type == wake_event_type)
@@ -368,6 +300,9 @@ public:
 				process_events_main_thread();
 				continue;
 			}
+
+			if (pad.process_sdl_event(e, get_input_tracker(), dispatcher))
+				continue;
 
 			switch (e.type)
 			{
@@ -461,65 +396,6 @@ public:
 					}
 				}
 				break;
-
-			case SDL_EVENT_GAMEPAD_ADDED:
-			{
-				add_gamepad(e.gdevice.which);
-				break;
-			}
-
-			case SDL_EVENT_GAMEPAD_REMOVED:
-			{
-				remove_gamepad(e.gdevice.which);
-				break;
-			}
-
-			case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-			case SDL_EVENT_GAMEPAD_BUTTON_UP:
-			{
-				int player = SDL_GetJoystickInstancePlayerIndex(e.gbutton.which);
-				if (player < 0 || player >= int(InputTracker::Joypads) || !pads[player])
-					break;
-
-				JoypadKey key = sdl_gamepad_button_to_granite(SDL_GamepadButton(e.gbutton.button));
-				if (key == JoypadKey::Unknown)
-					break;
-
-				auto state = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ?
-				             JoypadKeyState::Pressed : JoypadKeyState::Released;
-
-				push_task_to_async_thread([=]() {
-					get_input_tracker().joypad_key_state(player, key, state);
-				});
-				break;
-			}
-
-			case SDL_EVENT_GAMEPAD_AXIS_MOTION:
-			{
-				int player = SDL_GetJoystickInstancePlayerIndex(e.gaxis.which);
-				if (player < 0 || player >= int(InputTracker::Joypads) || !pads[player])
-					break;
-
-				JoypadAxis axis = sdl_gamepad_axis_to_granite(SDL_GamepadAxis(e.gaxis.axis));
-				bool is_trigger = axis == JoypadAxis::LeftTrigger || axis == JoypadAxis::RightTrigger;
-
-				float value;
-				if (is_trigger)
-				{
-					value = float(e.gaxis.value) / float(SDL_JOYSTICK_AXIS_MAX);
-				}
-				else
-				{
-					value = (float(e.gaxis.value) - SDL_JOYSTICK_AXIS_MIN) /
-					        float(SDL_JOYSTICK_AXIS_MAX - SDL_JOYSTICK_AXIS_MIN);
-					value = 2.0f * value - 1.0f;
-				}
-
-				push_task_to_async_thread([=]() {
-					get_input_tracker().joyaxis_state(player, axis, value);
-				});
-				break;
-			}
 
 			default:
 				break;
@@ -685,42 +561,7 @@ private:
 		process_events_for_list(task_list_async, true);
 	}
 
-	void add_gamepad(SDL_JoystickID id)
-	{
-		int player_index = SDL_GetJoystickInstancePlayerIndex(id);
-		if (player_index >= 0 && player_index < int(InputTracker::Joypads) && !pads[player_index])
-		{
-			uint32_t vid = SDL_GetGamepadInstanceVendor(id);
-			uint32_t pid = SDL_GetGamepadInstanceProduct(id);
-			const char *name = SDL_GetGamepadInstanceName(id);
-			LOGI("Plugging in controller: \"%s\" (%u/%u).\n", name, vid, pid);
-			const char *mapping = SDL_GetGamepadInstanceMapping(id);
-			LOGI(" Using mapping: \"%s\"\n", mapping);
-			pads[player_index] = SDL_OpenGamepad(id);
-			push_task_to_async_thread([=]() {
-				get_input_tracker().enable_joypad(player_index, vid, pid);
-			});
-		}
-	}
-
-	void remove_gamepad(SDL_JoystickID id)
-	{
-		int player_index = SDL_GetJoystickInstancePlayerIndex(id);
-		if (player_index >= 0 && player_index < int(InputTracker::Joypads) && pads[player_index])
-		{
-			uint32_t vid = SDL_GetGamepadInstanceVendor(id);
-			uint32_t pid = SDL_GetGamepadInstanceProduct(id);
-			const char *name = SDL_GetGamepadInstanceName(id);
-			LOGI("Unplugging controller: \"%s\" (%u/%u).\n", name, vid, pid);
-			SDL_CloseGamepad(pads[player_index]);
-			pads[player_index] = nullptr;
-			push_task_to_async_thread([=]() {
-				get_input_tracker().disable_joypad(player_index, vid, pid);
-			});
-		}
-	}
-
-	SDL_Gamepad *pads[InputTracker::Joypads] = {};
+	InputTrackerSDL pad;
 
 	template <typename Op>
 	void push_task_to_main_thread(Op &&op)

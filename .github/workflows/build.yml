@@ -14,7 +14,7 @@ jobs:
         platform: [windows-latest, ubuntu-latest]
         build_type: [Release]
         shared: [OFF, ON]
-        granite_platform: ["GLFW", "libretro", "KHR_DISPLAY"]
+        granite_platform: ["SDL", "libretro"]
 
     env:
       PARALLEL: -j 2

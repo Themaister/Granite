@@ -31,6 +31,49 @@ using namespace Util;
 
 namespace Granite
 {
+const char *joypad_key_to_tag(JoypadKey key)
+{
+#define D(k) case JoypadKey::k: return #k
+	switch (key)
+	{
+	D(Left);
+	D(Right);
+	D(Up);
+	D(Down);
+	D(LeftShoulder);
+	D(RightShoulder);
+	D(West);
+	D(East);
+	D(North);
+	D(South);
+	D(LeftThumb);
+	D(RightThumb);
+	D(Mode);
+	D(Start);
+	D(Select);
+	default:
+		return "Unknown";
+	}
+#undef D
+}
+
+const char *joypad_axis_to_tag(JoypadAxis axis)
+{
+#define D(k) case JoypadAxis::k: return #k
+	switch (axis)
+	{
+	D(LeftX);
+	D(LeftY);
+	D(RightX);
+	D(RightY);
+	D(LeftTrigger);
+	D(RightTrigger);
+	default:
+		return "Unknown";
+	}
+#undef D
+}
+
 static inline Hash hash(unsigned code)
 {
 	Hasher h;

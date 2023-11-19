@@ -903,7 +903,7 @@ void paddleboat_controller_status_cb(
 		LOGI("Controller #%u (%s) connected.\n", controllerIndex, name);
 		auto *platform = static_cast<WSIPlatformAndroid *>(global_state.app->userData);
 		if (platform)
-			platform->get_input_tracker().enable_joypad(controllerIndex);
+			platform->get_input_tracker().enable_joypad(controllerIndex, 0, 0 /* todo */);
 
 	}
 	else if (controllerStatus == PADDLEBOAT_CONTROLLER_JUST_DISCONNECTED)
@@ -911,7 +911,7 @@ void paddleboat_controller_status_cb(
 		LOGI("Controller #%u disconnected.\n", controllerIndex);
 		auto *platform = static_cast<WSIPlatformAndroid *>(global_state.app->userData);
 		if (platform)
-			platform->get_input_tracker().disable_joypad(controllerIndex);
+			platform->get_input_tracker().disable_joypad(controllerIndex, 0, 0 /* todo */);
 	}
 }
 

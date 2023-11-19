@@ -52,6 +52,8 @@ enum class JoypadKey
 	Unknown
 };
 
+const char *joypad_key_to_tag(JoypadKey key);
+
 enum class JoypadAxis
 {
 	LeftX,
@@ -63,6 +65,8 @@ enum class JoypadAxis
 	Count,
 	Unknown
 };
+
+const char *joypad_axis_to_tag(JoypadAxis axis);
 
 enum class JoypadKeyState
 {

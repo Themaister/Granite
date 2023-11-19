@@ -91,8 +91,8 @@ struct WSIPlatformLibretro : Granite::GraniteWSIPlatform
 			                      input_state_cb(index, RETRO_DEVICE_JOYPAD, 0, retro_key) ? 1.0f : 0.0f);
 		};
 
-		tracker.enable_joypad(0);
-		tracker.enable_joypad(1);
+		tracker.enable_joypad(0, 0, 0);
+		tracker.enable_joypad(1, 0, 0);
 		for (unsigned i = 0; i < 2; i++)
 		{
 			poll_key(i, JoypadKey::Left, RETRO_DEVICE_ID_JOYPAD_LEFT);

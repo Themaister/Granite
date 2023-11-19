@@ -81,84 +81,6 @@ static inline Hash hash(unsigned code)
 	return h.get();
 }
 
-void JoypadRemapper::register_button(unsigned code, JoypadKey key, JoypadAxis axis)
-{
-	auto *btn = button_map.emplace_replace(hash(code));
-	btn->axis = axis;
-	btn->key = key;
-}
-
-void JoypadRemapper::register_axis(unsigned code,
-                                   JoypadAxis axis, float axis_mod,
-                                   JoypadKey neg_edge, JoypadKey pos_edge)
-{
-	auto *ax = axis_map.emplace_replace(hash(code));
-	ax->axis = axis;
-	ax->axis_mod = axis_mod;
-	ax->neg_edge = neg_edge;
-	ax->pos_edge = pos_edge;
-}
-
-const JoypadRemapper::AxisMap *JoypadRemapper::map_axis(unsigned code) const
-{
-	return axis_map.find(hash(code));
-}
-
-const JoypadRemapper::ButtonMap *JoypadRemapper::map_button(unsigned code) const
-{
-	return button_map.find(hash(code));
-}
-
-void JoypadRemapper::button_event(InputTracker &tracker, unsigned index, unsigned code, bool pressed)
-{
-	auto *button = map_button(code);
-	if (!button)
-		return;
-
-	if (button->key != JoypadKey::Unknown)
-		tracker.joypad_key_state(index, button->key, pressed ? JoypadKeyState::Pressed : JoypadKeyState::Released);
-
-	if (button->axis != JoypadAxis::Unknown)
-		tracker.joyaxis_state(index, button->axis, pressed ? 1.0f : 0.0f);
-}
-
-void JoypadRemapper::axis_event(InputTracker &tracker, unsigned index, unsigned code,
-                                float value)
-{
-	auto *axis = map_axis(code);
-	if (!axis)
-		return;
-
-	value = muglm::clamp(value * axis->axis_mod, -1.0f, 1.0f);
-
-	if (axis->axis != JoypadAxis::Unknown)
-	{
-		if (axis->axis == JoypadAxis::LeftTrigger || axis->axis == JoypadAxis::RightTrigger)
-			value = 0.5f * value + 0.5f;
-		tracker.joyaxis_state(index, axis->axis, value);
-	}
-
-	if (axis->pos_edge != JoypadKey::Unknown)
-	{
-		tracker.joypad_key_state(index, axis->pos_edge,
-		                         value > 0.5f ? JoypadKeyState::Pressed :
-		                         JoypadKeyState::Released);
-	}
-
-	if (axis->neg_edge != JoypadKey::Unknown)
-	{
-		tracker.joypad_key_state(index, axis->neg_edge,
-		                         value < -0.5f ? JoypadKeyState::Pressed
-		                                       : JoypadKeyState::Released);
-	}
-}
-
-void JoypadRemapper::reset()
-{
-	button_map.clear();
-	axis_map.clear();
-}
-
 void InputTracker::orientation_event(quat rot)
 {
 	OrientationEvent event(rot);
@@ -266,20 +188,6 @@ void InputTracker::joypad_key_state(unsigned index, JoypadKey key, JoypadKeyStat
 		}
 		joy.button_mask &= ~(1u << key_index);
 	}
-}
-
-void InputTracker::joypad_key_state_raw(unsigned index, unsigned code, bool pressed)
-{
-	if (index >= Joypads)
-		return;
-	remappers[index].button_event(*this, index, code, pressed);
-}
-
-void InputTracker::joyaxis_state_raw(unsigned index, unsigned code, float value)
-{
-	if (index >= Joypads)
-		return;
-	remappers[index].axis_event(*this, index, code, value);
 }
 
 void InputTracker::joyaxis_state(unsigned index, JoypadAxis axis, float value)

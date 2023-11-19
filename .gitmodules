@@ -46,3 +46,6 @@
 [submodule "third_party/fsr2"]
 	path = third_party/fsr2
 	url = https://github.com/Themaister/FidelityFX-FSR2
+[submodule "third_party/sdl3"]
+	path = third_party/sdl3
+	url = https://github.com/libsdl-org/SDL

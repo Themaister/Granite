@@ -29,6 +29,12 @@ elseif (${GRANITE_PLATFORM} MATCHES "GLFW")
     add_granite_internal_static_lib(granite-platform
             application_glfw.cpp)
     target_link_libraries(granite-platform PRIVATE glfw)
+elseif (${GRANITE_PLATFORM} MATCHES "SDL")
+    add_granite_internal_static_lib(granite-platform application_sdl3.cpp)
+    # For non-vendored version, but SDL3 is not stable yet as far as I can tell.
+    #find_package(SDL3 REQUIRED CONFIG REQUIRED COMPONENTS SDL3-shared)
+    #target_link_libraries(granite-platform PRIVATE SDL3::SDL3-shared)
+    target_link_libraries(granite-platform PRIVATE SDL3-static)
 elseif (${GRANITE_PLATFORM} MATCHES "KHR_DISPLAY")
     add_granite_internal_static_lib(granite-platform
             application_khr_display.cpp)

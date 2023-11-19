@@ -35,6 +35,11 @@
 #include "thread_group.hpp"
 #include "thread_id.hpp"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace Granite
 {
 static Key sdl_key_to_granite_key(SDL_Keycode key)

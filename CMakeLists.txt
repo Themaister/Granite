@@ -36,7 +36,7 @@ option(GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER "Enable Vulkan GLSL runtim
 option(GRANITE_VULKAN_FOSSILIZE "Enable support for Fossilize." ON)
 option(GRANITE_VULKAN_PROFILES "Enable profiles support." OFF)
 option(GRANITE_AUDIO "Enable Audio support." OFF)
-option(GRANITE_PLATFORM "Granite Platform" "GLFW")
+option(GRANITE_PLATFORM "Granite Platform" "SDL")
 option(GRANITE_HIDDEN "Declare symbols as hidden by default. Useful if you build Granite as a static library and you link to it in your shared library." OFF)
 option(GRANITE_SANITIZE_ADDRESS "Sanitize address" OFF)
 option(GRANITE_SANITIZE_THREADS "Sanitize threads" OFF)
@@ -67,7 +67,7 @@ else()
 endif()
 
 if (NOT GRANITE_PLATFORM)
-    set(GRANITE_PLATFORM "GLFW")
+    set(GRANITE_PLATFORM "SDL")
 endif()
 
 if (GRANITE_HIDDEN)

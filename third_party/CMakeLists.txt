@@ -103,11 +103,6 @@ else()
 endif()
 target_link_libraries(granite-volk PRIVATE granite-volk-headers)
 
-if ((NOT ANDROID) AND (${GRANITE_PLATFORM} MATCHES "GLFW"))
-    set(GLFW_BUILD_TESTS OFF)
-    add_subdirectory(glfw EXCLUDE_FROM_ALL)
-endif()
-
 if ((NOT ANDROID) AND (${GRANITE_PLATFORM} MATCHES "SDL"))
     set(SDL_SHARED OFF CACHE BOOL "" FORCE)
     set(SDL_STATIC ON CACHE BOOL "" FORCE)

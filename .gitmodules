@@ -13,9 +13,6 @@
 [submodule "third_party/spirv-headers"]
 	path = third_party/spirv-headers
 	url = https://github.com/KhronosGroup/SPIRV-Headers
-[submodule "third_party/glfw"]
-	path = third_party/glfw
-	url = https://github.com/glfw/glfw
 [submodule "third_party/rapidjson"]
 	path = third_party/rapidjson
 	url = https://github.com/miloyip/rapidjson

@@ -172,14 +172,25 @@ bool WASAPIBackend::init(float sample_rate, unsigned channels)
 	}
 
 	format->nChannels = WORD(channels);
+	DWORD base_rate = format->nSamplesPerSec;
 	if (sample_rate > 0.0f)
 		format->nSamplesPerSec = DWORD(sample_rate);
 
 	UINT default_period = 0, fundamental_period = 0, min_period = 0, max_period = 0;
-	if (FAILED(pAudioClient->GetSharedModeEnginePeriod(format, &default_period, &fundamental_period, &min_period, &max_period)))
+	HRESULT hr;
+	if (FAILED(hr = pAudioClient->GetSharedModeEnginePeriod(format, &default_period, &fundamental_period, &min_period, &max_period)))
 	{
-		LOGE("WASAPI: Failed to query shared mode engine period.\n");
-		return false;
+		if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT && format->nSamplesPerSec != base_rate)
+		{
+			format->nSamplesPerSec = base_rate;
+			hr = pAudioClient->GetSharedModeEnginePeriod(format, &default_period, &fundamental_period, &min_period, &max_period);
+		}
+
+		if (FAILED(hr))
+		{
+			LOGE("WASAPI: Failed to query shared mode engine period.\n");
+			return false;
+		}
 	}
 
 	// Sanity check, but you'd think default period should "just werk".

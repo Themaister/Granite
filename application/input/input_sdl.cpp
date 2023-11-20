@@ -71,6 +71,7 @@ void InputTrackerSDL::update(InputTracker &tracker)
 			{ JoypadKey::RightShoulder, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER },
 			{ JoypadKey::LeftThumb, SDL_GAMEPAD_BUTTON_LEFT_STICK },
 			{ JoypadKey::RightThumb, SDL_GAMEPAD_BUTTON_RIGHT_STICK },
+			{ JoypadKey::Mode, SDL_GAMEPAD_BUTTON_GUIDE },
 		};
 
 		for (auto &b : buttons)

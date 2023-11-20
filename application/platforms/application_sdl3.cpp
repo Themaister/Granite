@@ -111,6 +111,8 @@ public:
 		}
 
 		SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+		// Adding gamepad events will make main loop spin without waiting.
+		SDL_SetHint(SDL_HINT_AUTO_UPDATE_JOYSTICKS, "0");
 
 		if (SDL_Vulkan_LoadLibrary(nullptr) < 0)
 		{
@@ -203,6 +205,7 @@ public:
 		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
 		flush_deferred_input_events();
 		process_events_async_thread();
+		pad.update(get_input_tracker());
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 	}
 
@@ -210,7 +213,10 @@ public:
 	{
 		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
 		begin_async_input_handling();
-		process_events_async_thread();
+		{
+			process_events_async_thread();
+			pad.update(get_input_tracker());
+		}
 		end_async_input_handling();
 		get_input_tracker().dispatch_current_state(0.0, override_handler);
 	}

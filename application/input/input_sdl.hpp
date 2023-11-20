@@ -34,6 +34,7 @@ public:
 	bool init(InputTracker &tracker, const Dispatcher &dispatcher);
 	void close();
 	bool process_sdl_event(const SDL_Event &event, InputTracker &tracker, const Dispatcher &dispatcher);
+	void update(InputTracker &tracker);
 
 private:
 	SDL_Gamepad *pads[InputTracker::Joypads] = {};

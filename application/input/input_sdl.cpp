@@ -24,66 +24,6 @@
 
 namespace Granite
 {
-static JoypadKey sdl_gamepad_button_to_granite(SDL_GamepadButton button)
-{
-	switch (button)
-	{
-	case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
-		return JoypadKey::Down;
-	case SDL_GAMEPAD_BUTTON_DPAD_UP:
-		return JoypadKey::Up;
-	case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
-		return JoypadKey::Left;
-	case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
-		return JoypadKey::Right;
-	case SDL_GAMEPAD_BUTTON_GUIDE:
-		return JoypadKey::Mode;
-	case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
-		return JoypadKey::LeftShoulder;
-	case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:
-		return JoypadKey::RightShoulder;
-	case SDL_GAMEPAD_BUTTON_WEST:
-		return JoypadKey::West;
-	case SDL_GAMEPAD_BUTTON_EAST:
-		return JoypadKey::East;
-	case SDL_GAMEPAD_BUTTON_NORTH:
-		return JoypadKey::North;
-	case SDL_GAMEPAD_BUTTON_SOUTH:
-		return JoypadKey::South;
-	case SDL_GAMEPAD_BUTTON_START:
-		return JoypadKey::Start;
-	case SDL_GAMEPAD_BUTTON_BACK:
-		return JoypadKey::Select;
-	case SDL_GAMEPAD_BUTTON_LEFT_STICK:
-		return JoypadKey::LeftThumb;
-	case SDL_GAMEPAD_BUTTON_RIGHT_STICK:
-		return JoypadKey::RightThumb;
-	default:
-		return JoypadKey::Unknown;
-	}
-}
-
-static JoypadAxis sdl_gamepad_axis_to_granite(SDL_GamepadAxis axis)
-{
-	switch (axis)
-	{
-	case SDL_GAMEPAD_AXIS_LEFTX:
-		return JoypadAxis::LeftX;
-	case SDL_GAMEPAD_AXIS_LEFTY:
-		return JoypadAxis::LeftY;
-	case SDL_GAMEPAD_AXIS_RIGHTX:
-		return JoypadAxis::RightX;
-	case SDL_GAMEPAD_AXIS_RIGHTY:
-		return JoypadAxis::RightY;
-	case SDL_GAMEPAD_AXIS_LEFT_TRIGGER:
-		return JoypadAxis::LeftTrigger;
-	case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER:
-		return JoypadAxis::RightTrigger;
-	default:
-		return JoypadAxis::Unknown;
-	}
-}
-
 bool InputTrackerSDL::init(InputTracker &tracker, const Dispatcher &dispatcher)
 {
 	// Open existing gamepads.
@@ -93,8 +33,80 @@ bool InputTrackerSDL::init(InputTracker &tracker, const Dispatcher &dispatcher)
 		add_gamepad(gamepad_ids[i], tracker, dispatcher);
 	if (gamepad_ids)
 		SDL_free(gamepad_ids);
-	SDL_SetGamepadEventsEnabled(SDL_TRUE);
+
+	// Poll these separately, inline in poll_input().
+	SDL_SetEventEnabled(SDL_EVENT_GAMEPAD_BUTTON_DOWN, SDL_FALSE);
+	SDL_SetEventEnabled(SDL_EVENT_GAMEPAD_BUTTON_UP, SDL_FALSE);
+	SDL_SetEventEnabled(SDL_EVENT_GAMEPAD_AXIS_MOTION, SDL_FALSE);
+
 	return true;
+}
+
+void InputTrackerSDL::update(InputTracker &tracker)
+{
+	SDL_UpdateGamepads();
+
+	for (int i = 0; i < int(InputTracker::Joypads); i++)
+	{
+		auto *pad = pads[i];
+		if (!pad)
+			continue;
+
+		static const struct
+		{
+			JoypadKey gkey;
+			SDL_GamepadButton sdl;
+		} buttons[] = {
+			{ JoypadKey::Left, SDL_GAMEPAD_BUTTON_DPAD_LEFT },
+			{ JoypadKey::Right, SDL_GAMEPAD_BUTTON_DPAD_RIGHT },
+			{ JoypadKey::Up, SDL_GAMEPAD_BUTTON_DPAD_UP },
+			{ JoypadKey::Down, SDL_GAMEPAD_BUTTON_DPAD_DOWN },
+			{ JoypadKey::Start, SDL_GAMEPAD_BUTTON_START },
+			{ JoypadKey::Select, SDL_GAMEPAD_BUTTON_BACK },
+			{ JoypadKey::East, SDL_GAMEPAD_BUTTON_EAST },
+			{ JoypadKey::West, SDL_GAMEPAD_BUTTON_WEST },
+			{ JoypadKey::North, SDL_GAMEPAD_BUTTON_NORTH },
+			{ JoypadKey::South, SDL_GAMEPAD_BUTTON_SOUTH },
+			{ JoypadKey::LeftShoulder, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER },
+			{ JoypadKey::RightShoulder, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER },
+			{ JoypadKey::LeftThumb, SDL_GAMEPAD_BUTTON_LEFT_STICK },
+			{ JoypadKey::RightThumb, SDL_GAMEPAD_BUTTON_RIGHT_STICK },
+		};
+
+		for (auto &b : buttons)
+		{
+			tracker.joypad_key_state(i, b.gkey,
+			                         SDL_GetGamepadButton(pad, b.sdl) ?
+			                         JoypadKeyState::Pressed : JoypadKeyState::Released);
+		}
+
+		static const struct
+		{
+			JoypadAxis gaxis;
+			SDL_GamepadAxis sdl;
+		} axes[] = {
+			{ JoypadAxis::LeftX, SDL_GAMEPAD_AXIS_LEFTX },
+			{ JoypadAxis::LeftY, SDL_GAMEPAD_AXIS_LEFTY },
+			{ JoypadAxis::RightX, SDL_GAMEPAD_AXIS_RIGHTX },
+			{ JoypadAxis::RightY, SDL_GAMEPAD_AXIS_RIGHTY },
+		};
+
+		for (auto &a : axes)
+		{
+			float value = float(SDL_GetGamepadAxis(pad, a.sdl) - SDL_JOYSTICK_AXIS_MIN) /
+			              float(SDL_JOYSTICK_AXIS_MAX - SDL_JOYSTICK_AXIS_MIN);
+			value = 2.0f * value - 1.0f;
+			tracker.joyaxis_state(i, a.gaxis, value);
+		}
+
+		tracker.joyaxis_state(i, JoypadAxis::LeftTrigger,
+		                      float(SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER)) /
+		                      float(SDL_JOYSTICK_AXIS_MAX));
+
+		tracker.joyaxis_state(i, JoypadAxis::RightTrigger,
+		                      float(SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)) /
+		                      float(SDL_JOYSTICK_AXIS_MAX));
+	}
 }
 
 void InputTrackerSDL::close()
@@ -118,53 +130,6 @@ bool InputTrackerSDL::process_sdl_event(const SDL_Event &e, InputTracker &tracke
 	case SDL_EVENT_GAMEPAD_REMOVED:
 	{
 		remove_gamepad(e.gdevice.which, tracker, dispatcher);
-		return true;
-	}
-
-	case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-	case SDL_EVENT_GAMEPAD_BUTTON_UP:
-	{
-		int player = SDL_GetJoystickInstancePlayerIndex(e.gbutton.which);
-		if (player < 0 || player >= int(InputTracker::Joypads) || !pads[player])
-			break;
-
-		JoypadKey key = sdl_gamepad_button_to_granite(SDL_GamepadButton(e.gbutton.button));
-		if (key == JoypadKey::Unknown)
-			break;
-
-		auto state = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ?
-		             JoypadKeyState::Pressed : JoypadKeyState::Released;
-
-		dispatcher([player, key, state, &tracker]() {
-			tracker.joypad_key_state(player, key, state);
-		});
-		return true;
-	}
-
-	case SDL_EVENT_GAMEPAD_AXIS_MOTION:
-	{
-		int player = SDL_GetJoystickInstancePlayerIndex(e.gaxis.which);
-		if (player < 0 || player >= int(InputTracker::Joypads) || !pads[player])
-			break;
-
-		JoypadAxis axis = sdl_gamepad_axis_to_granite(SDL_GamepadAxis(e.gaxis.axis));
-		bool is_trigger = axis == JoypadAxis::LeftTrigger || axis == JoypadAxis::RightTrigger;
-
-		float value;
-		if (is_trigger)
-		{
-			value = float(e.gaxis.value) / float(SDL_JOYSTICK_AXIS_MAX);
-		}
-		else
-		{
-			value = (float(e.gaxis.value) - SDL_JOYSTICK_AXIS_MIN) /
-			        float(SDL_JOYSTICK_AXIS_MAX - SDL_JOYSTICK_AXIS_MIN);
-			value = 2.0f * value - 1.0f;
-		}
-
-		dispatcher([player, axis, value, &tracker]() {
-			tracker.joyaxis_state(player, axis, value);
-		});
 		return true;
 	}
 

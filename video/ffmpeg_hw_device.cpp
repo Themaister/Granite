@@ -139,15 +139,6 @@ struct FFmpegHWDevice::Impl
 		const char *env = getenv("GRANITE_FFMPEG_VULKAN");
 		if (env && strtol(env, nullptr, 0) != 0)
 			use_vulkan = true;
-
-		if (use_vulkan)
-		{
-			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
-			{
-				LOGW("Sampler YCbCr conversion not supported, disabling Vulkan interop.\n");
-				use_vulkan = false;
-			}
-		}
 #endif
 
 		for (int i = 0; !hw_device; i++)
@@ -155,15 +146,21 @@ struct FFmpegHWDevice::Impl
 			const AVCodecHWConfig *config = avcodec_get_hw_config(av_codec, i);
 			if (!config)
 				break;
+			if (config->device_type == AV_HWDEVICE_TYPE_NONE)
+				continue;
 
 #ifdef HAVE_FFMPEG_VULKAN
 			if (config->device_type == AV_HWDEVICE_TYPE_VULKAN && !use_vulkan)
+			{
+				LOGI("Found Vulkan HW device, but Vulkan was not enabled in device.\n");
 				continue;
+			}
 #endif
 
 			if (type)
 			{
 				const char *hwdevice_name = av_hwdevice_get_type_name(config->device_type);
+				LOGI("Found HW device type: %s\n", hwdevice_name);
 				if (strcmp(type, hwdevice_name) != 0)
 					continue;
 			}

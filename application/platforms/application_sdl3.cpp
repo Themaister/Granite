@@ -227,7 +227,7 @@ public:
 			return VK_NULL_HANDLE;
 
 		int actual_width, actual_height;
-		SDL_GetWindowSize(window, &actual_width, &actual_height);
+		SDL_GetWindowSizeInPixels(window, &actual_width, &actual_height);
 		width = unsigned(actual_width);
 		height = unsigned(actual_height);
 		return surface;

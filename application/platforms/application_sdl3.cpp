@@ -110,6 +110,8 @@ public:
 			return false;
 		}
 
+		SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+
 		if (SDL_Vulkan_LoadLibrary(nullptr) < 0)
 		{
 			LOGE("Failed to load Vulkan library.\n");

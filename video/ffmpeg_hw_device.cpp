@@ -135,10 +135,16 @@ struct FFmpegHWDevice::Impl
 	bool init_hw_device(const AVCodec *av_codec, const char *type)
 	{
 #ifdef HAVE_FFMPEG_VULKAN
-		bool use_vulkan = false;
-		const char *env = getenv("GRANITE_FFMPEG_VULKAN");
-		if (env && strtol(env, nullptr, 0) != 0)
-			use_vulkan = true;
+		bool use_vulkan = device->get_device_features().supports_video_decode_queue;
+		if (use_vulkan)
+		{
+			if (av_codec->id == AV_CODEC_ID_H264)
+				use_vulkan = device->get_device_features().supports_video_decode_h264;
+			else if (av_codec->id == AV_CODEC_ID_HEVC)
+				use_vulkan = device->get_device_features().supports_video_decode_h265;
+			else
+				use_vulkan = false;
+		}
 #endif
 
 		for (int i = 0; !hw_device; i++)
@@ -149,14 +155,6 @@ struct FFmpegHWDevice::Impl
 			if (config->device_type == AV_HWDEVICE_TYPE_NONE)
 				continue;
 
-#ifdef HAVE_FFMPEG_VULKAN
-			if (config->device_type == AV_HWDEVICE_TYPE_VULKAN && !use_vulkan)
-			{
-				LOGI("Found Vulkan HW device, but Vulkan was not enabled in device.\n");
-				continue;
-			}
-#endif
-
 			if (type)
 			{
 				const char *hwdevice_name = av_hwdevice_get_type_name(config->device_type);
@@ -164,6 +162,22 @@ struct FFmpegHWDevice::Impl
 				if (strcmp(type, hwdevice_name) != 0)
 					continue;
 			}
+#ifdef HAVE_FFMPEG_VULKAN
+			else
+			{
+				// Prefer Vulkan if it exists.
+				if (config->device_type == AV_HWDEVICE_TYPE_VULKAN && !use_vulkan)
+				{
+					LOGI("Found Vulkan HW device, but Vulkan was not enabled in device.\n");
+					continue;
+				}
+				else if (config->device_type != AV_HWDEVICE_TYPE_VULKAN && use_vulkan)
+				{
+					LOGI("Vulkan video is enabled on device, skipping non-Vulkan HW device.\n");
+					continue;
+				}
+			}
+#endif
 
 			if ((config->methods & (AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX | AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX)) != 0)
 				init_hw_device_ctx(config);

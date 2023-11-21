@@ -733,36 +733,45 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	}
 
 	ubo.chroma_clamp = (vec2(ubo.resolution) - 0.5f * float(1u << plane_subsample_log2[1])) * ubo.inv_resolution;
+	const char *siting;
 
 	switch (video.av_ctx->chroma_sample_location)
 	{
 	case AVCHROMA_LOC_TOPLEFT:
 		ubo.chroma_siting = vec2(1.0f);
+		siting = "TopLeft";
 		break;
 
 	case AVCHROMA_LOC_TOP:
 		ubo.chroma_siting = vec2(0.5f, 1.0f);
+		siting = "Top";
 		break;
 
 	case AVCHROMA_LOC_LEFT:
 		ubo.chroma_siting = vec2(1.0f, 0.5f);
+		siting = "Left";
 		break;
 
 	case AVCHROMA_LOC_CENTER:
 	default:
 		ubo.chroma_siting = vec2(0.5f);
+		siting = "Center";
 		break;
 
 	case AVCHROMA_LOC_BOTTOMLEFT:
 		ubo.chroma_siting = vec2(1.0f, 0.0f);
+		siting = "BottomLeft";
 		break;
 
 	case AVCHROMA_LOC_BOTTOM:
 		ubo.chroma_siting = vec2(0.5f, 0.0f);
+		siting = "Bottom";
 		break;
 	}
 
 	bool full_range = video.av_ctx->color_range == AVCOL_RANGE_JPEG;
+	LOGI("Range: %s\n", full_range ? "full" : "limited");
+	LOGI("Chroma: %s\n", siting);
 
 	// 16.3.9 from Vulkan spec.
 	// YCbCr samplers is not universally supported,
@@ -856,6 +865,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 		LOGW("Unknown color space: %u, assuming BT.709.\n", col_space);
 		// fallthrough
 	case AVCOL_SPC_BT709:
+		LOGI("BT.709 color space.\n");
 		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
 		                           vec3(0.0f, -0.13397432f / 0.7152f, 1.8556f),
 		                           vec3(1.5748f, -0.33480248f / 0.7152f, 0.0f)));
@@ -864,6 +874,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 
 	case AVCOL_SPC_BT2020_CL:
 	case AVCOL_SPC_BT2020_NCL:
+		LOGI("BT.2020 color space.\n");
 		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
 		                           vec3(0.0f, -0.11156702f / 0.6780f, 1.8814f),
 		                           vec3(1.4746f, -0.38737742f / 0.6780f, 0.0f)));
@@ -872,6 +883,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 
 	case AVCOL_SPC_SMPTE170M:
 	case AVCOL_SPC_BT470BG:
+		LOGI("BT.601 color space.\n");
 		// BT.601. Primaries differ between EBU and SMPTE.
 		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
 		                           vec3(0.0f, -0.202008f / 0.587f, 1.772f),
@@ -881,6 +893,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 		break;
 
 	case AVCOL_SPC_SMPTE240M:
+		LOGI("SMPTE240M color space.\n");
 		// This does not seem to have a corresponding model in Vulkan.
 		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
 		                           vec3(0.0f, -0.58862f / 0.701f, 1.826f),
@@ -1154,6 +1167,13 @@ bool VideoDecoder::Impl::init_video_decoder_pre_device()
 		video.av_ctx->framerate.den = pyro_codec.frame_rate_den;
 		// Packet loss is expected, and we'd rather have something on screen than nothing.
 		video.av_ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT;
+
+		// TODO: Make this configurable in pyro protocol.
+		// This is default H.264 / H.265 for HD content.
+		video.av_ctx->color_primaries = AVCOL_PRI_BT709;
+		video.av_ctx->color_range = AVCOL_RANGE_MPEG;
+		video.av_ctx->colorspace = AVCOL_SPC_BT709;
+		video.av_ctx->chroma_sample_location = AVCHROMA_LOC_LEFT;
 	}
 
 	video.av_ctx->opaque = &hw;

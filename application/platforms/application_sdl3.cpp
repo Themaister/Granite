@@ -113,6 +113,8 @@ public:
 		SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 		// Adding gamepad events will make main loop spin without waiting.
 		SDL_SetHint(SDL_HINT_AUTO_UPDATE_JOYSTICKS, "0");
+		SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, SDL_FALSE);
+		SDL_SetEventEnabled(SDL_EVENT_DROP_TEXT, SDL_FALSE);
 
 		if (SDL_Vulkan_LoadLibrary(nullptr) < 0)
 		{
@@ -161,6 +163,33 @@ public:
 	{
 		push_task_to_main_thread([]() {
 			SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, SDL_TRUE);
+		});
+	}
+
+	void show_message_box(const std::string &str, MessageType type) override
+	{
+		push_task_to_main_thread([this, str, type]() {
+			const char *title;
+			Uint32 flags;
+			switch (type)
+			{
+			case MessageType::Error:
+				flags = SDL_MESSAGEBOX_ERROR;
+				title = "Error";
+				break;
+
+			case MessageType::Warning:
+				flags = SDL_MESSAGEBOX_WARNING;
+				title = "Warning";
+				break;
+
+			case MessageType::Info:
+				flags = SDL_MESSAGEBOX_INFORMATION;
+				title = "Info";
+				break;
+			}
+
+			SDL_ShowSimpleMessageBox(flags, title, str.c_str(), window);
 		});
 	}
 

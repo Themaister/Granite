@@ -126,6 +126,9 @@ public:
 
 	virtual void begin_drop_event();
 
+	enum class MessageType { Error, Warning, Info };
+	virtual void show_message_box(const std::string &str, MessageType type);
+
 protected:
 	unsigned current_swapchain_width = 0;
 	unsigned current_swapchain_height = 0;

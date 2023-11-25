@@ -1528,4 +1528,5 @@ void WSIPlatform::event_swapchain_destroyed() {}
 void WSIPlatform::event_frame_tick(double, double) {}
 void WSIPlatform::event_swapchain_index(Device *, unsigned) {}
 void WSIPlatform::begin_drop_event() {}
+void WSIPlatform::show_message_box(const std::string &, Vulkan::WSIPlatform::MessageType) {}
 }

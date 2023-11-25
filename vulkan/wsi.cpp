@@ -1527,4 +1527,5 @@ void WSIPlatform::event_swapchain_created(Device *, VkSwapchainKHR, unsigned, un
 void WSIPlatform::event_swapchain_destroyed() {}
 void WSIPlatform::event_frame_tick(double, double) {}
 void WSIPlatform::event_swapchain_index(Device *, unsigned) {}
+void WSIPlatform::begin_drop_event() {}
 }

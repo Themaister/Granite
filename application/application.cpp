@@ -52,6 +52,10 @@ bool Application::init_platform(std::unique_ptr<WSIPlatform> new_platform)
 #endif
 	platform = std::move(new_platform);
 	application_wsi.set_platform(platform.get());
+
+	if (auto *event = GRANITE_EVENT_MANAGER())
+		event->enqueue_latched<ApplicationWSIPlatformEvent>(*platform);
+
 	return true;
 }
 
@@ -61,6 +65,7 @@ void Application::teardown_wsi()
 	{
 		event->dequeue_all_latched(DevicePipelineReadyEvent::get_type_id());
 		event->dequeue_all_latched(DeviceShaderModuleReadyEvent::get_type_id());
+		event->dequeue_all_latched(ApplicationWSIPlatformEvent::get_type_id());
 	}
 	application_wsi.teardown();
 	ready_modules = false;

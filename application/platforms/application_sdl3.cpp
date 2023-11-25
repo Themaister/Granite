@@ -157,6 +157,13 @@ public:
 		return &application.info;
 	}
 
+	void begin_drop_event() override
+	{
+		push_task_to_main_thread([]() {
+			SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, SDL_TRUE);
+		});
+	}
+
 	void toggle_fullscreen()
 	{
 		bool is_fullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
@@ -197,6 +204,7 @@ public:
 		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
 		flush_deferred_input_events();
 		process_events_async_thread();
+		process_events_async_thread_non_pollable();
 		return !request_tear_down.load();
 	}
 
@@ -405,6 +413,14 @@ public:
 					{
 						toggle_fullscreen();
 					}
+					else if (state == KeyState::Pressed && tolower(e.key.keysym.sym) == 'v' &&
+					         (e.key.keysym.mod & SDL_KMOD_LCTRL) != 0)
+					{
+						push_non_pollable_task_to_async_thread([c = clipboard]() mutable {
+							if (auto *manager = GRANITE_EVENT_MANAGER())
+								manager->enqueue<Vulkan::ApplicationWindowTextDropEvent>(std::move(c));
+						});
+					}
 					else
 					{
 						Key key = sdl_key_to_granite_key(e.key.keysym.sym);
@@ -413,6 +429,37 @@ public:
 						});
 					}
 				}
+				break;
+
+			case SDL_EVENT_DROP_FILE:
+				if (e.drop.windowID == SDL_GetWindowID(window))
+				{
+					std::string str = e.drop.data;
+					push_non_pollable_task_to_async_thread([s = std::move(str)]() mutable {
+						if (auto *manager = GRANITE_EVENT_MANAGER())
+							manager->enqueue<Vulkan::ApplicationWindowFileDropEvent>(std::move(s));
+					});
+				}
+				break;
+
+			case SDL_EVENT_DROP_COMPLETE:
+				SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, SDL_FALSE);
+				break;
+
+			case SDL_EVENT_CLIPBOARD_UPDATE:
+				if (SDL_HasClipboardText())
+				{
+					char *text = SDL_GetClipboardText();
+					if (text)
+					{
+						clipboard = text;
+						SDL_free(text);
+					}
+					else
+						clipboard.clear();
+				}
+				else
+					clipboard.clear();
 				break;
 
 			default:
@@ -494,9 +541,6 @@ public:
 	void notify_close()
 	{
 		request_tear_down.store(true);
-		SDL_Event quit_event = {};
-		quit_event.type = SDL_EVENT_QUIT;
-		SDL_PushEvent(&quit_event);
 	}
 
 #ifdef _WIN32
@@ -517,12 +561,19 @@ public:
 		push_task_to_list(task_list_async, std::forward<Op>(op));
 	}
 
+	template <typename Op>
+	void push_non_pollable_task_to_async_thread(Op &&op)
+	{
+		push_non_pollable_task_to_list(task_list_async, std::forward<Op>(op));
+	}
+
 private:
 	SDL_Window *window = nullptr;
 	unsigned width = 0;
 	unsigned height = 0;
 	uint32_t wake_event_type = 0;
 	Options options;
+	std::string clipboard;
 
 	struct
 	{
@@ -536,6 +587,7 @@ private:
 		std::mutex lock;
 		std::condition_variable cond;
 		std::vector<std::function<void ()>> list;
+		std::vector<std::function<void ()>> non_pollable_list;
 	} task_list_main, task_list_async;
 
 	static void process_events_for_list(TaskList &list, bool blocking)
@@ -559,6 +611,14 @@ private:
 		list.cond.notify_one();
 	}
 
+	template <typename Op>
+	void push_non_pollable_task_to_list(TaskList &list, Op &&op)
+	{
+		std::lock_guard<std::mutex> holder{list.lock};
+		list.non_pollable_list.emplace_back(std::forward<Op>(op));
+		list.cond.notify_one();
+	}
+
 	void process_events_main_thread()
 	{
 		process_events_for_list(task_list_main, false);
@@ -572,6 +632,14 @@ private:
 	void process_events_async_thread()
 	{
 		process_events_for_list(task_list_async, false);
+	}
+
+	void process_events_async_thread_non_pollable()
+	{
+		std::unique_lock<std::mutex> holder{task_list_async.lock};
+		for (auto &task : task_list_async.non_pollable_list)
+			task();
+		task_list_async.non_pollable_list.clear();
 	}
 
 	void process_events_async_thread_blocking()

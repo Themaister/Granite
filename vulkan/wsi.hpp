@@ -124,6 +124,8 @@ public:
 
 	virtual const VkApplicationInfo *get_application_info();
 
+	virtual void begin_drop_event();
+
 protected:
 	unsigned current_swapchain_width = 0;
 	unsigned current_swapchain_height = 0;

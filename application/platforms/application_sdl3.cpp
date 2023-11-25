@@ -311,7 +311,7 @@ public:
 			push_task_to_async_thread(std::move(func));
 		};
 
-		while (alive && SDL_WaitEvent(&e))
+		while (alive && async_loop_alive && SDL_WaitEvent(&e))
 		{
 			if (e.type == wake_event_type)
 			{

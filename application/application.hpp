@@ -83,6 +83,7 @@ public:
 
 	bool poll();
 	void run_frame();
+	void show_message_box(const std::string &str, Vulkan::WSIPlatform::MessageType type);
 
 protected:
 	void request_shutdown()

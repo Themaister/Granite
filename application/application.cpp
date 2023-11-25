@@ -204,6 +204,27 @@ void Application::check_initialization_progress()
 	}
 }
 
+void Application::show_message_box(const std::string &str, Vulkan::WSIPlatform::MessageType type)
+{
+	if (platform)
+		platform->show_message_box(str, type);
+
+	switch (type)
+	{
+	case Vulkan::WSIPlatform::MessageType::Error:
+		LOGE("%s\n", str.c_str());
+		break;
+
+	case Vulkan::WSIPlatform::MessageType::Warning:
+		LOGW("%s\n", str.c_str());
+		break;
+
+	case Vulkan::WSIPlatform::MessageType::Info:
+		LOGI("%s\n", str.c_str());
+		break;
+	}
+}
+
 void Application::run_frame()
 {
 	check_initialization_progress();

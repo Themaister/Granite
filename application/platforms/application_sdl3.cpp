@@ -169,8 +169,8 @@ public:
 	void show_message_box(const std::string &str, MessageType type) override
 	{
 		push_task_to_main_thread([this, str, type]() {
-			const char *title;
-			Uint32 flags;
+			const char *title = nullptr;
+			Uint32 flags = 0;
 			switch (type)
 			{
 			case MessageType::Error:

@@ -85,7 +85,7 @@ struct WASAPIBackend final : Backend
 
 	IMMDeviceEnumerator *pEnumerator = nullptr;
 	IMMDevice *pDevice = nullptr;
-	IAudioClient *pAudioClient = nullptr;
+	IAudioClient3 *pAudioClient = nullptr;
 	IAudioRenderClient *pRenderClient = nullptr;
 	uint32_t buffer_latency_us = 0;
 	UINT32 buffer_frames = 0;
@@ -117,17 +117,12 @@ WASAPIBackend::~WASAPIBackend()
 		CloseHandle(audio_event);
 }
 
-static REFERENCE_TIME seconds_to_reference_time(double t)
-{
-	return REFERENCE_TIME(t * 10000000.0 + 0.5);
-}
-
 static double reference_time_to_seconds(REFERENCE_TIME t)
 {
 	return double(t) / 10000000.0;
 }
 
-bool WASAPIBackend::init(float, unsigned channels)
+bool WASAPIBackend::init(float sample_rate, unsigned channels)
 {
 	if (FAILED(CoInitialize(nullptr)))
 	{
@@ -177,13 +172,35 @@ bool WASAPIBackend::init(float, unsigned channels)
 	}
 
 	format->nChannels = WORD(channels);
+	DWORD base_rate = format->nSamplesPerSec;
+	if (sample_rate > 0.0f)
+		format->nSamplesPerSec = DWORD(sample_rate);
 
-	const double target_latency = 0.050;
-	auto reference_time = seconds_to_reference_time(target_latency);
+	UINT default_period = 0, fundamental_period = 0, min_period = 0, max_period = 0;
+	HRESULT hr;
+	if (FAILED(hr = pAudioClient->GetSharedModeEnginePeriod(format, &default_period, &fundamental_period, &min_period, &max_period)))
+	{
+		if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT && format->nSamplesPerSec != base_rate)
+		{
+			format->nSamplesPerSec = base_rate;
+			hr = pAudioClient->GetSharedModeEnginePeriod(format, &default_period, &fundamental_period, &min_period, &max_period);
+		}
 
-	if (FAILED(pAudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED,
-	                                    AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-	                                    reference_time, 0, format, nullptr)))
+		if (FAILED(hr))
+		{
+			LOGE("WASAPI: Failed to query shared mode engine period.\n");
+			return false;
+		}
+	}
+
+	// Sanity check, but you'd think default period should "just werk".
+	if (fundamental_period != 0 && default_period % fundamental_period != 0)
+	{
+		LOGE("WASAPI: Nonsensical default period.\n");
+		return false;
+	}
+
+	if (FAILED(pAudioClient->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, default_period, format, nullptr)))
 	{
 		LOGE("WASAPI: Failed to initialize audio client.\n");
 		return false;
@@ -210,7 +227,7 @@ bool WASAPIBackend::init(float, unsigned channels)
 
 	if (callback)
 	{
-		callback->set_latency_usec(buffer_latency_us);
+		callback->set_latency_usec((1000000 * buffer_frames) / format->nSamplesPerSec);
 		callback->set_backend_parameters(get_sample_rate(), get_num_channels(), MAX_NUM_FRAMES);
 	}
 	return true;

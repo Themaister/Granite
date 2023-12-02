@@ -38,18 +38,20 @@ enum ManagerFeatureFlagBits
 	MANAGER_FEATURE_EVENT_BIT = 1 << 1,
 	MANAGER_FEATURE_THREAD_GROUP_BIT = 1 << 2,
 	MANAGER_FEATURE_UI_MANAGER_BIT = 1 << 3,
-	MANAGER_FEATURE_AUDIO_BIT = 1 << 4,
-	MANAGER_FEATURE_COMMON_RENDERER_DATA_BIT = 1 << 5,
-	MANAGER_FEATURE_PHYSICS_BIT = 1 << 6,
-	MANAGER_FEATURE_LOGGING_BIT = 1 << 7,
-	MANAGER_FEATURE_ASSET_MANAGER_BIT = 1 << 8,
+	MANAGER_FEATURE_AUDIO_MIXER_BIT = 1 << 4,
+	MANAGER_FEATURE_AUDIO_BACKEND_BIT = 1 << 5,
+	MANAGER_FEATURE_COMMON_RENDERER_DATA_BIT = 1 << 6,
+	MANAGER_FEATURE_PHYSICS_BIT = 1 << 7,
+	MANAGER_FEATURE_LOGGING_BIT = 1 << 8,
+	MANAGER_FEATURE_ASSET_MANAGER_BIT = 1 << 9,
 	MANAGER_FEATURE_DEFAULT_BITS = (MANAGER_FEATURE_FILESYSTEM_BIT |
 	                                MANAGER_FEATURE_ASSET_MANAGER_BIT |
 	                                MANAGER_FEATURE_EVENT_BIT |
 	                                MANAGER_FEATURE_THREAD_GROUP_BIT |
 	                                MANAGER_FEATURE_COMMON_RENDERER_DATA_BIT |
 	                                MANAGER_FEATURE_UI_MANAGER_BIT |
-	                                MANAGER_FEATURE_AUDIO_BIT)
+	                                MANAGER_FEATURE_AUDIO_MIXER_BIT |
+	                                MANAGER_FEATURE_AUDIO_BACKEND_BIT)
 };
 using ManagerFeatureFlags = uint32_t;
 
@@ -75,7 +77,7 @@ public:
 };
 
 void init(Factory &factory, ManagerFeatureFlags flags = MANAGER_FEATURE_DEFAULT_BITS,
-          unsigned max_threads = UINT_MAX);
+          unsigned max_threads = UINT_MAX, float audio_sample_rate = -1.0f);
 void deinit();
 
 // Used if the application wants to use multiple instances of Granite in the same process.

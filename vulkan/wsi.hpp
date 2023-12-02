@@ -30,6 +30,11 @@
 #include <thread>
 #include <chrono>
 
+namespace Granite
+{
+class InputTrackerHandler;
+}
+
 namespace Vulkan
 {
 class WSI;
@@ -76,6 +81,7 @@ public:
 
 	virtual bool alive(WSI &wsi) = 0;
 	virtual void poll_input() = 0;
+	virtual void poll_input_async(Granite::InputTrackerHandler *handler) = 0;
 	virtual bool has_external_swapchain()
 	{
 		return false;
@@ -118,6 +124,11 @@ public:
 
 	virtual const VkApplicationInfo *get_application_info();
 
+	virtual void begin_drop_event();
+
+	enum class MessageType { Error, Warning, Info };
+	virtual void show_message_box(const std::string &str, MessageType type);
+
 protected:
 	unsigned current_swapchain_width = 0;
 	unsigned current_swapchain_height = 0;
@@ -150,6 +161,11 @@ public:
 	void set_platform(WSIPlatform *platform);
 	void set_present_mode(PresentMode mode);
 	void set_backbuffer_format(BackbufferFormat format);
+
+	// Latency is normally pretty low, but this aims to target
+	// really low latency. Only suitable for cases where rendering loads are extremely simple.
+	void set_low_latency_mode(bool enable);
+
 	inline BackbufferFormat get_backbuffer_format() const
 	{
 		return backbuffer_format;
@@ -282,6 +298,7 @@ private:
 	VkSurfaceFormatKHR swapchain_surface_format = { VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
 	PresentMode current_present_mode = PresentMode::SyncToVBlank;
 	PresentMode present_mode = PresentMode::SyncToVBlank;
+	bool low_latency_mode_enable = false;
 
 	VkPresentModeKHR active_present_mode = VK_PRESENT_MODE_FIFO_KHR;
 	std::vector<VkPresentModeKHR> present_mode_compat_group;

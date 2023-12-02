@@ -85,43 +85,31 @@ Util::MessageQueueInterface *message_queue()
 
 FilesystemInterface *filesystem()
 {
-	if (!global_managers.filesystem)
-		LOGE("Filesystem was not initialized.\n");
 	return global_managers.filesystem;
 }
 
 AssetManagerInterface *asset_manager()
 {
-	if (!global_managers.asset_manager)
-		LOGE("Asset manager was not initialized.\n");
 	return global_managers.asset_manager;
 }
 
 EventManagerInterface *event_manager()
 {
-	if (!global_managers.event_manager)
-		LOGE("Event manager was not initialized.\n");
 	return global_managers.event_manager;
 }
 
 ThreadGroupInterface *thread_group()
 {
-	if (!global_managers.thread_group)
-		LOGE("Thread group was not initialized.\n");
 	return global_managers.thread_group;
 }
 
 UI::UIManagerInterface *ui_manager()
 {
-	if (!global_managers.ui_manager)
-		LOGE("UI manager was not initialized.\n");
 	return global_managers.ui_manager;
 }
 
 CommonRendererDataInterface *common_renderer_data()
 {
-	if (!global_managers.common_renderer_data)
-		LOGE("Common GPU data was not initialized. Lazily initializing.\n");
 	return global_managers.common_renderer_data;
 }
 
@@ -138,12 +126,10 @@ void install_audio_system(Audio::BackendInterface *backend, Audio::MixerInterfac
 
 PhysicsSystemInterface *physics()
 {
-	if (!global_managers.physics)
-		LOGE("Physics system was not initialized.\n");
 	return global_managers.physics;
 }
 
-void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads)
+void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads, float audio_sample_rate)
 {
 	assert(!global_managers.factory || global_managers.factory == &factory);
 	global_managers.factory = &factory;
@@ -201,12 +187,16 @@ void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads)
 			global_managers.physics = factory.create_physics_system();
 	}
 
-	if (flags & MANAGER_FEATURE_AUDIO_BIT)
+	if (flags & MANAGER_FEATURE_AUDIO_MIXER_BIT)
 	{
 		if (!global_managers.audio_mixer)
 			global_managers.audio_mixer = factory.create_audio_mixer();
+	}
+
+	if (flags & MANAGER_FEATURE_AUDIO_BACKEND_BIT)
+	{
 		if (!global_managers.audio_backend)
-			global_managers.audio_backend = factory.create_audio_backend(global_managers.audio_mixer, 44100.0f, 2);
+			global_managers.audio_backend = factory.create_audio_backend(global_managers.audio_mixer, audio_sample_rate, 2);
 	}
 
 	// Kick threads after all global managers are set up.

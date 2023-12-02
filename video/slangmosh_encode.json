@@ -1,0 +1,15 @@
+{
+	"include": [ "../assets/shaders/inc" ],
+	"shaders": [
+		{
+			"name": "rgb_to_yuv",
+			"compute": true,
+			"path": "../assets/shaders/util/rgb_to_yuv.comp"
+		},
+		{
+			"name": "chroma_downsample",
+			"compute": true,
+			"path": "../assets/shaders/util/chroma_downsample.comp"
+		}
+	]
+}

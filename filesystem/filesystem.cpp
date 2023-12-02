@@ -391,8 +391,8 @@ FileHandle ScratchFilesystem::open(const std::string &path, FileMode)
 	}
 }
 
-BlobFilesystem::BlobFilesystem(FileHandle file_, std::string basedir_)
-	: file(std::move(file_)), base(std::move(basedir_))
+BlobFilesystem::BlobFilesystem(FileHandle file_)
+	: file(std::move(file_))
 {
 	if (!file)
 		return;
@@ -560,7 +560,7 @@ std::vector<ListEntry> BlobFilesystem::list(const std::string &path)
 	auto canon_path = Path::canonicalize_path(path);
 
 	std::vector<ListEntry> entries;
-	if (const auto *zip_dir = find_directory(Path::join(base, canon_path)))
+	if (const auto *zip_dir = find_directory(canon_path))
 	{
 		entries.reserve(zip_dir->dirs.size() + zip_dir->files.size());
 		for (auto &dir : zip_dir->dirs)
@@ -573,7 +573,7 @@ std::vector<ListEntry> BlobFilesystem::list(const std::string &path)
 
 bool BlobFilesystem::stat(const std::string &path, FileStat &stat)
 {
-	auto p = Path::join(base, Path::canonicalize_path(path));
+	auto p = Path::canonicalize_path(path);
 
 	if (const auto *zip_file = find_file(p))
 	{
@@ -598,7 +598,7 @@ FileHandle BlobFilesystem::open(const std::string &path, FileMode mode)
 	if (mode != FileMode::ReadOnly)
 		return {};
 
-	auto p = Path::join(base, Path::canonicalize_path(path));
+	auto p = Path::canonicalize_path(path);
 	auto *blob_file = find_file(p);
 	if (!blob_file)
 		return {};

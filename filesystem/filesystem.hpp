@@ -285,7 +285,7 @@ private:
 class BlobFilesystem final : public FilesystemBackend
 {
 public:
-	BlobFilesystem(FileHandle file, std::string basedir);
+	BlobFilesystem(FileHandle file);
 
 	std::vector<ListEntry> list(const std::string &path) override;
 
@@ -304,7 +304,6 @@ public:
 private:
 	FileHandle file;
 	size_t blob_base_offset = 0;
-	std::string base;
 
 	struct BlobFile
 	{

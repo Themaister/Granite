@@ -32,7 +32,9 @@
 #include "thread_group.hpp"
 #include "global_managers.hpp"
 #include "thread_priority.hpp"
+#include "timeline_trace_file.hpp"
 #include "timer.hpp"
+#include "thread_name.hpp"
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -40,6 +42,7 @@
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_mixer.hpp"
 #include "dsp/dsp.hpp"
+#include "dsp/sinc_resampler.hpp"
 #endif
 
 extern "C"
@@ -81,19 +84,30 @@ static void free_av_objects(CodecStream &stream)
 #ifdef HAVE_GRANITE_AUDIO
 struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePtrEnabled<AVFrameRingStream>
 {
-	AVFrameRingStream(float sample_rate, unsigned num_channels, double timebase);
+	AVFrameRingStream(float sample_rate, unsigned num_channels, double timebase, bool support_resample, bool blocking_mix);
 	~AVFrameRingStream() override;
 
 	float sample_rate;
+	float out_sample_rate;
+	float resampling_ratio = 1.0f;
 	unsigned num_channels;
 	double timebase;
 	double inv_sample_rate_ns;
+	bool blocking_mix;
+
+	void set_rate_factor(float factor);
+	float get_rate_factor() const noexcept;
+
+	uint32_t get_underflow_counter() const;
 
 	bool setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames) override;
 	size_t accumulate_samples(float * const *channels, const float *gain, size_t num_frames) noexcept override;
+	size_t accumulate_samples_inner(float * const *channels, const float *gain, size_t num_frames) noexcept;
 	unsigned get_num_channels() const override;
 	float get_sample_rate() const override;
 	void dispose() override;
+
+	uint32_t get_current_write_count();
 
 	// Buffering in terms of AVFrame is a little questionable since packet sizes can vary a fair bit,
 	// might have to revisit later.
@@ -104,12 +118,19 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	std::atomic_uint32_t write_count;
 	std::atomic_uint32_t read_count;
 	std::atomic_uint32_t read_frames_count;
-	uint32_t write_frames_count = 0;
+	std::atomic_uint32_t write_frames_count;
+	std::atomic_uint32_t rate_factor_u32;
+	std::atomic_uint32_t underflows;
 	std::atomic_bool complete;
 	int packet_frames = 0;
 	bool running_state = false;
 	unsigned get_num_buffered_audio_frames();
 	unsigned get_num_buffered_av_frames();
+
+	enum { MaxChannels = 8 };
+	std::unique_ptr<Audio::DSP::SincResampler> resamplers[MaxChannels];
+	std::vector<float> tmp_resampler_buffer[MaxChannels];
+	float *tmp_resampler_ptrs[MaxChannels] = {};
 
 	struct
 	{
@@ -122,18 +143,54 @@ struct AVFrameRingStream final : Audio::MixerStream, Util::ThreadSafeIntrusivePt
 	void mark_uncorked_audio_pts();
 	void submit_write_frame();
 	void mark_complete();
+
+	std::condition_variable cond;
+	std::mutex lock;
 };
 
-AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_, double timebase_)
-		: sample_rate(sample_rate_), num_channels(num_channels_), timebase(timebase_), inv_sample_rate_ns(1e9 / sample_rate)
+AVFrameRingStream::AVFrameRingStream(float sample_rate_, unsigned num_channels_, double timebase_,
+                                     bool support_resample, bool blocking_mix_)
+	: sample_rate(sample_rate_)
+	, num_channels(num_channels_)
+	, timebase(timebase_)
+	, inv_sample_rate_ns(1e9 / sample_rate)
+	, blocking_mix(blocking_mix_)
 {
 	for (auto &f : frames)
 		f = av_frame_alloc();
 	write_count = 0;
 	read_count = 0;
 	read_frames_count = 0;
+	write_frames_count = 0;
 	pts_index = 0;
+	underflows = 0;
 	complete = false;
+	set_rate_factor(1.0f);
+
+	if (support_resample)
+		for (unsigned i = 0; i < num_channels; i++)
+			resamplers[i] = std::make_unique<Audio::DSP::SincResampler>(sample_rate, sample_rate, Audio::DSP::SincResampler::Quality::High);
+}
+
+void AVFrameRingStream::set_rate_factor(float factor)
+{
+	factor = resampling_ratio / factor;
+	uint32_t v;
+	memcpy(&v, &factor, sizeof(uint32_t));
+	rate_factor_u32.store(v, std::memory_order_relaxed);
+}
+
+float AVFrameRingStream::get_rate_factor() const noexcept
+{
+	float v;
+	uint32_t u = rate_factor_u32.load(std::memory_order_relaxed);
+	memcpy(&v, &u, sizeof(uint32_t));
+	return v;
+}
+
+uint32_t AVFrameRingStream::get_underflow_counter() const
+{
+	return underflows.load(std::memory_order_relaxed);
 }
 
 void AVFrameRingStream::mark_uncorked_audio_pts()
@@ -145,10 +202,28 @@ void AVFrameRingStream::mark_uncorked_audio_pts()
 		progress[index].sampled_ns = Util::get_current_time_nsecs();
 }
 
-bool AVFrameRingStream::setup(float, unsigned mixer_channels, size_t)
+bool AVFrameRingStream::setup(float mixer_output_rate, unsigned mixer_channels, size_t num_frames)
 {
 	// TODO: Could promote mono to stereo.
-	return mixer_channels == num_channels;
+	if (mixer_channels != num_channels)
+		return false;
+
+	out_sample_rate = sample_rate;
+
+	for (unsigned i = 0; i < MaxChannels; i++)
+	{
+		if (resamplers[i])
+		{
+			tmp_resampler_buffer[i].resize(num_frames * 2); // Maximum ratio distortion is 1.5x.
+			tmp_resampler_ptrs[i] = tmp_resampler_buffer[i].data();
+
+			// If we're resampling anyway, target native mixer rate.
+			out_sample_rate = mixer_output_rate;
+			resampling_ratio = out_sample_rate / sample_rate;
+		}
+	}
+
+	return true;
 }
 
 void AVFrameRingStream::dispose()
@@ -158,7 +233,7 @@ void AVFrameRingStream::dispose()
 
 float AVFrameRingStream::get_sample_rate() const
 {
-	return sample_rate;
+	return out_sample_rate;
 }
 
 unsigned AVFrameRingStream::get_num_channels() const
@@ -167,6 +242,64 @@ unsigned AVFrameRingStream::get_num_channels() const
 }
 
 size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float *gain, size_t num_frames) noexcept
+{
+	if (resamplers[0])
+	{
+		float ratio = get_rate_factor();
+
+		for (unsigned i = 0; i < num_channels; i++)
+			resamplers[i]->set_sample_rate_ratio(ratio);
+		size_t required = resamplers[0]->get_current_input_for_output_frames(num_frames);
+		for (unsigned i = 0; i < num_channels; i++)
+		{
+			assert(required <= tmp_resampler_buffer[i].size());
+			// Should have a no-accumulation variant, but eeeeeeh.
+			// We need to clear out to zero anyway for underruns, etc.
+			memset(tmp_resampler_ptrs[i], 0, required * sizeof(float));
+		}
+		size_t accum = accumulate_samples_inner(tmp_resampler_ptrs, gain, required);
+
+		if (accum < required)
+			underflows.store(underflows.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
+
+		for (unsigned i = 0; i < num_channels; i++)
+		{
+			resamplers[i]->set_sample_rate_ratio(ratio);
+			resamplers[i]->process_and_accumulate_output_frames(channels[i], tmp_resampler_ptrs[i], num_frames);
+		}
+
+		return complete.load(std::memory_order_relaxed) && accum == 0 ? 0 : num_frames;
+	}
+	else
+	{
+		return accumulate_samples_inner(channels, gain, num_frames);
+	}
+}
+
+uint32_t AVFrameRingStream::get_current_write_count()
+{
+	if (blocking_mix)
+	{
+		uint32_t r_count = read_count.load(std::memory_order_relaxed);
+		uint32_t w_count = write_count.load(std::memory_order_acquire);
+		if (r_count != w_count)
+			return w_count;
+
+		// Stall. This will block the mixer, so this should only be used when this audio stream is exclusive,
+		// e.g. a standalone video player.
+		// We never expect to wait more than a few milliseconds here, otherwise the audio buffer is drained already.
+		std::unique_lock<std::mutex> holder{lock};
+		cond.wait_for(holder, std::chrono::milliseconds(50), [this, r_count]() {
+			return complete.load(std::memory_order_relaxed) ||
+			       write_count.load(std::memory_order_relaxed) != r_count;
+		});
+		return write_count.load(std::memory_order_relaxed);
+	}
+	else
+		return write_count.load(std::memory_order_acquire);
+}
+
+size_t AVFrameRingStream::accumulate_samples_inner(float *const *channels, const float *gain, size_t num_frames) noexcept
 {
 	// Hold back playback until we have buffered enough to avoid instant underrun.
 	uint32_t written_count = write_count.load(std::memory_order_acquire);
@@ -185,7 +318,7 @@ size_t AVFrameRingStream::accumulate_samples(float *const *channels, const float
 	size_t write_offset = 0;
 	uint32_t buffer_index = read_count.load(std::memory_order_relaxed);
 
-	while (write_offset < num_frames && buffer_index != written_count)
+	while (write_offset < num_frames && buffer_index != (written_count = get_current_write_count()))
 	{
 		size_t to_write = num_frames - write_offset;
 		auto *frame = frames[buffer_index % Frames];
@@ -291,14 +424,30 @@ AVFrame *AVFrameRingStream::acquire_write_frame()
 
 void AVFrameRingStream::submit_write_frame()
 {
+	if (blocking_mix)
+		lock.lock();
+
 	uint32_t index = write_count.load(std::memory_order_relaxed);
+	write_frames_count.store(write_frames_count.load(std::memory_order_relaxed) + uint32_t(frames[index % Frames]->nb_samples));
 	write_count.store(index + 1, std::memory_order_release);
-	write_frames_count += uint32_t(frames[index % Frames]->nb_samples);
+
+	if (blocking_mix)
+	{
+		cond.notify_one();
+		lock.unlock();
+	}
 }
 
 void AVFrameRingStream::mark_complete()
 {
-	complete.store(true, std::memory_order_relaxed);
+	if (blocking_mix)
+	{
+		std::lock_guard<std::mutex> holder{lock};
+		complete.store(true, std::memory_order_relaxed);
+		cond.notify_one();
+	}
+	else
+		complete.store(true, std::memory_order_relaxed);
 }
 
 unsigned AVFrameRingStream::get_num_buffered_av_frames()
@@ -310,7 +459,7 @@ unsigned AVFrameRingStream::get_num_buffered_av_frames()
 
 unsigned AVFrameRingStream::get_num_buffered_audio_frames()
 {
-	uint32_t result = write_frames_count - read_frames_count.load(std::memory_order_acquire);
+	uint32_t result = write_frames_count.load(std::memory_order_relaxed) - read_frames_count.load(std::memory_order_acquire);
 	VK_ASSERT(result < 0x80000000u);
 	return result;
 }
@@ -325,6 +474,7 @@ AVFrameRingStream::~AVFrameRingStream()
 struct VideoDecoder::Impl
 {
 	Vulkan::Device *device = nullptr;
+	FFmpegDecode::Shaders<> shaders;
 	Audio::Mixer *mixer = nullptr;
 	DecodeOptions opts;
 	AVFormatContext *av_format_ctx = nullptr;
@@ -351,6 +501,7 @@ struct VideoDecoder::Impl
 		uint64_t lock_order = 0;
 
 		double pts = 0.0;
+		uint64_t done_ts = 0;
 		ImageState state = ImageState::Idle;
 	};
 	std::vector<DecodedImage> video_queue;
@@ -372,7 +523,7 @@ struct VideoDecoder::Impl
 	bool init_video_decoder_post_device();
 	bool init_audio_decoder();
 
-	bool begin_device_context(Vulkan::Device *device);
+	bool begin_device_context(Vulkan::Device *device, const FFmpegDecode::Shaders<> &shaders);
 	void end_device_context();
 	bool play();
 	bool get_stream_id(Audio::StreamID &id) const;
@@ -382,10 +533,18 @@ struct VideoDecoder::Impl
 	bool get_paused() const;
 
 	double get_estimated_audio_playback_timestamp(double elapsed_time);
+	double latch_estimated_video_playback_timestamp(double elapsed_time, double target_latency);
+	void latch_estimated_audio_playback_timestamp(double pts);
+	void set_audio_delta_rate_factor(float delta);
+	double get_audio_buffering_duration();
+	double get_last_video_buffering_pts();
+	unsigned get_num_ready_video_frames();
 	double get_estimated_audio_playback_timestamp_raw();
+	void latch_audio_buffering_target(double target_buffer_time);
 
-	bool acquire_video_frame(VideoFrame &frame);
+	bool acquire_video_frame(VideoFrame &frame, int timeout_ms);
 	int try_acquire_video_frame(VideoFrame &frame);
+	bool is_eof();
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
 
 	bool decode_video_packet(AVPacket *pkt);
@@ -454,6 +613,13 @@ struct VideoDecoder::Impl
 
 	double smooth_elapsed = 0.0;
 	double smooth_pts = 0.0;
+	DemuxerIOInterface *io_interface = nullptr;
+
+	pyro_codec_parameters pyro_codec = {};
+	bool has_observed_keyframe = false;
+	int read_frame(AVPacket *av_pkt);
+
+	Granite::Global::GlobalManagersHandle managers;
 };
 
 int VideoDecoder::Impl::find_idle_decode_video_frame_locked() const
@@ -567,36 +733,45 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	}
 
 	ubo.chroma_clamp = (vec2(ubo.resolution) - 0.5f * float(1u << plane_subsample_log2[1])) * ubo.inv_resolution;
+	const char *siting;
 
 	switch (video.av_ctx->chroma_sample_location)
 	{
 	case AVCHROMA_LOC_TOPLEFT:
 		ubo.chroma_siting = vec2(1.0f);
+		siting = "TopLeft";
 		break;
 
 	case AVCHROMA_LOC_TOP:
 		ubo.chroma_siting = vec2(0.5f, 1.0f);
+		siting = "Top";
 		break;
 
 	case AVCHROMA_LOC_LEFT:
 		ubo.chroma_siting = vec2(1.0f, 0.5f);
+		siting = "Left";
 		break;
 
 	case AVCHROMA_LOC_CENTER:
 	default:
 		ubo.chroma_siting = vec2(0.5f);
+		siting = "Center";
 		break;
 
 	case AVCHROMA_LOC_BOTTOMLEFT:
 		ubo.chroma_siting = vec2(1.0f, 0.0f);
+		siting = "BottomLeft";
 		break;
 
 	case AVCHROMA_LOC_BOTTOM:
 		ubo.chroma_siting = vec2(0.5f, 0.0f);
+		siting = "Bottom";
 		break;
 	}
 
 	bool full_range = video.av_ctx->color_range == AVCOL_RANGE_JPEG;
+	LOGI("Range: %s\n", full_range ? "full" : "limited");
+	LOGI("Chroma: %s\n", siting);
 
 	// 16.3.9 from Vulkan spec.
 	// YCbCr samplers is not universally supported,
@@ -690,6 +865,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 		LOGW("Unknown color space: %u, assuming BT.709.\n", col_space);
 		// fallthrough
 	case AVCOL_SPC_BT709:
+		LOGI("BT.709 color space.\n");
 		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
 		                           vec3(0.0f, -0.13397432f / 0.7152f, 1.8556f),
 		                           vec3(1.5748f, -0.33480248f / 0.7152f, 0.0f)));
@@ -698,6 +874,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 
 	case AVCOL_SPC_BT2020_CL:
 	case AVCOL_SPC_BT2020_NCL:
+		LOGI("BT.2020 color space.\n");
 		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
 		                           vec3(0.0f, -0.11156702f / 0.6780f, 1.8814f),
 		                           vec3(1.4746f, -0.38737742f / 0.6780f, 0.0f)));
@@ -706,6 +883,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 
 	case AVCOL_SPC_SMPTE170M:
 	case AVCOL_SPC_BT470BG:
+		LOGI("BT.601 color space.\n");
 		// BT.601. Primaries differ between EBU and SMPTE.
 		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
 		                           vec3(0.0f, -0.202008f / 0.587f, 1.772f),
@@ -715,6 +893,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 		break;
 
 	case AVCOL_SPC_SMPTE240M:
+		LOGI("SMPTE240M color space.\n");
 		// This does not seem to have a corresponding model in Vulkan.
 		ubo.yuv_to_rgb = mat4(mat3(vec3(1.0f, 1.0f, 1.0f),
 		                           vec3(0.0f, -0.58862f / 0.701f, 1.826f),
@@ -731,11 +910,46 @@ bool VideoDecoder::Impl::init_audio_decoder()
 {
 	// This is fine. We can support no-audio files.
 	int ret;
-	if ((ret = av_find_best_stream(av_format_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0)) < 0)
-		return true;
 
-	audio.av_stream = av_format_ctx->streams[ret];
-	const AVCodec *codec = avcodec_find_decoder(audio.av_stream->codecpar->codec_id);
+	if (av_format_ctx)
+	{
+		if ((ret = av_find_best_stream(av_format_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0)) < 0)
+			return true;
+
+		audio.av_stream = av_format_ctx->streams[ret];
+	}
+
+	const AVCodec *codec = nullptr;
+
+	if (audio.av_stream)
+	{
+		codec = avcodec_find_decoder(audio.av_stream->codecpar->codec_id);
+	}
+	else
+	{
+		switch (pyro_codec.audio_codec)
+		{
+		case PYRO_AUDIO_CODEC_OPUS:
+			codec = avcodec_find_decoder(AV_CODEC_ID_OPUS);
+			break;
+
+		case PYRO_AUDIO_CODEC_AAC:
+			codec = avcodec_find_decoder(AV_CODEC_ID_AAC);
+			break;
+
+		case PYRO_AUDIO_CODEC_RAW_S16LE:
+			codec = avcodec_find_decoder(AV_CODEC_ID_PCM_S16LE);
+			break;
+
+		case PYRO_AUDIO_CODEC_NONE:
+			return true;
+
+		default:
+			LOGE("Unknown audio codec.\n");
+			return false;
+		}
+	}
+
 	if (!codec)
 	{
 		LOGE("Failed to find codec.\n");
@@ -749,10 +963,28 @@ bool VideoDecoder::Impl::init_audio_decoder()
 		return false;
 	}
 
-	if (avcodec_parameters_to_context(audio.av_ctx, audio.av_stream->codecpar) < 0)
+	const AVChannelLayout mono = AV_CHANNEL_LAYOUT_MONO;
+	const AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
+	if (audio.av_stream)
 	{
-		LOGE("Failed to copy codec parameters.\n");
-		return false;
+		if (avcodec_parameters_to_context(audio.av_ctx, audio.av_stream->codecpar) < 0)
+		{
+			LOGE("Failed to copy codec parameters.\n");
+			return false;
+		}
+	}
+	else
+	{
+		audio.av_ctx->sample_rate = pyro_codec.rate;
+		if (pyro_codec.channels == 2)
+			audio.av_ctx->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
+		else if (pyro_codec.channels == 1)
+			audio.av_ctx->ch_layout = AV_CHANNEL_LAYOUT_MONO;
+		else
+		{
+			LOGE("Unexpected audio channel count %u.\n", pyro_codec.channels);
+			return false;
+		}
 	}
 
 	if (avcodec_open2(audio.av_ctx, codec, nullptr) < 0)
@@ -761,8 +993,6 @@ bool VideoDecoder::Impl::init_audio_decoder()
 		return false;
 	}
 
-	const AVChannelLayout mono = AV_CHANNEL_LAYOUT_MONO;
-	const AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
 	if (av_channel_layout_compare(&audio.av_ctx->ch_layout, &mono) != 0 &&
 	    av_channel_layout_compare(&audio.av_ctx->ch_layout, &stereo) != 0)
 	{
@@ -796,6 +1026,12 @@ void VideoDecoder::Impl::begin_audio_stream()
 	if (!audio.av_ctx)
 		return;
 
+	double time_base;
+	if (audio.av_stream)
+		time_base = av_q2d(audio.av_stream->time_base);
+	else
+		time_base = 1e-6;
+
 	stream = new AVFrameRingStream(
 			float(audio.av_ctx->sample_rate),
 #ifdef ch_layout
@@ -803,7 +1039,7 @@ void VideoDecoder::Impl::begin_audio_stream()
 #else
 			audio.av_ctx->ch_layout.nb_channels,
 #endif
-			av_q2d(audio.av_stream->time_base));
+			time_base, opts.realtime, opts.blocking);
 
 	stream->add_reference();
 	stream_id = mixer->add_mixer_stream(stream, !is_paused);
@@ -821,7 +1057,7 @@ void VideoDecoder::Impl::begin_audio_stream()
 
 bool VideoDecoder::Impl::init_video_decoder_post_device()
 {
-	if (!hw.init_codec_context(video.av_codec, device, video.av_ctx))
+	if (!hw.init_codec_context(video.av_codec, device, video.av_ctx, opts.hwdevice))
 		LOGW("Failed to init hardware decode context. Falling back to software.\n");
 
 	if (avcodec_open2(video.av_ctx, video.av_codec, nullptr) < 0)
@@ -830,7 +1066,17 @@ bool VideoDecoder::Impl::init_video_decoder_post_device()
 		return false;
 	}
 
-	double fps = av_q2d(video.av_stream->avg_frame_rate);
+	double fps;
+	if (video.av_stream)
+		fps = av_q2d(video.av_stream->avg_frame_rate);
+	else
+	{
+		AVRational q;
+		q.num = pyro_codec.frame_rate_num;
+		q.den = pyro_codec.frame_rate_den;
+		fps = av_q2d(q);
+	}
+
 	// If FPS is not specified assume 60 as a "worst case scenario".
 	if (fps == 0.0)
 		fps = 60.0;
@@ -841,8 +1087,8 @@ bool VideoDecoder::Impl::init_video_decoder_post_device()
 	// In a steady state, we will keep the audio buffer at 200ms saturation.
 	// It would be possible to add new video frames dynamically,
 	// but we don't want to end up in an unbounded memory usage situation, especially VRAM.
+	unsigned num_frames = std::max<unsigned>(unsigned(muglm::ceil(fps * opts.target_video_buffer_time)), 8);
 
-	unsigned num_frames = std::max<unsigned>(unsigned(muglm::ceil(fps * 0.2)), 4);
 	video_queue.resize(num_frames);
 
 	return true;
@@ -851,15 +1097,46 @@ bool VideoDecoder::Impl::init_video_decoder_post_device()
 bool VideoDecoder::Impl::init_video_decoder_pre_device()
 {
 	int ret;
-	if ((ret = av_find_best_stream(av_format_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0)) < 0)
+
+	if (av_format_ctx)
 	{
-		LOGE("Failed to find best stream.\n");
-		return false;
+		if ((ret = av_find_best_stream(av_format_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0)) < 0)
+		{
+			LOGE("Failed to find best stream.\n");
+			return false;
+		}
+
+		video.av_stream = av_format_ctx->streams[ret];
 	}
 
-	video.av_stream = av_format_ctx->streams[ret];
+	const AVCodec *codec = nullptr;
 
-	const AVCodec *codec = avcodec_find_decoder(video.av_stream->codecpar->codec_id);
+	if (av_format_ctx)
+	{
+		codec = avcodec_find_decoder(video.av_stream->codecpar->codec_id);
+	}
+	else if (io_interface)
+	{
+		switch (pyro_codec.video_codec)
+		{
+		case PYRO_VIDEO_CODEC_H264:
+			codec = avcodec_find_decoder(AV_CODEC_ID_H264);
+			break;
+
+		case PYRO_VIDEO_CODEC_H265:
+			codec = avcodec_find_decoder(AV_CODEC_ID_H265);
+			break;
+
+		case PYRO_VIDEO_CODEC_AV1:
+			codec = avcodec_find_decoder(AV_CODEC_ID_AV1);
+			break;
+
+		default:
+			LOGE("Unknown video codec.\n");
+			return false;
+		}
+	}
+
 	if (!codec)
 	{
 		LOGE("Failed to find codec.\n");
@@ -874,10 +1151,29 @@ bool VideoDecoder::Impl::init_video_decoder_pre_device()
 		return false;
 	}
 
-	if (avcodec_parameters_to_context(video.av_ctx, video.av_stream->codecpar) < 0)
+	if (video.av_stream)
 	{
-		LOGE("Failed to copy codec parameters.\n");
-		return false;
+		if (avcodec_parameters_to_context(video.av_ctx, video.av_stream->codecpar) < 0)
+		{
+			LOGE("Failed to copy codec parameters.\n");
+			return false;
+		}
+	}
+	else
+	{
+		video.av_ctx->width = pyro_codec.width;
+		video.av_ctx->height = pyro_codec.height;
+		video.av_ctx->framerate.num = pyro_codec.frame_rate_num;
+		video.av_ctx->framerate.den = pyro_codec.frame_rate_den;
+		// Packet loss is expected, and we'd rather have something on screen than nothing.
+		video.av_ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT;
+
+		// TODO: Make this configurable in pyro protocol.
+		// This is default H.264 / H.265 for HD content.
+		video.av_ctx->color_primaries = AVCOL_PRI_BT709;
+		video.av_ctx->color_range = AVCOL_RANGE_MPEG;
+		video.av_ctx->colorspace = AVCOL_SPC_BT709;
+		video.av_ctx->chroma_sample_location = AVCHROMA_LOC_LEFT;
 	}
 
 	video.av_ctx->opaque = &hw;
@@ -898,17 +1194,30 @@ bool VideoDecoder::Impl::init(Audio::Mixer *mixer_, const char *path, const Deco
 {
 	mixer = mixer_;
 	opts = opts_;
+	managers = Granite::Global::create_thread_context();
 
-	if (avformat_open_input(&av_format_ctx, path, nullptr, nullptr) < 0)
+	if (!io_interface)
 	{
-		LOGE("Failed to open input %s.\n", path);
-		return false;
+		if (avformat_open_input(&av_format_ctx, path, nullptr, nullptr) < 0)
+		{
+			LOGE("Failed to open input %s.\n", path);
+			return false;
+		}
+
+		if (avformat_find_stream_info(av_format_ctx, nullptr) < 0)
+		{
+			LOGE("Failed to find stream info.\n");
+			return false;
+		}
 	}
-
-	if (avformat_find_stream_info(av_format_ctx, nullptr) < 0)
+	else
 	{
-		LOGE("Failed to find stream info.\n");
-		return false;
+		pyro_codec = io_interface->get_codec_parameters();
+		if (pyro_codec.video_codec == PYRO_VIDEO_CODEC_NONE)
+		{
+			LOGE("Failed to get raw codec parameters.\n");
+			return false;
+		}
 	}
 
 	if (!init_video_decoder_pre_device())
@@ -1029,8 +1338,7 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 
 	init_yuv_to_rgb();
 
-	auto *comp = device->get_shader_manager().register_compute("builtin://shaders/util/yuv_to_rgb.comp");
-	program = comp->register_variant({})->get_program();
+	program = shaders.yuv_to_rgb;
 }
 
 #ifdef HAVE_FFMPEG_VULKAN
@@ -1285,12 +1593,20 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 	dispatch_conversion(*cmd, img, views);
 
 	device->submit(cmd, nullptr, 1, &compute_to_user);
+
+	// When running in realtime mode we will run
+	// completely unlocked from the main loop, so make sure
+	// we don't leak unbounded memory when the window is minimized on Windows.
+	// In that scenario the main thread will not pump frame contexts regularly.
+	if (opts.realtime)
+		device->next_frame_context_in_async_thread();
 }
 
 void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av_frame)
 {
 	auto &img = video_queue[frame];
-	img.pts = av_q2d(video.av_stream->time_base) * double(av_frame->pts);
+	img.pts = video.av_stream ? (av_q2d(video.av_stream->time_base) * double(av_frame->pts)) :
+	          double(av_frame->pts) * 1e-6;
 	img.sem_to_client.reset();
 	assert(img.state == ImageState::Locked);
 
@@ -1384,6 +1700,7 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	// Can now acquire.
 	std::lock_guard<std::mutex> holder{lock};
 	img.state = ImageState::Ready;
+	img.done_ts = Util::get_current_time_nsecs();
 	cond.notify_all();
 }
 
@@ -1416,26 +1733,57 @@ void VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 
 bool VideoDecoder::Impl::drain_audio_frame()
 {
+	GRANITE_SCOPED_TIMELINE_EVENT("drain-audio-frame");
 #ifdef HAVE_GRANITE_AUDIO
 	if (!stream)
 		return false;
 
-	// It's okay to acquire the same frame many times.
-	auto *av_frame = stream->acquire_write_frame();
-	if (avcodec_receive_frame(audio.av_ctx, av_frame) >= 0)
+	// Don't buffer too much. Prefer dropping audio in lieu of massive latency.
+	bool drop_high_latency = false;
+	if (opts.realtime && float(stream->get_num_buffered_audio_frames()) >
+	                     (opts.target_realtime_audio_buffer_time * stream->get_sample_rate()))
+		drop_high_latency = true;
+
+	AVFrame *av_frame;
+	bool stream_frame;
+	if (stream->get_num_buffered_av_frames() <= AVFrameRingStream::FramesHighWatermark && !drop_high_latency)
 	{
-		stream->submit_write_frame();
-		return true;
+		// It's okay to acquire the same frame many times.
+		av_frame = stream->acquire_write_frame();
+		stream_frame = true;
 	}
 	else
-#endif
 	{
-		return false;
+		// This should only happen in real-time mode.
+		assert(opts.realtime);
+
+		// Give decoder a dummy frame. We drop audio here.
+		av_frame = av_frame_alloc();
+		LOGW("Dropping audio frame.\n");
+		stream_frame = false;
 	}
+
+	int ret;
+	if ((ret = avcodec_receive_frame(audio.av_ctx, av_frame)) >= 0)
+		if (stream_frame)
+			stream->submit_write_frame();
+
+	// This marks the end of the stream. Let it die.
+	if (ret == AVERROR_EOF)
+		stream->mark_complete();
+
+	if (!stream_frame)
+		av_frame_free(&av_frame);
+
+	return ret >= 0;
+#else
+	return false;
+#endif
 }
 
 bool VideoDecoder::Impl::decode_audio_packet(AVPacket *pkt)
 {
+	GRANITE_SCOPED_TIMELINE_EVENT("decode-audio-packet");
 #ifdef HAVE_GRANITE_AUDIO
 	if (!stream)
 		return false;
@@ -1451,20 +1799,7 @@ bool VideoDecoder::Impl::decode_audio_packet(AVPacket *pkt)
 		}
 	}
 
-	// It's okay to acquire the same frame many times.
-	auto *av_frame = stream->acquire_write_frame();
-
-	if ((ret = avcodec_receive_frame(audio.av_ctx, av_frame)) >= 0)
-	{
-		stream->submit_write_frame();
-		return true;
-	}
-
-	// This marks the end of the stream. Let it die.
-	if (!pkt && ret < 0)
-		stream->mark_complete();
-
-	return ret >= 0 || ret == AVERROR(EAGAIN);
+	return true;
 #else
 	(void)pkt;
 	return false;
@@ -1473,6 +1808,7 @@ bool VideoDecoder::Impl::decode_audio_packet(AVPacket *pkt)
 
 bool VideoDecoder::Impl::drain_video_frame()
 {
+	GRANITE_SCOPED_TIMELINE_EVENT("drain-video-frame");
 	AVFrame *frame = av_frame_alloc();
 	if (!frame)
 		return false;
@@ -1491,6 +1827,7 @@ bool VideoDecoder::Impl::drain_video_frame()
 
 bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 {
+	GRANITE_SCOPED_TIMELINE_EVENT("decode-video-packet");
 	int ret;
 	if (pkt)
 	{
@@ -1502,19 +1839,51 @@ bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 		}
 	}
 
-	AVFrame *frame = av_frame_alloc();
-	if (!frame)
-		return false;
+	return true;
+}
 
-	if ((ret = avcodec_receive_frame(video.av_ctx, frame)) >= 0)
+int VideoDecoder::Impl::read_frame(AVPacket *pkt)
+{
+	GRANITE_SCOPED_TIMELINE_EVENT("read-frame");
+	if (av_format_ctx)
 	{
-		process_video_frame(frame);
-		return true;
+		return av_read_frame(av_format_ctx, pkt);
+	}
+	else if (io_interface)
+	{
+		av_packet_unref(pkt);
+
+		do
+		{
+			{
+				GRANITE_SCOPED_TIMELINE_EVENT("wait-next-packet");
+				if (!io_interface->wait_next_packet())
+					return AVERROR_EOF;
+			}
+
+			if (av_new_packet(pkt, int(io_interface->get_size())) < 0)
+				return AVERROR_EOF;
+
+			memcpy(pkt->data, io_interface->get_data(), pkt->size);
+			auto header = io_interface->get_payload_header();
+			pkt->pts = header.pts_lo | (int64_t(header.pts_hi) << 32);
+			pkt->dts = pkt->pts - header.dts_delta;
+
+			if ((header.encoded & PYRO_PAYLOAD_KEY_FRAME_BIT) != 0)
+			{
+				av_pkt->flags = AV_PKT_FLAG_KEY;
+				has_observed_keyframe = true;
+			}
+			else
+				av_pkt->flags = 0;
+
+			pkt->stream_index = (header.encoded & PYRO_PAYLOAD_STREAM_TYPE_BIT) != 0 ? 1 : 0;
+		} while (!has_observed_keyframe);
+
+		return 0;
 	}
 	else
-		av_frame_free(&frame);
-
-	return ret >= 0 || ret == AVERROR(EAGAIN);
+		return AVERROR_EOF;
 }
 
 bool VideoDecoder::Impl::iterate()
@@ -1523,6 +1892,20 @@ bool VideoDecoder::Impl::iterate()
 
 	if (is_video_eof && (is_audio_eof || !audio.av_ctx))
 		return false;
+
+	const auto av_pkt_is_video = [this](const AVPacket *pkt)
+	{
+		int index = video.av_stream ? video.av_stream->index : 0;
+		return pkt->stream_index == index;
+	};
+
+	const auto av_pkt_is_audio = [this](const AVPacket *pkt)
+	{
+		if (!audio.av_ctx)
+			return false;
+		int index = audio.av_stream ? audio.av_stream->index : 1;
+		return pkt->stream_index == index;
+	};
 
 	if (!is_flushing)
 	{
@@ -1536,14 +1919,14 @@ bool VideoDecoder::Impl::iterate()
 			return true;
 
 		int ret;
-		if ((ret = av_read_frame(av_format_ctx, av_pkt)) >= 0)
+		if ((ret = read_frame(av_pkt)) >= 0)
 		{
-			if (av_pkt->stream_index == video.av_stream->index)
+			if (av_pkt_is_video(av_pkt))
 			{
 				if (!decode_video_packet(av_pkt))
 					is_video_eof = true;
 			}
-			else if (audio.av_stream && av_pkt->stream_index == audio.av_stream->index)
+			else if (av_pkt_is_audio(av_pkt))
 			{
 				if (!decode_audio_packet(av_pkt))
 					is_audio_eof = true;
@@ -1565,10 +1948,10 @@ bool VideoDecoder::Impl::iterate()
 			return false;
 	}
 
-	if (!is_video_eof && is_flushing && !decode_video_packet(nullptr))
+	if (!is_video_eof && is_flushing && !drain_video_frame())
 		is_video_eof = true;
 
-	if (!is_audio_eof && is_flushing && audio.av_ctx && !decode_audio_packet(nullptr))
+	if (!is_audio_eof && is_flushing && audio.av_ctx && !drain_audio_frame())
 		is_audio_eof = true;
 
 	return true;
@@ -1581,6 +1964,11 @@ bool VideoDecoder::Impl::should_iterate_locked()
 	// of memory either way.
 	// TODO: It is possible to use dynamic rate control techniques to ensure that
 	// audio ring does not underflow or overflow.
+
+	// We will never stop decoding, since we have to drain UDP/TDP queues.
+	// If player cannot keep up or won't keep up, we drop frames.
+	if (opts.realtime)
+		return true;
 
 #ifdef HAVE_GRANITE_AUDIO
 	if (stream)
@@ -1623,6 +2011,11 @@ bool VideoDecoder::Impl::should_iterate_locked()
 void VideoDecoder::Impl::thread_main()
 {
 	Util::set_current_thread_priority(Util::ThreadPriority::High);
+	Util::set_current_thread_name("ffmpeg-decode");
+	Util::TimelineTraceFile::set_tid("ffmpeg-decode");
+	Global::set_thread_context(*managers);
+	if (auto *tg = GRANITE_THREAD_GROUP())
+		tg->refresh_global_timeline_trace_file();
 
 	for (;;)
 	{
@@ -1672,6 +2065,15 @@ void VideoDecoder::Impl::thread_main()
 	}
 }
 
+bool VideoDecoder::Impl::is_eof()
+{
+	if (!decode_thread.joinable())
+		return true;
+
+	std::unique_lock<std::mutex> holder{lock};
+	return acquire_is_eof;
+}
+
 int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 {
 	if (!decode_thread.joinable())
@@ -1690,6 +2092,7 @@ int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 		frame.view = &video_queue[index].rgb_image->get_view();
 		frame.index = index;
 		frame.pts = video_queue[index].pts;
+		frame.done_ts = video_queue[index].done_ts;
 
 		// Progress.
 		cond.notify_one();
@@ -1702,7 +2105,7 @@ int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 	}
 }
 
-bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame)
+bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame, int timeout_ms)
 {
 	if (!decode_thread.joinable())
 		return false;
@@ -1715,10 +2118,23 @@ bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame)
 	cond.notify_one();
 
 	int index = -1;
+
 	// Poll the video queue for new frames.
-	cond.wait(holder, [this, &index]() {
-		return (index = find_acquire_video_frame_locked()) >= 0 || acquire_is_eof || teardown;
-	});
+	if (timeout_ms >= 0)
+	{
+		auto target_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+		bool success = cond.wait_until(holder, target_time, [this, &index]() {
+			return (index = find_acquire_video_frame_locked()) >= 0 || acquire_is_eof || teardown;
+		});
+		if (!success)
+			return false;
+	}
+	else
+	{
+		cond.wait(holder, [this, &index]() {
+			return (index = find_acquire_video_frame_locked()) >= 0 || acquire_is_eof || teardown;
+		});
+	}
 
 	if (index < 0)
 		return false;
@@ -1730,6 +2146,7 @@ bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame)
 	frame.view = &video_queue[index].rgb_image->get_view();
 	frame.index = index;
 	frame.pts = video_queue[index].pts;
+	frame.done_ts = video_queue[index].done_ts;
 
 	// Progress.
 	acquire_blocking = false;
@@ -1746,9 +2163,10 @@ void VideoDecoder::Impl::release_video_frame(unsigned index, Vulkan::Semaphore s
 	video_queue[index].idle_order = ++idle_timestamps;
 }
 
-bool VideoDecoder::Impl::begin_device_context(Vulkan::Device *device_)
+bool VideoDecoder::Impl::begin_device_context(Vulkan::Device *device_, const FFmpegDecode::Shaders<> &shaders_)
 {
 	device = device_;
+	shaders = shaders_;
 	thread_group = device->get_system_handles().thread_group;
 
 	// Potentially need device here if we're creating a Vulkan HW context.
@@ -1768,7 +2186,16 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp_raw()
 
 		double pts = stream->progress[pts_buffer_index].pts;
 		if (pts < 0.0)
+		{
 			pts = 0.0;
+		}
+		else if (!is_paused)
+		{
+			// Crude estimate based on last reported PTS, offset by time since reported.
+			int64_t sampled_ns = stream->progress[pts_buffer_index].sampled_ns;
+			int64_t d = std::max<int64_t>(Util::get_current_time_nsecs(), sampled_ns) - sampled_ns;
+			pts += 1e-9 * double(d);
+		}
 
 		return pts;
 	}
@@ -1779,34 +2206,132 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp_raw()
 	}
 }
 
+double VideoDecoder::Impl::get_audio_buffering_duration()
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (stream)
+		return double(stream->get_num_buffered_audio_frames()) / stream->sample_rate;
+	else
+		return -1.0;
+#else
+	return -1.0;
+#endif
+}
+
+void VideoDecoder::Impl::set_audio_delta_rate_factor(float delta)
+{
+	if (delta > 0.10f)
+	{
+		// Speed up, audio buffer is too large.
+		stream->set_rate_factor(1.005f);
+	}
+	else if (delta < -0.10f)
+	{
+		// Slow down.
+		stream->set_rate_factor(0.995f);
+	}
+	else
+	{
+		// This is inaudible in practice. Practical distortion will be much lower than outer limits.
+		// And should be less than 1 cent on average.
+		stream->set_rate_factor(1.0f + delta * 0.05f);
+	}
+}
+
+void VideoDecoder::Impl::latch_estimated_audio_playback_timestamp(double pts)
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (!stream)
+		return;
+
+	auto delta = float(pts - get_estimated_audio_playback_timestamp_raw());
+	set_audio_delta_rate_factor(delta);
+#else
+	(void)pts;
+#endif
+}
+
+void VideoDecoder::Impl::latch_audio_buffering_target(double target_buffer_time)
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (!stream)
+		return;
+
+	double current_time = get_audio_buffering_duration();
+	auto delta = float(current_time - target_buffer_time);
+	set_audio_delta_rate_factor(delta);
+#else
+	(void)target_buffer_time;
+#endif
+}
+
+double VideoDecoder::Impl::get_last_video_buffering_pts()
+{
+	double last_pts = -1.0;
+	std::unique_lock<std::mutex> holder{lock};
+	for (auto &q : video_queue)
+		if (q.state == ImageState::Ready || q.state == ImageState::Acquired)
+			if (q.pts > last_pts)
+				last_pts = q.pts;
+	return last_pts;
+}
+
+unsigned VideoDecoder::Impl::get_num_ready_video_frames()
+{
+	std::unique_lock<std::mutex> holder{lock};
+	unsigned count = 0;
+	for (auto &q : video_queue)
+		if (q.state == ImageState::Ready)
+			count++;
+	return count;
+}
+
+double VideoDecoder::Impl::latch_estimated_video_playback_timestamp(double elapsed_time, double target_latency)
+{
+	if (smooth_elapsed == 0.0)
+	{
+		smooth_elapsed = elapsed_time;
+		smooth_pts = get_last_video_buffering_pts() - target_latency;
+		if (smooth_pts < 0.0)
+			smooth_pts = 0.0;
+	}
+	else
+	{
+		double target_pts = get_last_video_buffering_pts() - target_latency;
+		if (target_pts < 0.0)
+			target_pts = 0.0;
+
+		// This is the value we should get in principle if everything is steady.
+		smooth_pts += elapsed_time - smooth_elapsed;
+		smooth_elapsed = elapsed_time;
+
+		if (muglm::abs(smooth_pts - target_pts) > 0.25)
+		{
+			// Massive spike somewhere, cannot smooth.
+			// Reset the PTS.
+			smooth_elapsed = elapsed_time;
+			smooth_pts = target_pts;
+		}
+		else
+		{
+			// Bias slightly towards the true estimated PTS.
+			smooth_pts += 0.002 * (target_pts - smooth_pts);
+		}
+	}
+
+	latch_estimated_audio_playback_timestamp(smooth_pts);
+	return smooth_pts;
+}
+
 double VideoDecoder::Impl::get_estimated_audio_playback_timestamp(double elapsed_time)
 {
 #ifdef HAVE_GRANITE_AUDIO
 	if (stream)
 	{
-		uint32_t pts_buffer_index = (stream->pts_index.load(std::memory_order_acquire) - 1) %
-		                            AVFrameRingStream::Frames;
+		// Unsmoothed PTS.
+		auto pts = get_estimated_audio_playback_timestamp_raw();
 
-		double pts = stream->progress[pts_buffer_index].pts;
-		if (pts < 0.0)
-		{
-			pts = 0.0;
-			smooth_elapsed = 0.0;
-			smooth_pts = 0.0;
-		}
-		else if (!is_paused)
-		{
-			// Crude estimate based on last reported PTS, offset by time since reported.
-			int64_t sampled_ns = stream->progress[pts_buffer_index].sampled_ns;
-			int64_t d = std::max<int64_t>(Util::get_current_time_nsecs(), sampled_ns) - sampled_ns;
-			pts += 1e-9 * double(d);
-		}
-
-		// Smooth out the reported PTS.
-		// The reported PTS should be tied to the host timer,
-		// but we need to gradually adjust the timer based on the reported audio PTS to be accurate.
-
-		if (smooth_elapsed == 0.0)
+		if (pts == 0.0 || smooth_elapsed == 0.0)
 		{
 			// Latch the PTS.
 			smooth_elapsed = elapsed_time;
@@ -1814,6 +2339,10 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp(double elapsed
 		}
 		else
 		{
+			// Smooth out the reported PTS.
+			// The reported PTS should be tied to the host timer,
+			// but we need to gradually adjust the timer based on the reported audio PTS to be accurate over time.
+
 			// This is the value we should get in principle if everything is steady.
 			smooth_pts += elapsed_time - smooth_elapsed;
 			smooth_elapsed = elapsed_time;
@@ -1855,6 +2384,7 @@ void VideoDecoder::Impl::flush_codecs()
 		img.lock_order = 0;
 		img.state = ImageState::Idle;
 		img.pts = 0.0;
+		img.done_ts = 0;
 	}
 
 	if (video.av_ctx)
@@ -1970,6 +2500,9 @@ void VideoDecoder::Impl::set_paused(bool enable)
 
 bool VideoDecoder::Impl::seek(double ts)
 {
+	if (!av_format_ctx)
+		return false;
+
 	std::lock_guard<std::mutex> holder{iteration_lock};
 
 	// Drain this before we take the global lock, since a video task needs to take the global lock to update state.
@@ -2017,6 +2550,11 @@ bool VideoDecoder::init(Audio::Mixer *mixer, const char *path, const DecodeOptio
 	return impl->init(mixer, path, opts);
 }
 
+void VideoDecoder::set_io_interface(Granite::DemuxerIOInterface *iface)
+{
+	impl->io_interface = iface;
+}
+
 unsigned VideoDecoder::get_width() const
 {
 	return impl->get_width();
@@ -2027,9 +2565,9 @@ unsigned VideoDecoder::get_height() const
 	return impl->get_height();
 }
 
-bool VideoDecoder::begin_device_context(Vulkan::Device *device)
+bool VideoDecoder::begin_device_context(Vulkan::Device *device, const FFmpegDecode::Shaders<> &shaders)
 {
-	return impl->begin_device_context(device);
+	return impl->begin_device_context(device, shaders);
 }
 
 void VideoDecoder::end_device_context()
@@ -2072,14 +2610,34 @@ double VideoDecoder::get_estimated_audio_playback_timestamp(double elapsed_time)
 	return impl->get_estimated_audio_playback_timestamp(elapsed_time);
 }
 
+double VideoDecoder::latch_estimated_video_playback_timestamp(double elapsed_time, double target_latency)
+{
+	return impl->latch_estimated_video_playback_timestamp(elapsed_time, target_latency);
+}
+
+double VideoDecoder::get_audio_buffering_duration()
+{
+	return impl->get_audio_buffering_duration();
+}
+
+double VideoDecoder::get_last_video_buffering_pts()
+{
+	return impl->get_last_video_buffering_pts();
+}
+
+unsigned int VideoDecoder::get_num_ready_video_frames()
+{
+	return impl->get_num_ready_video_frames();
+}
+
 double VideoDecoder::get_estimated_audio_playback_timestamp_raw()
 {
 	return impl->get_estimated_audio_playback_timestamp_raw();
 }
 
-bool VideoDecoder::acquire_video_frame(VideoFrame &frame)
+bool VideoDecoder::acquire_video_frame(VideoFrame &frame, int timeout_ms)
 {
-	return impl->acquire_video_frame(frame);
+	return impl->acquire_video_frame(frame, timeout_ms);
 }
 
 int VideoDecoder::try_acquire_video_frame(VideoFrame &frame)
@@ -2087,8 +2645,42 @@ int VideoDecoder::try_acquire_video_frame(VideoFrame &frame)
 	return impl->try_acquire_video_frame(frame);
 }
 
+bool VideoDecoder::is_eof()
+{
+	return impl->is_eof();
+}
+
 void VideoDecoder::release_video_frame(unsigned index, Vulkan::Semaphore sem)
 {
 	impl->release_video_frame(index, std::move(sem));
+}
+
+void VideoDecoder::latch_audio_buffering_target(double buffer_time)
+{
+	impl->latch_audio_buffering_target(buffer_time);
+}
+
+float VideoDecoder::get_audio_sample_rate() const
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (impl->audio.av_ctx)
+		return float(impl->audio.av_ctx->sample_rate);
+	else
+		return -1.0f;
+#else
+	return -1.0f;
+#endif
+}
+
+uint32_t VideoDecoder::get_audio_underflow_counter() const
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (impl->stream)
+		return impl->stream->get_underflow_counter();
+	else
+		return 0;
+#else
+	return 0;
+#endif
 }
 }

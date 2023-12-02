@@ -8,7 +8,12 @@ add_granite_internal_lib(granite-application-global-init
 target_include_directories(granite-application-global-init PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(granite-application-global-init
         PUBLIC granite-application-global
-        PRIVATE granite-threading granite-event granite-filesystem granite-renderer granite-ui)
+        PRIVATE granite-threading granite-event granite-filesystem)
+
+if (TARGET granite-renderer)
+    target_link_libraries(granite-application-global-init PRIVATE granite-renderer granite-ui)
+    target_compile_definitions(granite-application-global-init PRIVATE HAVE_GRANITE_RENDERER)
+endif()
 
 if (GRANITE_AUDIO)
     target_link_libraries(granite-application-global-init PRIVATE granite-audio)

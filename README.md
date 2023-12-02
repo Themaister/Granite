@@ -143,7 +143,7 @@ Tested on GCC, Clang, and MSVC 2017.
 
 ## Platforms
 
-- GLFW (Linux / Windows)
+- SDL3 (Linux / Windows)
 - `VK_KHR_display` (headless Linux w/ basic keyboard, mouse, gamepad support)
 - libretro Vulkan HW interface
 - Headless (benchmarking)
@@ -189,7 +189,7 @@ Assets used in the default `gltf-viewer` target are pulled from `viewer/assets`.
 
 These are pulled in as submodules.
 
-- [GLFW](https://github.com/glfw/glfw)
+- [SDL3](https://github.com/libsdl-org/SDL)
 - [glslang](https://github.com/google/glslang.git)
 - [rapidjson](https://github.com/miloyip/rapidjson)
 - [shaderc](https://github.com/google/shaderc.git)

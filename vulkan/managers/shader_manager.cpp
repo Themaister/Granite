@@ -40,7 +40,7 @@ namespace Vulkan
 {
 ShaderTemplate::ShaderTemplate(Device *device_,
                                const std::string &shader_path,
-                               Granite::Stage force_stage_,
+                               ShaderStage force_stage_,
                                MetaCache &cache_,
                                Util::Hash path_hash_,
                                const std::vector<std::string> &include_directories_)
@@ -49,6 +49,7 @@ ShaderTemplate::ShaderTemplate(Device *device_,
 	, include_directories(include_directories_)
 #endif
 {
+	(void)include_directories_;
 }
 
 ShaderTemplate::~ShaderTemplate()
@@ -63,7 +64,7 @@ bool ShaderTemplate::init()
 			return false;
 
 		auto precompiled_file = device->get_system_handles().filesystem->open_readonly_mapping(path);
-		const uint32_t *ptr = nullptr;
+		const uint32_t *ptr;
 
 		if (!precompiled_file || !(ptr = precompiled_file->data<uint32_t>()))
 		{
@@ -72,7 +73,9 @@ bool ShaderTemplate::init()
 		}
 
 		static_shader = { ptr, ptr + precompiled_file->get_size() / sizeof(uint32_t) };
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 		source_hash = 0;
+#endif
 		return true;
 	}
 
@@ -85,7 +88,7 @@ bool ShaderTemplate::init()
 	compiler = std::make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
 	compiler->set_target(device->get_device_features().supports_spirv_1_4 ?
 	                     Granite::Target::Vulkan11_Spirv14 : Granite::Target::Vulkan11);
-	if (!compiler->set_source_from_file(path, force_stage))
+	if (!compiler->set_source_from_file(path, Granite::Stage(force_stage)))
 		return false;
 	compiler->set_include_directories(&include_directories);
 	if (!compiler->preprocess())
@@ -100,7 +103,8 @@ bool ShaderTemplate::init()
 	return true;
 }
 
-const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<std::pair<std::string, int>> *defines)
+const ShaderTemplateVariant *ShaderTemplate::register_variant(
+		const std::vector<std::pair<std::string, int>> *defines, Shader *precompiled_shader)
 {
 	Hasher h;
 	if (defines)
@@ -125,28 +129,40 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<
 		auto *variant = variants.allocate();
 		variant->hash = complete_hash;
 
-		auto *precompiled_spirv = cache.variant_to_shader.find(complete_hash);
-
-		if (precompiled_spirv)
+		PrecomputedMeta *precompiled_spirv = nullptr;
+		if (!precompiled_shader)
 		{
-			if (!device->request_shader_by_hash(precompiled_spirv->shader_hash))
+			precompiled_spirv = cache.variant_to_shader.find(complete_hash);
+
+			if (precompiled_spirv)
 			{
-				LOGW("Got precompiled SPIR-V hash for variant, but it does not exist, is Fossilize archive incomplete?\n");
-				precompiled_spirv = nullptr;
-			}
-			else if (source_hash != precompiled_spirv->source_hash)
-			{
-				LOGW("Source hash is invalidated for %s, recompiling.\n", path.c_str());
-				precompiled_spirv = nullptr;
+				if (!device->request_shader_by_hash(precompiled_spirv->shader_hash))
+				{
+					LOGW("Got precompiled SPIR-V hash for variant, but it does not exist, is Fossilize archive incomplete?\n");
+					precompiled_spirv = nullptr;
+				}
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
+				else if (source_hash != precompiled_spirv->source_hash)
+				{
+					LOGW("Source hash is invalidated for %s, recompiling.\n", path.c_str());
+					precompiled_spirv = nullptr;
+				}
+#endif
 			}
 		}
 
-		if (!precompiled_spirv)
+		if (precompiled_shader)
+		{
+			variant->precompiled_shader = precompiled_shader;
+		}
+		else if (!precompiled_spirv)
 		{
 			if (!static_shader.empty())
 			{
 				variant->spirv = static_shader;
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 				update_variant_cache(*variant);
+#endif
 			}
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 			else if (compiler)
@@ -188,6 +204,18 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(const std::vector<
 				return nullptr;
 #else
 			LOGE("Could not find shader variant for %s in cache.\n", path.c_str());
+			{
+				std::string str;
+				str += "[";
+				for (size_t i = 0, n = defines ? defines->size() : 0; i < n; i++)
+				{
+					str += "\n\t{ \"define\" : \"" + defines->operator[](i).first + "\", \"value\" : " + std::to_string(defines->operator[](i).second) + "}";
+					if (i + 1 < n)
+						str += ",";
+				}
+				str += "\n]";
+				LOGE("Slangmosh variant:\n%s\n", str.c_str());
+			}
 			variants.free(variant);
 			return nullptr;
 #endif
@@ -261,7 +289,7 @@ void ShaderTemplate::recompile()
 	auto newcompiler = std::make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
 	newcompiler->set_target(device->get_device_features().supports_spirv_1_4 ?
 	                        Granite::Target::Vulkan11_Spirv14 : Granite::Target::Vulkan11);
-	if (!newcompiler->set_source_from_file(path, force_stage))
+	if (!newcompiler->set_source_from_file(path, Granite::Stage(force_stage)))
 		return;
 	newcompiler->set_include_directories(&include_directories);
 	if (!newcompiler->preprocess())
@@ -305,7 +333,9 @@ ShaderProgramVariant::ShaderProgramVariant(Device *device_)
 
 Vulkan::Shader *ShaderTemplateVariant::resolve(Vulkan::Device &device) const
 {
-	if (spirv.empty())
+	if (precompiled_shader)
+		return precompiled_shader;
+	else if (spirv.empty())
 		return device.request_shader_by_hash(spirv_hash);
 	else
 		return device.request_shader(spirv.data(), spirv.size() * sizeof(uint32_t));
@@ -465,6 +495,43 @@ Vulkan::Program *ShaderProgramVariant::get_program()
 ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pair<std::string, int>> &defines,
                                                       const ImmutableSamplerBank *sampler_bank)
 {
+	return register_variant(nullptr, defines, sampler_bank);
+}
+
+ShaderProgramVariant *ShaderProgram::register_precompiled_variant(Shader *comp,
+                                                                  const std::vector<std::pair<std::string, int>> &defines,
+                                                                  const ImmutableSamplerBank *sampler_bank)
+{
+	Shader *shaders[int(ShaderStage::Count)] = {};
+	shaders[int(ShaderStage::Compute)] = comp;
+	return register_variant(shaders, defines, sampler_bank);
+}
+
+ShaderProgramVariant *ShaderProgram::register_precompiled_variant(Shader *task, Shader *mesh, Shader *frag,
+                                                                  const std::vector<std::pair<std::string, int>> &defines,
+                                                                  const ImmutableSamplerBank *sampler_bank)
+{
+	Shader *shaders[int(ShaderStage::Count)] = {};
+	shaders[int(ShaderStage::Task)] = task;
+	shaders[int(ShaderStage::Mesh)] = mesh;
+	shaders[int(ShaderStage::Fragment)] = frag;
+	return register_variant(shaders, defines, sampler_bank);
+}
+
+ShaderProgramVariant *ShaderProgram::register_precompiled_variant(Vulkan::Shader *vert, Vulkan::Shader *frag,
+                                                                  const std::vector<std::pair<std::string, int>> &defines,
+                                                                  const Vulkan::ImmutableSamplerBank *sampler_bank)
+{
+	Shader *shaders[int(ShaderStage::Count)] = {};
+	shaders[int(ShaderStage::Vertex)] = vert;
+	shaders[int(ShaderStage::Fragment)] = frag;
+	return register_variant(shaders, defines, sampler_bank);
+}
+
+ShaderProgramVariant *ShaderProgram::register_variant(Shader * const *precompiled_shaders,
+                                                      const std::vector<std::pair<std::string, int>> &defines,
+                                                      const ImmutableSamplerBank *sampler_bank)
+{
 	Hasher h;
 	for (auto &define : defines)
 	{
@@ -483,9 +550,14 @@ ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pai
 	if (sampler_bank)
 		new_variant->sampler_bank.reset(new ImmutableSamplerBank(*sampler_bank));
 
-	for (unsigned i = 0; i < static_cast<unsigned>(Vulkan::ShaderStage::Count); i++)
+	for (int i = 0; i < int(Vulkan::ShaderStage::Count); i++)
+	{
 		if (stages[i])
-			new_variant->stages[i] = stages[i]->register_variant(&defines);
+		{
+			new_variant->stages[i] = stages[i]->register_variant(
+					&defines, precompiled_shaders ? precompiled_shaders[i] : nullptr);
+		}
+	}
 
 	// Make sure it's compiled correctly.
 	new_variant->get_program();
@@ -496,7 +568,7 @@ ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pai
 
 ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 {
-	auto *tmpl = get_template(compute, Granite::Stage::Compute);
+	auto *tmpl = get_template(compute, ShaderStage::Compute);
 	if (!tmpl)
 		return nullptr;
 
@@ -510,7 +582,7 @@ ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 	return ret;
 }
 
-ShaderTemplate *ShaderManager::get_template(const std::string &path, Granite::Stage force_stage)
+ShaderTemplate *ShaderManager::get_template(const std::string &path, ShaderStage force_stage)
 {
 	Hasher hasher;
 	hasher.string(path);
@@ -541,8 +613,8 @@ ShaderTemplate *ShaderManager::get_template(const std::string &path, Granite::St
 
 ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const std::string &fragment)
 {
-	auto *vert_tmpl = get_template(vertex, Granite::Stage::Vertex);
-	auto *frag_tmpl = get_template(fragment, Granite::Stage::Fragment);
+	auto *vert_tmpl = get_template(vertex, ShaderStage::Vertex);
+	auto *frag_tmpl = get_template(fragment, ShaderStage::Fragment);
 	if (!vert_tmpl || !frag_tmpl)
 		return nullptr;
 
@@ -561,9 +633,9 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &task, const s
 {
 	ShaderTemplate *task_tmpl = nullptr;
 	if (!task.empty())
-		task_tmpl = get_template(task, Granite::Stage::Task);
-	auto *mesh_tmpl = get_template(mesh, Granite::Stage::Mesh);
-	auto *frag_tmpl = get_template(fragment, Granite::Stage::Fragment);
+		task_tmpl = get_template(task, ShaderStage::Task);
+	auto *mesh_tmpl = get_template(mesh, ShaderStage::Mesh);
+	auto *frag_tmpl = get_template(fragment, ShaderStage::Fragment);
 	if (!mesh_tmpl || !frag_tmpl)
 		return nullptr;
 

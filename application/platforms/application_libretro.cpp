@@ -71,6 +71,7 @@ struct WSIPlatformLibretro : Granite::GraniteWSIPlatform
 
 	void poll_input() override
 	{
+		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
 		input_poll_cb();
 
 		auto &tracker = get_input_tracker();
@@ -91,8 +92,8 @@ struct WSIPlatformLibretro : Granite::GraniteWSIPlatform
 			                      input_state_cb(index, RETRO_DEVICE_JOYPAD, 0, retro_key) ? 1.0f : 0.0f);
 		};
 
-		tracker.enable_joypad(0);
-		tracker.enable_joypad(1);
+		tracker.enable_joypad(0, 0, 0);
+		tracker.enable_joypad(1, 0, 0);
 		for (unsigned i = 0; i < 2; i++)
 		{
 			poll_key(i, JoypadKey::Left, RETRO_DEVICE_ID_JOYPAD_LEFT);
@@ -122,6 +123,12 @@ struct WSIPlatformLibretro : Granite::GraniteWSIPlatform
 		tracker.dispatch_current_state(app->get_platform().get_frame_timer().get_frame_time());
 	}
 
+	void poll_input_async(Granite::InputTrackerHandler *override_handler) override
+	{
+		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
+		get_input_tracker().dispatch_current_state(0.0, override_handler);
+	}
+
 	bool has_external_swapchain() override
 	{
 		return true;
@@ -132,7 +139,9 @@ static retro_hw_render_callback hw_render;
 
 RETRO_API void retro_init(void)
 {
-	Global::init();
+	ApplicationQueryDefaultManagerFlags flags{Global::MANAGER_FEATURE_DEFAULT_BITS};
+	query_application_interface(ApplicationQuery::DefaultManagerFlags, &flags, sizeof(flags));
+	Global::init(flags.manager_feature_flags);
 }
 
 RETRO_API void retro_deinit(void)

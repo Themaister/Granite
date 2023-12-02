@@ -26,8 +26,10 @@
 #include "thread_group.hpp"
 #include "filesystem.hpp"
 #include "asset_manager.hpp"
+#ifdef HAVE_GRANITE_RENDERER
 #include "common_renderer_data.hpp"
 #include "ui_manager.hpp"
+#endif
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_mixer.hpp"
 #include "audio_interface.hpp"
@@ -64,12 +66,20 @@ struct FactoryImplementation : Factory
 
 	CommonRendererDataInterface *create_common_renderer_data() override
 	{
+#ifdef HAVE_GRANITE_RENDERER
 		return new CommonRendererData;
+#else
+		return nullptr;
+#endif
 	}
 
 	UI::UIManagerInterface *create_ui_manager() override
 	{
+#ifdef HAVE_GRANITE_RENDERER
 		return new UI::UIManager;
+#else
+		return nullptr;
+#endif
 	}
 
 	Audio::MixerInterface *create_audio_mixer() override
@@ -108,9 +118,9 @@ struct FactoryImplementation : Factory
 
 static FactoryImplementation factory;
 
-void init(ManagerFeatureFlags flags, unsigned max_threads)
+void init(ManagerFeatureFlags flags, unsigned max_threads, float audio_sample_rate)
 {
-	init(factory, flags, max_threads);
+	init(factory, flags, max_threads, audio_sample_rate);
 }
 }
 }

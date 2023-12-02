@@ -143,7 +143,10 @@ struct VideoTextureRenderable : AbstractRenderable
 			// If we have two candidates, shift out frame if next_frame PTS is closer.
 			double d_current = std::abs(frame.pts - target_pts);
 			double d_next = std::abs(next_frame.pts - target_pts);
-			if (d_next < d_current || !frame.view)
+
+			// In case we get two frames with same PTS for whatever reason, ensure forward progress.
+			// The less-equal check is load-bearing.
+			if (d_next <= d_current || !frame.view)
 			{
 				shift_frame();
 
@@ -171,7 +174,11 @@ struct VideoTextureRenderable : AbstractRenderable
 
 	void begin(Vulkan::Device &device)
 	{
-		if (!decoder.begin_device_context(&device))
+		FFmpegDecode::Shaders<> shaders;
+		auto *comp = device.get_shader_manager().register_compute("builtin://shaders/util/yuv_to_rgb.comp");
+		shaders.yuv_to_rgb = comp->register_variant({})->get_program();
+
+		if (!decoder.begin_device_context(&device, shaders))
 			LOGE("Failed to begin device context.\n");
 		if (!decoder.play())
 			LOGE("Failed to begin playback.\n");

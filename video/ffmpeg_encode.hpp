@@ -24,6 +24,8 @@
 
 #include "device.hpp"
 #include "image.hpp"
+#include "slangmosh_encode_iface.hpp"
+#include "pyro_protocol.h"
 
 namespace Granite
 {
@@ -32,6 +34,16 @@ namespace Audio
 class DumpBackend;
 class RecordStream;
 }
+
+class MuxStreamCallback
+{
+public:
+	virtual ~MuxStreamCallback() = default;
+	virtual void set_codec_parameters(const pyro_codec_parameters &codec) = 0;
+	virtual void write_video_packet(int64_t pts, int64_t dts, const void *data, size_t size, bool is_key_frame) = 0;
+	virtual void write_audio_packet(int64_t pts, int64_t dts, const void *data, size_t size) = 0;
+	virtual bool should_force_idr() = 0;
+};
 
 class VideoEncoder
 {
@@ -47,7 +59,9 @@ public:
 
 	enum class Format
 	{
-		NV12
+		NV12,
+		P016,
+		P010
 	};
 
 	enum ChromaSiting
@@ -67,6 +81,7 @@ public:
 		// Correlate PTS with wall time.
 		bool realtime = false;
 		const char *encoder = "libx264";
+		bool low_latency = false;
 
 		struct
 		{
@@ -85,6 +100,7 @@ public:
 
 	void set_audio_source(Audio::DumpBackend *backend);
 	void set_audio_record_stream(Audio::RecordStream *stream);
+	void set_mux_stream_callback(MuxStreamCallback *callback);
 
 	bool init(Vulkan::Device *device, const char *path, const Options &options);
 
@@ -102,7 +118,7 @@ public:
 	};
 	using YCbCrPipeline = std::unique_ptr<YCbCrPipelineData, YCbCrPipelineDataDeleter>;
 
-	YCbCrPipeline create_ycbcr_pipeline(Vulkan::Program *rgb_to_ycbcr, Vulkan::Program *chroma_downsample) const;
+	YCbCrPipeline create_ycbcr_pipeline(const FFmpegEncode::Shaders<> &shaders) const;
 	void process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view);
 	// Handles GPU synchronization if required.
 	void submit_process_rgb(Vulkan::CommandBufferHandle &cmd, YCbCrPipeline &pipeline);

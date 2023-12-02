@@ -102,12 +102,12 @@ struct FFmpegHWDevice::Impl
 			vk->nb_encode_queues = 0;
 #endif
 
-			vk->lock_queue = [](AVHWDeviceContext *ctx, int, int) {
+			vk->lock_queue = [](AVHWDeviceContext *ctx, uint32_t, uint32_t) {
 				auto *self = static_cast<Impl *>(ctx->user_opaque);
 				self->device->external_queue_lock();
 			};
 
-			vk->unlock_queue = [](AVHWDeviceContext *ctx, int, int) {
+			vk->unlock_queue = [](AVHWDeviceContext *ctx, uint32_t, uint32_t) {
 				auto *self = static_cast<Impl *>(ctx->user_opaque);
 				self->device->external_queue_unlock();
 			};
@@ -134,21 +134,18 @@ struct FFmpegHWDevice::Impl
 		}
 	}
 
-	bool init_hw_device(const AVCodec *av_codec)
+	bool init_hw_device(const AVCodec *av_codec, const char *type)
 	{
 #ifdef HAVE_FFMPEG_VULKAN
-		bool use_vulkan = false;
-		const char *env = getenv("GRANITE_FFMPEG_VULKAN");
-		if (env && strtol(env, nullptr, 0) != 0)
-			use_vulkan = true;
-
+		bool use_vulkan = device->get_device_features().supports_video_decode_queue;
 		if (use_vulkan)
 		{
-			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
-			{
-				LOGW("Sampler YCbCr conversion not supported, disabling Vulkan interop.\n");
+			if (av_codec->id == AV_CODEC_ID_H264)
+				use_vulkan = device->get_device_features().supports_video_decode_h264;
+			else if (av_codec->id == AV_CODEC_ID_HEVC)
+				use_vulkan = device->get_device_features().supports_video_decode_h265;
+			else
 				use_vulkan = false;
-			}
 		}
 #endif
 
@@ -157,12 +154,31 @@ struct FFmpegHWDevice::Impl
 			const AVCodecHWConfig *config = avcodec_get_hw_config(av_codec, i);
 			if (!config)
 				break;
+			if (config->device_type == AV_HWDEVICE_TYPE_NONE)
+				continue;
 
+			if (type)
+			{
+				const char *hwdevice_name = av_hwdevice_get_type_name(config->device_type);
+				LOGI("Found HW device type: %s\n", hwdevice_name);
+				if (strcmp(type, hwdevice_name) != 0)
+					continue;
+			}
 #ifdef HAVE_FFMPEG_VULKAN
-			if (config->device_type == AV_HWDEVICE_TYPE_VULKAN && !use_vulkan)
-				continue;
-			if (config->device_type != AV_HWDEVICE_TYPE_VULKAN && use_vulkan)
-				continue;
+			else
+			{
+				// Prefer Vulkan if it exists.
+				if (config->device_type == AV_HWDEVICE_TYPE_VULKAN && !use_vulkan)
+				{
+					LOGI("Found Vulkan HW device, but Vulkan was not enabled in device.\n");
+					continue;
+				}
+				else if (config->device_type != AV_HWDEVICE_TYPE_VULKAN && use_vulkan)
+				{
+					LOGI("Vulkan video is enabled on device, skipping non-Vulkan HW device.\n");
+					continue;
+				}
+			}
 #endif
 
 			if ((config->methods & (AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX | AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX)) != 0)
@@ -223,7 +239,8 @@ struct FFmpegHWDevice::Impl
 		return true;
 	}
 
-	bool init_codec_context(const AVCodec *av_codec, Vulkan::Device *device_, AVCodecContext *av_ctx)
+	bool init_codec_context(const AVCodec *av_codec, Vulkan::Device *device_,
+	                        AVCodecContext *av_ctx, const char *type)
 	{
 		if (device && (device != device_ || av_codec != cached_av_codec))
 		{
@@ -237,7 +254,7 @@ struct FFmpegHWDevice::Impl
 		device = device_;
 		cached_av_codec = av_codec;
 
-		if (!init_hw_device(av_codec))
+		if (!init_hw_device(av_codec, type))
 			return false;
 
 		if (av_ctx && (hw_config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0)
@@ -296,11 +313,12 @@ FFmpegHWDevice::~FFmpegHWDevice()
 {
 }
 
-bool FFmpegHWDevice::init_codec_context(const AVCodec *codec, Vulkan::Device *device, AVCodecContext *ctx)
+bool FFmpegHWDevice::init_codec_context(const AVCodec *codec, Vulkan::Device *device,
+                                        AVCodecContext *ctx, const char *type)
 {
 	if (!impl)
 		impl.reset(new Impl);
-	return impl->init_codec_context(codec, device, ctx);
+	return impl->init_codec_context(codec, device, ctx, type);
 }
 
 bool FFmpegHWDevice::init_frame_context(AVCodecContext *ctx,

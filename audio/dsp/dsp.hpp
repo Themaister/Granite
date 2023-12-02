@@ -375,6 +375,14 @@ static inline void interleave_stereo_f32_i16(int16_t * __restrict target,
 #endif
 }
 
+static inline void f32_to_i16(int16_t * __restrict target,
+                              const float * __restrict data,
+                              size_t count)
+{
+	for (size_t i = 0; i < count; i++)
+		*target++ = f32_to_i16(*data++);
+}
+
 struct EqualizerParameter
 {
 	float freq;

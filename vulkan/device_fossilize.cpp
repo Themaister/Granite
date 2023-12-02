@@ -120,6 +120,8 @@ void Device::register_shader_module(VkShaderModule module, Fossilize::Hash hash,
 		return;
 	}
 
+	replayer_state->feature_filter->register_shader_module_info(module, &info);
+
 	if (!recorder_state->recorder.record_shader_module(module, info, hash))
 		LOGW("Failed to register shader module.\n");
 }
@@ -303,6 +305,12 @@ bool Device::fossilize_replay_graphics_pipeline(Fossilize::Hash hash, VkGraphics
 		}
 	}
 
+	if (!replayer_state->feature_filter->graphics_pipeline_is_supported(&info))
+	{
+		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
+		return true;
+	}
+
 	VkPipeline pipeline = VK_NULL_HANDLE;
 	VkResult res = table->vkCreateGraphicsPipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
@@ -337,6 +345,12 @@ bool Device::fossilize_replay_compute_pipeline(Fossilize::Hash hash, VkComputePi
 
 	// Resolve shader module.
 	info.stage.module = shader->get_module();
+
+	if (!replayer_state->feature_filter->compute_pipeline_is_supported(&info))
+	{
+		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
+		return true;
+	}
 
 #ifdef VULKAN_DEBUG
 	LOGI("Replaying compute pipeline.\n");
@@ -379,13 +393,6 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash,
 		return true;
 	}
 
-	if (!replayer_state->feature_filter->graphics_pipeline_is_supported(create_info))
-	{
-		*pipeline = VK_NULL_HANDLE;
-		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
-		return true;
-	}
-
 	// The lifetime of create_info is tied to the replayer itself.
 	replayer_state->graphics_pipelines.emplace_back(hash, const_cast<VkGraphicsPipelineCreateInfo *>(create_info));
 	return true;
@@ -396,13 +403,6 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash,
                                              VkPipeline *pipeline)
 {
 	if (create_info->stage.module == VK_NULL_HANDLE || create_info->layout == VK_NULL_HANDLE)
-	{
-		*pipeline = VK_NULL_HANDLE;
-		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
-		return true;
-	}
-
-	if (!replayer_state->feature_filter->compute_pipeline_is_supported(create_info))
 	{
 		*pipeline = VK_NULL_HANDLE;
 		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
@@ -695,7 +695,9 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 
 	lock.read_only_cache.lock_read();
 
-	replayer_state->feature_filter = &filter;
+	// Only non-const usage is to register modules, and that is atomic within the implementation.
+	replayer_state->feature_filter = const_cast<Fossilize::FeatureFilter *>(&filter);
+
 	auto *group = get_system_handles().thread_group;
 
 	auto shader_manager_task = group->create_task([this]() {

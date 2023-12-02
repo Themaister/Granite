@@ -267,6 +267,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	void update_orientation();
 	bool alive(Vulkan::WSI &wsi) override;
 	void poll_input() override;
+	void poll_input_async(Granite::InputTrackerHandler *override_handler) override;
 
 	void request_teardown();
 	void gamepad_update();
@@ -789,6 +790,7 @@ void WSIPlatformAndroid::gamepad_update()
 
 void WSIPlatformAndroid::poll_input()
 {
+	std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
 	int events;
 	int ident;
 	android_poll_source *source;
@@ -809,6 +811,13 @@ void WSIPlatformAndroid::poll_input()
 	gamepad_update();
 	engine_handle_input(*this);
 	get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
+}
+
+void WSIPlatformAndroid::poll_input_async(Granite::InputTrackerHandler *override_handler)
+{
+	// Not really used on Android, so implement it in the trivial way.
+	std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
+	get_input_tracker().dispatch_current_state(0.0, override_handler);
 }
 
 bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)
@@ -903,7 +912,7 @@ void paddleboat_controller_status_cb(
 		LOGI("Controller #%u (%s) connected.\n", controllerIndex, name);
 		auto *platform = static_cast<WSIPlatformAndroid *>(global_state.app->userData);
 		if (platform)
-			platform->get_input_tracker().enable_joypad(controllerIndex);
+			platform->get_input_tracker().enable_joypad(controllerIndex, 0, 0 /* todo */);
 
 	}
 	else if (controllerStatus == PADDLEBOAT_CONTROLLER_JUST_DISCONNECTED)
@@ -911,7 +920,7 @@ void paddleboat_controller_status_cb(
 		LOGI("Controller #%u disconnected.\n", controllerIndex);
 		auto *platform = static_cast<WSIPlatformAndroid *>(global_state.app->userData);
 		if (platform)
-			platform->get_input_tracker().disable_joypad(controllerIndex);
+			platform->get_input_tracker().disable_joypad(controllerIndex, 0, 0 /* todo */);
 	}
 }
 
@@ -1071,7 +1080,10 @@ void android_main(android_app *app)
 	global_state.app = app;
 
 	init_jni();
-	Global::init();
+
+	ApplicationQueryDefaultManagerFlags flags{Global::MANAGER_FEATURE_DEFAULT_BITS};
+	query_application_interface(ApplicationQuery::DefaultManagerFlags, &flags, sizeof(flags));
+	Global::init(flags.manager_feature_flags);
 
 	LOGI("Starting Granite!\n");
 

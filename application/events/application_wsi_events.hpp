@@ -29,6 +29,7 @@ namespace Vulkan
 {
 class Device;
 class ShaderManager;
+class WSIPlatform;
 
 class DeviceCreatedEvent : public Granite::Event
 {
@@ -183,5 +184,57 @@ public:
 private:
 	Device &device;
 	unsigned index;
+};
+
+class ApplicationWSIPlatformEvent : public Granite::Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(ApplicationWSIPlatformEvent)
+
+	explicit ApplicationWSIPlatformEvent(WSIPlatform &platform_)
+		: platform(platform_)
+	{}
+
+	WSIPlatform &get_platform() const
+	{
+		return platform;
+	}
+
+private:
+	WSIPlatform &platform;
+};
+
+class ApplicationWindowFileDropEvent : public Granite::Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(ApplicationWindowFileDropEvent)
+	explicit ApplicationWindowFileDropEvent(std::string path_)
+		: path(std::move(path_))
+	{}
+
+	const std::string &get_path() const
+	{
+		return path;
+	}
+
+private:
+	std::string path;
+};
+
+class ApplicationWindowTextDropEvent : public Granite::Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(ApplicationWindowTextDropEvent)
+	explicit ApplicationWindowTextDropEvent(std::string str_)
+		: str(std::move(str_))
+	{}
+
+	const std::string &get_text() const
+	{
+		return str;
+	}
+
+private:
+	std::string str;
 };
 }

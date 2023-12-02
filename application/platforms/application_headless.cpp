@@ -38,6 +38,7 @@
 #include "global_managers_init.hpp"
 #include "path_utils.hpp"
 #include "thread_group.hpp"
+#include "asset_manager.hpp"
 
 #ifdef HAVE_GRANITE_FFMPEG
 #include "ffmpeg_encode.hpp"
@@ -94,7 +95,14 @@ public:
 
 	void poll_input() override
 	{
+		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
+	}
+
+	void poll_input_async(Granite::InputTrackerHandler *override_handler) override
+	{
+		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
+		get_input_tracker().dispatch_current_state(0.0, override_handler);
 	}
 
 	void enable_png_readback(std::string base_path)
@@ -225,6 +233,11 @@ public:
 #ifdef HAVE_GRANITE_FFMPEG
 	void init_headless_recording(std::string path)
 	{
+#ifndef HAVE_GRANITE_RENDERER
+		LOGE("Need to include system handles in build to encode.\n");
+		return;
+#endif
+
 		video_encode_path = std::move(path);
 		VideoEncoder::Options enc_opts = {};
 		enc_opts.width = width;
@@ -247,15 +260,20 @@ public:
 			video_encode_path.clear();
 		}
 
+#ifdef HAVE_GRANITE_RENDERER
 		for (unsigned i = 0; i < SwapchainImages; i++)
 		{
 			auto &device = app->get_wsi().get_device();
-			auto *rgb_to_yuv = device.get_shader_manager().register_compute(
+			FFmpegEncode::Shaders<> shaders;
+
+			shaders.rgb_to_yuv = device.get_shader_manager().register_compute(
 					"builtin://shaders/util/rgb_to_yuv.comp")->register_variant({})->get_program();
-			auto *chroma_downsample = device.get_shader_manager().register_compute(
+			shaders.chroma_downsample = device.get_shader_manager().register_compute(
 					"builtin://shaders/util/chroma_downsample.comp")->register_variant({})->get_program();
-			ycbcr_pipelines.push_back(encoder.create_ycbcr_pipeline(rgb_to_yuv, chroma_downsample));
+
+			ycbcr_pipelines.push_back(encoder.create_ycbcr_pipeline(shaders));
 		}
+#endif
 
 #ifdef HAVE_GRANITE_AUDIO
 		record_stream->start();
@@ -461,7 +479,10 @@ static void print_help()
 
 namespace Granite
 {
-int application_main_headless(Application *(*create_application)(int, char **), int argc, char *argv[])
+int application_main_headless(
+		bool (*query_application_interface)(ApplicationQuery, void *, size_t),
+		Application *(*create_application)(int, char **),
+		int argc, char *argv[])
 {
 	if (argc < 1)
 		return 1;
@@ -504,14 +525,19 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 	if (!Util::parse_cli_filtered(std::move(cbs), argc, argv, exit_code))
 		return exit_code;
 
-	Granite::Global::init(Granite::Global::MANAGER_FEATURE_DEFAULT_BITS);
+	ApplicationQueryDefaultManagerFlags flags{Global::MANAGER_FEATURE_DEFAULT_BITS};
+	query_application_interface(ApplicationQuery::DefaultManagerFlags, &flags, sizeof(flags));
+	Granite::Global::init(flags.manager_feature_flags);
 
-	if (!args.assets.empty())
-		GRANITE_FILESYSTEM()->register_protocol("assets", std::make_unique<OSFilesystem>(args.assets));
-	if (!args.builtin.empty())
-		GRANITE_FILESYSTEM()->register_protocol("builtin", std::make_unique<OSFilesystem>(args.builtin));
-	if (!args.cache.empty())
-		GRANITE_FILESYSTEM()->register_protocol("cache", std::make_unique<OSFilesystem>(args.cache));
+	if (flags.manager_feature_flags & Global::MANAGER_FEATURE_FILESYSTEM_BIT)
+	{
+		if (!args.assets.empty())
+			GRANITE_FILESYSTEM()->register_protocol("assets", std::make_unique<OSFilesystem>(args.assets));
+		if (!args.builtin.empty())
+			GRANITE_FILESYSTEM()->register_protocol("builtin", std::make_unique<OSFilesystem>(args.builtin));
+		if (!args.cache.empty())
+			GRANITE_FILESYSTEM()->register_protocol("cache", std::make_unique<OSFilesystem>(args.cache));
+	}
 
 	auto app = std::unique_ptr<Application>(create_application(argc, argv));
 

@@ -168,11 +168,13 @@ void ThreadGroup::start(unsigned num_threads_foreground,
 	fg.thread_group.resize(num_threads_foreground);
 	bg.thread_group.resize(num_threads_background);
 
+#ifndef GRANITE_SHIPPING
 	if (const char *env = getenv("GRANITE_TIMELINE_TRACE"))
 	{
 		LOGI("Enabling JSON timeline tracing to %s.\n", env);
 		timeline_trace_file = std::make_unique<Util::TimelineTraceFile>(env);
 	}
+#endif
 
 	refresh_global_timeline_trace_file();
 	set_main_thread_name();

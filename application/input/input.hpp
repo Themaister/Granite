@@ -28,6 +28,7 @@
 #include "math.hpp"
 #include <limits.h>
 #include <float.h>
+#include <mutex>
 
 namespace Granite
 {
@@ -47,9 +48,12 @@ enum class JoypadKey
 	RightThumb,
 	Start,
 	Select,
+	Mode,
 	Count,
 	Unknown
 };
+
+const char *joypad_key_to_tag(JoypadKey key);
 
 enum class JoypadAxis
 {
@@ -62,6 +66,8 @@ enum class JoypadAxis
 	Count,
 	Unknown
 };
+
+const char *joypad_axis_to_tag(JoypadAxis axis);
 
 enum class JoypadKeyState
 {
@@ -136,45 +142,10 @@ struct JoypadState
 
 	float axis[Util::ecast(JoypadAxis::Count)] = {};
 	uint32_t button_mask = 0;
+	uint32_t vid = 0;
+	uint32_t pid = 0;
 };
 static_assert(Util::ecast(JoypadKey::Count) <= 32, "Cannot have more than 32 joypad buttons.");
-
-class InputTracker;
-
-class JoypadRemapper
-{
-public:
-	struct ButtonMap : Util::IntrusiveHashMapEnabled<ButtonMap>
-	{
-		JoypadKey key;
-		JoypadAxis axis;
-	};
-
-	struct AxisMap : Util::IntrusiveHashMapEnabled<AxisMap>
-	{
-		JoypadAxis axis;
-		JoypadKey neg_edge;
-		JoypadKey pos_edge;
-		float axis_mod;
-	};
-
-	const ButtonMap *map_button(unsigned code) const;
-	const AxisMap *map_axis(unsigned code) const;
-
-	void register_button(unsigned code, JoypadKey key, JoypadAxis axis);
-	void register_axis(unsigned code,
-	                   JoypadAxis axis, float axis_mod,
-	                   JoypadKey neg_edge, JoypadKey pos_edge);
-
-	void button_event(InputTracker &tracker, unsigned index, unsigned code, bool pressed);
-	void axis_event(InputTracker &tracker, unsigned index, unsigned code, float value);
-
-	void reset();
-
-private:
-	Util::IntrusiveHashMap<ButtonMap> button_map;
-	Util::IntrusiveHashMap<AxisMap> axis_map;
-};
 
 class InputTrackerHandler;
 
@@ -186,13 +157,10 @@ public:
 	void mouse_button_event(MouseButton button, bool pressed);
 	void mouse_move_event_absolute(double x, double y);
 	void mouse_move_event_relative(double x, double y);
-	void dispatch_current_state(double delta_time);
+	void dispatch_current_state(double delta_time, InputTrackerHandler *override_handler = nullptr);
 	void orientation_event(quat rot);
 	void joypad_key_state(unsigned index, JoypadKey key, JoypadKeyState state);
 	void joyaxis_state(unsigned index, JoypadAxis axis, float value);
-
-	void joypad_key_state_raw(unsigned index, unsigned code, bool pressed);
-	void joyaxis_state_raw(unsigned index, unsigned code, float value);
 
 	void on_touch_down(unsigned id, float x, float y);
 	void on_touch_move(unsigned id, float x, float y);
@@ -240,8 +208,8 @@ public:
 		mouse_speed_y = speed_y;
 	}
 
-	void enable_joypad(unsigned index);
-	void disable_joypad(unsigned index);
+	void enable_joypad(unsigned index, uint32_t vid, uint32_t pid);
+	void disable_joypad(unsigned index, uint32_t vid, uint32_t pid);
 	int find_vacant_joypad_index() const;
 
 	void set_touch_resolution(unsigned width, unsigned height)
@@ -250,22 +218,20 @@ public:
 		touch.height = height;
 	}
 
-	JoypadRemapper &get_joypad_remapper(unsigned index)
-	{
-		assert(index < Joypads);
-		return remappers[index];
-	}
-
 	void set_input_handler(InputTrackerHandler *handler_)
 	{
 		handler = handler_;
 	}
+
+	// To support dispatching input manager (i.e. polling) state from async threads.
+	std::mutex &get_lock();
 
 	enum { TouchCount = 16 };
 	enum { Joypads = 8 };
 
 private:
 	InputTrackerHandler *handler = nullptr;
+	std::mutex dispatch_lock;
 	uint64_t key_state = 0;
 	uint8_t mouse_button_state = 0;
 	bool mouse_active = false;
@@ -281,7 +247,6 @@ private:
 
 	uint8_t active_joypads = 0;
 	JoypadState joypads[Joypads] = {};
-	JoypadRemapper remappers[Joypads];
 	TouchState touch;
 
 	float axis_deadzone = 0.3f;
@@ -291,8 +256,8 @@ class JoypadConnectionEvent : public Granite::Event
 {
 public:
 	GRANITE_EVENT_TYPE_DECL(JoypadConnectionEvent)
-	JoypadConnectionEvent(unsigned index_, bool connected_)
-	    : index(index_), connected(connected_)
+	JoypadConnectionEvent(unsigned index_, bool connected_, uint32_t vid_, uint32_t pid_)
+	    : index(index_), connected(connected_), vid(vid_), pid(pid_)
 	{
 	}
 
@@ -306,9 +271,20 @@ public:
 		return connected;
 	}
 
+	uint32_t get_vid() const
+	{
+		return vid;
+	}
+
+	uint32_t get_pid() const
+	{
+		return pid;
+	}
+
 private:
 	unsigned index;
 	bool connected;
+	uint32_t vid, pid;
 };
 
 class TouchGestureEvent : public Granite::Event

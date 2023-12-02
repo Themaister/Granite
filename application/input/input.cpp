@@ -31,89 +31,54 @@ using namespace Util;
 
 namespace Granite
 {
+const char *joypad_key_to_tag(JoypadKey key)
+{
+#define D(k) case JoypadKey::k: return #k
+	switch (key)
+	{
+	D(Left);
+	D(Right);
+	D(Up);
+	D(Down);
+	D(LeftShoulder);
+	D(RightShoulder);
+	D(West);
+	D(East);
+	D(North);
+	D(South);
+	D(LeftThumb);
+	D(RightThumb);
+	D(Mode);
+	D(Start);
+	D(Select);
+	default:
+		return "Unknown";
+	}
+#undef D
+}
+
+const char *joypad_axis_to_tag(JoypadAxis axis)
+{
+#define D(k) case JoypadAxis::k: return #k
+	switch (axis)
+	{
+	D(LeftX);
+	D(LeftY);
+	D(RightX);
+	D(RightY);
+	D(LeftTrigger);
+	D(RightTrigger);
+	default:
+		return "Unknown";
+	}
+#undef D
+}
+
 static inline Hash hash(unsigned code)
 {
 	Hasher h;
 	h.u32(code);
 	return h.get();
-}
-
-void JoypadRemapper::register_button(unsigned code, JoypadKey key, JoypadAxis axis)
-{
-	auto *btn = button_map.emplace_replace(hash(code));
-	btn->axis = axis;
-	btn->key = key;
-}
-
-void JoypadRemapper::register_axis(unsigned code,
-                                   JoypadAxis axis, float axis_mod,
-                                   JoypadKey neg_edge, JoypadKey pos_edge)
-{
-	auto *ax = axis_map.emplace_replace(hash(code));
-	ax->axis = axis;
-	ax->axis_mod = axis_mod;
-	ax->neg_edge = neg_edge;
-	ax->pos_edge = pos_edge;
-}
-
-const JoypadRemapper::AxisMap *JoypadRemapper::map_axis(unsigned code) const
-{
-	return axis_map.find(hash(code));
-}
-
-const JoypadRemapper::ButtonMap *JoypadRemapper::map_button(unsigned code) const
-{
-	return button_map.find(hash(code));
-}
-
-void JoypadRemapper::button_event(InputTracker &tracker, unsigned index, unsigned code, bool pressed)
-{
-	auto *button = map_button(code);
-	if (!button)
-		return;
-
-	if (button->key != JoypadKey::Unknown)
-		tracker.joypad_key_state(index, button->key, pressed ? JoypadKeyState::Pressed : JoypadKeyState::Released);
-
-	if (button->axis != JoypadAxis::Unknown)
-		tracker.joyaxis_state(index, button->axis, pressed ? 1.0f : 0.0f);
-}
-
-void JoypadRemapper::axis_event(InputTracker &tracker, unsigned index, unsigned code,
-                                float value)
-{
-	auto *axis = map_axis(code);
-	if (!axis)
-		return;
-
-	value = muglm::clamp(value * axis->axis_mod, -1.0f, 1.0f);
-
-	if (axis->axis != JoypadAxis::Unknown)
-	{
-		if (axis->axis == JoypadAxis::LeftTrigger || axis->axis == JoypadAxis::RightTrigger)
-			value = 0.5f * value + 0.5f;
-		tracker.joyaxis_state(index, axis->axis, value);
-	}
-
-	if (axis->pos_edge != JoypadKey::Unknown)
-	{
-		tracker.joypad_key_state(index, axis->pos_edge,
-		                         value > 0.5f ? JoypadKeyState::Pressed :
-		                         JoypadKeyState::Released);
-	}
-
-	if (axis->neg_edge != JoypadKey::Unknown)
-	{
-		tracker.joypad_key_state(index, axis->neg_edge,
-		                         value < -0.5f ? JoypadKeyState::Pressed
-		                                       : JoypadKeyState::Released);
-	}
-}
-
-void JoypadRemapper::reset()
-{
-	button_map.clear();
-	axis_map.clear();
 }
 
 void InputTracker::orientation_event(quat rot)
@@ -225,20 +190,6 @@ void InputTracker::joypad_key_state(unsigned index, JoypadKey key, JoypadKeyStat
 	}
 }
 
-void InputTracker::joypad_key_state_raw(unsigned index, unsigned code, bool pressed)
-{
-	if (index >= Joypads)
-		return;
-	remappers[index].button_event(*this, index, code, pressed);
-}
-
-void InputTracker::joyaxis_state_raw(unsigned index, unsigned code, float value)
-{
-	if (index >= Joypads)
-		return;
-	remappers[index].axis_event(*this, index, code, value);
-}
-
 void InputTracker::joyaxis_state(unsigned index, JoypadAxis axis, float value)
 {
 	if (index >= Joypads)
@@ -335,13 +286,16 @@ void InputTracker::mouse_leave()
 	mouse_active = false;
 }
 
-void InputTracker::dispatch_current_state(double delta_time)
+void InputTracker::dispatch_current_state(double delta_time, InputTrackerHandler *override_handler)
 {
-	if (handler)
+	if (!override_handler)
+		override_handler = handler;
+
+	if (override_handler)
 	{
-		handler->dispatch(JoypadStateEvent{active_joypads, joypads, Joypads, delta_time});
-		handler->dispatch(InputStateEvent{last_mouse_x, last_mouse_y,
-		                                  delta_time, key_state, mouse_button_state, mouse_active});
+		override_handler->dispatch(JoypadStateEvent{active_joypads, joypads, Joypads, delta_time});
+		override_handler->dispatch(InputStateEvent{last_mouse_x, last_mouse_y,
+		                                           delta_time, key_state, mouse_button_state, mouse_active});
 	}
 }
 
@@ -356,7 +310,7 @@ int InputTracker::find_vacant_joypad_index() const
 	return -1;
 }
 
-void InputTracker::enable_joypad(unsigned index)
+void InputTracker::enable_joypad(unsigned index, uint32_t vid, uint32_t pid)
 {
 	if (index >= Joypads)
 		return;
@@ -366,12 +320,14 @@ void InputTracker::enable_joypad(unsigned index)
 
 	active_joypads |= 1u << index;
 	joypads[index] = {};
-	JoypadConnectionEvent event(index, true);
+	joypads[index].vid = vid;
+	joypads[index].pid = pid;
+	JoypadConnectionEvent event(index, true, vid, pid);
 	if (handler)
 		handler->dispatch(event);
 }
 
-void InputTracker::disable_joypad(unsigned index)
+void InputTracker::disable_joypad(unsigned index, uint32_t vid, uint32_t pid)
 {
 	if (index >= Joypads)
 		return;
@@ -381,8 +337,13 @@ void InputTracker::disable_joypad(unsigned index)
 
 	active_joypads &= ~(1u << index);
 	joypads[index] = {};
-	JoypadConnectionEvent event(index, false);
+	JoypadConnectionEvent event(index, false, vid, pid);
 	if (handler)
 		handler->dispatch(event);
+}
+
+std::mutex &InputTracker::get_lock()
+{
+	return dispatch_lock;
 }
 }

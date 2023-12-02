@@ -246,7 +246,6 @@ void Pulse::update_buffer_attr(const pa_buffer_attr &attr) noexcept
 
 bool Pulse::init(float sample_rate_, unsigned channels_)
 {
-	sample_rate = sample_rate_;
 	channels = channels_;
 
 	if (channels_ > MaxAudioChannels)
@@ -278,6 +277,9 @@ bool Pulse::init(float sample_rate_, unsigned channels_)
 		return false;
 	}
 
+	if (sample_rate_ <= 0.0f)
+		sample_rate_ = 48000.0f;
+
 	pa_sample_spec spec = {};
 	spec.format = PA_SAMPLE_FLOAT32NE;
 	spec.channels = uint8_t(channels_);
@@ -296,7 +298,7 @@ bool Pulse::init(float sample_rate_, unsigned channels_)
 
 	pa_buffer_attr buffer_attr = {};
 	buffer_attr.maxlength = -1u;
-	buffer_attr.tlength = pa_usec_to_bytes(50000, &spec);
+	buffer_attr.tlength = pa_usec_to_bytes(30000, &spec);
 	buffer_attr.prebuf = -1u;
 	buffer_attr.minreq = -1u;
 	buffer_attr.fragsize = -1u;
@@ -327,9 +329,9 @@ bool Pulse::init(float sample_rate_, unsigned channels_)
 	}
 
 	auto *stream_spec = pa_stream_get_sample_spec(stream);
-	this->sample_rate = float(stream_spec->rate);
+	sample_rate = float(stream_spec->rate);
 	if (callback)
-		callback->set_backend_parameters(this->sample_rate, channels_, MAX_NUM_SAMPLES);
+		callback->set_backend_parameters(sample_rate, channels_, MAX_NUM_SAMPLES);
 
 	if (const auto *attr = pa_stream_get_buffer_attr(stream))
 		update_buffer_attr(*attr);
@@ -439,13 +441,17 @@ struct PulseRecord final : RecordStream
 		return num_channels;
 	}
 
-	size_t read_frames_f32(float * const *data, size_t frames, bool blocking) override;
+	size_t read_frames_deinterleaved_f32(float * const *data, size_t frames, bool blocking) override;
+	size_t read_frames_interleaved_f32(float *data, size_t frames, bool blocking) override;
+	size_t read_frames_f32(float * const *data, size_t frames, bool blocking, bool interleaved);
 	bool get_buffer_status(size_t &read_avail, uint32_t &latency_usec) override;
+	void set_record_callback(RecordCallback *callback_) override;
 	bool init(const char *ident, float sample_rate_, unsigned channels_);
 
 	bool start() override;
 	bool stop() override;
 
+	RecordCallback *callback = nullptr;
 	pa_threaded_mainloop *mainloop = nullptr;
 	pa_context *context = nullptr;
 	pa_stream *stream = nullptr;
@@ -486,7 +492,22 @@ static void stream_record_state_cb(pa_stream *, void *data)
 static void stream_record_request_cb(pa_stream *, size_t, void *data)
 {
 	auto *pa = static_cast<PulseRecord *>(data);
-	pa_threaded_mainloop_signal(pa->mainloop, 0);
+
+	// If we're not doing callback, just wake up pollers.
+	if (!pa->callback)
+	{
+		pa_threaded_mainloop_signal(pa->mainloop, 0);
+		return;
+	}
+
+	const float *peek_buffer;
+	size_t peek_size;
+	while (pa_stream_peek(pa->stream, reinterpret_cast<const void **>(&peek_buffer), &peek_size) == 0 && peek_size != 0)
+	{
+		size_t peek_buffer_frames = peek_size / (sizeof(float) * pa->num_channels);
+		pa->callback->write_frames_interleaved_f32(peek_buffer, peek_buffer_frames);
+		pa_stream_drop(pa->stream);
+	}
 }
 
 static void stream_record_moved_cb(pa_stream *, void *data)
@@ -546,6 +567,11 @@ PulseRecord::~PulseRecord()
 		pa_threaded_mainloop_free(mainloop);
 }
 
+void PulseRecord::set_record_callback(RecordCallback *callback_)
+{
+	callback = callback_;
+}
+
 bool PulseRecord::init(const char *ident, float sample_rate_, unsigned int channels_)
 {
 	sample_rate = sample_rate_;
@@ -595,7 +621,6 @@ bool PulseRecord::init(const char *ident, float sample_rate_, unsigned int chann
 
 	pa_stream_set_state_callback(stream, stream_record_state_cb, this);
 	pa_stream_set_read_callback(stream, stream_record_request_cb, this);
-	pa_stream_set_write_callback(stream, stream_record_request_cb, this);
 	pa_stream_set_moved_callback(stream, stream_record_moved_cb, this);
 	pa_stream_set_suspended_callback(stream, stream_record_suspended_cb, this);
 	pa_stream_set_latency_update_callback(stream, stream_record_latency_update_cb, this);
@@ -703,23 +728,16 @@ bool PulseRecord::get_buffer_status(size_t &read_avail, uint32_t &latency_usec)
 		return false;
 	}
 
-	auto buffer_latency_us = uint32_t(1e6 * float(read_avail) / sample_rate);
-
 	if (negative)
-	{
-		if (buffer_latency_us >= usecs)
-			latency_usec = buffer_latency_us - usecs;
-		else
-			latency_usec = 0;
-	}
+		latency_usec = 0;
 	else
-		latency_usec = uint32_t(usecs) + buffer_latency_us;
+		latency_usec = uint32_t(usecs);
 
 	pa_threaded_mainloop_unlock(mainloop);
 	return true;
 }
 
-size_t PulseRecord::read_frames_f32(float * const *data, size_t frames, bool blocking)
+size_t PulseRecord::read_frames_f32(float * const *data, size_t frames, bool blocking, bool interleaved)
 {
 	if (!is_running)
 		return 0;
@@ -736,12 +754,25 @@ size_t PulseRecord::read_frames_f32(float * const *data, size_t frames, bool blo
 
 			if (data)
 			{
-				if (peek_buffer)
+				if (interleaved)
+				{
+					if (peek_buffer)
+					{
+						memcpy(data[0] + num_read_frames * num_channels,
+						       peek_buffer + num_channels * pull_buffer_offset,
+						       to_write * num_channels * sizeof(float));
+					}
+					else
+					{
+						memset(data[0] + num_read_frames * num_channels, 0, to_write * num_channels * sizeof(float));
+					}
+				}
+				else if (peek_buffer)
 				{
 					if (num_channels == 2)
 					{
 						DSP::deinterleave_stereo_f32(data[0] + num_read_frames, data[1] + num_read_frames,
-													 peek_buffer + 2 * pull_buffer_offset, to_write);
+						                             peek_buffer + 2 * pull_buffer_offset, to_write);
 					}
 					else
 					{
@@ -788,6 +819,16 @@ size_t PulseRecord::read_frames_f32(float * const *data, size_t frames, bool blo
 
 	pa_threaded_mainloop_unlock(mainloop);
 	return num_read_frames;
+}
+
+size_t PulseRecord::read_frames_deinterleaved_f32(float *const *data, size_t frames, bool blocking)
+{
+	return read_frames_f32(data, frames, blocking, false);
+}
+
+size_t PulseRecord::read_frames_interleaved_f32(float *data, size_t frames, bool blocking)
+{
+	return read_frames_f32(&data, frames, blocking, true);
 }
 
 RecordStream *create_pulse_record_backend(const char *ident, float sample_rate, unsigned channels)

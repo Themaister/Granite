@@ -249,6 +249,14 @@ public:
 
 	// Frame-pushing interface.
 	void next_frame_context();
+
+	// Normally, the main thread ensures forward progress of the frame context
+	// so that async tasks don't have to care about it,
+	// but in the case where async threads are continuously pumping Vulkan work
+	// in the background, they need to reclaim memory if WSI goes to sleep for a long period of time.
+	void next_frame_context_in_async_thread();
+	void set_enable_async_thread_frame_context(bool enable);
+
 	void wait_idle();
 	void end_frame_context();
 
@@ -587,6 +595,7 @@ private:
 		std::condition_variable cond;
 		Util::RWSpinLock read_only_cache;
 		unsigned counter = 0;
+		bool async_frame_context = false;
 	} lock;
 
 	struct PerFrame

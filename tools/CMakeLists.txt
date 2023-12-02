@@ -26,9 +26,6 @@ add_granite_offline_tool(build-smaa-luts build_smaa_luts.cpp smaa/AreaTex.h smaa
 add_granite_offline_tool(bitmap-to-mesh bitmap_mesh.cpp bitmap_to_mesh.cpp bitmap_to_mesh.hpp)
 target_link_libraries(bitmap-to-mesh PRIVATE meshoptimizer granite-scene-export)
 
-add_granite_offline_tool(slangmosh slangmosh.cpp)
-target_link_libraries(slangmosh PRIVATE granite-compiler granite-rapidjson granite-vulkan)
-
 add_granite_application(aa-bench aa_bench.cpp)
 
 add_granite_headless_application(aa-bench-headless aa_bench.cpp)

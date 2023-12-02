@@ -533,6 +533,9 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		if (target_instance_version < VK_API_VERSION_1_3)
 			target_instance_version = VK_API_VERSION_1_3;
 
+	if (volkGetInstanceVersion() < target_instance_version && target_instance_version == VK_API_VERSION_1_3)
+		target_instance_version = user_application_info.get_application_info().apiVersion;
+
 	if (volkGetInstanceVersion() < target_instance_version)
 	{
 		LOGE("Vulkan loader does not support target Vulkan version.\n");
@@ -911,7 +914,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	LOGI("Using Vulkan GPU: %s\n", gpu_props.deviceName);
 
 	// FFmpeg integration requires Vulkan 1.3 core for physical device.
-	const uint32_t minimum_api_version = (flags & video_context_flags) ? VK_API_VERSION_1_3 : VK_API_VERSION_1_1;
+	uint32_t minimum_api_version = (flags & video_context_flags) ? VK_API_VERSION_1_3 : VK_API_VERSION_1_1;
+	if (gpu_props.apiVersion < minimum_api_version && (flags & video_context_flags) != 0)
+	{
+		LOGW("Requested FFmpeg-enabled context, but Vulkan 1.3 was not supported. Falling back to 1.1 without support.\n");
+		minimum_api_version = VK_API_VERSION_1_1;
+		flags &= ~video_context_flags;
+	}
 
 	if (gpu_props.apiVersion < minimum_api_version)
 	{

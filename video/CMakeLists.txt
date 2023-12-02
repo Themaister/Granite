@@ -1,9 +1,8 @@
 add_granite_internal_lib(granite-video
         ffmpeg_encode.cpp ffmpeg_encode.hpp
+        slangmosh_encode_iface.hpp
+        ffmpeg_decode.cpp ffmpeg_decode.hpp slangmosh_decode_iface.hpp
         ffmpeg_hw_device.cpp ffmpeg_hw_device.hpp)
-if (GRANITE_VULKAN_SYSTEM_HANDLES)
-    target_sources(granite-video PRIVATE ffmpeg_decode.cpp ffmpeg_decode.hpp)
-endif()
 
 # FFmpeg macro uses designated initializer.
 target_compile_features(granite-video PRIVATE cxx_std_20)

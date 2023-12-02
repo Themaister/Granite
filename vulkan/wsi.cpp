@@ -440,14 +440,16 @@ Semaphore WSI::consume_external_release_semaphore()
 
 void WSI::wait_swapchain_latency()
 {
+	unsigned effective_latency = low_latency_mode_enable ? 0 : present_frame_latency;
+
 	if (device->get_device_features().present_wait_features.presentWait &&
-	    present_last_id > present_frame_latency &&
+	    present_last_id > effective_latency &&
 	    current_present_mode == PresentMode::SyncToVBlank)
 	{
 		// The effective latency is more like present_frame_latency + 1.
 		// If 0, we wait for vblank, and we must do CPU work and GPU work in one frame
 		// to hit next vblank.
-		uint64_t target = present_last_id - present_frame_latency;
+		uint64_t target = present_last_id - effective_latency;
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto begin_wait = Util::get_current_time_nsecs();
@@ -463,6 +465,11 @@ void WSI::wait_swapchain_latency()
 				LOGI("WaitForPresentKHR took %.3f ms.\n", 1e-6 * double(end_wait - begin_wait));
 #endif
 	}
+}
+
+void WSI::set_low_latency_mode(bool enable)
+{
+	low_latency_mode_enable = enable;
 }
 
 bool WSI::begin_frame()
@@ -504,10 +511,23 @@ bool WSI::begin_frame()
 		auto acquire_start = Util::get_current_time_nsecs();
 #endif
 
+		Fence fence;
+
+		// TODO: Improve this with fancier approaches as needed.
+		if (low_latency_mode_enable &&
+		    !device->get_device_features().present_wait_features.presentWait &&
+		    current_present_mode == PresentMode::SyncToVBlank)
+		{
+			fence = device->request_legacy_fence();
+		}
+
 		auto acquire_ts = device->write_calibrated_timestamp();
 		result = table->vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX, acquire->get_semaphore(),
-		                                      VK_NULL_HANDLE, &swapchain_index);
+		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
 		device->register_time_interval("WSI", std::move(acquire_ts), device->write_calibrated_timestamp(), "acquire");
+
+		if (fence)
+			fence->wait();
 
 #if defined(ANDROID)
 		// Android 10 can return suboptimal here, only because of pre-transform.
@@ -870,7 +890,9 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 		else if (err == SwapchainError::NoSurface)
 		{
 			LOGW("WSI cannot make forward progress due to minimization, blocking ...\n");
+			device->set_enable_async_thread_frame_context(true);
 			platform->block_until_wsi_forward_progress(*this);
+			device->set_enable_async_thread_frame_context(false);
 			LOGW("Woke up!\n");
 		}
 	} while (err != SwapchainError::None);
@@ -959,7 +981,7 @@ struct SurfaceInfo
 
 static bool init_surface_info(Device &device, WSIPlatform &platform,
 	VkSurfaceKHR surface, BackbufferFormat format,
-	PresentMode present_mode, SurfaceInfo &info)
+	PresentMode present_mode, SurfaceInfo &info, bool low_latency_mode_enable)
 {
 	if (surface == VK_NULL_HANDLE)
 	{
@@ -992,7 +1014,7 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 			LOGI("Win32: Not running full-screen.\n");
 
 		const char *exclusive = getenv("GRANITE_EXCLUSIVE_FULL_SCREEN");
-		bool prefer_exclusive = exclusive && strtoul(exclusive, nullptr, 0) != 0;
+		bool prefer_exclusive = (exclusive && strtoul(exclusive, nullptr, 0) != 0) || low_latency_mode_enable;
 
 		if (ext.driver_properties.driverID == VK_DRIVER_ID_AMD_PROPRIETARY_KHR && format == BackbufferFormat::HDR10)
 		{
@@ -1025,7 +1047,8 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		else
 		{
 			LOGI("Win32: Opting out of exclusive full-screen!\n");
-			info.exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+			info.exclusive_info.fullScreenExclusive =
+				prefer_exclusive ? VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT : VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
 		}
 	}
 #else
@@ -1088,6 +1111,13 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 			}
 		}
 	}
+
+	if (swapchain_present_mode == VK_PRESENT_MODE_FIFO_KHR && low_latency_mode_enable)
+		for (auto mode : present_modes)
+			if (mode == VK_PRESENT_MODE_FIFO_RELAXED_KHR)
+				swapchain_present_mode = mode;
+
+	LOGI("Using present mode: %u.\n", swapchain_present_mode);
 
 	// First, query minImageCount without any present mode.
 	// Avoid opting for present mode compat that is pathological in nature,
@@ -1221,7 +1251,7 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 {
 	SurfaceInfo surface_info = {};
-	if (!init_surface_info(*device, *platform, surface, current_backbuffer_format, current_present_mode, surface_info))
+	if (!init_surface_info(*device, *platform, surface, current_backbuffer_format, current_present_mode, surface_info, low_latency_mode_enable))
 		return SwapchainError::Error;
 	const auto &caps = surface_info.surface_capabilities;
 
@@ -1356,7 +1386,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	swapchain_size.height =
 	    std::max(std::min(height, caps.maxImageExtent.height), caps.minImageExtent.height);
 
-	uint32_t desired_swapchain_images = 3;
+	uint32_t desired_swapchain_images =
+		low_latency_mode_enable && current_present_mode == PresentMode::SyncToVBlank ? 2 : 3;
 	{
 		const char *num_images = getenv("GRANITE_VULKAN_SWAPCHAIN_IMAGES");
 		if (num_images)
@@ -1496,4 +1527,6 @@ void WSIPlatform::event_swapchain_created(Device *, VkSwapchainKHR, unsigned, un
 void WSIPlatform::event_swapchain_destroyed() {}
 void WSIPlatform::event_frame_tick(double, double) {}
 void WSIPlatform::event_swapchain_index(Device *, unsigned) {}
+void WSIPlatform::begin_drop_event() {}
+void WSIPlatform::show_message_box(const std::string &, Vulkan::WSIPlatform::MessageType) {}
 }

@@ -24,6 +24,7 @@
 
 #include "wsi.hpp"
 #include "input.hpp"
+#include <functional>
 
 namespace Granite
 {
@@ -49,6 +50,10 @@ protected:
 	void event_swapchain_index(Vulkan::Device *device, unsigned index) override;
 	void event_frame_tick(double frame, double elapsed) override;
 
+	void begin_async_input_handling();
+	void end_async_input_handling();
+	void flush_deferred_input_events();
+
 private:
 	InputTracker input_tracker;
 	void dispatch(const TouchDownEvent &e) override;
@@ -67,5 +72,10 @@ private:
 	void dispatch_template_filter(const T &t);
 	template <typename T>
 	void dispatch_template(const T &t);
+	template <typename Func>
+	void dispatch_or_defer(Func &&func);
+
+	bool in_async_input = false;
+	std::vector<std::function<void ()>> captured;
 };
 }

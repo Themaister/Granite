@@ -21,32 +21,25 @@
  */
 
 #pragma once
-
+#include <SDL3/SDL.h>
 #include "input.hpp"
-#define WIN32_MEAN_AND_LEAN
-#include <windows.h>
-#include <xinput.h>
-
-#include "dynamic_library.hpp"
+#include <functional>
 
 namespace Granite
 {
-class XInputManager
+class InputTrackerSDL
 {
 public:
-	bool init(InputTracker *tracker);
-	bool poll();
+	using Dispatcher = std::function<void (std::function<void ()>)>;
+	bool init(InputTracker &tracker, const Dispatcher &dispatcher);
+	void close();
+	bool process_sdl_event(const SDL_Event &event, InputTracker &tracker, const Dispatcher &dispatcher);
+	void update(InputTracker &tracker);
 
 private:
-	InputTracker *tracker = nullptr;
-	uint8_t active_pads = 0;
-	XINPUT_STATE pads[4] = {};
-
-	void create_events(unsigned index, const XINPUT_STATE &state);
-	void try_polling_device(unsigned index);
-	unsigned poll_count = 0;
-
-	Util::DynamicLibrary lib;
-	decltype(&XInputGetState) pXInputGetState = nullptr;
+	SDL_Gamepad *pads[InputTracker::Joypads] = {};
+	SDL_JoystickID ids[InputTracker::Joypads] = {};
+	void add_gamepad(SDL_JoystickID id, InputTracker &tracker, const Dispatcher &dispatcher);
+	void remove_gamepad(SDL_JoystickID id, InputTracker &tracker, const Dispatcher &dispatcher);
 };
 }

@@ -34,6 +34,11 @@ layout(set = 0, binding = 3, scalar) writeonly buffer OutputIndices
     uvec3 data[];
 } output_indices32;
 
+layout(set = 0, binding = 3, scalar) writeonly buffer OutputIndices8
+{
+    u8vec3 data[];
+} output_indices8;
+
 layout(set = 0, binding = 4, std430) writeonly buffer OutputStream0
 {
     uint data[];
@@ -76,6 +81,27 @@ layout(set = 0, binding = 7, std430) readonly buffer OutputOffsets
     uvec2 data[];
 } output_offset_strides;
 
+struct IndirectIndexedDraw
+{
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    uint vertexOffset;
+    uint firstInstance;
+};
+
+layout(set = 0, binding = 8, std430) writeonly buffer IndirectCommands
+{
+    IndirectIndexedDraw draws[];
+} indirect_commands;
+
+layout(push_constant, std430) uniform Registers
+{
+    uint primitive_offset;
+    uint vertex_offset;
+    uint meshlet_offset;
+} registers;
+
 uint pack_a2bgr10(vec4 v)
 {
     ivec4 quantized = ivec4(round(clamp(v, vec4(-1.0), vec4(1.0)) * vec4(511.0, 511.0, 511.0, 1.0))) & ivec4(1023, 1023, 1023, 3);
@@ -88,16 +114,32 @@ void main()
     meshlet_init_workgroup(meshlet_index);
     MeshletMeta meta = meshlet_metas.data[meshlet_index];
 
+    if (!RAW_PAYLOAD)
+    {
+        IndirectIndexedDraw draw;
+        draw.indexCount = 3 * (meta.num_primitives_minus_1 + 1);
+        draw.instanceCount = 1;
+        draw.vertexOffset = meta.base_vertex_offset + registers.vertex_offset;
+        draw.firstIndex = 3 * (output_offset_strides.data[meshlet_index].x + registers.primitive_offset);
+        draw.firstInstance = 0;
+        indirect_commands.draws[meshlet_index + registers.meshlet_offset] = draw;
+    }
+
 #define INDEX(linear_index, packed_indices) { \
-    uvec3 indices = uvec4(unpack8(packed_indices)).xyz; \
-    indices += meta.base_vertex_offset; \
     uint output_offset; \
-    if (RAW_PAYLOAD) \
+    if (RAW_PAYLOAD) { \
+        uvec3 indices = uvec4(unpack8(packed_indices)).xyz; \
+        indices += meta.base_vertex_offset + registers.vertex_offset; \
         output_offset = output_offset_strides.data[meshlet_index * NUM_OUTPUT_U32_STREAMS].x; \
-    else \
+        output_offset += registers.primitive_offset; \
+        if (linear_index <= uint(meta.num_primitives_minus_1)) \
+            output_indices32.data[output_offset + linear_index] = indices; \
+    } else { \
         output_offset = output_offset_strides.data[meshlet_index].x; \
-    if (linear_index <= uint(meta.num_primitives_minus_1)) \
-        output_indices32.data[output_offset + linear_index] = indices; \
+        output_offset += registers.primitive_offset; \
+        if (linear_index <= uint(meta.num_primitives_minus_1)) \
+            output_indices8.data[output_offset + linear_index] = unpack8(packed_indices).xyz; \
+    } \
 }
 
     {

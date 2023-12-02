@@ -94,17 +94,19 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 		return false;
 	}
 
-	if (!info.streams[0].buffer)
+	if (!info.streams[0])
 	{
 		LOGE("Decode stream 0 must be set.\n");
 		return false;
 	}
 
-	if (!info.ibo.buffer)
+	if (!info.ibo)
 	{
 		LOGE("Output IBO must be set.\n");
 		return false;
 	}
+
+	cmd.push_constants(&info.push, 0, sizeof(info.push));
 
 	BufferCreateInfo buf_info = {};
 	buf_info.domain = BufferDomain::LinkedDeviceHost;
@@ -127,10 +129,8 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 
 	cmd.set_storage_buffer(0, 0, *meshlet_meta_buffer);
 	cmd.set_storage_buffer(0, 1, *meshlet_stream_buffer);
-	cmd.set_storage_buffer(0, 2, *info.payload.buffer,
-	                       info.payload.offset,
-	                       view.format_header->payload_size_words * sizeof(uint32_t));
-	cmd.set_storage_buffer(0, 3, *info.ibo.buffer, info.ibo.offset, view.total_primitives * sizeof(uint32_t) * 3);
+	cmd.set_storage_buffer(0, 2, *info.payload);
+	cmd.set_storage_buffer(0, 3, *info.ibo);
 
 	cmd.set_specialization_constant_mask(0x7);
 	cmd.set_specialization_constant(0, view.format_header->u32_stream_count);
@@ -168,10 +168,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 		}
 
 		for (unsigned i = 0; i < 3; i++)
-		{
-			cmd.set_storage_buffer(0, 4 + i, *info.streams[0].buffer, info.streams[0].offset,
-			                       view.total_vertices * output_u32_streams * sizeof(uint32_t));
-		}
+			cmd.set_storage_buffer(0, 4 + i, *info.streams[0]);
 
 		decode_offsets.reserve(view.format_header->meshlet_count * (output_u32_streams + 1));
 		uint32_t index_count = 0;
@@ -185,27 +182,26 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 		}
 
 		cmd.set_specialization_constant(1, output_u32_streams + 1);
+
+		// Dummy bind for indirect_buffer.
+		cmd.set_storage_buffer(0, 8, *info.streams[0]);
 	}
 	else
 	{
 		for (unsigned i = 0; i < 3; i++)
-			cmd.set_storage_buffer(0, 4 + i, *info.streams[0].buffer);
+			cmd.set_storage_buffer(0, 4 + i, *info.streams[0]);
 
 		switch (info.target_style)
 		{
 		case MeshStyle::Skinned:
-			cmd.set_storage_buffer(0, 6, *info.streams[2].buffer, info.streams[2].offset,
-			                       view.total_vertices * sizeof(uint32_t) * 2);
+			cmd.set_storage_buffer(0, 6, *info.streams[2]);
 			// Fallthrough
 		case MeshStyle::Untextured:
 		case MeshStyle::Textured:
-			cmd.set_storage_buffer(0, 5, *info.streams[1].buffer, info.streams[1].offset,
-			                       view.total_vertices * sizeof(uint32_t) *
-			                       (info.target_style == MeshStyle::Textured ? 4 : 1));
+			cmd.set_storage_buffer(0, 5, *info.streams[1]);
 			// Fallthrough
 		case MeshStyle::Wireframe:
-			cmd.set_storage_buffer(0, 4, *info.streams[0].buffer, info.streams[0].offset,
-			                       view.total_vertices * sizeof(float) * 3);
+			cmd.set_storage_buffer(0, 4, *info.streams[0]);
 			break;
 
 		default:
@@ -220,6 +216,8 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 			index_count += view.headers[i].num_primitives_minus_1 + 1;
 		}
 		cmd.set_specialization_constant(1, uint32_t(info.target_style));
+
+		cmd.set_storage_buffer(0, 8, *info.indirect);
 	}
 
 	buf_info.domain = BufferDomain::LinkedDeviceHost;

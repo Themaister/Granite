@@ -1602,6 +1602,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			enabled_features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
 		if (pdf2.features.shaderStorageImageReadWithoutFormat)
 			enabled_features.shaderStorageImageReadWithoutFormat = VK_TRUE;
+		if (pdf2.features.multiDrawIndirect)
+			enabled_features.multiDrawIndirect = VK_TRUE;
 
 		if (pdf2.features.shaderSampledImageArrayDynamicIndexing)
 			enabled_features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;

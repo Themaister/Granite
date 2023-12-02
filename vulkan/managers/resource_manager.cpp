@@ -34,12 +34,12 @@ namespace Vulkan
 {
 ResourceManager::ResourceManager(Device *device_)
 	: device(device_)
-	, index_buffer_allocator(*device_)
-	, attribute_buffer_allocator(*device_)
-	, indirect_buffer_allocator(*device_)
+	, index_buffer_allocator(*device_, 256)
+	, attribute_buffer_allocator(*device_, 256)
+	, indirect_buffer_allocator(*device_, 1)
 {
 	// Simplified style.
-	index_buffer_allocator.set_element_size(0, sizeof(uint32_t) * 3);
+	index_buffer_allocator.set_element_size(0, 3); // 8-bit indices.
 	attribute_buffer_allocator.set_soa_count(3);
 	attribute_buffer_allocator.set_element_size(0, sizeof(float) * 3);
 	attribute_buffer_allocator.set_element_size(1, sizeof(float) * 2 + sizeof(uint32_t) * 2);
@@ -53,6 +53,9 @@ ResourceManager::~ResourceManager()
 	// Also works as a teardown mechanism to make sure there are no async threads in flight.
 	if (manager)
 		manager->set_asset_instantiator_interface(nullptr);
+
+	// Ensure resource releases go through.
+	latch_handles();
 }
 
 void ResourceManager::set_id_bounds(uint32_t bound)
@@ -308,7 +311,7 @@ bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::Me
 	if (!view.format_header)
 		return false;
 
-	Internal::AllocatedSlice index_slice, attribute_slice;
+	Internal::AllocatedSlice index_slice, attribute_slice, indirect_slice;
 	{
 		std::lock_guard<std::mutex> holder{mesh_allocator_lock};
 		if (!index_buffer_allocator.allocate(view.total_primitives, &index_slice))
@@ -319,11 +322,20 @@ bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::Me
 			index_buffer_allocator.free(index_slice);
 			return false;
 		}
+
+		if (!indirect_buffer_allocator.allocate(view.format_header->meshlet_count, &indirect_slice))
+		{
+			attribute_buffer_allocator.free(attribute_slice);
+			index_buffer_allocator.free(index_slice);
+			return false;
+		}
 	}
 
 	auto &asset = assets[id.id];
 	asset.mesh.index = index_slice;
 	asset.mesh.attr = attribute_slice;
+	asset.mesh.indirect = indirect_slice;
+	asset.mesh.draw = { indirect_slice.offset, view.format_header->meshlet_count };
 	return true;
 }
 
@@ -361,20 +373,17 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 
 		Meshlet::DecodeInfo info = {};
 		info.target_style = Meshlet::MeshStyle::Textured;
-		info.ibo = {
-			index_buffer_allocator.get_buffer(0, 0),
-			asset.mesh.index.offset * index_buffer_allocator.get_element_size(0),
-		};
+		info.ibo = index_buffer_allocator.get_buffer(0, 0);
 
 		for (unsigned i = 0; i < 3; i++)
-		{
-			info.streams[i] = {
-				attribute_buffer_allocator.get_buffer(0, i),
-				asset.mesh.index.offset * attribute_buffer_allocator.get_element_size(i),
-			};
-		}
+			info.streams[i] = attribute_buffer_allocator.get_buffer(0, i);
 
-		info.payload = { payload.get(), 0 };
+		info.payload = payload.get();
+		info.indirect = indirect_buffer_allocator.get_buffer(0, 0);
+
+		info.push.meshlet_offset = asset.mesh.indirect.offset;
+		info.push.primitive_offset = asset.mesh.index.offset;
+		info.push.vertex_offset = asset.mesh.attr.offset;
 
 		Meshlet::decode_mesh(*cmd, info, view);
 
@@ -480,12 +489,7 @@ void ResourceManager::latch_handles()
 				asset.mesh = {};
 			}
 
-			auto &d = draws[update.id];
-			d.firstIndex = asset.mesh.index.offset * 3;
-			d.indexCount = asset.mesh.index.count * 3;
-			d.firstInstance = 0;
-			d.instanceCount = 1;
-			d.vertexOffset = int32_t(asset.mesh.attr.offset);
+			draws[update.id] = asset.mesh.draw;
 		}
 		else
 		{
@@ -534,7 +538,7 @@ const Buffer *ResourceManager::get_indirect_buffer() const
 	return indirect_buffer_allocator.get_buffer(0, 0);
 }
 
-MeshBufferAllocator::MeshBufferAllocator(Device &device)
+MeshBufferAllocator::MeshBufferAllocator(Device &device, uint32_t sub_block_size)
 	: global_allocator(device)
 {
 	for (int i = 0; i < SliceAllocatorCount - 1; i++)
@@ -543,7 +547,7 @@ MeshBufferAllocator::MeshBufferAllocator(Device &device)
 
 	// Basic unit of a meshlet is 256 prims / attributes.
 	// Maximum element count = 32M prims.
-	allocators[0].set_sub_block_size(256);
+	allocators[0].set_sub_block_size(sub_block_size);
 	for (int i = 1; i < SliceAllocatorCount; i++)
 		allocators[i].set_sub_block_size(allocators[i - 1].get_sub_block_size() * (Util::LegionAllocator::NumSubBlocks / 2));
 

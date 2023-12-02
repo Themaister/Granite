@@ -109,12 +109,6 @@ static const char magic[8] = { 'M', 'E', 'S', 'H', 'L', 'E', 'T', '1' };
 
 MeshView create_mesh_view(const Granite::FileMapping &mapping);
 
-struct DecodeBuffer
-{
-	const Vulkan::Buffer *buffer;
-	uint64_t offset;
-};
-
 enum DecodeModeFlagBits : uint32_t
 {
 	DECODE_MODE_RAW_PAYLOAD = 1 << 0,
@@ -123,9 +117,16 @@ using DecodeModeFlags = uint32_t;
 
 struct DecodeInfo
 {
-	DecodeBuffer ibo, streams[3], indirect, payload;
+	const Vulkan::Buffer *ibo, *streams[3], *indirect, *payload;
 	DecodeModeFlags flags;
 	MeshStyle target_style;
+
+	struct
+	{
+		uint32_t primitive_offset;
+		uint32_t vertex_offset;
+		uint32_t meshlet_offset;
+	} push;
 };
 
 bool decode_mesh(Vulkan::CommandBuffer &cmd, const DecodeInfo &decode_info, const MeshView &view);

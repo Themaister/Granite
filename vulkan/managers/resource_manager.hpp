@@ -79,7 +79,7 @@ struct SliceAllocator : Util::ArenaAllocator<SliceAllocator, AllocatedSlice>
 class MeshBufferAllocator
 {
 public:
-	explicit MeshBufferAllocator(Device &device);
+	MeshBufferAllocator(Device &device, uint32_t sub_block_size);
 	bool allocate(uint32_t count, Internal::AllocatedSlice *slice);
 	void free(const Internal::AllocatedSlice &slice);
 	void set_soa_count(unsigned soa_count);
@@ -118,7 +118,13 @@ public:
 
 	const Vulkan::ImageView *get_image_view_blocking(Granite::AssetID id);
 
-	inline VkDrawIndexedIndirectCommand get_mesh_indexed_draw(Granite::AssetID id) const
+	struct MultiIndirectDraw
+	{
+		uint32_t offset = 0;
+		uint32_t count = 0;
+	};
+
+	inline MultiIndirectDraw get_mesh_indexed_indirect_draw(Granite::AssetID id) const
 	{
 		if (id.id < draws.size())
 			return draws[id.id];
@@ -155,6 +161,7 @@ private:
 		struct
 		{
 			Internal::AllocatedSlice index, attr, indirect;
+			MultiIndirectDraw draw;
 		} mesh;
 		Granite::AssetClass asset_class = Granite::AssetClass::ImageZeroable;
 		bool latchable = false;
@@ -165,7 +172,7 @@ private:
 
 	std::vector<Asset> assets;
 	std::vector<const ImageView *> views;
-	std::vector<VkDrawIndexedIndirectCommand> draws;
+	std::vector<MultiIndirectDraw> draws;
 	std::vector<Granite::AssetID> updates;
 
 	ImageHandle fallback_color;

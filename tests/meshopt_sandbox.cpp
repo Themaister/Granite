@@ -132,10 +132,10 @@ static void decode_mesh_gpu(
 	auto cmd = dev.request_command_buffer();
 
 	DecodeInfo info = {};
-	info.ibo.buffer = readback_decoded_index_buffer.get();
-	info.streams[0].buffer = readback_decoded_u32_buffer.get();
+	info.ibo = readback_decoded_index_buffer.get();
+	info.streams[0] = readback_decoded_u32_buffer.get();
 	info.target_style = mesh.format_header->style;
-	info.payload.buffer = payload_buffer.get();
+	info.payload = payload_buffer.get();
 	info.flags = DECODE_MODE_RAW_PAYLOAD;
 
 	decode_mesh(*cmd, info, mesh);

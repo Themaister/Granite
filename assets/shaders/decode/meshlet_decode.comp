@@ -150,6 +150,7 @@ void main()
     {
 #define ATTR(linear_index, packed_decoded) { \
     uvec2 output_offset_stride0 = output_offset_strides.data[meshlet_index * NUM_OUTPUT_U32_STREAMS + i]; \
+    output_offset_stride0.x += registers.vertex_offset; \
     if (linear_index <= uint(meta.num_attributes_minus_1)) \
         output_stream_raw.data[output_offset_stride0.x + linear_index * output_offset_stride0.y] = packed_decoded; \
 }
@@ -162,6 +163,7 @@ void main()
     else
     {
         uint output_offset = output_offset_strides.data[meshlet_index].y;
+        output_offset += registers.vertex_offset;
 
 #define POS(linear_index, packed_decoded) { \
     if (linear_index <= uint(meta.num_attributes_minus_1)) \

@@ -54,8 +54,6 @@ ResourceManager::ResourceManager(Device *device_)
 	mesh_payload_allocator.set_element_size(0, sizeof(uint32_t));
 
 	assets.reserve(Granite::AssetID::MaxIDs);
-
-	mesh_encoding = MeshEncoding::Meshlet;
 }
 
 ResourceManager::~ResourceManager()
@@ -169,6 +167,14 @@ void ResourceManager::init()
 
 		// This is somewhat arbitrary.
 		manager->set_asset_budget_per_iteration(2 * 1000 * 1000);
+	}
+
+	if (device->get_device_features().mesh_shader_features.taskShader &&
+	    device->get_device_features().mesh_shader_features.meshShader &&
+	    device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT))
+	{
+		mesh_encoding = MeshEncoding::Meshlet;
+		LOGI("Opting in to meshlet path.\n");
 	}
 }
 

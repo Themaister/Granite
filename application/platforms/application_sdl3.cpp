@@ -40,6 +40,10 @@
 #include <windows.h>
 #endif
 
+#ifdef __linux__
+#include <dlfcn.h>
+#endif
+
 namespace Granite
 {
 static Key sdl_key_to_granite_key(SDL_Keycode key)
@@ -103,6 +107,17 @@ public:
 			width = options.override_width;
 		if (options.override_height)
 			height = options.override_height;
+
+#ifdef __linux__
+		// RenderDoc doesn't support Wayland, and SDL3 uses Wayland by default.
+		// Opt in to X11 to avoid having to manually remember to pass down SDL_VIDEO_DRIVER=x11.
+		void *renderdoc_module = dlopen("librenderdoc.so", RTLD_NOW | RTLD_NOLOAD);
+		if (renderdoc_module)
+		{
+			LOGI("RenderDoc is loaded, disabling Wayland.\n");
+			setenv("SDL_VIDEO_DRIVER", "x11", 0);
+		}
+#endif
 
 		if (SDL_Init(SDL_INIT_EVENTS | SDL_INIT_GAMEPAD | SDL_INIT_VIDEO) < 0)
 		{

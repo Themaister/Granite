@@ -105,7 +105,7 @@ public:
 	enum class MeshEncoding
 	{
 		Meshlet,
-		EncodedVBOAndIBO,
+		VBOAndIBOMDI,
 	};
 
 	inline const Vulkan::ImageView *get_image_view(Granite::AssetID id) const
@@ -118,13 +118,14 @@ public:
 
 	const Vulkan::ImageView *get_image_view_blocking(Granite::AssetID id);
 
-	struct MultiIndirectDraw
+	struct DrawRange
 	{
 		uint32_t offset = 0;
 		uint32_t count = 0;
+		Meshlet::MeshStyle style = Meshlet::MeshStyle::Wireframe;
 	};
 
-	inline MultiIndirectDraw get_mesh_indexed_indirect_draw(Granite::AssetID id) const
+	inline DrawRange get_mesh_draw_range(Granite::AssetID id) const
 	{
 		if (id.id < draws.size())
 			return draws[id.id];
@@ -134,7 +135,7 @@ public:
 
 	inline MeshEncoding get_mesh_encoding() const
 	{
-		return MeshEncoding::EncodedVBOAndIBO;
+		return mesh_encoding;
 	}
 
 	const Buffer *get_index_buffer() const;
@@ -142,6 +143,10 @@ public:
 	const Buffer *get_attribute_buffer() const;
 	const Buffer *get_skinning_buffer() const;
 	const Buffer *get_indirect_buffer() const;
+
+	const Buffer *get_meshlet_payload_buffer() const;
+	const Buffer *get_meshlet_header_buffer() const;
+	const Buffer *get_meshlet_stream_header_buffer() const;
 
 private:
 	Device *device;
@@ -160,8 +165,8 @@ private:
 		ImageHandle image;
 		struct
 		{
-			Internal::AllocatedSlice index, attr, indirect;
-			MultiIndirectDraw draw;
+			Internal::AllocatedSlice index_or_payload, attr_or_stream, indirect_or_header;
+			DrawRange draw;
 		} mesh;
 		Granite::AssetClass asset_class = Granite::AssetClass::ImageZeroable;
 		bool latchable = false;
@@ -172,7 +177,7 @@ private:
 
 	std::vector<Asset> assets;
 	std::vector<const ImageView *> views;
-	std::vector<MultiIndirectDraw> draws;
+	std::vector<DrawRange> draws;
 	std::vector<Granite::AssetID> updates;
 
 	ImageHandle fallback_color;
@@ -193,6 +198,10 @@ private:
 	MeshBufferAllocator index_buffer_allocator;
 	MeshBufferAllocator attribute_buffer_allocator;
 	MeshBufferAllocator indirect_buffer_allocator;
+	MeshBufferAllocator mesh_header_allocator;
+	MeshBufferAllocator mesh_stream_allocator;
+	MeshBufferAllocator mesh_payload_allocator;
+	MeshEncoding mesh_encoding = MeshEncoding::VBOAndIBOMDI;
 
 	bool allocate_asset_mesh(Granite::AssetID id, const Meshlet::MeshView &view);
 };

@@ -111,8 +111,8 @@ uint pack_a2bgr10(vec4 v)
 void main()
 {
     uint meshlet_index = gl_WorkGroupID.x;
-    meshlet_init_workgroup(meshlet_index);
-    MeshletMeta meta = meshlet_metas.data[meshlet_index];
+    meshlet_init_workgroup(meshlet_index * NUM_U32_STREAMS);
+    MeshletMetaRaw meta = meshlet_metas_raw.data[meshlet_index];
 
     if (!RAW_PAYLOAD)
     {
@@ -143,7 +143,7 @@ void main()
 }
 
     {
-        MESHLET_DECODE_STREAM_32(meshlet_index, 0, INDEX);
+        MESHLET_DECODE_STREAM_32(meshlet_index * NUM_U32_STREAMS, 0, INDEX);
     }
 
     if (RAW_PAYLOAD)
@@ -156,7 +156,7 @@ void main()
 
         for (uint i = 1; i < NUM_OUTPUT_U32_STREAMS; i++)
         {
-            MESHLET_DECODE_STREAM_32(meshlet_index, i, ATTR);
+            MESHLET_DECODE_STREAM_32(meshlet_index * NUM_U32_STREAMS, i, ATTR);
         }
     }
     else
@@ -195,23 +195,23 @@ void main()
     } \
 }
         {
-            MESHLET_DECODE_STREAM_64(meshlet_index, 1, POS);
+            MESHLET_DECODE_STREAM_64(meshlet_index * NUM_U32_STREAMS, 1, POS);
         }
 
         if (MESH_STYLE >= MESH_STYLE_UNTEXTURED)
         {
-            MESHLET_DECODE_STREAM_32(meshlet_index, 3, NORMAL);
+            MESHLET_DECODE_STREAM_32(meshlet_index * NUM_U32_STREAMS, 3, NORMAL);
         }
 
         if (MESH_STYLE >= MESH_STYLE_TEXTURED)
         {
-            MESHLET_DECODE_STREAM_32(meshlet_index, 4, TANGENT);
-            MESHLET_DECODE_STREAM_64(meshlet_index, 5, UV);
+            MESHLET_DECODE_STREAM_32(meshlet_index * NUM_U32_STREAMS, 4, TANGENT);
+            MESHLET_DECODE_STREAM_64(meshlet_index * NUM_U32_STREAMS, 5, UV);
         }
 
         if (MESH_STYLE >= MESH_STYLE_SKINNED)
         {
-            MESHLET_DECODE_STREAM_64(meshlet_index, 7, SKIN);
+            MESHLET_DECODE_STREAM_64(meshlet_index * NUM_U32_STREAMS, 7, SKIN);
         }
     }
 }

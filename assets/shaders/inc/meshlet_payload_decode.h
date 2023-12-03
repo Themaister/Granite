@@ -45,7 +45,7 @@ struct MeshletStream
 	uint16_t bitplane_meta[MESHLET_PAYLOAD_NUM_CHUNKS];
 };
 
-struct MeshletMeta
+struct MeshletMetaRaw
 {
 	uint base_vertex_offset;
 	uint8_t num_primitives_minus_1;
@@ -53,10 +53,22 @@ struct MeshletMeta
 	uint16_t reserved;
 };
 
-layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_META_BINDING, std430) readonly buffer MeshletMetas
+struct MeshletMetaRuntime
 {
-	MeshletMeta data[];
-} meshlet_metas;
+	uint stream_offset;
+	uint16_t num_primitives;
+	uint16_t num_attributes;
+};
+
+layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_META_BINDING, std430) readonly buffer MeshletMetasRaw
+{
+	MeshletMetaRaw data[];
+} meshlet_metas_raw;
+
+layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_META_BINDING, std430) readonly buffer MeshletMetasRuntime
+{
+	MeshletMetaRuntime data[];
+} meshlet_metas_runtime;
 
 layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_STREAM_BINDING, std430) readonly buffer MeshletStreams
 {
@@ -88,22 +100,22 @@ uint repack_uint(uvec2 v)
 	return pack32(u8vec4(v16));
 }
 
-void meshlet_compute_stream_offsets(uint meshlet_index, uint stream_index,
+void meshlet_compute_stream_offsets(uint stream_index,
                                     out uint out_stream_chunk_offset, out u8vec4 out_bit_counts)
 {
 	if (gl_SubgroupInvocationID < MESHLET_PAYLOAD_NUM_CHUNKS)
 	{
-		uint bitplane_value = uint(meshlet_streams.data[stream_index + MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index].bitplane_meta[gl_SubgroupInvocationID]);
+		uint bitplane_value = uint(meshlet_streams.data[stream_index].bitplane_meta[gl_SubgroupInvocationID]);
 		u16vec4 bit_counts = (u16vec4(bitplane_value) >> u16vec4(0, 4, 8, 12)) & 0xfus;
 		u16vec2 bit_counts2 = bit_counts.xy + bit_counts.zw;
 		uint total_bits = bit_counts2.x + bit_counts2.y;
-		uint offset = meshlet_streams.data[stream_index + MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index].offset_from_base;
+		uint offset = meshlet_streams.data[stream_index].offset_from_base;
 		out_stream_chunk_offset = subgroupExclusiveAdd(total_bits) + offset;
 		out_bit_counts = u8vec4(bit_counts);
 	}
 }
 
-void meshlet_init_workgroup(uint meshlet_index)
+void meshlet_init_workgroup(uint base_stream_index)
 {
 #if MESHLET_PAYLOAD_LARGE_WORKGROUP
 
@@ -112,7 +124,7 @@ void meshlet_init_workgroup(uint meshlet_index)
 		if (gl_SubgroupInvocationID < MESHLET_PAYLOAD_NUM_CHUNKS)
 		{
 			// Start by decoding the offset for bitplanes for all u32 streams.
-			meshlet_compute_stream_offsets(meshlet_index, stream_index,
+			meshlet_compute_stream_offsets(base_stream_index + stream_index,
 										   shared_chunk_offset[stream_index][gl_SubgroupInvocationID],
 										   shared_chunk_bit_counts[stream_index][gl_SubgroupInvocationID]);
 		}
@@ -175,9 +187,9 @@ uint meshlet_get_linear_index()
 	packed_decoded##iter = subgroupInclusiveAdd(packed_decoded##iter)
 
 #if MESHLET_PAYLOAD_LARGE_WORKGROUP
-uint meshlet_decode_stream_32_wg256(uint meshlet_index, uint stream_index)
+uint meshlet_decode_stream_32_wg256(uint base_stream_index, uint stream_index)
 {
-	uint unrolled_stream_index = MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index + stream_index;
+	uint unrolled_stream_index = base_stream_index + stream_index;
 	uint linear_index = meshlet_get_linear_index();
 	uint chunk_id = gl_LocalInvocationID.y;
 
@@ -197,10 +209,10 @@ uint meshlet_decode_stream_32_wg256(uint meshlet_index, uint stream_index)
 	return repack_uint(packed_decoded0);
 }
 
-uvec2 meshlet_decode_stream_64_wg256(uint meshlet_index, uint stream_index)
+uvec2 meshlet_decode_stream_64_wg256(uint base_stream_index, uint stream_index)
 {
 	// Dual-pump the computation. VGPR use is quite low either way, so this is fine.
-	uint unrolled_stream_index = MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index + stream_index;
+	uint unrolled_stream_index = base_stream_index + stream_index;
 	uint linear_index = meshlet_get_linear_index();
 	uint chunk_id = gl_LocalInvocationID.y;
 
@@ -243,13 +255,13 @@ uvec2 meshlet_decode_stream_64_wg256(uint meshlet_index, uint stream_index)
 #else
 
 // Have to iterate and report once per chunk. Avoids having to spend a lot of LDS memory.
-#define MESHLET_DECODE_STREAM_32(meshlet_index, stream_index, report_cb) { \
-	uint unrolled_stream_index = MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index + stream_index; \
+#define MESHLET_DECODE_STREAM_32(base_stream_index, stream_index, report_cb) { \
+	uint unrolled_stream_index = base_stream_index + stream_index; \
 	uint linear_index = meshlet_get_linear_index(); \
 	uvec2 prev_value0 = uvec2(0); \
 	uint shared_chunk_offset0; \
 	u8vec4 shared_chunk_bit_counts0; \
-	meshlet_compute_stream_offsets(meshlet_index, stream_index, shared_chunk_offset0, shared_chunk_bit_counts0); \
+	meshlet_compute_stream_offsets(unrolled_stream_index, shared_chunk_offset0, shared_chunk_bit_counts0); \
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0); \
 	for (uint chunk_id = 0; chunk_id < MESHLET_PAYLOAD_NUM_CHUNKS; chunk_id++) \
 	{ \
@@ -262,17 +274,17 @@ uvec2 meshlet_decode_stream_64_wg256(uint meshlet_index, uint stream_index)
 }
 
 // Have to iterate and report once per chunk. Avoids having to spend a lot of LDS memory.
-#define MESHLET_DECODE_STREAM_64(meshlet_index, stream_index, report_cb) { \
-	uint unrolled_stream_index = MESHLET_PAYLOAD_NUM_U32_STREAMS * meshlet_index + stream_index; \
+#define MESHLET_DECODE_STREAM_64(base_stream_index, stream_index, report_cb) { \
+	uint unrolled_stream_index = base_stream_index + stream_index; \
 	uint linear_index = meshlet_get_linear_index(); \
 	uvec2 prev_value0 = uvec2(0); \
 	uvec2 prev_value1 = uvec2(0); \
 	uint shared_chunk_offset0; \
 	u8vec4 shared_chunk_bit_counts0; \
-	meshlet_compute_stream_offsets(meshlet_index, stream_index, shared_chunk_offset0, shared_chunk_bit_counts0); \
+	meshlet_compute_stream_offsets(unrolled_stream_index, shared_chunk_offset0, shared_chunk_bit_counts0); \
 	uint shared_chunk_offset1; \
 	u8vec4 shared_chunk_bit_counts1; \
-	meshlet_compute_stream_offsets(meshlet_index, stream_index + 1, shared_chunk_offset1, shared_chunk_bit_counts1); \
+	meshlet_compute_stream_offsets(unrolled_stream_index + 1, shared_chunk_offset1, shared_chunk_bit_counts1); \
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0); \
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index + 1, 1); \
 	for (uint chunk_id = 0; chunk_id < MESHLET_PAYLOAD_NUM_CHUNKS; chunk_id++) \

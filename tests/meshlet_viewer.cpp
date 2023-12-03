@@ -38,6 +38,23 @@ using namespace Granite;
 using namespace Vulkan;
 using namespace Vulkan::Meshlet;
 
+static uint32_t style_to_u32_streams(MeshStyle style)
+{
+	switch (style)
+	{
+	case MeshStyle::Wireframe:
+		return 3;
+	case MeshStyle::Untextured:
+		return 4;
+	case MeshStyle::Textured:
+		return 7;
+	case MeshStyle::Skinned:
+		return 9;
+	default:
+		return 0;
+	}
+}
+
 struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 {
 	MeshletViewerApplication(const char *path)
@@ -73,33 +90,37 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 
 		auto vp = camera.get_projection() * camera.get_view();
 		*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = vp;
+		auto draw = device.get_resource_manager().get_mesh_draw_range(mesh_id);
 
-#if 0
-		bool large_workgroup =
-				device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32 &&
-				device.get_device_features().mesh_shader_properties.maxMeshWorkGroupInvocations >= 256;
-
-		cmd->set_program("", "assets://shaders/meshlet_debug.mesh",
-		                 "assets://shaders/meshlet_debug.mesh.frag",
-		                 {{"MESHLET_PAYLOAD_LARGE_WORKGROUP", int(large_workgroup)}});
-
-		cmd->set_storage_buffer(0, 0, *meshlet_meta_buffer);
-		cmd->set_storage_buffer(0, 1, *meshlet_stream_buffer);
-		cmd->set_storage_buffer(0, 2, *payload);
-
-		cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
-		cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
-		cmd->set_specialization_constant_mask(1);
-		cmd->set_specialization_constant(0, header.u32_stream_count);
-		cmd->draw_mesh_tasks(header.meshlet_count, 1, 1);
-#else
-		auto *ibo = device.get_resource_manager().get_index_buffer();
-		auto *pos = device.get_resource_manager().get_position_buffer();
-		auto *attr = device.get_resource_manager().get_attribute_buffer();
-		auto *indirect = device.get_resource_manager().get_indirect_buffer();
-
-		if (ibo && pos && attr)
+		if (draw.count && device.get_resource_manager().get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Meshlet)
 		{
+			bool large_workgroup =
+					device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32 &&
+					device.get_device_features().mesh_shader_properties.maxMeshWorkGroupInvocations >= 256;
+
+			cmd->set_program("", "assets://shaders/meshlet_debug.mesh",
+			                 "assets://shaders/meshlet_debug.mesh.frag",
+			                 {{"MESHLET_PAYLOAD_LARGE_WORKGROUP", int(large_workgroup)}});
+
+			cmd->set_storage_buffer(0, 0, *device.get_resource_manager().get_meshlet_header_buffer());
+			cmd->set_storage_buffer(0, 1, *device.get_resource_manager().get_meshlet_stream_header_buffer());
+			cmd->set_storage_buffer(0, 2, *device.get_resource_manager().get_meshlet_payload_buffer());
+
+			cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
+			cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
+			cmd->set_specialization_constant_mask(1);
+			cmd->set_specialization_constant(0, style_to_u32_streams(draw.style));
+
+			cmd->push_constants(&draw.offset, 0, sizeof(draw.offset));
+			cmd->draw_mesh_tasks(draw.count, 1, 1);
+		}
+		else if (draw.count)
+		{
+			auto *ibo = device.get_resource_manager().get_index_buffer();
+			auto *pos = device.get_resource_manager().get_position_buffer();
+			auto *attr = device.get_resource_manager().get_attribute_buffer();
+			auto *indirect = device.get_resource_manager().get_indirect_buffer();
+
 			cmd->set_program("assets://shaders/meshlet_debug.vert", "assets://shaders/meshlet_debug.frag");
 			cmd->set_index_buffer(*ibo, 0, VK_INDEX_TYPE_UINT8_EXT);
 			cmd->set_vertex_binding(0, *pos, 0, 12);
@@ -108,16 +129,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			cmd->set_vertex_attrib(1, 1, VK_FORMAT_A2B10G10R10_SNORM_PACK32, 0);
 			cmd->set_vertex_attrib(2, 1, VK_FORMAT_A2B10G10R10_SNORM_PACK32, 4);
 			cmd->set_vertex_attrib(3, 1, VK_FORMAT_R32G32_SFLOAT, 8);
-
-			auto draw = device.get_resource_manager().get_mesh_indexed_indirect_draw(mesh_id);
-			if (draw.count)
-			{
-				cmd->draw_indexed_indirect(*indirect,
-				                           draw.offset * sizeof(VkDrawIndexedIndirectCommand),
-				                           draw.count, sizeof(VkDrawIndexedIndirectCommand));
-			}
+			cmd->draw_indexed_indirect(*indirect,
+			                           draw.offset * sizeof(VkDrawIndexedIndirectCommand),
+			                           draw.count, sizeof(VkDrawIndexedIndirectCommand));
 		}
-#endif
 
 		cmd->end_render_pass();
 		device.submit(cmd);

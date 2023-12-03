@@ -60,6 +60,14 @@ struct Header
 	uint16_t reserved;
 };
 
+// For GPU use
+struct RuntimeHeader
+{
+	uint32_t stream_offset;
+	uint16_t num_primitives;
+	uint16_t num_attributes;
+};
+
 struct Bound
 {
 	float center[3];

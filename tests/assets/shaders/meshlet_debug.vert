@@ -14,10 +14,15 @@ layout(set = 1, binding = 0) uniform UBO
     mat4 VP;
 };
 
+layout(set = 1, binding = 1) uniform UBOModel
+{
+    mat4 M;
+};
+
 void main()
 {
-    vNormal = N;
-    vTangent = T;
+    vNormal = mat3(M) * N;
+    vTangent = vec4(mat3(M) * T.xyz, T.w);
     vUV = UV;
-    gl_Position = VP * vec4(POS, 1.0);
+    gl_Position = VP * (M * vec4(POS, 1.0));
 }

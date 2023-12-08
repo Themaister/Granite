@@ -32,9 +32,19 @@ layout(set = 1, binding = 0) uniform UBO
     mat4 VP;
 };
 
+layout(set = 1, binding = 1) uniform UBOModel
+{
+    mat4 M;
+};
+
+layout(push_constant) uniform Registers
+{
+    uint offset;
+} registers;
+
 void main()
 {
-    uint meshlet_index = gl_WorkGroupID.x;
+    uint meshlet_index = gl_WorkGroupID.x + registers.offset;
     MeshletMetaRuntime meta = meshlet_metas_runtime.data[meshlet_index];
     meshlet_init_workgroup(meta.stream_offset);
 
@@ -52,21 +62,22 @@ void main()
     if (index < meta.num_attributes) \
     { \
         vec3 pos = attribute_decode_snorm_exp_position(value); \
-        gl_MeshVerticesEXT[index].gl_Position = VP * vec4(pos, 1.0); \
+        gl_MeshVerticesEXT[index].gl_Position = VP * (M * vec4(pos, 1.0)); \
     }
     MESHLET_DECODE_STREAM_64(meta.stream_offset, 1, POSITION);
 
 #define NORMAL(index, value) \
     if (index < meta.num_attributes) \
     { \
-        vNormal[index] = attribute_decode_oct8_normal_tangent(value).xyz; \
+        vNormal[index] = mat3(M) * attribute_decode_oct8_normal_tangent(value).xyz; \
     }
     MESHLET_DECODE_STREAM_32(meta.stream_offset, 3, NORMAL);
 
 #define TANGENT(index, value) \
     if (index < meta.num_attributes) \
     { \
-        vTangent[index] = attribute_decode_oct8_normal_tangent(value); \
+        mediump vec4 T = attribute_decode_oct8_normal_tangent(value); \
+        vTangent[index] = vec4(mat3(M) * T.xyz, T.w); \
     }
     MESHLET_DECODE_STREAM_32(meta.stream_offset, 4, TANGENT);
 

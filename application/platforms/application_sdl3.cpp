@@ -90,6 +90,11 @@ public:
 		unsigned override_width = 0;
 		unsigned override_height = 0;
 		bool fullscreen = false;
+#ifdef _WIN32
+		bool threaded = true;
+#else
+		bool threaded = false;
+#endif
 	};
 
 	explicit WSIPlatformSDL(const Options &options_)
@@ -254,6 +259,9 @@ public:
 
 	void poll_input() override
 	{
+		if (!options.threaded && !iterate_message_loop())
+			request_tear_down = true;
+
 		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
 		flush_deferred_input_events();
 		process_events_async_thread();
@@ -313,10 +321,17 @@ public:
 
 	void block_until_wsi_forward_progress(Vulkan::WSI &wsi) override
 	{
-		get_frame_timer().enter_idle();
-		while (!resize && alive(wsi))
-			process_events_async_thread_blocking();
-		get_frame_timer().leave_idle();
+		if (options.threaded)
+		{
+			get_frame_timer().enter_idle();
+			while (!resize && alive(wsi))
+				process_events_async_thread_blocking();
+			get_frame_timer().leave_idle();
+		}
+		else
+		{
+			WSIPlatform::block_until_wsi_forward_progress(wsi);
+		}
 	}
 
 	void notify_resize(unsigned width_, unsigned height_)
@@ -329,14 +344,17 @@ public:
 			height = height_;
 		});
 
-		// Give the async thread a chance to catch up with main thread so it can create a new swapchain before
-		// we invalidate the swapchain again.
-		// There is a gap when querying swapchain dimensions and when we create the swapchain.
-		// On most platforms, the query must match the swapchain,
-		// so if we keep processing OS events, things will get out of sync.
-		// Need to observe that the async thread updates the swapchain dimensions at least once.
-		while (current_resize_timestamp == swapchain_dimension_update_timestamp && async_loop_alive)
-			process_events_main_thread_blocking();
+		if (options.threaded)
+		{
+			// Give the async thread a chance to catch up with main thread so it can create a new swapchain before
+			// we invalidate the swapchain again.
+			// There is a gap when querying swapchain dimensions and when we create the swapchain.
+			// On most platforms, the query must match the swapchain,
+			// so if we keep processing OS events, things will get out of sync.
+			// Need to observe that the async thread updates the swapchain dimensions at least once.
+			while (current_resize_timestamp == swapchain_dimension_update_timestamp && async_loop_alive)
+				process_events_main_thread_blocking();
+		}
 	}
 
 	void notify_current_swapchain_dimensions(unsigned width_, unsigned height_) override
@@ -354,179 +372,193 @@ public:
 		});
 	}
 
-	int run_main_loop()
+	bool process_sdl_event(const SDL_Event &e)
 	{
-		bool alive = true;
-		SDL_Event e;
+		if (e.type == wake_event_type)
+		{
+			process_events_main_thread();
+			return true;
+		}
 
 		const auto dispatcher = [this](std::function<void ()> func) {
 			push_task_to_async_thread(std::move(func));
 		};
 
-		while (alive && async_loop_alive && SDL_WaitEvent(&e))
+		if (pad.process_sdl_event(e, get_input_tracker(), dispatcher))
+			return true;
+
+		switch (e.type)
 		{
-			if (e.type == wake_event_type)
+		case SDL_EVENT_QUIT:
+			return false;
+
+		case SDL_EVENT_WINDOW_RESIZED:
+			if (e.window.windowID == SDL_GetWindowID(window))
+				notify_resize(e.window.data1, e.window.data2);
+			break;
+
+		case SDL_EVENT_MOUSE_BUTTON_DOWN:
+		case SDL_EVENT_MOUSE_BUTTON_UP:
+			if (e.button.windowID == SDL_GetWindowID(window))
 			{
-				process_events_main_thread();
-				continue;
+				MouseButton btn;
+				if (e.button.button == SDL_BUTTON_LEFT)
+					btn = MouseButton::Left;
+				else if (e.button.button == SDL_BUTTON_MIDDLE)
+					btn = MouseButton::Middle;
+				else if (e.button.button == SDL_BUTTON_RIGHT)
+					btn = MouseButton::Right;
+				else
+					break;
+
+				push_task_to_async_thread(
+						[this, btn, x = e.button.x, y = e.button.y,
+								pressed = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN]() {
+							get_input_tracker().mouse_button_event(btn, x, y, pressed);
+						});
 			}
+			break;
 
-			if (pad.process_sdl_event(e, get_input_tracker(), dispatcher))
-				continue;
-
-			switch (e.type)
+		case SDL_EVENT_WINDOW_MOUSE_ENTER:
+			if (e.window.windowID == SDL_GetWindowID(window))
 			{
-			case SDL_EVENT_QUIT:
-				alive = false;
-				break;
+				float x, y;
+				SDL_GetMouseState(&x, &y);
+				push_task_to_async_thread([this, x, y]() {
+					get_input_tracker().mouse_enter(x, y);
+				});
+			}
+			break;
 
-			case SDL_EVENT_WINDOW_RESIZED:
-				if (e.window.windowID == SDL_GetWindowID(window))
-					notify_resize(e.window.data1, e.window.data2);
-				break;
+		case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+			if (e.window.windowID == SDL_GetWindowID(window))
+			{
+				push_task_to_async_thread([this]() {
+					get_input_tracker().mouse_leave();
+				});
+			}
+			break;
 
-			case SDL_EVENT_MOUSE_BUTTON_DOWN:
-			case SDL_EVENT_MOUSE_BUTTON_UP:
-				if (e.button.windowID == SDL_GetWindowID(window))
+		case SDL_EVENT_MOUSE_MOTION:
+			if (e.motion.windowID == SDL_GetWindowID(window))
+			{
+				push_task_to_async_thread([this, x = e.motion.x, y = e.motion.y]() {
+					get_input_tracker().mouse_move_event_absolute(x, y);
+				});
+			}
+			break;
+
+		case SDL_EVENT_KEY_DOWN:
+		case SDL_EVENT_KEY_UP:
+			if (e.key.windowID == SDL_GetWindowID(window))
+			{
+				KeyState state;
+				if (e.key.repeat)
+					state = KeyState::Repeat;
+				else if (e.type == SDL_EVENT_KEY_DOWN)
+					state = KeyState::Pressed;
+				else
+					state = KeyState::Released;
+
+				if (state == KeyState::Pressed && e.key.keysym.sym == SDLK_ESCAPE)
 				{
-					MouseButton btn;
-					if (e.button.button == SDL_BUTTON_LEFT)
-						btn = MouseButton::Left;
-					else if (e.button.button == SDL_BUTTON_MIDDLE)
-						btn = MouseButton::Middle;
-					else if (e.button.button == SDL_BUTTON_RIGHT)
-						btn = MouseButton::Right;
-					else
-						break;
-
-					push_task_to_async_thread(
-							[this, btn, x = e.button.x, y = e.button.y,
-									pressed = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN]() {
-								get_input_tracker().mouse_button_event(btn, x, y, pressed);
-							});
+					return false;
 				}
-				break;
-
-			case SDL_EVENT_WINDOW_MOUSE_ENTER:
-				if (e.window.windowID == SDL_GetWindowID(window))
+				else if (state == KeyState::Pressed && e.key.keysym.sym == SDLK_RETURN &&
+				         (e.key.keysym.mod & SDL_KMOD_ALT) != 0)
 				{
-					float x, y;
-					SDL_GetMouseState(&x, &y);
-					push_task_to_async_thread([this, x, y]() {
-						get_input_tracker().mouse_enter(x, y);
-					});
+					toggle_fullscreen();
 				}
-				break;
-
-			case SDL_EVENT_WINDOW_MOUSE_LEAVE:
-				if (e.window.windowID == SDL_GetWindowID(window))
+				else if (state == KeyState::Pressed && tolower(e.key.keysym.sym) == 'v' &&
+				         (e.key.keysym.mod & SDL_KMOD_LCTRL) != 0)
 				{
-					push_task_to_async_thread([this]() {
-						get_input_tracker().mouse_leave();
-					});
-				}
-				break;
-
-			case SDL_EVENT_MOUSE_MOTION:
-				if (e.motion.windowID == SDL_GetWindowID(window))
-				{
-					push_task_to_async_thread([this, x = e.motion.x, y = e.motion.y]() {
-						get_input_tracker().mouse_move_event_absolute(x, y);
-					});
-				}
-				break;
-
-			case SDL_EVENT_KEY_DOWN:
-			case SDL_EVENT_KEY_UP:
-				if (e.key.windowID == SDL_GetWindowID(window))
-				{
-					KeyState state;
-					if (e.key.repeat)
-						state = KeyState::Repeat;
-					else if (e.type == SDL_EVENT_KEY_DOWN)
-						state = KeyState::Pressed;
-					else
-						state = KeyState::Released;
-
-					if (state == KeyState::Pressed && e.key.keysym.sym == SDLK_ESCAPE)
-					{
-						alive = false;
-					}
-					else if (state == KeyState::Pressed && e.key.keysym.sym == SDLK_RETURN &&
-					         (e.key.keysym.mod & SDL_KMOD_ALT) != 0)
-					{
-						toggle_fullscreen();
-					}
-					else if (state == KeyState::Pressed && tolower(e.key.keysym.sym) == 'v' &&
-					         (e.key.keysym.mod & SDL_KMOD_LCTRL) != 0)
-					{
-						push_non_pollable_task_to_async_thread([c = clipboard]() mutable {
-							if (auto *manager = GRANITE_EVENT_MANAGER())
-								manager->enqueue<Vulkan::ApplicationWindowTextDropEvent>(std::move(c));
-						});
-					}
-					else
-					{
-						Key key = sdl_key_to_granite_key(e.key.keysym.sym);
-						push_task_to_async_thread([=]() {
-							get_input_tracker().key_event(key, state);
-						});
-					}
-				}
-				break;
-
-			case SDL_EVENT_DROP_FILE:
-				if (e.drop.windowID == SDL_GetWindowID(window))
-				{
-					std::string str = e.drop.data;
-					push_non_pollable_task_to_async_thread([s = std::move(str)]() mutable {
+					push_non_pollable_task_to_async_thread([c = clipboard]() mutable {
 						if (auto *manager = GRANITE_EVENT_MANAGER())
-							manager->enqueue<Vulkan::ApplicationWindowFileDropEvent>(std::move(s));
+							manager->enqueue<Vulkan::ApplicationWindowTextDropEvent>(std::move(c));
 					});
 				}
-				break;
-
-			case SDL_EVENT_DROP_COMPLETE:
-				SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, SDL_FALSE);
-				break;
-
-			case SDL_EVENT_CLIPBOARD_UPDATE:
-				if (SDL_HasClipboardText())
+				else
 				{
-					char *text = SDL_GetClipboardText();
-					if (text)
-					{
-						clipboard = text;
-						SDL_free(text);
-					}
-					else
-						clipboard.clear();
+					Key key = sdl_key_to_granite_key(e.key.keysym.sym);
+					push_task_to_async_thread([=]() {
+						get_input_tracker().key_event(key, state);
+					});
+				}
+			}
+			break;
+
+		case SDL_EVENT_DROP_FILE:
+			if (e.drop.windowID == SDL_GetWindowID(window))
+			{
+				std::string str = e.drop.data;
+				push_non_pollable_task_to_async_thread([s = std::move(str)]() mutable {
+					if (auto *manager = GRANITE_EVENT_MANAGER())
+						manager->enqueue<Vulkan::ApplicationWindowFileDropEvent>(std::move(s));
+				});
+			}
+			break;
+
+		case SDL_EVENT_DROP_COMPLETE:
+			SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, SDL_FALSE);
+			break;
+
+		case SDL_EVENT_CLIPBOARD_UPDATE:
+			if (SDL_HasClipboardText())
+			{
+				char *text = SDL_GetClipboardText();
+				if (text)
+				{
+					clipboard = text;
+					SDL_free(text);
 				}
 				else
 					clipboard.clear();
-				break;
-
-			default:
-				break;
 			}
+			else
+				clipboard.clear();
+			break;
+
+		default:
+			break;
 		}
 
-		return 0;
+		return true;
 	}
 
-	int run_async_loop(Application *app)
+	void run_message_loop()
+	{
+		SDL_Event e;
+		while (async_loop_alive && SDL_WaitEvent(&e))
+			if (!process_sdl_event(e))
+				break;
+	}
+
+	bool iterate_message_loop()
+	{
+		SDL_Event e;
+		while (SDL_PollEvent(&e))
+			if (!process_sdl_event(e))
+				return false;
+		return true;
+	}
+
+	void run_loop(Application *app)
 	{
 		auto ctx = Global::create_thread_context();
-		async_loop_alive = true;
-		threaded_main_loop = std::thread(&WSIPlatformSDL::thread_main, this, app, std::move(ctx));
 
-		int ret = run_main_loop();
-		notify_close();
+		if (options.threaded)
+		{
+			async_loop_alive = true;
+			threaded_main_loop = std::thread(&WSIPlatformSDL::thread_main, this, app, std::move(ctx));
 
-		if (threaded_main_loop.joinable())
-			threaded_main_loop.join();
+			run_message_loop();
+			notify_close();
 
-		return ret;
+			if (threaded_main_loop.joinable())
+				threaded_main_loop.join();
+		}
+		else
+			thread_main(app, {});
 	}
 
 	static void dispatch_running_events()
@@ -557,11 +589,14 @@ public:
 
 	void thread_main(Application *app, Global::GlobalManagersHandle ctx)
 	{
-		// Set this up as an alternative main thread.
-		ThreadGroup::set_async_main_thread();
-		Global::set_thread_context(*ctx);
-		Util::register_thread_index(0);
-		ctx.reset();
+		if (options.threaded)
+		{
+			// Set this up as an alternative main thread.
+			ThreadGroup::set_async_main_thread();
+			Global::set_thread_context(*ctx);
+			Util::register_thread_index(0);
+			ctx.reset();
+		}
 
 		{
 			GRANITE_SCOPED_TIMELINE_EVENT("sdl-dispatch-running-events");
@@ -728,6 +763,8 @@ int application_main(
 	cbs.add("--fullscreen", [&](Util::CLIParser &) { options.fullscreen = true; });
 	cbs.add("--width", [&](Util::CLIParser &parser) { options.override_width = parser.next_uint(); });
 	cbs.add("--height", [&](Util::CLIParser &parser) { options.override_height = parser.next_uint(); });
+	cbs.add("--thread-main-loop", [&](Util::CLIParser &) { options.threaded = true; });
+	cbs.add("--no-thread-main-loop", [&](Util::CLIParser &) { options.threaded = false; });
 	cbs.error_handler = [&]() { LOGE("Failed to parse CLI arguments for SDL.\n"); };
 	if (!Util::parse_cli_filtered(std::move(cbs), argc, argv, exit_code))
 		return exit_code;
@@ -745,11 +782,11 @@ int application_main(
 		if (!app->init_platform(std::move(platform)) || !app->init_wsi())
 			return 1;
 
-		int ret = platform_handle->run_async_loop(app.get());
+		platform_handle->run_loop(app.get());
 
 		app.reset();
 		Global::deinit();
-		return ret;
+		return 0;
 	}
 	else
 		return 1;

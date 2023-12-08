@@ -1,0 +1,79 @@
+#version 450
+#extension GL_EXT_mesh_shader : require
+
+layout(max_primitives = 256, max_vertices = 255, triangles) out;
+
+#include "meshlet_payload_constants.h"
+
+#if MESHLET_PAYLOAD_LARGE_WORKGROUP
+#define MESHLET_PAYLOAD_WG_Y MESHLET_PAYLOAD_NUM_CHUNKS
+#else
+#define MESHLET_PAYLOAD_WG_Y 1
+#endif
+layout(local_size_x = 32, local_size_y = MESHLET_PAYLOAD_WG_Y) in;
+
+layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS;
+#define MESHLET_PAYLOAD_NUM_U32_STREAMS NUM_U32_STREAMS
+
+#define MESHLET_PAYLOAD_DESCRIPTOR_SET 0
+#define MESHLET_PAYLOAD_META_BINDING 0
+#define MESHLET_PAYLOAD_STREAM_BINDING 1
+#define MESHLET_PAYLOAD_PAYLOAD_BINDING 2
+#include "meshlet_payload_decode.h"
+#include "meshlet_attribute_decode.h"
+
+layout(location = 0) perprimitiveEXT out uint vMeshletIndex[];
+layout(location = 1) out mediump vec3 vNormal[];
+layout(location = 2) out mediump vec4 vTangent[];
+layout(location = 3) out vec2 vUV[];
+
+layout(set = 1, binding = 0) uniform UBO
+{
+    mat4 VP;
+};
+
+void main()
+{
+    uint meshlet_index = gl_WorkGroupID.x;
+    MeshletMetaRuntime meta = meshlet_metas_runtime.data[meshlet_index];
+    meshlet_init_workgroup(meta.stream_offset);
+
+    SetMeshOutputsEXT(meta.num_attributes, meta.num_primitives);
+
+#define INDEX(index, value) \
+    if (index < meta.num_primitives) \
+    { \
+        gl_PrimitiveTriangleIndicesEXT[index] = uvec4(unpack8(value)).xyz; \
+        vMeshletIndex[index] = meshlet_index; \
+    }
+    MESHLET_DECODE_STREAM_32(meta.stream_offset, 0, INDEX);
+
+#define POSITION(index, value) \
+    if (index < meta.num_attributes) \
+    { \
+        vec3 pos = attribute_decode_snorm_exp_position(value); \
+        gl_MeshVerticesEXT[index].gl_Position = VP * vec4(pos, 1.0); \
+    }
+    MESHLET_DECODE_STREAM_64(meta.stream_offset, 1, POSITION);
+
+#define NORMAL(index, value) \
+    if (index < meta.num_attributes) \
+    { \
+        vNormal[index] = attribute_decode_oct8_normal_tangent(value).xyz; \
+    }
+    MESHLET_DECODE_STREAM_32(meta.stream_offset, 3, NORMAL);
+
+#define TANGENT(index, value) \
+    if (index < meta.num_attributes) \
+    { \
+        vTangent[index] = attribute_decode_oct8_normal_tangent(value); \
+    }
+    MESHLET_DECODE_STREAM_32(meta.stream_offset, 4, TANGENT);
+
+#define UV(index, value) \
+    if (index < meta.num_attributes) \
+    { \
+        vUV[index] = attribute_decode_snorm_exp_uv(value); \
+    }
+    MESHLET_DECODE_STREAM_64(meta.stream_offset, 5, UV);
+}

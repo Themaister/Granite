@@ -86,7 +86,8 @@ int main(int argc, char *argv[])
 	device.init_external_swapchain({ ImageHandle(nullptr) });
 
 	auto &textures = device.get_resource_manager();
-	auto equirect = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), args.equirect, ImageClass::Color);
+	auto equirect = GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(), args.equirect,
+	                                                        AssetClass::ImageColor);
 	auto *view = textures.get_image_view_blocking(equirect);
 
 	auto cube = convert_equirect_to_cube(device, *view, args.cube_scale);

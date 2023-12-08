@@ -33,9 +33,9 @@ namespace UI
 {
 Image::Image(const std::string &path, vec2 target)
 {
-	texture = GRANITE_ASSET_MANAGER()->register_image_resource(
+	texture = GRANITE_ASSET_MANAGER()->register_asset(
 			*GRANITE_FILESYSTEM(), path,
-			ImageClass::Color);
+			AssetClass::ImageColor);
 
 	geometry.minimum = target;
 	geometry.target = target;

@@ -104,6 +104,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceBufferDeviceAddressFeaturesKHR buffer_device_address_features = {};
 	VkPhysicalDeviceIDProperties id_properties = {};
 	VkPhysicalDeviceShaderSubgroupExtendedTypesFeaturesKHR shader_subgroup_extended_types_features = {};
+	VkPhysicalDeviceIndexTypeUint8FeaturesEXT index_type_uint8_features = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};

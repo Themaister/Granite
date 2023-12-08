@@ -23,7 +23,11 @@
 #pragma once
 
 #include "image.hpp"
+#include "buffer.hpp"
 #include "asset_manager.hpp"
+#include "meshlet.hpp"
+#include "arena_allocator.hpp"
+#include "small_vector.hpp"
 #include <mutex>
 #include <condition_variable>
 
@@ -31,14 +35,80 @@ namespace Vulkan
 {
 class MemoryMappedTexture;
 
-class ResourceManager : private Granite::AssetInstantiatorInterface
+namespace Internal
+{
+struct SliceAllocator;
+struct AllocatedSlice
+{
+	uint32_t buffer_index = 0;
+	uint32_t offset = 0;
+	uint32_t count = 0;
+	uint32_t mask = 0;
+
+	SliceAllocator *alloc = nullptr;
+	Util::IntrusiveList<Util::LegionHeap<AllocatedSlice>>::Iterator heap = {};
+};
+
+struct MeshGlobalAllocator
+{
+	explicit MeshGlobalAllocator(Device &device);
+	uint32_t allocate(uint32_t count);
+	void free(uint32_t index);
+
+	enum { MaxSoACount = 3 }; // Position, attribute, skinning.
+
+	Device &device;
+	uint32_t element_size[MaxSoACount] = {};
+	uint32_t soa_count = 1;
+	Util::SmallVector<BufferHandle> global_buffers;
+};
+
+struct SliceAllocator : Util::ArenaAllocator<SliceAllocator, AllocatedSlice>
+{
+	SliceAllocator *parent = nullptr;
+	MeshGlobalAllocator *global_allocator = nullptr;
+
+	// Implements curious recurring template pattern calls.
+	bool allocate_backing_heap(AllocatedSlice *allocation);
+	void free_backing_heap(AllocatedSlice *allocation) const;
+	void prepare_allocation(AllocatedSlice *allocation, Util::IntrusiveList<MiniHeap>::Iterator heap,
+	                        const Util::SuballocationResult &suballoc);
+};
+}
+
+class MeshBufferAllocator
+{
+public:
+	MeshBufferAllocator(Device &device, uint32_t sub_block_size);
+	bool allocate(uint32_t count, Internal::AllocatedSlice *slice);
+	void free(const Internal::AllocatedSlice &slice);
+	void set_soa_count(unsigned soa_count);
+	void set_element_size(unsigned soa_index, uint32_t element_size);
+	uint32_t get_element_size(unsigned soa_index) const;
+
+	const Buffer *get_buffer(unsigned index, unsigned soa_index) const;
+
+private:
+	Util::ObjectPool<Util::LegionHeap<Internal::AllocatedSlice>> object_pool;
+	Internal::MeshGlobalAllocator global_allocator;
+	enum { SliceAllocatorCount = 4 };
+	Internal::SliceAllocator allocators[SliceAllocatorCount];
+};
+
+class ResourceManager final : private Granite::AssetInstantiatorInterface
 {
 public:
 	explicit ResourceManager(Device *device);
-	~ResourceManager();
+	~ResourceManager() override;
 	void init();
 
-	inline const Vulkan::ImageView *get_image_view(Granite::ImageAssetID id) const
+	enum class MeshEncoding
+	{
+		Meshlet,
+		VBOAndIBOMDI,
+	};
+
+	inline const Vulkan::ImageView *get_image_view(Granite::AssetID id) const
 	{
 		if (id.id < views.size())
 			return views[id.id];
@@ -46,43 +116,93 @@ public:
 			return nullptr;
 	}
 
-	const Vulkan::ImageView *get_image_view_blocking(Granite::ImageAssetID id);
+	const Vulkan::ImageView *get_image_view_blocking(Granite::AssetID id);
+
+	struct DrawRange
+	{
+		uint32_t offset = 0;
+		uint32_t count = 0;
+		Meshlet::MeshStyle style = Meshlet::MeshStyle::Wireframe;
+	};
+
+	inline DrawRange get_mesh_draw_range(Granite::AssetID id) const
+	{
+		if (id.id < draws.size())
+			return draws[id.id];
+		else
+			return {};
+	}
+
+	inline MeshEncoding get_mesh_encoding() const
+	{
+		return mesh_encoding;
+	}
+
+	const Buffer *get_index_buffer() const;
+	const Buffer *get_position_buffer() const;
+	const Buffer *get_attribute_buffer() const;
+	const Buffer *get_skinning_buffer() const;
+	const Buffer *get_indirect_buffer() const;
+
+	const Buffer *get_meshlet_payload_buffer() const;
+	const Buffer *get_meshlet_header_buffer() const;
+	const Buffer *get_meshlet_stream_header_buffer() const;
 
 private:
 	Device *device;
 	Granite::AssetManager *manager = nullptr;
 
 	void latch_handles() override;
-	uint64_t estimate_cost_image_resource(Granite::ImageAssetID id, Granite::File &file) override;
-	void instantiate_image_resource(Granite::AssetManager &manager, Granite::TaskGroup *task,
-	                                Granite::ImageAssetID id, Granite::File &file) override;
-	void release_image_resource(Granite::ImageAssetID id) override;
+	uint64_t estimate_cost_asset(Granite::AssetID id, Granite::File &file) override;
+	void instantiate_asset(Granite::AssetManager &manager, Granite::TaskGroup *task,
+	                       Granite::AssetID id, Granite::File &file) override;
+	void release_asset(Granite::AssetID id) override;
 	void set_id_bounds(uint32_t bound) override;
-	void set_image_class(Granite::ImageAssetID id, Granite::ImageClass image_class) override;
+	void set_asset_class(Granite::AssetID id, Granite::AssetClass asset_class) override;
 
-	struct Texture
+	struct Asset
 	{
 		ImageHandle image;
-		Granite::ImageClass image_class = Granite::ImageClass::Zeroable;
+		struct
+		{
+			Internal::AllocatedSlice index_or_payload, attr_or_stream, indirect_or_header;
+			DrawRange draw;
+		} mesh;
+		Granite::AssetClass asset_class = Granite::AssetClass::ImageZeroable;
+		bool latchable = false;
 	};
 
 	std::mutex lock;
 	std::condition_variable cond;
 
-	std::vector<Texture> textures;
+	std::vector<Asset> assets;
 	std::vector<const ImageView *> views;
-	std::vector<Granite::ImageAssetID> updates;
+	std::vector<DrawRange> draws;
+	std::vector<Granite::AssetID> updates;
 
 	ImageHandle fallback_color;
 	ImageHandle fallback_normal;
 	ImageHandle fallback_zero;
 	ImageHandle fallback_pbr;
 
-	ImageHandle create_gtx(Granite::FileMappingHandle mapping, Granite::ImageAssetID id);
-	ImageHandle create_gtx(const MemoryMappedTexture &mapping, Granite::ImageAssetID id);
-	ImageHandle create_other(const Granite::FileMapping &mapping, Granite::ImageClass image_class, Granite::ImageAssetID id);
-	const ImageHandle &get_fallback_image(Granite::ImageClass image_class);
+	ImageHandle create_gtx(Granite::FileMappingHandle mapping, Granite::AssetID id);
+	ImageHandle create_gtx(const MemoryMappedTexture &mapping, Granite::AssetID id);
+	ImageHandle create_other(const Granite::FileMapping &mapping, Granite::AssetClass asset_class, Granite::AssetID id);
+	const ImageHandle &get_fallback_image(Granite::AssetClass asset_class);
 
-	void instantiate_image_resource(Granite::AssetManager &manager, Granite::ImageAssetID id, Granite::File &file);
+	void instantiate_asset(Granite::AssetManager &manager, Granite::AssetID id, Granite::File &file);
+	void instantiate_asset_image(Granite::AssetManager &manager, Granite::AssetID id, Granite::File &file);
+	void instantiate_asset_mesh(Granite::AssetManager &manager, Granite::AssetID id, Granite::File &file);
+
+	std::mutex mesh_allocator_lock;
+	MeshBufferAllocator index_buffer_allocator;
+	MeshBufferAllocator attribute_buffer_allocator;
+	MeshBufferAllocator indirect_buffer_allocator;
+	MeshBufferAllocator mesh_header_allocator;
+	MeshBufferAllocator mesh_stream_allocator;
+	MeshBufferAllocator mesh_payload_allocator;
+	MeshEncoding mesh_encoding = MeshEncoding::VBOAndIBOMDI;
+
+	bool allocate_asset_mesh(Granite::AssetID id, const Meshlet::MeshView &view);
 };
 }

@@ -256,7 +256,14 @@ bool mesh_flip_tangents_w(Mesh &mesh);
 bool extract_collision_mesh(CollisionMesh &collision_mesh, const Mesh &mesh);
 
 void mesh_deduplicate_vertices(Mesh &mesh);
-Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify);
+bool mesh_canonicalize_indices(Mesh &mesh);
+
+struct IndexBufferOptimizeOptions
+{
+	bool narrow_index_buffer;
+	bool stripify;
+};
+bool mesh_optimize_index_buffer(Mesh &mesh, const IndexBufferOptimizeOptions &options);
 std::unordered_set<uint32_t> build_used_nodes_in_scene(const SceneNodes &scene, const std::vector<Node> &nodes);
 }
 }

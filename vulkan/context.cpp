@@ -1304,6 +1304,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.pageable_device_local_memory_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PAGEABLE_DEVICE_LOCAL_MEMORY_FEATURES_EXT };
 	ext.mesh_shader_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT };
 	ext.shader_subgroup_extended_types_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_EXTENDED_TYPES_FEATURES };
+	ext.index_type_uint8_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INDEX_TYPE_UINT8_FEATURES_EXT };
 
 	ext.compute_shader_derivative_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV };
 	ext.device_generated_commands_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_GENERATED_COMMANDS_FEATURES_NV };
@@ -1501,6 +1502,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ppNext = &ext.shader_subgroup_extended_types_features.pNext;
 	}
 
+	if (has_extension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME);
+		*ppNext = &ext.index_type_uint8_features;
+		ppNext = &ext.index_type_uint8_features.pNext;
+	}
+
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
 		bool broken_present_wait = ext.driver_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
@@ -1594,6 +1602,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			enabled_features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
 		if (pdf2.features.shaderStorageImageReadWithoutFormat)
 			enabled_features.shaderStorageImageReadWithoutFormat = VK_TRUE;
+		if (pdf2.features.multiDrawIndirect)
+			enabled_features.multiDrawIndirect = VK_TRUE;
 
 		if (pdf2.features.shaderSampledImageArrayDynamicIndexing)
 			enabled_features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;

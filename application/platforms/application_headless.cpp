@@ -248,19 +248,10 @@ public:
 		enc_opts.frame_timebase.den = int(frame_rate);
 
 #ifdef HAVE_GRANITE_AUDIO
-#if 1
 		enc_opts.realtime = true;
 		record_stream.reset(Audio::create_default_audio_record_backend("headless", 44100.0f, 2));
 		if (record_stream)
 			encoder.set_audio_record_stream(record_stream.get());
-#else
-		auto *mixer = new Audio::Mixer;
-			auto *audio_dumper = new Audio::DumpBackend(
-					mixer, 48000.0f, 2,
-					unsigned(std::ceil(48000.0f / frame_rate)));
-			Global::install_audio_system(audio_dumper, mixer);
-			encoder.set_audio_source(audio_dumper);
-#endif
 #endif
 
 		if (!encoder.init(&app->get_wsi().get_device(), video_encode_path.c_str(), enc_opts))
@@ -284,7 +275,9 @@ public:
 		}
 #endif
 
+#ifdef HAVE_GRANITE_AUDIO
 		record_stream->start();
+#endif
 	}
 #endif
 

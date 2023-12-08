@@ -161,8 +161,22 @@ add_granite_offline_tool(linkage-test linkage_test.cpp)
 add_granite_offline_tool(external-objects external_objects.cpp)
 add_granite_offline_tool(performance-query performance_query.cpp)
 add_granite_offline_tool(asset-manager-test asset_manager_test.cpp)
+
+add_granite_offline_tool(meshopt-sandbox meshopt_sandbox.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(meshopt-sandbox PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+target_link_libraries(meshopt-sandbox PRIVATE granite-scene-export)
+
+add_granite_application(meshlet-viewer meshlet_viewer.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(meshlet-viewer PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+target_link_libraries(meshlet-viewer PRIVATE granite-scene-export)
+
 add_granite_application(dgc-test-graphics dgc_test_graphics.cpp)
 add_granite_application(dgc-test-compute dgc_test_compute.cpp)
+
 if (NOT ANDROID)
     target_compile_definitions(dgc-test-graphics PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
     target_compile_definitions(dgc-test-compute PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")

@@ -196,7 +196,8 @@ private:
 	// Implements curious recurring template pattern calls.
 	bool allocate_backing_heap(DeviceAllocation *allocation);
 	void free_backing_heap(DeviceAllocation *allocation);
-	void prepare_allocation(DeviceAllocation *allocation, MiniHeap &heap, const SuballocationResult &suballoc);
+	void prepare_allocation(DeviceAllocation *allocation, Util::IntrusiveList<MiniHeap>::Iterator heap_itr,
+	                        const Util::SuballocationResult &suballoc);
 };
 
 class Allocator

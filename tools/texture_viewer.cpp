@@ -37,8 +37,8 @@ struct TextureViewerApplication : Granite::Application, Granite::EventHandler
 	TextureViewerApplication(std::string path_)
 	    : path(std::move(path_))
 	{
-		texture = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(),
-		                                                           path, ImageClass::Color);
+		texture = GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(),
+		                                                  path, AssetClass::ImageColor);
 		EVENT_MANAGER_REGISTER(TextureViewerApplication, on_key_pressed, KeyboardEvent);
 	}
 
@@ -138,7 +138,7 @@ struct TextureViewerApplication : Granite::Application, Granite::EventHandler
 	unsigned layer = 0;
 	unsigned level = 0;
 
-	ImageAssetID texture;
+	AssetID texture;
 	std::string path;
 	VkComponentMapping swiz = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
 };

@@ -45,7 +45,7 @@ public:
 private:
 	float render(FlatRenderer &renderer, float layout, vec2 offset, vec2 size) override;
 	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
-	ImageAssetID texture;
+	AssetID texture;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearClamp;
 
 	vec2 sprite_offset;

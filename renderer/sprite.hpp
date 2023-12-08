@@ -61,8 +61,8 @@ struct SpriteRenderInfo
 struct Sprite : AbstractRenderable
 {
 	DrawPipeline pipeline = DrawPipeline::Opaque;
-	ImageAssetID texture;
-	ImageAssetID texture_alt;
+	AssetID texture;
+	AssetID texture_alt;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearWrap;
 
 	enum ShaderVariantFlagBits

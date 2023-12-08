@@ -6,18 +6,18 @@ using namespace Granite;
 
 struct ActivationInterface final : AssetInstantiatorInterface
 {
-	uint64_t estimate_cost_image_resource(ImageAssetID, File &mapping) override
+	uint64_t estimate_cost_asset(AssetID, File &mapping) override
 	{
 		return mapping.get_size();
 	}
 
-	void instantiate_image_resource(AssetManager &manager, TaskGroup *, ImageAssetID id, File &mapping) override
+	void instantiate_asset(AssetManager &manager, TaskGroup *, AssetID id, File &mapping) override
 	{
 		LOGI("Instantiating ID: %u\n", id.id);
 		manager.update_cost(id, mapping.get_size());
 	}
 
-	void release_image_resource(ImageAssetID id) override
+	void release_asset(AssetID id) override
 	{
 		LOGI("Releasing ID: %u\n", id.id);
 	}
@@ -54,29 +54,29 @@ int main()
 	auto d = fs.open("tmp://d");
 	auto e = fs.open("tmp://e");
 
-	auto id_a = manager.register_image_resource(std::move(a), ImageClass::Zeroable);
-	auto id_b = manager.register_image_resource(std::move(b), ImageClass::Zeroable);
-	auto id_c = manager.register_image_resource(std::move(c), ImageClass::Zeroable);
-	auto id_d = manager.register_image_resource(std::move(d), ImageClass::Zeroable);
+	auto id_a = manager.register_asset(std::move(a), AssetClass::ImageZeroable);
+	auto id_b = manager.register_asset(std::move(b), AssetClass::ImageZeroable);
+	auto id_c = manager.register_asset(std::move(c), AssetClass::ImageZeroable);
+	auto id_d = manager.register_asset(std::move(d), AssetClass::ImageZeroable);
 	manager.set_asset_instantiator_interface(&iface);
-	auto id_e = manager.register_image_resource(std::move(e), ImageClass::Zeroable);
+	auto id_e = manager.register_asset(std::move(e), AssetClass::ImageZeroable);
 
-	manager.set_image_budget(25);
-	manager.set_image_budget_per_iteration(5);
+	manager.set_asset_budget(25);
+	manager.set_asset_budget_per_iteration(5);
 
-	manager.set_image_residency_priority(id_a, 1);
-	manager.set_image_residency_priority(id_b, 1);
-	manager.set_image_residency_priority(id_c, 1);
-	manager.set_image_residency_priority(id_d, 1);
-	manager.set_image_residency_priority(id_e, 2);
+	manager.set_asset_residency_priority(id_a, 1);
+	manager.set_asset_residency_priority(id_b, 1);
+	manager.set_asset_residency_priority(id_c, 1);
+	manager.set_asset_residency_priority(id_d, 1);
+	manager.set_asset_residency_priority(id_e, 2);
 	manager.iterate(nullptr);
 	LOGI("Cost: %u\n", unsigned(manager.get_current_total_consumed()));
 	manager.iterate(nullptr);
 	LOGI("Cost: %u\n", unsigned(manager.get_current_total_consumed()));
-	manager.set_image_residency_priority(id_e, 0);
+	manager.set_asset_residency_priority(id_e, 0);
 	manager.iterate(nullptr);
 	LOGI("Cost: %u\n", unsigned(manager.get_current_total_consumed()));
-	manager.set_image_budget(10);
+	manager.set_asset_budget(10);
 	manager.iterate(nullptr);
 	LOGI("Cost: %u\n", unsigned(manager.get_current_total_consumed()));
 }

@@ -195,7 +195,7 @@ class Skybox : public AbstractRenderable, public EventHandler
 {
 public:
 	Skybox(const std::string &bg_path = "");
-	void set_image(ImageAssetID skybox);
+	void set_image(AssetID skybox);
 
 	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
@@ -207,7 +207,7 @@ public:
 
 private:
 	vec3 color = vec3(1.0f);
-	ImageAssetID texture;
+	AssetID texture;
 };
 
 class SkyCylinder : public AbstractRenderable, public EventHandler
@@ -231,7 +231,7 @@ public:
 private:
 	vec3 color = vec3(1.0f);
 	float scale = 1.0f;
-	ImageAssetID texture;
+	AssetID texture;
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
@@ -284,7 +284,7 @@ public:
 private:
 	const Vulkan::ImageView *reflection = nullptr;
 	const Vulkan::ImageView *refraction = nullptr;
-	ImageAssetID normalmap;
+	AssetID normalmap;
 	RenderQueue internal_queue;
 
 	vec3 position;

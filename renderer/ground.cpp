@@ -182,12 +182,14 @@ Ground::Ground(unsigned size_, const TerrainInfo &info_)
 	num_patches_z = size / info.base_patch_size;
 	patch_lods.resize(num_patches_x * num_patches_z);
 
-	heights = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), info.heightmap, ImageClass::Zeroable);
-	normals = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), info.normalmap, ImageClass::Normal);
-	occlusion = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), info.occlusionmap, ImageClass::Zeroable);
-	normals_fine = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), info.normalmap_fine, ImageClass::Normal);
-	base_color = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), info.base_color, ImageClass::Color);
-	type_map = GRANITE_ASSET_MANAGER()->register_image_resource(*GRANITE_FILESYSTEM(), info.splatmap, ImageClass::Zeroable);
+	heights = GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(), info.heightmap, AssetClass::ImageZeroable);
+	normals = GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(), info.normalmap, AssetClass::ImageNormal);
+	occlusion = GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(), info.occlusionmap,
+	                                                    AssetClass::ImageZeroable);
+	normals_fine = GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(), info.normalmap_fine,
+	                                                       AssetClass::ImageNormal);
+	base_color = GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(), info.base_color, AssetClass::ImageColor);
+	type_map = GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(), info.splatmap, AssetClass::ImageZeroable);
 
 	EVENT_MANAGER_REGISTER_LATCH(Ground, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }

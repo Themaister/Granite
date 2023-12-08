@@ -34,12 +34,12 @@ namespace Vulkan
 {
 ResourceManager::ResourceManager(Device *device_)
 	: device(device_)
-	, index_buffer_allocator(*device_, 256)
-	, attribute_buffer_allocator(*device_, 256)
-	, indirect_buffer_allocator(*device_, 1)
-	, mesh_header_allocator(*device_, 1)
-	, mesh_stream_allocator(*device_, 8)
-	, mesh_payload_allocator(*device_, 128)
+	, index_buffer_allocator(*device_, 256, 17)
+	, attribute_buffer_allocator(*device_, 256, 17)
+	, indirect_buffer_allocator(*device_, 1, 17)
+	, mesh_header_allocator(*device_, 1, 17)
+	, mesh_stream_allocator(*device_, 8, 17)
+	, mesh_payload_allocator(*device_, 128, 17)
 {
 	// Simplified style.
 	index_buffer_allocator.set_element_size(0, 3); // 8-bit indices.
@@ -175,6 +175,22 @@ void ResourceManager::init()
 	{
 		mesh_encoding = MeshEncoding::Meshlet;
 		LOGI("Opting in to meshlet path.\n");
+
+		mesh_header_allocator.prime(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		                            BufferDomain::Device);
+		mesh_stream_allocator.prime(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		                            BufferDomain::Device);
+		mesh_payload_allocator.prime(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		                             BufferDomain::Device);
+	}
+	else
+	{
+		index_buffer_allocator.prime(VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+		                             BufferDomain::Device);
+		attribute_buffer_allocator.prime(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+		                                 BufferDomain::Device);
+		indirect_buffer_allocator.prime(VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+		                                BufferDomain::Device);
 	}
 }
 
@@ -661,21 +677,46 @@ const Buffer *ResourceManager::get_meshlet_stream_header_buffer() const
 	return mesh_stream_allocator.get_buffer(0, 0);
 }
 
-MeshBufferAllocator::MeshBufferAllocator(Device &device, uint32_t sub_block_size)
+void MeshBufferAllocator::prime(VkBufferUsageFlags usage, BufferDomain domain)
+{
+	for (auto &alloc : allocators)
+	{
+		if (alloc.global_allocator)
+		{
+			alloc.global_allocator->prime(
+					alloc.get_sub_block_size() * Util::LegionAllocator::NumSubBlocks,
+					usage, domain);
+			break;
+		}
+	}
+}
+
+MeshBufferAllocator::MeshBufferAllocator(Device &device, uint32_t sub_block_size, uint32_t num_sub_blocks_in_arena_log2)
 	: global_allocator(device)
 {
-	for (int i = 0; i < SliceAllocatorCount - 1; i++)
+	assert(num_sub_blocks_in_arena_log2 < SliceAllocatorCount * 5 && num_sub_blocks_in_arena_log2 >= 5);
+	unsigned num_hierarchies = (num_sub_blocks_in_arena_log2 + 4) / 5;
+	assert(num_hierarchies <= SliceAllocatorCount);
+
+	for (unsigned i = 0; i < num_hierarchies - 1; i++)
 		allocators[i].parent = &allocators[i + 1];
-	allocators[SliceAllocatorCount - 1].global_allocator = &global_allocator;
+	allocators[num_hierarchies - 1].global_allocator = &global_allocator;
 
-	// Basic unit of a meshlet is 256 prims / attributes.
-	// Maximum element count = 32M prims.
-	allocators[0].set_sub_block_size(sub_block_size);
-	for (int i = 1; i < SliceAllocatorCount; i++)
-		allocators[i].set_sub_block_size(allocators[i - 1].get_sub_block_size() * (Util::LegionAllocator::NumSubBlocks / 2));
+	unsigned shamt[SliceAllocatorCount] = {};
+	shamt[num_hierarchies - 1] = num_sub_blocks_in_arena_log2 - Util::floor_log2(Util::LegionAllocator::NumSubBlocks);
 
-	for (auto &alloc : allocators)
-		alloc.set_object_pool(&object_pool);
+	// Spread out the multiplier if possible.
+	for (unsigned i = num_hierarchies - 1; i > 1; i--)
+	{
+		shamt[i - 1] = shamt[i] - shamt[i] / (i);
+		assert(shamt[i] - shamt[i - 1] <= Util::floor_log2(Util::LegionAllocator::NumSubBlocks));
+	}
+
+	for (unsigned i = 0; i < num_hierarchies; i++)
+	{
+		allocators[i].set_sub_block_size(sub_block_size << shamt[i]);
+		allocators[i].set_object_pool(&object_pool);
+	}
 }
 
 void MeshBufferAllocator::set_soa_count(unsigned soa_count)
@@ -701,7 +742,10 @@ const Buffer *MeshBufferAllocator::get_buffer(unsigned index, unsigned soa_index
 	VK_ASSERT(soa_index < global_allocator.soa_count);
 	index = index * global_allocator.soa_count + soa_index;
 
-	if (index < global_allocator.global_buffers.size())
+	// Avoid any race condition.
+	if (index == 0 && global_allocator.preallocated_handles[soa_index])
+		return global_allocator.preallocated_handles[soa_index];
+	else if (index < global_allocator.global_buffers.size())
 		return global_allocator.global_buffers[index].get();
 	else
 		return nullptr;
@@ -743,10 +787,30 @@ uint32_t MeshGlobalAllocator::allocate(uint32_t count)
 		             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
 		             VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 		info.domain = BufferDomain::Device;
-		global_buffers[target_index * soa_count + soa_index] = device.create_buffer(info);
+
+		if (preallocated[soa_index] && preallocated[soa_index]->get_create_info().size >= info.size)
+			std::swap(preallocated[soa_index], global_buffers[target_index * soa_count + soa_index]);
+		else
+			global_buffers[target_index * soa_count + soa_index] = device.create_buffer(info);
 	}
 
 	return target_index;
+}
+
+void MeshGlobalAllocator::prime(uint32_t count, VkBufferUsageFlags usage, BufferDomain domain)
+{
+	BufferCreateInfo info = {};
+	for (uint32_t i = 0; i < soa_count; i++)
+	{
+		if (preallocated[i])
+			continue;
+
+		info.size = VkDeviceSize(count) * element_size[i];
+		info.usage = usage;
+		info.domain = domain;
+		preallocated[i] = device.create_buffer(info);
+		preallocated_handles[i] = preallocated[i].get();
+	}
 }
 
 void MeshGlobalAllocator::free(uint32_t index)
@@ -754,7 +818,10 @@ void MeshGlobalAllocator::free(uint32_t index)
 	index *= soa_count;
 	VK_ASSERT(index < global_buffers.size());
 	for (uint32_t i = 0; i < soa_count; i++)
+	{
+		std::swap(preallocated[i], global_buffers[index + 1]);
 		global_buffers[index + i].reset();
+	}
 }
 
 MeshGlobalAllocator::MeshGlobalAllocator(Device &device_)

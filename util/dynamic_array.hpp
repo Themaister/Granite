@@ -50,6 +50,7 @@ public:
 	inline const T &operator[](size_t index) const { return buffer.get()[index]; }
 	inline T *data() { return buffer.get(); }
 	inline const T *data() const { return buffer.get(); }
+	inline size_t get_capacity() const { return N; }
 
 private:
 	std::unique_ptr<T, AlignedDeleter> buffer;

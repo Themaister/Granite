@@ -369,42 +369,53 @@ bool BindlessDescriptorPool::allocate_descriptors(unsigned count)
 	allocated_sets++;
 
 	desc_set = allocator->allocate_bindless_set(desc_pool, count);
+
+	infos.reserve(count);
+	write_count = 0;
+
 	return desc_set != VK_NULL_HANDLE;
 }
 
-void BindlessDescriptorPool::set_texture(unsigned binding, const ImageView &view)
+void BindlessDescriptorPool::push_texture(const ImageView &view)
 {
 	// TODO: Deal with integer view for depth-stencil images?
-	set_texture(binding, view.get_float_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+	push_texture(view.get_float_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 }
 
-void BindlessDescriptorPool::set_texture_unorm(unsigned binding, const ImageView &view)
+void BindlessDescriptorPool::push_texture_unorm(const ImageView &view)
 {
-	set_texture(binding, view.get_unorm_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+	push_texture(view.get_unorm_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 }
 
-void BindlessDescriptorPool::set_texture_srgb(unsigned binding, const ImageView &view)
+void BindlessDescriptorPool::push_texture_srgb(const ImageView &view)
 {
-	set_texture(binding, view.get_srgb_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+	push_texture(view.get_srgb_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 }
 
-void BindlessDescriptorPool::set_texture(unsigned binding, VkImageView view, VkImageLayout layout)
+void BindlessDescriptorPool::push_texture(VkImageView view, VkImageLayout layout)
 {
-	VkWriteDescriptorSet write = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-	write.descriptorCount = 1;
-	write.dstArrayElement = binding;
-	write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-	write.dstSet = desc_set;
+	VK_ASSERT(write_count < infos.get_capacity());
+	auto &image_info = infos[write_count];
+	image_info = { VK_NULL_HANDLE, view, layout };
+	write_count++;
+}
 
-	const VkDescriptorImageInfo info = {
-		VK_NULL_HANDLE,
-		view,
-		layout,
-	};
-	write.pImageInfo = &info;
+void BindlessDescriptorPool::update()
+{
+	VkWriteDescriptorSet desc = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+	desc.descriptorCount = write_count;
+	desc.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+	desc.dstSet = desc_set;
 
-	auto &table = device->get_device_table();
-	table.vkUpdateDescriptorSets(device->get_device(), 1, &write, 0, nullptr);
+	desc.pImageInfo = infos.data();
+	desc.pBufferInfo = nullptr;
+	desc.pTexelBufferView = nullptr;
+
+	if (write_count)
+	{
+		auto &table = device->get_device_table();
+		table.vkUpdateDescriptorSets(device->get_device(), 1, &desc, 0, nullptr);
+	}
 }
 
 void BindlessDescriptorPoolDeleter::operator()(BindlessDescriptorPool *pool)
@@ -478,7 +489,8 @@ VkDescriptorSet BindlessAllocator::commit(Device &device)
 	}
 
 	for (size_t i = 0, n = views.size(); i < n; i++)
-		descriptor_pool->set_texture(i, *views[i]);
+		descriptor_pool->push_texture(*views[i]);
+	descriptor_pool->update();
 	return descriptor_pool->get_descriptor_set();
 }
 }

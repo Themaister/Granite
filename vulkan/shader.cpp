@@ -353,9 +353,15 @@ static void update_array_info(ResourceLayout &layout, const SPIRType &type, unsi
 					LOGE("Bindless textures can only be used with binding = 0 in a set.\n");
 
 				if (type.basetype != SPIRType::Image || type.image.dim == spv::DimBuffer)
+				{
 					LOGE("Can only use bindless for sampled images.\n");
+				}
 				else
+				{
 					layout.bindless_set_mask |= 1u << set;
+					// Ignore fp_mask for bindless since we can mix and match.
+					layout.sets[set].fp_mask = 0;
+				}
 
 				size = DescriptorSetLayout::UNSIZED_ARRAY;
 			}

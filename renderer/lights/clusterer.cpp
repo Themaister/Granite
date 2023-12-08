@@ -50,7 +50,7 @@ LightClusterer::LightClusterer()
 	                                                       MaxLightsGlobal +
 	                                                       MaxLightsVolume * 2 +
 	                                                       MaxFogRegions + MaxDecalsBindless);
-	bindless.allocator.set_bindless_resource_type(BindlessResourceType::ImageFP);
+	bindless.allocator.set_bindless_resource_type(BindlessResourceType::Image);
 }
 
 void LightClusterer::on_pipeline_created(const Vulkan::DevicePipelineReadyEvent &e)

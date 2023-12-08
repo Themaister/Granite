@@ -28,6 +28,7 @@
 #include "vulkan_headers.hpp"
 #include "sampler.hpp"
 #include "limits.hpp"
+#include "dynamic_array.hpp"
 #include <utility>
 #include <vector>
 #include "cookie.hpp"
@@ -82,9 +83,10 @@ public:
 	bool allocate_descriptors(unsigned count);
 	VkDescriptorSet get_descriptor_set() const;
 
-	void set_texture(unsigned binding, const ImageView &view);
-	void set_texture_unorm(unsigned binding, const ImageView &view);
-	void set_texture_srgb(unsigned binding, const ImageView &view);
+	void push_texture(const ImageView &view);
+	void push_texture_unorm(const ImageView &view);
+	void push_texture_srgb(const ImageView &view);
+	void update();
 
 private:
 	Device *device;
@@ -97,14 +99,15 @@ private:
 	uint32_t allocated_descriptor_count = 0;
 	uint32_t total_descriptors = 0;
 
-	void set_texture(unsigned binding, VkImageView view, VkImageLayout layout);
+	void push_texture(VkImageView view, VkImageLayout layout);
+	Util::DynamicArray<VkDescriptorImageInfo> infos;
+	uint32_t write_count = 0;
 };
 using BindlessDescriptorPoolHandle = Util::IntrusivePtr<BindlessDescriptorPool>;
 
 enum class BindlessResourceType
 {
-	ImageFP,
-	ImageInt
+	Image
 };
 
 class DescriptorSetAllocator : public HashedObject<DescriptorSetAllocator>
@@ -180,7 +183,7 @@ private:
 	BindlessDescriptorPoolHandle descriptor_pool;
 	unsigned max_sets_per_pool = 0;
 	unsigned max_descriptors_per_pool = 0;
-	BindlessResourceType resource_type = BindlessResourceType::ImageFP;
+	BindlessResourceType resource_type = BindlessResourceType::Image;
 	std::vector<const ImageView *> views;
 };
 }

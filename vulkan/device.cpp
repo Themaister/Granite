@@ -4370,12 +4370,7 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 
 	switch (type)
 	{
-	case BindlessResourceType::ImageFP:
-		layout.separate_image_mask = 1;
-		layout.fp_mask = 1;
-		break;
-
-	case BindlessResourceType::ImageInt:
+	case BindlessResourceType::Image:
 		layout.separate_image_mask = 1;
 		break;
 

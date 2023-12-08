@@ -274,4 +274,55 @@ private:
 		return res;
 	}
 };
+
+struct SliceSubAllocator;
+
+struct AllocatedSlice
+{
+	uint32_t buffer_index = 0;
+	uint32_t offset = 0;
+	uint32_t count = 0;
+	uint32_t mask = 0;
+
+	SliceSubAllocator *alloc = nullptr;
+	Util::IntrusiveList<Util::LegionHeap<AllocatedSlice>>::Iterator heap = {};
+};
+
+struct SliceBackingAllocator
+{
+	virtual ~SliceBackingAllocator() = default;
+	virtual uint32_t allocate(uint32_t count) = 0;
+	virtual void free(uint32_t index) = 0;
+	virtual void prime(uint32_t count, const void *opaque_meta) = 0;
+};
+
+struct SliceSubAllocator : Util::ArenaAllocator<SliceSubAllocator, AllocatedSlice>
+{
+	SliceSubAllocator *parent = nullptr;
+	SliceBackingAllocator *global_allocator = nullptr;
+
+	// Implements curious recurring template pattern calls.
+	bool allocate_backing_heap(AllocatedSlice *allocation);
+	void free_backing_heap(AllocatedSlice *allocation) const;
+	void prepare_allocation(AllocatedSlice *allocation, Util::IntrusiveList<MiniHeap>::Iterator heap,
+	                        const Util::SuballocationResult &suballoc);
+};
+
+class SliceAllocator
+{
+public:
+	bool allocate(uint32_t count, Util::AllocatedSlice *slice);
+	void free(const Util::AllocatedSlice &slice);
+	void prime(const void *opaque_meta);
+
+protected:
+	SliceAllocator() = default;
+	void init(uint32_t sub_block_size, uint32_t num_sub_blocks_in_arena_log2, SliceBackingAllocator *alloc);
+
+private:
+	Util::ObjectPool<Util::LegionHeap<Util::AllocatedSlice>> object_pool;
+	SliceBackingAllocator *global_allocator = nullptr;
+	enum { SliceAllocatorCount = 5 };
+	Util::SliceSubAllocator allocators[SliceAllocatorCount];
+};
 }

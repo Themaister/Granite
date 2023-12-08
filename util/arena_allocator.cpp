@@ -68,4 +68,110 @@ void LegionAllocator::update_longest_run()
 		f &= f >> 1;
 	}
 }
+
+bool SliceSubAllocator::allocate_backing_heap(AllocatedSlice *allocation)
+{
+	uint32_t count = sub_block_size * Util::LegionAllocator::NumSubBlocks;
+
+	if (parent)
+	{
+		return parent->allocate(count, allocation);
+	}
+	else if (global_allocator)
+	{
+		uint32_t index = global_allocator->allocate(count);
+		if (index == UINT32_MAX)
+			return false;
+
+		*allocation = {};
+		allocation->count = count;
+		allocation->buffer_index = index;
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+void SliceSubAllocator::free_backing_heap(AllocatedSlice *allocation) const
+{
+	if (parent)
+		parent->free(allocation->heap, allocation->mask);
+	else if (global_allocator)
+		global_allocator->free(allocation->buffer_index);
+}
+
+void SliceSubAllocator::prepare_allocation(AllocatedSlice *allocation, Util::IntrusiveList<MiniHeap>::Iterator heap,
+                                           const Util::SuballocationResult &suballoc)
+{
+	allocation->buffer_index = heap->allocation.buffer_index;
+	allocation->offset = heap->allocation.offset + suballoc.offset;
+	allocation->count = suballoc.size;
+	allocation->mask = suballoc.mask;
+	allocation->heap = heap;
+	allocation->alloc = this;
+}
+
+void SliceAllocator::init(uint32_t sub_block_size, uint32_t num_sub_blocks_in_arena_log2,
+                          Util::SliceBackingAllocator *alloc)
+{
+	global_allocator = alloc;
+	assert(num_sub_blocks_in_arena_log2 < SliceAllocatorCount * 5 && num_sub_blocks_in_arena_log2 >= 5);
+	unsigned num_hierarchies = (num_sub_blocks_in_arena_log2 + 4) / 5;
+	assert(num_hierarchies <= SliceAllocatorCount);
+
+	for (unsigned i = 0; i < num_hierarchies - 1; i++)
+		allocators[i].parent = &allocators[i + 1];
+	allocators[num_hierarchies - 1].global_allocator = alloc;
+
+	unsigned shamt[SliceAllocatorCount] = {};
+	shamt[num_hierarchies - 1] = num_sub_blocks_in_arena_log2 - Util::floor_log2(Util::LegionAllocator::NumSubBlocks);
+
+	// Spread out the multiplier if possible.
+	for (unsigned i = num_hierarchies - 1; i > 1; i--)
+	{
+		shamt[i - 1] = shamt[i] - shamt[i] / (i);
+		assert(shamt[i] - shamt[i - 1] <= Util::floor_log2(Util::LegionAllocator::NumSubBlocks));
+	}
+
+	for (unsigned i = 0; i < num_hierarchies; i++)
+	{
+		allocators[i].set_sub_block_size(sub_block_size << shamt[i]);
+		allocators[i].set_object_pool(&object_pool);
+	}
+}
+
+void SliceAllocator::free(const Util::AllocatedSlice &slice)
+{
+	if (slice.alloc)
+		slice.alloc->free(slice.heap, slice.mask);
+	else
+		global_allocator->free(slice.buffer_index);
+}
+
+void SliceAllocator::prime(const void *opaque_meta)
+{
+	for (auto &alloc : allocators)
+	{
+		if (alloc.global_allocator)
+		{
+			alloc.global_allocator->prime(alloc.get_sub_block_size() * Util::LegionAllocator::NumSubBlocks, opaque_meta);
+			break;
+		}
+	}
+}
+
+bool SliceAllocator::allocate(uint32_t count, Util::AllocatedSlice *slice)
+{
+	for (auto &alloc : allocators)
+	{
+		uint32_t max_alloc_size = alloc.get_max_allocation_size();
+		if (count <= max_alloc_size)
+			return alloc.allocate(count, slice);
+	}
+
+	LOGE("Allocation of %u elements is too large for SliceAllocator.\n", count);
+	return false;
+}
 }

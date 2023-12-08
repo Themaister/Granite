@@ -169,6 +169,9 @@ void ResourceManager::init()
 		manager->set_asset_budget_per_iteration(2 * 1000 * 1000);
 	}
 
+	Internal::MeshGlobalAllocator::PrimeOpaque opaque = {};
+	opaque.domain = BufferDomain::Device;
+
 	if (device->get_device_features().mesh_shader_features.taskShader &&
 	    device->get_device_features().mesh_shader_features.meshShader &&
 	    device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT))
@@ -176,21 +179,19 @@ void ResourceManager::init()
 		mesh_encoding = MeshEncoding::Meshlet;
 		LOGI("Opting in to meshlet path.\n");
 
-		mesh_header_allocator.prime(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-		                            BufferDomain::Device);
-		mesh_stream_allocator.prime(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-		                            BufferDomain::Device);
-		mesh_payload_allocator.prime(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-		                             BufferDomain::Device);
+		opaque.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		mesh_header_allocator.prime(&opaque);
+		mesh_stream_allocator.prime(&opaque);
+		mesh_payload_allocator.prime(&opaque);
 	}
 	else
 	{
-		index_buffer_allocator.prime(VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-		                             BufferDomain::Device);
-		attribute_buffer_allocator.prime(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-		                                 BufferDomain::Device);
-		indirect_buffer_allocator.prime(VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-		                                BufferDomain::Device);
+		opaque.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		index_buffer_allocator.prime(&opaque);
+		opaque.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		attribute_buffer_allocator.prime(&opaque);
+		opaque.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		indirect_buffer_allocator.prime(&opaque);
 	}
 }
 
@@ -677,46 +678,10 @@ const Buffer *ResourceManager::get_meshlet_stream_header_buffer() const
 	return mesh_stream_allocator.get_buffer(0, 0);
 }
 
-void MeshBufferAllocator::prime(VkBufferUsageFlags usage, BufferDomain domain)
-{
-	for (auto &alloc : allocators)
-	{
-		if (alloc.global_allocator)
-		{
-			alloc.global_allocator->prime(
-					alloc.get_sub_block_size() * Util::LegionAllocator::NumSubBlocks,
-					usage, domain);
-			break;
-		}
-	}
-}
-
 MeshBufferAllocator::MeshBufferAllocator(Device &device, uint32_t sub_block_size, uint32_t num_sub_blocks_in_arena_log2)
 	: global_allocator(device)
 {
-	assert(num_sub_blocks_in_arena_log2 < SliceAllocatorCount * 5 && num_sub_blocks_in_arena_log2 >= 5);
-	unsigned num_hierarchies = (num_sub_blocks_in_arena_log2 + 4) / 5;
-	assert(num_hierarchies <= SliceAllocatorCount);
-
-	for (unsigned i = 0; i < num_hierarchies - 1; i++)
-		allocators[i].parent = &allocators[i + 1];
-	allocators[num_hierarchies - 1].global_allocator = &global_allocator;
-
-	unsigned shamt[SliceAllocatorCount] = {};
-	shamt[num_hierarchies - 1] = num_sub_blocks_in_arena_log2 - Util::floor_log2(Util::LegionAllocator::NumSubBlocks);
-
-	// Spread out the multiplier if possible.
-	for (unsigned i = num_hierarchies - 1; i > 1; i--)
-	{
-		shamt[i - 1] = shamt[i] - shamt[i] / (i);
-		assert(shamt[i] - shamt[i - 1] <= Util::floor_log2(Util::LegionAllocator::NumSubBlocks));
-	}
-
-	for (unsigned i = 0; i < num_hierarchies; i++)
-	{
-		allocators[i].set_sub_block_size(sub_block_size << shamt[i]);
-		allocators[i].set_object_pool(&object_pool);
-	}
+	init(sub_block_size, num_sub_blocks_in_arena_log2, &global_allocator);
 }
 
 void MeshBufferAllocator::set_soa_count(unsigned soa_count)
@@ -797,8 +762,9 @@ uint32_t MeshGlobalAllocator::allocate(uint32_t count)
 	return target_index;
 }
 
-void MeshGlobalAllocator::prime(uint32_t count, VkBufferUsageFlags usage, BufferDomain domain)
+void MeshGlobalAllocator::prime(uint32_t count, const void *opaque_meta)
 {
+	auto *opaque = static_cast<const PrimeOpaque *>(opaque_meta);
 	BufferCreateInfo info = {};
 	for (uint32_t i = 0; i < soa_count; i++)
 	{
@@ -806,8 +772,8 @@ void MeshGlobalAllocator::prime(uint32_t count, VkBufferUsageFlags usage, Buffer
 			continue;
 
 		info.size = VkDeviceSize(count) * element_size[i];
-		info.usage = usage;
-		info.domain = domain;
+		info.usage = opaque->usage;
+		info.domain = opaque->domain;
 		preallocated[i] = device.create_buffer(info);
 		preallocated_handles[i] = preallocated[i].get();
 	}
@@ -827,70 +793,5 @@ void MeshGlobalAllocator::free(uint32_t index)
 MeshGlobalAllocator::MeshGlobalAllocator(Device &device_)
 	: device(device_)
 {}
-
-bool SliceAllocator::allocate_backing_heap(AllocatedSlice *allocation)
-{
-	uint32_t count = sub_block_size * Util::LegionAllocator::NumSubBlocks;
-
-	if (parent)
-	{
-		return parent->allocate(count, allocation);
-	}
-	else if (global_allocator)
-	{
-		uint32_t index = global_allocator->allocate(count);
-		if (index == UINT32_MAX)
-			return false;
-
-		*allocation = {};
-		allocation->count = count;
-		allocation->buffer_index = index;
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
-
-void SliceAllocator::free_backing_heap(AllocatedSlice *allocation) const
-{
-	if (parent)
-		parent->free(allocation->heap, allocation->mask);
-	else if (global_allocator)
-		global_allocator->free(allocation->buffer_index);
-}
-
-void SliceAllocator::prepare_allocation(AllocatedSlice *allocation, Util::IntrusiveList<MiniHeap>::Iterator heap,
-                                        const Util::SuballocationResult &suballoc)
-{
-	allocation->buffer_index = heap->allocation.buffer_index;
-	allocation->offset = heap->allocation.offset + suballoc.offset;
-	allocation->count = suballoc.size;
-	allocation->mask = suballoc.mask;
-	allocation->heap = heap;
-	allocation->alloc = this;
-}
-}
-
-bool MeshBufferAllocator::allocate(uint32_t count, Internal::AllocatedSlice *slice)
-{
-	for (auto &alloc : allocators)
-	{
-		uint32_t max_alloc_size = alloc.get_max_allocation_size();
-		if (count <= max_alloc_size)
-			return alloc.allocate(count, slice);
-	}
-
-	LOGE("Allocation of %u elements is too large for MeshBufferAllocator.\n", count);
-	return false;
-}
-
-void MeshBufferAllocator::free(const Internal::AllocatedSlice &slice)
-{
-	if (slice.alloc)
-		slice.alloc->free(slice.heap, slice.mask);
-	else
-		global_allocator.free(slice.buffer_index);
 }
 }

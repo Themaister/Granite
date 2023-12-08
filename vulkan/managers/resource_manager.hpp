@@ -37,24 +37,19 @@ class MemoryMappedTexture;
 
 namespace Internal
 {
-struct SliceAllocator;
-struct AllocatedSlice
-{
-	uint32_t buffer_index = 0;
-	uint32_t offset = 0;
-	uint32_t count = 0;
-	uint32_t mask = 0;
-
-	SliceAllocator *alloc = nullptr;
-	Util::IntrusiveList<Util::LegionHeap<AllocatedSlice>>::Iterator heap = {};
-};
-
-struct MeshGlobalAllocator
+struct MeshGlobalAllocator : Util::SliceBackingAllocator
 {
 	explicit MeshGlobalAllocator(Device &device);
-	uint32_t allocate(uint32_t count);
-	void free(uint32_t index);
-	void prime(uint32_t count, VkBufferUsageFlags usage, BufferDomain domain);
+	uint32_t allocate(uint32_t count) override;
+	void free(uint32_t index) override;
+
+	struct PrimeOpaque
+	{
+		VkBufferUsageFlags usage;
+		BufferDomain domain;
+	};
+
+	void prime(uint32_t count, const void *opaque_meta) override;
 
 	enum { MaxSoACount = 3 }; // Position, attribute, skinning.
 
@@ -65,38 +60,19 @@ struct MeshGlobalAllocator
 	BufferHandle preallocated[MaxSoACount];
 	const Buffer *preallocated_handles[MaxSoACount] = {};
 };
-
-struct SliceAllocator : Util::ArenaAllocator<SliceAllocator, AllocatedSlice>
-{
-	SliceAllocator *parent = nullptr;
-	MeshGlobalAllocator *global_allocator = nullptr;
-
-	// Implements curious recurring template pattern calls.
-	bool allocate_backing_heap(AllocatedSlice *allocation);
-	void free_backing_heap(AllocatedSlice *allocation) const;
-	void prepare_allocation(AllocatedSlice *allocation, Util::IntrusiveList<MiniHeap>::Iterator heap,
-	                        const Util::SuballocationResult &suballoc);
-};
 }
 
-class MeshBufferAllocator
+class MeshBufferAllocator : public Util::SliceAllocator
 {
 public:
 	MeshBufferAllocator(Device &device, uint32_t sub_block_size, uint32_t num_sub_blocks_in_arena_log2);
-	bool allocate(uint32_t count, Internal::AllocatedSlice *slice);
-	void free(const Internal::AllocatedSlice &slice);
 	void set_soa_count(unsigned soa_count);
 	void set_element_size(unsigned soa_index, uint32_t element_size);
 	uint32_t get_element_size(unsigned soa_index) const;
-
 	const Buffer *get_buffer(unsigned index, unsigned soa_index) const;
-	void prime(VkBufferUsageFlags usage, BufferDomain domain);
 
 private:
-	Util::ObjectPool<Util::LegionHeap<Internal::AllocatedSlice>> object_pool;
 	Internal::MeshGlobalAllocator global_allocator;
-	enum { SliceAllocatorCount = 5 };
-	Internal::SliceAllocator allocators[SliceAllocatorCount];
 };
 
 class ResourceManager final : private Granite::AssetInstantiatorInterface
@@ -169,7 +145,7 @@ private:
 		ImageHandle image;
 		struct
 		{
-			Internal::AllocatedSlice index_or_payload, attr_or_stream, indirect_or_header;
+			Util::AllocatedSlice index_or_payload, attr_or_stream, indirect_or_header;
 			DrawRange draw;
 		} mesh;
 		Granite::AssetClass asset_class = Granite::AssetClass::ImageZeroable;

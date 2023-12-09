@@ -1470,8 +1470,8 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 static void sort_decals(VolumetricDecalList &list, const vec3 &front)
 {
 	std::sort(list.begin(), list.end(), [&front](const VolumetricDecalInfo &a, const VolumetricDecalInfo &b) -> bool {
-		float a_dist = dot(front, a.transform->world_aabb.get_center());
-		float b_dist = dot(front, b.transform->world_aabb.get_center());
+		float a_dist = dot(front, a.transform->get_aabb().get_center());
+		float b_dist = dot(front, b.transform->get_aabb().get_center());
 		return a_dist < b_dist;
 	});
 }

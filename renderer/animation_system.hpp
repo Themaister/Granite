@@ -37,7 +37,7 @@ class AnimationUnrolled : public Util::IntrusiveHashMapEnabled<AnimationUnrolled
 {
 public:
 	AnimationUnrolled(const SceneFormats::Animation &animation, float key_frame_rate);
-	void animate(Transform * const *transforms, unsigned num_transforms, float offset_time) const;
+	void animate(Transform *transforms, const uint32_t *transform_indices, unsigned num_transforms, float offset_time) const;
 
 	unsigned get_num_channels() const;
 
@@ -105,7 +105,8 @@ private:
 	struct AnimationState : Util::IntrusiveUnorderedArrayEnabled
 	{
 		AnimationState(const AnimationUnrolled &anim,
-		               Util::SmallVector<Transform *> channel_transforms_,
+					   Transform *transforms_base_,
+		               Util::SmallVector<uint32_t> channel_transforms_,
 		               Util::SmallVector<Node *> channel_nodes_,
 		               double start_time_);
 
@@ -113,9 +114,10 @@ private:
 		               Node *node,
 		               double start_time_);
 
+		Transform *transforms_base;
 		Node *skinned_node = nullptr;
 		AnimationStateID id = 0;
-		Util::SmallVector<Transform *> channel_transforms;
+		Util::SmallVector<uint32_t> channel_transforms;
 		Util::SmallVector<Node *> channel_nodes;
 		const AnimationUnrolled &animation;
 		double start_time = 0.0;

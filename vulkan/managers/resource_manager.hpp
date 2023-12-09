@@ -37,7 +37,7 @@ class MemoryMappedTexture;
 
 namespace Internal
 {
-struct MeshGlobalAllocator : Util::SliceBackingAllocator
+struct MeshGlobalAllocator final : Util::SliceBackingAllocator
 {
 	explicit MeshGlobalAllocator(Device &device);
 	uint32_t allocate(uint32_t count) override;

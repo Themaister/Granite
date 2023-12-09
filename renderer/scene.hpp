@@ -29,6 +29,7 @@
 #include "no_init_pod.hpp"
 #include "thread_group.hpp"
 #include "atomic_append_buffer.hpp"
+#include "arena_allocator.hpp"
 #include <atomic>
 
 namespace Granite
@@ -38,6 +39,62 @@ struct EnvironmentComponent;
 class Node;
 class Scene;
 
+struct TransformBackingAllocator final : Util::SliceBackingAllocator
+{
+	uint32_t allocate(uint32_t count) override;
+	void free(uint32_t index) override;
+	void prime(uint32_t count, const void *opaque_meta) override;
+
+	Util::DynamicArray<Transform> transforms;
+	// TODO: Move to 3x4 affine.
+	Util::DynamicArray<mat4> cached_transforms;
+	Util::DynamicArray<mat4> cached_prev_transforms;
+	bool allocated_global = false;
+};
+
+struct TransformBackingAllocatorAABB final : Util::SliceBackingAllocator
+{
+	uint32_t allocate(uint32_t count) override;
+	void free(uint32_t index) override;
+	void prime(uint32_t count, const void *opaque_meta) override;
+
+	Util::DynamicArray<AABB> aabb;
+	bool allocated_global = false;
+};
+
+class TransformAllocator : public Util::SliceAllocator
+{
+public:
+	TransformAllocator();
+	inline Transform *get_transforms() { return allocator.transforms.data(); }
+	inline mat4 *get_cached_transforms() { return allocator.cached_transforms.data(); }
+	inline mat4 *get_cached_prev_transforms() { return allocator.cached_prev_transforms.data(); }
+	inline const Transform *get_transforms() const { return allocator.transforms.data(); }
+	inline const mat4 *get_cached_transforms() const { return allocator.cached_transforms.data(); }
+	inline const mat4 *get_cached_prev_transforms() const { return allocator.cached_prev_transforms.data(); }
+
+	uint32_t get_count() const { return high_water_mark; }
+	bool allocate(uint32_t count, Util::AllocatedSlice *slice);
+
+private:
+	TransformBackingAllocator allocator;
+	uint32_t high_water_mark = 0;
+};
+
+class TransformAllocatorAABB : public Util::SliceAllocator
+{
+public:
+	TransformAllocatorAABB();
+	inline AABB *get_aabbs() { return allocator.aabb.data(); }
+	inline const AABB *get_aabbs() const { return allocator.aabb.data(); }
+
+	uint32_t get_count() const { return high_water_mark; }
+	bool allocate(uint32_t count, Util::AllocatedSlice *slice);
+
+private:
+	TransformBackingAllocatorAABB allocator;
+	uint32_t high_water_mark = 0;
+};
 
 class Scene
 {
@@ -142,12 +199,17 @@ public:
 
 	void remove_entities_with_component(ComponentType id);
 
+	inline TransformAllocator &get_transforms() { return transform_allocator; }
+	inline const TransformAllocator &get_transforms() const { return transform_allocator; }
+	inline TransformAllocatorAABB &get_aabbs() { return transform_allocator_aabb; }
+	inline const TransformAllocatorAABB &get_aabbs() const { return transform_allocator_aabb; }
+
 private:
 	EntityPool pool;
 	Util::ObjectPool<Node::Skinning> skinning_pool;
-	Util::ObjectPool<Transform> transform_pool;
-	Util::ObjectPool<CachedTransform> cached_transform_pool;
 	Util::ObjectPool<Node> node_pool;
+	TransformAllocator transform_allocator;
+	TransformAllocatorAABB transform_allocator_aabb;
 	NodeHandle root_node;
 
 	// Sets up the default useful component groups up front.

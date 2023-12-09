@@ -92,10 +92,10 @@ void SceneViewerApplication::read_lights()
 
 			auto node = scene.create_node();
 			for (int i = 0; i < 3; i++)
-				node->transform.translation[i] = spot["position"][i].GetFloat();
+				node->get_transform().translation[i] = spot["position"][i].GetFloat();
 
 			auto &dir = spot["direction"];
-			node->transform.rotation = conjugate(look_at_arbitrary_up(vec3(
+			node->get_transform().rotation = conjugate(look_at_arbitrary_up(vec3(
 					dir[0].GetFloat(), dir[1].GetFloat(), dir[2].GetFloat())));
 			scene.get_root_node()->add_child(node);
 			auto entity = scene.create_light(info, node.get());
@@ -118,7 +118,7 @@ void SceneViewerApplication::read_lights()
 
 			auto node = scene.create_node();
 			for (int i = 0; i < 3; i++)
-				node->transform.translation[i] = point["position"][i].GetFloat();
+				node->get_transform().translation[i] = point["position"][i].GetFloat();
 			scene.get_root_node()->add_child(node);
 			auto entity = scene.create_light(info, node.get());
 			entity->allocate_component<IrradianceAffectingComponent>();
@@ -304,8 +304,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	{
 		auto &scene = scene_loader.get_scene();
 		auto node = scene.create_node();
-		node->transform.scale = vec3(32.0f, 8.0f, 32.0f);
-		node->transform.translation = vec3(0.0f, 3.5f, 0.0f);
+		node->get_transform().scale = vec3(32.0f, 8.0f, 32.0f);
+		node->get_transform().translation = vec3(0.0f, 3.5f, 0.0f);
 		node->invalidate_cached_transform();
 		scene.create_volumetric_diffuse_light(uvec3(32, 8, 32), node.get());
 		scene.get_root_node()->add_child(std::move(node));
@@ -315,8 +315,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	{
 		auto &scene = scene_loader.get_scene();
 		auto node = scene.create_node();
-		node->transform.scale = vec3(40.0f);
-		node->transform.translation = vec3(0.0f, 20.0f, 0.0f);
+		node->get_transform().scale = vec3(40.0f);
+		node->get_transform().translation = vec3(0.0f, 20.0f, 0.0f);
 		node->invalidate_cached_transform();
 		scene.create_volumetric_fog_region(node.get());
 		scene.get_root_node()->add_child(std::move(node));
@@ -529,12 +529,12 @@ void SceneViewerApplication::rescale_scene(float radius)
 	                    .get_entity_pool()
 	                    .get_component_group<RenderInfoComponent, RenderableComponent>();
 	for (auto &caster : objects)
-		aabb.expand(get_component<RenderInfoComponent>(caster)->world_aabb);
+		aabb.expand(get_component<RenderInfoComponent>(caster)->get_aabb());
 
 	float scale_factor = radius / aabb.get_radius();
 	auto root_node = scene_loader.get_scene().get_root_node();
 	auto new_root_node = scene_loader.get_scene().create_node();
-	new_root_node->transform.scale = vec3(scale_factor);
+	new_root_node->get_transform().scale = vec3(scale_factor);
 	new_root_node->add_child(root_node);
 	scene_loader.get_scene().set_root_node(new_root_node);
 }
@@ -575,8 +575,8 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		light.inner_cone = 0.92f;
 		light.color = vec3(10.0f);
 
-		node->transform.translation = pos;
-		node->transform.rotation = conjugate(look_at_arbitrary_up(selected_camera->get_front()));
+		node->get_transform().translation = pos;
+		node->get_transform().rotation = conjugate(look_at_arbitrary_up(selected_camera->get_front()));
 
 		auto *entity = scene.create_light(light, node.get());
 		entity->allocate_component<IrradianceAffectingComponent>();
@@ -593,7 +593,7 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		SceneFormats::LightInfo light;
 		light.type = SceneFormats::LightInfo::Type::Point;
 		light.color = vec3(10.0f);
-		node->transform.translation = pos;
+		node->get_transform().translation = pos;
 
 		auto *entity = scene.create_light(light, node.get());
 		entity->allocate_component<IrradianceAffectingComponent>();
@@ -1261,7 +1261,7 @@ void SceneViewerApplication::update_shadow_scene_aabb()
 	        .get_component_group<RenderInfoComponent, RenderableComponent, CastsStaticShadowComponent>();
 	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
 	for (auto &caster : shadow_casters)
-		aabb.expand(get_component<RenderInfoComponent>(caster)->world_aabb);
+		aabb.expand(get_component<RenderInfoComponent>(caster)->get_aabb());
 	shadow_scene_aabb = aabb;
 }
 

@@ -161,7 +161,7 @@ GroundPatch::~GroundPatch()
 
 void GroundPatch::refresh(const RenderContext &context, const RenderInfoComponent *transform, TaskComposer &)
 {
-	vec3 center = transform->world_aabb.get_center();
+	vec3 center = transform->get_aabb().get_center();
 	const auto &camera_pos = context.get_render_parameters().camera_position;
 	vec3 diff = center - camera_pos;
 	float dist_log2 = 0.5f * muglm::log2(dot(diff, diff) + 0.001f);
@@ -348,7 +348,7 @@ void Ground::get_render_info(const RenderContext &context, const RenderInfoCompo
 	hasher.s32(base_lod);
 	hasher.s32(info.bandlimited_pixel);
 	auto sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, pipe_hash, hasher.get(),
-	                                            transform->world_aabb.get_center(),
+	                                            transform->get_aabb().get_center(),
 	                                            StaticLayer::Last);
 
 	hasher.u64(heightmap->get_cookie());

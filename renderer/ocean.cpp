@@ -156,7 +156,7 @@ void Ocean::refresh(const RenderContext &context_, TaskComposer &)
 	last_camera_position = context_.get_render_parameters().camera_position;
 
 	if (node)
-		node_center_position = node->cached_transform.world_transform[3].xyz();
+		node_center_position = node->get_cached_transform()[3].xyz();
 	else
 		node_center_position = vec3(0.0f);
 }

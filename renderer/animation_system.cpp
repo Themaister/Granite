@@ -89,7 +89,7 @@ uint32_t AnimationUnrolled::get_multi_node_index(unsigned channel) const
 	return multi_node_indices[channel];
 }
 
-void AnimationUnrolled::animate(Transform *const *transforms, unsigned num_transforms, float offset_time) const
+void AnimationUnrolled::animate(Transform *transforms, const uint32_t *transform_indices, unsigned num_transforms, float offset_time) const
 {
 	if (num_transforms != get_num_channels())
 		throw std::logic_error("Incorrect number of transforms.");
@@ -102,7 +102,7 @@ void AnimationUnrolled::animate(Transform *const *transforms, unsigned num_trans
 
 	for (unsigned i = 0; i < num_transforms; i++)
 	{
-		auto *t = transforms[i];
+		auto *t = &transforms[transform_indices[i]];
 		animate_single(*t, i, lo, hi, l);
 	}
 }
@@ -302,9 +302,11 @@ AnimationStateID AnimationSystem::start_animation(Node &node, Granite::Animation
 			return 0;
 		}
 
-		Util::SmallVector<Transform *> target_transforms = { &node.transform };
+		Util::SmallVector<uint32_t> target_transforms = { node.transform.offset };
 		Util::SmallVector<Node *> nodes = { &node };
-		id = animation_state_pool.emplace(*animation, std::move(target_transforms), std::move(nodes), start_time);
+		id = animation_state_pool.emplace(*animation,
+		                                  node.get_transform_base(),
+		                                  std::move(target_transforms), std::move(nodes), start_time);
 	}
 
 	auto *state = &animation_state_pool.get(id);
@@ -331,7 +333,9 @@ void AnimationSystem::set_fixed_pose(Node &node, Granite::AnimationID id, float 
 			return;
 		}
 
-		animation->animate(node.get_skin()->skin.data(), node.get_skin()->skin.size(), offset);
+		animation->animate(node.get_transform_base(),
+		                   node.get_skin()->skin.data(), node.get_skin()->skin.size(), offset);
+
 		node.invalidate_cached_transform();
 	}
 	else
@@ -342,8 +346,8 @@ void AnimationSystem::set_fixed_pose(Node &node, Granite::AnimationID id, float 
 			return;
 		}
 
-		Transform *t = &node.transform;
-		animation->animate(&t, 1, offset);
+		uint32_t transform_index = node.transform.offset;
+		animation->animate(node.get_transform_base(), &transform_index, 1, offset);
 		node.invalidate_cached_transform();
 	}
 }
@@ -364,11 +368,12 @@ void AnimationSystem::set_fixed_pose_multi(NodeHandle *nodes, unsigned num_nodes
 		return;
 	}
 
+	if (!num_nodes)
+		return;
+
 	// Not very efficient.
-	Util::SmallVector<Transform *> target_transforms;
-	Util::SmallVector<Node *> target_nodes;
+	Util::SmallVector<uint32_t> target_transforms;
 	target_transforms.reserve(animation->get_num_channels());
-	target_nodes.reserve(animation->get_num_channels());
 
 	for (unsigned channel = 0; channel < animation->get_num_channels(); channel++)
 	{
@@ -379,11 +384,12 @@ void AnimationSystem::set_fixed_pose_multi(NodeHandle *nodes, unsigned num_nodes
 			return;
 		}
 
-		target_transforms.push_back(&nodes[index]->transform);
+		target_transforms.push_back(nodes[index]->transform.offset);
 		nodes[index]->invalidate_cached_transform();
 	}
 
-	animation->animate(target_transforms.data(), target_transforms.size(), offset);
+	animation->animate(nodes[0]->get_transform_base(),
+	                   target_transforms.data(), target_transforms.size(), offset);
 }
 
 AnimationStateID AnimationSystem::start_animation_multi(NodeHandle *nodes, unsigned num_nodes,
@@ -402,7 +408,13 @@ AnimationStateID AnimationSystem::start_animation_multi(NodeHandle *nodes, unsig
 		return 0;
 	}
 
-	Util::SmallVector<Transform *> target_transforms;
+	if (!num_nodes)
+	{
+		LOGE("Number of nodes must not be 0.\n");
+		return 0;
+	}
+
+	Util::SmallVector<uint32_t> target_transforms;
 	Util::SmallVector<Node *> target_nodes;
 	target_transforms.reserve(animation->get_num_channels());
 	target_nodes.reserve(animation->get_num_channels());
@@ -416,11 +428,12 @@ AnimationStateID AnimationSystem::start_animation_multi(NodeHandle *nodes, unsig
 			return 0;
 		}
 
-		target_transforms.push_back(&nodes[index]->transform);
+		target_transforms.push_back(nodes[index]->transform.offset);
 		target_nodes.push_back(nodes[index].get());
 	}
 
-	auto id = animation_state_pool.emplace(*animation, std::move(target_transforms), std::move(target_nodes), start_time);
+	auto id = animation_state_pool.emplace(*animation, target_nodes.front()->get_transform_base(),
+	                                       std::move(target_transforms), std::move(target_nodes), start_time);
 	auto *state = &animation_state_pool.get(id);
 	state->id = id;
 	active_animation.add(state);
@@ -472,12 +485,14 @@ void AnimationSystem::update(AnimationState *anim, double frame_time, double ela
 	if (anim->animation.is_skinned())
 	{
 		auto *node = anim->skinned_node;
-		anim->animation.animate(node->get_skin()->skin.data(), node->get_skin()->skin.size(), float(offset));
+		anim->animation.animate(anim->transforms_base,
+								node->get_skin()->skin.data(), node->get_skin()->skin.size(), float(offset));
 		node->invalidate_cached_transform();
 	}
 	else
 	{
-		anim->animation.animate(anim->channel_transforms.data(), anim->channel_transforms.size(), float(offset));
+		anim->animation.animate(anim->transforms_base,
+								anim->channel_transforms.data(), anim->channel_transforms.size(), float(offset));
 		for (auto *node : anim->channel_nodes)
 			node->invalidate_cached_transform();
 	}
@@ -538,10 +553,12 @@ void AnimationSystem::animate(TaskComposer &composer, double frame_time, double 
 }
 
 AnimationSystem::AnimationState::AnimationState(const AnimationUnrolled &anim,
-                                                Util::SmallVector<Transform *> channel_transforms_,
+												Transform *transforms_base_,
+                                                Util::SmallVector<uint32_t> channel_transforms_,
                                                 Util::SmallVector<Node *> channel_nodes_,
                                                 double start_time_)
-	: channel_transforms(std::move(channel_transforms_)),
+	: transforms_base(transforms_base_),
+	  channel_transforms(std::move(channel_transforms_)),
 	  channel_nodes(std::move(channel_nodes_)),
 	  animation(anim),
 	  start_time(start_time_)
@@ -550,7 +567,8 @@ AnimationSystem::AnimationState::AnimationState(const AnimationUnrolled &anim,
 
 AnimationSystem::AnimationState::AnimationState(const Granite::AnimationUnrolled &anim, Node *node,
                                                 double start_time_)
-	: skinned_node(node), animation(anim), start_time(start_time_)
+	: transforms_base(node->get_transform_base()),
+	  skinned_node(node), animation(anim), start_time(start_time_)
 {
 }
 }

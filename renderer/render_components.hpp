@@ -159,8 +159,10 @@ struct PerFrameUpdateComponent : ComponentBase
 struct RenderInfoComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(RenderInfoComponent)
-	AABB world_aabb;
 	Node *scene_node = nullptr;
+
+	~RenderInfoComponent();
+	Util::AllocatedSlice aabb;
 
 	// If set, the transform changed last frame and motion vectors will need to be rendered explicitly.
 	bool requires_motion_vectors = false;
@@ -169,15 +171,9 @@ struct RenderInfoComponent : ComponentBase
 	// e.g. per instance material information.
 	const void *extra_data = nullptr;
 
-	inline const mat4 &get_world_transform() const
-	{
-		return scene_node->cached_transform.world_transform;
-	}
-
-	inline const mat4 &get_prev_world_transform() const
-	{
-		return scene_node->prev_cached_transform.world_transform;
-	}
+	const mat4 &get_world_transform() const;
+	const mat4 &get_prev_world_transform() const;
+	const AABB &get_aabb() const;
 
 	inline const Node::Skinning *get_skin() const
 	{
@@ -193,7 +189,7 @@ struct RenderInfoComponent : ComponentBase
 struct CachedTransformComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(CachedTransformComponent)
-	CachedTransform *transform = nullptr;
+	mat4 *transform = nullptr;
 };
 
 struct CachedSpatialTransformTimestampComponent : ComponentBase

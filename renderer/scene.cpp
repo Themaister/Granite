@@ -88,7 +88,7 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 		if (transform->has_scene_node())
 		{
 			if ((flags & RENDERABLE_FORCE_VISIBLE_BIT) != 0 ||
-			    SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
+			    SIMD::frustum_cull(transform->get_aabb(), frustum.get_planes()))
 			{
 				list.push_back({ renderable->renderable.get(), transform, h.get() });
 			}
@@ -343,7 +343,7 @@ static void gather_positional_lights(const Frustum &frustum, VisibilityList &lis
 
 		if (transform->has_scene_node())
 		{
-			if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
+			if (SIMD::frustum_cull(transform->get_aabb(), frustum.get_planes()))
 				list.push_back({ renderable->renderable.get(), transform, h.get() });
 		}
 		else
@@ -371,7 +371,7 @@ static void gather_positional_lights(const Frustum &frustum, PositionalLightList
 
 		if (transform->has_scene_node())
 		{
-			if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
+			if (SIMD::frustum_cull(transform->get_aabb(), frustum.get_planes()))
 				list.push_back({ light, transform, h.get() });
 		}
 		else
@@ -415,7 +415,7 @@ void Scene::gather_visible_volumetric_diffuse_lights(const Frustum &frustum, Vol
 		{
 			if (transform->has_scene_node())
 			{
-				if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
+				if (SIMD::frustum_cull(transform->get_aabb(), frustum.get_planes()))
 					list.push_back({ light, transform });
 			}
 			else
@@ -435,7 +435,7 @@ void Scene::gather_visible_volumetric_decals(const Frustum &frustum, VolumetricD
 		{
 			if (transform->has_scene_node())
 			{
-				if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
+				if (SIMD::frustum_cull(transform->get_aabb(), frustum.get_planes()))
 					list.push_back({ decal, transform });
 			}
 			else
@@ -455,7 +455,7 @@ void Scene::gather_visible_volumetric_fog_regions(const Frustum &frustum, Volume
 		{
 			if (transform->has_scene_node())
 			{
-				if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
+				if (SIMD::frustum_cull(transform->get_aabb(), frustum.get_planes()))
 					list.push_back({ region, transform });
 			}
 			else
@@ -536,20 +536,20 @@ static void log_node_transforms(const Scene::Node &node)
 static void update_skinning(Node &node)
 {
 	auto &skin = *node.get_skin();
-	if (!skin.cached_skin_transform.bone_world_transforms.empty())
+	if (skin.transform.count)
 	{
-		skin.prev_cached_skin_transform = skin.cached_skin_transform;
+		auto &transforms = node.parent_scene.get_transforms();
+		auto *cached = transforms.get_cached_transforms();
+		auto *prev_cached = transforms.get_cached_prev_transforms();
 
-		auto len = skin.skin.size();
-		assert(skin.skin.size() == skin.cached_skin_transform.bone_world_transforms.size());
-		//assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_normal_transforms.size());
-		for (size_t i = 0; i < len; i++)
-		{
-			SIMD::mul(skin.cached_skin_transform.bone_world_transforms[i],
-			          skin.cached_skin[i]->world_transform,
-			          skin.inverse_bind_poses[i]);
-			//node.cached_skin_transform.bone_normal_transforms[i] = node.get_skin().cached_skin[i]->normal_transform;
-		}
+		auto *cached_skin = cached + skin.transform.offset;
+		auto *prev_cached_skin = prev_cached + skin.transform.offset;
+
+		for (uint32_t i = 0; i < skin.transform.count; i++)
+			prev_cached_skin[i] = cached_skin[i];
+
+		for (size_t i = 0; i < skin.transform.count; i++)
+			SIMD::mul(cached_skin[i], cached[skin.skin[i]], skin.inverse_bind_poses[i]);
 		//log_node_transforms(node);
 	}
 }
@@ -689,7 +689,7 @@ void Scene::update_transform_listener_components()
 		CameraComponent *cam;
 		CachedTransformComponent *transform;
 		std::tie(cam, transform) = c;
-		cam->camera.set_transform(transform->transform->world_transform);
+		cam->camera.set_transform(*transform->transform);
 	}
 
 	// Update directional light transforms.
@@ -700,7 +700,7 @@ void Scene::update_transform_listener_components()
 		std::tie(l, transform) = light;
 
 		// v = [0, 0, 1, 0].
-		l->direction = normalize(transform->transform->world_transform[2].xyz());
+		l->direction = normalize((*transform->transform)[2].xyz());
 	}
 
 	for (auto &light : volumetric_diffuse_lights)
@@ -726,8 +726,8 @@ void Scene::update_transform_listener_components()
 				l->world_to_texture[i] = world_to_texture[i];
 				l->texture_to_world[i] = texture_to_world[i];
 			}
-			l->world_lo = transform->world_aabb.get_minimum4();
-			l->world_hi = transform->world_aabb.get_maximum4();
+			l->world_lo = transform->get_aabb().get_minimum4();
+			l->world_hi = transform->get_aabb().get_maximum4();
 			l->timestamp = timestamp->last_timestamp;
 		}
 	}
@@ -749,8 +749,8 @@ void Scene::update_transform_listener_components()
 
 			for (int i = 0; i < 3; i++)
 				r->world_to_texture[i] = world_to_texture[i];
-			r->world_lo = transform->world_aabb.get_minimum4();
-			r->world_hi = transform->world_aabb.get_maximum4();
+			r->world_lo = transform->get_aabb().get_minimum4();
+			r->world_hi = transform->get_aabb().get_maximum4();
 			r->timestamp = timestamp->last_timestamp;
 		}
 	}
@@ -798,20 +798,19 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 		{
 			if (cached_transform->has_scene_node())
 			{
+				auto &bb = get_aabbs().get_aabbs()[cached_transform->aabb.offset];
 				if (cached_transform->get_skin())
 				{
 					// TODO: Isolate the AABB per bone.
-					cached_transform->world_aabb =
-						AABB(vec3(std::numeric_limits<float>::max()),
-						     vec3(-std::numeric_limits<float>::max()));
-					for (auto &m : cached_transform->get_skin()->cached_skin_transform.bone_world_transforms)
-						SIMD::transform_and_expand_aabb(cached_transform->world_aabb, *aabb->aabb, m);
+					bb = AABB(vec3(std::numeric_limits<float>::max()), vec3(-std::numeric_limits<float>::max()));
+
+					auto *cached_skin = cached_transform->scene_node->get_skin_cached();
+					for (size_t j = 0, n = cached_transform->get_skin()->transform.count; j < n; j++)
+						SIMD::transform_and_expand_aabb(bb, *aabb->aabb, cached_skin[j]);
 				}
 				else
 				{
-					SIMD::transform_aabb(cached_transform->world_aabb,
-					                     *aabb->aabb,
-					                     cached_transform->get_world_transform());
+					SIMD::transform_aabb(bb, *aabb->aabb, cached_transform->get_world_transform());
 				}
 			}
 
@@ -878,12 +877,10 @@ void Scene::distribute_per_level_updates(TaskGroup *group)
 
 static void update_transform_tree_node(Node &node, const mat4 &transform)
 {
-	node.prev_cached_transform = node.cached_transform;
-	compute_model_transform(node.cached_transform.world_transform,
-	                        node.transform.scale, node.transform.rotation, node.transform.translation,
-	                        transform);
+	node.get_cached_prev_transform() = node.get_cached_transform();
+	auto &t = node.get_transform();
+	compute_model_transform(node.get_cached_transform(), t.scale, t.rotation, t.translation, transform);
 
-	//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
 	node.update_timestamp();
 	node.clear_pending_update_no_atomic();
 }
@@ -894,7 +891,7 @@ static void perform_updates(Node * const *updates, size_t count)
 	{
 		auto *update = updates[i];
 		auto *parent = update->get_parent();
-		auto &transform = parent ? parent->cached_transform.world_transform : identity_transform;
+		auto &transform = parent ? parent->get_cached_transform() : identity_transform;
 		update_transform_tree_node(*update, transform);
 	}
 }
@@ -944,26 +941,22 @@ NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 	for (size_t i = 0; i < skin.joint_transforms.size(); i++)
 	{
 		bones.push_back(create_node());
-		bones[i]->transform.translation = skin.joint_transforms[i].translation;
-		bones[i]->transform.scale = skin.joint_transforms[i].scale;
-		bones[i]->transform.rotation = skin.joint_transforms[i].rotation;
+		auto &t = bones[i]->get_transform();
+		t.translation = skin.joint_transforms[i].translation;
+		t.scale = skin.joint_transforms[i].scale;
+		t.rotation = skin.joint_transforms[i].rotation;
 	}
 
-	node->set_skin(skinning_pool.allocate());
-	auto &node_skin = *node->get_skin();
-	node_skin.cached_skin_transform.bone_world_transforms.resize(skin.joint_transforms.size());
-	node_skin.prev_cached_skin_transform.bone_world_transforms.resize(skin.joint_transforms.size());
-	//node->cached_skin_transform.bone_normal_transforms.resize(skin.joint_transforms.size());
+	Node::Skinning *pskin = skinning_pool.allocate();
 
-	node_skin.skin.reserve(skin.joint_transforms.size());
-	node_skin.cached_skin.reserve(skin.joint_transforms.size());
-	node_skin.inverse_bind_poses.reserve(skin.joint_transforms.size());
+	pskin->skin.reserve(skin.joint_transforms.size());
+	pskin->inverse_bind_poses.reserve(skin.joint_transforms.size());
 	for (size_t i = 0; i < skin.joint_transforms.size(); i++)
 	{
-		node_skin.cached_skin.push_back(&bones[i]->cached_transform);
-		node_skin.skin.push_back(&bones[i]->transform);
-		node_skin.inverse_bind_poses.push_back(skin.inverse_bind_pose[i]);
+		pskin->skin.push_back(bones[i]->transform.offset);
+		pskin->inverse_bind_poses.push_back(skin.inverse_bind_pose[i]);
 	}
+	node->set_skin(pskin);
 
 	for (auto &skeleton : skin.skeletons)
 	{
@@ -972,7 +965,7 @@ NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 			add_bone(bones.data(), skeleton.index, child);
 	}
 
-	node_skin.skin_compat = skin.skin_compat;
+	pskin->skin_compat = skin.skin_compat;
 	return node;
 }
 
@@ -998,6 +991,9 @@ Entity *Scene::create_volumetric_diffuse_light(uvec3 resolution, Node *node)
 	auto *bounded = entity->allocate_component<BoundedComponent>();
 	bounded->aabb = &VolumetricDiffuseLight::get_static_aabb();
 
+	if (!get_aabbs().allocate(1, &transform->aabb))
+		LOGE("Exhausted AABB pool.\n");
+
 	if (node)
 	{
 		transform->scene_node = node;
@@ -1019,6 +1015,9 @@ Entity *Scene::create_volumetric_fog_region(Node *node)
 
 	auto *bounded = entity->allocate_component<BoundedComponent>();
 	bounded->aabb = &VolumetricFogRegion::get_static_aabb();
+
+	if (!get_aabbs().allocate(1, &transform->aabb))
+		LOGE("Exhausted AABB pool.\n");
 
 	if (node)
 	{
@@ -1042,6 +1041,9 @@ Entity *Scene::create_volumetric_decal(Node *node)
 	auto *bounded = entity->allocate_component<BoundedComponent>();
 	bounded->aabb = &VolumetricDecal::get_static_aabb();
 
+	if (!get_aabbs().allocate(1, &transform->aabb))
+		LOGE("Exhausted AABB pool.\n");
+
 	if (node)
 	{
 		transform->scene_node = node;
@@ -1063,7 +1065,7 @@ Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 	{
 		auto *dir = entity->allocate_component<DirectionalLightComponent>();
 		auto *transform = entity->allocate_component<CachedTransformComponent>();
-		transform->transform = &node->cached_transform;
+		transform->transform = &node->get_cached_transform();
 		dir->color = light.color;
 		break;
 	}
@@ -1101,6 +1103,10 @@ Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 
 		auto *bounded = entity->allocate_component<BoundedComponent>();
 		bounded->aabb = renderable->get_static_aabb();
+
+		if (!get_aabbs().allocate(1, &transform->aabb))
+			LOGE("Exhausted AABB pool.\n");
+
 		break;
 	}
 	}
@@ -1125,6 +1131,9 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 		}
 		auto *bounded = entity->allocate_component<BoundedComponent>();
 		bounded->aabb = renderable->get_static_aabb();
+
+		if (!get_aabbs().allocate(1, &transform->aabb))
+			LOGE("Exhausted AABB pool.\n");
 	}
 	else
 		entity->allocate_component<UnboundedComponent>();
@@ -1206,4 +1215,79 @@ void Scene::queue_destroy_entity(Entity *entity)
 	}
 }
 
+TransformAllocator::TransformAllocator()
+{
+	init(1, 20, &allocator);
+	prime(nullptr);
+}
+
+bool TransformAllocator::allocate(uint32_t count, Util::AllocatedSlice *slice)
+{
+	if (!Util::SliceAllocator::allocate(count, slice))
+		return false;
+	high_water_mark = std::max<uint32_t>(count + slice->offset, high_water_mark);
+	return true;
+}
+
+uint32_t TransformBackingAllocator::allocate(uint32_t count)
+{
+	if (!allocated_global)
+	{
+		prime(count, nullptr);
+		allocated_global = true;
+		return 0;
+	}
+	else
+		return UINT32_MAX;
+}
+
+void TransformBackingAllocator::free(uint32_t index)
+{
+	if (index == 0)
+		allocated_global = false;
+}
+
+void TransformBackingAllocator::prime(uint32_t count, const void *)
+{
+	transforms.reserve(count);
+	cached_transforms.reserve(count);
+	cached_prev_transforms.reserve(count);
+}
+
+TransformAllocatorAABB::TransformAllocatorAABB()
+{
+	init(1, 20, &allocator);
+	prime(nullptr);
+}
+
+bool TransformAllocatorAABB::allocate(uint32_t count, Util::AllocatedSlice *slice)
+{
+	if (!Util::SliceAllocator::allocate(count, slice))
+		return false;
+	high_water_mark = std::max<uint32_t>(count + slice->offset, high_water_mark);
+	return true;
+}
+
+uint32_t TransformBackingAllocatorAABB::allocate(uint32_t count)
+{
+	if (!allocated_global)
+	{
+		prime(count, nullptr);
+		allocated_global = true;
+		return 0;
+	}
+	else
+		return UINT32_MAX;
+}
+
+void TransformBackingAllocatorAABB::free(uint32_t index)
+{
+	if (index == 0)
+		allocated_global = false;
+}
+
+void TransformBackingAllocatorAABB::prime(uint32_t count, const void *)
+{
+	aabb.reserve(count);
+}
 }

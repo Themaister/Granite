@@ -109,9 +109,10 @@ NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subscene)
 				nodeptr = scene->create_node();
 
 			nodes.push_back(nodeptr);
-			nodeptr->transform.translation = node.transform.translation;
-			nodeptr->transform.rotation = node.transform.rotation;
-			nodeptr->transform.scale = node.transform.scale;
+			auto &node_transform = nodeptr->get_transform();
+			node_transform.translation = node.transform.translation;
+			node_transform.rotation = node.transform.rotation;
+			node_transform.scale = node.transform.scale;
 		}
 		else
 			nodes.push_back({});
@@ -157,7 +158,7 @@ NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subscene)
 		if (camera.attached_to_node && touched.count(camera.node_index))
 		{
 			auto *t = cam_entity->allocate_component<CachedTransformComponent>();
-			t->transform = &nodes[camera.node_index]->cached_transform;
+			t->transform = &nodes[camera.node_index]->get_cached_transform();
 		}
 	}
 
@@ -376,18 +377,24 @@ NodeHandle SceneLoader::parse_scene_format(const std::string &path, const std::s
 			auto &t = elem["translation"];
 			transform.translation = vec3(t[0].GetFloat(), t[1].GetFloat(), t[2].GetFloat());
 		}
+		else
+			transform.translation = vec3(0.0f);
 
 		if (elem.HasMember("rotation"))
 		{
 			auto &r = elem["rotation"];
 			transform.rotation = normalize(quat(r[3].GetFloat(), r[0].GetFloat(), r[1].GetFloat(), r[2].GetFloat()));
 		}
+		else
+			transform.rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
 
 		if (elem.HasMember("scale"))
 		{
 			auto &s = elem["scale"];
 			transform.scale = vec3(s[0].GetFloat(), s[1].GetFloat(), s[2].GetFloat());
 		}
+		else
+			transform.scale = vec3(1.0f);
 
 		if (has_scene)
 		{
@@ -403,7 +410,7 @@ NodeHandle SceneLoader::parse_scene_format(const std::string &path, const std::s
 						for (unsigned x = 0; x < instance_size.x; x++)
 						{
 							auto child = build_tree_for_subscene(scene_itr->second);
-							child->transform.translation = vec3(x, y, z) * stride;
+							child->get_transform().translation = vec3(x, y, z) * stride;
 							subroot->add_child(child);
 						}
 					}
@@ -414,7 +421,7 @@ NodeHandle SceneLoader::parse_scene_format(const std::string &path, const std::s
 		else
 			hierarchy.push_back(scene->create_node());
 
-		hierarchy.back()->transform = transform;
+		hierarchy.back()->get_transform() = transform;
 	}
 
 	if (doc.HasMember("animations"))
@@ -573,18 +580,24 @@ NodeHandle SceneLoader::parse_scene_format(const std::string &path, const std::s
 			auto &s = value["scale"];
 			transform.scale = vec3(s[0].GetFloat(), s[1].GetFloat(), s[2].GetFloat());
 		}
+		else
+			transform.scale = vec3(1.0f);
 
 		if (value.HasMember("translation"))
 		{
 			auto &t = value["translation"];
 			transform.translation = vec3(t[0].GetFloat(), t[1].GetFloat(), t[2].GetFloat());
 		}
+		else
+			transform.translation = vec3(0.0f);
 
 		if (value.HasMember("rotation"))
 		{
 			auto &r = value["rotation"];
 			transform.rotation = normalize(quat(r[3].GetFloat(), r[0].GetFloat(), r[1].GetFloat(), r[2].GetFloat()));
 		}
+		else
+			transform.rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
 	};
 
 	if (doc.HasMember("terrain"))
@@ -637,7 +650,7 @@ NodeHandle SceneLoader::parse_scene_format(const std::string &path, const std::s
 			info.normal_size = terrain["normalSize"].GetUint();
 
 		auto handles = Ground::add_to_scene(*scene, size, tiling_factor, info);
-		read_transform(handles.node->transform, terrain);
+		read_transform(handles.node->get_transform(), terrain);
 		root->add_child(handles.node);
 	}
 

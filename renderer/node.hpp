@@ -25,6 +25,7 @@
 #include "intrusive.hpp"
 #include "math.hpp"
 #include "hash.hpp"
+#include "arena_allocator.hpp"
 #include <vector>
 
 namespace Granite
@@ -34,21 +35,9 @@ class Scene;
 
 struct Transform
 {
-	vec3 scale = vec3(1.0f);
-	vec3 translation = vec3(0.0f);
-	quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
-};
-
-struct CachedTransform
-{
-	mat4 world_transform;
-	//mat4 normal_transform;
-};
-
-struct CachedSkinTransform
-{
-	std::vector<mat4> bone_world_transforms;
-	//std::vector<mat4> bone_normal_transforms;
+	vec3 scale;
+	vec3 translation;
+	quat rotation;
 };
 
 struct NodeDeleter
@@ -66,9 +55,14 @@ public:
 	~Node();
 
 	Scene &parent_scene;
-	Transform &transform;
-	CachedTransform &cached_transform;
-	CachedTransform &prev_cached_transform;
+	Util::AllocatedSlice transform;
+
+	Transform &get_transform();
+	mat4 &get_cached_transform();
+	mat4 &get_cached_prev_transform();
+	Transform *get_transform_base();
+	mat4 *get_skin_cached();
+	mat4 *get_skin_prev_cached();
 
 	void invalidate_cached_transform();
 	void add_child(Util::IntrusivePtr<Node> node);
@@ -92,10 +86,8 @@ public:
 
 	struct Skinning
 	{
-		CachedSkinTransform cached_skin_transform;
-		CachedSkinTransform prev_cached_skin_transform;
-		std::vector<const CachedTransform *> cached_skin;
-		std::vector<Transform *> skin;
+		Util::AllocatedSlice transform;
+		std::vector<uint32_t> skin;
 		std::vector<mat4> inverse_bind_poses;
 		Util::Hash skin_compat = 0;
 	};

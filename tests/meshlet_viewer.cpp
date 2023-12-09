@@ -110,9 +110,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			}
 
 			auto nodeptr = scene.create_node();
-			nodeptr->transform.translation = node.transform.translation;
-			nodeptr->transform.rotation = node.transform.rotation;
-			nodeptr->transform.scale = node.transform.scale;
+			auto &node_transform = nodeptr->get_transform();
+			node_transform.translation = node.transform.translation;
+			node_transform.rotation = node.transform.rotation;
+			node_transform.scale = node.transform.scale;
 			nodes.push_back(std::move(nodeptr));
 		}
 

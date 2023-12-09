@@ -60,7 +60,7 @@ void DeferredLights::refresh(const RenderContext &context, TaskComposer &)
 	float cluster_max = 0.0f;
 	for (auto &light : visible)
 	{
-		auto &aabb = light.transform->world_aabb;
+		auto &aabb = light.transform->get_aabb();
 		float to_center = dot(aabb.get_center() - params.camera_position, params.camera_front);
 		cluster_min = min(to_center, cluster_min);
 		cluster_max = max(to_center, cluster_max);
@@ -73,7 +73,7 @@ void DeferredLights::refresh(const RenderContext &context, TaskComposer &)
 	// Assign each renderable to a cluster index based on their position.
 	for (auto &light : visible)
 	{
-		auto &aabb = light.transform->world_aabb;
+		auto &aabb = light.transform->get_aabb();
 		float to_center = dot(aabb.get_center() - params.camera_position, params.camera_front);
 		int cluster_index = clamp(int((to_center - cluster_min) * cluster_inv_range), 0, NumClusters - 1);
 		clusters[cluster_index].push_back(light);

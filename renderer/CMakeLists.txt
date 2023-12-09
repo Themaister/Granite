@@ -10,7 +10,7 @@ add_granite_internal_lib(granite-renderer
         camera.hpp camera.cpp
         material.hpp
         abstract_renderable.hpp
-        render_components.hpp
+        render_components.hpp render_components.cpp
         mesh_util.hpp mesh_util.cpp
         material_util.hpp material_util.cpp
         renderer.hpp renderer.cpp

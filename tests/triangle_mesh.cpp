@@ -47,13 +47,13 @@ struct TriangleMeshApplication : Granite::Application, Granite::EventHandler
 		auto &device = wsi.get_device();
 		auto &features = device.get_device_features();
 
-		if ((features.subgroup_properties.supportedStages & VK_SHADER_STAGE_MESH_BIT_EXT) == 0)
+		if ((features.vk11_props.subgroupSupportedStages & VK_SHADER_STAGE_MESH_BIT_EXT) == 0)
 		{
 			LOGE("Subgroups not supported in mesh.\n");
 			return;
 		}
 
-		if ((features.subgroup_properties.supportedStages & VK_SHADER_STAGE_TASK_BIT_EXT) == 0)
+		if ((features.vk11_props.subgroupSupportedStages & VK_SHADER_STAGE_TASK_BIT_EXT) == 0)
 		{
 			LOGE("Subgroups not supported in task.\n");
 			return;

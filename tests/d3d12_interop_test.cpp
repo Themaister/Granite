@@ -253,7 +253,7 @@ int main()
 		return EXIT_FAILURE;
 	}
 
-	auto timeline = device.request_semaphore_external(VK_SEMAPHORE_TYPE_TIMELINE_KHR,
+	auto timeline = device.request_semaphore_external(VK_SEMAPHORE_TYPE_TIMELINE,
 	                                                  VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT);
 	if (!timeline)
 	{

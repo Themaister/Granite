@@ -717,10 +717,10 @@ bool DeviceAllocator::internal_allocate(
 		info.pNext = &priority_info;
 	}
 
-	if (device->get_device_features().buffer_device_address_features.bufferDeviceAddress &&
+	if (device->get_device_features().vk12_features.bufferDeviceAddress &&
 	    allocation_mode_supports_bda(mode))
 	{
-		flags_info.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
+		flags_info.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
 		flags_info.pNext = info.pNext;
 		info.pNext = &flags_info;
 	}

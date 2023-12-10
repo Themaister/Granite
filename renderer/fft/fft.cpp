@@ -200,7 +200,7 @@ void FFT::Impl::optimize_multi_fft(unsigned &multi_fft_x, unsigned &multi_fft_y,
 	unsigned split = split_first + split_second + split_third;
 
 	unsigned subgroup_size_log2 =
-			Util::floor_log2(std::max(1u, device->get_device_features().subgroup_properties.subgroupSize));
+			Util::floor_log2(std::max(1u, device->get_device_features().vk11_props.subgroupSize));
 	if (!subgroup_size_log2)
 		subgroup_size_log2 = 5;
 
@@ -231,7 +231,7 @@ void FFT::Impl::optimize_multi_fft(unsigned &multi_fft_x, unsigned &multi_fft_y,
 void FFT::Impl::optimize_multi_fft_resolve(unsigned &multi_fft_x, unsigned &multi_fft_y) const
 {
 	unsigned subgroup_size_log2 =
-			Util::floor_log2(std::max(1u, device->get_device_features().subgroup_properties.subgroupSize));
+			Util::floor_log2(std::max(1u, device->get_device_features().vk11_props.subgroupSize));
 	if (!subgroup_size_log2)
 		subgroup_size_log2 = 5;
 
@@ -254,8 +254,8 @@ void FFT::Impl::optimize_multi_fft_resolve(unsigned &multi_fft_x, unsigned &mult
 
 const char *FFT::Impl::get_fp16_define() const
 {
-	if (device->get_device_features().float16_int8_features.shaderFloat16 &&
-	    device->get_device_features().storage_16bit_features.storageBuffer16BitAccess)
+	if (device->get_device_features().vk12_features.shaderFloat16 &&
+	    device->get_device_features().vk11_features.storageBuffer16BitAccess)
 	{
 		return "FFT_FULL_FP16";
 	}

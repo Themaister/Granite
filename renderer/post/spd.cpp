@@ -34,22 +34,22 @@ bool supports_single_pass_downsample(Vulkan::Device &device, VkFormat format)
 
 	bool supports_full_group =
 			device.supports_subgroup_size_log2(true, 2, 7);
-	bool supports_compute = (features.subgroup_properties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0;
+	bool supports_compute = (features.vk11_props.subgroupSupportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0;
 
 	if (device.get_gpu_properties().limits.maxComputeWorkGroupSize[0] < 256)
 		return false;
 	if (!features.enabled_features.shaderStorageImageArrayDynamicIndexing)
 		return false;
 
-	VkFormatProperties3KHR props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3_KHR };
+	VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
 	device.get_format_properties(format, &props3);
-	if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT_KHR) == 0)
+	if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT) == 0)
 		return false;
-	if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT_KHR) == 0)
+	if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT) == 0)
 		return false;
 
 	constexpr VkSubgroupFeatureFlags required = VK_SUBGROUP_FEATURE_BASIC_BIT | VK_SUBGROUP_FEATURE_QUAD_BIT;
-	bool supports_quad_basic = (features.subgroup_properties.supportedOperations & required) == required;
+	bool supports_quad_basic = (features.vk11_props.subgroupSupportedOperations & required) == required;
 	return supports_full_group && supports_compute && supports_quad_basic;
 }
 

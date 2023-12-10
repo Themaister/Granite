@@ -486,13 +486,13 @@ void AnimationSystem::update(AnimationState *anim, double frame_time, double ela
 	{
 		auto *node = anim->skinned_node;
 		anim->animation.animate(anim->transforms_base,
-								node->get_skin()->skin.data(), node->get_skin()->skin.size(), float(offset));
+		                        node->get_skin()->skin.data(), node->get_skin()->skin.size(), float(offset));
 		node->invalidate_cached_transform();
 	}
 	else
 	{
 		anim->animation.animate(anim->transforms_base,
-								anim->channel_transforms.data(), anim->channel_transforms.size(), float(offset));
+		                        anim->channel_transforms.data(), anim->channel_transforms.size(), float(offset));
 		for (auto *node : anim->channel_nodes)
 			node->invalidate_cached_transform();
 	}
@@ -553,7 +553,7 @@ void AnimationSystem::animate(TaskComposer &composer, double frame_time, double 
 }
 
 AnimationSystem::AnimationState::AnimationState(const AnimationUnrolled &anim,
-												Transform *transforms_base_,
+                                                Transform *transforms_base_,
                                                 Util::SmallVector<uint32_t> channel_transforms_,
                                                 Util::SmallVector<Node *> channel_nodes_,
                                                 double start_time_)

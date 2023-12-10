@@ -231,7 +231,7 @@ int main()
 		{
 			// Synchronize with OpenGL. Export a handle.
 			auto ext_semaphore = device.request_semaphore_external(
-			    VK_SEMAPHORE_TYPE_BINARY_KHR, ExternalHandle::get_opaque_semaphore_handle_type());
+			    VK_SEMAPHORE_TYPE_BINARY, ExternalHandle::get_opaque_semaphore_handle_type());
 			device.submit_empty(CommandBuffer::Type::Generic, nullptr, ext_semaphore.get());
 			auto exported_semaphore = ext_semaphore->export_to_handle();
 
@@ -255,7 +255,7 @@ int main()
 		{
 			// Synchronize with OpenGL. Export a handle that GL can signal.
 			auto ext_semaphore = device.request_semaphore_external(
-			    VK_SEMAPHORE_TYPE_BINARY_KHR, ExternalHandle::get_opaque_semaphore_handle_type());
+			    VK_SEMAPHORE_TYPE_BINARY, ExternalHandle::get_opaque_semaphore_handle_type());
 			// Have to mark the semaphore is signalled since we assert on that being the case when exporting a semaphore.
 			ext_semaphore->signal_external();
 			auto exported_semaphore = ext_semaphore->export_to_handle();

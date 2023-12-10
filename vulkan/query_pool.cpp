@@ -253,7 +253,7 @@ bool PerformanceQueryPool::init_counters(const std::vector<std::string> &counter
 		return false;
 	}
 
-	if (!device->get_device_features().host_query_reset_features.hostQueryReset)
+	if (!device->get_device_features().vk12_features.hostQueryReset)
 	{
 		LOGE("Device does not support host query reset.\n");
 		return false;
@@ -321,7 +321,8 @@ QueryPool::QueryPool(Device *device_)
 	: device(device_)
 	, table(device_->get_device_table())
 {
-	supports_timestamp = device->get_gpu_properties().limits.timestampComputeAndGraphics;
+	supports_timestamp = device->get_gpu_properties().limits.timestampComputeAndGraphics &&
+	                     device->get_device_features().vk12_features.hostQueryReset;
 
 	// Ignore timestampValidBits and friends for now.
 	if (supports_timestamp)
@@ -355,8 +356,7 @@ void QueryPool::begin()
 		for (unsigned j = 0; j < pool.index; j++)
 			pool.cookies[j]->signal_timestamp_ticks(pool.query_results[j]);
 
-		if (device->get_device_features().host_query_reset_features.hostQueryReset)
-			table.vkResetQueryPoolEXT(device->get_device(), pool.pool, 0, pool.index);
+		table.vkResetQueryPool(device->get_device(), pool.pool, 0, pool.index);
 	}
 
 	pool_index = 0;
@@ -377,8 +377,7 @@ void QueryPool::add_pool()
 	pool.query_results.resize(pool.size);
 	pool.cookies.resize(pool.size);
 
-	if (device->get_device_features().host_query_reset_features.hostQueryReset)
-		table.vkResetQueryPoolEXT(device->get_device(), pool.pool, 0, pool.size);
+	table.vkResetQueryPool(device->get_device(), pool.pool, 0, pool.size);
 
 	pools.push_back(std::move(pool));
 }
@@ -404,11 +403,8 @@ QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageF
 	auto cookie = QueryPoolHandle(device->handle_pool.query.allocate(device, true));
 	pool.cookies[pool.index] = cookie;
 
-	if (!device->get_device_features().host_query_reset_features.hostQueryReset)
-		table.vkCmdResetQueryPool(cmd, pool.pool, pool.index, 1);
-
-	if (device->get_device_features().sync2_features.synchronization2)
-		table.vkCmdWriteTimestamp2KHR(cmd, stage, pool.pool, pool.index);
+	if (device->get_device_features().vk13_features.synchronization2)
+		table.vkCmdWriteTimestamp2(cmd, stage, pool.pool, pool.index);
 	else
 	{
 		table.vkCmdWriteTimestamp(cmd, static_cast<VkPipelineStageFlagBits>(convert_vk_src_stage2(stage)),

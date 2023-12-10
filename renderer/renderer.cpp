@@ -299,11 +299,11 @@ static const char *renderer_to_define(RendererType type)
 void Renderer::add_subgroup_defines(Vulkan::Device &device, std::vector<std::pair<std::string, int>> &defines,
                                     VkShaderStageFlagBits stage)
 {
-	auto &subgroup = device.get_device_features().subgroup_properties;
+	auto &vk11 = device.get_device_features().vk11_props;
 
-	if ((subgroup.supportedStages & stage) != 0 &&
+	if ((vk11.subgroupSupportedStages & stage) != 0 &&
 	    !ImplementationQuirks::get().force_no_subgroups &&
-	    subgroup.subgroupSize >= 4)
+	    vk11.subgroupSize >= 4)
 	{
 		const VkSubgroupFeatureFlags quad_required =
 				(stage & (VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT)) != 0 ?
@@ -316,11 +316,11 @@ void Renderer::add_subgroup_defines(Vulkan::Device &device, std::vector<std::pai
 				VK_SUBGROUP_FEATURE_VOTE_BIT |
 				VK_SUBGROUP_FEATURE_ARITHMETIC_BIT;
 
-		if ((subgroup.supportedOperations & required) == required)
+		if ((vk11.subgroupSupportedOperations & required) == required)
 			defines.emplace_back("SUBGROUP_OPS", 1);
 
 		if (!ImplementationQuirks::get().force_no_subgroup_shuffle)
-			if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_SHUFFLE_BIT) != 0)
+			if ((vk11.subgroupSupportedOperations & VK_SUBGROUP_FEATURE_SHUFFLE_BIT) != 0)
 				defines.emplace_back("SUBGROUP_SHUFFLE", 1);
 
 		if (stage == VK_SHADER_STAGE_FRAGMENT_BIT)
@@ -337,7 +337,7 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 	if (device)
 	{
 		// Safe early-discard.
-		if (device->get_device_features().demote_to_helper_invocation_features.shaderDemoteToHelperInvocation)
+		if (device->get_device_features().vk13_features.shaderDemoteToHelperInvocation)
 			global_defines.emplace_back("DEMOTE", 1);
 		add_subgroup_defines(*device, global_defines, VK_SHADER_STAGE_FRAGMENT_BIT);
 	}
@@ -872,14 +872,14 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	                                                              "builtin://shaders/lights/directional.frag");
 
 	auto &light = *context.get_lighting_parameters();
-	auto &subgroup = device.get_device_features().subgroup_properties;
+	auto &vk11 = device.get_device_features().vk11_props;
 
 	std::vector<std::pair<std::string, int>> defines;
 	if (light.shadows && light.shadows->get_create_info().layers > 1)
 	{
 		defines.emplace_back("SHADOW_CASCADES", 1);
-		if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0 &&
-		    (subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
+		if ((vk11.subgroupSupportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0 &&
+		    (vk11.subgroupSupportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
 		    !ImplementationQuirks::get().force_no_subgroups)
 		{
 			// For cascaded shadows.

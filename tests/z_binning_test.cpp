@@ -35,7 +35,7 @@ static int main_inner()
 	constexpr bool UseOptimized = true;
 	bool support_optimized =
 	    UseOptimized &&
-		(features.subgroup_properties.supportedOperations & required) == required &&
+		(features.vk11_props.subgroupSupportedOperations & required) == required &&
 		device.supports_subgroup_size_log2(true, 5, 7);
 
 	auto cmd = device.request_command_buffer();

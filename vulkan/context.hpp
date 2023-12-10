@@ -49,82 +49,55 @@ namespace Vulkan
 struct DeviceFeatures
 {
 	bool supports_debug_utils = false;
-	bool supports_mirror_clamp_to_edge = false;
 	bool supports_external_memory_host = false;
 	bool supports_surface_capabilities2 = false;
 	bool supports_full_screen_exclusive = false;
-	bool supports_descriptor_indexing = false;
 	bool supports_conservative_rasterization = false;
-	bool supports_draw_indirect_count = false;
-	bool supports_driver_properties = false;
 	bool supports_calibrated_timestamps = false;
 	bool supports_memory_budget = false;
-	bool supports_astc_decode_mode = false;
-	bool supports_sync2 = false;
-	bool supports_create_renderpass2 = false;
 	bool supports_video_queue = false;
+	bool supports_driver_properties = false;
 	bool supports_video_decode_queue = false;
 	bool supports_video_decode_h264 = false;
 	bool supports_video_decode_h265 = false;
+	bool supports_astc_decode_mode = false;
+	bool supports_image_format_list = false;
+	bool supports_format_feature_flags2 = false;
 #ifdef VK_ENABLE_BETA_EXTENSIONS
 	bool supports_video_encode_queue = false;
 	bool supports_video_encode_h264 = false;
 	bool supports_video_encode_h265 = false;
 #endif
-	bool supports_pipeline_creation_cache_control = false;
-	bool supports_format_feature_flags2 = false;
 	bool supports_external = false;
-	bool supports_image_format_list = false;
-	bool supports_shader_float_control = false;
 	bool supports_tooling_info = false;
 	bool supports_hdr_metadata = false;
 	bool supports_swapchain_colorspace = false;
 	bool supports_surface_maintenance1 = false;
-	bool supports_spirv_1_4 = false;
 
-	// Vulkan 1.1 core
 	VkPhysicalDeviceFeatures enabled_features = {};
-	VkPhysicalDeviceMultiviewFeatures multiview_features = {};
-	VkPhysicalDeviceShaderDrawParametersFeatures shader_draw_parameters_features = {};
-	VkPhysicalDeviceSamplerYcbcrConversionFeatures sampler_ycbcr_conversion_features = {};
-	VkPhysicalDeviceMultiviewProperties multiview_properties = {};
-	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
+
+	VkPhysicalDeviceVulkan11Features vk11_features = {};
+	VkPhysicalDeviceVulkan12Features vk12_features = {};
+	VkPhysicalDeviceVulkan13Features vk13_features = {};
+	VkPhysicalDeviceVulkan11Properties vk11_props = {};
+	VkPhysicalDeviceVulkan12Properties vk12_props = {};
+	VkPhysicalDeviceVulkan13Properties vk13_props = {};
 
 	// KHR
-	VkPhysicalDeviceTimelineSemaphoreFeaturesKHR timeline_semaphore_features = {};
 	VkPhysicalDevicePerformanceQueryFeaturesKHR performance_query_features = {};
-	VkPhysicalDeviceDriverPropertiesKHR driver_properties = {};
-	VkPhysicalDeviceSynchronization2FeaturesKHR sync2_features = {};
 	VkPhysicalDevicePresentIdFeaturesKHR present_id_features = {};
 	VkPhysicalDevicePresentWaitFeaturesKHR present_wait_features = {};
-	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
-	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};
-	VkPhysicalDeviceFloat16Int8FeaturesKHR float16_int8_features = {};
-	VkPhysicalDeviceFloatControlsPropertiesKHR float_control_properties = {};
-	VkPhysicalDeviceBufferDeviceAddressFeaturesKHR buffer_device_address_features = {};
-	VkPhysicalDeviceIDProperties id_properties = {};
-	VkPhysicalDeviceShaderSubgroupExtendedTypesFeaturesKHR shader_subgroup_extended_types_features = {};
-	VkPhysicalDeviceIndexTypeUint8FeaturesEXT index_type_uint8_features = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};
-	VkPhysicalDeviceSubgroupSizeControlFeaturesEXT subgroup_size_control_features = {};
-	VkPhysicalDeviceSubgroupSizeControlPropertiesEXT subgroup_size_control_properties = {};
-	VkPhysicalDeviceHostQueryResetFeaturesEXT host_query_reset_features = {};
-	VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT demote_to_helper_invocation_features = {};
-	VkPhysicalDeviceScalarBlockLayoutFeaturesEXT scalar_block_features = {};
-	VkPhysicalDeviceUniformBufferStandardLayoutFeaturesKHR ubo_std430_features = {};
-	VkPhysicalDeviceDescriptorIndexingFeaturesEXT descriptor_indexing_features = {};
-	VkPhysicalDeviceDescriptorIndexingPropertiesEXT descriptor_indexing_properties = {};
 	VkPhysicalDeviceConservativeRasterizationPropertiesEXT conservative_rasterization_properties = {};
 	VkPhysicalDeviceMemoryPriorityFeaturesEXT memory_priority_features = {};
 	VkPhysicalDeviceASTCDecodeFeaturesEXT astc_decode_features = {};
-	VkPhysicalDeviceTextureCompressionASTCHDRFeaturesEXT astc_hdr_features = {};
-	VkPhysicalDevicePipelineCreationCacheControlFeaturesEXT pipeline_creation_cache_control_features = {};
 	VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT swapchain_maintenance1_features = {};
 	VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT pageable_device_local_memory_features = {};
 	VkPhysicalDeviceMeshShaderFeaturesEXT mesh_shader_features = {};
 	VkPhysicalDeviceMeshShaderPropertiesEXT mesh_shader_properties = {};
+	VkPhysicalDeviceIndexTypeUint8FeaturesEXT index_type_uint8_features = {};
 
 	// Vendor
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};
@@ -132,12 +105,20 @@ struct DeviceFeatures
 	VkPhysicalDeviceDeviceGeneratedCommandsComputeFeaturesNV device_generated_commands_compute_features = {};
 	VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV device_generated_commands_properties = {};
 
+	// Fallback feature structs (Vulkan 1.1)
+	VkPhysicalDeviceHostQueryResetFeatures host_query_reset_features = {};
+
+	VkDriverId driver_id = {};
+
 	// References Vulkan::Context.
 	const VkPhysicalDeviceFeatures2 *pdf2 = nullptr;
 	const char * const * instance_extensions = nullptr;
 	uint32_t num_instance_extensions = 0;
 	const char * const * device_extensions = nullptr;
 	uint32_t num_device_extensions = 0;
+
+	uint32_t instance_api_core_version = VK_API_VERSION_1_1;
+	uint32_t device_api_core_version = VK_API_VERSION_1_1;
 };
 
 enum VendorID
@@ -360,7 +341,6 @@ private:
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
 	VolkDeviceTable device_table = {};
 	SystemHandles handles;
-
 	VkPhysicalDeviceProperties gpu_props = {};
 	VkPhysicalDeviceMemoryProperties mem_props = {};
 
@@ -390,8 +370,8 @@ private:
 #endif
 	std::function<void (const char *)> message_callback;
 
-	void destroy();
-	void check_descriptor_indexing_features();
+	void destroy_instance();
+	void destroy_device();
 
 	bool physical_device_supports_surface_and_profile(VkPhysicalDevice candidate_gpu, VkSurfaceKHR surface) const;
 
@@ -404,6 +384,8 @@ private:
 	bool init_profile();
 	VkResult create_instance_from_profile(const VkInstanceCreateInfo &info, VkInstance *pInstance);
 	VkResult create_device_from_profile(const VkDeviceCreateInfo &info, VkDevice *pDevice);
+
+	VkApplicationInfo get_promoted_application_info() const;
 };
 
 using ContextHandle = Util::IntrusivePtr<Context>;

@@ -44,7 +44,7 @@ using namespace Granite;
 
 static void print_help()
 {
-	LOGE("slangmosh <desc.json> [-O] [--strip] [--spv14] [--output header.hpp] [--help] [--output-interface interface.hpp]\n");
+	LOGE("slangmosh <desc.json> [-O] [--strip] [--vk13] [--output header.hpp] [--help] [--output-interface interface.hpp]\n");
 }
 
 struct ShaderVariant
@@ -675,7 +675,7 @@ static int main_inner(int argc, char **argv)
 	cbs.add("--output", [&](CLIParser &parser) { output_path = parser.next_string(); });
 	cbs.add("-O", [&](CLIParser &) { opt = true; });
 	cbs.add("--strip", [&](CLIParser &) { strip = true; });
-	cbs.add("--spv14", [&](CLIParser &) { target = Target::Vulkan11_Spirv14; });
+	cbs.add("--vk13", [&](CLIParser &) { target = Target::Vulkan13; });
 	cbs.add("--namespace", [&](CLIParser &parser) { generated_namespace = parser.next_string(); });
 	cbs.add("--output-interface", [&](CLIParser &parser) { output_interface_path = parser.next_string(); });
 	cbs.default_handler = [&](const char *str) { input_path = str; };

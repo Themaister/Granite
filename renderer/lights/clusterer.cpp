@@ -1661,7 +1661,7 @@ void LightClusterer::update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd
 	constexpr VkSubgroupFeatureFlags required =
 		VK_SUBGROUP_FEATURE_SHUFFLE_BIT |
 		VK_SUBGROUP_FEATURE_BASIC_BIT;
-	if ((features.subgroup_properties.supportedOperations & required) == required &&
+	if ((features.vk11_props.subgroupSupportedOperations & required) == required &&
 	    cmd.get_device().supports_subgroup_size_log2(true, 5, 7))
 	{
 		cmd.set_program("builtin://shaders/lights/clusterer_bindless_z_range_opt.comp");
@@ -1780,8 +1780,8 @@ void LightClusterer::update_bindless_mask_buffer_decal_gpu(Vulkan::CommandBuffer
 	constexpr VkSubgroupFeatureFlags required = VK_SUBGROUP_FEATURE_BALLOT_BIT | VK_SUBGROUP_FEATURE_BASIC_BIT |
 	                                            VK_SUBGROUP_FEATURE_SHUFFLE_BIT;
 
-	if ((features.subgroup_properties.supportedOperations & required) == required &&
-	    (features.subgroup_properties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0)
+	if ((features.vk11_props.subgroupSupportedOperations & required) == required &&
+	    (features.vk11_props.subgroupSupportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0)
 	{
 		// Our desired range is either 32 threads or 64 threads, 32 threads is preferred.
 
@@ -1881,8 +1881,8 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 
 	constexpr VkSubgroupFeatureFlags required = VK_SUBGROUP_FEATURE_BALLOT_BIT | VK_SUBGROUP_FEATURE_BASIC_BIT;
 
-	if ((features.subgroup_properties.supportedOperations & required) == required &&
-	    (features.subgroup_properties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0)
+	if ((features.vk11_props.subgroupSupportedOperations & required) == required &&
+	    (features.vk11_props.subgroupSupportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0)
 	{
 		// Our desired range is either 32 threads or 64 threads, 32 threads is preferred.
 

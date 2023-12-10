@@ -46,7 +46,7 @@ static bool run_test(Device &producer, Device &consumer)
 	// Fallback to binary if we have to.
 
 	write_timeline = producer.request_semaphore_external(
-		VK_SEMAPHORE_TYPE_TIMELINE_KHR,
+		VK_SEMAPHORE_TYPE_TIMELINE,
 		ExternalHandle::get_opaque_semaphore_handle_type());
 
 	if (write_timeline)
@@ -56,7 +56,7 @@ static bool run_test(Device &producer, Device &consumer)
 		{
 			// No reason for this to fail if we can export timeline ...
 			read_timeline = consumer.request_semaphore_external(
-			    VK_SEMAPHORE_TYPE_TIMELINE_KHR,
+			    VK_SEMAPHORE_TYPE_TIMELINE,
 			    ExternalHandle::get_opaque_semaphore_handle_type());
 
 			if (!read_timeline)
@@ -148,7 +148,7 @@ static bool run_test(Device &producer, Device &consumer)
 		                                         VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 		producer.submit(fill_cmd);
 		auto external = producer.request_semaphore_external(
-		    VK_SEMAPHORE_TYPE_BINARY_KHR, ExternalHandle::get_opaque_semaphore_handle_type());
+		    VK_SEMAPHORE_TYPE_BINARY, ExternalHandle::get_opaque_semaphore_handle_type());
 		producer.submit_empty(CommandBuffer::Type::Generic, nullptr, external.get());
 
 		ExternalHandle handle = external->export_to_handle();
@@ -157,7 +157,7 @@ static bool run_test(Device &producer, Device &consumer)
 
 		// Consume
 		auto import = consumer.request_semaphore_external(
-			VK_SEMAPHORE_TYPE_BINARY_KHR, ExternalHandle::get_opaque_semaphore_handle_type());
+			VK_SEMAPHORE_TYPE_BINARY, ExternalHandle::get_opaque_semaphore_handle_type());
 		if (!import->import_from_handle(handle))
 		{
 			close_native_handle(handle.handle);
@@ -191,7 +191,7 @@ static bool run_test(Device &producer, Device &consumer)
 			// Binary path.
 
 			external = consumer.request_semaphore_external(
-				VK_SEMAPHORE_TYPE_BINARY_KHR, ExternalHandle::get_opaque_semaphore_handle_type());
+				VK_SEMAPHORE_TYPE_BINARY, ExternalHandle::get_opaque_semaphore_handle_type());
 			consumer.submit_empty(CommandBuffer::Type::AsyncTransfer, nullptr, external.get());
 
 			handle = external->export_to_handle();
@@ -199,7 +199,7 @@ static bool run_test(Device &producer, Device &consumer)
 				break;
 
 			import = producer.request_semaphore_external(
-			    VK_SEMAPHORE_TYPE_BINARY_KHR, ExternalHandle::get_opaque_semaphore_handle_type());
+			    VK_SEMAPHORE_TYPE_BINARY, ExternalHandle::get_opaque_semaphore_handle_type());
 			if (!import->import_from_handle(handle))
 			{
 				close_native_handle(handle.handle);

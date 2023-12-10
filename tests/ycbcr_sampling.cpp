@@ -53,7 +53,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 
 	void on_module_created(const DeviceShaderModuleReadyEvent &e)
 	{
-		if (!e.get_device().get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+		if (!e.get_device().get_device_features().vk11_features.samplerYcbcrConversion)
 		{
 			LOGE("YCbCr sampling not supported!\n");
 			std::terminate();

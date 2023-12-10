@@ -105,7 +105,7 @@ private:
 	struct AnimationState : Util::IntrusiveUnorderedArrayEnabled
 	{
 		AnimationState(const AnimationUnrolled &anim,
-					   Transform *transforms_base_,
+		               Transform *transforms_base_,
 		               Util::SmallVector<uint32_t> channel_transforms_,
 		               Util::SmallVector<Node *> channel_nodes_,
 		               double start_time_);

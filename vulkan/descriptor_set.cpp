@@ -45,7 +45,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 			per_thread.emplace_back(new PerThread);
 	}
 
-	if (bindless && !device->get_device_features().supports_descriptor_indexing)
+	if (bindless && !device->get_device_features().vk12_features.descriptorIndexing)
 	{
 		LOGE("Cannot support descriptor indexing on this device.\n");
 		return;

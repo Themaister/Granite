@@ -56,8 +56,8 @@ CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCa
 	// This needs to affect hashing to make Fossilize path behave as expected.
 	auto &features = device->get_device_features();
 	pipeline_state.subgroup_size_tag =
-			(features.subgroup_size_control_properties.minSubgroupSize << 0) |
-			(features.subgroup_size_control_properties.maxSubgroupSize << 8);
+			(features.vk13_props.minSubgroupSize << 0) |
+			(features.vk13_props.maxSubgroupSize << 8);
 
 	device->lock.read_only_cache.lock_read();
 }
@@ -394,7 +394,7 @@ void CommandBuffer::barrier(const VkDependencyInfo &dep)
 	}
 #endif
 
-	if (device->get_device_features().sync2_features.synchronization2)
+	if (device->get_device_features().vk13_features.synchronization2)
 	{
 		Util::SmallVector<VkBufferMemoryBarrier2> tmp_buffer;
 		Util::SmallVector<VkImageMemoryBarrier2> tmp_image;
@@ -458,7 +458,7 @@ void CommandBuffer::barrier(const VkDependencyInfo &dep)
 			}
 		}
 
-		table.vkCmdPipelineBarrier2KHR(cmd, final_dep);
+		table.vkCmdPipelineBarrier2(cmd, final_dep);
 	}
 	else
 	{
@@ -1128,7 +1128,7 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 	// we must assume compilation can be synchronous.
 	if (mode == CompileMode::FailOnCompileRequired &&
 	    (device->get_workarounds().broken_pipeline_cache_control ||
-	     !device->get_device_features().pipeline_creation_cache_control_features.pipelineCreationCacheControl))
+	     !device->get_device_features().vk13_features.pipelineCreationCacheControl))
 	{
 		return {};
 	}
@@ -1166,7 +1166,7 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 		spec_info.dataSize = spec_info.mapEntryCount * sizeof(uint32_t);
 	}
 
-	VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT subgroup_size_info;
+	VkPipelineShaderStageRequiredSubgroupSizeCreateInfo subgroup_size_info;
 
 	if (compile.static_state.state.subgroup_control_size)
 	{
@@ -1189,7 +1189,7 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 	auto &table = device->get_device_table();
 
 	if (mode == CompileMode::FailOnCompileRequired)
-		info.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_EXT;
+		info.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
 
 	auto start_ts = Util::get_current_time_nsecs();
 	VkResult vr = table.vkCreateComputePipelines(device->get_device(), compile.cache, 1, &info, nullptr, &compute_pipeline);
@@ -1227,7 +1227,7 @@ void CommandBuffer::extract_pipeline_state(DeferredPipelineCompile &compile) con
 
 bool CommandBuffer::setup_subgroup_size_control(
 		Vulkan::Device &device, VkPipelineShaderStageCreateInfo &stage_info,
-		VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT &required_info,
+		VkPipelineShaderStageRequiredSubgroupSizeCreateInfo &required_info,
 		VkShaderStageFlagBits stage, bool full_group,
 		unsigned min_size_log2, unsigned max_size_log2)
 {
@@ -1237,22 +1237,22 @@ bool CommandBuffer::setup_subgroup_size_control(
 	auto &features = device.get_device_features();
 
 	if (full_group)
-		stage_info.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
+		stage_info.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT;
 
 	uint32_t min_subgroups = 1u << min_size_log2;
 	uint32_t max_subgroups = 1u << max_size_log2;
-	if (min_subgroups <= features.subgroup_size_control_properties.minSubgroupSize &&
-	    max_subgroups >= features.subgroup_size_control_properties.maxSubgroupSize)
+	if (min_subgroups <= features.vk13_props.minSubgroupSize &&
+	    max_subgroups >= features.vk13_props.maxSubgroupSize)
 	{
-		stage_info.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT_EXT;
+		stage_info.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT;
 	}
 	else
 	{
-		required_info = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT };
+		required_info = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO };
 
 		// Pick a fixed subgroup size. Prefer smallest subgroup size.
-		if (min_subgroups < features.subgroup_size_control_properties.minSubgroupSize)
-			required_info.requiredSubgroupSize = features.subgroup_size_control_properties.minSubgroupSize;
+		if (min_subgroups < features.vk13_props.minSubgroupSize)
+			required_info.requiredSubgroupSize = features.vk13_props.minSubgroupSize;
 		else
 			required_info.requiredSubgroupSize = min_subgroups;
 
@@ -1273,7 +1273,7 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	// we must assume compilation can be synchronous.
 	if (mode == CompileMode::FailOnCompileRequired &&
 	    (device->get_workarounds().broken_pipeline_cache_control ||
-	     !device->get_device_features().pipeline_creation_cache_control_features.pipelineCreationCacheControl))
+	     !device->get_device_features().vk13_features.pipelineCreationCacheControl))
 	{
 		return {};
 	}
@@ -1438,8 +1438,8 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	VkSpecializationMapEntry spec_entries[ecast(ShaderStage::Count)][VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
 	uint32_t spec_constants[Util::ecast(ShaderStage::Count)][VULKAN_NUM_TOTAL_SPEC_CONSTANTS];
 
-	VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT subgroup_size_info_task;
-	VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT subgroup_size_info_mesh;
+	VkPipelineShaderStageRequiredSubgroupSizeCreateInfo subgroup_size_info_task;
+	VkPipelineShaderStageRequiredSubgroupSizeCreateInfo subgroup_size_info_mesh;
 
 	for (unsigned i = 0; i < Util::ecast(ShaderStage::Count); i++)
 	{
@@ -1479,7 +1479,7 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 
 			if (stage == ShaderStage::Mesh || stage == ShaderStage::Task)
 			{
-				VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT *required_info;
+				VkPipelineShaderStageRequiredSubgroupSizeCreateInfo *required_info;
 				unsigned min_size_log2, max_size_log2;
 				bool size_enabled, full_group;
 
@@ -1589,7 +1589,7 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	auto &table = device->get_device_table();
 
 	if (mode == CompileMode::FailOnCompileRequired)
-		pipe.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_EXT;
+		pipe.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
 
 	auto start_ts = Util::get_current_time_nsecs();
 	VkResult res = table.vkCreateGraphicsPipelines(device->get_device(), compile.cache, 1, &pipe, nullptr, &pipeline);
@@ -1928,9 +1928,9 @@ void CommandBuffer::wait_events(uint32_t count, const PipelineEvent *events, con
 		for (uint32_t i = 0; i < count; i++)
 			barrier(deps[i]);
 	}
-	else if (device->get_device_features().sync2_features.synchronization2)
+	else if (device->get_device_features().vk13_features.synchronization2)
 	{
-		table.vkCmdWaitEvents2KHR(cmd, count, vk_events.data(), deps);
+		table.vkCmdWaitEvents2(cmd, count, vk_events.data(), deps);
 	}
 	else
 	{
@@ -1953,9 +1953,9 @@ PipelineEvent CommandBuffer::signal_event(const VkDependencyInfo &dep)
 
 	if (!device->get_workarounds().emulate_event_as_pipeline_barrier)
 	{
-		if (device->get_device_features().sync2_features.synchronization2)
+		if (device->get_device_features().vk13_features.synchronization2)
 		{
-			table.vkCmdSetEvent2KHR(cmd, event->get_event(), &dep);
+			table.vkCmdSetEvent2(cmd, event->get_event(), &dep);
 		}
 		else
 		{
@@ -2775,7 +2775,7 @@ void CommandBuffer::draw_multi_indirect(const Buffer &buffer, VkDeviceSize offse
                                         const Buffer &count, VkDeviceSize count_offset)
 {
 	VK_ASSERT(!is_compute);
-	if (!get_device().get_device_features().supports_draw_indirect_count)
+	if (!get_device().get_device_features().vk12_features.drawIndirectCount)
 	{
 		LOGE("VK_KHR_draw_indirect_count not supported, dropping draw call.\n");
 		return;
@@ -2784,9 +2784,9 @@ void CommandBuffer::draw_multi_indirect(const Buffer &buffer, VkDeviceSize offse
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
-		table.vkCmdDrawIndirectCountKHR(cmd, buffer.get_buffer(), offset,
-		                                count.get_buffer(), count_offset,
-		                                draw_count, stride);
+		table.vkCmdDrawIndirectCount(cmd, buffer.get_buffer(), offset,
+		                             count.get_buffer(), count_offset,
+		                             draw_count, stride);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -2796,7 +2796,7 @@ void CommandBuffer::draw_indexed_multi_indirect(const Buffer &buffer, VkDeviceSi
                                                 const Buffer &count, VkDeviceSize count_offset)
 {
 	VK_ASSERT(!is_compute);
-	if (!get_device().get_device_features().supports_draw_indirect_count)
+	if (!get_device().get_device_features().vk12_features.drawIndirectCount)
 	{
 		LOGE("VK_KHR_draw_indirect_count not supported, dropping draw call.\n");
 		return;
@@ -2805,9 +2805,9 @@ void CommandBuffer::draw_indexed_multi_indirect(const Buffer &buffer, VkDeviceSi
 	if (flush_render_state(true) != VK_NULL_HANDLE)
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
-		table.vkCmdDrawIndexedIndirectCountKHR(cmd, buffer.get_buffer(), offset,
-		                                       count.get_buffer(), count_offset,
-		                                       draw_count, stride);
+		table.vkCmdDrawIndexedIndirectCount(cmd, buffer.get_buffer(), offset,
+		                                    count.get_buffer(), count_offset,
+		                                    draw_count, stride);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");

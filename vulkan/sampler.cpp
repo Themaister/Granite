@@ -128,7 +128,7 @@ ImmutableYcbcrConversion::ImmutableYcbcrConversion(Util::Hash hash, Device *devi
                                                    const VkSamplerYcbcrConversionCreateInfo &info)
 	: HashedObject<ImmutableYcbcrConversion>(hash), device(device_)
 {
-	if (device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+	if (device->get_device_features().vk11_features.samplerYcbcrConversion)
 	{
 		if (device->get_device_table().vkCreateSamplerYcbcrConversion(device->get_device(), &info, nullptr,
 		                                                              &conversion) != VK_SUCCESS)

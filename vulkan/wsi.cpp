@@ -271,17 +271,19 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 
 	VkSurfaceKHR tmp_surface = platform->create_surface(new_context->get_instance(), VK_NULL_HANDLE);
 
-	if (!new_context->init_device(
+	bool ret = new_context->init_device(
 			VK_NULL_HANDLE, tmp_surface,
 			device_ext.data(), device_ext.size(),
-			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT | video_context_flags))
+			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT | video_context_flags);
+
+	if (tmp_surface)
+		platform->destroy_surface(new_context->get_instance(), tmp_surface);
+
+	if (!ret)
 	{
 		LOGE("Failed to create Vulkan device.\n");
 		return false;
 	}
-
-	if (tmp_surface)
-		platform->destroy_surface(new_context->get_instance(), tmp_surface);
 
 	return init_from_existing_context(std::move(new_context));
 }
@@ -1016,7 +1018,7 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		const char *exclusive = getenv("GRANITE_EXCLUSIVE_FULL_SCREEN");
 		bool prefer_exclusive = (exclusive && strtoul(exclusive, nullptr, 0) != 0) || low_latency_mode_enable;
 
-		if (ext.driver_properties.driverID == VK_DRIVER_ID_AMD_PROPRIETARY_KHR && format == BackbufferFormat::HDR10)
+		if (ext.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY && format == BackbufferFormat::HDR10)
 		{
 			LOGI("Win32: HDR requested on AMD Windows. Forcing exclusive fullscreen, or HDR will not work properly.\n");
 			prefer_exclusive = true;

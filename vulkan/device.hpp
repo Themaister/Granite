@@ -129,7 +129,7 @@ class BatchComposer
 public:
 	enum { MaxSubmissions = 8 };
 
-	explicit BatchComposer(bool split_binary_timeline_semaphores);
+	BatchComposer();
 	void add_wait_submissions(WaitSemaphores &sem);
 	void add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags2 stage);
 	void add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags2 stage);
@@ -148,10 +148,6 @@ private:
 	Util::SmallVector<VkCommandBufferSubmitInfo> cmds[MaxSubmissions];
 
 	unsigned submit_index = 0;
-	bool split_binary_timeline_semaphores = false;
-
-	bool has_timeline_semaphore_in_batch(unsigned index) const;
-	bool has_binary_semaphore_in_batch(unsigned index) const;
 };
 }
 

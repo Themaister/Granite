@@ -97,9 +97,9 @@ Device::Device()
 	cookie.store(0);
 }
 
-Semaphore Device::request_semaphore(VkSemaphoreTypeKHR type, VkSemaphore vk_semaphore, bool transfer_ownership)
+Semaphore Device::request_semaphore(VkSemaphoreType type, VkSemaphore vk_semaphore, bool transfer_ownership)
 {
-	if (type == VK_SEMAPHORE_TYPE_TIMELINE_KHR && !ext.timeline_semaphore_features.timelineSemaphore)
+	if (type == VK_SEMAPHORE_TYPE_TIMELINE && !ext.vk12_features.timelineSemaphore)
 	{
 		LOGE("Timeline semaphores not supported.\n");
 		return Semaphore{};
@@ -107,17 +107,17 @@ Semaphore Device::request_semaphore(VkSemaphoreTypeKHR type, VkSemaphore vk_sema
 
 	if (vk_semaphore == VK_NULL_HANDLE)
 	{
-		if (type == VK_SEMAPHORE_TYPE_BINARY_KHR)
+		if (type == VK_SEMAPHORE_TYPE_BINARY)
 		{
 			LOCK();
 			vk_semaphore = managers.semaphore.request_cleared_semaphore();
 		}
 		else
 		{
-			VkSemaphoreTypeCreateInfoKHR type_info = { VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO_KHR };
+			VkSemaphoreTypeCreateInfo type_info = { VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO };
 			VkSemaphoreCreateInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
 			info.pNext = &type_info;
-			type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE_KHR;
+			type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
 			type_info.initialValue = 0;
 			if (table->vkCreateSemaphore(device, &info, nullptr, &vk_semaphore) != VK_SUCCESS)
 			{
@@ -128,7 +128,7 @@ Semaphore Device::request_semaphore(VkSemaphoreTypeKHR type, VkSemaphore vk_sema
 		transfer_ownership = true;
 	}
 
-	if (type == VK_SEMAPHORE_TYPE_BINARY_KHR)
+	if (type == VK_SEMAPHORE_TYPE_BINARY)
 	{
 		Semaphore ptr(handle_pool.semaphores.allocate(this, vk_semaphore, false, transfer_ownership));
 		return ptr;
@@ -143,16 +143,16 @@ Semaphore Device::request_semaphore(VkSemaphoreTypeKHR type, VkSemaphore vk_sema
 
 Semaphore Device::request_timeline_semaphore_as_binary(const SemaphoreHolder &holder, uint64_t value)
 {
-	VK_ASSERT(holder.get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE_KHR);
+	VK_ASSERT(holder.get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE);
 	VK_ASSERT(holder.is_proxy_timeline());
 	Semaphore ptr(handle_pool.semaphores.allocate(this, value, holder.get_semaphore(), false));
 	return ptr;
 }
 
-Semaphore Device::request_semaphore_external(VkSemaphoreTypeKHR type,
+Semaphore Device::request_semaphore_external(VkSemaphoreType type,
                                              VkExternalSemaphoreHandleTypeFlagBits handle_type)
 {
-	if (type == VK_SEMAPHORE_TYPE_TIMELINE_KHR && !ext.timeline_semaphore_features.timelineSemaphore)
+	if (type == VK_SEMAPHORE_TYPE_TIMELINE && !ext.vk12_features.timelineSemaphore)
 	{
 		LOGE("Timeline semaphores not supported.\n");
 		return Semaphore{};
@@ -164,7 +164,7 @@ Semaphore Device::request_semaphore_external(VkSemaphoreTypeKHR type,
 		return Semaphore{};
 	}
 
-	VkSemaphoreTypeCreateInfoKHR type_info = { VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO_KHR };
+	VkSemaphoreTypeCreateInfo type_info = { VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO };
 	type_info.semaphoreType = type;
 	VkExternalSemaphoreFeatureFlags features;
 
@@ -175,7 +175,7 @@ Semaphore Device::request_semaphore_external(VkSemaphoreTypeKHR type,
 
 		// Workaround AMD Windows bug where it reports TIMELINE as not supported.
 		// D3D12_FENCE used to be BINARY type before timelines were introduced to Vulkan.
-		if (type != VK_SEMAPHORE_TYPE_BINARY_KHR && handle_type != VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT)
+		if (type != VK_SEMAPHORE_TYPE_BINARY && handle_type != VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT)
 			info.pNext = &type_info;
 		vkGetPhysicalDeviceExternalSemaphoreProperties(gpu, &info, &props);
 
@@ -198,7 +198,7 @@ Semaphore Device::request_semaphore_external(VkSemaphoreTypeKHR type,
 		info.pNext = &export_info;
 	}
 
-	if (type != VK_SEMAPHORE_TYPE_BINARY_KHR)
+	if (type != VK_SEMAPHORE_TYPE_BINARY)
 	{
 		type_info.pNext = info.pNext;
 		info.pNext = &type_info;
@@ -211,7 +211,7 @@ Semaphore Device::request_semaphore_external(VkSemaphoreTypeKHR type,
 		return Semaphore{};
 	}
 
-	if (type == VK_SEMAPHORE_TYPE_TIMELINE_KHR)
+	if (type == VK_SEMAPHORE_TYPE_TIMELINE)
 	{
 		Semaphore ptr(handle_pool.semaphores.allocate(this, 0, semaphore, true));
 		ptr->set_external_object_compatible(handle_type, features);
@@ -867,27 +867,19 @@ void Device::init_workarounds()
 	if (gpu_props.vendorID == VENDOR_ID_ARM)
 	{
 		LOGW("Workaround applied: Emulating events as pipeline barriers.\n");
-
-		// Both are performance related workarounds.
 		workarounds.emulate_event_as_pipeline_barrier = true;
-
-		if (ext.timeline_semaphore_features.timelineSemaphore)
-		{
-			LOGW("Workaround applied: Split binary timeline semaphores.\n");
-			workarounds.split_binary_timeline_semaphores = true;
-		}
 	}
-	else if (ext.driver_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
+	else if (ext.driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
 	{
 		LOGW("Disabling pipeline cache control.\n");
 		workarounds.broken_pipeline_cache_control = true;
 	}
-	else if (((ext.driver_properties.driverID == VK_DRIVER_ID_MESA_RADV ||
-	           ext.driver_properties.driverID == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA ||
-	           ext.driver_properties.driverID == VK_DRIVER_ID_MESA_TURNIP) &&
+	else if (((ext.driver_id == VK_DRIVER_ID_MESA_RADV ||
+	           ext.driver_id == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA ||
+	           ext.driver_id == VK_DRIVER_ID_MESA_TURNIP) &&
 	          gpu_props.driverVersion < VK_MAKE_VERSION(23, 1, 0)) ||
-	         ext.driver_properties.driverID == VK_DRIVER_ID_AMD_PROPRIETARY ||
-	         ext.driver_properties.driverID == VK_DRIVER_ID_AMD_OPEN_SOURCE)
+	         ext.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY ||
+	         ext.driver_id == VK_DRIVER_ID_AMD_OPEN_SOURCE)
 	{
 		LOGW("Enabling workaround for sync2 access mask bugs.\n");
 		// https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/21271
@@ -1028,13 +1020,13 @@ void Device::wait_shader_caches()
 
 void Device::init_timeline_semaphores()
 {
-	if (!ext.timeline_semaphore_features.timelineSemaphore)
+	if (!ext.vk12_features.timelineSemaphore)
 		return;
 
-	VkSemaphoreTypeCreateInfoKHR type_info = { VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO_KHR };
+	VkSemaphoreTypeCreateInfo type_info = { VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO };
 	VkSemaphoreCreateInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
 	info.pNext = &type_info;
-	type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE_KHR;
+	type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
 	type_info.initialValue = 0;
 
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
@@ -1376,7 +1368,7 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 
 	// Add external wait semaphores.
 	Helper::WaitSemaphores wait_semaphores;
-	Helper::BatchComposer composer(get_workarounds().split_binary_timeline_semaphores);
+	Helper::BatchComposer composer;
 	collect_wait_semaphores(data, wait_semaphores);
 	composer.add_wait_submissions(wait_semaphores);
 
@@ -1391,7 +1383,7 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 	                   timeline_semaphore, timeline_value,
 	                   fence, semaphore_count, semaphores);
 
-	VkFence cleared_fence = fence && !ext.timeline_semaphore_features.timelineSemaphore ?
+	VkFence cleared_fence = fence && !ext.vk12_features.timelineSemaphore ?
 	                        managers.fence.request_cleared_fence() :
 	                        VK_NULL_HANDLE;
 	if (fence)
@@ -1403,9 +1395,9 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit");
 
 	if (result != VK_SUCCESS)
-		LOGE("vkQueueSubmit2KHR failed (code: %d).\n", int(result));
+		LOGE("vkQueueSubmit2 failed (code: %d).\n", int(result));
 
-	if (!ext.timeline_semaphore_features.timelineSemaphore)
+	if (!ext.vk12_features.timelineSemaphore)
 		data.need_fence = true;
 }
 
@@ -1433,7 +1425,7 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 	{
 		auto &semaphore = data.wait_semaphores[i];
 		auto vk_semaphore = semaphore->consume();
-		if (semaphore->get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE_KHR)
+		if (semaphore->get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE)
 		{
 			info.semaphore = vk_semaphore;
 			info.stageMask = data.wait_stages[i];
@@ -1458,34 +1450,7 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 	data.wait_semaphores.clear();
 }
 
-static bool has_timeline_semaphore(const SmallVector<VkSemaphoreSubmitInfo> &sems)
-{
-	return std::find_if(sems.begin(), sems.end(), [](const VkSemaphoreSubmitInfo &info) {
-		return info.value != 0;
-	}) != sems.end();
-}
-
-static bool has_binary_semaphore(const SmallVector<VkSemaphoreSubmitInfo> &sems)
-{
-	return std::find_if(sems.begin(), sems.end(), [](const VkSemaphoreSubmitInfo &info) {
-		return info.value != 0;
-	}) != sems.end();
-}
-
-bool Helper::BatchComposer::has_timeline_semaphore_in_batch(unsigned index) const
-{
-	return has_timeline_semaphore(waits[index]) ||
-	       has_timeline_semaphore(signals[index]);
-}
-
-bool Helper::BatchComposer::has_binary_semaphore_in_batch(unsigned index) const
-{
-	return has_binary_semaphore(waits[index]) ||
-	       has_binary_semaphore(signals[index]);
-}
-
-Helper::BatchComposer::BatchComposer(bool split_binary_timeline_semaphores_)
-	: split_binary_timeline_semaphores(split_binary_timeline_semaphores_)
+Helper::BatchComposer::BatchComposer()
 {
 	submits.emplace_back();
 }
@@ -1505,20 +1470,10 @@ void Helper::BatchComposer::add_wait_submissions(WaitSemaphores &sem)
 	auto &w = waits[submit_index];
 
 	if (!sem.binary_waits.empty())
-	{
-		// Split binary semaphore waits from timeline semaphore waits to work around driver bugs if needed.
-		if (split_binary_timeline_semaphores && has_timeline_semaphore_in_batch(submit_index))
-			begin_batch();
 		w.insert(w.end(), sem.binary_waits.begin(), sem.binary_waits.end());
-	}
 
 	if (!sem.timeline_waits.empty())
-	{
-		// Split binary semaphore waits from timeline semaphore waits to work around driver bugs if needed.
-		if (split_binary_timeline_semaphores && has_binary_semaphore_in_batch(submit_index))
-			begin_batch();
 		w.insert(w.end(), sem.timeline_waits.begin(), sem.timeline_waits.end());
-	}
 }
 
 SmallVector<VkSubmitInfo2, Helper::BatchComposer::MaxSubmissions> &
@@ -1573,13 +1528,6 @@ void Helper::BatchComposer::add_command_buffer(VkCommandBuffer cmd)
 
 void Helper::BatchComposer::add_signal_semaphore(VkSemaphore sem, VkPipelineStageFlags2 stages, uint64_t timeline)
 {
-	if (split_binary_timeline_semaphores)
-	{
-		if ((timeline == 0 && has_timeline_semaphore_in_batch(submit_index)) ||
-		    (timeline != 0 && has_binary_semaphore_in_batch(submit_index)))
-			begin_batch();
-	}
-
 	VkSemaphoreSubmitInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 	info.semaphore = sem;
 	info.stageMask = stages;
@@ -1592,14 +1540,7 @@ void Helper::BatchComposer::add_wait_semaphore(SemaphoreHolder &sem, VkPipelineS
 	if (!cmds[submit_index].empty() || !signals[submit_index].empty())
 		begin_batch();
 
-	bool is_timeline = sem.get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE_KHR;
-
-	if (split_binary_timeline_semaphores)
-	{
-		if ((!is_timeline && has_timeline_semaphore_in_batch(submit_index)) ||
-		    (is_timeline && has_binary_semaphore_in_batch(submit_index)))
-			begin_batch();
-	}
+	bool is_timeline = sem.get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE;
 
 	VkSemaphoreSubmitInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 	info.semaphore = sem.get_semaphore();
@@ -1611,9 +1552,6 @@ void Helper::BatchComposer::add_wait_semaphore(SemaphoreHolder &sem, VkPipelineS
 void Helper::BatchComposer::add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags2 stage)
 {
 	if (!cmds[submit_index].empty() || !signals[submit_index].empty())
-		begin_batch();
-
-	if (split_binary_timeline_semaphores && has_timeline_semaphore_in_batch(submit_index))
 		begin_batch();
 
 	VkSemaphoreSubmitInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
@@ -1636,7 +1574,7 @@ void Device::emit_queue_signals(Helper::BatchComposer &composer,
 		external_semaphore->signal_external();
 		composer.add_signal_semaphore(external_semaphore->get_semaphore(),
 		                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-		                              external_semaphore->get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE_KHR ?
+		                              external_semaphore->get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE ?
 		                              external_semaphore->get_timeline_value() : 0);
 
 		// Make sure we observe that the external semaphore is signalled before fences are signalled.
@@ -1644,7 +1582,7 @@ void Device::emit_queue_signals(Helper::BatchComposer &composer,
 	}
 
 	// Add external signal semaphores.
-	if (ext.timeline_semaphore_features.timelineSemaphore)
+	if (ext.vk12_features.timelineSemaphore)
 	{
 		// Signal once and distribute the timeline value to all.
 		composer.add_signal_semaphore(sem, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, timeline);
@@ -1683,15 +1621,15 @@ void Device::emit_queue_signals(Helper::BatchComposer &composer,
 
 VkResult Device::queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo2 *submits, VkFence fence)
 {
-	if (ext.sync2_features.synchronization2)
+	if (ext.vk13_features.synchronization2)
 	{
-		return table->vkQueueSubmit2KHR(queue, count, submits, fence);
+		return table->vkQueueSubmit2(queue, count, submits, fence);
 	}
 	else
 	{
 		for (uint32_t submit_index = 0; submit_index < count; submit_index++)
 		{
-			VkTimelineSemaphoreSubmitInfoKHR timeline = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO_KHR };
+			VkTimelineSemaphoreSubmitInfo timeline = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO };
 			const auto &submit = submits[submit_index];
 			VkSubmitInfo sub = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
 			bool need_timeline = false;
@@ -1765,19 +1703,7 @@ VkResult Device::submit_batches(Helper::BatchComposer &composer, VkQueue queue, 
 	if (queue_lock_callback)
 		queue_lock_callback();
 
-	VkResult result = VK_SUCCESS;
-	if (get_workarounds().split_binary_timeline_semaphores)
-	{
-		for (auto &submit : submits)
-		{
-			bool last_submit = &submit == &submits.back();
-			result = queue_submit(queue, 1, &submit, last_submit ? fence : VK_NULL_HANDLE);
-			if (result != VK_SUCCESS)
-				break;
-		}
-	}
-	else
-		result = queue_submit(queue, uint32_t(submits.size()), submits.data(), fence);
+	VkResult result = queue_submit(queue, uint32_t(submits.size()), submits.data(), fence);
 
 	if (ImplementationQuirks::get().queue_wait_on_submission)
 		table->vkQueueWaitIdle(queue);
@@ -1811,7 +1737,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 	VkQueue queue = queue_info.queues[physical_type];
 	frame().timeline_fences[physical_type] = data.current_timeline;
 
-	Helper::BatchComposer composer(workarounds.split_binary_timeline_semaphores);
+	Helper::BatchComposer composer;
 	Helper::WaitSemaphores wait_semaphores;
 	collect_wait_semaphores(data, wait_semaphores);
 
@@ -1834,7 +1760,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 			{
 				VK_ASSERT(wsi.acquire->is_signalled());
 				composer.add_wait_semaphore(*wsi.acquire, wsi_stages);
-				if (wsi.acquire->get_semaphore_type() == VK_SEMAPHORE_TYPE_BINARY_KHR)
+				if (wsi.acquire->get_semaphore_type() == VK_SEMAPHORE_TYPE_BINARY)
 				{
 					if (wsi.acquire->is_external_object_compatible())
 						frame().destroyed_semaphores.push_back(wsi.acquire->get_semaphore());
@@ -1864,7 +1790,7 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 		}
 	}
 
-	VkFence cleared_fence = fence && !ext.timeline_semaphore_features.timelineSemaphore ?
+	VkFence cleared_fence = fence && !ext.vk12_features.timelineSemaphore ?
 	                        managers.fence.request_cleared_fence() :
 	                        VK_NULL_HANDLE;
 
@@ -1887,10 +1813,10 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit");
 
 	if (result != VK_SUCCESS)
-		LOGE("vkQueueSubmit2KHR failed (code: %d).\n", int(result));
+		LOGE("vkQueueSubmit2 failed (code: %d).\n", int(result));
 	submissions.clear();
 
-	if (!ext.timeline_semaphore_features.timelineSemaphore)
+	if (!ext.vk12_features.timelineSemaphore)
 		data.need_fence = true;
 }
 
@@ -2830,9 +2756,9 @@ void Device::PerFrame::begin()
 		}
 	}
 
-	if (device.get_device_features().timeline_semaphore_features.timelineSemaphore && has_timeline)
+	if (device.get_device_features().vk12_features.timelineSemaphore && has_timeline)
 	{
-		VkSemaphoreWaitInfoKHR info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR };
+		VkSemaphoreWaitInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO };
 		VkSemaphore sems[QUEUE_INDEX_COUNT];
 		uint64_t values[QUEUE_INDEX_COUNT];
 		for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
@@ -2849,7 +2775,7 @@ void Device::PerFrame::begin()
 		{
 			info.pSemaphores = sems;
 			info.pValues = values;
-			table.vkWaitSemaphoresKHR(vkdevice, &info, UINT64_MAX);
+			table.vkWaitSemaphores(vkdevice, &info, UINT64_MAX);
 		}
 	}
 
@@ -3238,7 +3164,7 @@ public:
 	{
 		if (ycbcr_conversion)
 		{
-			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+			if (!device->get_device_features().vk11_features.samplerYcbcrConversion)
 				return false;
 			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
 			conversion.conversion = ycbcr_conversion->get_conversion();
@@ -3882,7 +3808,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	if (info.mipLevels == 0)
 		info.mipLevels = image_num_miplevels(info.extent);
 
-	VkImageFormatListCreateInfoKHR format_info = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR };
+	VkImageFormatListCreateInfo format_info = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO };
 	VkFormat view_formats[2];
 	format_info.pViewFormats = view_formats;
 	format_info.viewFormatCount = 2;
@@ -3896,7 +3822,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			create_unorm_srgb_views = true;
 
 			const auto *input_format_list = static_cast<const VkBaseInStructure *>(info.pNext);
-			while (input_format_list && input_format_list->sType != VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR)
+			while (input_format_list && input_format_list->sType != VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO)
 				input_format_list = static_cast<const VkBaseInStructure *>(input_format_list->pNext);
 
 			if (ext.supports_image_format_list && !input_format_list)
@@ -4359,7 +4285,7 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)
 BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessResourceType type,
                                                                      unsigned num_sets, unsigned num_descriptors)
 {
-	if (!ext.supports_descriptor_indexing)
+	if (!ext.vk12_features.descriptorIndexing)
 		return BindlessDescriptorPoolHandle{nullptr};
 
 	DescriptorSetLayout layout;
@@ -4445,8 +4371,8 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	info.size = create_info.size;
 	info.usage = create_info.usage;
-	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
-		info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
+	if (get_device_features().vk12_features.bufferDeviceAddress)
+		info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.pNext = &external_info;
 
@@ -4501,10 +4427,10 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	alloc_info.memoryTypeIndex = memory_type;
 
 	VkMemoryAllocateFlagsInfo flags_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO };
-	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+	if (get_device_features().vk12_features.bufferDeviceAddress)
 	{
 		alloc_info.pNext = &flags_info;
-		flags_info.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
+		flags_info.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
 	}
 
 	VkImportMemoryHostPointerInfoEXT import = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT };
@@ -4541,11 +4467,11 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	}
 
 	VkDeviceAddress bda = 0;
-	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+	if (get_device_features().vk12_features.bufferDeviceAddress)
 	{
-		VkBufferDeviceAddressInfoKHR bda_info = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_KHR };
+		VkBufferDeviceAddressInfo bda_info = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO };
 		bda_info.buffer = buffer;
-		bda = table->vkGetBufferDeviceAddressKHR(device, &bda_info);
+		bda = table->vkGetBufferDeviceAddress(device, &bda_info);
 	}
 
 	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, create_info, bda));
@@ -4574,8 +4500,8 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	info.size = create_info.size;
 	info.usage = create_info.usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
-		info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
+	if (get_device_features().vk12_features.bufferDeviceAddress)
+		info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	uint32_t sharing_indices[QUEUE_INDEX_COUNT];
@@ -4716,11 +4642,11 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	tmpinfo.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
 	VkDeviceAddress bda = 0;
-	if (get_device_features().buffer_device_address_features.bufferDeviceAddress)
+	if (get_device_features().vk12_features.bufferDeviceAddress)
 	{
-		VkBufferDeviceAddressInfoKHR bda_info = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_KHR };
+		VkBufferDeviceAddressInfo bda_info = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO };
 		bda_info.buffer = buffer;
-		bda = table->vkGetBufferDeviceAddressKHR(device, &bda_info);
+		bda = table->vkGetBufferDeviceAddress(device, &bda_info);
 	}
 
 	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, tmpinfo, bda));
@@ -4774,25 +4700,25 @@ bool Device::memory_type_is_host_visible(uint32_t type) const
 	return (mem_props.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
 }
 
-static VkFormatFeatureFlags2KHR promote_storage_usage(const DeviceFeatures &features, VkFormat format,
-                                                      VkFormatFeatureFlags2KHR supported)
+static VkFormatFeatureFlags2 promote_storage_usage(const DeviceFeatures &features, VkFormat format,
+                                                   VkFormatFeatureFlags2 supported)
 {
-	if ((supported & VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT_KHR) != 0 &&
+	if ((supported & VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT) != 0 &&
 	    format_supports_storage_image_read_write_without_format(format))
 	{
 		if (features.enabled_features.shaderStorageImageReadWithoutFormat)
-			supported |= VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT_KHR;
+			supported |= VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT;
 		if (features.enabled_features.shaderStorageImageWriteWithoutFormat)
-			supported |= VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT_KHR;
+			supported |= VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
 	}
 
 	return supported;
 }
 
-void Device::get_format_properties(VkFormat format, VkFormatProperties3KHR *properties3) const
+void Device::get_format_properties(VkFormat format, VkFormatProperties3 *properties3) const
 {
 	VkFormatProperties2 properties2 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2 };
-	VK_ASSERT(properties3->sType == VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3_KHR);
+	VK_ASSERT(properties3->sType == VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3);
 
 	if (ext.supports_format_feature_flags2)
 	{
@@ -4835,9 +4761,9 @@ bool Device::get_image_format_properties(VkFormat format, VkImageType type, VkIm
 	return res == VK_SUCCESS;
 }
 
-bool Device::image_format_is_supported(VkFormat format, VkFormatFeatureFlags2KHR required, VkImageTiling tiling) const
+bool Device::image_format_is_supported(VkFormat format, VkFormatFeatureFlags2 required, VkImageTiling tiling) const
 {
-	VkFormatProperties3KHR props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3_KHR };
+	VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
 	get_format_properties(format, &props3);
 	auto flags = tiling == VK_IMAGE_TILING_OPTIMAL ? props3.optimalTilingFeatures : props3.linearTilingFeatures;
 	return (flags & required) == required;
@@ -5280,30 +5206,30 @@ bool Device::supports_subgroup_size_log2(bool subgroup_full_group, uint8_t subgr
 		return false;
 	}
 
-	if (!ext.subgroup_size_control_features.subgroupSizeControl)
+	if (!ext.vk13_features.subgroupSizeControl)
 		return false;
-	if (subgroup_full_group && !ext.subgroup_size_control_features.computeFullSubgroups)
+	if (subgroup_full_group && !ext.vk13_features.computeFullSubgroups)
 		return false;
 
 	uint32_t min_subgroups = 1u << subgroup_minimum_size_log2;
 	uint32_t max_subgroups = 1u << subgroup_maximum_size_log2;
 
-	bool full_range = min_subgroups <= ext.subgroup_size_control_properties.minSubgroupSize &&
-	                  max_subgroups >= ext.subgroup_size_control_properties.maxSubgroupSize;
+	bool full_range = min_subgroups <= ext.vk13_props.minSubgroupSize &&
+	                  max_subgroups >= ext.vk13_props.maxSubgroupSize;
 
 	// We can use VARYING size.
 	if (full_range)
 		return true;
 
-	if (min_subgroups > ext.subgroup_size_control_properties.maxSubgroupSize ||
-	    max_subgroups < ext.subgroup_size_control_properties.minSubgroupSize)
+	if (min_subgroups > ext.vk13_props.maxSubgroupSize ||
+	    max_subgroups < ext.vk13_props.minSubgroupSize)
 	{
 		// No overlap in requested subgroup size and available subgroup size.
 		return false;
 	}
 
 	// We need requiredSubgroupSizeStages support here.
-	return (ext.subgroup_size_control_properties.requiredSubgroupSizeStages & stage) != 0;
+	return (ext.vk13_props.requiredSubgroupSizeStages & stage) != 0;
 }
 
 const QueueInfo &Device::get_queue_info() const

@@ -114,7 +114,7 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 		const char *vert = "builtin://shaders/post/ffx-fsr/upscale.vert";
 		const char *frag = "builtin://shaders/post/ffx-fsr/upscale.frag";
 
-		bool fp16 = cmd.get_device().get_device_features().float16_int8_features.shaderFloat16;
+		bool fp16 = cmd.get_device().get_device_features().vk12_features.shaderFloat16;
 		const char *fsr_fp16 = getenv("FIDELITYFX_FSR_FP16");
 		if (fsr_fp16)
 		{

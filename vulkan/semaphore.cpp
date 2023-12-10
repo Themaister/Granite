@@ -46,7 +46,7 @@ void SemaphoreHolder::recycle_semaphore()
 
 	if (internal_sync)
 	{
-		if (semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR || external_compatible_features)
+		if (semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE || external_compatible_features)
 		{
 			device->destroy_semaphore_nolock(semaphore);
 		}
@@ -64,7 +64,7 @@ void SemaphoreHolder::recycle_semaphore()
 	}
 	else
 	{
-		if (semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR || external_compatible_features)
+		if (semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE || external_compatible_features)
 		{
 			device->destroy_semaphore(semaphore);
 		}
@@ -124,7 +124,7 @@ ExternalHandle SemaphoreHolder::export_to_handle()
 
 	// Technically we can export early with reference transference, but it's a bit dubious.
 	// We want to remain compatible with copy transference for later, e.g. SYNC_FD.
-	if (!signalled && semaphore_type == VK_SEMAPHORE_TYPE_BINARY_KHR)
+	if (!signalled && semaphore_type == VK_SEMAPHORE_TYPE_BINARY)
 	{
 		LOGE("Cannot export payload from a semaphore that is not queued up for signal.\n");
 		return h;

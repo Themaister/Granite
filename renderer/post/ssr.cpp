@@ -126,11 +126,11 @@ struct SSRState : RenderPassInterface
 				            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
 				            VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
-				VkFormatProperties3KHR props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3_KHR };
+				VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
 				cmd.get_device().get_format_properties(output_view->get_format(), &props3);
-				if (!(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT_KHR))
+				if (!(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT))
 					LOGW("Cannot read without format.\n");
-				if (!(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT_KHR))
+				if (!(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT))
 					LOGW("Cannot write without format.\n");
 
 				defines.clear();

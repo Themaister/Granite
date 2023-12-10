@@ -565,7 +565,7 @@ Shader::Shader(Hash hash, Device *device_, const uint32_t *data, size_t size,
 		LOGE("Failed to reflect resource layout.\n");
 #endif
 
-	if (layout.bindless_set_mask != 0 && !device->get_device_features().supports_descriptor_indexing)
+	if (layout.bindless_set_mask != 0 && !device->get_device_features().vk12_features.descriptorIndexing)
 		LOGE("Sufficient features for descriptor indexing is not supported on this device.\n");
 }
 

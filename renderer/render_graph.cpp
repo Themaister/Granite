@@ -2181,7 +2181,7 @@ void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &ph
 		}
 		else if (multiview_count)
 		{
-			if (device->get_device_features().multiview_features.multiview)
+			if (device->get_device_features().vk11_features.multiview)
 			{
 				rp_info.num_layers = physical_pass.layers;
 				rp_info.base_layer = 0;

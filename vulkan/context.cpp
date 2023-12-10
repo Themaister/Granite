@@ -554,7 +554,6 @@ VkApplicationInfo Context::get_promoted_application_info() const
 
 bool Context::create_instance(const char * const *instance_ext, uint32_t instance_ext_count, ContextCreationFlags flags)
 {
-
 	VkInstanceCreateInfo info = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	auto app_info = get_promoted_application_info();
 

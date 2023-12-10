@@ -1346,13 +1346,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.mesh_shader_features, MESH_SHADER_FEATURES_EXT);
 	}
 
-	if (ext.device_api_core_version >= VK_API_VERSION_1_2 || has_extension(VK_KHR_SPIRV_1_4_EXTENSION_NAME))
-	{
-		if (ext.device_api_core_version < VK_API_VERSION_1_2)
-			enabled_extensions.push_back(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
-		ext.supports_spirv_1_4 = true;
-	}
-
 	if (has_extension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME);

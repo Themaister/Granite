@@ -86,8 +86,8 @@ bool ShaderTemplate::init()
 	GRANITE_SCOPED_TIMELINE_EVENT_FILE(device->get_system_handles().timeline_trace_file, "glsl-preprocess");
 
 	compiler = std::make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
-	compiler->set_target(device->get_device_features().supports_spirv_1_4 ?
-	                     Granite::Target::Vulkan11_Spirv14 : Granite::Target::Vulkan11);
+	compiler->set_target(device->get_device_features().device_api_core_version >= VK_API_VERSION_1_3 ?
+	                     Granite::Target::Vulkan13 : Granite::Target::Vulkan11);
 	if (!compiler->set_source_from_file(path, Granite::Stage(force_stage)))
 		return false;
 	compiler->set_include_directories(&include_directories);
@@ -287,8 +287,8 @@ void ShaderTemplate::recompile()
 	if (!device->get_system_handles().filesystem)
 		return;
 	auto newcompiler = std::make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
-	newcompiler->set_target(device->get_device_features().supports_spirv_1_4 ?
-	                        Granite::Target::Vulkan11_Spirv14 : Granite::Target::Vulkan11);
+	newcompiler->set_target(device->get_device_features().device_api_core_version >= VK_API_VERSION_1_3 ?
+	                        Granite::Target::Vulkan13 : Granite::Target::Vulkan11);
 	if (!newcompiler->set_source_from_file(path, Granite::Stage(force_stage)))
 		return;
 	newcompiler->set_include_directories(&include_directories);

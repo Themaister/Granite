@@ -73,7 +73,6 @@ struct DeviceFeatures
 	bool supports_hdr_metadata = false;
 	bool supports_swapchain_colorspace = false;
 	bool supports_surface_maintenance1 = false;
-	bool supports_spirv_1_4 = false;
 
 	VkPhysicalDeviceFeatures enabled_features = {};
 

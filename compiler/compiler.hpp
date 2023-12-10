@@ -48,7 +48,7 @@ enum class Stage
 enum class Target
 {
 	Vulkan11,
-	Vulkan11_Spirv14
+	Vulkan13
 };
 
 class GLSLCompiler

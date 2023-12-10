@@ -332,9 +332,9 @@ std::vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const st
 	}
 
 	options.SetTargetEnvironment(shaderc_target_env_vulkan,
-	                             target == Target::Vulkan11_Spirv14 ?
-	                             shaderc_env_version_vulkan_1_2 : shaderc_env_version_vulkan_1_1);
-	options.SetTargetSpirv(target == Target::Vulkan11_Spirv14 ? shaderc_spirv_version_1_4 : shaderc_spirv_version_1_3);
+	                             target == Target::Vulkan13 ?
+	                             shaderc_env_version_vulkan_1_3 : shaderc_env_version_vulkan_1_1);
+	options.SetTargetSpirv(target == Target::Vulkan13 ? shaderc_spirv_version_1_6 : shaderc_spirv_version_1_3);
 	options.SetSourceLanguage(shaderc_source_language_glsl);
 
 	shaderc::SpvCompilationResult result;
@@ -370,7 +370,7 @@ std::vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const st
 	}
 
 	std::vector<uint32_t> compiled_spirv(result.cbegin(), result.cend());
-	spvtools::SpirvTools core(target == Target::Vulkan11_Spirv14 ? SPV_ENV_VULKAN_1_1_SPIRV_1_4 : SPV_ENV_VULKAN_1_1);
+	spvtools::SpirvTools core(target == Target::Vulkan13 ? SPV_ENV_VULKAN_1_3 : SPV_ENV_VULKAN_1_1);
 	core.SetMessageConsumer([&error_message](spv_message_level_t, const char *, const spv_position_t&, const char *message) {
 		error_message = message;
 	});

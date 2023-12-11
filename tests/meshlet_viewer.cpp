@@ -49,8 +49,6 @@ static uint32_t style_to_u32_streams(MeshStyle style)
 	{
 	case MeshStyle::Wireframe:
 		return 3;
-	case MeshStyle::Untextured:
-		return 4;
 	case MeshStyle::Textured:
 		return 7;
 	case MeshStyle::Skinned:
@@ -104,7 +102,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		unsigned count = 0;
 		for (auto &mesh : parser.get_meshes())
 		{
-			if (!mesh.has_material)
+			if (!mesh.has_material ||
+			    mesh.attribute_layout[int(MeshAttribute::Normal)].format == VK_FORMAT_UNDEFINED ||
+			    mesh.attribute_layout[int(MeshAttribute::UV)].format == VK_FORMAT_UNDEFINED ||
+			    mesh.attribute_layout[int(MeshAttribute::Tangent)].format == VK_FORMAT_UNDEFINED)
 			{
 				mesh_assets.emplace_back();
 				continue;
@@ -188,6 +189,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		auto &device = wsi.get_device();
 		auto cmd = device.request_command_buffer();
 
+		render_context.set_camera(camera);
+
 		list.clear();
 		scene.gather_visible_opaque_renderables(render_context.get_visibility_frustum(), list);
 
@@ -207,14 +210,14 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 
 		std::vector<TaskParameters> task_params;
 
-		std::vector<uvec2> material_draws;
+		std::vector<uvec3> material_draws;
 		material_draws.reserve(list.size());
 
 		for (auto &vis : list)
 		{
 			auto *meshlet = static_cast<const MeshletRenderable *>(vis.renderable);
 			auto range = device.get_resource_manager().get_mesh_draw_range(meshlet->mesh);
-			material_draws.emplace_back(meshlet->albedo_index, unsigned(&vis - list.data()));
+			material_draws.emplace_back(meshlet->albedo_index, unsigned(task_params.size()), (range.count + 31) / 32);
 
 			TaskParameters draw = {};
 			draw.aabb_instance = vis.transform->aabb.offset;
@@ -231,7 +234,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			}
 		}
 
-		std::sort(material_draws.begin(), material_draws.end(), [](const uvec2 &a, const uvec2 &b) {
+		std::sort(material_draws.begin(), material_draws.end(), [](const uvec3 &a, const uvec3 &b) {
 			return a.x < b.x;
 		});
 
@@ -252,7 +255,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		uint32_t asset_index = material_draws.front().x;
 		uint32_t remapped_index = 0;
 		allocator.push(*manager.get_image_view(albedos[asset_index]));
-		task_params[material_draws.front().y].node_count_material_index |= remapped_index << 8;
+
+		for (unsigned j = 0; j < material_draws.front().z; j++)
+			task_params.at(material_draws.front().y + j).node_count_material_index |= remapped_index << 8;
 
 		for (size_t i = 1, n = material_draws.size(); i < n; i++)
 		{
@@ -264,7 +269,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 				allocator.push(*manager.get_image_view(albedos[asset_index]));
 			}
 
-			task_params[material_draws.front().y].node_count_material_index |= remapped_index << 8;
+			for (unsigned j = 0; j < d.z; j++)
+				task_params.at(d.y + j).node_count_material_index |= remapped_index << 8;
 		}
 
 		VkDescriptorSet vk_set = allocator.commit(device);
@@ -380,7 +386,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 
 			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
 			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
-			render_context.set_camera(camera);
 			cmd->set_opaque_state();
 
 			*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
@@ -396,7 +401,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 
 			cmd->set_storage_buffer(0, 0, *compacted_params);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
-			cmd->set_sampler(0, 2, StockSampler::DefaultGeometryFilterClamp);
+			cmd->set_sampler(0, 2, StockSampler::DefaultGeometryFilterWrap);
 			cmd->set_bindless(2, vk_set);
 
 			cmd->draw_indexed_multi_indirect(*indirect_draws,

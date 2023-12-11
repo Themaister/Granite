@@ -14,5 +14,5 @@ layout(set = 2, binding = 0) uniform texture2D Textures[];
 void main()
 {
     vec3 color = texture(sampler2D(Textures[MaterialOffset], DefaultSampler), vUV).rgb;
-    FragColor = color * dot(vNormal.xyz, vec3(4, 2, 3));
+    FragColor = color * (0.01 + clamp(dot(vNormal.xyz, vec3(5, 2, 20)), 0.0, 1.0));
 }

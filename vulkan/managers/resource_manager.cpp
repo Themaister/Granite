@@ -786,7 +786,7 @@ void MeshGlobalAllocator::free(uint32_t index)
 	VK_ASSERT(index < global_buffers.size());
 	for (uint32_t i = 0; i < soa_count; i++)
 	{
-		std::swap(preallocated[i], global_buffers[index + 1]);
+		std::swap(preallocated[i], global_buffers[index + i]);
 		global_buffers[index + i].reset();
 	}
 }

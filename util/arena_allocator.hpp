@@ -279,7 +279,7 @@ struct SliceSubAllocator;
 
 struct AllocatedSlice
 {
-	uint32_t buffer_index = 0;
+	uint32_t buffer_index = UINT32_MAX;
 	uint32_t offset = 0;
 	uint32_t count = 0;
 	uint32_t mask = 0;

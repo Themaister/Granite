@@ -146,7 +146,7 @@ void SliceAllocator::free(const Util::AllocatedSlice &slice)
 {
 	if (slice.alloc)
 		slice.alloc->free(slice.heap, slice.mask);
-	else
+	else if (slice.buffer_index != UINT32_MAX)
 		global_allocator->free(slice.buffer_index);
 }
 

@@ -1,0 +1,65 @@
+#version 450
+#extension GL_EXT_mesh_shader : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+layout(local_size_x = 32) in;
+
+struct TaskInfo
+{
+    uint aabb_instance;
+    uint node_instance;
+    uint node_count_material_index; // Skinning
+    uint mesh_index_count;
+};
+
+layout(set = 0, binding = 2, std430) readonly buffer Tasks
+{
+    TaskInfo data[];
+} task_info;
+
+layout(push_constant, std430) uniform Registers
+{
+    uint count;
+} registers;
+
+struct MeshTask
+{
+    uint meshlet_index;
+    uint node_instance;
+    uint node_count_material_index;
+};
+
+struct Payload
+{
+    MeshTask meshlet[1024];
+};
+
+taskPayloadSharedEXT Payload payload;
+
+void main()
+{
+    TaskInfo command_payload;
+    uint task_index = gl_GlobalInvocationID.x;
+    uint task_count = 0;
+
+    if (task_index < registers.count)
+    {
+        command_payload = task_info.data[task_index];
+        uint mesh_offset = command_payload.mesh_index_count & ~31u;
+        uint mesh_count = bitfieldExtract(command_payload.mesh_index_count, 0, 5) + 1;
+
+        uint task_offset = subgroupExclusiveAdd(mesh_count);
+        task_count = subgroupAdd(mesh_count);
+
+        for (uint i = 0; i < mesh_count; i++)
+        {
+            MeshTask meshlet;
+            meshlet.meshlet_index = mesh_offset + i;
+            meshlet.node_instance = command_payload.node_instance;
+            meshlet.node_count_material_index = command_payload.node_count_material_index;
+            payload.meshlet[task_offset + i] = meshlet;
+        }
+    }
+
+    EmitMeshTasksEXT(task_count, 1, 1);
+}

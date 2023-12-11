@@ -318,30 +318,29 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 					device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32 &&
 					device.get_device_features().mesh_shader_properties.maxMeshWorkGroupInvocations >= 256;
 
-			cmd->set_program("", "assets://shaders/meshlet_debug.mesh",
+			cmd->set_program("assets://shaders/meshlet_debug.task", "assets://shaders/meshlet_debug.mesh",
 			                 "assets://shaders/meshlet_debug.mesh.frag",
 			                 {{"MESHLET_PAYLOAD_LARGE_WORKGROUP", int(large_workgroup)}});
+			cmd->set_storage_buffer(0, 0, *aabb_buffer);
+			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
+			cmd->set_storage_buffer(0, 2, *task_buffer);
+			cmd->set_storage_buffer(0, 3, *header_buffer);
+			cmd->set_storage_buffer(0, 4, *stream_header_buffer);
+			cmd->set_storage_buffer(0, 5, *payload_buffer);
 
-			cmd->set_storage_buffer(0, 0, *header_buffer);
-			cmd->set_storage_buffer(0, 1, *stream_header_buffer);
-			cmd->set_storage_buffer(0, 2, *payload_buffer);
+			cmd->set_sampler(0, 6, StockSampler::DefaultGeometryFilterWrap);
+			cmd->set_bindless(2, vk_set);
 
-			cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
+			cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
 			cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
+			cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
+			cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_TASK_BIT_EXT);
 			cmd->set_specialization_constant_mask(1);
 			cmd->set_specialization_constant(0, style_to_u32_streams(MeshStyle::Textured));
 
-			for (auto &draw : list)
-			{
-				auto *meshlet = static_cast<const MeshletRenderable *>(draw.renderable);
-				auto range = device.get_resource_manager().get_mesh_draw_range(meshlet->mesh);
-				if (range.count)
-				{
-					*cmd->allocate_typed_constant_data<mat4>(1, 1, 1) = draw.transform->get_world_transform();
-					cmd->push_constants(&range.offset, 0, sizeof(range.offset));
-					cmd->draw_mesh_tasks(range.count, 1, 1);
-				}
-			}
+			uint32_t count = task_params.size();
+			cmd->push_constants(&count, 0, sizeof(count));
+			cmd->draw_mesh_tasks((count + 31) / 32, 1, 1);
 		}
 		else
 		{

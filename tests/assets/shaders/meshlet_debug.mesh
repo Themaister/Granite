@@ -16,47 +16,60 @@ layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS
 #define MESHLET_PAYLOAD_NUM_U32_STREAMS NUM_U32_STREAMS
 
 #define MESHLET_PAYLOAD_DESCRIPTOR_SET 0
-#define MESHLET_PAYLOAD_META_BINDING 0
-#define MESHLET_PAYLOAD_STREAM_BINDING 1
-#define MESHLET_PAYLOAD_PAYLOAD_BINDING 2
+#define MESHLET_PAYLOAD_META_BINDING 3
+#define MESHLET_PAYLOAD_STREAM_BINDING 4
+#define MESHLET_PAYLOAD_PAYLOAD_BINDING 5
 #include "meshlet_payload_decode.h"
 #include "meshlet_attribute_decode.h"
 
-layout(location = 0) perprimitiveEXT out uint vMeshletIndex[];
-layout(location = 1) out mediump vec3 vNormal[];
-layout(location = 2) out mediump vec4 vTangent[];
-layout(location = 3) out vec2 vUV[];
+layout(location = 0) out mediump vec3 vNormal[];
+layout(location = 1) out mediump vec4 vTangent[];
+layout(location = 2) out vec2 vUV[];
+layout(location = 3) perprimitiveEXT out uint MaterialOffset[];
 
 layout(set = 1, binding = 0) uniform UBO
 {
     mat4 VP;
 };
 
-layout(set = 1, binding = 1) uniform UBOModel
+layout(set = 0, binding = 1) readonly buffer Transforms
 {
-    mat4 M;
+    mat4 data[];
+} transforms;
+
+struct MeshTask
+{
+    uint meshlet_index;
+    uint node_instance;
+    uint node_count_material_index;
 };
 
-layout(push_constant) uniform Registers
+struct MeshPayload
 {
-    uint offset;
-} registers;
+    MeshTask meshlet[1024];
+};
+
+taskPayloadSharedEXT MeshPayload mesh_payload;
 
 void main()
 {
-    uint meshlet_index = gl_WorkGroupID.x + registers.offset;
-    MeshletMetaRuntime meta = meshlet_metas_runtime.data[meshlet_index];
+    MeshTask task = mesh_payload.meshlet[gl_WorkGroupID.x];
+    MeshletMetaRuntime meta = meshlet_metas_runtime.data[task.meshlet_index];
     meshlet_init_workgroup(meta.stream_offset);
 
     SetMeshOutputsEXT(meta.num_attributes, meta.num_primitives);
+
+    mat4 M = transforms.data[task.node_instance];
 
 #define INDEX(index, value) \
     if (index < meta.num_primitives) \
     { \
         gl_PrimitiveTriangleIndicesEXT[index] = uvec4(unpack8(value)).xyz; \
-        vMeshletIndex[index] = meshlet_index; \
     }
     MESHLET_DECODE_STREAM_32(meta.stream_offset, 0, INDEX);
+
+    if (gl_LocalInvocationIndex < meta.num_primitives)
+        MaterialOffset[gl_LocalInvocationIndex] = bitfieldExtract(task.node_count_material_index, 8, 24);
 
 #define POSITION(index, value) \
     if (index < meta.num_attributes) \

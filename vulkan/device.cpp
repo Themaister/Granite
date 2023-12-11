@@ -4651,7 +4651,12 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, tmpinfo, bda));
 
-	if (create_info.domain == BufferDomain::Device && (initial || zero_initialize) && !memory_type_is_host_visible(memory_type))
+	bool need_init = initial || zero_initialize;
+	void *ptr = nullptr;
+	if (need_init && memory_type_is_host_visible(memory_type))
+		ptr = managers.memory.map_memory(allocation, MEMORY_ACCESS_WRITE_BIT, 0, allocation.get_size());
+
+	if (need_init && !ptr)
 	{
 		auto cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 		if (initial)
@@ -4675,12 +4680,8 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 		LOCK();
 		submit_staging(cmd, true);
 	}
-	else if (initial || zero_initialize)
+	else if (need_init)
 	{
-		void *ptr = managers.memory.map_memory(allocation, MEMORY_ACCESS_WRITE_BIT, 0, allocation.get_size());
-		if (!ptr)
-			return BufferHandle(nullptr);
-
 		if (initial)
 			memcpy(ptr, initial, create_info.size);
 		else

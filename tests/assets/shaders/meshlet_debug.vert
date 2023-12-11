@@ -1,4 +1,5 @@
 #version 450
+#extension GL_ARB_shader_draw_parameters : require
 
 layout(location = 0) in vec3 POS;
 layout(location = 1) in mediump vec3 N;
@@ -14,13 +15,20 @@ layout(set = 1, binding = 0) uniform UBO
     mat4 VP;
 };
 
-layout(set = 1, binding = 1) uniform UBOModel
+layout(set = 0, binding = 0) readonly buffer DrawParameters
 {
-    mat4 M;
-};
+    uvec2 data[];
+} draw_info;
+
+layout(set = 0, binding = 1) readonly buffer Transforms
+{
+    mat4 data[];
+} transforms;
 
 void main()
 {
+    mat4 M = transforms.data[draw_info.data[gl_DrawIDARB].x];
+
     vNormal = mat3(M) * N;
     vTangent = vec4(mat3(M) * T.xyz, T.w);
     vUV = UV;

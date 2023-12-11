@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define NOMINMAX
 #include "application.hpp"
 #include "command_buffer.hpp"
 #include "scene_loader.hpp"
@@ -168,22 +169,92 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		auto &device = wsi.get_device();
 		auto cmd = device.request_command_buffer();
 
-		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
-		camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
-		render_context.set_camera(camera);
-
-		cmd->set_opaque_state();
-
-		*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
-
 		list.clear();
 		scene.gather_visible_opaque_renderables(render_context.get_visibility_frustum(), list);
 
-		if (device.get_resource_manager().get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Meshlet)
+		struct TaskParameters
 		{
-			auto *header_buffer = device.get_resource_manager().get_meshlet_header_buffer();
-			auto *stream_header_buffer = device.get_resource_manager().get_meshlet_stream_header_buffer();
-			auto *payload_buffer = device.get_resource_manager().get_meshlet_payload_buffer();
+			uint32_t aabb_instance;
+			uint32_t node_instance;
+			uint32_t node_count; // Skinning
+			uint32_t mesh_index_count;
+		};
+
+		struct DrawParameters
+		{
+			uint32_t node_instance;
+			uint32_t node_count; // Skinning
+		};
+
+		std::vector<TaskParameters> task_params;
+
+		for (auto &vis : list)
+		{
+			auto *meshlet = static_cast<const MeshletRenderable *>(vis.renderable);
+			auto range = device.get_resource_manager().get_mesh_draw_range(meshlet->mesh);
+
+			TaskParameters draw = {};
+			draw.aabb_instance = vis.transform->aabb.offset;
+			auto *node = vis.transform->scene_node;
+			auto *skin = node->get_skin();
+			draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
+			draw.node_count = skin ? skin->transform.count : 1;
+			assert((range.offset & 31) == 0);
+
+			for (uint32_t i = 0; i < range.count; i += 32)
+			{
+				draw.mesh_index_count = range.offset + i + (std::min(range.count - i, 32u) - 1);
+				task_params.push_back(draw);
+			}
+		}
+
+		if (task_params.empty())
+		{
+			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
+			cmd->end_render_pass();
+			device.submit(cmd);
+			return;
+		}
+
+		BufferHandle task_buffer, cached_transform_buffer, aabb_buffer;
+		auto &manager = device.get_resource_manager();
+
+		{
+			BufferCreateInfo info;
+			info.size = task_params.size() * sizeof(task_params.front());
+			info.domain = BufferDomain::LinkedDeviceHostPreferDevice;
+			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+			task_buffer = device.create_buffer(info, task_params.data());
+		}
+
+		{
+			BufferCreateInfo info;
+			info.size = scene.get_transforms().get_count() * sizeof(*scene.get_transforms().get_cached_transforms());
+			info.domain = BufferDomain::LinkedDeviceHostPreferDevice;
+			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+			cached_transform_buffer = device.create_buffer(info, scene.get_transforms().get_cached_transforms());
+		}
+
+		{
+			BufferCreateInfo info;
+			info.size = scene.get_aabbs().get_count() * sizeof(*scene.get_aabbs().get_aabbs());
+			info.domain = BufferDomain::LinkedDeviceHostPreferDevice;
+			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+			aabb_buffer = device.create_buffer(info, scene.get_aabbs().get_aabbs());
+		}
+
+		if (manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Meshlet)
+		{
+			auto *header_buffer = manager.get_meshlet_header_buffer();
+			auto *stream_header_buffer = manager.get_meshlet_stream_header_buffer();
+			auto *payload_buffer = manager.get_meshlet_payload_buffer();
+
+			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
+			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
+			render_context.set_camera(camera);
+			cmd->set_opaque_state();
+
+			*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
 
 			bool large_workgroup =
 					device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32 &&
@@ -216,10 +287,51 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		}
 		else
 		{
-			auto *ibo = device.get_resource_manager().get_index_buffer();
-			auto *pos = device.get_resource_manager().get_position_buffer();
-			auto *attr = device.get_resource_manager().get_attribute_buffer();
-			auto *indirect = device.get_resource_manager().get_indirect_buffer();
+			auto *ibo = manager.get_index_buffer();
+			auto *pos = manager.get_position_buffer();
+			auto *attr = manager.get_attribute_buffer();
+			auto *indirect = manager.get_indirect_buffer();
+
+			BufferHandle indirect_draws, compacted_params;
+			{
+				BufferCreateInfo info;
+				info.size = task_params.size() * 32 * sizeof(VkDrawIndexedIndirectCommand) + 256;
+				info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+				info.domain = BufferDomain::Device;
+				info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
+				indirect_draws = device.create_buffer(info);
+			}
+
+			{
+				BufferCreateInfo info;
+				info.size = task_params.size() * 32 * sizeof(DrawParameters);
+				info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+				info.domain = BufferDomain::Device;
+				compacted_params = device.create_buffer(info);
+			}
+
+			cmd->set_program("assets://shaders/meshlet_cull.comp");
+			cmd->set_storage_buffer(0, 0, *aabb_buffer);
+			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
+			cmd->set_storage_buffer(0, 2, *task_buffer);
+			cmd->set_storage_buffer(0, 3, *indirect);
+			cmd->set_storage_buffer(0, 4, *indirect_draws);
+			cmd->set_storage_buffer(0, 5, *compacted_params);
+			uint32_t count = task_params.size();
+			cmd->push_constants(&count, 0, sizeof(count));
+			cmd->dispatch((count + 31) / 32, 1, 1);
+
+			cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+			             VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+			             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			             VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
+			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
+			render_context.set_camera(camera);
+			cmd->set_opaque_state();
+
+			*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
 
 			cmd->set_program("assets://shaders/meshlet_debug.vert", "assets://shaders/meshlet_debug.frag");
 			cmd->set_index_buffer(*ibo, 0, VK_INDEX_TYPE_UINT8_EXT);
@@ -230,19 +342,12 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			cmd->set_vertex_attrib(2, 1, VK_FORMAT_A2B10G10R10_SNORM_PACK32, 4);
 			cmd->set_vertex_attrib(3, 1, VK_FORMAT_R32G32_SFLOAT, 8);
 
-			for (auto &draw : list)
-			{
-				auto *meshlet = static_cast<const MeshletRenderable *>(draw.renderable);
-				auto range = device.get_resource_manager().get_mesh_draw_range(meshlet->mesh);
+			cmd->set_storage_buffer(0, 0, *compacted_params);
+			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 
-				if (range.count)
-				{
-					*cmd->allocate_typed_constant_data<mat4>(1, 1, 1) = draw.transform->get_world_transform();
-					cmd->draw_indexed_indirect(*indirect,
-					                           range.offset * sizeof(VkDrawIndexedIndirectCommand),
-					                           range.count, sizeof(VkDrawIndexedIndirectCommand));
-				}
-			}
+			cmd->draw_indexed_multi_indirect(*indirect_draws,
+			                                 256, task_params.size() * 32, sizeof(VkDrawIndexedIndirectCommand),
+			                                 *indirect_draws, 0);
 		}
 
 		cmd->end_render_pass();

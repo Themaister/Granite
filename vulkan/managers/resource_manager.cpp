@@ -36,8 +36,8 @@ ResourceManager::ResourceManager(Device *device_)
 	: device(device_)
 	, index_buffer_allocator(*device_, 256, 17)
 	, attribute_buffer_allocator(*device_, 256, 17)
-	, indirect_buffer_allocator(*device_, 1, 17)
-	, mesh_header_allocator(*device_, 1, 17)
+	, indirect_buffer_allocator(*device_, 32, 15)
+	, mesh_header_allocator(*device_, 32, 15)
 	, mesh_stream_allocator(*device_, 8, 17)
 	, mesh_payload_allocator(*device_, 128, 17)
 {
@@ -174,7 +174,8 @@ void ResourceManager::init()
 
 	if (device->get_device_features().mesh_shader_features.taskShader &&
 	    device->get_device_features().mesh_shader_features.meshShader &&
-	    device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT))
+	    device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
+	    device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT))
 	{
 		mesh_encoding = MeshEncoding::Meshlet;
 		LOGI("Opting in to meshlet path.\n");
@@ -785,7 +786,7 @@ void MeshGlobalAllocator::free(uint32_t index)
 	VK_ASSERT(index < global_buffers.size());
 	for (uint32_t i = 0; i < soa_count; i++)
 	{
-		std::swap(preallocated[i], global_buffers[index + 1]);
+		std::swap(preallocated[i], global_buffers[index + i]);
 		global_buffers[index + i].reset();
 	}
 }

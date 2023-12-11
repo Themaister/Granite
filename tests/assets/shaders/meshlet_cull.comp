@@ -1,0 +1,69 @@
+#version 450
+
+layout(local_size_x = 32) in;
+
+struct AABB
+{
+    vec4 lo, hi;
+};
+
+layout(set = 0, binding = 0, std430) readonly buffer AABBSSBO
+{
+    AABB data[];
+} aabb;
+
+layout(set = 0, binding = 1, std430) readonly buffer Transforms
+{
+    mat4 data[];
+} transforms;
+
+layout(set = 0, binding = 2, std430) readonly buffer Tasks
+{
+    uvec4 data[];
+} task_info;
+
+struct Draw
+{
+    uint payload[5];
+};
+
+layout(set = 0, binding = 3, std430) readonly buffer InputDraws
+{
+    Draw data[];
+} input_draws;
+
+layout(set = 0, binding = 4, std430) writeonly buffer OutputDraws
+{
+    uint count;
+    uint padding[256 / 4 - 1];
+    Draw data[];
+} output_draws;
+
+layout(set = 0, binding = 5, std430) writeonly buffer CompactedDraws
+{
+    uvec2 data[];
+} output_draw_info;
+
+layout(push_constant, std430) uniform Registers
+{
+    uint count;
+} registers;
+
+void main()
+{
+    uvec4 command_payload;
+    uint task_index = gl_GlobalInvocationID.x;
+    if (task_index < registers.count)
+    {
+        command_payload = task_info.data[task_index];
+        uint offset = command_payload.w & ~31u;
+        uint count = bitfieldExtract(command_payload.w, 0, 5) + 1;
+
+        uint draw_offset = atomicAdd(output_draws.count, count);
+        for (uint i = 0; i < count; i++)
+        {
+            output_draws.data[draw_offset + i] = input_draws.data[offset + i];
+            output_draw_info.data[draw_offset + i] = command_payload.yz;
+        }
+    }
+}

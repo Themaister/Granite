@@ -145,10 +145,6 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 			output_u32_streams = 2;
 			break;
 
-		case MeshStyle::Untextured:
-			output_u32_streams = 3;
-			break;
-
 		case MeshStyle::Textured:
 			output_u32_streams = 6;
 			break;
@@ -196,7 +192,6 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 		case MeshStyle::Skinned:
 			cmd.set_storage_buffer(0, 6, *info.streams[2]);
 			// Fallthrough
-		case MeshStyle::Untextured:
 		case MeshStyle::Textured:
 			cmd.set_storage_buffer(0, 5, *info.streams[1]);
 			// Fallthrough

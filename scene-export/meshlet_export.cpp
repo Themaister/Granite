@@ -486,7 +486,7 @@ static void encode_mesh(Encoded &encoded,
 		// Handle spill region just in case.
 		uint64_t vbo_remapping[MaxVertices + 3];
 		unsigned vbo_index = 0;
-		for (auto &v: vbo_remap)
+		for (auto &v : vbo_remap)
 		{
 			assert(vbo_index < MaxVertices + 3);
 			vbo_remapping[vbo_index++] = (uint64_t(v.second) << 32) | v.first;
@@ -585,6 +585,7 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 
 bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, MeshStyle style)
 {
+	mesh_deduplicate_vertices(mesh);
 	if (!mesh_optimize_index_buffer(mesh, {}))
 		return false;
 
@@ -600,22 +601,19 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 		return false;
 	case MeshStyle::Textured:
 		uv = mesh_extract_uv_snorm_scale(mesh);
-		num_u32_streams += 2;
+		num_u32_streams += 4;
 		if (uv.empty())
 		{
 			LOGE("No UVs.\n");
 			return false;
 		}
-		// Fallthrough
-	case MeshStyle::Untextured:
 		normals = mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Normal);
 		tangent = mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Tangent);
 		if (normals.empty() || tangent.empty())
 		{
-			LOGE("No normal or tangent.\n");
+			LOGE("No tangent or normal.\n");
 			return false;
 		}
-		num_u32_streams += 2;
 		// Fallthrough
 	case MeshStyle::Wireframe:
 		positions = mesh_extract_position_snorm_exp(mesh);
@@ -661,7 +659,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	// Use quantized position to guide the clustering.
 	std::vector<vec3> position_buffer;
 	position_buffer.reserve(positions.size());
-	for (auto &p: positions)
+	for (auto &p : positions)
 		position_buffer.push_back(decode_snorm_exp(p));
 
 	// Special meshoptimizer limit.
@@ -685,7 +683,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	std::vector<uvec3> out_index_buffer;
 
 	out_meshlets.reserve(num_meshlets);
-	for (auto &meshlet: meshlets)
+	for (auto &meshlet : meshlets)
 	{
 		Meshlet m = {};
 		m.offset = uint32_t(out_index_buffer.size());

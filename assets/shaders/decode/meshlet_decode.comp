@@ -25,9 +25,8 @@ layout(constant_id = 2) const bool RAW_PAYLOAD = false;
 
 const int MESH_STYLE = int(NUM_OUTPUT_U32_STREAMS);
 const int MESH_STYLE_WIREFRAME = 0;
-const int MESH_STYLE_UNTEXTURED = 1;
-const int MESH_STYLE_TEXTURED = 2;
-const int MESH_STYLE_SKINNED = 3;
+const int MESH_STYLE_TEXTURED = 1;
+const int MESH_STYLE_SKINNED = 2;
 
 layout(set = 0, binding = 3, scalar) writeonly buffer OutputIndices
 {
@@ -48,16 +47,6 @@ layout(set = 0, binding = 4, scalar) writeonly buffer OutputStreamPos
 {
     vec3 data[];
 } output_stream_pos;
-
-struct UntexturedAttr
-{
-    uint normal;
-};
-
-layout(set = 0, binding = 5, std430) writeonly buffer OutputStreamUntextured
-{
-    UntexturedAttr data[];
-} output_stream_untextured_attr;
 
 struct TexturedAttr
 {
@@ -172,10 +161,7 @@ void main()
 
 #define NORMAL(linear_index, packed_decoded) { \
     if (linear_index <= uint(meta.num_attributes_minus_1)) { \
-        if (MESH_STYLE >= MESH_STYLE_TEXTURED) \
-            output_stream_textured_attr.data[output_offset + linear_index].normal = pack_a2bgr10(attribute_decode_oct8_normal_tangent(packed_decoded)); \
-        else \
-            output_stream_untextured_attr.data[output_offset + linear_index].normal = pack_a2bgr10(attribute_decode_oct8_normal_tangent(packed_decoded)); \
+        output_stream_textured_attr.data[output_offset + linear_index].normal = pack_a2bgr10(attribute_decode_oct8_normal_tangent(packed_decoded)); \
     } \
 }
 
@@ -200,13 +186,9 @@ void main()
             MESHLET_DECODE_STREAM_64(meshlet_index * NUM_U32_STREAMS, 1, POS);
         }
 
-        if (MESH_STYLE >= MESH_STYLE_UNTEXTURED)
-        {
-            MESHLET_DECODE_STREAM_32(meshlet_index * NUM_U32_STREAMS, 3, NORMAL);
-        }
-
         if (MESH_STYLE >= MESH_STYLE_TEXTURED)
         {
+            MESHLET_DECODE_STREAM_32(meshlet_index * NUM_U32_STREAMS, 3, NORMAL);
             MESHLET_DECODE_STREAM_32(meshlet_index * NUM_U32_STREAMS, 4, TANGENT);
             MESHLET_DECODE_STREAM_64(meshlet_index * NUM_U32_STREAMS, 5, UV);
         }

@@ -89,7 +89,6 @@ enum class StreamType
 enum class MeshStyle : uint32_t
 {
 	Wireframe = 0, // Primitive + Position
-	Untextured, // Wireframe + NormalOct8
 	Textured, // Untextured + TangentOct8 + UV
 	Skinned // Textured + Bone*
 };

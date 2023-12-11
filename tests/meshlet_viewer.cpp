@@ -63,6 +63,7 @@ static uint32_t style_to_u32_streams(MeshStyle style)
 struct MeshletRenderable : AbstractRenderable
 {
 	AssetID mesh;
+	uint32_t albedo_index;
 	AABB aabb;
 
 	void get_render_info(const RenderContext &, const RenderInfoComponent *,
@@ -90,11 +91,25 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		std::vector<AssetID> mesh_assets;
 		std::vector<NodeHandle> nodes;
 		mesh_assets.reserve(parser.get_meshes().size());
+		albedos.reserve(parser.get_materials().size());
 		nodes.reserve(parser.get_nodes().size());
+
+		for (auto &mat : parser.get_materials())
+		{
+			albedos.push_back(GRANITE_ASSET_MANAGER()->register_asset(
+					*GRANITE_FILESYSTEM(), mat.paths[int(TextureKind::BaseColor)],
+					Granite::AssetClass::ImageColor));
+		}
 
 		unsigned count = 0;
 		for (auto &mesh : parser.get_meshes())
 		{
+			if (!mesh.has_material)
+			{
+				mesh_assets.emplace_back();
+				continue;
+			}
+
 			auto internal_path = std::string("memory://mesh") + std::to_string(count++);
 			if (!::Granite::Meshlet::export_mesh_to_meshlet(internal_path, mesh, MeshStyle::Textured))
 				throw std::runtime_error("Failed to export meshlet.");
@@ -132,6 +147,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 					auto renderable = Util::make_handle<MeshletRenderable>();
 					renderable->mesh = mesh_assets[mesh];
 					renderable->aabb = parser.get_meshes()[mesh].static_aabb;
+					renderable->albedo_index = parser.get_meshes()[mesh].material_index;
 					scene.create_renderable(std::move(renderable), nodes[i].get());
 				}
 			}
@@ -151,6 +167,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 	Scene scene;
 	RenderContext render_context;
 	VisibilityList list;
+	std::vector<AssetID> albedos;
+	BindlessAllocator allocator;
 
 	void on_device_create(const DeviceCreatedEvent &e)
 	{
@@ -159,6 +177,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 
 	void on_device_destroy(const DeviceCreatedEvent &)
 	{
+		allocator.reset();
 	}
 
 	void render_frame(double, double) override
@@ -176,7 +195,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		{
 			uint32_t aabb_instance;
 			uint32_t node_instance;
-			uint32_t node_count; // Skinning
+			uint32_t node_count_material_index; // Skinning
 			uint32_t mesh_index_count;
 		};
 
@@ -188,17 +207,21 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 
 		std::vector<TaskParameters> task_params;
 
+		std::vector<uvec2> material_draws;
+		material_draws.reserve(list.size());
+
 		for (auto &vis : list)
 		{
 			auto *meshlet = static_cast<const MeshletRenderable *>(vis.renderable);
 			auto range = device.get_resource_manager().get_mesh_draw_range(meshlet->mesh);
+			material_draws.emplace_back(meshlet->albedo_index, unsigned(&vis - list.data()));
 
 			TaskParameters draw = {};
 			draw.aabb_instance = vis.transform->aabb.offset;
 			auto *node = vis.transform->scene_node;
 			auto *skin = node->get_skin();
 			draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
-			draw.node_count = skin ? skin->transform.count : 1;
+			draw.node_count_material_index = skin ? skin->transform.count : 1;
 			assert((range.offset & 31) == 0);
 
 			for (uint32_t i = 0; i < range.count; i += 32)
@@ -208,6 +231,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			}
 		}
 
+		std::sort(material_draws.begin(), material_draws.end(), [](const uvec2 &a, const uvec2 &b) {
+			return a.x < b.x;
+		});
+
 		if (task_params.empty())
 		{
 			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
@@ -216,8 +243,33 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			return;
 		}
 
-		BufferHandle task_buffer, cached_transform_buffer, aabb_buffer;
+		// TODO: We can improve this design quite a lot. Needs refactors of asset manager.
 		auto &manager = device.get_resource_manager();
+		allocator.set_bindless_resource_type(BindlessResourceType::Image);
+		allocator.reserve_max_resources_per_pool(1, VULKAN_NUM_BINDINGS_BINDLESS_VARYING);
+		allocator.begin();
+
+		uint32_t asset_index = material_draws.front().x;
+		uint32_t remapped_index = 0;
+		allocator.push(*manager.get_image_view(albedos[asset_index]));
+		task_params[material_draws.front().y].node_count_material_index |= remapped_index << 8;
+
+		for (size_t i = 1, n = material_draws.size(); i < n; i++)
+		{
+			auto &d = material_draws[i];
+			if (d.x != asset_index)
+			{
+				remapped_index++;
+				asset_index = d.x;
+				allocator.push(*manager.get_image_view(albedos[asset_index]));
+			}
+
+			task_params[material_draws.front().y].node_count_material_index |= remapped_index << 8;
+		}
+
+		VkDescriptorSet vk_set = allocator.commit(device);
+
+		BufferHandle task_buffer, cached_transform_buffer, aabb_buffer;
 
 		{
 			BufferCreateInfo info;
@@ -344,6 +396,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 
 			cmd->set_storage_buffer(0, 0, *compacted_params);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
+			cmd->set_sampler(0, 2, StockSampler::DefaultGeometryFilterClamp);
+			cmd->set_bindless(2, vk_set);
 
 			cmd->draw_indexed_multi_indirect(*indirect_draws,
 			                                 256, task_params.size() * 32, sizeof(VkDrawIndexedIndirectCommand),

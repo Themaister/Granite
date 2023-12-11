@@ -20,7 +20,7 @@ vec2 attribute_decode_snorm_exp_uv(uvec2 payload)
 		bitfieldExtract(int(payload.x), 0, 16),
 		bitfieldExtract(int(payload.x), 16, 16));
 	int exp = bitfieldExtract(int(payload.y), 0, 16);
-	return vec2(
+	return 0.5 * vec2(
 		ldexp(float(sint_value.x), exp),
 		ldexp(float(sint_value.y), exp)) + 0.5;
 }

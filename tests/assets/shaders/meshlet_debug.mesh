@@ -68,8 +68,14 @@ void main()
     }
     MESHLET_DECODE_STREAM_32(meta.stream_offset, 0, INDEX);
 
+#if MESHLET_PAYLOAD_LARGE_WORKGROUP
     if (gl_LocalInvocationIndex < meta.num_primitives)
         MaterialOffset[gl_LocalInvocationIndex] = bitfieldExtract(task.node_count_material_index, 8, 24);
+#else
+    uint material_index = bitfieldExtract(task.node_count_material_index, 8, 24);
+    for (uint i = gl_LocalInvocationIndex; i < meta.num_primitives; i += 32)
+        MaterialOffset[i] = material_index;
+#endif
 
 #define POSITION(index, value) \
     if (index < meta.num_attributes) \

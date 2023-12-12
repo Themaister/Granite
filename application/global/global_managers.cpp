@@ -37,6 +37,7 @@ struct GlobalManagers
 
 	FilesystemInterface *filesystem;
 	AssetManagerInterface *asset_manager;
+	MaterialManagerInterface *material_manager;
 	EventManagerInterface *event_manager;
 	ThreadGroupInterface *thread_group;
 	UI::UIManagerInterface *ui_manager;
@@ -91,6 +92,11 @@ FilesystemInterface *filesystem()
 AssetManagerInterface *asset_manager()
 {
 	return global_managers.asset_manager;
+}
+
+MaterialManagerInterface *material_manager()
+{
+	return global_managers.material_manager;
 }
 
 EventManagerInterface *event_manager()
@@ -150,6 +156,12 @@ void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads, flo
 	{
 		if (!global_managers.asset_manager)
 			global_managers.asset_manager = factory.create_asset_manager();
+	}
+
+	if (flags & MANAGER_FEATURE_MATERIAL_MANAGER_BIT)
+	{
+		if (!global_managers.material_manager)
+			global_managers.material_manager = factory.create_material_manager();
 	}
 
 	bool kick_threads = false;
@@ -233,6 +245,7 @@ void deinit()
 	delete global_managers.common_renderer_data;
 	delete global_managers.ui_manager;
 	delete global_managers.thread_group;
+	delete global_managers.material_manager;
 	delete global_managers.asset_manager;
 	delete global_managers.filesystem;
 	delete global_managers.event_manager;
@@ -243,6 +256,7 @@ void deinit()
 	global_managers.physics = nullptr;
 	global_managers.common_renderer_data = nullptr;
 	global_managers.filesystem = nullptr;
+	global_managers.material_manager = nullptr;
 	global_managers.asset_manager = nullptr;
 	global_managers.event_manager = nullptr;
 	global_managers.thread_group = nullptr;
@@ -281,6 +295,7 @@ void stop_audio_system()
 
 FilesystemInterface *Factory::create_filesystem() { return nullptr; }
 AssetManagerInterface *Factory::create_asset_manager() { return nullptr; }
+MaterialManagerInterface *Factory::create_material_manager() { return nullptr; }
 EventManagerInterface *Factory::create_event_manager() { return nullptr; }
 ThreadGroupInterface *Factory::create_thread_group() { return nullptr; }
 CommonRendererDataInterface *Factory::create_common_renderer_data() { return nullptr; }

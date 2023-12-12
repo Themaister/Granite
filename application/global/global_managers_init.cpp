@@ -26,6 +26,7 @@
 #include "thread_group.hpp"
 #include "filesystem.hpp"
 #include "asset_manager.hpp"
+#include "material_manager.hpp"
 #ifdef HAVE_GRANITE_RENDERER
 #include "common_renderer_data.hpp"
 #include "ui_manager.hpp"
@@ -77,6 +78,15 @@ struct FactoryImplementation : Factory
 	{
 #ifdef HAVE_GRANITE_RENDERER
 		return new UI::UIManager;
+#else
+		return nullptr;
+#endif
+	}
+
+	MaterialManager *create_material_manager() override
+	{
+#ifdef HAVE_GRANITE_RENDERER
+		return new MaterialManager;
 #else
 		return nullptr;
 #endif

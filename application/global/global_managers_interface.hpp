@@ -50,6 +50,13 @@ public:
 	virtual ~AssetManagerInterface() = default;
 };
 
+class MaterialManagerInterface
+{
+public:
+	virtual ~MaterialManagerInterface() = default;
+	virtual void iterate(AssetManagerInterface *iface) = 0;
+};
+
 class ThreadGroupInterface
 {
 public:

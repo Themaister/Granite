@@ -34,6 +34,7 @@
 #include "event_manager.hpp"
 #include "meshlet_export.hpp"
 #include "render_context.hpp"
+#include "material_manager.hpp"
 #include "gltf.hpp"
 #include <string.h>
 #include <float.h>
@@ -61,7 +62,7 @@ static uint32_t style_to_u32_streams(MeshStyle style)
 struct MeshletRenderable : AbstractRenderable
 {
 	AssetID mesh;
-	uint32_t albedo_index;
+	MaterialOffsets material;
 	AABB aabb;
 
 	void get_render_info(const RenderContext &, const RenderInfoComponent *,
@@ -89,14 +90,19 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		std::vector<AssetID> mesh_assets;
 		std::vector<NodeHandle> nodes;
 		mesh_assets.reserve(parser.get_meshes().size());
-		albedos.reserve(parser.get_materials().size());
+
+		std::vector<MaterialOffsets> materials;
+		materials.reserve(parser.get_materials().size());
+
 		nodes.reserve(parser.get_nodes().size());
 
 		for (auto &mat : parser.get_materials())
 		{
-			albedos.push_back(GRANITE_ASSET_MANAGER()->register_asset(
+			AssetID albedo = GRANITE_ASSET_MANAGER()->register_asset(
 					*GRANITE_FILESYSTEM(), mat.paths[int(TextureKind::BaseColor)],
-					Granite::AssetClass::ImageColor));
+					Granite::AssetClass::ImageColor);
+
+			materials.push_back(GRANITE_MATERIAL_MANAGER()->register_material(&albedo, 1, nullptr, 0));
 		}
 
 		unsigned count = 0;
@@ -148,7 +154,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 					auto renderable = Util::make_handle<MeshletRenderable>();
 					renderable->mesh = mesh_assets[mesh];
 					renderable->aabb = parser.get_meshes()[mesh].static_aabb;
-					renderable->albedo_index = parser.get_meshes()[mesh].material_index;
+					renderable->material = materials[parser.get_meshes()[mesh].material_index];
 					scene.create_renderable(std::move(renderable), nodes[i].get());
 				}
 			}
@@ -168,7 +174,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 	Scene scene;
 	RenderContext render_context;
 	VisibilityList list;
-	std::vector<AssetID> albedos;
 	BindlessAllocator allocator;
 
 	void on_device_create(const DeviceCreatedEvent &e)
@@ -210,14 +215,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 
 		std::vector<TaskParameters> task_params;
 
-		std::vector<uvec3> material_draws;
-		material_draws.reserve(list.size());
-
 		for (auto &vis : list)
 		{
 			auto *meshlet = static_cast<const MeshletRenderable *>(vis.renderable);
 			auto range = device.get_resource_manager().get_mesh_draw_range(meshlet->mesh);
-			material_draws.emplace_back(meshlet->albedo_index, unsigned(task_params.size()), (range.count + 31) / 32);
 
 			TaskParameters draw = {};
 			draw.aabb_instance = vis.transform->aabb.offset;
@@ -225,6 +226,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			auto *skin = node->get_skin();
 			draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
 			draw.node_count_material_index = skin ? skin->transform.count : 1;
+			draw.node_count_material_index |= meshlet->material.texture_offset << 8;
 			assert((range.offset & 31) == 0);
 
 			for (uint32_t i = 0; i < range.count; i += 32)
@@ -234,10 +236,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			}
 		}
 
-		std::sort(material_draws.begin(), material_draws.end(), [](const uvec3 &a, const uvec3 &b) {
-			return a.x < b.x;
-		});
-
 		if (task_params.empty())
 		{
 			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
@@ -245,35 +243,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			device.submit(cmd);
 			return;
 		}
-
-		// TODO: We can improve this design quite a lot. Needs refactors of asset manager.
-		auto &manager = device.get_resource_manager();
-		allocator.set_bindless_resource_type(BindlessResourceType::Image);
-		allocator.reserve_max_resources_per_pool(1, VULKAN_NUM_BINDINGS_BINDLESS_VARYING);
-		allocator.begin();
-
-		uint32_t asset_index = material_draws.front().x;
-		uint32_t remapped_index = 0;
-		allocator.push(*manager.get_image_view(albedos[asset_index]));
-
-		for (unsigned j = 0; j < material_draws.front().z; j++)
-			task_params.at(material_draws.front().y + j).node_count_material_index |= remapped_index << 8;
-
-		for (size_t i = 1, n = material_draws.size(); i < n; i++)
-		{
-			auto &d = material_draws[i];
-			if (d.x != asset_index)
-			{
-				remapped_index++;
-				asset_index = d.x;
-				allocator.push(*manager.get_image_view(albedos[asset_index]));
-			}
-
-			for (unsigned j = 0; j < d.z; j++)
-				task_params.at(d.y + j).node_count_material_index |= remapped_index << 8;
-		}
-
-		VkDescriptorSet vk_set = allocator.commit(device);
 
 		BufferHandle task_buffer, cached_transform_buffer, aabb_buffer;
 
@@ -300,6 +269,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 			aabb_buffer = device.create_buffer(info, scene.get_aabbs().get_aabbs());
 		}
+
+		auto &manager = device.get_resource_manager();
 
 		if (manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Meshlet)
 		{
@@ -329,7 +300,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			cmd->set_storage_buffer(0, 5, *payload_buffer);
 
 			cmd->set_sampler(0, 6, StockSampler::DefaultGeometryFilterWrap);
-			cmd->set_bindless(2, vk_set);
+			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
 
 			cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
 			cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
@@ -401,7 +372,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			cmd->set_storage_buffer(0, 0, *compacted_params);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_sampler(0, 2, StockSampler::DefaultGeometryFilterWrap);
-			cmd->set_bindless(2, vk_set);
+			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
 
 			cmd->draw_indexed_multi_indirect(*indirect_draws,
 			                                 256, task_params.size() * 32, sizeof(VkDrawIndexedIndirectCommand),

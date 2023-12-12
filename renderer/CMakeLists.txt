@@ -13,6 +13,7 @@ add_granite_internal_lib(granite-renderer
         render_components.hpp render_components.cpp
         mesh_util.hpp mesh_util.cpp
         material_util.hpp material_util.cpp
+        material_manager.hpp material_manager.cpp
         renderer.hpp renderer.cpp
         flat_renderer.hpp flat_renderer.cpp
         renderer_enums.hpp

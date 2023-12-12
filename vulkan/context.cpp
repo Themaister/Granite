@@ -22,6 +22,7 @@
 
 #define NOMINMAX
 #include "context.hpp"
+#include "limits.hpp"
 #include "small_vector.hpp"
 #include <vector>
 #include <mutex>
@@ -789,6 +790,20 @@ bool Context::physical_device_supports_surface_and_profile(VkPhysicalDevice cand
 
 	if (surface == VK_NULL_HANDLE)
 		return true;
+
+	VkPhysicalDeviceProperties dev_props;
+	vkGetPhysicalDeviceProperties(candidate_gpu, &dev_props);
+	if (dev_props.limits.maxUniformBufferRange < VULKAN_MAX_UBO_SIZE)
+	{
+		LOGW("Device does not support 64 KiB UBOs. Must be *ancient* mobile driver.\n");
+		return false;
+	}
+
+	if (dev_props.apiVersion < VK_API_VERSION_1_1)
+	{
+		LOGW("Device does not support Vulkan 1.1. Skipping.\n");
+		return false;
+	}
 
 	uint32_t family_count = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(candidate_gpu, &family_count, nullptr);

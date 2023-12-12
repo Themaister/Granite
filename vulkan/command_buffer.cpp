@@ -2181,7 +2181,7 @@ void *CommandBuffer::allocate_constant_data(unsigned set, unsigned binding, VkDe
 		device->request_uniform_block(ubo_block, size);
 		data = ubo_block.allocate(size);
 	}
-	set_uniform_buffer(set, binding, *ubo_block.gpu, data.offset, data.padded_size);
+	set_uniform_buffer(set, binding, *ubo_block.buffer, data.offset, data.padded_size);
 	return data.host;
 }
 
@@ -2193,7 +2193,7 @@ void *CommandBuffer::allocate_index_data(VkDeviceSize size, VkIndexType index_ty
 		device->request_index_block(ibo_block, size);
 		data = ibo_block.allocate(size);
 	}
-	set_index_buffer(*ibo_block.gpu, data.offset, index_type);
+	set_index_buffer(*ibo_block.buffer, data.offset, index_type);
 	return data.host;
 }
 
@@ -2208,7 +2208,7 @@ void *CommandBuffer::update_buffer(const Buffer &buffer, VkDeviceSize offset, Vk
 		device->request_staging_block(staging_block, size);
 		data = staging_block.allocate(size);
 	}
-	copy_buffer(buffer, offset, *staging_block.cpu, data.offset, size);
+	copy_buffer(buffer, offset, *staging_block.buffer, data.offset, size);
 	return data.host;
 }
 
@@ -2248,7 +2248,7 @@ void *CommandBuffer::update_image(const Image &image, const VkOffset3D &offset, 
 		data = staging_block.allocate(size);
 	}
 
-	copy_buffer_to_image(image, *staging_block.cpu, data.offset, offset, extent, row_length, image_height, subresource);
+	copy_buffer_to_image(image, *staging_block.buffer, data.offset, offset, extent, row_length, image_height, subresource);
 	return data.host;
 }
 
@@ -2271,7 +2271,7 @@ void *CommandBuffer::allocate_vertex_data(unsigned binding, VkDeviceSize size, V
 		data = vbo_block.allocate(size);
 	}
 
-	set_vertex_binding(binding, *vbo_block.gpu, data.offset, stride, step_rate);
+	set_vertex_binding(binding, *vbo_block.buffer, data.offset, stride, step_rate);
 	return data.host;
 }
 

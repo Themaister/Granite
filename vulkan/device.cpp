@@ -945,17 +945,13 @@ void Device::set_context(const Context &context)
 	managers.semaphore.init(this);
 	managers.fence.init(this);
 	managers.event.init(this);
-	managers.vbo.init(this, 4 * 1024, 16, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-	                  ImplementationQuirks::get().staging_need_device_local);
-	managers.ibo.init(this, 4 * 1024, 16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-	                  ImplementationQuirks::get().staging_need_device_local);
+	managers.vbo.init(this, 4 * 1024, 16, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+	managers.ibo.init(this, 4 * 1024, 16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 	managers.ubo.init(this, 256 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.minUniformBufferOffsetAlignment),
-	                  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-	                  ImplementationQuirks::get().staging_need_device_local);
+	                  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	managers.ubo.set_spill_region_size(VULKAN_MAX_UBO_SIZE);
 	managers.staging.init(this, 64 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.optimalBufferCopyOffsetAlignment),
-	                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-	                      false);
+	                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
 
 	managers.vbo.set_max_retained_blocks(256);
 	managers.ibo.set_max_retained_blocks(256);
@@ -1145,10 +1141,13 @@ void Device::init_stock_samplers()
 }
 
 static void request_block(Device &device, BufferBlock &block, VkDeviceSize size,
-                          BufferPool &pool, std::vector<BufferBlock> *dma, std::vector<BufferBlock> &recycle)
+                          BufferPool &pool, std::vector<BufferBlock> &recycle)
 {
 	if (block.mapped)
-		device.unmap_host_buffer(*block.cpu, MEMORY_ACCESS_WRITE_BIT);
+	{
+		device.unmap_host_buffer(*block.buffer, MEMORY_ACCESS_WRITE_BIT);
+		block.mapped = nullptr;
+	}
 
 	if (block.offset == 0)
 	{
@@ -1157,12 +1156,6 @@ static void request_block(Device &device, BufferBlock &block, VkDeviceSize size,
 	}
 	else
 	{
-		if (block.cpu != block.gpu)
-		{
-			VK_ASSERT(dma);
-			dma->push_back(block);
-		}
-
 		if (block.size == pool.get_block_size())
 			recycle.push_back(block);
 	}
@@ -1181,7 +1174,7 @@ void Device::request_vertex_block(BufferBlock &block, VkDeviceSize size)
 
 void Device::request_vertex_block_nolock(BufferBlock &block, VkDeviceSize size)
 {
-	request_block(*this, block, size, managers.vbo, &dma.vbo, frame().vbo_blocks);
+	request_block(*this, block, size, managers.vbo, frame().vbo_blocks);
 }
 
 void Device::request_index_block(BufferBlock &block, VkDeviceSize size)
@@ -1192,7 +1185,7 @@ void Device::request_index_block(BufferBlock &block, VkDeviceSize size)
 
 void Device::request_index_block_nolock(BufferBlock &block, VkDeviceSize size)
 {
-	request_block(*this, block, size, managers.ibo, &dma.ibo, frame().ibo_blocks);
+	request_block(*this, block, size, managers.ibo, frame().ibo_blocks);
 }
 
 void Device::request_uniform_block(BufferBlock &block, VkDeviceSize size)
@@ -1203,7 +1196,7 @@ void Device::request_uniform_block(BufferBlock &block, VkDeviceSize size)
 
 void Device::request_uniform_block_nolock(BufferBlock &block, VkDeviceSize size)
 {
-	request_block(*this, block, size, managers.ubo, &dma.ubo, frame().ubo_blocks);
+	request_block(*this, block, size, managers.ubo, frame().ubo_blocks);
 }
 
 void Device::request_staging_block(BufferBlock &block, VkDeviceSize size)
@@ -1214,7 +1207,7 @@ void Device::request_staging_block(BufferBlock &block, VkDeviceSize size)
 
 void Device::request_staging_block_nolock(BufferBlock &block, VkDeviceSize size)
 {
-	request_block(*this, block, size, managers.staging, nullptr, frame().staging_blocks);
+	request_block(*this, block, size, managers.staging, frame().staging_blocks);
 }
 
 void Device::submit(CommandBufferHandle &cmd, Fence *fence, unsigned semaphore_count, Semaphore *semaphores)
@@ -1339,9 +1332,6 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence, SemaphoreHolde
 void Device::submit_empty_nolock(QueueIndices physical_type, Fence *fence,
                                  SemaphoreHolder *semaphore, int profiling_iteration)
 {
-	if (physical_type != QUEUE_INDEX_TRANSFER)
-		flush_frame(QUEUE_INDEX_TRANSFER);
-
 	InternalFence signalled_fence = {};
 
 	submit_queue(physical_type, fence ? &signalled_fence : nullptr, semaphore,
@@ -1717,10 +1707,6 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
                           SemaphoreHolder *external_semaphore,
                           unsigned semaphore_count, Semaphore *semaphores, int profiling_iteration)
 {
-	// Always check if we need to flush pending transfers.
-	if (physical_type != QUEUE_INDEX_TRANSFER)
-		flush_frame(QUEUE_INDEX_TRANSFER);
-
 	auto &data = queue_data[physical_type];
 	auto &submissions = frame().submissions[physical_type];
 
@@ -1822,49 +1808,8 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 
 void Device::flush_frame(QueueIndices physical_type)
 {
-	if (queue_info.queues[physical_type] == VK_NULL_HANDLE)
-		return;
-
-	if (physical_type == QUEUE_INDEX_TRANSFER)
-		sync_buffer_blocks();
-	submit_queue(physical_type, nullptr);
-}
-
-void Device::sync_buffer_blocks()
-{
-	if (dma.vbo.empty() && dma.ibo.empty() && dma.ubo.empty())
-		return;
-
-	auto cmd = request_command_buffer_nolock(get_thread_index(), CommandBuffer::Type::AsyncTransfer, false);
-	cmd->begin_region("buffer-block-sync");
-
-	for (auto &block : dma.vbo)
-	{
-		VK_ASSERT(block.offset != 0);
-		cmd->copy_buffer(*block.gpu, 0, *block.cpu, 0, block.offset);
-	}
-
-	for (auto &block : dma.ibo)
-	{
-		VK_ASSERT(block.offset != 0);
-		cmd->copy_buffer(*block.gpu, 0, *block.cpu, 0, block.offset);
-	}
-
-	for (auto &block : dma.ubo)
-	{
-		VK_ASSERT(block.offset != 0);
-		cmd->copy_buffer(*block.gpu, 0, *block.cpu, 0, block.offset);
-	}
-
-	dma.vbo.clear();
-	dma.ibo.clear();
-	dma.ubo.clear();
-
-	cmd->end_region();
-
-	// Do not flush graphics or compute in this context.
-	// We must be able to inject semaphores into all currently enqueued graphics / compute.
-	submit_staging(cmd, false);
+	if (queue_info.queues[physical_type] != VK_NULL_HANDLE)
+		submit_queue(physical_type, nullptr);
 }
 
 void Device::end_frame_context()

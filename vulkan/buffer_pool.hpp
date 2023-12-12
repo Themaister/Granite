@@ -42,8 +42,7 @@ struct BufferBlockAllocation
 struct BufferBlock
 {
 	~BufferBlock();
-	Util::IntrusivePtr<Buffer> gpu;
-	Util::IntrusivePtr<Buffer> cpu;
+	Util::IntrusivePtr<Buffer> buffer;
 	VkDeviceSize offset = 0;
 	VkDeviceSize alignment = 0;
 	VkDeviceSize size = 0;
@@ -72,7 +71,7 @@ class BufferPool
 {
 public:
 	~BufferPool();
-	void init(Device *device, VkDeviceSize block_size, VkDeviceSize alignment, VkBufferUsageFlags usage, bool need_device_local);
+	void init(Device *device, VkDeviceSize block_size, VkDeviceSize alignment, VkBufferUsageFlags usage);
 	void reset();
 
 	// Used for allocating UBOs, where we want to specify a fixed size for range,
@@ -97,6 +96,5 @@ private:
 	size_t max_retained_blocks = 0;
 	std::vector<BufferBlock> blocks;
 	BufferBlock allocate_block(VkDeviceSize size);
-	bool need_device_local = false;
 };
 }

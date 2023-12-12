@@ -148,8 +148,6 @@ void SceneViewerApplication::read_quirks(const std::string &path)
 		ImplementationQuirks::get().use_transient_depth_stencil = doc["useTransientDepthStencil"].GetBool();
 	if (doc.HasMember("queueWaitOnSubmission"))
 		ImplementationQuirks::get().queue_wait_on_submission = doc["queueWaitOnSubmission"].GetBool();
-	if (doc.HasMember("stagingNeedDeviceLocal"))
-		ImplementationQuirks::get().staging_need_device_local = doc["stagingNeedDeviceLocal"].GetBool();
 	if (doc.HasMember("useAsyncComputePost"))
 		ImplementationQuirks::get().use_async_compute_post = doc["useAsyncComputePost"].GetBool();
 	if (doc.HasMember("renderGraphForceSingleQueue"))

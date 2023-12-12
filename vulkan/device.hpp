@@ -691,14 +691,6 @@ private:
 		uint64_t value;
 	};
 
-	// Pending buffers which need to be copied from CPU to GPU before submitting graphics or compute work.
-	struct
-	{
-		std::vector<BufferBlock> vbo;
-		std::vector<BufferBlock> ibo;
-		std::vector<BufferBlock> ubo;
-	} dma;
-
 	void submit_queue(QueueIndices physical_type, InternalFence *fence,
 	                  SemaphoreHolder *external_semaphore = nullptr,
 	                  unsigned semaphore_count = 0,
@@ -753,7 +745,6 @@ private:
 	std::function<void ()> queue_lock_callback;
 	std::function<void ()> queue_unlock_callback;
 	void flush_frame(QueueIndices physical_type);
-	void sync_buffer_blocks();
 	void submit_empty_inner(QueueIndices type, InternalFence *fence,
 	                        SemaphoreHolder *external_semaphore,
 	                        unsigned semaphore_count,

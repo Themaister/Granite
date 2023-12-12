@@ -31,7 +31,6 @@ struct ImplementationQuirks
 	bool use_transient_color = true;
 	bool use_transient_depth_stencil = true;
 	bool queue_wait_on_submission = false;
-	bool staging_need_device_local = false;
 	bool use_async_compute_post = true;
 	bool render_graph_force_single_queue = false;
 	bool force_no_subgroups = false;

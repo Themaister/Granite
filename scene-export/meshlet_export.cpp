@@ -342,9 +342,9 @@ static void find_linear_predictor(uint16_t *predictor,
 		predictor[4 + i] = uint16_t(b[i]);
 }
 
-static void encode_stream(std::vector <uint32_t> &out_payload_buffer,
-                          Stream &stream, u8vec4 (&stream_buffer)[MaxElements],
-                          unsigned num_elements)
+static size_t encode_stream(std::vector <uint32_t> &out_payload_buffer,
+                            Stream &stream, u8vec4 (&stream_buffer)[MaxElements],
+                            unsigned num_elements)
 {
 	stream.offset_from_base_u32 = uint32_t(out_payload_buffer.size());
 
@@ -430,6 +430,8 @@ static void encode_stream(std::vector <uint32_t> &out_payload_buffer,
 		for (unsigned i = 0; i < required_bits.w; i++)
 			out_payload_buffer.push_back(extract_bit_plane(&stream_buffer[chunk_index * 32][3], i));
 	}
+
+	return out_payload_buffer.size() - stream.offset_from_base_u32;
 }
 
 static void encode_mesh(Encoded &encoded,
@@ -446,6 +448,7 @@ static void encode_mesh(Encoded &encoded,
 
 	std::unordered_map <uint32_t, uint32_t> vbo_remap;
 	uint32_t primitive_index = 0;
+	size_t words_per_stream[MaxU32Streams] = {};
 
 	for (uint32_t meshlet_index = 0; meshlet_index < num_meshlets; meshlet_index++)
 	{
@@ -481,7 +484,8 @@ static void encode_mesh(Encoded &encoded,
 			stream_buffer[i] = u8vec4(i0, i1, i2, 0);
 		}
 
-		encode_stream(encoded.payload, meshlet.u32_streams[0], stream_buffer, analysis_result.num_primitives);
+		words_per_stream[0] +=
+				encode_stream(encoded.payload, meshlet.u32_streams[0], stream_buffer, analysis_result.num_primitives);
 
 		// Handle spill region just in case.
 		uint64_t vbo_remapping[MaxVertices + 3];
@@ -502,14 +506,19 @@ static void encode_mesh(Encoded &encoded,
 				memcpy(stream_buffer[i].data, &payload, sizeof(payload));
 			}
 
-			encode_stream(encoded.payload, meshlet.u32_streams[stream_index + 1], stream_buffer,
-			              analysis_result.num_vertices);
+			words_per_stream[stream_index + 1] +=
+					encode_stream(encoded.payload, meshlet.u32_streams[stream_index + 1], stream_buffer,
+					              analysis_result.num_vertices);
 		}
 
 		mesh.meshlets.push_back(meshlet);
 		base_vertex_offset += analysis_result.num_vertices;
 		primitive_index += primitives_to_process;
 	}
+
+	for (unsigned i = 0; i < MaxU32Streams; i++)
+		if (words_per_stream[i])
+			LOGI("Stream[%u] = %zu bytes.\n", i, words_per_stream[i] * sizeof(uint32_t));
 }
 
 static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
@@ -675,7 +684,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	                                     out_vertex_redirection_buffer.data(), local_index_buffer.data(),
 	                                     reinterpret_cast<const uint32_t *>(mesh.indices.data()), mesh.count,
 	                                     position_buffer[0].data, positions.size(), sizeof(vec3),
-	                                     max_vertices, max_primitives, 0.75f);
+	                                     max_vertices, max_primitives, 0.5f);
 
 	meshlets.resize(num_meshlets);
 
@@ -703,7 +712,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	std::vector<meshopt_Bounds> bounds;
 	bounds.clear();
 	bounds.reserve(num_meshlets);
-	for (auto &meshlet: out_meshlets)
+	for (auto &meshlet : out_meshlets)
 	{
 		auto bound = meshopt_computeClusterBounds(
 				out_index_buffer[meshlet.offset].data, meshlet.count * 3,
@@ -719,13 +728,27 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 
 	assert(bounds.size() == encoded.mesh.meshlets.size());
 	const auto *pbounds = bounds.data();
-	for (auto &meshlet: encoded.mesh.meshlets)
+	for (auto &meshlet : encoded.mesh.meshlets)
 	{
 		memcpy(meshlet.bound.center, pbounds->center, sizeof(float) * 3);
 		meshlet.bound.radius = pbounds->radius;
-		memcpy(meshlet.bound.cone_axis_cutoff, pbounds->cone_axis_s8, sizeof(pbounds->cone_axis_s8));
-		meshlet.bound.cone_axis_cutoff[3] = pbounds->cone_cutoff_s8;
+		memcpy(meshlet.bound.cone_axis_cutoff, pbounds->cone_axis, sizeof(pbounds->cone_axis));
+		meshlet.bound.cone_axis_cutoff[3] = pbounds->cone_cutoff;
+		pbounds++;
 	}
+
+	LOGI("Exported meshlet:\n");
+	LOGI("  %zu meshlets\n", encoded.mesh.meshlets.size());
+	LOGI("  %zu payload bytes\n", encoded.payload.size() * sizeof(uint32_t));
+	LOGI("  %u total indices\n", mesh.count);
+	LOGI("  %zu total attributes\n", mesh.positions.size() / mesh.position_stride);
+
+	size_t uncompressed_bytes = mesh.indices.size();
+	uncompressed_bytes += mesh.positions.size();
+	if (style != MeshStyle::Wireframe)
+		uncompressed_bytes += mesh.attributes.size();
+
+	LOGI("  %zu uncompressed bytes\n\n\n", uncompressed_bytes);
 
 	return export_encoded_mesh(path, encoded);
 }

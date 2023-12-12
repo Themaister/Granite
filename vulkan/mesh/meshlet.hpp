@@ -72,8 +72,17 @@ struct Bound
 {
 	float center[3];
 	float radius;
-	int8_t cone_axis_cutoff[4];
+	float cone_axis_cutoff[4];
 };
+
+// Early precull which can be done by task shaders.
+struct GroupBound
+{
+	float aabb_lo[3]; float pad0;
+	float aabb_hi[3]; float pad1;
+	Bound clusters[32];
+};
+static_assert(sizeof(GroupBound) == 32 * 32 + 8 * sizeof(float), "Unexpected sizeof(GroupBound)");
 
 enum class StreamType
 {

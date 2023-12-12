@@ -102,6 +102,7 @@ public:
 	{
 		uint32_t offset = 0;
 		uint32_t count = 0;
+		uint32_t bounds_offset = 0;
 		Meshlet::MeshStyle style = Meshlet::MeshStyle::Wireframe;
 	};
 
@@ -128,6 +129,8 @@ public:
 	const Buffer *get_meshlet_header_buffer() const;
 	const Buffer *get_meshlet_stream_header_buffer() const;
 
+	const Buffer *get_cluster_bounds_buffer() const;
+
 private:
 	Device *device;
 	Granite::AssetManager *manager = nullptr;
@@ -145,7 +148,7 @@ private:
 		ImageHandle image;
 		struct
 		{
-			Util::AllocatedSlice index_or_payload, attr_or_stream, indirect_or_header;
+			Util::AllocatedSlice index_or_payload, attr_or_stream, indirect_or_header, group_bound;
 			DrawRange draw;
 		} mesh;
 		Granite::AssetClass asset_class = Granite::AssetClass::ImageZeroable;
@@ -181,6 +184,8 @@ private:
 	MeshBufferAllocator mesh_header_allocator;
 	MeshBufferAllocator mesh_stream_allocator;
 	MeshBufferAllocator mesh_payload_allocator;
+	MeshBufferAllocator cluster_bound_allocator;
+
 	MeshEncoding mesh_encoding = MeshEncoding::VBOAndIBOMDI;
 
 	bool allocate_asset_mesh(Granite::AssetID id, const Meshlet::MeshView &view);

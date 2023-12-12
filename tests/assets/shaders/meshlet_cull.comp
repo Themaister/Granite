@@ -1,4 +1,12 @@
 #version 450
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_vote : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+
+#include "debug_channel.h"
+
+#pragma optimize off
 
 layout(local_size_x = 32) in;
 
@@ -6,6 +14,23 @@ struct AABB
 {
     vec4 lo, hi;
 };
+
+struct Bound
+{
+    vec4 center_radius;
+    vec4 cone;
+};
+
+struct GroupBound
+{
+    vec3 lo, hi;
+    Bound bounds[32];
+};
+
+layout(set = 0, binding = 6, std430) readonly buffer GroupBounds
+{
+    GroupBound data[];
+} group_bounds;
 
 layout(set = 0, binding = 0, std430) readonly buffer AABBSSBO
 {
@@ -17,10 +42,26 @@ layout(set = 0, binding = 1, std430) readonly buffer Transforms
     mat4 data[];
 } transforms;
 
+layout(set = 1, binding = 1, std140) uniform Frustum
+{
+    vec4 planes[6];
+} frustum;
+
+struct TaskInfo
+{
+    uint aabb_instance;
+    uint node_instance;
+    uint node_count_material_index; // Skinning
+    uint mesh_index_count;
+    uint cluster_group_index;
+};
+
 layout(set = 0, binding = 2, std430) readonly buffer Tasks
 {
-    uvec4 data[];
+    TaskInfo data[];
 } task_info;
+
+// MDI specific.
 
 struct Draw
 {
@@ -39,31 +80,141 @@ layout(set = 0, binding = 4, std430) writeonly buffer OutputDraws
     Draw data[];
 } output_draws;
 
-layout(set = 0, binding = 5, std430) writeonly buffer CompactedDraws
+layout(set = 0, binding = 5, scalar) writeonly buffer CompactedDraws
 {
-    uvec2 data[];
+    uvec3 data[];
 } output_draw_info;
+
+////
 
 layout(push_constant, std430) uniform Registers
 {
+    vec3 camera_pos;
     uint count;
 } registers;
 
+void transform_aabb(mat4 M, inout vec3 lo, inout vec3 hi)
+{
+    vec3 a0 = M[0].xyz * lo.x;
+    vec3 a1 = M[1].xyz * lo.y;
+    vec3 a2 = M[2].xyz * lo.z;
+
+    vec3 b0 = M[0].xyz * hi.x;
+    vec3 b1 = M[1].xyz * hi.y;
+    vec3 b2 = M[2].xyz * hi.z;
+
+    vec3 lo0 = min(a0, b0);
+    vec3 lo1 = min(a1, b1);
+    vec3 lo2 = min(a2, b2);
+
+    vec3 hi0 = max(a0, b0);
+    vec3 hi1 = max(a1, b1);
+    vec3 hi2 = max(a2, b2);
+
+    vec3 base = M[3].xyz;
+
+    lo = lo0 + lo1 + lo2 + base;
+    hi = hi0 + hi1 + hi2 + base;
+}
+
+bool frustum_cull(vec3 lo, vec3 hi)
+{
+    bool ret = true;
+    for (int i = 0; i < 6 && ret; i++)
+    {
+        vec4 p = frustum.planes[i];
+        bvec3 high_mask = greaterThan(p.xyz, vec3(0.0));
+        vec3 max_coord = mix(lo, hi, high_mask);
+        if (dot(vec4(max_coord, 1.0), p) < 0.0)
+            ret = false;
+    }
+    return ret;
+}
+
+bool cluster_cull(mat4 M, Bound bound, vec3 camera_pos)
+{
+    vec3 bound_center = (M * vec4(bound.center_radius.xyz, 1.0)).xyz;
+
+    float s0 = dot(M[0].xyz, M[0].xyz);
+    float s1 = dot(M[1].xyz, M[1].xyz);
+    float s2 = dot(M[2].xyz, M[2].xyz);
+
+    float max_scale_factor = sqrt(max(max(s0, s1), s2));
+    float effective_radius = bound.center_radius.w * max_scale_factor;
+
+    // Cluster cone cull.
+    bool ret = true;
+
+    vec4 cone = bound.cone;
+    if (cone.w < 1.0)
+    {
+        cone = vec4(normalize(mat3(M) * cone.xyz), cone.w);
+        ret = dot(bound_center - camera_pos, cone.xyz) <= cone.w * length(bound_center - camera_pos) + effective_radius;
+    }
+
+    for (int i = 0; i < 6 && ret; i++)
+    {
+        vec4 p = frustum.planes[i];
+        if (dot(vec4(bound_center, 1.0), p) < -effective_radius)
+            ret = false;
+    }
+    return ret;
+}
+
 void main()
 {
-    uvec4 command_payload;
+    TaskInfo task;
     uint task_index = gl_GlobalInvocationID.x;
+    bool task_needs_work = false;
     if (task_index < registers.count)
     {
-        command_payload = task_info.data[task_index];
-        uint offset = command_payload.w & ~31u;
-        uint count = bitfieldExtract(command_payload.w, 0, 5) + 1;
+        task = task_info.data[task_index];
 
-        uint draw_offset = atomicAdd(output_draws.count, count);
-        for (uint i = 0; i < count; i++)
+        // Precull the group.
+        mat4 M = transforms.data[task.node_instance];
+        vec3 lo = group_bounds.data[task.cluster_group_index].lo;
+        vec3 hi = group_bounds.data[task.cluster_group_index].hi;
+        transform_aabb(M, lo, hi);
+
+        task_needs_work = frustum_cull(lo, hi);
+    }
+
+    uint b = subgroupBallot(task_needs_work).x;
+
+    while (b != 0)
+    {
+        int lane = findLSB(b);
+        b &= ~(1u << lane);
+
+        uint cluster_group_index = subgroupShuffle(task.cluster_group_index, lane);
+        uint node_instance = subgroupShuffle(task.node_instance, lane);
+        uint node_count_material_index = subgroupShuffle(task.node_count_material_index, lane);
+        uint mesh_index_count = subgroupShuffle(task.mesh_index_count, lane);
+
+        uint offset = mesh_index_count & ~31u;
+        uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
+
+        bool alloc_draw = false;
+        if (gl_SubgroupInvocationID < count)
         {
-            output_draws.data[draw_offset + i] = input_draws.data[offset + i];
-            output_draw_info.data[draw_offset + i] = command_payload.yz;
+            mat4 M = transforms.data[node_instance];
+            Bound b = group_bounds.data[cluster_group_index].bounds[gl_SubgroupInvocationID];
+            alloc_draw = cluster_cull(M, b, registers.camera_pos);
+        }
+
+        uvec4 ballot = subgroupBallot(alloc_draw);
+        uint draw_count = subgroupBallotBitCount(ballot);
+        uint local_offset = subgroupBallotExclusiveBitCount(ballot);
+
+        uint global_offset;
+        if (subgroupElect())
+            global_offset = atomicAdd(output_draws.count, draw_count);
+        global_offset = subgroupBroadcastFirst(global_offset);
+
+        if (alloc_draw)
+        {
+            output_draws.data[global_offset + local_offset] = input_draws.data[offset + gl_SubgroupInvocationID];
+            output_draw_info.data[global_offset + local_offset] = uvec3(node_instance, node_count_material_index, offset + gl_GlobalInvocationID);
         }
     }
 }

@@ -864,22 +864,32 @@ void Device::init_workarounds()
 	workarounds.emulate_event_as_pipeline_barrier = true;
 	LOGW("Emulating events as pipeline barriers on Metal emulation.\n");
 #else
+	bool sync2_workarounds = false;
+	const bool mesa_driver = ext.driver_id == VK_DRIVER_ID_MESA_RADV ||
+	                         ext.driver_id == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA ||
+	                         ext.driver_id == VK_DRIVER_ID_MESA_TURNIP;
+	const bool amd_driver = ext.driver_id == VK_DRIVER_ID_AMD_OPEN_SOURCE ||
+	                        ext.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY;
+
+	// AMD_PROPRIETARY was likely fixed before this, but fix was observed in this version (23.10.2).
+	if (mesa_driver && gpu_props.driverVersion < VK_MAKE_VERSION(23, 1, 0))
+		sync2_workarounds = true;
+	else if (amd_driver && gpu_props.driverVersion < VK_MAKE_VERSION(2, 0, 283))
+		sync2_workarounds = true;
+
 	if (gpu_props.vendorID == VENDOR_ID_ARM)
 	{
 		LOGW("Workaround applied: Emulating events as pipeline barriers.\n");
 		workarounds.emulate_event_as_pipeline_barrier = true;
 	}
-	else if (ext.driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
+
+	if (ext.driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY && gpu_props.driverVersion < VK_VERSION_MAJOR(535))
 	{
 		LOGW("Disabling pipeline cache control.\n");
 		workarounds.broken_pipeline_cache_control = true;
 	}
-	else if (((ext.driver_id == VK_DRIVER_ID_MESA_RADV ||
-	           ext.driver_id == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA ||
-	           ext.driver_id == VK_DRIVER_ID_MESA_TURNIP) &&
-	          gpu_props.driverVersion < VK_MAKE_VERSION(23, 1, 0)) ||
-	         ext.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY ||
-	         ext.driver_id == VK_DRIVER_ID_AMD_OPEN_SOURCE)
+
+	if (sync2_workarounds)
 	{
 		LOGW("Enabling workaround for sync2 access mask bugs.\n");
 		// https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/21271

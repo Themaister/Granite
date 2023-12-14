@@ -304,9 +304,9 @@ bool mesh_canonicalize_indices(SceneFormats::Mesh &mesh)
 		{
 			bool emit_primitive = true;
 			if (mesh.primitive_restart &&
-			    unrolled_indices[i - 2] == UINT32_MAX &&
-			    unrolled_indices[i - 1] == UINT32_MAX &&
-			    unrolled_indices[i - 0] == UINT32_MAX)
+			    (unrolled_indices[i - 2] == UINT32_MAX ||
+			     unrolled_indices[i - 1] == UINT32_MAX ||
+			     unrolled_indices[i - 0] == UINT32_MAX))
 			{
 				emit_primitive = false;
 				primitive_count_since_restart = 0;

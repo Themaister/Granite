@@ -161,7 +161,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 					auto renderable = Util::make_handle<MeshletRenderable>();
 					renderable->mesh = mesh_assets[mesh];
 					renderable->aabb = parser.get_meshes()[mesh].static_aabb;
-					renderable->material = materials[parser.get_meshes()[mesh].material_index];
+					//renderable->material = materials[parser.get_meshes()[mesh].material_index];
 					renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT;
 					scene.create_renderable(std::move(renderable), nodes[i].get());
 				}
@@ -169,8 +169,27 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			}
 		}
 
+
 		auto &scene_nodes = parser.get_scenes()[parser.get_default_scene()];
 		auto root = scene.create_node();
+
+		for (int z = -10; z <= 10; z++)
+			for (int y = -10; y <= 10; y++)
+				for (int x = -10; x <= 10; x++)
+				{
+					if (!x && !y && !z)
+						continue;
+					auto nodeptr = scene.create_node();
+					auto &node_transform = nodeptr->get_transform();
+					node_transform.translation = vec3(x, y, z) * 3.0f;
+					root->add_child(nodeptr);
+
+					auto renderable = Util::make_handle<MeshletRenderable>();
+					renderable->mesh = mesh_assets.front();
+					renderable->aabb = parser.get_meshes()[0].static_aabb;
+					renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT;
+					scene.create_renderable(std::move(renderable), nodeptr.get());
+				}
 
 		if (false)
 		{
@@ -397,7 +416,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 			{
 				BufferCreateInfo info;
-				info.size = task_params.size() * max_draws * sizeof(DrawParameters);
+				info.size = max_draws * sizeof(DrawParameters);
 				info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 				info.domain = BufferDomain::Device;
 				compacted_params = device.create_buffer(info);

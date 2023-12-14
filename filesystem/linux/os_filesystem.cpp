@@ -138,15 +138,20 @@ FileMappingHandle MMapFile::map_write(size_t map_size)
 {
 	if (has_write_map)
 		return {};
+
 	if (ftruncate64(fd, off64_t(map_size)) < 0)
+	{
+		LOGE("Failed to truncate.\n");
+		report_error();
 		return {};
+	}
 
 	size = map_size;
 
 	void *mapped = mmap64(nullptr, map_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
 	if (mapped == MAP_FAILED)
 	{
-		LOGE("Failed to mmap: %s\n", strerror(errno));
+		report_error();
 		return {};
 	}
 
@@ -157,6 +162,22 @@ FileMappingHandle MMapFile::map_write(size_t map_size)
 		0,
 		mapped, map_size,
 		0, map_size);
+}
+
+void MMapFile::report_error()
+{
+#ifdef __linux__
+	int err = errno;
+	char fdpath[PATH_MAX];
+	char path[PATH_MAX];
+	snprintf(fdpath, sizeof(fdpath), "/proc/%u/fd/%d", getpid(), fd);
+	int ret = readlink(fdpath, path, sizeof(path) - 1);
+	if (ret > 0)
+	{
+		path[ret] = '\0';
+		LOGE("mmap failed for \"%s\" (%s).\n", path, strerror(err));
+	}
+#endif
 }
 
 FileMappingHandle MMapFile::map_subset(uint64_t offset, size_t range)
@@ -170,7 +191,10 @@ FileMappingHandle MMapFile::map_subset(uint64_t offset, size_t range)
 
 	void *mapped = mmap64(nullptr, mapped_size, PROT_READ, MAP_PRIVATE, fd, off64_t(begin_map));
 	if (mapped == MAP_FAILED)
+	{
+		report_error();
 		return {};
+	}
 
 	return Util::make_handle<FileMapping>(
 		reference_from_this(),

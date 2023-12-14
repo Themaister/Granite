@@ -44,6 +44,8 @@ private:
 	bool has_write_map = false;
 	std::string rename_from_on_close;
 	std::string rename_to_on_close;
+
+	void report_error();
 };
 
 class OSFilesystem : public FilesystemBackend

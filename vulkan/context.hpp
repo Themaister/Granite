@@ -87,6 +87,7 @@ struct DeviceFeatures
 	VkPhysicalDevicePerformanceQueryFeaturesKHR performance_query_features = {};
 	VkPhysicalDevicePresentIdFeaturesKHR present_id_features = {};
 	VkPhysicalDevicePresentWaitFeaturesKHR present_wait_features = {};
+	VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR barycentric_features = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};

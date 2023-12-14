@@ -1373,6 +1373,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		enabled_extensions.push_back(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
 	}
 
+	if (has_extension(VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME);
+		ADD_CHAIN(ext.barycentric_features, FRAGMENT_SHADER_BARYCENTRIC_FEATURES_KHR);
+	}
+
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
 		if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))

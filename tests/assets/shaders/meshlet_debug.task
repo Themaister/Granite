@@ -2,23 +2,20 @@
 #extension GL_EXT_mesh_shader : require
 #extension GL_KHR_shader_subgroup_arithmetic : require
 #extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_shuffle : require
 layout(local_size_x = 32) in;
 
-struct TaskInfo
-{
-    uint aabb_instance;
-    uint node_instance;
-    uint node_count_material_index; // Skinning
-    uint mesh_index_count;
-};
-
-layout(set = 0, binding = 2, std430) readonly buffer Tasks
-{
-    TaskInfo data[];
-} task_info;
+#define MESHLET_RENDER_DESCRIPTOR_SET 0
+#define MESHLET_RENDER_AABB_BINDING 0
+#define MESHLET_RENDER_TRANSFORM_BINDING 1
+#define MESHLET_RENDER_TASKS_BINDING 2
+#define MESHLET_RENDER_BOUND_BINDING 7
+#define MESHLET_RENDER_FRUSTUM_BINDING 8
+#include "meshlet_render.h"
 
 layout(push_constant, std430) uniform Registers
 {
+    vec3 camera_pos;
     uint count;
 } registers;
 
@@ -31,35 +28,67 @@ struct MeshTask
 
 struct Payload
 {
-    MeshTask meshlet[1024];
+    MeshTask meshlets[32 * 32];
 };
+taskPayloadSharedEXT Payload mesh_payload;
 
-taskPayloadSharedEXT Payload payload;
+layout(set = 0, binding = 9) buffer Counter { uint task_counter; };
 
 void main()
 {
-    TaskInfo command_payload;
+    TaskInfo task;
     uint task_index = gl_GlobalInvocationID.x;
-    uint task_count = 0;
 
+    bool task_needs_work = false;
     if (task_index < registers.count)
     {
-        command_payload = task_info.data[task_index];
-        uint mesh_offset = command_payload.mesh_index_count & ~31u;
-        uint mesh_count = bitfieldExtract(command_payload.mesh_index_count, 0, 5) + 1;
+        task = task_info.data[task_index];
 
-        uint task_offset = subgroupExclusiveAdd(mesh_count);
-        task_count = subgroupAdd(mesh_count);
-
-        for (uint i = 0; i < mesh_count; i++)
-        {
-            MeshTask meshlet;
-            meshlet.meshlet_index = mesh_offset + i;
-            meshlet.node_instance = command_payload.node_instance;
-            meshlet.node_count_material_index = command_payload.node_count_material_index;
-            payload.meshlet[task_offset + i] = meshlet;
-        }
+        // Precull the group.
+        AABB aabb = aabb.data[task.aabb_instance];
+        task_needs_work = frustum_cull(aabb.lo, aabb.hi);
     }
 
-    EmitMeshTasksEXT(task_count, 1, 1);
+    uint b = subgroupBallot(task_needs_work).x;
+
+    uint payload_offset = 0;
+    while (b != 0)
+    {
+        int lane = findLSB(b);
+        b &= ~(1u << lane);
+
+        uint node_instance = subgroupShuffle(task.node_instance, lane);
+        uint node_count_material_index = subgroupShuffle(task.node_count_material_index, lane);
+        uint mesh_index_count = subgroupShuffle(task.mesh_index_count, lane);
+
+        uint offset = mesh_index_count & ~31u;
+        uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
+
+        uint meshlet_index = offset + gl_SubgroupInvocationID;
+
+        bool alloc_draw = false;
+        if (gl_SubgroupInvocationID < count)
+        {
+            mat4 M = transforms.data[node_instance];
+            Bound b = bounds.data[meshlet_index];
+            alloc_draw = cluster_cull(M, b, registers.camera_pos);
+        }
+
+        uvec4 ballot = subgroupBallot(alloc_draw);
+        uint draw_count = subgroupBallotBitCount(ballot);
+        uint local_offset = subgroupBallotExclusiveBitCount(ballot);
+
+        if (alloc_draw)
+        {
+            mesh_payload.meshlets[payload_offset + local_offset] =
+                MeshTask(meshlet_index, node_instance, node_count_material_index);
+        }
+
+        payload_offset += draw_count;
+    }
+
+    if (gl_LocalInvocationIndex == 0)
+        atomicAdd(task_counter, payload_offset);
+
+    EmitMeshTasksEXT(payload_offset, 1, 1);
 }

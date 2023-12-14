@@ -169,7 +169,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			}
 		}
 
-
 		auto &scene_nodes = parser.get_scenes()[parser.get_default_scene()];
 		auto root = scene.create_node();
 
@@ -255,7 +254,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
 		auto cmd = device.request_command_buffer();
-		cmd->begin_debug_channel(this, "cull", 16 * 1024 * 1024);
 
 		camera.set_depth_range(0.1f, 100.0f);
 
@@ -341,14 +339,27 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 		auto &manager = device.get_resource_manager();
 
-		BufferHandle readback;
+		BufferHandle readback_counter, readback;
 		{
 			BufferCreateInfo info;
 			info.size = 4;
 			info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-			info.domain = BufferDomain::CachedHost;
+			info.domain = BufferDomain::LinkedDeviceHost;
 			readback = device.create_buffer(info);
+
+			info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+			info.domain = BufferDomain::Device;
+			info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
+			readback_counter = device.create_buffer(info);
 		}
+
+		struct
+		{
+			vec3 camera_pos;
+			uint32_t count;
+		} push;
+
+		push.camera_pos = render_context.get_render_parameters().camera_position;
 
 		if (manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Meshlet)
 		{
@@ -380,6 +391,18 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			cmd->set_storage_buffer(0, 5, *payload_buffer);
 
 			cmd->set_sampler(0, 6, StockSampler::DefaultGeometryFilterWrap);
+
+			cmd->set_storage_buffer(0, 7, *manager.get_cluster_bounds_buffer());
+			memcpy(cmd->allocate_typed_constant_data<vec4>(0, 8, 6),
+			       render_context.get_visibility_frustum().get_planes(),
+			       6 * sizeof(vec4));
+
+			cmd->set_storage_buffer(0, 9, *readback_counter);
+
+			uint32_t count = task_params.size();
+			push.count = count;
+			cmd->push_constants(&push, 0, sizeof(push));
+
 			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
 
 			cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
@@ -387,12 +410,16 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
 			cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_TASK_BIT_EXT);
 			cmd->set_specialization_constant_mask(1);
-			cmd->set_specialization_constant(0, style_to_u32_streams(MeshStyle::Textured));
+			cmd->set_specialization_constant(0, style_to_u32_streams(MeshStyle::Wireframe));
 
-			uint32_t count = task_params.size();
-			cmd->push_constants(&count, 0, sizeof(count));
 			cmd->draw_mesh_tasks((count + 31) / 32, 1, 1);
 			cmd->end_render_pass();
+
+			cmd->barrier(VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT, 0,
+			             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+			cmd->copy_buffer(*readback, 0, *readback_counter, 0, sizeof(uint32_t));
+			cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 		}
 		else
 		{
@@ -430,18 +457,11 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			memcpy(cmd->allocate_typed_constant_data<vec4>(0, 7, 6),
 			       render_context.get_visibility_frustum().get_planes(),
 			       6 * sizeof(vec4));
+
 			uint32_t count = task_params.size();
-
-			struct
-			{
-				vec3 camera_pos;
-				uint32_t count;
-			} push;
-
-			push.camera_pos = render_context.get_render_parameters().camera_position;
 			push.count = count;
-
 			cmd->push_constants(&push, 0, sizeof(push));
+
 			cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_COMPUTE_BIT);
 			cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
 			cmd->dispatch((count + 31) / 32, 1, 1);
@@ -485,9 +505,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 		Fence fence;
 		device.submit(cmd, &fence);
-		fence->wait();
-		LOGI("Number of draws: %u\n",
-			 *static_cast<const uint32_t *>(device.map_host_buffer(*readback, MEMORY_ACCESS_READ_BIT)));
+		//fence->wait();
+		//LOGI("Number of draws: %u\n",
+		//     *static_cast<const uint32_t *>(device.map_host_buffer(*readback, MEMORY_ACCESS_READ_BIT)));
 	}
 
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z, uint32_t,

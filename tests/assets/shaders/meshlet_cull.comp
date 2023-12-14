@@ -4,8 +4,6 @@
 #extension GL_KHR_shader_subgroup_vote : require
 #extension GL_KHR_shader_subgroup_shuffle : require
 
-#include "debug_channel.h"
-
 layout(local_size_x = 32) in;
 
 #define MESHLET_RENDER_DESCRIPTOR_SET 0

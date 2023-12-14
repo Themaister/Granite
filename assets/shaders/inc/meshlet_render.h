@@ -69,30 +69,6 @@ layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_TASKS_BINDI
 	TaskInfo data[];
 } task_info;
 
-void transform_aabb(mat4 M, inout vec3 lo, inout vec3 hi)
-{
-	vec3 a0 = M[0].xyz * lo.x;
-	vec3 a1 = M[1].xyz * lo.y;
-	vec3 a2 = M[2].xyz * lo.z;
-
-	vec3 b0 = M[0].xyz * hi.x;
-	vec3 b1 = M[1].xyz * hi.y;
-	vec3 b2 = M[2].xyz * hi.z;
-
-	vec3 lo0 = min(a0, b0);
-	vec3 lo1 = min(a1, b1);
-	vec3 lo2 = min(a2, b2);
-
-	vec3 hi0 = max(a0, b0);
-	vec3 hi1 = max(a1, b1);
-	vec3 hi2 = max(a2, b2);
-
-	vec3 base = M[3].xyz;
-
-	lo = lo0 + lo1 + lo2 + base;
-	hi = hi0 + hi1 + hi2 + base;
-}
-
 bool frustum_cull(vec3 lo, vec3 hi)
 {
 	bool ret = true;

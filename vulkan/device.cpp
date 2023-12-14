@@ -915,9 +915,10 @@ void Device::init_workarounds()
 			LOGI("    Name: %s\n", t.name);
 			LOGI("    Description: %s\n", t.description);
 			LOGI("    Version: %s\n", t.version);
-			if ((t.purposes & VK_TOOL_PURPOSE_TRACING_BIT_EXT) != 0)
+			if ((t.purposes & VK_TOOL_PURPOSE_TRACING_BIT_EXT) != 0 &&
+			    (t.purposes & VK_TOOL_PURPOSE_PROFILING_BIT) == 0)
 			{
-				LOGI("Detected tracing tool, forcing host cached memory types for performance.\n");
+				LOGI("Detected non-profiling tracing tool, forcing host cached memory types for performance.\n");
 				workarounds.force_host_cached = true;
 			}
 		}

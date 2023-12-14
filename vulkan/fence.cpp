@@ -55,11 +55,11 @@ void FenceHolder::wait()
 	if (timeline_value != 0)
 	{
 		VK_ASSERT(timeline_semaphore);
-		VkSemaphoreWaitInfoKHR info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR };
+		VkSemaphoreWaitInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO };
 		info.semaphoreCount = 1;
 		info.pSemaphores = &timeline_semaphore;
 		info.pValues = &timeline_value;
-		if (table.vkWaitSemaphoresKHR(device->get_device(), &info, UINT64_MAX) != VK_SUCCESS)
+		if (table.vkWaitSemaphores(device->get_device(), &info, UINT64_MAX) != VK_SUCCESS)
 			LOGE("Failed to wait for timeline semaphore!\n");
 		else
 			observed_wait = true;
@@ -92,16 +92,16 @@ bool FenceHolder::wait_timeout(uint64_t timeout)
 		if (timeout == 0)
 		{
 			uint64_t current_value = 0;
-			ret = table.vkGetSemaphoreCounterValueKHR(device->get_device(), timeline_semaphore, &current_value) == VK_SUCCESS &&
+			ret = table.vkGetSemaphoreCounterValue(device->get_device(), timeline_semaphore, &current_value) == VK_SUCCESS &&
 			      current_value >= timeline_value;
 		}
 		else
 		{
-			VkSemaphoreWaitInfoKHR info = {VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR};
+			VkSemaphoreWaitInfo info = {VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
 			info.semaphoreCount = 1;
 			info.pSemaphores = &timeline_semaphore;
 			info.pValues = &timeline_value;
-			ret = table.vkWaitSemaphoresKHR(device->get_device(), &info, timeout) == VK_SUCCESS;
+			ret = table.vkWaitSemaphores(device->get_device(), &info, timeout) == VK_SUCCESS;
 		}
 	}
 	else

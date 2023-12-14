@@ -270,7 +270,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			uint32_t node_instance;
 			uint32_t node_count_material_index; // Skinning
 			uint32_t mesh_index_count;
-			uint32_t cluster_group_index;
 		};
 
 		struct DrawParameters
@@ -295,7 +294,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
 			draw.node_count_material_index = skin ? skin->transform.count : 1;
 			draw.node_count_material_index |= meshlet->material.texture_offset << 8;
-			draw.cluster_group_index = range.bounds_offset;
 			assert((range.offset & 31) == 0);
 
 			max_draws += range.count;
@@ -304,7 +302,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			{
 				draw.mesh_index_count = range.offset + i + (std::min(range.count - i, 32u) - 1);
 				task_params.push_back(draw);
-				draw.cluster_group_index++;
 			}
 		}
 

@@ -13,8 +13,8 @@
 #error "Must define MESHLET_RENDER_TRANSFORM_BINDING before including meshlet_render.h"
 #endif
 
-#ifndef MESHLET_RENDER_GROUP_BOUND_BINDING
-#error "Must define MESHLET_RENDER_GROUP_BOUND_BINDING before including meshlet_render.h"
+#ifndef MESHLET_RENDER_BOUND_BINDING
+#error "Must define MESHLET_RENDER_BOUND_BINDING before including meshlet_render.h"
 #endif
 
 #ifndef MESHLET_RENDER_FRUSTUM_BINDING
@@ -27,7 +27,7 @@
 
 struct AABB
 {
-	vec4 lo, hi;
+	vec3 lo; float pad0; vec3 hi; float pad;
 };
 
 struct Bound
@@ -36,16 +36,10 @@ struct Bound
 	vec4 cone;
 };
 
-struct GroupBound
+layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_BOUND_BINDING, std430) readonly buffer Bounds
 {
-	vec3 lo, hi;
-	Bound bounds[32];
-};
-
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_GROUP_BOUND_BINDING, std430) readonly buffer GroupBounds
-{
-	GroupBound data[];
-} group_bounds;
+	Bound data[];
+} bounds;
 
 layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_AABB_BINDING, std430) readonly buffer AABBSSBO
 {
@@ -68,7 +62,6 @@ struct TaskInfo
 	uint node_instance;
 	uint node_count_material_index; // Skinning
 	uint mesh_index_count;
-	uint cluster_group_index;
 };
 
 layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_TASKS_BINDING, std430) readonly buffer Tasks

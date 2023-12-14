@@ -9,7 +9,7 @@
 layout(local_size_x = 32) in;
 
 #define MESHLET_RENDER_DESCRIPTOR_SET 0
-#define MESHLET_RENDER_GROUP_BOUND_BINDING 6
+#define MESHLET_RENDER_BOUND_BINDING 6
 #define MESHLET_RENDER_AABB_BINDING 0
 #define MESHLET_RENDER_TRANSFORM_BINDING 1
 #define MESHLET_RENDER_FRUSTUM_BINDING 7
@@ -54,12 +54,8 @@ void main()
         task = task_info.data[task_index];
 
         // Precull the group.
-        mat4 M = transforms.data[task.node_instance];
-        vec3 lo = group_bounds.data[task.cluster_group_index].lo;
-        vec3 hi = group_bounds.data[task.cluster_group_index].hi;
-        transform_aabb(M, lo, hi);
-
-        task_needs_work = frustum_cull(lo, hi);
+        AABB aabb = aabb.data[task.aabb_instance];
+        task_needs_work = frustum_cull(aabb.lo, aabb.hi);
     }
 
     uint b = subgroupBallot(task_needs_work).x;
@@ -69,7 +65,6 @@ void main()
         int lane = findLSB(b);
         b &= ~(1u << lane);
 
-        uint cluster_group_index = subgroupShuffle(task.cluster_group_index, lane);
         uint node_instance = subgroupShuffle(task.node_instance, lane);
         uint node_count_material_index = subgroupShuffle(task.node_count_material_index, lane);
         uint mesh_index_count = subgroupShuffle(task.mesh_index_count, lane);
@@ -77,11 +72,13 @@ void main()
         uint offset = mesh_index_count & ~31u;
         uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
 
+        uint meshlet_index = offset + gl_SubgroupInvocationID;
+
         bool alloc_draw = false;
         if (gl_SubgroupInvocationID < count)
         {
             mat4 M = transforms.data[node_instance];
-            Bound b = group_bounds.data[cluster_group_index].bounds[gl_SubgroupInvocationID];
+            Bound b = bounds.data[meshlet_index];
             alloc_draw = cluster_cull(M, b, registers.camera_pos);
         }
 
@@ -96,8 +93,8 @@ void main()
 
         if (alloc_draw)
         {
-            output_draws.data[global_offset + local_offset] = input_draws.data[offset + gl_SubgroupInvocationID];
-            output_draw_info.data[global_offset + local_offset] = uvec3(node_instance, node_count_material_index, offset + gl_GlobalInvocationID);
+            output_draws.data[global_offset + local_offset] = input_draws.data[meshlet_index];
+            output_draw_info.data[global_offset + local_offset] = uvec3(node_instance, node_count_material_index, meshlet_index);
         }
     }
 }

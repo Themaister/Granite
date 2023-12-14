@@ -148,7 +148,7 @@ private:
 		ImageHandle image;
 		struct
 		{
-			Util::AllocatedSlice index_or_payload, attr_or_stream, indirect_or_header, group_bound;
+			Util::AllocatedSlice index_or_payload, attr_or_stream, indirect_or_header;
 			DrawRange draw;
 		} mesh;
 		Granite::AssetClass asset_class = Granite::AssetClass::ImageZeroable;
@@ -184,7 +184,6 @@ private:
 	MeshBufferAllocator mesh_header_allocator;
 	MeshBufferAllocator mesh_stream_allocator;
 	MeshBufferAllocator mesh_payload_allocator;
-	MeshBufferAllocator cluster_bound_allocator;
 
 	MeshEncoding mesh_encoding = MeshEncoding::VBOAndIBOMDI;
 

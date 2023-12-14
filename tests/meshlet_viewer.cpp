@@ -505,9 +505,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 		Fence fence;
 		device.submit(cmd, &fence);
-		//fence->wait();
-		//LOGI("Number of draws: %u\n",
-		//     *static_cast<const uint32_t *>(device.map_host_buffer(*readback, MEMORY_ACCESS_READ_BIT)));
+		fence->wait();
+		LOGI("Number of draws: %u\n",
+		     *static_cast<const uint32_t *>(device.map_host_buffer(*readback, MEMORY_ACCESS_READ_BIT)));
 	}
 
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z, uint32_t,

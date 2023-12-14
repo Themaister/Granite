@@ -52,15 +52,11 @@ struct MeshTask
     uint node_count_material_index;
 };
 
-struct MeshPayload
-{
-    MeshTask meshlets[32 * 32];
-};
-taskPayloadSharedEXT MeshPayload mesh_payload;
+taskPayloadSharedEXT MeshTask mesh_payload[32 * 32];
 
 void main()
 {
-    MeshTask task = mesh_payload.meshlets[gl_WorkGroupID.x];
+    MeshTask task = mesh_payload[gl_WorkGroupID.x];
     MeshletMetaRuntime meta = meshlet_metas_runtime.data[task.meshlet_index];
     meshlet_init_workgroup(meta.stream_offset);
 

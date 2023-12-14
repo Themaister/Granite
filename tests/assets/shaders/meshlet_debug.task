@@ -26,11 +26,7 @@ struct MeshTask
     uint node_count_material_index;
 };
 
-struct Payload
-{
-    MeshTask meshlets[32 * 32];
-};
-taskPayloadSharedEXT Payload mesh_payload;
+taskPayloadSharedEXT MeshTask mesh_payload[32 * 32];
 
 layout(set = 0, binding = 9) buffer Counter { uint task_counter; };
 
@@ -80,7 +76,7 @@ void main()
 
         if (alloc_draw)
         {
-            mesh_payload.meshlets[payload_offset + local_offset] =
+            mesh_payload[payload_offset + local_offset] =
                 MeshTask(meshlet_index, node_instance, node_count_material_index);
         }
 

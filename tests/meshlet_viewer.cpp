@@ -430,7 +430,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			cmd->set_storage_buffer(0, 4, *indirect_draws);
 			cmd->set_storage_buffer(0, 5, *compacted_params);
 			cmd->set_storage_buffer(0, 6, *manager.get_cluster_bounds_buffer());
-			memcpy(cmd->allocate_typed_constant_data<vec4>(1, 1, 6),
+			memcpy(cmd->allocate_typed_constant_data<vec4>(0, 7, 6),
 			       render_context.get_visibility_frustum().get_planes(),
 			       6 * sizeof(vec4));
 			uint32_t count = task_params.size();

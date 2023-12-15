@@ -20,7 +20,7 @@
 #error "Must define MESHLET_PAYLOAD_SUBGROUP"
 #endif
 
-#if 1 || MESHLET_PAYLOAD_SUBGROUP
+#if MESHLET_PAYLOAD_SUBGROUP
 #extension GL_KHR_shader_subgroup_arithmetic : require
 #extension GL_KHR_shader_subgroup_ballot : require
 #extension GL_KHR_shader_subgroup_shuffle : require
@@ -96,6 +96,8 @@ shared uvec2 chunk_values1[MESHLET_PAYLOAD_NUM_CHUNKS];
 #if !MESHLET_PAYLOAD_SUBGROUP
 shared uint wave_buffer_x[gl_WorkGroupSize.y][gl_WorkGroupSize.x];
 shared uint wave_buffer_y[gl_WorkGroupSize.y][gl_WorkGroupSize.x];
+shared uint wave_buffer_z[gl_WorkGroupSize.y][gl_WorkGroupSize.x];
+shared uint wave_buffer_w[gl_WorkGroupSize.y][gl_WorkGroupSize.x];
 shared uvec4 wave_broadcast_value[gl_WorkGroupSize.y];
 
 uint wgx_shuffle(uint v, uint lane)
@@ -192,22 +194,52 @@ uvec2 wgx_inclusive_add(uvec2 v)
 	return v;
 }
 
+uvec4 wgx_inclusive_add(uvec4 v)
+{
+	barrier();
+	wave_buffer_x[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = v.x;
+	wave_buffer_y[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = v.y;
+	wave_buffer_z[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = v.z;
+	wave_buffer_w[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = v.w;
+
+	uint idx = gl_LocalInvocationID.x;
+
+	[[unroll]]
+	for (int chunk_size = 2; chunk_size <= 32; chunk_size *= 2)
+	{
+		int upper_mask = chunk_size >> 1;
+		int lower_mask = upper_mask - 1;
+		int chunk_mask = ~(chunk_size - 1);
+		barrier();
+		if ((idx & upper_mask) != 0)
+		{
+			v.x += wave_buffer_x[gl_LocalInvocationID.y][(idx & chunk_mask) | lower_mask];
+			v.y += wave_buffer_y[gl_LocalInvocationID.y][(idx & chunk_mask) | lower_mask];
+			v.z += wave_buffer_z[gl_LocalInvocationID.y][(idx & chunk_mask) | lower_mask];
+			v.w += wave_buffer_w[gl_LocalInvocationID.y][(idx & chunk_mask) | lower_mask];
+
+			if (chunk_size != 32)
+			{
+				wave_buffer_x[gl_LocalInvocationID.y][idx] = v.x;
+				wave_buffer_y[gl_LocalInvocationID.y][idx] = v.y;
+				wave_buffer_z[gl_LocalInvocationID.y][idx] = v.z;
+				wave_buffer_w[gl_LocalInvocationID.y][idx] = v.w;
+			}
+		}
+	}
+
+	return v;
+}
+
+
 #define wgx_subgroup_invocation_id (gl_LocalInvocationID.x)
 #define wgx_subgroup_size (gl_WorkGroupSize.x)
 #define wgx_subgroup_id (gl_LocalInvocationID.y)
 #define wgx_num_subgroups (gl_WorkGroupSize.y)
-#define wgx_mark_uniform(v)
+#define wgx_mark_uniform(v) (v)
 #else
-uint wgx_exclusive_add8(uint v)
-{
-	return subgroupExclusiveAdd(v);
-}
-
-uvec2 wgx_inclusive_add(uvec2 v)
-{
-	return subgroupInclusiveAdd(v);
-}
-
+#define wgx_exclusive_add8(v) subgroupExclusiveAdd(v)
+#define wgx_inclusive_add(v) subgroupInclusiveAdd(v)
 #define wgx_subgroup_invocation_id gl_SubgroupInvocationID
 #define wgx_subgroup_size gl_SubgroupSize
 #define wgx_subgroup_id gl_SubgroupID
@@ -351,8 +383,7 @@ uint meshlet_get_linear_index()
 	uvec2 packed_decoded##iter = pack_u16vec4_to_uvec2(u16vec4(decoded##iter)) & 0xff00ffu; \
 	if (linear_index == 0) \
 		packed_decoded##iter += initial_value##iter; \
-	packed_decoded##iter += pack_u16vec4_to_uvec2((predictor_a##iter + predictor_b##iter * uint16_t(linear_index)) >> 8us); \
-	packed_decoded##iter = wgx_inclusive_add(packed_decoded##iter)
+	packed_decoded##iter += pack_u16vec4_to_uvec2((predictor_a##iter + predictor_b##iter * uint16_t(linear_index)) >> 8us)
 
 #if MESHLET_PAYLOAD_LARGE_WORKGROUP
 uint meshlet_decode_stream_32_wg256(uint base_stream_index, uint stream_index)
@@ -365,6 +396,7 @@ uint meshlet_decode_stream_32_wg256(uint base_stream_index, uint stream_index)
 
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0);
 	MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index, stream_index, chunk_id, 0);
+	packed_decoded0 = wgx_inclusive_add(packed_decoded0);
 
 	barrier(); // Resolve WAR hazard from last iteration.
 	if (wgx_subgroup_invocation_id == wgx_subgroup_size - 1)
@@ -390,22 +422,23 @@ uvec2 meshlet_decode_stream_64_wg256(uint base_stream_index, uint stream_index)
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index + 1, 1);
 	MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index, stream_index, chunk_id, 0);
 	MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index + 1, stream_index + 1, chunk_id, 1);
+	uvec4 packed_decoded = wgx_inclusive_add(uvec4(packed_decoded0, packed_decoded1));
 
 	barrier(); // Resolve WAR hazard from last iteration.
 	if (wgx_subgroup_invocation_id == wgx_subgroup_size - 1)
 	{
-		chunk_values0[chunk_id] = packed_decoded0 & 0xff00ffu;
-		chunk_values1[chunk_id] = packed_decoded1 & 0xff00ffu;
+		chunk_values0[chunk_id] = packed_decoded.xy & 0xff00ffu;
+		chunk_values1[chunk_id] = packed_decoded.zw & 0xff00ffu;
 	}
 	barrier();
 
 	for (uint i = 0; i < chunk_id; i++)
 	{
-		packed_decoded0 += chunk_values0[i];
-		packed_decoded1 += chunk_values1[i];
+		packed_decoded.xy += chunk_values0[i];
+		packed_decoded.zw += chunk_values1[i];
 	}
 
-	return uvec2(repack_uint(packed_decoded0), repack_uint(packed_decoded1));
+	return uvec2(repack_uint(packed_decoded.xy), repack_uint(packed_decoded.zw));
 }
 
 // For large workgroups, we imply AMD, where LocalInvocationIndex indexing is preferred.
@@ -438,6 +471,7 @@ uvec2 meshlet_decode_stream_64_wg256(uint base_stream_index, uint stream_index)
 	for (uint chunk_id = 0; chunk_id < MESHLET_PAYLOAD_NUM_CHUNKS; chunk_id++) \
 	{ \
 		MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index, stream_index, chunk_id, 0); \
+		packed_decoded0 = wgx_inclusive_add(packed_decoded0); \
 		packed_decoded0 += prev_value; \
 		prev_value = wgx_broadcast_last(packed_decoded0) & 0xff00ffu; \
 		report_cb(linear_index, repack_uint(packed_decoded0)); \
@@ -474,10 +508,10 @@ uvec2 meshlet_decode_stream_64_wg256(uint base_stream_index, uint stream_index)
 	{ \
 		MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index, stream_index, chunk_id, 0); \
 		MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index + 1, stream_index + 1, chunk_id, 1); \
-		packed_decoded0 += prev_value.xy; \
-		packed_decoded1 += prev_value.zw; \
-		prev_value = wgx_broadcast_last(uvec4(packed_decoded0, packed_decoded1)) & 0xff00ffu; \
-		report_cb(linear_index, uvec2(repack_uint(packed_decoded0), repack_uint(packed_decoded1))); \
+		uvec4 packed_decoded = wgx_inclusive_add(uvec4(packed_decoded0, packed_decoded1)); \
+		packed_decoded += prev_value; \
+		prev_value = wgx_broadcast_last(packed_decoded) & 0xff00ffu; \
+		report_cb(linear_index, uvec2(repack_uint(packed_decoded.xy), repack_uint(packed_decoded.zw))); \
 		linear_index += wgx_subgroup_size; \
 	} \
 }

@@ -35,6 +35,7 @@
 #include "meshlet_export.hpp"
 #include "render_context.hpp"
 #include "material_manager.hpp"
+#include "mesh_util.hpp"
 #include "gltf.hpp"
 #include <string.h>
 #include <float.h>
@@ -81,7 +82,7 @@ struct MeshletRenderable : AbstractRenderable
 	}
 };
 
-struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
+struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, Vulkan::DebugChannelInterface
 {
 	explicit MeshletViewerApplication(const char *path)
 	{
@@ -105,9 +106,11 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			materials.push_back(GRANITE_MATERIAL_MANAGER()->register_material(&albedo, 1, nullptr, 0));
 		}
 
+#if 1
 		unsigned count = 0;
 		for (auto &mesh : parser.get_meshes())
 		{
+#if 0
 			if (!mesh.has_material ||
 			    mesh.attribute_layout[int(MeshAttribute::Normal)].format == VK_FORMAT_UNDEFINED ||
 			    mesh.attribute_layout[int(MeshAttribute::UV)].format == VK_FORMAT_UNDEFINED ||
@@ -116,13 +119,16 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 				mesh_assets.emplace_back();
 				continue;
 			}
+#endif
 
 			auto internal_path = std::string("memory://mesh") + std::to_string(count++);
-			if (!::Granite::Meshlet::export_mesh_to_meshlet(internal_path, mesh, MeshStyle::Textured))
+			if (!::Granite::Meshlet::export_mesh_to_meshlet(internal_path, mesh, MeshStyle::Wireframe))
 				throw std::runtime_error("Failed to export meshlet.");
+
 			mesh_assets.push_back(GRANITE_ASSET_MANAGER()->register_asset(
 					*GRANITE_FILESYSTEM(), internal_path, Granite::AssetClass::Mesh));
 		}
+#endif
 
 		for (auto &node : parser.get_nodes())
 		{
@@ -149,22 +155,77 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 					if (nodes[child])
 						nodes[i]->add_child(nodes[child]);
 
+#if 1
 				for (auto &mesh : node.meshes)
 				{
 					auto renderable = Util::make_handle<MeshletRenderable>();
 					renderable->mesh = mesh_assets[mesh];
 					renderable->aabb = parser.get_meshes()[mesh].static_aabb;
-					renderable->material = materials[parser.get_meshes()[mesh].material_index];
+					//renderable->material = materials[parser.get_meshes()[mesh].material_index];
+					renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT;
 					scene.create_renderable(std::move(renderable), nodes[i].get());
 				}
+#endif
 			}
 		}
 
 		auto &scene_nodes = parser.get_scenes()[parser.get_default_scene()];
 		auto root = scene.create_node();
+
+		for (int z = -10; z <= 10; z++)
+			for (int y = -10; y <= 10; y++)
+				for (int x = -10; x <= 10; x++)
+				{
+					if (!x && !y && !z)
+						continue;
+					auto nodeptr = scene.create_node();
+					auto &node_transform = nodeptr->get_transform();
+					node_transform.translation = vec3(x, y, z) * 3.0f;
+					root->add_child(nodeptr);
+
+					auto renderable = Util::make_handle<MeshletRenderable>();
+					renderable->mesh = mesh_assets.front();
+					renderable->aabb = parser.get_meshes()[0].static_aabb;
+					renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT;
+					scene.create_renderable(std::move(renderable), nodeptr.get());
+				}
+
+		if (false)
+		{
+			GeneratedMeshData mesh = create_sphere_mesh(64);
+			SceneFormats::Mesh tmp;
+
+			tmp.index_type = VK_INDEX_TYPE_UINT16;
+			tmp.indices.resize(mesh.indices.size() * sizeof(uint16_t));
+			memcpy(tmp.indices.data(), mesh.indices.data(), tmp.indices.size());
+
+			tmp.position_stride = sizeof(vec3);
+			tmp.positions.resize(tmp.position_stride * mesh.positions.size());
+			memcpy(tmp.positions.data(), mesh.positions.data(), tmp.positions.size());
+
+			tmp.attribute_layout[int(MeshAttribute::Position)].format = VK_FORMAT_R32G32B32_SFLOAT;
+			tmp.count = mesh.indices.size();
+			tmp.static_aabb = Granite::AABB{vec3(-1.0f), vec3(1.0f)};
+			tmp.topology = mesh.topology;
+			tmp.primitive_restart = mesh.primitive_restart;
+
+			std::string internal_path{"memory://mesh.sphere"};
+			if (!::Granite::Meshlet::export_mesh_to_meshlet(internal_path, tmp, MeshStyle::Wireframe))
+				throw std::runtime_error("Failed to export meshlet.");
+			AssetID sphere = GRANITE_ASSET_MANAGER()->register_asset(
+					*GRANITE_FILESYSTEM(), internal_path, Granite::AssetClass::Mesh);
+
+			auto renderable = Util::make_handle<MeshletRenderable>();
+			renderable->mesh = sphere;
+			renderable->aabb = tmp.static_aabb;
+			renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT;
+			scene.create_renderable(std::move(renderable), root.get());
+		}
+
 		for (auto &scene_node_index : scene_nodes.node_indices)
 			root->add_child(nodes[scene_node_index]);
 		scene.set_root_node(std::move(root));
+
 
 		EVENT_MANAGER_REGISTER_LATCH(MeshletViewerApplication, on_device_create, on_device_destroy, DeviceCreatedEvent);
 	}
@@ -194,6 +255,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		auto &device = wsi.get_device();
 		auto cmd = device.request_command_buffer();
 
+		camera.set_depth_range(0.1f, 100.0f);
+
 		render_context.set_camera(camera);
 
 		list.clear();
@@ -211,9 +274,11 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 		{
 			uint32_t node_instance;
 			uint32_t node_count; // Skinning
+			uint32_t meshlet_index; // Debug
 		};
 
 		std::vector<TaskParameters> task_params;
+		uint32_t max_draws = 0;
 
 		for (auto &vis : list)
 		{
@@ -228,6 +293,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			draw.node_count_material_index = skin ? skin->transform.count : 1;
 			draw.node_count_material_index |= meshlet->material.texture_offset << 8;
 			assert((range.offset & 31) == 0);
+
+			max_draws += range.count;
 
 			for (uint32_t i = 0; i < range.count; i += 32)
 			{
@@ -272,6 +339,28 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 
 		auto &manager = device.get_resource_manager();
 
+		BufferHandle readback_counter, readback;
+		{
+			BufferCreateInfo info;
+			info.size = 4;
+			info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+			info.domain = BufferDomain::LinkedDeviceHost;
+			readback = device.create_buffer(info);
+
+			info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+			info.domain = BufferDomain::Device;
+			info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
+			readback_counter = device.create_buffer(info);
+		}
+
+		struct
+		{
+			vec3 camera_pos;
+			uint32_t count;
+		} push;
+
+		push.camera_pos = render_context.get_render_parameters().camera_position;
+
 		if (manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Meshlet)
 		{
 			auto *header_buffer = manager.get_meshlet_header_buffer();
@@ -284,14 +373,28 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			cmd->set_opaque_state();
 
 			*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
+			memcpy(cmd->allocate_typed_constant_data<vec4>(1, 1, 6), render_context.get_visibility_frustum().get_planes(),
+			       6 * sizeof(vec4));
 
 			bool large_workgroup =
 					device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32 &&
 					device.get_device_features().mesh_shader_properties.maxMeshWorkGroupInvocations >= 256;
 
+			bool supports_subgroup_path = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
+			                              device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
+
+			if (supports_subgroup_path)
+			{
+				cmd->enable_subgroup_size_control(true);
+				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
+				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
+			}
+
 			cmd->set_program("assets://shaders/meshlet_debug.task", "assets://shaders/meshlet_debug.mesh",
 			                 "assets://shaders/meshlet_debug.mesh.frag",
-			                 {{"MESHLET_PAYLOAD_LARGE_WORKGROUP", int(large_workgroup)}});
+			                 {{"MESHLET_PAYLOAD_LARGE_WORKGROUP", int(large_workgroup)},
+			                  {"MESHLET_PAYLOAD_SUBGROUP", int(supports_subgroup_path)}});
+
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 2, *task_buffer);
@@ -300,18 +403,31 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			cmd->set_storage_buffer(0, 5, *payload_buffer);
 
 			cmd->set_sampler(0, 6, StockSampler::DefaultGeometryFilterWrap);
-			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
 
-			cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
-			cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
-			cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
-			cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_TASK_BIT_EXT);
-			cmd->set_specialization_constant_mask(1);
-			cmd->set_specialization_constant(0, style_to_u32_streams(MeshStyle::Textured));
+			cmd->set_storage_buffer(0, 7, *manager.get_cluster_bounds_buffer());
+			memcpy(cmd->allocate_typed_constant_data<vec4>(0, 8, 6),
+			       render_context.get_visibility_frustum().get_planes(),
+			       6 * sizeof(vec4));
+
+			cmd->set_storage_buffer(0, 9, *readback_counter);
 
 			uint32_t count = task_params.size();
-			cmd->push_constants(&count, 0, sizeof(count));
+			push.count = count;
+			cmd->push_constants(&push, 0, sizeof(push));
+
+			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
+
+			cmd->set_specialization_constant_mask(1);
+			cmd->set_specialization_constant(0, style_to_u32_streams(MeshStyle::Wireframe));
+
 			cmd->draw_mesh_tasks((count + 31) / 32, 1, 1);
+			cmd->end_render_pass();
+
+			cmd->barrier(VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+			             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+			cmd->copy_buffer(*readback, 0, *readback_counter, 0, sizeof(uint32_t));
+			cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 		}
 		else
 		{
@@ -323,8 +439,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			BufferHandle indirect_draws, compacted_params;
 			{
 				BufferCreateInfo info;
-				info.size = task_params.size() * 32 * sizeof(VkDrawIndexedIndirectCommand) + 256;
-				info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+				info.size = max_draws * sizeof(VkDrawIndexedIndirectCommand) + 256;
+				info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 				info.domain = BufferDomain::Device;
 				info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
 				indirect_draws = device.create_buffer(info);
@@ -332,21 +448,37 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 
 			{
 				BufferCreateInfo info;
-				info.size = task_params.size() * 32 * sizeof(DrawParameters);
+				info.size = max_draws * sizeof(DrawParameters);
 				info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 				info.domain = BufferDomain::Device;
 				compacted_params = device.create_buffer(info);
 			}
 
-			cmd->set_program("assets://shaders/meshlet_cull.comp");
+			bool supports_subgroup_path = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
+
+			if (supports_subgroup_path)
+			{
+				cmd->enable_subgroup_size_control(true);
+				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
+			}
+
+			cmd->set_program("assets://shaders/meshlet_cull.comp",
+			                 {{"MESHLET_PAYLOAD_SUBGROUP", int(supports_subgroup_path)}});
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 2, *task_buffer);
 			cmd->set_storage_buffer(0, 3, *indirect);
 			cmd->set_storage_buffer(0, 4, *indirect_draws);
 			cmd->set_storage_buffer(0, 5, *compacted_params);
+			cmd->set_storage_buffer(0, 6, *manager.get_cluster_bounds_buffer());
+			memcpy(cmd->allocate_typed_constant_data<vec4>(0, 7, 6),
+			       render_context.get_visibility_frustum().get_planes(),
+			       6 * sizeof(vec4));
+
 			uint32_t count = task_params.size();
-			cmd->push_constants(&count, 0, sizeof(count));
+			push.count = count;
+			cmd->push_constants(&push, 0, sizeof(push));
+
 			cmd->dispatch((count + 31) / 32, 1, 1);
 
 			cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
@@ -375,12 +507,31 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler
 			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
 
 			cmd->draw_indexed_multi_indirect(*indirect_draws,
-			                                 256, task_params.size() * 32, sizeof(VkDrawIndexedIndirectCommand),
+			                                 256, max_draws, sizeof(VkDrawIndexedIndirectCommand),
 			                                 *indirect_draws, 0);
+
+			cmd->end_render_pass();
+			cmd->barrier(VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0,
+						 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+			cmd->copy_buffer(*readback, 0, *indirect_draws, 0, sizeof(uint32_t));
+			cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+						 VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 		}
 
-		cmd->end_render_pass();
-		device.submit(cmd);
+		Fence fence;
+		device.submit(cmd, &fence);
+		fence->wait();
+		LOGI("Number of draws: %u\n",
+		     *static_cast<const uint32_t *>(device.map_host_buffer(*readback, MEMORY_ACCESS_READ_BIT)));
+	}
+
+	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z, uint32_t,
+	             const Word *words) override
+	{
+		if (x || y || z)
+			return;
+
+		LOGI("%.3f %.3f %.3f %.3f\n", words[0].f32, words[1].f32, words[2].f32, words[3].f32);
 	}
 };
 

@@ -29,6 +29,8 @@
 #include "string_helpers.hpp"
 #include "thread_group.hpp"
 #include "meshlet.hpp"
+#include "aabb.hpp"
+#include <float.h>
 
 namespace Vulkan
 {
@@ -171,14 +173,16 @@ void ResourceManager::init()
 
 	Internal::MeshGlobalAllocator::PrimeOpaque opaque = {};
 	opaque.domain = BufferDomain::Device;
+	opaque.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
 	if (device->get_device_features().mesh_shader_features.taskShader &&
-	    device->get_device_features().mesh_shader_features.meshShader &&
-	    device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
-	    device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT))
+	    device->get_device_features().mesh_shader_features.meshShader)
 	{
 		mesh_encoding = MeshEncoding::Meshlet;
 		LOGI("Opting in to meshlet path.\n");
+
+		mesh_header_allocator.set_soa_count(2);
+		mesh_header_allocator.set_element_size(1, sizeof(Meshlet::Bound));
 
 		opaque.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 		mesh_header_allocator.prime(&opaque);
@@ -187,11 +191,14 @@ void ResourceManager::init()
 	}
 	else
 	{
+		indirect_buffer_allocator.set_soa_count(2);
+		indirect_buffer_allocator.set_element_size(1, sizeof(Meshlet::Bound));
+
 		opaque.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 		index_buffer_allocator.prime(&opaque);
 		opaque.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 		attribute_buffer_allocator.prime(&opaque);
-		opaque.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		opaque.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 		indirect_buffer_allocator.prime(&opaque);
 	}
 }
@@ -351,52 +358,56 @@ bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::Me
 	std::lock_guard<std::mutex> holder{mesh_allocator_lock};
 	auto &asset = assets[id.id];
 
+	bool ret = true;
+
 	if (mesh_encoding == MeshEncoding::VBOAndIBOMDI)
 	{
-		if (!index_buffer_allocator.allocate(view.total_primitives, &asset.mesh.index_or_payload))
-			return false;
-
-		if (!attribute_buffer_allocator.allocate(view.total_vertices, &asset.mesh.attr_or_stream))
-		{
-			index_buffer_allocator.free(asset.mesh.index_or_payload);
-			asset.mesh.index_or_payload = {};
-			return false;
-		}
-
-		if (!indirect_buffer_allocator.allocate(view.format_header->meshlet_count, &asset.mesh.indirect_or_header))
-		{
-			index_buffer_allocator.free(asset.mesh.index_or_payload);
-			attribute_buffer_allocator.free(asset.mesh.attr_or_stream);
-			asset.mesh.index_or_payload = {};
-			asset.mesh.attr_or_stream = {};
-			return false;
-		}
+		if (ret)
+			ret = index_buffer_allocator.allocate(view.total_primitives, &asset.mesh.index_or_payload);
+		if (ret)
+			ret = attribute_buffer_allocator.allocate(view.total_vertices, &asset.mesh.attr_or_stream);
+		if (ret)
+			ret = indirect_buffer_allocator.allocate(view.format_header->meshlet_count, &asset.mesh.indirect_or_header);
 	}
 	else
 	{
-		if (!mesh_header_allocator.allocate(view.format_header->meshlet_count, &asset.mesh.indirect_or_header))
-			return false;
+		if (ret)
+			ret = mesh_header_allocator.allocate(view.format_header->meshlet_count, &asset.mesh.indirect_or_header);
 
-		if (!mesh_stream_allocator.allocate(view.format_header->meshlet_count * view.format_header->u32_stream_count,
-		                                    &asset.mesh.attr_or_stream))
+		if (ret)
 		{
-			mesh_header_allocator.free(asset.mesh.indirect_or_header);
-			asset.mesh.indirect_or_header = {};
-			return false;
+			ret = mesh_stream_allocator.allocate(
+					view.format_header->meshlet_count * view.format_header->u32_stream_count,
+					&asset.mesh.attr_or_stream);
 		}
 
-		if (!mesh_payload_allocator.allocate(view.format_header->payload_size_words, &asset.mesh.index_or_payload))
-		{
-			mesh_header_allocator.free(asset.mesh.indirect_or_header);
-			mesh_stream_allocator.free(asset.mesh.attr_or_stream);
-			asset.mesh.indirect_or_header = {};
-			asset.mesh.attr_or_stream = {};
-			return false;
-		}
+		if (ret)
+			ret = mesh_payload_allocator.allocate(view.format_header->payload_size_words, &asset.mesh.index_or_payload);
 	}
 
-	asset.mesh.draw = { asset.mesh.indirect_or_header.offset, view.format_header->meshlet_count };
-	return true;
+	asset.mesh.draw = {
+		asset.mesh.indirect_or_header.offset,
+		view.format_header->meshlet_count,
+	};
+
+	if (!ret)
+	{
+		if (mesh_encoding == MeshEncoding::VBOAndIBOMDI)
+		{
+			index_buffer_allocator.free(asset.mesh.index_or_payload);
+			attribute_buffer_allocator.free(asset.mesh.attr_or_stream);
+			indirect_buffer_allocator.free(asset.mesh.indirect_or_header);
+		}
+		else
+		{
+			mesh_payload_allocator.free(asset.mesh.index_or_payload);
+			mesh_stream_allocator.free(asset.mesh.attr_or_stream);
+			mesh_header_allocator.free(asset.mesh.indirect_or_header);
+		}
+
+		asset.mesh = {};
+	}
+	return ret;
 }
 
 void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
@@ -444,6 +455,12 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 				headers[i].num_primitives = view.headers[i].num_primitives_minus_1 + 1;
 			}
 
+			auto *bounds = static_cast<Meshlet::Bound *>(
+					cmd->update_buffer(*mesh_header_allocator.get_buffer(0, 1),
+					                   asset.mesh.indirect_or_header.offset * sizeof(Meshlet::Bound),
+					                   view.format_header->meshlet_count * sizeof(Meshlet::Bound)));
+			memcpy(bounds, view.bounds, view.format_header->meshlet_count * sizeof(Meshlet::Bound));
+
 			auto *streams = static_cast<Meshlet::Stream *>(
 					cmd->update_buffer(*mesh_stream_allocator.get_buffer(0, 0),
 					                   asset.mesh.attr_or_stream.offset * sizeof(Meshlet::Stream),
@@ -490,6 +507,12 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			info.push.primitive_offset = asset.mesh.index_or_payload.offset;
 			info.push.vertex_offset = asset.mesh.attr_or_stream.offset;
 
+			auto *bounds = static_cast<Meshlet::Bound *>(
+					cmd->update_buffer(*indirect_buffer_allocator.get_buffer(0, 1),
+					                   asset.mesh.indirect_or_header.offset * sizeof(Meshlet::Bound),
+					                   view.format_header->meshlet_count * sizeof(Meshlet::Bound)));
+			memcpy(bounds, view.bounds, view.format_header->meshlet_count * sizeof(Meshlet::Bound));
+
 			Meshlet::decode_mesh(*cmd, info, view);
 
 			Semaphore sem[2];
@@ -510,6 +533,7 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 		{
 			cost += view.format_header->payload_size_words * mesh_payload_allocator.get_element_size(0);
 			cost += view.format_header->meshlet_count * mesh_header_allocator.get_element_size(0);
+			cost += view.format_header->meshlet_count * mesh_header_allocator.get_element_size(1);
 			cost += view.format_header->meshlet_count * view.format_header->u32_stream_count * mesh_stream_allocator.get_element_size(0);
 		}
 		else
@@ -519,6 +543,7 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			cost += view.total_vertices * attribute_buffer_allocator.get_element_size(1);
 			cost += view.total_vertices * attribute_buffer_allocator.get_element_size(2);
 			cost += view.format_header->meshlet_count * indirect_buffer_allocator.get_element_size(0);
+			cost += view.format_header->meshlet_count * indirect_buffer_allocator.get_element_size(1);
 		}
 
 		asset.mesh.draw.style = view.format_header->style;
@@ -677,6 +702,14 @@ const Buffer *ResourceManager::get_meshlet_header_buffer() const
 const Buffer *ResourceManager::get_meshlet_stream_header_buffer() const
 {
 	return mesh_stream_allocator.get_buffer(0, 0);
+}
+
+const Buffer *ResourceManager::get_cluster_bounds_buffer() const
+{
+	if (mesh_encoding == MeshEncoding::Meshlet)
+		return mesh_header_allocator.get_buffer(0, 1);
+	else
+		return indirect_buffer_allocator.get_buffer(0, 1);
 }
 
 MeshBufferAllocator::MeshBufferAllocator(Device &device, uint32_t sub_block_size, uint32_t num_sub_blocks_in_arena_log2)

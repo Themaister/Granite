@@ -1,26 +1,20 @@
 #version 450
+#extension GL_EXT_scalar_block_layout : require
+#if MESHLET_PAYLOAD_SUBGROUP
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_vote : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+#endif
 
 layout(local_size_x = 32) in;
 
-struct AABB
-{
-    vec4 lo, hi;
-};
-
-layout(set = 0, binding = 0, std430) readonly buffer AABBSSBO
-{
-    AABB data[];
-} aabb;
-
-layout(set = 0, binding = 1, std430) readonly buffer Transforms
-{
-    mat4 data[];
-} transforms;
-
-layout(set = 0, binding = 2, std430) readonly buffer Tasks
-{
-    uvec4 data[];
-} task_info;
+#define MESHLET_RENDER_DESCRIPTOR_SET 0
+#define MESHLET_RENDER_BOUND_BINDING 6
+#define MESHLET_RENDER_AABB_BINDING 0
+#define MESHLET_RENDER_TRANSFORM_BINDING 1
+#define MESHLET_RENDER_FRUSTUM_BINDING 7
+#define MESHLET_RENDER_TASKS_BINDING 2
+#include "meshlet_render.h"
 
 struct Draw
 {
@@ -39,31 +33,115 @@ layout(set = 0, binding = 4, std430) writeonly buffer OutputDraws
     Draw data[];
 } output_draws;
 
-layout(set = 0, binding = 5, std430) writeonly buffer CompactedDraws
+layout(set = 0, binding = 5, scalar) writeonly buffer CompactedDraws
 {
-    uvec2 data[];
+    uvec3 data[];
 } output_draw_info;
 
 layout(push_constant, std430) uniform Registers
 {
+    vec3 camera_pos;
     uint count;
 } registers;
 
+#if !MESHLET_PAYLOAD_SUBGROUP
+shared uint ballot_value;
+shared uint global_offset;
+uvec4 ballot(bool v)
+{
+    barrier();
+    if (gl_LocalInvocationIndex == 0)
+    ballot_value = 0;
+    barrier();
+    if (v)
+    atomicOr(ballot_value, 1u << gl_LocalInvocationIndex);
+    barrier();
+    return uvec4(ballot_value, 0, 0, 0);
+}
+
+uint ballotBitCount(uvec4 v)
+{
+    return bitCount(v.x);
+}
+
+uint ballotExclusiveBitCount(uvec4 v)
+{
+    uint mask = (1u << gl_LocalInvocationIndex) - 1u;
+    return bitCount(v.x & mask);
+}
+#define local_invocation_id gl_LocalInvocationIndex
+#else
+#define ballot(v) subgroupBallot(v)
+#define ballotBitCount(v) subgroupBallotBitCount(v)
+#define ballotExclusiveBitCount(v) subgroupBallotExclusiveBitCount(v)
+#define local_invocation_id gl_SubgroupInvocationID
+#endif
+
 void main()
 {
-    uvec4 command_payload;
-    uint task_index = gl_GlobalInvocationID.x;
+    TaskInfo task;
+    uint task_index = gl_WorkGroupID.x * gl_WorkGroupSize.x + local_invocation_id;
+    bool task_needs_work = false;
     if (task_index < registers.count)
     {
-        command_payload = task_info.data[task_index];
-        uint offset = command_payload.w & ~31u;
-        uint count = bitfieldExtract(command_payload.w, 0, 5) + 1;
+        task = task_info.data[task_index];
 
-        uint draw_offset = atomicAdd(output_draws.count, count);
-        for (uint i = 0; i < count; i++)
+        // Precull the group.
+        AABB aabb = aabb.data[task.aabb_instance];
+        task_needs_work = frustum_cull(aabb.lo, aabb.hi);
+    }
+
+    uint b = ballot(task_needs_work).x;
+
+    while (b != 0)
+    {
+        int lane = findLSB(b);
+        b &= ~(1u << lane);
+
+#if MESHLET_PAYLOAD_SUBGROUP
+        uint node_instance = subgroupShuffle(task.node_instance, lane);
+        uint node_count_material_index = subgroupShuffle(task.node_count_material_index, lane);
+        uint mesh_index_count = subgroupShuffle(task.mesh_index_count, lane);
+#else
+        TaskInfo tmp_task = task_info.data[gl_WorkGroupID.x * gl_WorkGroupSize.x + lane];
+        uint node_instance = tmp_task.node_instance;
+        uint node_count_material_index = tmp_task.node_count_material_index;
+        uint mesh_index_count = tmp_task.mesh_index_count;
+#endif
+
+        uint offset = mesh_index_count & ~31u;
+        uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
+
+        uint meshlet_index = offset + local_invocation_id;
+
+        bool alloc_draw = false;
+        if (local_invocation_id < count)
         {
-            output_draws.data[draw_offset + i] = input_draws.data[offset + i];
-            output_draw_info.data[draw_offset + i] = command_payload.yz;
+            mat4 M = transforms.data[node_instance];
+            Bound b = bounds.data[meshlet_index];
+            alloc_draw = cluster_cull(M, b, registers.camera_pos);
+        }
+
+        uvec4 ballot = ballot(alloc_draw);
+        uint draw_count = ballotBitCount(ballot);
+        uint local_offset = ballotExclusiveBitCount(ballot);
+
+#if MESHLET_PAYLOAD_SUBGROUP
+        uint global_offset;
+        if (subgroupElect())
+            global_offset = atomicAdd(output_draws.count, draw_count);
+        global_offset = subgroupBroadcastFirst(global_offset);
+#else
+        // WAR barrier is implied here in earlier ballot.
+        if (gl_LocalInvocationIndex == 0)
+            global_offset = atomicAdd(output_draws.count, draw_count);
+        barrier();
+#endif
+
+        if (alloc_draw)
+        {
+            output_draws.data[global_offset + local_offset] = input_draws.data[meshlet_index];
+            output_draw_info.data[global_offset + local_offset] = uvec3(node_instance, node_count_material_index, meshlet_index);
         }
     }
 }

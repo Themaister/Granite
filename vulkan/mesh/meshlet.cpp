@@ -123,9 +123,15 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 	struct DecodeOffset { uint32_t arg0, arg1; };
 	std::vector<DecodeOffset> decode_offsets;
 
-	cmd.set_program("builtin://shaders/decode/meshlet_decode.comp");
-	cmd.enable_subgroup_size_control(true);
-	cmd.set_subgroup_size_log2(true, 5, 5);
+	bool supports_subgroup_path = cmd.get_device().supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
+	cmd.set_program("builtin://shaders/decode/meshlet_decode.comp",
+	                {{"MESHLET_PAYLOAD_SUBGROUP", int(supports_subgroup_path) }});
+
+	if (supports_subgroup_path)
+	{
+		cmd.enable_subgroup_size_control(true);
+		cmd.set_subgroup_size_log2(true, 5, 5);
+	}
 
 	cmd.set_storage_buffer(0, 0, *meshlet_meta_buffer);
 	cmd.set_storage_buffer(0, 1, *meshlet_stream_buffer);

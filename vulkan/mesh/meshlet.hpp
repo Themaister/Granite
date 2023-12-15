@@ -72,7 +72,7 @@ struct Bound
 {
 	float center[3];
 	float radius;
-	int8_t cone_axis_cutoff[4];
+	float cone_axis_cutoff[4];
 };
 
 enum class StreamType

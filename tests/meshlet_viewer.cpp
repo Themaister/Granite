@@ -454,7 +454,16 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 				compacted_params = device.create_buffer(info);
 			}
 
-			cmd->set_program("assets://shaders/meshlet_cull.comp");
+			bool supports_subgroup_path = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
+
+			if (supports_subgroup_path)
+			{
+				cmd->enable_subgroup_size_control(true);
+				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
+			}
+
+			cmd->set_program("assets://shaders/meshlet_cull.comp",
+			                 {{"MESHLET_PAYLOAD_SUBGROUP", int(supports_subgroup_path)}});
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 2, *task_buffer);
@@ -470,8 +479,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			push.count = count;
 			cmd->push_constants(&push, 0, sizeof(push));
 
-			cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_COMPUTE_BIT);
-			cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
 			cmd->dispatch((count + 31) / 32, 1, 1);
 
 			cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,

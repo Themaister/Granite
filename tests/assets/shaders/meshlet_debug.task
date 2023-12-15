@@ -1,8 +1,12 @@
 #version 450
 #extension GL_EXT_mesh_shader : require
+
+#if MESHLET_PAYLOAD_SUBGROUP
 #extension GL_KHR_shader_subgroup_arithmetic : require
 #extension GL_KHR_shader_subgroup_ballot : require
 #extension GL_KHR_shader_subgroup_shuffle : require
+#endif
+
 layout(local_size_x = 32) in;
 
 #define MESHLET_RENDER_DESCRIPTOR_SET 0
@@ -30,10 +34,42 @@ taskPayloadSharedEXT MeshTask mesh_payload[32 * 32];
 
 layout(set = 0, binding = 9) buffer Counter { uint task_counter; };
 
+#if !MESHLET_PAYLOAD_SUBGROUP
+shared uint ballot_value;
+uvec4 ballot(bool v)
+{
+    barrier();
+    if (gl_LocalInvocationIndex == 0)
+        ballot_value = 0;
+    barrier();
+    if (v)
+        atomicOr(ballot_value, 1u << gl_LocalInvocationIndex);
+    barrier();
+    return uvec4(ballot_value, 0, 0, 0);
+}
+
+uint ballotBitCount(uvec4 v)
+{
+    return bitCount(v.x);
+}
+
+uint ballotExclusiveBitCount(uvec4 v)
+{
+    uint mask = (1u << gl_LocalInvocationIndex) - 1u;
+    return bitCount(v.x & mask);
+}
+#define local_invocation_id gl_LocalInvocationIndex
+#else
+#define ballot(v) subgroupBallot(v)
+#define ballotBitCount(v) subgroupBallotBitCount(v)
+#define ballotExclusiveBitCount(v) subgroupBallotExclusiveBitCount(v)
+#define local_invocation_id gl_SubgroupInvocationID
+#endif
+
 void main()
 {
     TaskInfo task;
-    uint task_index = gl_GlobalInvocationID.x;
+    uint task_index = gl_WorkGroupID.x * gl_WorkGroupSize.x + local_invocation_id;
 
     bool task_needs_work = false;
     if (task_index < registers.count)
@@ -45,7 +81,7 @@ void main()
         task_needs_work = frustum_cull(aabb.lo, aabb.hi);
     }
 
-    uint b = subgroupBallot(task_needs_work).x;
+    uint b = ballot(task_needs_work).x;
 
     uint payload_offset = 0;
     while (b != 0)
@@ -53,32 +89,36 @@ void main()
         int lane = findLSB(b);
         b &= ~(1u << lane);
 
+#if MESHLET_PAYLOAD_SUBGROUP
         uint node_instance = subgroupShuffle(task.node_instance, lane);
         uint node_count_material_index = subgroupShuffle(task.node_count_material_index, lane);
         uint mesh_index_count = subgroupShuffle(task.mesh_index_count, lane);
+#else
+        TaskInfo tmp_task = task_info.data[gl_WorkGroupID.x * gl_WorkGroupSize.x + lane];
+        uint node_instance = tmp_task.node_instance;
+        uint node_count_material_index = tmp_task.node_count_material_index;
+        uint mesh_index_count = tmp_task.mesh_index_count;
+#endif
 
         uint offset = mesh_index_count & ~31u;
         uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
 
-        uint meshlet_index = offset + gl_SubgroupInvocationID;
+        uint meshlet_index = offset + local_invocation_id;
 
         bool alloc_draw = false;
-        if (gl_SubgroupInvocationID < count)
+        if (local_invocation_id < count)
         {
             mat4 M = transforms.data[node_instance];
             Bound b = bounds.data[meshlet_index];
             alloc_draw = cluster_cull(M, b, registers.camera_pos);
         }
 
-        uvec4 ballot = subgroupBallot(alloc_draw);
-        uint draw_count = subgroupBallotBitCount(ballot);
-        uint local_offset = subgroupBallotExclusiveBitCount(ballot);
+        uvec4 ballot = ballot(alloc_draw);
+        uint draw_count = ballotBitCount(ballot);
+        uint local_offset = ballotExclusiveBitCount(ballot);
 
         if (alloc_draw)
-        {
-            mesh_payload[payload_offset + local_offset] =
-                MeshTask(meshlet_index, node_instance, node_count_material_index);
-        }
+            mesh_payload[payload_offset + local_offset] = MeshTask(meshlet_index, node_instance, node_count_material_index);
 
         payload_offset += draw_count;
     }

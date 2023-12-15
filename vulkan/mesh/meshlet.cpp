@@ -124,7 +124,6 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 	std::vector<DecodeOffset> decode_offsets;
 
 	bool supports_subgroup_path = cmd.get_device().supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
-
 	cmd.set_program("builtin://shaders/decode/meshlet_decode.comp",
 	                {{"MESHLET_PAYLOAD_SUBGROUP", int(supports_subgroup_path) }});
 

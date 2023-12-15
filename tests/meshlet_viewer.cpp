@@ -380,9 +380,21 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 					device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32 &&
 					device.get_device_features().mesh_shader_properties.maxMeshWorkGroupInvocations >= 256;
 
+			bool supports_subgroup_path = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
+			                              device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
+
+			if (supports_subgroup_path)
+			{
+				cmd->enable_subgroup_size_control(true);
+				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
+				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
+			}
+
 			cmd->set_program("assets://shaders/meshlet_debug.task", "assets://shaders/meshlet_debug.mesh",
 			                 "assets://shaders/meshlet_debug.mesh.frag",
-			                 {{"MESHLET_PAYLOAD_LARGE_WORKGROUP", int(large_workgroup)}});
+			                 {{"MESHLET_PAYLOAD_LARGE_WORKGROUP", int(large_workgroup)},
+			                  {"MESHLET_PAYLOAD_SUBGROUP", int(supports_subgroup_path)}});
+
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 2, *task_buffer);
@@ -405,18 +417,14 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
 
-			cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
-			cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
-			cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
-			cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_TASK_BIT_EXT);
 			cmd->set_specialization_constant_mask(1);
 			cmd->set_specialization_constant(0, style_to_u32_streams(MeshStyle::Wireframe));
 
 			cmd->draw_mesh_tasks((count + 31) / 32, 1, 1);
 			cmd->end_render_pass();
 
-			cmd->barrier(VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT, 0,
-			             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+			cmd->barrier(VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+			             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 			cmd->copy_buffer(*readback, 0, *readback_counter, 0, sizeof(uint32_t));
 			cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);

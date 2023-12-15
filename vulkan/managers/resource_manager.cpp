@@ -175,10 +175,8 @@ void ResourceManager::init()
 	opaque.domain = BufferDomain::Device;
 	opaque.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-	if (device->get_device_features().mesh_shader_features.taskShader &&
-	    device->get_device_features().mesh_shader_features.meshShader &&
-	    device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
-	    device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT))
+	if (false && device->get_device_features().mesh_shader_features.taskShader &&
+	    device->get_device_features().mesh_shader_features.meshShader)
 	{
 		mesh_encoding = MeshEncoding::Meshlet;
 		LOGI("Opting in to meshlet path.\n");

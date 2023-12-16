@@ -45,24 +45,28 @@ layout(set = 1, binding = 0) uniform UBO
     mat4 VP;
 };
 
-struct MeshTask
-{
-    uint meshlet_index;
-    uint node_instance;
-    uint node_count_material_index;
-};
+#ifndef MESHLET_RENDER_TASK
+#error "Must define MESHLET_RENDER_TASK"
+#endif
 
-taskPayloadSharedEXT MeshTask mesh_payload[32 * 32];
+#if MESHLET_RENDER_TASK
+taskPayloadSharedEXT CompactedDrawInfo mesh_payload[32 * 32];
+#else
+layout(set = 0, binding = 10) readonly buffer DrawInfos
+{
+    CompactedDrawInfo mesh_payload[];
+};
+#endif
 
 void main()
 {
-    MeshTask task = mesh_payload[gl_WorkGroupID.x];
+    CompactedDrawInfo task = mesh_payload[gl_WorkGroupID.x];
     MeshletMetaRuntime meta = meshlet_metas_runtime.data[task.meshlet_index];
     meshlet_init_workgroup(meta.stream_offset);
 
     SetMeshOutputsEXT(meta.num_attributes, meta.num_primitives);
 
-    mat4 M = transforms.data[task.node_instance];
+    mat4 M = transforms.data[task.node_offset];
 
 #define INDEX(index, value) \
     if (index < meta.num_primitives) \

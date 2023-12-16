@@ -16,26 +16,29 @@ layout(local_size_x = 32) in;
 #define MESHLET_RENDER_TASKS_BINDING 2
 #include "meshlet_render.h"
 
-struct Draw
-{
-    uint payload[5];
-};
-
+#if defined(MESHLET_RENDER_DRAW_WORDS) && MESHLET_RENDER_DRAW_WORDS
 layout(set = 0, binding = 3, std430) readonly buffer InputDraws
 {
-    Draw data[];
+    MeshletDrawCommand data[];
 } input_draws;
 
 layout(set = 0, binding = 4, std430) writeonly buffer OutputDraws
 {
     uint count;
     uint padding[256 / 4 - 1];
-    Draw data[];
+    MeshletDrawCommand data[];
 } output_draws;
-
-layout(set = 0, binding = 5, scalar) writeonly buffer CompactedDraws
+#else
+layout(set = 0, binding = 4, std430) writeonly buffer OutputDraws
 {
-    uvec3 data[];
+    uint count;
+    uint y, z;
+} output_draws;
+#endif
+
+layout(set = 0, binding = 5, std430) writeonly buffer CompactedDraws
+{
+    CompactedDrawInfo data[];
 } output_draw_info;
 
 layout(push_constant, std430) uniform Registers
@@ -47,14 +50,15 @@ layout(push_constant, std430) uniform Registers
 #if !MESHLET_PAYLOAD_SUBGROUP
 shared uint ballot_value;
 shared uint global_offset;
+
 uvec4 ballot(bool v)
 {
     barrier();
     if (gl_LocalInvocationIndex == 0)
-    ballot_value = 0;
+        ballot_value = 0;
     barrier();
     if (v)
-    atomicOr(ballot_value, 1u << gl_LocalInvocationIndex);
+        atomicOr(ballot_value, 1u << gl_LocalInvocationIndex);
     barrier();
     return uvec4(ballot_value, 0, 0, 0);
 }
@@ -140,8 +144,10 @@ void main()
 
         if (alloc_draw)
         {
+#if defined(MESHLET_RENDER_DRAW_WORDS) && MESHLET_RENDER_DRAW_WORDS
             output_draws.data[global_offset + local_offset] = input_draws.data[meshlet_index];
-            output_draw_info.data[global_offset + local_offset] = uvec3(node_instance, node_count_material_index, meshlet_index);
+#endif
+            output_draw_info.data[global_offset + local_offset] = CompactedDrawInfo(meshlet_index, node_instance, node_count_material_index);
         }
     }
 }

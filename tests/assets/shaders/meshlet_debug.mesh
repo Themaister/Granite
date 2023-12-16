@@ -1,7 +1,7 @@
 #version 450
 #extension GL_EXT_mesh_shader : require
 
-layout(max_primitives = 256, max_vertices = 255, triangles) out;
+layout(max_primitives = 128, max_vertices = 128, triangles) out;
 
 #include "meshlet_payload_constants.h"
 

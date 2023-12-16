@@ -457,8 +457,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			       6 * sizeof(vec4));
 
 			bool large_workgroup =
-					device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32 &&
-					device.get_device_features().mesh_shader_properties.maxMeshWorkGroupInvocations >= 256;
+					device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32;
 
 			bool supports_subgroup_path = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
 			                              device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
@@ -560,9 +559,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 		Fence fence;
 		device.submit(cmd, &fence);
-		fence->wait();
-		LOGI("Number of draws: %u\n",
-		     *static_cast<const uint32_t *>(device.map_host_buffer(*readback, MEMORY_ACCESS_READ_BIT)));
+		//fence->wait();
+		//LOGI("Number of draws: %u\n",
+		//     *static_cast<const uint32_t *>(device.map_host_buffer(*readback, MEMORY_ACCESS_READ_BIT)));
 	}
 
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z, uint32_t,

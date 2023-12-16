@@ -671,9 +671,8 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	for (auto &p : positions)
 		position_buffer.push_back(decode_snorm_exp(p));
 
-	// Special meshoptimizer limit.
-	constexpr unsigned max_vertices = 255;
-	constexpr unsigned max_primitives = 256;
+	constexpr unsigned max_vertices = 128;
+	constexpr unsigned max_primitives = 128;
 	size_t num_meshlets = meshopt_buildMeshletsBound(mesh.count, max_vertices, max_primitives);
 
 	std::vector<unsigned> out_vertex_redirection_buffer(num_meshlets * max_vertices);

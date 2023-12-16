@@ -41,7 +41,7 @@ namespace Vulkan
 namespace Meshlet
 {
 static constexpr unsigned MaxU32Streams = 16;
-static constexpr unsigned MaxElements = 256;
+static constexpr unsigned MaxElements = 128;
 static constexpr unsigned MaxPrimitives = MaxElements;
 static constexpr unsigned MaxVertices = MaxElements;
 

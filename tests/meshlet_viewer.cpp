@@ -172,6 +172,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		auto &scene_nodes = parser.get_scenes()[parser.get_default_scene()];
 		auto root = scene.create_node();
 
+#if 1
 		for (int z = -10; z <= 10; z++)
 			for (int y = -10; y <= 10; y++)
 				for (int x = -10; x <= 10; x++)
@@ -189,6 +190,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 					renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT;
 					scene.create_renderable(std::move(renderable), nodeptr.get());
 				}
+#endif
 
 		if (false)
 		{
@@ -456,8 +458,15 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			memcpy(cmd->allocate_typed_constant_data<vec4>(1, 1, 6), render_context.get_visibility_frustum().get_planes(),
 			       6 * sizeof(vec4));
 
-			bool large_workgroup =
-					device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32;
+			*cmd->allocate_typed_constant_data<vec4>(1, 2, 1) =
+					float(1 << 8 /* shader assumes 8 */) *
+					vec4(cmd->get_viewport().x + 0.5f * cmd->get_viewport().width - 0.5f,
+						 cmd->get_viewport().y + 0.5f * cmd->get_viewport().height - 0.5f,
+						 0.5f * cmd->get_viewport().width,
+						 0.5f * cmd->get_viewport().height) - vec4(1.0f, 1.0f, 0.0f, 0.0f);
+
+			bool large_workgroup = true;
+					//device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32;
 
 			bool supports_subgroup_path = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
 			                              device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);

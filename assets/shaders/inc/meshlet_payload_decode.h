@@ -336,8 +336,7 @@ uint meshlet_get_linear_index()
 #if !MESHLET_PAYLOAD_SUBGROUP
 	return gl_LocalInvocationIndex;
 #elif MESHLET_PAYLOAD_LARGE_WORKGROUP
-	// Rely on SubgroupInvocationID == LocalInvocationID.x here.
-	return gl_WorkGroupSize.x * gl_LocalInvocationID.y + gl_SubgroupInvocationID;
+	return gl_SubgroupSize * gl_SubgroupID + gl_SubgroupInvocationID;
 #else
 	return gl_SubgroupInvocationID;
 #endif
@@ -391,8 +390,7 @@ uint meshlet_decode_stream_32_wg256(uint base_stream_index, uint stream_index)
 	uint unrolled_stream_index = base_stream_index + stream_index;
 	uint linear_index = meshlet_get_linear_index();
 
-	// Some compilers don't understand this is implicitly scalar.
-	uint chunk_id = wgx_mark_uniform(gl_LocalInvocationID.y);
+	uint chunk_id = gl_SubgroupID;
 
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0);
 	MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index, stream_index, chunk_id, 0);
@@ -414,9 +412,7 @@ uvec2 meshlet_decode_stream_64_wg256(uint base_stream_index, uint stream_index)
 	// Dual-pump the computation. VGPR use is quite low either way, so this is fine.
 	uint unrolled_stream_index = base_stream_index + stream_index;
 	uint linear_index = meshlet_get_linear_index();
-
-	// Some compilers don't understand this is implicitly scalar.
-	uint chunk_id = wgx_mark_uniform(gl_LocalInvocationID.y);
+	uint chunk_id = gl_SubgroupID;
 
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0);
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index + 1, 1);

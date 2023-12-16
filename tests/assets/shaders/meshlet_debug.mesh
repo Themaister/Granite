@@ -1,18 +1,9 @@
 #version 450
 #extension GL_EXT_mesh_shader : require
 
-#pragma optimize off
-
 layout(max_primitives = 128, max_vertices = 128, triangles) out;
-
 #include "meshlet_payload_constants.h"
-
-#if MESHLET_PAYLOAD_LARGE_WORKGROUP
-#define MESHLET_PAYLOAD_WG_Y MESHLET_PAYLOAD_NUM_CHUNKS
-#else
-#define MESHLET_PAYLOAD_WG_Y 1
-#endif
-layout(local_size_x = 32, local_size_y = MESHLET_PAYLOAD_WG_Y) in;
+layout(local_size_x = 128) in;
 
 layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS;
 #define MESHLET_PAYLOAD_NUM_U32_STREAMS NUM_U32_STREAMS
@@ -105,10 +96,10 @@ bool cull_triangle(vec2 a, vec2 b, vec2 c)
 	precise vec2 ac = c - a;
 
 	// This is 100% accurate as long as the primitive is no larger than ~4k subpixels, i.e. 16x16 pixels.
-	// Accuracy decays after that, but any error causing wrong rendering is imperceptible.
+	// Normally, we'd be able to do GEQ test, but GE test is conservative, even with FP error in play.
 	precise float neg_area = ab.x * ac.y;
 	precise float pos_area = ab.y * ac.x;
-	if (neg_area >= pos_area)
+	if (neg_area > pos_area)
 		return false;
 
 	// Micropoly test.
@@ -180,15 +171,13 @@ void main()
 
     barrier();
 
-    if (gl_LocalInvocationID.x == 0 && gl_LocalInvocationID.y == 0)
+    if (gl_LocalInvocationIndex == 0)
     {
 		uvec3 num_active_prim = bitCount(shared_active_prim.xyz);
 		num_active_prim.y += num_active_prim.x;
 		num_active_prim.z += num_active_prim.y;
 		shared_active_prim_count = uvec4(0, num_active_prim);
-    }
-	else if (gl_LocalInvocationID.x == 0 && gl_LocalInvocationID.y == 1)
-	{
+
 		uvec3 num_active_vert = bitCount(shared_active_vert.xyz);
 		num_active_vert.y += num_active_vert.x;
 		num_active_vert.z += num_active_vert.y;
@@ -209,10 +198,10 @@ void main()
         vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
 
 	bool has_active_vert = lane_has_active_vert(linear_index);
-	uint out_vert_index = compacted_vertex_output(linear_index);
 
 	if (has_active_vert)
 	{
+        uint out_vert_index = compacted_vertex_output(linear_index);
 		gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
 		vWorldPos[out_vert_index] = world_pos;
 	}

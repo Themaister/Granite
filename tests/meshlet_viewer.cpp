@@ -249,9 +249,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		allocator.reset();
 	}
 
-	void render_frame(double, double) override
+	void render_frame(double frame_time, double) override
 	{
 		scene.update_all_transforms();
+		LOGI("Frame time: %.3f ms.\n", frame_time * 1e3);
 
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
@@ -371,7 +372,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 		push.camera_pos = render_context.get_render_parameters().camera_position;
 		const bool use_meshlets = manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Meshlet;
-		const bool use_preculling = !use_meshlets || true;
+		const bool use_preculling = !use_meshlets || false;
 
 		if (use_preculling)
 		{
@@ -476,6 +477,11 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 				cmd->enable_subgroup_size_control(true);
 				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
 				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
+			}
+			else
+			{
+				cmd->enable_subgroup_size_control(true);
+				cmd->set_subgroup_size_log2(true, 5, 7, VK_SHADER_STAGE_MESH_BIT_EXT);
 			}
 
 			cmd->set_program(use_preculling ? "" : "assets://shaders/meshlet_debug.task",

@@ -5,6 +5,10 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+#extension GL_KHR_shader_subgroup_basic : require
 
 #include "meshlet_payload_constants.h"
 
@@ -14,17 +18,6 @@
 
 #ifndef MESHLET_PAYLOAD_LARGE_WORKGROUP
 #error "Must define MESHLET_PAYLOAD_LARGE_WORKGROUP"
-#endif
-
-#ifndef MESHLET_PAYLOAD_SUBGROUP
-#error "Must define MESHLET_PAYLOAD_SUBGROUP"
-#endif
-
-#if MESHLET_PAYLOAD_SUBGROUP
-#extension GL_KHR_shader_subgroup_arithmetic : require
-#extension GL_KHR_shader_subgroup_ballot : require
-#extension GL_KHR_shader_subgroup_shuffle : require
-#extension GL_KHR_shader_subgroup_basic : require
 #endif
 
 #ifndef MESHLET_PAYLOAD_DESCRIPTOR_SET
@@ -87,77 +80,30 @@ layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_PAYLOAD_B
 	uint data[];
 } payload;
 
-#if MESHLET_PAYLOAD_LARGE_WORKGROUP
 shared uvec4 shared_chunk_offset[MESHLET_PAYLOAD_NUM_U32_STREAMS];
 shared uvec2 chunk_values0[MESHLET_PAYLOAD_NUM_CHUNKS];
 shared uvec2 chunk_values1[MESHLET_PAYLOAD_NUM_CHUNKS];
-#endif
 
-#if !MESHLET_PAYLOAD_SUBGROUP
-shared uint wave_buffer_x[gl_WorkGroupSize.y][gl_WorkGroupSize.x];
-shared uint wave_buffer_y[gl_WorkGroupSize.y][gl_WorkGroupSize.x];
-shared uint wave_buffer_z[gl_WorkGroupSize.y][gl_WorkGroupSize.x];
-shared uint wave_buffer_w[gl_WorkGroupSize.y][gl_WorkGroupSize.x];
-shared uvec4 wave_broadcast_value[gl_WorkGroupSize.y];
-
-uint wgx_shuffle(uint v, uint lane)
-{
-	// WAR hazard.
-	barrier();
-	if (gl_LocalInvocationID.x == lane)
-		wave_broadcast_value[gl_LocalInvocationID.y].x = v;
-	barrier();
-	return wave_broadcast_value[gl_LocalInvocationID.y].x;
-}
-
-uvec2 wgx_shuffle(uvec2 v, uint lane)
-{
-	// WAR hazard.
-	barrier();
-	if (gl_LocalInvocationID.x == lane)
-		wave_broadcast_value[gl_LocalInvocationID.y].xy = v;
-	barrier();
-	return wave_broadcast_value[gl_LocalInvocationID.y].xy;
-}
-
-uvec4 wgx_shuffle(uvec4 v, uint lane)
-{
-	// WAR hazard.
-	barrier();
-	if (gl_LocalInvocationID.x == lane)
-		wave_broadcast_value[gl_LocalInvocationID.y] = v;
-	barrier();
-	return wave_broadcast_value[gl_LocalInvocationID.y];
-}
-
-#define wgx_broadcast_last(v) wgx_shuffle(v, gl_WorkGroupSize.x - 1)
+shared uint wave_buffer_x[MESHLET_PAYLOAD_NUM_CHUNKS];
+shared uint wave_buffer_y[MESHLET_PAYLOAD_NUM_CHUNKS];
+shared uint wave_buffer_z[MESHLET_PAYLOAD_NUM_CHUNKS];
+shared uint wave_buffer_w[MESHLET_PAYLOAD_NUM_CHUNKS];
 
 uvec2 wgx_inclusive_add(uvec2 v)
 {
-	barrier();
-	wave_buffer_x[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = v.x;
-	wave_buffer_y[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = v.y;
-
-	uint idx = gl_LocalInvocationID.x;
-
-	[[unroll]]
-	for (int chunk_size = 2; chunk_size <= 32; chunk_size *= 2)
+	v = subgroupInclusiveAdd(v);
+	if (gl_SubgroupInvocationID == gl_SubgroupSize - 1)
 	{
-		int upper_mask = chunk_size >> 1;
-		int lower_mask = upper_mask - 1;
-		int chunk_mask = ~(chunk_size - 1);
-		barrier();
-		if ((idx & upper_mask) != 0)
-		{
-			v.x += wave_buffer_x[gl_LocalInvocationID.y][(idx & chunk_mask) | lower_mask];
-			v.y += wave_buffer_y[gl_LocalInvocationID.y][(idx & chunk_mask) | lower_mask];
+		wave_buffer_x[gl_SubgroupID] = v.x;
+		wave_buffer_y[gl_SubgroupID] = v.y;
+	}
 
-			if (chunk_size != 32)
-			{
-				wave_buffer_x[gl_LocalInvocationID.y][idx] = v.x;
-				wave_buffer_y[gl_LocalInvocationID.y][idx] = v.y;
-			}
-		}
+	barrier();
+
+	for (uint i = 0; i < gl_SubgroupID; i++)
+	{
+		v.x += wave_buffer_x[i];
+		v.y += wave_buffer_y[i];
 	}
 
 	return v;
@@ -165,57 +111,27 @@ uvec2 wgx_inclusive_add(uvec2 v)
 
 uvec4 wgx_inclusive_add(uvec4 v)
 {
-	barrier();
-	wave_buffer_x[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = v.x;
-	wave_buffer_y[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = v.y;
-	wave_buffer_z[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = v.z;
-	wave_buffer_w[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = v.w;
-
-	uint idx = gl_LocalInvocationID.x;
-
-	[[unroll]]
-	for (int chunk_size = 2; chunk_size <= 32; chunk_size *= 2)
+	v = subgroupInclusiveAdd(v);
+	if (gl_SubgroupInvocationID == gl_SubgroupSize - 1)
 	{
-		int upper_mask = chunk_size >> 1;
-		int lower_mask = upper_mask - 1;
-		int chunk_mask = ~(chunk_size - 1);
-		barrier();
-		if ((idx & upper_mask) != 0)
-		{
-			v.x += wave_buffer_x[gl_LocalInvocationID.y][(idx & chunk_mask) | lower_mask];
-			v.y += wave_buffer_y[gl_LocalInvocationID.y][(idx & chunk_mask) | lower_mask];
-			v.z += wave_buffer_z[gl_LocalInvocationID.y][(idx & chunk_mask) | lower_mask];
-			v.w += wave_buffer_w[gl_LocalInvocationID.y][(idx & chunk_mask) | lower_mask];
+		wave_buffer_x[gl_SubgroupID] = v.x;
+		wave_buffer_y[gl_SubgroupID] = v.y;
+		wave_buffer_z[gl_SubgroupID] = v.z;
+		wave_buffer_w[gl_SubgroupID] = v.w;
+	}
 
-			if (chunk_size != 32)
-			{
-				wave_buffer_x[gl_LocalInvocationID.y][idx] = v.x;
-				wave_buffer_y[gl_LocalInvocationID.y][idx] = v.y;
-				wave_buffer_z[gl_LocalInvocationID.y][idx] = v.z;
-				wave_buffer_w[gl_LocalInvocationID.y][idx] = v.w;
-			}
-		}
+	barrier();
+
+	for (uint i = 0; i < gl_SubgroupID; i++)
+	{
+		v.x += wave_buffer_x[i];
+		v.y += wave_buffer_y[i];
+		v.z += wave_buffer_z[i];
+		v.w += wave_buffer_w[i];
 	}
 
 	return v;
 }
-
-
-#define wgx_subgroup_invocation_id (gl_LocalInvocationID.x)
-#define wgx_subgroup_size (gl_WorkGroupSize.x)
-#define wgx_subgroup_id (gl_LocalInvocationID.y)
-#define wgx_num_subgroups (gl_WorkGroupSize.y)
-#define wgx_mark_uniform(v) (v)
-#else
-#define wgx_inclusive_add(v) subgroupInclusiveAdd(v)
-#define wgx_subgroup_invocation_id gl_SubgroupInvocationID
-#define wgx_subgroup_size gl_SubgroupSize
-#define wgx_subgroup_id gl_SubgroupID
-#define wgx_num_subgroups gl_NumSubgroups
-#define wgx_broadcast_last(v) subgroupBroadcast(v, 31)
-#define wgx_mark_uniform(v) subgroupBroadcastFirst(v)
-#define wgx_shuffle(v, lane) subgroupShuffle(v, lane)
-#endif
 
 // Hardcodes wave32 atm. Need fallback.
 
@@ -249,38 +165,27 @@ void meshlet_compute_stream_counts(uint bitplane_value, out uint out_total_bits,
 
 void meshlet_init_workgroup(uint base_stream_index)
 {
-#if MESHLET_PAYLOAD_LARGE_WORKGROUP
-	for (uint stream_index = wgx_subgroup_id; stream_index < MESHLET_PAYLOAD_NUM_U32_STREAMS; stream_index += wgx_num_subgroups)
+	if (gl_LocalInvocationIndex < MESHLET_PAYLOAD_NUM_U32_STREAMS)
 	{
-		if (gl_LocalInvocationID.x == 0)
-		{
-			uint unrolled_stream_index = base_stream_index + stream_index;
-			uvec4 bitplane_values = uvec4(meshlet_streams.data[unrolled_stream_index].bitplane_meta);
+		uint unrolled_stream_index = base_stream_index + gl_LocalInvocationIndex;
+		uvec4 bitplane_values = uvec4(meshlet_streams.data[unrolled_stream_index].bitplane_meta);
 
-			uvec3 total_bits;
-			uvec4 bit_counts;
-			meshlet_compute_stream_counts(bitplane_values.x, total_bits.x, bit_counts);
-			meshlet_compute_stream_counts(bitplane_values.y, total_bits.y, bit_counts);
-			meshlet_compute_stream_counts(bitplane_values.z, total_bits.z, bit_counts);
-			total_bits.y += total_bits.x;
-			total_bits.z += total_bits.y;
-			uint chunk_offset = meshlet_streams.data[unrolled_stream_index].offset_from_base;
-			shared_chunk_offset[stream_index] = chunk_offset + uvec4(0, total_bits);
-		}
+		uvec3 total_bits;
+		uvec4 bit_counts;
+		meshlet_compute_stream_counts(bitplane_values.x, total_bits.x, bit_counts);
+		meshlet_compute_stream_counts(bitplane_values.y, total_bits.y, bit_counts);
+		meshlet_compute_stream_counts(bitplane_values.z, total_bits.z, bit_counts);
+		total_bits.y += total_bits.x;
+		total_bits.z += total_bits.y;
+		uint chunk_offset = meshlet_streams.data[unrolled_stream_index].offset_from_base;
+		shared_chunk_offset[gl_LocalInvocationIndex] = chunk_offset + uvec4(0, total_bits);
 	}
 	barrier();
-#endif
 }
 
 uint meshlet_get_linear_index()
 {
-#if !MESHLET_PAYLOAD_SUBGROUP
-	return gl_LocalInvocationIndex;
-#elif MESHLET_PAYLOAD_LARGE_WORKGROUP
 	return gl_SubgroupSize * gl_SubgroupID + gl_SubgroupInvocationID;
-#else
-	return gl_SubgroupInvocationID;
-#endif
 }
 
 // Overlap load with consumption.
@@ -288,7 +193,7 @@ uint meshlet_get_linear_index()
 #define MESHLET_FETCH_BITPLANES(decoded_value, counts, payload_value, offset) \
 	for (int i = 0; i < counts; i++) \
 	{ \
-		decoded_value |= bitfieldExtract(payload_value, int(wgx_subgroup_invocation_id), 1) << i; \
+		decoded_value |= bitfieldExtract(payload_value, local_chunk_index, 1) << i; \
 		payload_value = payload.data[++offset]; \
 	} \
 	decoded_value = bitfieldExtract(int(decoded_value), 0, counts)
@@ -301,16 +206,10 @@ uint meshlet_get_linear_index()
 	u8vec4 initial_value_##iter = meshlet_streams.data[unrolled_stream_index].initial_value; \
 	uvec2 initial_value##iter = pack_u16vec4_to_uvec2(u16vec4(initial_value_##iter))
 
-#if MESHLET_PAYLOAD_LARGE_WORKGROUP
 #define MESHLET_PAYLOAD_DECL_CHUNK_OFFSETS(unrolled_stream_index, stream_index, chunk_id, iter) \
 	uint bitplane_offsets##iter = shared_chunk_offset[stream_index][chunk_id]; \
 	uint bitplane_value##iter = uint(meshlet_streams.data[unrolled_stream_index].bitplane_meta[chunk_id]); \
 	ivec4 bit_counts##iter = ivec4(meshlet_decode_bit_counts(bitplane_value##iter))
-#else
-#define MESHLET_PAYLOAD_DECL_CHUNK_OFFSETS(unrolled_stream_index, stream_index, chunk_id, iter) \
-	uint bitplane_offsets##iter = wgx_shuffle(shared_chunk_offset##iter, chunk_id); \
-	ivec4 bit_counts##iter = ivec4(wgx_shuffle(shared_chunk_bit_counts##iter, chunk_id))
-#endif
 
 #define MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index, stream_index, chunk_id, iter) \
 	uvec4 decoded##iter = ivec4(0); \
@@ -325,26 +224,16 @@ uint meshlet_get_linear_index()
 		packed_decoded##iter += initial_value##iter; \
 	packed_decoded##iter += pack_u16vec4_to_uvec2((predictor_a##iter + predictor_b##iter * uint16_t(linear_index)) >> 8us)
 
-#if MESHLET_PAYLOAD_LARGE_WORKGROUP
 uint meshlet_decode_stream_32_wg256(uint base_stream_index, uint stream_index)
 {
 	uint unrolled_stream_index = base_stream_index + stream_index;
 	uint linear_index = meshlet_get_linear_index();
-
-	uint chunk_id = wgx_subgroup_id;
+	uint chunk_id = linear_index / 32u;
+	int local_chunk_index = int(linear_index & 31);
 
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0);
 	MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index, stream_index, chunk_id, 0);
 	packed_decoded0 = wgx_inclusive_add(packed_decoded0);
-
-	barrier(); // Resolve WAR hazard from last iteration.
-	if (wgx_subgroup_invocation_id == wgx_subgroup_size - 1)
-		chunk_values0[chunk_id] = packed_decoded0 & 0xff00ffu;
-	barrier();
-
-	for (uint i = 0; i < chunk_id; i++)
-		packed_decoded0 += chunk_values0[i];
-
 	return repack_uint(packed_decoded0);
 }
 
@@ -353,106 +242,23 @@ uvec2 meshlet_decode_stream_64_wg256(uint base_stream_index, uint stream_index)
 	// Dual-pump the computation. VGPR use is quite low either way, so this is fine.
 	uint unrolled_stream_index = base_stream_index + stream_index;
 	uint linear_index = meshlet_get_linear_index();
-	uint chunk_id = wgx_subgroup_id;
+	uint chunk_id = linear_index / 32u;
+	int local_chunk_index = int(linear_index & 31);
 
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0);
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index + 1, 1);
 	MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index, stream_index, chunk_id, 0);
 	MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index + 1, stream_index + 1, chunk_id, 1);
 	uvec4 packed_decoded = wgx_inclusive_add(uvec4(packed_decoded0, packed_decoded1));
-
-	barrier(); // Resolve WAR hazard from last iteration.
-	if (wgx_subgroup_invocation_id == wgx_subgroup_size - 1)
-	{
-		chunk_values0[chunk_id] = packed_decoded.xy & 0xff00ffu;
-		chunk_values1[chunk_id] = packed_decoded.zw & 0xff00ffu;
-	}
-	barrier();
-
-	for (uint i = 0; i < chunk_id; i++)
-	{
-		packed_decoded.xy += chunk_values0[i];
-		packed_decoded.zw += chunk_values1[i];
-	}
-
 	return uvec2(repack_uint(packed_decoded.xy), repack_uint(packed_decoded.zw));
 }
 
-// For large workgroups, we imply AMD, where LocalInvocationIndex indexing is preferred.
-// We assume that SubgroupInvocationID == LocalInvocationID.x here since it's the only reasonable it would work.
 #define MESHLET_DECODE_STREAM_32(meshlet_index, stream_index, report_cb) { \
 	uint value = meshlet_decode_stream_32_wg256(meshlet_index, stream_index); \
-	report_cb(gl_LocalInvocationIndex, value); }
+	report_cb(meshlet_get_linear_index(), value); }
 
 #define MESHLET_DECODE_STREAM_64(meshlet_index, stream_index, report_cb) { \
 	uvec2 value = meshlet_decode_stream_64_wg256(meshlet_index, stream_index); \
-	report_cb(gl_LocalInvocationIndex, value); }
-
-#else
-
-// Have to iterate and report once per chunk. Avoids having to spend a lot of LDS memory.
-#define MESHLET_DECODE_STREAM_32(base_stream_index, stream_index, report_cb) { \
-	uint unrolled_stream_index = base_stream_index + stream_index; \
-	uint linear_index = meshlet_get_linear_index(); \
-	uvec2 prev_value = uvec2(0); \
-	uint shared_chunk_offset0; \
-	uvec4 shared_chunk_bit_counts0; \
-	uint total_bits0; \
-	uint bitplane_value0; \
-	if (wgx_subgroup_invocation_id < MESHLET_PAYLOAD_NUM_CHUNKS) \
-		bitplane_value0 = uint(meshlet_streams.data[unrolled_stream_index].bitplane_meta[wgx_subgroup_invocation_id]); \
-	meshlet_compute_stream_counts(bitplane_value0, total_bits0, shared_chunk_bit_counts0); \
-	shared_chunk_offset0 = wgx_exclusive_add8(total_bits0) + meshlet_streams.data[unrolled_stream_index].offset_from_base; \
-	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0); \
-	[[loop]] \
-	for (uint chunk_id = 0; chunk_id < MESHLET_PAYLOAD_NUM_CHUNKS; chunk_id++) \
-	{ \
-		MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index, stream_index, chunk_id, 0); \
-		packed_decoded0 = wgx_inclusive_add(packed_decoded0); \
-		packed_decoded0 += prev_value; \
-		prev_value = wgx_broadcast_last(packed_decoded0) & 0xff00ffu; \
-		report_cb(linear_index, repack_uint(packed_decoded0)); \
-		linear_index += wgx_subgroup_size; \
-	} \
-}
-
-// Have to iterate and report once per chunk. Avoids having to spend a lot of LDS memory.
-#define MESHLET_DECODE_STREAM_64(base_stream_index, stream_index, report_cb) { \
-	uint unrolled_stream_index = base_stream_index + stream_index; \
-	uint linear_index = meshlet_get_linear_index(); \
-	uvec4 prev_value = uvec4(0); \
-	uint shared_chunk_offset0; \
-	uvec4 shared_chunk_bit_counts0; \
-	uint shared_chunk_offset1; \
-	uvec4 shared_chunk_bit_counts1; \
-	uint total_bits0; \
-	uint total_bits1; \
-	uint bitplane_value0; \
-	uint bitplane_value1; \
-	if (wgx_subgroup_invocation_id < MESHLET_PAYLOAD_NUM_CHUNKS) \
-	{ \
-		bitplane_value0 = uint(meshlet_streams.data[unrolled_stream_index].bitplane_meta[wgx_subgroup_invocation_id]); \
-		bitplane_value1 = uint(meshlet_streams.data[unrolled_stream_index + 1].bitplane_meta[wgx_subgroup_invocation_id]); \
-	} \
-	meshlet_compute_stream_counts(bitplane_value0, total_bits0, shared_chunk_bit_counts0); \
-	meshlet_compute_stream_counts(bitplane_value1, total_bits1, shared_chunk_bit_counts1); \
-	shared_chunk_offset0 = wgx_exclusive_add8(total_bits0) + meshlet_streams.data[unrolled_stream_index].offset_from_base; \
-	shared_chunk_offset1 = wgx_exclusive_add8(total_bits1) + meshlet_streams.data[unrolled_stream_index + 1].offset_from_base; \
-	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0); \
-	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index + 1, 1); \
-	[[loop]] \
-	for (uint chunk_id = 0; chunk_id < MESHLET_PAYLOAD_NUM_CHUNKS; chunk_id++) \
-	{ \
-		MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index, stream_index, chunk_id, 0); \
-		MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index + 1, stream_index + 1, chunk_id, 1); \
-		uvec4 packed_decoded = wgx_inclusive_add(uvec4(packed_decoded0, packed_decoded1)); \
-		packed_decoded += prev_value; \
-		prev_value = wgx_broadcast_last(packed_decoded) & 0xff00ffu; \
-		report_cb(linear_index, uvec2(repack_uint(packed_decoded.xy), repack_uint(packed_decoded.zw))); \
-		linear_index += wgx_subgroup_size; \
-	} \
-}
-
-#endif
+	report_cb(meshlet_get_linear_index(), value); }
 
 #endif

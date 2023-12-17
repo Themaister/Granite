@@ -64,11 +64,6 @@ shared uvec4 shared_active_vert_count;
 shared uvec4 shared_active_prim_count;
 shared uint shared_active_vert_count_total;
 shared uint shared_active_prim_count_total;
-shared vec4 shared_clip_positions[MESHLET_PAYLOAD_NUM_CHUNKS * 32];
-shared vec3 shared_positions[MESHLET_PAYLOAD_NUM_CHUNKS * 32];
-shared uint shared_attr_x[MESHLET_PAYLOAD_NUM_CHUNKS * 32];
-shared uint shared_attr_y[MESHLET_PAYLOAD_NUM_CHUNKS * 32];
-shared u8vec4 shared_prim_u8[MESHLET_PAYLOAD_NUM_CHUNKS * 32];
 
 const uint CLIP_CODE_INACCURATE = 1 << 0;
 const uint CLIP_CODE_NEGATIVE_W = 1 << 1;
@@ -93,10 +88,11 @@ bool lane_has_active_vert(uint index)
 	return (shared_active_vert[index / 32u] & (1u << (index & 31u))) != 0u;
 }
 
-u8vec4 remap_index_buffer(u8vec4 prim_u8)
+uvec3 remap_index_buffer(uvec3 prim)
 {
-    uvec3 prim = uvec3(prim_u8.xyz);
-    return u8vec4(uvec4(compacted_vertex_output(prim.x), compacted_vertex_output(prim.y), compacted_vertex_output(prim.z), 0));
+    return uvec3(compacted_vertex_output(prim.x),
+        compacted_vertex_output(prim.y),
+        compacted_vertex_output(prim.z));
 }
 
 bool cull_triangle(vec2 a, vec2 b, vec2 c)
@@ -145,8 +141,8 @@ void main()
 	uint linear_index = meshlet_get_linear_index();
     mat4 M = transforms.data[task.node_offset];
 
-    u8vec4 prim_u8;
-#define INDEX(index, value) prim_u8 = unpack8(value)
+    uvec3 prim;
+#define INDEX(index, value) prim = uvec3(unpack8(value).xyz)
     MESHLET_DECODE_STREAM_32(meta.stream_offset, 0, INDEX);
 
 	vec3 pos;
@@ -178,7 +174,6 @@ void main()
 	bool is_active_prim = false;
     if (linear_index < meta.num_primitives)
     {
-        uvec3 prim = uvec3(prim_u8.xyz);
         uint code_a = shared_clip_code[prim.x];
         uint code_b = shared_clip_code[prim.y];
         uint code_c = shared_clip_code[prim.z];
@@ -237,30 +232,19 @@ void main()
     SetMeshOutputsEXT(num_verts, num_prims);
 
 	if (is_active_prim)
-		shared_prim_u8[compacted_index_output(linear_index)] = remap_index_buffer(prim_u8);
+		gl_PrimitiveTriangleIndicesEXT[compacted_index_output(linear_index)] = remap_index_buffer(prim);
+
+    if (gl_LocalInvocationIndex < num_prims)
+        vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
 
 	bool has_active_vert = lane_has_active_vert(linear_index);
 
 	if (has_active_vert)
 	{
         uint out_vert_index = compacted_vertex_output(linear_index);
-        shared_positions[out_vert_index] = world_pos;
-        shared_clip_positions[out_vert_index] = clip_pos;
+		gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
+		vWorldPos[out_vert_index] = world_pos;
 	}
-
-	barrier();
-
-    if (gl_LocalInvocationIndex < num_prims)
-    {
-        gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(shared_prim_u8[gl_LocalInvocationIndex].xyz);
-        vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
-    }
-
-	if (gl_LocalInvocationIndex < num_verts)
-	{
-		gl_MeshVerticesEXT[gl_LocalInvocationIndex].gl_Position = shared_clip_positions[gl_LocalInvocationIndex];
-		vWorldPos[gl_LocalInvocationIndex] = shared_positions[gl_LocalInvocationIndex];
-    }
 
 #if 0
 #define NORMAL(index, value) \

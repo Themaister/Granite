@@ -68,6 +68,14 @@ struct RuntimeHeader
 	uint16_t num_attributes;
 };
 
+struct RuntimeHeaderDecoded
+{
+	uint32_t primitive_offset;
+	uint32_t vertex_offset;
+	uint32_t num_primitives;
+	uint32_t num_attributes;
+};
+
 struct Bound
 {
 	float center[3];
@@ -122,11 +130,18 @@ enum DecodeModeFlagBits : uint32_t
 };
 using DecodeModeFlags = uint32_t;
 
+enum class RuntimeStyle
+{
+	MDI,
+	Meshlet
+};
+
 struct DecodeInfo
 {
 	const Vulkan::Buffer *ibo, *streams[3], *indirect, *payload;
 	DecodeModeFlags flags;
 	MeshStyle target_style;
+	RuntimeStyle runtime_style;
 
 	struct
 	{

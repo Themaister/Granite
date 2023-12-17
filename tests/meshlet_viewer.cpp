@@ -378,7 +378,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		{
 			BufferCreateInfo info;
 			if (use_meshlets)
-				info.size = 16;
+				info.size = max_draws * sizeof(Vulkan::Meshlet::RuntimeHeaderDecoded) + 256;
 			else
 				info.size = max_draws * sizeof(VkDrawIndexedIndirectCommand) + 256;
 
@@ -416,7 +416,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
 			}
 
-			auto command_words = use_meshlets ? 0 : (sizeof(VkDrawIndexedIndirectCommand) / sizeof(uint32_t));
+			auto command_words = (use_meshlets ?
+			                      sizeof(Vulkan::Meshlet::RuntimeHeaderDecoded) :
+			                      sizeof(VkDrawIndexedIndirectCommand)) / sizeof(uint32_t);
 
 			cmd->set_program("assets://shaders/meshlet_cull.comp",
 			                 {{"MESHLET_PAYLOAD_WAVE32", int(supports_wave32)},
@@ -424,8 +426,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 2, *task_buffer);
-			if (!use_meshlets)
-				cmd->set_storage_buffer(0, 3, *indirect);
+			cmd->set_storage_buffer(0, 3, *indirect);
 			cmd->set_storage_buffer(0, 4, *indirect_draws);
 			cmd->set_storage_buffer(0, 5, *compacted_params);
 			cmd->set_storage_buffer(0, 6, *manager.get_cluster_bounds_buffer());
@@ -444,12 +445,12 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			             VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 		}
 
+		auto *ibo = manager.get_index_buffer();
+		auto *pos = manager.get_position_buffer();
+		auto *attr = manager.get_attribute_buffer();
+
 		if (use_meshlets)
 		{
-			auto *header_buffer = manager.get_meshlet_header_buffer();
-			auto *stream_header_buffer = manager.get_meshlet_stream_header_buffer();
-			auto *payload_buffer = manager.get_meshlet_payload_buffer();
-
 			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
 			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
 			render_context.set_camera(camera);
@@ -466,79 +467,21 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 						 0.5f * cmd->get_viewport().width,
 						 0.5f * cmd->get_viewport().height) - vec4(1.0f, 1.0f, 0.0f, 0.0f);
 
-			bool large_workgroup = true;
-					//device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32;
+			cmd->set_program("", "assets://shaders/meshlet_debug_plain.mesh",
+			                 "assets://shaders/meshlet_debug.mesh.frag");
 
-			bool supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
-			                       device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
-
-			if (supports_wave32)
-			{
-				cmd->enable_subgroup_size_control(true);
-				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
-				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
-			}
-			else
-			{
-				cmd->enable_subgroup_size_control(true);
-				cmd->set_subgroup_size_log2(true, 5, 7, VK_SHADER_STAGE_MESH_BIT_EXT);
-			}
-
-			cmd->set_program(use_preculling ? "" : "assets://shaders/meshlet_debug.task",
-			                 "assets://shaders/meshlet_debug.mesh",
-			                 "assets://shaders/meshlet_debug.mesh.frag",
-			                 {{"MESHLET_PAYLOAD_LARGE_WORKGROUP", int(large_workgroup)},
-			                  {"MESHLET_PAYLOAD_WAVE32", int(supports_wave32)},
-			                  {"MESHLET_RENDER_TASK", int(!use_preculling)}});
-
-			cmd->set_storage_buffer(0, 0, *aabb_buffer);
-			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
-			cmd->set_storage_buffer(0, 2, *task_buffer);
-			cmd->set_storage_buffer(0, 3, *header_buffer);
-			cmd->set_storage_buffer(0, 4, *stream_header_buffer);
-			cmd->set_storage_buffer(0, 5, *payload_buffer);
-
-			cmd->set_sampler(0, 6, StockSampler::DefaultGeometryFilterWrap);
-
-			cmd->set_storage_buffer(0, 7, *manager.get_cluster_bounds_buffer());
-			memcpy(cmd->allocate_typed_constant_data<vec4>(0, 8, 6),
-			       render_context.get_visibility_frustum().get_planes(),
-			       6 * sizeof(vec4));
-
-			cmd->set_storage_buffer(0, 9, *readback_counter);
-			cmd->set_storage_buffer(0, 10, *compacted_params);
-
+			cmd->set_storage_buffer(0, 0, *ibo);
+			cmd->set_storage_buffer(0, 1, *pos);
+			cmd->set_storage_buffer(0, 2, *attr);
+			cmd->set_storage_buffer(0, 3, *indirect_draws);
+			cmd->set_storage_buffer(0, 4, *compacted_params);
+			cmd->set_storage_buffer(0, 5, *cached_transform_buffer);
 			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
-
-			cmd->set_specialization_constant_mask(1);
-			cmd->set_specialization_constant(0, style_to_u32_streams(MeshStyle::Wireframe));
-
-			if (use_preculling)
-			{
-				cmd->draw_mesh_tasks_indirect(*indirect_draws, 0, 1, sizeof(VkDrawMeshTasksIndirectCommandEXT));
-			}
-			else
-			{
-				uint32_t count = task_params.size();
-				push.count = count;
-				cmd->push_constants(&push, 0, sizeof(push));
-				cmd->draw_mesh_tasks((count + 31) / 32, 1, 1);
-			}
-
+			cmd->draw_mesh_tasks_indirect(*indirect_draws, 0, 1, sizeof(VkDrawMeshTasksIndirectCommandEXT));
 			cmd->end_render_pass();
-
-			cmd->barrier(VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-			             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-			cmd->copy_buffer(*readback, 0, *readback_counter, 0, sizeof(uint32_t));
-			cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 		}
 		else
 		{
-			auto *ibo = manager.get_index_buffer();
-			auto *pos = manager.get_position_buffer();
-			auto *attr = manager.get_attribute_buffer();
-
 			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
 			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
 			cmd->set_opaque_state();

@@ -70,6 +70,20 @@ layout(set = 0, binding = 7, std430) readonly buffer OutputOffsets
     uvec2 data[];
 } output_offset_strides;
 
+#if MESHLET_PAYLOAD_RUNTIME_MESH
+struct IndirectDrawMesh
+{
+    uint primitive_offset;
+    uint vertex_offset;
+    uint num_primitives;
+    uint num_attributes;
+};
+
+layout(set = 0, binding = 8, std430) writeonly buffer IndirectCommands
+{
+    IndirectDrawMesh draws[];
+} indirect_commands_mesh;
+#else
 struct IndirectIndexedDraw
 {
     uint indexCount;
@@ -83,6 +97,7 @@ layout(set = 0, binding = 8, std430) writeonly buffer IndirectCommands
 {
     IndirectIndexedDraw draws[];
 } indirect_commands;
+#endif
 
 layout(push_constant, std430) uniform Registers
 {
@@ -105,6 +120,14 @@ void main()
 
     if (!RAW_PAYLOAD)
     {
+#if MESHLET_PAYLOAD_RUNTIME_MESH
+        IndirectDrawMesh draw;
+        draw.primitive_offset = output_offset_strides.data[meshlet_index].x + registers.primitive_offset;
+        draw.vertex_offset = meta.base_vertex_offset + registers.vertex_offset;
+        draw.num_primitives = meta.num_primitives;
+        draw.num_attributes = meta.num_attributes;
+        indirect_commands_mesh.draws[meshlet_index + registers.meshlet_offset] = draw;
+#else
         IndirectIndexedDraw draw;
         draw.indexCount = 3 * meta.num_primitives;
         draw.instanceCount = 1;
@@ -112,6 +135,7 @@ void main()
         draw.firstIndex = 3 * (output_offset_strides.data[meshlet_index].x + registers.primitive_offset);
         draw.firstInstance = 0;
         indirect_commands.draws[meshlet_index + registers.meshlet_offset] = draw;
+#endif
     }
 
 #define INDEX(linear_index, packed_indices) { \

@@ -87,10 +87,9 @@ MeshView create_mesh_view(const Granite::FileMapping &mapping)
 
 bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &view)
 {
-	// TODO: Implement LDS fallback.
-	if (!cmd.get_device().supports_subgroup_size_log2(true, 5, 5))
+	if (!cmd.get_device().supports_subgroup_size_log2(true, 5, 7))
 	{
-		LOGE("Device does not support Wave32.\n");
+		LOGE("Device does not support subgroup paths.\n");
 		return false;
 	}
 
@@ -123,15 +122,17 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 	struct DecodeOffset { uint32_t arg0, arg1; };
 	std::vector<DecodeOffset> decode_offsets;
 
-	bool supports_subgroup_path = cmd.get_device().supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
+	bool supports_wave32 = cmd.get_device().supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
+	bool meshlet_runtime = (info.flags & DECODE_MODE_RAW_PAYLOAD) == 0 && info.runtime_style == RuntimeStyle::Meshlet;
 	cmd.set_program("builtin://shaders/decode/meshlet_decode.comp",
-	                {{"MESHLET_PAYLOAD_SUBGROUP", int(supports_subgroup_path) }});
+	                {{"MESHLET_PAYLOAD_WAVE32", int(supports_wave32) },
+	                 {"MESHLET_PAYLOAD_RUNTIME_MESH", int(meshlet_runtime)}});
 
-	if (supports_subgroup_path)
-	{
-		cmd.enable_subgroup_size_control(true);
-		cmd.set_subgroup_size_log2(true, 5, 5);
-	}
+	cmd.enable_subgroup_size_control(true);
+	if (supports_wave32)
+		cmd.set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
+	else
+		cmd.set_subgroup_size_log2(true, 5, 7, VK_SHADER_STAGE_COMPUTE_BIT);
 
 	cmd.set_storage_buffer(0, 0, *meshlet_meta_buffer);
 	cmd.set_storage_buffer(0, 1, *meshlet_stream_buffer);

@@ -27,6 +27,14 @@ struct CompactedDrawInfo
 	uint node_count_material_offset;
 };
 
+struct IndirectDrawMesh
+{
+	uint primitive_offset;
+	uint vertex_offset;
+	uint num_primitives;
+	uint num_attributes;
+};
+
 #if defined(MESHLET_RENDER_DRAW_WORDS) && MESHLET_RENDER_DRAW_WORDS
 struct MeshletDrawCommand
 {

@@ -125,9 +125,9 @@ public:
 	const Buffer *get_skinning_buffer() const;
 	const Buffer *get_indirect_buffer() const;
 
-	const Buffer *get_meshlet_payload_buffer() const;
-	const Buffer *get_meshlet_header_buffer() const;
-	const Buffer *get_meshlet_stream_header_buffer() const;
+	//const Buffer *get_meshlet_payload_buffer() const;
+	//const Buffer *get_meshlet_header_buffer() const;
+	//const Buffer *get_meshlet_stream_header_buffer() const;
 
 	const Buffer *get_cluster_bounds_buffer() const;
 
@@ -181,9 +181,9 @@ private:
 	MeshBufferAllocator index_buffer_allocator;
 	MeshBufferAllocator attribute_buffer_allocator;
 	MeshBufferAllocator indirect_buffer_allocator;
-	MeshBufferAllocator mesh_header_allocator;
-	MeshBufferAllocator mesh_stream_allocator;
-	MeshBufferAllocator mesh_payload_allocator;
+	//MeshBufferAllocator mesh_header_allocator;
+	//MeshBufferAllocator mesh_stream_allocator;
+	//MeshBufferAllocator mesh_payload_allocator;
 
 	MeshEncoding mesh_encoding = MeshEncoding::VBOAndIBOMDI;
 

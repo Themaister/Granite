@@ -372,7 +372,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 		push.camera_pos = render_context.get_render_parameters().camera_position;
 		const bool use_meshlets = manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Meshlet;
-		const bool use_preculling = !use_meshlets || false;
+		const bool use_preculling = !use_meshlets || true;
 
 		if (use_preculling)
 		{
@@ -408,9 +408,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		if (use_preculling)
 		{
 			auto *indirect = manager.get_indirect_buffer();
-			bool supports_subgroup_path = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
+			bool supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
 
-			if (supports_subgroup_path)
+			if (supports_wave32)
 			{
 				cmd->enable_subgroup_size_control(true);
 				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
@@ -419,7 +419,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			auto command_words = use_meshlets ? 0 : (sizeof(VkDrawIndexedIndirectCommand) / sizeof(uint32_t));
 
 			cmd->set_program("assets://shaders/meshlet_cull.comp",
-			                 {{"MESHLET_PAYLOAD_SUBGROUP", int(supports_subgroup_path)},
+			                 {{"MESHLET_PAYLOAD_WAVE32", int(supports_wave32)},
 			                  {"MESHLET_RENDER_DRAW_WORDS", int(command_words)}});
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
@@ -469,10 +469,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			bool large_workgroup = true;
 					//device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations > 32;
 
-			bool supports_subgroup_path = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
-			                              device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
+			bool supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
+			                       device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
 
-			if (supports_subgroup_path)
+			if (supports_wave32)
 			{
 				cmd->enable_subgroup_size_control(true);
 				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
@@ -488,7 +488,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			                 "assets://shaders/meshlet_debug.mesh",
 			                 "assets://shaders/meshlet_debug.mesh.frag",
 			                 {{"MESHLET_PAYLOAD_LARGE_WORKGROUP", int(large_workgroup)},
-			                  {"MESHLET_PAYLOAD_SUBGROUP", int(supports_subgroup_path)},
+			                  {"MESHLET_PAYLOAD_WAVE32", int(supports_wave32)},
 			                  {"MESHLET_RENDER_TASK", int(!use_preculling)}});
 
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);

@@ -228,8 +228,14 @@ uint meshlet_decode_stream_32_wg256(uint base_stream_index, uint stream_index)
 {
 	uint unrolled_stream_index = base_stream_index + stream_index;
 	uint linear_index = meshlet_get_linear_index();
+
+#if MESHLET_PAYLOAD_WAVE32
+	uint chunk_id = gl_SubgroupID;
+	int local_chunk_index = int(gl_SubgroupInvocationID);
+#else
 	uint chunk_id = linear_index / 32u;
 	int local_chunk_index = int(linear_index & 31);
+#endif
 
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0);
 	MESHLET_PAYLOAD_PROCESS_CHUNK(unrolled_stream_index, stream_index, chunk_id, 0);
@@ -242,8 +248,14 @@ uvec2 meshlet_decode_stream_64_wg256(uint base_stream_index, uint stream_index)
 	// Dual-pump the computation. VGPR use is quite low either way, so this is fine.
 	uint unrolled_stream_index = base_stream_index + stream_index;
 	uint linear_index = meshlet_get_linear_index();
+
+#if MESHLET_PAYLOAD_WAVE32
+	uint chunk_id = gl_SubgroupID;
+	int local_chunk_index = int(gl_SubgroupInvocationID);
+#else
 	uint chunk_id = linear_index / 32u;
 	int local_chunk_index = int(linear_index & 31);
+#endif
 
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index, 0);
 	MESHLET_PAYLOAD_DECL_STREAM(unrolled_stream_index + 1, 1);

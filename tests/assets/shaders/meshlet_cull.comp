@@ -1,6 +1,6 @@
 #version 450
 #extension GL_EXT_scalar_block_layout : require
-#if MESHLET_PAYLOAD_SUBGROUP
+#if MESHLET_PAYLOAD_WAVE32
 #extension GL_KHR_shader_subgroup_ballot : require
 #extension GL_KHR_shader_subgroup_vote : require
 #extension GL_KHR_shader_subgroup_shuffle : require
@@ -47,7 +47,7 @@ layout(push_constant, std430) uniform Registers
     uint count;
 } registers;
 
-#if !MESHLET_PAYLOAD_SUBGROUP
+#if !MESHLET_PAYLOAD_WAVE32
 shared uint ballot_value;
 shared uint global_offset;
 
@@ -102,7 +102,7 @@ void main()
         int lane = findLSB(b);
         b &= ~(1u << lane);
 
-#if MESHLET_PAYLOAD_SUBGROUP
+#if MESHLET_PAYLOAD_WAVE32
         uint node_instance = subgroupShuffle(task.node_instance, lane);
         uint node_count_material_index = subgroupShuffle(task.node_count_material_index, lane);
         uint mesh_index_count = subgroupShuffle(task.mesh_index_count, lane);
@@ -130,7 +130,7 @@ void main()
         uint draw_count = ballotBitCount(ballot);
         uint local_offset = ballotExclusiveBitCount(ballot);
 
-#if MESHLET_PAYLOAD_SUBGROUP
+#if MESHLET_PAYLOAD_WAVE32
         uint global_offset;
         if (subgroupElect())
             global_offset = atomicAdd(output_draws.count, draw_count);

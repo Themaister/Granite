@@ -372,7 +372,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 		push.camera_pos = render_context.get_render_parameters().camera_position;
 		const bool use_meshlets = manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Meshlet;
-		const bool use_preculling = !use_meshlets || true;
+		const bool use_preculling = !use_meshlets || false;
 
 		if (use_preculling)
 		{
@@ -457,8 +457,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			cmd->set_opaque_state();
 
 			*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
-			memcpy(cmd->allocate_typed_constant_data<vec4>(1, 1, 6), render_context.get_visibility_frustum().get_planes(),
-			       6 * sizeof(vec4));
 
 			*cmd->allocate_typed_constant_data<vec4>(1, 2, 1) =
 					float(1 << 8 /* shader assumes 8 */) *
@@ -467,17 +465,29 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 						 0.5f * cmd->get_viewport().width,
 						 0.5f * cmd->get_viewport().height) - vec4(1.0f, 1.0f, 0.0f, 0.0f);
 
-			cmd->set_program("", "assets://shaders/meshlet_debug_plain.mesh",
+			cmd->set_program("assets://shaders/meshlet_debug_plain.task", "assets://shaders/meshlet_debug_plain.mesh",
 			                 "assets://shaders/meshlet_debug.mesh.frag");
 
 			cmd->set_storage_buffer(0, 0, *ibo);
 			cmd->set_storage_buffer(0, 1, *pos);
-			cmd->set_storage_buffer(0, 2, *attr);
-			cmd->set_storage_buffer(0, 3, *indirect_draws);
-			cmd->set_storage_buffer(0, 4, *compacted_params);
-			cmd->set_storage_buffer(0, 5, *cached_transform_buffer);
+			//cmd->set_storage_buffer(0, 2, *attr);
+			cmd->set_storage_buffer(0, 3, *manager.get_indirect_buffer());
+			cmd->set_storage_buffer(0, 4, *cached_transform_buffer);
+			cmd->set_storage_buffer(0, 5, *aabb_buffer);
+			cmd->set_storage_buffer(0, 6, *task_buffer);
+			cmd->set_storage_buffer(0, 7, *manager.get_cluster_bounds_buffer());
+
+			memcpy(cmd->allocate_typed_constant_data<vec4>(0, 8, 6), render_context.get_visibility_frustum().get_planes(),
+			       6 * sizeof(vec4));
+
 			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
-			cmd->draw_mesh_tasks_indirect(*indirect_draws, 0, 1, sizeof(VkDrawMeshTasksIndirectCommandEXT));
+			for (uint32_t i = 0, n = task_params.size(); i < n; i += device.get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0])
+			{
+				push.count = i;
+				uint32_t to_draw = std::min<uint32_t>(n - i, device.get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0]);
+				cmd->push_constants(&push, 0, sizeof(push));
+				cmd->draw_mesh_tasks(to_draw, 1, 1);
+			}
 			cmd->end_render_pass();
 		}
 		else

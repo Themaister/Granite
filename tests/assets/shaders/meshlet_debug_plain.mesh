@@ -32,17 +32,22 @@ layout(set = 0, binding = 1, scalar) readonly buffer VBOPOS
     vec3 data[];
 } pos;
 
+// binding = 2 for attributes
+
 layout(set = 0, binding = 3, std430) readonly buffer IndirectCommands
 {
-    layout(offset = 256) IndirectDrawMesh draws[];
+    IndirectDrawMesh draws[];
 } indirect_commands_mesh;
 
-layout(set = 0, binding = 4, std430) readonly buffer CompactedDraws
+struct TaskPayload
 {
-    CompactedDrawInfo mesh_payload[];
+	CompactedDrawInfo info;
+	uint8_t indices[32];
 };
 
-layout(set = 0, binding = 5, std430) readonly buffer Transforms
+taskPayloadSharedEXT TaskPayload mesh_payload;
+
+layout(set = 0, binding = 4, std430) readonly buffer Transforms
 {
     mat4 data[];
 } transforms;
@@ -131,8 +136,9 @@ void main()
     }
 #endif
 
-    IndirectDrawMesh meshlet = indirect_commands_mesh.draws[gl_WorkGroupID.x];
-    CompactedDrawInfo task = mesh_payload[gl_WorkGroupID.x];
+    CompactedDrawInfo task = mesh_payload.info;
+	task.meshlet_index += mesh_payload.indices[gl_WorkGroupID.x];
+    IndirectDrawMesh meshlet = indirect_commands_mesh.draws[task.meshlet_index];
 	uint linear_index = gl_LocalInvocationIndex;
     mat4 M = transforms.data[task.node_offset];
 

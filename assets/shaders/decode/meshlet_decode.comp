@@ -106,7 +106,7 @@ void main()
     if (!RAW_PAYLOAD)
     {
         IndirectIndexedDraw draw;
-        draw.indexCount = 3 * (meta.num_primitives_minus_1 + 1);
+        draw.indexCount = 3 * meta.num_primitives;
         draw.instanceCount = 1;
         draw.vertexOffset = meta.base_vertex_offset + registers.vertex_offset;
         draw.firstIndex = 3 * (output_offset_strides.data[meshlet_index].x + registers.primitive_offset);
@@ -121,12 +121,12 @@ void main()
         indices += meta.base_vertex_offset + registers.vertex_offset; \
         output_offset = output_offset_strides.data[meshlet_index * NUM_OUTPUT_U32_STREAMS].x; \
         output_offset += registers.primitive_offset; \
-        if (linear_index <= uint(meta.num_primitives_minus_1)) \
+        if (linear_index < uint(meta.num_primitives)) \
             output_indices32.data[output_offset + linear_index] = indices; \
     } else { \
         output_offset = output_offset_strides.data[meshlet_index].x; \
         output_offset += registers.primitive_offset; \
-        if (linear_index <= uint(meta.num_primitives_minus_1)) \
+        if (linear_index < uint(meta.num_primitives)) \
             output_indices8.data[output_offset + linear_index] = unpack8(packed_indices).xyz; \
     } \
 }
@@ -140,7 +140,7 @@ void main()
 #define ATTR(linear_index, packed_decoded) { \
     uvec2 output_offset_stride0 = output_offset_strides.data[meshlet_index * NUM_OUTPUT_U32_STREAMS + i]; \
     output_offset_stride0.x += registers.vertex_offset; \
-    if (linear_index <= uint(meta.num_attributes_minus_1)) \
+    if (linear_index < uint(meta.num_attributes)) \
         output_stream_raw.data[output_offset_stride0.x + linear_index * output_offset_stride0.y] = packed_decoded; \
 }
 
@@ -155,30 +155,30 @@ void main()
         output_offset += registers.vertex_offset;
 
 #define POS(linear_index, packed_decoded) { \
-    if (linear_index <= uint(meta.num_attributes_minus_1)) \
+    if (linear_index < uint(meta.num_attributes)) \
         output_stream_pos.data[output_offset + linear_index] = attribute_decode_snorm_exp_position(packed_decoded); \
 }
 
 #define NORMAL(linear_index, packed_decoded) { \
-    if (linear_index <= uint(meta.num_attributes_minus_1)) { \
+    if (linear_index < uint(meta.num_attributes)) { \
         output_stream_textured_attr.data[output_offset + linear_index].normal = pack_a2bgr10(attribute_decode_oct8_normal_tangent(packed_decoded)); \
     } \
 }
 
 #define TANGENT(linear_index, packed_decoded) { \
-    if (linear_index <= uint(meta.num_attributes_minus_1)) { \
+    if (linear_index < uint(meta.num_attributes)) { \
         output_stream_textured_attr.data[output_offset + linear_index].tangent = pack_a2bgr10(attribute_decode_oct8_normal_tangent(packed_decoded)); \
     } \
 }
 
 #define UV(linear_index, packed_decoded) { \
-    if (linear_index <= uint(meta.num_attributes_minus_1)) { \
+    if (linear_index < uint(meta.num_attributes)) { \
         output_stream_textured_attr.data[output_offset + linear_index].uv = attribute_decode_snorm_exp_uv(packed_decoded); \
     } \
 }
 
 #define SKIN(linear_index, packed_decoded) { \
-    if (linear_index <= uint(meta.num_attributes_minus_1)) { \
+    if (linear_index < uint(meta.num_attributes)) { \
         output_stream_skin.data[output_offset + linear_index] = packed_decoded; \
     } \
 }

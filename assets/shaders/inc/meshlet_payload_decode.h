@@ -48,8 +48,8 @@ struct MeshletStream
 struct MeshletMetaRaw
 {
 	uint base_vertex_offset;
-	uint8_t num_primitives_minus_1;
-	uint8_t num_attributes_minus_1;
+	uint8_t num_primitives;
+	uint8_t num_attributes;
 	uint16_t reserved;
 };
 

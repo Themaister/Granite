@@ -78,8 +78,8 @@ MeshView create_mesh_view(const Granite::FileMapping &mapping)
 
 	for (uint32_t i = 0, n = view.format_header->meshlet_count; i < n; i++)
 	{
-		view.total_primitives += view.headers[i].num_primitives_minus_1 + 1;
-		view.total_vertices += view.headers[i].num_attributes_minus_1 + 1;
+		view.total_primitives += view.headers[i].num_primitives;
+		view.total_vertices += view.headers[i].num_attributes;
 	}
 
 	return view;
@@ -178,7 +178,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 		for (uint32_t i = 0; i < view.format_header->meshlet_count; i++)
 		{
 			decode_offsets.push_back({ index_count, 0 });
-			index_count += view.headers[i].num_primitives_minus_1 + 1;
+			index_count += view.headers[i].num_primitives;
 			for (uint32_t j = 0; j < output_u32_streams; j++)
 				decode_offsets.push_back({ view.headers[i].base_vertex_offset * output_u32_streams + j, output_u32_streams });
 		}
@@ -214,7 +214,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 		for (uint32_t i = 0; i < view.format_header->meshlet_count; i++)
 		{
 			decode_offsets.push_back({ index_count, view.headers[i].base_vertex_offset });
-			index_count += view.headers[i].num_primitives_minus_1 + 1;
+			index_count += view.headers[i].num_primitives;
 		}
 		cmd.set_specialization_constant(1, uint32_t(info.target_style));
 

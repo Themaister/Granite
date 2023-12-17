@@ -471,8 +471,8 @@ static void encode_mesh(Encoded &encoded,
 		u8vec4 stream_buffer[MaxElements];
 
 		meshlet.base_vertex_offset = base_vertex_offset;
-		meshlet.num_primitives_minus_1 = analysis_result.num_primitives - 1;
-		meshlet.num_attributes_minus_1 = analysis_result.num_vertices - 1;
+		meshlet.num_primitives = analysis_result.num_primitives;
+		meshlet.num_attributes = analysis_result.num_vertices;
 		meshlet.reserved = 0;
 
 		// Encode index buffer.

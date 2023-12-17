@@ -451,8 +451,8 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			for (uint32_t i = 0, n = view.format_header->meshlet_count; i < n; i++)
 			{
 				headers[i].stream_offset = asset.mesh.attr_or_stream.offset + i * view.format_header->u32_stream_count;
-				headers[i].num_attributes = view.headers[i].num_attributes_minus_1 + 1;
-				headers[i].num_primitives = view.headers[i].num_primitives_minus_1 + 1;
+				headers[i].num_attributes = view.headers[i].num_attributes;
+				headers[i].num_primitives = view.headers[i].num_primitives;
 			}
 
 			auto *bounds = static_cast<Meshlet::Bound *>(

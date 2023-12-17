@@ -62,6 +62,8 @@ shared uvec4 shared_active_vert;
 shared uvec4 shared_active_prim;
 shared uvec4 shared_active_vert_count;
 shared uvec4 shared_active_prim_count;
+shared uint shared_active_vert_count_total;
+shared uint shared_active_prim_count_total;
 
 const uint CLIP_CODE_INACCURATE = 1 << 0;
 const uint CLIP_CODE_NEGATIVE_W = 1 << 1;
@@ -217,12 +219,15 @@ void main()
 		num_active_vert.y += num_active_vert.x;
 		num_active_vert.z += num_active_vert.y;
 		shared_active_vert_count = uvec4(0, num_active_vert);
+
+		shared_active_prim_count_total = num_active_prim.z + bitCount(shared_active_prim.w);
+		shared_active_vert_count_total = num_active_vert.z + bitCount(shared_active_vert.w);
 	}
 
     barrier();
 
-	uint num_verts = shared_active_vert_count.w + bitCount(shared_active_vert.w);
-	uint num_prims = shared_active_prim_count.w + bitCount(shared_active_prim.w);
+	uint num_verts = shared_active_vert_count_total;
+	uint num_prims = shared_active_prim_count_total;
 
     SetMeshOutputsEXT(num_verts, num_prims);
 

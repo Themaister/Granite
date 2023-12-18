@@ -410,19 +410,18 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			auto *indirect = manager.get_indirect_buffer();
 			bool supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
 
+			cmd->enable_subgroup_size_control(true);
 			if (supports_wave32)
-			{
-				cmd->enable_subgroup_size_control(true);
 				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
-			}
+			else
+				cmd->set_subgroup_size_log2(true, 5, 7, VK_SHADER_STAGE_COMPUTE_BIT);
 
 			auto command_words = (use_meshlets ?
 			                      sizeof(Vulkan::Meshlet::RuntimeHeaderDecoded) :
 			                      sizeof(VkDrawIndexedIndirectCommand)) / sizeof(uint32_t);
 
 			cmd->set_program("assets://shaders/meshlet_cull.comp",
-			                 {{"MESHLET_PAYLOAD_WAVE32", int(supports_wave32)},
-			                  {"MESHLET_RENDER_DRAW_WORDS", int(command_words)}});
+			                 {{"MESHLET_RENDER_DRAW_WORDS", int(command_words)}});
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 2, *task_buffer);

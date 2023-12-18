@@ -7,7 +7,8 @@
 #extension GL_KHR_shader_subgroup_basic : require
 
 layout(max_primitives = 256, max_vertices = 255, triangles) out;
-layout(local_size_x = 64, local_size_y = 4) in;
+//layout(local_size_x = 64, local_size_y = 4) in;
+layout(local_size_x = 32) in;
 
 #include "meshlet_render_types.h"
 
@@ -60,6 +61,7 @@ shared uint shared_active_vert_count[8];
 shared uint shared_active_prim_count[8];
 shared uint shared_active_vert_count_total;
 shared uint shared_active_prim_count_total;
+shared uint8_t shared_vertex_map[255];
 
 const uint CLIP_CODE_INACCURATE = 1 << 0;
 const uint CLIP_CODE_NEGATIVE_W = 1 << 1;
@@ -82,6 +84,11 @@ uint compacted_index_output(uint index)
 bool lane_has_active_vert(uint index)
 {
 	return (shared_active_vert[index / 32u] & (1u << (index & 31u))) != 0u;
+}
+
+bool lane_has_active_prim(uint index)
+{
+	return (shared_active_prim[index / 32u] & (1u << (index & 31u))) != 0u;
 }
 
 uvec3 remap_index_buffer(uvec3 prim)
@@ -143,9 +150,9 @@ void main()
     vec4 clip_pos;
     uvec3 prim;
 
-    if (linear_index < meshlet.num_attributes)
+    for (uint i = linear_index; i < meshlet.num_attributes; i += gl_WorkGroupSize.x)
     {
-        vec3 pos = pos.data[meshlet.vertex_offset + linear_index];
+        vec3 pos = pos.data[meshlet.vertex_offset + i];
         world_pos = (M * vec4(pos, 1.0)).xyz;
         clip_pos = VP * vec4(world_pos, 1.0);
 
@@ -164,16 +171,15 @@ void main()
             clip_code |= CLIP_CODE_POSITIVE_Y;
 
         vec2 window = roundEven(c * viewport.zw + viewport.xy);
-        shared_window_positions[linear_index] = window;
-        shared_clip_code[linear_index] = uint8_t(clip_code);
+        shared_window_positions[i] = window;
+        shared_clip_code[i] = uint8_t(clip_code);
     }
 
     barrier();
 
-	bool is_active_prim = false;
-    if (linear_index < meshlet.num_primitives)
+    for (uint i = linear_index; i < meshlet.num_primitives; i += gl_WorkGroupSize.x)
     {
-        prim = uvec3(ibo.data[meshlet.primitive_offset + linear_index]);
+        prim = uvec3(ibo.data[meshlet.primitive_offset + i]);
         uint code_a = shared_clip_code[prim.x];
         uint code_b = shared_clip_code[prim.y];
         uint code_c = shared_clip_code[prim.z];
@@ -197,8 +203,7 @@ void main()
 
             if (force_accept)
             {
-				is_active_prim = true;
-                atomicOr(shared_active_prim[linear_index / 32], 1u << (linear_index & 31));
+                atomicOr(shared_active_prim[i / 32], 1u << (i & 31));
                 atomicOr(shared_active_vert[prim.x / 32], 1u << (prim.x & 31));
                 atomicOr(shared_active_vert[prim.y / 32], 1u << (prim.y & 31));
                 atomicOr(shared_active_vert[prim.z / 32], 1u << (prim.z & 31));
@@ -215,14 +220,12 @@ void main()
 		shared_active_prim_count[gl_SubgroupInvocationID] = active_prim - local_active_prim;
 		if (gl_SubgroupInvocationID == 7)
 			shared_active_prim_count_total = active_prim;
-	}
-	else if (gl_SubgroupInvocationID < 8 && gl_SubgroupID == 1)
-	{
-		uint local_active_vert = bitCount(shared_active_vert[gl_SubgroupInvocationID]);
-		uint active_vert = subgroupInclusiveAdd(local_active_vert);
-		shared_active_vert_count[gl_SubgroupInvocationID] = active_vert - local_active_vert;
-		if (gl_SubgroupInvocationID == 7)
-			shared_active_vert_count_total = active_vert;
+
+        uint local_active_vert = bitCount(shared_active_vert[gl_SubgroupInvocationID]);
+        uint active_vert = subgroupInclusiveAdd(local_active_vert);
+        shared_active_vert_count[gl_SubgroupInvocationID] = active_vert - local_active_vert;
+        if (gl_SubgroupInvocationID == 7)
+            shared_active_vert_count_total = active_vert;
 	}
 
     barrier();
@@ -232,19 +235,34 @@ void main()
 
     SetMeshOutputsEXT(num_verts, num_prims);
 
-	if (is_active_prim)
-		gl_PrimitiveTriangleIndicesEXT[compacted_index_output(linear_index)] = remap_index_buffer(prim);
+    for (uint i = linear_index; i < meshlet.num_primitives; i += gl_WorkGroupSize.x)
+    {
+        if (lane_has_active_prim(i))
+        {
+            prim = uvec3(ibo.data[meshlet.primitive_offset + i]);
+            gl_PrimitiveTriangleIndicesEXT[compacted_index_output(i)] = remap_index_buffer(prim);
+            vDrawID[compacted_index_output(i)] = task.meshlet_index;
+        }
+    }
 
-    if (gl_LocalInvocationIndex < num_prims)
-        vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
+    for (uint i = linear_index; i < meshlet.num_attributes; i += gl_WorkGroupSize.x)
+        if (lane_has_active_vert(i))
+            shared_vertex_map[compacted_vertex_output(i)] = uint8_t(i);
 
-	bool has_active_vert = lane_has_active_vert(linear_index);
-	if (has_active_vert)
+    barrier();
+
+    for (uint i = linear_index; i < num_verts; i += gl_WorkGroupSize.x)
 	{
-        uint out_vert_index = compacted_vertex_output(linear_index);
-		gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
-		vWorldPos[out_vert_index] = world_pos;
+        uint remapped_index = uint(shared_vertex_map[i]);
+
+        vec3 pos = pos.data[meshlet.vertex_offset + remapped_index];
+        world_pos = (M * vec4(pos, 1.0)).xyz;
+        clip_pos = VP * vec4(world_pos, 1.0);
+
+		gl_MeshVerticesEXT[i].gl_Position = clip_pos;
+		vWorldPos[i] = world_pos;
 	}
+
 #else
     SetMeshOutputsEXT(meshlet.num_attributes, meshlet.num_primitives);
     if (linear_index < meshlet.num_attributes)

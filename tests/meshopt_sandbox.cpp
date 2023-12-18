@@ -86,7 +86,7 @@ static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uin
 			if (stream_index == 0)
 			{
 				// Index decode.
-				unsigned num_primitives = meshlet.num_primitives_minus_1 + 1;
+				unsigned num_primitives = meshlet.num_primitives;
 				for (unsigned i = 0; i < num_primitives; i++)
 					for (unsigned j = 0; j < 3; j++)
 						out_index_buffer.push_back(deltas[i][j] + meshlet.base_vertex_offset);
@@ -94,7 +94,7 @@ static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uin
 			else
 			{
 				// Attributes.
-				unsigned num_attributes = meshlet.num_attributes_minus_1 + 1;
+				unsigned num_attributes = meshlet.num_attributes;
 				auto *out_attr = out_u32_stream.data() + meshlet.base_vertex_offset * u32_stride + (stream_index - 1);
 				for (unsigned i = 0; i < num_attributes; i++, out_attr += u32_stride)
 					memcpy(out_attr, deltas[i].data, sizeof(*out_attr));

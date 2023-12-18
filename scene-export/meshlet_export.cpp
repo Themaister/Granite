@@ -670,8 +670,8 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	for (auto &p : positions)
 		position_buffer.push_back(decode_snorm_exp(p));
 
-	constexpr unsigned max_vertices = 128;
-	constexpr unsigned max_primitives = 128;
+	constexpr unsigned max_vertices = 255;
+	constexpr unsigned max_primitives = 256;
 	size_t num_meshlets = meshopt_buildMeshletsBound(mesh.count, max_vertices, max_primitives);
 
 	std::vector<unsigned> out_vertex_redirection_buffer(num_meshlets * max_vertices);
@@ -690,6 +690,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	std::vector<uvec3> out_index_buffer;
 
 	out_meshlets.reserve(num_meshlets);
+
 	for (auto &meshlet : meshlets)
 	{
 		Meshlet m = {};

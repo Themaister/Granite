@@ -3,9 +3,11 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#extension GL_KHR_shader_subgroup_basic : require
 
-layout(max_primitives = 128, max_vertices = 128, triangles) out;
-layout(local_size_x = 128) in;
+layout(max_primitives = 256, max_vertices = 255, triangles) out;
+layout(local_size_x = 64, local_size_y = 4) in;
 
 #include "meshlet_render_types.h"
 
@@ -50,12 +52,12 @@ layout(set = 0, binding = 5, std430) readonly buffer Transforms
 #define MESHLET_CULL 1
 
 #if MESHLET_CULL
-shared vec2 shared_window_positions[128];
-shared uint8_t shared_clip_code[128];
-shared uvec4 shared_active_vert;
-shared uvec4 shared_active_prim;
-shared uvec4 shared_active_vert_count;
-shared uvec4 shared_active_prim_count;
+shared vec2 shared_window_positions[255];
+shared uint8_t shared_clip_code[255];
+shared uint shared_active_vert[8];
+shared uint shared_active_prim[8];
+shared uint shared_active_vert_count[8];
+shared uint shared_active_prim_count[8];
 shared uint shared_active_vert_count_total;
 shared uint shared_active_prim_count_total;
 
@@ -124,7 +126,7 @@ bool cull_triangle(vec2 a, vec2 b, vec2 c)
 void main()
 {
 #if MESHLET_CULL
-    if (gl_LocalInvocationIndex < 4)
+    if (gl_LocalInvocationIndex < 8)
     {
         shared_active_vert[gl_LocalInvocationIndex] = 0;
         shared_active_prim[gl_LocalInvocationIndex] = 0;
@@ -206,20 +208,21 @@ void main()
 
     barrier();
 
-    if (gl_LocalInvocationIndex == 0)
+    if (gl_SubgroupInvocationID < 8 && gl_SubgroupID == 0)
     {
-		uvec3 num_active_prim = bitCount(shared_active_prim.xyz);
-		num_active_prim.y += num_active_prim.x;
-		num_active_prim.z += num_active_prim.y;
-		shared_active_prim_count = uvec4(0, num_active_prim);
-
-		uvec3 num_active_vert = bitCount(shared_active_vert.xyz);
-		num_active_vert.y += num_active_vert.x;
-		num_active_vert.z += num_active_vert.y;
-		shared_active_vert_count = uvec4(0, num_active_vert);
-
-		shared_active_prim_count_total = num_active_prim.z + bitCount(shared_active_prim.w);
-		shared_active_vert_count_total = num_active_vert.z + bitCount(shared_active_vert.w);
+		uint local_active_prim = bitCount(shared_active_prim[gl_SubgroupInvocationID]);
+		uint active_prim = subgroupInclusiveAdd(local_active_prim);
+		shared_active_prim_count[gl_SubgroupInvocationID] = active_prim - local_active_prim;
+		if (gl_SubgroupInvocationID == 7)
+			shared_active_prim_count_total = active_prim;
+	}
+	else if (gl_SubgroupInvocationID < 8 && gl_SubgroupID == 1)
+	{
+		uint local_active_vert = bitCount(shared_active_vert[gl_SubgroupInvocationID]);
+		uint active_vert = subgroupInclusiveAdd(local_active_vert);
+		shared_active_vert_count[gl_SubgroupInvocationID] = active_vert - local_active_vert;
+		if (gl_SubgroupInvocationID == 7)
+			shared_active_vert_count_total = active_vert;
 	}
 
     barrier();

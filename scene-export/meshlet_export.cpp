@@ -473,7 +473,6 @@ static void encode_mesh(Encoded &encoded,
 		meshlet.base_vertex_offset = base_vertex_offset;
 		meshlet.num_primitives = analysis_result.num_primitives;
 		meshlet.num_attributes = analysis_result.num_vertices;
-		meshlet.reserved = 0;
 
 		// Encode index buffer.
 		for (uint32_t i = 0; i < analysis_result.num_primitives; i++)

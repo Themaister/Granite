@@ -55,9 +55,8 @@ struct Stream
 struct Header
 {
 	uint32_t base_vertex_offset;
-	uint8_t num_primitives;
-	uint8_t num_attributes;
-	uint16_t reserved;
+	uint16_t num_primitives;
+	uint16_t num_attributes;
 };
 
 // For GPU use

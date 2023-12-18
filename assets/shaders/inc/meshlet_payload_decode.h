@@ -155,9 +155,9 @@ uvec4 meshlet_decode_bit_counts(uint bitplane_value)
 	return out_bit_counts;
 }
 
-void meshlet_compute_stream_counts(uint bitplane_value, out uint out_total_bits, out uvec4 out_bit_counts)
+void meshlet_compute_stream_counts(uint bitplane_value, out uint out_total_bits)
 {
-	out_bit_counts = meshlet_decode_bit_counts(bitplane_value);
+	uvec4 out_bit_counts = meshlet_decode_bit_counts(bitplane_value);
 	uvec2 bit_counts2 = out_bit_counts.xy + out_bit_counts.zw;
 	out_total_bits = bit_counts2.x + bit_counts2.y;
 }
@@ -170,10 +170,9 @@ void meshlet_init_workgroup(uint base_stream_index)
 		uvec4 bitplane_values = uvec4(meshlet_streams.data[unrolled_stream_index].bitplane_meta);
 
 		uvec3 total_bits;
-		uvec4 bit_counts;
-		meshlet_compute_stream_counts(bitplane_values.x, total_bits.x, bit_counts);
-		meshlet_compute_stream_counts(bitplane_values.y, total_bits.y, bit_counts);
-		meshlet_compute_stream_counts(bitplane_values.z, total_bits.z, bit_counts);
+		meshlet_compute_stream_counts(bitplane_values.x, total_bits.x);
+		meshlet_compute_stream_counts(bitplane_values.y, total_bits.y);
+		meshlet_compute_stream_counts(bitplane_values.z, total_bits.z);
 		total_bits.y += total_bits.x;
 		total_bits.z += total_bits.y;
 		uint chunk_offset = meshlet_streams.data[unrolled_stream_index].offset_from_base;

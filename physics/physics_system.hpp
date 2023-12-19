@@ -175,7 +175,7 @@ public:
 	struct CollisionMesh
 	{
 		unsigned num_triangles = 0;
-		unsigned num_vertices = 0;
+		unsigned num_attributes = 0;
 		const uint32_t *indices = nullptr;
 		size_t index_stride_triangle = 0;
 		const float *positions = nullptr;

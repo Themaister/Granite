@@ -486,7 +486,7 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 
 			BufferCreateInfo buf = {};
 			buf.domain = BufferDomain::Host;
-			buf.size = view.format_header->payload_size_words * sizeof(uint32_t);
+			buf.size = view.format_header->payload_size_b128 * sizeof(Meshlet::PayloadB128);
 			buf.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 			auto payload = device->create_buffer(buf, view.payload);
 

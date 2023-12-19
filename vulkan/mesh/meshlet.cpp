@@ -64,17 +64,17 @@ MeshView create_mesh_view(const Granite::FileMapping &mapping)
 	view.bounds = reinterpret_cast<const Bound *>(ptr);
 	ptr += view.format_header->meshlet_count * sizeof(Bound);
 
-	if (end_ptr - ptr < ptrdiff_t(view.format_header->meshlet_count * view.format_header->u32_stream_count * sizeof(Stream)))
+	if (end_ptr - ptr < ptrdiff_t(view.format_header->meshlet_count * view.format_header->stream_count * sizeof(Stream)))
 		return {};
 	view.streams = reinterpret_cast<const Stream *>(ptr);
-	ptr += view.format_header->meshlet_count * view.format_header->u32_stream_count * sizeof(Stream);
+	ptr += view.format_header->meshlet_count * view.format_header->stream_count * sizeof(Stream);
 
-	if (!view.format_header->payload_size_words)
+	if (!view.format_header->payload_size_b128)
 		return {};
 
-	if (end_ptr - ptr < ptrdiff_t(view.format_header->payload_size_words * sizeof(uint32_t)))
+	if (end_ptr - ptr < ptrdiff_t(view.format_header->payload_size_b128 * sizeof(uint32_t)))
 		return {};
-	view.payload = reinterpret_cast<const uint32_t *>(ptr);
+	view.payload = reinterpret_cast<const PayloadB128 *>(ptr);
 
 	for (uint32_t i = 0, n = view.format_header->meshlet_count; i < n; i++)
 	{
@@ -114,7 +114,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 	buf_info.size = view.format_header->meshlet_count * sizeof(*view.headers);
 	auto meshlet_meta_buffer = cmd.get_device().create_buffer(buf_info, view.headers);
 
-	buf_info.size = view.format_header->meshlet_count * view.format_header->u32_stream_count * sizeof(*view.streams);
+	buf_info.size = view.format_header->meshlet_count * view.format_header->stream_count * sizeof(*view.streams);
 	auto meshlet_stream_buffer = cmd.get_device().create_buffer(buf_info, view.streams);
 
 	// For Raw mode -> offset/stride
@@ -140,7 +140,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 	cmd.set_storage_buffer(0, 3, *info.ibo);
 
 	cmd.set_specialization_constant_mask(0x7);
-	cmd.set_specialization_constant(0, view.format_header->u32_stream_count);
+	cmd.set_specialization_constant(0, view.format_header->stream_count);
 	cmd.set_specialization_constant(2, (info.flags & DECODE_MODE_RAW_PAYLOAD) != 0);
 
 	if ((info.flags & DECODE_MODE_RAW_PAYLOAD) != 0)
@@ -164,7 +164,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 			return false;
 		}
 
-		if (output_u32_streams + 1 > view.format_header->u32_stream_count)
+		if (output_u32_streams + 1 > view.format_header->stream_count)
 		{
 			LOGE("Trying to decode more streams than exist in payload.\n");
 			return false;

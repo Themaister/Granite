@@ -439,7 +439,7 @@ unsigned PhysicsSystem::register_collision_mesh(const CollisionMesh &mesh)
 	auto *index_vertex_array = new btTriangleIndexVertexArray(mesh.num_triangles,
 	                                                          const_cast<int *>(reinterpret_cast<const int *>(mesh.indices)),
 	                                                          mesh.index_stride_triangle,
-	                                                          mesh.num_vertices,
+	                                                          mesh.num_attributes,
 	                                                          const_cast<btScalar *>(mesh.positions), mesh.position_stride);
 
 	const vec3 &lo = mesh.aabb.get_minimum();

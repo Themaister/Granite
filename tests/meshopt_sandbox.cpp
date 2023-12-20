@@ -1,5 +1,6 @@
 #include "logging.hpp"
 #include <vector>
+#include <algorithm>
 #include "math.hpp"
 #include "device.hpp"
 #include "context.hpp"
@@ -259,6 +260,58 @@ static bool validate_mesh_decode(const std::vector<uint32_t> &decoded_index_buff
 }
 #endif
 
+static void build_reference_mesh(std::vector<uvec3> &indices, std::vector<vec3> &positions)
+{
+	for (unsigned i = 0; i < 256; i++)
+		positions.push_back(vec3(-40.0f + i));
+
+	for (unsigned i = 0; i < 254; i++)
+		indices.push_back(uvec3(i, i + 1, i + 2));
+}
+
+static bool validate_mesh(std::vector<uvec3> &reference_indices,
+                          std::vector<vec3> &reference_positions,
+                          std::vector<uvec3> &decoded_indices,
+                          std::vector<vec3> &decoded_positions)
+{
+	if (reference_indices.size() != decoded_indices.size())
+	{
+		LOGE("Mismatch in index buffer size.\n");
+		return false;
+	}
+
+	std::sort(reference_indices.begin(), reference_indices.end(), [&](const uvec3 &a, const uvec3 &b) {
+		float za = reference_positions[a.z].z;
+		float zb = reference_positions[b.z].z;
+		return za < zb;
+	});
+
+	std::sort(decoded_indices.begin(), decoded_indices.end(), [&](const uvec3 &a, const uvec3 &b) {
+		float za = decoded_positions[a.z].z;
+		float zb = decoded_positions[b.z].z;
+		return za < zb;
+	});
+
+	for (size_t i = 0, n = decoded_indices.size(); i < n; i++)
+	{
+		uvec3 ref_i = reference_indices[i];
+		uvec3 decode_i = decoded_indices[i];
+
+		for (int c = 0; c < 3; c++)
+		{
+			vec3 ref_pos = reference_positions[ref_i[c]];
+			vec3 decode_pos = decoded_positions[decode_i[c]];
+			if (any(notEqual(ref_pos, decode_pos)))
+			{
+				LOGE("Mismatch in primitive %zu, c = %d.\n", i, c);
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc != 2)
@@ -268,22 +321,23 @@ int main(int argc, char *argv[])
 	Filesystem::setup_default_filesystem(GRANITE_FILESYSTEM(), ASSET_DIRECTORY);
 
 	SceneFormats::Mesh mesh;
-	vec3 pos[255];
 
-	mesh.index_type = VK_INDEX_TYPE_UINT8_EXT;
-	mesh.count = 255;
+	std::vector<uvec3> reference_indices;
+	std::vector<vec3> reference_positions;
+	build_reference_mesh(reference_indices, reference_positions);
+
+	mesh.index_type = VK_INDEX_TYPE_UINT32;
+	mesh.count = 3 * reference_indices.size();
 	mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	for (unsigned i = 0; i < mesh.count; i++)
-	{
-		mesh.indices.push_back(i);
-		pos[i] = vec3(float(i));
-	}
+	mesh.indices.resize(mesh.count * sizeof(uint32_t));
+	memcpy(mesh.indices.data(), reference_indices.data(), mesh.count * sizeof(uint32_t));
+
 	mesh.attribute_layout[int(MeshAttribute::Position)].format = VK_FORMAT_R32G32B32_SFLOAT;
 	mesh.position_stride = sizeof(vec3);
-	mesh.positions.resize(sizeof(pos));
-	memcpy(mesh.positions.data(), pos[0].data, sizeof(pos));
+	mesh.positions.resize(reference_positions.size() * sizeof(vec3));
+	memcpy(mesh.positions.data(), reference_positions.data(), reference_positions.size() * sizeof(vec3));
 
-	if (!Meshlet::export_mesh_to_meshlet("/tmp/export.msh2", mesh, MeshStyle::Wireframe))
+	if (!Meshlet::export_mesh_to_meshlet("/tmp/export.msh2", std::move(mesh), MeshStyle::Wireframe))
 		return EXIT_FAILURE;
 
 	auto file = GRANITE_FILESYSTEM()->open("/tmp/export.msh2", FileMode::ReadOnly);
@@ -294,11 +348,16 @@ int main(int argc, char *argv[])
 	if (!mapped)
 		return EXIT_FAILURE;
 
-	std::vector<uvec3> reference_index_buffer;
-	std::vector<vec3> reference_positions;
+	std::vector<uvec3> decoded_index_buffer;
+	std::vector<vec3> decoded_positions;
 	auto view = create_mesh_view(*mapped);
-	decode_mesh(reference_index_buffer, reference_positions, view);
+	decode_mesh(decoded_index_buffer, decoded_positions, view);
 
+	if (!validate_mesh(reference_indices, reference_positions,
+	                   decoded_index_buffer, decoded_positions))
+		return EXIT_FAILURE;
+
+	return 0;
 #if 0
 	GLTF::Parser parser(argv[1]);
 
@@ -371,6 +430,4 @@ int main(int argc, char *argv[])
 		memcpy(ptr + reference_index_buffer.size(), reference_attributes.data(), reference_attributes.size() * sizeof(uint32_t));
 	}
 #endif
-
-	return 0;
 }

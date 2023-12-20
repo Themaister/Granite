@@ -263,7 +263,16 @@ static bool validate_mesh_decode(const std::vector<uint32_t> &decoded_index_buff
 static void build_reference_mesh(std::vector<uvec3> &indices, std::vector<vec3> &positions)
 {
 	for (unsigned i = 0; i < 256; i++)
-		positions.push_back(vec3(-40.0f + i));
+	{
+		vec3 p;
+		p.x = -40.0f + float(i);
+		p.y = float(i);
+		p.z = -30.0f + float(i);
+
+		if (i == 8)
+			p.y = 20000.0f;
+		positions.push_back(p);
+	}
 
 	for (unsigned i = 0; i < 254; i++)
 		indices.push_back(uvec3(i, i + 1, i + 2));

@@ -44,23 +44,25 @@ static constexpr unsigned MaxStreams = 8;
 static constexpr unsigned MaxElements = 256;
 static constexpr unsigned ElementsPerChunk = 32;
 static constexpr unsigned NumChunks = MaxElements / ElementsPerChunk;
-static constexpr unsigned MaxPrimitives = MaxElements;
-static constexpr unsigned MaxVertices = MaxElements;
 
 struct Stream
 {
-	uint32_t base_value_or_vertex_offset[12];
-	uint32_t bit_plane_config0;
-	uint32_t bit_plane_config1;
-	uint32_t aux;
+	union
+	{
+		uint32_t base_value[12];
+		struct { uint16_t prim_offset; uint16_t attr_offset; } offsets[12];
+	} u;
+	uint32_t bit_plane_config;
+	uint32_t reserved;
+	int32_t aux;
 	uint32_t offset_in_b128;
 };
+static_assert(sizeof(Stream) == 64, "Unexpected Stream size.");
 
 struct Header
 {
 	uint32_t base_vertex_offset;
-	uint16_t num_primitives;
-	uint16_t num_attributes;
+	uint32_t num_chunks;
 };
 
 // For GPU use

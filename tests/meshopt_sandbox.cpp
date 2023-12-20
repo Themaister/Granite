@@ -12,63 +12,149 @@
 using namespace Granite;
 using namespace Vulkan::Meshlet;
 
-static void decode_mesh_setup_buffers(
-		std::vector<uint32_t> &out_index_buffer, std::vector<uint32_t> &out_u32_stream,
-		const MeshView &mesh)
+static void decode_mesh_index_buffer(std::vector<uvec3> &out_index_buffer, const MeshView &mesh, uint32_t meshlet_index)
 {
-	assert(mesh.format_header->stream_count > 1);
+	auto &meshlet = mesh.headers[meshlet_index];
+	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
+	const auto *pdata = mesh.payload + stream.offset_in_b128;
 
-	out_index_buffer.clear();
-	out_u32_stream.clear();
-	out_index_buffer.resize(mesh.total_primitives * 3);
-	out_u32_stream.resize(mesh.total_vertices * (mesh.format_header->stream_count - 1));
+	for (uint32_t chunk_index = 0; chunk_index < meshlet.num_chunks; chunk_index++)
+	{
+		auto p0 = pdata[0];
+		auto p1 = pdata[1];
+		auto p2 = pdata[2];
+		auto p3 = pdata[3];
+
+		pdata += 4;
+
+		uint32_t num_primitives_for_chunk = stream.u.offsets[chunk_index + 1].prim_offset -
+		                                    stream.u.offsets[chunk_index].prim_offset;
+
+		for (uint32_t i = 0; i < num_primitives_for_chunk; i++)
+		{
+			uint32_t v = 0;
+			v |= ((p0.words[0] >> i) & 1u) << 0u;
+			v |= ((p0.words[1] >> i) & 1u) << 1u;
+			v |= ((p0.words[2] >> i) & 1u) << 2u;
+			v |= ((p0.words[3] >> i) & 1u) << 3u;
+
+			v |= ((p1.words[0] >> i) & 1u) << 8u;
+			v |= ((p1.words[1] >> i) & 1u) << 9u;
+			v |= ((p1.words[2] >> i) & 1u) << 10u;
+			v |= ((p1.words[3] >> i) & 1u) << 11u;
+
+			v |= ((p2.words[0] >> i) & 1u) << 16u;
+			v |= ((p2.words[1] >> i) & 1u) << 17u;
+			v |= ((p2.words[2] >> i) & 1u) << 18u;
+			v |= ((p2.words[3] >> i) & 1u) << 19u;
+
+			v |= ((p3.words[0] >> i) & 1u) << 4u;
+			v |= ((p3.words[1] >> i) & 1u) << 12u;
+			v |= ((p3.words[2] >> i) & 1u) << 20u;
+
+			v += stream.u.offsets[chunk_index].attr_offset * 0x010101u;
+
+			uint32_t x = v & 0xffu;
+			uint32_t y = (v >> 8u) & 0xffu;
+			uint32_t z = (v >> 16u) & 0xffu;
+
+			out_index_buffer.push_back(uvec3(x, y, z) + meshlet.base_vertex_offset);
+		}
+	}
 }
 
-static void decode_mesh_index_buffer(std::vector<uint32_t> &out_index_buffer, const MeshView &mesh)
+template <int Components, typename T>
+static void decode_bitfield_block_16(T *block, const PayloadB128 *&pdata, unsigned config)
 {
-	out_index_buffer.clear();
-	out_index_buffer.reserve(mesh.total_primitives * 3);
+	unsigned bit_offset = 0;
 
+	for (int mask = 4; mask; mask >>= 1)
+	{
+		if (config & mask)
+		{
+			const uint32_t *words = &pdata->words[0];
+			int bits = mask * 2;
+
+			for (uint32_t i = 0; i < ElementsPerChunk; i++)
+			{
+				T &d = block[i];
+				for (int c = 0; c < Components; c++)
+				{
+					for (int b = 0; b < bits; b++)
+					{
+						int word = c * bits + b;
+						d[c] |= ((words[word] >> i) & 1u) << (bit_offset + b);
+					}
+				}
+			}
+
+			int num_words = (mask * Components + 1) / 2;
+			pdata += num_words;
+			bit_offset += bits;
+		}
+	}
+}
+
+static void decode_attribute_buffer(std::vector<vec3> &out_positions, const MeshView &mesh, uint32_t meshlet_index, StreamType type)
+{
+	auto &meshlet = mesh.headers[meshlet_index];
+	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
+	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
+	const auto *pdata = mesh.payload + stream.offset_in_b128;
+
+	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
+	{
+		u16vec3 positions[ElementsPerChunk]{};
+		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
+
+		if (config == 8)
+		{
+			for (uint32_t i = 0; i < ElementsPerChunk; i++)
+			{
+				memcpy(positions[i].data, &pdata[i / 4].words[i % 4], 2 * sizeof(uint16_t));
+				memcpy(&positions[i].z,
+				       reinterpret_cast<const char *>(&pdata[8]) + sizeof(uint16_t) * i,
+				       sizeof(uint16_t));
+			}
+
+			pdata += 12;
+		}
+		else
+		{
+			decode_bitfield_block_16<3>(positions, pdata, config);
+		}
+
+		u16vec3 base;
+		memcpy(base.data, &stream.u.offsets[chunk].attr_offset, sizeof(uint16_t) * 2);
+		memcpy(&base.z, reinterpret_cast<const char *>(&stream.u.offsets[8].attr_offset) +
+		                sizeof(uint16_t) * chunk,
+		       sizeof(uint16_t));
+
+		for (auto &p : positions)
+			p += base;
+
+		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
+		                                    index_stream.u.offsets[chunk].attr_offset;
+
+		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
+		{
+			vec3 float_pos = vec3(i16vec3(positions[i]));
+			float_pos.x = ldexpf(float_pos.x, stream.aux);
+			float_pos.y = ldexpf(float_pos.y, stream.aux);
+			float_pos.z = ldexpf(float_pos.z, stream.aux);
+			out_positions.push_back(float_pos);
+		}
+	}
+}
+
+static void decode_mesh(std::vector<uvec3> &out_index_buffer,
+                        std::vector<vec3> &out_positions,
+                        const MeshView &mesh)
+{
 	for (uint32_t meshlet_index = 0; meshlet_index < mesh.format_header->meshlet_count; meshlet_index++)
 	{
-		auto &meshlet = mesh.headers[meshlet_index];
-		auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
-		const auto *pdata = mesh.payload + stream.offset_in_b128;
-
-		for (uint32_t i = 0; i < meshlet.num_primitives; i += 32, pdata += 4)
-		{
-			auto p0 = pdata[0];
-			auto p1 = pdata[1];
-			auto p2 = pdata[2];
-			auto p3 = pdata[3];
-
-			for (uint32_t j = 0; j + i < meshlet.num_primitives && j < 32; j++)
-			{
-				uint32_t v = 0;
-				v |= ((p0.words[0] >> j) & 1u) << 0u;
-				v |= ((p0.words[1] >> j) & 1u) << 1u;
-				v |= ((p0.words[2] >> j) & 1u) << 2u;
-				v |= ((p0.words[3] >> j) & 1u) << 3u;
-
-				v |= ((p1.words[0] >> j) & 1u) << 8u;
-				v |= ((p1.words[1] >> j) & 1u) << 9u;
-				v |= ((p1.words[2] >> j) & 1u) << 10u;
-				v |= ((p1.words[3] >> j) & 1u) << 11u;
-
-				v |= ((p2.words[0] >> j) & 1u) << 16u;
-				v |= ((p2.words[1] >> j) & 1u) << 17u;
-				v |= ((p2.words[2] >> j) & 1u) << 18u;
-				v |= ((p2.words[3] >> j) & 1u) << 19u;
-
-				v |= ((p3.words[0] >> j) & 1u) << 4u;
-				v |= ((p3.words[1] >> j) & 1u) << 12u;
-				v |= ((p3.words[2] >> j) & 1u) << 20u;
-
-				v += stream.base_value_or_vertex_offset[i] * 0x010101u;
-
-				out_index_buffer.push_back(v);
-			}
-		}
+		decode_mesh_index_buffer(out_index_buffer, mesh, meshlet_index);
+		decode_attribute_buffer(out_positions, mesh, meshlet_index, StreamType::Position);
 	}
 }
 
@@ -178,10 +264,42 @@ int main(int argc, char *argv[])
 	if (argc != 2)
 		return EXIT_FAILURE;
 
-#if 0
 	Global::init(Global::MANAGER_FEATURE_FILESYSTEM_BIT);
 	Filesystem::setup_default_filesystem(GRANITE_FILESYSTEM(), ASSET_DIRECTORY);
 
+	SceneFormats::Mesh mesh;
+	vec3 pos[30];
+
+	mesh.index_type = VK_INDEX_TYPE_UINT8_EXT;
+	mesh.count = 30;
+	mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	for (unsigned i = 0; i < mesh.count; i++)
+	{
+		mesh.indices.push_back(i);
+		pos[i] = vec3(float(i));
+	}
+	mesh.attribute_layout[int(MeshAttribute::Position)].format = VK_FORMAT_R32G32B32_SFLOAT;
+	mesh.position_stride = sizeof(vec3);
+	mesh.positions.resize(sizeof(pos));
+	memcpy(mesh.positions.data(), pos[0].data, sizeof(pos));
+
+	if (!Meshlet::export_mesh_to_meshlet("/tmp/export.msh2", mesh, MeshStyle::Wireframe))
+		return EXIT_FAILURE;
+
+	auto file = GRANITE_FILESYSTEM()->open("/tmp/export.msh2", FileMode::ReadOnly);
+	if (!file)
+		return EXIT_FAILURE;
+
+	auto mapped = file->map();
+	if (!mapped)
+		return EXIT_FAILURE;
+
+	std::vector<uvec3> reference_index_buffer;
+	std::vector<vec3> reference_positions;
+	auto view = create_mesh_view(*mapped);
+	decode_mesh(reference_index_buffer, reference_positions, view);
+
+#if 0
 	GLTF::Parser parser(argv[1]);
 
 	Vulkan::Context ctx;

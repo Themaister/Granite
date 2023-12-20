@@ -55,9 +55,12 @@ struct Encoded
 
 struct Meshlet
 {
-	uint32_t offset;
+	uint32_t global_indices_offset;
 	uint32_t primitive_count;
 	uint32_t vertex_count;
+
+	const unsigned char *local_indices;
+	const uint32_t *attribute_remap;
 };
 
 struct PrimitiveAnalysisResult
@@ -89,6 +92,25 @@ static int compute_log2_scale(float max_value)
 	int max_scale_log2 = int(muglm::floor(muglm::log2(max_value)));
 	int scale_log2 = 14 - max_scale_log2;
 	return scale_log2;
+}
+
+template <typename T>
+static void adjust_quant(std::vector<T> &values, int &exp)
+{
+	uint32_t active_bits = 0;
+	for (auto &value : values)
+		for (auto &c : value.data)
+			active_bits |= c;
+
+	if (active_bits == 0)
+		return;
+
+	int extra_shift = trailing_zeroes(active_bits);
+	for (auto &value : values)
+		for (auto &c : value.data)
+			c >>= extra_shift;
+
+	exp += extra_shift;
 }
 
 static std::vector<i16vec3> mesh_extract_position_snorm_exp(const SceneFormats::Mesh &mesh, int &exp)
@@ -132,6 +154,8 @@ static std::vector<i16vec3> mesh_extract_position_snorm_exp(const SceneFormats::
 		encoded_positions.push_back(encode_vec3_to_snorm_exp(pos, log2_scale));
 
 	exp = -log2_scale;
+	adjust_quant(encoded_positions, exp);
+
 	return encoded_positions;
 }
 
@@ -260,43 +284,9 @@ static std::vector<i16vec2> mesh_extract_uv_snorm_scale(const SceneFormats::Mesh
 		encoded_uvs.push_back(encode_vec2_to_snorm_exp(uv, log2_scale));
 
 	exp = -log2_scale;
+	adjust_quant(encoded_uvs, exp);
+
 	return encoded_uvs;
-}
-
-static PrimitiveAnalysisResult analyze_primitive_count(std::unordered_map<uint32_t, uint32_t> &vertex_remap,
-                                                       const uint32_t *index_buffer, uint32_t max_num_primitives)
-{
-	PrimitiveAnalysisResult result = {};
-	uint32_t vertex_count = 0;
-
-	// We can reference a maximum of 256 vertices.
-	vertex_remap.clear();
-
-	for (uint32_t i = 0; i < max_num_primitives; i++)
-	{
-		uint32_t index0 = index_buffer[3 * i + 0];
-		uint32_t index1 = index_buffer[3 * i + 1];
-		uint32_t index2 = index_buffer[3 * i + 2];
-
-		vertex_count = uint32_t(vertex_remap.size());
-
-		vertex_remap.insert({index0, uint32_t(vertex_remap.size())});
-		vertex_remap.insert({index1, uint32_t(vertex_remap.size())});
-		vertex_remap.insert({index2, uint32_t(vertex_remap.size())});
-
-		// If this primitive causes us to go out of bounds, reset.
-		if (vertex_remap.size() > MaxVertices)
-		{
-			max_num_primitives = i;
-			break;
-		}
-
-		vertex_count = uint32_t(vertex_remap.size());
-	}
-
-	result.num_primitives = max_num_primitives;
-	result.num_attributes = vertex_count;
-	return result;
 }
 
 // Analyze bits required to encode a delta.
@@ -322,10 +312,10 @@ static void encode_index_stream(std::vector<PayloadB128> &out_payload_buffer,
 	PayloadB128 p2{};
 	PayloadB128 p3{};
 
-	for (unsigned i = 0; i < 32; i++)
+	for (unsigned i = 0; i < ElementsPerChunk; i++)
 	{
 		u8vec3 indices = stream_buffer[i];
-		assert(all(lessThan(indices, u8vec3(32))));
+		assert(all(lessThan(indices, u8vec3(ElementsPerChunk))));
 
 		p0.words[0] |= ((indices.x >> 0u) & 1u) << i;
 		p0.words[1] |= ((indices.x >> 1u) & 1u) << i;
@@ -364,35 +354,41 @@ static void encode_attribute_stream(std::vector<PayloadB128> &out_payload_buffer
 	for (uint32_t i = num_attributes; i < ElementsPerChunk; i++)
 		positions[i] = positions[0];
 
-	u16vec3 lo{0xffff};
-	u16vec3 hi{0};
+	u16vec3 ulo{0xffff};
+	u16vec3 uhi{0};
+	i16vec3 slo{0x7fff};
+	i16vec3 shi{-0x8000};
 
 	for (auto &p : positions)
 	{
-		lo = min(lo, p);
-		hi = max(hi, p);
+		ulo = min(ulo, p);
+		uhi = max(uhi, p);
+		slo = min(slo, i16vec3(p));
+		shi = max(shi, i16vec3(p));
 	}
 
-	u16vec3 diff = hi - lo;
-	u16vec3 diff_rev = lo - hi;
+	const auto max3 = [](u16vec3 v) { return max(max(v.x, v.y), v.z); };
+	u16vec3 diff_unsigned = uhi - ulo;
+	u16vec3 diff_signed = u16vec3(shi) - u16vec3(slo);
 
-	unsigned diff3 = max(max(diff.x, diff.y), diff.z);
-	unsigned diff3_rev = max(max(diff_rev.x, diff_rev.y), diff_rev.z);
-	if (diff3_rev < diff3)
+	unsigned diff3_unsigned = max3(diff_unsigned);
+	unsigned diff3_signed = max3(diff_signed);
+	if (diff3_signed < diff3_unsigned)
 	{
-		std::swap(lo, hi);
-		diff3 = diff3_rev;
+		ulo = u16vec3(slo);
+		uhi = u16vec3(shi);
+		diff3_unsigned = diff3_signed;
 	}
 
-	unsigned bits = compute_required_bits_unsigned(diff3);
+	unsigned bits = compute_required_bits_unsigned(diff3_unsigned);
 	unsigned encoded_bits = (bits + 1) / 2;
 
-	stream.bit_plane_config0 |= encoded_bits << (4 * chunk_index);
+	stream.bit_plane_config |= encoded_bits << (4 * chunk_index);
+	stream.u.base_value[chunk_index] = uint32_t(ulo.x) | (uint32_t(ulo.y) << 16);
+	stream.u.base_value[chunk_index / 2 + 8] |= uint32_t(ulo.z) << (16 * (chunk_index & 1));
 
-	stream.base_value_or_vertex_offset[chunk_index] = uint32_t(lo.x) | (uint32_t(lo.y) << 16);
-	stream.base_value_or_vertex_offset[chunk_index / 2 + 8] |= uint32_t(lo.z) << (16 * (chunk_index & 1));
 	for (auto &p : positions)
-		p -= lo;
+		p -= ulo;
 
 	if (encoded_bits == 8)
 	{
@@ -454,16 +450,19 @@ static void encode_attribute_stream(std::vector<PayloadB128> &out_payload_buffer
 		if (encoded_bits & 1)
 		{
 			PayloadB128 p[2]{};
+			uint32_t *words = &p[0].words[0];
+
 			for (uint32_t i = 0; i < ElementsPerChunk; i++)
 			{
 				u16vec3 d = positions[i];
-
-				p[0].words[0] |= ((d.x >> bit_offset) & 1u) << i;
-				p[0].words[1] |= ((d.x >> (bit_offset + 1)) & 1u) << i;
-				p[0].words[2] |= ((d.y >> bit_offset) & 1u) << i;
-				p[0].words[3] |= ((d.y >> (bit_offset + 1)) & 1u) << i;
-				p[1].words[0] |= ((d.z >> bit_offset) & 1u) << i;
-				p[1].words[1] |= ((d.z >> (bit_offset + 1)) & 1u) << i;
+				for (int c = 0; c < 3; c++)
+				{
+					for (int b = 0; b < 2; b++)
+					{
+						int word = c * 2 + b;
+						words[word] |= ((d[c] >> (bit_offset + b)) & 1u) << i;
+					}
+				}
 			}
 
 			for (auto v : p)
@@ -488,81 +487,74 @@ static void encode_mesh(Encoded &encoded,
 	mesh.meshlets.reserve(num_full_meshlets);
 	uint32_t base_vertex_offset = 0;
 
-	auto *index_buffer = static_cast<const uint32_t *>(pp_data[0]);
-
-	std::unordered_map<uint32_t, uint32_t> vbo_remap;
-
 	for (uint32_t full_meshlet_index = 0; full_meshlet_index < num_full_meshlets; full_meshlet_index++)
 	{
 		Metadata out_meshlet = {};
 		out_meshlet.base_vertex_offset = base_vertex_offset;
 
 		uint32_t num_chunks = std::min<uint32_t>(num_meshlets - full_meshlet_index * NumChunks, NumChunks);
-		for (uint32_t chunk_index = 0; chunk_index < num_chunks; chunk_index++)
+		out_meshlet.num_chunks = num_chunks;
+
 		{
-			auto &meshlet = meshlets[full_meshlet_index * NumChunks + chunk_index];
+			auto &index_stream = out_meshlet.streams[int(StreamType::Primitive)];
+			index_stream.offset_in_b128 = uint32_t(encoded.payload.size());
+			uint32_t num_attributes = 0;
+			uint32_t num_primitives = 0;
 
-			uint32_t primitive_index = meshlets[full_meshlet_index].offset;
-
-			auto analysis_result = analyze_primitive_count(
-					vbo_remap, index_buffer + 3 * primitive_index,
-					meshlet.primitive_count);
-			assert(analysis_result.num_primitives <= ElementsPerChunk);
-			assert(analysis_result.num_attributes <= ElementsPerChunk);
-
-			// Encode index buffer
+			for (uint32_t chunk_index = 0; chunk_index < num_chunks; chunk_index++)
 			{
+				auto &meshlet = meshlets[full_meshlet_index * NumChunks + chunk_index];
+
 				u8vec3 index_stream_buffer[ElementsPerChunk];
-				for (uint32_t i = 0; i < analysis_result.num_primitives; i++)
-				{
-					uint8_t i0 = vbo_remap.at(index_buffer[3 * (primitive_index + i) + 0]);
-					uint8_t i1 = vbo_remap.at(index_buffer[3 * (primitive_index + i) + 1]);
-					uint8_t i2 = vbo_remap.at(index_buffer[3 * (primitive_index + i) + 2]);
-					index_stream_buffer[i] = u8vec3(i0, i1, i2);
-				}
+				for (uint32_t i = 0; i < meshlet.primitive_count; i++)
+					memcpy(index_stream_buffer[i].data, meshlet.local_indices + 3 * i, 3);
+				for (uint32_t i = meshlet.primitive_count; i < ElementsPerChunk; i++)
+					index_stream_buffer[i] = u8vec3(0);
 
-				auto &index_stream = out_meshlet.streams[0];
-				index_stream.base_value_or_vertex_offset[chunk_index] = out_meshlet.num_attributes;
-				index_stream.offset_in_b128 = uint32_t(encoded.payload.size());
+				auto &offsets = index_stream.u.offsets[chunk_index];
+				offsets.attr_offset = num_attributes;
+				offsets.prim_offset = num_primitives;
+
 				encode_index_stream(encoded.payload, index_stream_buffer);
+				num_primitives += meshlet.primitive_count;
+				num_attributes += meshlet.vertex_count;
 			}
 
-			uint64_t vbo_remapping[ElementsPerChunk];
-			unsigned vbo_index = 0;
-			for (auto &v : vbo_remap)
+			for (uint32_t chunk_index = num_chunks; chunk_index <= NumChunks; chunk_index++)
 			{
-				assert(vbo_index < ElementsPerChunk);
-				vbo_remapping[vbo_index++] = (uint64_t(v.second) << 32) | v.first;
+				auto &offsets = index_stream.u.offsets[chunk_index];
+				offsets.attr_offset = num_attributes;
+				offsets.prim_offset = num_primitives;
 			}
-			std::sort(vbo_remapping, vbo_remapping + vbo_index);
 
-			uint32_t vbo_table[ElementsPerChunk];
-			for (unsigned i = 0; i < ElementsPerChunk; i++)
-				vbo_table[i] = uint32_t(vbo_remapping[i]);
+			base_vertex_offset += num_attributes;
+		}
 
-			for (uint32_t stream_index = 1; stream_index < num_streams; stream_index++)
+		for (uint32_t stream_index = 1; stream_index < num_streams; stream_index++)
+		{
+			auto &stream = out_meshlet.streams[stream_index];
+			stream.aux = p_aux[stream_index];
+			stream.offset_in_b128 = uint32_t(encoded.payload.size());
+
+			for (uint32_t chunk_index = 0; chunk_index < num_chunks; chunk_index++)
 			{
-				out_meshlet.streams[stream_index].aux = p_aux[stream_index];
+				auto &meshlet = meshlets[full_meshlet_index * NumChunks + chunk_index];
 
 				switch (StreamType(stream_index))
 				{
 				case StreamType::Position:
-					encode_attribute_stream(encoded.payload, out_meshlet.streams[stream_index],
+					encode_attribute_stream(encoded.payload, stream,
 					                        static_cast<const u16vec3 *>(pp_data[stream_index]),
-											chunk_index, vbo_table, analysis_result.num_attributes);
+											chunk_index, meshlet.attribute_remap, meshlet.vertex_count);
 					break;
 
 				default:
 					break;
 				}
 			}
-
-			out_meshlet.num_primitives += analysis_result.num_primitives;
-			out_meshlet.num_attributes += analysis_result.num_attributes;
 		}
 
 		mesh.meshlets.push_back(out_meshlet);
-		base_vertex_offset += out_meshlet.num_attributes;
 	}
 }
 
@@ -632,7 +624,7 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 	}
 
 	memcpy(ptr, encoded.payload.data(), encoded.payload.size() * sizeof(PayloadB128));
-	ptr += encoded.payload.size() * sizeof(uint32_t);
+	ptr += encoded.payload.size() * sizeof(PayloadB128);
 	memset(ptr, 0, sizeof(PayloadB128));
 	return true;
 }
@@ -719,12 +711,14 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	for (auto &meshlet : meshlets)
 	{
 		Meshlet m = {};
-		m.offset = uint32_t(out_index_buffer.size());
-		m.primitive_count = meshlet.triangle_count;
-		m.vertex_count = meshlet.vertex_count;
-		out_meshlets.push_back(m);
 
 		auto *local_indices = local_index_buffer.data() + meshlet.triangle_offset;
+		m.local_indices = local_indices;
+		m.attribute_remap = out_vertex_redirection_buffer.data() + meshlet.vertex_offset;
+		m.primitive_count = meshlet.triangle_count;
+		m.vertex_count = meshlet.vertex_count;
+		m.global_indices_offset = uint32_t(out_index_buffer.size());
+
 		for (unsigned i = 0; i < meshlet.triangle_count; i++)
 		{
 			out_index_buffer.emplace_back(
@@ -732,9 +726,9 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 					out_vertex_redirection_buffer[local_indices[3 * i + 1] + meshlet.vertex_offset],
 					out_vertex_redirection_buffer[local_indices[3 * i + 2] + meshlet.vertex_offset]);
 		}
-	}
 
-	p_data[0] = out_index_buffer.data();
+		out_meshlets.push_back(m);
+	}
 
 	Encoded encoded;
 	encode_mesh(encoded, out_meshlets.data(), out_meshlets.size(),
@@ -757,8 +751,8 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 		{
 			auto &meshlet = out_meshlets[i + chunk];
 			memcpy(tmp_indices[total_count].data,
-			       out_index_buffer[meshlet.offset].data,
-			       meshlet.primitive_count * sizeof(tmp_indices[0].data));
+			       out_index_buffer[meshlet.global_indices_offset].data,
+			       meshlet.primitive_count * sizeof(tmp_indices[0]));
 			total_count += meshlet.primitive_count;
 		}
 

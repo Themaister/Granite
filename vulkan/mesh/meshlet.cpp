@@ -36,7 +36,7 @@ MeshView create_mesh_view(const Granite::FileMapping &mapping)
 
 	if (mapping.get_size() < sizeof(magic) + sizeof(FormatHeader))
 	{
-		LOGE("MESHLET1 file too small.\n");
+		LOGE("MESHLET2 file too small.\n");
 		return view;
 	}
 
@@ -45,7 +45,7 @@ MeshView create_mesh_view(const Granite::FileMapping &mapping)
 
 	if (memcmp(ptr, magic, sizeof(magic)) != 0)
 	{
-		LOGE("Invalid MESHLET1 magic.\n");
+		LOGE("Invalid MESHLET2 magic.\n");
 		return {};
 	}
 
@@ -72,14 +72,15 @@ MeshView create_mesh_view(const Granite::FileMapping &mapping)
 	if (!view.format_header->payload_size_b128)
 		return {};
 
-	if (end_ptr - ptr < ptrdiff_t(view.format_header->payload_size_b128 * sizeof(uint32_t)))
+	if (end_ptr - ptr < ptrdiff_t(view.format_header->payload_size_b128 * sizeof(PayloadB128)))
 		return {};
 	view.payload = reinterpret_cast<const PayloadB128 *>(ptr);
 
 	for (uint32_t i = 0, n = view.format_header->meshlet_count; i < n; i++)
 	{
-		view.total_primitives += view.headers[i].num_primitives;
-		view.total_vertices += view.headers[i].num_attributes;
+		auto offsets = view.streams[i * view.format_header->stream_count].u.offsets[NumChunks];
+		view.total_primitives += offsets.prim_offset;
+		view.total_vertices += offsets.attr_offset;
 	}
 
 	return view;
@@ -179,7 +180,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 		for (uint32_t i = 0; i < view.format_header->meshlet_count; i++)
 		{
 			decode_offsets.push_back({ index_count, 0 });
-			index_count += view.headers[i].num_primitives;
+			index_count += view.streams[i * view.format_header->stream_count].u.offsets[NumChunks].prim_offset;
 			for (uint32_t j = 0; j < output_u32_streams; j++)
 				decode_offsets.push_back({ view.headers[i].base_vertex_offset * output_u32_streams + j, output_u32_streams });
 		}
@@ -215,7 +216,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 		for (uint32_t i = 0; i < view.format_header->meshlet_count; i++)
 		{
 			decode_offsets.push_back({ index_count, view.headers[i].base_vertex_offset });
-			index_count += view.headers[i].num_primitives;
+			index_count += view.streams[i * view.format_header->stream_count].u.offsets[NumChunks].prim_offset;
 		}
 		cmd.set_specialization_constant(1, uint32_t(info.target_style));
 

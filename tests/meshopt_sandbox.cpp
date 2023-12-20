@@ -88,7 +88,7 @@ static void decode_bitfield_block_16(T *block, const PayloadB128 *&pdata, unsign
 				}
 			}
 
-			int num_words = (mask * Components + 1) / 2;
+			int num_words = (bits * Components + 3) / 4;
 			pdata += num_words;
 			bit_offset += bits;
 		}
@@ -125,8 +125,8 @@ static void decode_attribute_buffer(std::vector<vec3> &out_positions, const Mesh
 		}
 
 		u16vec3 base;
-		memcpy(base.data, &stream.u.offsets[chunk].attr_offset, sizeof(uint16_t) * 2);
-		memcpy(&base.z, reinterpret_cast<const char *>(&stream.u.offsets[8].attr_offset) +
+		memcpy(base.data, &stream.u.base_value[chunk], sizeof(uint16_t) * 2);
+		memcpy(&base.z, reinterpret_cast<const char *>(&stream.u.base_value[NumChunks]) +
 		                sizeof(uint16_t) * chunk,
 		       sizeof(uint16_t));
 
@@ -268,10 +268,10 @@ int main(int argc, char *argv[])
 	Filesystem::setup_default_filesystem(GRANITE_FILESYSTEM(), ASSET_DIRECTORY);
 
 	SceneFormats::Mesh mesh;
-	vec3 pos[30];
+	vec3 pos[255];
 
 	mesh.index_type = VK_INDEX_TYPE_UINT8_EXT;
-	mesh.count = 30;
+	mesh.count = 255;
 	mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	for (unsigned i = 0; i < mesh.count; i++)
 	{

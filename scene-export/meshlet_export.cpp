@@ -26,6 +26,8 @@
 #include "math.hpp"
 #include "filesystem.hpp"
 #include "meshlet.hpp"
+#include <type_traits>
+#include <limits>
 
 namespace Granite
 {
@@ -419,49 +421,77 @@ static void encode_bitplane_16(std::vector<PayloadB128> &out_payload_buffer,
 	encode_bitplane_16_inner<2>(out_payload_buffer, values, encoded_bits);
 }
 
+template <typename T> struct to_signed_vector {};
+template <typename T> struct to_components {};
+
+template <> struct to_signed_vector<u16vec3> { using type = i16vec3; };
+template <> struct to_signed_vector<u16vec2> { using type = i16vec2; };
+template <> struct to_components<u16vec3> { enum { components = 3 }; };
+template <> struct to_components<u16vec2> { enum { components = 2 }; };
+
+template <typename T>
+static auto max_component(T value) -> std::remove_reference_t<decltype(value.data[0])>
+{
+	std::remove_reference_t<decltype(value.data[0])> val = 0;
+	for (auto v : value.data)
+		val = std::max(val, v);
+	return val;
+}
+
+template <typename T>
 static void encode_attribute_stream(std::vector<PayloadB128> &out_payload_buffer,
                                     Stream &stream,
-                                    const u16vec3 *raw_positions,
+                                    const T *raw_positions,
                                     uint32_t chunk_index, const uint32_t *vbo_remap,
                                     uint32_t num_attributes)
 {
-	u16vec3 positions[ElementsPerChunk];
+	using SignedT = typename to_signed_vector<T>::type;
+	using UnsignedScalar = std::remove_reference_t<decltype(T()[0])>;
+	using SignedScalar = std::remove_reference_t<decltype(SignedT()[0])>;
+	static_assert(sizeof(T) == 4 || sizeof(T) == 6, "Encoded type must be 32 or 48 bits.");
+
+	T positions[ElementsPerChunk];
 	for (uint32_t i = 0; i < num_attributes; i++)
 		positions[i] = raw_positions[vbo_remap[i]];
 	for (uint32_t i = num_attributes; i < ElementsPerChunk; i++)
 		positions[i] = positions[0];
 
-	u16vec3 ulo{0xffff};
-	u16vec3 uhi{0};
-	i16vec3 slo{0x7fff};
-	i16vec3 shi{-0x8000};
+	T ulo{std::numeric_limits<UnsignedScalar>::max()};
+	T uhi{std::numeric_limits<UnsignedScalar>::min()};
+	SignedT slo{std::numeric_limits<SignedScalar>::max()};
+	SignedT shi{std::numeric_limits<SignedScalar>::min()};
 
 	for (auto &p : positions)
 	{
 		ulo = min(ulo, p);
 		uhi = max(uhi, p);
-		slo = min(slo, i16vec3(p));
-		shi = max(shi, i16vec3(p));
+		slo = min(slo, SignedT(p));
+		shi = max(shi, SignedT(p));
 	}
 
-	const auto max3 = [](u16vec3 v) { return max(max(v.x, v.y), v.z); };
-	u16vec3 diff_unsigned = uhi - ulo;
-	u16vec3 diff_signed = u16vec3(shi) - u16vec3(slo);
+	T diff_unsigned = uhi - ulo;
+	T diff_signed = T(shi) - T(slo);
 
-	unsigned diff3_unsigned = max3(diff_unsigned);
-	unsigned diff3_signed = max3(diff_signed);
-	if (diff3_signed < diff3_unsigned)
+	unsigned diff_max_unsigned = max_component(diff_unsigned);
+	unsigned diff_max_signed = max_component(diff_signed);
+	if (diff_max_signed < diff_max_unsigned)
 	{
-		ulo = u16vec3(slo);
-		diff3_unsigned = diff3_signed;
+		ulo = T(slo);
+		diff_max_unsigned = diff_max_signed;
 	}
 
-	unsigned bits = compute_required_bits_unsigned(diff3_unsigned);
-	unsigned encoded_bits = (bits + 1) / 2;
+	constexpr unsigned bits_per_component = sizeof(UnsignedScalar) * 8;
+
+	unsigned bits = compute_required_bits_unsigned(diff_max_unsigned);
+	unsigned encoded_bits = (bits + sizeof(UnsignedScalar) - 1) / sizeof(UnsignedScalar);
 
 	stream.bit_plane_config |= encoded_bits << (4 * chunk_index);
-	stream.u.base_value[chunk_index] = uint32_t(ulo.x) | (uint32_t(ulo.y) << 16);
-	stream.u.base_value[chunk_index / 2 + 8] |= uint32_t(ulo.z) << (16 * (chunk_index & 1));
+	memcpy(&stream.u.base_value[chunk_index], ulo.data, sizeof(uint32_t));
+	if (to_components<T>::components == 3 && bits_per_component == 16)
+	{
+		memcpy(reinterpret_cast<char *>(&stream.u.base_value[8]) + sizeof(uint16_t) * chunk_index,
+		       &ulo.z, sizeof(uint16_t));
+	}
 
 	for (auto &p : positions)
 		p -= ulo;

@@ -342,6 +342,83 @@ static void encode_index_stream(std::vector<PayloadB128> &out_payload_buffer,
 	out_payload_buffer.push_back(p3);
 }
 
+template <int Components, typename T>
+static void encode_bitplane_16_inner(std::vector<PayloadB128> &out_payload_buffer,
+                                     const T *values, unsigned encoded_bits)
+{
+	static_assert(Components == 2 || Components == 3, "Components must be 2 or 3.");
+
+	if (encoded_bits == 8)
+	{
+		// Plain write.
+		PayloadB128 p[4 * Components];
+
+		for (uint32_t i = 0; i < ElementsPerChunk; i++)
+		{
+			auto d = values[i].xy();
+			p[i / 4].words[i % 4] = uint32_t(d.x) | (uint32_t(d.y) << 16);
+		}
+
+		if (Components == 3)
+		{
+			for (uint32_t i = 0; i < ElementsPerChunk / 2; i++)
+			{
+				u16vec2 d = u16vec2(values[2 * i][2], values[2 * i + 1][2]);
+				p[8 + i / 4].words[i % 4] = uint32_t(d.x) | (uint32_t(d.y) << 16);
+			}
+		}
+
+		out_payload_buffer.insert(out_payload_buffer.end(), p, p + 4 * Components);
+	}
+	else
+	{
+		unsigned bit_offset = 0;
+		PayloadB128 p[6];
+
+		for (int mask = 4; mask; mask >>= 1)
+		{
+			if (encoded_bits & mask)
+			{
+				uint32_t *words = &p[0].words[0];
+				int bits = mask * 2;
+				int num_words = (bits * Components + 3) / 4;
+
+				for (int i = 0; i < num_words; i++)
+					p[i] = {};
+
+				for (uint32_t i = 0; i < ElementsPerChunk; i++)
+				{
+					auto d = values[i];
+					for (int c = 0; c < Components; c++)
+					{
+						for (int b = 0; b < bits; b++)
+						{
+							int word = c * bits + b;
+							words[word] |= ((d[c] >> (bit_offset + b)) & 1u) << i;
+						}
+					}
+				}
+
+				for (int i = 0; i < num_words; i++)
+					out_payload_buffer.push_back(p[i]);
+				bit_offset += bits;
+			}
+		}
+	}
+}
+
+static void encode_bitplane_16(std::vector<PayloadB128> &out_payload_buffer,
+                               const u16vec3 *values, unsigned encoded_bits)
+{
+	encode_bitplane_16_inner<3>(out_payload_buffer, values, encoded_bits);
+}
+
+static void encode_bitplane_16(std::vector<PayloadB128> &out_payload_buffer,
+                               const u16vec2 *values, unsigned encoded_bits)
+{
+	encode_bitplane_16_inner<2>(out_payload_buffer, values, encoded_bits);
+}
+
 static void encode_attribute_stream(std::vector<PayloadB128> &out_payload_buffer,
                                     Stream &stream,
                                     const u16vec3 *raw_positions,
@@ -376,7 +453,6 @@ static void encode_attribute_stream(std::vector<PayloadB128> &out_payload_buffer
 	if (diff3_signed < diff3_unsigned)
 	{
 		ulo = u16vec3(slo);
-		uhi = u16vec3(shi);
 		diff3_unsigned = diff3_signed;
 	}
 
@@ -390,86 +466,7 @@ static void encode_attribute_stream(std::vector<PayloadB128> &out_payload_buffer
 	for (auto &p : positions)
 		p -= ulo;
 
-	if (encoded_bits == 8)
-	{
-		// Plain write.
-		PayloadB128 p[12];
-
-		for (uint32_t i = 0; i < ElementsPerChunk; i++)
-		{
-			u16vec2 d = positions[i].xy();
-			p[i / 4].words[i % 4] = uint32_t(d.x) | (uint32_t(d.y) << 16);
-		}
-
-		for (uint32_t i = 0; i < ElementsPerChunk / 2; i++)
-		{
-			u16vec2 d = u16vec2(positions[2 * i].z, positions[2 * i + 1].z);
-			p[8 + i / 4].words[i % 4] = uint32_t(d.x) | (uint32_t(d.y) << 16);
-		}
-
-		out_payload_buffer.insert(out_payload_buffer.end(), p, p + 12);
-	}
-	else
-	{
-		unsigned bit_offset = 0;
-
-		if (encoded_bits & 4)
-		{
-			PayloadB128 p[6]{};
-
-			for (uint32_t i = 0; i < ElementsPerChunk; i++)
-			{
-				u16vec3 d = positions[i];
-				for (int c = 0; c < 3; c++)
-					for (int b = 0; b < 8; b++)
-						p[c * 2 + b / 4].words[b % 4] |= ((d[c] >> (bit_offset + b)) & 1u) << i;
-			}
-
-			for (auto v : p)
-				out_payload_buffer.push_back(v);
-			bit_offset += 8;
-		}
-
-		if (encoded_bits & 2)
-		{
-			PayloadB128 p[3]{};
-
-			for (uint32_t i = 0; i < ElementsPerChunk; i++)
-			{
-				u16vec3 d = positions[i];
-				for (int c = 0; c < 3; c++)
-					for (int b = 0; b < 4; b++)
-						p[c].words[b] |= ((d[c] >> (bit_offset + b)) & 1u) << i;
-			}
-
-			for (auto v : p)
-				out_payload_buffer.push_back(v);
-			bit_offset += 4;
-		}
-
-		if (encoded_bits & 1)
-		{
-			PayloadB128 p[2]{};
-			uint32_t *words = &p[0].words[0];
-
-			for (uint32_t i = 0; i < ElementsPerChunk; i++)
-			{
-				u16vec3 d = positions[i];
-				for (int c = 0; c < 3; c++)
-				{
-					for (int b = 0; b < 2; b++)
-					{
-						int word = c * 2 + b;
-						words[word] |= ((d[c] >> (bit_offset + b)) & 1u) << i;
-					}
-				}
-			}
-
-			for (auto v : p)
-				out_payload_buffer.push_back(v);
-			bit_offset += 2;
-		}
-	}
+	encode_bitplane_16(out_payload_buffer, positions, encoded_bits);
 }
 
 static void encode_mesh(Encoded &encoded,

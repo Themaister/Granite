@@ -371,8 +371,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		} push;
 
 		push.camera_pos = render_context.get_render_parameters().camera_position;
-		const bool use_meshlets = manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Meshlet;
-		const bool use_preculling = !use_meshlets || true;
+		const bool use_meshlets = manager.get_mesh_encoding() != Vulkan::ResourceManager::MeshEncoding::VBOAndIBOMDI;
+		const bool use_preculling = manager.get_mesh_encoding() != Vulkan::ResourceManager::MeshEncoding::MeshletEncoded;
 
 		if (use_preculling)
 		{
@@ -382,17 +382,16 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			else
 				info.size = max_draws * sizeof(VkDrawIndexedIndirectCommand) + 256;
 
-			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-			             VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
-			             VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-			             VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+			             VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 			info.domain = BufferDomain::Device;
 			indirect_draws = device.create_buffer(info);
 
 			if (use_meshlets)
 			{
 				cmd->fill_buffer(*indirect_draws, 0, 0, 4);
-				cmd->fill_buffer(*indirect_draws, 1, 4, 8);
+				cmd->fill_buffer(*indirect_draws, 1, 4, 4);
+				cmd->fill_buffer(*indirect_draws, 1, 8, 4);
 			}
 			else
 			{
@@ -448,7 +447,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		auto *pos = manager.get_position_buffer();
 		auto *attr = manager.get_attribute_buffer();
 
-		if (use_meshlets)
+		if (use_meshlets && !use_preculling)
 		{
 			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
 			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
@@ -456,6 +455,39 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			cmd->set_opaque_state();
 
 			*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
+
+			memcpy(cmd->allocate_typed_constant_data<vec4>(1, 1, 6), render_context.get_visibility_frustum().get_planes(),
+			       6 * sizeof(vec4));
+
+			*cmd->allocate_typed_constant_data<vec4>(1, 2, 1) =
+					float(1 << 8 /* shader assumes 8 */) *
+					vec4(cmd->get_viewport().x + 0.5f * cmd->get_viewport().width - 0.5f,
+					     cmd->get_viewport().y + 0.5f * cmd->get_viewport().height - 0.5f,
+					     0.5f * cmd->get_viewport().width,
+					     0.5f * cmd->get_viewport().height) - vec4(1.0f, 1.0f, 0.0f, 0.0f);
+
+			cmd->set_program("assets://shaders/meshlet_debug.task", "assets://shaders/meshlet_debug.task",
+			                 "assets://shaders/meshlet_debug.mesh.frag");
+
+			cmd->set_storage_buffer(0, 0, *ibo);
+			cmd->set_storage_buffer(0, 1, *pos);
+			cmd->set_storage_buffer(0, 2, *attr);
+			cmd->set_storage_buffer(0, 3, *indirect_draws);
+			cmd->set_storage_buffer(0, 4, *compacted_params);
+			cmd->set_storage_buffer(0, 5, *cached_transform_buffer);
+			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
+			cmd->draw_mesh_tasks_indirect(*indirect_draws, 0, 1, sizeof(VkDrawMeshTasksIndirectCommandEXT));
+			cmd->end_render_pass();
+		}
+		else if (use_meshlets && use_preculling)
+		{
+			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
+			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
+			render_context.set_camera(camera);
+			cmd->set_opaque_state();
+
+			*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
+
 			memcpy(cmd->allocate_typed_constant_data<vec4>(1, 1, 6), render_context.get_visibility_frustum().get_planes(),
 			       6 * sizeof(vec4));
 

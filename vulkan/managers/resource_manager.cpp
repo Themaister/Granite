@@ -39,9 +39,9 @@ ResourceManager::ResourceManager(Device *device_)
 	, index_buffer_allocator(*device_, 256, 17)
 	, attribute_buffer_allocator(*device_, 256, 17)
 	, indirect_buffer_allocator(*device_, 32, 15)
-	//, mesh_header_allocator(*device_, 32, 15)
-	//, mesh_stream_allocator(*device_, 8, 17)
-	//, mesh_payload_allocator(*device_, 128, 17)
+	, mesh_header_allocator(*device_, 32, 15)
+	, mesh_stream_allocator(*device_, 8, 17)
+	, mesh_payload_allocator(*device_, 32, 17)
 {
 	// Simplified style.
 	index_buffer_allocator.set_element_size(0, 3); // 8-bit indices.
@@ -51,9 +51,9 @@ ResourceManager::ResourceManager(Device *device_)
 	attribute_buffer_allocator.set_element_size(2, sizeof(uint32_t) * 2);
 	indirect_buffer_allocator.set_element_size(0, sizeof(VkDrawIndexedIndirectCommand));
 
-	//mesh_header_allocator.set_element_size(0, sizeof(Meshlet::RuntimeHeader));
-	//mesh_stream_allocator.set_element_size(0, sizeof(Meshlet::Stream));
-	//mesh_payload_allocator.set_element_size(0, sizeof(uint32_t));
+	mesh_header_allocator.set_element_size(0, sizeof(Meshlet::RuntimeHeader));
+	mesh_stream_allocator.set_element_size(0, sizeof(Meshlet::Stream));
+	mesh_payload_allocator.set_element_size(0, sizeof(Meshlet::PayloadB128));
 
 	assets.reserve(Granite::AssetID::MaxIDs);
 }
@@ -178,20 +178,36 @@ void ResourceManager::init()
 	if (device->get_device_features().mesh_shader_features.taskShader &&
 	    device->get_device_features().mesh_shader_features.meshShader)
 	{
-		mesh_encoding = MeshEncoding::Meshlet;
+		mesh_encoding = MeshEncoding::MeshletDecoded;
 		LOGI("Opting in to meshlet path.\n");
-		indirect_buffer_allocator.set_element_size(0, sizeof(Meshlet::RuntimeHeaderDecoded));
 	}
 
-	indirect_buffer_allocator.set_soa_count(2);
-	indirect_buffer_allocator.set_element_size(1, sizeof(Meshlet::Bound));
+	if (mesh_encoding == MeshEncoding::MeshletDecoded)
+		indirect_buffer_allocator.set_element_size(0, sizeof(Meshlet::RuntimeHeaderDecoded));
 
-	opaque.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	index_buffer_allocator.prime(&opaque);
-	opaque.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	attribute_buffer_allocator.prime(&opaque);
-	opaque.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	indirect_buffer_allocator.prime(&opaque);
+	if (mesh_encoding == MeshEncoding::MeshletEncoded)
+	{
+		mesh_header_allocator.set_soa_count(2);
+		mesh_header_allocator.set_element_size(1, sizeof(Meshlet::Bound));
+
+		opaque.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		mesh_header_allocator.prime(&opaque);
+		mesh_stream_allocator.prime(&opaque);
+		mesh_payload_allocator.prime(&opaque);
+	}
+	else
+	{
+		indirect_buffer_allocator.set_soa_count(2);
+		indirect_buffer_allocator.set_element_size(1, sizeof(Meshlet::Bound));
+
+		opaque.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		index_buffer_allocator.prime(&opaque);
+		opaque.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		attribute_buffer_allocator.prime(&opaque);
+		opaque.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+		               VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		indirect_buffer_allocator.prime(&opaque);
+	}
 }
 
 ImageHandle ResourceManager::create_gtx(const MemoryMappedTexture &mapped_file, Granite::AssetID id)
@@ -351,7 +367,22 @@ bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::Me
 
 	bool ret = true;
 
-	//if (mesh_encoding == MeshEncoding::VBOAndIBOMDI)
+	if (mesh_encoding == MeshEncoding::MeshletEncoded)
+	{
+		if (ret)
+			ret = mesh_header_allocator.allocate(view.format_header->meshlet_count, &asset.mesh.indirect_or_header);
+
+		if (ret)
+		{
+			ret = mesh_stream_allocator.allocate(
+					view.format_header->meshlet_count * view.format_header->stream_count,
+					&asset.mesh.attr_or_stream);
+		}
+
+		if (ret)
+			ret = mesh_payload_allocator.allocate(view.format_header->payload_size_b128, &asset.mesh.index_or_payload);
+	}
+	else
 	{
 		if (ret)
 			ret = index_buffer_allocator.allocate(view.total_primitives, &asset.mesh.index_or_payload);
@@ -360,23 +391,6 @@ bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::Me
 		if (ret)
 			ret = indirect_buffer_allocator.allocate(view.format_header->meshlet_count, &asset.mesh.indirect_or_header);
 	}
-#if 0
-	else
-	{
-		if (ret)
-			ret = mesh_header_allocator.allocate(view.format_header->meshlet_count, &asset.mesh.indirect_or_header);
-
-		if (ret)
-		{
-			ret = mesh_stream_allocator.allocate(
-					view.format_header->meshlet_count * view.format_header->u32_stream_count,
-					&asset.mesh.attr_or_stream);
-		}
-
-		if (ret)
-			ret = mesh_payload_allocator.allocate(view.format_header->payload_size_words, &asset.mesh.index_or_payload);
-	}
-#endif
 
 	asset.mesh.draw = {
 		asset.mesh.indirect_or_header.offset,
@@ -385,20 +399,18 @@ bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::Me
 
 	if (!ret)
 	{
-		//if (mesh_encoding == MeshEncoding::VBOAndIBOMDI)
-		{
-			index_buffer_allocator.free(asset.mesh.index_or_payload);
-			attribute_buffer_allocator.free(asset.mesh.attr_or_stream);
-			indirect_buffer_allocator.free(asset.mesh.indirect_or_header);
-		}
-#if 0
-		else
+		if (mesh_encoding == MeshEncoding::MeshletEncoded)
 		{
 			mesh_payload_allocator.free(asset.mesh.index_or_payload);
 			mesh_stream_allocator.free(asset.mesh.attr_or_stream);
 			mesh_header_allocator.free(asset.mesh.indirect_or_header);
 		}
-#endif
+		else
+		{
+			index_buffer_allocator.free(asset.mesh.index_or_payload);
+			attribute_buffer_allocator.free(asset.mesh.attr_or_stream);
+			indirect_buffer_allocator.free(asset.mesh.indirect_or_header);
+		}
 
 		asset.mesh = {};
 	}
@@ -429,15 +441,14 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 
 	if (ret)
 	{
-#if 0
-		if (mesh_encoding == MeshEncoding::Meshlet)
+		if (mesh_encoding == MeshEncoding::MeshletEncoded)
 		{
 			auto cmd = device->request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 
 			void *payload_data = cmd->update_buffer(*mesh_payload_allocator.get_buffer(0, 0),
-			                                        asset.mesh.index_or_payload.offset * sizeof(uint32_t),
-			                                        view.format_header->payload_size_words * sizeof(uint32_t));
-			memcpy(payload_data, view.payload, view.format_header->payload_size_words * sizeof(uint32_t));
+			                                        asset.mesh.index_or_payload.offset * sizeof(Meshlet::PayloadB128),
+			                                        view.format_header->payload_size_b128 * sizeof(Meshlet::PayloadB128));
+			memcpy(payload_data, view.payload, view.format_header->payload_size_b128 * sizeof(Meshlet::PayloadB128));
 
 			auto *headers = static_cast<Meshlet::RuntimeHeader *>(
 					cmd->update_buffer(*mesh_header_allocator.get_buffer(0, 0),
@@ -446,9 +457,8 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 
 			for (uint32_t i = 0, n = view.format_header->meshlet_count; i < n; i++)
 			{
-				headers[i].stream_offset = asset.mesh.attr_or_stream.offset + i * view.format_header->u32_stream_count;
-				headers[i].num_attributes = view.headers[i].num_attributes;
-				headers[i].num_primitives = view.headers[i].num_primitives;
+				headers[i].stream_offset = asset.mesh.attr_or_stream.offset + i * view.format_header->stream_count;
+				headers[i].num_chunks = view.headers[i].num_chunks;
 			}
 
 			auto *bounds = static_cast<Meshlet::Bound *>(
@@ -460,13 +470,13 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			auto *streams = static_cast<Meshlet::Stream *>(
 					cmd->update_buffer(*mesh_stream_allocator.get_buffer(0, 0),
 					                   asset.mesh.attr_or_stream.offset * sizeof(Meshlet::Stream),
-					                   view.format_header->meshlet_count * view.format_header->u32_stream_count *
+					                   view.format_header->meshlet_count * view.format_header->stream_count *
 					                   sizeof(Meshlet::Stream)));
 
-			for (uint32_t i = 0, n = view.format_header->meshlet_count * view.format_header->u32_stream_count; i < n; i++)
+			for (uint32_t i = 0, n = view.format_header->meshlet_count * view.format_header->stream_count; i < n; i++)
 			{
 				auto in_stream = view.streams[i];
-				in_stream.offset_from_base_u32 += asset.mesh.index_or_payload.offset;
+				in_stream.offset_in_b128 += asset.mesh.index_or_payload.offset;
 				streams[i] = in_stream;
 			}
 
@@ -480,7 +490,6 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			                           VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, false);
 		}
 		else
-#endif
 		{
 			auto cmd = device->request_command_buffer(CommandBuffer::Type::AsyncCompute);
 
@@ -504,7 +513,7 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			info.push.primitive_offset = asset.mesh.index_or_payload.offset;
 			info.push.vertex_offset = asset.mesh.attr_or_stream.offset;
 
-			info.runtime_style = mesh_encoding == MeshEncoding::Meshlet ?
+			info.runtime_style = mesh_encoding == MeshEncoding::MeshletDecoded ?
 			                     Meshlet::RuntimeStyle::Meshlet : Meshlet::RuntimeStyle::MDI;
 
 			auto *bounds = static_cast<Meshlet::Bound *>(
@@ -529,16 +538,14 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 	uint64_t cost = 0;
 	if (ret)
 	{
-#if 0
-		if (mesh_encoding == MeshEncoding::Meshlet)
+		if (mesh_encoding == MeshEncoding::MeshletEncoded)
 		{
-			cost += view.format_header->payload_size_words * mesh_payload_allocator.get_element_size(0);
+			cost += view.format_header->payload_size_b128 * mesh_payload_allocator.get_element_size(0);
 			cost += view.format_header->meshlet_count * mesh_header_allocator.get_element_size(0);
 			cost += view.format_header->meshlet_count * mesh_header_allocator.get_element_size(1);
-			cost += view.format_header->meshlet_count * view.format_header->u32_stream_count * mesh_stream_allocator.get_element_size(0);
+			cost += view.format_header->meshlet_count * view.format_header->stream_count * mesh_stream_allocator.get_element_size(0);
 		}
 		else
-#endif
 		{
 			cost += view.total_primitives * index_buffer_allocator.get_element_size(0);
 			cost += view.total_vertices * attribute_buffer_allocator.get_element_size(0);
@@ -626,15 +633,13 @@ void ResourceManager::latch_handles()
 			{
 				{
 					std::lock_guard<std::mutex> holder_alloc{mesh_allocator_lock};
-#if 0
-					if (mesh_encoding == MeshEncoding::Meshlet)
+					if (mesh_encoding == MeshEncoding::MeshletEncoded)
 					{
 						mesh_payload_allocator.free(asset.mesh.index_or_payload);
 						mesh_stream_allocator.free(asset.mesh.attr_or_stream);
 						mesh_header_allocator.free(asset.mesh.indirect_or_header);
 					}
 					else
-#endif
 					{
 						index_buffer_allocator.free(asset.mesh.index_or_payload);
 						attribute_buffer_allocator.free(asset.mesh.attr_or_stream);
@@ -693,7 +698,6 @@ const Buffer *ResourceManager::get_indirect_buffer() const
 	return indirect_buffer_allocator.get_buffer(0, 0);
 }
 
-#if 0
 const Buffer *ResourceManager::get_meshlet_payload_buffer() const
 {
 	return mesh_payload_allocator.get_buffer(0, 0);
@@ -708,13 +712,12 @@ const Buffer *ResourceManager::get_meshlet_stream_header_buffer() const
 {
 	return mesh_stream_allocator.get_buffer(0, 0);
 }
-#endif
 
 const Buffer *ResourceManager::get_cluster_bounds_buffer() const
 {
-	//if (mesh_encoding == MeshEncoding::Meshlet)
-	//	return mesh_header_allocator.get_buffer(0, 1);
-	//else
+	if (mesh_encoding == MeshEncoding::MeshletEncoded)
+		return mesh_header_allocator.get_buffer(0, 1);
+	else
 		return indirect_buffer_allocator.get_buffer(0, 1);
 }
 

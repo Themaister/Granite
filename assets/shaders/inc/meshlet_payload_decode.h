@@ -166,7 +166,7 @@ i16vec3 meshlet_decode_snorm_scaled_i16x3(uint stream_index, uint chunk_index, i
 	// Scalar math.
 	if (chunk_index != 0)
 	{
-		uint prev_bit_mask = bitfieldExtract(bit_plane_config, 0, int((chunk_index - 1) * 4));
+		uint prev_bit_mask = bitfieldExtract(bit_plane_config, 0, int(chunk_index) * 4);
 		offset_in_b128 += bitCount(prev_bit_mask & 0x88888888) * 12;
 		offset_in_b128 += bitCount(prev_bit_mask & 0x44444444) * 6;
 		offset_in_b128 += bitCount(prev_bit_mask & 0x22222222) * 3;

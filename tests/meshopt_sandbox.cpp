@@ -217,6 +217,7 @@ static void build_reference_mesh(std::vector<uvec3> &indices, std::vector<vec3> 
 {
 	for (unsigned i = 0; i < 256; i++)
 	{
+#if 1
 		vec3 p;
 		p.x = -40.0f + float(i);
 		p.y = float(i);
@@ -224,6 +225,9 @@ static void build_reference_mesh(std::vector<uvec3> &indices, std::vector<vec3> 
 
 		if (i == 8)
 			p.y = 20000.0f;
+#else
+		vec3 p = vec3(-40.0f + float(i));
+#endif
 		positions.push_back(p);
 	}
 
@@ -234,7 +238,8 @@ static void build_reference_mesh(std::vector<uvec3> &indices, std::vector<vec3> 
 static bool validate_mesh(std::vector<uvec3> &reference_indices,
                           std::vector<vec3> &reference_positions,
                           std::vector<uvec3> &decoded_indices,
-                          std::vector<vec3> &decoded_positions)
+                          std::vector<vec3> &decoded_positions,
+						  bool need_sorting)
 {
 	if (reference_indices.size() != decoded_indices.size())
 	{
@@ -242,17 +247,22 @@ static bool validate_mesh(std::vector<uvec3> &reference_indices,
 		return false;
 	}
 
-	std::sort(reference_indices.begin(), reference_indices.end(), [&](const uvec3 &a, const uvec3 &b) {
-		float za = reference_positions[a.z].z;
-		float zb = reference_positions[b.z].z;
-		return za < zb;
-	});
+	if (need_sorting)
+	{
+		std::sort(reference_indices.begin(), reference_indices.end(), [&](const uvec3 &a, const uvec3 &b)
+		{
+			float za = reference_positions[a.z].z;
+			float zb = reference_positions[b.z].z;
+			return za < zb;
+		});
 
-	std::sort(decoded_indices.begin(), decoded_indices.end(), [&](const uvec3 &a, const uvec3 &b) {
-		float za = decoded_positions[a.z].z;
-		float zb = decoded_positions[b.z].z;
-		return za < zb;
-	});
+		std::sort(decoded_indices.begin(), decoded_indices.end(), [&](const uvec3 &a, const uvec3 &b)
+		{
+			float za = decoded_positions[a.z].z;
+			float zb = decoded_positions[b.z].z;
+			return za < zb;
+		});
+	}
 
 	for (size_t i = 0, n = decoded_indices.size(); i < n; i++)
 	{
@@ -331,12 +341,12 @@ int main(int argc, char *argv[])
 	std::vector<vec3> gpu_positions;
 	decode_mesh_gpu(dev, gpu_index_buffer, gpu_positions, view);
 
-	if (!validate_mesh(reference_indices, reference_positions,
-	                   decoded_index_buffer, decoded_positions))
+	if (!validate_mesh(decoded_index_buffer, decoded_positions,
+	                   gpu_index_buffer, gpu_positions, false))
 		return EXIT_FAILURE;
 
 	if (!validate_mesh(reference_indices, reference_positions,
-	                   gpu_index_buffer, gpu_positions))
+	                   decoded_index_buffer, decoded_positions, true))
 		return EXIT_FAILURE;
 
 	return 0;

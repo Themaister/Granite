@@ -9,6 +9,7 @@ layout(local_size_x = 256) in;
 layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS;
 layout(constant_id = 1) const bool UNROLLED_MESH = false;
 layout(constant_id = 2) const uint TARGET_MESH_STYLE = 0;
+layout(constant_id = 3) const bool RUNTIME_MESH = false;
 
 #define MESHLET_PAYLOAD_DESCRIPTOR_SET 0
 #define MESHLET_PAYLOAD_META_BINDING 0
@@ -58,7 +59,6 @@ layout(set = 0, binding = 7, std430) readonly buffer OutputOffsets
     uint data[];
 } primitive_output_offsets;
 
-#if MESHLET_PAYLOAD_RUNTIME_MESH
 struct IndirectDrawMesh
 {
     uint primitive_offset;
@@ -67,11 +67,11 @@ struct IndirectDrawMesh
     uint num_attributes;
 };
 
-layout(set = 0, binding = 8, std430) writeonly buffer IndirectCommands
+layout(set = 0, binding = 8, std430) writeonly buffer IndirectCommandsMesh
 {
     IndirectDrawMesh draws[];
 } indirect_commands_mesh;
-#else
+
 struct IndirectIndexedDraw
 {
     uint indexCount;
@@ -81,11 +81,10 @@ struct IndirectIndexedDraw
     uint firstInstance;
 };
 
-layout(set = 0, binding = 8, std430) writeonly buffer IndirectCommands
+layout(set = 0, binding = 8, std430) writeonly buffer IndirectCommandsMDI
 {
     IndirectIndexedDraw draws[];
-} indirect_commands;
-#endif
+} indirect_commands_mdi;
 
 layout(push_constant, std430) uniform Registers
 {
@@ -127,22 +126,26 @@ void main()
     if (!UNROLLED_MESH && gl_LocalInvocationIndex == 0)
     {
         MeshletInfo info = meshlet_get_meshlet_info(meshlet_index * NUM_U32_STREAMS);
-#if MESHLET_PAYLOAD_RUNTIME_MESH
-        IndirectDrawMesh draw;
-        draw.primitive_offset = primitive_output_offset;
-        draw.vertex_offset = meta.base_vertex_offset + registers.vertex_offset;
-        draw.num_primitives = info.num_primitives;
-        draw.num_attributes = info.num_attributes;
-        indirect_commands_mesh.draws[meshlet_index + registers.meshlet_offset] = draw;
-#else
-        IndirectIndexedDraw draw;
-        draw.indexCount = 3 * info.primitive_count;
-        draw.instanceCount = 1;
-        draw.vertexOffset = meta.base_vertex_offset + registers.vertex_offset;
-        draw.firstIndex = 3 * primitive_output_offset;
-        draw.firstInstance = 0;
-        indirect_commands.draws[meshlet_index + registers.meshlet_offset] = draw;
-#endif
+
+        if (RUNTIME_MESH)
+        {
+            IndirectDrawMesh draw;
+            draw.primitive_offset = primitive_output_offset;
+            draw.vertex_offset = meta.base_vertex_offset + registers.vertex_offset;
+            draw.num_primitives = info.primitive_count;
+            draw.num_attributes = info.vertex_count;
+            indirect_commands_mesh.draws[meshlet_index + registers.meshlet_offset] = draw;
+        }
+        else
+        {
+            IndirectIndexedDraw draw;
+            draw.indexCount = 3 * info.primitive_count;
+            draw.instanceCount = 1;
+            draw.vertexOffset = meta.base_vertex_offset + registers.vertex_offset;
+            draw.firstIndex = 3 * primitive_output_offset;
+            draw.firstInstance = 0;
+            indirect_commands_mdi.draws[meshlet_index + registers.meshlet_offset] = draw;
+        }
     }
 
     if (chunk_index >= meta.num_chunks)

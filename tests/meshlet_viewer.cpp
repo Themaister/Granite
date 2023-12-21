@@ -172,7 +172,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		auto &scene_nodes = parser.get_scenes()[parser.get_default_scene()];
 		auto root = scene.create_node();
 
-#if 1
+#if 0
 		for (int z = -10; z <= 10; z++)
 			for (int y = -10; y <= 10; y++)
 				for (int x = -10; x <= 10; x++)

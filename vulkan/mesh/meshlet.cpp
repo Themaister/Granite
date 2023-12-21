@@ -121,8 +121,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 	std::vector<uint32_t> decode_offsets;
 
 	bool meshlet_runtime = info.runtime_style == RuntimeStyle::Meshlet;
-	cmd.set_program("builtin://shaders/decode/meshlet_decode.comp",
-	                {{"MESHLET_PAYLOAD_RUNTIME_MESH", int(meshlet_runtime)}});
+	cmd.set_program("builtin://shaders/decode/meshlet_decode.comp");
 
 	cmd.enable_subgroup_size_control(true);
 	cmd.set_subgroup_size_log2(true, 5, 7);
@@ -132,10 +131,11 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 	cmd.set_storage_buffer(0, 2, *info.payload);
 	cmd.set_storage_buffer(0, 3, *info.ibo);
 
-	cmd.set_specialization_constant_mask(0x7);
+	cmd.set_specialization_constant_mask(0xf);
 	cmd.set_specialization_constant(0, view.format_header->stream_count);
 	cmd.set_specialization_constant(1, (info.flags & DECODE_MODE_UNROLLED_MESH) != 0);
 	cmd.set_specialization_constant(2, uint32_t(info.target_style));
+	cmd.set_specialization_constant(3, uint32_t(meshlet_runtime));
 
 	for (unsigned i = 0; i < 3; i++)
 		cmd.set_storage_buffer(0, 4 + i, *info.streams[0]);

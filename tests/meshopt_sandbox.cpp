@@ -159,28 +159,28 @@ static void decode_mesh(std::vector<uvec3> &out_index_buffer,
 	}
 }
 
-#if 0
 static void decode_mesh_gpu(
 		Vulkan::Device &dev,
-		std::vector<uint32_t> &out_index_buffer, std::vector<uint32_t> &out_u32_stream,
+		std::vector<uvec3> &out_index_buffer, std::vector<vec3> &out_pos_buffer,
 		const MeshView &mesh)
 {
-	decode_mesh_setup_buffers(out_index_buffer, out_u32_stream, mesh);
+	out_index_buffer.resize(mesh.total_primitives);
+	out_pos_buffer.resize(mesh.total_vertices);
 
 	Vulkan::BufferCreateInfo buf_info = {};
 	buf_info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
 	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	buf_info.size = mesh.format_header->payload_size_words * sizeof(uint32_t);
+	buf_info.size = mesh.format_header->payload_size_b128 * sizeof(PayloadB128);
 	auto payload_buffer = dev.create_buffer(buf_info, mesh.payload);
 
-	buf_info.size = out_index_buffer.size() * sizeof(uint32_t);
+	buf_info.size = out_index_buffer.size() * sizeof(uvec3);
 	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	buf_info.domain = Vulkan::BufferDomain::CachedHost;
 	auto readback_decoded_index_buffer = dev.create_buffer(buf_info);
 
-	buf_info.size = out_u32_stream.size() * sizeof(uint32_t);
+	buf_info.size = out_pos_buffer.size() * sizeof(vec3);
 	buf_info.domain = Vulkan::BufferDomain::CachedHost;
-	auto readback_decoded_u32_buffer = dev.create_buffer(buf_info);
+	auto readback_decoded_pos_buffer = dev.create_buffer(buf_info);
 
 	bool has_renderdoc = Vulkan::Device::init_renderdoc_capture();
 	if (has_renderdoc)
@@ -190,10 +190,10 @@ static void decode_mesh_gpu(
 
 	DecodeInfo info = {};
 	info.ibo = readback_decoded_index_buffer.get();
-	info.streams[0] = readback_decoded_u32_buffer.get();
+	info.streams[0] = readback_decoded_pos_buffer.get();
 	info.target_style = mesh.format_header->style;
 	info.payload = payload_buffer.get();
-	info.flags = DECODE_MODE_RAW_PAYLOAD;
+	info.flags = DECODE_MODE_UNROLLED_MESH;
 
 	decode_mesh(*cmd, info, mesh);
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
@@ -206,59 +206,12 @@ static void decode_mesh_gpu(
 
 	memcpy(out_index_buffer.data(),
 	       dev.map_host_buffer(*readback_decoded_index_buffer, Vulkan::MEMORY_ACCESS_READ_BIT),
-	       out_index_buffer.size() * sizeof(uint32_t));
+	       out_index_buffer.size() * sizeof(uvec3));
 
-	memcpy(out_u32_stream.data(),
-	       dev.map_host_buffer(*readback_decoded_u32_buffer, Vulkan::MEMORY_ACCESS_READ_BIT),
-	       out_u32_stream.size() * sizeof(uint32_t));
+	memcpy(out_pos_buffer.data(),
+	       dev.map_host_buffer(*readback_decoded_pos_buffer, Vulkan::MEMORY_ACCESS_READ_BIT),
+	       out_pos_buffer.size() * sizeof(vec3));
 }
-
-static bool validate_mesh_decode(const std::vector<uint32_t> &decoded_index_buffer,
-                                 const std::vector<uint32_t> &decoded_u32_stream,
-                                 const std::vector<uint32_t> &reference_index_buffer,
-                                 const std::vector<uint32_t> &reference_u32_stream, unsigned u32_stride)
-{
-	std::vector<uint32_t> decoded_output;
-	std::vector<uint32_t> reference_output;
-
-	if (decoded_index_buffer.size() != reference_index_buffer.size())
-		return false;
-
-	size_t count = decoded_index_buffer.size();
-
-	decoded_output.reserve(count * u32_stride);
-	reference_output.reserve(count * u32_stride);
-	for (size_t i = 0; i < count; i++)
-	{
-		uint32_t decoded_index = decoded_index_buffer[i];
-		decoded_output.insert(decoded_output.end(),
-		                      decoded_u32_stream.data() + decoded_index * u32_stride,
-		                      decoded_u32_stream.data() + (decoded_index + 1) * u32_stride);
-
-		uint32_t reference_index = reference_index_buffer[i];
-		reference_output.insert(reference_output.end(),
-		                        reference_u32_stream.data() + reference_index * u32_stride,
-		                        reference_u32_stream.data() + (reference_index + 1) * u32_stride);
-	}
-
-	for (size_t i = 0; i < count; i++)
-	{
-		for (unsigned j = 0; j < u32_stride; j++)
-		{
-			uint32_t decoded_value = decoded_output[i * u32_stride + j];
-			uint32_t reference_value = reference_output[i * u32_stride + j];
-			if (decoded_value != reference_value)
-			{
-				LOGI("Error in index %zu (prim %zu), word %u, expected %x, got %x.\n",
-				     i, i / 3, j, reference_value, decoded_value);
-				return false;
-			}
-		}
-	}
-
-	return true;
-}
-#endif
 
 static void build_reference_mesh(std::vector<uvec3> &indices, std::vector<vec3> &positions)
 {
@@ -362,14 +315,6 @@ int main(int argc, char *argv[])
 	auto view = create_mesh_view(*mapped);
 	decode_mesh(decoded_index_buffer, decoded_positions, view);
 
-	if (!validate_mesh(reference_indices, reference_positions,
-	                   decoded_index_buffer, decoded_positions))
-		return EXIT_FAILURE;
-
-	return 0;
-#if 0
-	GLTF::Parser parser(argv[1]);
-
 	Vulkan::Context ctx;
 	Vulkan::Device dev;
 	if (!Vulkan::Context::init_loader(nullptr))
@@ -381,6 +326,24 @@ int main(int argc, char *argv[])
 	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0))
 		return EXIT_FAILURE;
 	dev.set_context(ctx);
+
+	std::vector<uvec3> gpu_index_buffer;
+	std::vector<vec3> gpu_positions;
+	decode_mesh_gpu(dev, gpu_index_buffer, gpu_positions, view);
+
+	if (!validate_mesh(reference_indices, reference_positions,
+	                   decoded_index_buffer, decoded_positions))
+		return EXIT_FAILURE;
+
+	if (!validate_mesh(reference_indices, reference_positions,
+	                   gpu_index_buffer, gpu_positions))
+		return EXIT_FAILURE;
+
+	return 0;
+#if 0
+	GLTF::Parser parser(argv[1]);
+
+
 	dev.init_frame_contexts(4);
 
 	auto mesh = parser.get_meshes().front();

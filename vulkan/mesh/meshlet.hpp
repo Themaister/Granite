@@ -69,8 +69,7 @@ struct Header
 struct RuntimeHeader
 {
 	uint32_t stream_offset;
-	uint16_t num_primitives;
-	uint16_t num_attributes;
+	uint32_t num_chunks;
 };
 
 struct RuntimeHeaderDecoded
@@ -135,7 +134,7 @@ MeshView create_mesh_view(const Granite::FileMapping &mapping);
 
 enum DecodeModeFlagBits : uint32_t
 {
-	DECODE_MODE_RAW_PAYLOAD = 1 << 0,
+	DECODE_MODE_UNROLLED_MESH = 1 << 0,
 };
 using DecodeModeFlags = uint32_t;
 

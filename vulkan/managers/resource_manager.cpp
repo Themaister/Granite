@@ -175,7 +175,7 @@ void ResourceManager::init()
 	opaque.domain = BufferDomain::Device;
 	opaque.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-	if (false && device->get_device_features().mesh_shader_features.taskShader &&
+	if (device->get_device_features().mesh_shader_features.taskShader &&
 	    device->get_device_features().mesh_shader_features.meshShader)
 	{
 		mesh_encoding = MeshEncoding::MeshletDecoded;
@@ -384,10 +384,28 @@ bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::Me
 	}
 	else
 	{
-		if (ret)
-			ret = index_buffer_allocator.allocate(view.total_primitives, &asset.mesh.index_or_payload);
-		if (ret)
-			ret = attribute_buffer_allocator.allocate(view.total_vertices, &asset.mesh.attr_or_stream);
+		if (mesh_encoding == MeshEncoding::MeshletDecoded)
+		{
+			// Need to lay out meshes in memory so that we can process individual chunks.
+			// Culling is expected, so primitive buffer will be filled with degenerate primitives as padding.
+			if (ret)
+			{
+				ret = index_buffer_allocator.allocate(view.format_header->meshlet_count * Meshlet::MaxElements,
+				                                      &asset.mesh.index_or_payload);
+			}
+			if (ret)
+			{
+				ret = attribute_buffer_allocator.allocate(view.format_header->meshlet_count * Meshlet::MaxElements,
+				                                          &asset.mesh.attr_or_stream);
+			}
+		}
+		else
+		{
+			if (ret)
+				ret = index_buffer_allocator.allocate(view.total_primitives, &asset.mesh.index_or_payload);
+			if (ret)
+				ret = attribute_buffer_allocator.allocate(view.total_vertices, &asset.mesh.attr_or_stream);
+		}
 		if (ret)
 			ret = indirect_buffer_allocator.allocate(view.format_header->meshlet_count, &asset.mesh.indirect_or_header);
 	}

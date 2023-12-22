@@ -31,8 +31,6 @@ struct IndirectDrawMesh
 {
 	uint primitive_offset;
 	uint vertex_offset;
-	uint num_primitives;
-	uint num_attributes;
 };
 
 #endif

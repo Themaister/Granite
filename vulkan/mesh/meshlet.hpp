@@ -76,8 +76,6 @@ struct RuntimeHeaderDecoded
 {
 	uint32_t primitive_offset;
 	uint32_t vertex_offset;
-	uint32_t num_primitives;
-	uint32_t num_attributes;
 };
 
 struct Bound

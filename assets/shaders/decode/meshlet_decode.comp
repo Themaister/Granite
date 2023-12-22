@@ -63,8 +63,6 @@ struct IndirectDrawMesh
 {
     uint primitive_offset;
     uint vertex_offset;
-    uint num_primitives;
-    uint num_attributes;
 };
 
 layout(set = 0, binding = 8, std430) writeonly buffer IndirectCommandsMesh
@@ -131,9 +129,8 @@ void main()
         {
             IndirectDrawMesh draw;
             draw.primitive_offset = primitive_output_offset;
-            draw.vertex_offset = meta.base_vertex_offset + registers.vertex_offset;
-            draw.num_primitives = info.primitive_count;
-            draw.num_attributes = info.vertex_count;
+            // Unrolled. Always allocate full 256 entries.
+            draw.vertex_offset = gl_WorkGroupSize.x * meshlet_index + registers.vertex_offset;
             indirect_commands_mesh.draws[meshlet_index + registers.meshlet_offset] = draw;
         }
         else
@@ -148,38 +145,49 @@ void main()
         }
     }
 
-    if (chunk_index >= meta.num_chunks)
-        return;
-
     MeshletChunkInfo chunk_info = meshlet_get_chunk_info(meshlet_index * NUM_U32_STREAMS, chunk_index);
 
     // Index
-    if (lane_index < chunk_info.primitive_count)
+    if (chunk_index < meta.num_chunks && lane_index < chunk_info.primitive_count)
     {
         uint decoded_index_buffer = meshlet_decode_index_buffer(meshlet_index * NUM_U32_STREAMS,
                 chunk_index, lane_index);
 
-        primitive_output_offset += chunk_info.primitive_offset;
+        if (RUNTIME_MESH)
+            primitive_output_offset += 32u * chunk_index;
+        else
+            primitive_output_offset += chunk_info.primitive_offset;
 
         uvec3 indices;
         indices.x = bitfieldExtract(decoded_index_buffer, 0, 8);
         indices.y = bitfieldExtract(decoded_index_buffer, 8, 8);
         indices.z = bitfieldExtract(decoded_index_buffer, 16, 8);
-        indices += chunk_info.vertex_offset;
+        if (!RUNTIME_MESH)
+            indices += chunk_info.vertex_offset;
 
         if (UNROLLED_MESH)
             output_indices32.data[primitive_output_offset + lane_index] = indices + meta.base_vertex_offset + registers.vertex_offset;
         else
             output_indices8.data[primitive_output_offset + lane_index] = u8vec3(indices);
     }
+    else if (RUNTIME_MESH)
+    {
+        output_indices8.data[primitive_output_offset + 32u * chunk_index + lane_index] = u8vec3(0);
+    }
 
     // Attributes
-    if (lane_index < chunk_info.vertex_count)
+    if (chunk_index < meta.num_chunks && lane_index < chunk_info.vertex_count)
     {
         int exponent;
         i16vec3 pos = meshlet_decode_snorm_scaled_i16x3(meshlet_index * NUM_U32_STREAMS + 1, chunk_index, lane_index, exponent);
         vec3 fp_pos = ldexp(vec3(pos), ivec3(exponent));
-        uint vertex_output_offset = registers.vertex_offset + meta.base_vertex_offset + chunk_info.vertex_offset;
+        uint vertex_output_offset;
+        if (RUNTIME_MESH)
+            vertex_output_offset = gl_WorkGroupSize.x * meshlet_index + 32u * chunk_index + registers.vertex_offset;
+        else
+            vertex_output_offset = registers.vertex_offset + meta.base_vertex_offset + chunk_info.vertex_offset;
         output_stream_pos.data[vertex_output_offset + lane_index] = fp_pos;
     }
+    else if (RUNTIME_MESH)
+        output_stream_pos.data[gl_WorkGroupSize.x * meshlet_index + 32u * chunk_index + registers.vertex_offset + lane_index] = vec3(intBitsToFloat(-1));
 }

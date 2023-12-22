@@ -508,8 +508,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 						 0.5f * cmd->get_viewport().width,
 						 0.5f * cmd->get_viewport().height) - vec4(1.0f, 1.0f, 0.0f, 0.0f);
 
+			cmd->set_specialization_constant_mask(1);
+			cmd->set_specialization_constant(0, target_meshlet_workgroup_size / 32);
 			cmd->set_program("", "assets://shaders/meshlet_debug_plain.mesh",
-			                 "assets://shaders/meshlet_debug.mesh.frag");
+			                 "assets://shaders/meshlet_debug.mesh.frag", {{ "MESHLET_SIZE", int(target_meshlet_workgroup_size) }});
 
 			cmd->set_storage_buffer(0, 0, *ibo);
 			cmd->set_storage_buffer(0, 1, *pos);

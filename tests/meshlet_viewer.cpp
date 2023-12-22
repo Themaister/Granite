@@ -369,6 +369,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 		uint32_t target_meshlet_workgroup_size =
 		    max(32u, device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations);
+
 		target_meshlet_workgroup_size = min(256u, target_meshlet_workgroup_size);
 		target_meshlet_workgroup_size = 1u << Util::floor_log2(target_meshlet_workgroup_size);
 		uint32_t num_chunk_workgroups = 256u / target_meshlet_workgroup_size;
@@ -501,6 +502,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 			const char *mesh_path = use_encoded ? "assets://shaders/meshlet_debug.mesh" : "assets://shaders/meshlet_debug_plain.mesh";
 
+			bool supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
+			bool supports_wg32 = supports_wave32 && target_meshlet_workgroup_size == 32;
+
 			if (use_preculling)
 			{
 				cmd->set_program("", mesh_path, "assets://shaders/meshlet_debug.mesh.frag",
@@ -513,7 +517,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 				cmd->set_program("assets://shaders/meshlet_debug.task", mesh_path,
 				                 "assets://shaders/meshlet_debug.mesh.frag",
 				                 { { "MESHLET_SIZE", int(target_meshlet_workgroup_size) },
-				                   { "MESHLET_RENDER_TASK_HIERARCHICAL", int(use_hierarchical) } });
+				                   { "MESHLET_RENDER_TASK_HIERARCHICAL", int(use_hierarchical) },
+				                   { "MESHLET_PRIMITIVE_CULL_WG32", int(supports_wg32) },
+				                   { "MESHLET_PRIMITIVE_CULL_WAVE32", int(supports_wave32) } });
 
 				cmd->set_storage_buffer(0, 6, *aabb_buffer);
 				cmd->set_storage_buffer(0, 7, *task_buffer);

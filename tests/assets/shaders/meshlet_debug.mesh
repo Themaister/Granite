@@ -1,6 +1,12 @@
 #version 450
 #extension GL_EXT_mesh_shader : require
+
 #extension GL_KHR_shader_subgroup_basic : require
+#if defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
+#extension GL_KHR_shader_subgroup_shuffle : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#endif
 
 #ifndef MESHLET_SIZE
 #error "Must define MESHLET_SIZE"
@@ -10,7 +16,6 @@ layout(max_primitives = MESHLET_SIZE, max_vertices = MESHLET_SIZE, triangles) ou
 layout(local_size_x = 32, local_size_y_id = 0) in;
 
 #include "meshlet_payload_constants.h"
-layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS;
 
 #define MESHLET_PAYLOAD_DESCRIPTOR_SET 0
 #define MESHLET_PAYLOAD_META_BINDING 0
@@ -101,8 +106,7 @@ void main()
         }
     }
 
-    meshlet_emit_clip_pos(clip_pos, viewport);
-    meshlet_emit_primitive(unpack8(decoded_index_buffer).xyz);
+    meshlet_emit_primitive(unpack8(decoded_index_buffer).xyz, clip_pos, viewport);
     if (linear_index < shared_active_prim_count_total)
         vDrawID[linear_index] = task.meshlet_index;
 

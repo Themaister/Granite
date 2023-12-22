@@ -4,6 +4,13 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_EXT_scalar_block_layout : require
 
+#extension GL_KHR_shader_subgroup_basic : require
+#if defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
+#extension GL_KHR_shader_subgroup_shuffle : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#endif
+
 #ifndef MESHLET_SIZE
 #error "Must define MESHLET_SIZE"
 #endif
@@ -58,7 +65,6 @@ layout(set = 0, binding = 5, std430) readonly buffer Transforms
 
 void main()
 {
-    uint linear_index = gl_LocalInvocationIndex;
     uint compacted_meshlet_index = meshlet_get_meshlet_index();
     uint base_chunk_index = meshlet_get_base_chunk_index();
 
@@ -67,6 +73,12 @@ void main()
     task.meshlet_index += uint(mesh_payload.offsets[compacted_meshlet_index]);
 #else
     CompactedDrawInfo task = mesh_payload.infos[compacted_meshlet_index];
+#endif
+
+#if defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
+    uint linear_index = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
+#else
+    uint linear_index = gl_LocalInvocationIndex;
 #endif
 
     IndirectDrawMesh meshlet = indirect_commands_mesh.draws[task.meshlet_index];
@@ -79,10 +91,8 @@ void main()
 
     meshlet_setup_local_invocation(gl_LocalInvocationID.xy);
 
-    meshlet_emit_clip_pos(clip_pos, viewport);
-
     uvec3 prim = uvec3(ibo.data[meshlet.primitive_offset + linear_index + 32u * base_chunk_index]);
-    meshlet_emit_primitive(prim);
+    meshlet_emit_primitive(prim, clip_pos, viewport);
 
     if (linear_index < shared_active_prim_count_total)
         vDrawID[linear_index] = task.meshlet_index;

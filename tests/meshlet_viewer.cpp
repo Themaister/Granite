@@ -423,9 +423,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		{
 			auto *indirect = manager.get_indirect_buffer();
 
-			auto command_words = (use_meshlets ?
-			                      sizeof(Vulkan::Meshlet::RuntimeHeaderDecoded) :
-			                      sizeof(VkDrawIndexedIndirectCommand)) / sizeof(uint32_t);
+			auto command_words = use_meshlets ? 0 : (sizeof(VkDrawIndexedIndirectCommand) / sizeof(uint32_t));
 
 			cmd->set_specialization_constant_mask(3);
 			cmd->set_specialization_constant(0, uint32_t(command_words));
@@ -435,7 +433,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 2, *task_buffer);
-			cmd->set_storage_buffer(0, 3, *indirect);
+			cmd->set_storage_buffer(0, 3, indirect ? *indirect : *indirect_draws);
 			cmd->set_storage_buffer(0, 4, *indirect_draws);
 			cmd->set_storage_buffer(0, 5, *compacted_params);
 			cmd->set_storage_buffer(0, 6, *manager.get_cluster_bounds_buffer());
@@ -458,49 +456,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		auto *pos = manager.get_position_buffer();
 		auto *attr = manager.get_attribute_buffer();
 
-		if (manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::MeshletEncoded)
-		{
-			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
-			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
-			render_context.set_camera(camera);
-			cmd->set_opaque_state();
-
-			*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
-
-			memcpy(cmd->allocate_typed_constant_data<vec4>(1, 1, 6), render_context.get_visibility_frustum().get_planes(),
-			       6 * sizeof(vec4));
-
-			*cmd->allocate_typed_constant_data<vec4>(1, 2, 1) =
-					float(1 << 8 /* shader assumes 8 */) *
-					vec4(cmd->get_viewport().x + 0.5f * cmd->get_viewport().width - 0.5f,
-					     cmd->get_viewport().y + 0.5f * cmd->get_viewport().height - 0.5f,
-					     0.5f * cmd->get_viewport().width,
-					     0.5f * cmd->get_viewport().height) - vec4(1.0f, 1.0f, 0.0f, 0.0f);
-
-			if (use_preculling)
-			{
-
-			}
-			else
-			{
-				cmd->set_program("assets://shaders/meshlet_debug.task", "assets://shaders/meshlet_debug.task",
-				                 "assets://shaders/meshlet_debug.mesh.frag");
-			}
-
-			cmd->set_storage_buffer(0, 0, *ibo);
-			cmd->set_storage_buffer(0, 1, *pos);
-			cmd->set_storage_buffer(0, 2, *attr);
-			cmd->set_storage_buffer(0, 3, *indirect_draws);
-			if (use_preculling)
-				cmd->set_storage_buffer(0, 4, *compacted_params);
-			cmd->set_storage_buffer(0, 5, *cached_transform_buffer);
-
-
-			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
-			cmd->draw_mesh_tasks_indirect(*indirect_draws, 0, 1, sizeof(VkDrawMeshTasksIndirectCommandEXT));
-			cmd->end_render_pass();
-		}
-		else if (manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::MeshletDecoded)
+		if (use_meshlets)
 		{
 			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
 			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
@@ -517,31 +473,44 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 						 0.5f * cmd->get_viewport().height) - vec4(1.0f, 1.0f, 0.0f, 0.0f);
 
 			bool use_hierarchical = device.get_device_features().driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY;
+			bool use_encoded = manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::MeshletEncoded;
 
 			cmd->set_specialization_constant_mask(3);
 			cmd->set_specialization_constant(0, target_meshlet_workgroup_size / 32);
 			cmd->set_specialization_constant(1, num_chunk_workgroups);
 
-			cmd->set_storage_buffer(0, 0, *ibo);
-			cmd->set_storage_buffer(0, 1, *pos);
-			cmd->set_storage_buffer(0, 2, *attr);
-			cmd->set_storage_buffer(0, 3, *manager.get_indirect_buffer());
+			if (use_encoded)
+			{
+				cmd->set_storage_buffer(0, 0, *manager.get_meshlet_header_buffer());
+				cmd->set_storage_buffer(0, 1, *manager.get_meshlet_stream_header_buffer());
+				cmd->set_storage_buffer(0, 2, *manager.get_meshlet_payload_buffer());
+			}
+			else
+			{
+				cmd->set_storage_buffer(0, 0, *ibo);
+				cmd->set_storage_buffer(0, 1, *pos);
+				cmd->set_storage_buffer(0, 2, *attr);
+			}
+
+			if (!use_encoded)
+				cmd->set_storage_buffer(0, 3, *manager.get_indirect_buffer());
 			if (use_preculling)
 				cmd->set_storage_buffer(0, 4, *compacted_params);
 			cmd->set_storage_buffer(0, 5, *cached_transform_buffer);
 			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
 
+			const char *mesh_path = use_encoded ? "assets://shaders/meshlet_debug.mesh" : "assets://shaders/meshlet_debug_plain.mesh";
+
 			if (use_preculling)
 			{
-				cmd->set_program("", "assets://shaders/meshlet_debug_plain.mesh",
-				                 "assets://shaders/meshlet_debug.mesh.frag",
+				cmd->set_program("", mesh_path, "assets://shaders/meshlet_debug.mesh.frag",
 				                 { { "MESHLET_SIZE", int(target_meshlet_workgroup_size) } });
 				memcpy(cmd->allocate_typed_constant_data<vec4>(1, 1, 6),
 				       render_context.get_visibility_frustum().get_planes(), 6 * sizeof(vec4));
 			}
 			else
 			{
-				cmd->set_program("assets://shaders/meshlet_debug.task", "assets://shaders/meshlet_debug_plain.mesh",
+				cmd->set_program("assets://shaders/meshlet_debug.task", mesh_path,
 				                 "assets://shaders/meshlet_debug.mesh.frag",
 				                 { { "MESHLET_SIZE", int(target_meshlet_workgroup_size) },
 				                   { "MESHLET_RENDER_TASK_HIERARCHICAL", int(use_hierarchical) } });

@@ -178,7 +178,7 @@ void ResourceManager::init()
 	if (device->get_device_features().mesh_shader_features.taskShader &&
 	    device->get_device_features().mesh_shader_features.meshShader)
 	{
-		mesh_encoding = MeshEncoding::MeshletDecoded;
+		mesh_encoding = MeshEncoding::MeshletEncoded;
 		LOGI("Opting in to meshlet path.\n");
 	}
 

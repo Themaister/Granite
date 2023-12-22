@@ -172,7 +172,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		auto &scene_nodes = parser.get_scenes()[parser.get_default_scene()];
 		auto root = scene.create_node();
 
-#if 0
+#if 1
 		for (int z = -10; z <= 10; z++)
 			for (int y = -10; y <= 10; y++)
 				for (int x = -10; x <= 10; x++)
@@ -318,14 +318,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 		{
 			BufferCreateInfo info;
-			info.size = max_draws * sizeof(DrawParameters);
-			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-			info.domain = BufferDomain::Device;
-			compacted_params = device.create_buffer(info);
-		}
-
-		{
-			BufferCreateInfo info;
 			info.size = task_params.size() * sizeof(task_params.front());
 			info.domain = BufferDomain::LinkedDeviceHostPreferDevice;
 			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
@@ -368,11 +360,12 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		{
 			vec3 camera_pos;
 			uint32_t count;
+			uint32_t offset;
 		} push;
 
 		push.camera_pos = render_context.get_render_parameters().camera_position;
 		const bool use_meshlets = manager.get_mesh_encoding() != Vulkan::ResourceManager::MeshEncoding::VBOAndIBOMDI;
-		const bool use_preculling = manager.get_mesh_encoding() != Vulkan::ResourceManager::MeshEncoding::MeshletEncoded;
+		const bool use_preculling = !use_meshlets;
 
 		uint32_t target_meshlet_workgroup_size =
 		    max(32u, device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations);
@@ -384,7 +377,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		{
 			BufferCreateInfo info;
 			if (use_meshlets)
-				info.size = max_draws * sizeof(Vulkan::Meshlet::RuntimeHeaderDecoded) + 256;
+				info.size = sizeof(VkDrawMeshTasksIndirectCommandEXT);
 			else
 				info.size = max_draws * sizeof(VkDrawIndexedIndirectCommand) + 256;
 
@@ -416,6 +409,14 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 			             VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
 			             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+			{
+				BufferCreateInfo info;
+				info.size = max_draws * sizeof(DrawParameters);
+				info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+				info.domain = BufferDomain::Device;
+				compacted_params = device.create_buffer(info);
+			}
 		}
 
 		if (use_preculling)
@@ -457,7 +458,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		auto *pos = manager.get_position_buffer();
 		auto *attr = manager.get_attribute_buffer();
 
-		if (use_meshlets && !use_preculling)
+		if (manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::MeshletEncoded)
 		{
 			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
 			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
@@ -476,20 +477,30 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 					     0.5f * cmd->get_viewport().width,
 					     0.5f * cmd->get_viewport().height) - vec4(1.0f, 1.0f, 0.0f, 0.0f);
 
-			cmd->set_program("assets://shaders/meshlet_debug.task", "assets://shaders/meshlet_debug.task",
-			                 "assets://shaders/meshlet_debug.mesh.frag");
+			if (use_preculling)
+			{
+
+			}
+			else
+			{
+				cmd->set_program("assets://shaders/meshlet_debug.task", "assets://shaders/meshlet_debug.task",
+				                 "assets://shaders/meshlet_debug.mesh.frag");
+			}
 
 			cmd->set_storage_buffer(0, 0, *ibo);
 			cmd->set_storage_buffer(0, 1, *pos);
 			cmd->set_storage_buffer(0, 2, *attr);
 			cmd->set_storage_buffer(0, 3, *indirect_draws);
-			cmd->set_storage_buffer(0, 4, *compacted_params);
+			if (use_preculling)
+				cmd->set_storage_buffer(0, 4, *compacted_params);
 			cmd->set_storage_buffer(0, 5, *cached_transform_buffer);
+
+
 			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
 			cmd->draw_mesh_tasks_indirect(*indirect_draws, 0, 1, sizeof(VkDrawMeshTasksIndirectCommandEXT));
 			cmd->end_render_pass();
 		}
-		else if (use_meshlets && use_preculling)
+		else if (manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::MeshletDecoded)
 		{
 			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
 			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
@@ -498,9 +509,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 			*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
 
-			memcpy(cmd->allocate_typed_constant_data<vec4>(1, 1, 6), render_context.get_visibility_frustum().get_planes(),
-			       6 * sizeof(vec4));
-
 			*cmd->allocate_typed_constant_data<vec4>(1, 2, 1) =
 					float(1 << 8 /* shader assumes 8 */) *
 					vec4(cmd->get_viewport().x + 0.5f * cmd->get_viewport().width - 0.5f,
@@ -508,19 +516,63 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 						 0.5f * cmd->get_viewport().width,
 						 0.5f * cmd->get_viewport().height) - vec4(1.0f, 1.0f, 0.0f, 0.0f);
 
-			cmd->set_specialization_constant_mask(1);
+			bool use_hierarchical = device.get_device_features().driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY;
+
+			cmd->set_specialization_constant_mask(3);
 			cmd->set_specialization_constant(0, target_meshlet_workgroup_size / 32);
-			cmd->set_program("", "assets://shaders/meshlet_debug_plain.mesh",
-			                 "assets://shaders/meshlet_debug.mesh.frag", {{ "MESHLET_SIZE", int(target_meshlet_workgroup_size) }});
+			cmd->set_specialization_constant(1, num_chunk_workgroups);
 
 			cmd->set_storage_buffer(0, 0, *ibo);
 			cmd->set_storage_buffer(0, 1, *pos);
 			cmd->set_storage_buffer(0, 2, *attr);
-			cmd->set_storage_buffer(0, 3, *indirect_draws);
-			cmd->set_storage_buffer(0, 4, *compacted_params);
+			cmd->set_storage_buffer(0, 3, *manager.get_indirect_buffer());
+			if (use_preculling)
+				cmd->set_storage_buffer(0, 4, *compacted_params);
 			cmd->set_storage_buffer(0, 5, *cached_transform_buffer);
 			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
-			cmd->draw_mesh_tasks_indirect(*indirect_draws, 0, 1, sizeof(VkDrawMeshTasksIndirectCommandEXT));
+
+			if (use_preculling)
+			{
+				cmd->set_program("", "assets://shaders/meshlet_debug_plain.mesh",
+				                 "assets://shaders/meshlet_debug.mesh.frag",
+				                 { { "MESHLET_SIZE", int(target_meshlet_workgroup_size) } });
+				memcpy(cmd->allocate_typed_constant_data<vec4>(1, 1, 6),
+				       render_context.get_visibility_frustum().get_planes(), 6 * sizeof(vec4));
+			}
+			else
+			{
+				cmd->set_program("assets://shaders/meshlet_debug.task", "assets://shaders/meshlet_debug_plain.mesh",
+				                 "assets://shaders/meshlet_debug.mesh.frag",
+				                 { { "MESHLET_SIZE", int(target_meshlet_workgroup_size) },
+				                   { "MESHLET_RENDER_TASK_HIERARCHICAL", int(use_hierarchical) } });
+
+				cmd->set_storage_buffer(0, 6, *aabb_buffer);
+				cmd->set_storage_buffer(0, 7, *task_buffer);
+				cmd->set_storage_buffer(0, 8, *manager.get_cluster_bounds_buffer());
+				memcpy(cmd->allocate_typed_constant_data<vec4>(0, 9, 6),
+				       render_context.get_visibility_frustum().get_planes(), 6 * sizeof(vec4));
+			}
+
+			if (use_preculling)
+			{
+				cmd->draw_mesh_tasks_indirect(*indirect_draws, 0, 1, sizeof(VkDrawMeshTasksIndirectCommandEXT));
+			}
+			else
+			{
+				uint32_t workgroups = task_params.size();
+				push.count = workgroups;
+
+				if (use_hierarchical)
+					workgroups = (workgroups + 31) / 32;
+
+				for (uint32_t i = 0; i < workgroups; i += device.get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0])
+				{
+					uint32_t to_dispatch = std::min(workgroups - i, device.get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0]);
+					push.offset = i;
+					cmd->push_constants(&push, 0, sizeof(push));
+					cmd->draw_mesh_tasks(to_dispatch, 1, 1);
+				}
+			}
 			cmd->end_render_pass();
 		}
 		else

@@ -39,13 +39,17 @@ layout(set = 0, binding = 1, scalar) readonly buffer VBOPOS
 
 layout(set = 0, binding = 3, std430) readonly buffer IndirectCommands
 {
-    layout(offset = 256) IndirectDrawMesh draws[];
+    IndirectDrawMesh draws[];
 } indirect_commands_mesh;
 
+#ifdef MESHLET_RENDER_TASK_HIERARCHICAL
+taskPayloadSharedEXT CompactedDrawInfoPayload mesh_payload;
+#else
 layout(set = 0, binding = 4, std430) readonly buffer CompactedDraws
 {
-    CompactedDrawInfo mesh_payload[];
-};
+    CompactedDrawInfo infos[];
+} mesh_payload;
+#endif
 
 layout(set = 0, binding = 5, std430) readonly buffer Transforms
 {
@@ -55,11 +59,17 @@ layout(set = 0, binding = 5, std430) readonly buffer Transforms
 void main()
 {
     uint linear_index = gl_LocalInvocationIndex;
-    uint meshlet_index = meshlet_get_meshlet_index();
+    uint compacted_meshlet_index = meshlet_get_meshlet_index();
     uint base_chunk_index = meshlet_get_base_chunk_index();
 
-    IndirectDrawMesh meshlet = indirect_commands_mesh.draws[meshlet_index];
-    CompactedDrawInfo task = mesh_payload[meshlet_index];
+#if defined(MESHLET_RENDER_TASK_HIERARCHICAL) && !MESHLET_RENDER_TASK_HIERARCHICAL
+    CompactedDrawInfo task = mesh_payload.info;
+    task.meshlet_index += uint(mesh_payload.offsets[compacted_meshlet_index]);
+#else
+    CompactedDrawInfo task = mesh_payload.infos[compacted_meshlet_index];
+#endif
+
+    IndirectDrawMesh meshlet = indirect_commands_mesh.draws[task.meshlet_index];
     mat4 M = transforms.data[task.node_offset];
 
     // Transform positions.

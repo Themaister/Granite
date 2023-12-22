@@ -27,6 +27,21 @@ struct CompactedDrawInfo
 	uint node_count_material_offset;
 };
 
+#ifdef MESHLET_RENDER_TASK_HIERARCHICAL
+#if MESHLET_RENDER_TASK_HIERARCHICAL
+struct CompactedDrawInfoPayload
+{
+    CompactedDrawInfo infos[32 * 32];
+};
+#else
+struct CompactedDrawInfoPayload
+{
+    CompactedDrawInfo info;
+    uint8_t offsets[32];
+};
+#endif
+#endif
+
 struct IndirectDrawMesh
 {
 	uint primitive_offset;

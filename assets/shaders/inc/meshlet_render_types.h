@@ -35,11 +35,4 @@ struct IndirectDrawMesh
 	uint num_attributes;
 };
 
-#if defined(MESHLET_RENDER_DRAW_WORDS) && MESHLET_RENDER_DRAW_WORDS
-struct MeshletDrawCommand
-{
-	uint payload[MESHLET_RENDER_DRAW_WORDS];
-};
-#endif
-
 #endif

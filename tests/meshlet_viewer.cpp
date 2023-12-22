@@ -374,6 +374,12 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		const bool use_meshlets = manager.get_mesh_encoding() != Vulkan::ResourceManager::MeshEncoding::VBOAndIBOMDI;
 		const bool use_preculling = manager.get_mesh_encoding() != Vulkan::ResourceManager::MeshEncoding::MeshletEncoded;
 
+		uint32_t target_meshlet_workgroup_size =
+		    max(32u, device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations);
+		target_meshlet_workgroup_size = min(256u, target_meshlet_workgroup_size);
+		target_meshlet_workgroup_size = 1u << Util::floor_log2(target_meshlet_workgroup_size);
+		uint32_t num_chunk_workgroups = 256u / target_meshlet_workgroup_size;
+
 		if (use_preculling)
 		{
 			BufferCreateInfo info;
@@ -389,8 +395,16 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 			if (use_meshlets)
 			{
-				cmd->fill_buffer(*indirect_draws, 0, 0, 4);
-				cmd->fill_buffer(*indirect_draws, 1, 4, 4);
+				if (num_chunk_workgroups == 1)
+				{
+					cmd->fill_buffer(*indirect_draws, 0, 0, 4);
+					cmd->fill_buffer(*indirect_draws, 1, 4, 4);
+				}
+				else
+				{
+					cmd->fill_buffer(*indirect_draws, num_chunk_workgroups, 0, 4);
+					cmd->fill_buffer(*indirect_draws, 0, 4, 4);
+				}
 				cmd->fill_buffer(*indirect_draws, 1, 8, 4);
 			}
 			else
@@ -407,20 +421,16 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		if (use_preculling)
 		{
 			auto *indirect = manager.get_indirect_buffer();
-			bool supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
-
-			cmd->enable_subgroup_size_control(true);
-			if (supports_wave32)
-				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_COMPUTE_BIT);
-			else
-				cmd->set_subgroup_size_log2(true, 5, 7, VK_SHADER_STAGE_COMPUTE_BIT);
 
 			auto command_words = (use_meshlets ?
 			                      sizeof(Vulkan::Meshlet::RuntimeHeaderDecoded) :
 			                      sizeof(VkDrawIndexedIndirectCommand)) / sizeof(uint32_t);
 
-			cmd->set_program("assets://shaders/meshlet_cull.comp",
-			                 {{"MESHLET_RENDER_DRAW_WORDS", int(command_words)}});
+			cmd->set_specialization_constant_mask(3);
+			cmd->set_specialization_constant(0, uint32_t(command_words));
+			cmd->set_specialization_constant(1, (!use_meshlets || num_chunk_workgroups == 1) ? 0 : 1);
+
+			cmd->set_program("assets://shaders/meshlet_cull.comp");
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 2, *task_buffer);

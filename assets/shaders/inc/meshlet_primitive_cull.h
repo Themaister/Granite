@@ -22,26 +22,33 @@ const uint CLIP_CODE_POSITIVE_X = 1 << 4;
 const uint CLIP_CODE_POSITIVE_Y = 1 << 5;
 const uint CLIP_CODE_PLANES = uint(-1) & ~CLIP_CODE_INACCURATE;
 
+uvec2 LocalInvocationID;
+
+void meshlet_setup_local_invocation(uvec2 local_id)
+{
+    LocalInvocationID = local_id;
+}
+
 uint compacted_vertex_output(uint index)
 {
-    return shared_active_vert_count[gl_LocalInvocationID.y] +
-        bitCount(bitfieldExtract(shared_active_vert[gl_LocalInvocationID.y], 0, int(index)));
+    return shared_active_vert_count[LocalInvocationID.y] +
+        bitCount(bitfieldExtract(shared_active_vert[LocalInvocationID.y], 0, int(index)));
 }
 
 uint meshlet_compacted_vertex_output()
 {
-    return compacted_vertex_output(gl_LocalInvocationID.x);
+    return compacted_vertex_output(LocalInvocationID.x);
 }
 
 uint compacted_index_output()
 {
-    return shared_active_prim_count[gl_LocalInvocationID.y] +
-        bitCount(bitfieldExtract(shared_active_prim[gl_LocalInvocationID.y], 0, int(gl_LocalInvocationID.x)));
+    return shared_active_prim_count[LocalInvocationID.y] +
+        bitCount(bitfieldExtract(shared_active_prim[LocalInvocationID.y], 0, int(LocalInvocationID.x)));
 }
 
 bool meshlet_lane_has_active_vert()
 {
-    return (shared_active_vert[gl_LocalInvocationID.y] & (1u << gl_LocalInvocationID.x)) != 0u;
+    return (shared_active_vert[LocalInvocationID.y] & (1u << LocalInvocationID.x)) != 0u;
 }
 
 uvec3 remap_index_buffer(uvec3 prim)
@@ -126,17 +133,17 @@ void meshlet_emit_clip_pos(vec4 clip_pos, vec4 viewport)
         clip_code |= CLIP_CODE_POSITIVE_Y;
 
     vec2 window = roundEven(c * viewport.zw + viewport.xy);
-    shared_window_positions[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = window;
-    shared_clip_code[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = uint8_t(clip_code);
+    shared_window_positions[LocalInvocationID.y][LocalInvocationID.x] = window;
+    shared_clip_code[LocalInvocationID.y][LocalInvocationID.x] = uint8_t(clip_code);
 
     barrier();
 }
 
 void meshlet_emit_primitive(uvec3 prim)
 {
-    uint code_a = shared_clip_code[gl_LocalInvocationID.y][prim.x];
-    uint code_b = shared_clip_code[gl_LocalInvocationID.y][prim.y];
-    uint code_c = shared_clip_code[gl_LocalInvocationID.y][prim.z];
+    uint code_a = shared_clip_code[LocalInvocationID.y][prim.x];
+    uint code_b = shared_clip_code[LocalInvocationID.y][prim.y];
+    uint code_c = shared_clip_code[LocalInvocationID.y][prim.z];
 
     uint or_code = code_a | code_b | code_c;
     uint and_code = code_a & code_b & code_c;
@@ -150,19 +157,19 @@ void meshlet_emit_primitive(uvec3 prim)
 
         if (!force_accept)
         {
-            vec2 a = shared_window_positions[gl_LocalInvocationID.y][prim.x];
-            vec2 b = shared_window_positions[gl_LocalInvocationID.y][prim.y];
-            vec2 c = shared_window_positions[gl_LocalInvocationID.y][prim.z];
+            vec2 a = shared_window_positions[LocalInvocationID.y][prim.x];
+            vec2 b = shared_window_positions[LocalInvocationID.y][prim.y];
+            vec2 c = shared_window_positions[LocalInvocationID.y][prim.z];
             force_accept = cull_triangle(a, b, c);
         }
 
         if (force_accept)
         {
             is_active_prim = true;
-            atomicOr(shared_active_prim[gl_LocalInvocationID.y], 1u << gl_LocalInvocationID.x);
-            atomicOr(shared_active_vert[gl_LocalInvocationID.y], 1u << prim.x);
-            atomicOr(shared_active_vert[gl_LocalInvocationID.y], 1u << prim.y);
-            atomicOr(shared_active_vert[gl_LocalInvocationID.y], 1u << prim.z);
+            atomicOr(shared_active_prim[LocalInvocationID.y], 1u << LocalInvocationID.x);
+            atomicOr(shared_active_vert[LocalInvocationID.y], 1u << prim.x);
+            atomicOr(shared_active_vert[LocalInvocationID.y], 1u << prim.y);
+            atomicOr(shared_active_vert[LocalInvocationID.y], 1u << prim.z);
         }
     }
 

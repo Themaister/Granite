@@ -522,6 +522,17 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 				       render_context.get_visibility_frustum().get_planes(), 6 * sizeof(vec4));
 			}
 
+			if (device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT))
+			{
+				cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
+				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
+			}
+			else if (device.supports_subgroup_size_log2(true, 0, 7, VK_SHADER_STAGE_MESH_BIT_EXT))
+			{
+				cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
+				cmd->set_subgroup_size_log2(true, 0, 7, VK_SHADER_STAGE_MESH_BIT_EXT);
+			}
+
 			if (use_preculling)
 			{
 				cmd->draw_mesh_tasks_indirect(*indirect_draws, 0, 1, sizeof(VkDrawMeshTasksIndirectCommandEXT));

@@ -69,14 +69,17 @@ void main()
 
     if (gl_SubgroupSize == 32)
     {
-        chunk_index = gl_SubgroupID + base_chunk_index;
+        chunk_index = gl_SubgroupID;
         lane_index = int(gl_SubgroupInvocationID);
     }
     else
     {
-        chunk_index = gl_LocalInvocationID.y + base_chunk_index;
+        chunk_index = gl_LocalInvocationID.y;
         lane_index = int(gl_LocalInvocationID.x);
     }
+
+    meshlet_setup_local_invocation(uvec2(lane_index, chunk_index));
+    chunk_index += base_chunk_index;
 
     MeshletChunkInfo index_chunk_info = meshlet_get_chunk_info(meta.stream_offset, chunk_index);
     uint decoded_index_buffer = 0;

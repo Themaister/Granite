@@ -77,6 +77,8 @@ void main()
     vec3 world_pos = (M * vec4(pos, 1.0)).xyz;
     vec4 clip_pos = VP * vec4(world_pos, 1.0);
 
+    meshlet_setup_local_invocation(gl_LocalInvocationID.xy);
+
     meshlet_emit_clip_pos(clip_pos, viewport);
 
     uvec3 prim = uvec3(ibo.data[meshlet.primitive_offset + linear_index + 32u * base_chunk_index]);

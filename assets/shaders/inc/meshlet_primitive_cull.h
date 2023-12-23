@@ -1,8 +1,6 @@
 #ifndef MESHLET_PRIMITIVE_CULL_H_
 #define MESHLET_PRIMITIVE_CULL_H_
 
-#pragma optimize off
-
 #define CULL_MODE_WG32 0
 #define CULL_MODE_WAVE32 1
 #define CULL_MODE_GENERIC 2

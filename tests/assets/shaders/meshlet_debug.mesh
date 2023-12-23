@@ -53,6 +53,13 @@ layout(set = 0, binding = 5, std430) readonly buffer Transforms
     mat4 data[];
 } transforms;
 
+layout(set = 0, binding = 10) buffer Stats
+{
+    uint invocations;
+    uint prim;
+    uint vert;
+} stats;
+
 void main()
 {
     uint linear_index = gl_LocalInvocationIndex;
@@ -115,5 +122,12 @@ void main()
         uint out_vert_index = meshlet_compacted_vertex_output();
         gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
         vWorldPos[out_vert_index] = world_pos;
+    }
+
+    if (gl_LocalInvocationIndex == 0)
+    {
+        atomicAdd(stats.invocations, gl_WorkGroupSize.x * gl_WorkGroupSize.y);
+        atomicAdd(stats.prim, shared_active_prim_count_total);
+        atomicAdd(stats.vert, shared_active_vert_count_total);
     }
 }

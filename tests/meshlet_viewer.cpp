@@ -36,6 +36,8 @@
 #include "render_context.hpp"
 #include "material_manager.hpp"
 #include "mesh_util.hpp"
+#include "flat_renderer.hpp"
+#include "ui_manager.hpp"
 #include "gltf.hpp"
 #include <string.h>
 #include <float.h>
@@ -44,21 +46,6 @@
 using namespace Granite;
 using namespace Vulkan;
 using namespace Vulkan::Meshlet;
-
-static uint32_t style_to_u32_streams(MeshStyle style)
-{
-	switch (style)
-	{
-	case MeshStyle::Wireframe:
-		return 3;
-	case MeshStyle::Textured:
-		return 7;
-	case MeshStyle::Skinned:
-		return 9;
-	default:
-		return 0;
-	}
-}
 
 struct MeshletRenderable : AbstractRenderable
 {
@@ -142,7 +129,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			auto &node_transform = nodeptr->get_transform();
 			node_transform.translation = node.transform.translation;
 			node_transform.rotation = node.transform.rotation;
-			node_transform.scale = node.transform.scale;
+			node_transform.scale = node.transform.scale /** vec3(0.01f) */;
 			nodes.push_back(std::move(nodeptr));
 		}
 
@@ -173,15 +160,16 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		auto root = scene.create_node();
 
 #if 1
-		for (int z = -10; z <= 10; z++)
-			for (int y = -10; y <= 10; y++)
-				for (int x = -10; x <= 10; x++)
+		for (int z = -3; z <= 3; z++)
+			for (int y = -3; y <= 3; y++)
+				for (int x = -3; x <= 3; x++)
 				{
 					if (!x && !y && !z)
 						continue;
 					auto nodeptr = scene.create_node();
 					auto &node_transform = nodeptr->get_transform();
 					node_transform.translation = vec3(x, y, z) * 3.0f;
+					//node_transform.scale = vec3(0.01f);
 					root->add_child(nodeptr);
 
 					auto renderable = Util::make_handle<MeshletRenderable>();
@@ -228,6 +216,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			root->add_child(nodes[scene_node_index]);
 		scene.set_root_node(std::move(root));
 
+		camera.look_at(vec3(1.5f, 1.5f, 1.5f), vec3(0.0f));
 
 		EVENT_MANAGER_REGISTER_LATCH(MeshletViewerApplication, on_device_create, on_device_destroy, DeviceCreatedEvent);
 	}
@@ -314,6 +303,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			return;
 		}
 
+		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+
 		BufferHandle task_buffer, cached_transform_buffer, aabb_buffer, compacted_params, indirect_draws;
 
 		{
@@ -345,9 +336,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		BufferHandle readback_counter, readback;
 		{
 			BufferCreateInfo info;
-			info.size = 4;
+			info.size = 12;
 			info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-			info.domain = BufferDomain::LinkedDeviceHost;
+			info.domain = BufferDomain::CachedHost;
 			readback = device.create_buffer(info);
 
 			info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
@@ -367,8 +358,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		const bool use_meshlets = manager.get_mesh_encoding() != Vulkan::ResourceManager::MeshEncoding::VBOAndIBOMDI;
 		const bool use_preculling = !use_meshlets;
 
-		uint32_t target_meshlet_workgroup_size =
-		    max(32u, device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations);
+		//uint32_t target_meshlet_workgroup_size =
+		//    max(32u, device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations);
+		uint32_t target_meshlet_workgroup_size = 32;
 
 		target_meshlet_workgroup_size = min(256u, target_meshlet_workgroup_size);
 		target_meshlet_workgroup_size = 1u << Util::floor_log2(target_meshlet_workgroup_size);
@@ -438,6 +430,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			cmd->set_storage_buffer(0, 4, *indirect_draws);
 			cmd->set_storage_buffer(0, 5, *compacted_params);
 			cmd->set_storage_buffer(0, 6, *manager.get_cluster_bounds_buffer());
+			cmd->set_storage_buffer(0, 10, *readback_counter);
 			memcpy(cmd->allocate_typed_constant_data<vec4>(0, 7, 6),
 			       render_context.get_visibility_frustum().get_planes(),
 			       6 * sizeof(vec4));
@@ -498,6 +491,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			if (use_preculling)
 				cmd->set_storage_buffer(0, 4, *compacted_params);
 			cmd->set_storage_buffer(0, 5, *cached_transform_buffer);
+			cmd->set_storage_buffer(0, 10, *readback_counter);
 			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
 
 			const char *mesh_path = use_encoded ? "assets://shaders/meshlet_debug.mesh" : "assets://shaders/meshlet_debug_plain.mesh";
@@ -559,7 +553,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 					cmd->draw_mesh_tasks(to_dispatch, 1, 1);
 				}
 			}
-			cmd->end_render_pass();
 		}
 		else
 		{
@@ -587,21 +580,57 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			                                 256, max_draws,
 											 sizeof(VkDrawIndexedIndirectCommand),
 			                                 *indirect_draws, 0);
-
-			cmd->end_render_pass();
-			cmd->barrier(VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0,
-						 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-			cmd->copy_buffer(*readback, 0, *indirect_draws, 0, sizeof(uint32_t));
-			cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-						 VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 		}
+
+		flat_renderer.begin();
+		flat_renderer.render_quad(vec3(0.0f, 0.0f, 0.5f), vec2(600.0f, 140.0f), vec4(0.0f, 0.0f, 0.0f, 0.5f));
+		char text[256];
+		snprintf(text, sizeof(text), "Mesh shader invocations: %.3f M / %.3f M", 1e-6 * last_mesh_invocations, 1e-6 * double(max_draws * MaxElements));
+		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large),
+		                          text, vec3(10.0f, 10.0f, 0.0f), vec2(1000.0f));
+		snprintf(text, sizeof(text), "Primitives: %.3f M", 1e-6 * last_prim);
+		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large),
+		                          text, vec3(10.0f, 50.0f, 0.0f), vec2(1000.0f));
+		snprintf(text, sizeof(text), "Vertices: %.3f M", 1e-6 * last_vert);
+		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large),
+		                          text, vec3(10.0f, 90.0f, 0.0f), vec2(1000.0f));
+		flat_renderer.flush(*cmd, vec3(0.0f), vec3(cmd->get_viewport().width, cmd->get_viewport().height, 1.0f));
+
+		cmd->end_render_pass();
+
+		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "Render");
+
+		cmd->barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		cmd->copy_buffer(*readback, *readback_counter);
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 		Fence fence;
 		device.submit(cmd, &fence);
-		//fence->wait();
-		//LOGI("Number of draws: %u\n",
-		//     *static_cast<const uint32_t *>(device.map_host_buffer(*readback, MEMORY_ACCESS_READ_BIT)));
+
+		readback_ring[readback_index] = std::move(readback);
+		readback_fence[readback_index] = std::move(fence);
+		readback_index = (readback_index + 1) & 3;
+
+		if (readback_fence[readback_index])
+		{
+			readback_fence[readback_index]->wait();
+			auto *mapped = static_cast<const uint32_t *>(device.map_host_buffer(*readback_ring[readback_index], MEMORY_ACCESS_READ_BIT));
+			last_mesh_invocations = mapped[0];
+			last_prim = mapped[1];
+			last_vert = mapped[2];
+		}
 	}
+
+	BufferHandle readback_ring[4];
+	Fence readback_fence[4];
+	unsigned readback_index = 0;
+	unsigned last_mesh_invocations = 0;
+	unsigned last_prim = 0;
+	unsigned last_vert = 0;
+	FlatRenderer flat_renderer;
 
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z, uint32_t,
 	             const Word *words) override

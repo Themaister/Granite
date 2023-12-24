@@ -129,7 +129,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			auto &node_transform = nodeptr->get_transform();
 			node_transform.translation = node.transform.translation;
 			node_transform.rotation = node.transform.rotation;
-			node_transform.scale = node.transform.scale /** vec3(0.01f) */;
+			node_transform.scale = node.transform.scale;
 			nodes.push_back(std::move(nodeptr));
 		}
 
@@ -169,7 +169,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 					auto nodeptr = scene.create_node();
 					auto &node_transform = nodeptr->get_transform();
 					node_transform.translation = vec3(x, y, z) * 3.0f;
-					//node_transform.scale = vec3(0.01f);
 					root->add_child(nodeptr);
 
 					auto renderable = Util::make_handle<MeshletRenderable>();
@@ -216,7 +215,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			root->add_child(nodes[scene_node_index]);
 		scene.set_root_node(std::move(root));
 
-		camera.look_at(vec3(1.5f, 1.5f, 1.5f), vec3(0.0f));
+		camera.look_at(vec3(0, 0, 50), vec3(0));
 
 		EVENT_MANAGER_REGISTER_LATCH(MeshletViewerApplication, on_device_create, on_device_destroy, DeviceCreatedEvent);
 	}
@@ -352,11 +351,11 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 		push.camera_pos = render_context.get_render_parameters().camera_position;
 
-		//uint32_t target_meshlet_workgroup_size =
-		//    max(32u, device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations);
 		uint32_t target_meshlet_workgroup_size = 32;
+		if (const char *env = getenv("MESHLET_SIZE"))
+			target_meshlet_workgroup_size = strtoul(env, nullptr, 0);
 
-		target_meshlet_workgroup_size = min(256u, target_meshlet_workgroup_size);
+		target_meshlet_workgroup_size = max(32u, min(256u, target_meshlet_workgroup_size));
 		target_meshlet_workgroup_size = 1u << Util::floor_log2(target_meshlet_workgroup_size);
 		uint32_t num_chunk_workgroups = 256u / target_meshlet_workgroup_size;
 
@@ -637,9 +636,31 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 		flat_renderer.begin();
 		flat_renderer.render_quad(vec3(0.0f, 0.0f, 0.5f),
-		                          vec2(350.0f, 80.0f),
+		                          vec2(350.0f, 100.0f),
 		                          vec4(0.0f, 0.0f, 0.0f, 0.8f));
 		char text[256];
+
+		switch (manager.get_mesh_encoding())
+		{
+		case ResourceManager::MeshEncoding::MeshletEncoded:
+			snprintf(text, sizeof(text), "Meshlet (%u prim/vert) | Inline Decoding", target_meshlet_workgroup_size);
+			break;
+
+		case ResourceManager::MeshEncoding::MeshletDecoded:
+			snprintf(text, sizeof(text), "Meshlet (%u prim/vert) | VBO Fetch", target_meshlet_workgroup_size);
+			break;
+
+		case ResourceManager::MeshEncoding::VBOAndIBOMDI:
+			strcpy(text, "MultiDrawIndirect");
+			break;
+
+		default:
+			strcpy(text, "Classic Direct Draw");
+			break;
+		}
+
+		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
+		                          text, vec3(10.0f, 10.0f, 0.0f), vec2(1000.0f));
 
 		if (use_meshlets)
 		{
@@ -657,16 +678,16 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		}
 
 		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
-		                          text, vec3(10.0f, 10.0f, 0.0f), vec2(1000.0f));
+		                          text, vec3(10.0f, 30.0f, 0.0f), vec2(1000.0f));
 
 		if (use_meshlets)
 		{
 			snprintf(text, sizeof(text), "Primitives: %.3f M", 1e-6 * last_prim);
 			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
-			                          text, vec3(10.0f, 30.0f, 0.0f), vec2(1000.0f));
+			                          text, vec3(10.0f, 50.0f, 0.0f), vec2(1000.0f));
 			snprintf(text, sizeof(text), "Vertices: %.3f M", 1e-6 * last_vert);
 			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
-			                          text, vec3(10.0f, 50.0f, 0.0f), vec2(1000.0f));
+			                          text, vec3(10.0f, 70.0f, 0.0f), vec2(1000.0f));
 		}
 
 		flat_renderer.flush(*cmd, vec3(0.0f), vec3(cmd->get_viewport().width, cmd->get_viewport().height, 1.0f));

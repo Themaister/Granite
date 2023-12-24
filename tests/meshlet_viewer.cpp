@@ -69,7 +69,7 @@ struct MeshletRenderable : AbstractRenderable
 	}
 };
 
-struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, Vulkan::DebugChannelInterface
+struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //, Vulkan::DebugChannelInterface
 {
 	explicit MeshletViewerApplication(const char *path)
 	{
@@ -643,19 +643,21 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		switch (manager.get_mesh_encoding())
 		{
 		case ResourceManager::MeshEncoding::MeshletEncoded:
-			snprintf(text, sizeof(text), "Meshlet (%u prim/vert) | Inline Decoding", target_meshlet_workgroup_size);
+			snprintf(text, sizeof(text), "%.3f ms | Meshlet (%u prim/vert) | Inline Decoding",
+			         last_frame_time * 1e3, target_meshlet_workgroup_size);
 			break;
 
 		case ResourceManager::MeshEncoding::MeshletDecoded:
-			snprintf(text, sizeof(text), "Meshlet (%u prim/vert) | VBO Fetch", target_meshlet_workgroup_size);
+			snprintf(text, sizeof(text), "%.3f ms | Meshlet (%u prim/vert) | VBO Fetch",
+			         last_frame_time * 1e3, target_meshlet_workgroup_size);
 			break;
 
 		case ResourceManager::MeshEncoding::VBOAndIBOMDI:
-			strcpy(text, "MultiDrawIndirect");
+			snprintf(text, sizeof(text), "%.3f ms | MultiDrawIndirect", last_frame_time * 1e3);
 			break;
 
 		default:
-			strcpy(text, "Classic Direct Draw");
+			snprintf(text, sizeof(text), "%.3f ms | Classic Direct Draw", last_frame_time * 1e3);
 			break;
 		}
 
@@ -694,7 +696,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		cmd->end_render_pass();
 
 		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "Render");
 
 		if (indirect_rendering)
 		{
@@ -711,12 +712,22 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		Fence fence;
 		device.submit(cmd, &fence);
 
+		start_timestamps[readback_index] = std::move(start_ts);
+		end_timestamps[readback_index] = std::move(end_ts);
+		readback_ring[readback_index] = std::move(readback);
+		readback_fence[readback_index] = std::move(fence);
+		readback_index = (readback_index + 1) & 3;
+
+		if (start_timestamps[readback_index] && start_timestamps[readback_index]->is_signalled() &&
+		    end_timestamps[readback_index] && end_timestamps[readback_index]->is_signalled())
+		{
+			last_frame_time = device.convert_device_timestamp_delta(
+					start_timestamps[readback_index]->get_timestamp_ticks(),
+					end_timestamps[readback_index]->get_timestamp_ticks());
+		}
+
 		if (indirect_rendering)
 		{
-			readback_ring[readback_index] = std::move(readback);
-			readback_fence[readback_index] = std::move(fence);
-			readback_index = (readback_index + 1) & 3;
-
 			if (readback_fence[readback_index])
 			{
 				readback_fence[readback_index]->wait();
@@ -747,8 +758,13 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 	unsigned last_mesh_invocations = 0;
 	unsigned last_prim = 0;
 	unsigned last_vert = 0;
+	double last_frame_time = 0.0;
 	FlatRenderer flat_renderer;
 
+	QueryPoolHandle start_timestamps[4];
+	QueryPoolHandle end_timestamps[4];
+
+#if 0
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z, uint32_t,
 	             const Word *words) override
 	{
@@ -757,6 +773,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 
 		LOGI("%.3f %.3f %.3f %.3f\n", words[0].f32, words[1].f32, words[2].f32, words[3].f32);
 	}
+#endif
 };
 
 namespace Granite

@@ -801,7 +801,7 @@ Application *application_create(int argc, char **argv)
 
 	Util::CLICallbacks cbs;
 	cbs.add("--size", [](Util::CLIParser &parser) { setenv("MESHLET_SIZE", parser.next_string(), 1); });
-	cbs.add("--encoding", [](Util::CLIParser &parser) { setenv("MESHLET_SIZE", parser.next_string(), 1); });
+	cbs.add("--encoding", [](Util::CLIParser &parser) { setenv("GRANITE_MESH_ENCODING", parser.next_string(), 1); });
 	cbs.add("--hier-task", [](Util::CLIParser &parser) { setenv("HIER_TASK", parser.next_string(), 1); });
 	cbs.add("--wave32", [](Util::CLIParser &parser) { setenv("WAVE32", parser.next_string(), 1); });
 	cbs.add("--precull", [](Util::CLIParser &parser) { setenv("PRECULL", parser.next_string(), 1); });

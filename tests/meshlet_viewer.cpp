@@ -340,21 +340,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		}
 
 		auto &manager = device.get_resource_manager();
-
-		BufferHandle readback_counter, readback;
-		if (indirect_rendering)
-		{
-			BufferCreateInfo info;
-			info.size = 12;
-			info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-			info.domain = BufferDomain::CachedHost;
-			readback = device.create_buffer(info);
-
-			info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-			info.domain = BufferDomain::Device;
-			info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
-			readback_counter = device.create_buffer(info);
-		}
+		const bool use_meshlets = indirect_rendering && manager.get_mesh_encoding() != ResourceManager::MeshEncoding::VBOAndIBOMDI;
+		const bool use_preculling = !use_meshlets && indirect_rendering;
 
 		struct
 		{
@@ -364,8 +351,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		} push;
 
 		push.camera_pos = render_context.get_render_parameters().camera_position;
-		const bool use_meshlets = indirect_rendering && manager.get_mesh_encoding() != ResourceManager::MeshEncoding::VBOAndIBOMDI;
-		const bool use_preculling = !use_meshlets && indirect_rendering;
 
 		//uint32_t target_meshlet_workgroup_size =
 		//    max(32u, device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations);
@@ -418,6 +403,24 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			compacted_params = device.create_buffer(info);
 		}
 
+		BufferHandle readback_counter, readback;
+		if (indirect_rendering)
+		{
+			BufferCreateInfo info;
+			info.size = use_meshlets ? 12 : indirect_draws->get_create_info().size;
+			info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+			info.domain = BufferDomain::CachedHost;
+			readback = device.create_buffer(info);
+
+			if (use_meshlets)
+			{
+				info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+				info.domain = BufferDomain::Device;
+				info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
+				readback_counter = device.create_buffer(info);
+			}
+		}
+
 		if (use_preculling)
 		{
 			auto *indirect = manager.get_indirect_buffer();
@@ -436,7 +439,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			cmd->set_storage_buffer(0, 4, *indirect_draws);
 			cmd->set_storage_buffer(0, 5, *compacted_params);
 			cmd->set_storage_buffer(0, 6, *manager.get_cluster_bounds_buffer());
-			cmd->set_storage_buffer(0, 10, *readback_counter);
 			memcpy(cmd->allocate_typed_constant_data<vec4>(0, 7, 6),
 			       render_context.get_visibility_frustum().get_planes(),
 			       6 * sizeof(vec4));
@@ -634,12 +636,19 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		}
 
 		flat_renderer.begin();
-		flat_renderer.render_quad(vec3(0.0f, 0.0f, 0.5f), vec2(600.0f, 140.0f), vec4(0.0f, 0.0f, 0.0f, 0.5f));
+		flat_renderer.render_quad(vec3(0.0f, 0.0f, 0.5f),
+		                          vec2(350.0f, 80.0f),
+		                          vec4(0.0f, 0.0f, 0.0f, 0.8f));
 		char text[256];
 
-		if (indirect_rendering)
+		if (use_meshlets)
 		{
 			snprintf(text, sizeof(text), "Mesh shader invocations: %.3f M / %.3f M", 1e-6 * last_mesh_invocations,
+			         1e-6 * double(max_draws * MaxElements));
+		}
+		else if (indirect_rendering)
+		{
+			snprintf(text, sizeof(text), "MDI primitives: %.3f M / %.3f M", 1e-6 * last_mesh_invocations,
 			         1e-6 * double(max_draws * MaxElements));
 		}
 		else
@@ -647,17 +656,17 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 			snprintf(text, sizeof(text), "Direct primitives: %.3f M", 1e-6 * last_mesh_invocations);
 		}
 
-		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large),
+		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
 		                          text, vec3(10.0f, 10.0f, 0.0f), vec2(1000.0f));
 
-		if (indirect_rendering)
+		if (use_meshlets)
 		{
 			snprintf(text, sizeof(text), "Primitives: %.3f M", 1e-6 * last_prim);
-			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large),
-			                          text, vec3(10.0f, 50.0f, 0.0f), vec2(1000.0f));
+			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
+			                          text, vec3(10.0f, 30.0f, 0.0f), vec2(1000.0f));
 			snprintf(text, sizeof(text), "Vertices: %.3f M", 1e-6 * last_vert);
-			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large),
-			                          text, vec3(10.0f, 90.0f, 0.0f), vec2(1000.0f));
+			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
+			                          text, vec3(10.0f, 50.0f, 0.0f), vec2(1000.0f));
 		}
 
 		flat_renderer.flush(*cmd, vec3(0.0f), vec3(cmd->get_viewport().width, cmd->get_viewport().height, 1.0f));
@@ -670,7 +679,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 		{
 			cmd->barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 			             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-			cmd->copy_buffer(*readback, *readback_counter);
+			if (use_meshlets)
+				cmd->copy_buffer(*readback, *readback_counter);
+			else
+				cmd->copy_buffer(*readback, *indirect_draws);
 			cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 		}
@@ -689,9 +701,21 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler, V
 				readback_fence[readback_index]->wait();
 				auto *mapped = static_cast<const uint32_t *>(device.map_host_buffer(*readback_ring[readback_index],
 				                                                                    MEMORY_ACCESS_READ_BIT));
-				last_mesh_invocations = mapped[0];
-				last_prim = mapped[1];
-				last_vert = mapped[2];
+
+				if (use_meshlets)
+				{
+					last_mesh_invocations = mapped[0];
+					last_prim = mapped[1];
+					last_vert = mapped[2];
+				}
+				else
+				{
+					last_mesh_invocations = 0;
+					uint32_t draws = mapped[0];
+					mapped += 256 / sizeof(uint32_t);
+					for (uint32_t i = 0; i < draws; i++, mapped += sizeof(VkDrawIndexedIndirectCommand) / sizeof(uint32_t))
+						last_mesh_invocations += mapped[0] / 3;
+				}
 			}
 		}
 	}

@@ -163,11 +163,25 @@ void ResourceManager::init()
 	opaque.domain = BufferDomain::Device;
 	opaque.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-	if (false && device->get_device_features().mesh_shader_features.taskShader &&
+	if (device->get_device_features().mesh_shader_features.taskShader &&
 	    device->get_device_features().mesh_shader_features.meshShader)
 	{
 		mesh_encoding = MeshEncoding::MeshletEncoded;
 		LOGI("Opting in to meshlet path.\n");
+	}
+
+	if (const char *env = getenv("GRANITE_MESH_ENCODING"))
+	{
+		if (strcmp(env, "encoded") == 0)
+			mesh_encoding = MeshEncoding::MeshletEncoded;
+		else if (strcmp(env, "decoded") == 0)
+			mesh_encoding = MeshEncoding::MeshletDecoded;
+		else if (strcmp(env, "mdi") == 0)
+			mesh_encoding = MeshEncoding::VBOAndIBOMDI;
+		else if (strcmp(env, "classic") == 0)
+			mesh_encoding = MeshEncoding::Classic;
+		else
+			LOGE("Unknown encoding: %s\n", env);
 	}
 
 	if (mesh_encoding != MeshEncoding::MeshletEncoded)

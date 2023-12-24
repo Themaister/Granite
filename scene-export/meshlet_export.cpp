@@ -514,6 +514,8 @@ static void encode_mesh(Encoded &encoded,
 	mesh.meshlets.reserve(num_full_meshlets);
 	uint32_t base_vertex_offset = 0;
 
+	uint32_t stream_payload_count[MaxStreams] = {};
+
 	for (uint32_t full_meshlet_index = 0; full_meshlet_index < num_full_meshlets; full_meshlet_index++)
 	{
 		Metadata out_meshlet = {};
@@ -542,7 +544,12 @@ static void encode_mesh(Encoded &encoded,
 				offsets.attr_offset = num_attributes;
 				offsets.prim_offset = num_primitives;
 
+				auto start_count = encoded.payload.size();
 				encode_index_stream(encoded.payload, index_stream_buffer);
+				auto end_count = encoded.payload.size();
+
+				stream_payload_count[int(StreamType::Primitive)] += end_count - start_count;
+
 				num_primitives += meshlet.primitive_count;
 				num_attributes += meshlet.vertex_count;
 			}
@@ -563,6 +570,7 @@ static void encode_mesh(Encoded &encoded,
 			stream.aux = p_aux[stream_index];
 			stream.offset_in_b128 = uint32_t(encoded.payload.size());
 
+			uint32_t start_count = encoded.payload.size();
 			for (uint32_t chunk_index = 0; chunk_index < num_chunks; chunk_index++)
 			{
 				auto &meshlet = meshlets[full_meshlet_index * NumChunks + chunk_index];
@@ -579,10 +587,16 @@ static void encode_mesh(Encoded &encoded,
 					break;
 				}
 			}
+			uint32_t end_count = encoded.payload.size();
+			stream_payload_count[stream_index] += end_count - start_count;
 		}
 
 		mesh.meshlets.push_back(out_meshlet);
 	}
+
+	for (unsigned i = 0; i < MaxStreams; i++)
+		if (stream_payload_count[i])
+			LOGI("Stream %u: %zu bytes.\n", i, stream_payload_count[i] * sizeof(PayloadB128));
 }
 
 static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)

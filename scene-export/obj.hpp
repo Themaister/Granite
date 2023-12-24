@@ -35,7 +35,7 @@ using namespace Granite::SceneFormats;
 class Parser
 {
 public:
-	explicit Parser(const std::string &path);
+	Parser(const std::string &path, float position_scale = 1.0f);
 
 	const std::vector<Mesh> &get_meshes() const
 	{

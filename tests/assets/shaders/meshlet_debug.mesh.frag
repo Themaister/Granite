@@ -20,10 +20,10 @@ void main()
     vec3 normal = normalize(cross(vWorldPos[1] - vWorldPos[0], vWorldPos[2] - vWorldPos[0]));
 
     FragColor = 0.5 * (0.5 * normal + 0.5);
-    FragColor.rg += 0.2 * highlight;
+    FragColor.rg += 0.05 * highlight;
 
     uint hashed = vDrawID ^ (vDrawID * 23423465);
-    FragColor.r += 0.05 * float(hashed % 19) / 19.0;
-    FragColor.g += 0.05 * float(hashed % 29) / 29.0;
-    FragColor.b += 0.05 * float(hashed % 131) / 131.0;
+    FragColor.r += 0.02 * float(hashed % 19) / 19.0;
+    FragColor.g += 0.02 * float(hashed % 29) / 29.0;
+    FragColor.b += 0.02 * float(hashed % 131) / 131.0;
 }

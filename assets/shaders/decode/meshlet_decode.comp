@@ -166,7 +166,7 @@ void main()
             indices += chunk_info.vertex_offset;
 
         if (UNROLLED_MESH)
-            output_indices32.data[primitive_output_offset + lane_index] = indices + meta.base_vertex_offset + registers.vertex_offset;
+            output_indices32.data[primitive_output_offset + lane_index] = indices + meta.base_vertex_offset;
         else
             output_indices8.data[primitive_output_offset + lane_index] = u8vec3(indices);
     }

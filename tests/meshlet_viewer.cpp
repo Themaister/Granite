@@ -39,6 +39,7 @@
 #include "flat_renderer.hpp"
 #include "ui_manager.hpp"
 #include "gltf.hpp"
+#include "cli_parser.hpp"
 #include <string.h>
 #include <float.h>
 #include <stdexcept>
@@ -160,9 +161,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		auto root = scene.create_node();
 
 #if 1
-		for (int z = -10; z <= 10; z++)
-			for (int y = -10; y <= 10; y++)
-				for (int x = -10; x <= 10; x++)
+		for (int z = -6; z <= 6; z++)
+			for (int y = -6; y <= 6; y++)
+				for (int x = -6; x <= 6; x++)
 				{
 					if (!x && !y && !z)
 						continue;
@@ -215,7 +216,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			root->add_child(nodes[scene_node_index]);
 		scene.set_root_node(std::move(root));
 
-		camera.look_at(vec3(0, 0, 50), vec3(0));
+		camera.look_at(vec3(0, 0, 30), vec3(0));
 
 		EVENT_MANAGER_REGISTER_LATCH(MeshletViewerApplication, on_device_create, on_device_destroy, DeviceCreatedEvent);
 	}
@@ -340,7 +341,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		auto &manager = device.get_resource_manager();
 		const bool use_meshlets = indirect_rendering && manager.get_mesh_encoding() != ResourceManager::MeshEncoding::VBOAndIBOMDI;
-		const bool use_preculling = !use_meshlets && indirect_rendering;
+		bool use_preculling = !use_meshlets && indirect_rendering;
+
+		if (const char *env = getenv("PRECULL"))
+			use_preculling = indirect_rendering && strtoul(env, nullptr, 0) != 0;
 
 		struct
 		{
@@ -457,6 +461,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		auto *pos = manager.get_position_buffer();
 		auto *attr = manager.get_attribute_buffer();
 
+		bool supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
+		bool use_hierarchical = device.get_device_features().driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY;
+
 		if (use_meshlets)
 		{
 			cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
@@ -473,7 +480,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 						 0.5f * cmd->get_viewport().width,
 						 0.5f * cmd->get_viewport().height) - vec4(1.0f, 1.0f, 0.0f, 0.0f);
 
-			bool use_hierarchical = device.get_device_features().driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY;
 			bool use_encoded = manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::MeshletEncoded;
 
 			cmd->set_specialization_constant_mask(3);
@@ -503,7 +509,11 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			const char *mesh_path = use_encoded ? "assets://shaders/meshlet_debug.mesh" : "assets://shaders/meshlet_debug_plain.mesh";
 
-			bool supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
+			if (const char *env = getenv("WAVE32"))
+				supports_wave32 = strtoul(env, nullptr, 0) != 0;
+			if (const char *hier = getenv("HIER_TASK"))
+				use_hierarchical = strtoul(hier, nullptr, 0) != 0;
+
 			bool supports_wg32 = supports_wave32 && target_meshlet_workgroup_size == 32;
 
 			if (use_preculling)
@@ -636,7 +646,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		flat_renderer.begin();
 		flat_renderer.render_quad(vec3(0.0f, 0.0f, 0.5f),
-		                          vec2(350.0f, 100.0f),
+		                          vec2(450.0f, 120.0f),
 		                          vec4(0.0f, 0.0f, 0.0f, 0.8f));
 		char text[256];
 
@@ -682,14 +692,19 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
 		                          text, vec3(10.0f, 30.0f, 0.0f), vec2(1000.0f));
 
+		snprintf(text, sizeof(text), "ComputeCull %d | mesh wave32 %d | task hier %d",
+		         int(use_preculling), int(supports_wave32), int(use_hierarchical));
+		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
+		                          text, vec3(10.0f, 50.0f, 0.0f), vec2(1000.0f));
+
 		if (use_meshlets)
 		{
 			snprintf(text, sizeof(text), "Primitives: %.3f M", 1e-6 * last_prim);
 			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
-			                          text, vec3(10.0f, 50.0f, 0.0f), vec2(1000.0f));
+			                          text, vec3(10.0f, 70.0f, 0.0f), vec2(1000.0f));
 			snprintf(text, sizeof(text), "Vertices: %.3f M", 1e-6 * last_vert);
 			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
-			                          text, vec3(10.0f, 70.0f, 0.0f), vec2(1000.0f));
+			                          text, vec3(10.0f, 90.0f, 0.0f), vec2(1000.0f));
 		}
 
 		flat_renderer.flush(*cmd, vec3(0.0f), vec3(cmd->get_viewport().width, cmd->get_viewport().height, 1.0f));
@@ -782,7 +797,18 @@ Application *application_create(int argc, char **argv)
 {
 	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
-	if (argc != 2)
+	const char *path = nullptr;
+
+	Util::CLICallbacks cbs;
+	cbs.add("--size", [](Util::CLIParser &parser) { setenv("MESHLET_SIZE", parser.next_string(), 1); });
+	cbs.add("--encoding", [](Util::CLIParser &parser) { setenv("MESHLET_SIZE", parser.next_string(), 1); });
+	cbs.add("--hier-task", [](Util::CLIParser &parser) { setenv("HIER_TASK", parser.next_string(), 1); });
+	cbs.add("--wave32", [](Util::CLIParser &parser) { setenv("WAVE32", parser.next_string(), 1); });
+	cbs.add("--precull", [](Util::CLIParser &parser) { setenv("PRECULL", parser.next_string(), 1); });
+	cbs.default_handler = [&](const char *arg) { path = arg; };
+
+	Util::CLIParser parser(std::move(cbs), argc - 1, argv + 1);
+	if (!parser.parse() || parser.is_ended_state() || !path)
 	{
 		LOGE("Usage: meshlet-viewer path.msh1\n");
 		return nullptr;

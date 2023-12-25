@@ -40,6 +40,7 @@
 #include "ui_manager.hpp"
 #include "gltf.hpp"
 #include "cli_parser.hpp"
+#include "environment.hpp"
 #include <string.h>
 #include <float.h>
 #include <stdexcept>
@@ -343,8 +344,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		const bool use_meshlets = indirect_rendering && manager.get_mesh_encoding() != ResourceManager::MeshEncoding::VBOAndIBOMDI;
 		bool use_preculling = !use_meshlets && indirect_rendering;
 
-		if (const char *env = getenv("PRECULL"))
-			use_preculling = indirect_rendering && strtoul(env, nullptr, 0) != 0;
+		if (indirect_rendering)
+			use_preculling = Util::get_environment_bool("PRECULL", use_preculling);
 
 		struct
 		{
@@ -356,8 +357,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		push.camera_pos = render_context.get_render_parameters().camera_position;
 
 		uint32_t target_meshlet_workgroup_size = 32;
-		if (const char *env = getenv("MESHLET_SIZE"))
-			target_meshlet_workgroup_size = strtoul(env, nullptr, 0);
+		target_meshlet_workgroup_size = Util::get_environment_uint("MESHLET_SIZE", target_meshlet_workgroup_size);
 
 		target_meshlet_workgroup_size = max(32u, min(256u, target_meshlet_workgroup_size));
 		target_meshlet_workgroup_size = 1u << Util::floor_log2(target_meshlet_workgroup_size);
@@ -509,10 +509,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			const char *mesh_path = use_encoded ? "assets://shaders/meshlet_debug.mesh" : "assets://shaders/meshlet_debug_plain.mesh";
 
-			if (const char *env = getenv("WAVE32"))
-				supports_wave32 = strtoul(env, nullptr, 0) != 0;
-			if (const char *hier = getenv("HIER_TASK"))
-				use_hierarchical = strtoul(hier, nullptr, 0) != 0;
+			supports_wave32 = Util::get_environment_bool("WAVE32", supports_wave32);
+			use_hierarchical = Util::get_environment_bool("HIER_TASK", use_hierarchical);
 
 			bool supports_wg32 = supports_wave32 && target_meshlet_workgroup_size == 32;
 
@@ -800,11 +798,11 @@ Application *application_create(int argc, char **argv)
 	const char *path = nullptr;
 
 	Util::CLICallbacks cbs;
-	cbs.add("--size", [](Util::CLIParser &parser) { setenv("MESHLET_SIZE", parser.next_string(), 1); });
-	cbs.add("--encoding", [](Util::CLIParser &parser) { setenv("GRANITE_MESH_ENCODING", parser.next_string(), 1); });
-	cbs.add("--hier-task", [](Util::CLIParser &parser) { setenv("HIER_TASK", parser.next_string(), 1); });
-	cbs.add("--wave32", [](Util::CLIParser &parser) { setenv("WAVE32", parser.next_string(), 1); });
-	cbs.add("--precull", [](Util::CLIParser &parser) { setenv("PRECULL", parser.next_string(), 1); });
+	cbs.add("--size", [](Util::CLIParser &parser) { Util::set_environment("MESHLET_SIZE", parser.next_string()); });
+	cbs.add("--encoding", [](Util::CLIParser &parser) { Util::set_environment("GRANITE_MESH_ENCODING", parser.next_string()); });
+	cbs.add("--hier-task", [](Util::CLIParser &parser) { Util::set_environment("HIER_TASK", parser.next_string()); });
+	cbs.add("--wave32", [](Util::CLIParser &parser) { Util::set_environment("WAVE32", parser.next_string()); });
+	cbs.add("--precull", [](Util::CLIParser &parser) { Util::set_environment("PRECULL", parser.next_string()); });
 	cbs.default_handler = [&](const char *arg) { path = arg; };
 
 	Util::CLIParser parser(std::move(cbs), argc - 1, argv + 1);

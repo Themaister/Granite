@@ -24,6 +24,7 @@
 #include "context.hpp"
 #include "limits.hpp"
 #include "small_vector.hpp"
+#include "environment.hpp"
 #include <vector>
 #include <mutex>
 #include <algorithm>
@@ -217,9 +218,9 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 		static void *module;
 		if (!module)
 		{
-			const char *vulkan_path = getenv("GRANITE_VULKAN_LIBRARY");
-			if (vulkan_path)
-				module = dlopen(vulkan_path, RTLD_LOCAL | RTLD_LAZY);
+			auto vulkan_path = Util::get_environment_string("GRANITE_VULKAN_LIBRARY", "");
+			if (!vulkan_path.empty())
+				module = dlopen(vulkan_path.c_str(), RTLD_LOCAL | RTLD_LAZY);
 #ifdef __APPLE__
 			if (!module)
 				module = dlopen("libvulkan.1.dylib", RTLD_LOCAL | RTLD_LAZY);
@@ -428,17 +429,12 @@ bool Context::init_profile()
 #ifdef GRANITE_VULKAN_PROFILES
 	if (required_profile.empty())
 	{
-		if (const char *env = getenv("GRANITE_VULKAN_PROFILE"))
-		{
-			required_profile = env;
-			LOGI("Overriding profile: %s\n", env);
-		}
+		if (Util::get_environment("GRANITE_VULKAN_PROFILE", required_profile))
+			LOGI("Overriding profile: %s\n", required_profile.c_str());
 
-		if (const char *strict_env = getenv("GRANITE_VULKAN_PROFILE_STRICT"))
-		{
-			required_profile_strict = strtoul(strict_env, nullptr, 0) != 0;
-			LOGI("Overriding profile strictness: %u\n", required_profile_strict);
-		}
+		required_profile_strict = Util::get_environment_bool("GRANITE_VULKAN_PROFILE_STRICT", false);
+		if (required_profile_strict)
+			LOGI("Using profile strictness.\n");
 	}
 
 	if (required_profile.empty())
@@ -639,8 +635,7 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 
 	VkValidationFeaturesEXT validation_features = { VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT };
 
-	if (getenv("GRANITE_VULKAN_NO_VALIDATION"))
-		force_no_validation = true;
+	force_no_validation = Util::get_environment_bool("GRANITE_VULKAN_NO_VALIDATION", false);
 
 	if (!force_no_validation && has_layer("VK_LAYER_KHRONOS_validation"))
 	{
@@ -858,13 +853,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			     VK_VERSION_PATCH(props.driverVersion));
 		}
 
-		const char *gpu_index = getenv("GRANITE_VULKAN_DEVICE_INDEX");
-		if (gpu_index)
-		{
-			unsigned index = strtoul(gpu_index, nullptr, 0);
-			if (index < gpu_count)
-				gpu = gpus[index];
-		}
+		int gpu_index = Util::get_environment_int("GRANITE_VULKAN_DEVICE_INDEX", -1);
+		if (gpu_index >= 0 && gpu_index < int(gpu_count))
+			gpu = gpus[gpu_index];
 
 		if (gpu != VK_NULL_HANDLE)
 		{

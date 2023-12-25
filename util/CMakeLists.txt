@@ -32,6 +32,7 @@ add_granite_internal_lib(granite-util
         small_callable.hpp radix_sorter.hpp
         dynamic_array.hpp
         arena_allocator.hpp arena_allocator.cpp
+        environment.hpp environment.cpp
         no_init_pod.hpp)
 target_include_directories(granite-util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(granite-util PUBLIC granite-application-global-interface)

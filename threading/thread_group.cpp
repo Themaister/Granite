@@ -30,6 +30,7 @@
 #include "string_helpers.hpp"
 #include "timeline_trace_file.hpp"
 #include "thread_name.hpp"
+#include "environment.hpp"
 
 namespace Granite
 {
@@ -169,10 +170,11 @@ void ThreadGroup::start(unsigned num_threads_foreground,
 	bg.thread_group.resize(num_threads_background);
 
 #ifndef GRANITE_SHIPPING
-	if (const char *env = getenv("GRANITE_TIMELINE_TRACE"))
+	std::string path;
+	if (Util::get_environment("GRANITE_TIMELINE_TRACE", path))
 	{
-		LOGI("Enabling JSON timeline tracing to %s.\n", env);
-		timeline_trace_file = std::make_unique<Util::TimelineTraceFile>(env);
+		LOGI("Enabling JSON timeline tracing to %s.\n", path.c_str());
+		timeline_trace_file = std::make_unique<Util::TimelineTraceFile>(path);
 	}
 #endif
 

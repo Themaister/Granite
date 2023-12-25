@@ -30,6 +30,7 @@
 #include "thread_group.hpp"
 #include "meshlet.hpp"
 #include "aabb.hpp"
+#include "environment.hpp"
 #include <float.h>
 
 namespace Vulkan
@@ -170,18 +171,19 @@ void ResourceManager::init()
 		LOGI("Opting in to meshlet path.\n");
 	}
 
-	if (const char *env = getenv("GRANITE_MESH_ENCODING"))
+	std::string encoding;
+	if (Util::get_environment("GRANITE_MESH_ENCODING", encoding))
 	{
-		if (strcmp(env, "encoded") == 0)
+		if (encoding == "encoded")
 			mesh_encoding = MeshEncoding::MeshletEncoded;
-		else if (strcmp(env, "decoded") == 0)
+		else if (encoding == "decoded")
 			mesh_encoding = MeshEncoding::MeshletDecoded;
-		else if (strcmp(env, "mdi") == 0)
+		else if (encoding == "mdi")
 			mesh_encoding = MeshEncoding::VBOAndIBOMDI;
-		else if (strcmp(env, "classic") == 0)
+		else if (encoding == "classic")
 			mesh_encoding = MeshEncoding::Classic;
 		else
-			LOGE("Unknown encoding: %s\n", env);
+			LOGE("Unknown encoding: %s\n", encoding.c_str());
 	}
 
 	if (mesh_encoding != MeshEncoding::MeshletEncoded)

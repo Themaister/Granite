@@ -26,6 +26,7 @@
 #include "logging.hpp"
 #include "os_filesystem.hpp"
 #include "string_helpers.hpp"
+#include "environment.hpp"
 #include <algorithm>
 #include <stdlib.h>
 #include <string.h>
@@ -72,28 +73,28 @@ Filesystem::Filesystem()
 	register_protocol("file", std::unique_ptr<FilesystemBackend>(new OSFilesystem(".")));
 	register_protocol("memory", std::unique_ptr<FilesystemBackend>(new ScratchFilesystem));
 
-	const char *asset_dir = getenv("GRANITE_DEFAULT_ASSET_DIRECTORY");
 #ifdef GRANITE_DEFAULT_ASSET_DIRECTORY
-	if (!asset_dir)
-			asset_dir = GRANITE_DEFAULT_ASSET_DIRECTORY;
+	auto asset_dir = Util::get_environment_string("GRANITE_DEFAULT_ASSET_DIRECTORY", GRANITE_DEFAULT_ASSET_DIRECTORY);
+#else
+	auto asset_dir = Util::get_environment_string("GRANITE_DEFAULT_ASSET_DIRECTORY", "");
 #endif
-	if (asset_dir)
+	if (!asset_dir.empty())
 		register_protocol("builtin", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 
-	const char *builtin_dir = getenv("GRANITE_DEFAULT_BUILTIN_DIRECTORY");
 #ifdef GRANITE_DEFAULT_BUILTIN_DIRECTORY
-	if (!builtin_dir)
-		builtin_dir = GRANITE_DEFAULT_BUILTIN_DIRECTORY;
+	auto builtin_dir = Util::get_environment_string("GRANITE_DEFAULT_BUILTIN_DIRECTORY", GRANITE_DEFAULT_BUILTIN_DIRECTORY);
+#else
+	auto builtin_dir = Util::get_environment_string("GRANITE_DEFAULT_BUILTIN_DIRECTORY", "");
 #endif
-	if (builtin_dir)
+	if (!builtin_dir.empty())
 		register_protocol("builtin", std::unique_ptr<FilesystemBackend>(new OSFilesystem(builtin_dir)));
 
-	const char *cache_dir = getenv("GRANITE_DEFAULT_CACHE_DIRECTORY");
 #ifdef GRANITE_DEFAULT_CACHE_DIRECTORY
-	if (!cache_dir)
-		cache_dir = GRANITE_DEFAULT_CACHE_DIRECTORY;
+	auto cache_dir = Util::get_environment_string("GRANITE_DEFAULT_CACHE_DIRECTORY", GRANITE_DEFAULT_CACHE_DIRECTORY);
+#else
+	auto cache_dir = Util::get_environment_string("GRANITE_DEFAULT_CACHE_DIRECTORY", "");
 #endif
-	if (cache_dir)
+	if (!cache_dir.empty())
 		register_protocol("cache", std::unique_ptr<FilesystemBackend>(new OSFilesystem(cache_dir)));
 }
 

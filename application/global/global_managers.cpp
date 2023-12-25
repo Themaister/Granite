@@ -21,6 +21,7 @@
  */
 
 #include "global_managers.hpp"
+#include "environment.hpp"
 #include "logging.hpp"
 #include <thread>
 #include <assert.h>
@@ -219,8 +220,7 @@ void init(Factory &factory, ManagerFeatureFlags flags, unsigned max_threads, flo
 
 		if (cpu_threads > max_threads)
 			cpu_threads = max_threads;
-		if (const char *env = getenv("GRANITE_NUM_WORKER_THREADS"))
-			cpu_threads = strtoul(env, nullptr, 0);
+		cpu_threads = Util::get_environment_uint("GRANITE_NUM_WORKER_THREADS", cpu_threads);
 
 		unsigned background_cpu_threads = (cpu_threads + 1) / 2;
 

@@ -96,6 +96,38 @@ static void decode_bitfield_block_16(T *block, const PayloadB128 *&pdata, unsign
 	}
 }
 
+template <int Components, typename T>
+static void decode_bitfield_block_8(T *block, const PayloadB128 *&pdata, unsigned config)
+{
+	unsigned bit_offset = 0;
+
+	for (int mask = 4; mask; mask >>= 1)
+	{
+		if (config & mask)
+		{
+			const uint32_t *words = &pdata->words[0];
+			int bits = mask;
+
+			for (uint32_t i = 0; i < ElementsPerChunk; i++)
+			{
+				T &d = block[i];
+				for (int c = 0; c < Components; c++)
+				{
+					for (int b = 0; b < bits; b++)
+					{
+						int word = c * bits + b;
+						d[c] |= ((words[word] >> i) & 1u) << (bit_offset + b);
+					}
+				}
+			}
+
+			int num_words = (bits * Components + 3) / 4;
+			pdata += num_words;
+			bit_offset += bits;
+		}
+	}
+}
+
 static void decode_attribute_buffer(std::vector<vec3> &out_positions, const MeshView &mesh, uint32_t meshlet_index, StreamType type)
 {
 	auto &meshlet = mesh.headers[meshlet_index];
@@ -148,14 +180,145 @@ static void decode_attribute_buffer(std::vector<vec3> &out_positions, const Mesh
 	}
 }
 
+static void decode_attribute_buffer(std::vector<vec2> &out_uvs, const MeshView &mesh, uint32_t meshlet_index, StreamType type)
+{
+	auto &meshlet = mesh.headers[meshlet_index];
+	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
+	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
+	const auto *pdata = mesh.payload + stream.offset_in_b128;
+
+	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
+	{
+		u16vec2 uvs[ElementsPerChunk]{};
+		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
+
+		if (config == 8)
+		{
+			for (uint32_t i = 0; i < ElementsPerChunk; i++)
+				memcpy(uvs[i].data, &pdata[i / 4].words[i % 4], 2 * sizeof(uint16_t));
+
+			pdata += 8;
+		}
+		else
+		{
+			decode_bitfield_block_16<2>(uvs, pdata, config);
+		}
+
+		u16vec2 base;
+		memcpy(base.data, &stream.u.base_value[chunk], sizeof(uint16_t) * 2);
+
+		for (auto &p : uvs)
+			p += base;
+
+		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
+		                                    index_stream.u.offsets[chunk].attr_offset;
+
+		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
+		{
+			vec2 float_pos = vec2(i16vec2(uvs[i]));
+			float_pos.x = ldexpf(float_pos.x, stream.aux);
+			float_pos.y = ldexpf(float_pos.y, stream.aux);
+			out_uvs.push_back(0.5f * float_pos + 0.5f);
+		}
+	}
+}
+
+static vec3 decode_oct8(i8vec2 payload)
+{
+	vec2 f = vec2(payload) * (1.0f / 127.0f);
+	vec3 n = vec3(f.x, f.y, 1.0f - abs(f.x) - abs(f.y));
+	float t = max(-n.z, 0.0f);
+
+	if (n.x > 0.0f)
+		n.x -= t;
+	else
+		n.x += t;
+
+	if (n.y > 0.0f)
+		n.y -= t;
+	else
+		n.y += t;
+
+	return normalize(n);
+}
+
+static void decode_attribute_buffer(std::vector<vec3> &out_normals, std::vector<vec4> &out_tangents,
+                                    const MeshView &mesh, uint32_t meshlet_index, StreamType type)
+{
+	auto &meshlet = mesh.headers[meshlet_index];
+	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
+	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
+	const auto *pdata = mesh.payload + stream.offset_in_b128;
+
+	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
+	{
+		u8vec4 nts[ElementsPerChunk]{};
+		uint32_t t_signs = 0;
+
+		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
+
+		if (config == 8)
+		{
+			memcpy(nts, pdata, sizeof(nts));
+			pdata += 8;
+		}
+		else
+		{
+			decode_bitfield_block_8<4>(nts, pdata, config);
+		}
+
+		int aux = (stream.aux >> (2 * chunk)) & 3;
+
+		if (aux == 1)
+		{
+			t_signs = 0;
+		}
+		else if (aux == 2)
+		{
+			t_signs = UINT32_MAX;
+		}
+
+		u8vec4 base;
+		memcpy(base.data, &stream.u.base_value[chunk], sizeof(base.data));
+
+		for (auto &p : nts)
+			p += base;
+
+		if (aux == 3)
+		{
+			for (unsigned i = 0; i < ElementsPerChunk; i++)
+			{
+				t_signs |= (nts[i].w & 1u) << i;
+				nts[i].w &= ~1;
+			}
+		}
+
+		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
+		                                    index_stream.u.offsets[chunk].attr_offset;
+
+		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
+		{
+			vec3 n = decode_oct8(i8vec2(nts[i].xy()));
+			vec3 t = decode_oct8(i8vec2(nts[i].zw()));
+			out_normals.push_back(n);
+			out_tangents.emplace_back(t, (t_signs & (1u << i)) != 0 ? -1.0f : 1.0f);
+		}
+	}
+}
+
 static void decode_mesh(std::vector<uvec3> &out_index_buffer,
                         std::vector<vec3> &out_positions,
+						std::vector<vec2> &out_uvs,
+						std::vector<vec3> &out_normals,
+						std::vector<vec4> &out_tangents,
                         const MeshView &mesh)
 {
 	for (uint32_t meshlet_index = 0; meshlet_index < mesh.format_header->meshlet_count; meshlet_index++)
 	{
 		decode_mesh_index_buffer(out_index_buffer, mesh, meshlet_index);
 		decode_attribute_buffer(out_positions, mesh, meshlet_index, StreamType::Position);
+		decode_attribute_buffer(out_uvs, mesh, meshlet_index, StreamType::UV);
+		decode_attribute_buffer(out_normals, out_tangents, mesh, meshlet_index, StreamType::NormalTangentOct8);
 	}
 }
 
@@ -195,6 +358,8 @@ static void decode_mesh_gpu(
 	info.payload = payload_buffer.get();
 	info.flags = DECODE_MODE_UNROLLED_MESH;
 
+	info.target_style = MeshStyle::Wireframe;
+
 	decode_mesh(*cmd, info, mesh);
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
@@ -213,7 +378,14 @@ static void decode_mesh_gpu(
 	       out_pos_buffer.size() * sizeof(vec3));
 }
 
-static void build_reference_mesh(std::vector<uvec3> &indices, std::vector<vec3> &positions)
+struct Attr
+{
+	vec2 uv;
+	vec3 n;
+	vec4 t;
+};
+
+static void build_reference_mesh(std::vector<uvec3> &indices, std::vector<vec3> &positions, std::vector<Attr> &attr)
 {
 	for (unsigned i = 0; i < 256; i++)
 	{
@@ -229,6 +401,13 @@ static void build_reference_mesh(std::vector<uvec3> &indices, std::vector<vec3> 
 		vec3 p = vec3(-40.0f + float(i));
 #endif
 		positions.push_back(p);
+
+		Attr a = {};
+		a.uv.x = 1.0f * float(i);
+		a.uv.y = a.uv.x * 1.5f;
+		a.n = normalize(vec3(1.0f));
+		a.t = vec4(normalize(vec3(1.0f, -1.0f, 1.0f)), -1.0f);
+		attr.push_back(a);
 	}
 
 	for (unsigned i = 0; i < 254; i++)
@@ -284,11 +463,51 @@ static bool validate_mesh(std::vector<uvec3> &reference_indices,
 	return true;
 }
 
-int main(int argc, char *argv[])
+template <typename T>
+static auto max_component(T value) -> std::remove_reference_t<decltype(value.data[0])>
 {
-	if (argc != 2)
-		return EXIT_FAILURE;
+	std::remove_reference_t<decltype(value.data[0])> val = 0;
+	for (auto v : value.data)
+		val = std::max(val, v);
+	return val;
+}
 
+template <typename T, typename ScalarT>
+static bool validate_mesh_attribute(const std::vector<uvec3> &reference_indices,
+                                    const std::vector<T> &reference_attr,
+                                    const std::vector<uvec3> &decoded_indices,
+                                    const std::vector<T> &decoded_attr, ScalarT tolerance)
+{
+	if (reference_indices.size() != decoded_indices.size())
+	{
+		LOGE("Mismatch in index buffer size.\n");
+		return false;
+	}
+
+	for (size_t i = 0, n = decoded_indices.size(); i < n; i++)
+	{
+		uvec3 ref_i = reference_indices[i];
+		uvec3 decode_i = decoded_indices[i];
+
+		for (int c = 0; c < 3; c++)
+		{
+			auto ref_attr = reference_attr[ref_i[c]];
+			auto decode_attr = decoded_attr[decode_i[c]];
+			auto d = abs(ref_attr - decode_attr);
+			auto max_d = max_component(d);
+			if (max_d > tolerance)
+			{
+				LOGE("Mismatch in primitive %zu, c = %d.\n", i, c);
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+int main()
+{
 	Global::init(Global::MANAGER_FEATURE_FILESYSTEM_BIT);
 	Filesystem::setup_default_filesystem(GRANITE_FILESYSTEM(), ASSET_DIRECTORY);
 
@@ -296,7 +515,8 @@ int main(int argc, char *argv[])
 
 	std::vector<uvec3> reference_indices;
 	std::vector<vec3> reference_positions;
-	build_reference_mesh(reference_indices, reference_positions);
+	std::vector<Attr> reference_attributes;
+	build_reference_mesh(reference_indices, reference_positions, reference_attributes);
 
 	mesh.index_type = VK_INDEX_TYPE_UINT32;
 	mesh.count = 3 * reference_indices.size();
@@ -309,7 +529,17 @@ int main(int argc, char *argv[])
 	mesh.positions.resize(reference_positions.size() * sizeof(vec3));
 	memcpy(mesh.positions.data(), reference_positions.data(), reference_positions.size() * sizeof(vec3));
 
-	if (!Meshlet::export_mesh_to_meshlet("/tmp/export.msh2", std::move(mesh), MeshStyle::Wireframe))
+	mesh.attribute_layout[int(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
+	mesh.attribute_layout[int(MeshAttribute::UV)].offset = offsetof(Attr, uv);
+	mesh.attribute_layout[int(MeshAttribute::Normal)].format = VK_FORMAT_R32G32B32_SFLOAT;
+	mesh.attribute_layout[int(MeshAttribute::Normal)].offset = offsetof(Attr, n);
+	mesh.attribute_layout[int(MeshAttribute::Tangent)].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	mesh.attribute_layout[int(MeshAttribute::Tangent)].offset = offsetof(Attr, t);
+	mesh.attribute_stride = sizeof(Attr);
+	mesh.attributes.resize(mesh.attribute_stride * reference_attributes.size());
+	memcpy(mesh.attributes.data(), reference_attributes.data(), mesh.attributes.size());
+
+	if (!Meshlet::export_mesh_to_meshlet("/tmp/export.msh2", std::move(mesh), MeshStyle::Textured))
 		return EXIT_FAILURE;
 
 	auto file = GRANITE_FILESYSTEM()->open("/tmp/export.msh2", FileMode::ReadOnly);
@@ -322,8 +552,11 @@ int main(int argc, char *argv[])
 
 	std::vector<uvec3> decoded_index_buffer;
 	std::vector<vec3> decoded_positions;
+	std::vector<vec2> decoded_uvs;
+	std::vector<vec3> decoded_normals;
+	std::vector<vec4> decoded_tangents;
 	auto view = create_mesh_view(*mapped);
-	decode_mesh(decoded_index_buffer, decoded_positions, view);
+	decode_mesh(decoded_index_buffer, decoded_positions, decoded_uvs, decoded_normals, decoded_tangents, view);
 
 	Vulkan::Context ctx;
 	Vulkan::Device dev;
@@ -349,67 +582,25 @@ int main(int argc, char *argv[])
 	                   decoded_index_buffer, decoded_positions, true))
 		return EXIT_FAILURE;
 
+	std::vector<vec2> reference_uvs;
+	std::vector<vec3> reference_normals;
+	std::vector<vec4> reference_tangents;
+	reference_uvs.reserve(reference_attributes.size());
+	reference_normals.reserve(reference_attributes.size());
+	reference_tangents.reserve(reference_attributes.size());
+	for (auto &a : reference_attributes)
+	{
+		reference_uvs.push_back(a.uv);
+		reference_normals.push_back(a.n);
+		reference_tangents.push_back(a.t);
+	}
+
+	if (!validate_mesh_attribute(reference_indices, reference_uvs, decoded_index_buffer, decoded_uvs, 0.0f))
+		return EXIT_FAILURE;
+	if (!validate_mesh_attribute(reference_indices, reference_normals, decoded_index_buffer, decoded_normals, 0.02f))
+		return EXIT_FAILURE;
+	if (!validate_mesh_attribute(reference_indices, reference_tangents, decoded_index_buffer, decoded_tangents, 0.02f))
+		return EXIT_FAILURE;
+
 	return 0;
-#if 0
-	GLTF::Parser parser(argv[1]);
-
-
-	dev.init_frame_contexts(4);
-
-	auto mesh = parser.get_meshes().front();
-
-	if (!Meshlet::export_mesh_to_meshlet("export.msh1",
-	                                     mesh, MeshStyle::Textured))
-	{
-		return EXIT_FAILURE;
-	}
-
-	auto file = GRANITE_FILESYSTEM()->open("export.msh1", FileMode::ReadOnly);
-	if (!file)
-		return EXIT_FAILURE;
-
-	auto mapped = file->map();
-	if (!mapped)
-		return EXIT_FAILURE;
-
-	auto view = create_mesh_view(*mapped);
-
-	std::vector<uint32_t> reference_index_buffer;
-	std::vector<uint32_t> reference_attributes;
-	std::vector<uint32_t> gpu_index_buffer;
-	std::vector<uint32_t> gpu_attributes;
-
-	decode_mesh(reference_index_buffer, reference_attributes, view);
-	decode_mesh_gpu(dev, gpu_index_buffer, gpu_attributes, view);
-
-	if (!validate_mesh_decode(gpu_index_buffer, gpu_attributes,
-	                          reference_index_buffer, reference_attributes,
-	                          view.format_header->u32_stream_count - 1))
-	{
-		return EXIT_FAILURE;
-	}
-
-	{
-		LOGI("Total primitives: %u\n", view.total_primitives);
-		LOGI("Total vertices: %u\n", view.total_vertices);
-		LOGI("Payload size: %llu bytes.\n", static_cast<unsigned long long>(view.format_header->payload_size_words * sizeof(uint32_t)));
-
-		unsigned long long uncompressed_mesh_size =
-				view.total_primitives * sizeof(uint32_t) * 3 +
-				view.total_vertices * (view.format_header->u32_stream_count - 1) * sizeof(uint32_t);
-		unsigned long long uncompressed_payload_size =
-				view.total_primitives * sizeof(uint32_t) +
-				view.total_vertices * (view.format_header->u32_stream_count - 1) * sizeof(uint32_t);
-		LOGI("Uncompressed mesh size: %llu bytes.\n", uncompressed_mesh_size);
-		LOGI("Uncompressed payload size: %llu bytes.\n", uncompressed_payload_size);
-	}
-
-	{
-		file = GRANITE_FILESYSTEM()->open("export.bin", FileMode::WriteOnly);
-		mapped = file->map_write((reference_index_buffer.size() + reference_attributes.size()) * sizeof(uint32_t));
-		auto *ptr = mapped->mutable_data<uint32_t>();
-		memcpy(ptr, reference_index_buffer.data(), reference_index_buffer.size() * sizeof(uint32_t));
-		memcpy(ptr + reference_index_buffer.size(), reference_attributes.data(), reference_attributes.size() * sizeof(uint32_t));
-	}
-#endif
 }

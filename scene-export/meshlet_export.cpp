@@ -171,7 +171,7 @@ struct NormalTangent
 static std::vector<NormalTangent> mesh_extract_normal_tangent_oct8(const SceneFormats::Mesh &mesh)
 {
 	std::vector<NormalTangent> encoded_attributes;
-	std::vector<vec3> normals;
+	std::vector<vec4> normals;
 	std::vector<vec4> tangents;
 
 	auto &normal = mesh.attribute_layout[Util::ecast(MeshAttribute::Normal)];
@@ -191,7 +191,10 @@ static std::vector<NormalTangent> mesh_extract_normal_tangent_oct8(const SceneFo
 		}
 	}
 	else if (normal.format == VK_FORMAT_UNDEFINED)
-		return {};
+	{
+		for (auto &n : normals)
+			n = {};
+	}
 	else
 	{
 		LOGE("Unexpected format %u.\n", normal.format);
@@ -212,27 +215,30 @@ static std::vector<NormalTangent> mesh_extract_normal_tangent_oct8(const SceneFo
 	{
 		for (size_t i = 0; i < num_attrs; i++)
 		{
-			memcpy(normals[i].data,
+			memcpy(tangents[i].data,
 			       mesh.attributes.data() + i * mesh.attribute_stride + tangent.offset,
 			       sizeof(float) * 4);
 		}
 	}
 	else if (tangent.format == VK_FORMAT_UNDEFINED)
-		return {};
+	{
+		for (auto &t : tangents)
+			t = {};
+	}
 	else
 	{
 		LOGE("Unexpected format %u.\n", tangent.format);
 		return {};
 	}
 
-	encoded_attributes.resize(normals.size());
+	encoded_attributes.reserve(normals.size());
 
-	std::vector<i8vec4> n(encoded_attributes.size());
-	std::vector<i8vec4> t(encoded_attributes.size());
+	std::vector<i8vec4> n(normals.size());
+	std::vector<i8vec4> t(normals.size());
 	meshopt_encodeFilterOct(n.data(), n.size(), sizeof(i8vec4), 8, normals[0].data);
 	meshopt_encodeFilterOct(t.data(), t.size(), sizeof(i8vec4), 8, tangents[0].data);
 
-	for (size_t i = 0, size = encoded_attributes.size(); i < size; i++)
+	for (size_t i = 0, size = normals.size(); i < size; i++)
 		encoded_attributes.push_back({ n[i].xy(), t[i].xy(), tangents[i].w < 0.0f });
 
 	return encoded_attributes;
@@ -409,14 +415,61 @@ static void encode_bitplane_16_inner(std::vector<PayloadB128> &out_payload_buffe
 	}
 }
 
-static void encode_bitplane_16(std::vector<PayloadB128> &out_payload_buffer,
-                               const u16vec3 *values, unsigned encoded_bits)
+static void encode_bitplane(std::vector<PayloadB128> &out_payload_buffer,
+                            const u8vec4 *values, unsigned encoded_bits)
+{
+	if (encoded_bits == 8)
+	{
+		// Plain write.
+		PayloadB128 p[8];
+		memcpy(p, values, sizeof(p));
+		out_payload_buffer.insert(out_payload_buffer.end(), p, p + 8);
+	}
+	else
+	{
+		unsigned bit_offset = 0;
+		PayloadB128 p[4];
+
+		for (int mask = 4; mask; mask >>= 1)
+		{
+			if (encoded_bits & mask)
+			{
+				uint32_t *words = &p[0].words[0];
+				int bits = mask;
+				int num_words = bits;
+
+				for (int i = 0; i < num_words; i++)
+					p[i] = {};
+
+				for (uint32_t i = 0; i < ElementsPerChunk; i++)
+				{
+					auto d = values[i];
+					for (int c = 0; c < 4; c++)
+					{
+						for (int b = 0; b < bits; b++)
+						{
+							int word = c * bits + b;
+							words[word] |= ((d[c] >> (bit_offset + b)) & 1u) << i;
+						}
+					}
+				}
+
+				for (int i = 0; i < num_words; i++)
+					out_payload_buffer.push_back(p[i]);
+				bit_offset += bits;
+			}
+		}
+	}
+}
+
+static void encode_bitplane(std::vector<PayloadB128> &out_payload_buffer,
+                            const u16vec3 *values, unsigned encoded_bits)
 {
 	encode_bitplane_16_inner<3>(out_payload_buffer, values, encoded_bits);
 }
 
-static void encode_bitplane_16(std::vector<PayloadB128> &out_payload_buffer,
-                               const u16vec2 *values, unsigned encoded_bits)
+static void encode_bitplane(std::vector<PayloadB128> &out_payload_buffer,
+                            const u16vec2 *values, unsigned encoded_bits)
 {
 	encode_bitplane_16_inner<2>(out_payload_buffer, values, encoded_bits);
 }
@@ -428,6 +481,8 @@ template <> struct to_signed_vector<u16vec3> { using type = i16vec3; };
 template <> struct to_signed_vector<u16vec2> { using type = i16vec2; };
 template <> struct to_components<u16vec3> { enum { components = 3 }; };
 template <> struct to_components<u16vec2> { enum { components = 2 }; };
+template <> struct to_signed_vector<u8vec4> { using type = i8vec4; };
+template <> struct to_components<u8vec4> { enum { components = 4 }; };
 
 template <typename T>
 static auto max_component(T value) -> std::remove_reference_t<decltype(value.data[0])>
@@ -441,7 +496,7 @@ static auto max_component(T value) -> std::remove_reference_t<decltype(value.dat
 template <typename T>
 static void encode_attribute_stream(std::vector<PayloadB128> &out_payload_buffer,
                                     Stream &stream,
-                                    const T *raw_positions,
+                                    const T *raw_attributes,
                                     uint32_t chunk_index, const uint32_t *vbo_remap,
                                     uint32_t num_attributes)
 {
@@ -450,18 +505,18 @@ static void encode_attribute_stream(std::vector<PayloadB128> &out_payload_buffer
 	using SignedScalar = std::remove_reference_t<decltype(SignedT()[0])>;
 	static_assert(sizeof(T) == 4 || sizeof(T) == 6, "Encoded type must be 32 or 48 bits.");
 
-	T positions[ElementsPerChunk];
+	T attributes[ElementsPerChunk];
 	for (uint32_t i = 0; i < num_attributes; i++)
-		positions[i] = raw_positions[vbo_remap[i]];
+		attributes[i] = raw_attributes[vbo_remap ? vbo_remap[i] : i];
 	for (uint32_t i = num_attributes; i < ElementsPerChunk; i++)
-		positions[i] = positions[0];
+		attributes[i] = attributes[0];
 
 	T ulo{std::numeric_limits<UnsignedScalar>::max()};
 	T uhi{std::numeric_limits<UnsignedScalar>::min()};
 	SignedT slo{std::numeric_limits<SignedScalar>::max()};
 	SignedT shi{std::numeric_limits<SignedScalar>::min()};
 
-	for (auto &p : positions)
+	for (auto &p : attributes)
 	{
 		ulo = min(ulo, p);
 		uhi = max(uhi, p);
@@ -490,13 +545,13 @@ static void encode_attribute_stream(std::vector<PayloadB128> &out_payload_buffer
 	if (to_components<T>::components == 3 && bits_per_component == 16)
 	{
 		memcpy(reinterpret_cast<char *>(&stream.u.base_value[8]) + sizeof(uint16_t) * chunk_index,
-		       &ulo.z, sizeof(uint16_t));
+		       &ulo[2], sizeof(uint16_t));
 	}
 
-	for (auto &p : positions)
+	for (auto &p : attributes)
 		p -= ulo;
 
-	encode_bitplane_16(out_payload_buffer, positions, encoded_bits);
+	encode_bitplane(out_payload_buffer, attributes, encoded_bits);
 }
 
 static void encode_mesh(Encoded &encoded,
@@ -582,6 +637,50 @@ static void encode_mesh(Encoded &encoded,
 					                        static_cast<const u16vec3 *>(pp_data[stream_index]),
 											chunk_index, meshlet.attribute_remap, meshlet.vertex_count);
 					break;
+
+				case StreamType::UV:
+					encode_attribute_stream(encoded.payload, stream,
+					                        static_cast<const u16vec2 *>(pp_data[stream_index]),
+					                        chunk_index, meshlet.attribute_remap, meshlet.vertex_count);
+					break;
+
+				case StreamType::NormalTangentOct8:
+				{
+					u8vec4 nts[ElementsPerChunk]{};
+					uint32_t sign_mask = 0;
+					auto *nt = static_cast<const NormalTangent *>(pp_data[stream_index]);
+					for (unsigned i = 0; i < meshlet.vertex_count; i++)
+					{
+						const auto &mapped_nt = nt[meshlet.attribute_remap[i]];
+						sign_mask |= uint32_t(mapped_nt.t_sign) << i;
+						nts[i] = u8vec4(u8vec2(mapped_nt.n), u8vec2(mapped_nt.t));
+					}
+
+					if (meshlet.vertex_count < ElementsPerChunk && sign_mask == (1u << meshlet.vertex_count) - 1)
+						sign_mask = UINT32_MAX;
+
+					if (sign_mask == 0)
+					{
+						stream.aux |= 1 << (2 * chunk_index);
+					}
+					else if (sign_mask == UINT32_MAX)
+					{
+						stream.aux |= 2 << (2 * chunk_index);
+					}
+					else
+					{
+						stream.aux |= 3 << (2 * chunk_index);
+						for (unsigned i = 0; i < meshlet.vertex_count; i++)
+						{
+							nts[i].w &= ~1;
+							nts[i].w |= (sign_mask >> i) & 1u;
+						}
+					}
+
+					encode_attribute_stream(encoded.payload, stream, nts,
+					                        chunk_index, nullptr, meshlet.vertex_count);
+					break;
+				}
 
 				default:
 					break;

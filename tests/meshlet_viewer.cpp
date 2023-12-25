@@ -814,7 +814,7 @@ Application *application_create(int argc, char **argv)
 
 	try
 	{
-		auto *app = new MeshletViewerApplication(argv[1]);
+		auto *app = new MeshletViewerApplication(path);
 		return app;
 	}
 	catch (const std::exception &e)

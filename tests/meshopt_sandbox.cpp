@@ -405,8 +405,10 @@ static void build_reference_mesh(std::vector<uvec3> &indices, std::vector<vec3> 
 		Attr a = {};
 		a.uv.x = 1.0f * float(i);
 		a.uv.y = a.uv.x * 1.5f;
-		a.n = normalize(vec3(1.0f));
-		a.t = vec4(normalize(vec3(1.0f, -1.0f, 1.0f)), -1.0f);
+		a.n = normalize(vec3(1.0f + float(i), 1.0f, -0.3f));
+		a.t = vec4(a.n.y, -a.n.z, a.n.x, +1.0f);
+		if (i & 1)
+			a.t.w = -1.0f;
 		attr.push_back(a);
 	}
 

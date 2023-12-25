@@ -65,12 +65,6 @@ struct Meshlet
 	const uint32_t *attribute_remap;
 };
 
-struct PrimitiveAnalysisResult
-{
-	uint32_t num_primitives;
-	uint32_t num_attributes;
-};
-
 static i16vec3 encode_vec3_to_snorm_exp(vec3 v, int scale_log2)
 {
 	v.x = ldexpf(v.x, scale_log2);

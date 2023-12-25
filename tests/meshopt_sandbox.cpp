@@ -322,13 +322,31 @@ static void decode_mesh(std::vector<uvec3> &out_index_buffer,
 	}
 }
 
+static vec4 decode_bgr10a2(uint32_t v)
+{
+	vec4 fvalue = vec4(ivec4((uvec4(v) >> uvec4(0, 10, 20, 30)) & 0x3ffu) - ivec4(512, 512, 512, 2)) *
+	              vec4(1.0f / 511.0f, 1.0f / 511.0f, 1.0f / 511.0f, 1.0f);
+	fvalue = clamp(fvalue, vec4(-1.0f), vec4(1.0f));
+	return fvalue;
+}
+
 static void decode_mesh_gpu(
 		Vulkan::Device &dev,
 		std::vector<uvec3> &out_index_buffer, std::vector<vec3> &out_pos_buffer,
+		std::vector<vec2> &out_uvs, std::vector<vec3> &out_normals, std::vector<vec4> &out_tangents,
 		const MeshView &mesh)
 {
 	out_index_buffer.resize(mesh.total_primitives);
 	out_pos_buffer.resize(mesh.total_vertices);
+
+	struct Attr
+	{
+		uint32_t n;
+		uint32_t t;
+		vec2 uv;
+	};
+
+	std::vector<Attr> out_attr_buffer(mesh.total_vertices);
 
 	Vulkan::BufferCreateInfo buf_info = {};
 	buf_info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
@@ -345,6 +363,10 @@ static void decode_mesh_gpu(
 	buf_info.domain = Vulkan::BufferDomain::CachedHost;
 	auto readback_decoded_pos_buffer = dev.create_buffer(buf_info);
 
+	buf_info.size = out_attr_buffer.size() * sizeof(Attr);
+	buf_info.domain = Vulkan::BufferDomain::CachedHost;
+	auto readback_decoded_attr_buffer = dev.create_buffer(buf_info);
+
 	bool has_renderdoc = Vulkan::Device::init_renderdoc_capture();
 	if (has_renderdoc)
 		dev.begin_renderdoc_capture();
@@ -354,11 +376,10 @@ static void decode_mesh_gpu(
 	DecodeInfo info = {};
 	info.ibo = readback_decoded_index_buffer.get();
 	info.streams[0] = readback_decoded_pos_buffer.get();
+	info.streams[1] = readback_decoded_attr_buffer.get();
 	info.target_style = mesh.format_header->style;
 	info.payload = payload_buffer.get();
 	info.flags = DECODE_MODE_UNROLLED_MESH;
-
-	info.target_style = MeshStyle::Wireframe;
 
 	decode_mesh(*cmd, info, mesh);
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
@@ -376,6 +397,23 @@ static void decode_mesh_gpu(
 	memcpy(out_pos_buffer.data(),
 	       dev.map_host_buffer(*readback_decoded_pos_buffer, Vulkan::MEMORY_ACCESS_READ_BIT),
 	       out_pos_buffer.size() * sizeof(vec3));
+
+	out_uvs.clear();
+	out_normals.clear();
+	out_tangents.clear();
+
+	out_uvs.reserve(mesh.total_vertices);
+	out_normals.reserve(mesh.total_vertices);
+	out_tangents.reserve(mesh.total_vertices);
+
+	auto *attrs = static_cast<const Attr *>(dev.map_host_buffer(*readback_decoded_attr_buffer, Vulkan::MEMORY_ACCESS_READ_BIT));
+	for (size_t i = 0, n = mesh.total_vertices; i < n; i++)
+	{
+		auto &attr = attrs[i];
+		out_uvs.push_back(attr.uv);
+		out_normals.push_back(decode_bgr10a2(attr.n).xyz());
+		out_tangents.push_back(decode_bgr10a2(attr.t));
+	}
 }
 
 struct Attr
@@ -574,7 +612,10 @@ int main()
 
 	std::vector<uvec3> gpu_index_buffer;
 	std::vector<vec3> gpu_positions;
-	decode_mesh_gpu(dev, gpu_index_buffer, gpu_positions, view);
+	std::vector<vec2> gpu_uvs;
+	std::vector<vec3> gpu_normals;
+	std::vector<vec4> gpu_tangents;
+	decode_mesh_gpu(dev, gpu_index_buffer, gpu_positions, gpu_uvs, gpu_normals, gpu_tangents, view);
 
 	if (!validate_mesh(decoded_index_buffer, decoded_positions,
 	                   gpu_index_buffer, gpu_positions, false))

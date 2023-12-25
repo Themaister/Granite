@@ -150,7 +150,8 @@ void main()
     // Index
     if (chunk_index < meta.num_chunks && lane_index < chunk_info.primitive_count)
     {
-        uint decoded_index_buffer = meshlet_decode_index_buffer(meshlet_index * NUM_U32_STREAMS,
+        uint decoded_index_buffer = meshlet_decode_index_buffer(
+                meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_PRIMITIVE,
                 chunk_index, lane_index);
 
         if (RUNTIME_MESH)
@@ -179,7 +180,10 @@ void main()
     if (chunk_index < meta.num_chunks && lane_index < chunk_info.vertex_count)
     {
         int exponent;
-        i16vec3 pos = meshlet_decode_snorm_scaled_i16x3(meshlet_index * NUM_U32_STREAMS + 1, chunk_index, lane_index, exponent);
+        i16vec3 pos = meshlet_decode_snorm_scaled_i16x3(
+                meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_POSITION,
+                chunk_index, lane_index, exponent);
+
         vec3 fp_pos = ldexp(vec3(pos), ivec3(exponent));
         uint vertex_output_offset;
         if (RUNTIME_MESH)
@@ -187,7 +191,27 @@ void main()
         else
             vertex_output_offset = registers.vertex_offset + meta.base_vertex_offset + chunk_info.vertex_offset;
         output_stream_pos.data[vertex_output_offset + lane_index] = fp_pos;
+
+        if (TARGET_MESH_STYLE >= MESH_STYLE_TEXTURED)
+        {
+            bool t_sign;
+            u8vec4 nt = meshlet_decode_normal_tangent_oct8(
+                meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_NORMAL_TANGENT_OCT8, t_sign);
+            i16vec2 uv = meshlet_decode_snorm_scaled_i16x2(meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_UV, exponent);
+            vec2 fp_uv = ldexp(vec2(uv), ivec2(exponent));
+            output_stream_textured_attr.data[vertex_output_offset + lane_index] =
+                TexturedAttr(pack_a2bgr10(nt[0]), pack_a2bgr10(nt[1]), fp_uv);
+        }
     }
     else if (RUNTIME_MESH)
-        output_stream_pos.data[gl_WorkGroupSize.x * meshlet_index + 32u * chunk_index + registers.vertex_offset + lane_index] = vec3(intBitsToFloat(-1));
+    {
+        output_stream_pos.data[gl_WorkGroupSize.x * meshlet_index + 32u * chunk_index + registers.vertex_offset + lane_index] =
+            vec3(intBitsToFloat(-1));
+
+        if (TARGET_MESH_STYLE >= MESH_STYLE_TEXTURED)
+        {
+            output_stream_textured_attr.data[gl_WorkGroupSize.x * meshlet_index + 32u * chunk_index + registers.vertex_offset + lane_index] =
+                TexturedAttr(0, 0, vec2(0.0));
+        }
+    }
 }

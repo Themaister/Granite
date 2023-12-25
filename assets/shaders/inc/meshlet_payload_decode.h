@@ -263,4 +263,195 @@ i16vec3 meshlet_decode_snorm_scaled_i16x3(uint stream_index, uint chunk_index, i
 	return i16vec3(value);
 }
 
+i16vec2 meshlet_decode_snorm_scaled_i16x2(uint stream_index, uint chunk_index, int lane_index, out int exponent)
+{
+	uint offset_in_b128 = meshlet_streams.data[stream_index].offset_in_b128;
+	uint bit_plane_config = meshlet_streams.data[stream_index].bit_plane_config;
+	exponent = meshlet_streams.data[stream_index].aux;
+
+	// Scalar math.
+	if (chunk_index != 0)
+	{
+		uint prev_bit_mask = bitfieldExtract(bit_plane_config, 0, int(chunk_index) * 4);
+		offset_in_b128 += bitCount(prev_bit_mask & 0x88888888) * 8;
+		offset_in_b128 += bitCount(prev_bit_mask & 0x44444444) * 4;
+		offset_in_b128 += bitCount(prev_bit_mask & 0x22222222) * 2;
+		offset_in_b128 += bitCount(prev_bit_mask & 0x11111111) * 1;
+	}
+
+	// Scalar math.
+	uint encoded_bits = bitfieldExtract(bit_plane_config, int(chunk_index * 4), 4);
+	uint base_value_xy = meshlet_streams.data[stream_index].base_value_or_offsets[chunk_index];
+	uint base_value_z = meshlet_streams.data[stream_index].base_value_or_offsets[8 + chunk_index / 2];
+	uint base_value_x = bitfieldExtract(base_value_xy, 0, 16);
+	uint base_value_y = bitfieldExtract(base_value_xy, 16, 16);
+	uvec2 base_value = uvec2(base_value_x, base_value_y);
+
+	uvec2 value = uvec2(0);
+
+	if (encoded_bits == 8)
+	{
+		// Vector loads.
+		uint value_xy = payload_u32.data[offset_in_b128 * 4 + lane_index];
+
+		value.x = bitfieldExtract(value_xy, 0, 16);
+		value.y = bitfieldExtract(value_xy, 16, 16);
+	}
+	else if (encoded_bits != 0)
+	{
+		uvec4 p0, p1, p2, p3;
+
+		// Scalar loads, vector math.
+		// Preload early. Also helps compiler prove it can use common descriptor (RADV thing).
+		p0 = payload.data[offset_in_b128];
+		offset_in_b128 += 1;
+
+		int bit_offset = 0;
+		if ((encoded_bits & 4) != 0)
+		{
+			p1 = payload.data[offset_in_b128 + 0];
+			p2 = payload.data[offset_in_b128 + 1];
+			p3 = payload.data[offset_in_b128 + 2];
+
+			UNROLL_BITS_8(value.x, 0, p0, p1);
+			UNROLL_BITS_8(value.y, 0, p2, p3);
+
+			// Preload for next iteration.
+			p0 = payload.data[offset_in_b128 + 3];
+
+			offset_in_b128 += 4;
+			bit_offset += 8;
+		}
+
+		if ((encoded_bits & 2) != 0)
+		{
+			p1 = payload.data[offset_in_b128 + 0];
+
+			UNROLL_BITS_4(value.x, bit_offset, p0);
+			UNROLL_BITS_4(value.y, bit_offset, p1);
+
+			// Preload for next iteration.
+			p0 = payload.data[offset_in_b128 + 1];
+			offset_in_b128 += 2;
+			bit_offset += 4;
+		}
+
+		if ((encoded_bits & 1) != 0)
+		{
+			value.x |= bitfieldExtract(p0.x, lane_index, 1) << (bit_offset + 0);
+			value.x |= bitfieldExtract(p0.y, lane_index, 1) << (bit_offset + 1);
+			value.y |= bitfieldExtract(p0.z, lane_index, 1) << (bit_offset + 0);
+			value.y |= bitfieldExtract(p0.w, lane_index, 1) << (bit_offset + 1);
+		}
+	}
+
+	value += base_value;
+	return i16vec2(value);
+}
+
+#undef UNROLL_BITS_4
+#undef UNROLL_BITS_8
+
+u8vec4 meshlet_decode_normal_tangent_oct8(uint stream_index, uint chunk_index, int lane_index, out bool t_sign)
+{
+	uint offset_in_b128 = meshlet_streams.data[stream_index].offset_in_b128;
+	uint bit_plane_config = meshlet_streams.data[stream_index].bit_plane_config;
+
+	// Scalar math.
+	if (chunk_index != 0)
+	{
+		uint prev_bit_mask = bitfieldExtract(bit_plane_config, 0, int(chunk_index) * 4);
+		offset_in_b128 += bitCount(prev_bit_mask & 0x88888888) * 8;
+		offset_in_b128 += bitCount(prev_bit_mask & 0x44444444) * 4;
+		offset_in_b128 += bitCount(prev_bit_mask & 0x22222222) * 2;
+		offset_in_b128 += bitCount(prev_bit_mask & 0x11111111) * 1;
+	}
+
+	// Scalar math.
+	uint encoded_bits = bitfieldExtract(bit_plane_config, int(chunk_index * 4), 4);
+	uvec4 base_value = uvec4(unpack8(meshlet_streams.data[stream_index].base_value_or_offsets[chunk_index]));
+	uvec4 value = uvec4(0);
+
+	if (encoded_bits == 8)
+	{
+		// Vector loads.
+		uint value_xyzw = payload_u32.data[offset_in_b128 * 4 + lane_index];
+		value = uvec4(unpack8(value_xyzw));
+	}
+	else if (encoded_bits != 0)
+	{
+		uvec4 p0, p1, p2, p3;
+
+		// Scalar loads, vector math.
+		// Preload early. Also helps compiler prove it can use common descriptor (RADV thing).
+		p0 = payload.data[offset_in_b128];
+		offset_in_b128 += 1;
+
+#define UNROLL_BITS_4(out_value, bit_offset, p) \
+	out_value |= bitfieldExtract(p.x, lane_index, 1) << ((bit_offset) + 0); \
+	out_value |= bitfieldExtract(p.y, lane_index, 1) << ((bit_offset) + 1); \
+	out_value |= bitfieldExtract(p.z, lane_index, 1) << ((bit_offset) + 2); \
+	out_value |= bitfieldExtract(p.w, lane_index, 1) << ((bit_offset) + 3)
+
+		int bit_offset = 0;
+		if ((encoded_bits & 4) != 0)
+		{
+			p1 = payload.data[offset_in_b128 + 0];
+			p2 = payload.data[offset_in_b128 + 1];
+			p3 = payload.data[offset_in_b128 + 2];
+
+			UNROLL_BITS_4(value.x, 0, p0);
+			UNROLL_BITS_4(value.y, 0, p1);
+			UNROLL_BITS_4(value.z, 0, p2);
+			UNROLL_BITS_4(value.w, 0, p3);
+
+			// Preload for next iteration.
+			p0 = payload.data[offset_in_b128 + 3];
+
+			offset_in_b128 += 4;
+			bit_offset += 4;
+		}
+
+		if ((encoded_bits & 2) != 0)
+		{
+			p1 = payload.data[offset_in_b128 + 0];
+
+			value.x |= bitfieldExtract(p0.x, lane_index, 1) << (bit_offset + 0);
+			value.x |= bitfieldExtract(p0.y, lane_index, 1) << (bit_offset + 1);
+			value.y |= bitfieldExtract(p0.z, lane_index, 1) << (bit_offset + 0);
+			value.y |= bitfieldExtract(p0.w, lane_index, 1) << (bit_offset + 1);
+			value.z |= bitfieldExtract(p1.x, lane_index, 1) << (bit_offset + 0);
+			value.z |= bitfieldExtract(p1.y, lane_index, 1) << (bit_offset + 1);
+			value.w |= bitfieldExtract(p1.z, lane_index, 1) << (bit_offset + 0);
+			value.w |= bitfieldExtract(p1.w, lane_index, 1) << (bit_offset + 1);
+
+			// Preload for next iteration.
+			p0 = payload.data[offset_in_b128 + 1];
+			offset_in_b128 += 2;
+			bit_offset += 2;
+		}
+
+		if ((encoded_bits & 1) != 0)
+		{
+			value.x |= bitfieldExtract(p0.x, lane_index, 1) << bit_offset;
+			value.y |= bitfieldExtract(p0.y, lane_index, 1) << bit_offset;
+			value.z |= bitfieldExtract(p0.z, lane_index, 1) << bit_offset;
+			value.w |= bitfieldExtract(p0.w, lane_index, 1) << bit_offset;
+		}
+	}
+
+	value += base_value;
+
+	uint aux = bitfieldExtract(uint(meshlet_streams.data[stream_index].aux), int(chunk_index * 2), 2);
+	if (aux == 3)
+	{
+		t_sign = bool(value.w & 1);
+		value.w &= ~1;
+	}
+	else
+		t_sign = aux == 2;
+
+	return u8vec4(value);
+}
+
 #endif

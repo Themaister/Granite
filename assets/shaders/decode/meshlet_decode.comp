@@ -17,6 +17,7 @@ layout(constant_id = 3) const bool RUNTIME_MESH = false;
 #define MESHLET_PAYLOAD_PAYLOAD_BINDING 2
 #include "../inc/meshlet_payload_decode.h"
 #include "../inc/meshlet_attribute_decode.h"
+#include "../inc/meshlet_payload_constants.h"
 
 const int MESH_STYLE_WIREFRAME = 0;
 const int MESH_STYLE_TEXTURED = 1;
@@ -196,11 +197,16 @@ void main()
         {
             bool t_sign;
             u8vec4 nt = meshlet_decode_normal_tangent_oct8(
-                meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_NORMAL_TANGENT_OCT8, t_sign);
-            i16vec2 uv = meshlet_decode_snorm_scaled_i16x2(meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_UV, exponent);
+                meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_NORMAL_TANGENT_OCT8,
+                chunk_index, lane_index, t_sign);
+            i16vec2 uv = meshlet_decode_snorm_scaled_i16x2(
+                meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_UV,
+                chunk_index, lane_index, exponent);
             vec2 fp_uv = ldexp(vec2(uv), ivec2(exponent));
+
+            mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
             output_stream_textured_attr.data[vertex_output_offset + lane_index] =
-                TexturedAttr(pack_a2bgr10(nt[0]), pack_a2bgr10(nt[1]), fp_uv);
+                TexturedAttr(pack_a2bgr10(NT[0]), pack_a2bgr10(NT[1]), fp_uv);
         }
     }
     else if (RUNTIME_MESH)

@@ -26,8 +26,10 @@ layout(local_size_x = 32, local_size_y_id = 0) in;
 #include "meshlet_render_types.h"
 #include "meshlet_primitive_cull.h"
 
-layout(location = 0) out vec3 vWorldPos[];
-layout(location = 1) perprimitiveEXT out uint vDrawID[];
+layout(location = 0) out vec3 vNormal[];
+layout(location = 1) out vec4 vTangent[];
+layout(location = 2) out vec2 vUV[];
+layout(location = 3) perprimitiveEXT out uint vDrawID[];
 
 layout(set = 1, binding = 0) uniform UBO
 {
@@ -106,7 +108,9 @@ void main()
         if (lane_index < index_chunk_info.vertex_count)
         {
             int exponent;
-            i16vec3 ipos = meshlet_decode_snorm_scaled_i16x3(meta.stream_offset + 1, chunk_index, lane_index, exponent);
+            i16vec3 ipos = meshlet_decode_snorm_scaled_i16x3(
+                meta.stream_offset + MESHLET_STREAM_TYPE_POSITION,
+                chunk_index, lane_index, exponent);
             vec3 pos = ldexp(vec3(ipos), ivec3(exponent));
             world_pos = (M * vec4(pos, 1.0)).xyz;
             clip_pos = VP * vec4(world_pos, 1.0);
@@ -114,14 +118,28 @@ void main()
     }
 
     meshlet_emit_primitive(unpack8(decoded_index_buffer).xyz, clip_pos, viewport);
-    if (linear_index < shared_active_prim_count_total)
-        vDrawID[linear_index] = task.meshlet_index;
+    if (gl_LocalInvocationIndex < shared_active_prim_count_total)
+        vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
 
     if (meshlet_lane_has_active_vert())
     {
         uint out_vert_index = meshlet_compacted_vertex_output();
         gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
-        vWorldPos[out_vert_index] = world_pos;
+
+        int exponent;
+        bool t_sign;
+        u8vec4 nt = meshlet_decode_normal_tangent_oct8(
+                meta.stream_offset + MESHLET_STREAM_TYPE_NORMAL_TANGENT_OCT8,
+                chunk_index, lane_index, t_sign);
+        i16vec2 uv = meshlet_decode_snorm_scaled_i16x2(
+                meta.stream_offset + MESHLET_STREAM_TYPE_UV,
+                chunk_index, lane_index, exponent);
+
+        vUV[out_vert_index] = attribute_decode_snorm_exp_uv(uv, exponent);
+
+        mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
+        vNormal[out_vert_index] = mat3(M) * NT[0].xyz;
+        vTangent[out_vert_index] = vec4(mat3(M) * NT[1].xyz, NT[1].w);
     }
 
     if (gl_LocalInvocationIndex == 0)

@@ -202,7 +202,7 @@ void main()
             i16vec2 uv = meshlet_decode_snorm_scaled_i16x2(
                 meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_UV,
                 chunk_index, lane_index, exponent);
-            vec2 fp_uv = ldexp(vec2(uv), ivec2(exponent));
+            vec2 fp_uv = attribute_decode_snorm_exp_uv(uv, exponent);
 
             mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
             output_stream_textured_attr.data[vertex_output_offset + lane_index] =
@@ -217,7 +217,7 @@ void main()
         if (TARGET_MESH_STYLE >= MESH_STYLE_TEXTURED)
         {
             output_stream_textured_attr.data[gl_WorkGroupSize.x * meshlet_index + 32u * chunk_index + registers.vertex_offset + lane_index] =
-                TexturedAttr(0, 0, vec2(0.0));
+                TexturedAttr(-1u, -1u, vec2(intBitsToFloat(-1)));
         }
     }
 }

@@ -21,8 +21,8 @@ layout(local_size_x = 32, local_size_y_id = 0) in;
 #include "meshlet_render_types.h"
 #include "meshlet_primitive_cull.h"
 
-layout(location = 0) out vec3 vNormal[];
-layout(location = 1) out vec4 vTangent[];
+layout(location = 0) out mediump vec3 vNormal[];
+layout(location = 1) out mediump vec4 vTangent[];
 layout(location = 2) out vec2 vUV[];
 layout(location = 3) perprimitiveEXT out uint vDrawID[];
 
@@ -125,8 +125,8 @@ void main()
     uvec3 prim = uvec3(ibo.data[meshlet.primitive_offset + linear_index + 32u * base_chunk_index]);
     meshlet_emit_primitive(prim, clip_pos, viewport);
 
-    if (linear_index < shared_active_prim_count_total)
-        vDrawID[linear_index] = task.meshlet_index;
+    if (gl_LocalInvocationIndex < shared_active_prim_count_total)
+        vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
 
     if (meshlet_lane_has_active_vert())
     {

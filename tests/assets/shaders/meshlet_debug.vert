@@ -4,9 +4,16 @@
 #include "meshlet_render_types.h"
 
 layout(location = 0) in vec3 POS;
-layout(location = 0) out vec3 vWorldPos;
+layout(location = 1) in mediump vec3 NORMAL;
+layout(location = 2) in mediump vec4 TANGENT;
+layout(location = 3) in vec2 UV;
+
+layout(location = 0) out mediump vec3 vNormal;
+layout(location = 1) out mediump vec4 vTangent;
+layout(location = 2) out vec2 vUV;
+
 #if !SINGLE_INSTANCE_RENDER
-layout(location = 1) flat out uint vDrawID;
+layout(location = 3) flat out uint vDrawID;
 #endif
 
 layout(set = 1, binding = 0) uniform UBO
@@ -37,7 +44,9 @@ void main()
     mat4 M = transforms.data[draw_info.data[gl_DrawIDARB].node_offset];
 #endif
     vec3 world_pos = (M * vec4(POS, 1.0)).xyz;
-    vWorldPos = world_pos;
+    vNormal = mat3(M) * NORMAL;
+    vTangent = vec4(mat3(M) * TANGENT.xyz, TANGENT.w);
+    vUV = UV;
 #if !SINGLE_INSTANCE_RENDER
     vDrawID = draw_info.data[gl_DrawIDARB].meshlet_index;
 #endif

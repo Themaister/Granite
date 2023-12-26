@@ -95,29 +95,16 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			materials.push_back(GRANITE_MATERIAL_MANAGER()->register_material(&albedo, 1, nullptr, 0));
 		}
 
-#if 1
 		unsigned count = 0;
 		for (auto &mesh : parser.get_meshes())
 		{
-#if 0
-			if (!mesh.has_material ||
-			    mesh.attribute_layout[int(MeshAttribute::Normal)].format == VK_FORMAT_UNDEFINED ||
-			    mesh.attribute_layout[int(MeshAttribute::UV)].format == VK_FORMAT_UNDEFINED ||
-			    mesh.attribute_layout[int(MeshAttribute::Tangent)].format == VK_FORMAT_UNDEFINED)
-			{
-				mesh_assets.emplace_back();
-				continue;
-			}
-#endif
-
 			auto internal_path = std::string("memory://mesh") + std::to_string(count++);
-			if (!::Granite::Meshlet::export_mesh_to_meshlet(internal_path, mesh, MeshStyle::Wireframe))
+			if (!::Granite::Meshlet::export_mesh_to_meshlet(internal_path, mesh, MeshStyle::Textured))
 				throw std::runtime_error("Failed to export meshlet.");
 
 			mesh_assets.push_back(GRANITE_ASSET_MANAGER()->register_asset(
 					*GRANITE_FILESYSTEM(), internal_path, Granite::AssetClass::Mesh));
 		}
-#endif
 
 		for (auto &node : parser.get_nodes())
 		{

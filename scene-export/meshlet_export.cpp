@@ -263,7 +263,10 @@ static std::vector<i16vec2> mesh_extract_uv_snorm_scale(const SceneFormats::Mesh
 		}
 	}
 	else if (fmt == VK_FORMAT_UNDEFINED)
-		return {};
+	{
+		for (auto &uv : uvs)
+			uv = {};
+	}
 	else
 	{
 		LOGE("Unexpected format %u.\n", fmt);

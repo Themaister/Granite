@@ -21,8 +21,10 @@ layout(local_size_x = 32, local_size_y_id = 0) in;
 #include "meshlet_render_types.h"
 #include "meshlet_primitive_cull.h"
 
-layout(location = 0) out vec3 vWorldPos[];
-layout(location = 1) perprimitiveEXT out uint vDrawID[];
+layout(location = 0) out vec3 vNormal[];
+layout(location = 1) out vec4 vTangent[];
+layout(location = 2) out vec2 vUV[];
+layout(location = 3) perprimitiveEXT out uint vDrawID[];
 
 layout(set = 1, binding = 0) uniform UBO
 {
@@ -43,6 +45,18 @@ layout(set = 0, binding = 1, scalar) readonly buffer VBOPOS
 {
     vec3 data[];
 } pos;
+
+struct TexturedAttr
+{
+    uint n;
+    uint t;
+    vec2 uv;
+};
+
+layout(set = 0, binding = 2, std430) readonly buffer VBOATTR
+{
+    TexturedAttr data[];
+} attr;
 
 layout(set = 0, binding = 3, std430) readonly buffer IndirectCommands
 {
@@ -69,6 +83,16 @@ layout(set = 0, binding = 10) buffer Stats
     uint prim;
     uint vert;
 } stats;
+
+mediump vec4 unpack_bgr10a2(uint v)
+{
+    mediump ivec4 vs;
+    vs.x = bitfieldExtract(int(v), 0, 10);
+    vs.y = bitfieldExtract(int(v), 10, 10);
+    vs.z = bitfieldExtract(int(v), 20, 10);
+    vs.w = bitfieldExtract(int(v), 30, 3);
+    return vec4(vs) / vec4(511.0, 511.0, 511.0, 1.0);
+}
 
 void main()
 {
@@ -108,7 +132,14 @@ void main()
     {
         uint out_vert_index = meshlet_compacted_vertex_output();
         gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
-        vWorldPos[out_vert_index] = world_pos;
+
+        TexturedAttr a = attr.data[meshlet.vertex_offset + linear_index + 32u * base_chunk_index];
+
+        mediump vec3 n = unpack_bgr10a2(a.n).xyz;
+        mediump vec4 t = unpack_bgr10a2(a.t);
+        vUV[out_vert_index] = a.uv;
+        vNormal[out_vert_index] = mat3(M) * n;
+        vTangent[out_vert_index] = vec4(mat3(M) * t.xyz, t.w);
     }
 
     if (gl_LocalInvocationIndex == 0)

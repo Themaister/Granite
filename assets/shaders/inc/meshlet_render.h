@@ -25,16 +25,7 @@
 #error "Must define MESHLET_RENDER_TASKS_BINDING before including meshlet_render.h"
 #endif
 
-struct AABB
-{
-	vec3 lo; float pad0; vec3 hi; float pad;
-};
-
-struct Bound
-{
-	vec4 center_radius;
-	vec4 cone;
-};
+#include "meshlet_render_types.h"
 
 layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_BOUND_BINDING, std430) readonly buffer Bounds
 {
@@ -55,14 +46,6 @@ layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_FRUSTUM_BIN
 {
 	vec4 planes[6];
 } frustum;
-
-struct TaskInfo
-{
-	uint aabb_instance;
-	uint node_instance;
-	uint node_count_material_index; // Skinning
-	uint mesh_index_count;
-};
 
 layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_TASKS_BINDING, std430) readonly buffer Tasks
 {

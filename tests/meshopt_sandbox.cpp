@@ -1,5 +1,6 @@
 #include "logging.hpp"
 #include <vector>
+#include <algorithm>
 #include "math.hpp"
 #include "device.hpp"
 #include "context.hpp"
@@ -12,118 +13,359 @@
 using namespace Granite;
 using namespace Vulkan::Meshlet;
 
-static void decode_mesh_setup_buffers(
-		std::vector<uint32_t> &out_index_buffer, std::vector<uint32_t> &out_u32_stream,
-		const MeshView &mesh)
+static void decode_mesh_index_buffer(std::vector<uvec3> &out_index_buffer, const MeshView &mesh, uint32_t meshlet_index)
 {
-	assert(mesh.format_header->u32_stream_count > 1);
+	auto &meshlet = mesh.headers[meshlet_index];
+	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
+	const auto *pdata = mesh.payload + stream.offset_in_b128;
 
-	out_index_buffer.clear();
-	out_u32_stream.clear();
-	out_index_buffer.resize(mesh.total_primitives * 3);
-	out_u32_stream.resize(mesh.total_vertices * (mesh.format_header->u32_stream_count - 1));
-}
-
-static void decode_mesh(std::vector<uint32_t> &out_index_buffer, std::vector<uint32_t> &out_u32_stream,
-                        const MeshView &mesh)
-{
-	decode_mesh_setup_buffers(out_index_buffer, out_u32_stream, mesh);
-	out_index_buffer.clear();
-	const unsigned u32_stride = mesh.format_header->u32_stream_count - 1;
-
-	for (uint32_t meshlet_index = 0; meshlet_index < mesh.format_header->meshlet_count; meshlet_index++)
+	for (uint32_t chunk_index = 0; chunk_index < meshlet.num_chunks; chunk_index++)
 	{
-		auto &meshlet = mesh.headers[meshlet_index];
-		for (unsigned stream_index = 0; stream_index < mesh.format_header->u32_stream_count; stream_index++)
+		auto p0 = pdata[0];
+		auto p1 = pdata[1];
+		auto p2 = pdata[2];
+		auto p3 = pdata[3];
+
+		pdata += 4;
+
+		uint32_t num_primitives_for_chunk = stream.u.offsets[chunk_index + 1].prim_offset -
+		                                    stream.u.offsets[chunk_index].prim_offset;
+
+		for (uint32_t i = 0; i < num_primitives_for_chunk; i++)
 		{
-			auto &stream = mesh.streams[meshlet_index * mesh.format_header->u32_stream_count + stream_index];
-			const uint32_t *pdata = mesh.payload + stream.offset_from_base_u32;
+			uint32_t v = 0;
+			v |= ((p0.words[0] >> i) & 1u) << 0u;
+			v |= ((p0.words[1] >> i) & 1u) << 1u;
+			v |= ((p0.words[2] >> i) & 1u) << 2u;
+			v |= ((p0.words[3] >> i) & 1u) << 3u;
 
-			u8vec4 deltas[MaxElements] = {};
-			const u16vec4 base_predictor = u16vec4(
-					stream.predictor[0], stream.predictor[1],
-					stream.predictor[2], stream.predictor[3]);
-			const u16vec4 linear_predictor = u16vec4(
-					stream.predictor[4], stream.predictor[5],
-					stream.predictor[6], stream.predictor[7]);
-			const u8vec4 initial_value =
-					u8vec4(u16vec2(stream.predictor[8], stream.predictor[9]).xxyy() >> u16vec4(0, 8, 0, 8));
+			v |= ((p1.words[0] >> i) & 1u) << 8u;
+			v |= ((p1.words[1] >> i) & 1u) << 9u;
+			v |= ((p1.words[2] >> i) & 1u) << 10u;
+			v |= ((p1.words[3] >> i) & 1u) << 11u;
 
-			for (unsigned chunk = 0; chunk < (MaxElements / 32); chunk++)
-			{
-				auto bits_per_u8 = (uvec4(stream.bitplane_meta[chunk]) >> uvec4(0, 4, 8, 12)) & 0xfu;
-				uvec4 bitplanes[8] = {};
+			v |= ((p2.words[0] >> i) & 1u) << 16u;
+			v |= ((p2.words[1] >> i) & 1u) << 17u;
+			v |= ((p2.words[2] >> i) & 1u) << 18u;
+			v |= ((p2.words[3] >> i) & 1u) << 19u;
 
-				for (unsigned comp = 0; comp < 4; comp++)
-				{
-					for (unsigned bit = 0; bit < bits_per_u8[comp]; bit++)
-						bitplanes[bit][comp] = *pdata++;
+			v |= ((p3.words[0] >> i) & 1u) << 4u;
+			v |= ((p3.words[1] >> i) & 1u) << 12u;
+			v |= ((p3.words[2] >> i) & 1u) << 20u;
 
-					// Sign-extend.
+			v += stream.u.offsets[chunk_index].attr_offset * 0x010101u;
 
-					unsigned bit_count = bits_per_u8[comp];
-					if (bit_count)
-						for (unsigned bit = bit_count; bit < 8; bit++)
-							bitplanes[bit][comp] = bitplanes[bit_count - 1][comp];
-				}
+			uint32_t x = v & 0xffu;
+			uint32_t y = (v >> 8u) & 0xffu;
+			uint32_t z = (v >> 16u) & 0xffu;
 
-				for (unsigned i = 0; i < 32; i++)
-				{
-					for (uint32_t bit = 0; bit < 8; bit++)
-						deltas[chunk * 32 + i] |= u8vec4(((bitplanes[bit] >> i) & 1u) << bit);
-				}
-			}
-
-			// Apply predictors.
-			deltas[0] += initial_value;
-			for (unsigned i = 0; i < MaxElements; i++)
-				deltas[i] += u8vec4((base_predictor + linear_predictor * u16vec4(i)) >> u16vec4(8));
-
-			// Resolve deltas.
-			for (unsigned i = 1; i < MaxElements; i++)
-				deltas[i] += deltas[i - 1];
-
-			if (stream_index == 0)
-			{
-				// Index decode.
-				unsigned num_primitives = meshlet.num_primitives_minus_1 + 1;
-				for (unsigned i = 0; i < num_primitives; i++)
-					for (unsigned j = 0; j < 3; j++)
-						out_index_buffer.push_back(deltas[i][j] + meshlet.base_vertex_offset);
-			}
-			else
-			{
-				// Attributes.
-				unsigned num_attributes = meshlet.num_attributes_minus_1 + 1;
-				auto *out_attr = out_u32_stream.data() + meshlet.base_vertex_offset * u32_stride + (stream_index - 1);
-				for (unsigned i = 0; i < num_attributes; i++, out_attr += u32_stride)
-					memcpy(out_attr, deltas[i].data, sizeof(*out_attr));
-			}
+			out_index_buffer.push_back(uvec3(x, y, z) + meshlet.base_vertex_offset);
 		}
 	}
 }
 
+template <int Components, typename T>
+static void decode_bitfield_block_16(T *block, const PayloadB128 *&pdata, unsigned config)
+{
+	unsigned bit_offset = 0;
+
+	for (int mask = 4; mask; mask >>= 1)
+	{
+		if (config & mask)
+		{
+			const uint32_t *words = &pdata->words[0];
+			int bits = mask * 2;
+
+			for (uint32_t i = 0; i < ElementsPerChunk; i++)
+			{
+				T &d = block[i];
+				for (int c = 0; c < Components; c++)
+				{
+					for (int b = 0; b < bits; b++)
+					{
+						int word = c * bits + b;
+						d[c] |= ((words[word] >> i) & 1u) << (bit_offset + b);
+					}
+				}
+			}
+
+			int num_words = (bits * Components + 3) / 4;
+			pdata += num_words;
+			bit_offset += bits;
+		}
+	}
+}
+
+template <int Components, typename T>
+static void decode_bitfield_block_8(T *block, const PayloadB128 *&pdata, unsigned config)
+{
+	unsigned bit_offset = 0;
+
+	for (int mask = 4; mask; mask >>= 1)
+	{
+		if (config & mask)
+		{
+			const uint32_t *words = &pdata->words[0];
+			int bits = mask;
+
+			for (uint32_t i = 0; i < ElementsPerChunk; i++)
+			{
+				T &d = block[i];
+				for (int c = 0; c < Components; c++)
+				{
+					for (int b = 0; b < bits; b++)
+					{
+						int word = c * bits + b;
+						d[c] |= ((words[word] >> i) & 1u) << (bit_offset + b);
+					}
+				}
+			}
+
+			int num_words = (bits * Components + 3) / 4;
+			pdata += num_words;
+			bit_offset += bits;
+		}
+	}
+}
+
+static void decode_attribute_buffer(std::vector<vec3> &out_positions, const MeshView &mesh, uint32_t meshlet_index, StreamType type)
+{
+	auto &meshlet = mesh.headers[meshlet_index];
+	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
+	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
+	const auto *pdata = mesh.payload + stream.offset_in_b128;
+
+	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
+	{
+		u16vec3 positions[ElementsPerChunk]{};
+		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
+
+		if (config == 8)
+		{
+			for (uint32_t i = 0; i < ElementsPerChunk; i++)
+			{
+				memcpy(positions[i].data, &pdata[i / 4].words[i % 4], 2 * sizeof(uint16_t));
+				memcpy(&positions[i].z,
+				       reinterpret_cast<const char *>(&pdata[8]) + sizeof(uint16_t) * i,
+				       sizeof(uint16_t));
+			}
+
+			pdata += 12;
+		}
+		else
+		{
+			decode_bitfield_block_16<3>(positions, pdata, config);
+		}
+
+		u16vec3 base;
+		memcpy(base.data, &stream.u.base_value[chunk], sizeof(uint16_t) * 2);
+		memcpy(&base.z, reinterpret_cast<const char *>(&stream.u.base_value[NumChunks]) +
+		                sizeof(uint16_t) * chunk,
+		       sizeof(uint16_t));
+
+		for (auto &p : positions)
+			p += base;
+
+		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
+		                                    index_stream.u.offsets[chunk].attr_offset;
+
+		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
+		{
+			vec3 float_pos = vec3(i16vec3(positions[i]));
+			float_pos.x = ldexpf(float_pos.x, stream.aux);
+			float_pos.y = ldexpf(float_pos.y, stream.aux);
+			float_pos.z = ldexpf(float_pos.z, stream.aux);
+			out_positions.push_back(float_pos);
+		}
+	}
+}
+
+static void decode_attribute_buffer(std::vector<vec2> &out_uvs, const MeshView &mesh, uint32_t meshlet_index, StreamType type)
+{
+	auto &meshlet = mesh.headers[meshlet_index];
+	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
+	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
+	const auto *pdata = mesh.payload + stream.offset_in_b128;
+
+	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
+	{
+		u16vec2 uvs[ElementsPerChunk]{};
+		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
+
+		if (config == 8)
+		{
+			for (uint32_t i = 0; i < ElementsPerChunk; i++)
+				memcpy(uvs[i].data, &pdata[i / 4].words[i % 4], 2 * sizeof(uint16_t));
+
+			pdata += 8;
+		}
+		else
+		{
+			decode_bitfield_block_16<2>(uvs, pdata, config);
+		}
+
+		u16vec2 base;
+		memcpy(base.data, &stream.u.base_value[chunk], sizeof(uint16_t) * 2);
+
+		for (auto &p : uvs)
+			p += base;
+
+		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
+		                                    index_stream.u.offsets[chunk].attr_offset;
+
+		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
+		{
+			vec2 float_pos = vec2(i16vec2(uvs[i]));
+			float_pos.x = ldexpf(float_pos.x, stream.aux);
+			float_pos.y = ldexpf(float_pos.y, stream.aux);
+			out_uvs.push_back(0.5f * float_pos + 0.5f);
+		}
+	}
+}
+
+static vec3 decode_oct8(i8vec2 payload)
+{
+	vec2 f = vec2(payload) * (1.0f / 127.0f);
+	vec3 n = vec3(f.x, f.y, 1.0f - abs(f.x) - abs(f.y));
+	float t = max(-n.z, 0.0f);
+
+	if (n.x > 0.0f)
+		n.x -= t;
+	else
+		n.x += t;
+
+	if (n.y > 0.0f)
+		n.y -= t;
+	else
+		n.y += t;
+
+	return normalize(n);
+}
+
+static void decode_attribute_buffer(std::vector<vec3> &out_normals, std::vector<vec4> &out_tangents,
+                                    const MeshView &mesh, uint32_t meshlet_index, StreamType type)
+{
+	auto &meshlet = mesh.headers[meshlet_index];
+	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
+	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
+	const auto *pdata = mesh.payload + stream.offset_in_b128;
+
+	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
+	{
+		u8vec4 nts[ElementsPerChunk]{};
+		uint32_t t_signs = 0;
+
+		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
+
+		if (config == 8)
+		{
+			memcpy(nts, pdata, sizeof(nts));
+			pdata += 8;
+		}
+		else
+		{
+			decode_bitfield_block_8<4>(nts, pdata, config);
+		}
+
+		int aux = (stream.aux >> (2 * chunk)) & 3;
+
+		if (aux == 1)
+		{
+			t_signs = 0;
+		}
+		else if (aux == 2)
+		{
+			t_signs = UINT32_MAX;
+		}
+
+		u8vec4 base;
+		memcpy(base.data, &stream.u.base_value[chunk], sizeof(base.data));
+
+		for (auto &p : nts)
+			p += base;
+
+		if (aux == 3)
+		{
+			for (unsigned i = 0; i < ElementsPerChunk; i++)
+			{
+				t_signs |= (nts[i].w & 1u) << i;
+				nts[i].w &= ~1;
+			}
+		}
+
+		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
+		                                    index_stream.u.offsets[chunk].attr_offset;
+
+		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
+		{
+			vec3 n = decode_oct8(i8vec2(nts[i].xy()));
+			vec3 t = decode_oct8(i8vec2(nts[i].zw()));
+			out_normals.push_back(n);
+			out_tangents.emplace_back(t, (t_signs & (1u << i)) != 0 ? -1.0f : 1.0f);
+		}
+	}
+}
+
+static void decode_mesh(std::vector<uvec3> &out_index_buffer,
+                        std::vector<vec3> &out_positions,
+						std::vector<vec2> &out_uvs,
+						std::vector<vec3> &out_normals,
+						std::vector<vec4> &out_tangents,
+                        const MeshView &mesh)
+{
+	for (uint32_t meshlet_index = 0; meshlet_index < mesh.format_header->meshlet_count; meshlet_index++)
+	{
+		decode_mesh_index_buffer(out_index_buffer, mesh, meshlet_index);
+		decode_attribute_buffer(out_positions, mesh, meshlet_index, StreamType::Position);
+		decode_attribute_buffer(out_uvs, mesh, meshlet_index, StreamType::UV);
+		decode_attribute_buffer(out_normals, out_tangents, mesh, meshlet_index, StreamType::NormalTangentOct8);
+	}
+}
+
+static vec4 decode_bgr10a2(uint32_t v)
+{
+	vec4 fvalue = vec4(ivec4((uvec4(v) >> uvec4(0, 10, 20, 30)) & 0x3ffu) - ivec4(512, 512, 512, 2)) *
+	              vec4(1.0f / 511.0f, 1.0f / 511.0f, 1.0f / 511.0f, 1.0f);
+	fvalue = clamp(fvalue, vec4(-1.0f), vec4(1.0f));
+	return fvalue;
+}
+
 static void decode_mesh_gpu(
 		Vulkan::Device &dev,
-		std::vector<uint32_t> &out_index_buffer, std::vector<uint32_t> &out_u32_stream,
+		std::vector<uvec3> &out_index_buffer, std::vector<vec3> &out_pos_buffer,
+		std::vector<vec2> &out_uvs, std::vector<vec3> &out_normals, std::vector<vec4> &out_tangents,
 		const MeshView &mesh)
 {
-	decode_mesh_setup_buffers(out_index_buffer, out_u32_stream, mesh);
+	out_index_buffer.resize(mesh.total_primitives);
+	out_pos_buffer.resize(mesh.total_vertices);
+
+	struct Attr
+	{
+		uint32_t n;
+		uint32_t t;
+		vec2 uv;
+	};
+
+	std::vector<Attr> out_attr_buffer(mesh.total_vertices);
 
 	Vulkan::BufferCreateInfo buf_info = {};
 	buf_info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
 	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	buf_info.size = mesh.format_header->payload_size_words * sizeof(uint32_t);
+	buf_info.size = mesh.format_header->payload_size_b128 * sizeof(PayloadB128);
 	auto payload_buffer = dev.create_buffer(buf_info, mesh.payload);
 
-	buf_info.size = out_index_buffer.size() * sizeof(uint32_t);
+	buf_info.size = out_index_buffer.size() * sizeof(uvec3);
 	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	buf_info.domain = Vulkan::BufferDomain::CachedHost;
 	auto readback_decoded_index_buffer = dev.create_buffer(buf_info);
 
-	buf_info.size = out_u32_stream.size() * sizeof(uint32_t);
+	buf_info.size = out_pos_buffer.size() * sizeof(vec3);
 	buf_info.domain = Vulkan::BufferDomain::CachedHost;
-	auto readback_decoded_u32_buffer = dev.create_buffer(buf_info);
+	auto readback_decoded_pos_buffer = dev.create_buffer(buf_info);
+
+	buf_info.size = out_attr_buffer.size() * sizeof(Attr);
+	buf_info.domain = Vulkan::BufferDomain::CachedHost;
+	auto readback_decoded_attr_buffer = dev.create_buffer(buf_info);
 
 	bool has_renderdoc = Vulkan::Device::init_renderdoc_capture();
 	if (has_renderdoc)
@@ -133,10 +375,11 @@ static void decode_mesh_gpu(
 
 	DecodeInfo info = {};
 	info.ibo = readback_decoded_index_buffer.get();
-	info.streams[0] = readback_decoded_u32_buffer.get();
+	info.streams[0] = readback_decoded_pos_buffer.get();
+	info.streams[1] = readback_decoded_attr_buffer.get();
 	info.target_style = mesh.format_header->style;
 	info.payload = payload_buffer.get();
-	info.flags = DECODE_MODE_RAW_PAYLOAD;
+	info.flags = DECODE_MODE_UNROLLED_MESH;
 
 	decode_mesh(*cmd, info, mesh);
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
@@ -149,51 +392,109 @@ static void decode_mesh_gpu(
 
 	memcpy(out_index_buffer.data(),
 	       dev.map_host_buffer(*readback_decoded_index_buffer, Vulkan::MEMORY_ACCESS_READ_BIT),
-	       out_index_buffer.size() * sizeof(uint32_t));
+	       out_index_buffer.size() * sizeof(uvec3));
 
-	memcpy(out_u32_stream.data(),
-	       dev.map_host_buffer(*readback_decoded_u32_buffer, Vulkan::MEMORY_ACCESS_READ_BIT),
-	       out_u32_stream.size() * sizeof(uint32_t));
+	memcpy(out_pos_buffer.data(),
+	       dev.map_host_buffer(*readback_decoded_pos_buffer, Vulkan::MEMORY_ACCESS_READ_BIT),
+	       out_pos_buffer.size() * sizeof(vec3));
+
+	out_uvs.clear();
+	out_normals.clear();
+	out_tangents.clear();
+
+	out_uvs.reserve(mesh.total_vertices);
+	out_normals.reserve(mesh.total_vertices);
+	out_tangents.reserve(mesh.total_vertices);
+
+	auto *attrs = static_cast<const Attr *>(dev.map_host_buffer(*readback_decoded_attr_buffer, Vulkan::MEMORY_ACCESS_READ_BIT));
+	for (size_t i = 0, n = mesh.total_vertices; i < n; i++)
+	{
+		auto &attr = attrs[i];
+		out_uvs.push_back(attr.uv);
+		out_normals.push_back(decode_bgr10a2(attr.n).xyz());
+		out_tangents.push_back(decode_bgr10a2(attr.t));
+	}
 }
 
-static bool validate_mesh_decode(const std::vector<uint32_t> &decoded_index_buffer,
-                                 const std::vector<uint32_t> &decoded_u32_stream,
-                                 const std::vector<uint32_t> &reference_index_buffer,
-                                 const std::vector<uint32_t> &reference_u32_stream, unsigned u32_stride)
+struct Attr
 {
-	std::vector<uint32_t> decoded_output;
-	std::vector<uint32_t> reference_output;
+	vec2 uv;
+	vec3 n;
+	vec4 t;
+};
 
-	if (decoded_index_buffer.size() != reference_index_buffer.size())
-		return false;
-
-	size_t count = decoded_index_buffer.size();
-
-	decoded_output.reserve(count * u32_stride);
-	reference_output.reserve(count * u32_stride);
-	for (size_t i = 0; i < count; i++)
+static void build_reference_mesh(std::vector<uvec3> &indices, std::vector<vec3> &positions, std::vector<Attr> &attr)
+{
+	for (unsigned i = 0; i < 256; i++)
 	{
-		uint32_t decoded_index = decoded_index_buffer[i];
-		decoded_output.insert(decoded_output.end(),
-		                      decoded_u32_stream.data() + decoded_index * u32_stride,
-		                      decoded_u32_stream.data() + (decoded_index + 1) * u32_stride);
+#if 1
+		vec3 p;
+		p.x = -40.0f + float(i);
+		p.y = float(i);
+		p.z = -30.0f + float(i);
 
-		uint32_t reference_index = reference_index_buffer[i];
-		reference_output.insert(reference_output.end(),
-		                        reference_u32_stream.data() + reference_index * u32_stride,
-		                        reference_u32_stream.data() + (reference_index + 1) * u32_stride);
+		if (i == 8)
+			p.y = 20000.0f;
+#else
+		vec3 p = vec3(-40.0f + float(i));
+#endif
+		positions.push_back(p);
+
+		Attr a = {};
+		a.uv.x = 1.0f * float(i);
+		a.uv.y = a.uv.x * 1.5f;
+		a.n = normalize(vec3(1.0f + float(i), 1.0f, -0.3f));
+		a.t = vec4(a.n.y, -a.n.z, a.n.x, +1.0f);
+		if (i & 1)
+			a.t.w = -1.0f;
+		attr.push_back(a);
 	}
 
-	for (size_t i = 0; i < count; i++)
+	for (unsigned i = 0; i < 254; i++)
+		indices.push_back(uvec3(i, i + 1, i + 2));
+}
+
+static bool validate_mesh(std::vector<uvec3> &reference_indices,
+                          std::vector<vec3> &reference_positions,
+                          std::vector<uvec3> &decoded_indices,
+                          std::vector<vec3> &decoded_positions,
+						  bool need_sorting)
+{
+	if (reference_indices.size() != decoded_indices.size())
 	{
-		for (unsigned j = 0; j < u32_stride; j++)
+		LOGE("Mismatch in index buffer size.\n");
+		return false;
+	}
+
+	if (need_sorting)
+	{
+		std::sort(reference_indices.begin(), reference_indices.end(), [&](const uvec3 &a, const uvec3 &b)
 		{
-			uint32_t decoded_value = decoded_output[i * u32_stride + j];
-			uint32_t reference_value = reference_output[i * u32_stride + j];
-			if (decoded_value != reference_value)
+			float za = reference_positions[a.z].z;
+			float zb = reference_positions[b.z].z;
+			return za < zb;
+		});
+
+		std::sort(decoded_indices.begin(), decoded_indices.end(), [&](const uvec3 &a, const uvec3 &b)
+		{
+			float za = decoded_positions[a.z].z;
+			float zb = decoded_positions[b.z].z;
+			return za < zb;
+		});
+	}
+
+	for (size_t i = 0, n = decoded_indices.size(); i < n; i++)
+	{
+		uvec3 ref_i = reference_indices[i];
+		uvec3 decode_i = decoded_indices[i];
+
+		for (int c = 0; c < 3; c++)
+		{
+			vec3 ref_pos = reference_positions[ref_i[c]];
+			vec3 decode_pos = decoded_positions[decode_i[c]];
+			if (any(notEqual(ref_pos, decode_pos)))
 			{
-				LOGI("Error in index %zu (prim %zu), word %u, expected %x, got %x.\n",
-				     i, i / 3, j, reference_value, decoded_value);
+				LOGE("Mismatch in primitive %zu, c = %d.\n", i, c);
 				return false;
 			}
 		}
@@ -202,15 +503,100 @@ static bool validate_mesh_decode(const std::vector<uint32_t> &decoded_index_buff
 	return true;
 }
 
-int main(int argc, char *argv[])
+template <typename T>
+static auto max_component(T value) -> std::remove_reference_t<decltype(value.data[0])>
 {
-	if (argc != 2)
-		return EXIT_FAILURE;
+	std::remove_reference_t<decltype(value.data[0])> val = 0;
+	for (auto v : value.data)
+		val = std::max(val, v);
+	return val;
+}
 
+template <typename T, typename ScalarT>
+static bool validate_mesh_attribute(const std::vector<uvec3> &reference_indices,
+                                    const std::vector<T> &reference_attr,
+                                    const std::vector<uvec3> &decoded_indices,
+                                    const std::vector<T> &decoded_attr, ScalarT tolerance)
+{
+	if (reference_indices.size() != decoded_indices.size())
+	{
+		LOGE("Mismatch in index buffer size.\n");
+		return false;
+	}
+
+	for (size_t i = 0, n = decoded_indices.size(); i < n; i++)
+	{
+		uvec3 ref_i = reference_indices[i];
+		uvec3 decode_i = decoded_indices[i];
+
+		for (int c = 0; c < 3; c++)
+		{
+			auto ref_attr = reference_attr[ref_i[c]];
+			auto decode_attr = decoded_attr[decode_i[c]];
+			auto d = abs(ref_attr - decode_attr);
+			auto max_d = max_component(d);
+			if (max_d > tolerance)
+			{
+				LOGE("Mismatch in primitive %zu, c = %d.\n", i, c);
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+int main()
+{
 	Global::init(Global::MANAGER_FEATURE_FILESYSTEM_BIT);
 	Filesystem::setup_default_filesystem(GRANITE_FILESYSTEM(), ASSET_DIRECTORY);
 
-	GLTF::Parser parser(argv[1]);
+	SceneFormats::Mesh mesh;
+
+	std::vector<uvec3> reference_indices;
+	std::vector<vec3> reference_positions;
+	std::vector<Attr> reference_attributes;
+	build_reference_mesh(reference_indices, reference_positions, reference_attributes);
+
+	mesh.index_type = VK_INDEX_TYPE_UINT32;
+	mesh.count = 3 * reference_indices.size();
+	mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	mesh.indices.resize(mesh.count * sizeof(uint32_t));
+	memcpy(mesh.indices.data(), reference_indices.data(), mesh.count * sizeof(uint32_t));
+
+	mesh.attribute_layout[int(MeshAttribute::Position)].format = VK_FORMAT_R32G32B32_SFLOAT;
+	mesh.position_stride = sizeof(vec3);
+	mesh.positions.resize(reference_positions.size() * sizeof(vec3));
+	memcpy(mesh.positions.data(), reference_positions.data(), reference_positions.size() * sizeof(vec3));
+
+	mesh.attribute_layout[int(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
+	mesh.attribute_layout[int(MeshAttribute::UV)].offset = offsetof(Attr, uv);
+	mesh.attribute_layout[int(MeshAttribute::Normal)].format = VK_FORMAT_R32G32B32_SFLOAT;
+	mesh.attribute_layout[int(MeshAttribute::Normal)].offset = offsetof(Attr, n);
+	mesh.attribute_layout[int(MeshAttribute::Tangent)].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	mesh.attribute_layout[int(MeshAttribute::Tangent)].offset = offsetof(Attr, t);
+	mesh.attribute_stride = sizeof(Attr);
+	mesh.attributes.resize(mesh.attribute_stride * reference_attributes.size());
+	memcpy(mesh.attributes.data(), reference_attributes.data(), mesh.attributes.size());
+
+	if (!Meshlet::export_mesh_to_meshlet("/tmp/export.msh2", std::move(mesh), MeshStyle::Textured))
+		return EXIT_FAILURE;
+
+	auto file = GRANITE_FILESYSTEM()->open("/tmp/export.msh2", FileMode::ReadOnly);
+	if (!file)
+		return EXIT_FAILURE;
+
+	auto mapped = file->map();
+	if (!mapped)
+		return EXIT_FAILURE;
+
+	std::vector<uvec3> decoded_index_buffer;
+	std::vector<vec3> decoded_positions;
+	std::vector<vec2> decoded_uvs;
+	std::vector<vec3> decoded_normals;
+	std::vector<vec4> decoded_tangents;
+	auto view = create_mesh_view(*mapped);
+	decode_mesh(decoded_index_buffer, decoded_positions, decoded_uvs, decoded_normals, decoded_tangents, view);
 
 	Vulkan::Context ctx;
 	Vulkan::Device dev;
@@ -223,63 +609,41 @@ int main(int argc, char *argv[])
 	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0))
 		return EXIT_FAILURE;
 	dev.set_context(ctx);
-	dev.init_frame_contexts(4);
 
-	auto mesh = parser.get_meshes().front();
+	std::vector<uvec3> gpu_index_buffer;
+	std::vector<vec3> gpu_positions;
+	std::vector<vec2> gpu_uvs;
+	std::vector<vec3> gpu_normals;
+	std::vector<vec4> gpu_tangents;
+	decode_mesh_gpu(dev, gpu_index_buffer, gpu_positions, gpu_uvs, gpu_normals, gpu_tangents, view);
 
-	if (!Meshlet::export_mesh_to_meshlet("export.msh1",
-	                                     mesh, MeshStyle::Textured))
-	{
-		return EXIT_FAILURE;
-	}
-
-	auto file = GRANITE_FILESYSTEM()->open("export.msh1", FileMode::ReadOnly);
-	if (!file)
+	if (!validate_mesh(decoded_index_buffer, decoded_positions,
+	                   gpu_index_buffer, gpu_positions, false))
 		return EXIT_FAILURE;
 
-	auto mapped = file->map();
-	if (!mapped)
+	if (!validate_mesh(reference_indices, reference_positions,
+	                   decoded_index_buffer, decoded_positions, true))
 		return EXIT_FAILURE;
 
-	auto view = create_mesh_view(*mapped);
-
-	std::vector<uint32_t> reference_index_buffer;
-	std::vector<uint32_t> reference_attributes;
-	std::vector<uint32_t> gpu_index_buffer;
-	std::vector<uint32_t> gpu_attributes;
-
-	decode_mesh(reference_index_buffer, reference_attributes, view);
-	decode_mesh_gpu(dev, gpu_index_buffer, gpu_attributes, view);
-
-	if (!validate_mesh_decode(gpu_index_buffer, gpu_attributes,
-	                          reference_index_buffer, reference_attributes,
-	                          view.format_header->u32_stream_count - 1))
+	std::vector<vec2> reference_uvs;
+	std::vector<vec3> reference_normals;
+	std::vector<vec4> reference_tangents;
+	reference_uvs.reserve(reference_attributes.size());
+	reference_normals.reserve(reference_attributes.size());
+	reference_tangents.reserve(reference_attributes.size());
+	for (auto &a : reference_attributes)
 	{
+		reference_uvs.push_back(a.uv);
+		reference_normals.push_back(a.n);
+		reference_tangents.push_back(a.t);
+	}
+
+	if (!validate_mesh_attribute(reference_indices, reference_uvs, decoded_index_buffer, decoded_uvs, 0.0f))
 		return EXIT_FAILURE;
-	}
-
-	{
-		LOGI("Total primitives: %u\n", view.total_primitives);
-		LOGI("Total vertices: %u\n", view.total_vertices);
-		LOGI("Payload size: %llu bytes.\n", static_cast<unsigned long long>(view.format_header->payload_size_words * sizeof(uint32_t)));
-
-		unsigned long long uncompressed_mesh_size =
-				view.total_primitives * sizeof(uint32_t) * 3 +
-				view.total_vertices * (view.format_header->u32_stream_count - 1) * sizeof(uint32_t);
-		unsigned long long uncompressed_payload_size =
-				view.total_primitives * sizeof(uint32_t) +
-				view.total_vertices * (view.format_header->u32_stream_count - 1) * sizeof(uint32_t);
-		LOGI("Uncompressed mesh size: %llu bytes.\n", uncompressed_mesh_size);
-		LOGI("Uncompressed payload size: %llu bytes.\n", uncompressed_payload_size);
-	}
-
-	{
-		file = GRANITE_FILESYSTEM()->open("export.bin", FileMode::WriteOnly);
-		mapped = file->map_write((reference_index_buffer.size() + reference_attributes.size()) * sizeof(uint32_t));
-		auto *ptr = mapped->mutable_data<uint32_t>();
-		memcpy(ptr, reference_index_buffer.data(), reference_index_buffer.size() * sizeof(uint32_t));
-		memcpy(ptr + reference_index_buffer.size(), reference_attributes.data(), reference_attributes.size() * sizeof(uint32_t));
-	}
+	if (!validate_mesh_attribute(reference_indices, reference_normals, decoded_index_buffer, decoded_normals, 0.02f))
+		return EXIT_FAILURE;
+	if (!validate_mesh_attribute(reference_indices, reference_tangents, decoded_index_buffer, decoded_tangents, 0.02f))
+		return EXIT_FAILURE;
 
 	return 0;
 }

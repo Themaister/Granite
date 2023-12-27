@@ -84,8 +84,10 @@ public:
 
 	enum class MeshEncoding
 	{
-		Meshlet,
+		MeshletEncoded,
+		MeshletDecoded,
 		VBOAndIBOMDI,
+		Classic
 	};
 
 	inline const Vulkan::ImageView *get_image_view(Granite::AssetID id) const
@@ -100,13 +102,18 @@ public:
 
 	struct DrawRange
 	{
-		uint32_t offset = 0;
-		uint32_t count = 0;
-		uint32_t bounds_offset = 0;
-		Meshlet::MeshStyle style = Meshlet::MeshStyle::Wireframe;
+		uint32_t offset;
+		uint32_t count;
+		Meshlet::MeshStyle style;
 	};
 
-	inline DrawRange get_mesh_draw_range(Granite::AssetID id) const
+	union DrawCall
+	{
+		DrawRange meshlet;
+		VkDrawIndexedIndirectCommand indexed;
+	};
+
+	inline DrawCall get_mesh_draw_range(Granite::AssetID id) const
 	{
 		if (id.id < draws.size())
 			return draws[id.id];
@@ -149,7 +156,7 @@ private:
 		struct
 		{
 			Util::AllocatedSlice index_or_payload, attr_or_stream, indirect_or_header;
-			DrawRange draw;
+			DrawCall draw;
 		} mesh;
 		Granite::AssetClass asset_class = Granite::AssetClass::ImageZeroable;
 		bool latchable = false;
@@ -160,7 +167,7 @@ private:
 
 	std::vector<Asset> assets;
 	std::vector<const ImageView *> views;
-	std::vector<DrawRange> draws;
+	std::vector<DrawCall> draws;
 	std::vector<Granite::AssetID> updates;
 
 	ImageHandle fallback_color;
@@ -185,7 +192,7 @@ private:
 	MeshBufferAllocator mesh_stream_allocator;
 	MeshBufferAllocator mesh_payload_allocator;
 
-	MeshEncoding mesh_encoding = MeshEncoding::VBOAndIBOMDI;
+	MeshEncoding mesh_encoding = MeshEncoding::Classic;
 
 	bool allocate_asset_mesh(Granite::AssetID id, const Meshlet::MeshView &view);
 };

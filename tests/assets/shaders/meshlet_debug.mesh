@@ -1,115 +1,151 @@
 #version 450
 #extension GL_EXT_mesh_shader : require
 
-layout(max_primitives = 256, max_vertices = 255, triangles) out;
+#extension GL_KHR_shader_subgroup_basic : require
+#if defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
+#extension GL_KHR_shader_subgroup_shuffle : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#endif
+
+#ifndef MESHLET_SIZE
+#error "Must define MESHLET_SIZE"
+#endif
+
+layout(max_primitives = MESHLET_SIZE, max_vertices = MESHLET_SIZE, triangles) out;
+layout(local_size_x = 32, local_size_y_id = 0) in;
 
 #include "meshlet_payload_constants.h"
 
-#if MESHLET_PAYLOAD_LARGE_WORKGROUP
-#define MESHLET_PAYLOAD_WG_Y MESHLET_PAYLOAD_NUM_CHUNKS
-#else
-#define MESHLET_PAYLOAD_WG_Y 1
-#endif
-layout(local_size_x = 32, local_size_y = MESHLET_PAYLOAD_WG_Y) in;
-
-layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS;
-#define MESHLET_PAYLOAD_NUM_U32_STREAMS NUM_U32_STREAMS
-
 #define MESHLET_PAYLOAD_DESCRIPTOR_SET 0
-#define MESHLET_PAYLOAD_META_BINDING 3
-#define MESHLET_PAYLOAD_STREAM_BINDING 4
-#define MESHLET_PAYLOAD_PAYLOAD_BINDING 5
+#define MESHLET_PAYLOAD_META_BINDING 0
+#define MESHLET_PAYLOAD_STREAM_BINDING 1
+#define MESHLET_PAYLOAD_PAYLOAD_BINDING 2
 #include "meshlet_payload_decode.h"
 #include "meshlet_attribute_decode.h"
+#include "meshlet_render_types.h"
+#include "meshlet_primitive_cull.h"
 
-#define MESHLET_RENDER_DESCRIPTOR_SET 0
-#define MESHLET_RENDER_AABB_BINDING 0
-#define MESHLET_RENDER_TRANSFORM_BINDING 1
-#define MESHLET_RENDER_TASKS_BINDING 2
-#define MESHLET_RENDER_BOUND_BINDING 7
-#define MESHLET_RENDER_FRUSTUM_BINDING 8
-#include "meshlet_render.h"
-
-#if 0
-layout(location = 0) out mediump vec3 vNormal[];
-layout(location = 1) out mediump vec4 vTangent[];
+layout(location = 0) out vec3 vNormal[];
+layout(location = 1) out vec4 vTangent[];
 layout(location = 2) out vec2 vUV[];
-layout(location = 3) perprimitiveEXT out uint MaterialOffset[];
-#else
-layout(location = 0) out vec3 vWorldPos[];
-layout(location = 1) perprimitiveEXT out uint vDrawID[];
-#endif
+layout(location = 3) perprimitiveEXT out uint vDrawID[];
 
 layout(set = 1, binding = 0) uniform UBO
 {
     mat4 VP;
 };
 
-struct MeshTask
+layout(set = 1, binding = 2) uniform UBOViewport
 {
-    uint meshlet_index;
-    uint node_instance;
-    uint node_count_material_index;
+    vec4 viewport;
 };
 
-taskPayloadSharedEXT MeshTask mesh_payload[32 * 32];
+#ifdef MESHLET_RENDER_TASK_HIERARCHICAL
+taskPayloadSharedEXT CompactedDrawInfoPayload mesh_payload;
+#else
+layout(set = 0, binding = 4, std430) readonly buffer CompactedDraws
+{
+    CompactedDrawInfo infos[];
+} mesh_payload;
+#endif
+
+layout(set = 0, binding = 5, std430) readonly buffer Transforms
+{
+    mat4 data[];
+} transforms;
+
+layout(set = 0, binding = 10) buffer Stats
+{
+    uint invocations;
+    uint prim;
+    uint vert;
+} stats;
 
 void main()
 {
-    MeshTask task = mesh_payload[gl_WorkGroupID.x];
-    MeshletMetaRuntime meta = meshlet_metas_runtime.data[task.meshlet_index];
-    meshlet_init_workgroup(meta.stream_offset);
+    uint linear_index = gl_LocalInvocationIndex;
+    uint compacted_meshlet_index = meshlet_get_meshlet_index();
+    uint base_chunk_index = meshlet_get_base_chunk_index();
 
-    SetMeshOutputsEXT(meta.num_attributes, meta.num_primitives);
-
-    mat4 M = transforms.data[task.node_instance];
-
-#define INDEX(index, value) \
-    if (index < meta.num_primitives) \
-    { \
-        gl_PrimitiveTriangleIndicesEXT[index] = uvec4(unpack8(value)).xyz; \
-    }
-    MESHLET_DECODE_STREAM_32(meta.stream_offset, 0, INDEX);
-
-#if MESHLET_PAYLOAD_LARGE_WORKGROUP
-    if (gl_LocalInvocationIndex < meta.num_primitives)
-        vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
+#if defined(MESHLET_RENDER_TASK_HIERARCHICAL) && !MESHLET_RENDER_TASK_HIERARCHICAL
+    CompactedDrawInfo task = mesh_payload.info;
+    task.meshlet_index += uint(mesh_payload.offsets[compacted_meshlet_index]);
 #else
-    for (uint i = gl_LocalInvocationIndex; i < meta.num_primitives; i += 32)
-        vDrawID[i] = task.meshlet_index;
+    CompactedDrawInfo task = mesh_payload.infos[compacted_meshlet_index];
 #endif
 
-#define POSITION(index, value) \
-    if (index < meta.num_attributes) \
-    { \
-        vec3 pos = attribute_decode_snorm_exp_position(value); \
-        vec3 world_pos = (M * vec4(pos, 1.0)).xyz; \
-        vWorldPos[index] = world_pos; \
-        gl_MeshVerticesEXT[index].gl_Position = VP * vec4(world_pos, 1.0); \
-    }
-    MESHLET_DECODE_STREAM_64(meta.stream_offset, 1, POSITION);
+    MeshletMetaRuntime meta = meshlet_metas_runtime.data[task.meshlet_index];
+    mat4 M = transforms.data[task.node_offset];
 
-#if 0
-#define NORMAL(index, value) \
-    if (index < meta.num_attributes) \
-    { \
-        vNormal[index] = mat3(M) * attribute_decode_oct8_normal_tangent(value).xyz; \
-    }
-    MESHLET_DECODE_STREAM_32(meta.stream_offset, 3, NORMAL);
+    int lane_index;
+    uint chunk_index;
 
-#define TANGENT(index, value) \
-    if (index < meta.num_attributes) \
-    { \
-        mediump vec4 T = attribute_decode_oct8_normal_tangent(value); \
-        vTangent[index] = vec4(mat3(M) * T.xyz, T.w); \
+    if (gl_SubgroupSize == 32)
+    {
+        chunk_index = gl_SubgroupID;
+        lane_index = int(gl_SubgroupInvocationID);
     }
-    MESHLET_DECODE_STREAM_32(meta.stream_offset, 4, TANGENT);
+    else
+    {
+        chunk_index = gl_LocalInvocationID.y;
+        lane_index = int(gl_LocalInvocationID.x);
+    }
 
-#define UV(index, value) \
-    if (index < meta.num_attributes) \
-    { \
-        vUV[index] = attribute_decode_snorm_exp_uv(value); \
+    meshlet_setup_local_invocation(uvec2(lane_index, chunk_index));
+    chunk_index += base_chunk_index;
+
+    MeshletChunkInfo index_chunk_info = meshlet_get_chunk_info(meta.stream_offset, chunk_index);
+    uint decoded_index_buffer = 0;
+    vec3 world_pos;
+    vec4 clip_pos = vec4(-1.0);
+
+    if (chunk_index < meta.num_chunks)
+    {
+        if (lane_index < index_chunk_info.primitive_count)
+            decoded_index_buffer = meshlet_decode_index_buffer(meta.stream_offset, chunk_index, lane_index);
+
+        if (lane_index < index_chunk_info.vertex_count)
+        {
+            int exponent;
+            i16vec3 ipos = meshlet_decode_snorm_scaled_i16x3(
+                meta.stream_offset + MESHLET_STREAM_TYPE_POSITION,
+                chunk_index, lane_index, exponent);
+            vec3 pos = ldexp(vec3(ipos), ivec3(exponent));
+            world_pos = (M * vec4(pos, 1.0)).xyz;
+            clip_pos = VP * vec4(world_pos, 1.0);
+        }
     }
-    MESHLET_DECODE_STREAM_64(meta.stream_offset, 5, UV);
-#endif
+
+    meshlet_emit_primitive(unpack8(decoded_index_buffer).xyz, clip_pos, viewport);
+    if (gl_LocalInvocationIndex < shared_active_prim_count_total)
+        vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
+
+    if (meshlet_lane_has_active_vert())
+    {
+        uint out_vert_index = meshlet_compacted_vertex_output();
+        gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
+
+        int exponent;
+        bool t_sign;
+        u8vec4 nt = meshlet_decode_normal_tangent_oct8(
+                meta.stream_offset + MESHLET_STREAM_TYPE_NORMAL_TANGENT_OCT8,
+                chunk_index, lane_index, t_sign);
+        i16vec2 uv = meshlet_decode_snorm_scaled_i16x2(
+                meta.stream_offset + MESHLET_STREAM_TYPE_UV,
+                chunk_index, lane_index, exponent);
+
+        vUV[out_vert_index] = attribute_decode_snorm_exp_uv(uv, exponent);
+
+        mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
+        vNormal[out_vert_index] = mat3(M) * NT[0].xyz;
+        vTangent[out_vert_index] = vec4(mat3(M) * NT[1].xyz, NT[1].w);
+    }
+
+    if (gl_LocalInvocationIndex == 0)
+    {
+        atomicAdd(stats.invocations, gl_WorkGroupSize.x * gl_WorkGroupSize.y);
+        atomicAdd(stats.prim, shared_active_prim_count_total);
+        atomicAdd(stats.vert, shared_active_vert_count_total);
+    }
 }

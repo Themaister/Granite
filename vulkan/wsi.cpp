@@ -22,7 +22,7 @@
 
 #define NOMINMAX
 #include "wsi.hpp"
-#include "quirks.hpp"
+#include "environment.hpp"
 
 #if defined(ANDROID) && defined(HAVE_SWAPPY)
 #include "swappy/swappyVk.h"
@@ -46,12 +46,8 @@ WSI::WSI()
 	present_frame_latency = 1;
 #endif
 
-	const char *env = getenv("GRANITE_VULKAN_PRESENT_WAIT_LATENCY");
-	if (env)
-	{
-		present_frame_latency = uint32_t(strtoul(env, nullptr, 0));
-		LOGI("Overriding VK_KHR_present_wait latency to %u frames.\n", present_frame_latency);
-	}
+	present_frame_latency = Util::get_environment_uint("GRANITE_VULKAN_PRESENT_WAIT_LATENCY", present_frame_latency);
+	LOGI("Targeting VK_KHR_present_wait latency to %u frames.\n", present_frame_latency);
 
 	// Primaries are ST.2020 with D65 whitepoint as specified.
 	hdr_metadata.displayPrimaryRed = { 0.708f, 0.292f };
@@ -1015,8 +1011,7 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		else
 			LOGI("Win32: Not running full-screen.\n");
 
-		const char *exclusive = getenv("GRANITE_EXCLUSIVE_FULL_SCREEN");
-		bool prefer_exclusive = (exclusive && strtoul(exclusive, nullptr, 0) != 0) || low_latency_mode_enable;
+		bool prefer_exclusive = Util::get_environment_bool("GRANITE_EXCLUSIVE_FULL_SCREEN", false) || low_latency_mode_enable;
 
 		if (ext.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY && format == BackbufferFormat::HDR10)
 		{
@@ -1390,12 +1385,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	uint32_t desired_swapchain_images =
 		low_latency_mode_enable && current_present_mode == PresentMode::SyncToVBlank ? 2 : 3;
-	{
-		const char *num_images = getenv("GRANITE_VULKAN_SWAPCHAIN_IMAGES");
-		if (num_images)
-			desired_swapchain_images = uint32_t(strtoul(num_images, nullptr, 0));
-	}
 
+	desired_swapchain_images = Util::get_environment_uint("GRANITE_VULKAN_SWAPCHAIN_IMAGES", desired_swapchain_images);
 	LOGI("Targeting %u swapchain images.\n", desired_swapchain_images);
 
 	if (desired_swapchain_images < caps.minImageCount)

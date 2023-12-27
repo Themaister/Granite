@@ -26,6 +26,7 @@
 #include "device.hpp"
 #include "thread_group.hpp"
 #include "context.hpp"
+#include "environment.hpp"
 
 using namespace Granite;
 using namespace Vulkan;
@@ -90,10 +91,7 @@ int main()
 	Global::init();
 
 #ifdef ASSET_DIRECTORY
-	const char *asset_dir = getenv("ASSET_DIRECTORY");
-	if (!asset_dir)
-		asset_dir = ASSET_DIRECTORY;
-
+	auto asset_dir = Util::get_environment_string("ASSET_DIRECTORY", ASSET_DIRECTORY);
 	GRANITE_FILESYSTEM()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 #endif
 	int ret = main_inner();

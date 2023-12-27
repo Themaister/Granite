@@ -1,10 +1,5 @@
 #version 450
 #extension GL_EXT_scalar_block_layout : require
-#if MESHLET_PAYLOAD_SUBGROUP
-#extension GL_KHR_shader_subgroup_ballot : require
-#extension GL_KHR_shader_subgroup_vote : require
-#extension GL_KHR_shader_subgroup_shuffle : require
-#endif
 
 layout(local_size_x = 32) in;
 
@@ -16,26 +11,23 @@ layout(local_size_x = 32) in;
 #define MESHLET_RENDER_TASKS_BINDING 2
 #include "meshlet_render.h"
 
-struct Draw
-{
-    uint payload[5];
-};
+layout(constant_id = 0) const int MESHLET_RENDER_DRAW_WORDS = 0;
+layout(constant_id = 1) const int MESHLET_APPEND_ATOMIC_INDEX = 0;
 
 layout(set = 0, binding = 3, std430) readonly buffer InputDraws
 {
-    Draw data[];
+    uint draws[];
 } input_draws;
 
 layout(set = 0, binding = 4, std430) writeonly buffer OutputDraws
 {
-    uint count;
-    uint padding[256 / 4 - 1];
-    Draw data[];
+    uint count[3];
+    layout(offset = 256) uint draws[];
 } output_draws;
 
-layout(set = 0, binding = 5, scalar) writeonly buffer CompactedDraws
+layout(set = 0, binding = 5, std430) writeonly buffer CompactedDraws
 {
-    uvec3 data[];
+    CompactedDrawInfo data[];
 } output_draw_info;
 
 layout(push_constant, std430) uniform Registers
@@ -44,17 +36,17 @@ layout(push_constant, std430) uniform Registers
     uint count;
 } registers;
 
-#if !MESHLET_PAYLOAD_SUBGROUP
 shared uint ballot_value;
 shared uint global_offset;
+
 uvec4 ballot(bool v)
 {
     barrier();
     if (gl_LocalInvocationIndex == 0)
-    ballot_value = 0;
+        ballot_value = 0;
     barrier();
     if (v)
-    atomicOr(ballot_value, 1u << gl_LocalInvocationIndex);
+        atomicOr(ballot_value, 1u << gl_LocalInvocationIndex);
     barrier();
     return uvec4(ballot_value, 0, 0, 0);
 }
@@ -70,12 +62,6 @@ uint ballotExclusiveBitCount(uvec4 v)
     return bitCount(v.x & mask);
 }
 #define local_invocation_id gl_LocalInvocationIndex
-#else
-#define ballot(v) subgroupBallot(v)
-#define ballotBitCount(v) subgroupBallotBitCount(v)
-#define ballotExclusiveBitCount(v) subgroupBallotExclusiveBitCount(v)
-#define local_invocation_id gl_SubgroupInvocationID
-#endif
 
 void main()
 {
@@ -98,16 +84,10 @@ void main()
         int lane = findLSB(b);
         b &= ~(1u << lane);
 
-#if MESHLET_PAYLOAD_SUBGROUP
-        uint node_instance = subgroupShuffle(task.node_instance, lane);
-        uint node_count_material_index = subgroupShuffle(task.node_count_material_index, lane);
-        uint mesh_index_count = subgroupShuffle(task.mesh_index_count, lane);
-#else
         TaskInfo tmp_task = task_info.data[gl_WorkGroupID.x * gl_WorkGroupSize.x + lane];
         uint node_instance = tmp_task.node_instance;
         uint node_count_material_index = tmp_task.node_count_material_index;
         uint mesh_index_count = tmp_task.mesh_index_count;
-#endif
 
         uint offset = mesh_index_count & ~31u;
         uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
@@ -126,22 +106,20 @@ void main()
         uint draw_count = ballotBitCount(ballot);
         uint local_offset = ballotExclusiveBitCount(ballot);
 
-#if MESHLET_PAYLOAD_SUBGROUP
-        uint global_offset;
-        if (subgroupElect())
-            global_offset = atomicAdd(output_draws.count, draw_count);
-        global_offset = subgroupBroadcastFirst(global_offset);
-#else
         // WAR barrier is implied here in earlier ballot.
         if (gl_LocalInvocationIndex == 0)
-            global_offset = atomicAdd(output_draws.count, draw_count);
+            global_offset = atomicAdd(output_draws.count[MESHLET_APPEND_ATOMIC_INDEX], draw_count);
         barrier();
-#endif
 
         if (alloc_draw)
         {
-            output_draws.data[global_offset + local_offset] = input_draws.data[meshlet_index];
-            output_draw_info.data[global_offset + local_offset] = uvec3(node_instance, node_count_material_index, meshlet_index);
+			uint dst_offset = MESHLET_RENDER_DRAW_WORDS * (global_offset + local_offset);
+			uint src_offset = meshlet_index * MESHLET_RENDER_DRAW_WORDS;
+			for (int i = 0; i < MESHLET_RENDER_DRAW_WORDS; i++)
+				output_draws.draws[dst_offset + i] = input_draws.draws[src_offset + i];
+
+            output_draw_info.data[global_offset + local_offset] =
+				CompactedDrawInfo(meshlet_index, node_instance, node_count_material_index);
         }
     }
 }

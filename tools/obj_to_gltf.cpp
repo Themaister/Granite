@@ -62,16 +62,14 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	OBJ::Parser parser(args.input);
+	OBJ::Parser parser(args.input, args.scale);
 
 	SceneFormats::SceneInformation info;
 	info.materials = parser.get_materials();
 	info.meshes = parser.get_meshes();
 	SceneFormats::ExportOptions options;
 
-	std::vector<SceneFormats::Node> nodes = parser.get_nodes();
-	nodes.front().transform.scale = vec3(args.scale);
-	info.nodes = nodes;
+	info.nodes = parser.get_nodes();
 
 	if (!SceneFormats::export_scene_to_glb(info, args.output, options))
 	{

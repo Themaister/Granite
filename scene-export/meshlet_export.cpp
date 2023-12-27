@@ -26,6 +26,8 @@
 #include "math.hpp"
 #include "filesystem.hpp"
 #include "meshlet.hpp"
+#include <type_traits>
+#include <limits>
 
 namespace Granite
 {
@@ -36,7 +38,7 @@ using namespace Vulkan::Meshlet;
 struct Metadata : Header
 {
 	Bound bound;
-	Stream u32_streams[MaxU32Streams];
+	Stream streams[MaxStreams];
 };
 
 struct CombinedMesh
@@ -49,60 +51,67 @@ struct CombinedMesh
 
 struct Encoded
 {
-	std::vector<uint32_t> payload;
+	std::vector<PayloadB128> payload;
 	CombinedMesh mesh;
 };
 
 struct Meshlet
 {
-	uint32_t offset;
-	uint32_t count;
+	uint32_t global_indices_offset;
+	uint32_t primitive_count;
+	uint32_t vertex_count;
+
+	const unsigned char *local_indices;
+	const uint32_t *attribute_remap;
 };
 
-struct PrimitiveAnalysisResult
+static i16vec3 encode_vec3_to_snorm_exp(vec3 v, int scale_log2)
 {
-	uint32_t num_primitives;
-	uint32_t num_vertices;
-};
-
-static i16vec4 encode_vec3_to_snorm_exp(vec3 v)
-{
-	vec3 vabs = abs(v);
-	float max_scale = max(max(vabs.x, vabs.y), vabs.z);
-	int max_scale_log2 = int(muglm::floor(log2(max_scale)));
-	int scale_log2 = 14 - max_scale_log2;
-
-	// Maximum component should have range of [1, 2) since we use floor of log2, so scale with 2^14 instead of 15.
 	v.x = ldexpf(v.x, scale_log2);
 	v.y = ldexpf(v.y, scale_log2);
 	v.z = ldexpf(v.z, scale_log2);
 	v = clamp(round(v), vec3(-0x8000), vec3(0x7fff));
-
-	return i16vec4(i16vec3(v), int16_t(-scale_log2));
+	return i16vec3(v);
 }
 
-static i16vec3 encode_vec2_to_snorm_exp(vec2 v)
+static i16vec2 encode_vec2_to_snorm_exp(vec2 v, int scale_log2)
 {
-	vec2 vabs = abs(v);
-	float max_scale = max(vabs.x, vabs.y);
-	int max_scale_log2 = int(muglm::floor(log2(max_scale)));
-	int scale_log2 = 14 - max_scale_log2;
-
-	// UVs are unorm scaled, don't need more accuracy than this.
-	// If all UVs are in range of [0, 1] space, we should get a constant exponent which aids compression.
-	scale_log2 = min(scale_log2, 15);
-
-	// Maximum component should have range of [1, 2) since we use floor of log2, so scale with 2^14 instead of 15.
 	v.x = ldexpf(v.x, scale_log2);
 	v.y = ldexpf(v.y, scale_log2);
 	v = clamp(round(v), vec2(-0x8000), vec2(0x7fff));
-
-	return i16vec3(i16vec2(v), int16_t(-scale_log2));
+	return i16vec2(v);
 }
 
-static std::vector<i16vec4> mesh_extract_position_snorm_exp(const SceneFormats::Mesh &mesh)
+static int compute_log2_scale(float max_value)
 {
-	std::vector<i16vec4> encoded_positions;
+	// Maximum component should have range of [1, 2) since we use floor of log2, so scale with 2^14 instead of 15.
+	int max_scale_log2 = int(muglm::floor(muglm::log2(max_value)));
+	int scale_log2 = 14 - max_scale_log2;
+	return scale_log2;
+}
+
+template <typename T>
+static void adjust_quant(std::vector<T> &values, int &exp)
+{
+	uint32_t active_bits = 0;
+	for (auto &value : values)
+		for (auto &c : value.data)
+			active_bits |= c;
+
+	if (active_bits == 0)
+		return;
+
+	int extra_shift = trailing_zeroes(active_bits);
+	for (auto &value : values)
+		for (auto &c : value.data)
+			c >>= extra_shift;
+
+	exp += extra_shift;
+}
+
+static std::vector<i16vec3> mesh_extract_position_snorm_exp(const SceneFormats::Mesh &mesh, int &exp)
+{
+	std::vector<i16vec3> encoded_positions;
 	std::vector<vec3> positions;
 
 	size_t num_positions = mesh.positions.size() / mesh.position_stride;
@@ -113,7 +122,11 @@ static std::vector<i16vec4> mesh_extract_position_snorm_exp(const SceneFormats::
 	if (fmt == VK_FORMAT_R32G32B32A32_SFLOAT || fmt == VK_FORMAT_R32G32B32_SFLOAT)
 	{
 		for (size_t i = 0; i < num_positions; i++)
-			memcpy(positions[i].data, mesh.positions.data() + i * mesh.position_stride + layout.offset, sizeof(float) * 3);
+		{
+			memcpy(positions[i].data,
+				   mesh.positions.data() + i * mesh.position_stride + layout.offset,
+			       sizeof(float) * 3);
+		}
 	}
 	else if (fmt == VK_FORMAT_UNDEFINED)
 		return {};
@@ -123,75 +136,116 @@ static std::vector<i16vec4> mesh_extract_position_snorm_exp(const SceneFormats::
 		return {};
 	}
 
+	vec3 max_extent = vec3(0.0f);
+	for (auto &p : positions)
+		max_extent = max(max_extent, abs(p));
+
+	float max_value = max(max(max_extent.x, max_extent.y), max_extent.z);
+	int log2_scale = compute_log2_scale(max_value);
+
+	log2_scale = std::min(log2_scale, 12);
+
 	encoded_positions.reserve(positions.size());
 	for (auto &pos : positions)
-		encoded_positions.push_back(encode_vec3_to_snorm_exp(pos));
+		encoded_positions.push_back(encode_vec3_to_snorm_exp(pos, log2_scale));
+
+	exp = -log2_scale;
+	adjust_quant(encoded_positions, exp);
 
 	return encoded_positions;
 }
 
-static std::vector<i8vec4> mesh_extract_normal_tangent_oct8(const SceneFormats::Mesh &mesh, MeshAttribute attr)
+struct NormalTangent
 {
-	std::vector<i8vec4> encoded_attributes;
-	std::vector<vec4> normals;
+	i8vec2 n;
+	i8vec2 t;
+	bool t_sign;
+};
 
-	auto &layout = mesh.attribute_layout[Util::ecast(attr)];
-	auto fmt = layout.format;
+static std::vector<NormalTangent> mesh_extract_normal_tangent_oct8(const SceneFormats::Mesh &mesh)
+{
+	std::vector<NormalTangent> encoded_attributes;
+	std::vector<vec4> normals;
+	std::vector<vec4> tangents;
+
+	auto &normal = mesh.attribute_layout[Util::ecast(MeshAttribute::Normal)];
+	auto &tangent = mesh.attribute_layout[Util::ecast(MeshAttribute::Tangent)];
 
 	size_t num_attrs = mesh.attributes.size() / mesh.attribute_stride;
 	normals.resize(num_attrs);
+	tangents.resize(num_attrs);
 
-	if (fmt == VK_FORMAT_R32G32B32_SFLOAT)
+	if (normal.format == VK_FORMAT_R32G32B32_SFLOAT || normal.format == VK_FORMAT_R32G32B32A32_SFLOAT)
 	{
 		for (size_t i = 0; i < num_attrs; i++)
 		{
 			memcpy(normals[i].data,
-			       mesh.attributes.data() + i * mesh.attribute_stride + layout.offset,
+			       mesh.attributes.data() + i * mesh.attribute_stride + normal.offset,
 			       sizeof(float) * 3);
-			normals[i].w = 0.0f;
 		}
 	}
-	else if (fmt == VK_FORMAT_R32G32B32A32_SFLOAT)
+	else if (normal.format == VK_FORMAT_UNDEFINED)
+	{
+		for (auto &n : normals)
+			n = {};
+	}
+	else
+	{
+		LOGE("Unexpected format %u.\n", normal.format);
+		return {};
+	}
+
+	if (tangent.format == VK_FORMAT_R32G32B32_SFLOAT)
 	{
 		for (size_t i = 0; i < num_attrs; i++)
 		{
-			memcpy(normals[i].data,
-			       mesh.attributes.data() + i * mesh.attribute_stride + layout.offset,
+			memcpy(tangents[i].data,
+			       mesh.attributes.data() + i * mesh.attribute_stride + tangent.offset,
+			       sizeof(float) * 3);
+			tangents[i].w = 0.0f;
+		}
+	}
+	else if (tangent.format == VK_FORMAT_R32G32B32A32_SFLOAT)
+	{
+		for (size_t i = 0; i < num_attrs; i++)
+		{
+			memcpy(tangents[i].data,
+			       mesh.attributes.data() + i * mesh.attribute_stride + tangent.offset,
 			       sizeof(float) * 4);
 		}
 	}
-	else if (fmt == VK_FORMAT_UNDEFINED)
-		return {};
+	else if (tangent.format == VK_FORMAT_UNDEFINED)
+	{
+		for (auto &t : tangents)
+			t = {};
+	}
 	else
 	{
-		LOGE("Unexpected format %u.\n", fmt);
+		LOGE("Unexpected format %u.\n", tangent.format);
 		return {};
 	}
 
-	encoded_attributes.resize(normals.size());
-	meshopt_encodeFilterOct(encoded_attributes.data(), encoded_attributes.size(),
-	                        sizeof(i8vec4), 8, normals[0].data);
-	for (auto &n : encoded_attributes)
-		n.w = n.w <= 0 ? -1 : 0;
+	encoded_attributes.reserve(normals.size());
+
+	std::vector<i8vec4> n(normals.size());
+	std::vector<i8vec4> t(normals.size());
+	meshopt_encodeFilterOct(n.data(), n.size(), sizeof(i8vec4), 8, normals[0].data);
+	meshopt_encodeFilterOct(t.data(), t.size(), sizeof(i8vec4), 8, tangents[0].data);
+
+	for (size_t i = 0, size = normals.size(); i < size; i++)
+		encoded_attributes.push_back({ n[i].xy(), t[i].xy(), tangents[i].w < 0.0f });
 
 	return encoded_attributes;
 }
 
-static i16vec4 encode_uv_to_snorm_scale(vec2 uv)
+static std::vector<i16vec2> mesh_extract_uv_snorm_scale(const SceneFormats::Mesh &mesh, int &exp)
 {
-	// UVs tend to be in [0, 1] range. Readjust to use more of the available range.
-	uv = 2.0f * uv - 1.0f;
-	return i16vec4(encode_vec2_to_snorm_exp(uv), 0);
-}
-
-static std::vector<i16vec4> mesh_extract_uv_snorm_scale(const SceneFormats::Mesh &mesh)
-{
-	std::vector<i16vec4> encoded_uvs;
+	std::vector<i16vec2> encoded_uvs;
 	std::vector<vec2> uvs;
 
 	size_t num_uvs = mesh.attributes.size() / mesh.attribute_stride;
 	uvs.resize(num_uvs);
-	auto &layout = mesh.attribute_layout[Util::ecast(MeshAttribute::UV)];
+	auto &layout = mesh.attribute_layout[int(MeshAttribute::UV)];
 	auto fmt = layout.format;
 
 	if (fmt == VK_FORMAT_R32G32_SFLOAT)
@@ -209,316 +263,436 @@ static std::vector<i16vec4> mesh_extract_uv_snorm_scale(const SceneFormats::Mesh
 		}
 	}
 	else if (fmt == VK_FORMAT_UNDEFINED)
-		return {};
+	{
+		for (auto &uv : uvs)
+			uv = {};
+	}
 	else
 	{
 		LOGE("Unexpected format %u.\n", fmt);
 		return {};
 	}
 
+	vec2 max_extent = vec2(0.0f);
+	for (auto &uv : uvs)
+	{
+		// UVs tend to be in [0, 1] range. Readjust to use more of the available range.
+		uv = 2.0f * uv - 1.0f;
+		max_extent = max(max_extent, abs(uv));
+	}
+
+	float max_value = max(max_extent.x, max_extent.y);
+	int log2_scale = compute_log2_scale(max_value);
+
 	encoded_uvs.reserve(uvs.size());
 	for (auto &uv : uvs)
-		encoded_uvs.push_back(encode_uv_to_snorm_scale(uv));
+		encoded_uvs.push_back(encode_vec2_to_snorm_exp(uv, log2_scale));
+
+	exp = -log2_scale;
+	adjust_quant(encoded_uvs, exp);
 
 	return encoded_uvs;
 }
 
-static vec3 decode_snorm_exp(i16vec4 p)
+// Analyze bits required to encode a delta.
+static uint32_t compute_required_bits_unsigned(uint32_t delta)
 {
-	vec3 result;
-	result.x = ldexpf(float(p.x), p.w);
-	result.y = ldexpf(float(p.y), p.w);
-	result.z = ldexpf(float(p.z), p.w);
-	return result;
+	return delta == 0 ? 0 : (32 - leading_zeroes(delta));
 }
 
-static PrimitiveAnalysisResult analyze_primitive_count(std::unordered_map <uint32_t, uint32_t> &vertex_remap,
-                                                       const uint32_t *index_buffer, uint32_t max_num_primitives)
+static vec3 decode_snorm_exp(i16vec3 p, int exp)
 {
-	PrimitiveAnalysisResult result = {};
-	uint32_t vertex_count = 0;
+    vec3 result;
+    result.x = ldexpf(float(p.x), exp);
+    result.y = ldexpf(float(p.y), exp);
+    result.z = ldexpf(float(p.z), exp);
+    return result;
+}
 
-	// We can reference a maximum of 256 vertices.
-	vertex_remap.clear();
+static void encode_index_stream(std::vector<PayloadB128> &out_payload_buffer,
+                                u8vec3 (&stream_buffer)[ElementsPerChunk])
+{
+	PayloadB128 p0{};
+	PayloadB128 p1{};
+	PayloadB128 p2{};
+	PayloadB128 p3{};
 
-	for (uint32_t i = 0; i < max_num_primitives; i++)
+	for (unsigned i = 0; i < ElementsPerChunk; i++)
 	{
-		uint32_t index0 = index_buffer[3 * i + 0];
-		uint32_t index1 = index_buffer[3 * i + 1];
-		uint32_t index2 = index_buffer[3 * i + 2];
+		u8vec3 indices = stream_buffer[i];
+		assert(all(lessThan(indices, u8vec3(ElementsPerChunk))));
 
-		vertex_count = uint32_t(vertex_remap.size());
+		p0.words[0] |= ((indices.x >> 0u) & 1u) << i;
+		p0.words[1] |= ((indices.x >> 1u) & 1u) << i;
+		p0.words[2] |= ((indices.x >> 2u) & 1u) << i;
+		p0.words[3] |= ((indices.x >> 3u) & 1u) << i;
+		p3.words[0] |= ((indices.x >> 4u) & 1u) << i;
 
-		vertex_remap.insert({index0, uint32_t(vertex_remap.size())});
-		vertex_remap.insert({index1, uint32_t(vertex_remap.size())});
-		vertex_remap.insert({index2, uint32_t(vertex_remap.size())});
+		p1.words[0] |= ((indices.y >> 0u) & 1u) << i;
+		p1.words[1] |= ((indices.y >> 1u) & 1u) << i;
+		p1.words[2] |= ((indices.y >> 2u) & 1u) << i;
+		p1.words[3] |= ((indices.y >> 3u) & 1u) << i;
+		p3.words[1] |= ((indices.y >> 4u) & 1u) << i;
 
-		// If this primitive causes us to go out of bounds, reset.
-		if (vertex_remap.size() > MaxVertices)
+		p2.words[0] |= ((indices.z >> 0u) & 1u) << i;
+		p2.words[1] |= ((indices.z >> 1u) & 1u) << i;
+		p2.words[2] |= ((indices.z >> 2u) & 1u) << i;
+		p2.words[3] |= ((indices.z >> 3u) & 1u) << i;
+		p3.words[2] |= ((indices.z >> 4u) & 1u) << i;
+	}
+
+	out_payload_buffer.push_back(p0);
+	out_payload_buffer.push_back(p1);
+	out_payload_buffer.push_back(p2);
+	out_payload_buffer.push_back(p3);
+}
+
+template <int Components, typename T>
+static void encode_bitplane_16_inner(std::vector<PayloadB128> &out_payload_buffer,
+                                     const T *values, unsigned encoded_bits)
+{
+	static_assert(Components == 2 || Components == 3, "Components must be 2 or 3.");
+
+	if (encoded_bits == 8)
+	{
+		// Plain write.
+		PayloadB128 p[4 * Components];
+
+		for (uint32_t i = 0; i < ElementsPerChunk; i++)
 		{
-			max_num_primitives = i;
-			break;
+			auto d = values[i].xy();
+			p[i / 4].words[i % 4] = uint32_t(d.x) | (uint32_t(d.y) << 16);
 		}
 
-		vertex_count = uint32_t(vertex_remap.size());
-	}
-
-	result.num_primitives = max_num_primitives;
-	result.num_vertices = vertex_count;
-	return result;
-}
-
-// Analyze bits required to encode a signed delta.
-static uvec4 compute_required_bits_unsigned(u8vec4 delta)
-{
-	uvec4 result;
-	for (unsigned i = 0; i < 4; i++)
-	{
-		uint32_t v = delta[i];
-		result[i] = v == 0 ? 0 : (32 - leading_zeroes(v));
-	}
-	return result;
-}
-
-static uvec4 compute_required_bits_signed(u8vec4 delta)
-{
-	uvec4 result;
-	for (unsigned i = 0; i < 4; i++)
-	{
-		uint32_t v = delta[i];
-
-		if (v == 0)
+		if (Components == 3)
 		{
-			result[i] = 0;
-		} else
-		{
-			if (v >= 0x80u)
-				v ^= 0xffu;
-			result[i] = v == 0 ? 1 : (33 - leading_zeroes(v));
+			for (uint32_t i = 0; i < ElementsPerChunk / 2; i++)
+			{
+				u16vec2 d = u16vec2(values[2 * i][2], values[2 * i + 1][2]);
+				p[8 + i / 4].words[i % 4] = uint32_t(d.x) | (uint32_t(d.y) << 16);
+			}
 		}
+
+		out_payload_buffer.insert(out_payload_buffer.end(), p, p + 4 * Components);
 	}
-	return result;
-}
-
-static uint32_t extract_bit_plane(const uint8_t *bytes, unsigned bit_index)
-{
-	uint32_t u32 = 0;
-	for (unsigned i = 0; i < 32; i++)
-		u32 |= ((bytes[4 * i] >> bit_index) & 1u) << i;
-	return u32;
-}
-
-static void find_linear_predictor(uint16_t *predictor,
-                                  const u8vec4 (&stream_buffer)[MaxElements],
-                                  unsigned num_elements)
-{
-	// Sign-extend since the deltas are considered to be signed ints.
-	ivec4 unrolled_data[MaxElements];
-	for (unsigned i = 0; i < num_elements; i++)
-		unrolled_data[i] = ivec4(i8vec4(stream_buffer[i]));
-
-	// Simple linear regression.
-	// Pilfered from: https://www.codesansar.com/numerical-methods/linear-regression-method-using-c-programming.htm
-	ivec4 x{0}, x2{0}, y{0}, xy{0};
-	for (unsigned i = 0; i < num_elements; i++)
-	{
-		x += int(i);
-		x2 += int(i * i);
-		y += unrolled_data[i];
-		xy += int(i) * unrolled_data[i];
-	}
-
-	int n = int(num_elements);
-	ivec4 b_denom = (n * x2 - x * x);
-	b_denom = select(b_denom, ivec4(1), equal(ivec4(0), b_denom));
-
-	// Encode in u8.8 fixed point.
-	ivec4 b = (ivec4(256) * (n * xy - x * y)) / b_denom;
-	ivec4 a = ((ivec4(256) * y - b * x)) / n;
-
-	for (unsigned i = 0; i < 4; i++)
-		predictor[i] = uint16_t(a[i]);
-	for (unsigned i = 0; i < 4; i++)
-		predictor[4 + i] = uint16_t(b[i]);
-}
-
-static size_t encode_stream(std::vector <uint32_t> &out_payload_buffer,
-                            Stream &stream, u8vec4 (&stream_buffer)[MaxElements],
-                            unsigned num_elements)
-{
-	stream.offset_from_base_u32 = uint32_t(out_payload_buffer.size());
-
-	// Delta-encode
-	u8vec4 current_value;
-	if (num_elements > 1)
-		current_value = u8vec4(2) * stream_buffer[0] - stream_buffer[1];
 	else
-		current_value = stream_buffer[0];
-	u8vec4 bias_value = current_value;
-
-	for (unsigned i = 0; i < num_elements; i++)
 	{
-		u8vec4 next_value = stream_buffer[i];
-		stream_buffer[i] = next_value - current_value;
-		current_value = next_value;
+		unsigned bit_offset = 0;
+		PayloadB128 p[6];
+
+		for (int mask = 4; mask; mask >>= 1)
+		{
+			if (encoded_bits & mask)
+			{
+				uint32_t *words = &p[0].words[0];
+				int bits = mask * 2;
+				int num_words = (bits * Components + 3) / 4;
+
+				for (int i = 0; i < num_words; i++)
+					p[i] = {};
+
+				for (uint32_t i = 0; i < ElementsPerChunk; i++)
+				{
+					auto d = values[i];
+					for (int c = 0; c < Components; c++)
+					{
+						for (int b = 0; b < bits; b++)
+						{
+							int word = c * bits + b;
+							words[word] |= ((d[c] >> (bit_offset + b)) & 1u) << i;
+						}
+					}
+				}
+
+				for (int i = 0; i < num_words; i++)
+					out_payload_buffer.push_back(p[i]);
+				bit_offset += bits;
+			}
+		}
+	}
+}
+
+static void encode_bitplane(std::vector<PayloadB128> &out_payload_buffer,
+                            const u8vec4 *values, unsigned encoded_bits)
+{
+	if (encoded_bits == 8)
+	{
+		// Plain write.
+		PayloadB128 p[8];
+		memcpy(p, values, sizeof(p));
+		out_payload_buffer.insert(out_payload_buffer.end(), p, p + 8);
+	}
+	else
+	{
+		unsigned bit_offset = 0;
+		PayloadB128 p[4];
+
+		for (int mask = 4; mask; mask >>= 1)
+		{
+			if (encoded_bits & mask)
+			{
+				uint32_t *words = &p[0].words[0];
+				int bits = mask;
+				int num_words = bits;
+
+				for (int i = 0; i < num_words; i++)
+					p[i] = {};
+
+				for (uint32_t i = 0; i < ElementsPerChunk; i++)
+				{
+					auto d = values[i];
+					for (int c = 0; c < 4; c++)
+					{
+						for (int b = 0; b < bits; b++)
+						{
+							int word = c * bits + b;
+							words[word] |= ((d[c] >> (bit_offset + b)) & 1u) << i;
+						}
+					}
+				}
+
+				for (int i = 0; i < num_words; i++)
+					out_payload_buffer.push_back(p[i]);
+				bit_offset += bits;
+			}
+		}
+	}
+}
+
+static void encode_bitplane(std::vector<PayloadB128> &out_payload_buffer,
+                            const u16vec3 *values, unsigned encoded_bits)
+{
+	encode_bitplane_16_inner<3>(out_payload_buffer, values, encoded_bits);
+}
+
+static void encode_bitplane(std::vector<PayloadB128> &out_payload_buffer,
+                            const u16vec2 *values, unsigned encoded_bits)
+{
+	encode_bitplane_16_inner<2>(out_payload_buffer, values, encoded_bits);
+}
+
+template <typename T> struct to_signed_vector {};
+template <typename T> struct to_components {};
+
+template <> struct to_signed_vector<u16vec3> { using type = i16vec3; };
+template <> struct to_signed_vector<u16vec2> { using type = i16vec2; };
+template <> struct to_components<u16vec3> { enum { components = 3 }; };
+template <> struct to_components<u16vec2> { enum { components = 2 }; };
+template <> struct to_signed_vector<u8vec4> { using type = i8vec4; };
+template <> struct to_components<u8vec4> { enum { components = 4 }; };
+
+template <typename T>
+static auto max_component(T value) -> std::remove_reference_t<decltype(value.data[0])>
+{
+	std::remove_reference_t<decltype(value.data[0])> val = 0;
+	for (auto v : value.data)
+		val = std::max(val, v);
+	return val;
+}
+
+template <typename T>
+static void encode_attribute_stream(std::vector<PayloadB128> &out_payload_buffer,
+                                    Stream &stream,
+                                    const T *raw_attributes,
+                                    uint32_t chunk_index, const uint32_t *vbo_remap,
+                                    uint32_t num_attributes)
+{
+	using SignedT = typename to_signed_vector<T>::type;
+	using UnsignedScalar = std::remove_reference_t<decltype(T()[0])>;
+	using SignedScalar = std::remove_reference_t<decltype(SignedT()[0])>;
+	static_assert(sizeof(T) == 4 || sizeof(T) == 6, "Encoded type must be 32 or 48 bits.");
+
+	T attributes[ElementsPerChunk];
+	for (uint32_t i = 0; i < num_attributes; i++)
+		attributes[i] = raw_attributes[vbo_remap ? vbo_remap[i] : i];
+	for (uint32_t i = num_attributes; i < ElementsPerChunk; i++)
+		attributes[i] = attributes[0];
+
+	T ulo{std::numeric_limits<UnsignedScalar>::max()};
+	T uhi{std::numeric_limits<UnsignedScalar>::min()};
+	SignedT slo{std::numeric_limits<SignedScalar>::max()};
+	SignedT shi{std::numeric_limits<SignedScalar>::min()};
+
+	for (auto &p : attributes)
+	{
+		ulo = min(ulo, p);
+		uhi = max(uhi, p);
+		slo = min(slo, SignedT(p));
+		shi = max(shi, SignedT(p));
 	}
 
-	// Find optimal linear predictor.
-	find_linear_predictor(stream.predictor, stream_buffer, num_elements);
+	T diff_unsigned = uhi - ulo;
+	T diff_signed = T(shi) - T(slo);
 
-	// u8.8 fixed point.
-	auto base_predictor = u16vec4(stream.predictor[0], stream.predictor[1], stream.predictor[2], stream.predictor[3]);
-	auto linear_predictor = u16vec4(stream.predictor[4], stream.predictor[5], stream.predictor[6], stream.predictor[7]);
-
-	for (unsigned i = 0; i < num_elements; i++)
+	unsigned diff_max_unsigned = max_component(diff_unsigned);
+	unsigned diff_max_signed = max_component(diff_signed);
+	if (diff_max_signed < diff_max_unsigned)
 	{
-		// Only predict in-bounds elements, since we want all out of bounds elements to be encoded to 0 delta
-		// without having them affect the predictor.
-		stream_buffer[i] -= u8vec4((base_predictor + linear_predictor * uint16_t(i)) >> uint16_t(8));
+		ulo = T(slo);
+		diff_max_unsigned = diff_max_signed;
 	}
 
-	for (unsigned i = num_elements; i < MaxElements; i++)
-		stream_buffer[i] = u8vec4(0);
+	constexpr unsigned bits_per_component = sizeof(UnsignedScalar) * 8;
 
-	// Try to adjust the range such that it can fit in fewer bits.
-	// We can use the constant term in the linear predictor to nudge values in place.
-	i8vec4 lo(127);
-	i8vec4 hi(-128);
+	unsigned bits = compute_required_bits_unsigned(diff_max_unsigned);
+	unsigned encoded_bits = (bits + sizeof(UnsignedScalar) - 1) / sizeof(UnsignedScalar);
 
-	for (unsigned i = 0; i < num_elements; i++)
+	stream.bit_plane_config |= encoded_bits << (4 * chunk_index);
+	memcpy(&stream.u.base_value[chunk_index], ulo.data, sizeof(uint32_t));
+	if (to_components<T>::components == 3 && bits_per_component == 16)
 	{
-		lo = min(lo, i8vec4(stream_buffer[i]));
-		hi = max(hi, i8vec4(stream_buffer[i]));
+		memcpy(reinterpret_cast<char *>(&stream.u.base_value[8]) + sizeof(uint16_t) * chunk_index,
+		       &ulo[2], sizeof(uint16_t));
 	}
 
-	uvec4 full_bits = compute_required_bits_unsigned(u8vec4(hi - lo));
-	u8vec4 target_lo_value = u8vec4(-((uvec4(1) << full_bits) >> 1u));
-	u8vec4 bias = target_lo_value - u8vec4(lo);
+	for (auto &p : attributes)
+		p -= ulo;
 
-	for (unsigned i = 0; i < num_elements; i++)
-		stream_buffer[i] += bias;
-
-	for (unsigned i = 0; i < 4; i++)
-		stream.predictor[i] -= uint16_t(bias[i]) << 8;
-
-	// Based on the linear predictor, it's possible that the encoded value in stream_buffer[0] becomes non-zero again.
-	// This is undesirable, since we can use the initial value to force a delta of 0 here, saving precious bits.
-	bias_value += stream_buffer[0];
-	stream_buffer[0] = u8vec4(0);
-
-	// Simple linear predictor, base equal elements[0], gradient = 0.
-	stream.predictor[8] = uint16_t((bias_value.y << 8) | bias_value.x);
-	stream.predictor[9] = uint16_t((bias_value.w << 8) | bias_value.z);
-
-	// Encode 32 elements at once.
-	for (unsigned chunk_index = 0; chunk_index < MaxElements / 32; chunk_index++)
-	{
-		uvec4 required_bits = {};
-		for (unsigned i = 0; i < 32; i++)
-			required_bits = max(required_bits, compute_required_bits_signed(stream_buffer[chunk_index * 32 + i]));
-
-		// Encode bit counts.
-		stream.bitplane_meta[chunk_index] = uint16_t((required_bits.x << 0) | (required_bits.y << 4) |
-		                                             (required_bits.z << 8) | (required_bits.w << 12));
-
-		for (unsigned i = 0; i < required_bits.x; i++)
-			out_payload_buffer.push_back(extract_bit_plane(&stream_buffer[chunk_index * 32][0], i));
-		for (unsigned i = 0; i < required_bits.y; i++)
-			out_payload_buffer.push_back(extract_bit_plane(&stream_buffer[chunk_index * 32][1], i));
-		for (unsigned i = 0; i < required_bits.z; i++)
-			out_payload_buffer.push_back(extract_bit_plane(&stream_buffer[chunk_index * 32][2], i));
-		for (unsigned i = 0; i < required_bits.w; i++)
-			out_payload_buffer.push_back(extract_bit_plane(&stream_buffer[chunk_index * 32][3], i));
-	}
-
-	return out_payload_buffer.size() - stream.offset_from_base_u32;
+	encode_bitplane(out_payload_buffer, attributes, encoded_bits);
 }
 
 static void encode_mesh(Encoded &encoded,
                         const Meshlet *meshlets, size_t num_meshlets,
-                        const uint32_t *index_buffer, uint32_t primitive_count,
-                        const uint32_t *attributes,
-                        unsigned num_u32_streams)
+						const void * const *pp_data,
+						const int *p_aux,
+                        unsigned num_streams)
 {
 	encoded = {};
 	auto &mesh = encoded.mesh;
-	mesh.stream_count = num_u32_streams + 1;
-	mesh.meshlets.reserve(num_meshlets);
+	assert(num_streams > 0);
+	mesh.stream_count = num_streams;
+
+	size_t num_full_meshlets = (num_meshlets + NumChunks - 1) / NumChunks;
+	mesh.meshlets.reserve(num_full_meshlets);
 	uint32_t base_vertex_offset = 0;
 
-	std::unordered_map <uint32_t, uint32_t> vbo_remap;
-	uint32_t primitive_index = 0;
-	size_t words_per_stream[MaxU32Streams] = {};
+	uint32_t stream_payload_count[MaxStreams] = {};
 
-	for (uint32_t meshlet_index = 0; meshlet_index < num_meshlets; meshlet_index++)
+	for (uint32_t full_meshlet_index = 0; full_meshlet_index < num_full_meshlets; full_meshlet_index++)
 	{
-		uint32_t primitives_to_process = min(primitive_count - primitive_index, meshlets[meshlet_index].count);
-		assert(primitives_to_process);
-		assert(primitive_count > primitive_index);
+		Metadata out_meshlet = {};
+		out_meshlet.base_vertex_offset = base_vertex_offset;
 
-		primitive_index = meshlets[meshlet_index].offset;
+		uint32_t num_chunks = std::min<uint32_t>(num_meshlets - full_meshlet_index * NumChunks, NumChunks);
+		out_meshlet.num_chunks = num_chunks;
 
-		auto analysis_result = analyze_primitive_count(
-				vbo_remap, index_buffer + 3 * primitive_index,
-				primitives_to_process);
-
-		assert(analysis_result.num_primitives);
-		assert(analysis_result.num_vertices);
-
-		primitives_to_process = analysis_result.num_primitives;
-
-		Metadata meshlet = {};
-		u8vec4 stream_buffer[MaxElements];
-
-		meshlet.base_vertex_offset = base_vertex_offset;
-		meshlet.num_primitives_minus_1 = analysis_result.num_primitives - 1;
-		meshlet.num_attributes_minus_1 = analysis_result.num_vertices - 1;
-		meshlet.reserved = 0;
-
-		// Encode index buffer.
-		for (uint32_t i = 0; i < analysis_result.num_primitives; i++)
 		{
-			uint8_t i0 = vbo_remap[index_buffer[3 * (primitive_index + i) + 0]];
-			uint8_t i1 = vbo_remap[index_buffer[3 * (primitive_index + i) + 1]];
-			uint8_t i2 = vbo_remap[index_buffer[3 * (primitive_index + i) + 2]];
-			stream_buffer[i] = u8vec4(i0, i1, i2, 0);
-		}
+			auto &index_stream = out_meshlet.streams[int(StreamType::Primitive)];
+			index_stream.offset_in_b128 = uint32_t(encoded.payload.size());
+			uint32_t num_attributes = 0;
+			uint32_t num_primitives = 0;
 
-		words_per_stream[0] +=
-				encode_stream(encoded.payload, meshlet.u32_streams[0], stream_buffer, analysis_result.num_primitives);
-
-		// Handle spill region just in case.
-		uint64_t vbo_remapping[MaxVertices + 3];
-		unsigned vbo_index = 0;
-		for (auto &v : vbo_remap)
-		{
-			assert(vbo_index < MaxVertices + 3);
-			vbo_remapping[vbo_index++] = (uint64_t(v.second) << 32) | v.first;
-		}
-		std::sort(vbo_remapping, vbo_remapping + vbo_index);
-
-		for (uint32_t stream_index = 0; stream_index < num_u32_streams; stream_index++)
-		{
-			for (uint32_t i = 0; i < analysis_result.num_vertices; i++)
+			for (uint32_t chunk_index = 0; chunk_index < num_chunks; chunk_index++)
 			{
-				auto vertex_index = uint32_t(vbo_remapping[i]);
-				uint32_t payload = attributes[stream_index + num_u32_streams * vertex_index];
-				memcpy(stream_buffer[i].data, &payload, sizeof(payload));
+				auto &meshlet = meshlets[full_meshlet_index * NumChunks + chunk_index];
+
+				u8vec3 index_stream_buffer[ElementsPerChunk];
+				for (uint32_t i = 0; i < meshlet.primitive_count; i++)
+					memcpy(index_stream_buffer[i].data, meshlet.local_indices + 3 * i, 3);
+				for (uint32_t i = meshlet.primitive_count; i < ElementsPerChunk; i++)
+					index_stream_buffer[i] = u8vec3(0);
+
+				auto &offsets = index_stream.u.offsets[chunk_index];
+				offsets.attr_offset = num_attributes;
+				offsets.prim_offset = num_primitives;
+
+				auto start_count = encoded.payload.size();
+				encode_index_stream(encoded.payload, index_stream_buffer);
+				auto end_count = encoded.payload.size();
+
+				stream_payload_count[int(StreamType::Primitive)] += end_count - start_count;
+
+				num_primitives += meshlet.primitive_count;
+				num_attributes += meshlet.vertex_count;
 			}
 
-			words_per_stream[stream_index + 1] +=
-					encode_stream(encoded.payload, meshlet.u32_streams[stream_index + 1], stream_buffer,
-					              analysis_result.num_vertices);
+			for (uint32_t chunk_index = num_chunks; chunk_index <= NumChunks; chunk_index++)
+			{
+				auto &offsets = index_stream.u.offsets[chunk_index];
+				offsets.attr_offset = num_attributes;
+				offsets.prim_offset = num_primitives;
+			}
+
+			base_vertex_offset += num_attributes;
 		}
 
-		mesh.meshlets.push_back(meshlet);
-		base_vertex_offset += analysis_result.num_vertices;
-		primitive_index += primitives_to_process;
+		for (uint32_t stream_index = 1; stream_index < num_streams; stream_index++)
+		{
+			auto &stream = out_meshlet.streams[stream_index];
+			stream.aux = p_aux[stream_index];
+			stream.offset_in_b128 = uint32_t(encoded.payload.size());
+
+			uint32_t start_count = encoded.payload.size();
+			for (uint32_t chunk_index = 0; chunk_index < num_chunks; chunk_index++)
+			{
+				auto &meshlet = meshlets[full_meshlet_index * NumChunks + chunk_index];
+
+				switch (StreamType(stream_index))
+				{
+				case StreamType::Position:
+					encode_attribute_stream(encoded.payload, stream,
+					                        static_cast<const u16vec3 *>(pp_data[stream_index]),
+											chunk_index, meshlet.attribute_remap, meshlet.vertex_count);
+					break;
+
+				case StreamType::UV:
+					encode_attribute_stream(encoded.payload, stream,
+					                        static_cast<const u16vec2 *>(pp_data[stream_index]),
+					                        chunk_index, meshlet.attribute_remap, meshlet.vertex_count);
+					break;
+
+				case StreamType::NormalTangentOct8:
+				{
+					u8vec4 nts[ElementsPerChunk]{};
+					uint32_t sign_mask = 0;
+					auto *nt = static_cast<const NormalTangent *>(pp_data[stream_index]);
+					for (unsigned i = 0; i < meshlet.vertex_count; i++)
+					{
+						const auto &mapped_nt = nt[meshlet.attribute_remap[i]];
+						sign_mask |= uint32_t(mapped_nt.t_sign) << i;
+						nts[i] = u8vec4(u8vec2(mapped_nt.n), u8vec2(mapped_nt.t));
+					}
+
+					if (meshlet.vertex_count < ElementsPerChunk && sign_mask == (1u << meshlet.vertex_count) - 1)
+						sign_mask = UINT32_MAX;
+
+					if (sign_mask == 0)
+					{
+						stream.aux |= 1 << (2 * chunk_index);
+					}
+					else if (sign_mask == UINT32_MAX)
+					{
+						stream.aux |= 2 << (2 * chunk_index);
+					}
+					else
+					{
+						stream.aux |= 3 << (2 * chunk_index);
+						for (unsigned i = 0; i < meshlet.vertex_count; i++)
+						{
+							nts[i].w &= ~1;
+							nts[i].w |= (sign_mask >> i) & 1u;
+						}
+					}
+
+					encode_attribute_stream(encoded.payload, stream, nts,
+					                        chunk_index, nullptr, meshlet.vertex_count);
+					break;
+				}
+
+				default:
+					break;
+				}
+			}
+			uint32_t end_count = encoded.payload.size();
+			stream_payload_count[stream_index] += end_count - start_count;
+		}
+
+		mesh.meshlets.push_back(out_meshlet);
 	}
 
-	for (unsigned i = 0; i < MaxU32Streams; i++)
-		if (words_per_stream[i])
-			LOGI("Stream[%u] = %zu bytes.\n", i, words_per_stream[i] * sizeof(uint32_t));
+	for (unsigned i = 0; i < MaxStreams; i++)
+		if (stream_payload_count[i])
+			LOGI("Stream %u: %zu bytes.\n", i, stream_payload_count[i] * sizeof(PayloadB128));
 }
 
 static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
@@ -528,9 +702,9 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 	FormatHeader header = {};
 
 	header.style = encoded.mesh.mesh_style;
-	header.u32_stream_count = encoded.mesh.stream_count;
+	header.stream_count = encoded.mesh.stream_count;
 	header.meshlet_count = uint32_t(encoded.mesh.meshlets.size());
-	header.payload_size_words = uint32_t(encoded.payload.size());
+	header.payload_size_b128 = uint32_t(encoded.payload.size());
 
 	required_size += sizeof(magic);
 	required_size += sizeof(FormatHeader);
@@ -546,7 +720,7 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 
 	// Payload.
 	// Need a padding word to speed up decoder.
-	required_size += (encoded.payload.size() + 1) * sizeof(uint32_t);
+	required_size += (encoded.payload.size() + 1) * sizeof(PayloadB128);
 
 	auto file = GRANITE_FILESYSTEM()->open(path, FileMode::WriteOnly);
 	if (!file)
@@ -579,16 +753,16 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 
 	for (uint32_t i = 0; i < header.meshlet_count; i++)
 	{
-		for (uint32_t j = 0; j < header.u32_stream_count; j++)
+		for (uint32_t j = 0; j < header.stream_count; j++)
 		{
-			memcpy(ptr, &encoded.mesh.meshlets[i].u32_streams[j], sizeof(Stream));
+			memcpy(ptr, &encoded.mesh.meshlets[i].streams[j], sizeof(Stream));
 			ptr += sizeof(Stream);
 		}
 	}
 
-	memcpy(ptr, encoded.payload.data(), encoded.payload.size() * sizeof(uint32_t));
-	ptr += encoded.payload.size() * sizeof(uint32_t);
-	memset(ptr, 0, sizeof(uint32_t));
+	memcpy(ptr, encoded.payload.data(), encoded.payload.size() * sizeof(PayloadB128));
+	ptr += encoded.payload.size() * sizeof(PayloadB128);
+	memset(ptr, 0, sizeof(PayloadB128));
 	return true;
 }
 
@@ -598,10 +772,13 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	if (!mesh_optimize_index_buffer(mesh, {}))
 		return false;
 
-	std::vector<i16vec4> positions, uv;
-	std::vector<i8vec4> normals, tangent;
+	std::vector<i16vec3> positions;
+	std::vector<i16vec2> uv;
+	std::vector<NormalTangent> normal_tangent;
 
-	unsigned num_u32_streams = 0;
+	unsigned num_attribute_streams = 0;
+	int aux[MaxStreams] = {};
+	const void *p_data[MaxStreams] = {};
 
 	switch (style)
 	{
@@ -609,29 +786,31 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 		LOGE("Unimplemented.\n");
 		return false;
 	case MeshStyle::Textured:
-		uv = mesh_extract_uv_snorm_scale(mesh);
-		num_u32_streams += 4;
+		uv = mesh_extract_uv_snorm_scale(mesh, aux[int(StreamType::UV)]);
+		num_attribute_streams += 2;
 		if (uv.empty())
 		{
 			LOGE("No UVs.\n");
 			return false;
 		}
-		normals = mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Normal);
-		tangent = mesh_extract_normal_tangent_oct8(mesh, MeshAttribute::Tangent);
-		if (normals.empty() || tangent.empty())
+		normal_tangent = mesh_extract_normal_tangent_oct8(mesh);
+		if (normal_tangent.empty())
 		{
 			LOGE("No tangent or normal.\n");
 			return false;
 		}
+		p_data[int(StreamType::UV)] = uv.data();
+		p_data[int(StreamType::NormalTangentOct8)] = normal_tangent.data();
 		// Fallthrough
 	case MeshStyle::Wireframe:
-		positions = mesh_extract_position_snorm_exp(mesh);
+		positions = mesh_extract_position_snorm_exp(mesh, aux[int(StreamType::Position)]);
 		if (positions.empty())
 		{
 			LOGE("No positions.\n");
 			return false;
 		}
-		num_u32_streams += 2;
+		p_data[int(StreamType::Position)] = positions.data();
+		num_attribute_streams += 1;
 		break;
 
 	default:
@@ -639,41 +818,14 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 		return false;
 	}
 
-	std::vector<uint32_t> attributes(num_u32_streams * positions.size());
-	uint32_t *ptr = attributes.data();
-	for (size_t i = 0, n = positions.size(); i < n; i++)
-	{
-		memcpy(ptr, positions[i].data, sizeof(positions.front()));
-		ptr += sizeof(positions.front()) / sizeof(uint32_t);
-
-		if (!normals.empty())
-		{
-			memcpy(ptr, normals[i].data, sizeof(normals.front()));
-			ptr += sizeof(normals.front()) / sizeof(uint32_t);
-		}
-
-		if (!tangent.empty())
-		{
-			memcpy(ptr, tangent[i].data, sizeof(tangent.front()));
-			ptr += sizeof(tangent.front()) / sizeof(uint32_t);
-		}
-
-		if (!uv.empty())
-		{
-			memcpy(ptr, uv[i].data, sizeof(uv.front()));
-			ptr += sizeof(uv.front()) / sizeof(uint32_t);
-		}
-	}
-
 	// Use quantized position to guide the clustering.
 	std::vector<vec3> position_buffer;
 	position_buffer.reserve(positions.size());
 	for (auto &p : positions)
-		position_buffer.push_back(decode_snorm_exp(p));
+		position_buffer.push_back(decode_snorm_exp(p, aux[int(StreamType::Position)]));
 
-	// Special meshoptimizer limit.
-	constexpr unsigned max_vertices = 255;
-	constexpr unsigned max_primitives = 256;
+	constexpr unsigned max_vertices = 32;
+	constexpr unsigned max_primitives = 32;
 	size_t num_meshlets = meshopt_buildMeshletsBound(mesh.count, max_vertices, max_primitives);
 
 	std::vector<unsigned> out_vertex_redirection_buffer(num_meshlets * max_vertices);
@@ -692,14 +844,18 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	std::vector<uvec3> out_index_buffer;
 
 	out_meshlets.reserve(num_meshlets);
+
 	for (auto &meshlet : meshlets)
 	{
 		Meshlet m = {};
-		m.offset = uint32_t(out_index_buffer.size());
-		m.count = meshlet.triangle_count;
-		out_meshlets.push_back(m);
 
 		auto *local_indices = local_index_buffer.data() + meshlet.triangle_offset;
+		m.local_indices = local_indices;
+		m.attribute_remap = out_vertex_redirection_buffer.data() + meshlet.vertex_offset;
+		m.primitive_count = meshlet.triangle_count;
+		m.vertex_count = meshlet.vertex_count;
+		m.global_indices_offset = uint32_t(out_index_buffer.size());
+
 		for (unsigned i = 0; i < meshlet.triangle_count; i++)
 		{
 			out_index_buffer.emplace_back(
@@ -707,24 +863,41 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 					out_vertex_redirection_buffer[local_indices[3 * i + 1] + meshlet.vertex_offset],
 					out_vertex_redirection_buffer[local_indices[3 * i + 2] + meshlet.vertex_offset]);
 		}
-	}
 
-	std::vector<meshopt_Bounds> bounds;
-	bounds.clear();
-	bounds.reserve(num_meshlets);
-	for (auto &meshlet : out_meshlets)
-	{
-		auto bound = meshopt_computeClusterBounds(
-				out_index_buffer[meshlet.offset].data, meshlet.count * 3,
-				position_buffer[0].data, positions.size(), sizeof(vec3));
-		bounds.push_back(bound);
+		out_meshlets.push_back(m);
 	}
 
 	Encoded encoded;
 	encode_mesh(encoded, out_meshlets.data(), out_meshlets.size(),
-	            out_index_buffer[0].data, out_index_buffer.size(),
-	            attributes.data(), num_u32_streams);
+	            p_data, aux, num_attribute_streams + 1);
 	encoded.mesh.mesh_style = style;
+
+	// Compute bounds
+	std::vector<meshopt_Bounds> bounds;
+	bounds.clear();
+	bounds.reserve((num_meshlets + NumChunks - 1) / NumChunks);
+
+	// Fuse 8 32-size meshlets together to form a 256 meshlet.
+	for (size_t i = 0, n = out_meshlets.size(); i < n; i += NumChunks)
+	{
+		size_t num_chunks = std::min<size_t>(n - i, NumChunks);
+		uint32_t total_count = 0;
+		uvec3 tmp_indices[256];
+
+		for (size_t chunk = 0; chunk < num_chunks; chunk++)
+		{
+			auto &meshlet = out_meshlets[i + chunk];
+			memcpy(tmp_indices[total_count].data,
+			       out_index_buffer[meshlet.global_indices_offset].data,
+			       meshlet.primitive_count * sizeof(tmp_indices[0]));
+			total_count += meshlet.primitive_count;
+		}
+
+		auto bound = meshopt_computeClusterBounds(
+				tmp_indices[0].data, total_count * 3,
+				position_buffer[0].data, positions.size(), sizeof(vec3));
+		bounds.push_back(bound);
+	}
 
 	assert(bounds.size() == encoded.mesh.meshlets.size());
 	const auto *pbounds = bounds.data();
@@ -739,7 +912,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 
 	LOGI("Exported meshlet:\n");
 	LOGI("  %zu meshlets\n", encoded.mesh.meshlets.size());
-	LOGI("  %zu payload bytes\n", encoded.payload.size() * sizeof(uint32_t));
+	LOGI("  %zu payload bytes\n", encoded.payload.size() * sizeof(PayloadB128));
 	LOGI("  %u total indices\n", mesh.count);
 	LOGI("  %zu total attributes\n", mesh.positions.size() / mesh.position_stride);
 

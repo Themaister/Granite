@@ -219,7 +219,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				c.indices = collision_mesh.indices.data();
 				c.num_triangles = collision_mesh.indices.size() / 3;
 				c.index_stride_triangle = 3 * sizeof(uint32_t);
-				c.num_vertices = collision_mesh.positions.size();
+				c.num_attributes = collision_mesh.positions.size();
 				c.positions = collision_mesh.positions.front().data;
 				c.position_stride = sizeof(vec4);
 				c.aabb = mesh.static_aabb;

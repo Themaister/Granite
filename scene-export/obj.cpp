@@ -455,7 +455,7 @@ void Parser::load_material_library(const std::string &path)
 		emit_gltf_base_color(base_color, alpha_mask);
 }
 
-Parser::Parser(const std::string &path)
+Parser::Parser(const std::string &path, float position_scale)
 {
 	std::string obj;
 	if (!GRANITE_FILESYSTEM()->read_file_to_string(path, obj))
@@ -477,7 +477,7 @@ Parser::Parser(const std::string &path)
 		if (ident == "mtllib")
 			load_material_library(Path::relpath(path, elements.at(1)));
 		else if (ident == "v")
-			positions.push_back(vec3(stof(elements.at(1)), stof(elements.at(2)), stof(elements.at(3))));
+			positions.push_back(position_scale * vec3(stof(elements.at(1)), stof(elements.at(2)), stof(elements.at(3))));
 		else if (ident == "vn")
 			normals.push_back(vec3(stof(elements.at(1)), stof(elements.at(2)), stof(elements.at(3))));
 		else if (ident == "vt")

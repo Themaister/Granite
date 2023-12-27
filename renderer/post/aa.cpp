@@ -25,6 +25,7 @@
 #include "fxaa.hpp"
 #include "smaa.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "environment.hpp"
 #include <string.h>
 
 namespace Granite
@@ -115,20 +116,7 @@ bool setup_after_post_chain_upscaling(RenderGraph &graph, const std::string &inp
 		const char *frag = "builtin://shaders/post/ffx-fsr/upscale.frag";
 
 		bool fp16 = cmd.get_device().get_device_features().vk12_features.shaderFloat16;
-		const char *fsr_fp16 = getenv("FIDELITYFX_FSR_FP16");
-		if (fsr_fp16)
-		{
-			fp16 = strtoul(fsr_fp16, nullptr, 0) != 0;
-			static bool logged;
-			if (!logged)
-			{
-				if (fp16)
-					LOGI("Forcing FP16 for FidelityFX FSR path.\n");
-				else
-					LOGI("Forcing FP32 for FidelityFX FSR path.\n");
-				logged = true;
-			}
-		}
+		fp16 = Util::get_environment_bool("FIDELITYFX_FSR_FP16", fp16);
 
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, vert, frag,
 		                                                {{ "TARGET_SRGB", srgb ? 1 : 0 },

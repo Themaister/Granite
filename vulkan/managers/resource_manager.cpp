@@ -119,8 +119,7 @@ void ResourceManager::init()
 		auto info = ImageCreateInfo::immutable_2d_image(1, 1, VK_FORMAT_R8G8B8A8_UNORM);
 		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 		info.misc = IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
-		            IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
-		            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT;
+		            IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
 		ImageInitialData data = {buffer, 0, 0};
 		fallback_color = device->create_image(info, &data);
 		buffer[0] = 0x80;
@@ -261,7 +260,7 @@ ImageHandle ResourceManager::create_gtx(const MemoryMappedTexture &mapped_file, 
 		info.flags = (mapped_file.get_flags() & MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT) ?
 		             VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT :
 		             0;
-		info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
+		info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 		            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
 
 		if (info.levels == 1 &&
@@ -531,12 +530,9 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 				streams[i] = in_stream;
 			}
 
-			Semaphore sem[2];
-			device->submit(cmd, nullptr, 2, sem);
-			device->add_wait_semaphore(CommandBuffer::Type::Generic, std::move(sem[0]),
-			                           VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT |
-			                           VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, false);
-			device->add_wait_semaphore(CommandBuffer::Type::AsyncGraphics, std::move(sem[1]),
+			Semaphore sem;
+			device->submit(cmd, nullptr, 1, &sem);
+			device->add_wait_semaphore(CommandBuffer::Type::Generic, std::move(sem),
 			                           VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT |
 			                           VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, false);
 		}
@@ -580,12 +576,9 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 
 			Meshlet::decode_mesh(*cmd, info, view);
 
-			Semaphore sem[2];
-			device->submit(cmd, nullptr, 2, sem);
-			device->add_wait_semaphore(CommandBuffer::Type::Generic, std::move(sem[0]),
-			                           VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT |
-			                           VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT, false);
-			device->add_wait_semaphore(CommandBuffer::Type::AsyncGraphics, std::move(sem[1]),
+			Semaphore sem;
+			device->submit(cmd, nullptr, 1, &sem);
+			device->add_wait_semaphore(CommandBuffer::Type::Generic, std::move(sem),
 			                           VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT |
 			                           VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT, false);
 		}

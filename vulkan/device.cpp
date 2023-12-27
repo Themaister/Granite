@@ -61,7 +61,6 @@ using namespace Util;
 
 namespace Vulkan
 {
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 static constexpr VkImageUsageFlags image_usage_video_flags =
 		VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR |
 		VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR |
@@ -69,19 +68,11 @@ static constexpr VkImageUsageFlags image_usage_video_flags =
 		VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
 		VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
 		VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR;
-#else
-static constexpr VkImageUsageFlags image_usage_video_flags =
-		VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
-		VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
-		VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR;
-#endif
 
 static const QueueIndices queue_flush_order[] = {
 	QUEUE_INDEX_TRANSFER,
 	QUEUE_INDEX_VIDEO_DECODE,
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 	QUEUE_INDEX_VIDEO_ENCODE,
-#endif
 	QUEUE_INDEX_GRAPHICS,
 	QUEUE_INDEX_COMPUTE,
 };
@@ -1249,23 +1240,8 @@ void Device::submit_discard(CommandBufferHandle &cmd)
 
 QueueIndices Device::get_physical_queue_type(CommandBuffer::Type queue_type) const
 {
-	if (queue_type != CommandBuffer::Type::AsyncGraphics)
-	{
-		// Enums match.
-		return QueueIndices(queue_type);
-	}
-	else
-	{
-		if (queue_info.family_indices[QUEUE_INDEX_GRAPHICS] == queue_info.family_indices[QUEUE_INDEX_COMPUTE] &&
-		    queue_info.queues[QUEUE_INDEX_GRAPHICS] != queue_info.queues[QUEUE_INDEX_COMPUTE])
-		{
-			return QUEUE_INDEX_COMPUTE;
-		}
-		else
-		{
-			return QUEUE_INDEX_GRAPHICS;
-		}
-	}
+	// Enums match.
+	return QueueIndices(queue_type);
 }
 
 void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semaphore_count, Semaphore *semaphores)
@@ -3796,7 +3772,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 	uint32_t queue_flags = create_info.misc & (IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
-	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
 	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
 	                                           IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DUPLEX);
 	bool concurrent_queue = queue_flags != 0 ||
@@ -3813,7 +3788,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		{
 			// We never imply video here.
 			constexpr ImageMiscFlags implicit_queues_all =
-					IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
 					IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 					IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
 					IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
@@ -3833,13 +3807,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			uint32_t flags;
 			QueueIndices index;
 		} static const mappings[] = {
-			{ IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT, QUEUE_INDEX_GRAPHICS },
+			{ IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT, QUEUE_INDEX_GRAPHICS },
 			{ IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT, QUEUE_INDEX_COMPUTE },
 			{ IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT, QUEUE_INDEX_TRANSFER },
 			{ IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT, QUEUE_INDEX_VIDEO_DECODE },
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 			{ IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_ENCODE_BIT, QUEUE_INDEX_VIDEO_ENCODE },
-#endif
 		};
 
 		for (auto &m : mappings)
@@ -4070,18 +4042,14 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		CommandBuffer::Type type = CommandBuffer::Type::Count;
 		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT)
 			type = CommandBuffer::Type::Generic;
-		else if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT)
-			type = CommandBuffer::Type::AsyncGraphics;
 		else if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT)
 			type = CommandBuffer::Type::AsyncCompute;
 		else if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT)
 			type = CommandBuffer::Type::AsyncTransfer;
 		else if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)
 			type = CommandBuffer::Type::VideoDecode;
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 		else if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_ENCODE_BIT)
 			type = CommandBuffer::Type::VideoEncode;
-#endif
 		VK_ASSERT(type != CommandBuffer::Type::Count);
 
 		auto cmd = request_command_buffer(type);
@@ -4100,28 +4068,9 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		Semaphore sem[max_queues];
 		uint32_t sem_count = 0;
 
-		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT)
-		{
-			// Avoid redundant submissions to same queue.
-			if (get_physical_queue_type(CommandBuffer::Type::AsyncGraphics) == QUEUE_INDEX_GRAPHICS)
-			{
-				queue_flags &= ~IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT;
-				queue_flags |= IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
-			}
-			else
-				queue_flags &= ~IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
-		}
-
 		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT)
 		{
 			types[sem_count] = CommandBuffer::Type::Generic;
-			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-			sem_count++;
-		}
-
-		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT)
-		{
-			types[sem_count] = CommandBuffer::Type::AsyncGraphics;
 			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 			sem_count++;
 		}
@@ -4151,7 +4100,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 				sem_count++;
 		}
 
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 		if (create_info.misc & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_ENCODE_BIT)
 		{
 			types[sem_count] = CommandBuffer::Type::VideoEncode;
@@ -4159,7 +4107,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			if (stages[sem_count] != 0)
 				sem_count++;
 		}
-#endif
 
 		VK_ASSERT(sem_count);
 
@@ -5217,7 +5164,6 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 	                            (Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
 	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
-	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
 	                             Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DUPLEX)) != 0;
 	bool need_ownership_transfer = old_family != new_family && !image_is_concurrent;
 

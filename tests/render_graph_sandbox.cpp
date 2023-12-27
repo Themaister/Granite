@@ -117,7 +117,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 		});
 
 		// Composite + UI
-		auto &swap = graph.add_pass("final", RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT);
+		auto &swap = graph.add_pass("final", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 		swap.add_color_output("back", back);
 		swap.add_texture_input("image");
 		swap.add_texture_input("first");

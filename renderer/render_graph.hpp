@@ -97,8 +97,7 @@ enum RenderGraphQueueFlagBits
 {
 	RENDER_GRAPH_QUEUE_GRAPHICS_BIT = 1 << 0,
 	RENDER_GRAPH_QUEUE_COMPUTE_BIT = 1 << 1,
-	RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT = 1 << 2,
-	RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT = 1 << 3
+	RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT = 1 << 2
 };
 using RenderGraphQueueFlags = uint32_t;
 
@@ -858,15 +857,7 @@ public:
 
 	static inline RenderGraphQueueFlagBits get_default_post_graphics_queue()
 	{
-		if (Vulkan::ImplementationQuirks::get().use_async_compute_post &&
-		    !Vulkan::ImplementationQuirks::get().render_graph_force_single_queue)
-		{
-			return RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT;
-		}
-		else
-		{
-			return RENDER_GRAPH_QUEUE_GRAPHICS_BIT;
-		}
+		return RENDER_GRAPH_QUEUE_GRAPHICS_BIT;
 	}
 
 	static inline RenderGraphQueueFlagBits get_default_compute_queue()

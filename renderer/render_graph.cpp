@@ -1847,11 +1847,6 @@ static void get_queue_type(Vulkan::CommandBuffer::Type &queue_type, bool &graphi
 		graphics = false;
 		queue_type = Vulkan::CommandBuffer::Type::AsyncCompute;
 		break;
-
-	case RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT:
-		graphics = true;
-		queue_type = Vulkan::CommandBuffer::Type::AsyncGraphics;
-		break;
 	}
 }
 
@@ -2369,10 +2364,7 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 	unsigned resource_index = resource_to_index[backbuffer_source];
 	auto &source_resource = *this->resources[resource_index];
 
-	auto queue_type = (physical_dimensions[resource_index].queues & RENDER_GRAPH_QUEUE_GRAPHICS_BIT) != 0 ?
-	                  Vulkan::CommandBuffer::Type::Generic : Vulkan::CommandBuffer::Type::AsyncGraphics;
-
-	auto physical_queue_type = device_.get_physical_queue_type(queue_type);
+	const auto queue_type = Vulkan::CommandBuffer::Type::Generic;
 
 	auto cmd = device_.request_command_buffer(queue_type);
 	cmd->begin_region("render-graph-copy-to-swapchain");
@@ -2380,8 +2372,7 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 	unsigned index = source_resource.get_physical_index();
 	auto &image = physical_attachments[index]->get_image();
 
-	auto &wait_semaphore = physical_queue_type == Vulkan::QUEUE_INDEX_GRAPHICS ?
-	                       physical_events[index].wait_graphics_semaphore : physical_events[index].wait_compute_semaphore;
+	auto &wait_semaphore = physical_events[index].wait_graphics_semaphore;
 
 	auto target_layout = physical_dimensions[index].is_storage_image() ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
@@ -2606,8 +2597,6 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device_, unsigned attachm
 			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
 		if (att.queues & RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
 			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
-		if (att.queues & RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT)
-			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT;
 
 		physical_image_attachments[attachment] = device_.create_image(info, nullptr);
 		physical_image_attachments[attachment]->set_surface_transform(att.transform);
@@ -3023,10 +3012,7 @@ void RenderGraph::bake()
 		     swapchain_dimensions.format, swapchain_dimensions.transform);
 
 		swapchain_physical_index = RenderResource::Unused;
-		if ((backbuffer_dim.queues & RENDER_GRAPH_QUEUE_GRAPHICS_BIT) == 0)
-			backbuffer_dim.queues |= RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT;
-		else
-			backbuffer_dim.queues |= RENDER_GRAPH_QUEUE_GRAPHICS_BIT;
+		backbuffer_dim.queues |= RENDER_GRAPH_QUEUE_GRAPHICS_BIT;
 
 		// We will need to sample from the image to blit to backbuffer.
 		backbuffer_dim.image_usage |= VK_IMAGE_USAGE_SAMPLED_BIT;

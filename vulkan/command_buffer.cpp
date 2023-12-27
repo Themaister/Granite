@@ -523,8 +523,7 @@ static uint32_t deduce_acquire_release_family_index(Device &device, const Image 
 		if (queue_info.family_indices[QUEUE_INDEX_GRAPHICS] != family)
 			return VK_QUEUE_FAMILY_IGNORED;
 
-	if (image.get_create_info().misc &
-	    (IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT))
+	if (image.get_create_info().misc & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT)
 	{
 		if (queue_info.family_indices[QUEUE_INDEX_COMPUTE] != family)
 			return VK_QUEUE_FAMILY_IGNORED;

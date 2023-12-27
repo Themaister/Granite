@@ -213,9 +213,9 @@ struct VideoPlayerApplication : Application, EventHandler
 		float aspect = float(video->decoder.get_width()) / float(video->decoder.get_height());
 		float x_scale = 1.0f * aspect;
 		float z_scale = 1.0f;
-		node->transform.scale = vec3(x_scale, 1.0f, z_scale);
-		node->transform.rotation = angleAxis(muglm::half_pi<float>(), vec3(0.0f, 1.0f, 0.0f)) * angleAxis(muglm::half_pi<float>(), vec3(1.0f, 0.0f, 0.0f));
-		node->transform.translation = vec3(0.0f, 1.0f, -0.5f);
+		node->get_transform().scale = vec3(x_scale, 1.0f, z_scale);
+		node->get_transform().rotation = angleAxis(muglm::half_pi<float>(), vec3(0.0f, 1.0f, 0.0f)) * angleAxis(muglm::half_pi<float>(), vec3(1.0f, 0.0f, 0.0f));
+		node->get_transform().translation = vec3(0.0f, 1.0f, -0.5f);
 		node->invalidate_cached_transform();
 		auto root = scene.get_root_node();
 		if (root)

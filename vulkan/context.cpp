@@ -84,11 +84,8 @@ struct ProfileHolder
 namespace Vulkan
 {
 static constexpr ContextCreationFlags video_context_flags =
-#ifdef VK_ENABLE_BETA_EXTENSIONS
-		CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT | CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT;
-#else
-		CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT;
-#endif
+	CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT |
+	CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT;
 
 void Context::set_instance_factory(InstanceFactory *factory)
 {
@@ -1018,12 +1015,11 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	queue_info.timestamp_valid_bits =
 			queue_props[queue_info.family_indices[QUEUE_INDEX_GRAPHICS]].queueFamilyProperties.timestampValidBits;
 
-	// Prefer another graphics queue since we can do async graphics that way.
-	// The compute queue is to be treated as high priority since we also do async graphics on it.
+	// Prefer standalone compute queue. If not, fall back to another graphics queue.
 	if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_COMPUTE], queue_indices[QUEUE_INDEX_COMPUTE],
-	                       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0, 1.0f) &&
+	                       VK_QUEUE_COMPUTE_BIT, VK_QUEUE_GRAPHICS_BIT, 0.5f) &&
 	    !find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_COMPUTE], queue_indices[QUEUE_INDEX_COMPUTE],
-	                       VK_QUEUE_COMPUTE_BIT, 0, 1.0f))
+	                       VK_QUEUE_COMPUTE_BIT, 0, 0.5f))
 	{
 		// Fallback to the graphics queue if we must.
 		queue_info.family_indices[QUEUE_INDEX_COMPUTE] = queue_info.family_indices[QUEUE_INDEX_GRAPHICS];
@@ -1055,7 +1051,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			}
 		}
 
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 		if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT) != 0)
 		{
 			if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE],
@@ -1066,7 +1061,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 				queue_indices[QUEUE_INDEX_VIDEO_ENCODE] = UINT32_MAX;
 			}
 		}
-#endif
 	}
 
 	VkDeviceCreateInfo device_info = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
@@ -1237,7 +1231,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			}
 		}
 
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 		if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT) != 0 &&
 		    has_extension(VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME))
 		{
@@ -1245,32 +1238,31 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			ext.supports_video_encode_queue = true;
 
 			if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT) != 0 &&
-			    has_extension(VK_EXT_VIDEO_ENCODE_H264_EXTENSION_NAME))
+			    has_extension(VK_KHR_VIDEO_ENCODE_H264_EXTENSION_NAME))
 			{
-				enabled_extensions.push_back(VK_EXT_VIDEO_ENCODE_H264_EXTENSION_NAME);
+				enabled_extensions.push_back(VK_KHR_VIDEO_ENCODE_H264_EXTENSION_NAME);
 
 				if (queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE] != VK_QUEUE_FAMILY_IGNORED)
 				{
 					ext.supports_video_encode_h264 =
 							(video_queue_props2[queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE]].videoCodecOperations &
-							 VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_EXT) != 0;
+							 VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR) != 0;
 				}
 			}
 
 			if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT) != 0 &&
-			    has_extension(VK_EXT_VIDEO_ENCODE_H265_EXTENSION_NAME))
+			    has_extension(VK_KHR_VIDEO_ENCODE_H265_EXTENSION_NAME))
 			{
-				enabled_extensions.push_back(VK_EXT_VIDEO_ENCODE_H265_EXTENSION_NAME);
+				enabled_extensions.push_back(VK_KHR_VIDEO_ENCODE_H265_EXTENSION_NAME);
 
 				if (queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE] != VK_QUEUE_FAMILY_IGNORED)
 				{
 					ext.supports_video_encode_h265 =
 							(video_queue_props2[queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE]].videoCodecOperations &
-							 VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_EXT) != 0;
+							 VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR) != 0;
 				}
 			}
 		}
-#endif
 	}
 
 	pdf2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
@@ -1615,13 +1607,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	}
 
 #ifdef VULKAN_DEBUG
-
-	static const char *family_names[QUEUE_INDEX_COUNT] = { "Graphics", "Compute", "Transfer", "Video decode",
-#ifdef VK_ENABLE_BETA_EXTENSIONS
-	                                                       "Video encode",
-#endif
-	};
-
+	static const char *family_names[QUEUE_INDEX_COUNT] = { "Graphics", "Compute", "Transfer", "Video decode", "Video encode" };
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
 		if (queue_info.family_indices[i] != VK_QUEUE_FAMILY_IGNORED)
 			LOGI("%s queue: family %u, index %u.\n", family_names[i], queue_info.family_indices[i], queue_indices[i]);

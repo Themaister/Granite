@@ -101,10 +101,6 @@ if (GRANITE_FFMPEG_VULKAN)
     target_compile_definitions(granite-vulkan PRIVATE HAVE_FFMPEG_VULKAN)
 endif()
 
-if (GRANITE_FFMPEG_VULKAN_ENCODE)
-    target_compile_definitions(granite-vulkan PRIVATE HAVE_FFMPEG_VULKAN_ENCODE)
-endif()
-
 if (GRANITE_VULKAN_PROFILES)
     # Must be defined by caller as an INTERFACE library before including Granite.
     if (NOT TARGET granite-vulkan-profiles)

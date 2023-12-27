@@ -164,7 +164,7 @@ struct VideoEncoder::Impl final
 	void write_frames_interleaved_f32(const float *data, size_t frames) override;
 #endif
 
-#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+#ifdef HAVE_FFMPEG_VULKAN
 	void submit_process_rgb_vulkan(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
 #endif
 	void submit_process_rgb_readback(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
@@ -1080,7 +1080,7 @@ bool VideoEncoder::Impl::init_video_codec()
 			return false;
 		}
 	}
-#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+#ifdef HAVE_FFMPEG_VULKAN
 	else if (hw.get_hw_device_type() == AV_HWDEVICE_TYPE_VULKAN)
 	{
 		// Do not allocate av_frame, we'll convert YUV into the frame context.
@@ -1298,7 +1298,7 @@ AVFrame *VideoEncoder::Impl::alloc_video_frame(AVPixelFormat pix_fmt, unsigned w
 	return frame;
 }
 
-#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+#ifdef HAVE_FFMPEG_VULKAN
 struct FrameLock
 {
 	AVHWFramesContext *frames;
@@ -1375,7 +1375,7 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	Vulkan::ImageViewHandle wrapped_planes[2];
 	Vulkan::ImageHandle wrapped_image;
 
-#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+#ifdef HAVE_FFMPEG_VULKAN
 	auto &device = cmd.get_device();
 	AVHWFramesContext *frames = nullptr;
 	AVVulkanFramesContext *vk = nullptr;
@@ -1580,7 +1580,7 @@ void VideoEncoder::submit_process_rgb(Vulkan::CommandBufferHandle &cmd, YCbCrPip
 {
 	auto &pipeline = *pipeline_ptr;
 
-#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+#ifdef HAVE_FFMPEG_VULKAN
 	if (pipeline.hw_frame)
 	{
 		impl->submit_process_rgb_vulkan(cmd, pipeline);
@@ -1622,7 +1622,7 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	image_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
-#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+#ifdef HAVE_FFMPEG_VULKAN
 	if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)
 #endif
 	{
@@ -1677,7 +1677,7 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 	image_info.width = impl->options.width / 2;
 	image_info.height = impl->options.height / 2;
 
-#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+#ifdef HAVE_FFMPEG_VULKAN
 	if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)
 #endif
 	{
@@ -1698,7 +1698,7 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 	pipeline.constants.chroma_dispatch[0] = (image_info.width + 7) / 8;
 	pipeline.constants.chroma_dispatch[1] = (image_info.height + 7) / 8;
 
-#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+#ifdef HAVE_FFMPEG_VULKAN
 	if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)
 #endif
 	{

@@ -63,11 +63,9 @@ struct DeviceFeatures
 	bool supports_astc_decode_mode = false;
 	bool supports_image_format_list = false;
 	bool supports_format_feature_flags2 = false;
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 	bool supports_video_encode_queue = false;
 	bool supports_video_encode_h264 = false;
 	bool supports_video_encode_h265 = false;
-#endif
 	bool supports_external = false;
 	bool supports_tooling_info = false;
 	bool supports_hdr_metadata = false;
@@ -135,9 +133,7 @@ enum ContextCreationFlagBits
 {
 	CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT = 1 << 0,
 	CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT = 1 << 1,
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 	CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT = 1 << 2,
-#endif
 	CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT = 1 << 3,
 	CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT = 1 << 4
 };

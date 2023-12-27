@@ -697,7 +697,6 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 		info.flags = VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
 		info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
-		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
 		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
 		            Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
 		if (opts.mipgen)
@@ -1394,7 +1393,7 @@ void VideoDecoder::Impl::process_video_frame_in_task_vulkan(DecodedImage &img, A
 	}
 
 	auto conversion_queue = opts.mipgen ?
-	                        Vulkan::CommandBuffer::Type::AsyncGraphics :
+	                        Vulkan::CommandBuffer::Type::Generic :
 	                        Vulkan::CommandBuffer::Type::AsyncCompute;
 
 	if (img.sem_from_client)
@@ -1576,7 +1575,7 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 	device->submit(cmd, nullptr, 1, &transfer_to_compute);
 
 	auto conversion_queue = opts.mipgen ?
-	                        Vulkan::CommandBuffer::Type::AsyncGraphics :
+	                        Vulkan::CommandBuffer::Type::Generic :
 	                        Vulkan::CommandBuffer::Type::AsyncCompute;
 
 	device->add_wait_semaphore(conversion_queue,

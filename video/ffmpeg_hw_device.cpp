@@ -47,10 +47,10 @@ struct FFmpegHWDevice::Impl
 	Vulkan::Device *device = nullptr;
 	const AVCodec *cached_av_codec = nullptr;
 
-#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+#ifdef HAVE_FFMPEG_VULKAN
 	VkVideoProfileInfoKHR profile_info = { VK_STRUCTURE_TYPE_VIDEO_PROFILE_INFO_KHR };
 	VkVideoProfileListInfoKHR profile_list_info = { VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR };
-	VkVideoEncodeH264ProfileInfoEXT h264_encode = { VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_PROFILE_INFO_EXT };
+	VkVideoEncodeH264ProfileInfoKHR h264_encode = { VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_PROFILE_INFO_KHR };
 #endif
 
 	~Impl()
@@ -93,14 +93,8 @@ struct FFmpegHWDevice::Impl
 			vk->nb_comp_queues = int(q.counts[Vulkan::QUEUE_INDEX_COMPUTE]);
 			vk->nb_tx_queues = int(q.counts[Vulkan::QUEUE_INDEX_TRANSFER]);
 			vk->nb_decode_queues = int(q.counts[Vulkan::QUEUE_INDEX_VIDEO_DECODE]);
-
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 			vk->queue_family_encode_index = int(q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_ENCODE]);
 			vk->nb_encode_queues = int(q.counts[Vulkan::QUEUE_INDEX_VIDEO_ENCODE]);
-#else
-			vk->queue_family_encode_index = -1;
-			vk->nb_encode_queues = 0;
-#endif
 
 			vk->lock_queue = [](AVHWDeviceContext *ctx, uint32_t, uint32_t) {
 				auto *self = static_cast<Impl *>(ctx->user_opaque);
@@ -203,7 +197,7 @@ struct FFmpegHWDevice::Impl
 		ctx->height = height;
 		ctx->sw_format = sw_format;
 
-#ifdef HAVE_FFMPEG_VULKAN_ENCODE
+#ifdef HAVE_FFMPEG_VULKAN
 		if (ctx->format == AV_PIX_FMT_VULKAN)
 		{
 			auto *vk = static_cast<AVVulkanFramesContext *>(ctx->hwctx);
@@ -215,7 +209,7 @@ struct FFmpegHWDevice::Impl
 
 			h264_encode.stdProfileIdc = STD_VIDEO_H264_PROFILE_IDC_HIGH;
 
-			profile_info.videoCodecOperation = VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_EXT;
+			profile_info.videoCodecOperation = VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR;
 			profile_info.chromaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR;
 			profile_info.lumaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR;
 			profile_info.chromaSubsampling = VK_VIDEO_CHROMA_SUBSAMPLING_420_BIT_KHR;

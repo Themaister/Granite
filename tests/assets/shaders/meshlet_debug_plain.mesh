@@ -15,8 +15,6 @@
 #error "Must define MESHLET_SIZE"
 #endif
 
-#define MESHLET_VERTEX_ID
-
 #if MESHLET_SIZE > 32
 shared uint shared_attr_index[MESHLET_SIZE];
 shared vec4 shared_clip_pos[MESHLET_SIZE];
@@ -30,15 +28,10 @@ layout(local_size_x = 32, local_size_y_id = 0) in;
 #include "meshlet_render_types.h"
 #include "meshlet_primitive_cull.h"
 
-#ifdef MESHLET_VERTEX_ID
-layout(location = 0) out uint vVertexID[];
-layout(location = 1) perprimitiveEXT out uint vDrawID[];
-#else
 layout(location = 0) out mediump vec3 vNormal[];
 layout(location = 1) out mediump vec4 vTangent[];
 layout(location = 2) out vec2 vUV[];
 layout(location = 3) perprimitiveEXT out uint vDrawID[];
-#endif
 
 layout(set = 1, binding = 0) uniform UBO
 {
@@ -151,13 +144,9 @@ void main()
 
         mediump vec3 n = unpack_bgr10a2(a.n).xyz;
         mediump vec4 t = unpack_bgr10a2(a.t);
-#ifdef MESHLET_VERTEX_ID
-        vVertexID[out_vert_index] = meshlet.vertex_offset + linear_index + 32u * base_chunk_index;
-#else
         vUV[out_vert_index] = a.uv;
         vNormal[out_vert_index] = mat3(M) * n;
         vTangent[out_vert_index] = vec4(mat3(M) * t.xyz, t.w);
-#endif
 #endif
     }
 
@@ -184,12 +173,10 @@ void main()
         vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
     }
 
-#if 0
     if (gl_LocalInvocationIndex == 0)
     {
         atomicAdd(stats.invocations, gl_WorkGroupSize.x * gl_WorkGroupSize.y);
         atomicAdd(stats.prim, shared_active_prim_count_total);
         atomicAdd(stats.vert, shared_active_vert_count_total);
     }
-#endif
 }

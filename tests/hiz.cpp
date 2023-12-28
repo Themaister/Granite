@@ -1,3 +1,4 @@
+#define NOMINMAX
 #include "device.hpp"
 #include "command_buffer.hpp"
 #include "context.hpp"
@@ -5,6 +6,7 @@
 #include "global_managers_init.hpp"
 #include "filesystem.hpp"
 #include "thread_group.hpp"
+#include "muglm/muglm_impl.hpp"
 #include <stdlib.h>
 
 using namespace Vulkan;
@@ -13,9 +15,9 @@ using namespace Granite;
 struct Push
 {
 	mat2 z_transform;
-	ivec2 resolution;
+	uvec2 resolution;
 	vec2 inv_resolution;
-	int mips;
+	uint mips;
 	uint target_counter;
 };
 
@@ -38,12 +40,15 @@ int main()
 	Device dev;
 	dev.set_context(ctx);
 
-	float values[128][128];
-	for (int y = 0; y < 128; y++)
-		for (int x = 0; x < 128; x++)
-			values[y][x] = float(y * 128 + x);
+	constexpr unsigned WIDTH = 7;
+	constexpr unsigned HEIGHT = 3;
 
-	auto info = ImageCreateInfo::immutable_2d_image(128, 128, VK_FORMAT_R32_SFLOAT);
+	float values[HEIGHT][WIDTH];
+	for (unsigned y = 0; y < HEIGHT; y++)
+		for (unsigned x = 0; x < WIDTH; x++)
+			values[y][x] = float(y * 100000 + x);
+
+	auto info = ImageCreateInfo::immutable_2d_image(WIDTH, HEIGHT, VK_FORMAT_R32_SFLOAT);
 	info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 	ImageInitialData init = {};
 	init.data = values;
@@ -51,7 +56,9 @@ int main()
 
 	info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
-	info.levels = 8;
+	info.levels = Util::floor_log2(muglm::max(WIDTH, HEIGHT)) + 1;
+	info.width = (WIDTH + 63u) & ~63u;
+	info.height = (HEIGHT + 63u) & ~63u;
 	auto storage_img = dev.create_image(info);
 
 	BufferCreateInfo buffer_info = {};
@@ -61,8 +68,8 @@ int main()
 	buffer_info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
 	auto counter_buffer = dev.create_buffer(buffer_info);
 
-	ImageViewHandle views[8];
-	for (unsigned i = 0; i < 8; i++)
+	ImageViewHandle views[14];
+	for (unsigned i = 0; i < info.levels; i++)
 	{
 		ImageViewCreateInfo view = {};
 		view.image = storage_img.get();
@@ -77,10 +84,13 @@ int main()
 
 	Push push = {};
 	push.z_transform = mat2(1.0f);
-	push.inv_resolution = vec2(1.0f / 128.0f);
-	push.resolution = ivec2(128, 128);
-	push.mips = 8;
-	push.target_counter = 4;
+	push.resolution = uvec2(info.width, info.height);
+	push.inv_resolution = vec2(1.0f / float(WIDTH), 1.0f / float(HEIGHT));
+	push.mips = info.levels;
+
+	uint32_t wg_x = (push.resolution.x + 63) / 64;
+	uint32_t wg_y = (push.resolution.y + 63) / 64;
+	push.target_counter = wg_x * wg_y;
 
 	bool has_renderdoc = Device::init_renderdoc_capture();
 	if (has_renderdoc)
@@ -89,13 +99,13 @@ int main()
 	auto cmd = dev.request_command_buffer();
 	cmd->set_program("builtin://shaders/post/hiz.comp");
 	for (unsigned i = 0; i < 14; i++)
-		cmd->set_storage_texture(0, i, *views[i < 8 ? i : 7]);
+		cmd->set_storage_texture(0, i, *views[i < push.mips ? i : (push.mips - 1)]);
 	cmd->set_texture(1, 0, img->get_view(), StockSampler::NearestClamp);
 	cmd->set_storage_buffer(1, 1, *counter_buffer);
 	cmd->push_constants(&push, 0, sizeof(push));
 	cmd->enable_subgroup_size_control(true);
 	cmd->set_subgroup_size_log2(true, 4, 7);
-	cmd->dispatch(2, 2, 1);
+	cmd->dispatch(wg_x, wg_y, 1);
 	dev.submit(cmd);
 
 	if (has_renderdoc)

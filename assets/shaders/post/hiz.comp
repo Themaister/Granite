@@ -8,8 +8,8 @@
 layout(local_size_x = 256) in;
 
 layout(set = 0, binding = 0, r32f) uniform coherent image2D uImages[13];
-layout(set = 0, binding = 13) uniform sampler2D uTexture;
-layout(set = 0, binding = 14) buffer Counter
+layout(set = 1, binding = 0) uniform sampler2D uTexture;
+layout(set = 1, binding = 1) buffer Counter
 {
     uint atomic_counter;
 };
@@ -47,7 +47,7 @@ uvec2 unswizzle16x16(uint index)
     uint x12 = bitfieldExtract(index, 3, 2);
     uint y23 = bitfieldExtract(index, 5, 2);
     uint x3 = bitfieldExtract(index, 7, 1);
-    return uvec2(bitfieldInsert(bitfieldInsert(x0, x12, 1, 2), x3, 7, 1), bitfieldInsert(y01, y23, 2, 2));
+    return uvec2(bitfieldInsert(bitfieldInsert(x0, x12, 1, 2), x3, 3, 1), bitfieldInsert(y01, y23, 2, 2));
 }
 
 vec4 transform_z(vec4 zs)
@@ -248,6 +248,10 @@ void main()
     barrier();
     if (!shared_is_last_workgroup)
         return;
+
+    // Reset counter for next iteration.
+    if (local_index == 0)
+        atomic_counter = 0u;
 
     // Write LOD 7, Compute LOD 8
     base_coord = ivec2(local_coord) * 4;

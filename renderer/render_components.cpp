@@ -47,5 +47,7 @@ RenderInfoComponent::~RenderInfoComponent()
 {
 	if (aabb.count)
 		scene_node->parent_scene.get_aabbs().free(aabb);
+	if (occluder_state.count)
+		scene_node->parent_scene.get_occluder_states().free(occluder_state);
 }
 }

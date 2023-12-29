@@ -233,12 +233,13 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		auto &device = get_wsi().get_device();
 		bool indirect_rendering = device.get_resource_manager().get_mesh_encoding() != ResourceManager::MeshEncoding::Classic;
 
-		struct TaskParameters
+		struct TaskInfo
 		{
 			uint32_t aabb_instance;
 			uint32_t node_instance;
 			uint32_t material_index;
 			uint32_t mesh_index_count;
+			uint32_t occluder_state_offset;
 		};
 
 		struct DrawParameters
@@ -248,7 +249,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			uint32_t material_index;
 		};
 
-		std::vector<TaskParameters> task_params;
+		std::vector<TaskInfo> task_params;
 		uint32_t max_draws = 0;
 
 		if (indirect_rendering)
@@ -258,8 +259,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				auto *meshlet = static_cast<const MeshletRenderable *>(vis.renderable);
 				auto range = device.get_resource_manager().get_mesh_draw_range(meshlet->mesh);
 
-				TaskParameters draw = {};
+				TaskInfo draw = {};
 				draw.aabb_instance = vis.transform->aabb.offset;
+				draw.occluder_state_offset = vis.transform->occluder_state.offset;
 				auto *node = vis.transform->scene_node;
 				auto *skin = node->get_skin();
 				draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
@@ -272,6 +274,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				{
 					draw.mesh_index_count = range.meshlet.offset + i + (std::min(range.meshlet.count - i, 32u) - 1);
 					task_params.push_back(draw);
+					draw.occluder_state_offset++;
 				}
 			}
 

@@ -96,6 +96,18 @@ private:
 	uint32_t high_water_mark = 0;
 };
 
+class OccluderStateAllocator : public Util::SliceAllocator
+{
+public:
+	OccluderStateAllocator();
+	uint32_t get_count() const { return high_water_mark; }
+	bool allocate(uint32_t count, Util::AllocatedSlice *slice);
+
+private:
+	Util::SliceBackingAllocatorVA allocator;
+	uint32_t high_water_mark = 0;
+};
+
 class Scene
 {
 public:
@@ -203,13 +215,16 @@ public:
 	inline const TransformAllocator &get_transforms() const { return transform_allocator; }
 	inline TransformAllocatorAABB &get_aabbs() { return transform_allocator_aabb; }
 	inline const TransformAllocatorAABB &get_aabbs() const { return transform_allocator_aabb; }
+	inline OccluderStateAllocator &get_occluder_states() { return occluder_state_allocator; }
+	inline const OccluderStateAllocator &get_occluder_states() const { return occluder_state_allocator; }
 
 private:
+	TransformAllocator transform_allocator;
+	TransformAllocatorAABB transform_allocator_aabb;
+	OccluderStateAllocator occluder_state_allocator;
 	EntityPool pool;
 	Util::ObjectPool<Node::Skinning> skinning_pool;
 	Util::ObjectPool<Node> node_pool;
-	TransformAllocator transform_allocator;
-	TransformAllocatorAABB transform_allocator_aabb;
 	NodeHandle root_node;
 
 	// Sets up the default useful component groups up front.

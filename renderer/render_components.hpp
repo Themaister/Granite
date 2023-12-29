@@ -163,6 +163,7 @@ struct RenderInfoComponent : ComponentBase
 
 	~RenderInfoComponent();
 	Util::AllocatedSlice aabb;
+	Util::AllocatedSlice occluder_state;
 
 	// If set, the transform changed last frame and motion vectors will need to be rendered explicitly.
 	bool requires_motion_vectors = false;

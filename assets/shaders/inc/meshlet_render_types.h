@@ -18,6 +18,7 @@ struct TaskInfo
 	uint node_instance;
 	uint material_index;
 	uint mesh_index_count;
+	uint occluder_state_offset;
 };
 
 struct CompactedDrawInfo

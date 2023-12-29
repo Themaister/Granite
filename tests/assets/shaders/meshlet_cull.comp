@@ -1,5 +1,6 @@
 #version 450
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_samplerless_texture_functions : require
 
 layout(local_size_x = 32) in;
 
@@ -8,6 +9,9 @@ layout(local_size_x = 32) in;
 #define MESHLET_RENDER_AABB_BINDING 0
 #define MESHLET_RENDER_TRANSFORM_BINDING 1
 #define MESHLET_RENDER_FRUSTUM_BINDING 7
+#if CULL_HIZ
+#define MESHLET_RENDER_HIZ_BINDING 8
+#endif
 #define MESHLET_RENDER_TASKS_BINDING 2
 #include "meshlet_render.h"
 

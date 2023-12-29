@@ -228,7 +228,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		allocator.reset();
 	}
 
-	void render(CommandBuffer *cmd, const RenderPassInfo &rp)
+	void render(CommandBuffer *cmd, const RenderPassInfo &rp, const ImageView *hiz)
 	{
 		auto &device = get_wsi().get_device();
 		bool indirect_rendering = device.get_resource_manager().get_mesh_encoding() != ResourceManager::MeshEncoding::Classic;
@@ -405,7 +405,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			cmd->set_specialization_constant(0, uint32_t(command_words));
 			cmd->set_specialization_constant(1, (!use_meshlets || num_chunk_workgroups == 1) ? 0 : 1);
 
-			cmd->set_program("assets://shaders/meshlet_cull.comp");
+			cmd->set_program("assets://shaders/meshlet_cull.comp",
+			                 {{ "CULL_HIZ", hiz ? 1 : 0 }});
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 2, *task_buffer);
@@ -413,9 +414,43 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			cmd->set_storage_buffer(0, 4, *indirect_draws);
 			cmd->set_storage_buffer(0, 5, *compacted_params);
 			cmd->set_storage_buffer(0, 6, *manager.get_cluster_bounds_buffer());
-			memcpy(cmd->allocate_typed_constant_data<vec4>(0, 7, 6),
-			       render_context.get_visibility_frustum().get_planes(),
-			       6 * sizeof(vec4));
+			if (hiz)
+				cmd->set_texture(0, 8, *hiz);
+
+			struct UBO
+			{
+				vec4 planes[6];
+				mat4 view;
+				vec4 viewport_scale_bias;
+				uvec2 hiz_resolution;
+				uint hiz_max_lod;
+			};
+
+			auto *ubo = cmd->allocate_typed_constant_data<UBO>(0, 7, 1);
+			memcpy(ubo->planes, render_context.get_visibility_frustum().get_planes(), sizeof(ubo->planes));
+
+			if (hiz)
+			{
+				vec4 viewport_scale_bias;
+				viewport_scale_bias.x = float(rp.color_attachments[0]->get_view_width()) * 0.5f;
+				viewport_scale_bias.y = float(rp.color_attachments[0]->get_view_height()) * 0.5f;
+				viewport_scale_bias.z = viewport_scale_bias.x;
+				viewport_scale_bias.w = viewport_scale_bias.y;
+
+				viewport_scale_bias.z +=
+				    viewport_scale_bias.x * render_context.get_render_parameters().projection[3].x;
+				viewport_scale_bias.w +=
+				    viewport_scale_bias.y * render_context.get_render_parameters().projection[3].y;
+
+				viewport_scale_bias.x *= render_context.get_render_parameters().projection[0].x;
+				viewport_scale_bias.y *= -render_context.get_render_parameters().projection[1].y;
+
+				ubo->view = render_context.get_render_parameters().view;
+				ubo->viewport_scale_bias = viewport_scale_bias;
+				ubo->hiz_resolution.x = hiz->get_view_width();
+				ubo->hiz_resolution.y = hiz->get_view_height();
+				ubo->hiz_max_lod = hiz->get_create_info().levels - 1;
+			}
 
 			uint32_t count = task_params.size();
 			push.count = count;
@@ -822,7 +857,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
 		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
 		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
-		render(cmd.get(), rp);
+		render(cmd.get(), rp, nullptr);
 
 		cmd->image_barrier(*depth_image, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
@@ -830,7 +865,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		auto hiz = build_hiz(cmd.get(), depth_image->get_view(), render_context);
 
-		render(cmd.get(), device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
+		render(cmd.get(), device.get_swapchain_render_pass(SwapchainRenderPass::Depth),
+		       &hiz->get_view());
 
 		Fence fence;
 		device.submit(cmd, &fence);

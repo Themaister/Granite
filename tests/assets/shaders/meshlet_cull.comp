@@ -90,7 +90,7 @@ void main()
 
         TaskInfo tmp_task = task_info.data[gl_WorkGroupID.x * gl_WorkGroupSize.x + lane];
         uint node_instance = tmp_task.node_instance;
-        uint node_count_material_index = tmp_task.node_count_material_index;
+        uint material_index = tmp_task.material_index;
         uint mesh_index_count = tmp_task.mesh_index_count;
 
         uint offset = mesh_index_count & ~31u;
@@ -123,7 +123,7 @@ void main()
 				output_draws.draws[dst_offset + i] = input_draws.draws[src_offset + i];
 
             output_draw_info.data[global_offset + local_offset] =
-				CompactedDrawInfo(meshlet_index, node_instance, node_count_material_index);
+				CompactedDrawInfo(meshlet_index, node_instance, material_index);
         }
     }
 }

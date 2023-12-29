@@ -237,7 +237,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		{
 			uint32_t aabb_instance;
 			uint32_t node_instance;
-			uint32_t node_count_material_index; // Skinning
+			uint32_t material_index;
 			uint32_t mesh_index_count;
 		};
 
@@ -245,7 +245,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		{
 			uint32_t meshlet_index; // Debug
 			uint32_t node_instance;
-			uint32_t node_count; // Skinning
+			uint32_t material_index;
 		};
 
 		std::vector<TaskParameters> task_params;
@@ -263,8 +263,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				auto *node = vis.transform->scene_node;
 				auto *skin = node->get_skin();
 				draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
-				draw.node_count_material_index = skin ? skin->transform.count : 1;
-				draw.node_count_material_index |= meshlet->material.texture_offset << 8;
+				draw.material_index = meshlet->material.texture_offset;
 				assert((range.meshlet.offset & 31) == 0);
 
 				max_draws += range.meshlet.count;
@@ -644,7 +643,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 				DrawParameters params = {};
 				params.meshlet_index = unsigned(&draw - list.data());
-				params.node_count = 1;
+				params.material_index = 0;
 				params.node_instance = 0;
 				cmd->push_constants(&params, 0, sizeof(params));
 
@@ -738,11 +737,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 
 		if (readback && rp.num_color_attachments)
-		{
-			start_timestamps[readback_index] = std::move(start_ts);
 			readback_ring[readback_index] = std::move(readback);
-			end_timestamps[readback_index] = std::move(end_ts);
-		}
+		start_timestamps[readback_index] = std::move(start_ts);
+		end_timestamps[readback_index] = std::move(end_ts);
 	}
 
 	ImageHandle build_hiz(CommandBuffer *cmd, const ImageView &depth_view, const RenderContext &context)

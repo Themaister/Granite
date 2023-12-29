@@ -68,7 +68,7 @@ int main()
 	buffer_info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
 	auto counter_buffer = dev.create_buffer(buffer_info);
 
-	ImageViewHandle views[14];
+	ImageViewHandle views[13];
 	for (unsigned i = 0; i < info.levels; i++)
 	{
 		ImageViewCreateInfo view = {};
@@ -98,7 +98,7 @@ int main()
 
 	auto cmd = dev.request_command_buffer();
 	cmd->set_program("builtin://shaders/post/hiz.comp");
-	for (unsigned i = 0; i < 14; i++)
+	for (unsigned i = 0; i < 13; i++)
 		cmd->set_storage_texture(0, i, *views[i < push.mips ? i : (push.mips - 1)]);
 	cmd->set_texture(1, 0, img->get_view(), StockSampler::NearestClamp);
 	cmd->set_storage_buffer(1, 1, *counter_buffer);

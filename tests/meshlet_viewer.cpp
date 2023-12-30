@@ -209,6 +209,14 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		camera.look_at(vec3(0, 0, 30), vec3(0));
 
 		EVENT_MANAGER_REGISTER_LATCH(MeshletViewerApplication, on_device_create, on_device_destroy, DeviceCreatedEvent);
+		EVENT_MANAGER_REGISTER(MeshletViewerApplication, on_key_down, KeyboardEvent);
+	}
+
+	bool on_key_down(const KeyboardEvent &e)
+	{
+		if (e.get_key_state() == KeyState::Pressed && e.get_key() == Key::C)
+			ui.use_occlusion_cull = !ui.use_occlusion_cull;
+		return true;
 	}
 
 	AABB aabb;
@@ -247,6 +255,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		bool supports_wave32;
 		bool use_hierarchical;
 		bool use_preculling;
+		bool use_occlusion_cull;
 	} ui = {};
 
 	void render(CommandBuffer *cmd, const RenderPassInfo &rp, const ImageView *hiz)
@@ -453,6 +462,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			}
 		};
 
+		int render_phase = ui.use_occlusion_cull ? (hiz ? 2 : 1) : 0;
+
 		if (ui.use_preculling)
 		{
 			auto *indirect = manager.get_indirect_buffer();
@@ -464,7 +475,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			cmd->set_specialization_constant(1, (!ui.use_meshlets || num_chunk_workgroups == 1) ? 0 : 1);
 
 			cmd->set_program("assets://shaders/meshlet_cull.comp",
-			                 {{ "MESHLET_RENDER_PHASE", hiz ? 2 : 1 }});
+			                 {{ "MESHLET_RENDER_PHASE", render_phase }});
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 2, *task_buffer);
@@ -472,9 +483,13 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			cmd->set_storage_buffer(0, 4, *indirect_draws);
 			cmd->set_storage_buffer(0, 5, *compacted_params);
 			cmd->set_storage_buffer(0, 6, *manager.get_cluster_bounds_buffer());
-			if (hiz)
-				cmd->set_texture(0, 8, *hiz);
-			cmd->set_storage_buffer(0, 9, *occluder_buffer);
+
+			if (render_phase != 0)
+			{
+				if (hiz)
+					cmd->set_texture(0, 8, *hiz);
+				cmd->set_storage_buffer(0, 9, *occluder_buffer);
+			}
 
 			bind_hiz_ubo(0, 7);
 
@@ -567,7 +582,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				                 "assets://shaders/meshlet_debug.mesh.frag",
 				                 { { "MESHLET_SIZE", int(ui.target_meshlet_workgroup_size) },
 				                   { "MESHLET_RENDER_TASK_HIERARCHICAL", int(ui.use_hierarchical) },
-				                   { "MESHLET_RENDER_PHASE", hiz ? 2 : 1 },
+				                   { "MESHLET_RENDER_PHASE", render_phase },
 				                   { "MESHLET_PRIMITIVE_CULL_WG32", int(supports_wg32) },
 				                   { "MESHLET_PRIMITIVE_CULL_WAVE32", int(ui.supports_wave32) } });
 
@@ -575,9 +590,13 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				cmd->set_storage_buffer(0, 7, *task_buffer);
 				cmd->set_storage_buffer(0, 8, *manager.get_cluster_bounds_buffer());
 				bind_hiz_ubo(0, 9);
-				if (hiz)
-					cmd->set_texture(0, 11, *hiz);
-				cmd->set_storage_buffer(0, 12, *occluder_buffer);
+
+				if (render_phase != 0)
+				{
+					if (hiz)
+						cmd->set_texture(0, 11, *hiz);
+					cmd->set_storage_buffer(0, 12, *occluder_buffer);
+				}
 			}
 
 			if (device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT))
@@ -862,31 +881,36 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		                   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT);
 
-		cmd->image_barrier(*depth_image, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-		                   VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+		ImageHandle hiz;
 
-		auto hiz = build_hiz(cmd.get(), depth_image->get_view(), render_context);
+		if (ui.use_occlusion_cull)
+		{
+			cmd->image_barrier(*depth_image, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+			                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+			                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT,
+			                   VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
-		cmd->image_barrier(*depth_image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-		                   VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT, VK_ACCESS_NONE,
-		                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
-		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+			hiz = build_hiz(cmd.get(), depth_image->get_view(), render_context);
+
+			cmd->image_barrier(
+			    *depth_image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+			    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT,
+			    VK_ACCESS_NONE, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+			    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
 
 #if 0
-		rp.clear_attachments = 1u << 0;
-		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
+			rp.clear_attachments = 1u << 0;
+			rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
 #else
-		rp.load_attachments = 1u << 0;
-		rp.clear_attachments = 0;
-		rp.op_flags = RENDER_PASS_OP_LOAD_DEPTH_STENCIL_BIT;
+			rp.load_attachments = 1u << 0;
+			rp.clear_attachments = 0;
+			rp.op_flags = RENDER_PASS_OP_LOAD_DEPTH_STENCIL_BIT;
 #endif
-		rp.store_attachments = 1u << 0;
+			rp.store_attachments = 1u << 0;
 
-		render(cmd.get(), rp, &hiz->get_view());
+			render(cmd.get(), rp, &hiz->get_view());
+		}
 
 		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 		start_timestamps[readback_index] = std::move(start_ts);
@@ -947,8 +971,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
 			                          vec3(10.0f, 30.0f, 0.0f), vec2(1000.0f));
 
-			snprintf(text, sizeof(text), "ComputeCull %d | mesh wave32 %d | task hier %d", int(ui.use_preculling),
-			         int(ui.supports_wave32), int(ui.use_hierarchical));
+			snprintf(text, sizeof(text), "ComputeCull %d | mesh wave32 %d | task hier %d | 2phase %d",
+			         int(ui.use_preculling), int(ui.supports_wave32), int(ui.use_hierarchical), int(ui.use_occlusion_cull));
 			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
 			                          vec3(10.0f, 50.0f, 0.0f), vec2(1000.0f));
 

@@ -61,6 +61,13 @@ layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_TASKS_BINDI
 	TaskInfo data[];
 } task_info;
 
+#ifdef MESHLET_RENDER_OCCLUDER_BINDING
+layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_OCCLUDER_BINDING, std430) buffer OccluderState
+{
+	uint data[];
+} occluders;
+#endif
+
 bool frustum_cull(vec3 lo, vec3 hi)
 {
 	bool ret = true;

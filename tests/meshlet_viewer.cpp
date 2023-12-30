@@ -218,20 +218,41 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 	VisibilityList list;
 	BindlessAllocator allocator;
 
+	BufferHandle occluder_buffer;
+
 	void on_device_create(const DeviceCreatedEvent &e)
 	{
 		e.get_device().get_shader_manager().add_include_directory("builtin://shaders/inc");
+
+		BufferCreateInfo info = {};
+		info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		info.domain = BufferDomain::Device;
+		info.size = 16 * 1024 * 1024;
+		info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
+		occluder_buffer = e.get_device().create_buffer(info);
 	}
 
 	void on_device_destroy(const DeviceCreatedEvent &)
 	{
 		allocator.reset();
+		occluder_buffer.reset();
 	}
+
+	struct
+	{
+		unsigned target_meshlet_workgroup_size;
+		unsigned max_draws;
+		bool use_meshlets;
+		bool indirect_rendering;
+		bool supports_wave32;
+		bool use_hierarchical;
+		bool use_preculling;
+	} ui = {};
 
 	void render(CommandBuffer *cmd, const RenderPassInfo &rp, const ImageView *hiz)
 	{
 		auto &device = get_wsi().get_device();
-		bool indirect_rendering = device.get_resource_manager().get_mesh_encoding() != ResourceManager::MeshEncoding::Classic;
+		ui.indirect_rendering = device.get_resource_manager().get_mesh_encoding() != ResourceManager::MeshEncoding::Classic;
 
 		struct TaskInfo
 		{
@@ -252,7 +273,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		std::vector<TaskInfo> task_params;
 		uint32_t max_draws = 0;
 
-		if (indirect_rendering)
+		if (ui.indirect_rendering)
 		{
 			for (auto &vis: list)
 			{
@@ -286,7 +307,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		BufferHandle task_buffer, cached_transform_buffer, aabb_buffer, compacted_params, indirect_draws;
 
-		if (indirect_rendering)
+		if (ui.indirect_rendering)
 		{
 			BufferCreateInfo info;
 			info.size = task_params.size() * sizeof(task_params.front());
@@ -295,7 +316,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			task_buffer = device.create_buffer(info, task_params.data());
 		}
 
-		if (indirect_rendering)
+		if (ui.indirect_rendering)
 		{
 			BufferCreateInfo info;
 			info.size = scene.get_transforms().get_count() * sizeof(*scene.get_transforms().get_cached_transforms());
@@ -304,7 +325,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			cached_transform_buffer = device.create_buffer(info, scene.get_transforms().get_cached_transforms());
 		}
 
-		if (indirect_rendering)
+		if (ui.indirect_rendering)
 		{
 			BufferCreateInfo info;
 			info.size = scene.get_aabbs().get_count() * sizeof(*scene.get_aabbs().get_aabbs());
@@ -314,11 +335,11 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		}
 
 		auto &manager = device.get_resource_manager();
-		const bool use_meshlets = indirect_rendering && manager.get_mesh_encoding() != ResourceManager::MeshEncoding::VBOAndIBOMDI;
-		bool use_preculling = !use_meshlets && indirect_rendering;
+		ui.use_meshlets = ui.indirect_rendering && manager.get_mesh_encoding() != ResourceManager::MeshEncoding::VBOAndIBOMDI;
+		ui.use_preculling = !ui.use_meshlets && ui.indirect_rendering;
 
-		if (indirect_rendering)
-			use_preculling = Util::get_environment_bool("PRECULL", use_preculling);
+		if (ui.indirect_rendering)
+			ui.use_preculling = Util::get_environment_bool("PRECULL", ui.use_preculling);
 
 		struct
 		{
@@ -329,17 +350,17 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		push.camera_pos = render_context.get_render_parameters().camera_position;
 
-		uint32_t target_meshlet_workgroup_size = 32;
-		target_meshlet_workgroup_size = Util::get_environment_uint("MESHLET_SIZE", target_meshlet_workgroup_size);
+		ui.target_meshlet_workgroup_size = 32;
+		ui.target_meshlet_workgroup_size = Util::get_environment_uint("MESHLET_SIZE", ui.target_meshlet_workgroup_size);
 
-		target_meshlet_workgroup_size = max(32u, min(256u, target_meshlet_workgroup_size));
-		target_meshlet_workgroup_size = 1u << Util::floor_log2(target_meshlet_workgroup_size);
-		uint32_t num_chunk_workgroups = 256u / target_meshlet_workgroup_size;
+		ui.target_meshlet_workgroup_size = max(32u, min(256u, ui.target_meshlet_workgroup_size));
+		ui.target_meshlet_workgroup_size = 1u << Util::floor_log2(ui.target_meshlet_workgroup_size);
+		uint32_t num_chunk_workgroups = 256u / ui.target_meshlet_workgroup_size;
 
-		if (use_preculling)
+		if (ui.use_preculling)
 		{
 			BufferCreateInfo info;
-			if (use_meshlets)
+			if (ui.use_meshlets)
 				info.size = sizeof(VkDrawMeshTasksIndirectCommandEXT);
 			else
 				info.size = max_draws * sizeof(VkDrawIndexedIndirectCommand) + 256;
@@ -349,7 +370,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			info.domain = BufferDomain::Device;
 			indirect_draws = device.create_buffer(info);
 
-			if (use_meshlets)
+			if (ui.use_meshlets)
 			{
 				if (num_chunk_workgroups == 1)
 				{
@@ -380,15 +401,15 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		}
 
 		BufferHandle readback_counter, readback;
-		if (indirect_rendering)
+		if (ui.indirect_rendering)
 		{
 			BufferCreateInfo info;
-			info.size = use_meshlets ? 12 : indirect_draws->get_create_info().size;
+			info.size = ui.use_meshlets ? 12 : indirect_draws->get_create_info().size;
 			info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 			info.domain = BufferDomain::CachedHost;
 			readback = device.create_buffer(info);
 
-			if (use_meshlets)
+			if (ui.use_meshlets)
 			{
 				info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 				info.domain = BufferDomain::Device;
@@ -397,18 +418,18 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			}
 		}
 
-		if (use_preculling)
+		if (ui.use_preculling)
 		{
 			auto *indirect = manager.get_indirect_buffer();
 
-			auto command_words = use_meshlets ? 0 : (sizeof(VkDrawIndexedIndirectCommand) / sizeof(uint32_t));
+			auto command_words = ui.use_meshlets ? 0 : (sizeof(VkDrawIndexedIndirectCommand) / sizeof(uint32_t));
 
 			cmd->set_specialization_constant_mask(3);
 			cmd->set_specialization_constant(0, uint32_t(command_words));
-			cmd->set_specialization_constant(1, (!use_meshlets || num_chunk_workgroups == 1) ? 0 : 1);
+			cmd->set_specialization_constant(1, (!ui.use_meshlets || num_chunk_workgroups == 1) ? 0 : 1);
 
 			cmd->set_program("assets://shaders/meshlet_cull.comp",
-			                 {{ "CULL_HIZ", hiz ? 1 : 0 }});
+			                 {{ "MESHLET_RENDER_PHASE", hiz ? 2 : 1 }});
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 2, *task_buffer);
@@ -418,6 +439,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			cmd->set_storage_buffer(0, 6, *manager.get_cluster_bounds_buffer());
 			if (hiz)
 				cmd->set_texture(0, 8, *hiz);
+			cmd->set_storage_buffer(0, 9, *occluder_buffer);
 
 			struct UBO
 			{
@@ -465,15 +487,25 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			             VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 		}
 
-		bool supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
-		bool use_hierarchical = device.get_device_features().driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY;
+		ui.supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
+		ui.use_hierarchical = device.get_device_features().driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY;
 
-		if (use_meshlets)
+		if (ui.use_meshlets)
 		{
 			cmd->begin_render_pass(rp);
 			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
 			render_context.set_camera(camera);
 			cmd->set_opaque_state();
+
+			if (hiz)
+			{
+				// Visualize any geometry rendered in phase 2 by subtracting.
+				cmd->set_blend_enable(true);
+				cmd->set_blend_factors(VK_BLEND_FACTOR_CONSTANT_COLOR, VK_BLEND_FACTOR_ONE);
+				const float blend_consts[] = { 0.25f, 0.25f, 0.25f, 0.25f };
+				cmd->set_blend_constants(blend_consts);
+				cmd->set_blend_op(VK_BLEND_OP_REVERSE_SUBTRACT);
+			}
 
 			*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
 
@@ -487,7 +519,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			bool use_encoded = manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::MeshletEncoded;
 
 			cmd->set_specialization_constant_mask(3);
-			cmd->set_specialization_constant(0, target_meshlet_workgroup_size / 32);
+			cmd->set_specialization_constant(0, ui.target_meshlet_workgroup_size / 32);
 			cmd->set_specialization_constant(1, num_chunk_workgroups);
 
 			if (use_encoded)
@@ -509,7 +541,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			if (!use_encoded)
 				cmd->set_storage_buffer(0, 3, *manager.get_indirect_buffer());
-			if (use_preculling)
+			if (ui.use_preculling)
 				cmd->set_storage_buffer(0, 4, *compacted_params);
 			cmd->set_storage_buffer(0, 5, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 10, *readback_counter);
@@ -517,15 +549,15 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			const char *mesh_path = use_encoded ? "assets://shaders/meshlet_debug.mesh" : "assets://shaders/meshlet_debug_plain.mesh";
 
-			supports_wave32 = Util::get_environment_bool("WAVE32", supports_wave32);
-			use_hierarchical = Util::get_environment_bool("HIER_TASK", use_hierarchical);
+			ui.supports_wave32 = Util::get_environment_bool("WAVE32", ui.supports_wave32);
+			ui.use_hierarchical = Util::get_environment_bool("HIER_TASK", ui.use_hierarchical);
 
-			bool supports_wg32 = supports_wave32 && target_meshlet_workgroup_size == 32;
+			bool supports_wg32 = ui.supports_wave32 && ui.target_meshlet_workgroup_size == 32;
 
-			if (use_preculling)
+			if (ui.use_preculling)
 			{
 				cmd->set_program("", mesh_path, "assets://shaders/meshlet_debug.mesh.frag",
-				                 { { "MESHLET_SIZE", int(target_meshlet_workgroup_size) } });
+				                 { { "MESHLET_SIZE", int(ui.target_meshlet_workgroup_size) } });
 				memcpy(cmd->allocate_typed_constant_data<vec4>(1, 1, 6),
 				       render_context.get_visibility_frustum().get_planes(), 6 * sizeof(vec4));
 			}
@@ -533,10 +565,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			{
 				cmd->set_program("assets://shaders/meshlet_debug.task", mesh_path,
 				                 "assets://shaders/meshlet_debug.mesh.frag",
-				                 { { "MESHLET_SIZE", int(target_meshlet_workgroup_size) },
-				                   { "MESHLET_RENDER_TASK_HIERARCHICAL", int(use_hierarchical) },
+				                 { { "MESHLET_SIZE", int(ui.target_meshlet_workgroup_size) },
+				                   { "MESHLET_RENDER_TASK_HIERARCHICAL", int(ui.use_hierarchical) },
 				                   { "MESHLET_PRIMITIVE_CULL_WG32", int(supports_wg32) },
-				                   { "MESHLET_PRIMITIVE_CULL_WAVE32", int(supports_wave32) } });
+				                   { "MESHLET_PRIMITIVE_CULL_WAVE32", int(ui.supports_wave32) } });
 
 				cmd->set_storage_buffer(0, 6, *aabb_buffer);
 				cmd->set_storage_buffer(0, 7, *task_buffer);
@@ -556,7 +588,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				cmd->set_subgroup_size_log2(true, 0, 7, VK_SHADER_STAGE_MESH_BIT_EXT);
 			}
 
-			if (use_preculling)
+			if (ui.use_preculling)
 			{
 				cmd->draw_mesh_tasks_indirect(*indirect_draws, 0, 1, sizeof(VkDrawMeshTasksIndirectCommandEXT));
 			}
@@ -565,7 +597,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				uint32_t workgroups = task_params.size();
 				push.count = workgroups;
 
-				if (use_hierarchical)
+				if (ui.use_hierarchical)
 					workgroups = (workgroups + 31) / 32;
 
 				for (uint32_t i = 0; i < workgroups; i += device.get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0])
@@ -658,78 +690,13 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			}
 		}
 
-		if (rp.num_color_attachments)
-		{
-			flat_renderer.begin();
-			flat_renderer.render_quad(vec3(0.0f, 0.0f, 0.5f), vec2(450.0f, 120.0f), vec4(0.0f, 0.0f, 0.0f, 0.8f));
-			char text[256];
-
-			switch (manager.get_mesh_encoding())
-			{
-			case ResourceManager::MeshEncoding::MeshletEncoded:
-				snprintf(text, sizeof(text), "%.3f ms | Meshlet (%u prim/vert) | Inline Decoding",
-				         last_frame_time * 1e3, target_meshlet_workgroup_size);
-				break;
-
-			case ResourceManager::MeshEncoding::MeshletDecoded:
-				snprintf(text, sizeof(text), "%.3f ms | Meshlet (%u prim/vert) | VBO Fetch", last_frame_time * 1e3,
-				         target_meshlet_workgroup_size);
-				break;
-
-			case ResourceManager::MeshEncoding::VBOAndIBOMDI:
-				snprintf(text, sizeof(text), "%.3f ms | MultiDrawIndirect", last_frame_time * 1e3);
-				break;
-
-			default:
-				snprintf(text, sizeof(text), "%.3f ms | Classic Direct Draw", last_frame_time * 1e3);
-				break;
-			}
-
-			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
-			                          vec3(10.0f, 10.0f, 0.0f), vec2(1000.0f));
-
-			if (use_meshlets)
-			{
-				snprintf(text, sizeof(text), "Mesh shader invocations: %.3f M / %.3f M", 1e-6 * last_mesh_invocations,
-				         1e-6 * double(max_draws * MaxElements));
-			}
-			else if (indirect_rendering)
-			{
-				snprintf(text, sizeof(text), "MDI primitives: %.3f M / %.3f M", 1e-6 * last_mesh_invocations,
-				         1e-6 * double(max_draws * MaxElements));
-			}
-			else
-			{
-				snprintf(text, sizeof(text), "Direct primitives: %.3f M", 1e-6 * last_mesh_invocations);
-			}
-
-			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
-			                          vec3(10.0f, 30.0f, 0.0f), vec2(1000.0f));
-
-			snprintf(text, sizeof(text), "ComputeCull %d | mesh wave32 %d | task hier %d", int(use_preculling),
-			         int(supports_wave32), int(use_hierarchical));
-			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
-			                          vec3(10.0f, 50.0f, 0.0f), vec2(1000.0f));
-
-			if (use_meshlets)
-			{
-				snprintf(text, sizeof(text), "Primitives: %.3f M", 1e-6 * last_prim);
-				flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
-				                          vec3(10.0f, 70.0f, 0.0f), vec2(1000.0f));
-				snprintf(text, sizeof(text), "Vertices: %.3f M", 1e-6 * last_vert);
-				flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
-				                          vec3(10.0f, 90.0f, 0.0f), vec2(1000.0f));
-			}
-
-			flat_renderer.flush(*cmd, vec3(0.0f), vec3(cmd->get_viewport().width, cmd->get_viewport().height, 1.0f));
-		}
 		cmd->end_render_pass();
 
-		if (indirect_rendering && rp.num_color_attachments)
+		if (ui.indirect_rendering)
 		{
 			cmd->barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 			             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-			if (use_meshlets)
+			if (ui.use_meshlets)
 				cmd->copy_buffer(*readback, *readback_counter);
 			else
 				cmd->copy_buffer(*readback, *indirect_draws);
@@ -737,12 +704,23 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 		}
 
-		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+		if (readback)
+		{
+			if (hiz)
+				readback_ring_phase2[readback_index] = std::move(readback);
+			else
+				readback_ring_phase1[readback_index] = std::move(readback);
+		}
 
-		if (readback && rp.num_color_attachments)
-			readback_ring[readback_index] = std::move(readback);
-		start_timestamps[readback_index] = std::move(start_ts);
-		end_timestamps[readback_index] = std::move(end_ts);
+		if (hiz)
+		{
+			auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+			end_timestamps[readback_index] = std::move(end_ts);
+		}
+		else
+		{
+			start_timestamps[readback_index] = std::move(start_ts);
+		}
 	}
 
 	ImageHandle build_hiz(CommandBuffer *cmd, const ImageView &depth_view, const RenderContext &context)
@@ -812,12 +790,16 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		cmd->image_barrier(*hiz, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
 		                   VK_PIPELINE_STAGE_NONE, VK_ACCESS_NONE,
-		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT |
-		                                                         VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT |
+		                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
 		cmd->dispatch(wg_x, wg_y, 1);
+
 		cmd->image_barrier(*hiz, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 		                   VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+
 		cmd->enable_subgroup_size_control(false);
 
 		return hiz;
@@ -848,25 +830,140 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		info.type = VK_IMAGE_TYPE_2D;
 		auto depth_image = device.create_image(info);
 
+		info.format = VK_FORMAT_R8G8B8A8_SRGB;
+		info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		info.width = device.get_swapchain_view().get_view_width();
+		info.height = device.get_swapchain_view().get_view_height();
+		auto color_image = device.create_image(info);
+
 		RenderPassInfo rp = {};
 		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT | RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
 		rp.depth_stencil = &depth_image->get_view();
+		rp.color_attachments[0] = &color_image->get_view();
+		rp.num_color_attachments = 1;
+		rp.store_attachments = 1u << 0;
+		rp.clear_attachments = 1u << 0;
+
+		cmd->image_barrier(*color_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		                   VK_PIPELINE_STAGE_NONE, VK_ACCESS_NONE,
+		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		                   VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+		                   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
 		cmd->image_barrier(*depth_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
 		                   VK_PIPELINE_STAGE_NONE, VK_ACCESS_NONE,
 		                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
 		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
 		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+
 		render(cmd.get(), rp, nullptr);
+
+		cmd->image_barrier(*color_image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		                   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT);
 
 		cmd->image_barrier(*depth_image, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+		                   VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
 		auto hiz = build_hiz(cmd.get(), depth_image->get_view(), render_context);
 
-		render(cmd.get(), device.get_swapchain_render_pass(SwapchainRenderPass::Depth),
-		       &hiz->get_view());
+		cmd->image_barrier(*depth_image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+		                   VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT, VK_ACCESS_NONE,
+		                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+
+		rp.num_color_attachments = 1;
+
+#if 0
+		rp.clear_attachments = 1u << 0;
+		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
+#else
+		rp.load_attachments = 1u << 0;
+		rp.clear_attachments = 0;
+		rp.op_flags = RENDER_PASS_OP_LOAD_DEPTH_STENCIL_BIT;
+#endif
+		rp.store_attachments = 1u << 0;
+
+		render(cmd.get(), rp, &hiz->get_view());
+
+		cmd->image_barrier(*color_image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+
+		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::Depth));
+		cmd->set_texture(0, 0, color_image->get_view(), StockSampler::NearestClamp);
+		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
+		{
+			auto &manager = device.get_resource_manager();
+			flat_renderer.begin();
+			flat_renderer.render_quad(vec3(0.0f, 0.0f, 0.5f), vec2(450.0f, 120.0f), vec4(0.0f, 0.0f, 0.0f, 0.8f));
+			char text[256];
+
+			switch (manager.get_mesh_encoding())
+			{
+			case ResourceManager::MeshEncoding::MeshletEncoded:
+				snprintf(text, sizeof(text), "%.3f ms | Meshlet (%u prim/vert) | Inline Decoding",
+				         last_frame_time * 1e3, ui.target_meshlet_workgroup_size);
+				break;
+
+			case ResourceManager::MeshEncoding::MeshletDecoded:
+				snprintf(text, sizeof(text), "%.3f ms | Meshlet (%u prim/vert) | VBO Fetch", last_frame_time * 1e3,
+				         ui.target_meshlet_workgroup_size);
+				break;
+
+			case ResourceManager::MeshEncoding::VBOAndIBOMDI:
+				snprintf(text, sizeof(text), "%.3f ms | MultiDrawIndirect", last_frame_time * 1e3);
+				break;
+
+			default:
+				snprintf(text, sizeof(text), "%.3f ms | Classic Direct Draw", last_frame_time * 1e3);
+				break;
+			}
+
+			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
+			                          vec3(10.0f, 10.0f, 0.0f), vec2(1000.0f));
+
+			if (ui.use_meshlets)
+			{
+				snprintf(text, sizeof(text), "Mesh shader invocations: %.3f M / %.3f M", 1e-6 * last_mesh_invocations,
+				         1e-6 * double(ui.max_draws * MaxElements));
+			}
+			else if (ui.indirect_rendering)
+			{
+				snprintf(text, sizeof(text), "MDI primitives: %.3f M / %.3f M", 1e-6 * last_mesh_invocations,
+				         1e-6 * double(ui.max_draws * MaxElements));
+			}
+			else
+			{
+				snprintf(text, sizeof(text), "Direct primitives: %.3f M", 1e-6 * last_mesh_invocations);
+			}
+
+			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
+			                          vec3(10.0f, 30.0f, 0.0f), vec2(1000.0f));
+
+			snprintf(text, sizeof(text), "ComputeCull %d | mesh wave32 %d | task hier %d", int(ui.use_preculling),
+			         int(ui.supports_wave32), int(ui.use_hierarchical));
+			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
+			                          vec3(10.0f, 50.0f, 0.0f), vec2(1000.0f));
+
+			if (ui.use_meshlets)
+			{
+				snprintf(text, sizeof(text), "Primitives: %.3f M", 1e-6 * last_prim);
+				flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
+				                          vec3(10.0f, 70.0f, 0.0f), vec2(1000.0f));
+				snprintf(text, sizeof(text), "Vertices: %.3f M", 1e-6 * last_vert);
+				flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
+				                          vec3(10.0f, 90.0f, 0.0f), vec2(1000.0f));
+			}
+
+			flat_renderer.flush(*cmd, vec3(0.0f), vec3(cmd->get_viewport().width, cmd->get_viewport().height, 1.0f));
+		}
+		cmd->end_render_pass();
 
 		Fence fence;
 		device.submit(cmd, &fence);
@@ -885,31 +982,45 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		auto encoding = device.get_resource_manager().get_mesh_encoding();
 		if (encoding != ResourceManager::MeshEncoding::Classic)
 		{
-			if (readback_fence[readback_index] && readback_ring[readback_index])
+			if (readback_fence[readback_index] &&
+			    readback_ring_phase1[readback_index] &&
+			    readback_ring_phase2[readback_index])
 			{
 				readback_fence[readback_index]->wait();
-				auto *mapped = static_cast<const uint32_t *>(device.map_host_buffer(*readback_ring[readback_index],
-				                                                                    MEMORY_ACCESS_READ_BIT));
+
+				auto *mapped1 = static_cast<const uint32_t *>(
+					device.map_host_buffer(*readback_ring_phase1[readback_index],
+					                       MEMORY_ACCESS_READ_BIT));
+				auto *mapped2 = static_cast<const uint32_t *>(
+					device.map_host_buffer(*readback_ring_phase2[readback_index],
+					                       MEMORY_ACCESS_READ_BIT));
 
 				if (encoding != ResourceManager::MeshEncoding::VBOAndIBOMDI)
 				{
-					last_mesh_invocations = mapped[0];
-					last_prim = mapped[1];
-					last_vert = mapped[2];
+					last_mesh_invocations = mapped1[0] + mapped2[0];
+					last_prim = mapped1[1] + mapped2[1];
+					last_vert = mapped1[2] + mapped2[2];
 				}
 				else
 				{
 					last_mesh_invocations = 0;
-					uint32_t draws = mapped[0];
-					mapped += 256 / sizeof(uint32_t);
-					for (uint32_t i = 0; i < draws; i++, mapped += sizeof(VkDrawIndexedIndirectCommand) / sizeof(uint32_t))
-						last_mesh_invocations += mapped[0] / 3;
+					uint32_t draws = mapped1[0] + mapped2[0];
+					mapped1 += 256 / sizeof(uint32_t);
+					mapped2 += 256 / sizeof(uint32_t);
+
+					for (uint32_t i = 0; i < draws; i++)
+					{
+						last_mesh_invocations += (mapped1[0] + mapped2[0]) / 3;
+						mapped1 += sizeof(VkDrawIndexedIndirectCommand) / sizeof(uint32_t);
+						mapped2 += sizeof(VkDrawIndexedIndirectCommand) / sizeof(uint32_t);
+					}
 				}
 			}
 		}
 	}
 
-	BufferHandle readback_ring[4];
+	BufferHandle readback_ring_phase1[4];
+	BufferHandle readback_ring_phase2[4];
 	Fence readback_fence[4];
 	unsigned readback_index = 0;
 	unsigned last_mesh_invocations = 0;

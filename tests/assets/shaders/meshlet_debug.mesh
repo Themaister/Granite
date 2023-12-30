@@ -1,6 +1,11 @@
 #version 450
 #extension GL_EXT_mesh_shader : require
 
+out gl_MeshPerVertexEXT
+{
+    invariant vec4 gl_Position;
+} gl_MeshVerticesEXT[];
+
 #extension GL_KHR_shader_subgroup_basic : require
 #if defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
 #extension GL_KHR_shader_subgroup_shuffle : require

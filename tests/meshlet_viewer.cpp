@@ -165,7 +165,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 					auto renderable = Util::make_handle<MeshletRenderable>();
 					renderable->mesh = mesh_assets.front();
 					renderable->aabb = parser.get_meshes()[0].static_aabb;
-					//renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT;
+					renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT;
 					scene.create_renderable(std::move(renderable), nodeptr.get());
 				}
 #endif

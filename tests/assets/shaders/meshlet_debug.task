@@ -1,6 +1,7 @@
 #version 450
 #extension GL_EXT_mesh_shader : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+#extension GL_EXT_samplerless_texture_functions : require
 
 layout(local_size_x = 32) in;
 
@@ -10,11 +11,19 @@ layout(local_size_x = 32) in;
 #define MESHLET_RENDER_TASKS_BINDING 7
 #define MESHLET_RENDER_BOUND_BINDING 8
 #define MESHLET_RENDER_FRUSTUM_BINDING 9
+
+#if MESHLET_RENDER_PHASE == 2
+#define MESHLET_RENDER_HIZ_BINDING 11
+#endif
+#define MESHLET_RENDER_OCCLUDER_BINDING 12
+
 #include "meshlet_render.h"
 
 #ifndef MESHLET_RENDER_TASK_HIERARCHICAL
 #error "Must define MESHLET_RENDER_TASK_HIERARCHICAL"
 #endif
+
+#define MESHLET_RENDER_NO_Z_PREPASS
 
 layout(push_constant, std430) uniform Registers
 {
@@ -62,17 +71,43 @@ void process_task(TaskInfo task)
     uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
     uint meshlet_index = offset + gl_LocalInvocationIndex;
 
+#if MESHLET_RENDER_PHASE >= 1
+    uint visibility_state = occluders.data[task.occluder_state_offset];
+#endif
+
     bool alloc_draw = false;
     if (gl_LocalInvocationIndex < count)
     {
         mat4 M = transforms.data[node_instance];
         Bound b = bounds.data[meshlet_index];
+
+#if MESHLET_RENDER_PHASE == 1
+        if (bitfieldExtract(visibility_state, int(gl_LocalInvocationIndex), 1) != 0)
+            alloc_draw = cluster_cull(M, b, registers.camera_pos);
+#else
         alloc_draw = cluster_cull(M, b, registers.camera_pos);
+#endif
     }
 
-    uvec4 ballot = ballot(alloc_draw);
-    uint draw_count = ballotBitCount(ballot);
-    uint local_offset = ballotExclusiveBitCount(ballot);
+    uvec4 draw_ballot = ballot(alloc_draw);
+
+#if MESHLET_RENDER_PHASE == 2
+    // Record all clusters that are considered visible in this frame.
+    if (gl_LocalInvocationIndex == 0)
+        occluders.data[task.occluder_state_offset] = draw_ballot.x;
+
+#ifdef MESHLET_RENDER_NO_Z_PREPASS
+    // If we already rendered in phase 1, skip the draw here.
+    // If we only did a Z-prepass, we still need to render.
+    if (bitfieldExtract(visibility_state, int(gl_LocalInvocationIndex), 1) != 0)
+        alloc_draw = false;
+
+    draw_ballot = ballot(alloc_draw);
+#endif
+#endif
+
+    uint draw_count = ballotBitCount(draw_ballot);
+    uint local_offset = ballotExclusiveBitCount(draw_ballot);
 
 #if MESHLET_RENDER_TASK_HIERARCHICAL
     if (alloc_draw)
@@ -101,7 +136,17 @@ void main()
 
         // Precull the group.
         AABB aabb = aabb.data[task.aabb_instance];
+#if MESHLET_RENDER_PHASE == 1
+        if (occluders.data[task.occluder_state_offset] != 0)
+            task_needs_work = frustum_cull(aabb.lo, aabb.hi);
+#else
         task_needs_work = frustum_cull(aabb.lo, aabb.hi);
+#if MESHLET_RENDER_PHASE == 2
+        // Nothing is visible, clear out occluder state.
+        if (!task_needs_work)
+            occluders.data[task.occluder_state_offset] = 0;
+#endif
+#endif
     }
 
     uint b = ballot(task_needs_work).x;

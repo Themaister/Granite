@@ -174,4 +174,24 @@ bool SliceAllocator::allocate(uint32_t count, Util::AllocatedSlice *slice)
 	LOGE("Allocation of %u elements is too large for SliceAllocator.\n", count);
 	return false;
 }
+
+void SliceBackingAllocatorVA::free(uint32_t)
+{
+	allocated = false;
+}
+
+uint32_t SliceBackingAllocatorVA::allocate(uint32_t)
+{
+	if (allocated)
+		return UINT32_MAX;
+	else
+	{
+		allocated = true;
+		return 0;
+	}
+}
+
+void SliceBackingAllocatorVA::prime(uint32_t, const void *)
+{
+}
 }

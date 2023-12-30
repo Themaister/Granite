@@ -16,15 +16,16 @@ struct TaskInfo
 {
 	uint aabb_instance;
 	uint node_instance;
-	uint node_count_material_index; // Skinning
+	uint material_index;
 	uint mesh_index_count;
+	uint occluder_state_offset;
 };
 
 struct CompactedDrawInfo
 {
 	uint meshlet_index;
 	uint node_offset;
-	uint node_count_material_offset;
+	uint material_offset;
 };
 
 #ifdef MESHLET_RENDER_TASK_HIERARCHICAL

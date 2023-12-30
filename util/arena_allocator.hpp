@@ -296,6 +296,14 @@ struct SliceBackingAllocator
 	virtual void prime(uint32_t count, const void *opaque_meta) = 0;
 };
 
+struct SliceBackingAllocatorVA : SliceBackingAllocator
+{
+	uint32_t allocate(uint32_t count) override;
+	void free(uint32_t index) override;
+	void prime(uint32_t count, const void *opaque_meta) override;
+	bool allocated = false;
+};
+
 struct SliceSubAllocator : Util::ArenaAllocator<SliceSubAllocator, AllocatedSlice>
 {
 	SliceSubAllocator *parent = nullptr;

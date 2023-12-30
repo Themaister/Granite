@@ -1,5 +1,6 @@
 #version 450
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_samplerless_texture_functions : require
 
 layout(local_size_x = 32) in;
 
@@ -8,8 +9,14 @@ layout(local_size_x = 32) in;
 #define MESHLET_RENDER_AABB_BINDING 0
 #define MESHLET_RENDER_TRANSFORM_BINDING 1
 #define MESHLET_RENDER_FRUSTUM_BINDING 7
+#if MESHLET_RENDER_PHASE == 2
+#define MESHLET_RENDER_HIZ_BINDING 8
+#endif
+#define MESHLET_RENDER_OCCLUDER_BINDING 9
 #define MESHLET_RENDER_TASKS_BINDING 2
 #include "meshlet_render.h"
+
+#define MESHLET_RENDER_NO_Z_PREPASS
 
 layout(constant_id = 0) const int MESHLET_RENDER_DRAW_WORDS = 0;
 layout(constant_id = 1) const int MESHLET_APPEND_ATOMIC_INDEX = 0;
@@ -74,7 +81,20 @@ void main()
 
         // Precull the group.
         AABB aabb = aabb.data[task.aabb_instance];
+
+        // In Phase 1, we only accept occluders which were marked as visible.
+        // If any bit is set, accept it.
+#if MESHLET_RENDER_PHASE == 1
+        if (occluders.data[task.occluder_state_offset] != 0)
+            task_needs_work = frustum_cull(aabb.lo, aabb.hi);
+#else
         task_needs_work = frustum_cull(aabb.lo, aabb.hi);
+#if MESHLET_RENDER_PHASE == 2
+        // Nothing is visible, clear out occluder state.
+        if (!task_needs_work)
+            occluders.data[task.occluder_state_offset] = 0;
+#endif
+#endif
     }
 
     uint b = ballot(task_needs_work).x;
@@ -86,7 +106,7 @@ void main()
 
         TaskInfo tmp_task = task_info.data[gl_WorkGroupID.x * gl_WorkGroupSize.x + lane];
         uint node_instance = tmp_task.node_instance;
-        uint node_count_material_index = tmp_task.node_count_material_index;
+        uint material_index = tmp_task.material_index;
         uint mesh_index_count = tmp_task.mesh_index_count;
 
         uint offset = mesh_index_count & ~31u;
@@ -94,20 +114,46 @@ void main()
 
         uint meshlet_index = offset + local_invocation_id;
 
+#if MESHLET_RENDER_PHASE >= 1
+        uint visibility_state = occluders.data[tmp_task.occluder_state_offset];
+#endif
+
         bool alloc_draw = false;
         if (local_invocation_id < count)
         {
             mat4 M = transforms.data[node_instance];
             Bound b = bounds.data[meshlet_index];
+
+#if MESHLET_RENDER_PHASE == 1
+            if (bitfieldExtract(visibility_state, int(local_invocation_id), 1) != 0)
+                alloc_draw = cluster_cull(M, b, registers.camera_pos);
+#else
             alloc_draw = cluster_cull(M, b, registers.camera_pos);
+#endif
         }
 
-        uvec4 ballot = ballot(alloc_draw);
-        uint draw_count = ballotBitCount(ballot);
-        uint local_offset = ballotExclusiveBitCount(ballot);
+        uvec4 draw_ballot = ballot(alloc_draw);
+
+#if MESHLET_RENDER_PHASE == 2
+        // Record all clusters that are considered visible in this frame.
+        if (local_invocation_id == 0)
+            occluders.data[tmp_task.occluder_state_offset] = draw_ballot.x;
+
+#ifdef MESHLET_RENDER_NO_Z_PREPASS
+        // If we already rendered in phase 1, skip the draw here.
+        // If we only did a Z-prepass, we still need to render.
+        if (bitfieldExtract(visibility_state, int(local_invocation_id), 1) != 0)
+            alloc_draw = false;
+
+        draw_ballot = ballot(alloc_draw);
+#endif
+#endif
+
+        uint draw_count = ballotBitCount(draw_ballot);
+        uint local_offset = ballotExclusiveBitCount(draw_ballot);
 
         // WAR barrier is implied here in earlier ballot.
-        if (gl_LocalInvocationIndex == 0)
+        if (local_invocation_id == 0)
             global_offset = atomicAdd(output_draws.count[MESHLET_APPEND_ATOMIC_INDEX], draw_count);
         barrier();
 
@@ -119,7 +165,7 @@ void main()
 				output_draws.draws[dst_offset + i] = input_draws.draws[src_offset + i];
 
             output_draw_info.data[global_offset + local_offset] =
-				CompactedDrawInfo(meshlet_index, node_instance, node_count_material_index);
+				CompactedDrawInfo(meshlet_index, node_instance, material_index);
         }
     }
 }

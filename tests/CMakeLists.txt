@@ -211,3 +211,8 @@ if (GRANITE_FFMPEG)
 endif()
 
 add_granite_application(gltf-viewer-simple gltf_viewer_simple.cpp)
+add_granite_offline_tool(hiz-test hiz.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(hiz-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+

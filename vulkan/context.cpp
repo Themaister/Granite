@@ -1423,7 +1423,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.vk13_features.descriptorBindingInlineUniformBlockUpdateAfterBind = VK_FALSE;
 	ext.vk13_features.inlineUniformBlock = VK_FALSE;
 	ext.vk13_features.privateData = VK_FALSE;
-	ext.vk13_features.robustImageAccess = VK_FALSE;
 
 	ext.device_generated_commands_compute_features.deviceGeneratedComputeCaptureReplay = VK_FALSE;
 	// TODO

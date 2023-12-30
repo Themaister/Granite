@@ -1134,6 +1134,16 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 
 		if (!get_aabbs().allocate(1, &transform->aabb))
 			LOGE("Exhausted AABB pool.\n");
+
+		// FIXME: This is guess-work.
+		// Ideally, we'll know number of meshlets in advance.
+		// We can also allocate this slice later if need be ...
+		// 256 words is enough for 256 * 32 meshlets, which is ~2M primitive objects.
+		// It's possible to never allocate occluder state.
+		// In that case, we can just assume occluder state is all 0,
+		// so it will never be rendered in phase 1 cull.
+		if (!get_occluder_states().allocate(256, &transform->occluder_state))
+			LOGE("Exhausted occluder state pool.\n");
 	}
 	else
 		entity->allocate_component<UnboundedComponent>();
@@ -1289,5 +1299,18 @@ void TransformBackingAllocatorAABB::free(uint32_t index)
 void TransformBackingAllocatorAABB::prime(uint32_t count, const void *)
 {
 	aabb.reserve(count);
+}
+
+OccluderStateAllocator::OccluderStateAllocator()
+{
+	init(16, 20, &allocator);
+}
+
+bool OccluderStateAllocator::allocate(uint32_t count, Util::AllocatedSlice *slice)
+{
+	if (!Util::SliceAllocator::allocate(count, slice))
+		return false;
+	high_water_mark = std::max<uint32_t>(count + slice->offset, high_water_mark);
+	return true;
 }
 }

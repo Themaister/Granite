@@ -340,14 +340,14 @@ struct DecodedAttr
 static void decode_mesh_gpu_bench(Vulkan::Device &dev, const MeshView &mesh)
 {
 	Vulkan::BufferCreateInfo buf_info = {};
-	buf_info.domain = Vulkan::BufferDomain::Host;
+	buf_info.domain = Vulkan::BufferDomain::Device;
 	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	buf_info.size = mesh.format_header->payload_size_b128 * sizeof(PayloadB128);
 	auto payload_buffer = dev.create_buffer(buf_info, mesh.payload);
 
 	buf_info.size = mesh.total_primitives * sizeof(u8vec3);
-	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	buf_info.domain = Vulkan::BufferDomain::Device;
+
 	auto readback_decoded_index_buffer = dev.create_buffer(buf_info);
 
 	buf_info.size = mesh.total_vertices * sizeof(vec3);
@@ -358,11 +358,16 @@ static void decode_mesh_gpu_bench(Vulkan::Device &dev, const MeshView &mesh)
 	buf_info.domain = Vulkan::BufferDomain::Device;
 	auto readback_decoded_attr_buffer = dev.create_buffer(buf_info);
 
+	buf_info.size = mesh.format_header->meshlet_count * 20;
+	buf_info.domain = Vulkan::BufferDomain::Device;
+	auto readback_indirect_buffer = dev.create_buffer(buf_info);
+
 	DecodeInfo info = {};
 	info.ibo = readback_decoded_index_buffer.get();
 	info.streams[0] = readback_decoded_pos_buffer.get();
 	info.streams[1] = readback_decoded_attr_buffer.get();
 	info.target_style = mesh.format_header->style;
+	info.indirect = readback_indirect_buffer.get();
 	info.payload = payload_buffer.get();
 
 	constexpr unsigned ITER_PER_CONTEXT = 1000;

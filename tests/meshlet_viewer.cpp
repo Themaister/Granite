@@ -215,7 +215,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 	bool on_key_down(const KeyboardEvent &e)
 	{
 		if (e.get_key_state() == KeyState::Pressed && e.get_key() == Key::C)
+		{
 			ui.use_occlusion_cull = !ui.use_occlusion_cull;
+			ui.trigger_capture = true;
+		}
 		return true;
 	}
 
@@ -256,6 +259,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		bool use_hierarchical;
 		bool use_preculling;
 		bool use_occlusion_cull;
+		bool trigger_capture;
 	} ui = {};
 
 	void render(CommandBuffer *cmd, const RenderPassInfo &rp, const ImageView *hiz)
@@ -500,7 +504,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			cmd->dispatch((count + 31) / 32, 1, 1);
 
 			cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-			             VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+			             VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
+			             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 			             VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 		}
 
@@ -513,16 +518,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			camera.set_aspect(cmd->get_viewport().width / cmd->get_viewport().height);
 			render_context.set_camera(camera);
 			cmd->set_opaque_state();
-
-			if (hiz)
-			{
-				// Visualize any geometry rendered in phase 2 by subtracting.
-				cmd->set_blend_enable(true);
-				cmd->set_blend_factors(VK_BLEND_FACTOR_CONSTANT_COLOR, VK_BLEND_FACTOR_ONE);
-				const float blend_consts[] = { 0.25f, 0.25f, 0.25f, 0.25f };
-				cmd->set_blend_constants(blend_consts);
-				cmd->set_blend_op(VK_BLEND_OP_REVERSE_SUBTRACT);
-			}
 
 			*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
 
@@ -828,6 +823,14 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
+
+		if (ui.trigger_capture)
+		{
+			ui.trigger_capture = Device::init_renderdoc_capture();
+			if (ui.trigger_capture)
+				device.begin_renderdoc_capture();
+		}
+
 		auto cmd = device.request_command_buffer();
 
 		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
@@ -910,6 +913,12 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			rp.store_attachments = 1u << 0;
 
 			render(cmd.get(), rp, &hiz->get_view());
+
+			if (ui.use_meshlets && !ui.use_preculling)
+			{
+				cmd->barrier(VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+				             VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+			}
 		}
 
 		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
@@ -1045,6 +1054,12 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 					accum_draws(mapped2);
 				}
 			}
+		}
+
+		if (ui.trigger_capture)
+		{
+			device.end_renderdoc_capture();
+			ui.trigger_capture = false;
 		}
 	}
 

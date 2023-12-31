@@ -330,6 +330,77 @@ static vec4 decode_bgr10a2(uint32_t v)
 	return fvalue;
 }
 
+struct DecodedAttr
+{
+	uint32_t n;
+	uint32_t t;
+	vec2 uv;
+};
+
+static void decode_mesh_gpu_bench(Vulkan::Device &dev, const MeshView &mesh)
+{
+	Vulkan::BufferCreateInfo buf_info = {};
+	buf_info.domain = Vulkan::BufferDomain::Host;
+	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	buf_info.size = mesh.format_header->payload_size_b128 * sizeof(PayloadB128);
+	auto payload_buffer = dev.create_buffer(buf_info, mesh.payload);
+
+	buf_info.size = mesh.total_primitives * sizeof(u8vec3);
+	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	buf_info.domain = Vulkan::BufferDomain::Device;
+	auto readback_decoded_index_buffer = dev.create_buffer(buf_info);
+
+	buf_info.size = mesh.total_vertices * sizeof(vec3);
+	buf_info.domain = Vulkan::BufferDomain::Device;
+	auto readback_decoded_pos_buffer = dev.create_buffer(buf_info);
+
+	buf_info.size = mesh.total_vertices * sizeof(DecodedAttr);
+	buf_info.domain = Vulkan::BufferDomain::Device;
+	auto readback_decoded_attr_buffer = dev.create_buffer(buf_info);
+
+	DecodeInfo info = {};
+	info.ibo = readback_decoded_index_buffer.get();
+	info.streams[0] = readback_decoded_pos_buffer.get();
+	info.streams[1] = readback_decoded_attr_buffer.get();
+	info.target_style = mesh.format_header->style;
+	info.payload = payload_buffer.get();
+
+	constexpr unsigned ITER_PER_CONTEXT = 1000;
+	for (unsigned j = 0; j < 100; j++)
+	{
+		auto cmd = dev.request_command_buffer();
+		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+		for (unsigned i = 0; i < ITER_PER_CONTEXT; i++)
+			decode_mesh(*cmd, info, mesh);
+		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+		dev.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "Decode100");
+		dev.submit(cmd);
+		dev.next_frame_context();
+	}
+
+	double time_per_context = 0.0;
+	const auto logger =  [&](const std::string &tag, const Vulkan::TimestampIntervalReport &report) {
+		if (tag == "Decode100")
+			time_per_context = report.time_per_frame_context;
+	};
+
+	dev.timestamp_log(logger);
+	double prim_count_per_context = double(mesh.total_primitives) * ITER_PER_CONTEXT;
+	double prims_per_second = prim_count_per_context / time_per_context;
+
+	double input_bw = double(mesh.format_header->payload_size_b128) * sizeof(PayloadB128) *
+	                  ITER_PER_CONTEXT / time_per_context;
+	double output_bw = double(mesh.total_primitives) * sizeof(u8vec3) +
+	                   double(mesh.total_vertices) * (sizeof(vec3) + sizeof(DecodedAttr)) *
+	                   ITER_PER_CONTEXT / time_per_context;
+
+	LOGE("Primitives / s: %.3f G\n", prims_per_second * 1e-9);
+	LOGE("Payload read BW: %.3f GB/s\n", input_bw * 1e-9);
+	LOGE("Payload write BW: %.3f GB/s\n", output_bw * 1e-9);
+
+	dev.wait_idle();
+}
+
 static void decode_mesh_gpu(
 		Vulkan::Device &dev,
 		std::vector<uvec3> &out_index_buffer, std::vector<vec3> &out_pos_buffer,
@@ -339,14 +410,7 @@ static void decode_mesh_gpu(
 	out_index_buffer.resize(mesh.total_primitives);
 	out_pos_buffer.resize(mesh.total_vertices);
 
-	struct Attr
-	{
-		uint32_t n;
-		uint32_t t;
-		vec2 uv;
-	};
-
-	std::vector<Attr> out_attr_buffer(mesh.total_vertices);
+	std::vector<DecodedAttr> out_attr_buffer(mesh.total_vertices);
 
 	Vulkan::BufferCreateInfo buf_info = {};
 	buf_info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
@@ -363,7 +427,7 @@ static void decode_mesh_gpu(
 	buf_info.domain = Vulkan::BufferDomain::CachedHost;
 	auto readback_decoded_pos_buffer = dev.create_buffer(buf_info);
 
-	buf_info.size = out_attr_buffer.size() * sizeof(Attr);
+	buf_info.size = out_attr_buffer.size() * sizeof(DecodedAttr);
 	buf_info.domain = Vulkan::BufferDomain::CachedHost;
 	auto readback_decoded_attr_buffer = dev.create_buffer(buf_info);
 
@@ -406,7 +470,7 @@ static void decode_mesh_gpu(
 	out_normals.reserve(mesh.total_vertices);
 	out_tangents.reserve(mesh.total_vertices);
 
-	auto *attrs = static_cast<const Attr *>(dev.map_host_buffer(*readback_decoded_attr_buffer, Vulkan::MEMORY_ACCESS_READ_BIT));
+	auto *attrs = static_cast<const DecodedAttr *>(dev.map_host_buffer(*readback_decoded_attr_buffer, Vulkan::MEMORY_ACCESS_READ_BIT));
 	for (size_t i = 0, n = mesh.total_vertices; i < n; i++)
 	{
 		auto &attr = attrs[i];
@@ -546,43 +610,53 @@ static bool validate_mesh_attribute(const std::vector<uvec3> &reference_indices,
 	return true;
 }
 
-int main()
+int main(int argc, char **argv)
 {
 	Global::init(Global::MANAGER_FEATURE_FILESYSTEM_BIT);
 	Filesystem::setup_default_filesystem(GRANITE_FILESYSTEM(), ASSET_DIRECTORY);
 
 	SceneFormats::Mesh mesh;
-
 	std::vector<uvec3> reference_indices;
 	std::vector<vec3> reference_positions;
 	std::vector<Attr> reference_attributes;
-	build_reference_mesh(reference_indices, reference_positions, reference_attributes);
 
-	mesh.index_type = VK_INDEX_TYPE_UINT32;
-	mesh.count = 3 * reference_indices.size();
-	mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	mesh.indices.resize(mesh.count * sizeof(uint32_t));
-	memcpy(mesh.indices.data(), reference_indices.data(), mesh.count * sizeof(uint32_t));
+	if (argc == 2)
+	{
+		GLTF::Parser parser(argv[1]);
+		if (parser.get_meshes().empty())
+			return EXIT_FAILURE;
+		mesh = parser.get_meshes().front();
+	}
+	else
+	{
+		build_reference_mesh(reference_indices, reference_positions, reference_attributes);
 
-	mesh.attribute_layout[int(MeshAttribute::Position)].format = VK_FORMAT_R32G32B32_SFLOAT;
-	mesh.position_stride = sizeof(vec3);
-	mesh.positions.resize(reference_positions.size() * sizeof(vec3));
-	memcpy(mesh.positions.data(), reference_positions.data(), reference_positions.size() * sizeof(vec3));
+		mesh.index_type = VK_INDEX_TYPE_UINT32;
+		mesh.count = 3 * reference_indices.size();
+		mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+		mesh.indices.resize(mesh.count * sizeof(uint32_t));
+		memcpy(mesh.indices.data(), reference_indices.data(), mesh.count * sizeof(uint32_t));
 
-	mesh.attribute_layout[int(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
-	mesh.attribute_layout[int(MeshAttribute::UV)].offset = offsetof(Attr, uv);
-	mesh.attribute_layout[int(MeshAttribute::Normal)].format = VK_FORMAT_R32G32B32_SFLOAT;
-	mesh.attribute_layout[int(MeshAttribute::Normal)].offset = offsetof(Attr, n);
-	mesh.attribute_layout[int(MeshAttribute::Tangent)].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-	mesh.attribute_layout[int(MeshAttribute::Tangent)].offset = offsetof(Attr, t);
-	mesh.attribute_stride = sizeof(Attr);
-	mesh.attributes.resize(mesh.attribute_stride * reference_attributes.size());
-	memcpy(mesh.attributes.data(), reference_attributes.data(), mesh.attributes.size());
+		mesh.attribute_layout[int(MeshAttribute::Position)].format = VK_FORMAT_R32G32B32_SFLOAT;
+		mesh.position_stride = sizeof(vec3);
+		mesh.positions.resize(reference_positions.size() * sizeof(vec3));
+		memcpy(mesh.positions.data(), reference_positions.data(), reference_positions.size() * sizeof(vec3));
 
-	if (!Meshlet::export_mesh_to_meshlet("/tmp/export.msh2", std::move(mesh), MeshStyle::Textured))
+		mesh.attribute_layout[int(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
+		mesh.attribute_layout[int(MeshAttribute::UV)].offset = offsetof(Attr, uv);
+		mesh.attribute_layout[int(MeshAttribute::Normal)].format = VK_FORMAT_R32G32B32_SFLOAT;
+		mesh.attribute_layout[int(MeshAttribute::Normal)].offset = offsetof(Attr, n);
+		mesh.attribute_layout[int(MeshAttribute::Tangent)].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+		mesh.attribute_layout[int(MeshAttribute::Tangent)].offset = offsetof(Attr, t);
+		mesh.attribute_stride = sizeof(Attr);
+		mesh.attributes.resize(mesh.attribute_stride * reference_attributes.size());
+		memcpy(mesh.attributes.data(), reference_attributes.data(), mesh.attributes.size());
+	}
+
+	if (!Meshlet::export_mesh_to_meshlet("export.msh2", std::move(mesh), MeshStyle::Textured))
 		return EXIT_FAILURE;
 
-	auto file = GRANITE_FILESYSTEM()->open("/tmp/export.msh2", FileMode::ReadOnly);
+	auto file = GRANITE_FILESYSTEM()->open("export.msh2", FileMode::ReadOnly);
 	if (!file)
 		return EXIT_FAILURE;
 
@@ -621,9 +695,11 @@ int main()
 	                   gpu_index_buffer, gpu_positions, false))
 		return EXIT_FAILURE;
 
-	if (!validate_mesh(reference_indices, reference_positions,
-	                   decoded_index_buffer, decoded_positions, true))
-		return EXIT_FAILURE;
+	if (!reference_indices.empty())
+	{
+		if (!validate_mesh(reference_indices, reference_positions, decoded_index_buffer, decoded_positions, true))
+			return EXIT_FAILURE;
+	}
 
 	std::vector<vec2> reference_uvs;
 	std::vector<vec3> reference_normals;
@@ -638,12 +714,19 @@ int main()
 		reference_tangents.push_back(a.t);
 	}
 
-	if (!validate_mesh_attribute(reference_indices, reference_uvs, decoded_index_buffer, decoded_uvs, 0.0f))
-		return EXIT_FAILURE;
-	if (!validate_mesh_attribute(reference_indices, reference_normals, decoded_index_buffer, decoded_normals, 0.02f))
-		return EXIT_FAILURE;
-	if (!validate_mesh_attribute(reference_indices, reference_tangents, decoded_index_buffer, decoded_tangents, 0.02f))
-		return EXIT_FAILURE;
+	if (!reference_indices.empty())
+	{
+		if (!validate_mesh_attribute(reference_indices, reference_uvs, decoded_index_buffer, decoded_uvs, 0.0f))
+			return EXIT_FAILURE;
+		if (!validate_mesh_attribute(reference_indices, reference_normals, decoded_index_buffer, decoded_normals,
+		                             0.02f))
+			return EXIT_FAILURE;
+		if (!validate_mesh_attribute(reference_indices, reference_tangents, decoded_index_buffer, decoded_tangents,
+		                             0.02f))
+			return EXIT_FAILURE;
+	}
+
+	decode_mesh_gpu_bench(dev, view);
 
 	return 0;
 }

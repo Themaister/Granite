@@ -1016,30 +1016,43 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		auto encoding = device.get_resource_manager().get_mesh_encoding();
 		if (encoding != ResourceManager::MeshEncoding::Classic)
 		{
-			if (readback_fence[readback_index] &&
-			    readback_ring_phase1[readback_index] &&
-			    readback_ring_phase2[readback_index])
+			if (readback_fence[readback_index])
 			{
 				readback_fence[readback_index]->wait();
 
-				auto *mapped1 = static_cast<const uint32_t *>(
-					device.map_host_buffer(*readback_ring_phase1[readback_index],
-					                       MEMORY_ACCESS_READ_BIT));
-				auto *mapped2 = static_cast<const uint32_t *>(
-					device.map_host_buffer(*readback_ring_phase2[readback_index],
-					                       MEMORY_ACCESS_READ_BIT));
+				auto &ring1 = readback_ring_phase1[readback_index];
+				auto &ring2 = readback_ring_phase2[readback_index];
+
+				auto *mapped1 = ring1 ? static_cast<const uint32_t *>(
+					device.map_host_buffer(*ring1, MEMORY_ACCESS_READ_BIT)) : nullptr;
+				auto *mapped2 = ring2 ? static_cast<const uint32_t *>(
+						device.map_host_buffer(*ring2, MEMORY_ACCESS_READ_BIT)) : nullptr;
 
 				if (encoding != ResourceManager::MeshEncoding::VBOAndIBOMDI)
 				{
-					last_mesh_invocations = mapped1[0] + mapped2[0];
-					last_prim = mapped1[1] + mapped2[1];
-					last_vert = mapped1[2] + mapped2[2];
+					last_mesh_invocations = 0;
+					last_prim = 0;
+					last_vert = 0;
+
+					const auto accum_draws = [&](const uint32_t *mapped) {
+						if (mapped)
+						{
+							last_mesh_invocations += mapped[0];
+							last_prim += mapped[1];
+							last_vert += mapped[2];
+						}
+					};
+
+					accum_draws(mapped1);
+					accum_draws(mapped2);
 				}
 				else
 				{
 					last_mesh_invocations = 0;
 
 					const auto accum_draws = [&](const uint32_t *mapped) {
+						if (!mapped)
+							return;
 						uint32_t draws = mapped[0];
 						mapped += 256 / sizeof(uint32_t);
 

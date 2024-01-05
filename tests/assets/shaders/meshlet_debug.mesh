@@ -147,10 +147,12 @@ void main()
         vTangent[out_vert_index] = vec4(mat3(M) * NT[1].xyz, NT[1].w);
     }
 
+#if 0
     if (gl_LocalInvocationIndex == 0)
     {
         atomicAdd(stats.invocations, gl_WorkGroupSize.x * gl_WorkGroupSize.y);
         atomicAdd(stats.prim, shared_active_prim_count_total);
         atomicAdd(stats.vert, shared_active_vert_count_total);
     }
+#endif
 }

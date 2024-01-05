@@ -15,7 +15,9 @@ layout(local_size_x = 32) in;
 #if MESHLET_RENDER_PHASE == 2
 #define MESHLET_RENDER_HIZ_BINDING 11
 #endif
+#if MESHLET_RENDER_PHASE >= 1
 #define MESHLET_RENDER_OCCLUDER_BINDING 12
+#endif
 
 #include "meshlet_render.h"
 

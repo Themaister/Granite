@@ -161,18 +161,22 @@ static void rebuild_new_attributes_remap_src(std::vector<uint8_t> &positions, un
 static void rebuild_new_attributes_remap_dst(std::vector<uint8_t> &positions, unsigned position_stride,
                                              std::vector<uint8_t> &attributes, unsigned attribute_stride,
                                              const std::vector<uint8_t> &source_positions, const std::vector<uint8_t> &source_attributes,
-                                             const std::vector<uint32_t> &unique_attrib_to_dest_index)
+                                             const std::vector<uint32_t> &unique_attrib_to_dest_index,
+                                             uint32_t vertex_count)
 {
 	std::vector<uint8_t> new_positions;
 	std::vector<uint8_t> new_attributes;
 
-	new_positions.resize(position_stride * unique_attrib_to_dest_index.size());
+	new_positions.resize(position_stride * vertex_count);
 	if (attribute_stride)
-		new_attributes.resize(attribute_stride * unique_attrib_to_dest_index.size());
+		new_attributes.resize(attribute_stride * vertex_count);
 
 	size_t count = unique_attrib_to_dest_index.size();
 	for (size_t i = 0; i < count; i++)
 	{
+		if (unique_attrib_to_dest_index[i] == UINT32_MAX)
+			continue;
+
 		memcpy(new_positions.data() + unique_attrib_to_dest_index[i] * position_stride,
 		       source_positions.data() + i * position_stride,
 		       position_stride);
@@ -366,11 +370,11 @@ bool mesh_optimize_index_buffer(Mesh &mesh, const IndexBufferOptimizeOptions &op
 
 	// Remap vertex fetch to get contiguous indices as much as possible.
 	std::vector<uint32_t> remap_table(mesh.positions.size() / mesh.position_stride);
-	meshopt_optimizeVertexFetchRemap(remap_table.data(), index_buffer.data(), index_buffer.size(), vertex_count);
+	vertex_count = meshopt_optimizeVertexFetchRemap(remap_table.data(), index_buffer.data(), index_buffer.size(), vertex_count);
 	index_buffer = remap_indices(index_buffer, remap_table);
 	rebuild_new_attributes_remap_dst(mesh.positions, mesh.position_stride,
 	                                 mesh.attributes, mesh.attribute_stride,
-	                                 mesh.positions, mesh.attributes, remap_table);
+	                                 mesh.positions, mesh.attributes, remap_table, vertex_count);
 
 	if (options.stripify)
 	{

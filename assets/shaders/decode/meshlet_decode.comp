@@ -151,7 +151,7 @@ void main()
     // Index
     if (chunk_index < meta.num_chunks && lane_index < chunk_info.primitive_count)
     {
-        uint decoded_index_buffer = meshlet_decode_index_buffer(
+        uvec3 indices = meshlet_decode_index_buffer(
                 meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_PRIMITIVE,
                 chunk_index, lane_index);
 
@@ -160,10 +160,6 @@ void main()
         else
             primitive_output_offset += chunk_info.primitive_offset;
 
-        uvec3 indices;
-        indices.x = bitfieldExtract(decoded_index_buffer, 0, 8);
-        indices.y = bitfieldExtract(decoded_index_buffer, 8, 8);
-        indices.z = bitfieldExtract(decoded_index_buffer, 16, 8);
         if (!RUNTIME_MESH)
             indices += chunk_info.vertex_offset;
 

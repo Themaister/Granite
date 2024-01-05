@@ -217,7 +217,7 @@ void ResourceManager::init()
 	{
 		mesh_header_allocator.set_element_size(0, sizeof(Meshlet::RuntimeHeader));
 		mesh_stream_allocator.set_element_size(0, sizeof(Meshlet::Stream));
-		mesh_payload_allocator.set_element_size(0, sizeof(Meshlet::PayloadB128));
+		mesh_payload_allocator.set_element_size(0, sizeof(Meshlet::PayloadWord));
 
 		mesh_header_allocator.set_soa_count(2);
 		mesh_header_allocator.set_element_size(1, sizeof(Meshlet::Bound));
@@ -399,7 +399,7 @@ bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::Me
 		}
 
 		if (ret)
-			ret = mesh_payload_allocator.allocate(view.format_header->payload_size_b128, &asset.mesh.index_or_payload);
+			ret = mesh_payload_allocator.allocate(view.format_header->payload_size_words, &asset.mesh.index_or_payload);
 	}
 	else
 	{
@@ -496,9 +496,9 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			auto cmd = device->request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 
 			void *payload_data = cmd->update_buffer(*mesh_payload_allocator.get_buffer(0, 0),
-			                                        asset.mesh.index_or_payload.offset * sizeof(Meshlet::PayloadB128),
-			                                        view.format_header->payload_size_b128 * sizeof(Meshlet::PayloadB128));
-			memcpy(payload_data, view.payload, view.format_header->payload_size_b128 * sizeof(Meshlet::PayloadB128));
+			                                        asset.mesh.index_or_payload.offset * sizeof(Meshlet::PayloadWord),
+			                                        view.format_header->payload_size_words * sizeof(Meshlet::PayloadWord));
+			memcpy(payload_data, view.payload, view.format_header->payload_size_words * sizeof(Meshlet::PayloadWord));
 
 			auto *headers = static_cast<Meshlet::RuntimeHeader *>(
 					cmd->update_buffer(*mesh_header_allocator.get_buffer(0, 0),
@@ -526,7 +526,7 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			for (uint32_t i = 0, n = view.format_header->meshlet_count * view.format_header->stream_count; i < n; i++)
 			{
 				auto in_stream = view.streams[i];
-				in_stream.offset_in_b128 += asset.mesh.index_or_payload.offset;
+				in_stream.offset_in_words += asset.mesh.index_or_payload.offset;
 				streams[i] = in_stream;
 			}
 
@@ -542,7 +542,7 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 
 			BufferCreateInfo buf = {};
 			buf.domain = BufferDomain::Host;
-			buf.size = view.format_header->payload_size_b128 * sizeof(Meshlet::PayloadB128);
+			buf.size = view.format_header->payload_size_words * sizeof(Meshlet::PayloadWord);
 			buf.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 			auto payload = device->create_buffer(buf, view.payload);
 
@@ -589,7 +589,7 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 	{
 		if (mesh_encoding == MeshEncoding::MeshletEncoded)
 		{
-			cost += view.format_header->payload_size_b128 * mesh_payload_allocator.get_element_size(0);
+			cost += view.format_header->payload_size_words * mesh_payload_allocator.get_element_size(0);
 			cost += view.format_header->meshlet_count * mesh_header_allocator.get_element_size(0);
 			cost += view.format_header->meshlet_count * mesh_header_allocator.get_element_size(1);
 			cost += view.format_header->meshlet_count * view.format_header->stream_count * mesh_stream_allocator.get_element_size(0);

@@ -69,12 +69,12 @@ MeshView create_mesh_view(const Granite::FileMapping &mapping)
 	view.streams = reinterpret_cast<const Stream *>(ptr);
 	ptr += view.format_header->meshlet_count * view.format_header->stream_count * sizeof(Stream);
 
-	if (!view.format_header->payload_size_b128)
+	if (!view.format_header->payload_size_words)
 		return {};
 
-	if (end_ptr - ptr < ptrdiff_t(view.format_header->payload_size_b128 * sizeof(PayloadB128)))
+	if (end_ptr - ptr < ptrdiff_t(view.format_header->payload_size_words * sizeof(PayloadWord)))
 		return {};
-	view.payload = reinterpret_cast<const PayloadB128 *>(ptr);
+	view.payload = reinterpret_cast<const PayloadWord *>(ptr);
 
 	for (uint32_t i = 0, n = view.format_header->meshlet_count; i < n; i++)
 	{

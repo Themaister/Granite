@@ -13,119 +13,49 @@
 using namespace Granite;
 using namespace Vulkan::Meshlet;
 
+template <typename T>
+static void decode_bits(T *values, unsigned component_count, const PayloadWord *payload, unsigned element_index,
+                        unsigned bit_count)
+{
+	unsigned bit_offset = component_count * element_index * bit_count;
+	for (unsigned c = 0; c < component_count; c++)
+	{
+		T value = 0;
+		for (unsigned i = 0; i < bit_count; i++, bit_offset++)
+			value |= ((payload[bit_offset / 32] >> (bit_offset & 31)) & 1) << i;
+		values[c] = value;
+	}
+}
+
 static void decode_mesh_index_buffer(std::vector<uvec3> &out_index_buffer, const MeshView &mesh, uint32_t meshlet_index)
 {
 	auto &meshlet = mesh.headers[meshlet_index];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
-	const auto *pdata = mesh.payload + stream.offset_in_b128;
+	const auto *pdata = mesh.payload + stream.offset_in_words;
 
 	for (uint32_t chunk_index = 0; chunk_index < meshlet.num_chunks; chunk_index++)
 	{
-		auto p0 = pdata[0];
-		auto p1 = pdata[1];
-		auto p2 = pdata[2];
-		auto p3 = pdata[3];
-
-		pdata += 4;
-
+		u8vec3 decoded_indices[ElementsPerChunk];
 		uint32_t num_primitives_for_chunk = stream.u.offsets[chunk_index + 1].prim_offset -
 		                                    stream.u.offsets[chunk_index].prim_offset;
 
 		for (uint32_t i = 0; i < num_primitives_for_chunk; i++)
 		{
-			uint32_t v = 0;
-			v |= ((p0.words[0] >> i) & 1u) << 0u;
-			v |= ((p0.words[1] >> i) & 1u) << 1u;
-			v |= ((p0.words[2] >> i) & 1u) << 2u;
-			v |= ((p0.words[3] >> i) & 1u) << 3u;
-
-			v |= ((p1.words[0] >> i) & 1u) << 8u;
-			v |= ((p1.words[1] >> i) & 1u) << 9u;
-			v |= ((p1.words[2] >> i) & 1u) << 10u;
-			v |= ((p1.words[3] >> i) & 1u) << 11u;
-
-			v |= ((p2.words[0] >> i) & 1u) << 16u;
-			v |= ((p2.words[1] >> i) & 1u) << 17u;
-			v |= ((p2.words[2] >> i) & 1u) << 18u;
-			v |= ((p2.words[3] >> i) & 1u) << 19u;
-
-			v |= ((p3.words[0] >> i) & 1u) << 4u;
-			v |= ((p3.words[1] >> i) & 1u) << 12u;
-			v |= ((p3.words[2] >> i) & 1u) << 20u;
-
-			v += stream.u.offsets[chunk_index].attr_offset * 0x010101u;
-
-			uint32_t x = v & 0xffu;
-			uint32_t y = (v >> 8u) & 0xffu;
-			uint32_t z = (v >> 16u) & 0xffu;
-
-			out_index_buffer.push_back(uvec3(x, y, z) + meshlet.base_vertex_offset);
+			decode_bits(decoded_indices[i].data, 3, pdata, i, 5);
+			decoded_indices[i] += u8vec3(stream.u.offsets[chunk_index].attr_offset);
+			out_index_buffer.push_back(uvec3(decoded_indices[i]) + meshlet.base_vertex_offset);
 		}
+
+		pdata += 15;
 	}
 }
 
-template <int Components, typename T>
-static void decode_bitfield_block_16(T *block, const PayloadB128 *&pdata, unsigned config)
+template <typename T>
+static void decode_bitfield_block(T *block, unsigned component_count, const PayloadWord *&pdata, unsigned bit_count)
 {
-	unsigned bit_offset = 0;
-
-	for (int mask = 4; mask; mask >>= 1)
-	{
-		if (config & mask)
-		{
-			const uint32_t *words = &pdata->words[0];
-			int bits = mask * 2;
-
-			for (uint32_t i = 0; i < ElementsPerChunk; i++)
-			{
-				T &d = block[i];
-				for (int c = 0; c < Components; c++)
-				{
-					for (int b = 0; b < bits; b++)
-					{
-						int word = c * bits + b;
-						d[c] |= ((words[word] >> i) & 1u) << (bit_offset + b);
-					}
-				}
-			}
-
-			int num_words = (bits * Components + 3) / 4;
-			pdata += num_words;
-			bit_offset += bits;
-		}
-	}
-}
-
-template <int Components, typename T>
-static void decode_bitfield_block_8(T *block, const PayloadB128 *&pdata, unsigned config)
-{
-	unsigned bit_offset = 0;
-
-	for (int mask = 4; mask; mask >>= 1)
-	{
-		if (config & mask)
-		{
-			const uint32_t *words = &pdata->words[0];
-			int bits = mask;
-
-			for (uint32_t i = 0; i < ElementsPerChunk; i++)
-			{
-				T &d = block[i];
-				for (int c = 0; c < Components; c++)
-				{
-					for (int b = 0; b < bits; b++)
-					{
-						int word = c * bits + b;
-						d[c] |= ((words[word] >> i) & 1u) << (bit_offset + b);
-					}
-				}
-			}
-
-			int num_words = (bits * Components + 3) / 4;
-			pdata += num_words;
-			bit_offset += bits;
-		}
-	}
+	for (uint32_t i = 0; i < ElementsPerChunk; i++)
+		decode_bits(block[i].data, component_count, pdata, i, bit_count);
+	pdata += bit_count * component_count;
 }
 
 static void decode_attribute_buffer(std::vector<vec3> &out_positions, const MeshView &mesh, uint32_t meshlet_index, StreamType type)
@@ -133,35 +63,16 @@ static void decode_attribute_buffer(std::vector<vec3> &out_positions, const Mesh
 	auto &meshlet = mesh.headers[meshlet_index];
 	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
-	const auto *pdata = mesh.payload + stream.offset_in_b128;
+	const auto *pdata = mesh.payload + stream.offset_in_words;
 
 	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
 	{
-		u16vec3 positions[ElementsPerChunk]{};
+		u16vec3 positions[ElementsPerChunk];
 		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
-
-		if (config == 8)
-		{
-			for (uint32_t i = 0; i < ElementsPerChunk; i++)
-			{
-				memcpy(positions[i].data, &pdata[i / 4].words[i % 4], 2 * sizeof(uint16_t));
-				memcpy(&positions[i].z,
-				       reinterpret_cast<const char *>(&pdata[8]) + sizeof(uint16_t) * i,
-				       sizeof(uint16_t));
-			}
-
-			pdata += 12;
-		}
-		else
-		{
-			decode_bitfield_block_16<3>(positions, pdata, config);
-		}
+		decode_bitfield_block(positions, 3, pdata, config + 1);
 
 		u16vec3 base;
-		memcpy(base.data, &stream.u.base_value[chunk], sizeof(uint16_t) * 2);
-		memcpy(&base.z, reinterpret_cast<const char *>(&stream.u.base_value[NumChunks]) +
-		                sizeof(uint16_t) * chunk,
-		       sizeof(uint16_t));
+		decode_bits(base.data, 3, stream.u.base_value, chunk, 16);
 
 		for (auto &p : positions)
 			p += base;
@@ -185,27 +96,16 @@ static void decode_attribute_buffer(std::vector<vec2> &out_uvs, const MeshView &
 	auto &meshlet = mesh.headers[meshlet_index];
 	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
-	const auto *pdata = mesh.payload + stream.offset_in_b128;
+	const auto *pdata = mesh.payload + stream.offset_in_words;
 
 	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
 	{
-		u16vec2 uvs[ElementsPerChunk]{};
+		u16vec2 uvs[ElementsPerChunk];
 		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
-
-		if (config == 8)
-		{
-			for (uint32_t i = 0; i < ElementsPerChunk; i++)
-				memcpy(uvs[i].data, &pdata[i / 4].words[i % 4], 2 * sizeof(uint16_t));
-
-			pdata += 8;
-		}
-		else
-		{
-			decode_bitfield_block_16<2>(uvs, pdata, config);
-		}
+		decode_bitfield_block(uvs, 2, pdata, config + 1);
 
 		u16vec2 base;
-		memcpy(base.data, &stream.u.base_value[chunk], sizeof(uint16_t) * 2);
+		decode_bits(base.data, 2, stream.u.base_value, chunk, 16);
 
 		for (auto &p : uvs)
 			p += base;
@@ -248,24 +148,15 @@ static void decode_attribute_buffer(std::vector<vec3> &out_normals, std::vector<
 	auto &meshlet = mesh.headers[meshlet_index];
 	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
-	const auto *pdata = mesh.payload + stream.offset_in_b128;
+	const auto *pdata = mesh.payload + stream.offset_in_words;
 
 	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
 	{
-		u8vec4 nts[ElementsPerChunk]{};
+		u8vec4 nts[ElementsPerChunk];
 		uint32_t t_signs = 0;
 
 		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
-
-		if (config == 8)
-		{
-			memcpy(nts, pdata, sizeof(nts));
-			pdata += 8;
-		}
-		else
-		{
-			decode_bitfield_block_8<4>(nts, pdata, config);
-		}
+		decode_bitfield_block(nts, 4, pdata, config + 1);
 
 		int aux = (stream.aux >> (2 * chunk)) & 3;
 
@@ -279,7 +170,7 @@ static void decode_attribute_buffer(std::vector<vec3> &out_normals, std::vector<
 		}
 
 		u8vec4 base;
-		memcpy(base.data, &stream.u.base_value[chunk], sizeof(base.data));
+		decode_bits(base.data, 4, stream.u.base_value, chunk, 8);
 
 		for (auto &p : nts)
 			p += base;
@@ -342,7 +233,7 @@ static void decode_mesh_gpu_bench(Vulkan::Device &dev, const MeshView &mesh)
 	Vulkan::BufferCreateInfo buf_info = {};
 	buf_info.domain = Vulkan::BufferDomain::Device;
 	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	buf_info.size = mesh.format_header->payload_size_b128 * sizeof(PayloadB128);
+	buf_info.size = mesh.format_header->payload_size_words * sizeof(PayloadWord);
 	auto payload_buffer = dev.create_buffer(buf_info, mesh.payload);
 
 	buf_info.size = mesh.total_primitives * sizeof(u8vec3);
@@ -393,7 +284,7 @@ static void decode_mesh_gpu_bench(Vulkan::Device &dev, const MeshView &mesh)
 	double prim_count_per_context = double(mesh.total_primitives) * ITER_PER_CONTEXT;
 	double prims_per_second = prim_count_per_context / time_per_context;
 
-	double input_bw = double(mesh.format_header->payload_size_b128) * sizeof(PayloadB128) *
+	double input_bw = double(mesh.format_header->payload_size_words) * sizeof(PayloadWord) *
 	                  ITER_PER_CONTEXT / time_per_context;
 	double output_bw = double(mesh.total_primitives) * sizeof(u8vec3) +
 	                   double(mesh.total_vertices) * (sizeof(vec3) + sizeof(DecodedAttr)) *
@@ -420,7 +311,7 @@ static void decode_mesh_gpu(
 	Vulkan::BufferCreateInfo buf_info = {};
 	buf_info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
 	buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	buf_info.size = mesh.format_header->payload_size_b128 * sizeof(PayloadB128);
+	buf_info.size = mesh.format_header->payload_size_words * sizeof(PayloadWord);
 	auto payload_buffer = dev.create_buffer(buf_info, mesh.payload);
 
 	buf_info.size = out_index_buffer.size() * sizeof(uvec3);
@@ -507,6 +398,7 @@ static void build_reference_mesh(std::vector<uvec3> &indices, std::vector<vec3> 
 #else
 		vec3 p = vec3(-40.0f + float(i));
 #endif
+
 		positions.push_back(p);
 
 		Attr a = {};

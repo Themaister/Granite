@@ -55,7 +55,7 @@ struct Stream
 	uint32_t bit_plane_config;
 	uint32_t reserved;
 	int32_t aux;
-	uint32_t offset_in_b128;
+	uint32_t offset_in_words;
 };
 static_assert(sizeof(Stream) == 64, "Unexpected Stream size.");
 
@@ -107,13 +107,10 @@ struct FormatHeader
 	MeshStyle style;
 	uint32_t stream_count;
 	uint32_t meshlet_count;
-	uint32_t payload_size_b128;
+	uint32_t payload_size_words;
 };
 
-struct PayloadB128
-{
-	uint32_t words[4];
-};
+using PayloadWord = uint32_t;
 
 struct MeshView
 {
@@ -121,7 +118,7 @@ struct MeshView
 	const Header *headers;
 	const Bound *bounds;
 	const Stream *streams;
-	const PayloadB128 *payload;
+	const PayloadWord *payload;
 	uint32_t total_primitives;
 	uint32_t total_vertices;
 };

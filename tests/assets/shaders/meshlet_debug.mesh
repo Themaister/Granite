@@ -101,7 +101,7 @@ void main()
     chunk_index += base_chunk_index;
 
     MeshletChunkInfo index_chunk_info = meshlet_get_chunk_info(meta.stream_offset, chunk_index);
-    uint decoded_index_buffer = 0;
+    uvec3 decoded_index_buffer = uvec3(0);
     vec3 world_pos;
     vec4 clip_pos = vec4(-1.0);
 
@@ -122,7 +122,7 @@ void main()
         }
     }
 
-    meshlet_emit_primitive(unpack8(decoded_index_buffer).xyz, clip_pos, viewport);
+    meshlet_emit_primitive(decoded_index_buffer, clip_pos, viewport);
     if (gl_LocalInvocationIndex < shared_active_prim_count_total)
         vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
 

@@ -51,7 +51,7 @@ struct CombinedMesh
 
 struct Encoded
 {
-	std::vector<PayloadB128> payload;
+	std::vector<PayloadWord> payload;
 	CombinedMesh mesh;
 };
 
@@ -309,163 +309,62 @@ static vec3 decode_snorm_exp(i16vec3 p, int exp)
     return result;
 }
 
-static void encode_index_stream(std::vector<PayloadB128> &out_payload_buffer,
+template <typename T>
+static void write_bits(PayloadWord *words, const T *values, unsigned component_count,
+                       unsigned element_index, unsigned bit_count)
+{
+	unsigned bit_offset = element_index * component_count * bit_count;
+	for (unsigned c = 0; c < component_count; c++)
+	{
+		auto value = values[c];
+		for (unsigned i = 0; i < bit_count; i++, bit_offset++)
+			words[bit_offset / 32] |= ((value >> i) & 1) << (bit_offset & 31);
+	}
+}
+
+static void encode_index_stream(std::vector<PayloadWord> &out_payload_buffer,
                                 u8vec3 (&stream_buffer)[ElementsPerChunk])
 {
-	PayloadB128 p0{};
-	PayloadB128 p1{};
-	PayloadB128 p2{};
-	PayloadB128 p3{};
+	PayloadWord p[15] = {};
 
 	for (unsigned i = 0; i < ElementsPerChunk; i++)
 	{
 		u8vec3 indices = stream_buffer[i];
 		assert(all(lessThan(indices, u8vec3(ElementsPerChunk))));
-
-		p0.words[0] |= ((indices.x >> 0u) & 1u) << i;
-		p0.words[1] |= ((indices.x >> 1u) & 1u) << i;
-		p0.words[2] |= ((indices.x >> 2u) & 1u) << i;
-		p0.words[3] |= ((indices.x >> 3u) & 1u) << i;
-		p3.words[0] |= ((indices.x >> 4u) & 1u) << i;
-
-		p1.words[0] |= ((indices.y >> 0u) & 1u) << i;
-		p1.words[1] |= ((indices.y >> 1u) & 1u) << i;
-		p1.words[2] |= ((indices.y >> 2u) & 1u) << i;
-		p1.words[3] |= ((indices.y >> 3u) & 1u) << i;
-		p3.words[1] |= ((indices.y >> 4u) & 1u) << i;
-
-		p2.words[0] |= ((indices.z >> 0u) & 1u) << i;
-		p2.words[1] |= ((indices.z >> 1u) & 1u) << i;
-		p2.words[2] |= ((indices.z >> 2u) & 1u) << i;
-		p2.words[3] |= ((indices.z >> 3u) & 1u) << i;
-		p3.words[2] |= ((indices.z >> 4u) & 1u) << i;
+		write_bits(p, indices.data, 3, i, 5);
 	}
 
-	out_payload_buffer.push_back(p0);
-	out_payload_buffer.push_back(p1);
-	out_payload_buffer.push_back(p2);
-	out_payload_buffer.push_back(p3);
+	out_payload_buffer.insert(out_payload_buffer.end(), p, p + 15);
 }
 
 template <int Components, typename T>
-static void encode_bitplane_16_inner(std::vector<PayloadB128> &out_payload_buffer,
+static void encode_bitplane_16_inner(std::vector<PayloadWord> &out_payload_buffer,
                                      const T *values, unsigned encoded_bits)
 {
-	static_assert(Components == 2 || Components == 3, "Components must be 2 or 3.");
+	PayloadWord p[16 * Components] = {};
+	for (uint32_t i = 0; i < ElementsPerChunk; i++)
+		write_bits(p, values[i].data, Components, i, encoded_bits);
 
-	if (encoded_bits == 8)
-	{
-		// Plain write.
-		PayloadB128 p[4 * Components];
-
-		for (uint32_t i = 0; i < ElementsPerChunk; i++)
-		{
-			auto d = values[i].xy();
-			p[i / 4].words[i % 4] = uint32_t(d.x) | (uint32_t(d.y) << 16);
-		}
-
-		if (Components == 3)
-		{
-			for (uint32_t i = 0; i < ElementsPerChunk / 2; i++)
-			{
-				u16vec2 d = u16vec2(values[2 * i][2], values[2 * i + 1][2]);
-				p[8 + i / 4].words[i % 4] = uint32_t(d.x) | (uint32_t(d.y) << 16);
-			}
-		}
-
-		out_payload_buffer.insert(out_payload_buffer.end(), p, p + 4 * Components);
-	}
-	else
-	{
-		unsigned bit_offset = 0;
-		PayloadB128 p[6];
-
-		for (int mask = 4; mask; mask >>= 1)
-		{
-			if (encoded_bits & mask)
-			{
-				uint32_t *words = &p[0].words[0];
-				int bits = mask * 2;
-				int num_words = (bits * Components + 3) / 4;
-
-				for (int i = 0; i < num_words; i++)
-					p[i] = {};
-
-				for (uint32_t i = 0; i < ElementsPerChunk; i++)
-				{
-					auto d = values[i];
-					for (int c = 0; c < Components; c++)
-					{
-						for (int b = 0; b < bits; b++)
-						{
-							int word = c * bits + b;
-							words[word] |= ((d[c] >> (bit_offset + b)) & 1u) << i;
-						}
-					}
-				}
-
-				for (int i = 0; i < num_words; i++)
-					out_payload_buffer.push_back(p[i]);
-				bit_offset += bits;
-			}
-		}
-	}
+	out_payload_buffer.insert(out_payload_buffer.end(), p, p + encoded_bits * Components);
 }
 
-static void encode_bitplane(std::vector<PayloadB128> &out_payload_buffer,
+static void encode_bitplane(std::vector<PayloadWord> &out_payload_buffer,
                             const u8vec4 *values, unsigned encoded_bits)
 {
-	if (encoded_bits == 8)
-	{
-		// Plain write.
-		PayloadB128 p[8];
-		memcpy(p, values, sizeof(p));
-		out_payload_buffer.insert(out_payload_buffer.end(), p, p + 8);
-	}
-	else
-	{
-		unsigned bit_offset = 0;
-		PayloadB128 p[4];
+	PayloadWord p[8 * 4] = {};
+	for (uint32_t i = 0; i < ElementsPerChunk; i++)
+		write_bits(p, values[i].data, 4, i, encoded_bits);
 
-		for (int mask = 4; mask; mask >>= 1)
-		{
-			if (encoded_bits & mask)
-			{
-				uint32_t *words = &p[0].words[0];
-				int bits = mask;
-				int num_words = bits;
-
-				for (int i = 0; i < num_words; i++)
-					p[i] = {};
-
-				for (uint32_t i = 0; i < ElementsPerChunk; i++)
-				{
-					auto d = values[i];
-					for (int c = 0; c < 4; c++)
-					{
-						for (int b = 0; b < bits; b++)
-						{
-							int word = c * bits + b;
-							words[word] |= ((d[c] >> (bit_offset + b)) & 1u) << i;
-						}
-					}
-				}
-
-				for (int i = 0; i < num_words; i++)
-					out_payload_buffer.push_back(p[i]);
-				bit_offset += bits;
-			}
-		}
-	}
+	out_payload_buffer.insert(out_payload_buffer.end(), p, p + encoded_bits * 4);
 }
 
-static void encode_bitplane(std::vector<PayloadB128> &out_payload_buffer,
+static void encode_bitplane(std::vector<PayloadWord> &out_payload_buffer,
                             const u16vec3 *values, unsigned encoded_bits)
 {
 	encode_bitplane_16_inner<3>(out_payload_buffer, values, encoded_bits);
 }
 
-static void encode_bitplane(std::vector<PayloadB128> &out_payload_buffer,
+static void encode_bitplane(std::vector<PayloadWord> &out_payload_buffer,
                             const u16vec2 *values, unsigned encoded_bits)
 {
 	encode_bitplane_16_inner<2>(out_payload_buffer, values, encoded_bits);
@@ -491,7 +390,7 @@ static auto max_component(T value) -> std::remove_reference_t<decltype(value.dat
 }
 
 template <typename T>
-static void encode_attribute_stream(std::vector<PayloadB128> &out_payload_buffer,
+static void encode_attribute_stream(std::vector<PayloadWord> &out_payload_buffer,
                                     Stream &stream,
                                     const T *raw_attributes,
                                     uint32_t chunk_index, const uint32_t *vbo_remap,
@@ -535,20 +434,25 @@ static void encode_attribute_stream(std::vector<PayloadB128> &out_payload_buffer
 	constexpr unsigned bits_per_component = sizeof(UnsignedScalar) * 8;
 
 	unsigned bits = compute_required_bits_unsigned(diff_max_unsigned);
-	unsigned encoded_bits = (bits + sizeof(UnsignedScalar) - 1) / sizeof(UnsignedScalar);
 
-	stream.bit_plane_config |= encoded_bits << (4 * chunk_index);
-	memcpy(&stream.u.base_value[chunk_index], ulo.data, sizeof(uint32_t));
-	if (to_components<T>::components == 3 && bits_per_component == 16)
+	if (bits_per_component == 16 && to_components<T>::components == 3)
 	{
-		memcpy(reinterpret_cast<char *>(&stream.u.base_value[8]) + sizeof(uint16_t) * chunk_index,
-		       &ulo[2], sizeof(uint16_t));
+		// Decode math breaks for 13, 14 and 15 bits. Force 16-bit mode.
+		// Encoder can choose to quantize a bit harder, so we can hit 12-bit mode.
+		if (bits < 16 && bits > 12)
+			bits = 16;
 	}
+
+	unsigned encoded_bits = bits ? (bits - 1) : 0;
+	bits = encoded_bits + 1;
+
+	write_bits(stream.u.base_value, ulo.data, to_components<T>::components, chunk_index, bits_per_component);
+	stream.bit_plane_config |= encoded_bits << (4 * chunk_index);
 
 	for (auto &p : attributes)
 		p -= ulo;
 
-	encode_bitplane(out_payload_buffer, attributes, encoded_bits);
+	encode_bitplane(out_payload_buffer, attributes, bits);
 }
 
 static void encode_mesh(Encoded &encoded,
@@ -578,7 +482,7 @@ static void encode_mesh(Encoded &encoded,
 
 		{
 			auto &index_stream = out_meshlet.streams[int(StreamType::Primitive)];
-			index_stream.offset_in_b128 = uint32_t(encoded.payload.size());
+			index_stream.offset_in_words = uint32_t(encoded.payload.size());
 			uint32_t num_attributes = 0;
 			uint32_t num_primitives = 0;
 
@@ -620,7 +524,7 @@ static void encode_mesh(Encoded &encoded,
 		{
 			auto &stream = out_meshlet.streams[stream_index];
 			stream.aux = p_aux[stream_index];
-			stream.offset_in_b128 = uint32_t(encoded.payload.size());
+			stream.offset_in_words = uint32_t(encoded.payload.size());
 
 			uint32_t start_count = encoded.payload.size();
 			for (uint32_t chunk_index = 0; chunk_index < num_chunks; chunk_index++)
@@ -692,7 +596,7 @@ static void encode_mesh(Encoded &encoded,
 
 	for (unsigned i = 0; i < MaxStreams; i++)
 		if (stream_payload_count[i])
-			LOGI("Stream %u: %zu bytes.\n", i, stream_payload_count[i] * sizeof(PayloadB128));
+			LOGI("Stream %u: %zu bytes.\n", i, stream_payload_count[i] * sizeof(PayloadWord));
 }
 
 static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
@@ -704,7 +608,7 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 	header.style = encoded.mesh.mesh_style;
 	header.stream_count = encoded.mesh.stream_count;
 	header.meshlet_count = uint32_t(encoded.mesh.meshlets.size());
-	header.payload_size_b128 = uint32_t(encoded.payload.size());
+	header.payload_size_words = uint32_t(encoded.payload.size());
 
 	required_size += sizeof(magic);
 	required_size += sizeof(FormatHeader);
@@ -720,7 +624,7 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 
 	// Payload.
 	// Need a padding word to speed up decoder.
-	required_size += (encoded.payload.size() + 1) * sizeof(PayloadB128);
+	required_size += (encoded.payload.size() + 1) * sizeof(PayloadWord);
 
 	auto file = GRANITE_FILESYSTEM()->open(path, FileMode::WriteOnly);
 	if (!file)
@@ -760,9 +664,9 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 		}
 	}
 
-	memcpy(ptr, encoded.payload.data(), encoded.payload.size() * sizeof(PayloadB128));
-	ptr += encoded.payload.size() * sizeof(PayloadB128);
-	memset(ptr, 0, sizeof(PayloadB128));
+	memcpy(ptr, encoded.payload.data(), encoded.payload.size() * sizeof(PayloadWord));
+	ptr += encoded.payload.size() * sizeof(PayloadWord);
+	memset(ptr, 0, sizeof(PayloadWord));
 	return true;
 }
 
@@ -912,7 +816,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 
 	LOGI("Exported meshlet:\n");
 	LOGI("  %zu meshlets\n", encoded.mesh.meshlets.size());
-	LOGI("  %zu payload bytes\n", encoded.payload.size() * sizeof(PayloadB128));
+	LOGI("  %zu payload bytes\n", encoded.payload.size() * sizeof(PayloadWord));
 	LOGI("  %u total indices\n", mesh.count);
 	LOGI("  %zu total attributes\n", mesh.positions.size() / mesh.position_stride);
 

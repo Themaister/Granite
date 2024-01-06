@@ -1092,8 +1092,6 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		// we need to ban certain types of present modes which apparently do not work as we expect.
 		if (info.exclusive_info.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT)
 			allow_mailbox = false;
-		else
-			allow_immediate = false;
 #endif
 
 		for (auto &mode : present_modes)

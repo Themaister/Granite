@@ -258,6 +258,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		bool use_hierarchical;
 		bool use_preculling;
 		bool use_occlusion_cull;
+		bool use_vertex_id;
 	} ui = {};
 
 	void render(CommandBuffer *cmd, const RenderPassInfo &rp, const ImageView *hiz)
@@ -561,13 +562,15 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			ui.supports_wave32 = Util::get_environment_bool("WAVE32", ui.supports_wave32);
 			ui.use_hierarchical = Util::get_environment_bool("HIER_TASK", ui.use_hierarchical);
+			ui.use_vertex_id = !use_encoded && Util::get_environment_int("VERTEX_ID", 0) != 0;
 
 			bool supports_wg32 = ui.supports_wave32 && ui.target_meshlet_workgroup_size == 32;
 
 			if (ui.use_preculling)
 			{
 				cmd->set_program("", mesh_path, "assets://shaders/meshlet_debug.mesh.frag",
-				                 { { "MESHLET_SIZE", int(ui.target_meshlet_workgroup_size) } });
+				                 { { "MESHLET_SIZE", int(ui.target_meshlet_workgroup_size) },
+				                   { "MESHLET_VERTEX_ID", int(ui.use_vertex_id) } });
 			}
 			else
 			{
@@ -577,6 +580,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				                   { "MESHLET_RENDER_TASK_HIERARCHICAL", int(ui.use_hierarchical) },
 				                   { "MESHLET_RENDER_PHASE", render_phase },
 				                   { "MESHLET_PRIMITIVE_CULL_WG32", int(supports_wg32) },
+				                   { "MESHLET_VERTEX_ID", int(ui.use_vertex_id) },
 				                   { "MESHLET_PRIMITIVE_CULL_WAVE32", int(ui.supports_wave32) } });
 
 				cmd->set_storage_buffer(0, 6, *aabb_buffer);
@@ -999,9 +1003,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		if (start_timestamps[readback_index] && start_timestamps[readback_index]->is_signalled() &&
 		    end_timestamps[readback_index] && end_timestamps[readback_index]->is_signalled())
 		{
-			last_frame_time = device.convert_device_timestamp_delta(
+			auto next_frame_time = device.convert_device_timestamp_delta(
 					start_timestamps[readback_index]->get_timestamp_ticks(),
 					end_timestamps[readback_index]->get_timestamp_ticks());
+			last_frame_time = 0.999 * last_frame_time + 0.001 * next_frame_time;
 		}
 
 		auto encoding = device.get_resource_manager().get_mesh_encoding();
@@ -1100,12 +1105,13 @@ Application *application_create(int argc, char **argv)
 	cbs.add("--hier-task", [](Util::CLIParser &parser) { Util::set_environment("HIER_TASK", parser.next_string()); });
 	cbs.add("--wave32", [](Util::CLIParser &parser) { Util::set_environment("WAVE32", parser.next_string()); });
 	cbs.add("--precull", [](Util::CLIParser &parser) { Util::set_environment("PRECULL", parser.next_string()); });
+	cbs.add("--vertex-id", [](Util::CLIParser &parser) { Util::set_environment("VERTEX_ID", parser.next_string()); });
 	cbs.default_handler = [&](const char *arg) { path = arg; };
 
 	Util::CLIParser parser(std::move(cbs), argc - 1, argv + 1);
 	if (!parser.parse() || parser.is_ended_state() || !path)
 	{
-		LOGE("Usage: meshlet-viewer path.msh1\n");
+		LOGE("Usage: meshlet-viewer path.msh2\n");
 		return nullptr;
 	}
 

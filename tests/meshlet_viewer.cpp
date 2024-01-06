@@ -217,7 +217,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		if (e.get_key_state() == KeyState::Pressed && e.get_key() == Key::C)
 		{
 			ui.use_occlusion_cull = !ui.use_occlusion_cull;
-			ui.trigger_capture = true;
 		}
 		return true;
 	}
@@ -259,7 +258,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		bool use_hierarchical;
 		bool use_preculling;
 		bool use_occlusion_cull;
-		bool trigger_capture;
 	} ui = {};
 
 	void render(CommandBuffer *cmd, const RenderPassInfo &rp, const ImageView *hiz)
@@ -824,13 +822,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
 
-		if (ui.trigger_capture)
-		{
-			ui.trigger_capture = Device::init_renderdoc_capture();
-			if (ui.trigger_capture)
-				device.begin_renderdoc_capture();
-		}
-
 		auto cmd = device.request_command_buffer();
 
 		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
@@ -1024,7 +1015,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				auto &ring2 = readback_ring_phase2[readback_index];
 
 				auto *mapped1 = ring1 ? static_cast<const uint32_t *>(
-					device.map_host_buffer(*ring1, MEMORY_ACCESS_READ_BIT)) : nullptr;
+						device.map_host_buffer(*ring1, MEMORY_ACCESS_READ_BIT)) : nullptr;
 				auto *mapped2 = ring2 ? static_cast<const uint32_t *>(
 						device.map_host_buffer(*ring2, MEMORY_ACCESS_READ_BIT)) : nullptr;
 
@@ -1067,12 +1058,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 					accum_draws(mapped2);
 				}
 			}
-		}
-
-		if (ui.trigger_capture)
-		{
-			device.end_renderdoc_capture();
-			ui.trigger_capture = false;
 		}
 	}
 

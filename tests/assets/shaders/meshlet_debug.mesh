@@ -29,6 +29,19 @@ layout(local_size_x = 32, local_size_y_id = 0) in;
 #include "meshlet_payload_decode.h"
 #include "meshlet_attribute_decode.h"
 #include "meshlet_render_types.h"
+
+#define LOCAL_INVOCATION_INDEXED 0
+
+#if MESHLET_SIZE > 32 && LOCAL_INVOCATION_INDEXED
+#define MESHLET_PRIMITIVE_CULL_SHARED_INDEX shared_indices
+shared u8vec3 shared_indices[MESHLET_SIZE];
+shared u8vec4 shared_nt[MESHLET_SIZE];
+shared bool shared_t_sign[MESHLET_SIZE];
+shared int shared_exponent;
+shared i16vec2 shared_uv[MESHLET_SIZE];
+shared vec4 shared_clip_pos[MESHLET_SIZE];
+#endif
+
 #include "meshlet_primitive_cull.h"
 
 layout(location = 0) out vec3 vNormal[];
@@ -123,13 +136,10 @@ void main()
     }
 
     meshlet_emit_primitive(decoded_index_buffer, clip_pos, viewport);
-    if (gl_LocalInvocationIndex < shared_active_prim_count_total)
-        vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
 
     if (meshlet_lane_has_active_vert())
     {
         uint out_vert_index = meshlet_compacted_vertex_output();
-        gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
 
         int exponent;
         bool t_sign;
@@ -140,11 +150,44 @@ void main()
                 meta.stream_offset + MESHLET_STREAM_TYPE_UV,
                 chunk_index, lane_index, exponent);
 
+#ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
+        shared_clip_pos[out_vert_index] = clip_pos;
+        shared_uv[out_vert_index] = uv;
+        shared_nt[out_vert_index] = nt;
+        if (out_vert_index == 0)
+            shared_exponent = exponent;
+#else
+        gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
         vUV[out_vert_index] = attribute_decode_snorm_exp_uv(uv, exponent);
-
         mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
         vNormal[out_vert_index] = mat3(M) * NT[0].xyz;
         vTangent[out_vert_index] = vec4(mat3(M) * NT[1].xyz, NT[1].w);
+#endif
+    }
+
+#ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
+    barrier();
+    if (gl_LocalInvocationIndex < shared_active_vert_count_total)
+    {
+        i16vec2 uv = shared_uv[gl_LocalInvocationIndex];
+        int exponent = shared_exponent;
+        u8vec4 nt = shared_nt[gl_LocalInvocationIndex];
+        bool t_sign = shared_t_sign[gl_LocalInvocationIndex];
+
+        gl_MeshVerticesEXT[gl_LocalInvocationIndex].gl_Position = shared_clip_pos[gl_LocalInvocationIndex];
+        vUV[gl_LocalInvocationIndex] = attribute_decode_snorm_exp_uv(uv, exponent);
+        mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
+        vNormal[gl_LocalInvocationIndex] = mat3(M) * NT[0].xyz;
+        vTangent[gl_LocalInvocationIndex] = vec4(mat3(M) * NT[1].xyz, NT[1].w);
+    }
+#endif
+
+    if (gl_LocalInvocationIndex < shared_active_prim_count_total)
+    {
+#ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
+	    gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(shared_indices[gl_LocalInvocationIndex]);
+#endif
+        vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
     }
 
 #if 0

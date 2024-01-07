@@ -165,18 +165,7 @@ void meshlet_init_shared()
 
 uint meshlet_get_meshlet_index()
 {
-    if (gl_WorkGroupSize.y != 8)
-        return gl_WorkGroupID.y;
-    else
-        return gl_WorkGroupID.x;
-}
-
-uint meshlet_get_base_chunk_index()
-{
-    if (gl_WorkGroupSize.y != 8)
-        return gl_WorkGroupID.x * gl_WorkGroupSize.y;
-    else
-        return 0;
+	return gl_WorkGroupID.x;
 }
 
 void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport)

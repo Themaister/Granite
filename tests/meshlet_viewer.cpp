@@ -367,7 +367,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		ui.target_meshlet_workgroup_size = max(32u, min(256u, ui.target_meshlet_workgroup_size));
 		ui.target_meshlet_workgroup_size = 1u << Util::floor_log2(ui.target_meshlet_workgroup_size);
-		uint32_t num_chunk_workgroups = 256u / ui.target_meshlet_workgroup_size;
+		//uint32_t num_chunk_workgroups = 256u / ui.target_meshlet_workgroup_size;
+		const uint32_t num_chunk_workgroups = 1;
 
 		if (ui.use_preculling)
 		{
@@ -384,17 +385,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			if (ui.use_meshlets)
 			{
-				if (num_chunk_workgroups == 1)
-				{
-					cmd->fill_buffer(*indirect_draws, 0, 0, 4);
-					cmd->fill_buffer(*indirect_draws, 1, 4, 4);
-				}
-				else
-				{
-					cmd->fill_buffer(*indirect_draws, num_chunk_workgroups, 0, 4);
-					cmd->fill_buffer(*indirect_draws, 0, 4, 4);
-				}
-				cmd->fill_buffer(*indirect_draws, 1, 8, 4);
+				cmd->fill_buffer(*indirect_draws, 0, 0, 4);
+				cmd->fill_buffer(*indirect_draws, 1, 4, 8);
 			}
 			else
 			{
@@ -477,7 +469,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			cmd->set_specialization_constant_mask(3);
 			cmd->set_specialization_constant(0, uint32_t(command_words));
-			cmd->set_specialization_constant(1, (!ui.use_meshlets || num_chunk_workgroups == 1) ? 0 : 1);
+			cmd->set_specialization_constant(1, 0 /* inc word */);
 
 			cmd->set_program("assets://shaders/meshlet_cull.comp",
 			                 {{ "MESHLET_RENDER_PHASE", render_phase }});

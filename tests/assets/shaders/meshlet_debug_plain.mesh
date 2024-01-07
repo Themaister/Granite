@@ -107,7 +107,6 @@ mediump vec4 unpack_bgr10a2(uint v)
 void main()
 {
     uint compacted_meshlet_index = meshlet_get_meshlet_index();
-    uint base_chunk_index = meshlet_get_base_chunk_index();
 
 #if defined(MESHLET_RENDER_TASK_HIERARCHICAL) && !MESHLET_RENDER_TASK_HIERARCHICAL
     CompactedDrawInfo task = mesh_payload.info;
@@ -126,19 +125,21 @@ void main()
     mat4 M = transforms.data[task.node_offset];
 
     // Transform positions.
-    vec3 pos = pos.data[meshlet.vertex_offset + linear_index + 32u * base_chunk_index];
+    vec3 pos = pos.data[meshlet.vertex_offset + linear_index];
     vec3 world_pos = (M * vec4(pos, 1.0)).xyz;
     vec4 clip_pos = VP * vec4(world_pos, 1.0);
 
     meshlet_setup_local_invocation(gl_LocalInvocationID.xy);
 
-    uvec3 prim = uvec3(ibo.data[meshlet.primitive_offset + linear_index + 32u * base_chunk_index]);
+    uvec3 prim = uvec3(0);
+    if (linear_index < meshlet.primitive_count)
+        prim = uvec3(ibo.data[meshlet.primitive_offset + linear_index]);
     meshlet_emit_primitive(prim, clip_pos, viewport);
 
     if (meshlet_lane_has_active_vert())
     {
-        uint vert_id = meshlet.vertex_offset + linear_index + 32u * base_chunk_index;
         uint out_vert_index = meshlet_compacted_vertex_output();
+        uint vert_id = meshlet.vertex_offset + linear_index;
         gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
 
 #if MESHLET_VERTEX_ID

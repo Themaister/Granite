@@ -27,11 +27,10 @@
 
 struct MeshletStream
 {
-	uint base_value_or_offsets[12];
-	uint bit_plane_config;
-	uint reserved;
+	uint base_value_or_offsets[6];
+	uint bits_per_chunk;
 	int aux;
-	uint offset_in_words;
+	uint offsets_in_words[4];
 };
 
 struct MeshletMetaRaw
@@ -165,42 +164,17 @@ uvec4 meshlet_decode4(uint offset_in_words, uint index, uint bit_count)
 	return bitfieldExtract(v, 0, int(bit_count));
 }
 
-uint meshlet_decode_offset(uint bit_plane_config, uint chunk_index, uint components)
-{
-	// Scalar math.
-	uint offset;
-	if (chunk_index != 0)
-	{
-		uint prev_bit_mask = bitfieldExtract(bit_plane_config, 0, int(chunk_index) * 4);
-		offset = bitCount(prev_bit_mask & 0x88888888) * 8;
-		offset += bitCount(prev_bit_mask & 0x44444444) * 4;
-		offset += bitCount(prev_bit_mask & 0x22222222) * 2;
-		offset += bitCount(prev_bit_mask & 0x11111111) * 1;
-		offset += chunk_index;
-		offset *= components;
-	}
-	else
-		offset = 0;
-
-	return offset;
-}
-
 uvec3 meshlet_decode_index_buffer(uint stream_index, uint chunk_index, int lane_index)
 {
-	uint offset_in_words = meshlet_streams.data[stream_index].offset_in_words;
-	// Fixed 5-bit encoding.
-	offset_in_words += 15 * chunk_index;
+	uint offset_in_words = meshlet_streams.data[stream_index].offsets_in_words[chunk_index];
 	return meshlet_decode3(offset_in_words, lane_index, 5);
 }
 
 i16vec3 meshlet_decode_snorm_scaled_i16x3(uint stream_index, uint chunk_index, int lane_index, out int exponent)
 {
-	uint offset_in_words = meshlet_streams.data[stream_index].offset_in_words;
-	uint bit_plane_config = meshlet_streams.data[stream_index].bit_plane_config;
+	uint offset_in_words = meshlet_streams.data[stream_index].offsets_in_words[chunk_index];
+	uint bits_per_chunk = meshlet_streams.data[stream_index].bits_per_chunk;
 	exponent = meshlet_streams.data[stream_index].aux;
-
-	// Scalar math.
-	offset_in_words += meshlet_decode_offset(bit_plane_config, chunk_index, 3);
 
 	uint base_word = chunk_index * 3;
 	uint base_word_u32 = base_word / 2;
@@ -222,7 +196,7 @@ i16vec3 meshlet_decode_snorm_scaled_i16x3(uint stream_index, uint chunk_index, i
 		                   bitfieldExtract(base_value1, 0, 16));
 	}
 
-	uint encoded_bits = bitfieldExtract(bit_plane_config, int(chunk_index * 4), 4) + 1;
+	uint encoded_bits = bitfieldExtract(bits_per_chunk, int(chunk_index * 8), 8);
 	uvec3 value = meshlet_decode3(offset_in_words, lane_index, encoded_bits);
 	value += base_value;
 	return i16vec3(value);
@@ -230,11 +204,9 @@ i16vec3 meshlet_decode_snorm_scaled_i16x3(uint stream_index, uint chunk_index, i
 
 i16vec2 meshlet_decode_snorm_scaled_i16x2(uint stream_index, uint chunk_index, int lane_index, out int exponent)
 {
-	uint offset_in_words = meshlet_streams.data[stream_index].offset_in_words;
-	uint bit_plane_config = meshlet_streams.data[stream_index].bit_plane_config;
+	uint offset_in_words = meshlet_streams.data[stream_index].offsets_in_words[chunk_index];
+	uint bits_per_chunk = meshlet_streams.data[stream_index].bits_per_chunk;
 	exponent = meshlet_streams.data[stream_index].aux;
-
-	offset_in_words += meshlet_decode_offset(bit_plane_config, chunk_index, 2);
 
 	// Scalar math.
 	uint base_value_xy = meshlet_streams.data[stream_index].base_value_or_offsets[chunk_index];
@@ -242,25 +214,20 @@ i16vec2 meshlet_decode_snorm_scaled_i16x2(uint stream_index, uint chunk_index, i
 	uint base_value_y = bitfieldExtract(base_value_xy, 16, 16);
 	uvec2 base_value = uvec2(base_value_x, base_value_y);
 
-	uint encoded_bits = bitfieldExtract(bit_plane_config, int(chunk_index * 4), 4) + 1;
+	uint encoded_bits = bitfieldExtract(bits_per_chunk, int(chunk_index * 8), 8);
 	uvec2 value = meshlet_decode2(offset_in_words, lane_index, encoded_bits);
 	value += base_value;
 	return i16vec2(value);
 }
 
-#undef UNROLL_BITS_4
-#undef UNROLL_BITS_8
-
 u8vec4 meshlet_decode_normal_tangent_oct8(uint stream_index, uint chunk_index, int lane_index, out bool t_sign)
 {
-	uint offset_in_words = meshlet_streams.data[stream_index].offset_in_words;
-	uint bit_plane_config = meshlet_streams.data[stream_index].bit_plane_config;
-
-	offset_in_words += meshlet_decode_offset(bit_plane_config, chunk_index, 4);
+	uint offset_in_words = meshlet_streams.data[stream_index].offsets_in_words[chunk_index];
+	uint bits_per_chunk = meshlet_streams.data[stream_index].bits_per_chunk;
 
 	// Scalar math.
 	uvec4 base_value = uvec4(unpack8(meshlet_streams.data[stream_index].base_value_or_offsets[chunk_index]));
-	uint encoded_bits = bitfieldExtract(bit_plane_config, int(chunk_index * 4), 4) + 1;
+	uint encoded_bits = bitfieldExtract(bits_per_chunk, int(chunk_index * 8), 8);
 	uvec4 value = meshlet_decode4(offset_in_words, lane_index, encoded_bits);
 
 	value += base_value;

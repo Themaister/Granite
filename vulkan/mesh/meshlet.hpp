@@ -41,23 +41,25 @@ namespace Vulkan
 namespace Meshlet
 {
 static constexpr unsigned MaxStreams = 8;
-static constexpr unsigned MaxElements = 256;
-static constexpr unsigned ElementsPerChunk = 32;
-static constexpr unsigned NumChunks = MaxElements / ElementsPerChunk;
+static constexpr unsigned NumChunks = 4;
+static constexpr unsigned PrimitivesPerChunk = 64;
+static constexpr unsigned IBOBits = 5;
+static constexpr unsigned VerticesPerChunk = 1u << IBOBits;
+static constexpr unsigned MaxElementsPrim = PrimitivesPerChunk * NumChunks;
+static constexpr unsigned MaxElementsVert = VerticesPerChunk * NumChunks;
 
 struct Stream
 {
 	union
 	{
-		uint32_t base_value[12];
-		struct { uint16_t prim_offset; uint16_t attr_offset; } offsets[12];
+		uint32_t base_value[6];
+		struct { uint16_t prim_offset; uint16_t attr_offset; } offsets[6];
 	} u;
-	uint32_t bit_plane_config;
-	uint32_t reserved;
+	uint32_t bits_per_chunk;
 	int32_t aux;
-	uint32_t offset_in_words;
+	uint32_t offsets_in_words[4];
 };
-static_assert(sizeof(Stream) == 64, "Unexpected Stream size.");
+static_assert(sizeof(Stream) == 48, "Unexpected Stream size.");
 
 struct Header
 {
@@ -123,7 +125,7 @@ struct MeshView
 	uint32_t total_vertices;
 };
 
-static const char magic[8] = { 'M', 'E', 'S', 'H', 'L', 'E', 'T', '2' };
+static const char magic[8] = { 'M', 'E', 'S', 'H', 'L', 'E', 'T', '3' };
 
 MeshView create_mesh_view(const Granite::FileMapping &mapping);
 

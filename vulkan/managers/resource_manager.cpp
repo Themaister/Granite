@@ -409,12 +409,12 @@ bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::Me
 			// Culling is expected, so primitive buffer will be filled with degenerate primitives as padding.
 			if (ret)
 			{
-				ret = index_buffer_allocator.allocate(view.format_header->meshlet_count * Meshlet::MaxElements,
+				ret = index_buffer_allocator.allocate(view.format_header->meshlet_count * Meshlet::MaxElementsPrim,
 				                                      &asset.mesh.index_or_payload);
 			}
 			if (ret)
 			{
-				ret = attribute_buffer_allocator.allocate(view.format_header->meshlet_count * Meshlet::MaxElements,
+				ret = attribute_buffer_allocator.allocate(view.format_header->meshlet_count * Meshlet::MaxElementsVert,
 				                                          &asset.mesh.attr_or_stream);
 			}
 		}
@@ -526,7 +526,8 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			for (uint32_t i = 0, n = view.format_header->meshlet_count * view.format_header->stream_count; i < n; i++)
 			{
 				auto in_stream = view.streams[i];
-				in_stream.offset_in_words += asset.mesh.index_or_payload.offset;
+				for (auto &off : in_stream.offsets_in_words)
+					off += asset.mesh.index_or_payload.offset;
 				streams[i] = in_stream;
 			}
 

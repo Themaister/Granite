@@ -323,51 +323,55 @@ static void write_bits(PayloadWord *words, const T *values, unsigned component_c
 }
 
 static void encode_index_stream(std::vector<PayloadWord> &out_payload_buffer,
-                                u8vec3 (&stream_buffer)[ElementsPerChunk])
+                                u8vec3 *stream_buffer, unsigned count)
 {
-	PayloadWord p[15] = {};
+	PayloadWord p[(IBOBits * 3 * PrimitivesPerChunk + 31) / 32] = {};
 
-	for (unsigned i = 0; i < ElementsPerChunk; i++)
+	for (unsigned i = 0; i < count; i++)
 	{
 		u8vec3 indices = stream_buffer[i];
-		assert(all(lessThan(indices, u8vec3(ElementsPerChunk))));
-		write_bits(p, indices.data, 3, i, 5);
+		assert(all(lessThan(indices, u8vec3(VerticesPerChunk))));
+		write_bits(p, indices.data, 3, i, IBOBits);
 	}
 
-	out_payload_buffer.insert(out_payload_buffer.end(), p, p + 15);
+	out_payload_buffer.insert(out_payload_buffer.end(), p, p + (IBOBits * 3 * count + 31) / 32);
 }
 
 template <int Components, typename T>
 static void encode_bitplane_16_inner(std::vector<PayloadWord> &out_payload_buffer,
-                                     const T *values, unsigned encoded_bits)
+                                     const T *values, unsigned encoded_bits,
+                                     unsigned count)
 {
-	PayloadWord p[16 * Components] = {};
-	for (uint32_t i = 0; i < ElementsPerChunk; i++)
+	PayloadWord p[16 * Components * (VerticesPerChunk / 32)] = {};
+	for (uint32_t i = 0; i < count; i++)
 		write_bits(p, values[i].data, Components, i, encoded_bits);
 
-	out_payload_buffer.insert(out_payload_buffer.end(), p, p + encoded_bits * Components);
+	out_payload_buffer.insert(out_payload_buffer.end(), p, p + (encoded_bits * Components * count + 31) / 32);
 }
 
 static void encode_bitplane(std::vector<PayloadWord> &out_payload_buffer,
-                            const u8vec4 *values, unsigned encoded_bits)
+                            const u8vec4 *values, unsigned encoded_bits,
+                            unsigned count)
 {
-	PayloadWord p[8 * 4] = {};
-	for (uint32_t i = 0; i < ElementsPerChunk; i++)
+	PayloadWord p[8 * 4 * (VerticesPerChunk / 32)] = {};
+	for (uint32_t i = 0; i < count; i++)
 		write_bits(p, values[i].data, 4, i, encoded_bits);
 
-	out_payload_buffer.insert(out_payload_buffer.end(), p, p + encoded_bits * 4);
+	out_payload_buffer.insert(out_payload_buffer.end(), p, p + (encoded_bits * 4 * count + 31) / 32);
 }
 
 static void encode_bitplane(std::vector<PayloadWord> &out_payload_buffer,
-                            const u16vec3 *values, unsigned encoded_bits)
+                            const u16vec3 *values, unsigned encoded_bits,
+							unsigned count)
 {
-	encode_bitplane_16_inner<3>(out_payload_buffer, values, encoded_bits);
+	encode_bitplane_16_inner<3>(out_payload_buffer, values, encoded_bits, count);
 }
 
 static void encode_bitplane(std::vector<PayloadWord> &out_payload_buffer,
-                            const u16vec2 *values, unsigned encoded_bits)
+                            const u16vec2 *values, unsigned encoded_bits,
+							unsigned count)
 {
-	encode_bitplane_16_inner<2>(out_payload_buffer, values, encoded_bits);
+	encode_bitplane_16_inner<2>(out_payload_buffer, values, encoded_bits, count);
 }
 
 template <typename T> struct to_signed_vector {};
@@ -401,10 +405,10 @@ static void encode_attribute_stream(std::vector<PayloadWord> &out_payload_buffer
 	using SignedScalar = std::remove_reference_t<decltype(SignedT()[0])>;
 	static_assert(sizeof(T) == 4 || sizeof(T) == 6, "Encoded type must be 32 or 48 bits.");
 
-	T attributes[ElementsPerChunk];
+	T attributes[VerticesPerChunk];
 	for (uint32_t i = 0; i < num_attributes; i++)
 		attributes[i] = raw_attributes[vbo_remap ? vbo_remap[i] : i];
-	for (uint32_t i = num_attributes; i < ElementsPerChunk; i++)
+	for (uint32_t i = num_attributes; i < VerticesPerChunk; i++)
 		attributes[i] = attributes[0];
 
 	T ulo{std::numeric_limits<UnsignedScalar>::max()};
@@ -443,16 +447,13 @@ static void encode_attribute_stream(std::vector<PayloadWord> &out_payload_buffer
 			bits = 16;
 	}
 
-	unsigned encoded_bits = bits ? (bits - 1) : 0;
-	bits = encoded_bits + 1;
-
 	write_bits(stream.u.base_value, ulo.data, to_components<T>::components, chunk_index, bits_per_component);
-	stream.bit_plane_config |= encoded_bits << (4 * chunk_index);
+	stream.bits_per_chunk |= bits << (8 * chunk_index);
 
 	for (auto &p : attributes)
 		p -= ulo;
 
-	encode_bitplane(out_payload_buffer, attributes, bits);
+	encode_bitplane(out_payload_buffer, attributes, bits, num_attributes);
 }
 
 static void encode_mesh(Encoded &encoded,
@@ -469,6 +470,7 @@ static void encode_mesh(Encoded &encoded,
 	size_t num_full_meshlets = (num_meshlets + NumChunks - 1) / NumChunks;
 	mesh.meshlets.reserve(num_full_meshlets);
 	uint32_t base_vertex_offset = 0;
+	uint32_t total_primitives = 0;
 
 	uint32_t stream_payload_count[MaxStreams] = {};
 
@@ -482,18 +484,18 @@ static void encode_mesh(Encoded &encoded,
 
 		{
 			auto &index_stream = out_meshlet.streams[int(StreamType::Primitive)];
-			index_stream.offset_in_words = uint32_t(encoded.payload.size());
 			uint32_t num_attributes = 0;
 			uint32_t num_primitives = 0;
 
 			for (uint32_t chunk_index = 0; chunk_index < num_chunks; chunk_index++)
 			{
+				index_stream.offsets_in_words[chunk_index] = uint32_t(encoded.payload.size());
 				auto &meshlet = meshlets[full_meshlet_index * NumChunks + chunk_index];
 
-				u8vec3 index_stream_buffer[ElementsPerChunk];
+				u8vec3 index_stream_buffer[PrimitivesPerChunk];
 				for (uint32_t i = 0; i < meshlet.primitive_count; i++)
 					memcpy(index_stream_buffer[i].data, meshlet.local_indices + 3 * i, 3);
-				for (uint32_t i = meshlet.primitive_count; i < ElementsPerChunk; i++)
+				for (uint32_t i = meshlet.primitive_count; i < PrimitivesPerChunk; i++)
 					index_stream_buffer[i] = u8vec3(0);
 
 				auto &offsets = index_stream.u.offsets[chunk_index];
@@ -501,13 +503,14 @@ static void encode_mesh(Encoded &encoded,
 				offsets.prim_offset = num_primitives;
 
 				auto start_count = encoded.payload.size();
-				encode_index_stream(encoded.payload, index_stream_buffer);
+				encode_index_stream(encoded.payload, index_stream_buffer, meshlet.primitive_count);
 				auto end_count = encoded.payload.size();
 
 				stream_payload_count[int(StreamType::Primitive)] += end_count - start_count;
 
 				num_primitives += meshlet.primitive_count;
 				num_attributes += meshlet.vertex_count;
+				total_primitives += meshlet.primitive_count;
 			}
 
 			for (uint32_t chunk_index = num_chunks; chunk_index <= NumChunks; chunk_index++)
@@ -524,11 +527,11 @@ static void encode_mesh(Encoded &encoded,
 		{
 			auto &stream = out_meshlet.streams[stream_index];
 			stream.aux = p_aux[stream_index];
-			stream.offset_in_words = uint32_t(encoded.payload.size());
 
 			uint32_t start_count = encoded.payload.size();
 			for (uint32_t chunk_index = 0; chunk_index < num_chunks; chunk_index++)
 			{
+				stream.offsets_in_words[chunk_index] = uint32_t(encoded.payload.size());
 				auto &meshlet = meshlets[full_meshlet_index * NumChunks + chunk_index];
 
 				switch (StreamType(stream_index))
@@ -547,7 +550,7 @@ static void encode_mesh(Encoded &encoded,
 
 				case StreamType::NormalTangentOct8:
 				{
-					u8vec4 nts[ElementsPerChunk]{};
+					u8vec4 nts[VerticesPerChunk]{};
 					uint32_t sign_mask = 0;
 					auto *nt = static_cast<const NormalTangent *>(pp_data[stream_index]);
 					for (unsigned i = 0; i < meshlet.vertex_count; i++)
@@ -557,7 +560,7 @@ static void encode_mesh(Encoded &encoded,
 						nts[i] = u8vec4(u8vec2(mapped_nt.n), u8vec2(mapped_nt.t));
 					}
 
-					if (meshlet.vertex_count < ElementsPerChunk && sign_mask == (1u << meshlet.vertex_count) - 1)
+					if (meshlet.vertex_count < VerticesPerChunk && sign_mask == (1u << meshlet.vertex_count) - 1)
 						sign_mask = UINT32_MAX;
 
 					if (sign_mask == 0)
@@ -597,6 +600,10 @@ static void encode_mesh(Encoded &encoded,
 	for (unsigned i = 0; i < MaxStreams; i++)
 		if (stream_payload_count[i])
 			LOGI("Stream %u: %zu bytes.\n", i, stream_payload_count[i] * sizeof(PayloadWord));
+	LOGI("Total primitives: %u\n", total_primitives);
+	LOGI("Total vertices: %u\n", base_vertex_offset);
+	LOGI("IBO fill ratio: %.3f %%\n", 100.0 * double(total_primitives) / double(mesh.meshlets.size() * MaxElementsPrim));
+	LOGI("VBO fill ratio: %.3f %%\n", 100.0 * double(base_vertex_offset) / double(mesh.meshlets.size() * MaxElementsVert));
 }
 
 static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
@@ -728,19 +735,17 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	for (auto &p : positions)
 		position_buffer.push_back(decode_snorm_exp(p, aux[int(StreamType::Position)]));
 
-	constexpr unsigned max_vertices = 32;
-	constexpr unsigned max_primitives = 32;
-	size_t num_meshlets = meshopt_buildMeshletsBound(mesh.count, max_vertices, max_primitives);
+	size_t num_meshlets = meshopt_buildMeshletsBound(mesh.count, VerticesPerChunk, PrimitivesPerChunk);
 
-	std::vector<unsigned> out_vertex_redirection_buffer(num_meshlets * max_vertices);
-	std::vector<unsigned char> local_index_buffer(num_meshlets * max_primitives * 3);
+	std::vector<unsigned> out_vertex_redirection_buffer(num_meshlets * VerticesPerChunk);
+	std::vector<unsigned char> local_index_buffer(num_meshlets * PrimitivesPerChunk * 3);
 	std::vector<meshopt_Meshlet> meshlets(num_meshlets);
 
 	num_meshlets = meshopt_buildMeshlets(meshlets.data(),
 	                                     out_vertex_redirection_buffer.data(), local_index_buffer.data(),
 	                                     reinterpret_cast<const uint32_t *>(mesh.indices.data()), mesh.count,
 	                                     position_buffer[0].data, positions.size(), sizeof(vec3),
-	                                     max_vertices, max_primitives, 0.5f);
+	                                     VerticesPerChunk, PrimitivesPerChunk, 0.5f);
 
 	meshlets.resize(num_meshlets);
 
@@ -786,7 +791,7 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	{
 		size_t num_chunks = std::min<size_t>(n - i, NumChunks);
 		uint32_t total_count = 0;
-		uvec3 tmp_indices[256];
+		uvec3 tmp_indices[MaxElementsPrim];
 
 		for (size_t chunk = 0; chunk < num_chunks; chunk++)
 		{

@@ -31,31 +31,29 @@ static void decode_mesh_index_buffer(std::vector<uvec3> &out_index_buffer, const
 {
 	auto &meshlet = mesh.headers[meshlet_index];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
-	const auto *pdata = mesh.payload + stream.offset_in_words;
 
 	for (uint32_t chunk_index = 0; chunk_index < meshlet.num_chunks; chunk_index++)
 	{
-		u8vec3 decoded_indices[ElementsPerChunk];
+		const auto *pdata = mesh.payload + stream.offsets_in_words[chunk_index];
 		uint32_t num_primitives_for_chunk = stream.u.offsets[chunk_index + 1].prim_offset -
 		                                    stream.u.offsets[chunk_index].prim_offset;
 
 		for (uint32_t i = 0; i < num_primitives_for_chunk; i++)
 		{
-			decode_bits(decoded_indices[i].data, 3, pdata, i, 5);
-			decoded_indices[i] += u8vec3(stream.u.offsets[chunk_index].attr_offset);
-			out_index_buffer.push_back(uvec3(decoded_indices[i]) + meshlet.base_vertex_offset);
+			u8vec3 decoded_indices;
+			decode_bits(decoded_indices.data, 3, pdata, i, IBOBits);
+			decoded_indices += u8vec3(stream.u.offsets[chunk_index].attr_offset);
+			out_index_buffer.push_back(uvec3(decoded_indices) + meshlet.base_vertex_offset);
 		}
-
-		pdata += 15;
 	}
 }
 
 template <typename T>
-static void decode_bitfield_block(T *block, unsigned component_count, const PayloadWord *&pdata, unsigned bit_count)
+static void decode_bitfield_block(T *block, unsigned component_count, const PayloadWord *pdata,
+                                  unsigned bit_count, unsigned count)
 {
-	for (uint32_t i = 0; i < ElementsPerChunk; i++)
+	for (uint32_t i = 0; i < count; i++)
 		decode_bits(block[i].data, component_count, pdata, i, bit_count);
-	pdata += bit_count * component_count;
 }
 
 static void decode_attribute_buffer(std::vector<vec3> &out_positions, const MeshView &mesh, uint32_t meshlet_index, StreamType type)
@@ -63,22 +61,22 @@ static void decode_attribute_buffer(std::vector<vec3> &out_positions, const Mesh
 	auto &meshlet = mesh.headers[meshlet_index];
 	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
-	const auto *pdata = mesh.payload + stream.offset_in_words;
 
 	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
 	{
-		u16vec3 positions[ElementsPerChunk];
-		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
-		decode_bitfield_block(positions, 3, pdata, config + 1);
-
+		const auto *pdata = mesh.payload + stream.offsets_in_words[chunk];
+		unsigned bits = (stream.bits_per_chunk >> (8 * chunk)) & 0xf;
+		u16vec3 positions[VerticesPerChunk];
 		u16vec3 base;
+
+		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
+		                                    index_stream.u.offsets[chunk].attr_offset;
+
+		decode_bitfield_block(positions, 3, pdata, bits, num_attributes_for_chunk);
 		decode_bits(base.data, 3, stream.u.base_value, chunk, 16);
 
 		for (auto &p : positions)
 			p += base;
-
-		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
-		                                    index_stream.u.offsets[chunk].attr_offset;
 
 		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
 		{
@@ -96,22 +94,22 @@ static void decode_attribute_buffer(std::vector<vec2> &out_uvs, const MeshView &
 	auto &meshlet = mesh.headers[meshlet_index];
 	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
-	const auto *pdata = mesh.payload + stream.offset_in_words;
 
 	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
 	{
-		u16vec2 uvs[ElementsPerChunk];
-		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
-		decode_bitfield_block(uvs, 2, pdata, config + 1);
-
+		const auto *pdata = mesh.payload + stream.offsets_in_words[chunk];
+		unsigned bits = (stream.bits_per_chunk >> (8 * chunk)) & 0xf;
+		u16vec2 uvs[VerticesPerChunk];
 		u16vec2 base;
+
+		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
+		                                    index_stream.u.offsets[chunk].attr_offset;
+
+		decode_bitfield_block(uvs, 2, pdata, bits, num_attributes_for_chunk);
 		decode_bits(base.data, 2, stream.u.base_value, chunk, 16);
 
 		for (auto &p : uvs)
 			p += base;
-
-		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
-		                                    index_stream.u.offsets[chunk].attr_offset;
 
 		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
 		{
@@ -148,15 +146,18 @@ static void decode_attribute_buffer(std::vector<vec3> &out_normals, std::vector<
 	auto &meshlet = mesh.headers[meshlet_index];
 	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
-	const auto *pdata = mesh.payload + stream.offset_in_words;
 
 	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
 	{
-		u8vec4 nts[ElementsPerChunk];
+		const auto *pdata = mesh.payload + stream.offsets_in_words[chunk];
+		unsigned config = (stream.bits_per_chunk >> (4 * chunk)) & 0xf;
+		u8vec4 nts[VerticesPerChunk];
 		uint32_t t_signs = 0;
 
-		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
-		decode_bitfield_block(nts, 4, pdata, config + 1);
+		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
+		                                    index_stream.u.offsets[chunk].attr_offset;
+
+		decode_bitfield_block(nts, 4, pdata, config + 1, num_attributes_for_chunk);
 
 		int aux = (stream.aux >> (2 * chunk)) & 3;
 
@@ -175,20 +176,14 @@ static void decode_attribute_buffer(std::vector<vec3> &out_normals, std::vector<
 		for (auto &p : nts)
 			p += base;
 
-		if (aux == 3)
+		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
 		{
-			for (unsigned i = 0; i < ElementsPerChunk; i++)
+			if (aux == 3)
 			{
 				t_signs |= (nts[i].w & 1u) << i;
 				nts[i].w &= ~1;
 			}
-		}
 
-		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
-		                                    index_stream.u.offsets[chunk].attr_offset;
-
-		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
-		{
 			vec3 n = decode_oct8(i8vec2(nts[i].xy()));
 			vec3 t = decode_oct8(i8vec2(nts[i].zw()));
 			out_normals.push_back(n);
@@ -569,6 +564,9 @@ int main(int argc, char **argv)
 	auto view = create_mesh_view(*mapped);
 	decode_mesh(decoded_index_buffer, decoded_positions, decoded_uvs, decoded_normals, decoded_tangents, view);
 
+#define TEST_GPU 1
+
+#if TEST_GPU
 	Vulkan::Context ctx;
 	Vulkan::Device dev;
 	if (!Vulkan::Context::init_loader(nullptr))
@@ -591,6 +589,7 @@ int main(int argc, char **argv)
 	if (!validate_mesh(decoded_index_buffer, decoded_positions,
 	                   gpu_index_buffer, gpu_positions, false))
 		return EXIT_FAILURE;
+#endif
 
 	if (!reference_indices.empty())
 	{
@@ -623,7 +622,9 @@ int main(int argc, char **argv)
 			return EXIT_FAILURE;
 	}
 
+#if TEST_GPU
 	decode_mesh_gpu_bench(dev, view);
+#endif
 
 	return 0;
 }

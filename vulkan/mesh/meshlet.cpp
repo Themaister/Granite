@@ -124,10 +124,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 	cmd.set_program("builtin://shaders/decode/meshlet_decode.comp");
 
 	cmd.enable_subgroup_size_control(true);
-	if (cmd.get_device().supports_subgroup_size_log2(true, 5, 5))
-		cmd.set_subgroup_size_log2(true, 5, 5);
-	else
-		cmd.set_subgroup_size_log2(true, 5, 7);
+	cmd.set_subgroup_size_log2(true, 5, 7);
 
 	cmd.set_storage_buffer(0, 0, *meshlet_meta_buffer);
 	cmd.set_storage_buffer(0, 1, *meshlet_stream_buffer);
@@ -167,7 +164,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 
 		// Unroll all elements as-is.
 		if (meshlet_runtime)
-			index_count += MaxElements;
+			index_count += MaxElementsPrim;
 		else
 			index_count += view.streams[i * view.format_header->stream_count].u.offsets[NumChunks].prim_offset;
 	}

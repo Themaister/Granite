@@ -254,7 +254,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		unsigned max_draws;
 		bool use_meshlets;
 		bool indirect_rendering;
-		bool supports_wave32;
 		bool use_hierarchical;
 		bool use_preculling;
 		bool use_occlusion_cull;
@@ -360,12 +359,21 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		push.camera_pos = render_context.get_render_parameters().camera_position;
 
-		ui.target_meshlet_workgroup_size = 32;
-		ui.target_meshlet_workgroup_size = Util::get_environment_uint("MESHLET_SIZE", ui.target_meshlet_workgroup_size);
-
-		ui.target_meshlet_workgroup_size = max(32u, min(256u, ui.target_meshlet_workgroup_size));
+		ui.target_meshlet_workgroup_size = Util::get_environment_uint("MESHLET_SIZE", 64);
+		ui.target_meshlet_workgroup_size = max(64u, min(256u, ui.target_meshlet_workgroup_size));
 		ui.target_meshlet_workgroup_size = 1u << Util::floor_log2(ui.target_meshlet_workgroup_size);
 		uint32_t num_chunk_workgroups = 256u / ui.target_meshlet_workgroup_size;
+		bool wave32_dual = true;
+
+#if 0
+		if (device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations <= 32 &&
+		    device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT))
+		{
+			ui.target_meshlet_workgroup_size = 32;
+			num_chunk_workgroups = 4;
+			wave32_dual = true;
+		}
+#endif
 
 		if (ui.use_preculling)
 		{
@@ -508,7 +516,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			             VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 		}
 
-		ui.supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
 		ui.use_hierarchical = device.get_device_features().driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY;
 
 		if (ui.use_meshlets)
@@ -530,7 +537,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			bool use_encoded = manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::MeshletEncoded;
 
 			cmd->set_specialization_constant_mask(3);
-			cmd->set_specialization_constant(0, ui.target_meshlet_workgroup_size / 32);
+			cmd->set_specialization_constant(0, ui.target_meshlet_workgroup_size);
 			cmd->set_specialization_constant(1, num_chunk_workgroups);
 
 			if (use_encoded)
@@ -560,28 +567,25 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			const char *mesh_path = use_encoded ? "assets://shaders/meshlet_debug.mesh" : "assets://shaders/meshlet_debug_plain.mesh";
 
-			ui.supports_wave32 = Util::get_environment_bool("WAVE32", ui.supports_wave32);
 			ui.use_hierarchical = Util::get_environment_bool("HIER_TASK", ui.use_hierarchical);
 			ui.use_vertex_id = !use_encoded && Util::get_environment_int("VERTEX_ID", 0) != 0;
-
-			bool supports_wg32 = ui.supports_wave32 && ui.target_meshlet_workgroup_size == 32;
 
 			if (ui.use_preculling)
 			{
 				cmd->set_program("", mesh_path, "assets://shaders/meshlet_debug.mesh.frag",
-				                 { { "MESHLET_SIZE", int(ui.target_meshlet_workgroup_size) },
+				                 { { "MESHLET_SIZE", max(64, int(ui.target_meshlet_workgroup_size)) },
+				                   { "MESHLET_PRIMITIVE_CULL_WAVE32_DUAL", int(wave32_dual) },
 				                   { "MESHLET_VERTEX_ID", int(ui.use_vertex_id) } });
 			}
 			else
 			{
 				cmd->set_program("assets://shaders/meshlet_debug.task", mesh_path,
 				                 "assets://shaders/meshlet_debug.mesh.frag",
-				                 { { "MESHLET_SIZE", int(ui.target_meshlet_workgroup_size) },
+				                 { { "MESHLET_SIZE", max(64, int(ui.target_meshlet_workgroup_size)) },
 				                   { "MESHLET_RENDER_TASK_HIERARCHICAL", int(ui.use_hierarchical) },
 				                   { "MESHLET_RENDER_PHASE", render_phase },
-				                   { "MESHLET_PRIMITIVE_CULL_WG32", int(supports_wg32) },
-				                   { "MESHLET_VERTEX_ID", int(ui.use_vertex_id) },
-				                   { "MESHLET_PRIMITIVE_CULL_WAVE32", int(ui.supports_wave32) } });
+				                   { "MESHLET_PRIMITIVE_CULL_WAVE32_DUAL", int(wave32_dual) },
+				                   { "MESHLET_VERTEX_ID", int(ui.use_vertex_id) } });
 
 				cmd->set_storage_buffer(0, 6, *aabb_buffer);
 				cmd->set_storage_buffer(0, 7, *task_buffer);
@@ -596,7 +600,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				}
 			}
 
-			if (device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT))
+			if (wave32_dual)
 			{
 				cmd->enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
 				cmd->set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
@@ -960,12 +964,12 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			if (ui.use_meshlets)
 			{
 				snprintf(text, sizeof(text), "Mesh shader invocations: %.3f M / %.3f M", 1e-6 * last_mesh_invocations,
-				         1e-6 * double(ui.max_draws * MaxElements));
+				         1e-6 * double(ui.max_draws * MaxElementsPrim));
 			}
 			else if (ui.indirect_rendering)
 			{
 				snprintf(text, sizeof(text), "MDI primitives: %.3f M / %.3f M", 1e-6 * last_mesh_invocations,
-				         1e-6 * double(ui.max_draws * MaxElements));
+				         1e-6 * double(ui.max_draws * MaxElementsPrim));
 			}
 			else
 			{
@@ -975,8 +979,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
 			                          vec3(10.0f, 30.0f, 0.0f), vec2(1000.0f));
 
-			snprintf(text, sizeof(text), "ComputeCull %d | mesh wave32 %d | task hier %d | 2phase %d",
-			         int(ui.use_preculling), int(ui.supports_wave32), int(ui.use_hierarchical), int(ui.use_occlusion_cull));
+			snprintf(text, sizeof(text), "ComputeCull %d | task hier %d | 2phase %d",
+			         int(ui.use_preculling), int(ui.use_hierarchical), int(ui.use_occlusion_cull));
 			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
 			                          vec3(10.0f, 50.0f, 0.0f), vec2(1000.0f));
 

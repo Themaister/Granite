@@ -4,7 +4,7 @@
 #include "../inc/meshlet_payload_constants.h"
 #extension GL_KHR_shader_subgroup_basic : require
 
-layout(local_size_x = 256) in;
+layout(local_size_x = MESHLET_PAYLOAD_MAX_THREADS) in;
 
 layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS;
 layout(constant_id = 1) const bool UNROLLED_MESH = false;
@@ -107,17 +107,23 @@ void main()
     uint chunk_index;
     uint linear_index;
 
-    if (gl_SubgroupSize == 32)
+    if (gl_SubgroupSize == 64)
     {
         chunk_index = gl_SubgroupID;
         lane_index = int(gl_SubgroupInvocationID);
-        linear_index = chunk_index * gl_SubgroupSize + lane_index;
+        linear_index = chunk_index * 64u + lane_index;
+    }
+    else if (gl_SubgroupSize == 32)
+    {
+        chunk_index = gl_SubgroupID / 2u;
+        lane_index = int(gl_SubgroupInvocationID) + int(gl_SubgroupID & 1) * 32;
+        linear_index = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
     }
     else
     {
         linear_index = gl_LocalInvocationIndex;
-        chunk_index = linear_index / 32u;
-        lane_index = int(linear_index & 31u);
+        chunk_index = linear_index / 64u;
+        lane_index = int(linear_index & 63u);
     }
 
     uint primitive_output_offset = primitive_output_offsets.data[meshlet_index] + registers.primitive_offset;
@@ -130,7 +136,7 @@ void main()
         {
             IndirectDrawMesh draw;
             draw.primitive_offset = primitive_output_offset;
-            // Unrolled. Always allocate full 256 entries.
+            // Unrolled. Always allocate full entries.
             draw.vertex_offset = gl_WorkGroupSize.x * meshlet_index + registers.vertex_offset;
             indirect_commands_mesh.draws[meshlet_index + registers.meshlet_offset] = draw;
         }
@@ -156,7 +162,7 @@ void main()
                 chunk_index, lane_index);
 
         if (RUNTIME_MESH)
-            primitive_output_offset += 32u * chunk_index;
+            primitive_output_offset += MESHLET_PAYLOAD_PRIMITIVES_PER_CHUNK * chunk_index;
         else
             primitive_output_offset += chunk_info.primitive_offset;
 
@@ -170,7 +176,7 @@ void main()
     }
     else if (RUNTIME_MESH)
     {
-        output_indices8.data[primitive_output_offset + 32u * chunk_index + lane_index] = u8vec3(0);
+        output_indices8.data[primitive_output_offset + MESHLET_PAYLOAD_PRIMITIVES_PER_CHUNK * chunk_index + lane_index] = u8vec3(0);
     }
 
     // Attributes
@@ -184,7 +190,11 @@ void main()
         vec3 fp_pos = ldexp(vec3(pos), ivec3(exponent));
         uint vertex_output_offset;
         if (RUNTIME_MESH)
-            vertex_output_offset = gl_WorkGroupSize.x * meshlet_index + 32u * chunk_index + registers.vertex_offset;
+        {
+            vertex_output_offset = gl_WorkGroupSize.x * meshlet_index +
+                    MESHLET_PAYLOAD_VERTICES_PER_CHUNK * chunk_index +
+                    registers.vertex_offset;
+        }
         else
             vertex_output_offset = registers.vertex_offset + meta.base_vertex_offset + chunk_info.vertex_offset;
         output_stream_pos.data[vertex_output_offset + lane_index] = fp_pos;
@@ -207,13 +217,15 @@ void main()
     }
     else if (RUNTIME_MESH)
     {
-        output_stream_pos.data[gl_WorkGroupSize.x * meshlet_index + 32u * chunk_index + registers.vertex_offset + lane_index] =
-            vec3(intBitsToFloat(-1));
+        output_stream_pos.data[gl_WorkGroupSize.x * meshlet_index +
+                MESHLET_PAYLOAD_VERTICES_PER_CHUNK * chunk_index +
+                registers.vertex_offset + lane_index] = vec3(intBitsToFloat(-1));
 
         if (TARGET_MESH_STYLE >= MESH_STYLE_TEXTURED)
         {
-            output_stream_textured_attr.data[gl_WorkGroupSize.x * meshlet_index + 32u * chunk_index + registers.vertex_offset + lane_index] =
-                TexturedAttr(-1u, -1u, vec2(intBitsToFloat(-1)));
+            output_stream_textured_attr.data[gl_WorkGroupSize.x * meshlet_index +
+                    MESHLET_PAYLOAD_VERTICES_PER_CHUNK * chunk_index +
+                    registers.vertex_offset + lane_index] = TexturedAttr(-1u, -1u, vec2(intBitsToFloat(-1)));
         }
     }
 }

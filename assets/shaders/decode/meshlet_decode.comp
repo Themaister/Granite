@@ -4,7 +4,7 @@
 #include "../inc/meshlet_payload_constants.h"
 #extension GL_KHR_shader_subgroup_basic : require
 
-layout(local_size_x = 256) in;
+layout(local_size_x = 32) in;
 
 layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS;
 layout(constant_id = 1) const bool UNROLLED_MESH = false;
@@ -64,6 +64,8 @@ struct IndirectDrawMesh
 {
     uint primitive_offset;
     uint vertex_offset;
+    uint primitive_count;
+    uint vertex_count;
 };
 
 layout(set = 0, binding = 8, std430) writeonly buffer IndirectCommandsMesh
@@ -103,35 +105,24 @@ void main()
     uint meshlet_index = gl_WorkGroupID.x;
     MeshletMetaRaw meta = meshlet_metas_raw.data[meshlet_index];
 
-    int lane_index;
-    uint chunk_index;
-    uint linear_index;
-
+    uint lane_index;
     if (gl_SubgroupSize == 32)
-    {
-        chunk_index = gl_SubgroupID;
-        lane_index = int(gl_SubgroupInvocationID);
-        linear_index = chunk_index * gl_SubgroupSize + lane_index;
-    }
+        lane_index = gl_SubgroupInvocationID;
     else
-    {
-        linear_index = gl_LocalInvocationIndex;
-        chunk_index = linear_index / 32u;
-        lane_index = int(linear_index & 31u);
-    }
+        lane_index = gl_LocalInvocationIndex;
 
     uint primitive_output_offset = primitive_output_offsets.data[meshlet_index] + registers.primitive_offset;
+    MeshletInfo info = meshlet_get_meshlet_info(meshlet_index * NUM_U32_STREAMS);
 
     if (!UNROLLED_MESH && gl_LocalInvocationIndex == 0)
     {
-        MeshletInfo info = meshlet_get_meshlet_info(meshlet_index * NUM_U32_STREAMS);
-
         if (RUNTIME_MESH)
         {
             IndirectDrawMesh draw;
             draw.primitive_offset = primitive_output_offset;
-            // Unrolled. Always allocate full 256 entries.
-            draw.vertex_offset = gl_WorkGroupSize.x * meshlet_index + registers.vertex_offset;
+            draw.vertex_offset = meta.base_vertex_offset + registers.vertex_offset;
+            draw.primitive_count = info.primitive_count;
+            draw.vertex_count = info.vertex_count;
             indirect_commands_mesh.draws[meshlet_index + registers.meshlet_offset] = draw;
         }
         else
@@ -146,74 +137,45 @@ void main()
         }
     }
 
-    MeshletChunkInfo chunk_info = meshlet_get_chunk_info(meshlet_index * NUM_U32_STREAMS, chunk_index);
-
     // Index
-    if (chunk_index < meta.num_chunks && lane_index < chunk_info.primitive_count)
+    if (lane_index < info.primitive_count)
     {
         uvec3 indices = meshlet_decode_index_buffer(
                 meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_PRIMITIVE,
-                chunk_index, lane_index);
-
-        if (RUNTIME_MESH)
-            primitive_output_offset += 32u * chunk_index;
-        else
-            primitive_output_offset += chunk_info.primitive_offset;
-
-        if (!RUNTIME_MESH)
-            indices += chunk_info.vertex_offset;
+                lane_index);
 
         if (UNROLLED_MESH)
             output_indices32.data[primitive_output_offset + lane_index] = indices + meta.base_vertex_offset;
         else
             output_indices8.data[primitive_output_offset + lane_index] = u8vec3(indices);
     }
-    else if (RUNTIME_MESH)
-    {
-        output_indices8.data[primitive_output_offset + 32u * chunk_index + lane_index] = u8vec3(0);
-    }
 
     // Attributes
-    if (chunk_index < meta.num_chunks && lane_index < chunk_info.vertex_count)
+    if (lane_index < info.vertex_count)
     {
         int exponent;
         i16vec3 pos = meshlet_decode_snorm_scaled_i16x3(
                 meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_POSITION,
-                chunk_index, lane_index, exponent);
+                lane_index, exponent);
 
         vec3 fp_pos = ldexp(vec3(pos), ivec3(exponent));
-        uint vertex_output_offset;
-        if (RUNTIME_MESH)
-            vertex_output_offset = gl_WorkGroupSize.x * meshlet_index + 32u * chunk_index + registers.vertex_offset;
-        else
-            vertex_output_offset = registers.vertex_offset + meta.base_vertex_offset + chunk_info.vertex_offset;
+        uint vertex_output_offset = registers.vertex_offset + meta.base_vertex_offset;
         output_stream_pos.data[vertex_output_offset + lane_index] = fp_pos;
 
         if (TARGET_MESH_STYLE >= MESH_STYLE_TEXTURED)
         {
             bool t_sign;
             u8vec4 nt = meshlet_decode_normal_tangent_oct8(
-                meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_NORMAL_TANGENT_OCT8,
-                chunk_index, lane_index, t_sign);
+                    meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_NORMAL_TANGENT_OCT8,
+                    lane_index, t_sign);
             i16vec2 uv = meshlet_decode_snorm_scaled_i16x2(
-                meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_UV,
-                chunk_index, lane_index, exponent);
+                    meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_UV,
+                    lane_index, exponent);
             vec2 fp_uv = attribute_decode_snorm_exp_uv(uv, exponent);
 
             mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
             output_stream_textured_attr.data[vertex_output_offset + lane_index] =
                 TexturedAttr(pack_a2bgr10(NT[0]), pack_a2bgr10(NT[1]), fp_uv);
-        }
-    }
-    else if (RUNTIME_MESH)
-    {
-        output_stream_pos.data[gl_WorkGroupSize.x * meshlet_index + 32u * chunk_index + registers.vertex_offset + lane_index] =
-            vec3(intBitsToFloat(-1));
-
-        if (TARGET_MESH_STYLE >= MESH_STYLE_TEXTURED)
-        {
-            output_stream_textured_attr.data[gl_WorkGroupSize.x * meshlet_index + 32u * chunk_index + registers.vertex_offset + lane_index] =
-                TexturedAttr(-1u, -1u, vec2(intBitsToFloat(-1)));
         }
     }
 }

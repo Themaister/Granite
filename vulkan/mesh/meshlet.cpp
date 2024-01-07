@@ -78,9 +78,9 @@ MeshView create_mesh_view(const Granite::FileMapping &mapping)
 
 	for (uint32_t i = 0, n = view.format_header->meshlet_count; i < n; i++)
 	{
-		auto offsets = view.streams[i * view.format_header->stream_count].u.offsets[NumChunks];
-		view.total_primitives += offsets.prim_offset;
-		view.total_vertices += offsets.attr_offset;
+		auto counts = view.streams[i * view.format_header->stream_count].u.counts;
+		view.total_primitives += counts.prim_count;
+		view.total_vertices += counts.vert_count;
 	}
 
 	return view;
@@ -164,12 +164,7 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 	for (uint32_t i = 0; i < view.format_header->meshlet_count; i++)
 	{
 		decode_offsets.push_back(index_count);
-
-		// Unroll all elements as-is.
-		if (meshlet_runtime)
-			index_count += MaxElements;
-		else
-			index_count += view.streams[i * view.format_header->stream_count].u.offsets[NumChunks].prim_offset;
+		index_count += view.streams[i * view.format_header->stream_count].u.counts.prim_count;
 	}
 
 	buf_info.domain = BufferDomain::LinkedDeviceHost;

@@ -505,10 +505,7 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 					                   view.format_header->meshlet_count * sizeof(Meshlet::RuntimeHeader)));
 
 			for (uint32_t i = 0, n = view.format_header->meshlet_count; i < n; i++)
-			{
 				headers[i].stream_offset = asset.mesh.attr_or_stream.offset + i * view.format_header->stream_count;
-				headers[i].num_chunks = view.headers[i].num_chunks;
-			}
 
 			auto *bounds = static_cast<Meshlet::Bound *>(
 					cmd->update_buffer(*mesh_header_allocator.get_buffer(0, 1),

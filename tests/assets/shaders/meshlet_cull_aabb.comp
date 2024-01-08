@@ -7,17 +7,13 @@ layout(local_size_x = 64) in;
 #define MESHLET_RENDER_BOUND_BINDING 1
 #define MESHLET_RENDER_TRANSFORM_BINDING 2
 #define MESHLET_RENDER_FRUSTUM_BINDING 3
+#define MESHLET_RENDER_TASKS_BINDING 5
 #if MESHLET_RENDER_PHASE == 2
-#define MESHLET_RENDER_HIZ_BINDING 4
+#define MESHLET_RENDER_HIZ_BINDING 6
 #endif
 #include "meshlet_render.h"
 
-layout(set = 0, binding = 0) readonly buffer AABBs
-{
-    AABB data[];
-} aabbs;
-
-layout(set = 0, binding = 1) writeonly buffer AABBOut
+layout(set = 0, binding = 4) writeonly buffer AABBOut
 {
     uint data[];
 } visibility;
@@ -40,7 +36,7 @@ void main()
     bool active_aabb = false;
     if (index < registers.count)
     {
-        AABB aabb = aabbs.data[index];
+        AABB aabb = aabb.data[index];
         active_aabb = frustum_cull(aabb.lo, aabb.hi);
 #ifdef MESHLET_RENDER_HIZ_BINDING
         if (active_aabb)

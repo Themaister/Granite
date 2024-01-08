@@ -473,6 +473,26 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		int render_phase = ui.use_occlusion_cull ? (hiz ? 2 : 1) : 0;
 
+		{
+			cmd->set_program("assets://shaders/meshlet_cull_aabb.comp", {{ "MESHLET_RENDER_PHASE", render_phase }});
+			cmd->set_storage_buffer(0, 0, *aabb_buffer);
+			cmd->set_storage_buffer(0, 1, *manager.get_cluster_bounds_buffer());
+			cmd->set_storage_buffer(0, 2, *cached_transform_buffer);
+			bind_hiz_ubo(0, 3);
+			cmd->set_storage_buffer(0, 4, *aabb_visibility_buffer);
+			cmd->set_storage_buffer(0, 5, *task_buffer);
+			if (hiz)
+				cmd->set_texture(0, 6, *hiz);
+
+			uint32_t count = scene.get_aabbs().get_count();
+			cmd->push_constants(&count, 0, sizeof(count));
+			cmd->dispatch((count + 63) / 64, 1, 1);
+
+			cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+			             VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			             VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+		}
+
 		if (ui.use_preculling)
 		{
 			auto *indirect = manager.get_indirect_buffer();

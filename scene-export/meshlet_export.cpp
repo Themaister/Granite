@@ -330,7 +330,7 @@ static void encode_index_stream(std::vector<PayloadWord> &out_payload_buffer,
 	for (unsigned i = 0; i < count; i++)
 	{
 		u8vec3 indices = stream_buffer[i];
-		assert(all(lessThan(indices, u8vec3(ElementsPerChunk))));
+		assert(all(lessThan(indices, u8vec3(MaxElements))));
 		write_bits(p, indices.data, 3, i, 5);
 	}
 

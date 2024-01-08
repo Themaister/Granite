@@ -1,0 +1,25 @@
+#version 450
+
+layout(local_size_x = 32) in;
+
+#define MESHLET_RENDER_DESCRIPTOR_SET 0
+#define MESHLET_RENDER_AABB_BINDING 0
+#define MESHLET_RENDER_BOUND_BINDING 1
+#define MESHLET_RENDER_TRANSFORM_BINDING 2
+#define MESHLET_RENDER_FRUSTUM_BINDING 3
+#include "meshlet_render.h"
+
+layout(set = 0, binding = 0) readonly buffer AABBs
+{
+    AABB data[];
+} aabbs;
+
+layout(set = 0, binding = 1) writeonly buffer AABBOut
+{
+    uint data[];
+} visibility;
+
+void main()
+{
+
+}

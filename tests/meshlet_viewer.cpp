@@ -486,7 +486,11 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			uint32_t count = scene.get_aabbs().get_count();
 			cmd->push_constants(&count, 0, sizeof(count));
+
+			auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 			cmd->dispatch((count + 63) / 64, 1, 1);
+			auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+			device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "CullAABB");
 
 			cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 			             VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -526,7 +530,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			push.count = count;
 			cmd->push_constants(&push, 0, sizeof(push));
 
+			auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 			cmd->dispatch((count + 31) / 32, 1, 1);
+			auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+			device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "PreCull");
 
 			cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 			             VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
@@ -898,7 +905,12 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
 		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
 
-		render(cmd.get(), rp, nullptr);
+		{
+			auto start_ts_render = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+			render(cmd.get(), rp, nullptr);
+			auto end_ts_render = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+			device.register_time_interval("GPU", std::move(start_ts_render), std::move(end_ts_render), "Render Phase 1");
+		}
 
 		cmd->image_barrier(*color_image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
@@ -933,7 +945,12 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 #endif
 			rp.store_attachments = 1u << 0;
 
-			render(cmd.get(), rp, &hiz->get_view());
+			{
+				auto start_ts_render = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+				render(cmd.get(), rp, &hiz->get_view());
+				auto end_ts_render = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+				device.register_time_interval("GPU", std::move(start_ts_render), std::move(end_ts_render), "Render Phase 2");
+			}
 
 			if (ui.use_meshlets && !ui.use_preculling)
 			{

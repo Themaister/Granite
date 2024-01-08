@@ -147,7 +147,7 @@ void main()
         bool visible = bitfieldExtract(aabb.data[task.aabb_instance / 32], int(task.aabb_instance & 31), 1) != 0;
 
 #if MESHLET_RENDER_PHASE == 1
-        task_needs_words = visible && occluders.data[task.occluder_state_offset] != 0;
+        task_needs_work = visible && occluders.data[task.occluder_state_offset] != 0;
 #else
         task_needs_work = visible;
 #if MESHLET_RENDER_PHASE == 2

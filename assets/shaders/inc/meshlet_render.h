@@ -34,7 +34,11 @@ layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_BOUND_BINDI
 
 layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_AABB_BINDING, std430) readonly buffer AABBSSBO
 {
+#ifdef MESHLET_RENDER_AABB_VISIBILITY
+	uint data[];
+#else
 	AABB data[];
+#endif
 } aabb;
 
 layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_TRANSFORM_BINDING, std430) readonly buffer Transforms
@@ -128,6 +132,61 @@ bool hiz_cull(vec2 view_range_x, vec2 view_range_y, float closest_z)
 		d = max(d, texelFetchOffset(uHiZDepth, hiz_coord, lod, ivec2(1, 1)).x);
 
 	return closest_z < d;
+}
+
+bool aabb_hiz_cull(vec3 lo, vec3 hi)
+{
+	// This is heavily amortized, so it's okay if it's inefficient.
+	vec3 lo_x = lo.x * frustum.view[0].xyz;
+	vec3 lo_y = lo.y * frustum.view[1].xyz;
+	vec3 lo_z = lo.z * frustum.view[2].xyz;
+
+	vec3 hi_x = hi.x * frustum.view[0].xyz;
+	vec3 hi_y = hi.y * frustum.view[1].xyz;
+	vec3 hi_z = hi.z * frustum.view[2].xyz;
+
+	vec3 t = frustum.view[3].xyz;
+
+	vec3 c0 = lo_x + lo_y + lo_z + t;
+	vec3 c1 = hi_x + lo_y + lo_z + t;
+	vec3 c2 = lo_x + hi_y + lo_z + t;
+	vec3 c3 = hi_x + hi_y + lo_z + t;
+	vec3 c4 = lo_x + lo_y + hi_z + t;
+	vec3 c5 = hi_x + lo_y + hi_z + t;
+	vec3 c6 = lo_x + hi_y + hi_z + t;
+	vec3 c7 = hi_x + hi_y + hi_z + t;
+
+#define FLIP_YZ(c) c.yz = -c.yz
+	FLIP_YZ(c0);
+	FLIP_YZ(c1);
+	FLIP_YZ(c2);
+	FLIP_YZ(c3);
+	FLIP_YZ(c4);
+	FLIP_YZ(c5);
+	FLIP_YZ(c6);
+	FLIP_YZ(c7);
+#unset FLIP_YZ
+
+	bool ret = true;
+	float closest_z = min(min(min(c0.z, c1.z), min(c2.z, c3.z)), min(min(c4.z, c5.z), min(c6.z, c7.z)));
+	if (closest_z > 0.0)
+	{
+		vec2 p0 = c0.xy / c0.z;
+		vec2 p1 = c1.xy / c1.z;
+		vec2 p2 = c2.xy / c2.z;
+		vec2 p3 = c3.xy / c3.z;
+		vec2 p4 = c4.xy / c4.z;
+		vec2 p5 = c5.xy / c5.z;
+		vec2 p6 = c6.xy / c6.z;
+		vec2 p7 = c7.xy / c7.z;
+
+		vec2 lo = min(min(min(p0, p1), min(p2, p3)), min(min(p4, p5), min(p6, p7)));
+		vec2 hi = max(max(max(p0, p1), max(p2, p3)), max(max(p4, p5), max(p6, p7)));
+
+		ret = hiz_cull(vec2(lo.x, hi.x), vec2(lo.y, hi.y), closest_z);
+	}
+
+	return ret;
 }
 #endif
 

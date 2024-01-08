@@ -315,7 +315,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				return;
 		}
 
-		BufferHandle task_buffer, cached_transform_buffer, aabb_buffer, compacted_params, indirect_draws;
+		BufferHandle
+				task_buffer, cached_transform_buffer, aabb_buffer,
+				aabb_visibility_buffer, compacted_params, indirect_draws;
 
 		if (ui.indirect_rendering)
 		{
@@ -342,6 +344,16 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			info.domain = BufferDomain::LinkedDeviceHostPreferDevice;
 			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 			aabb_buffer = device.create_buffer(info, scene.get_aabbs().get_aabbs());
+		}
+
+		if (ui.indirect_rendering)
+		{
+			BufferCreateInfo info;
+			info.size = (scene.get_aabbs().get_count() + 63) / 64;
+			info.size *= sizeof(uint32_t);
+			info.domain = BufferDomain::Device;
+			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+			aabb_visibility_buffer = device.create_buffer(info);
 		}
 
 		auto &manager = device.get_resource_manager();

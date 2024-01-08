@@ -165,7 +165,7 @@ bool aabb_hiz_cull(vec3 lo, vec3 hi)
 	FLIP_YZ(c5);
 	FLIP_YZ(c6);
 	FLIP_YZ(c7);
-#unset FLIP_YZ
+#undef FLIP_YZ
 
 	bool ret = true;
 	float closest_z = min(min(min(c0.z, c1.z), min(c2.z, c3.z)), min(min(c4.z, c5.z), min(c6.z, c7.z)));

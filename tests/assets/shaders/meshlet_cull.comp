@@ -7,6 +7,7 @@ layout(local_size_x = 32) in;
 #define MESHLET_RENDER_DESCRIPTOR_SET 0
 #define MESHLET_RENDER_BOUND_BINDING 6
 #define MESHLET_RENDER_AABB_BINDING 0
+#define MESHLET_RENDER_AABB_VISIBILITY
 #define MESHLET_RENDER_TRANSFORM_BINDING 1
 #define MESHLET_RENDER_FRUSTUM_BINDING 7
 #if MESHLET_RENDER_PHASE == 2
@@ -82,15 +83,13 @@ void main()
         task = task_info.data[task_index];
 
         // Precull the group.
-        AABB aabb = aabb.data[task.aabb_instance];
-
+        bool visible = bitfieldExtract(aabb.data[task.aabb_instance / 32], int(task.aabb_instance & 31), 1) != 0;
+#if MESHLET_RENDER_PHASE == 1
         // In Phase 1, we only accept occluders which were marked as visible.
         // If any bit is set, accept it.
-#if MESHLET_RENDER_PHASE == 1
-        if (occluders.data[task.occluder_state_offset] != 0)
-            task_needs_work = frustum_cull(aabb.lo, aabb.hi);
+        task_needs_work = visible && occluders.data[task.occluder_state_offset] != 0;
 #else
-        task_needs_work = frustum_cull(aabb.lo, aabb.hi);
+        task_needs_work = visible;
 #if MESHLET_RENDER_PHASE == 2
         // Nothing is visible, clear out occluder state.
         if (!task_needs_work)

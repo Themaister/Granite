@@ -9,6 +9,7 @@ layout(local_size_x = 64) in;
 #define MESHLET_RENDER_FRUSTUM_BINDING 3
 #define MESHLET_RENDER_TASKS_BINDING 5
 #if MESHLET_RENDER_PHASE == 2
+#extension GL_EXT_samplerless_texture_functions : require
 #define MESHLET_RENDER_HIZ_BINDING 6
 #endif
 #include "meshlet_render.h"

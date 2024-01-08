@@ -349,7 +349,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		if (ui.indirect_rendering)
 		{
 			BufferCreateInfo info;
-			info.size = (scene.get_aabbs().get_count() + 63) / 64;
+			info.size = (scene.get_aabbs().get_count() + 63) / 32;
 			info.size *= sizeof(uint32_t);
 			info.domain = BufferDomain::Device;
 			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
@@ -505,7 +505,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			cmd->set_program("assets://shaders/meshlet_cull.comp",
 			                 {{ "MESHLET_RENDER_PHASE", render_phase }});
-			cmd->set_storage_buffer(0, 0, *aabb_buffer);
+			cmd->set_storage_buffer(0, 0, *aabb_visibility_buffer);
 			cmd->set_storage_buffer(0, 1, *cached_transform_buffer);
 			cmd->set_storage_buffer(0, 2, *task_buffer);
 			cmd->set_storage_buffer(0, 3, indirect ? *indirect : *indirect_draws);
@@ -609,7 +609,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				                   { "MESHLET_VERTEX_ID", int(ui.use_vertex_id) },
 				                   { "MESHLET_PRIMITIVE_CULL_WAVE32", int(ui.supports_wave32) } });
 
-				cmd->set_storage_buffer(0, 6, *aabb_buffer);
+				cmd->set_storage_buffer(0, 6, *aabb_visibility_buffer);
 				cmd->set_storage_buffer(0, 7, *task_buffer);
 				cmd->set_storage_buffer(0, 8, *manager.get_cluster_bounds_buffer());
 				bind_hiz_ubo(0, 9);

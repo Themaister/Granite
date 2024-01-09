@@ -35,9 +35,15 @@ namespace Util
 #define leading_zeroes64(x) ((x) == 0 ? 64 : __builtin_clzll(x))
 #define trailing_zeroes64(x) ((x) == 0 ? 64 : __builtin_ctzll(x))
 #define trailing_ones64(x) __builtin_ctzll(~uint64_t(x))
+#define popcount32(x) __builtin_popcount(x)
 #elif defined(_MSC_VER)
 namespace Internal
 {
+static inline uint32_t popcount32(uint32_t x)
+{
+	return __popcnt(x);
+}
+
 static inline uint32_t clz(uint32_t x)
 {
 	unsigned long result;

@@ -317,7 +317,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		BufferHandle
 				task_buffer, cached_transform_buffer, aabb_buffer,
-				aabb_visibility_buffer, compacted_params, indirect_draws;
+				aabb_visibility_buffer, aabb_visibility_buffer_readback,
+				compacted_params, indirect_draws;
 
 		if (ui.indirect_rendering)
 		{
@@ -349,11 +350,14 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		if (ui.indirect_rendering)
 		{
 			BufferCreateInfo info;
-			info.size = (scene.get_aabbs().get_count() + 63) / 32;
-			info.size *= sizeof(uint32_t);
+			info.size = (scene.get_aabbs().get_count() + 63) / 64;
+			info.size *= 2 * sizeof(uint32_t);
 			info.domain = BufferDomain::Device;
-			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 			aabb_visibility_buffer = device.create_buffer(info);
+			info.domain = BufferDomain::CachedHost;
+			info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+			aabb_visibility_buffer_readback = device.create_buffer(info);
 		}
 
 		auto &manager = device.get_resource_manager();
@@ -408,7 +412,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 			             VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-			                 VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+			             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
 			info.size = ui.max_draws * sizeof(DrawParameters);
 			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
@@ -754,6 +758,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				cmd->copy_buffer(*readback, *indirect_draws);
 			cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+
+			cmd->copy_buffer(*aabb_visibility_buffer_readback, *aabb_visibility_buffer);
 		}
 
 		if (readback)
@@ -762,6 +768,14 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				readback_ring_phase2[readback_index] = std::move(readback);
 			else
 				readback_ring_phase1[readback_index] = std::move(readback);
+		}
+
+		if (aabb_visibility_buffer)
+		{
+			if (hiz)
+				aabb_visibility_ring_phase2[readback_index] = std::move(aabb_visibility_buffer_readback);
+			else
+				aabb_visibility_ring_phase1[readback_index] = std::move(aabb_visibility_buffer_readback);
 		}
 	}
 
@@ -973,7 +987,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		{
 			auto &manager = device.get_resource_manager();
 			flat_renderer.begin();
-			flat_renderer.render_quad(vec3(0.0f, 0.0f, 0.5f), vec2(450.0f, 120.0f), vec4(0.0f, 0.0f, 0.0f, 0.8f));
+			flat_renderer.render_quad(vec3(0.0f, 0.0f, 0.5f), vec2(450.0f, 140.0f), vec4(0.0f, 0.0f, 0.0f, 0.8f));
 			char text[256];
 
 			switch (manager.get_mesh_encoding())
@@ -1023,14 +1037,19 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
 			                          vec3(10.0f, 50.0f, 0.0f), vec2(1000.0f));
 
+			snprintf(text, sizeof(text), "AABB phase 1: %u | phase 2: %u",
+			         last_aabb_phase1, last_aabb_phase2);
+			flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
+			                          vec3(10.0f, 70.0f, 0.0f), vec2(1000.0f));
+
 			if (ui.use_meshlets)
 			{
 				snprintf(text, sizeof(text), "Primitives: %.3f M", 1e-6 * last_prim);
 				flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
-				                          vec3(10.0f, 70.0f, 0.0f), vec2(1000.0f));
+				                          vec3(10.0f, 90.0f, 0.0f), vec2(1000.0f));
 				snprintf(text, sizeof(text), "Vertices: %.3f M", 1e-6 * last_vert);
 				flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text,
-				                          vec3(10.0f, 90.0f, 0.0f), vec2(1000.0f));
+				                          vec3(10.0f, 110.0f, 0.0f), vec2(1000.0f));
 			}
 
 			flat_renderer.flush(*cmd, vec3(0.0f), vec3(cmd->get_viewport().width, cmd->get_viewport().height, 1.0f));
@@ -1105,17 +1124,42 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 					accum_draws(mapped1);
 					accum_draws(mapped2);
 				}
+
+				last_aabb_phase1 = 0;
+				last_aabb_phase2 = 0;
+
+				const auto accum_aabbs = [&](const Buffer &buffer) {
+					unsigned count = 0;
+					auto *m = static_cast<const uint32_t *>(device.map_host_buffer(buffer, MEMORY_ACCESS_READ_BIT));
+					for (uint32_t i = 0; i < buffer.get_create_info().size / 4; i++)
+						count += popcount32(m[i]);
+					return count;
+				};
+
+				if (aabb_visibility_ring_phase1[readback_index])
+					last_aabb_phase1 = accum_aabbs(*aabb_visibility_ring_phase1[readback_index]);
+				if (aabb_visibility_ring_phase2[readback_index])
+					last_aabb_phase2 = accum_aabbs(*aabb_visibility_ring_phase2[readback_index]);
+
+				ring1.reset();
+				ring2.reset();
+				aabb_visibility_ring_phase1[readback_index].reset();
+				aabb_visibility_ring_phase2[readback_index].reset();
 			}
 		}
 	}
 
 	BufferHandle readback_ring_phase1[4];
 	BufferHandle readback_ring_phase2[4];
+	BufferHandle aabb_visibility_ring_phase1[4];
+	BufferHandle aabb_visibility_ring_phase2[4];
 	Fence readback_fence[4];
 	unsigned readback_index = 0;
 	unsigned last_mesh_invocations = 0;
 	unsigned last_prim = 0;
 	unsigned last_vert = 0;
+	unsigned last_aabb_phase1 = 0;
+	unsigned last_aabb_phase2 = 0;
 	double last_frame_time = 0.0;
 	FlatRenderer flat_renderer;
 

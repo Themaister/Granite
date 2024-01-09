@@ -350,6 +350,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		if (ui.indirect_rendering)
 			ui.use_preculling = Util::get_environment_bool("PRECULL", ui.use_preculling);
+		if (!device.get_device_features().mesh_shader_features.taskShader)
+			ui.use_preculling = true;
 
 		struct
 		{

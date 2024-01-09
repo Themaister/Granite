@@ -3,6 +3,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_ARB_shader_draw_parameters : require
 
 #extension GL_KHR_shader_subgroup_basic : require
 #if defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
@@ -106,7 +107,7 @@ mediump vec4 unpack_bgr10a2(uint v)
 
 void main()
 {
-    uint compacted_meshlet_index = meshlet_get_meshlet_index();
+    uint compacted_meshlet_index = meshlet_get_meshlet_index() + 0x8000 * gl_DrawIDARB;
 
 #if defined(MESHLET_RENDER_TASK_HIERARCHICAL) && !MESHLET_RENDER_TASK_HIERARCHICAL
     CompactedDrawInfo task = mesh_payload.info;

@@ -1,5 +1,6 @@
 #version 450
 #extension GL_EXT_mesh_shader : require
+#extension GL_ARB_shader_draw_parameters : require
 
 out gl_MeshPerVertexEXT
 {
@@ -82,7 +83,7 @@ layout(set = 0, binding = 10) buffer Stats
 
 void main()
 {
-    uint compacted_meshlet_index = meshlet_get_meshlet_index();
+    uint compacted_meshlet_index = meshlet_get_meshlet_index() + 0x8000 * gl_DrawIDARB;
     uint linear_index = gl_LocalInvocationIndex;
 
 #if defined(MESHLET_RENDER_TASK_HIERARCHICAL) && !MESHLET_RENDER_TASK_HIERARCHICAL

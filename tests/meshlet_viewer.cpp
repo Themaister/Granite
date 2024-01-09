@@ -386,28 +386,22 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		//uint32_t num_chunk_workgroups = 256u / ui.target_meshlet_workgroup_size;
 		const uint32_t num_chunk_workgroups = 1;
 
+		constexpr size_t count_padding = 4096;
+
 		if (ui.use_preculling)
 		{
 			BufferCreateInfo info;
 			if (ui.use_meshlets)
-				info.size = sizeof(VkDrawMeshTasksIndirectCommandEXT);
+				info.size = count_padding;
 			else
-				info.size = ui.max_draws * sizeof(VkDrawIndexedIndirectCommand) + 256;
+				info.size = ui.max_draws * sizeof(VkDrawIndexedIndirectCommand) + count_padding;
 
 			info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
 			             VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 			info.domain = BufferDomain::Device;
 			indirect_draws = device.create_buffer(info);
 
-			if (ui.use_meshlets)
-			{
-				cmd->fill_buffer(*indirect_draws, 0, 0, 4);
-				cmd->fill_buffer(*indirect_draws, 1, 4, 8);
-			}
-			else
-			{
-				cmd->fill_buffer(*indirect_draws, 0, 0, 256);
-			}
+			cmd->fill_buffer(*indirect_draws, 0, 0, count_padding);
 
 			cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -507,9 +501,8 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			auto command_words = ui.use_meshlets ? 0 : (sizeof(VkDrawIndexedIndirectCommand) / sizeof(uint32_t));
 
-			cmd->set_specialization_constant_mask(3);
+			cmd->set_specialization_constant_mask(1);
 			cmd->set_specialization_constant(0, uint32_t(command_words));
-			cmd->set_specialization_constant(1, 0 /* inc word */);
 
 			cmd->set_program("assets://shaders/meshlet_cull.comp",
 			                 {{ "MESHLET_RENDER_PHASE", render_phase }});
@@ -646,7 +639,14 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			if (ui.use_preculling)
 			{
-				cmd->draw_mesh_tasks_indirect(*indirect_draws, 0, 1, sizeof(VkDrawMeshTasksIndirectCommandEXT));
+				uint32_t max_dispatches = std::min<uint32_t>(
+						(ui.max_draws + 0x7fff) / 0x8000,
+						(count_padding - 2 * sizeof(uint32_t)) / sizeof(VkDrawMeshTasksIndirectCommandEXT));
+
+				cmd->draw_mesh_tasks_multi_indirect(*indirect_draws, 2 * sizeof(uint32_t),
+				                                    max_dispatches,
+				                                    sizeof(VkDrawMeshTasksIndirectCommandEXT),
+				                                    *indirect_draws, 1 * sizeof(uint32_t));
 			}
 			else
 			{
@@ -693,7 +693,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			GRANITE_MATERIAL_MANAGER()->set_bindless(*cmd, 2);
 
 			cmd->draw_indexed_multi_indirect(*indirect_draws,
-			                                 256, ui.max_draws,
+			                                 count_padding, ui.max_draws,
 			                                 sizeof(VkDrawIndexedIndirectCommand),
 			                                 *indirect_draws, 0);
 		}

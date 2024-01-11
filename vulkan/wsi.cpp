@@ -1146,15 +1146,16 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		present_mode_compat_group.resize(32);
 		present_mode_caps.presentModeCount = present_mode_compat_group.size();
 		present_mode_caps.pPresentModes = present_mode_compat_group.data();
-		surface_capabilities2.pNext = &present_mode_caps;
 
 		info.present_mode.pNext = const_cast<void *>(info.surface_info.pNext);
 		info.surface_info.pNext = &info.present_mode;
 		info.present_mode = { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT };
 		info.present_mode.presentMode = swapchain_present_mode;
 
+		surface_capabilities2.pNext = &present_mode_caps;
 		if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
 			return false;
+		surface_capabilities2.pNext = present_mode_caps.pNext;
 
 		info.surface_capabilities.minImageCount = surface_capabilities2.surfaceCapabilities.minImageCount;
 		present_mode_compat_group.resize(present_mode_caps.presentModeCount);
@@ -1168,6 +1169,7 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 
 			// Only allow sensible present modes that we know of.
 			if (mode != VK_PRESENT_MODE_FIFO_KHR &&
+			    mode != VK_PRESENT_MODE_FIFO_RELAXED_KHR &&
 			    mode != VK_PRESENT_MODE_IMMEDIATE_KHR &&
 			    mode != VK_PRESENT_MODE_MAILBOX_KHR)
 			{
@@ -1178,17 +1180,10 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 			if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
 				return false;
 
-			// Accept the present mode if it does not increment minImageCount beyond our expectation.
-			// When we use present groups, minImageCount == max(presentMode's minImageCount).
-			// Accept a bump to 3 images, since that's what we expect to use either way.
-			if (surface_capabilities2.surfaceCapabilities.minImageCount <=
-			    std::max(baseline_image_count, info.surface_capabilities.minImageCount))
-			{
+			// Accept the present mode if it does not modify minImageCount.
+			// If image count changes, we should probably recreate the swapchain.
+			if (surface_capabilities2.surfaceCapabilities.minImageCount == info.surface_capabilities.minImageCount)
 				info.present_mode_compat_group.push_back(mode);
-				info.surface_capabilities.minImageCount =
-					std::max(surface_capabilities2.surfaceCapabilities.minImageCount,
-					         info.surface_capabilities.minImageCount);
-			}
 		}
 	}
 

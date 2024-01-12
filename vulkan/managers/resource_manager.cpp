@@ -388,12 +388,12 @@ bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::Me
 	if (mesh_encoding == MeshEncoding::MeshletEncoded)
 	{
 		if (ret)
-			ret = mesh_header_allocator.allocate(view.format_header->meshlet_count, &asset.mesh.indirect_or_header);
+			ret = mesh_header_allocator.allocate(view.num_bounds_256, &asset.mesh.indirect_or_header);
 
 		if (ret)
 		{
 			ret = mesh_stream_allocator.allocate(
-					view.format_header->meshlet_count * view.format_header->stream_count,
+					view.num_bounds_256 * Meshlet::ChunkFactor * view.format_header->stream_count,
 					&asset.mesh.attr_or_stream);
 		}
 
@@ -402,31 +402,13 @@ bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::Me
 	}
 	else
 	{
-		if (mesh_encoding == MeshEncoding::MeshletDecoded)
-		{
-			// Need to lay out meshes in memory so that we can process individual chunks.
-			// Culling is expected, so primitive buffer will be filled with degenerate primitives as padding.
-			if (ret)
-			{
-				ret = index_buffer_allocator.allocate(view.format_header->meshlet_count * Meshlet::MaxElements,
-				                                      &asset.mesh.index_or_payload);
-			}
-			if (ret)
-			{
-				ret = attribute_buffer_allocator.allocate(view.format_header->meshlet_count * Meshlet::MaxElements,
-				                                          &asset.mesh.attr_or_stream);
-			}
-		}
-		else
-		{
-			if (ret)
-				ret = index_buffer_allocator.allocate(view.total_primitives, &asset.mesh.index_or_payload);
-			if (ret)
-				ret = attribute_buffer_allocator.allocate(view.total_vertices, &asset.mesh.attr_or_stream);
-		}
+		if (ret)
+			ret = index_buffer_allocator.allocate(view.total_primitives, &asset.mesh.index_or_payload);
+		if (ret)
+			ret = attribute_buffer_allocator.allocate(view.total_vertices, &asset.mesh.attr_or_stream);
 
 		if (ret && mesh_encoding != MeshEncoding::Classic)
-			ret = indirect_buffer_allocator.allocate(view.format_header->meshlet_count, &asset.mesh.indirect_or_header);
+			ret = indirect_buffer_allocator.allocate(view.num_bounds_256, &asset.mesh.indirect_or_header);
 	}
 
 	if (mesh_encoding == MeshEncoding::Classic)
@@ -441,7 +423,7 @@ bool ResourceManager::allocate_asset_mesh(Granite::AssetID id, const Meshlet::Me
 	{
 		asset.mesh.draw.meshlet = {
 			asset.mesh.indirect_or_header.offset,
-			view.format_header->meshlet_count,
+			view.num_bounds_256,
 			view.format_header->style,
 		};
 	}
@@ -502,29 +484,35 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			auto *headers = static_cast<Meshlet::RuntimeHeader *>(
 					cmd->update_buffer(*mesh_header_allocator.get_buffer(0, 0),
 					                   asset.mesh.indirect_or_header.offset * sizeof(Meshlet::RuntimeHeader),
-					                   view.format_header->meshlet_count * sizeof(Meshlet::RuntimeHeader)));
+					                   view.num_bounds_256 * sizeof(Meshlet::RuntimeHeader)));
 
-			for (uint32_t i = 0, n = view.format_header->meshlet_count; i < n; i++)
-				headers[i].stream_offset = asset.mesh.attr_or_stream.offset + i * view.format_header->stream_count;
+			for (uint32_t i = 0, n = view.num_bounds_256; i < n; i++)
+			{
+				headers[i].stream_offset = asset.mesh.attr_or_stream.offset +
+				                           i * Meshlet::ChunkFactor * view.format_header->stream_count;
+			}
 
 			auto *bounds = static_cast<Meshlet::Bound *>(
 					cmd->update_buffer(*mesh_header_allocator.get_buffer(0, 1),
 					                   asset.mesh.indirect_or_header.offset * sizeof(Meshlet::Bound),
-					                   view.format_header->meshlet_count * sizeof(Meshlet::Bound)));
-			memcpy(bounds, view.bounds, view.format_header->meshlet_count * sizeof(Meshlet::Bound));
+					                   view.num_bounds_256 * sizeof(Meshlet::Bound)));
+			memcpy(bounds, view.bounds_256, view.num_bounds_256 * sizeof(Meshlet::Bound));
 
+			size_t total_streams = view.format_header->meshlet_count * view.format_header->stream_count;
+			size_t total_padded_streams = view.num_bounds_256 * Meshlet::ChunkFactor * view.format_header->stream_count;
 			auto *streams = static_cast<Meshlet::Stream *>(
 					cmd->update_buffer(*mesh_stream_allocator.get_buffer(0, 0),
 					                   asset.mesh.attr_or_stream.offset * sizeof(Meshlet::Stream),
-					                   view.format_header->meshlet_count * view.format_header->stream_count *
-					                   sizeof(Meshlet::Stream)));
+									   total_padded_streams * sizeof(Meshlet::Stream)));
 
-			for (uint32_t i = 0, n = view.format_header->meshlet_count * view.format_header->stream_count; i < n; i++)
+			for (uint32_t i = 0; i < total_streams; i++)
 			{
 				auto in_stream = view.streams[i];
 				in_stream.offset_in_words += asset.mesh.index_or_payload.offset;
 				streams[i] = in_stream;
 			}
+
+			memset(streams + total_streams, 0, (total_padded_streams - total_streams) * sizeof(Meshlet::Stream));
 
 			Semaphore sem;
 			device->submit(cmd, nullptr, 1, &sem);
@@ -562,12 +550,11 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 
 			if (mesh_encoding != MeshEncoding::Classic)
 			{
-				info.indirect = indirect_buffer_allocator.get_buffer(0, 0);
 				auto *bounds = static_cast<Meshlet::Bound *>(
 						cmd->update_buffer(*indirect_buffer_allocator.get_buffer(0, 1),
 						                   asset.mesh.indirect_or_header.offset * sizeof(Meshlet::Bound),
-						                   view.format_header->meshlet_count * sizeof(Meshlet::Bound)));
-				memcpy(bounds, view.bounds, view.format_header->meshlet_count * sizeof(Meshlet::Bound));
+						                   view.num_bounds_256 * sizeof(Meshlet::Bound)));
+				memcpy(bounds, view.bounds_256, view.num_bounds_256 * sizeof(Meshlet::Bound));
 			}
 
 			Meshlet::decode_mesh(*cmd, info, view);
@@ -586,8 +573,8 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 		if (mesh_encoding == MeshEncoding::MeshletEncoded)
 		{
 			cost += view.format_header->payload_size_words * mesh_payload_allocator.get_element_size(0);
-			cost += view.format_header->meshlet_count * mesh_header_allocator.get_element_size(0);
-			cost += view.format_header->meshlet_count * mesh_header_allocator.get_element_size(1);
+			cost += view.num_bounds_256 * mesh_header_allocator.get_element_size(0);
+			cost += view.num_bounds_256 * mesh_header_allocator.get_element_size(1);
 			cost += view.format_header->meshlet_count * view.format_header->stream_count * mesh_stream_allocator.get_element_size(0);
 		}
 		else

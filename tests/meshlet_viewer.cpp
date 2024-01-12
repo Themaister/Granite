@@ -383,8 +383,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		ui.target_meshlet_workgroup_size = max(32u, min(256u, ui.target_meshlet_workgroup_size));
 		ui.target_meshlet_workgroup_size = 1u << Util::floor_log2(ui.target_meshlet_workgroup_size);
-		//uint32_t num_chunk_workgroups = 256u / ui.target_meshlet_workgroup_size;
-		const uint32_t num_chunk_workgroups = 1;
+		uint32_t num_chunk_workgroups = 256u / ui.target_meshlet_workgroup_size;
 
 		constexpr size_t count_padding = 4096;
 
@@ -501,8 +500,9 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			auto command_words = ui.use_meshlets ? 0 : (sizeof(VkDrawIndexedIndirectCommand) / sizeof(uint32_t));
 
-			cmd->set_specialization_constant_mask(1);
+			cmd->set_specialization_constant_mask(3);
 			cmd->set_specialization_constant(0, uint32_t(command_words));
+			cmd->set_specialization_constant(1, num_chunk_workgroups);
 
 			cmd->set_program("assets://shaders/meshlet_cull.comp",
 			                 {{ "MESHLET_RENDER_PHASE", render_phase }});

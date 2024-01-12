@@ -182,7 +182,6 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 	auto output_offset_strides_buffer = cmd.get_device().create_buffer(buf_info, decode_offsets.data());
 
 	cmd.set_storage_buffer(0, 7, *output_offset_strides_buffer);
-	cmd.set_storage_buffer(0, 8, info.indirect ? *info.indirect : *info.streams[0]);
 
 	// TODO: Split dispatches for big chungus meshes.
 	// (Starts to become a problem around 8-16 million primitives per dispatch).

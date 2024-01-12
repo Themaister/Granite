@@ -22,6 +22,7 @@ layout(local_size_x = 32) in;
 #define MESHLET_RENDER_NO_Z_PREPASS
 
 layout(constant_id = 0) const int MESHLET_RENDER_DRAW_WORDS = 0;
+layout(constant_id = 1) const int NUM_CHUNK_WORKGROUPS = 0;
 
 layout(set = 0, binding = 3, std430) readonly buffer InputDraws
 {
@@ -160,22 +161,23 @@ void main()
             {
                 uint max_global_offset = global_offset + draw_count - 1;
                 // Meshlet style.
-                // Only guaranteed to get 0xffff meshlets.
-                // Allocate the draws in-place, avoiding an extra barrier.
+                // Only guaranteed to get 0xffff meshlets, so use 32k as cutoff for easy math.
+                // Allocate the 2D draws in-place, avoiding an extra barrier.
                 uint multi_draw_index = max_global_offset / 0x8000u;
                 uint local_draw_index = max_global_offset & 0x7fffu;
+                const int INC_OFFSET = NUM_CHUNK_WORKGROUPS == 1 ? 0 : 1;
                 atomicMax(output_draws.count[1], multi_draw_index + 1);
-                atomicMax(output_draws.count[2 + 3 * multi_draw_index], local_draw_index + 1);
+                atomicMax(output_draws.count[2 + 3 * multi_draw_index + INC_OFFSET], local_draw_index + 1);
                 if (local_draw_index <= draw_count)
                 {
                     // This is the thread that takes us over the threshold.
-                    output_draws.count[2 + 3 * multi_draw_index + 1] = 1;
+                    output_draws.count[2 + 3 * multi_draw_index + 1 - INC_OFFSET] = NUM_CHUNK_WORKGROUPS;
                     output_draws.count[2 + 3 * multi_draw_index + 2] = 1;
                 }
 
                 // Wrapped around, make sure last bucket sees 32k meshlets.
                 if (multi_draw_index != 0 && local_draw_index < draw_count)
-                    atomicMax(output_draws.count[2 + 3 * (multi_draw_index - 1)], 0x8000u);
+                    atomicMax(output_draws.count[2 + 3 * (multi_draw_index - 1) + INC_OFFSET], 0x8000u);
             }
         }
         barrier();

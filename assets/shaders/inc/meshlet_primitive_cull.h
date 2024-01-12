@@ -165,7 +165,7 @@ void meshlet_init_shared()
 
 uint meshlet_get_meshlet_index()
 {
-	return gl_WorkGroupID.x;
+	return gl_WorkGroupID.y;
 }
 
 void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport)

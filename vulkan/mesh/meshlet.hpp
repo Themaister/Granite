@@ -141,7 +141,7 @@ enum class RuntimeStyle
 
 struct DecodeInfo
 {
-	const Vulkan::Buffer *ibo, *streams[3], *indirect, *payload;
+	const Vulkan::Buffer *ibo, *streams[3], *payload;
 	DecodeModeFlags flags;
 	MeshStyle target_style;
 	RuntimeStyle runtime_style;

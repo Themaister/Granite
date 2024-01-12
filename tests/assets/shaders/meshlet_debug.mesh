@@ -93,7 +93,10 @@ void main()
     CompactedDrawInfo task = mesh_payload.infos[compacted_meshlet_index];
 #endif
 
+    const uint STRIDE = 4;
     MeshletMetaRuntime meta = meshlet_metas_runtime.data[task.meshlet_index];
+    meta.stream_offset += STRIDE * gl_WorkGroupID.x;
+
     mat4 M = transforms.data[task.node_offset];
 
     uint lane_index;

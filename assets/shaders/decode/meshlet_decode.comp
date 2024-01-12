@@ -60,33 +60,6 @@ layout(set = 0, binding = 7, std430) readonly buffer OutputOffsets
     uint data[];
 } primitive_output_offsets;
 
-struct IndirectDrawMesh
-{
-    uint primitive_offset;
-    uint vertex_offset;
-    uint primitive_count;
-    uint vertex_count;
-};
-
-layout(set = 0, binding = 8, std430) writeonly buffer IndirectCommandsMesh
-{
-    IndirectDrawMesh draws[];
-} indirect_commands_mesh;
-
-struct IndirectIndexedDraw
-{
-    uint indexCount;
-    uint instanceCount;
-    uint firstIndex;
-    uint vertexOffset;
-    uint firstInstance;
-};
-
-layout(set = 0, binding = 8, std430) writeonly buffer IndirectCommandsMDI
-{
-    IndirectIndexedDraw draws[];
-} indirect_commands_mdi;
-
 layout(push_constant, std430) uniform Registers
 {
     uint primitive_offset;
@@ -113,29 +86,6 @@ void main()
 
     uint primitive_output_offset = primitive_output_offsets.data[meshlet_index] + registers.primitive_offset;
     MeshletInfo info = meshlet_get_meshlet_info(meshlet_index * NUM_U32_STREAMS);
-
-    if (!UNROLLED_MESH && gl_LocalInvocationIndex == 0)
-    {
-        if (RUNTIME_MESH)
-        {
-            IndirectDrawMesh draw;
-            draw.primitive_offset = primitive_output_offset;
-            draw.vertex_offset = meta.base_vertex_offset + registers.vertex_offset;
-            draw.primitive_count = info.primitive_count;
-            draw.vertex_count = info.vertex_count;
-            indirect_commands_mesh.draws[meshlet_index + registers.meshlet_offset] = draw;
-        }
-        else
-        {
-            IndirectIndexedDraw draw;
-            draw.indexCount = 3 * info.primitive_count;
-            draw.instanceCount = 1;
-            draw.vertexOffset = meta.base_vertex_offset + registers.vertex_offset;
-            draw.firstIndex = 3 * primitive_output_offset;
-            draw.firstInstance = 0;
-            indirect_commands_mdi.draws[meshlet_index + registers.meshlet_offset] = draw;
-        }
-    }
 
     // Index
     if (lane_index < info.primitive_count)

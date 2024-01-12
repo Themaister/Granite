@@ -37,7 +37,6 @@ using namespace Vulkan::Meshlet;
 
 struct Metadata : Header
 {
-	Bound bound;
 	Stream streams[MaxStreams];
 };
 
@@ -52,6 +51,7 @@ struct CombinedMesh
 struct Encoded
 {
 	std::vector<PayloadWord> payload;
+	std::vector<Bound> bounds;
 	CombinedMesh mesh;
 };
 
@@ -589,7 +589,7 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 	required_size += encoded.mesh.meshlets.size() * sizeof(Header);
 
 	// Bounds.
-	required_size += encoded.mesh.meshlets.size() * sizeof(Bound);
+	required_size += encoded.bounds.size() * sizeof(Bound);
 
 	// Stream metadata.
 	required_size += encoded.mesh.stream_count * encoded.mesh.meshlets.size() * sizeof(Stream);
@@ -620,12 +620,8 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 		ptr += sizeof(gpu);
 	}
 
-	for (uint32_t i = 0; i < header.meshlet_count; i++)
-	{
-		auto &bound = encoded.mesh.meshlets[i].bound;
-		memcpy(ptr, &bound, sizeof(bound));
-		ptr += sizeof(bound);
-	}
+	memcpy(ptr, encoded.bounds.data(), encoded.bounds.size() * sizeof(Bound));
+	ptr += encoded.bounds.size() * sizeof(Bound);
 
 	for (uint32_t i = 0; i < header.meshlet_count; i++)
 	{
@@ -640,6 +636,107 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 	ptr += encoded.payload.size() * sizeof(PayloadWord);
 	memset(ptr, 0, sizeof(PayloadWord));
 	return true;
+}
+
+static float compute_sq_dist(const Bound &a, const Bound &b)
+{
+	float dx = a.center[0] - b.center[0];
+	float dy = a.center[1] - b.center[1];
+	float dz = a.center[2] - b.center[2];
+	return dx * dx + dy * dy + dz * dz;
+}
+
+static size_t find_closest_sphere(const Bound *bounds, size_t num_bounds, const Bound &reference_bound)
+{
+	size_t best_index = 0;
+	float best_sq_dist = compute_sq_dist(bounds[0], reference_bound);
+	for (size_t i = 1; i < num_bounds; i++)
+	{
+		float sq_dist = compute_sq_dist(bounds[i], reference_bound);
+		if (sq_dist < best_sq_dist)
+		{
+			best_index = i;
+			best_sq_dist = sq_dist;
+		}
+	}
+
+	return best_index;
+}
+
+// FIXME: O(n^2). Revisit if this becomes a real problem.
+static void sort_bounds(Bound *bound, size_t num_bounds,
+                        Meshlet *meshlets, Metadata *metadata)
+{
+	for (size_t offset = 1; offset < num_bounds; offset++)
+	{
+		size_t cluster_offset = offset & ~(ChunkFactor - 1);
+
+		// Starts a new cluster.
+		if (cluster_offset == offset)
+			continue;
+
+		size_t index = find_closest_sphere(
+				bound + offset, num_bounds - offset,
+				bound[cluster_offset]);
+
+		index += offset;
+
+		if (index != offset)
+		{
+			std::swap(bound[offset], bound[index]);
+			std::swap(meshlets[offset], meshlets[index]);
+			std::swap(metadata[offset], metadata[index]);
+		}
+	}
+}
+
+static void encode_bounds(std::vector<Bound> &bounds,
+                          const Meshlet *meshlets, size_t num_meshlets,
+                          const uvec3 *out_index_buffer, const vec3 *position_buffer,
+                          unsigned position_count,
+                          unsigned chunk_factor)
+{
+	size_t num_new_bounds = (num_meshlets + chunk_factor - 1) / chunk_factor;
+	bounds.reserve(bounds.size() + num_new_bounds);
+	assert(chunk_factor <= ChunkFactor);
+
+	float total_radius = 0.0f;
+	float total_cutoff = 0.0f;
+
+	for (size_t i = 0; i < num_meshlets; i += chunk_factor)
+	{
+		size_t num_chunks = std::min<size_t>(num_meshlets - i, chunk_factor);
+		uvec3 tmp_indices[MaxElements * ChunkFactor];
+		uint32_t total_count = 0;
+
+		for (size_t chunk = 0; chunk < num_chunks; chunk++)
+		{
+			auto &meshlet = meshlets[i + chunk];
+			memcpy(tmp_indices[total_count].data,
+			       out_index_buffer[meshlet.global_indices_offset].data,
+			       meshlet.primitive_count * sizeof(tmp_indices[0]));
+			total_count += meshlet.primitive_count;
+		}
+
+		auto bound = meshopt_computeClusterBounds(
+				tmp_indices[0].data, total_count * 3,
+				position_buffer[0].data, position_count, sizeof(vec3));
+
+		Bound encoded_bound = {};
+		memcpy(encoded_bound.center, bound.center, sizeof(bound.center));
+		encoded_bound.radius = bound.radius;
+		memcpy(encoded_bound.cone_axis_cutoff, bound.cone_axis, sizeof(bound.cone_axis));
+		encoded_bound.cone_axis_cutoff[3] = bound.cone_cutoff;
+		bounds.push_back(encoded_bound);
+
+		total_radius += bound.radius;
+		total_cutoff += bound.cone_cutoff;
+	}
+
+	total_radius /= float(num_new_bounds);
+	total_cutoff /= float(num_new_bounds);
+	LOGI("Average radius %.3f (%zu bounds)\n", total_radius, num_new_bounds);
+	LOGI("Average cutoff %.3f (%zu bounds)\n", total_cutoff, num_new_bounds);
 }
 
 bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, MeshStyle style)
@@ -749,43 +846,16 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	encoded.mesh.mesh_style = style;
 
 	// Compute bounds
-	constexpr unsigned ChunkFactor = 1;
-	std::vector<meshopt_Bounds> bounds;
-	bounds.clear();
-	bounds.reserve((num_meshlets + ChunkFactor - 1) / ChunkFactor);
+	encode_bounds(encoded.bounds, out_meshlets.data(), out_meshlets.size(),
+	              out_index_buffer.data(), position_buffer.data(), positions.size(),
+	              1);
 
-	// Fuse 8 32-size meshlets together to form a 256 meshlet.
-	for (size_t i = 0, n = out_meshlets.size(); i < n; i += ChunkFactor)
-	{
-		size_t num_chunks = std::min<size_t>(n - i, ChunkFactor);
-		uint32_t total_count = 0;
-		uvec3 tmp_indices[MaxElements * ChunkFactor];
+	sort_bounds(encoded.bounds.data(), encoded.bounds.size(),
+	            out_meshlets.data(), encoded.mesh.meshlets.data());
 
-		for (size_t chunk = 0; chunk < num_chunks; chunk++)
-		{
-			auto &meshlet = out_meshlets[i + chunk];
-			memcpy(tmp_indices[total_count].data,
-			       out_index_buffer[meshlet.global_indices_offset].data,
-			       meshlet.primitive_count * sizeof(tmp_indices[0]));
-			total_count += meshlet.primitive_count;
-		}
-
-		auto bound = meshopt_computeClusterBounds(
-				tmp_indices[0].data, total_count * 3,
-				position_buffer[0].data, positions.size(), sizeof(vec3));
-		bounds.push_back(bound);
-	}
-
-	assert(bounds.size() == encoded.mesh.meshlets.size());
-	const auto *pbounds = bounds.data();
-	for (auto &meshlet : encoded.mesh.meshlets)
-	{
-		memcpy(meshlet.bound.center, pbounds->center, sizeof(float) * 3);
-		meshlet.bound.radius = pbounds->radius;
-		memcpy(meshlet.bound.cone_axis_cutoff, pbounds->cone_axis, sizeof(pbounds->cone_axis));
-		meshlet.bound.cone_axis_cutoff[3] = pbounds->cone_cutoff;
-		pbounds++;
-	}
+	encode_bounds(encoded.bounds, out_meshlets.data(), out_meshlets.size(),
+	              out_index_buffer.data(), position_buffer.data(), positions.size(),
+				  ChunkFactor);
 
 	LOGI("Exported meshlet:\n");
 	LOGI("  %zu meshlets\n", encoded.mesh.meshlets.size());

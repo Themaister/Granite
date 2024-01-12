@@ -42,6 +42,7 @@ namespace Meshlet
 {
 static constexpr unsigned MaxStreams = 8;
 static constexpr unsigned MaxElements = 32;
+static constexpr unsigned ChunkFactor = 256 / MaxElements;
 
 struct Stream
 {
@@ -113,13 +114,16 @@ struct MeshView
 	const FormatHeader *format_header;
 	const Header *headers;
 	const Bound *bounds;
+	const Bound *bounds_256;
 	const Stream *streams;
 	const PayloadWord *payload;
 	uint32_t total_primitives;
 	uint32_t total_vertices;
+	uint32_t num_bounds;
+	uint32_t num_bounds_256;
 };
 
-static const char magic[8] = { 'M', 'E', 'S', 'H', 'L', 'E', 'T', '3' };
+static const char magic[8] = { 'M', 'E', 'S', 'H', 'L', 'E', 'T', '4' };
 
 MeshView create_mesh_view(const Granite::FileMapping &mapping);
 

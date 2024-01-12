@@ -64,6 +64,16 @@ MeshView create_mesh_view(const Granite::FileMapping &mapping)
 	view.bounds = reinterpret_cast<const Bound *>(ptr);
 	ptr += view.format_header->meshlet_count * sizeof(Bound);
 
+	size_t num_bounds_256 = (view.format_header->meshlet_count + ChunkFactor - 1) / ChunkFactor;
+
+	if (end_ptr - ptr < ptrdiff_t(num_bounds_256 * sizeof(Bound)))
+		return {};
+	view.bounds_256 = reinterpret_cast<const Bound *>(ptr);
+	ptr += num_bounds_256 * sizeof(Bound);
+
+	view.num_bounds = view.format_header->meshlet_count;
+	view.num_bounds_256 = num_bounds_256;
+
 	if (end_ptr - ptr < ptrdiff_t(view.format_header->meshlet_count * view.format_header->stream_count * sizeof(Stream)))
 		return {};
 	view.streams = reinterpret_cast<const Stream *>(ptr);

@@ -258,17 +258,26 @@ bool Device::fossilize_replay_graphics_pipeline(Fossilize::Hash hash, VkGraphics
 		                      reinterpret_cast<const ImmutableSamplerBank *>(info.layout));
 	}
 
-	// The layout is dummy, resolve it here.
-	info.layout = ret->get_pipeline_layout()->get_layout();
+	if (ret)
+	{
+		// The layout is dummy, resolve it here.
+		info.layout = ret->get_pipeline_layout()->get_layout();
 
-	// Resolve shader modules.
-	if (vert_index >= 0)
-		const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[vert_index].module = vert_shader->get_module();
-	if (task_index >= 0)
-		const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[task_index].module = task_shader->get_module();
-	if (mesh_index >= 0)
-		const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[mesh_index].module = mesh_shader->get_module();
-	const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[frag_index].module = frag_shader->get_module();
+		// Resolve shader modules.
+		if (vert_index >= 0)
+			const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[vert_index].module = vert_shader->get_module();
+		if (task_index >= 0)
+			const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[task_index].module = task_shader->get_module();
+		if (mesh_index >= 0)
+			const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[mesh_index].module = mesh_shader->get_module();
+		const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[frag_index].module = frag_shader->get_module();
+	}
+
+	if (!ret || !replayer_state->feature_filter->graphics_pipeline_is_supported(&info))
+	{
+		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
+		return true;
+	}
 
 #ifdef VULKAN_DEBUG
 	LOGI("Replaying graphics pipeline.\n");
@@ -305,12 +314,6 @@ bool Device::fossilize_replay_graphics_pipeline(Fossilize::Hash hash, VkGraphics
 		}
 	}
 
-	if (!replayer_state->feature_filter->graphics_pipeline_is_supported(&info))
-	{
-		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
-		return true;
-	}
-
 	VkPipeline pipeline = VK_NULL_HANDLE;
 	VkResult res = table->vkCreateGraphicsPipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
@@ -340,13 +343,16 @@ bool Device::fossilize_replay_compute_pipeline(Fossilize::Hash hash, VkComputePi
 
 	auto *ret = request_program(shader, reinterpret_cast<const ImmutableSamplerBank *>(info.layout));
 
-	// The layout is dummy, resolve it here.
-	info.layout = ret->get_pipeline_layout()->get_layout();
+	if (ret)
+	{
+		// The layout is dummy, resolve it here.
+		info.layout = ret->get_pipeline_layout()->get_layout();
 
-	// Resolve shader module.
-	info.stage.module = shader->get_module();
+		// Resolve shader module.
+		info.stage.module = shader->get_module();
+	}
 
-	if (!replayer_state->feature_filter->compute_pipeline_is_supported(&info))
+	if (!ret || !replayer_state->feature_filter->compute_pipeline_is_supported(&info))
 	{
 		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return true;

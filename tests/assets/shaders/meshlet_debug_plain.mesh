@@ -120,12 +120,16 @@ void main()
 #endif
 
 #if defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
-    uint linear_index = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
+    uint linear_index = gl_SubgroupInvocationID;
+    uint sublet_index = gl_SubgroupID;
 #else
-    uint linear_index = gl_LocalInvocationIndex;
+    uint linear_index = gl_LocalInvocationID.x;
+    uint sublet_index = gl_LocalInvocationID.y;
 #endif
 
-    IndirectDrawMesh meshlet = indirect_commands_mesh.draws[8u * task.meshlet_index + gl_WorkGroupID.x];
+    sublet_index = meshlet_get_sublet_index(task.meshlet_index, sublet_index);
+    IndirectDrawMesh meshlet = indirect_commands_mesh.draws[sublet_index];
+
     mat4 M = transforms.data[task.node_offset];
 
     // Transform positions.

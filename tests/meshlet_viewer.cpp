@@ -366,7 +366,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		if (ui.indirect_rendering)
 			ui.use_preculling = Util::get_environment_bool("PRECULL", ui.use_preculling);
-		if (!device.get_device_features().mesh_shader_features.taskShader)
+		if (!device.get_device_features().mesh_shader_features.taskShader && ui.indirect_rendering)
 			ui.use_preculling = true;
 
 		struct
@@ -597,10 +597,15 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			bool supports_wg32 = ui.supports_wave32 && ui.target_meshlet_workgroup_size == 32;
 
+			bool local_invocation_indexed =
+					device.get_device_features().mesh_shader_properties.prefersLocalInvocationPrimitiveOutput ||
+					device.get_device_features().mesh_shader_properties.prefersLocalInvocationVertexOutput;
+
 			if (ui.use_preculling)
 			{
 				cmd->set_program("", mesh_path, "assets://shaders/meshlet_debug.mesh.frag",
 				                 { { "MESHLET_SIZE", int(ui.target_meshlet_workgroup_size) },
+				                   { "MESHLET_LOCAL_INVOCATION_INDEXED", int(local_invocation_indexed) },
 				                   { "MESHLET_VERTEX_ID", int(ui.use_vertex_id) } });
 			}
 			else
@@ -612,6 +617,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				                   { "MESHLET_RENDER_PHASE", render_phase },
 				                   { "MESHLET_PRIMITIVE_CULL_WG32", int(supports_wg32) },
 				                   { "MESHLET_VERTEX_ID", int(ui.use_vertex_id) },
+				                   { "MESHLET_LOCAL_INVOCATION_INDEXED", int(local_invocation_indexed) },
 				                   { "MESHLET_PRIMITIVE_CULL_WAVE32", int(ui.supports_wave32) } });
 
 				cmd->set_storage_buffer(0, 6, *aabb_visibility_buffer);

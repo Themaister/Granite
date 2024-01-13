@@ -288,7 +288,7 @@ void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport)
     if (is_active_prim)
     {
 #ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
-	    MESHLET_PRIMITIVE_CULL_SHARED_INDEX[compacted_index_output()] = u8vec3(remap_index_buffer(prim));
+	    MESHLET_PRIMITIVE_CULL_SHARED_INDEX[compacted_index_output()] = pack32(u8vec4(remap_index_buffer(prim), 0));
 #else
 	    gl_PrimitiveTriangleIndicesEXT[compacted_index_output()] = remap_index_buffer(prim);
 #endif

@@ -31,14 +31,12 @@ layout(local_size_x = 32, local_size_y_id = 0) in;
 #include "meshlet_attribute_decode.h"
 #include "meshlet_render_types.h"
 
-#define LOCAL_INVOCATION_INDEXED 0
-
-#if MESHLET_SIZE > 32 && LOCAL_INVOCATION_INDEXED
+#if MESHLET_LOCAL_INVOCATION_INDEXED
 #define MESHLET_PRIMITIVE_CULL_SHARED_INDEX shared_indices
-shared u8vec3 shared_indices[MESHLET_SIZE];
+shared uint shared_indices[MESHLET_SIZE];
 shared u8vec4 shared_nt[MESHLET_SIZE];
 shared bool shared_t_sign[MESHLET_SIZE];
-shared int shared_exponent;
+shared int shared_exponent[MESHLET_SIZE];
 shared i16vec2 shared_uv[MESHLET_SIZE];
 shared vec4 shared_clip_pos[MESHLET_SIZE];
 #endif
@@ -146,8 +144,7 @@ void main()
         shared_clip_pos[out_vert_index] = clip_pos;
         shared_uv[out_vert_index] = uv;
         shared_nt[out_vert_index] = nt;
-        if (out_vert_index == 0)
-            shared_exponent = exponent;
+        shared_exponent[out_vert_index] = exponent;
 #else
         gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
         vUV[out_vert_index] = attribute_decode_snorm_exp_uv(uv, exponent);
@@ -162,7 +159,7 @@ void main()
     if (gl_LocalInvocationIndex < shared_active_vert_count_total)
     {
         i16vec2 uv = shared_uv[gl_LocalInvocationIndex];
-        int exponent = shared_exponent;
+        int exponent = shared_exponent[gl_LocalInvocationIndex];
         u8vec4 nt = shared_nt[gl_LocalInvocationIndex];
         bool t_sign = shared_t_sign[gl_LocalInvocationIndex];
 
@@ -177,7 +174,7 @@ void main()
     if (gl_LocalInvocationIndex < shared_active_prim_count_total)
     {
 #ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
-	    gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(shared_indices[gl_LocalInvocationIndex]);
+	    gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(unpack8(shared_indices[gl_LocalInvocationIndex]).xyz);
 #endif
         vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
     }

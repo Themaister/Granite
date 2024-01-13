@@ -600,6 +600,12 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			bool local_invocation_indexed =
 					device.get_device_features().mesh_shader_properties.prefersLocalInvocationPrimitiveOutput ||
 					device.get_device_features().mesh_shader_properties.prefersLocalInvocationVertexOutput;
+
+			// RADV doesn't seem to like roundtripping through LDS to satisfy local invocation indexed.
+			// amdgpu-pro is bugged without it >_<
+			if (device.get_device_features().driver_id == VK_DRIVER_ID_MESA_RADV)
+				local_invocation_indexed = false;
+
 			local_invocation_indexed = Util::get_environment_bool("LOCAL_INVOCATION", local_invocation_indexed);
 
 			if (ui.use_preculling)

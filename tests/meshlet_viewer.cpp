@@ -470,6 +470,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		int render_phase = ui.use_occlusion_cull ? (hiz ? 2 : 1) : 0;
 
+		if (ui.indirect_rendering)
 		{
 			cmd->set_program("assets://shaders/meshlet_cull_aabb.comp", {{ "MESHLET_RENDER_PHASE", render_phase }});
 			cmd->set_storage_buffer(0, 0, *aabb_buffer);

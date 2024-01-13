@@ -119,15 +119,20 @@ void main()
     CompactedDrawInfo task = mesh_payload.infos[compacted_meshlet_index];
 #endif
 
-#if defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
-    uint linear_index = gl_SubgroupInvocationID;
-    uint sublet_index = gl_SubgroupID;
-#else
-    uint linear_index = gl_LocalInvocationID.x;
-    uint sublet_index = gl_LocalInvocationID.y;
-#endif
+    uint linear_index, sublet_index;
+    if (gl_SubgroupSize == 32)
+    {
+        linear_index = gl_SubgroupInvocationID;
+        sublet_index = gl_SubgroupID;
+    }
+    else
+    {
+        linear_index = gl_LocalInvocationID.x;
+        sublet_index = gl_LocalInvocationID.y;
+    }
 
-    sublet_index = meshlet_get_sublet_index(task.meshlet_index, sublet_index);
+    meshlet_setup_local_invocation(uvec2(linear_index, sublet_index));
+    sublet_index = 8u * task.meshlet_index + meshlet_get_sublet_index(sublet_index);
     IndirectDrawMesh meshlet = indirect_commands_mesh.draws[sublet_index];
 
     mat4 M = transforms.data[task.node_offset];
@@ -136,8 +141,6 @@ void main()
     vec3 pos = pos.data[meshlet.vertex_offset + linear_index];
     vec3 world_pos = (M * vec4(pos, 1.0)).xyz;
     vec4 clip_pos = VP * vec4(world_pos, 1.0);
-
-    meshlet_setup_local_invocation(gl_LocalInvocationID.xy);
 
     uvec3 prim = uvec3(0);
     if (linear_index < meshlet.primitive_count)

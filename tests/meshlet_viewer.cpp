@@ -600,6 +600,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			bool local_invocation_indexed =
 					device.get_device_features().mesh_shader_properties.prefersLocalInvocationPrimitiveOutput ||
 					device.get_device_features().mesh_shader_properties.prefersLocalInvocationVertexOutput;
+			local_invocation_indexed = Util::get_environment_bool("LOCAL_INVOCATION", local_invocation_indexed);
 
 			if (ui.use_preculling)
 			{

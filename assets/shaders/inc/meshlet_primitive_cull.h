@@ -165,18 +165,15 @@ void meshlet_init_shared()
 
 uint meshlet_get_meshlet_index()
 {
-    if (gl_WorkGroupSize.y != 8)
-        return gl_WorkGroupID.y;
-    else
-        return gl_WorkGroupID.x;
+	return gl_WorkGroupSize.y == 8 ? gl_WorkGroupID.x : gl_WorkGroupID.y;
 }
 
-uint meshlet_get_base_chunk_index()
+uint meshlet_get_sublet_index(uint sublet_index)
 {
-    if (gl_WorkGroupSize.y != 8)
-        return gl_WorkGroupID.x * gl_WorkGroupSize.y;
-    else
-        return 0;
+	if (gl_WorkGroupSize.y == 8)
+		return sublet_index;
+	else
+		return gl_WorkGroupSize.y * gl_WorkGroupID.x + sublet_index;
 }
 
 void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport)
@@ -299,7 +296,7 @@ void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport)
     if (is_active_prim)
     {
 #ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
-	    MESHLET_PRIMITIVE_CULL_SHARED_INDEX[compacted_index_output()] = u8vec3(remap_index_buffer(prim));
+	    MESHLET_PRIMITIVE_CULL_SHARED_INDEX[compacted_index_output()] = pack32(u8vec4(remap_index_buffer(prim), 0));
 #else
 	    gl_PrimitiveTriangleIndicesEXT[compacted_index_output()] = remap_index_buffer(prim);
 #endif

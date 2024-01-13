@@ -81,6 +81,7 @@ static inline uint32_t ctz64(uint64_t x)
 }
 }
 
+#define popcount32(x) ::Util::Internal::popcount32(x)
 #define leading_zeroes(x) ::Util::Internal::clz(x)
 #define trailing_zeroes(x) ::Util::Internal::ctz(x)
 #define trailing_ones(x) ::Util::Internal::ctz(~uint32_t(x))

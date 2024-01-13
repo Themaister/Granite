@@ -1,0 +1,55 @@
+#version 450
+
+layout(local_size_x = 64) in;
+
+#define MESHLET_RENDER_DESCRIPTOR_SET 0
+#define MESHLET_RENDER_AABB_BINDING 0
+#define MESHLET_RENDER_BOUND_BINDING 1
+#define MESHLET_RENDER_TRANSFORM_BINDING 2
+#define MESHLET_RENDER_FRUSTUM_BINDING 3
+#define MESHLET_RENDER_TASKS_BINDING 5
+#if MESHLET_RENDER_PHASE == 2
+#extension GL_EXT_samplerless_texture_functions : require
+#define MESHLET_RENDER_HIZ_BINDING 6
+#endif
+#include "meshlet_render.h"
+
+layout(set = 0, binding = 4) writeonly buffer AABBOut
+{
+    uint data[];
+} visibility;
+
+layout(push_constant) uniform Registers
+{
+    uint count;
+} registers;
+
+shared uint shared_bits[2];
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+
+    if (gl_LocalInvocationIndex < 2)
+        shared_bits[gl_LocalInvocationIndex] = 0;
+    barrier();
+
+    bool active_aabb = false;
+    if (index < registers.count)
+    {
+        AABB aabb = aabb.data[index];
+        active_aabb = frustum_cull(aabb.lo, aabb.hi);
+#ifdef MESHLET_RENDER_HIZ_BINDING
+        if (active_aabb)
+            active_aabb = aabb_hiz_cull(aabb.lo, aabb.hi);
+#endif
+    }
+
+    if (active_aabb)
+        atomicOr(shared_bits[gl_LocalInvocationIndex / 32], 1u << (gl_LocalInvocationIndex & 31u));
+
+    barrier();
+
+    if (gl_LocalInvocationIndex < 2)
+        visibility.data[2 * gl_WorkGroupID.x + gl_LocalInvocationIndex] = shared_bits[gl_LocalInvocationIndex];
+}

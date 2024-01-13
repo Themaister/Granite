@@ -3,6 +3,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_ARB_shader_draw_parameters : require
 
 #extension GL_KHR_shader_subgroup_basic : require
 #if defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
@@ -15,8 +16,11 @@
 #error "Must define MESHLET_SIZE"
 #endif
 
-#if MESHLET_SIZE > 32 && !MESHLET_VERTEX_ID
+#if MESHLET_LOCAL_INVOCATION_INDEXED && !MESHLET_VERTEX_ID
 shared uint shared_attr_index[MESHLET_SIZE];
+shared vec4 shared_clip_pos[MESHLET_SIZE];
+#define MESHLET_PRIMITIVE_CULL_SHARED_INDEX shared_indices
+shared uint shared_indices[MESHLET_SIZE];
 #endif
 
 layout(max_primitives = MESHLET_SIZE, max_vertices = MESHLET_SIZE, triangles) out;
@@ -106,8 +110,7 @@ mediump vec4 unpack_bgr10a2(uint v)
 
 void main()
 {
-    uint compacted_meshlet_index = meshlet_get_meshlet_index();
-    uint base_chunk_index = meshlet_get_base_chunk_index();
+    uint compacted_meshlet_index = meshlet_get_meshlet_index() + 0x8000 * gl_DrawIDARB;
 
 #if defined(MESHLET_RENDER_TASK_HIERARCHICAL) && !MESHLET_RENDER_TASK_HIERARCHICAL
     CompactedDrawInfo task = mesh_payload.info;
@@ -116,36 +119,47 @@ void main()
     CompactedDrawInfo task = mesh_payload.infos[compacted_meshlet_index];
 #endif
 
-#if defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
-    uint linear_index = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
-#else
-    uint linear_index = gl_LocalInvocationIndex;
-#endif
+    uint linear_index, sublet_index;
+    if (gl_SubgroupSize == 32)
+    {
+        linear_index = gl_SubgroupInvocationID;
+        sublet_index = gl_SubgroupID;
+    }
+    else
+    {
+        linear_index = gl_LocalInvocationID.x;
+        sublet_index = gl_LocalInvocationID.y;
+    }
 
-    IndirectDrawMesh meshlet = indirect_commands_mesh.draws[task.meshlet_index];
+    meshlet_setup_local_invocation(uvec2(linear_index, sublet_index));
+    sublet_index = 8u * task.meshlet_index + meshlet_get_sublet_index(sublet_index);
+    IndirectDrawMesh meshlet = indirect_commands_mesh.draws[sublet_index];
+
     mat4 M = transforms.data[task.node_offset];
 
     // Transform positions.
-    vec3 pos = pos.data[meshlet.vertex_offset + linear_index + 32u * base_chunk_index];
+    vec3 pos = pos.data[meshlet.vertex_offset + linear_index];
     vec3 world_pos = (M * vec4(pos, 1.0)).xyz;
     vec4 clip_pos = VP * vec4(world_pos, 1.0);
 
-    meshlet_setup_local_invocation(gl_LocalInvocationID.xy);
-
-    uvec3 prim = uvec3(ibo.data[meshlet.primitive_offset + linear_index + 32u * base_chunk_index]);
+    uvec3 prim = uvec3(0);
+    if (linear_index < meshlet.primitive_count)
+        prim = uvec3(ibo.data[meshlet.primitive_offset + linear_index]);
     meshlet_emit_primitive(prim, clip_pos, viewport);
 
     if (meshlet_lane_has_active_vert())
     {
-        uint vert_id = meshlet.vertex_offset + linear_index + 32u * base_chunk_index;
         uint out_vert_index = meshlet_compacted_vertex_output();
-        gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
+        uint vert_id = meshlet.vertex_offset + linear_index;
 
 #if MESHLET_VERTEX_ID
+        gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
         vVertexID[out_vert_index] = vert_id;
-#elif MESHLET_SIZE > 32
+#elif defined(MESHLET_PRIMITIVE_CULL_SHARED_INDEX)
+        shared_clip_pos[out_vert_index] = clip_pos;
         shared_attr_index[out_vert_index] = vert_id;
 #else
+        gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
         TexturedAttr a = attr.data[vert_id];
         mediump vec3 n = unpack_bgr10a2(a.n).xyz;
         mediump vec4 t = unpack_bgr10a2(a.t);
@@ -155,7 +169,7 @@ void main()
 #endif
     }
 
-#if MESHLET_SIZE > 32 && !MESHLET_VERTEX_ID
+#ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
     barrier();
 
     if (gl_LocalInvocationIndex < shared_active_vert_count_total)
@@ -163,6 +177,7 @@ void main()
         TexturedAttr a = attr.data[shared_attr_index[gl_LocalInvocationIndex]];
         mediump vec3 n = unpack_bgr10a2(a.n).xyz;
         mediump vec4 t = unpack_bgr10a2(a.t);
+        gl_MeshVerticesEXT[gl_LocalInvocationIndex].gl_Position = shared_clip_pos[gl_LocalInvocationIndex];
         vUV[gl_LocalInvocationIndex] = a.uv;
         vNormal[gl_LocalInvocationIndex] = mat3(M) * n;
         vTangent[gl_LocalInvocationIndex] = vec4(mat3(M) * t.xyz, t.w);
@@ -172,7 +187,7 @@ void main()
     if (gl_LocalInvocationIndex < shared_active_prim_count_total)
     {
 #ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
-	    gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(shared_primitive[gl_LocalInvocationIndex]);
+	    gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(unpack8(shared_indices[gl_LocalInvocationIndex]).xyz);
 #endif
 #if MESHLET_VERTEX_ID
         vTransformIndex[gl_LocalInvocationIndex] = task.node_offset;

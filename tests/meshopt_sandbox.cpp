@@ -27,99 +27,86 @@ static void decode_bits(T *values, unsigned component_count, const PayloadWord *
 	}
 }
 
-static void decode_mesh_index_buffer(std::vector<uvec3> &out_index_buffer, const MeshView &mesh, uint32_t meshlet_index)
+static void decode_mesh_index_buffer(std::vector<uvec3> &out_index_buffer, const MeshView &mesh, uint32_t meshlet_index,
+                                     uint32_t &base_vertex_offset)
 {
-	auto &meshlet = mesh.headers[meshlet_index];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
 	const auto *pdata = mesh.payload + stream.offset_in_words;
 
-	for (uint32_t chunk_index = 0; chunk_index < meshlet.num_chunks; chunk_index++)
+	u8vec3 decoded_indices[MaxElements];
+	uint32_t num_primitives = stream.u.counts.prim_count;
+
+	for (uint32_t i = 0; i < num_primitives; i++)
 	{
-		u8vec3 decoded_indices[ElementsPerChunk];
-		uint32_t num_primitives_for_chunk = stream.u.offsets[chunk_index + 1].prim_offset -
-		                                    stream.u.offsets[chunk_index].prim_offset;
-
-		for (uint32_t i = 0; i < num_primitives_for_chunk; i++)
-		{
-			decode_bits(decoded_indices[i].data, 3, pdata, i, 5);
-			decoded_indices[i] += u8vec3(stream.u.offsets[chunk_index].attr_offset);
-			out_index_buffer.push_back(uvec3(decoded_indices[i]) + meshlet.base_vertex_offset);
-		}
-
-		pdata += 15;
+		decode_bits(decoded_indices[i].data, 3, pdata, i, 5);
+		out_index_buffer.push_back(uvec3(decoded_indices[i]) + base_vertex_offset);
 	}
+
+	base_vertex_offset += stream.u.counts.vert_count;
 }
 
 template <typename T>
-static void decode_bitfield_block(T *block, unsigned component_count, const PayloadWord *&pdata, unsigned bit_count)
+static void decode_bitfield_block(T *block, unsigned component_count, const PayloadWord *pdata, unsigned bit_count, unsigned count)
 {
-	for (uint32_t i = 0; i < ElementsPerChunk; i++)
+	for (uint32_t i = 0; i < count; i++)
 		decode_bits(block[i].data, component_count, pdata, i, bit_count);
-	pdata += bit_count * component_count;
 }
 
 static void decode_attribute_buffer(std::vector<vec3> &out_positions, const MeshView &mesh, uint32_t meshlet_index, StreamType type)
 {
-	auto &meshlet = mesh.headers[meshlet_index];
 	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
 	const auto *pdata = mesh.payload + stream.offset_in_words;
 
-	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
+	uint32_t num_attributes = index_stream.u.counts.vert_count;
+
+	u16vec3 positions[MaxElements];
+	unsigned bits = stream.bits & 0xff;
+	decode_bitfield_block(positions, 3, pdata, bits, num_attributes);
+
+	u16vec3 base;
+	decode_bits(base.data, 3, stream.u.base_value, 0, 16);
+
+	for (auto &p : positions)
+		p += base;
+
+	int exp = int(stream.bits) >> 16;
+
+	for (uint32_t i = 0; i < num_attributes; i++)
 	{
-		u16vec3 positions[ElementsPerChunk];
-		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
-		decode_bitfield_block(positions, 3, pdata, config + 1);
-
-		u16vec3 base;
-		decode_bits(base.data, 3, stream.u.base_value, chunk, 16);
-
-		for (auto &p : positions)
-			p += base;
-
-		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
-		                                    index_stream.u.offsets[chunk].attr_offset;
-
-		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
-		{
-			vec3 float_pos = vec3(i16vec3(positions[i]));
-			float_pos.x = ldexpf(float_pos.x, stream.aux);
-			float_pos.y = ldexpf(float_pos.y, stream.aux);
-			float_pos.z = ldexpf(float_pos.z, stream.aux);
-			out_positions.push_back(float_pos);
-		}
+		vec3 float_pos = vec3(i16vec3(positions[i]));
+		float_pos.x = ldexpf(float_pos.x, exp);
+		float_pos.y = ldexpf(float_pos.y, exp);
+		float_pos.z = ldexpf(float_pos.z, exp);
+		out_positions.push_back(float_pos);
 	}
 }
 
 static void decode_attribute_buffer(std::vector<vec2> &out_uvs, const MeshView &mesh, uint32_t meshlet_index, StreamType type)
 {
-	auto &meshlet = mesh.headers[meshlet_index];
 	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
 	const auto *pdata = mesh.payload + stream.offset_in_words;
 
-	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
+	u16vec2 uvs[MaxElements];
+	uint32_t num_attributes = index_stream.u.counts.vert_count;
+	unsigned bits = stream.bits & 0xff;
+	decode_bitfield_block(uvs, 2, pdata, bits, num_attributes);
+
+	u16vec2 base;
+	decode_bits(base.data, 2, stream.u.base_value, 0, 16);
+
+	for (auto &p : uvs)
+		p += base;
+
+	int exp = int(stream.bits) >> 16;
+
+	for (uint32_t i = 0; i < num_attributes; i++)
 	{
-		u16vec2 uvs[ElementsPerChunk];
-		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
-		decode_bitfield_block(uvs, 2, pdata, config + 1);
-
-		u16vec2 base;
-		decode_bits(base.data, 2, stream.u.base_value, chunk, 16);
-
-		for (auto &p : uvs)
-			p += base;
-
-		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
-		                                    index_stream.u.offsets[chunk].attr_offset;
-
-		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
-		{
-			vec2 float_pos = vec2(i16vec2(uvs[i]));
-			float_pos.x = ldexpf(float_pos.x, stream.aux);
-			float_pos.y = ldexpf(float_pos.y, stream.aux);
-			out_uvs.push_back(0.5f * float_pos + 0.5f);
-		}
+		vec2 float_pos = vec2(i16vec2(uvs[i]));
+		float_pos.x = ldexpf(float_pos.x, exp);
+		float_pos.y = ldexpf(float_pos.y, exp);
+		out_uvs.push_back(0.5f * float_pos + 0.5f);
 	}
 }
 
@@ -145,55 +132,45 @@ static vec3 decode_oct8(i8vec2 payload)
 static void decode_attribute_buffer(std::vector<vec3> &out_normals, std::vector<vec4> &out_tangents,
                                     const MeshView &mesh, uint32_t meshlet_index, StreamType type)
 {
-	auto &meshlet = mesh.headers[meshlet_index];
 	auto &index_stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(type)];
 	const auto *pdata = mesh.payload + stream.offset_in_words;
 
-	for (uint32_t chunk = 0; chunk < meshlet.num_chunks; chunk++)
+	u8vec4 nts[MaxElements];
+	uint32_t t_signs = 0;
+
+	uint32_t num_attributes = index_stream.u.counts.vert_count;
+	unsigned bits = stream.bits & 0xff;
+	decode_bitfield_block(nts, 4, pdata, bits, num_attributes);
+
+	unsigned aux = stream.bits >> 16;
+
+	if (aux == 1)
+		t_signs = 0;
+	else if (aux == 2)
+		t_signs = UINT32_MAX;
+
+	u8vec4 base;
+	decode_bits(base.data, 4, stream.u.base_value, 0, 8);
+
+	for (auto &p : nts)
+		p += base;
+
+	if (aux == 3)
 	{
-		u8vec4 nts[ElementsPerChunk];
-		uint32_t t_signs = 0;
-
-		unsigned config = (stream.bit_plane_config >> (4 * chunk)) & 0xf;
-		decode_bitfield_block(nts, 4, pdata, config + 1);
-
-		int aux = (stream.aux >> (2 * chunk)) & 3;
-
-		if (aux == 1)
+		for (unsigned i = 0; i < num_attributes; i++)
 		{
-			t_signs = 0;
+			t_signs |= (nts[i].w & 1u) << i;
+			nts[i].w &= ~1;
 		}
-		else if (aux == 2)
-		{
-			t_signs = UINT32_MAX;
-		}
+	}
 
-		u8vec4 base;
-		decode_bits(base.data, 4, stream.u.base_value, chunk, 8);
-
-		for (auto &p : nts)
-			p += base;
-
-		if (aux == 3)
-		{
-			for (unsigned i = 0; i < ElementsPerChunk; i++)
-			{
-				t_signs |= (nts[i].w & 1u) << i;
-				nts[i].w &= ~1;
-			}
-		}
-
-		uint32_t num_attributes_for_chunk = index_stream.u.offsets[chunk + 1].attr_offset -
-		                                    index_stream.u.offsets[chunk].attr_offset;
-
-		for (uint32_t i = 0; i < num_attributes_for_chunk; i++)
-		{
-			vec3 n = decode_oct8(i8vec2(nts[i].xy()));
-			vec3 t = decode_oct8(i8vec2(nts[i].zw()));
-			out_normals.push_back(n);
-			out_tangents.emplace_back(t, (t_signs & (1u << i)) != 0 ? -1.0f : 1.0f);
-		}
+	for (uint32_t i = 0; i < num_attributes; i++)
+	{
+		vec3 n = decode_oct8(i8vec2(nts[i].xy()));
+		vec3 t = decode_oct8(i8vec2(nts[i].zw()));
+		out_normals.push_back(n);
+		out_tangents.emplace_back(t, (t_signs & (1u << i)) != 0 ? -1.0f : 1.0f);
 	}
 }
 
@@ -204,9 +181,10 @@ static void decode_mesh(std::vector<uvec3> &out_index_buffer,
 						std::vector<vec4> &out_tangents,
                         const MeshView &mesh)
 {
+	uint32_t base_vertex_offset = 0;
 	for (uint32_t meshlet_index = 0; meshlet_index < mesh.format_header->meshlet_count; meshlet_index++)
 	{
-		decode_mesh_index_buffer(out_index_buffer, mesh, meshlet_index);
+		decode_mesh_index_buffer(out_index_buffer, mesh, meshlet_index, base_vertex_offset);
 		decode_attribute_buffer(out_positions, mesh, meshlet_index, StreamType::Position);
 		decode_attribute_buffer(out_uvs, mesh, meshlet_index, StreamType::UV);
 		decode_attribute_buffer(out_normals, out_tangents, mesh, meshlet_index, StreamType::NormalTangentOct8);
@@ -550,10 +528,10 @@ int main(int argc, char **argv)
 		memcpy(mesh.attributes.data(), reference_attributes.data(), mesh.attributes.size());
 	}
 
-	if (!Meshlet::export_mesh_to_meshlet("export.msh2", std::move(mesh), MeshStyle::Textured))
+	if (!Meshlet::export_mesh_to_meshlet("export.msh3", std::move(mesh), MeshStyle::Textured))
 		return EXIT_FAILURE;
 
-	auto file = GRANITE_FILESYSTEM()->open("export.msh2", FileMode::ReadOnly);
+	auto file = GRANITE_FILESYSTEM()->open("export.msh3", FileMode::ReadOnly);
 	if (!file)
 		return EXIT_FAILURE;
 
@@ -569,6 +547,9 @@ int main(int argc, char **argv)
 	auto view = create_mesh_view(*mapped);
 	decode_mesh(decoded_index_buffer, decoded_positions, decoded_uvs, decoded_normals, decoded_tangents, view);
 
+#define TEST_GPU 1
+
+#if TEST_GPU
 	Vulkan::Context ctx;
 	Vulkan::Device dev;
 	if (!Vulkan::Context::init_loader(nullptr))
@@ -591,6 +572,7 @@ int main(int argc, char **argv)
 	if (!validate_mesh(decoded_index_buffer, decoded_positions,
 	                   gpu_index_buffer, gpu_positions, false))
 		return EXIT_FAILURE;
+#endif
 
 	if (!reference_indices.empty())
 	{
@@ -623,7 +605,9 @@ int main(int argc, char **argv)
 			return EXIT_FAILURE;
 	}
 
+#if TEST_GPU
 	decode_mesh_gpu_bench(dev, view);
+#endif
 
 	return 0;
 }

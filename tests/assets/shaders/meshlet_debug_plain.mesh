@@ -122,7 +122,7 @@ void main()
     uint linear_index = gl_LocalInvocationIndex;
 #endif
 
-    IndirectDrawMesh meshlet = indirect_commands_mesh.draws[task.meshlet_index];
+    IndirectDrawMesh meshlet = indirect_commands_mesh.draws[8u * task.meshlet_index + gl_WorkGroupID.x];
     mat4 M = transforms.data[task.node_offset];
 
     // Transform positions.

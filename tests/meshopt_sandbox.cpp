@@ -27,9 +27,9 @@ static void decode_bits(T *values, unsigned component_count, const PayloadWord *
 	}
 }
 
-static void decode_mesh_index_buffer(std::vector<uvec3> &out_index_buffer, const MeshView &mesh, uint32_t meshlet_index)
+static void decode_mesh_index_buffer(std::vector<uvec3> &out_index_buffer, const MeshView &mesh, uint32_t meshlet_index,
+                                     uint32_t &base_vertex_offset)
 {
-	auto &meshlet = mesh.headers[meshlet_index];
 	auto &stream = mesh.streams[meshlet_index * mesh.format_header->stream_count + int(StreamType::Primitive)];
 	const auto *pdata = mesh.payload + stream.offset_in_words;
 
@@ -39,8 +39,10 @@ static void decode_mesh_index_buffer(std::vector<uvec3> &out_index_buffer, const
 	for (uint32_t i = 0; i < num_primitives; i++)
 	{
 		decode_bits(decoded_indices[i].data, 3, pdata, i, 5);
-		out_index_buffer.push_back(uvec3(decoded_indices[i]) + meshlet.base_vertex_offset);
+		out_index_buffer.push_back(uvec3(decoded_indices[i]) + base_vertex_offset);
 	}
+
+	base_vertex_offset += stream.u.counts.vert_count;
 }
 
 template <typename T>
@@ -179,9 +181,10 @@ static void decode_mesh(std::vector<uvec3> &out_index_buffer,
 						std::vector<vec4> &out_tangents,
                         const MeshView &mesh)
 {
+	uint32_t base_vertex_offset = 0;
 	for (uint32_t meshlet_index = 0; meshlet_index < mesh.format_header->meshlet_count; meshlet_index++)
 	{
-		decode_mesh_index_buffer(out_index_buffer, mesh, meshlet_index);
+		decode_mesh_index_buffer(out_index_buffer, mesh, meshlet_index, base_vertex_offset);
 		decode_attribute_buffer(out_positions, mesh, meshlet_index, StreamType::Position);
 		decode_attribute_buffer(out_uvs, mesh, meshlet_index, StreamType::UV);
 		decode_attribute_buffer(out_normals, out_tangents, mesh, meshlet_index, StreamType::NormalTangentOct8);

@@ -204,7 +204,7 @@ void ResourceManager::init()
 					sizeof(Meshlet::RuntimeHeaderDecoded) : sizeof(VkDrawIndexedIndirectCommand);
 
 			indirect_buffer_allocator.set_soa_count(2);
-			indirect_buffer_allocator.set_element_size(0, element_size);
+			indirect_buffer_allocator.set_element_size(0, Meshlet::ChunkFactor * element_size);
 			indirect_buffer_allocator.set_element_size(1, sizeof(Meshlet::Bound));
 
 			opaque.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
@@ -214,7 +214,7 @@ void ResourceManager::init()
 	}
 	else
 	{
-		mesh_header_allocator.set_element_size(0, sizeof(Meshlet::RuntimeHeader));
+		mesh_header_allocator.set_element_size(0, sizeof(Meshlet::RuntimeHeaderEncoded));
 		mesh_stream_allocator.set_element_size(0, sizeof(Meshlet::Stream));
 		mesh_payload_allocator.set_element_size(0, sizeof(Meshlet::PayloadWord));
 
@@ -472,6 +472,9 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 
 	if (ret)
 	{
+		size_t total_streams = view.format_header->meshlet_count * view.format_header->stream_count;
+		size_t total_padded_streams = view.num_bounds_256 * Meshlet::ChunkFactor * view.format_header->stream_count;
+
 		if (mesh_encoding == MeshEncoding::MeshletEncoded)
 		{
 			auto cmd = device->request_command_buffer(CommandBuffer::Type::AsyncTransfer);
@@ -481,10 +484,10 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			                                        view.format_header->payload_size_words * sizeof(Meshlet::PayloadWord));
 			memcpy(payload_data, view.payload, view.format_header->payload_size_words * sizeof(Meshlet::PayloadWord));
 
-			auto *headers = static_cast<Meshlet::RuntimeHeader *>(
+			auto *headers = static_cast<Meshlet::RuntimeHeaderEncoded *>(
 					cmd->update_buffer(*mesh_header_allocator.get_buffer(0, 0),
-					                   asset.mesh.indirect_or_header.offset * sizeof(Meshlet::RuntimeHeader),
-					                   view.num_bounds_256 * sizeof(Meshlet::RuntimeHeader)));
+					                   asset.mesh.indirect_or_header.offset * sizeof(Meshlet::RuntimeHeaderEncoded),
+					                   view.num_bounds_256 * sizeof(Meshlet::RuntimeHeaderEncoded)));
 
 			for (uint32_t i = 0, n = view.num_bounds_256; i < n; i++)
 			{
@@ -498,8 +501,6 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 					                   view.num_bounds_256 * sizeof(Meshlet::Bound)));
 			memcpy(bounds, view.bounds_256, view.num_bounds_256 * sizeof(Meshlet::Bound));
 
-			size_t total_streams = view.format_header->meshlet_count * view.format_header->stream_count;
-			size_t total_padded_streams = view.num_bounds_256 * Meshlet::ChunkFactor * view.format_header->stream_count;
 			auto *streams = static_cast<Meshlet::Stream *>(
 					cmd->update_buffer(*mesh_stream_allocator.get_buffer(0, 0),
 					                   asset.mesh.attr_or_stream.offset * sizeof(Meshlet::Stream),
@@ -541,7 +542,6 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 
 			info.payload = payload.get();
 
-			info.push.meshlet_offset = asset.mesh.indirect_or_header.offset;
 			info.push.primitive_offset = asset.mesh.index_or_payload.offset;
 			info.push.vertex_offset = asset.mesh.attr_or_stream.offset;
 
@@ -555,6 +555,9 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 						                   asset.mesh.indirect_or_header.offset * sizeof(Meshlet::Bound),
 						                   view.num_bounds_256 * sizeof(Meshlet::Bound)));
 				memcpy(bounds, view.bounds_256, view.num_bounds_256 * sizeof(Meshlet::Bound));
+
+				info.indirect = indirect_buffer_allocator.get_buffer(0, 0);
+				info.indirect_offset = asset.mesh.indirect_or_header.offset;
 			}
 
 			Meshlet::decode_mesh(*cmd, info, view);

@@ -1017,12 +1017,12 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			if (ui.use_meshlets)
 			{
 				snprintf(text, sizeof(text), "Mesh shader invocations: %.3f M / %.3f M", 1e-6 * last_mesh_invocations,
-				         1e-6 * double(ui.max_draws * MaxElements));
+				         1e-6 * double(ui.max_draws * MaxElements * ChunkFactor));
 			}
 			else if (ui.indirect_rendering)
 			{
 				snprintf(text, sizeof(text), "MDI primitives: %.3f M / %.3f M", 1e-6 * last_mesh_invocations,
-				         1e-6 * double(ui.max_draws * MaxElements));
+				         1e-6 * double(ui.max_draws * MaxElements * ChunkFactor));
 			}
 			else
 			{

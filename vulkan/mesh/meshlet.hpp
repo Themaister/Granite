@@ -56,13 +56,7 @@ struct Stream
 };
 static_assert(sizeof(Stream) == 16, "Unexpected Stream size.");
 
-struct Header
-{
-	uint32_t base_vertex_offset;
-};
-
-// For GPU use
-struct RuntimeHeader
+struct RuntimeHeaderEncoded
 {
 	uint32_t stream_offset;
 };
@@ -112,7 +106,6 @@ using PayloadWord = uint32_t;
 struct MeshView
 {
 	const FormatHeader *format_header;
-	const Header *headers;
 	const Bound *bounds;
 	const Bound *bounds_256;
 	const Stream *streams;
@@ -141,7 +134,7 @@ enum class RuntimeStyle
 
 struct DecodeInfo
 {
-	const Vulkan::Buffer *ibo, *streams[3], *payload;
+	const Vulkan::Buffer *ibo, *streams[3], *indirect, *payload;
 	DecodeModeFlags flags;
 	MeshStyle target_style;
 	RuntimeStyle runtime_style;
@@ -150,8 +143,8 @@ struct DecodeInfo
 	{
 		uint32_t primitive_offset;
 		uint32_t vertex_offset;
-		uint32_t meshlet_offset;
 	} push;
+	uint32_t indirect_offset;
 };
 
 bool decode_mesh(Vulkan::CommandBuffer &cmd, const DecodeInfo &decode_info, const MeshView &view);

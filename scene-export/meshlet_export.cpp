@@ -35,7 +35,7 @@ namespace Meshlet
 {
 using namespace Vulkan::Meshlet;
 
-struct Metadata : Header
+struct Metadata
 {
 	Stream streams[MaxStreams];
 };
@@ -471,7 +471,6 @@ static void encode_mesh(Encoded &encoded,
 	{
 		auto &meshlet = meshlets[meshlet_index];
 		Metadata out_meshlet = {};
-		out_meshlet.base_vertex_offset = base_vertex_offset;
 
 		{
 			auto &index_stream = out_meshlet.streams[int(StreamType::Primitive)];
@@ -585,9 +584,6 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 	required_size += sizeof(magic);
 	required_size += sizeof(FormatHeader);
 
-	// Per-meshlet metadata.
-	required_size += encoded.mesh.meshlets.size() * sizeof(Header);
-
 	// Bounds.
 	required_size += encoded.bounds.size() * sizeof(Bound);
 
@@ -612,13 +608,6 @@ static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)
 	ptr += sizeof(magic);
 	memcpy(ptr, &header, sizeof(header));
 	ptr += sizeof(header);
-
-	for (uint32_t i = 0; i < header.meshlet_count; i++)
-	{
-		auto &gpu = static_cast<const Header &>(encoded.mesh.meshlets[i]);
-		memcpy(ptr, &gpu, sizeof(gpu));
-		ptr += sizeof(gpu);
-	}
 
 	memcpy(ptr, encoded.bounds.data(), encoded.bounds.size() * sizeof(Bound));
 	ptr += encoded.bounds.size() * sizeof(Bound);

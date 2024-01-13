@@ -13,10 +13,6 @@
 #error "Must define MESHLET_PAYLOAD_DESCRIPTOR_SET"
 #endif
 
-#ifndef MESHLET_PAYLOAD_META_BINDING
-#error "Must define MESHLET_PAYLOAD_META_BINDING"
-#endif
-
 #ifndef MESHLET_PAYLOAD_STREAM_BINDING
 #error "Must define MESHLET_PAYLOAD_STREAM_BINDING"
 #endif
@@ -32,11 +28,6 @@ struct MeshletStream
 	uint offset_in_words;
 };
 
-struct MeshletMetaRaw
-{
-	uint base_vertex_offset;
-};
-
 struct MeshletMetaRuntime
 {
 	uint stream_offset;
@@ -48,15 +39,12 @@ struct MeshletInfo
 	uint vertex_count;
 };
 
-layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_META_BINDING, std430) readonly buffer MeshletMetasRaw
-{
-	MeshletMetaRaw data[];
-} meshlet_metas_raw;
-
+#ifdef MESHLET_PAYLOAD_META_BINDING
 layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_META_BINDING, std430) readonly buffer MeshletMetasRuntime
 {
 	MeshletMetaRuntime data[];
 } meshlet_metas_runtime;
+#endif
 
 layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_STREAM_BINDING, std430) readonly buffer MeshletStreams
 {

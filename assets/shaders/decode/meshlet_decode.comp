@@ -4,7 +4,7 @@
 #include "../inc/meshlet_payload_constants.h"
 #extension GL_KHR_shader_subgroup_basic : require
 
-layout(local_size_x = 32) in;
+layout(local_size_x = 32, local_size_y = 8) in;
 
 layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS;
 layout(constant_id = 1) const bool UNROLLED_MESH = false;
@@ -12,9 +12,8 @@ layout(constant_id = 2) const uint TARGET_MESH_STYLE = 0;
 layout(constant_id = 3) const bool RUNTIME_MESH = false;
 
 #define MESHLET_PAYLOAD_DESCRIPTOR_SET 0
-#define MESHLET_PAYLOAD_META_BINDING 0
-#define MESHLET_PAYLOAD_STREAM_BINDING 1
-#define MESHLET_PAYLOAD_PAYLOAD_BINDING 2
+#define MESHLET_PAYLOAD_STREAM_BINDING 0
+#define MESHLET_PAYLOAD_PAYLOAD_BINDING 1
 #include "../inc/meshlet_payload_decode.h"
 #include "../inc/meshlet_attribute_decode.h"
 #include "../inc/meshlet_payload_constants.h"
@@ -23,17 +22,17 @@ const int MESH_STYLE_WIREFRAME = 0;
 const int MESH_STYLE_TEXTURED = 1;
 const int MESH_STYLE_SKINNED = 2;
 
-layout(set = 0, binding = 3, scalar) writeonly buffer OutputIndices
+layout(set = 0, binding = 2, scalar) writeonly buffer OutputIndices
 {
     uvec3 data[];
 } output_indices32;
 
-layout(set = 0, binding = 3, scalar) writeonly buffer OutputIndices8
+layout(set = 0, binding = 2, scalar) writeonly buffer OutputIndices8
 {
     u8vec3 data[];
 } output_indices8;
 
-layout(set = 0, binding = 4, scalar) writeonly buffer OutputStreamPos
+layout(set = 0, binding = 3, scalar) writeonly buffer OutputStreamPos
 {
     vec3 data[];
 } output_stream_pos;
@@ -45,26 +44,34 @@ struct TexturedAttr
     vec2 uv;
 };
 
-layout(set = 0, binding = 5, std430) writeonly buffer OutputStreamTextured
+layout(set = 0, binding = 4, std430) writeonly buffer OutputStreamTextured
 {
     TexturedAttr data[];
 } output_stream_textured_attr;
 
-layout(set = 0, binding = 6, std430) writeonly buffer OutputStreamSkin
+layout(set = 0, binding = 5, std430) writeonly buffer OutputStreamSkin
 {
     uvec2 data[];
 } output_stream_skin;
 
-layout(set = 0, binding = 7, std430) readonly buffer OutputOffsets
+struct Offsets
 {
-    uint data[];
-} primitive_output_offsets;
+    uint primitive_output_offset;
+    uint vertex_output_offset;
+    uint index_offset;
+};
+
+layout(set = 0, binding = 6, std430) readonly buffer OutputOffsets
+{
+    Offsets data[];
+} output_offsets;
 
 layout(push_constant, std430) uniform Registers
 {
     uint primitive_offset;
     uint vertex_offset;
-    uint meshlet_offset;
+    uint meshlet_count;
+    uint wg_offset;
 } registers;
 
 uint pack_a2bgr10(vec4 v)
@@ -75,16 +82,26 @@ uint pack_a2bgr10(vec4 v)
 
 void main()
 {
-    uint meshlet_index = gl_WorkGroupID.x;
-    MeshletMetaRaw meta = meshlet_metas_raw.data[meshlet_index];
+    uint meshlet_index = gl_WorkGroupID.x + registers.wg_offset;
 
     uint lane_index;
     if (gl_SubgroupSize == 32)
+    {
         lane_index = gl_SubgroupInvocationID;
+        meshlet_index = 8 * meshlet_index + gl_SubgroupID;
+    }
     else
-        lane_index = gl_LocalInvocationIndex;
+    {
+        lane_index = gl_LocalInvocationID.x;
+        meshlet_index = 8 * meshlet_index + gl_LocalInvocationID.y;
+    }
 
-    uint primitive_output_offset = primitive_output_offsets.data[meshlet_index] + registers.primitive_offset;
+    if (meshlet_index >= registers.meshlet_count)
+        return;
+
+    Offsets offsets = output_offsets.data[meshlet_index];
+    offsets.primitive_output_offset += registers.primitive_offset;
+
     MeshletInfo info = meshlet_get_meshlet_info(meshlet_index * NUM_U32_STREAMS);
 
     // Index
@@ -94,10 +111,12 @@ void main()
                 meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_PRIMITIVE,
                 lane_index);
 
+        indices += offsets.index_offset;
+
         if (UNROLLED_MESH)
-            output_indices32.data[primitive_output_offset + lane_index] = indices + meta.base_vertex_offset;
+            output_indices32.data[offsets.primitive_output_offset + lane_index] = indices;
         else
-            output_indices8.data[primitive_output_offset + lane_index] = u8vec3(indices);
+            output_indices8.data[offsets.primitive_output_offset + lane_index] = u8vec3(indices);
     }
 
     // Attributes
@@ -109,8 +128,8 @@ void main()
                 lane_index, exponent);
 
         vec3 fp_pos = ldexp(vec3(pos), ivec3(exponent));
-        uint vertex_output_offset = registers.vertex_offset + meta.base_vertex_offset;
-        output_stream_pos.data[vertex_output_offset + lane_index] = fp_pos;
+        offsets.vertex_output_offset += registers.vertex_offset;
+        output_stream_pos.data[offsets.vertex_output_offset + lane_index] = fp_pos;
 
         if (TARGET_MESH_STYLE >= MESH_STYLE_TEXTURED)
         {
@@ -124,7 +143,7 @@ void main()
             vec2 fp_uv = attribute_decode_snorm_exp_uv(uv, exponent);
 
             mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
-            output_stream_textured_attr.data[vertex_output_offset + lane_index] =
+            output_stream_textured_attr.data[offsets.vertex_output_offset + lane_index] =
                 TexturedAttr(pack_a2bgr10(NT[0]), pack_a2bgr10(NT[1]), fp_uv);
         }
     }

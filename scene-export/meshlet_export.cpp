@@ -568,6 +568,7 @@ static void encode_mesh(Encoded &encoded,
 	for (unsigned i = 0; i < MaxStreams; i++)
 		if (stream_payload_count[i])
 			LOGI("Stream %u: %zu bytes.\n", i, stream_payload_count[i] * sizeof(PayloadWord));
+	LOGI("Total encoded vertices: %u\n", base_vertex_offset);
 }
 
 static bool export_encoded_mesh(const std::string &path, const Encoded &encoded)

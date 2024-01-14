@@ -603,8 +603,11 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			// RADV doesn't seem to like roundtripping through LDS to satisfy local invocation indexed.
 			// amdgpu-pro is bugged without it >_<
-			if (device.get_device_features().driver_id == VK_DRIVER_ID_MESA_RADV)
+			if (device.get_device_features().driver_id == VK_DRIVER_ID_MESA_RADV &&
+			    manager.get_mesh_encoding() == ResourceManager::MeshEncoding::MeshletEncoded)
+			{
 				local_invocation_indexed = false;
+			}
 
 			local_invocation_indexed = Util::get_environment_bool("LOCAL_INVOCATION", local_invocation_indexed);
 

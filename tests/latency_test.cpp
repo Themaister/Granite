@@ -41,6 +41,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 	{
 		EVENT_MANAGER_REGISTER(LatencyTest, on_key_down, KeyboardEvent);
 		frame_times.reserve(100);
+		get_wsi().set_present_mode(PresentMode::UnlockedNoTearing);
 	}
 
 	bool on_key_down(const KeyboardEvent &e)
@@ -56,10 +57,10 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		auto &device = wsi.get_device();
 
 		if (frame_times.empty())
-			frame_times.resize(100, frame_time);
+			frame_times.resize(1000, frame_time);
 		else
 		{
-			if (frame_times.size() >= 100)
+			if (frame_times.size() >= 1000)
 				frame_times.erase(frame_times.begin());
 			frame_times.push_back(frame_time);
 		}

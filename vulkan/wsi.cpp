@@ -1374,8 +1374,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	desired_swapchain_images = Util::get_environment_uint("GRANITE_VULKAN_SWAPCHAIN_IMAGES", desired_swapchain_images);
 	LOGI("Targeting %u swapchain images.\n", desired_swapchain_images);
 
-	if (desired_swapchain_images < caps.minImageCount)
-		desired_swapchain_images = caps.minImageCount;
+	//if (desired_swapchain_images < caps.minImageCount)
+	//	desired_swapchain_images = caps.minImageCount;
 
 	if ((caps.maxImageCount > 0) && (desired_swapchain_images > caps.maxImageCount))
 		desired_swapchain_images = caps.maxImageCount;

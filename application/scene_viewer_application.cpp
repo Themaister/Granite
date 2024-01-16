@@ -642,7 +642,7 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 	{
 		auto mode = get_wsi().get_present_mode();
 		if (mode == PresentMode::SyncToVBlank)
-			get_wsi().set_present_mode(PresentMode::UnlockedMaybeTear);
+			get_wsi().set_present_mode(PresentMode::UnlockedForceTearing);
 		else
 			get_wsi().set_present_mode(PresentMode::SyncToVBlank);
 		break;

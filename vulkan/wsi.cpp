@@ -1115,24 +1115,18 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 	// First, query minImageCount without any present mode.
 	// Avoid opting for present mode compat that is pathological in nature,
 	// e.g. Xorg MAILBOX where minImageCount shoots up to 5 for stupid reasons.
-	uint32_t baseline_image_count;
 	if (ext.supports_surface_capabilities2)
 	{
 		VkSurfaceCapabilities2KHR surface_capabilities2 = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR };
 		if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
 			return false;
 		info.surface_capabilities = surface_capabilities2.surfaceCapabilities;
-		baseline_image_count = surface_capabilities2.surfaceCapabilities.minImageCount;
 	}
 	else
 	{
 		if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &info.surface_capabilities) != VK_SUCCESS)
 			return false;
-		baseline_image_count = info.surface_capabilities.minImageCount;
 	}
-
-	// Do not exceed this limit when selecting compatible present modes.
-	baseline_image_count = std::max(3u, baseline_image_count);
 
 	// Make sure we query surface caps tied to the present mode for correct results.
 	if (ext.swapchain_maintenance1_features.swapchainMaintenance1 &&

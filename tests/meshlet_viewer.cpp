@@ -765,6 +765,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		cmd->end_render_pass();
 
+#if 0
 		if (ui.indirect_rendering)
 		{
 			cmd->barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
@@ -773,11 +774,13 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				cmd->copy_buffer(*readback, *readback_counter);
 			else
 				cmd->copy_buffer(*readback, *indirect_draws);
+
+			cmd->copy_buffer(*aabb_visibility_buffer_readback, *aabb_visibility_buffer);
 			cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
-			cmd->copy_buffer(*aabb_visibility_buffer_readback, *aabb_visibility_buffer);
 		}
+#endif
 
 		if (readback)
 		{

@@ -46,3 +46,6 @@
 [submodule "third_party/sdl3"]
 	path = third_party/sdl3
 	url = https://github.com/libsdl-org/SDL
+[submodule "third_party/slang"]
+	path = third_party/slang
+	url = https://github.com/Themaister/slang

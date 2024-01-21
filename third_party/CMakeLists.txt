@@ -98,6 +98,9 @@ else()
 endif()
 target_link_libraries(granite-volk PRIVATE granite-volk-headers)
 
+set(SLANG_TARGET_TYPE "STATIC")
+add_subdirectory(slang)
+
 if ((NOT ANDROID) AND (${GRANITE_PLATFORM} MATCHES "SDL"))
     set(SDL_SHARED OFF CACHE BOOL "" FORCE)
     set(SDL_STATIC ON CACHE BOOL "" FORCE)

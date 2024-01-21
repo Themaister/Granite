@@ -74,13 +74,6 @@ const char *joypad_axis_to_tag(JoypadAxis axis)
 #undef D
 }
 
-static inline Hash hash(unsigned code)
-{
-	Hasher h;
-	h.u32(code);
-	return h.get();
-}
-
 void InputTracker::orientation_event(quat rot)
 {
 	OrientationEvent event(rot);

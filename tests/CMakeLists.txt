@@ -216,3 +216,6 @@ if (NOT ANDROID)
     target_compile_definitions(hiz-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
+add_granite_offline_tool(slang-compiler-test slang.cpp)
+target_link_libraries(slang-compiler-test PRIVATE granite-compiler)
+

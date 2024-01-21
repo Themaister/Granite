@@ -98,7 +98,7 @@ else()
 endif()
 target_link_libraries(granite-volk PRIVATE granite-volk-headers)
 
-set(SLANG_TARGET_TYPE "STATIC")
+set(SLANG_TARGET_TYPE "STATIC" CACHE STRING "" FORCE)
 add_subdirectory(slang)
 
 if ((NOT ANDROID) AND (${GRANITE_PLATFORM} MATCHES "SDL"))

@@ -22,7 +22,7 @@
 
 #define NOMINMAX
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
-#include "compiler.hpp"
+#include "glsl_compiler.hpp"
 #endif
 #include "shader_manager.hpp"
 #include "path_utils.hpp"

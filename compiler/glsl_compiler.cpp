@@ -20,7 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "compiler.hpp"
+#include "glsl_compiler.hpp"
 #include "shaderc/shaderc.hpp"
 #include "path_utils.hpp"
 #include "logging.hpp"

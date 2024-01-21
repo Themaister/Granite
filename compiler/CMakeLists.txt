@@ -1,4 +1,4 @@
-add_granite_internal_lib(granite-compiler compiler.cpp compiler.hpp)
+add_granite_internal_lib(granite-compiler glsl_compiler.cpp glsl_compiler.hpp)
 target_include_directories(granite-compiler PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(granite-compiler
         PUBLIC granite-application-global

@@ -23,7 +23,7 @@
 #define NOMINMAX
 #include "path_utils.hpp"
 #include "cli_parser.hpp"
-#include "compiler.hpp"
+#include "glsl_compiler.hpp"
 #include "filesystem.hpp"
 #include "global_managers_init.hpp"
 #include "hash.hpp"

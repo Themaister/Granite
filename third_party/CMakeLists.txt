@@ -11,7 +11,6 @@ set(SPIRV_CHECK_CONTEXT OFF CACHE BOOL "Disable SPIR-V IR context checking." FOR
 set(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/spirv-headers" CACHE STRING "SPIRV-Headers path")
 set(SHADERC_SKIP_TESTS ON CACHE BOOL "" FORCE)
 set(FOSSILIZE_RAPIDJSON_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include" CACHE STRING "Fossilize rapidjson path." FORCE)
-set(FOSSILIZE_VULKAN_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/khronos/vulkan-headers/include/vulkan" CACHE STRING "Fossilize Vulkan path." FORCE)
 set(MUFFT_ENABLE_FFTW OFF CACHE BOOL "Disable FFTW tests." FORCE)
 set(SKIP_SPIRV_TOOLS_INSTALL ON CACHE BOOL "" FORCE)
 set(SPIRV_CROSS_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
@@ -52,6 +51,11 @@ target_include_directories(granite-rapidjson INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include)
 
+add_subdirectory(khronos/vulkan-headers)
+add_library(granite-volk-headers INTERFACE)
+target_include_directories(granite-volk-headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/volk)
+target_link_libraries(granite-volk-headers INTERFACE Vulkan::Headers)
+
 if (GRANITE_VULKAN_FOSSILIZE)
     # Some issues with Android build with missing shm_. Compile exactly what we need for now.
     add_library(fossilize STATIC
@@ -63,10 +67,13 @@ if (GRANITE_VULKAN_FOSSILIZE)
             fossilize/miniz/miniz.h fossilize/miniz/miniz.c
             fossilize/cli/fossilize_feature_filter.hpp fossilize/cli/fossilize_feature_filter.cpp)
     granite_setup_default_link_libraries(fossilize)
+
+    get_target_property(SPIRV_HEADERS_PATH SPIRV-Headers INTERFACE_INCLUDE_DIRECTORIES)
+
     target_include_directories(fossilize
             PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/fossilize
             PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/fossilize/miniz
-            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/spirv-headers/include/spirv/unified1)
+            PRIVATE ${SPIRV_HEADERS_PATH}/spirv/unified1)
     target_link_libraries(fossilize PUBLIC granite-volk-headers PRIVATE granite-rapidjson)
     if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
         target_compile_options(fossilize PRIVATE -fvisibility=hidden)
@@ -81,13 +88,6 @@ if (GRANITE_VULKAN_FOSSILIZE)
         target_include_directories(fossilize PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/dirent)
     endif()
 endif()
-
-add_library(granite-volk-headers INTERFACE)
-target_include_directories(granite-volk-headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/volk)
-target_include_directories(granite-volk-headers INTERFACE
-        ${CMAKE_CURRENT_SOURCE_DIR}/khronos/vulkan-headers/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/khronos/vulkan-headers/include/vk_video
-        ${CMAKE_CURRENT_SOURCE_DIR}/khronos/vulkan-headers/include/vulkan)
 
 # volk must be STATIC.
 add_library(granite-volk STATIC volk/volk.c volk/volk.h)

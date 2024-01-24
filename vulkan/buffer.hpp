@@ -57,6 +57,7 @@ struct BufferCreateInfo
 	BufferMiscFlags misc = 0;
 	VkMemoryRequirements allocation_requirements = {};
 	ExternalHandle external;
+	void *pnext = nullptr;
 };
 
 class Buffer;

@@ -4279,6 +4279,8 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.pNext = &external_info;
 
+	external_info.pNext = create_info.pnext;
+
 	uint32_t sharing_indices[QUEUE_INDEX_COUNT];
 	fill_buffer_sharing_indices(info, sharing_indices);
 
@@ -4406,6 +4408,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	if (get_device_features().vk12_features.bufferDeviceAddress)
 		info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	info.pNext = create_info.pnext;
 
 	uint32_t sharing_indices[QUEUE_INDEX_COUNT];
 	fill_buffer_sharing_indices(info, sharing_indices);
@@ -4447,6 +4450,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 		}
 
 		external_info.handleTypes = create_info.external.memory_handle_type;
+		external_info.pNext = info.pNext;
 		info.pNext = &external_info;
 	}
 

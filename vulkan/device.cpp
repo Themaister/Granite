@@ -1228,6 +1228,7 @@ void Device::submit_discard_nolock(CommandBufferHandle &cmd)
 	pool.signal_submitted(cmd->get_command_buffer());
 #endif
 
+	cmd->end();
 	cmd.reset();
 	decrement_frame_counter_nolock();
 }

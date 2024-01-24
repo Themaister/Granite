@@ -2220,18 +2220,18 @@ void *CommandBuffer::update_image(const Image &image, const VkOffset3D &offset, 
 	uint32_t height = image.get_height(subresource.mipLevel);
 	uint32_t depth = image.get_depth(subresource.mipLevel);
 
+	if ((subresource.aspectMask & (VK_IMAGE_ASPECT_PLANE_0_BIT |
+	                               VK_IMAGE_ASPECT_PLANE_1_BIT |
+	                               VK_IMAGE_ASPECT_PLANE_2_BIT)) != 0)
+	{
+		format_ycbcr_downsample_dimensions(create_info.format, subresource.aspectMask, width, height);
+	}
+
 	if (!row_length)
 		row_length = width;
 
 	if (!image_height)
 		image_height = height;
-
-	if ((subresource.aspectMask & (VK_IMAGE_ASPECT_PLANE_0_BIT |
-	                               VK_IMAGE_ASPECT_PLANE_1_BIT |
-	                               VK_IMAGE_ASPECT_PLANE_2_BIT)) != 0)
-	{
-		format_ycbcr_downsample_dimensions(create_info.format, subresource.aspectMask, row_length, image_height);
-	}
 
 	uint32_t blocks_x = row_length;
 	uint32_t blocks_y = image_height;

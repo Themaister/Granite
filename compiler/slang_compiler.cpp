@@ -201,7 +201,7 @@ std::vector<uint32_t> SlangCompiler::compile(
 		search_paths.push_back(d.c_str());
 
 	target.format = SLANG_SPIRV;
-	target.flags = SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY;
+	//target.flags = SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY;
 
 	Util::SmallVector<PreprocessorMacroDesc> defs;
 	Util::SmallVector<std::string> values;

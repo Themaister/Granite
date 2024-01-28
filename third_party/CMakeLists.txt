@@ -15,9 +15,11 @@ set(MUFFT_ENABLE_FFTW OFF CACHE BOOL "Disable FFTW tests." FORCE)
 set(SKIP_SPIRV_TOOLS_INSTALL ON CACHE BOOL "" FORCE)
 set(SPIRV_CROSS_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 
+set(CMAKE_CXX_STANDARD 17)
+
+add_subdirectory(khronos/vulkan-headers)
 add_subdirectory(spirv-cross EXCLUDE_FROM_ALL)
 add_subdirectory(renderdoc EXCLUDE_FROM_ALL)
-add_subdirectory(shaderc EXCLUDE_FROM_ALL)
 add_subdirectory(stb)
 
 if ((NOT ANDROID) AND GRANITE_ASTC_ENCODER_COMPRESSION)
@@ -38,6 +40,11 @@ if ((NOT ANDROID) AND GRANITE_ASTC_ENCODER_COMPRESSION)
     endif()
 endif()
 
+set(SLANG_TARGET_TYPE "STATIC" CACHE STRING "" FORCE)
+add_subdirectory(slang/external/glslang EXCLUDE_FROM_ALL)
+add_subdirectory(shaderc EXCLUDE_FROM_ALL)
+add_subdirectory(slang EXCLUDE_FROM_ALL)
+
 add_subdirectory(meshoptimizer EXCLUDE_FROM_ALL)
 add_subdirectory(mikktspace)
 add_subdirectory(muFFT EXCLUDE_FROM_ALL)
@@ -51,7 +58,6 @@ target_include_directories(granite-rapidjson INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include)
 
-add_subdirectory(khronos/vulkan-headers)
 add_library(granite-volk-headers INTERFACE)
 target_include_directories(granite-volk-headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/volk)
 target_link_libraries(granite-volk-headers INTERFACE Vulkan::Headers)
@@ -97,9 +103,6 @@ else()
     target_link_libraries(granite-volk PRIVATE dl)
 endif()
 target_link_libraries(granite-volk PRIVATE granite-volk-headers)
-
-set(SLANG_TARGET_TYPE "STATIC" CACHE STRING "" FORCE)
-add_subdirectory(slang)
 
 if ((NOT ANDROID) AND (${GRANITE_PLATFORM} MATCHES "SDL"))
     set(SDL_SHARED OFF CACHE BOOL "" FORCE)

@@ -10,7 +10,8 @@ extern "C" {
 
 // Endian: All wire-messages are in little-endian.
 
-#define PYRO_MAKE_MESSAGE_TYPE(t, s) ((((uint32_t)'P') << 26) | (((uint32_t)'Y') << 20) | (((uint32_t)'R') << 14) | (t) | ((s) << 6))
+#define PYRO_VERSION_MASK (0xaa02 << 16)
+#define PYRO_MAKE_MESSAGE_TYPE(t, s) (((((uint32_t)'P') << 26) | (((uint32_t)'Y') << 20) | (((uint32_t)'R') << 14) | (t) | ((s) << 6)) ^ PYRO_VERSION_MASK)
 #define PYRO_MESSAGE_MAGIC_MASK (~(uint32_t)0 << 14)
 #define PYRO_MAX_PAYLOAD_SIZE 1024
 
@@ -32,9 +33,17 @@ typedef enum pyro_audio_codec_type
 	PYRO_AUDIO_CODEC_MAX_INT = INT32_MAX
 } pyro_audio_codec_type;
 
+typedef enum pyro_video_color_profile
+{
+	/* Standard 4:2:0 H.264 / H.265. ChromaX is even sited, ChromaY is center with BT709 primaries and limited range. */
+	PYRO_VIDEO_COLOR_BT709_LIMITED_LEFT_CHROMA_420 = 0,
+	PYRO_VIDEO_COLOR_MAX_INT = INT32_MAX
+} pyro_video_color;
+
 struct pyro_codec_parameters
 {
 	pyro_video_codec_type video_codec;
+	pyro_video_color_profile video_color_profile;
 	pyro_audio_codec_type audio_codec;
 	uint16_t frame_rate_num;
 	uint16_t frame_rate_den;
@@ -47,6 +56,7 @@ struct pyro_codec_parameters
 struct pyro_progress_report
 {
 	uint64_t total_received_packets;
+	uint64_t total_recovered_packets;
 	uint64_t total_dropped_packets;
 	uint64_t total_received_key_frames;
 };
@@ -143,12 +153,23 @@ static inline uint32_t pyro_message_get_length(uint32_t v)
 // UDP: server to client. Size is implied by datagram.
 enum pyro_payload_flag_bits
 {
-	PYRO_PAYLOAD_KEY_FRAME_BIT = 1 << 0, // For video, useful to know when clean recovery can be made, or when to start the stream
-	PYRO_PAYLOAD_STREAM_TYPE_BIT = 1 << 1, // 0: video, 1: audio
-	PYRO_PAYLOAD_PACKET_DONE_BIT = 1 << 2, // Set on last subpacket within a packet
-	PYRO_PAYLOAD_PACKET_BEGIN_BIT = 1 << 3, // Set on first subpacket within a packet
-	PYRO_PAYLOAD_PACKET_SEQ_OFFSET = 4, // Sequence increases by one on a per-stream basis.
+	// For video, useful to know when clean recovery can be made, or when to start the stream
+	// 0: video, 1: audio
+	PYRO_PAYLOAD_KEY_FRAME_BIT = 1 << 0,
+	PYRO_PAYLOAD_STREAM_TYPE_BIT = 1 << 1,
+
+	// This is a FEC block.
+	// SUBPACKET_SEQ is not wrapped.
+	// Max FEC blocks is bounded to 1 << SUBPACKET_SEQ_BITS.
+	PYRO_PAYLOAD_PACKET_FEC_BIT = 1 << 2,
+
+	// Set on first subpacket within a packet. Not used for FEC.
+	PYRO_PAYLOAD_PACKET_BEGIN_BIT = 1 << 3,
+
+	// Sequence increases by one on a per-stream basis.
+	PYRO_PAYLOAD_PACKET_SEQ_OFFSET = 4,
 	PYRO_PAYLOAD_PACKET_SEQ_BITS = 14,
+
 	PYRO_PAYLOAD_SUBPACKET_SEQ_OFFSET = 18,
 	PYRO_PAYLOAD_SUBPACKET_SEQ_BITS = 14,
 };
@@ -190,6 +211,8 @@ struct pyro_payload_header
 {
 	uint32_t pts_lo, pts_hi;
 	uint32_t dts_delta; // dts = pts - dts_delta
+	uint32_t payload_size;
+	uint16_t num_fec_blocks, num_xor_blocks;
 	pyro_payload_flags encoded;
 };
 

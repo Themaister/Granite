@@ -57,7 +57,8 @@ struct pyro_progress_report
 {
 	uint64_t total_received_packets;
 	uint64_t total_recovered_packets;
-	uint64_t total_dropped_packets;
+	uint64_t total_dropped_video_packets;
+	uint64_t total_dropped_audio_packets;
 	uint64_t total_received_key_frames;
 };
 
@@ -112,7 +113,7 @@ struct pyro_kick_state
 	pyro_kick_state_flags flags;
 };
 
-#define PYRO_MAX_UDP_DATAGRAM_SIZE (PYRO_MAX_PAYLOAD_SIZE + sizeof(struct pyro_codec_parameters))
+#define PYRO_MAX_UDP_DATAGRAM_SIZE (PYRO_MAX_PAYLOAD_SIZE + sizeof(struct pyro_payload_header))
 
 // TCP: Server to client
 // UDP / TCP: client to server
@@ -212,7 +213,8 @@ struct pyro_payload_header
 	uint32_t pts_lo, pts_hi;
 	uint32_t dts_delta; // dts = pts - dts_delta
 	uint32_t payload_size;
-	uint16_t num_fec_blocks, num_xor_blocks;
+	uint16_t num_fec_blocks;
+	uint8_t num_xor_blocks_even, num_xor_blocks_odd;
 	pyro_payload_flags encoded;
 };
 

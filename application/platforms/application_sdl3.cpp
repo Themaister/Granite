@@ -22,6 +22,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
+#include <atomic>
 
 #include "application.hpp"
 #include "application_wsi.hpp"
@@ -102,6 +103,49 @@ public:
 	{
 	}
 
+	void run_gamepad_init()
+	{
+		Util::Timer tmp_timer;
+		tmp_timer.start();
+
+		if (SDL_Init(SDL_INIT_GAMEPAD) < 0)
+		{
+			LOGE("Failed to init gamepad.\n");
+			return;
+		}
+
+		LOGI("SDL_Init(GAMEPAD) took %.3f seconds async.\n", tmp_timer.end());
+
+		push_task_to_main_thread([this]() {
+			if (!pad.init(get_input_tracker(), [](std::function<void ()> func) { func(); }))
+				LOGE("Failed to init gamepad tracker.\n");
+
+			gamepad_init_async.store(true, std::memory_order_release);
+		});
+	}
+
+	void kick_gamepad_init()
+	{
+		SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+		// Adding gamepad events will make main loop spin without waiting.
+		SDL_SetHint(SDL_HINT_AUTO_UPDATE_JOYSTICKS, "0");
+
+		// Enumerating gamepads can be extremely slow in some cases. Do this async.
+		// Gamepad interface is very async friendly.
+
+		gamepad_init_async = false;
+
+		if (auto *tg = GRANITE_THREAD_GROUP())
+		{
+			gamepad_init_task = tg->create_task([this]() { run_gamepad_init(); });
+			gamepad_init_task->set_desc("SDL init gamepad");
+			gamepad_init_task->set_task_class(TaskClass::Background);
+			gamepad_init_task->flush();
+		}
+		else
+			run_gamepad_init();
+	}
+
 	bool init(const std::string &name, unsigned width_, unsigned height_)
 	{
 		request_tear_down.store(false);
@@ -126,16 +170,15 @@ public:
 
 		Util::Timer tmp_timer;
 		tmp_timer.start();
-		if (SDL_Init(SDL_INIT_EVENTS | SDL_INIT_GAMEPAD | SDL_INIT_VIDEO) < 0)
+		if (SDL_Init(SDL_INIT_EVENTS | SDL_INIT_VIDEO) < 0)
 		{
 			LOGE("Failed to init SDL.\n");
 			return false;
 		}
 		LOGI("SDL_Init took %.3f seconds.\n", tmp_timer.end());
 
-		SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-		// Adding gamepad events will make main loop spin without waiting.
-		SDL_SetHint(SDL_HINT_AUTO_UPDATE_JOYSTICKS, "0");
+		kick_gamepad_init();
+
 		SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, SDL_FALSE);
 		SDL_SetEventEnabled(SDL_EVENT_DROP_TEXT, SDL_FALSE);
 
@@ -174,7 +217,7 @@ public:
 		application.info.pApplicationName = application.name.empty() ? "Granite" : application.name.c_str();
 		application.info.apiVersion = VK_API_VERSION_1_1;
 
-		return pad.init(get_input_tracker(), [](std::function<void ()> func) { func(); });
+		return true;
 	}
 
 	const VkApplicationInfo *get_application_info() override
@@ -268,7 +311,9 @@ public:
 		std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
 		flush_deferred_input_events();
 		process_events_async_thread();
-		pad.update(get_input_tracker());
+
+		if (gamepad_init_async.load(std::memory_order_acquire))
+			pad.update(get_input_tracker());
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 	}
 
@@ -278,7 +323,8 @@ public:
 		begin_async_input_handling();
 		{
 			process_events_async_thread();
-			pad.update(get_input_tracker());
+			if (gamepad_init_async.load(std::memory_order_acquire))
+				pad.update(get_input_tracker());
 		}
 		end_async_input_handling();
 		get_input_tracker().dispatch_current_state(0.0, override_handler);
@@ -316,8 +362,12 @@ public:
 
 	~WSIPlatformSDL()
 	{
+		if (gamepad_init_task)
+			gamepad_init_task->wait();
+
 		if (window)
 			SDL_DestroyWindow(window);
+
 		pad.close();
 		SDL_Quit();
 	}
@@ -656,6 +706,8 @@ private:
 	uint32_t wake_event_type = 0;
 	Options options;
 	std::string clipboard;
+	TaskGroupHandle gamepad_init_task;
+	std::atomic<bool> gamepad_init_async;
 
 	struct
 	{

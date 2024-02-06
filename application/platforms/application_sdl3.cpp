@@ -124,11 +124,14 @@ public:
 		}
 #endif
 
+		Util::Timer tmp_timer;
+		tmp_timer.start();
 		if (SDL_Init(SDL_INIT_EVENTS | SDL_INIT_GAMEPAD | SDL_INIT_VIDEO) < 0)
 		{
 			LOGE("Failed to init SDL.\n");
 			return false;
 		}
+		LOGI("SDL_Init took %.3f seconds.\n", tmp_timer.end());
 
 		SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 		// Adding gamepad events will make main loop spin without waiting.

@@ -2,52 +2,27 @@
 #extension GL_EXT_mesh_shader : require
 #extension GL_KHR_shader_subgroup_basic : require
 #extension GL_KHR_shader_subgroup_ballot : require
-layout(max_primitives = 4, max_vertices = 12, triangles) out;
-layout(local_size_x = 64) in;
-
-layout(set = 0, binding = 0) readonly buffer VBO
-{
-    vec2 positions[];
-};
-
-layout(set = 0, binding = 1) readonly buffer VBOOffsets
-{
-    vec2 offsets[];
-};
-
-layout(set = 0, binding = 2) readonly buffer VBOPerPrim
-{
-    vec4 colors[];
-};
+layout(max_primitives = 1, max_vertices = 3, triangles) out;
+layout(local_size_x = 3) in;
 
 layout(location = 0) perprimitiveEXT out vec4 vColor[];
-taskPayloadSharedEXT vec2 task_offsets[4];
 
 void main()
 {
-    uint local_x = gl_LocalInvocationIndex % 3;
-    uint local_y = gl_LocalInvocationIndex / 3;
+    SetMeshOutputsEXT(3, 1);
 
-    uint num_invocations = subgroupBallotBitCount(subgroupBallot(true));
-    uint expected_groups = gl_WorkGroupSize.x / gl_SubgroupSize;
-    bool valid_invocations = num_invocations == gl_SubgroupSize;
-    bool valid_groups = gl_NumSubgroups == expected_groups;
-
-    uint valid_primitives = gl_SubgroupSize == 32 ? 2 : 4;
-    bool valid_primitive = gl_LocalInvocationIndex < valid_primitives && valid_invocations && valid_groups;
-    bool valid_vertex = local_y < valid_primitives && valid_invocations && valid_groups;
-
-    SetMeshOutputsEXT(valid_primitives * 3u, valid_primitives);
-
-    if (valid_vertex)
+    if (gl_LocalInvocationIndex < 3)
     {
-        gl_MeshVerticesEXT[gl_LocalInvocationIndex].gl_Position =
-            vec4(positions[local_x] + offsets[local_y] + task_offsets[gl_WorkGroupID.x], 0.0, 1.0);
+        vColor[gl_LocalInvocationIndex] = vec4(1.0, 0.0, 1.0, 1.0);
+        vec4 pos;
+        pos.x = float(gl_LocalInvocationIndex & 2) * 1.0 - 3.0;
+        pos.y = float(gl_LocalInvocationIndex & 1) * 2.0 - 3.0;
+        pos.xy += vec2(gl_WorkGroupID.xy) * 2.0;
+        pos.z = 0.0;
+        pos.w = 4.0;
+        gl_MeshVerticesEXT[gl_LocalInvocationIndex].gl_Position = pos;
     }
 
-    if (valid_primitive)
-    {
-        gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = 3u * gl_LocalInvocationIndex + uvec3(0, 1, 2);
-        vColor[gl_LocalInvocationIndex] = colors[gl_LocalInvocationIndex];
-    }
+    if (gl_LocalInvocationIndex < 1)
+        gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(0, 1, 2);
 }

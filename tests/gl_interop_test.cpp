@@ -1,10 +1,11 @@
 #include "glad/glad.h"
-#include "GLFW/glfw3.h"
 #include "device.hpp"
 #include "context.hpp"
 #include "global_managers_init.hpp"
 #include <stdlib.h>
 #include <cmath>
+
+#include <SDL3/SDL.h>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -38,24 +39,20 @@ static void import_semaphore(GLuint &glsem, const ExternalHandle &handle)
 int main()
 {
 	Granite::Global::init(Granite::Global::MANAGER_FEATURE_DEFAULT_BITS, 1);
-	if (!glfwInit())
+	if (SDL_Init(SDL_INIT_VIDEO) < 0)
 		return EXIT_FAILURE;
 
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-
-	GLFWwindow *window = glfwCreateWindow(1280, 720, "GL interop", nullptr, nullptr);
+	SDL_Window *window = SDL_CreateWindow("GL interop", 1280, 720, SDL_WINDOW_OPENGL);
 	if (!window)
 	{
 		LOGE("Failed to create window.\n");
 		return EXIT_FAILURE;
 	}
 
-	glfwMakeContextCurrent(window);
+	SDL_GLContext glctx = SDL_GL_CreateContext(window);
+	SDL_GL_MakeCurrent(window, glctx);
 
-	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+	if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress))
 	{
 		LOGE("Failed to load GL context functions.\n");
 		return EXIT_FAILURE;
@@ -81,7 +78,7 @@ int main()
 	}
 #endif
 
-	glfwSwapInterval(1);
+	SDL_GL_SetSwapInterval(1);
 	unsigned frame_count = 0;
 
 	Context ctx;
@@ -134,12 +131,12 @@ int main()
 	LOGI("GL vendor: %s\n", vendor);
 
 	auto &features = device.get_device_features();
-	if (features.id_properties.deviceLUIDValid)
+	if (features.vk11_props.deviceLUIDValid)
 	{
 		GLubyte luid[GL_LUID_SIZE_EXT] = {};
 		glGetUnsignedBytevEXT(GL_DEVICE_LUID_EXT, luid);
 
-		if (memcmp(features.id_properties.deviceLUID, luid, GL_LUID_SIZE_EXT) != 0)
+		if (memcmp(features.vk11_props.deviceLUID, luid, GL_LUID_SIZE_EXT) != 0)
 		{
 			LOGE("LUID mismatch.\n");
 			return EXIT_FAILURE;
@@ -178,9 +175,13 @@ int main()
 		return EXIT_FAILURE;
 	}
 
-	while (!glfwWindowShouldClose(window))
+	bool alive = true;
+	SDL_Event e;
+	while (alive)
 	{
-		glfwPollEvents();
+		while (SDL_PollEvent(&e))
+			if (e.type == SDL_EVENT_QUIT)
+				alive = false;
 
 		// Render frame in Vulkan
 		{
@@ -243,7 +244,7 @@ int main()
 		}
 
 		int fb_width, fb_height;
-		glfwGetFramebufferSize(window, &fb_width, &fb_height);
+		SDL_GetWindowSize(window, &fb_width, &fb_height);
 
 		glBlitNamedFramebuffer(glfbo, 0,
 		                       0, 0, GLint(image->get_width()), GLint(image->get_height()),
@@ -273,7 +274,7 @@ int main()
 			glDeleteSemaphoresEXT(1, &glsem);
 		}
 
-		glfwSwapBuffers(window);
+		SDL_GL_SwapWindow(window);
 		device.next_frame_context();
 		frame_count++;
 	}
@@ -284,6 +285,7 @@ int main()
 
 	check_gl_error();
 
-	glfwDestroyWindow(window);
-	glfwTerminate();
+	SDL_GL_DeleteContext(glctx);
+	SDL_DestroyWindow(window);
+	SDL_Quit();
 }

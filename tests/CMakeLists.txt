@@ -188,14 +188,14 @@ if (GRANITE_TEST_INTEROP)
             glad/src/glad.c
             glad/include/glad/glad.h
             glad/include/KHR/khrplatform.h)
-    target_link_libraries(granite-gl-interop PRIVATE glfw granite-vulkan)
+    target_link_libraries(granite-gl-interop PRIVATE SDL3-static granite-vulkan)
     target_include_directories(granite-gl-interop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/glad/include)
 
     if (WIN32)
         add_granite_offline_tool(granite-d3d11-interop d3d11_interop_test.cpp)
-        target_link_libraries(granite-d3d11-interop PRIVATE glfw granite-vulkan d3d11 dxgi)
+        target_link_libraries(granite-d3d11-interop PRIVATE SDL3-static granite-vulkan d3d11 dxgi)
         add_granite_offline_tool(granite-d3d12-interop d3d12_interop_test.cpp)
-        target_link_libraries(granite-d3d12-interop PRIVATE glfw granite-vulkan d3d12 dxgi)
+        target_link_libraries(granite-d3d12-interop PRIVATE SDL3-static granite-vulkan d3d12 dxgi)
     endif()
 endif()
 

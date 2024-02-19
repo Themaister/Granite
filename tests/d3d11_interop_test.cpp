@@ -1,6 +1,3 @@
-#define GLFW_EXPOSE_NATIVE_WIN32
-#include "GLFW/glfw3.h"
-#include "GLFW/glfw3native.h"
 #include "device.hpp"
 #include "context.hpp"
 #include "global_managers_init.hpp"
@@ -8,6 +5,8 @@
 
 #include "dxgi1_6.h"
 #include "d3d11_4.h"
+
+#include <SDL3/SDL.h>
 
 using namespace Vulkan;
 
@@ -110,9 +109,13 @@ static D3DContext create_d3d11_device()
 	return ctx;
 }
 
-static bool init_swapchain(GLFWwindow *window, D3DContext &ctx)
+static bool init_swapchain(SDL_Window *window, D3DContext &ctx)
 {
-	HWND hwnd = glfwGetWin32Window(window);
+	SDL_PropertiesID props = SDL_GetWindowProperties(window);
+	SDL_LockProperties(props);
+	HWND hwnd = static_cast<HWND>(SDL_GetProperty(props, "SDL.window.win32.hwnd", nullptr));
+	SDL_UnlockProperties(props);
+
 	DXGI_SWAP_CHAIN_DESC desc = {};
 	desc.BufferCount = 1;
 	desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
@@ -140,7 +143,7 @@ static bool init_swapchain(GLFWwindow *window, D3DContext &ctx)
 
 int main()
 {
-	if (!glfwInit())
+	if (SDL_Init(SDL_INIT_VIDEO) < 0)
 		return EXIT_FAILURE;
 
 	Granite::Global::init(Granite::Global::MANAGER_FEATURE_DEFAULT_BITS, 1);
@@ -149,8 +152,7 @@ int main()
 	if (!ctx.dev)
 		return EXIT_FAILURE;
 
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	GLFWwindow *window = glfwCreateWindow(1280, 720, "D3D11 interop", nullptr, nullptr);
+	SDL_Window *window = SDL_CreateWindow("D3D11 interop", 1280, 720, 0);
 	if (!window)
 	{
 		LOGE("Failed to create window.\n");
@@ -182,7 +184,7 @@ int main()
 		return EXIT_FAILURE;
 	}
 
-	if (memcmp(device.get_device_features().id_properties.deviceLUID,
+	if (memcmp(device.get_device_features().vk11_props.deviceLUID,
 	           &ctx.luid, VK_LUID_SIZE) != 0)
 	{
 		LOGE("LUID mismatch.\n");
@@ -261,9 +263,13 @@ int main()
 	uint64_t timeline_value = 0;
 	unsigned frame_count = 0;
 
-	while (!glfwWindowShouldClose(window))
+	bool alive = true;
+	SDL_Event e;
+	while (alive)
 	{
-		glfwPollEvents();
+		while (SDL_PollEvent(&e))
+			if (e.type == SDL_EVENT_QUIT)
+				alive = false;
 
 		// Render frame in Vulkan
 		{
@@ -352,6 +358,6 @@ int main()
 	if (ref != 0)
 		LOGE("Missed a release on device.\n");
 
-	glfwDestroyWindow(window);
-	glfwTerminate();
+	SDL_DestroyWindow(window);
+	SDL_Quit();
 }

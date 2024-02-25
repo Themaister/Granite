@@ -83,6 +83,11 @@ uintptr_t WSIPlatform::get_fullscreen_monitor()
 	return 0;
 }
 
+uintptr_t WSIPlatform::get_native_window()
+{
+	return 0;
+}
+
 const VkApplicationInfo *WSIPlatform::get_application_info()
 {
 	return nullptr;
@@ -158,6 +163,12 @@ bool WSI::init_device()
 	device = Util::make_handle<Device>();
 	device->set_context(*context);
 	platform->event_device_created(device.get());
+
+#ifdef _WIN32
+	dxgi.reset(new DXGIInteropSwapchain);
+	if (!dxgi->init_interop_device(*device))
+		dxgi.reset();
+#endif
 	return true;
 }
 
@@ -166,14 +177,98 @@ bool WSI::init_device(DeviceHandle device_handle)
 	VK_ASSERT(context);
 	device = std::move(device_handle);
 	platform->event_device_created(device.get());
+
+#ifdef _WIN32
+	dxgi.reset(new DXGIInteropSwapchain);
+	if (!dxgi->init_interop_device(*device))
+		dxgi.reset();
+#endif
 	return true;
 }
+
+#ifdef _WIN32
+bool WSI::init_surface_swapchain_dxgi(unsigned width, unsigned height)
+{
+	if (!dxgi)
+		return false;
+
+	// Anything fancy like compute present cannot use DXGI.
+	if (current_extra_usage)
+		return false;
+
+	HWND hwnd = reinterpret_cast<HWND>(platform->get_native_window());
+	if (!hwnd)
+		return false;
+
+	VkSurfaceFormatKHR format = {};
+	switch (current_backbuffer_format)
+	{
+	case BackbufferFormat::UNORM:
+		format = { VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
+		break;
+
+	case BackbufferFormat::sRGB:
+		format = { VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
+		break;
+
+	case BackbufferFormat::HDR10:
+		format = { VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_COLOR_SPACE_HDR10_ST2084_EXT };
+		break;
+	}
+
+	constexpr unsigned num_images = 3;
+
+	if (!dxgi->init_swapchain(hwnd, format, width, height, num_images))
+		return false;
+
+	LOGI("Initialized DXGI interop swapchain!\n");
+
+	swapchain_width = width;
+	swapchain_height = height;
+	swapchain_aspect_ratio = platform->get_aspect_ratio();
+	swapchain_current_prerotate = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	swapchain_surface_format = dxgi->get_current_surface_format();
+	has_acquired_swapchain_index = false;
+
+	const uint32_t queue_present_support = 1u << context->get_queue_info().family_indices[QUEUE_INDEX_GRAPHICS];
+	device->set_swapchain_queue_family_support(queue_present_support);
+
+	swapchain_images.clear();
+	for (unsigned i = 0; i < num_images; i++)
+		swapchain_images.push_back(dxgi->get_vulkan_image(i));
+
+	device->init_swapchain(swapchain_images, swapchain_width, swapchain_height,
+	                       swapchain_surface_format.format,
+	                       swapchain_current_prerotate,
+	                       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+	platform->get_frame_timer().reset();
+
+	platform->event_swapchain_destroyed();
+	platform->event_swapchain_created(device.get(), swapchain, swapchain_width, swapchain_height,
+	                                  swapchain_aspect_ratio, num_images,
+	                                  swapchain_surface_format.format,
+	                                  swapchain_surface_format.colorSpace,
+	                                  swapchain_current_prerotate);
+
+	return true;
+}
+#endif
 
 bool WSI::init_surface_swapchain()
 {
 	VK_ASSERT(surface == VK_NULL_HANDLE);
 	VK_ASSERT(context);
 	VK_ASSERT(device);
+
+	unsigned width = platform->get_surface_width();
+	unsigned height = platform->get_surface_height();
+
+#ifdef _WIN32
+	if (init_surface_swapchain_dxgi(width, height))
+		return true;
+	else
+		dxgi.reset();
+#endif
 
 	surface = platform->create_surface(context->get_instance(), context->get_gpu());
 	if (surface == VK_NULL_HANDLE)
@@ -182,8 +277,6 @@ bool WSI::init_surface_swapchain()
 		return false;
 	}
 
-	unsigned width = platform->get_surface_width();
-	unsigned height = platform->get_surface_height();
 	swapchain_aspect_ratio = platform->get_aspect_ratio();
 
 	VkBool32 supported = VK_FALSE;
@@ -368,6 +461,11 @@ void WSI::drain_swapchain(bool in_tear_down)
 
 void WSI::tear_down_swapchain()
 {
+#ifdef _WIN32
+	// We only do explicit teardown on exit.
+	dxgi.reset();
+#endif
+
 	drain_swapchain(true);
 	platform->event_swapchain_destroyed();
 	table->vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
@@ -468,6 +566,55 @@ void WSI::set_low_latency_mode(bool enable)
 	low_latency_mode_enable = enable;
 }
 
+#ifdef _WIN32
+bool WSI::begin_frame_dxgi()
+{
+	Semaphore acquire;
+
+	while (!acquire)
+	{
+		if (!dxgi->acquire(acquire, swapchain_index))
+			return false;
+
+		acquire->signal_external();
+		has_acquired_swapchain_index = true;
+
+		// Poll after acquire as well for optimal latency.
+		platform->poll_input();
+
+		// Polling input may trigger a resize event. Trying to present in that situation without ResizeBuffers
+		// cause wonky issues on DXGI.
+		if (platform->should_resize())
+			update_framebuffer(platform->get_surface_width(), platform->get_surface_height());
+
+		// If update_framebuffer caused a resize, we won't have an acquire index anymore, reacquire.
+		if (!has_acquired_swapchain_index)
+			acquire.reset();
+	}
+
+	auto wait_ts = device->write_calibrated_timestamp();
+	if (!dxgi->wait_latency(present_frame_latency))
+	{
+		LOGE("Failed to wait on latency handle.\n");
+		return false;
+	}
+	device->register_time_interval("WSI", std::move(wait_ts), device->write_calibrated_timestamp(),
+	                               "DXGI wait latency");
+
+	auto frame_time = platform->get_frame_timer().frame();
+	auto elapsed_time = platform->get_frame_timer().get_elapsed();
+
+	smooth_frame_time = frame_time;
+	smooth_elapsed_time = elapsed_time;
+
+	platform->event_frame_tick(frame_time, elapsed_time);
+	platform->event_swapchain_index(device.get(), swapchain_index);
+	device->set_acquire_semaphore(swapchain_index, std::move(acquire));
+
+	return true;
+}
+#endif
+
 bool WSI::begin_frame()
 {
 	if (frame_is_external)
@@ -478,25 +625,37 @@ bool WSI::begin_frame()
 #endif
 
 	device->next_frame_context();
+	external_release.reset();
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
 	auto next_frame_end = Util::get_current_time_nsecs();
 	LOGI("Waited for vacant frame context for %.3f ms.\n", (next_frame_end - next_frame_start) * 1e-6);
 #endif
 
-	if (swapchain == VK_NULL_HANDLE || platform->should_resize() || swapchain_is_suboptimal)
-		update_framebuffer(platform->get_surface_width(), platform->get_surface_height());
+#ifdef _WIN32
+	if (dxgi)
+	{
+		if (platform->should_resize())
+			update_framebuffer(platform->get_surface_width(), platform->get_surface_height());
+
+		if (has_acquired_swapchain_index)
+			return true;
+		return begin_frame_dxgi();
+	}
+	else
+#endif
+	{
+		if (swapchain == VK_NULL_HANDLE || platform->should_resize() || swapchain_is_suboptimal)
+			update_framebuffer(platform->get_surface_width(), platform->get_surface_height());
+		if (has_acquired_swapchain_index)
+			return true;
+	}
 
 	if (swapchain == VK_NULL_HANDLE)
 	{
 		LOGE("Completely lost swapchain. Cannot continue.\n");
 		return false;
 	}
-
-	if (has_acquired_swapchain_index)
-		return true;
-
-	external_release.reset();
 
 	VkResult result;
 	do
@@ -548,6 +707,7 @@ bool WSI::begin_frame()
 			LOGI("AcquireNextImageKHR is suboptimal, will recreate.\n");
 #endif
 			swapchain_is_suboptimal = true;
+			LOGW("Swapchain suboptimal.\n");
 		}
 
 		if (result >= 0)
@@ -576,6 +736,7 @@ bool WSI::begin_frame()
 		}
 		else if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
 		{
+			LOGW("Swapchain out of date.\n");
 			VK_ASSERT(swapchain_width != 0);
 			VK_ASSERT(swapchain_height != 0);
 
@@ -594,6 +755,17 @@ bool WSI::begin_frame()
 	} while (result < 0);
 	return true;
 }
+
+#ifdef _WIN32
+bool WSI::end_frame_dxgi()
+{
+	auto release = device->consume_release_semaphore();
+	VK_ASSERT(release);
+	VK_ASSERT(release->is_signalled());
+	VK_ASSERT(!release->is_pending_wait());
+	return dxgi->present(std::move(release), current_present_mode == PresentMode::SyncToVBlank);
+}
+#endif
 
 bool WSI::end_frame()
 {
@@ -614,10 +786,16 @@ bool WSI::end_frame()
 
 		has_acquired_swapchain_index = false;
 
+#ifdef _WIN32
+		if (dxgi)
+			return end_frame_dxgi();
+#endif
+
 		auto release = device->consume_release_semaphore();
 		VK_ASSERT(release);
 		VK_ASSERT(release->is_signalled());
 		VK_ASSERT(!release->is_pending_wait());
+
 		auto release_semaphore = release->get_semaphore();
 		VK_ASSERT(release_semaphore != VK_NULL_HANDLE);
 
@@ -750,12 +928,22 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 {
 	if (context && device)
 	{
-		drain_swapchain(false);
-		if (blocking_init_swapchain(width, height))
+#ifdef _WIN32
+		if (dxgi)
 		{
-			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_surface_format.format,
-			                       swapchain_current_prerotate,
-			                       current_extra_usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+			if (!init_surface_swapchain_dxgi(width, height))
+				LOGE("Failed to resize DXGI swapchain.\n");
+		}
+		else
+#endif
+		{
+			drain_swapchain(false);
+			if (blocking_init_swapchain(width, height))
+			{
+				device->init_swapchain(swapchain_images, swapchain_width, swapchain_height,
+				                       swapchain_surface_format.format, swapchain_current_prerotate,
+				                       current_extra_usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+			}
 		}
 	}
 
@@ -767,6 +955,15 @@ bool WSI::update_active_presentation_mode(PresentMode mode)
 {
 	if (current_present_mode == mode)
 		return true;
+
+#ifdef _WIN32
+	// We set this on Present time.
+	if (dxgi)
+	{
+		current_present_mode = mode;
+		return true;
+	}
+#endif
 
 	for (auto m : present_mode_compat_group)
 	{

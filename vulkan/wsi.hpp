@@ -68,7 +68,6 @@ public:
 		resize = false;
 		current_swapchain_width = width;
 		current_swapchain_height = height;
-		swapchain_dimension_update_timestamp++;
 	}
 
 	virtual uint32_t get_surface_width() = 0;
@@ -132,7 +131,6 @@ public:
 protected:
 	unsigned current_swapchain_width = 0;
 	unsigned current_swapchain_height = 0;
-	uint64_t swapchain_dimension_update_timestamp = 0;
 	bool resize = false;
 
 private:

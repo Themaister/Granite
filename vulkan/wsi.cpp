@@ -548,6 +548,7 @@ bool WSI::begin_frame()
 			LOGI("AcquireNextImageKHR is suboptimal, will recreate.\n");
 #endif
 			swapchain_is_suboptimal = true;
+			LOGW("Swapchain suboptimal.\n");
 		}
 
 		if (result >= 0)
@@ -576,6 +577,7 @@ bool WSI::begin_frame()
 		}
 		else if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
 		{
+			LOGW("Swapchain out of date.\n");
 			VK_ASSERT(swapchain_width != 0);
 			VK_ASSERT(swapchain_height != 0);
 

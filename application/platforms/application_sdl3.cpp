@@ -389,25 +389,12 @@ public:
 
 	void notify_resize(unsigned width_, unsigned height_)
 	{
-		uint64_t current_resize_timestamp = swapchain_dimension_update_timestamp;
-
+		LOGI("Resize: %u x %u\n", width_, height_);
 		push_task_to_async_thread([=]() {
 			resize = true;
 			width = width_;
 			height = height_;
 		});
-
-		if (options.threaded)
-		{
-			// Give the async thread a chance to catch up with main thread so it can create a new swapchain before
-			// we invalidate the swapchain again.
-			// There is a gap when querying swapchain dimensions and when we create the swapchain.
-			// On most platforms, the query must match the swapchain,
-			// so if we keep processing OS events, things will get out of sync.
-			// Need to observe that the async thread updates the swapchain dimensions at least once.
-			while (current_resize_timestamp == swapchain_dimension_update_timestamp && async_loop_alive)
-				process_events_main_thread_blocking();
-		}
 	}
 
 	void notify_current_swapchain_dimensions(unsigned width_, unsigned height_) override

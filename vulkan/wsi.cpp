@@ -1207,6 +1207,8 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 			LOGI("Win32: Not running full-screen.\n");
 
 		bool prefer_exclusive = Util::get_environment_bool("GRANITE_EXCLUSIVE_FULL_SCREEN", false) || low_latency_mode_enable;
+		if (ext.driver_id == VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS)
+			prefer_exclusive = false; // Broken on Intel Windows
 
 		if (ext.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY && format == BackbufferFormat::HDR10)
 		{

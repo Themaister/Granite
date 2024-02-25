@@ -29,6 +29,10 @@ add_granite_internal_lib(granite-vulkan
         query_pool.cpp query_pool.hpp
         texture/texture_format.cpp texture/texture_format.hpp)
 
+if (WIN32)
+    target_sources(granite-vulkan PRIVATE wsi_dxgi.cpp wsi_dxgi.hpp)
+endif()
+
 target_include_directories(granite-vulkan PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 if (GRANITE_RENDERDOC_CAPTURE)

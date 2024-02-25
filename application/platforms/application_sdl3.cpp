@@ -259,6 +259,19 @@ public:
 		});
 	}
 
+	uintptr_t get_native_window() override
+	{
+#ifdef _WIN32
+		SDL_PropertiesID props = SDL_GetWindowProperties(window);
+		SDL_LockProperties(props);
+		auto hwnd = static_cast<HWND>(SDL_GetProperty(props, "SDL.window.win32.hwnd", nullptr));
+		SDL_UnlockProperties(props);
+		return reinterpret_cast<uintptr_t>(hwnd);
+#else
+		return 0;
+#endif
+	}
+
 	void toggle_fullscreen()
 	{
 		bool is_fullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;

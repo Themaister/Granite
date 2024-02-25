@@ -29,6 +29,11 @@
 #include <vector>
 #include <thread>
 #include <chrono>
+#include <memory>
+
+#ifdef _WIN32
+#include "wsi_dxgi.hpp"
+#endif
 
 namespace Granite
 {
@@ -120,6 +125,7 @@ public:
 	virtual void set_window_title(const std::string &title);
 
 	virtual uintptr_t get_fullscreen_monitor();
+	virtual uintptr_t get_native_window();
 
 	virtual const VkApplicationInfo *get_application_info();
 
@@ -359,5 +365,12 @@ private:
 	void nonblock_delete_swapchains();
 
 	VkSurfaceFormatKHR find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats, BackbufferFormat desired_format) const;
+
+#ifdef _WIN32
+	std::unique_ptr<DXGIInteropSwapchain> dxgi;
+	bool init_surface_swapchain_dxgi(unsigned width, unsigned height);
+	bool begin_frame_dxgi();
+	bool end_frame_dxgi();
+#endif
 };
 }

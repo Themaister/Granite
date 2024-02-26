@@ -110,7 +110,10 @@ mediump vec4 unpack_bgr10a2(uint v)
 
 void main()
 {
-    uint compacted_meshlet_index = meshlet_get_meshlet_index() + 0x8000 * gl_DrawIDARB;
+    uint compacted_meshlet_index = meshlet_get_meshlet_index();
+#ifndef MESHLET_RENDER_TASK_HIERARCHICAL
+    compacted_meshlet_index += 0x8000 * gl_DrawIDARB;
+#endif
 
 #if defined(MESHLET_RENDER_TASK_HIERARCHICAL) && !MESHLET_RENDER_TASK_HIERARCHICAL
     CompactedDrawInfo task = mesh_payload.info;

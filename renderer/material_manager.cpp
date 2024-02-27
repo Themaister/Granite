@@ -107,10 +107,13 @@ void MaterialManager::set_bindless(Vulkan::CommandBuffer &cmd, unsigned set_inde
 void MaterialManager::iterate(AssetManagerInterface *)
 {
 	auto &res = device->get_resource_manager();
-	allocator.begin();
-	for (auto &id : bindless_texture_assets)
-		allocator.push(*res.get_image_view(id));
-	vk_set = allocator.commit(*device);
+	if (device->get_device_features().vk12_features.descriptorIndexing)
+	{
+		allocator.begin();
+		for (auto &id: bindless_texture_assets)
+			allocator.push(*res.get_image_view(id));
+		vk_set = allocator.commit(*device);
+	}
 }
 
 void MaterialManager::on_device_created(const Vulkan::DeviceCreatedEvent &e)

@@ -905,9 +905,9 @@ bool WSI::end_frame()
 
 				for (auto timeout : timeouts)
 				{
-					auto group = tg->create_task([this, id = present_id, timeout]() {
+					auto group = tg->create_task([this, swap = swapchain, id = present_id, timeout]() {
 						while (device->get_device_table().vkWaitForPresentKHR(
-								device->get_device(), swapchain, id, timeout) == VK_TIMEOUT)
+								device->get_device(), swap, id, timeout) == VK_TIMEOUT)
 						{
 							LOGI("[Timeout %u ms cadence]: ID %llu timeout @ %.3f ms.\n",
 								 unsigned(timeout / 1000000), static_cast<unsigned long long>(id),

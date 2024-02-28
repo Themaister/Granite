@@ -23,6 +23,7 @@
 #define NOMINMAX
 #include "wsi.hpp"
 #include "environment.hpp"
+#include "thread_group.hpp"
 
 #if defined(ANDROID) && defined(HAVE_SWAPPY)
 #include "swappy/swappyVk.h"
@@ -881,6 +882,31 @@ bool WSI::end_frame()
 		    device->get_device_features().present_id_features.presentId)
 		{
 			present_last_id = present_id;
+
+			if (auto *tg = device->get_system_handles().thread_group)
+			{
+				static const uint64_t timeouts[] = {
+					1000 * 1000,
+					2 * 1000 * 1000,
+					4 * 1000 * 1000,
+					UINT64_MAX,
+				};
+
+				for (auto timeout : timeouts)
+				{
+					auto group = tg->create_task([this, id = present_id, timeout]() {
+						while (device->get_device_table().vkWaitForPresentKHR(
+								device->get_device(), swapchain, id, timeout) == VK_TIMEOUT)
+						{
+							LOGI("[Timeout %u ms cadence]: ID %llu timeout @ %.3f ms.\n",
+								 unsigned(timeout / 1000000), static_cast<unsigned long long>(id),
+								 Util::get_current_time_nsecs() * 1e-6);
+						}
+					});
+					group->set_task_class(Granite::TaskClass::Background);
+					group->set_desc("present wait async");
+				}
+			}
 		}
 
 		if (overall == VK_SUBOPTIMAL_KHR || result == VK_SUBOPTIMAL_KHR)

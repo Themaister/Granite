@@ -212,7 +212,7 @@ static DXGI_COLOR_SPACE_TYPE convert_vk_color_space(VkColorSpaceKHR colspace)
 	case VK_COLOR_SPACE_HDR10_ST2084_EXT:
 		return DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
 	case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
-		return DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P709;
+		return DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
 	default:
 		return DXGI_COLOR_SPACE_RESERVED;
 	}
@@ -371,7 +371,7 @@ bool DXGIInteropSwapchain::init_swapchain(HWND hwnd_, VkSurfaceFormatKHR format,
 	    ((space_support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT) == 0))
 	{
 		// Fallback to SDR if HDR doesn't pass check.
-		if (FAILED(swapchain->CheckColorSpaceSupport(DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P709, &space_support)) ||
+		if (FAILED(swapchain->CheckColorSpaceSupport(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709, &space_support)) ||
 		    ((space_support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT) == 0))
 		{
 			return false;
@@ -379,7 +379,7 @@ bool DXGIInteropSwapchain::init_swapchain(HWND hwnd_, VkSurfaceFormatKHR format,
 
 		LOGW("HDR10 not supported by DXGI swapchain, falling back to SDR.\n");
 		surface_format.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-		color_space = DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P709;
+		color_space = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
 	}
 
 	if (FAILED(swapchain->SetColorSpace1(color_space)))

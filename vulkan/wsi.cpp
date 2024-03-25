@@ -168,6 +168,8 @@ bool WSI::init_device()
 	dxgi.reset(new DXGIInteropSwapchain);
 	if (!dxgi->init_interop_device(*device))
 		dxgi.reset();
+	else
+		platform->get_frame_timer().reset();
 #endif
 	return true;
 }
@@ -182,6 +184,8 @@ bool WSI::init_device(DeviceHandle device_handle)
 	dxgi.reset(new DXGIInteropSwapchain);
 	if (!dxgi->init_interop_device(*device))
 		dxgi.reset();
+	else
+		platform->get_frame_timer().reset();
 #endif
 	return true;
 }
@@ -241,7 +245,6 @@ bool WSI::init_surface_swapchain_dxgi(unsigned width, unsigned height)
 	                       swapchain_surface_format.format,
 	                       swapchain_current_prerotate,
 	                       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-	platform->get_frame_timer().reset();
 
 	platform->event_swapchain_destroyed();
 	platform->event_swapchain_created(device.get(), swapchain, swapchain_width, swapchain_height,

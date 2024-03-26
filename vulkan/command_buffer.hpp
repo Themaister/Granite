@@ -493,6 +493,7 @@ public:
 	void *update_image(const Image &image, const VkOffset3D &offset, const VkExtent3D &extent, uint32_t row_length,
 	                   uint32_t image_height, const VkImageSubresourceLayers &subresource);
 	void *update_image(const Image &image, uint32_t row_length = 0, uint32_t image_height = 0);
+	BufferBlockAllocation request_scratch_buffer_memory(VkDeviceSize size);
 
 	void set_viewport(const VkViewport &viewport);
 	const VkViewport &get_viewport() const;

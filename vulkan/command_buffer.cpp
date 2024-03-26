@@ -64,10 +64,10 @@ CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCa
 
 CommandBuffer::~CommandBuffer()
 {
-	VK_ASSERT(vbo_block.mapped == nullptr);
-	VK_ASSERT(ibo_block.mapped == nullptr);
-	VK_ASSERT(ubo_block.mapped == nullptr);
-	VK_ASSERT(staging_block.mapped == nullptr);
+	VK_ASSERT(!vbo_block.is_mapped());
+	VK_ASSERT(!ibo_block.is_mapped());
+	VK_ASSERT(!ubo_block.is_mapped());
+	VK_ASSERT(!staging_block.is_mapped());
 	device->lock.read_only_cache.unlock_read();
 }
 
@@ -2180,7 +2180,7 @@ void *CommandBuffer::allocate_constant_data(unsigned set, unsigned binding, VkDe
 		device->request_uniform_block(ubo_block, size);
 		data = ubo_block.allocate(size);
 	}
-	set_uniform_buffer(set, binding, *ubo_block.buffer, data.offset, data.padded_size);
+	set_uniform_buffer(set, binding, *data.buffer, data.offset, data.padded_size);
 	return data.host;
 }
 
@@ -2192,14 +2192,14 @@ void *CommandBuffer::allocate_index_data(VkDeviceSize size, VkIndexType index_ty
 		device->request_index_block(ibo_block, size);
 		data = ibo_block.allocate(size);
 	}
-	set_index_buffer(*ibo_block.buffer, data.offset, index_type);
+	set_index_buffer(*data.buffer, data.offset, index_type);
 	return data.host;
 }
 
-void *CommandBuffer::update_buffer(const Buffer &buffer, VkDeviceSize offset, VkDeviceSize size)
+BufferBlockAllocation CommandBuffer::request_scratch_buffer_memory(VkDeviceSize size)
 {
 	if (size == 0)
-		return nullptr;
+		return {};
 
 	auto data = staging_block.allocate(size);
 	if (!data.host)
@@ -2207,7 +2207,15 @@ void *CommandBuffer::update_buffer(const Buffer &buffer, VkDeviceSize offset, Vk
 		device->request_staging_block(staging_block, size);
 		data = staging_block.allocate(size);
 	}
-	copy_buffer(buffer, offset, *staging_block.buffer, data.offset, size);
+
+	return data;
+}
+
+void *CommandBuffer::update_buffer(const Buffer &buffer, VkDeviceSize offset, VkDeviceSize size)
+{
+	auto data = request_scratch_buffer_memory(size);
+	if (data.host)
+		copy_buffer(buffer, offset, *data.buffer, data.offset, size);
 	return data.host;
 }
 
@@ -2247,7 +2255,7 @@ void *CommandBuffer::update_image(const Image &image, const VkOffset3D &offset, 
 		data = staging_block.allocate(size);
 	}
 
-	copy_buffer_to_image(image, *staging_block.buffer, data.offset, offset, extent, row_length, image_height, subresource);
+	copy_buffer_to_image(image, *data.buffer, data.offset, offset, extent, row_length, image_height, subresource);
 	return data.host;
 }
 
@@ -2270,7 +2278,7 @@ void *CommandBuffer::allocate_vertex_data(unsigned binding, VkDeviceSize size, V
 		data = vbo_block.allocate(size);
 	}
 
-	set_vertex_binding(binding, *vbo_block.buffer, data.offset, stride, step_rate);
+	set_vertex_binding(binding, *data.buffer, data.offset, stride, step_rate);
 	return data.host;
 }
 
@@ -3117,13 +3125,13 @@ void CommandBuffer::end()
 {
 	end_threaded_recording();
 
-	if (vbo_block.mapped)
+	if (vbo_block.is_mapped())
 		device->request_vertex_block_nolock(vbo_block, 0);
-	if (ibo_block.mapped)
+	if (ibo_block.is_mapped())
 		device->request_index_block_nolock(ibo_block, 0);
-	if (ubo_block.mapped)
+	if (ubo_block.is_mapped())
 		device->request_uniform_block_nolock(ubo_block, 0);
-	if (staging_block.mapped)
+	if (staging_block.is_mapped())
 		device->request_staging_block_nolock(staging_block, 0);
 }
 

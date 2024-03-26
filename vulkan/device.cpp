@@ -952,8 +952,10 @@ void Device::set_context(const Context &context)
 	managers.ubo.init(this, 256 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.minUniformBufferOffsetAlignment),
 	                  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	managers.ubo.set_spill_region_size(VULKAN_MAX_UBO_SIZE);
-	managers.staging.init(this, 64 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.optimalBufferCopyOffsetAlignment),
-	                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+	managers.staging.init(this, 64 * 1024,
+	                      std::max<VkDeviceSize>(gpu_props.limits.minStorageBufferOffsetAlignment,
+	                                             std::max<VkDeviceSize>(16u, gpu_props.limits.optimalBufferCopyOffsetAlignment)),
+	                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 
 	managers.vbo.set_max_retained_blocks(256);
 	managers.ibo.set_max_retained_blocks(256);
@@ -1145,20 +1147,17 @@ void Device::init_stock_samplers()
 static void request_block(Device &device, BufferBlock &block, VkDeviceSize size,
                           BufferPool &pool, std::vector<BufferBlock> &recycle)
 {
-	if (block.mapped)
-	{
-		device.unmap_host_buffer(*block.buffer, MEMORY_ACCESS_WRITE_BIT);
-		block.mapped = nullptr;
-	}
+	if (block.is_mapped())
+		block.unmap(device);
 
-	if (block.offset == 0)
+	if (block.get_offset() == 0)
 	{
-		if (block.size == pool.get_block_size())
+		if (block.get_size() == pool.get_block_size())
 			pool.recycle_block(block);
 	}
 	else
 	{
-		if (block.size == pool.get_block_size())
+		if (block.get_size() == pool.get_block_size())
 			recycle.push_back(block);
 	}
 

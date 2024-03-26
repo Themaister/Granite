@@ -112,4 +112,27 @@ BufferPool::~BufferPool()
 {
 	VK_ASSERT(blocks.empty());
 }
+
+BufferBlockAllocation BufferBlock::allocate(VkDeviceSize allocate_size)
+{
+	auto aligned_offset = (offset + alignment - 1) & ~(alignment - 1);
+	if (aligned_offset + allocate_size <= size)
+	{
+		auto *ret = mapped + aligned_offset;
+		offset = aligned_offset + allocate_size;
+
+		VkDeviceSize padded_size = std::max<VkDeviceSize>(allocate_size, spill_size);
+		padded_size = std::min<VkDeviceSize>(padded_size, size - aligned_offset);
+
+		return { ret, buffer, aligned_offset, padded_size };
+	}
+	else
+		return { nullptr, {}, 0, 0 };
+}
+
+void BufferBlock::unmap(Device &device)
+{
+	device.unmap_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT);
+	mapped = nullptr;
+}
 }

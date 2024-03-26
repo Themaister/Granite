@@ -1153,7 +1153,7 @@ void RenderGraph::build_render_pass_info()
 				auto res = add_unique_ds(ds_output->get_physical_index());
 				// If this is the first subpass the attachment is used, we need to load it.
 				if (res.second)
-					rp.load_attachments |= 1u << res.first;
+					rp.op_flags |= Vulkan::RENDER_PASS_OP_LOAD_DEPTH_STENCIL_BIT;
 
 				rp.op_flags |= Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
 				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite;

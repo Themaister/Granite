@@ -1214,7 +1214,7 @@ void RenderGraph::build_render_pass_info()
 					if (preserve_depth)
 					{
 						// Have to store here, or the attachment becomes undefined in future passes.
-						rp.op_flags |= Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
+						rp.op_flags |= Vulkan::RENDER_PASS_OP_PRESERVE_DEPTH_STENCIL_BIT;
 					}
 				}
 

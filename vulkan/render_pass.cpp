@@ -177,7 +177,17 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		ds_load_op = VK_ATTACHMENT_LOAD_OP_LOAD;
 
 	if (info.op_flags & RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT)
+	{
 		ds_store_op = VK_ATTACHMENT_STORE_OP_STORE;
+	}
+	else if (info.op_flags & RENDER_PASS_OP_PRESERVE_DEPTH_STENCIL_BIT)
+	{
+		ds_store_op = device->get_device_features().device_api_core_version >= VK_API_VERSION_1_3 ?
+		              VK_ATTACHMENT_STORE_OP_NONE : VK_ATTACHMENT_STORE_OP_STORE;
+
+		if (ds_load_op != VK_ATTACHMENT_LOAD_OP_LOAD)
+			ds_store_op = VK_ATTACHMENT_STORE_OP_STORE;
+	}
 
 	bool ds_read_only = (info.op_flags & RENDER_PASS_OP_DEPTH_STENCIL_READ_ONLY_BIT) != 0;
 	VkImageLayout depth_stencil_layout = VK_IMAGE_LAYOUT_UNDEFINED;

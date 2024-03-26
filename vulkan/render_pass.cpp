@@ -182,7 +182,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	}
 	else if (info.op_flags & RENDER_PASS_OP_PRESERVE_DEPTH_STENCIL_BIT)
 	{
-		ds_store_op = device->get_device_features().device_api_core_version >= VK_API_VERSION_1_3 ?
+		ds_store_op = device->get_device_features().supports_store_op_none ?
 		              VK_ATTACHMENT_STORE_OP_NONE : VK_ATTACHMENT_STORE_OP_STORE;
 
 		if (ds_load_op != VK_ATTACHMENT_LOAD_OP_LOAD)

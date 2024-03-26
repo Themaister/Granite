@@ -1368,6 +1368,21 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.video_maintenance1_features, VIDEO_MAINTENANCE_1_FEATURES_KHR);
 	}
 
+	if (ext.device_api_core_version >= VK_API_VERSION_1_3)
+	{
+		ext.supports_store_op_none = true;
+	}
+	else if (has_extension(VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME))
+	{
+		ext.supports_store_op_none = true;
+		enabled_extensions.push_back(VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME);
+	}
+	else if (has_extension(VK_EXT_LOAD_STORE_OP_NONE_EXTENSION_NAME))
+	{
+		ext.supports_store_op_none = true;
+		enabled_extensions.push_back(VK_EXT_LOAD_STORE_OP_NONE_EXTENSION_NAME);
+	}
+
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
 		if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))

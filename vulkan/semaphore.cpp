@@ -82,6 +82,23 @@ void SemaphoreHolder::recycle_semaphore()
 	}
 }
 
+bool SemaphoreHolder::wait_timeline_timeout(uint64_t value, uint64_t timeout)
+{
+	VK_ASSERT(semaphore_type == VK_SEMAPHORE_TYPE_TIMELINE);
+	VK_ASSERT(is_proxy_timeline());
+
+	VkSemaphoreWaitInfo wait_info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO };
+	wait_info.pSemaphores = &semaphore;
+	wait_info.semaphoreCount = 1;
+	wait_info.pValues = &value;
+	return device->get_device_table().vkWaitSemaphores(device->get_device(), &wait_info, timeout) == VK_SUCCESS;
+}
+
+void SemaphoreHolder::wait_timeline(uint64_t value)
+{
+	wait_timeline_timeout(value, UINT64_MAX);
+}
+
 SemaphoreHolder &SemaphoreHolder::operator=(SemaphoreHolder &&other) noexcept
 {
 	if (this == &other)

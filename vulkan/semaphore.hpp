@@ -158,6 +158,9 @@ public:
 
 	SemaphoreHolder &operator=(SemaphoreHolder &&other) noexcept;
 
+	void wait_timeline(uint64_t value);
+	bool wait_timeline_timeout(uint64_t value, uint64_t timeout);
+
 private:
 	friend class Util::ObjectPool<SemaphoreHolder>;
 	SemaphoreHolder(Device *device_, VkSemaphore semaphore_, bool signalled_, bool owned_)

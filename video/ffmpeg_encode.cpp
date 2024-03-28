@@ -1197,8 +1197,10 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	if (mux_stream_callback)
 		mux_stream_callback->set_codec_parameters(pyro_codec);
 
+#ifdef HAVE_GRANITE_AUDIO
 	if (audio_stream)
 		audio_stream->set_record_callback(this);
+#endif
 
 	if (av_format_ctx)
 		av_dump_format(av_format_ctx, 0, path, 1);

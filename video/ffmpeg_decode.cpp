@@ -2219,6 +2219,7 @@ double VideoDecoder::Impl::get_audio_buffering_duration()
 
 void VideoDecoder::Impl::set_audio_delta_rate_factor(float delta)
 {
+#ifdef HAVE_GRANITE_AUDIO
 	if (delta > 0.10f)
 	{
 		// Speed up, audio buffer is too large.
@@ -2235,6 +2236,9 @@ void VideoDecoder::Impl::set_audio_delta_rate_factor(float delta)
 		// And should be less than 1 cent on average.
 		stream->set_rate_factor(1.0f + delta * 0.05f);
 	}
+#else
+	(void)delta;
+#endif
 }
 
 void VideoDecoder::Impl::latch_estimated_audio_playback_timestamp(double pts)
@@ -2365,6 +2369,7 @@ double VideoDecoder::Impl::get_estimated_audio_playback_timestamp(double elapsed
 	else
 #endif
 	{
+		(void)elapsed_time;
 		return -1.0;
 	}
 }

@@ -2292,7 +2292,10 @@ void Device::reset_fence_nolock(VkFence fence, bool observed_wait)
 		managers.fence.recycle_fence(fence);
 	}
 	else
+	{
+		frame().wait_fences.push_back(fence);
 		frame().recycle_fences.push_back(fence);
+	}
 }
 
 PipelineEvent Device::request_pipeline_event()

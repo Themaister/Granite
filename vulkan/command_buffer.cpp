@@ -536,10 +536,11 @@ static uint32_t deduce_acquire_release_family_index(Device &device, const Image 
 	return family;
 }
 
-void CommandBuffer::release_external_image_barrier(
+void CommandBuffer::release_image_barrier(
 		const Image &image,
 		VkImageLayout old_layout, VkImageLayout new_layout,
-		VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access)
+		VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
+		uint32_t dst_queue_family)
 {
 	VkImageMemoryBarrier2 barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 	uint32_t family_index = device->get_queue_info().family_indices[device->get_physical_queue_type(type)];
@@ -552,19 +553,21 @@ void CommandBuffer::release_external_image_barrier(
 	};
 	barrier.oldLayout = old_layout;
 	barrier.newLayout = new_layout;
-	barrier.srcAccessMask = src_access;
 
 	barrier.srcQueueFamilyIndex = deduce_acquire_release_family_index(*device, image, family_index);
-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL;
+	barrier.dstQueueFamilyIndex = dst_queue_family;
+
+	barrier.srcAccessMask = src_access;
 	barrier.srcStageMask = src_stage;
 
 	image_barriers(1, &barrier);
 }
 
-void CommandBuffer::acquire_external_image_barrier(
+void CommandBuffer::acquire_image_barrier(
 		const Image &image,
 		VkImageLayout old_layout, VkImageLayout new_layout,
-		VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access)
+		VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access,
+		uint32_t src_queue_family)
 {
 	VkImageMemoryBarrier2 b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 	uint32_t family_index = device->get_queue_info().family_indices[device->get_physical_queue_type(type)];
@@ -577,90 +580,43 @@ void CommandBuffer::acquire_external_image_barrier(
 	};
 	b.oldLayout = old_layout;
 	b.newLayout = new_layout;
-	b.dstAccessMask = dst_access;
-	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL;
-	b.dstQueueFamilyIndex = deduce_acquire_release_family_index(*device, image, family_index);
-	b.srcStageMask = VK_PIPELINE_STAGE_NONE;
-	b.dstStageMask = dst_stage;
-	image_barriers(1, &b);
-}
-
-void CommandBuffer::release_external_buffer_barrier(
-		const Buffer &buffer,
-		VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access)
-{
-	VkBufferMemoryBarrier2 b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
-	b.buffer = buffer.get_buffer();
-	b.size = buffer.get_create_info().size;
-	b.srcAccessMask = src_access;
-	b.srcQueueFamilyIndex = deduce_acquire_release_family_index(*device);
-	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL;
-	b.srcStageMask = src_stage;
-	b.dstStageMask = VK_PIPELINE_STAGE_NONE;
-	buffer_barriers(1, &b);
-}
-
-void CommandBuffer::acquire_external_buffer_barrier(
-		const Buffer &buffer,
-		VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access)
-{
-	VkBufferMemoryBarrier2 b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
-	b.buffer = buffer.get_buffer();
-	b.size = buffer.get_create_info().size;
-	b.dstAccessMask = dst_access;
-	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL;
-	b.dstQueueFamilyIndex = deduce_acquire_release_family_index(*device);
-	b.srcStageMask = VK_PIPELINE_STAGE_NONE;
-	b.dstStageMask = dst_stage;
-	buffer_barriers(1, &b);
-}
-
-void CommandBuffer::image_barrier_acquire(const Vulkan::Image &image,
-                                          VkImageLayout old_layout, VkImageLayout new_layout,
-                                          uint32_t src_queue_family,
-                                          VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access)
-{
-	VK_ASSERT(!actual_render_pass);
-	VK_ASSERT(!framebuffer);
-	VK_ASSERT(image.get_create_info().domain != ImageDomain::Transient);
-
-	VkImageMemoryBarrier2 b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
-	b.oldLayout = old_layout;
-	b.newLayout = new_layout;
-	b.image = image.get_image();
-	b.subresourceRange.aspectMask = format_to_aspect_mask(image.get_create_info().format);
-	b.subresourceRange.levelCount = image.get_create_info().levels;
-	b.subresourceRange.layerCount = image.get_create_info().layers;
 	b.srcQueueFamilyIndex = src_queue_family;
-	b.dstQueueFamilyIndex = device->get_queue_info().family_indices[device->get_physical_queue_type(type)];
-	b.dstAccessMask = dst_access;
+	b.dstQueueFamilyIndex = deduce_acquire_release_family_index(*device, image, family_index);
+
 	b.dstStageMask = dst_stage;
+	b.dstAccessMask = dst_access;
 
 	image_barriers(1, &b);
 }
 
-void CommandBuffer::image_barrier_release(const Vulkan::Image &image,
-                                          VkImageLayout old_layout, VkImageLayout new_layout,
-                                          VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
-                                          uint32_t dst_queue_family)
+void CommandBuffer::release_buffer_barrier(
+		const Buffer &buffer,
+		VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
+		uint32_t dst_queue_family)
 {
-	VK_ASSERT(!actual_render_pass);
-	VK_ASSERT(!framebuffer);
-	VK_ASSERT(image.get_create_info().domain != ImageDomain::Transient);
-
-	VkImageMemoryBarrier2 b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
-	b.oldLayout = old_layout;
-	b.newLayout = new_layout;
-	b.image = image.get_image();
-	b.subresourceRange.aspectMask = format_to_aspect_mask(image.get_create_info().format);
-	b.subresourceRange.levelCount = image.get_create_info().levels;
-	b.subresourceRange.layerCount = image.get_create_info().layers;
-	b.srcQueueFamilyIndex = device->get_queue_info().family_indices[device->get_physical_queue_type(type)];
+	VkBufferMemoryBarrier2 b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	b.buffer = buffer.get_buffer();
+	b.size = buffer.get_create_info().size;
+	b.srcQueueFamilyIndex = deduce_acquire_release_family_index(*device);
 	b.dstQueueFamilyIndex = dst_queue_family;
-	b.srcAccessMask = src_access;
 	b.srcStageMask = src_stage;
+	b.srcAccessMask = src_access;
+	buffer_barriers(1, &b);
+}
 
-	image_barriers(1, &b);
+void CommandBuffer::acquire_buffer_barrier(
+		const Buffer &buffer,
+		VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access,
+		uint32_t src_queue_family)
+{
+	VkBufferMemoryBarrier2 b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	b.buffer = buffer.get_buffer();
+	b.size = buffer.get_create_info().size;
+	b.srcQueueFamilyIndex = src_queue_family;
+	b.dstQueueFamilyIndex = deduce_acquire_release_family_index(*device);
+	b.dstStageMask = dst_stage;
+	b.dstAccessMask = dst_access;
+	buffer_barriers(1, &b);
 }
 
 void CommandBuffer::image_barrier(const Image &image,

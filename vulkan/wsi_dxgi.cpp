@@ -470,10 +470,9 @@ bool DXGIInteropSwapchain::present(Vulkan::Semaphore release_semaphore, bool vsy
 	                              VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, true);
 
 	auto cmd = vk_device->request_command_buffer();
-	cmd->image_barrier_release(*per_frame.vulkan_backbuffer,
+	cmd->release_image_barrier(*per_frame.vulkan_backbuffer,
 	                           VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_GENERAL,
-	                           VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
-	                           VK_QUEUE_FAMILY_EXTERNAL);
+	                           VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0);
 
 	vk_device->submit(cmd);
 	auto timeline_signal = vk_device->request_timeline_semaphore_as_binary(*vk_fence, ++fence_value);

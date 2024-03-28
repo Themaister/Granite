@@ -143,9 +143,9 @@ static bool run_test(Device &producer, Device &consumer)
 		                        VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
 		                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 		fill_cmd->clear_image(*write_image, clear_value);
-		fill_cmd->release_external_buffer_barrier(*write_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
-		fill_cmd->release_external_image_barrier(*write_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		                                         VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		fill_cmd->release_buffer_barrier(*write_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		fill_cmd->release_image_barrier(*write_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		                                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 		producer.submit(fill_cmd);
 		auto external = producer.request_semaphore_external(
 		    VK_SEMAPHORE_TYPE_BINARY, ExternalHandle::get_opaque_semaphore_handle_type());
@@ -167,9 +167,9 @@ static bool run_test(Device &producer, Device &consumer)
 		consumer.add_wait_semaphore(CommandBuffer::Type::AsyncTransfer, import, VK_PIPELINE_STAGE_TRANSFER_BIT, true);
 		auto copy_cmd = consumer.request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 		const VkBufferCopy copy = { 0, 2 * i * sizeof(uint32_t), sizeof(uint32_t) };
-		copy_cmd->acquire_external_buffer_barrier(*read_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-		copy_cmd->acquire_external_image_barrier(*read_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		                                         VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		copy_cmd->acquire_buffer_barrier(*read_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		copy_cmd->acquire_image_barrier(*read_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		                                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 		copy_cmd->copy_buffer(*readback_buffer, *read_buffer, &copy, 1);
 		copy_cmd->copy_image_to_buffer(*readback_buffer, *read_image,
 		                               (2 * i + 1) * sizeof(uint32_t), {}, {1, 1, 1}, 0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });

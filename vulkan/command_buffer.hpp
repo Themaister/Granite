@@ -390,26 +390,20 @@ public:
 	                   VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
 	                   VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access);
 
-	void image_barrier_acquire(const Image &image,
-	                           VkImageLayout old_layout, VkImageLayout new_layout,
-	                           uint32_t src_queue_family,
-	                           VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access);
-
-	void image_barrier_release(const Image &image,
-	                           VkImageLayout old_layout, VkImageLayout new_layout,
-	                           VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
-	                           uint32_t dst_queue_family);
-
 	void buffer_barriers(uint32_t buffer_barriers, const VkBufferMemoryBarrier2 *buffers);
 	void image_barriers(uint32_t image_barriers, const VkImageMemoryBarrier2 *images);
 
-	void release_external_buffer_barrier(const Buffer &buffer, VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access);
-	void acquire_external_buffer_barrier(const Buffer &buffer, VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access);
-	void release_external_image_barrier(const Image &image,
-	                                    VkImageLayout old_layout, VkImageLayout new_layout,
-	                                    VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access);
-	void acquire_external_image_barrier(const Image &image, VkImageLayout old_layout, VkImageLayout new_layout,
-	                                    VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access);
+	void release_buffer_barrier(const Buffer &buffer, VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
+	                            uint32_t dst_queue_family = VK_QUEUE_FAMILY_EXTERNAL);
+	void acquire_buffer_barrier(const Buffer &buffer, VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access,
+	                            uint32_t src_queue_family = VK_QUEUE_FAMILY_EXTERNAL);
+	void release_image_barrier(const Image &image,
+	                           VkImageLayout old_layout, VkImageLayout new_layout,
+	                           VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
+	                           uint32_t dst_queue_family = VK_QUEUE_FAMILY_EXTERNAL);
+	void acquire_image_barrier(const Image &image, VkImageLayout old_layout, VkImageLayout new_layout,
+	                           VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access,
+	                           uint32_t src_queue_family = VK_QUEUE_FAMILY_EXTERNAL);
 
 	void blit_image(const Image &dst,
 	                const Image &src,

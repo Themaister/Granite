@@ -4005,11 +4005,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			Semaphore sem;
 
 			submit(transfer_cmd, nullptr, 1, &sem);
-			add_wait_semaphore(CommandBuffer::Type::Generic, sem, VK_PIPELINE_STAGE_2_BLIT_BIT, true);
+			add_wait_semaphore(CommandBuffer::Type::Generic, sem, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
 
 			graphics_cmd->begin_region("mipgen");
 			graphics_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			                                              VK_PIPELINE_STAGE_2_BLIT_BIT,
+			                                              VK_PIPELINE_STAGE_NONE,
 			                                              0, true);
 			graphics_cmd->generate_mipmap(*handle);
 			graphics_cmd->end_region();
@@ -5173,15 +5173,12 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 
 	VkImageMemoryBarrier2 ownership = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 	ownership.image = image.get_image();
-	ownership.srcAccessMask = 0;
-	ownership.dstAccessMask = 0;
 	ownership.subresourceRange.aspectMask = format_to_aspect_mask(image.get_format());
 	ownership.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
 	ownership.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 	ownership.oldLayout = info.old_image_layout;
 	ownership.newLayout = info.new_image_layout;
 	ownership.srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-	ownership.dstStageMask = VK_PIPELINE_STAGE_NONE;
 
 	if (need_ownership_transfer)
 	{
@@ -5196,7 +5193,7 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 
 		Semaphore sem;
 		device.submit(release_cmd, nullptr, 1, &sem);
-		device.add_wait_semaphore(info.new_queue, sem, info.dst_pipeline_stage, true);
+		device.add_wait_semaphore(info.new_queue, sem, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
 	}
 	else
 	{
@@ -5214,8 +5211,9 @@ CommandBufferHandle request_command_buffer_with_ownership_transfer(
 	auto acquire_cmd = device.request_command_buffer(info.new_queue);
 	if (need_dst_barrier)
 	{
+		if (!need_ownership_transfer)
+			ownership.srcStageMask = info.dst_pipeline_stage;
 		ownership.dstAccessMask = info.dst_access;
-		ownership.srcStageMask = info.dst_pipeline_stage;
 		ownership.dstStageMask = info.dst_pipeline_stage;
 		acquire_cmd->image_barriers(1, &ownership);
 	}

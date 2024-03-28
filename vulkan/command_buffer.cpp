@@ -557,7 +557,6 @@ void CommandBuffer::release_external_image_barrier(
 	barrier.srcQueueFamilyIndex = deduce_acquire_release_family_index(*device, image, family_index);
 	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL;
 	barrier.srcStageMask = src_stage;
-	barrier.dstStageMask = VK_PIPELINE_STAGE_NONE;
 
 	image_barriers(1, &barrier);
 }
@@ -581,7 +580,7 @@ void CommandBuffer::acquire_external_image_barrier(
 	b.dstAccessMask = dst_access;
 	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL;
 	b.dstQueueFamilyIndex = deduce_acquire_release_family_index(*device, image, family_index);
-	b.srcStageMask = dst_stage;
+	b.srcStageMask = VK_PIPELINE_STAGE_NONE;
 	b.dstStageMask = dst_stage;
 	image_barriers(1, &b);
 }
@@ -611,14 +610,14 @@ void CommandBuffer::acquire_external_buffer_barrier(
 	b.dstAccessMask = dst_access;
 	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL;
 	b.dstQueueFamilyIndex = deduce_acquire_release_family_index(*device);
-	b.srcStageMask = dst_stage;
+	b.srcStageMask = VK_PIPELINE_STAGE_NONE;
 	b.dstStageMask = dst_stage;
 	buffer_barriers(1, &b);
 }
 
 void CommandBuffer::image_barrier_acquire(const Vulkan::Image &image,
                                           VkImageLayout old_layout, VkImageLayout new_layout,
-                                          VkPipelineStageFlags2 src_stage, uint32_t src_queue_family,
+                                          uint32_t src_queue_family,
                                           VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access)
 {
 	VK_ASSERT(!actual_render_pass);
@@ -626,8 +625,6 @@ void CommandBuffer::image_barrier_acquire(const Vulkan::Image &image,
 	VK_ASSERT(image.get_create_info().domain != ImageDomain::Transient);
 
 	VkImageMemoryBarrier2 b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
-	b.srcAccessMask = 0;
-	b.dstAccessMask = dst_access;
 	b.oldLayout = old_layout;
 	b.newLayout = new_layout;
 	b.image = image.get_image();
@@ -636,7 +633,7 @@ void CommandBuffer::image_barrier_acquire(const Vulkan::Image &image,
 	b.subresourceRange.layerCount = image.get_create_info().layers;
 	b.srcQueueFamilyIndex = src_queue_family;
 	b.dstQueueFamilyIndex = device->get_queue_info().family_indices[device->get_physical_queue_type(type)];
-	b.srcStageMask = src_stage;
+	b.dstAccessMask = dst_access;
 	b.dstStageMask = dst_stage;
 
 	image_barriers(1, &b);
@@ -652,8 +649,6 @@ void CommandBuffer::image_barrier_release(const Vulkan::Image &image,
 	VK_ASSERT(image.get_create_info().domain != ImageDomain::Transient);
 
 	VkImageMemoryBarrier2 b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
-	b.srcAccessMask = src_access;
-	b.dstAccessMask = 0;
 	b.oldLayout = old_layout;
 	b.newLayout = new_layout;
 	b.image = image.get_image();
@@ -662,8 +657,8 @@ void CommandBuffer::image_barrier_release(const Vulkan::Image &image,
 	b.subresourceRange.layerCount = image.get_create_info().layers;
 	b.srcQueueFamilyIndex = device->get_queue_info().family_indices[device->get_physical_queue_type(type)];
 	b.dstQueueFamilyIndex = dst_queue_family;
+	b.srcAccessMask = src_access;
 	b.srcStageMask = src_stage;
-	b.dstStageMask = 0;
 
 	image_barriers(1, &b);
 }

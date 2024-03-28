@@ -1439,6 +1439,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.vk13_features.inlineUniformBlock = VK_FALSE;
 	ext.vk13_features.privateData = VK_FALSE;
 
+	ext.mesh_shader_features.primitiveFragmentShadingRateMeshShader = VK_FALSE;
+	ext.mesh_shader_features.meshShaderQueries = VK_FALSE;
+
 	ext.device_generated_commands_compute_features.deviceGeneratedComputeCaptureReplay = VK_FALSE;
 	// TODO
 	ext.device_generated_commands_compute_features.deviceGeneratedComputePipelines = VK_FALSE;

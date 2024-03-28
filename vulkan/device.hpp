@@ -620,8 +620,7 @@ private:
 		std::vector<BufferBlock> ubo_blocks;
 		std::vector<BufferBlock> staging_blocks;
 
-		std::vector<VkFence> wait_fences;
-		std::vector<VkFence> recycle_fences;
+		std::vector<VkFence> wait_and_recycle_fences;
 
 		std::vector<DeviceAllocation> allocations;
 		std::vector<VkFramebuffer> destroyed_framebuffers;

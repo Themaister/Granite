@@ -1817,10 +1817,7 @@ void Device::end_frame_nolock()
 			InternalFence fence = {};
 			submit_queue(i, &fence);
 			if (fence.fence != VK_NULL_HANDLE)
-			{
-				frame().wait_fences.push_back(fence.fence);
-				frame().recycle_fences.push_back(fence.fence);
-			}
+				frame().wait_and_recycle_fences.push_back(fence.fence);
 			queue_data[i].need_fence = false;
 		}
 	}
@@ -2292,10 +2289,7 @@ void Device::reset_fence_nolock(VkFence fence, bool observed_wait)
 		managers.fence.recycle_fence(fence);
 	}
 	else
-	{
-		frame().wait_fences.push_back(fence);
-		frame().recycle_fences.push_back(fence);
-	}
+		frame().wait_and_recycle_fences.push_back(fence);
 }
 
 PipelineEvent Device::request_pipeline_event()
@@ -2391,8 +2385,6 @@ void Device::wait_idle_nolock()
 
 	for (auto &frame : per_frame)
 	{
-		// We have done WaitIdle, no need to wait for extra fences, it's also not safe.
-		frame->wait_fences.clear();
 		frame->begin();
 		frame->trim_command_pools();
 	}
@@ -2714,20 +2706,14 @@ void Device::PerFrame::begin()
 		}
 	}
 
-	// If we're using timeline semaphores, these paths should never be hit.
-	if (!wait_fences.empty())
+	// If we're using timeline semaphores, these paths should never be hit (or only for swapchain maintenance1).
+	if (!wait_and_recycle_fences.empty())
 	{
-		table.vkWaitForFences(vkdevice, wait_fences.size(), wait_fences.data(), VK_TRUE, UINT64_MAX);
-		wait_fences.clear();
-	}
-
-	// If we're using timeline semaphores, these paths should never be hit.
-	if (!recycle_fences.empty())
-	{
-		table.vkResetFences(vkdevice, recycle_fences.size(), recycle_fences.data());
-		for (auto &fence : recycle_fences)
+		table.vkWaitForFences(vkdevice, wait_and_recycle_fences.size(), wait_and_recycle_fences.data(), VK_TRUE, UINT64_MAX);
+		table.vkResetFences(vkdevice, wait_and_recycle_fences.size(), wait_and_recycle_fences.data());
+		for (auto &fence : wait_and_recycle_fences)
 			managers.fence.recycle_fence(fence);
-		recycle_fences.clear();
+		wait_and_recycle_fences.clear();
 	}
 
 	for (auto &cmd_pool : cmd_pools)

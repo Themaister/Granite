@@ -72,6 +72,7 @@ private:
 	using OBJVertex = std::vector<std::string>;
 	void emit_vertex(const OBJVertex * const *face);
 	void emit_gltf_pbr_metallic_roughness(const std::string &metallic, const std::string &roughness);
+	void emit_gltf_ue_pbr(const std::string &ue_pbr);
 	void emit_gltf_base_color(const std::string &metallic, const std::string &roughness);
 	Node root_node;
 };

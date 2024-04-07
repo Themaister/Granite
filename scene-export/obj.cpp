@@ -192,6 +192,51 @@ void Parser::emit_gltf_base_color(const std::string &base_color_path, const std:
 	}
 }
 
+void Parser::emit_gltf_ue_pbr(const std::string &ue_pbr)
+{
+	Vulkan::MemoryMappedTexture pbr;
+	Vulkan::MemoryMappedTexture output;
+
+	pbr = Vulkan::load_texture_from_file(*GRANITE_FILESYSTEM(), ue_pbr, Vulkan::ColorSpace::Linear);
+	if (pbr.empty())
+	{
+		LOGE("Failed to open metallic texture %s, falling back to default material.\n",
+		     ue_pbr.c_str());
+		return;
+	}
+
+	unsigned width = 0;
+	unsigned height = 0;
+	Hasher hasher;
+
+	if (pbr.get_layout().get_format() != VK_FORMAT_R8G8B8A8_UNORM)
+		LOGE("Unexpected format.");
+	width = pbr.get_layout().get_width();
+	height = pbr.get_layout().get_height();
+	hasher.string(ue_pbr);
+
+	std::string packed_path = std::string("memory://") + std::to_string(hasher.get()) + ".gtx";
+	materials.back().paths[Util::ecast(TextureKind::Occlusion)] = packed_path;
+	materials.back().paths[Util::ecast(TextureKind::MetallicRoughness)] = packed_path;
+
+	output.set_2d(VK_FORMAT_R8G8B8A8_UNORM, width, height);
+	if (!output.map_write(*GRANITE_FILESYSTEM(), packed_path))
+	{
+		LOGE("Failed to map texture for writing.\n");
+		return;
+	}
+
+	for (unsigned y = 0; y < height; y++)
+	{
+		for (unsigned x = 0; x < width; x++)
+		{
+			auto *o = output.get_layout().data_2d<u8vec4>(x, y);
+			auto *i = pbr.get_layout().data_2d<u8vec4>(x, y);
+			*o = *i;
+		}
+	}
+}
+
 void Parser::emit_gltf_pbr_metallic_roughness(const std::string &metallic_path, const std::string &roughness_path)
 {
 	Vulkan::MemoryMappedTexture metallic;
@@ -381,6 +426,7 @@ void Parser::load_material_library(const std::string &path)
 	std::string roughness;
 	std::string base_color;
 	std::string alpha_mask;
+	std::string ue_pbr;
 
 	for (auto &line : lines)
 	{
@@ -398,6 +444,8 @@ void Parser::load_material_library(const std::string &path)
 		{
 			if (!metallic.empty() || !roughness.empty())
 				emit_gltf_pbr_metallic_roughness(metallic, roughness);
+			if (!ue_pbr.empty())
+				emit_gltf_ue_pbr(ue_pbr);
 			if (!base_color.empty())
 				emit_gltf_base_color(base_color, alpha_mask);
 
@@ -407,6 +455,7 @@ void Parser::load_material_library(const std::string &path)
 			roughness.clear();
 			base_color.clear();
 			alpha_mask.clear();
+			ue_pbr.clear();
 		}
 		else if (ident == "Kd")
 		{
@@ -447,10 +496,19 @@ void Parser::load_material_library(const std::string &path)
 				throw std::logic_error("No material");
 			roughness = Path::relpath(path, elements.at(1));
 		}
+		else if (ident == "map_ue_pbr")
+		{
+			// Custom hacks.
+			if (materials.empty())
+				throw std::logic_error("No material");
+			ue_pbr = Path::relpath(path, elements.at(1));
+		}
 	}
 
 	if (!metallic.empty() || !roughness.empty())
 		emit_gltf_pbr_metallic_roughness(metallic, roughness);
+	if (!ue_pbr.empty())
+		emit_gltf_ue_pbr(ue_pbr);
 	if (!base_color.empty())
 		emit_gltf_base_color(base_color, alpha_mask);
 }

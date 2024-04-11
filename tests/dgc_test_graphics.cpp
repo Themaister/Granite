@@ -37,13 +37,14 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 	Vulkan::BufferHandle dgc_count_buffer;
 	Vulkan::BufferHandle ssbo;
 	Vulkan::BufferHandle ssbo_readback;
+	Vulkan::BufferHandle index_buffer;
 	uint32_t frame_count = 0;
 	bool has_renderdoc = false;
 
 	struct DGC
 	{
 		uint32_t push;
-		VkDrawIndirectCommand draw;
+		VkDrawIndexedIndirectCommand draw;
 	};
 
 	void on_device_created(const DeviceCreatedEvent &e)
@@ -71,7 +72,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		tokens[0].data.push.range = 4;
 		tokens[0].data.push.offset = 0;
 		tokens[0].data.push.layout = layout;
-		tokens[1].type = IndirectLayoutToken::Type::Draw;
+		tokens[1].type = IndirectLayoutToken::Type::DrawIndexed;
 		tokens[1].offset = offsetof(DGC, draw);
 
 		if (e.get_device().get_device_features().device_generated_commands_features.deviceGeneratedCommands)
@@ -96,6 +97,15 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		dgc_count_buffer = e.get_device().create_buffer(buf_info, &options.indirect_count);
 
 		has_renderdoc = Device::init_renderdoc_capture();
+
+		BufferCreateInfo index_info = {};
+		index_info.domain = BufferDomain::LinkedDeviceHost;
+		index_info.size = options.primitives_per_draw * sizeof(uint32_t) * 3;
+		index_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+		std::vector<uint32_t> index_buffer_data;
+		for (unsigned i = 0; i < 3 * options.primitives_per_draw; i++)
+			index_buffer_data.push_back(i);
+		index_buffer = e.get_device().create_buffer(index_info, index_buffer_data.data());
 	}
 
 	void on_device_destroyed(const DeviceCreatedEvent &)
@@ -104,6 +114,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		dgc_count_buffer.reset();
 		ssbo.reset();
 		ssbo_readback.reset();
+		index_buffer.reset();
 		indirect_layout = nullptr;
 	}
 
@@ -133,6 +144,8 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 			cmd->set_opaque_state();
 			cmd->set_program("assets://shaders/dgc.vert", "assets://shaders/dgc.frag",
 			                 {{ "MDI", int(options.use_mdi && !options.use_dgc) }});
+			cmd->set_index_buffer(*index_buffer, 0, VK_INDEX_TYPE_UINT32);
+
 			for (uint32_t i = 0; i < options.iterations; i++)
 			{
 				uint32_t indirect_draw_count = options.use_indirect_count ?

@@ -944,7 +944,7 @@ private:
 		unsigned physical_depth_stencil_attachment = RenderResource::Unused;
 
 		std::vector<ColorClearRequest> color_clear_requests;
-		DepthClearRequest depth_clear_request;
+		DepthClearRequest depth_clear_request = {};
 
 		std::vector<std::vector<ScaledClearRequests>> scaled_clear_requests;
 		std::vector<MipmapRequests> mipmap_requests;

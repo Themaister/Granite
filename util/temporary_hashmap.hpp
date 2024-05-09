@@ -72,9 +72,13 @@ public:
 	{
 		for (auto &ring : rings)
 		{
-			for (auto &node : ring)
+			while (!ring.empty())
+			{
+				auto itr = ring.begin();
+				ring.erase(itr);
+				auto &node = *itr;
 				object_pool.free(static_cast<T *>(&node));
-			ring.clear();
+			}
 		}
 		hashmap.clear();
 
@@ -87,12 +91,16 @@ public:
 	void begin_frame()
 	{
 		index = (index + 1) & (RingSize - 1);
-		for (auto &node : rings[index])
+		auto &ring = rings[index];
+
+		while (!ring.empty())
 		{
+			auto itr = ring.begin();
+			ring.erase(itr);
+			auto &node = *itr;
 			hashmap.erase(node.get_hash());
 			free_object(&node, ReuseTag<ReuseObjects>());
 		}
-		rings[index].clear();
 	}
 
 	T *request(Hash hash)

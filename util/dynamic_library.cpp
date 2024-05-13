@@ -23,6 +23,7 @@
 #include "dynamic_library.hpp"
 #include "logging.hpp"
 #include <stdexcept>
+#include <utility>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN

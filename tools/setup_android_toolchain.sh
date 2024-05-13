@@ -15,7 +15,7 @@ fi
 # Grab from https://developer.android.com/studio
 # Adjust as necessary. Not sure if there's a generic way to do this ...
 echo "=== Downloading command line tools for Linux ==="
-VERSION=linux-8512546
+VERSION=linux-11076708
 FILENAME=commandlinetools-${VERSION}_latest.zip
 wget https://dl.google.com/android/repository/$FILENAME || exit 1
 
@@ -30,9 +30,9 @@ mv cmdline-tools/{NOTICE.txt,bin,lib,source.properties} cmdline-tools/tools
 
 export PATH="$PATH:$ANDROID_HOME/cmdline-tools/tools/bin:$ANDROID_HOME/platform-tools"
 
-echo "=== Make sure JDK 11 is enabled (e.g. for Arch) ==="
-echo "  pacman -S jre11-openjdk"
-echo "  archlinux-java set java-11-openjdk"
+echo "=== Make sure JDK 17 is enabled (e.g. for Arch) ==="
+echo "  pacman -S jre17-openjdk"
+echo "  archlinux-java set java-17-openjdk"
 
 echo "=== Automatically accepting all relevant licenses ==="
 yes | sdkmanager --licenses >/dev/null 2>&1 || exit 1

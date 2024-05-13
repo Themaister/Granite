@@ -2,18 +2,18 @@ apply plugin: 'com.android.application'
 
 android {
     namespace "$$NAMESPACE$$"
-    compileSdkVersion 33
+    compileSdkVersion 34
 
     defaultConfig {
         minSdkVersion 26
-        targetSdkVersion 33
+        targetSdkVersion 34
 
         ndk {
             abiFilters $$ABIS$$
         }
     }
 
-    ndkVersion '25.1.8937393'
+    ndkVersion '26.3.11579264'
 
     buildTypes {
         debug {

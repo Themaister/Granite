@@ -2,12 +2,12 @@ apply plugin: 'com.android.library'
 
 android {
     namespace "net.themaister.granite"
-    compileSdkVersion 33
+    compileSdkVersion 34
 	buildFeatures.prefab true
 
     defaultConfig {
         minSdkVersion 26
-        targetSdkVersion 33
+        targetSdkVersion 34
     }
 }
 

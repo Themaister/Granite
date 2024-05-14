@@ -370,6 +370,8 @@ std::vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const st
 	}
 
 	std::vector<uint32_t> compiled_spirv(result.cbegin(), result.cend());
+
+#if 0
 	spvtools::SpirvTools core(target == Target::Vulkan13 ? SPV_ENV_VULKAN_1_3 : SPV_ENV_VULKAN_1_1);
 	core.SetMessageConsumer([&error_message](spv_message_level_t, const char *, const spv_position_t&, const char *message) {
 		error_message = message;
@@ -382,6 +384,7 @@ std::vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const st
 		error_message += "\nFailed to validate SPIR-V.\n";
 		return {};
 	}
+#endif
 
 	return compiled_spirv;
 }

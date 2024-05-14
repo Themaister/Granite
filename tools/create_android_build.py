@@ -66,11 +66,18 @@ def main():
                         help = 'The assets folder of the app',
                         type = str,
                         default = 'assets')
+    parser.add_argument('--builtin',
+                        help = 'The builtin assets folder of the app. By default it is $GRANITE/assets.',
+                        type = str,
+                        default = None)
     parser.add_argument('--audio',
                         help = 'Enable audio support',
                         action = 'store_true')
     parser.add_argument('--physics',
                         help = 'Enable physics support',
+                        action = 'store_true')
+    parser.add_argument('--fsr2',
+                        help = 'Add FSR2 shaders to package',
                         action = 'store_true')
 
     args = parser.parse_args()
@@ -131,8 +138,18 @@ def main():
 
         cmakelists = find_relative_path(target_build_gradle, args.cmake_lists_toplevel)
         assets = find_relative_path(target_build_gradle, args.assets)
-        granite_assets = find_relative_path(target_build_gradle, os.path.join(args.granite_dir, 'assets'))
-        granite_fsr2_assets = find_relative_path(target_build_gradle, os.path.join(args.granite_dir, 'third_party/fsr2/src/ffx-fsr2-api/shaders'))
+        if args.builtin is not None:
+            granite_assets = find_relative_path(target_build_gradle, args.builtin)
+        else:
+            granite_assets = find_relative_path(target_build_gradle, os.path.join(args.granite_dir, 'assets'))
+
+        if args.fsr2:
+            granite_fsr2_assets = find_relative_path(target_build_gradle,
+                                                     os.path.join(args.granite_dir, 'third_party/fsr2/src/ffx-fsr2-api/shaders'))
+            granite_aux_assets = "assets.srcDirs += ['" + granite_fsr2_assets + "']"
+        else:
+            granite_aux_assets = ''
+
         external_jni = find_relative_path(target_build_gradle, os.path.join(args.granite_dir,
                                                                             'application/platforms/android/external_layers'))
 
@@ -144,7 +161,7 @@ def main():
             .replace('$$CMAKELISTS$$', cmakelists) \
             .replace('$$ASSETS$$', assets) \
             .replace('$$GRANITE_ASSETS$$', granite_assets) \
-            .replace('$$GRANITE_FSR2_ASSETS$$', granite_fsr2_assets) \
+            .replace('$$GRANITE_AUX_ASSETS$$', granite_aux_assets) \
             .replace('$$EXTERNAL_JNI$$', external_jni) \
             .replace('$$ABIS$$', target_abis) \
             .replace('$$AUDIO$$', 'ON' if args.audio else 'OFF') \

@@ -67,8 +67,9 @@ android {
             manifest.srcFile 'AndroidManifest.xml'
             resources.srcDirs = ['res']
             res.srcDirs = ['res']
-            assets.srcDirs = ['$$ASSETS$$', '$$GRANITE_ASSETS$$', '$$GRANITE_FSR2_ASSETS$$']
+            assets.srcDirs = ['$$ASSETS$$', '$$GRANITE_ASSETS$$']
             jniLibs.srcDirs = ['$$EXTERNAL_JNI$$']
+            $$GRANITE_AUX_ASSETS$$
         }
     }
 

@@ -645,6 +645,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 				input->layout = current_layout;
 				used = true;
 				last_subpass_for_attachment[attachment] = subpass;
+				input_attachment_read |= 1u << subpass;
 			}
 			else
 			{

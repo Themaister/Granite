@@ -79,6 +79,12 @@ def main():
     parser.add_argument('--fsr2',
                         help = 'Add FSR2 shaders to package',
                         action = 'store_true')
+    parser.add_argument('--optimize',
+                        help = 'Optimize shaders',
+                        action = 'store_true')
+    parser.add_argument('--fossilize',
+                        help = 'Add Fossilize support',
+                        action = 'store_true')
 
     args = parser.parse_args()
     abis = ['arm64-v8a'] if args.abis is None else args.abis
@@ -165,7 +171,9 @@ def main():
             .replace('$$EXTERNAL_JNI$$', external_jni) \
             .replace('$$ABIS$$', target_abis) \
             .replace('$$AUDIO$$', 'ON' if args.audio else 'OFF') \
-            .replace('$$PHYSICS$$', 'ON' if args.physics else 'OFF')
+            .replace('$$PHYSICS$$', 'ON' if args.physics else 'OFF') \
+            .replace('$$SHADER_OPTIMIZE$$', 'ON' if args.optimize else 'OFF') \
+            .replace('$$FOSSILIZE$$', 'ON' if args.fossilize else 'OFF')
 
         with open(target_build_gradle, 'w') as dump_file:
             print(data, file = dump_file)

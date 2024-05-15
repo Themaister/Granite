@@ -793,6 +793,14 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		{
 			dep.dstStageMask |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 			dep.dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+
+			// The store op that comes later will need to write and storeOp accesses in WRITE_BIT.
+			// It's unclear if we need this barrier, but VVL complains if we don't ...
+			if (ds_store_op != VK_ATTACHMENT_STORE_OP_NONE &&
+			    (depth_stencil_attachment_write & (1u << (subpass - 1))))
+			{
+				dep.dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			}
 		}
 
 		if (depth_stencil_attachment_write & (1u << subpass))

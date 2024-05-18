@@ -21,6 +21,9 @@ int main()
 	options.width = 640;
 	options.height = 480;
 	options.frame_timebase = { 1, 60 };
+	options.encoder = "h264_pyro";
+	options.low_latency = true;
+	options.realtime = true;
 
 	if (!Vulkan::Context::init_loader(nullptr))
 		return 1;
@@ -29,12 +32,8 @@ int main()
 	Vulkan::Context ctx;
 	ctx.set_system_handles(handles);
 	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0,
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 	                                  Vulkan::CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT |
 	                                  Vulkan::CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT))
-#else
-                                      0))
-#endif
 	{
 		return 1;
 	}
@@ -57,7 +56,42 @@ int main()
 		LOGE("Failed to open /tmp/test.ogg.\n");
 #endif
 
-	if (!encoder.init(&device, "/tmp/test.mkv", options))
+	struct CB : Granite::MuxStreamCallback
+	{
+		void set_codec_parameters(const pyro_codec_parameters &) override
+		{
+			LOGI("Setting codec parameters.\n");
+		}
+
+		void write_video_packet(int64_t, int64_t, const void *data, size_t size, bool) override
+		{
+			if (fwrite(data, 1, size, file) != size)
+				LOGE("Failed to write.\n");
+		}
+
+		void write_audio_packet(int64_t pts, int64_t dts, const void *data, size_t size) override
+		{
+			LOGI("Got audio.\n");
+		}
+
+		bool should_force_idr() override
+		{
+			return false;
+		}
+
+		FILE *file = nullptr;
+	} cb;
+
+	cb.file = fopen("/tmp/test.h264", "wb");
+	if (!cb.file)
+	{
+		LOGE("Failed to open file.\n");
+		return EXIT_FAILURE;
+	}
+
+	encoder.set_mux_stream_callback(&cb);
+
+	if (!encoder.init(&device, nullptr, options))
 	{
 		LOGE("Failed to init codec.\n");
 		return 1;
@@ -74,6 +108,8 @@ int main()
 			"builtin://shaders/util/rgb_to_yuv.comp")->register_variant({})->get_program();
 	shaders.chroma_downsample = device.get_shader_manager().register_compute(
 			"builtin://shaders/util/chroma_downsample.comp")->register_variant({})->get_program();
+	shaders.rgb_scale = device.get_shader_manager().register_compute(
+			"builtin://shaders/util/rgb_scale.comp")->register_variant({})->get_program();
 	auto pipe = encoder.create_ycbcr_pipeline(shaders);
 
 	for (unsigned i = 0; i < 1000; i++)
@@ -115,6 +151,8 @@ int main()
 		encoder.encode_frame(pipe, 0);
 		device.next_frame_context();
 	}
+
+	fclose(cb.file);
 
 #ifdef HAVE_GRANITE_AUDIO
 	Global::stop_audio_system();

@@ -130,5 +130,6 @@ public:
 private:
 	struct Impl;
 	std::unique_ptr<Impl> impl;
+	void process_rgb_pyro(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view);
 };
 }

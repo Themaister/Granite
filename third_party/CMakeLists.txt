@@ -130,3 +130,5 @@ if (GRANITE_VULKAN_SYSTEM_HANDLES AND GRANITE_RENDERER)
     # Custom integration, bypass all the noise.
     add_subdirectory(fsr2/src/ffx-fsr2-api/granite)
 endif()
+
+add_subdirectory(pyroenc EXCLUDE_FROM_ALL)

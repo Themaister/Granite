@@ -72,6 +72,7 @@ struct DeviceFeatures
 	bool supports_swapchain_colorspace = false;
 	bool supports_surface_maintenance1 = false;
 	bool supports_store_op_none = false;
+	bool supports_push_descriptor = false;
 
 	VkPhysicalDeviceFeatures enabled_features = {};
 

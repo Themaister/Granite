@@ -7,6 +7,11 @@
 			"path": "../assets/shaders/util/rgb_to_yuv.comp"
 		},
 		{
+			"name": "rgb_scale",
+			"compute": true,
+			"path": "../assets/shaders/util/rgb_scale.comp"
+		},
+		{
 			"name": "chroma_downsample",
 			"compute": true,
 			"path": "../assets/shaders/util/chroma_downsample.comp"

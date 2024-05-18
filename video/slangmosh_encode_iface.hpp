@@ -14,6 +14,7 @@ template <typename Program = Vulkan::Program *, typename Shader = Vulkan::Shader
 struct Shaders
 {
 	Program rgb_to_yuv = {};
+	Program rgb_scale = {};
 	Program chroma_downsample = {};
 	Shaders() = default;
 

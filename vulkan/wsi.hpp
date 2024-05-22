@@ -155,7 +155,9 @@ enum class BackbufferFormat
 {
 	UNORM,
 	sRGB,
-	HDR10
+	HDR10,
+	DisplayP3,
+	UNORMPassthrough
 };
 
 class WSI

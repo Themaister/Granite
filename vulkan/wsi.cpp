@@ -23,6 +23,7 @@
 #define NOMINMAX
 #include "wsi.hpp"
 #include "environment.hpp"
+#include <algorithm>
 
 #if defined(ANDROID) && defined(HAVE_SWAPPY)
 #include "swappy/swappyVk.h"
@@ -65,8 +66,11 @@ WSI::WSI()
 void WSI::set_hdr_metadata(const VkHdrMetadataEXT &hdr)
 {
 	hdr_metadata = hdr;
-	if (swapchain && swapchain_surface_format.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT)
+	if (swapchain && swapchain_surface_format.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT &&
+	    device->get_device_features().supports_hdr_metadata)
+	{
 		table->vkSetHdrMetadataEXT(device->get_device(), 1, &swapchain, &hdr_metadata);
+	}
 }
 
 void WSIPlatform::set_window_title(const std::string &)
@@ -1101,12 +1105,6 @@ VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurface
 	size_t format_count = formats.size();
 	VkSurfaceFormatKHR format = { VK_FORMAT_UNDEFINED };
 
-	if (desired_format == BackbufferFormat::HDR10 && !device->get_device_features().supports_hdr_metadata)
-	{
-		LOGW("VK_EXT_hdr_metadata is not supported, ignoring HDR10.\n");
-		return format;
-	}
-
 	VkFormatFeatureFlags features = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
 	                                VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT;
 	if ((current_extra_usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0)
@@ -1123,7 +1121,29 @@ VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurface
 		if (!device->image_format_is_supported(formats[i].format, features))
 			continue;
 
-		if (desired_format == BackbufferFormat::HDR10)
+		if (desired_format == BackbufferFormat::DisplayP3)
+		{
+			if (formats[i].colorSpace == VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT &&
+			    (formats[i].format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ||
+			     formats[i].format == VK_FORMAT_A2R10G10B10_UNORM_PACK32))
+			{
+				format = formats[i];
+				break;
+			}
+		}
+		else if (desired_format == BackbufferFormat::UNORMPassthrough)
+		{
+			if (formats[i].colorSpace == VK_COLOR_SPACE_PASS_THROUGH_EXT &&
+			    (formats[i].format == VK_FORMAT_R8G8B8A8_UNORM ||
+			     formats[i].format == VK_FORMAT_B8G8R8A8_UNORM ||
+			     formats[i].format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ||
+			     formats[i].format == VK_FORMAT_A2R10G10B10_UNORM_PACK32))
+			{
+				format = formats[i];
+				break;
+			}
+		}
+		else if (desired_format == BackbufferFormat::HDR10)
 		{
 			if (formats[i].colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT &&
 			    (formats[i].format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ||
@@ -1149,6 +1169,8 @@ VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurface
 			if (formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
 			    (formats[i].format == VK_FORMAT_R8G8B8A8_UNORM ||
 			     formats[i].format == VK_FORMAT_B8G8R8A8_UNORM ||
+			     formats[i].format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ||
+			     formats[i].format == VK_FORMAT_A2R10G10B10_UNORM_PACK32 ||
 			     formats[i].format == VK_FORMAT_A8B8G8R8_UNORM_PACK32))
 			{
 				format = formats[i];
@@ -1417,6 +1439,22 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 			return false;
 	}
 
+	// Ensure that 10-bit formats come before other formats.
+	std::sort(info.formats.begin(), info.formats.end(), [](const VkSurfaceFormatKHR &a, const VkSurfaceFormatKHR &b) {
+		const auto qual = [](VkFormat fmt) {
+			// Prefer a consistent ordering so Fossilize caches are more effective.
+			if (fmt == VK_FORMAT_A2B10G10R10_UNORM_PACK32)
+				return 3;
+			else if (fmt == VK_FORMAT_A2R10G10B10_UNORM_PACK32)
+				return 2;
+			else if (fmt == VK_FORMAT_B8G8R8A8_UNORM)
+				return 1;
+			else
+				return 0;
+		};
+		return qual(a.format) > qual(b.format);
+	});
+
 	// Allow for seamless toggle between presentation modes.
 	if (ext.swapchain_maintenance1_features.swapchainMaintenance1)
 	{
@@ -1459,10 +1497,13 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	auto attempt_backbuffer_format = current_backbuffer_format;
 	auto surface_format = find_suitable_present_format(surface_info.formats, attempt_backbuffer_format);
 
-	if (surface_format.format == VK_FORMAT_UNDEFINED && attempt_backbuffer_format == BackbufferFormat::HDR10)
+	if (surface_format.format == VK_FORMAT_UNDEFINED &&
+	    (attempt_backbuffer_format == BackbufferFormat::HDR10 ||
+	     attempt_backbuffer_format == BackbufferFormat::DisplayP3 ||
+	     attempt_backbuffer_format == BackbufferFormat::UNORMPassthrough))
 	{
-		LOGW("Could not find suitable present format for HDR10. Attempting fallback to sRGB.\n");
-		attempt_backbuffer_format = BackbufferFormat::sRGB;
+		LOGW("Could not find suitable present format for HDR. Attempting fallback to UNORM.\n");
+		attempt_backbuffer_format = BackbufferFormat::UNORM;
 		surface_format = find_suitable_present_format(surface_info.formats, attempt_backbuffer_format);
 	}
 
@@ -1673,8 +1714,11 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	                                  swapchain_surface_format.colorSpace,
 	                                  swapchain_current_prerotate);
 
-	if (swapchain_surface_format.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT)
+	if (swapchain_surface_format.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT &&
+	    device->get_device_features().supports_hdr_metadata)
+	{
 		table->vkSetHdrMetadataEXT(device->get_device(), 1, &swapchain, &hdr_metadata);
+	}
 
 	return SwapchainError::None;
 }

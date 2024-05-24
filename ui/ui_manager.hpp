@@ -37,6 +37,7 @@ enum class FontSize
 	Small = 0,
 	Normal,
 	Large,
+	Huge,
 	Count
 };
 

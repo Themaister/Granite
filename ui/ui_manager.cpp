@@ -115,6 +115,10 @@ Font& UIManager::get_font(FontSize size)
 			pix_size = 24;
 			break;
 
+		case FontSize::Huge:
+			pix_size = 36;
+			break;
+
 		default:
 			break;
 		}

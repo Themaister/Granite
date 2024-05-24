@@ -212,7 +212,7 @@ bool WSI::init_surface_swapchain_dxgi(unsigned width, unsigned height)
 	switch (current_backbuffer_format)
 	{
 	case BackbufferFormat::UNORM:
-		format = { VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
+		format = { VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
 		break;
 
 	case BackbufferFormat::sRGB:

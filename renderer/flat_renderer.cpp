@@ -194,7 +194,7 @@ void FlatRenderer::render_quad(const ImageView *view, unsigned layer, Vulkan::St
 	quads->tex_off_y = tex_offset.y;
 	quads->tex_scale_x = tex_size.x;
 	quads->tex_scale_y = tex_size.y;
-	quantize_color(quads->color, color);
+	quads->color = floatToHalf(color);
 	quads->rotation[0] = 1.0f;
 	quads->rotation[1] = 0.0f;
 	quads->rotation[2] = 0.0f;

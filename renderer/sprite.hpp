@@ -38,7 +38,7 @@ struct QuadData
 	float pos_off_x, pos_off_y, pos_scale_x, pos_scale_y;
 	float tex_off_x, tex_off_y, tex_scale_x, tex_scale_y;
 	float rotation[4];
-	uint8_t color[4];
+	u16vec4 color;
 	float layer;
 	float array_layer;
 	float blend_factor;

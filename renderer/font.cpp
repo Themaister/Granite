@@ -211,7 +211,7 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 			q.y1 += alignment_offset.y;
 
 			auto &quad = quads[instance_data->count++];
-			quantize_color(quad.color, color);
+			quad.color = floatToHalf(color);
 			quad.rotation[0] = 1.0f;
 			quad.rotation[1] = 0.0f;
 			quad.rotation[2] = 0.0f;

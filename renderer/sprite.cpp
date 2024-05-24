@@ -126,7 +126,7 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, uns
 	cmd.set_vertex_attrib(1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(QuadData, pos_off_x));
 	cmd.set_vertex_attrib(2, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(QuadData, tex_off_x));
 	cmd.set_vertex_attrib(3, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(QuadData, rotation));
-	cmd.set_vertex_attrib(4, 1, VK_FORMAT_R8G8B8A8_UNORM, offsetof(QuadData, color));
+	cmd.set_vertex_attrib(4, 1, VK_FORMAT_R16G16B16A16_SFLOAT, offsetof(QuadData, color));
 	cmd.set_vertex_attrib(5, 1, VK_FORMAT_R32_SFLOAT, offsetof(QuadData, layer));
 	if (info.textures[1])
 		cmd.set_vertex_attrib(6, 1, VK_FORMAT_R32_SFLOAT, offsetof(QuadData, blend_factor));

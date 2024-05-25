@@ -168,7 +168,7 @@ bool WSI::init_device()
 	device->set_context(*context);
 	platform->event_device_created(device.get());
 
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 	dxgi.reset(new DXGIInteropSwapchain);
 	if (!dxgi->init_interop_device(*device))
 		dxgi.reset();
@@ -184,7 +184,7 @@ bool WSI::init_device(DeviceHandle device_handle)
 	device = std::move(device_handle);
 	platform->event_device_created(device.get());
 
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 	dxgi.reset(new DXGIInteropSwapchain);
 	if (!dxgi->init_interop_device(*device))
 		dxgi.reset();
@@ -194,7 +194,7 @@ bool WSI::init_device(DeviceHandle device_handle)
 	return true;
 }
 
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 bool WSI::init_surface_swapchain_dxgi(unsigned width, unsigned height)
 {
 	if (!dxgi)
@@ -270,7 +270,7 @@ bool WSI::init_surface_swapchain()
 	unsigned width = platform->get_surface_width();
 	unsigned height = platform->get_surface_height();
 
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 	if (init_surface_swapchain_dxgi(width, height))
 		return true;
 	else
@@ -468,7 +468,7 @@ void WSI::drain_swapchain(bool in_tear_down)
 
 void WSI::tear_down_swapchain()
 {
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 	// We only do explicit teardown on exit.
 	dxgi.reset();
 #endif
@@ -573,7 +573,7 @@ void WSI::set_low_latency_mode(bool enable)
 	low_latency_mode_enable = enable;
 }
 
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 bool WSI::begin_frame_dxgi()
 {
 	Semaphore acquire;
@@ -639,7 +639,7 @@ bool WSI::begin_frame()
 	LOGI("Waited for vacant frame context for %.3f ms.\n", (next_frame_end - next_frame_start) * 1e-6);
 #endif
 
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 	if (dxgi)
 	{
 		if (platform->should_resize())
@@ -763,7 +763,7 @@ bool WSI::begin_frame()
 	return true;
 }
 
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 bool WSI::end_frame_dxgi()
 {
 	auto release = device->consume_release_semaphore();
@@ -793,7 +793,7 @@ bool WSI::end_frame()
 
 		has_acquired_swapchain_index = false;
 
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 		if (dxgi)
 			return end_frame_dxgi();
 #endif
@@ -935,7 +935,7 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 {
 	if (context && device)
 	{
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 		if (dxgi)
 		{
 			if (!init_surface_swapchain_dxgi(width, height))
@@ -963,7 +963,7 @@ bool WSI::update_active_presentation_mode(PresentMode mode)
 	if (current_present_mode == mode)
 		return true;
 
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 	// We set this on Present time.
 	if (dxgi)
 	{

@@ -31,7 +31,7 @@
 #include <chrono>
 #include <memory>
 
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 #include "wsi_dxgi.hpp"
 #endif
 
@@ -368,7 +368,7 @@ private:
 
 	VkSurfaceFormatKHR find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats, BackbufferFormat desired_format) const;
 
-#ifdef _WIN32
+#ifdef HAVE_WSI_DXGI_INTEROP
 	std::unique_ptr<DXGIInteropSwapchain> dxgi;
 	bool init_surface_swapchain_dxgi(unsigned width, unsigned height);
 	bool begin_frame_dxgi();

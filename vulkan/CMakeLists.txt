@@ -31,6 +31,7 @@ add_granite_internal_lib(granite-vulkan
 
 if (WIN32)
     target_sources(granite-vulkan PRIVATE wsi_dxgi.cpp wsi_dxgi.hpp)
+    target_compile_definitions(granite-vulkan PUBLIC HAVE_WSI_DXGI_INTEROP)
 endif()
 
 target_include_directories(granite-vulkan PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

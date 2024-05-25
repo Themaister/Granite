@@ -109,6 +109,12 @@ struct DeviceFeatures
 
 	// Fallback feature structs (Vulkan 1.1)
 	VkPhysicalDeviceHostQueryResetFeatures host_query_reset_features = {};
+	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};
+	// Fallback feature structs (Vulkan 1.2)
+	VkPhysicalDeviceFloat16Int8FeaturesKHR float16_int8_features = {};
+	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
+	// Fallback feature structs (Vulkan 1.3)
+	VkPhysicalDeviceSubgroupSizeControlFeatures subgroup_size_control_features = {};
 
 	VkDriverId driver_id = {};
 

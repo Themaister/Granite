@@ -1284,6 +1284,30 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		if (has_extension(VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME))
 			ADD_CHAIN(ext.host_query_reset_features, HOST_QUERY_RESET_FEATURES);
+
+		if (has_extension(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME))
+		{
+			ADD_CHAIN(ext.float16_int8_features, FLOAT16_INT8_FEATURES_KHR);
+			enabled_extensions.push_back(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
+		}
+
+		if (has_extension(VK_KHR_16BIT_STORAGE_EXTENSION_NAME))
+		{
+			ADD_CHAIN(ext.storage_16bit_features, 16BIT_STORAGE_FEATURES_KHR);
+			enabled_extensions.push_back(VK_KHR_16BIT_STORAGE_EXTENSION_NAME);
+		}
+
+		if (has_extension(VK_KHR_8BIT_STORAGE_EXTENSION_NAME))
+		{
+			ADD_CHAIN(ext.storage_8bit_features, 8BIT_STORAGE_FEATURES_KHR);
+			enabled_extensions.push_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
+		}
+
+		if (has_extension(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
+		{
+			ADD_CHAIN(ext.subgroup_size_control_features, SUBGROUP_SIZE_CONTROL_FEATURES_EXT);
+			enabled_extensions.push_back(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
+		}
 	}
 
 	if (ext.device_api_core_version >= VK_API_VERSION_1_3)
@@ -1428,8 +1452,36 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		vkGetPhysicalDeviceFeatures2(gpu, &pdf2);
 	}
 
+	// Promote fallback features to core structs.
 	if (ext.host_query_reset_features.hostQueryReset)
 		ext.vk12_features.hostQueryReset = VK_TRUE;
+
+	if (ext.storage_16bit_features.storageBuffer16BitAccess)
+		ext.vk11_features.storageBuffer16BitAccess = VK_TRUE;
+	if (ext.storage_16bit_features.storageInputOutput16)
+		ext.vk11_features.storageInputOutput16 = VK_TRUE;
+	if (ext.storage_16bit_features.storagePushConstant16)
+		ext.vk11_features.storagePushConstant16 = VK_TRUE;
+	if (ext.storage_16bit_features.uniformAndStorageBuffer16BitAccess)
+		ext.vk11_features.uniformAndStorageBuffer16BitAccess = VK_TRUE;
+
+	if (ext.storage_8bit_features.storageBuffer8BitAccess)
+		ext.vk12_features.storageBuffer8BitAccess = VK_TRUE;
+	if (ext.storage_8bit_features.storagePushConstant8)
+		ext.vk12_features.storagePushConstant8 = VK_TRUE;
+	if (ext.storage_8bit_features.uniformAndStorageBuffer8BitAccess)
+		ext.vk12_features.uniformAndStorageBuffer8BitAccess = VK_TRUE;
+
+	if (ext.float16_int8_features.shaderFloat16)
+		ext.vk12_features.shaderFloat16 = VK_TRUE;
+	if (ext.float16_int8_features.shaderInt8)
+		ext.vk12_features.shaderInt8 = VK_TRUE;
+
+	if (ext.subgroup_size_control_features.computeFullSubgroups)
+		ext.vk13_features.computeFullSubgroups = VK_TRUE;
+	if (ext.subgroup_size_control_features.subgroupSizeControl)
+		ext.vk13_features.subgroupSizeControl = VK_TRUE;
+	///
 
 	ext.vk11_features.multiviewGeometryShader = VK_FALSE;
 	ext.vk11_features.multiviewTessellationShader = VK_FALSE;
@@ -1447,6 +1499,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	ext.mesh_shader_features.primitiveFragmentShadingRateMeshShader = VK_FALSE;
 	ext.mesh_shader_features.meshShaderQueries = VK_FALSE;
+	ext.mesh_shader_features.multiviewMeshShader = VK_FALSE;
 
 	ext.device_generated_commands_compute_features.deviceGeneratedComputeCaptureReplay = VK_FALSE;
 	// TODO
@@ -1516,6 +1569,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	VkPhysicalDeviceDriverProperties driver_properties = {};
 	VkPhysicalDeviceIDProperties id_properties = {};
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
+	VkPhysicalDeviceSubgroupSizeControlProperties size_control_props = {};
 	ppNext = &props.pNext;
 
 	if (ext.device_api_core_version >= VK_API_VERSION_1_2)
@@ -1527,6 +1581,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		if (has_extension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME))
 			ADD_CHAIN(driver_properties, DRIVER_PROPERTIES);
+		if (has_extension(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
+			ADD_CHAIN(size_control_props, SUBGROUP_SIZE_CONTROL_PROPERTIES);
 		ADD_CHAIN(id_properties, ID_PROPERTIES);
 		ADD_CHAIN(subgroup_properties, SUBGROUP_PROPERTIES);
 	}
@@ -1564,6 +1620,14 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	}
 	else
 		ext.driver_id = ext.vk12_props.driverID;
+
+	if (ext.device_api_core_version < VK_API_VERSION_1_3)
+	{
+		ext.vk13_props.minSubgroupSize = size_control_props.minSubgroupSize;
+		ext.vk13_props.maxSubgroupSize = size_control_props.maxSubgroupSize;
+		ext.vk13_props.requiredSubgroupSizeStages = size_control_props.requiredSubgroupSizeStages;
+		ext.vk13_props.maxComputeWorkgroupSubgroups = size_control_props.maxComputeWorkgroupSubgroups;
+	}
 
 #ifdef GRANITE_VULKAN_PROFILES
 	// Override any properties in the profile in strict mode.

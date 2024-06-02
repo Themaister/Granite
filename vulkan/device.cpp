@@ -912,6 +912,12 @@ void Device::init_workarounds()
 				LOGI("Detected non-profiling tracing tool, forcing host cached memory types for performance.\n");
 				workarounds.force_host_cached = true;
 			}
+
+			if (!debug_marker_sensitive && (t.purposes & VK_TOOL_PURPOSE_DEBUG_MARKERS_BIT_EXT) != 0)
+			{
+				LOGI("Detected tool which cares about debug markers.\n");
+				debug_marker_sensitive = true;
+			}
 		}
 	}
 }

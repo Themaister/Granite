@@ -301,6 +301,7 @@ public:
 	}
 
 	void begin_region(const char *name, const float *color = nullptr);
+	void insert_label(const char *name, const float *color = nullptr);
 	void end_region();
 
 	Device &get_device()

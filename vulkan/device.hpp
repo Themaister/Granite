@@ -479,6 +479,11 @@ public:
 		return ext;
 	}
 
+	bool consumes_debug_markers() const
+	{
+		return debug_marker_sensitive;
+	}
+
 	bool swapchain_touched() const;
 
 	double convert_device_timestamp_delta(uint64_t start_ticks, uint64_t end_ticks) const;
@@ -544,6 +549,7 @@ private:
 	VkPhysicalDeviceProperties gpu_props;
 
 	DeviceFeatures ext;
+	bool debug_marker_sensitive = false;
 	void init_stock_samplers();
 	void init_stock_sampler(StockSampler sampler, float max_aniso, float lod_bias);
 	void init_timeline_semaphores();

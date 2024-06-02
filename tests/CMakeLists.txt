@@ -36,6 +36,11 @@ if (NOT ANDROID)
     target_compile_definitions(triangle-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
+add_granite_application(controller-test controller_test.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(controller-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+
 add_granite_application(triangle-mesh-test triangle_mesh.cpp)
 if (NOT ANDROID)
     target_compile_definitions(triangle-mesh-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")

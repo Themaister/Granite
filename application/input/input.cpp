@@ -183,6 +183,23 @@ void InputTracker::joypad_key_state(unsigned index, JoypadKey key, JoypadKeyStat
 	}
 }
 
+void JoypadState::snap_deadzone(float deadzone)
+{
+	memcpy(snapped_axis, raw_axis, sizeof(raw_axis));
+
+	static const JoypadAxis fused_axes[2][2] = {
+		{ JoypadAxis::LeftX, JoypadAxis::LeftY },
+		{ JoypadAxis::RightX, JoypadAxis::RightY },
+	};
+
+	for (auto &fused : fused_axes)
+	{
+		if (std::abs(raw_axis[int(fused[0])]) < deadzone && std::abs(raw_axis[int(fused[1])]) < deadzone)
+			for (auto &axis : fused)
+				snapped_axis[int(axis)] = 0.0f;
+	}
+}
+
 void InputTracker::joyaxis_state(unsigned index, JoypadAxis axis, float value)
 {
 	if (index >= Joypads)
@@ -190,12 +207,9 @@ void InputTracker::joyaxis_state(unsigned index, JoypadAxis axis, float value)
 
 	assert(active_joypads & (1u << index));
 
-	if (std::abs(value) < axis_deadzone)
-		value = 0.0f;
-
 	auto &joy = joypads[index];
 	unsigned axis_index = Util::ecast(axis);
-	auto &a = joy.axis[axis_index];
+	auto &a = joy.raw_axis[axis_index];
 	if (a != value)
 	{
 		JoypadAxisEvent event(index, axis, value);
@@ -286,6 +300,9 @@ void InputTracker::dispatch_current_state(double delta_time, InputTrackerHandler
 
 	if (override_handler)
 	{
+		for (auto &pad : joypads)
+			pad.snap_deadzone(axis_deadzone);
+
 		override_handler->dispatch(JoypadStateEvent{active_joypads, joypads, Joypads, delta_time});
 		override_handler->dispatch(InputStateEvent{last_mouse_x, last_mouse_y,
 		                                           delta_time, key_state, mouse_button_state, mouse_active});

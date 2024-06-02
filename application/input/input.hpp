@@ -137,10 +137,13 @@ struct JoypadState
 
 	float get_axis(JoypadAxis a) const
 	{
-		return axis[Util::ecast(a)];
+		return snapped_axis[Util::ecast(a)];
 	}
 
-	float axis[Util::ecast(JoypadAxis::Count)] = {};
+	void snap_deadzone(float deadzone);
+
+	float raw_axis[Util::ecast(JoypadAxis::Count)] = {};
+	float snapped_axis[Util::ecast(JoypadAxis::Count)] = {};
 	uint32_t button_mask = 0;
 	uint32_t vid = 0;
 	uint32_t pid = 0;

@@ -9,6 +9,7 @@ if (ANDROID)
     add_library(android-game-activity STATIC
         ${game-activity-include}/game-activity/native_app_glue/android_native_app_glue.c
         ${game-activity-include}/game-activity/GameActivity.cpp
+        ${game-activity-include}/game-activity/GameActivityEvents.cpp
         ${game-activity-include}/game-text-input/gametextinput.cpp)
     target_include_directories(android-game-activity PUBLIC ${game-activity-include})
     target_link_libraries(granite-platform PRIVATE granite-rapidjson android-game-activity

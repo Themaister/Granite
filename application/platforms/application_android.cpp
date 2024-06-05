@@ -1106,6 +1106,7 @@ void android_main(android_app *app)
 	GRANITE_FILESYSTEM()->register_protocol("assets", std::make_unique<AssetManagerFilesystem>(ANDROID_ASSET_PATH));
 	GRANITE_FILESYSTEM()->register_protocol("fsr2", std::make_unique<AssetManagerFilesystem>(ANDROID_FSR2_ASSET_PATH));
 	GRANITE_FILESYSTEM()->register_protocol("cache", std::make_unique<OSFilesystem>(app->activity->internalDataPath));
+	GRANITE_FILESYSTEM()->register_protocol("external", std::make_unique<OSFilesystem>(app->activity->externalDataPath));
 #endif
 
 	android_app_set_key_event_filter(app, key_event_filter);

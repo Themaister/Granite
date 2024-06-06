@@ -141,8 +141,13 @@ void Filesystem::setup_default_filesystem(Filesystem *filesystem, const char *de
 
 void Filesystem::register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs)
 {
-	fs->set_protocol(proto);
-	protocols[proto] = std::move(fs);
+	if (fs)
+	{
+		fs->set_protocol(proto);
+		protocols[proto] = std::move(fs);
+	}
+	else
+		protocols.erase(proto);
 }
 
 FilesystemBackend *Filesystem::get_backend(const std::string &proto)

@@ -29,7 +29,7 @@ add_granite_internal_lib(granite-vulkan
         query_pool.cpp query_pool.hpp
         texture/texture_format.cpp texture/texture_format.hpp)
 
-if (WIN32)
+if (WIN32 AND GRANITE_VULKAN_DXGI_INTEROP)
     target_sources(granite-vulkan PRIVATE wsi_dxgi.cpp wsi_dxgi.hpp)
     target_compile_definitions(granite-vulkan PUBLIC HAVE_WSI_DXGI_INTEROP)
 endif()

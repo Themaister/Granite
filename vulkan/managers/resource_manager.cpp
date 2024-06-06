@@ -159,6 +159,8 @@ void ResourceManager::init()
 		manager->set_asset_budget_per_iteration(2 * 1000 * 1000);
 	}
 
+	// Need to make this configurable.
+#if 0
 	Internal::MeshGlobalAllocator::PrimeOpaque opaque = {};
 	opaque.domain = BufferDomain::Device;
 	opaque.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -226,6 +228,7 @@ void ResourceManager::init()
 		mesh_stream_allocator.prime(&opaque);
 		mesh_payload_allocator.prime(&opaque);
 	}
+#endif
 }
 
 ImageHandle ResourceManager::create_gtx(const MemoryMappedTexture &mapped_file, Granite::AssetID id)

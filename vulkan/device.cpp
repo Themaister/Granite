@@ -4336,6 +4336,7 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	VkImportMemoryHostPointerInfoEXT import = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT };
 	import.handleType = type;
 	import.pHostPointer = host_buffer;
+	import.pNext = alloc_info.pNext;
 	alloc_info.pNext = &import;
 
 	VkDeviceMemory memory;

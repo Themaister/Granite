@@ -1607,6 +1607,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	if (ext.device_api_core_version < VK_API_VERSION_1_2)
 	{
 		ext.driver_id = driver_properties.driverID;
+		ext.supports_driver_properties = has_extension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME);
 		ext.vk12_props.driverID = ext.driver_id;
 		memcpy(ext.vk11_props.deviceUUID, id_properties.deviceUUID, sizeof(id_properties.deviceUUID));
 		memcpy(ext.vk11_props.driverUUID, id_properties.driverUUID, sizeof(id_properties.driverUUID));
@@ -1619,7 +1620,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ext.vk11_props.subgroupSize = subgroup_properties.subgroupSize;
 	}
 	else
+	{
 		ext.driver_id = ext.vk12_props.driverID;
+		ext.supports_driver_properties = true;
+	}
 
 	if (ext.device_api_core_version < VK_API_VERSION_1_3)
 	{

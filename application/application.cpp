@@ -24,8 +24,8 @@
 #include "application.hpp"
 #include "asset_manager.hpp"
 #include "thread_group.hpp"
-#include "material_manager.hpp"
 #ifdef HAVE_GRANITE_RENDERER
+#include "material_manager.hpp"
 #include "common_renderer_data.hpp"
 #endif
 #ifdef HAVE_GRANITE_AUDIO

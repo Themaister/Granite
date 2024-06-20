@@ -214,7 +214,6 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 
 #if defined(HAVE_SWAPPY)
 	VkDevice current_device = VK_NULL_HANDLE;
-	VkSwapchainKHR current_swapchain = VK_NULL_HANDLE;
 #endif
 
 	void event_swapchain_created(Device *device_, VkSwapchainKHR swapchain, unsigned width_, unsigned height_, float aspect_, size_t count_,
@@ -222,7 +221,6 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	{
 #if defined(HAVE_SWAPPY)
 		current_device = device_->get_device();
-		current_swapchain = swapchain;
 
 		uint64_t refresh = 0;
 		if (SwappyVk_initAndGetRefreshCycleDuration(jni.env, global_state.app->activity->javaGameActivity,
@@ -234,7 +232,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		else
 			LOGW("Failed to initialize swappy refresh rate.\n");
 
-		SwappyVk_setWindow(current_device, current_swapchain, global_state.app->window);
+		SwappyVk_setWindow(current_device, swapchain, global_state.app->window);
 #endif
 
 		Granite::GraniteWSIPlatform::event_swapchain_created(device_, swapchain, width_, height_,
@@ -251,17 +249,15 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		get_input_tracker().set_touch_resolution(width_, height_);
 	}
 
-	void event_swapchain_destroyed() override
+	void destroy_swapchain_resources(VkSwapchainKHR swapchain) override
 	{
 #if defined(HAVE_SWAPPY)
-		if (current_device && current_swapchain)
+		if (current_device && swapchain)
 		{
-			SwappyVk_destroySwapchain(current_device, current_swapchain);
+			SwappyVk_destroySwapchain(current_device, swapchain);
 			current_device = VK_NULL_HANDLE;
-			current_swapchain = VK_NULL_HANDLE;
 		}
 #endif
-		Granite::GraniteWSIPlatform::event_swapchain_destroyed();
 	}
 
 	void update_orientation();

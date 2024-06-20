@@ -118,6 +118,7 @@ public:
 	                                     float aspect_ratio, size_t num_swapchain_images,
 	                                     VkFormat format, VkColorSpaceKHR color_space,
 	                                     VkSurfaceTransformFlagBitsKHR pre_rotate);
+	virtual void destroy_swapchain_resources(VkSwapchainKHR swapchain);
 	virtual void event_swapchain_destroyed();
 	virtual void event_frame_tick(double frame, double elapsed);
 	virtual void event_swapchain_index(Device *device, unsigned index);

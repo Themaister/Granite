@@ -411,11 +411,13 @@ void WSI::nonblock_delete_swapchains()
 	{
 		if (!swap.fence || swap.fence->wait_timeout(0))
 		{
+			platform->destroy_swapchain_resources(swap.swapchain);
 			table->vkDestroySwapchainKHR(device->get_device(), swap.swapchain, nullptr);
 		}
 		else if (pending >= 2)
 		{
 			swap.fence->wait();
+			platform->destroy_swapchain_resources(swap.swapchain);
 			table->vkDestroySwapchainKHR(device->get_device(), swap.swapchain, nullptr);
 		}
 		else
@@ -448,6 +450,7 @@ void WSI::drain_swapchain(bool in_tear_down)
 			{
 				if (old_swap.fence)
 					old_swap.fence->wait();
+				platform->destroy_swapchain_resources(old_swap.swapchain);
 				table->vkDestroySwapchainKHR(context->get_device(), old_swap.swapchain, nullptr);
 			}
 
@@ -475,6 +478,7 @@ void WSI::tear_down_swapchain()
 
 	drain_swapchain(true);
 	platform->event_swapchain_destroyed();
+	platform->destroy_swapchain_resources(swapchain);
 	table->vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
 	swapchain = VK_NULL_HANDLE;
 	has_acquired_swapchain_index = false;
@@ -1664,6 +1668,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	platform->event_swapchain_destroyed();
 	auto res = table->vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
+	platform->destroy_swapchain_resources(old_swapchain);
 	table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
 	present_id = 0;
@@ -1749,6 +1754,7 @@ void WSIPlatform::event_swapchain_created(Device *, VkSwapchainKHR, unsigned, un
                                           VkFormat, VkColorSpaceKHR,
                                           VkSurfaceTransformFlagBitsKHR) {}
 void WSIPlatform::event_swapchain_destroyed() {}
+void WSIPlatform::destroy_swapchain_resources(VkSwapchainKHR) {}
 void WSIPlatform::event_frame_tick(double, double) {}
 void WSIPlatform::event_swapchain_index(Device *, unsigned) {}
 void WSIPlatform::begin_drop_event() {}

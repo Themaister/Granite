@@ -1374,6 +1374,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.index_type_uint8_features, INDEX_TYPE_UINT8_FEATURES_EXT);
 	}
 
+	if (has_extension(VK_EXT_RGBA10X6_FORMATS_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_RGBA10X6_FORMATS_EXTENSION_NAME);
+		ADD_CHAIN(ext.rgba10x6_formats_features, RGBA10X6_FORMATS_FEATURES_EXT);
+	}
+
 	if (has_extension(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME))
 	{
 		ext.supports_external_memory_host = true;

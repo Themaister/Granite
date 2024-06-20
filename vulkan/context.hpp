@@ -100,6 +100,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceMeshShaderFeaturesEXT mesh_shader_features = {};
 	VkPhysicalDeviceMeshShaderPropertiesEXT mesh_shader_properties = {};
 	VkPhysicalDeviceIndexTypeUint8FeaturesEXT index_type_uint8_features = {};
+	VkPhysicalDeviceRGBA10X6FormatsFeaturesEXT rgba10x6_formats_features = {};
 
 	// Vendor
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};

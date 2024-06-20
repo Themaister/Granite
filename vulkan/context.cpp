@@ -644,6 +644,8 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		std::vector<VkExtensionProperties> layer_exts(layer_ext_count);
 		vkEnumerateInstanceExtensionProperties("VK_LAYER_KHRONOS_validation", &layer_ext_count, layer_exts.data());
 
+#if 0
+		// Tons of false positives around timeline semaphores atm, so don't bother.
 		if (find_if(begin(layer_exts), end(layer_exts), [](const VkExtensionProperties &e) {
 			return strcmp(e.extensionName, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) == 0;
 		}) != end(layer_exts))
@@ -657,6 +659,7 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 			validation_features.pEnabledValidationFeatures = validation_sync_features;
 			info.pNext = &validation_features;
 		}
+#endif
 
 		if (!ext.supports_debug_utils &&
 		    find_if(begin(layer_exts), end(layer_exts), [](const VkExtensionProperties &e) {

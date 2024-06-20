@@ -51,22 +51,6 @@ void Label::reconfigure_to_canvas(vec2, vec2)
 
 float Label::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
 {
-	if (bg_color.w > 0.0f)
-	{
-		if (bg_image)
-		{
-			auto *view = renderer.get_device().get_resource_manager().get_image_view_blocking(bg_image);
-			renderer.render_textured_quad(*view,
-			                              vec3(offset, layer), size,
-			                              vec2(0.0f), vec2(view->get_view_width(), view->get_view_height()),
-			                              DrawPipeline::AlphaBlend, bg_color, Vulkan::StockSampler::LinearClamp);
-		}
-		else
-		{
-			renderer.render_quad(vec3(offset, layer), size, bg_color);
-		}
-	}
-
 	auto &ui = *GRANITE_UI_MANAGER();
 	auto &font = ui.get_font(font_size);
 	renderer.render_text(font, text.c_str(), vec3(offset + geometry.margin, layer - 0.5f), size - 2.0f * geometry.margin,

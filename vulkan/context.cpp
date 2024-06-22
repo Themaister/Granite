@@ -630,8 +630,6 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		return layer_itr != end(queried_layers);
 	};
 
-	VkValidationFeaturesEXT validation_features = { VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT };
-
 	force_no_validation = Util::get_environment_bool("GRANITE_VULKAN_NO_VALIDATION", false);
 
 	if (!force_no_validation && has_layer("VK_LAYER_KHRONOS_validation"))
@@ -645,6 +643,8 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		vkEnumerateInstanceExtensionProperties("VK_LAYER_KHRONOS_validation", &layer_ext_count, layer_exts.data());
 
 #if 0
+		VkValidationFeaturesEXT validation_features = { VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT };
+
 		// Tons of false positives around timeline semaphores atm, so don't bother.
 		if (find_if(begin(layer_exts), end(layer_exts), [](const VkExtensionProperties &e) {
 			return strcmp(e.extensionName, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) == 0;

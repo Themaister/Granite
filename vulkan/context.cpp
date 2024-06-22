@@ -608,12 +608,6 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		ext.supports_surface_capabilities2 = true;
 	}
 
-	if (ext.supports_surface_capabilities2 && has_extension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME))
-	{
-		instance_exts.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
-		ext.supports_surface_maintenance1 = true;
-	}
-
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 &&
 	    has_surface_extension &&
 	    has_extension(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))
@@ -671,6 +665,22 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		}
 	}
 #endif
+
+	if (ext.supports_surface_capabilities2 && has_extension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME))
+	{
+#ifdef VULKAN_DEBUG
+		// It seems like there are some bugs with EXT_swapchain_maint1 in VVL atm.
+		const bool support_maint1 = force_no_validation;
+#else
+		constexpr bool support_maint1 = true;
+#endif
+
+		if (support_maint1)
+		{
+			instance_exts.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+			ext.supports_surface_maintenance1 = true;
+		}
+	}
 
 	info.enabledExtensionCount = instance_exts.size();
 	info.ppEnabledExtensionNames = instance_exts.empty() ? nullptr : instance_exts.data();

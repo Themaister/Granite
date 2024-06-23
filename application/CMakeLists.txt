@@ -15,6 +15,7 @@ target_link_libraries(granite-application PUBLIC
         granite-application-global-init
         granite-application-events
         granite-threading
+        granite-filesystem
         PRIVATE granite-stb granite-rapidjson)
 
 target_include_directories(granite-application PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

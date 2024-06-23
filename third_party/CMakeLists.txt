@@ -131,4 +131,6 @@ if (GRANITE_VULKAN_SYSTEM_HANDLES AND GRANITE_RENDERER)
     add_subdirectory(fsr2/src/ffx-fsr2-api/granite)
 endif()
 
-add_subdirectory(pyroenc EXCLUDE_FROM_ALL)
+if (GRANITE_FFMPEG)
+    add_subdirectory(pyroenc EXCLUDE_FROM_ALL)
+endif()

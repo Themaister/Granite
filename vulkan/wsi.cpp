@@ -222,6 +222,9 @@ bool WSI::init_surface_swapchain_dxgi(unsigned width, unsigned height)
 	case BackbufferFormat::HDR10:
 		format = { VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_COLOR_SPACE_HDR10_ST2084_EXT };
 		break;
+
+	default:
+		return false;
 	}
 
 	constexpr unsigned num_images = 3;

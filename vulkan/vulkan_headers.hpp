@@ -35,10 +35,15 @@
 #include "logging.hpp"
 #include <utility>
 
-#ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
 // Workaround silly Xlib headers that define macros for these globally :(
+#ifdef None
 #undef None
+#endif
+#ifdef Bool
 #undef Bool
+#endif
+#ifdef Status
+#undef Status
 #endif
 
 #ifdef VULKAN_DEBUG

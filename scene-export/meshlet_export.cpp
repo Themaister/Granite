@@ -101,7 +101,7 @@ static void adjust_quant(std::vector<T> &values, int &exp)
 	if (active_bits == 0)
 		return;
 
-	int extra_shift = trailing_zeroes(active_bits);
+	int extra_shift = Util::trailing_zeroes(active_bits);
 	for (auto &value : values)
 		for (auto &c : value.data)
 			c >>= extra_shift;
@@ -297,7 +297,7 @@ static std::vector<i16vec2> mesh_extract_uv_snorm_scale(const SceneFormats::Mesh
 // Analyze bits required to encode a delta.
 static uint32_t compute_required_bits_unsigned(uint32_t delta)
 {
-	return delta == 0 ? 0 : (32 - leading_zeroes(delta));
+	return delta == 0 ? 0 : (32 - Util::leading_zeroes(delta));
 }
 
 static vec3 decode_snorm_exp(i16vec3 p, int exp)

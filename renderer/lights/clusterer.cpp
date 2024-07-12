@@ -1978,7 +1978,7 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 
 	Push push = {
 		inverse_cluster_transform,
-		uvec4(res_x, res_y, res_z, trailing_zeroes(res_z)),
+		uvec4(res_x, res_y, res_z, Util::trailing_zeroes(res_z)),
 		vec4(1.0f / res_x, 1.0f / res_y, 1.0f / ((ClusterHierarchies + 1) * res_z), 1.0f),
 		vec4(inv_res, radius),
 		legacy.spots.count, legacy.points.count,

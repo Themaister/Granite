@@ -1152,7 +1152,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 					unsigned count = 0;
 					auto *m = static_cast<const uint32_t *>(device.map_host_buffer(buffer, MEMORY_ACCESS_READ_BIT));
 					for (uint32_t i = 0; i < buffer.get_create_info().size / 4; i++)
-						count += popcount32(m[i]);
+						count += Util::popcount32(m[i]);
 					return count;
 				};
 

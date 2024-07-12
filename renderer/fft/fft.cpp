@@ -454,7 +454,7 @@ std::vector<unsigned> FFT::Impl::split_radices(unsigned N) const
 		return {};
 
 	std::vector<unsigned> splits;
-	unsigned N_log2 = trailing_zeroes(N);
+	unsigned N_log2 = Util::trailing_zeroes(N);
 
 	// This should be deduced based on limits.
 	constexpr unsigned max_split = 9;

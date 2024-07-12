@@ -322,7 +322,7 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 		if (!vacant_mask)
 			continue;
 
-		uint32_t subindex = trailing_zeroes(vacant_mask);
+		uint32_t subindex = Util::trailing_zeroes(vacant_mask);
 		uint32_t index = i * 32 + subindex;
 
 		MixerStream *old_stream = mixer_streams[index];

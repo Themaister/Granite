@@ -606,7 +606,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 			uint32_t mask = pending_hierarchy_level_mask.load(std::memory_order_relaxed);
 			if (!mask)
 				return;
-			uint32_t num_pending_levels = 32 - leading_zeroes(mask);
+			uint32_t num_pending_levels = 32 - Util::leading_zeroes(mask);
 
 			TaskComposer stage_composer(thread_group);
 			for (unsigned level = 0, count = num_pending_levels; level < count; level++)
@@ -624,7 +624,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 		uint32_t mask = pending_hierarchy_level_mask.load(std::memory_order_relaxed);
 		if (mask)
 		{
-			uint32_t num_pending_levels = 32 - leading_zeroes(mask);
+			uint32_t num_pending_levels = 32 - Util::leading_zeroes(mask);
 			for (unsigned level = 0, count = num_pending_levels; level < count; level++)
 				perform_per_level_updates(level, nullptr);
 		}

@@ -2434,7 +2434,7 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 	physical_events[index].to_flush_access = 0;
 	for (auto &e : physical_events[index].invalidated_in_stage)
 		e = 0;
-	physical_events[index].invalidated_in_stage[trailing_zeroes(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT)] = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+	physical_events[index].invalidated_in_stage[Util::trailing_zeroes(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT)] = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
 	cmd->end_region();
 	if (physical_dimensions[index].uses_semaphore())

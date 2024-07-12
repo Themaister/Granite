@@ -51,7 +51,9 @@ target_include_directories(granite-rapidjson INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include)
 
-add_subdirectory(khronos/vulkan-headers)
+if (NOT TARGET Vulkan::Headers)
+    add_subdirectory(khronos/vulkan-headers)
+endif()
 add_library(granite-volk-headers INTERFACE)
 target_include_directories(granite-volk-headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/volk)
 target_link_libraries(granite-volk-headers INTERFACE Vulkan::Headers)

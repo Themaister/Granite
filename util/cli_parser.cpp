@@ -36,7 +36,9 @@ CLIParser::CLIParser(CLICallbacks cbs_, int argc_, char *argv_[])
 
 bool CLIParser::parse()
 {
+#ifdef __EXCEPTIONS
 	try
+#endif
 	{
 		while (argc && !ended_state)
 		{
@@ -54,8 +56,12 @@ bool CLIParser::parse()
 				{
 					if (unknown_argument_is_default)
 						cbs.default_handler(next);
+#ifdef __EXCEPTIONS
 					else
 						throw std::invalid_argument("Invalid argument");
+#else
+					return false;
+#endif
 				}
 				else
 					itr->second(*this);
@@ -64,6 +70,7 @@ bool CLIParser::parse()
 
 		return true;
 	}
+#ifdef __EXCEPTIONS
 	catch (const std::exception &e)
 	{
 		LOGE("Failed to parse arguments: %s\n", e.what());
@@ -73,6 +80,7 @@ bool CLIParser::parse()
 		}
 		return false;
 	}
+#endif
 }
 
 void CLIParser::end()
@@ -84,13 +92,21 @@ unsigned CLIParser::next_uint()
 {
 	if (!argc)
 	{
+#ifdef __EXCEPTIONS
 		throw std::invalid_argument("Tried to parse uint, but nothing left in arguments");
+#else
+		return 0;
+#endif
 	}
 
 	auto val = std::stoul(*argv);
 	if (val > std::numeric_limits<unsigned>::max())
 	{
+#ifdef __EXCEPTIONS
 		throw std::invalid_argument("next_uint() out of range");
+#else
+		return 0;
+#endif
 	}
 
 	argc--;
@@ -103,7 +119,11 @@ double CLIParser::next_double()
 {
 	if (!argc)
 	{
+#ifdef __EXCEPTIONS
 		throw std::invalid_argument("Tried to parse double, but nothing left in arguments");
+#else
+		return 0;
+#endif
 	}
 
 	double val = std::stod(*argv);
@@ -118,7 +138,11 @@ const char *CLIParser::next_string()
 {
 	if (!argc)
 	{
+#ifdef __EXCEPTIONS
 		throw std::invalid_argument("Tried to parse string, but nothing left in arguments");
+#else
+		return nullptr;
+#endif
 	}
 
 	const char *ret = *argv;

@@ -210,7 +210,7 @@ private:
 	uint32_t height = 0;
 };
 
-static const unsigned VULKAN_FRAMEBUFFER_RING_SIZE = 8;
+static const unsigned VULKAN_FRAMEBUFFER_RING_SIZE = 16;
 class FramebufferAllocator
 {
 public:

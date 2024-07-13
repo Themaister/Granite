@@ -56,8 +56,8 @@ struct DescriptorSetLayout
 
 // Avoid -Wclass-memaccess warnings since we hash DescriptorSetLayout.
 
-static const unsigned VULKAN_NUM_SETS_PER_POOL = 16;
-static const unsigned VULKAN_DESCRIPTOR_RING_SIZE = 8;
+static const unsigned VULKAN_NUM_SETS_PER_POOL = 64;
+static const unsigned VULKAN_DESCRIPTOR_RING_SIZE = 16;
 
 class DescriptorSetAllocator;
 class BindlessDescriptorPool;

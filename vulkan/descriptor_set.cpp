@@ -225,12 +225,6 @@ VkDescriptorPool DescriptorSetAllocator::allocate_bindless_pool(unsigned num_set
 	info.poolSizeCount = 1;
 
 	VkDescriptorPoolSize size = pool_size[0];
-	if (num_descriptors > size.descriptorCount)
-	{
-		LOGE("Trying to allocate more than max bindless descriptors for descriptor layout.\n");
-		return VK_NULL_HANDLE;
-	}
-
 	size.descriptorCount = num_descriptors;
 	info.pPoolSizes = &size;
 

@@ -146,14 +146,14 @@ bool InputTrackerSDL::process_sdl_event(const SDL_Event &e, InputTracker &tracke
 
 void InputTrackerSDL::add_gamepad(SDL_JoystickID id, InputTracker &tracker, const Dispatcher &dispatcher)
 {
-	int player_index = SDL_GetJoystickInstancePlayerIndex(id);
+	int player_index = SDL_GetJoystickPlayerIndexForID(id);
 	if (player_index >= 0 && player_index < int(InputTracker::Joypads) && !pads[player_index])
 	{
-		uint32_t vid = SDL_GetGamepadInstanceVendor(id);
-		uint32_t pid = SDL_GetGamepadInstanceProduct(id);
-		const char *name = SDL_GetGamepadInstanceName(id);
+		uint32_t vid = SDL_GetGamepadVendorForID(id);
+		uint32_t pid = SDL_GetGamepadProductForID(id);
+		const char *name = SDL_GetGamepadNameForID(id);
 		LOGI("Plugging in controller: \"%s\" (%u/%u).\n", name, vid, pid);
-		const char *mapping = SDL_GetGamepadInstanceMapping(id);
+		const char *mapping = SDL_GetGamepadMappingForID(id);
 		LOGI(" Using mapping: \"%s\"\n", mapping);
 		pads[player_index] = SDL_OpenGamepad(id);
 		ids[player_index] = id;

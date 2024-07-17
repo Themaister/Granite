@@ -264,7 +264,7 @@ public:
 #ifdef _WIN32
 		SDL_PropertiesID props = SDL_GetWindowProperties(window);
 		SDL_LockProperties(props);
-		auto hwnd = static_cast<HWND>(SDL_GetProperty(props, "SDL.window.win32.hwnd", nullptr));
+		auto hwnd = static_cast<HWND>(SDL_GetPointerProperty(props, "SDL.window.win32.hwnd", nullptr));
 		SDL_UnlockProperties(props);
 		return reinterpret_cast<uintptr_t>(hwnd);
 #else
@@ -287,7 +287,7 @@ public:
 			{
 				SDL_PropertiesID props = SDL_GetWindowProperties(window);
 				SDL_LockProperties(props);
-				auto hwnd = static_cast<HWND>(SDL_GetProperty(props, "SDL.window.win32.hwnd", nullptr));
+				auto hwnd = static_cast<HWND>(SDL_GetPointerProperty(props, "SDL.window.win32.hwnd", nullptr));
 				SDL_UnlockProperties(props);
 
 				push_task_to_async_thread([this, hwnd]() {
@@ -513,17 +513,17 @@ public:
 				else
 					state = KeyState::Released;
 
-				if (state == KeyState::Pressed && e.key.keysym.sym == SDLK_ESCAPE)
+				if (state == KeyState::Pressed && e.key.key == SDLK_ESCAPE)
 				{
 					return false;
 				}
-				else if (state == KeyState::Pressed && e.key.keysym.sym == SDLK_RETURN &&
-				         (e.key.keysym.mod & SDL_KMOD_ALT) != 0)
+				else if (state == KeyState::Pressed && e.key.key == SDLK_RETURN &&
+				         (e.key.mod & SDL_KMOD_ALT) != 0)
 				{
 					toggle_fullscreen();
 				}
-				else if (state == KeyState::Pressed && tolower(e.key.keysym.sym) == 'v' &&
-				         (e.key.keysym.mod & SDL_KMOD_LCTRL) != 0)
+				else if (state == KeyState::Pressed && tolower(e.key.key) == 'v' &&
+				         (e.key.mod & SDL_KMOD_LCTRL) != 0)
 				{
 					push_non_pollable_task_to_async_thread([c = clipboard]() mutable {
 						if (auto *manager = GRANITE_EVENT_MANAGER())
@@ -532,7 +532,7 @@ public:
 				}
 				else
 				{
-					Key key = sdl_key_to_granite_key(e.key.keysym.sym);
+					Key key = sdl_key_to_granite_key(e.key.key);
 					push_task_to_async_thread([=]() {
 						get_input_tracker().key_event(key, state);
 					});
@@ -558,12 +558,9 @@ public:
 		case SDL_EVENT_CLIPBOARD_UPDATE:
 			if (SDL_HasClipboardText())
 			{
-				char *text = SDL_GetClipboardText();
+				const char *text = SDL_GetClipboardText();
 				if (text)
-				{
 					clipboard = text;
-					SDL_free(text);
-				}
 				else
 					clipboard.clear();
 			}

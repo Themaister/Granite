@@ -825,6 +825,7 @@ int application_main(
 		return exit_code;
 
 	auto app = std::unique_ptr<Application>(create_application(argc, argv));
+	int ret;
 
 	if (app)
 	{
@@ -841,9 +842,14 @@ int application_main(
 
 		app.reset();
 		Global::deinit();
-		return 0;
+		ret = EXIT_SUCCESS;
 	}
 	else
-		return 1;
+	{
+		ret = EXIT_FAILURE;
+	}
+
+	Global::deinit();
+	return ret;
 }
 }

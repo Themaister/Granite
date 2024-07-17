@@ -841,7 +841,6 @@ int application_main(
 		platform_handle->run_loop(app.get());
 
 		app.reset();
-		Global::deinit();
 		ret = EXIT_SUCCESS;
 	}
 	else

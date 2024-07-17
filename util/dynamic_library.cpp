@@ -36,7 +36,7 @@ namespace Util
 DynamicLibrary::DynamicLibrary(const char *path)
 {
 #ifdef _WIN32
-	module = LoadLibrary(path);
+	module = LoadLibraryA(path);
 	if (!module)
 		LOGE("Failed to load dynamic library.\n");
 #else

@@ -1291,9 +1291,9 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 
 	// Depth state
 	VkPipelineDepthStencilStateCreateInfo ds = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
-	ds.stencilTestEnable = compile.compatible_render_pass->has_stencil(compile.subpass_index) && compile.static_state.state.stencil_test;
-	ds.depthTestEnable = compile.compatible_render_pass->has_depth(compile.subpass_index) && compile.static_state.state.depth_test;
-	ds.depthWriteEnable = compile.compatible_render_pass->has_depth(compile.subpass_index) && compile.static_state.state.depth_write;
+	ds.stencilTestEnable = compile.compatible_render_pass->has_stencil(compile.subpass_index) && compile.static_state.state.stencil_test != 0;
+	ds.depthTestEnable = compile.compatible_render_pass->has_depth(compile.subpass_index) && compile.static_state.state.depth_test != 0;
+	ds.depthWriteEnable = compile.compatible_render_pass->has_depth(compile.subpass_index) && compile.static_state.state.depth_write != 0;
 
 	if (ds.depthTestEnable)
 		ds.depthCompareOp = static_cast<VkCompareOp>(compile.static_state.state.depth_compare);
@@ -1391,7 +1391,7 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	VkPipelineShaderStageRequiredSubgroupSizeCreateInfo subgroup_size_info_task;
 	VkPipelineShaderStageRequiredSubgroupSizeCreateInfo subgroup_size_info_mesh;
 
-	for (unsigned i = 0; i < Util::ecast(ShaderStage::Count); i++)
+	for (int i = 0; i < Util::ecast(ShaderStage::Count); i++)
 	{
 		auto mask = compile.layout->get_resource_layout().spec_constant_mask[i] &
 		            get_combined_spec_constant_mask(compile);
@@ -1414,7 +1414,7 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 		}
 	}
 
-	for (unsigned i = 0; i < Util::ecast(ShaderStage::Count); i++)
+	for (int i = 0; i < Util::ecast(ShaderStage::Count); i++)
 	{
 		auto stage = static_cast<ShaderStage>(i);
 		if (compile.program->get_shader(stage))

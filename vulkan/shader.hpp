@@ -83,18 +83,21 @@ struct CombinedResourceLayout
 	Util::Hash push_constant_layout_hash = 0;
 };
 
-struct ResourceBinding
+union ResourceBinding
 {
-	union {
-		VkDescriptorBufferInfo buffer;
-		struct
-		{
-			VkDescriptorImageInfo fp;
-			VkDescriptorImageInfo integer;
-		} image;
-		VkBufferView buffer_view;
-	};
-	VkDeviceSize dynamic_offset;
+	struct
+	{
+		VkDescriptorBufferInfo dynamic;
+		VkDescriptorBufferInfo push;
+	} buffer;
+
+	struct
+	{
+		VkDescriptorImageInfo fp;
+		VkDescriptorImageInfo integer;
+	} image;
+
+	VkBufferView buffer_view;
 };
 
 struct ResourceBindings

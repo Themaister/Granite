@@ -125,7 +125,7 @@ void PipelineLayout::create_update_templates()
 			entry.dstBinding = binding;
 			entry.dstArrayElement = 0;
 			entry.descriptorCount = array_size;
-			entry.offset = offsetof(ResourceBinding, buffer) + sizeof(ResourceBinding) * binding;
+			entry.offset = offsetof(ResourceBinding, buffer.dynamic) + sizeof(ResourceBinding) * binding;
 			entry.stride = sizeof(ResourceBinding);
 		});
 
@@ -137,7 +137,7 @@ void PipelineLayout::create_update_templates()
 			entry.dstBinding = binding;
 			entry.dstArrayElement = 0;
 			entry.descriptorCount = array_size;
-			entry.offset = offsetof(ResourceBinding, buffer) + sizeof(ResourceBinding) * binding;
+			entry.offset = offsetof(ResourceBinding, buffer.dynamic) + sizeof(ResourceBinding) * binding;
 			entry.stride = sizeof(ResourceBinding);
 		});
 

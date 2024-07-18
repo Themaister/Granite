@@ -2241,18 +2241,18 @@ void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buf
 	VK_ASSERT(buffer.get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	auto &b = bindings.bindings[set][binding];
 
-	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.range == range)
+	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.dynamic.range == range)
 	{
-		if (b.dynamic_offset != offset)
+		if (b.buffer.push.offset != offset)
 		{
 			dirty_sets_dynamic |= 1u << set;
-			b.dynamic_offset = offset;
+			b.buffer.push.offset = offset;
 		}
 	}
 	else
 	{
-		b.buffer = { buffer.get_buffer(), 0, range };
-		b.dynamic_offset = offset;
+		b.buffer.dynamic = { buffer.get_buffer(), 0, range };
+		b.buffer.push = { buffer.get_buffer(), offset, range };
 		bindings.cookies[set][binding] = buffer.get_cookie();
 		bindings.secondary_cookies[set][binding] = 0;
 		dirty_sets |= 1u << set;
@@ -2267,11 +2267,11 @@ void CommandBuffer::set_storage_buffer(unsigned set, unsigned binding, const Buf
 	VK_ASSERT(buffer.get_create_info().usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 	auto &b = bindings.bindings[set][binding];
 
-	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.offset == offset && b.buffer.range == range)
+	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.dynamic.offset == offset && b.buffer.dynamic.range == range)
 		return;
 
-	b.buffer = { buffer.get_buffer(), offset, range };
-	b.dynamic_offset = 0;
+	b.buffer.dynamic = { buffer.get_buffer(), offset, range };
+	b.buffer.push = b.buffer.dynamic;
 	bindings.cookies[set][binding] = buffer.get_cookie();
 	bindings.secondary_cookies[set][binding] = 0;
 	dirty_sets |= 1u << set;
@@ -2494,7 +2494,7 @@ void CommandBuffer::rebind_descriptor_set(uint32_t set, VkDescriptorSet *sets, u
 		for (unsigned i = 0; i < array_size; i++)
 		{
 			VK_ASSERT(num_dynamic_offsets < VULKAN_NUM_DYNAMIC_UBOS);
-			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].dynamic_offset;
+			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].buffer.push.offset;
 		}
 	});
 
@@ -2528,9 +2528,9 @@ void CommandBuffer::flush_descriptor_set(uint32_t set, VkDescriptorSet *sets,
 		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
-			VK_ASSERT(bindings.bindings[set][binding + i].buffer.buffer != VK_NULL_HANDLE);
+			VK_ASSERT(bindings.bindings[set][binding + i].buffer.dynamic.buffer != VK_NULL_HANDLE);
 			VK_ASSERT(num_dynamic_offsets < VULKAN_NUM_DYNAMIC_UBOS);
-			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].dynamic_offset;
+			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].buffer.push.offset;
 		}
 	});
 
@@ -2539,7 +2539,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set, VkDescriptorSet *sets,
 	for_each_bit(set_layout.storage_buffer_mask, [&](uint32_t binding) {
 		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
-			VK_ASSERT(bindings.bindings[set][binding + i].buffer.buffer != VK_NULL_HANDLE);
+			VK_ASSERT(bindings.bindings[set][binding + i].buffer.dynamic.buffer != VK_NULL_HANDLE);
 	});
 
 	// Texel buffers

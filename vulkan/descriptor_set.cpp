@@ -271,7 +271,21 @@ VkDescriptorSet DescriptorSetAllocator::request_descriptor_set(unsigned thread_i
 			info.pPoolSizes = pool_size.data();
 		}
 
-		if (table.vkCreateDescriptorPool(device->get_device(), &info, nullptr, &pool->pool) != VK_SUCCESS)
+		bool overallocation =
+		    device->get_device_features().descriptor_pool_overallocation_features.descriptorPoolOverallocation ==
+		    VK_TRUE;
+
+		if (overallocation)
+		{
+			// No point in allocating new pools if we can keep using the existing one.
+			info.flags |= VK_DESCRIPTOR_POOL_CREATE_ALLOW_OVERALLOCATION_POOLS_BIT_NV |
+			              VK_DESCRIPTOR_POOL_CREATE_ALLOW_OVERALLOCATION_SETS_BIT_NV;
+		}
+
+		bool need_alloc = !overallocation || state.pools.empty();
+
+		pool->pool = VK_NULL_HANDLE;
+		if (need_alloc && table.vkCreateDescriptorPool(device->get_device(), &info, nullptr, &pool->pool) != VK_SUCCESS)
 		{
 			LOGE("Failed to create descriptor pool.\n");
 			state.object_pool.free(pool);
@@ -282,7 +296,7 @@ VkDescriptorSet DescriptorSetAllocator::request_descriptor_set(unsigned thread_i
 		std::fill(std::begin(layouts), std::end(layouts), set_layout);
 
 		VkDescriptorSetAllocateInfo alloc = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-		alloc.descriptorPool = pool->pool;
+		alloc.descriptorPool = pool->pool != VK_NULL_HANDLE ? pool->pool : state.pools.front()->pool;
 		alloc.descriptorSetCount = VULKAN_NUM_SETS_PER_POOL;
 		alloc.pSetLayouts = layouts;
 

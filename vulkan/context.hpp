@@ -109,6 +109,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceDeviceGeneratedCommandsFeaturesNV device_generated_commands_features = {};
 	VkPhysicalDeviceDeviceGeneratedCommandsComputeFeaturesNV device_generated_commands_compute_features = {};
 	VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV device_generated_commands_properties = {};
+	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};
 
 	// Fallback feature structs (Vulkan 1.1)
 	VkPhysicalDeviceHostQueryResetFeatures host_query_reset_features = {};

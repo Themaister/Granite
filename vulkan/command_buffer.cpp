@@ -2109,7 +2109,12 @@ void CommandBuffer::set_program_layout(const PipelineLayout *layout)
 			// Find the first set whose descriptor set layout differs.
 			for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
 			{
-				if (layout->get_allocator(set) != pipeline_state.layout->get_allocator(set))
+				uint32_t first_push_set =
+				    std::min<uint32_t>(layout->get_push_set_index(), pipeline_state.layout->get_push_set_index());
+				bool push_set_delta = layout->get_push_set_index() != pipeline_state.layout->get_push_set_index();
+
+				if (layout->get_allocator(set) != pipeline_state.layout->get_allocator(set) ||
+				    (push_set_delta && first_push_set == set))
 				{
 					dirty_sets |= ~((1u << set) - 1);
 					break;

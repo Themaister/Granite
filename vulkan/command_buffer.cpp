@@ -2452,49 +2452,76 @@ void CommandBuffer::set_unorm_storage_texture(unsigned set, unsigned binding, co
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL), view.get_cookie() | COOKIE_BIT_UNORM);
 }
 
-void CommandBuffer::rebind_descriptor_set(uint32_t set)
+void CommandBuffer::flush_descriptor_binds(const VkDescriptorSet *sets,
+                                           uint32_t &first_set, uint32_t &set_count,
+                                           uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets)
 {
+	if (!set_count)
+		return;
+
+	table.vkCmdBindDescriptorSets(
+	    cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
+	    current_pipeline_layout, first_set, set_count, sets, num_dynamic_offsets, dynamic_offsets);
+
+	set_count = 0;
+	num_dynamic_offsets = 0;
+}
+
+void CommandBuffer::rebind_descriptor_set(uint32_t set, VkDescriptorSet *sets, uint32_t &first_set, uint32_t &set_count,
+                                          uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets)
+{
+	if (set_count == 0)
+		first_set = set;
+	else if (first_set + set_count != set)
+	{
+		flush_descriptor_binds(sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+		first_set = set;
+	}
+
 	auto &layout = pipeline_state.layout->get_resource_layout();
 	if (layout.bindless_descriptor_set_mask & (1u << set))
 	{
 		VK_ASSERT(bindless_sets[set]);
-		table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
-		                              current_pipeline_layout, set, 1, &bindless_sets[set], 0, nullptr);
+		sets[set_count++] = bindless_sets[set];
 		return;
 	}
 
 	auto &set_layout = layout.sets[set];
-	uint32_t num_dynamic_offsets = 0;
-	uint32_t dynamic_offsets[VULKAN_NUM_BINDINGS];
 
 	// UBOs
 	for_each_bit(set_layout.uniform_buffer_mask, [&](uint32_t binding) {
 		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
-			VK_ASSERT(num_dynamic_offsets < VULKAN_NUM_BINDINGS);
+			VK_ASSERT(num_dynamic_offsets < VULKAN_NUM_DYNAMIC_UBOS);
 			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].dynamic_offset;
 		}
 	});
 
-	table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
-	                              current_pipeline_layout, set, 1, &allocated_sets[set], num_dynamic_offsets, dynamic_offsets);
+	sets[set_count++] = allocated_sets[set];
 }
 
-void CommandBuffer::flush_descriptor_set(uint32_t set)
+void CommandBuffer::flush_descriptor_set(uint32_t set, VkDescriptorSet *sets,
+                                         uint32_t &first_set, uint32_t &set_count,
+                                         uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets)
 {
+	if (set_count == 0)
+		first_set = set;
+	else if (first_set + set_count != set)
+	{
+		flush_descriptor_binds(sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+		first_set = set;
+	}
+
 	auto &layout = pipeline_state.layout->get_resource_layout();
 	if (layout.bindless_descriptor_set_mask & (1u << set))
 	{
 		VK_ASSERT(bindless_sets[set]);
-		table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
-		                              current_pipeline_layout, set, 1, &bindless_sets[set], 0, nullptr);
+		sets[set_count++] = bindless_sets[set];
 		return;
 	}
 
 	auto &set_layout = layout.sets[set];
-	uint32_t num_dynamic_offsets = 0;
-	uint32_t dynamic_offsets[VULKAN_NUM_BINDINGS];
 
 	// UBOs
 	for_each_bit(set_layout.uniform_buffer_mask, [&](uint32_t binding) {
@@ -2502,7 +2529,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 		for (unsigned i = 0; i < array_size; i++)
 		{
 			VK_ASSERT(bindings.bindings[set][binding + i].buffer.buffer != VK_NULL_HANDLE);
-			VK_ASSERT(num_dynamic_offsets < VULKAN_NUM_BINDINGS);
+			VK_ASSERT(num_dynamic_offsets < VULKAN_NUM_DYNAMIC_UBOS);
 			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].dynamic_offset;
 		}
 	});
@@ -2567,8 +2594,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 	auto update_template = pipeline_state.layout->get_update_template(set);
 	VK_ASSERT(update_template);
 	table.vkUpdateDescriptorSetWithTemplate(device->get_device(), vk_set, update_template, bindings.bindings[set]);
-	table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
-	                              current_pipeline_layout, set, 1, &vk_set, num_dynamic_offsets, dynamic_offsets);
+	sets[set_count++] = vk_set;
 	allocated_sets[set] = vk_set;
 }
 
@@ -2576,8 +2602,16 @@ void CommandBuffer::flush_descriptor_sets()
 {
 	auto &layout = pipeline_state.layout->get_resource_layout();
 
+	uint32_t first_set = 0;
+	uint32_t set_count = 0;
+	VkDescriptorSet sets[VULKAN_NUM_DESCRIPTOR_SETS];
+	uint32_t dynamic_offsets[VULKAN_NUM_DYNAMIC_UBOS];
+	uint32_t num_dynamic_offsets = 0;
+
 	uint32_t set_update = layout.descriptor_set_mask & dirty_sets;
-	for_each_bit(set_update, [&](uint32_t set) { flush_descriptor_set(set); });
+	for_each_bit(set_update, [&](uint32_t set) {
+		flush_descriptor_set(set, sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+	});
 	dirty_sets &= ~set_update;
 
 	// If we update a set, we also bind dynamically.
@@ -2585,8 +2619,12 @@ void CommandBuffer::flush_descriptor_sets()
 
 	// If we only rebound UBOs, we might get away with just rebinding descriptor sets, no hashing and lookup required.
 	uint32_t dynamic_set_update = layout.descriptor_set_mask & dirty_sets_dynamic;
-	for_each_bit(dynamic_set_update, [&](uint32_t set) { rebind_descriptor_set(set); });
+	for_each_bit(dynamic_set_update, [&](uint32_t set) {
+		rebind_descriptor_set(set, sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+	});
 	dirty_sets_dynamic &= ~dynamic_set_update;
+
+	flush_descriptor_binds(sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
 }
 
 void CommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance)

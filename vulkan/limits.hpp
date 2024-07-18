@@ -25,6 +25,7 @@
 namespace Vulkan
 {
 constexpr unsigned VULKAN_NUM_DESCRIPTOR_SETS = 4;
+constexpr unsigned VULKAN_NUM_DYNAMIC_UBOS = 8; // Vulkan min-spec
 constexpr unsigned VULKAN_NUM_BINDINGS = 32;
 constexpr unsigned VULKAN_NUM_BINDINGS_BINDLESS_VARYING = 16 * 1024;
 constexpr unsigned VULKAN_NUM_ATTACHMENTS = 8;

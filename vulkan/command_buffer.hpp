@@ -883,8 +883,18 @@ private:
 	bool flush_compute_pipeline(bool synchronous);
 	void flush_descriptor_sets();
 	void begin_graphics();
-	void flush_descriptor_set(uint32_t set);
-	void rebind_descriptor_set(uint32_t set);
+	void flush_descriptor_set(
+		uint32_t set, VkDescriptorSet *sets,
+		uint32_t &first_set, uint32_t &set_count,
+		uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets);
+	void rebind_descriptor_set(
+		uint32_t set, VkDescriptorSet *sets,
+		uint32_t &first_set, uint32_t &set_count,
+		uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets);
+	void flush_descriptor_binds(const VkDescriptorSet *sets,
+		uint32_t &first_set, uint32_t &set_count,
+		uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets);
+
 	void begin_compute();
 	void begin_context();
 

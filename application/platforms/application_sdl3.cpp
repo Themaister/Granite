@@ -353,7 +353,7 @@ public:
 	VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice) override
 	{
 		VkSurfaceKHR surface = VK_NULL_HANDLE;
-		if (!SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface))
+		if (SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface) < 0)
 			return VK_NULL_HANDLE;
 
 		int actual_width, actual_height;

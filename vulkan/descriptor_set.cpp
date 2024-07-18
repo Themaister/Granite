@@ -40,9 +40,8 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 
 	if (!bindless)
 	{
-		unsigned count = device_->num_thread_indices;
-		for (unsigned i = 0; i < count; i++)
-			per_thread.emplace_back(new PerThread);
+		unsigned count = device_->num_thread_indices * device_->per_frame.size();
+		per_thread_and_frame.resize(count);
 	}
 
 	if (bindless && !device->get_device_features().vk12_features.descriptorIndexing)
@@ -176,11 +175,27 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 #ifdef VULKAN_DEBUG
 	LOGI("Creating descriptor set layout.\n");
 #endif
-	if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout) != VK_SUCCESS)
+	if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout_pool) != VK_SUCCESS)
 		LOGE("Failed to create descriptor set layout.");
+
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->register_descriptor_set_layout(set_layout, get_hash(), info);
+	if (set_layout_pool)
+		device->register_descriptor_set_layout(set_layout_pool, get_hash(), info);
 #endif
+
+	if (!bindless && device->get_device_features().supports_push_descriptor)
+	{
+		info.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+		for (auto &b : bindings)
+			if (b.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
+				b.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout_push) != VK_SUCCESS)
+			LOGE("Failed to create descriptor set layout.");
+#ifdef GRANITE_VULKAN_FOSSILIZE
+		if (set_layout_push)
+			device->register_descriptor_set_layout(set_layout_push, get_hash(), info);
+#endif
+	}
 }
 
 void DescriptorSetAllocator::reset_bindless_pool(VkDescriptorPool pool)
@@ -196,7 +211,7 @@ VkDescriptorSet DescriptorSetAllocator::allocate_bindless_set(VkDescriptorPool p
 	VkDescriptorSetAllocateInfo info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
 	info.descriptorPool = pool;
 	info.descriptorSetCount = 1;
-	info.pSetLayouts = &set_layout;
+	info.pSetLayouts = &set_layout_pool;
 
 	VkDescriptorSetVariableDescriptorCountAllocateInfoEXT count_info =
 			{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT };
@@ -241,82 +256,98 @@ void DescriptorSetAllocator::begin_frame()
 {
 	if (!bindless)
 	{
-		for (auto &thr : per_thread)
-			thr->should_begin = true;
+		// This can only be called in a situation where no command buffers are alive,
+		// so we don't need to consider any locks here.
+		if (device->per_frame.size() * device->num_thread_indices != per_thread_and_frame.size())
+			per_thread_and_frame.resize(device->per_frame.size() * device->num_thread_indices);
+
+		// It would be safe to set all offsets to 0 here, but that's a little wasteful.
+		for (uint32_t i = 0; i < device->num_thread_indices; i++)
+			per_thread_and_frame[i * device->per_frame.size() + device->frame_context_index].offset = 0;
 	}
 }
 
-std::pair<VkDescriptorSet, bool> DescriptorSetAllocator::find(unsigned thread_index, Hash hash)
+VkDescriptorSet DescriptorSetAllocator::request_descriptor_set(unsigned thread_index, unsigned frame_index)
 {
 	VK_ASSERT(!bindless);
 
-	auto &state = *per_thread[thread_index];
-	if (state.should_begin)
+	size_t flattened_index = thread_index * device->per_frame.size() + frame_index;
+
+	auto &state = per_thread_and_frame[flattened_index];
+
+	unsigned pool_index = state.offset / VULKAN_NUM_SETS_PER_POOL;
+	unsigned pool_offset = state.offset % VULKAN_NUM_SETS_PER_POOL;
+
+	if (pool_index >= state.pools.size())
 	{
-		state.set_nodes.begin_frame();
-		state.should_begin = false;
+		Pool *pool = state.object_pool.allocate();
+
+		VkDescriptorPoolCreateInfo info = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+		info.maxSets = VULKAN_NUM_SETS_PER_POOL;
+		if (!pool_size.empty())
+		{
+			info.poolSizeCount = pool_size.size();
+			info.pPoolSizes = pool_size.data();
+		}
+
+		bool overallocation =
+		    device->get_device_features().descriptor_pool_overallocation_features.descriptorPoolOverallocation ==
+		    VK_TRUE;
+
+		if (overallocation)
+		{
+			// No point in allocating new pools if we can keep using the existing one.
+			info.flags |= VK_DESCRIPTOR_POOL_CREATE_ALLOW_OVERALLOCATION_POOLS_BIT_NV |
+			              VK_DESCRIPTOR_POOL_CREATE_ALLOW_OVERALLOCATION_SETS_BIT_NV;
+		}
+
+		bool need_alloc = !overallocation || state.pools.empty();
+
+		pool->pool = VK_NULL_HANDLE;
+		if (need_alloc && table.vkCreateDescriptorPool(device->get_device(), &info, nullptr, &pool->pool) != VK_SUCCESS)
+		{
+			LOGE("Failed to create descriptor pool.\n");
+			state.object_pool.free(pool);
+			return VK_NULL_HANDLE;
+		}
+
+		VkDescriptorSetLayout layouts[VULKAN_NUM_SETS_PER_POOL];
+		std::fill(std::begin(layouts), std::end(layouts), set_layout_pool);
+
+		VkDescriptorSetAllocateInfo alloc = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+		alloc.descriptorPool = pool->pool != VK_NULL_HANDLE ? pool->pool : state.pools.front()->pool;
+		alloc.descriptorSetCount = VULKAN_NUM_SETS_PER_POOL;
+		alloc.pSetLayouts = layouts;
+
+		if (table.vkAllocateDescriptorSets(device->get_device(), &alloc, pool->sets) != VK_SUCCESS)
+			LOGE("Failed to allocate descriptor sets.\n");
+		state.pools.push_back(pool);
 	}
 
-	auto *node = state.set_nodes.request(hash);
-	if (node)
-		return { node->set, true };
-
-	node = state.set_nodes.request_vacant(hash);
-	if (node)
-		return { node->set, false };
-
-	VkDescriptorPool pool;
-	VkDescriptorPoolCreateInfo info = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
-	info.maxSets = VULKAN_NUM_SETS_PER_POOL;
-	if (!pool_size.empty())
-	{
-		info.poolSizeCount = pool_size.size();
-		info.pPoolSizes = pool_size.data();
-	}
-
-	if (table.vkCreateDescriptorPool(device->get_device(), &info, nullptr, &pool) != VK_SUCCESS)
-	{
-		LOGE("Failed to create descriptor pool.\n");
-		return { VK_NULL_HANDLE, false };
-	}
-
-	VkDescriptorSet sets[VULKAN_NUM_SETS_PER_POOL];
-	VkDescriptorSetLayout layouts[VULKAN_NUM_SETS_PER_POOL];
-	std::fill(std::begin(layouts), std::end(layouts), set_layout);
-
-	VkDescriptorSetAllocateInfo alloc = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-	alloc.descriptorPool = pool;
-	alloc.descriptorSetCount = VULKAN_NUM_SETS_PER_POOL;
-	alloc.pSetLayouts = layouts;
-
-	if (table.vkAllocateDescriptorSets(device->get_device(), &alloc, sets) != VK_SUCCESS)
-		LOGE("Failed to allocate descriptor sets.\n");
-	state.pools.push_back(pool);
-
-	for (auto set : sets)
-		state.set_nodes.make_vacant(set);
-
-	return { state.set_nodes.request_vacant(hash)->set, false };
+	VkDescriptorSet vk_set = state.pools[pool_index]->sets[pool_offset];
+	state.offset++;
+	return vk_set;
 }
 
 void DescriptorSetAllocator::clear()
 {
-	for (auto &thr : per_thread)
+	for (auto &state : per_thread_and_frame)
 	{
-		thr->set_nodes.clear();
-		for (auto &pool : thr->pools)
+		for (auto *obj : state.pools)
 		{
-			table.vkResetDescriptorPool(device->get_device(), pool, 0);
-			table.vkDestroyDescriptorPool(device->get_device(), pool, nullptr);
+			table.vkDestroyDescriptorPool(device->get_device(), obj->pool, nullptr);
+			state.object_pool.free(obj);
 		}
-		thr->pools.clear();
+		state.pools.clear();
+		state.offset = 0;
+		state.object_pool = {};
 	}
 }
 
 DescriptorSetAllocator::~DescriptorSetAllocator()
 {
-	if (set_layout != VK_NULL_HANDLE)
-		table.vkDestroyDescriptorSetLayout(device->get_device(), set_layout, nullptr);
+	table.vkDestroyDescriptorSetLayout(device->get_device(), set_layout_pool, nullptr);
+	table.vkDestroyDescriptorSetLayout(device->get_device(), set_layout_push, nullptr);
 	clear();
 }
 

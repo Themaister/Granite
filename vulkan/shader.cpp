@@ -65,16 +65,24 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourc
 	{
 		set_allocators[i] = device->request_descriptor_set_allocator(layout.sets[i], layout.stages_for_bindings[i],
 		                                                             immutable_samplers ? immutable_samplers->samplers[i] : nullptr);
-		layouts[i] = set_allocators[i]->get_layout();
+		layouts[i] = set_allocators[i]->get_layout_for_pool();
 		if (layout.descriptor_set_mask & (1u << i))
+		{
 			num_sets = i + 1;
+
+			// Assume the last set index in layout is the highest frequency update one, make that push descriptor if possible.
+			// Only one descriptor set can be push descriptor.
+			bool has_push_layout = set_allocators[i]->get_layout_for_push() != VK_NULL_HANDLE;
+			if (has_push_layout)
+				push_set_index = i;
+		}
 	}
 
-	if (num_sets > device->get_gpu_properties().limits.maxBoundDescriptorSets)
-	{
-		LOGE("Number of sets %u exceeds device limit of %u.\n",
-		     num_sets, device->get_gpu_properties().limits.maxBoundDescriptorSets);
-	}
+	if (push_set_index != UINT32_MAX)
+		layouts[push_set_index] = set_allocators[push_set_index]->get_layout_for_push();
+
+	if (num_sets > VULKAN_NUM_DESCRIPTOR_SETS)
+		LOGE("Number of sets %u exceeds limit of %u.\n", num_sets, VULKAN_NUM_DESCRIPTOR_SETS);
 
 	VkPipelineLayoutCreateInfo info = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
 	if (num_sets)
@@ -121,11 +129,15 @@ void PipelineLayout::create_update_templates()
 			unsigned array_size = set_layout.array_size[binding];
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
 			auto &entry = update_entries[update_count++];
-			entry.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+			entry.descriptorType = desc_set == push_set_index ?
+				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 			entry.dstBinding = binding;
 			entry.dstArrayElement = 0;
 			entry.descriptorCount = array_size;
-			entry.offset = offsetof(ResourceBinding, buffer) + sizeof(ResourceBinding) * binding;
+			if (desc_set == push_set_index)
+				entry.offset = offsetof(ResourceBinding, buffer.push) + sizeof(ResourceBinding) * binding;
+			else
+				entry.offset = offsetof(ResourceBinding, buffer.dynamic) + sizeof(ResourceBinding) * binding;
 			entry.stride = sizeof(ResourceBinding);
 		});
 
@@ -137,7 +149,7 @@ void PipelineLayout::create_update_templates()
 			entry.dstBinding = binding;
 			entry.dstArrayElement = 0;
 			entry.descriptorCount = array_size;
-			entry.offset = offsetof(ResourceBinding, buffer) + sizeof(ResourceBinding) * binding;
+			entry.offset = offsetof(ResourceBinding, buffer.dynamic) + sizeof(ResourceBinding) * binding;
 			entry.stride = sizeof(ResourceBinding);
 		});
 
@@ -237,10 +249,20 @@ void PipelineLayout::create_update_templates()
 			entry.stride = sizeof(ResourceBinding);
 		});
 
-		VkDescriptorUpdateTemplateCreateInfo info = {VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO };
+		VkDescriptorUpdateTemplateCreateInfo info = { VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO };
 		info.pipelineLayout = pipe_layout;
-		info.descriptorSetLayout = set_allocators[desc_set]->get_layout();
-		info.templateType = VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET;
+
+		if (desc_set == push_set_index)
+		{
+			info.descriptorSetLayout = set_allocators[desc_set]->get_layout_for_push();
+			info.templateType = VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR;
+		}
+		else
+		{
+			info.descriptorSetLayout = set_allocators[desc_set]->get_layout_for_pool();
+			info.templateType = VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET;
+		}
+
 		info.set = desc_set;
 		info.descriptorUpdateEntryCount = update_count;
 		info.pDescriptorUpdateEntries = update_entries;

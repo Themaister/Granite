@@ -1375,6 +1375,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.device_generated_commands_compute_features, DEVICE_GENERATED_COMMANDS_COMPUTE_FEATURES_NV);
 	}
 
+	if (has_extension(VK_NV_DESCRIPTOR_POOL_OVERALLOCATION_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_NV_DESCRIPTOR_POOL_OVERALLOCATION_EXTENSION_NAME);
+		ADD_CHAIN(ext.descriptor_pool_overallocation_features, DESCRIPTOR_POOL_OVERALLOCATION_FEATURES_NV);
+	}
+
 	if (has_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);

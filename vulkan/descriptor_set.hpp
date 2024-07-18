@@ -121,11 +121,16 @@ public:
 	DescriptorSetAllocator(const DescriptorSetAllocator &) = delete;
 
 	void begin_frame();
-	std::pair<VkDescriptorSet, bool> find(unsigned thread_index, Util::Hash hash);
+	VkDescriptorSet request_descriptor_set(unsigned thread_index, unsigned frame_context);
 
-	VkDescriptorSetLayout get_layout() const
+	VkDescriptorSetLayout get_layout_for_pool() const
 	{
-		return set_layout;
+		return set_layout_pool;
+	}
+
+	VkDescriptorSetLayout get_layout_for_push() const
+	{
+		return set_layout_push;
 	}
 
 	void clear();
@@ -140,27 +145,25 @@ public:
 	void reset_bindless_pool(VkDescriptorPool pool);
 
 private:
-	struct DescriptorSetNode : Util::TemporaryHashmapEnabled<DescriptorSetNode>, Util::IntrusiveListEnabled<DescriptorSetNode>
-	{
-		explicit DescriptorSetNode(VkDescriptorSet set_)
-		    : set(set_)
-		{
-		}
-
-		VkDescriptorSet set;
-	};
-
 	Device *device;
 	const VolkDeviceTable &table;
-	VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
+	VkDescriptorSetLayout set_layout_pool = VK_NULL_HANDLE;
+	VkDescriptorSetLayout set_layout_push = VK_NULL_HANDLE;
 
-	struct PerThread
+	struct Pool
 	{
-		Util::TemporaryHashmap<DescriptorSetNode, VULKAN_DESCRIPTOR_RING_SIZE, true> set_nodes;
-		std::vector<VkDescriptorPool> pools;
-		bool should_begin = true;
+		VkDescriptorPool pool;
+		VkDescriptorSet sets[VULKAN_NUM_SETS_PER_POOL];
 	};
-	std::vector<std::unique_ptr<PerThread>> per_thread;
+
+	struct PerThreadAndFrame
+	{
+		std::vector<Pool *> pools;
+		Util::ObjectPool<Pool> object_pool;
+		uint32_t offset = 0;
+	};
+
+	std::vector<PerThreadAndFrame> per_thread_and_frame;
 	std::vector<VkDescriptorPoolSize> pool_size;
 	bool bindless = false;
 };

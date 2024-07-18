@@ -2241,18 +2241,18 @@ void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buf
 	VK_ASSERT(buffer.get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	auto &b = bindings.bindings[set][binding];
 
-	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.range == range)
+	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.dynamic.range == range)
 	{
-		if (b.dynamic_offset != offset)
+		if (b.buffer.push.offset != offset)
 		{
 			dirty_sets_dynamic |= 1u << set;
-			b.dynamic_offset = offset;
+			b.buffer.push.offset = offset;
 		}
 	}
 	else
 	{
-		b.buffer = { buffer.get_buffer(), 0, range };
-		b.dynamic_offset = offset;
+		b.buffer.dynamic = { buffer.get_buffer(), 0, range };
+		b.buffer.push = { buffer.get_buffer(), offset, range };
 		bindings.cookies[set][binding] = buffer.get_cookie();
 		bindings.secondary_cookies[set][binding] = 0;
 		dirty_sets |= 1u << set;
@@ -2267,11 +2267,11 @@ void CommandBuffer::set_storage_buffer(unsigned set, unsigned binding, const Buf
 	VK_ASSERT(buffer.get_create_info().usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 	auto &b = bindings.bindings[set][binding];
 
-	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.offset == offset && b.buffer.range == range)
+	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.dynamic.offset == offset && b.buffer.dynamic.range == range)
 		return;
 
-	b.buffer = { buffer.get_buffer(), offset, range };
-	b.dynamic_offset = 0;
+	b.buffer.dynamic = { buffer.get_buffer(), offset, range };
+	b.buffer.push = b.buffer.dynamic;
 	bindings.cookies[set][binding] = buffer.get_cookie();
 	bindings.secondary_cookies[set][binding] = 0;
 	dirty_sets |= 1u << set;
@@ -2452,171 +2452,222 @@ void CommandBuffer::set_unorm_storage_texture(unsigned set, unsigned binding, co
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL), view.get_cookie() | COOKIE_BIT_UNORM);
 }
 
-void CommandBuffer::rebind_descriptor_set(uint32_t set)
+void CommandBuffer::flush_descriptor_binds(const VkDescriptorSet *sets,
+                                           uint32_t &first_set, uint32_t &set_count,
+                                           uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets)
 {
-	auto &layout = pipeline_state.layout->get_resource_layout();
-	if (layout.bindless_descriptor_set_mask & (1u << set))
-	{
-		VK_ASSERT(bindless_sets[set]);
-		table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
-		                              current_pipeline_layout, set, 1, &bindless_sets[set], 0, nullptr);
+	if (!set_count)
 		return;
-	}
 
-	auto &set_layout = layout.sets[set];
-	uint32_t num_dynamic_offsets = 0;
-	uint32_t dynamic_offsets[VULKAN_NUM_BINDINGS];
+	table.vkCmdBindDescriptorSets(
+	    cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
+	    current_pipeline_layout, first_set, set_count, sets, num_dynamic_offsets, dynamic_offsets);
 
-	// UBOs
-	for_each_bit(set_layout.uniform_buffer_mask, [&](uint32_t binding) {
-		unsigned array_size = set_layout.array_size[binding];
-		for (unsigned i = 0; i < array_size; i++)
-		{
-			VK_ASSERT(num_dynamic_offsets < VULKAN_NUM_BINDINGS);
-			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].dynamic_offset;
-		}
-	});
-
-	table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
-	                              current_pipeline_layout, set, 1, &allocated_sets[set], num_dynamic_offsets, dynamic_offsets);
+	set_count = 0;
+	num_dynamic_offsets = 0;
 }
 
-void CommandBuffer::flush_descriptor_set(uint32_t set)
+void CommandBuffer::rebind_descriptor_set(uint32_t set, VkDescriptorSet *sets, uint32_t &first_set, uint32_t &set_count,
+                                          uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets)
 {
+	if (set_count == 0)
+		first_set = set;
+	else if (first_set + set_count != set)
+	{
+		flush_descriptor_binds(sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+		first_set = set;
+	}
+
 	auto &layout = pipeline_state.layout->get_resource_layout();
 	if (layout.bindless_descriptor_set_mask & (1u << set))
 	{
 		VK_ASSERT(bindless_sets[set]);
-		table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
-		                              current_pipeline_layout, set, 1, &bindless_sets[set], 0, nullptr);
+		sets[set_count++] = bindless_sets[set];
 		return;
 	}
 
 	auto &set_layout = layout.sets[set];
-	uint32_t num_dynamic_offsets = 0;
-	uint32_t dynamic_offsets[VULKAN_NUM_BINDINGS];
-	Hasher h;
-
-	h.u32(set_layout.fp_mask);
 
 	// UBOs
 	for_each_bit(set_layout.uniform_buffer_mask, [&](uint32_t binding) {
 		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
-			h.u64(bindings.cookies[set][binding + i]);
-			h.u32(bindings.bindings[set][binding + i].buffer.range);
-			VK_ASSERT(bindings.bindings[set][binding + i].buffer.buffer != VK_NULL_HANDLE);
-
-			VK_ASSERT(num_dynamic_offsets < VULKAN_NUM_BINDINGS);
-			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].dynamic_offset;
+			VK_ASSERT(num_dynamic_offsets < VULKAN_NUM_DYNAMIC_UBOS);
+			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].buffer.push.offset;
 		}
 	});
+
+	sets[set_count++] = allocated_sets[set];
+}
+
+void CommandBuffer::validate_descriptor_binds(uint32_t set)
+{
+#ifdef VULKAN_DEBUG
+	auto &layout = pipeline_state.layout->get_resource_layout();
+	auto &set_layout = layout.sets[set];
+
+	for_each_bit(set_layout.uniform_buffer_mask,
+	             [&](uint32_t binding)
+	             {
+		             unsigned array_size = set_layout.array_size[binding];
+		             for (unsigned i = 0; i < array_size; i++)
+			             VK_ASSERT(bindings.bindings[set][binding + i].buffer.dynamic.buffer != VK_NULL_HANDLE);
+	             });
 
 	// SSBOs
-	for_each_bit(set_layout.storage_buffer_mask, [&](uint32_t binding) {
-		unsigned array_size = set_layout.array_size[binding];
-		for (unsigned i = 0; i < array_size; i++)
-		{
-			h.u64(bindings.cookies[set][binding + i]);
-			h.u32(bindings.bindings[set][binding + i].buffer.offset);
-			h.u32(bindings.bindings[set][binding + i].buffer.range);
-			VK_ASSERT(bindings.bindings[set][binding + i].buffer.buffer != VK_NULL_HANDLE);
-		}
-	});
+	for_each_bit(set_layout.storage_buffer_mask,
+	             [&](uint32_t binding)
+	             {
+		             unsigned array_size = set_layout.array_size[binding];
+		             for (unsigned i = 0; i < array_size; i++)
+			             VK_ASSERT(bindings.bindings[set][binding + i].buffer.dynamic.buffer != VK_NULL_HANDLE);
+	             });
 
 	// Texel buffers
-	for_each_bit(set_layout.sampled_texel_buffer_mask | set_layout.storage_texel_buffer_mask, [&](uint32_t binding) {
-		unsigned array_size = set_layout.array_size[binding];
-		for (unsigned i = 0; i < array_size; i++)
-		{
-			h.u64(bindings.cookies[set][binding + i]);
-			VK_ASSERT(bindings.bindings[set][binding + i].buffer_view != VK_NULL_HANDLE);
-		}
-	});
+	for_each_bit(set_layout.sampled_texel_buffer_mask | set_layout.storage_texel_buffer_mask,
+	             [&](uint32_t binding)
+	             {
+		             unsigned array_size = set_layout.array_size[binding];
+		             for (unsigned i = 0; i < array_size; i++)
+			             VK_ASSERT(bindings.bindings[set][binding + i].buffer_view != VK_NULL_HANDLE);
+	             });
 
 	// Sampled images
-	for_each_bit(set_layout.sampled_image_mask, [&](uint32_t binding) {
-		unsigned array_size = set_layout.array_size[binding];
-		for (unsigned i = 0; i < array_size; i++)
-		{
-			h.u64(bindings.cookies[set][binding + i]);
-			if ((set_layout.immutable_sampler_mask & (1u << (binding + i))) == 0)
-			{
-				h.u64(bindings.secondary_cookies[set][binding + i]);
-				VK_ASSERT(bindings.bindings[set][binding + i].image.fp.sampler != VK_NULL_HANDLE);
-			}
-			h.u32(bindings.bindings[set][binding + i].image.fp.imageLayout);
-			VK_ASSERT(bindings.bindings[set][binding + i].image.fp.imageView != VK_NULL_HANDLE);
-		}
-	});
+	for_each_bit(set_layout.sampled_image_mask,
+	             [&](uint32_t binding)
+	             {
+		             unsigned array_size = set_layout.array_size[binding];
+		             for (unsigned i = 0; i < array_size; i++)
+		             {
+			             if ((set_layout.immutable_sampler_mask & (1u << (binding + i))) == 0)
+				             VK_ASSERT(bindings.bindings[set][binding + i].image.fp.sampler != VK_NULL_HANDLE);
+			             VK_ASSERT(bindings.bindings[set][binding + i].image.fp.imageView != VK_NULL_HANDLE);
+		             }
+	             });
 
 	// Separate images
-	for_each_bit(set_layout.separate_image_mask, [&](uint32_t binding) {
-		unsigned array_size = set_layout.array_size[binding];
-		for (unsigned i = 0; i < array_size; i++)
-		{
-			h.u64(bindings.cookies[set][binding + i]);
-			h.u32(bindings.bindings[set][binding + i].image.fp.imageLayout);
-			VK_ASSERT(bindings.bindings[set][binding + i].image.fp.imageView != VK_NULL_HANDLE);
-		}
-	});
+	for_each_bit(set_layout.separate_image_mask,
+	             [&](uint32_t binding)
+	             {
+		             unsigned array_size = set_layout.array_size[binding];
+		             for (unsigned i = 0; i < array_size; i++)
+			             VK_ASSERT(bindings.bindings[set][binding + i].image.fp.imageView != VK_NULL_HANDLE);
+	             });
 
 	// Separate samplers
-	for_each_bit(set_layout.sampler_mask & ~set_layout.immutable_sampler_mask, [&](uint32_t binding) {
-		unsigned array_size = set_layout.array_size[binding];
-		for (unsigned i = 0; i < array_size; i++)
-		{
-			h.u64(bindings.secondary_cookies[set][binding + i]);
-			VK_ASSERT(bindings.bindings[set][binding + i].image.fp.sampler != VK_NULL_HANDLE);
-		}
-	});
+	for_each_bit(set_layout.sampler_mask & ~set_layout.immutable_sampler_mask,
+	             [&](uint32_t binding)
+	             {
+		             unsigned array_size = set_layout.array_size[binding];
+		             for (unsigned i = 0; i < array_size; i++)
+			             VK_ASSERT(bindings.bindings[set][binding + i].image.fp.sampler != VK_NULL_HANDLE);
+	             });
 
 	// Storage images
-	for_each_bit(set_layout.storage_image_mask, [&](uint32_t binding) {
-		unsigned array_size = set_layout.array_size[binding];
-		for (unsigned i = 0; i < array_size; i++)
-		{
-			h.u64(bindings.cookies[set][binding + i]);
-			h.u32(bindings.bindings[set][binding + i].image.fp.imageLayout);
-			VK_ASSERT(bindings.bindings[set][binding + i].image.fp.imageView != VK_NULL_HANDLE);
-		}
-	});
+	for_each_bit(set_layout.storage_image_mask,
+	             [&](uint32_t binding)
+	             {
+		             unsigned array_size = set_layout.array_size[binding];
+		             for (unsigned i = 0; i < array_size; i++)
+			             VK_ASSERT(bindings.bindings[set][binding + i].image.fp.imageView != VK_NULL_HANDLE);
+	             });
 
 	// Input attachments
-	for_each_bit(set_layout.input_attachment_mask, [&](uint32_t binding) {
-		unsigned array_size = set_layout.array_size[binding];
-		for (unsigned i = 0; i < array_size; i++)
-		{
-			h.u64(bindings.cookies[set][binding + i]);
-			h.u32(bindings.bindings[set][binding + i].image.fp.imageLayout);
-			VK_ASSERT(bindings.bindings[set][binding + i].image.fp.imageView != VK_NULL_HANDLE);
-		}
-	});
+	for_each_bit(set_layout.input_attachment_mask,
+	             [&](uint32_t binding)
+	             {
+		             unsigned array_size = set_layout.array_size[binding];
+		             for (unsigned i = 0; i < array_size; i++)
+			             VK_ASSERT(bindings.bindings[set][binding + i].image.fp.imageView != VK_NULL_HANDLE);
+	             });
+#else
+	(void)set;
+#endif
+}
 
-	Hash hash = h.get();
-	auto allocated = pipeline_state.layout->get_allocator(set)->find(thread_index, hash);
+void CommandBuffer::push_descriptor_set(uint32_t set)
+{
+	auto &layout = pipeline_state.layout->get_resource_layout();
+	auto &set_layout = layout.sets[set];
 
-	// The descriptor set was not successfully cached, rebuild.
-	if (!allocated.second)
+#ifdef VULKAN_DEBUG
+	validate_descriptor_binds(set);
+#endif
+
+	VkDescriptorUpdateTemplate update_template = pipeline_state.layout->get_update_template(set);
+	VK_ASSERT(update_template);
+	table.vkCmdPushDescriptorSetWithTemplateKHR(
+		cmd, update_template,
+		pipeline_state.layout->get_layout(), set, bindings.bindings[set]);
+}
+
+void CommandBuffer::flush_descriptor_set(uint32_t set, VkDescriptorSet *sets,
+                                         uint32_t &first_set, uint32_t &set_count,
+                                         uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets)
+{
+	if (set_count == 0)
+		first_set = set;
+	else if (first_set + set_count != set)
 	{
-		auto update_template = pipeline_state.layout->get_update_template(set);
-		VK_ASSERT(update_template);
-		table.vkUpdateDescriptorSetWithTemplate(device->get_device(), allocated.first,
-		                                        update_template, bindings.bindings[set]);
+		flush_descriptor_binds(sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+		first_set = set;
 	}
 
-	table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
-	                              current_pipeline_layout, set, 1, &allocated.first, num_dynamic_offsets, dynamic_offsets);
-	allocated_sets[set] = allocated.first;
+	auto &layout = pipeline_state.layout->get_resource_layout();
+	if (layout.bindless_descriptor_set_mask & (1u << set))
+	{
+		VK_ASSERT(bindless_sets[set]);
+		sets[set_count++] = bindless_sets[set];
+		return;
+	}
+
+	auto &set_layout = layout.sets[set];
+
+#ifdef VULKAN_DEBUG
+	validate_descriptor_binds(set);
+#endif
+
+	// UBOs
+	for_each_bit(set_layout.uniform_buffer_mask, [&](uint32_t binding) {
+		unsigned array_size = set_layout.array_size[binding];
+		for (unsigned i = 0; i < array_size; i++)
+			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].buffer.push.offset;
+	});
+
+	auto vk_set = pipeline_state.layout->get_allocator(set)->request_descriptor_set(thread_index, device->frame_context_index);
+
+	VkDescriptorUpdateTemplate update_template = pipeline_state.layout->get_update_template(set);
+	VK_ASSERT(update_template);
+	table.vkUpdateDescriptorSetWithTemplate(device->get_device(), vk_set, update_template, bindings.bindings[set]);
+	sets[set_count++] = vk_set;
+	allocated_sets[set] = vk_set;
 }
 
 void CommandBuffer::flush_descriptor_sets()
 {
 	auto &layout = pipeline_state.layout->get_resource_layout();
 
+	uint32_t first_set = 0;
+	uint32_t set_count = 0;
+	VkDescriptorSet sets[VULKAN_NUM_DESCRIPTOR_SETS];
+	uint32_t dynamic_offsets[VULKAN_NUM_DYNAMIC_UBOS];
+	uint32_t num_dynamic_offsets = 0;
+
 	uint32_t set_update = layout.descriptor_set_mask & dirty_sets;
-	for_each_bit(set_update, [&](uint32_t set) { flush_descriptor_set(set); });
+
+	uint32_t push_set_index = pipeline_state.layout->get_push_set_index();
+	if (push_set_index != UINT32_MAX && ((dirty_sets | dirty_sets_dynamic) & (1u << push_set_index)) != 0)
+	{
+		push_descriptor_set(push_set_index);
+		set_update &= ~(1u << push_set_index);
+		dirty_sets &= ~(1u << push_set_index);
+		dirty_sets_dynamic &= ~(1u << push_set_index);
+	}
+
+	for_each_bit(set_update, [&](uint32_t set) {
+		flush_descriptor_set(set, sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+	});
 	dirty_sets &= ~set_update;
 
 	// If we update a set, we also bind dynamically.
@@ -2624,8 +2675,12 @@ void CommandBuffer::flush_descriptor_sets()
 
 	// If we only rebound UBOs, we might get away with just rebinding descriptor sets, no hashing and lookup required.
 	uint32_t dynamic_set_update = layout.descriptor_set_mask & dirty_sets_dynamic;
-	for_each_bit(dynamic_set_update, [&](uint32_t set) { rebind_descriptor_set(set); });
+	for_each_bit(dynamic_set_update, [&](uint32_t set) {
+		rebind_descriptor_set(set, sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+	});
 	dirty_sets_dynamic &= ~dynamic_set_update;
+
+	flush_descriptor_binds(sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
 }
 
 void CommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance)

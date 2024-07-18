@@ -256,11 +256,14 @@ void DescriptorSetAllocator::begin_frame()
 {
 	if (!bindless)
 	{
-		for (auto &thr : per_thread_and_frame)
-			thr.offset = 0;
-
+		// This can only be called in a situation where no command buffers are alive,
+		// so we don't need to consider any locks here.
 		if (device->per_frame.size() * device->num_thread_indices != per_thread_and_frame.size())
 			per_thread_and_frame.resize(device->per_frame.size() * device->num_thread_indices);
+
+		// It would be safe to set all offsets to 0 here, but that's a little wasteful.
+		for (uint32_t i = 0; i < device->num_thread_indices; i++)
+			per_thread_and_frame[i * device->per_frame.size() + device->frame_context_index].offset = 0;
 	}
 }
 

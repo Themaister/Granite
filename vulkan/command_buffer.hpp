@@ -887,6 +887,7 @@ private:
 		uint32_t set, VkDescriptorSet *sets,
 		uint32_t &first_set, uint32_t &set_count,
 		uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets);
+	void push_descriptor_set(uint32_t set);
 	void rebind_descriptor_set(
 		uint32_t set, VkDescriptorSet *sets,
 		uint32_t &first_set, uint32_t &set_count,
@@ -894,6 +895,7 @@ private:
 	void flush_descriptor_binds(const VkDescriptorSet *sets,
 		uint32_t &first_set, uint32_t &set_count,
 		uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets);
+	void validate_descriptor_binds(uint32_t set);
 
 	void begin_compute();
 	void begin_context();

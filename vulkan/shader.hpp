@@ -141,12 +141,18 @@ public:
 		return update_template[set];
 	}
 
+	uint32_t get_push_set_index() const
+	{
+		return push_set_index;
+	}
+
 private:
 	Device *device;
 	VkPipelineLayout pipe_layout = VK_NULL_HANDLE;
 	CombinedResourceLayout layout;
 	DescriptorSetAllocator *set_allocators[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 	VkDescriptorUpdateTemplate update_template[VULKAN_NUM_DESCRIPTOR_SETS] = {};
+	uint32_t push_set_index = UINT32_MAX;
 	void create_update_templates();
 };
 

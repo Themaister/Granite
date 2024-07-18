@@ -175,11 +175,27 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 #ifdef VULKAN_DEBUG
 	LOGI("Creating descriptor set layout.\n");
 #endif
-	if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout) != VK_SUCCESS)
+	if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout_pool) != VK_SUCCESS)
 		LOGE("Failed to create descriptor set layout.");
+
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->register_descriptor_set_layout(set_layout, get_hash(), info);
+	if (set_layout_pool)
+		device->register_descriptor_set_layout(set_layout_pool, get_hash(), info);
 #endif
+
+	if (!bindless && device->get_device_features().supports_push_descriptor)
+	{
+		info.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+		for (auto &b : bindings)
+			if (b.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
+				b.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout_push) != VK_SUCCESS)
+			LOGE("Failed to create descriptor set layout.");
+#ifdef GRANITE_VULKAN_FOSSILIZE
+		if (set_layout_push)
+			device->register_descriptor_set_layout(set_layout_push, get_hash(), info);
+#endif
+	}
 }
 
 void DescriptorSetAllocator::reset_bindless_pool(VkDescriptorPool pool)
@@ -195,7 +211,7 @@ VkDescriptorSet DescriptorSetAllocator::allocate_bindless_set(VkDescriptorPool p
 	VkDescriptorSetAllocateInfo info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
 	info.descriptorPool = pool;
 	info.descriptorSetCount = 1;
-	info.pSetLayouts = &set_layout;
+	info.pSetLayouts = &set_layout_pool;
 
 	VkDescriptorSetVariableDescriptorCountAllocateInfoEXT count_info =
 			{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT };
@@ -293,7 +309,7 @@ VkDescriptorSet DescriptorSetAllocator::request_descriptor_set(unsigned thread_i
 		}
 
 		VkDescriptorSetLayout layouts[VULKAN_NUM_SETS_PER_POOL];
-		std::fill(std::begin(layouts), std::end(layouts), set_layout);
+		std::fill(std::begin(layouts), std::end(layouts), set_layout_pool);
 
 		VkDescriptorSetAllocateInfo alloc = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
 		alloc.descriptorPool = pool->pool != VK_NULL_HANDLE ? pool->pool : state.pools.front()->pool;
@@ -327,8 +343,8 @@ void DescriptorSetAllocator::clear()
 
 DescriptorSetAllocator::~DescriptorSetAllocator()
 {
-	if (set_layout != VK_NULL_HANDLE)
-		table.vkDestroyDescriptorSetLayout(device->get_device(), set_layout, nullptr);
+	table.vkDestroyDescriptorSetLayout(device->get_device(), set_layout_pool, nullptr);
+	table.vkDestroyDescriptorSetLayout(device->get_device(), set_layout_push, nullptr);
 	clear();
 }
 

@@ -767,7 +767,7 @@ void CommandBuffer::blit_image(const Image &dst, const Image &src,
 void CommandBuffer::begin_context()
 {
 	dirty = ~0u;
-	dirty_sets = ~0u;
+	dirty_sets_realloc = ~0u;
 	dirty_vbos = ~0u;
 	current_pipeline = {};
 	current_pipeline_layout = VK_NULL_HANDLE;
@@ -2089,7 +2089,7 @@ void CommandBuffer::set_program_layout(const PipelineLayout *layout)
 	VK_ASSERT(layout);
 	if (!pipeline_state.layout)
 	{
-		dirty_sets = ~0u;
+		dirty_sets_realloc = ~0u;
 		set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
 	}
 	else if (layout->get_hash() != pipeline_state.layout->get_hash())
@@ -2097,27 +2097,46 @@ void CommandBuffer::set_program_layout(const PipelineLayout *layout)
 		auto &new_layout = layout->get_resource_layout();
 		auto &old_layout = pipeline_state.layout->get_resource_layout();
 
+		uint32_t first_invalidated_set_index = VULKAN_NUM_DESCRIPTOR_SETS;
+		uint32_t new_push_set = layout->get_push_set_index();
+		uint32_t old_push_set = pipeline_state.layout->get_push_set_index();
+		if (new_push_set == old_push_set)
+		{
+			new_push_set = UINT32_MAX;
+			old_push_set = UINT32_MAX;
+		}
+
 		// If the push constant layout changes, all descriptor sets
 		// are invalidated.
 		if (new_layout.push_constant_layout_hash != old_layout.push_constant_layout_hash)
 		{
-			dirty_sets = ~0u;
+			first_invalidated_set_index = 0;
 			set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
 		}
 		else
 		{
-			uint32_t first_push_set =
-			    std::min<uint32_t>(layout->get_push_set_index(), pipeline_state.layout->get_push_set_index());
-			bool push_set_delta = layout->get_push_set_index() != pipeline_state.layout->get_push_set_index();
-
 			// Find the first set whose descriptor set layout differs.
 			for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
 			{
 				if (layout->get_allocator(set) != pipeline_state.layout->get_allocator(set) ||
-				    (push_set_delta && first_push_set == set))
+				    set == new_push_set || set == old_push_set)
 				{
-					dirty_sets |= ~((1u << set) - 1);
+					first_invalidated_set_index = set;
 					break;
+				}
+			}
+		}
+
+		if (first_invalidated_set_index < VULKAN_NUM_DESCRIPTOR_SETS)
+		{
+			dirty_sets_rebind |= ~((1u << first_invalidated_set_index) - 1u);
+
+			for (unsigned set = first_invalidated_set_index; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
+			{
+				if (layout->get_allocator(set) != pipeline_state.layout->get_allocator(set) ||
+				    set == new_push_set || set == old_push_set)
+				{
+					dirty_sets_realloc |= 1u << set;
 				}
 			}
 		}
@@ -2250,7 +2269,7 @@ void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buf
 	{
 		if (b.buffer.push.offset != offset)
 		{
-			dirty_sets_dynamic |= 1u << set;
+			dirty_sets_rebind |= 1u << set;
 			b.buffer.push.offset = offset;
 		}
 	}
@@ -2260,7 +2279,7 @@ void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buf
 		b.buffer.push = { buffer.get_buffer(), offset, range };
 		bindings.cookies[set][binding] = buffer.get_cookie();
 		bindings.secondary_cookies[set][binding] = 0;
-		dirty_sets |= 1u << set;
+		dirty_sets_realloc |= 1u << set;
 	}
 }
 
@@ -2279,7 +2298,7 @@ void CommandBuffer::set_storage_buffer(unsigned set, unsigned binding, const Buf
 	b.buffer.push = b.buffer.dynamic;
 	bindings.cookies[set][binding] = buffer.get_cookie();
 	bindings.secondary_cookies[set][binding] = 0;
-	dirty_sets |= 1u << set;
+	dirty_sets_realloc |= 1u << set;
 }
 
 void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buffer &buffer)
@@ -2302,7 +2321,7 @@ void CommandBuffer::set_sampler(unsigned set, unsigned binding, const Sampler &s
 	auto &b = bindings.bindings[set][binding];
 	b.image.fp.sampler = sampler.get_sampler();
 	b.image.integer.sampler = sampler.get_sampler();
-	dirty_sets |= 1u << set;
+	dirty_sets_realloc |= 1u << set;
 	bindings.secondary_cookies[set][binding] = sampler.get_cookie();
 }
 
@@ -2316,7 +2335,7 @@ void CommandBuffer::set_buffer_view_common(unsigned set, unsigned binding, const
 	b.buffer_view = view.get_view();
 	bindings.cookies[set][binding] = view.get_cookie();
 	bindings.secondary_cookies[set][binding] = 0;
-	dirty_sets |= 1u << set;
+	dirty_sets_realloc |= 1u << set;
 }
 
 void CommandBuffer::set_buffer_view(unsigned set, unsigned binding, const BufferView &view)
@@ -2358,7 +2377,7 @@ void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 		b.image.fp.imageView = view->get_float_view();
 		b.image.integer.imageView = view->get_integer_view();
 		bindings.cookies[set][start_binding + i] = view->get_cookie();
-		dirty_sets |= 1u << set;
+		dirty_sets_realloc |= 1u << set;
 	}
 }
 
@@ -2379,14 +2398,14 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding,
 	b.image.integer.imageLayout = layout;
 	b.image.integer.imageView = integer_view;
 	bindings.cookies[set][binding] = cookie;
-	dirty_sets |= 1u << set;
+	dirty_sets_realloc |= 1u << set;
 }
 
 void CommandBuffer::set_bindless(unsigned set, VkDescriptorSet desc_set)
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
 	bindless_sets[set] = desc_set;
-	dirty_sets |= 1u << set;
+	dirty_sets_realloc |= 1u << set;
 }
 
 void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView &view)
@@ -2593,9 +2612,6 @@ void CommandBuffer::validate_descriptor_binds(uint32_t set)
 
 void CommandBuffer::push_descriptor_set(uint32_t set)
 {
-	auto &layout = pipeline_state.layout->get_resource_layout();
-	auto &set_layout = layout.sets[set];
-
 #ifdef VULKAN_DEBUG
 	validate_descriptor_binds(set);
 #endif
@@ -2659,32 +2675,25 @@ void CommandBuffer::flush_descriptor_sets()
 	uint32_t dynamic_offsets[VULKAN_NUM_DYNAMIC_UBOS];
 	uint32_t num_dynamic_offsets = 0;
 
-	uint32_t set_update = layout.descriptor_set_mask & dirty_sets;
+	dirty_sets_rebind |= dirty_sets_realloc;
+	uint32_t set_update_mask = layout.descriptor_set_mask & dirty_sets_rebind;
 
 	uint32_t push_set_index = pipeline_state.layout->get_push_set_index();
-	if (push_set_index != UINT32_MAX && ((dirty_sets | dirty_sets_dynamic) & (1u << push_set_index)) != 0)
+	if (push_set_index != UINT32_MAX && (dirty_sets_rebind & (1u << push_set_index)) != 0)
 	{
 		push_descriptor_set(push_set_index);
-		set_update &= ~(1u << push_set_index);
-		dirty_sets &= ~(1u << push_set_index);
-		dirty_sets_dynamic &= ~(1u << push_set_index);
+		set_update_mask &= ~(1u << push_set_index);
 	}
 
-	for_each_bit(set_update, [&](uint32_t set) {
-		flush_descriptor_set(set, sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+	for_each_bit(set_update_mask, [&](uint32_t set) {
+		if ((dirty_sets_realloc & (1u << set)) != 0)
+			flush_descriptor_set(set, sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+		else
+			rebind_descriptor_set(set, sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
 	});
-	dirty_sets &= ~set_update;
 
-	// If we update a set, we also bind dynamically.
-	dirty_sets_dynamic &= ~set_update;
-
-	// If we only rebound UBOs, we might get away with just rebinding descriptor sets, no hashing and lookup required.
-	uint32_t dynamic_set_update = layout.descriptor_set_mask & dirty_sets_dynamic;
-	for_each_bit(dynamic_set_update, [&](uint32_t set) {
-		rebind_descriptor_set(set, sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
-	});
-	dirty_sets_dynamic &= ~dynamic_set_update;
-
+	dirty_sets_realloc = 0;
+	dirty_sets_rebind = 0;
 	flush_descriptor_binds(sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
 }
 
@@ -3027,7 +3036,7 @@ void CommandBuffer::restore_state(const CommandBufferSavedState &state)
 				memcpy(bindings.bindings[i], state.bindings.bindings[i], sizeof(bindings.bindings[i]));
 				memcpy(bindings.cookies[i], state.bindings.cookies[i], sizeof(bindings.cookies[i]));
 				memcpy(bindings.secondary_cookies[i], state.bindings.secondary_cookies[i], sizeof(bindings.secondary_cookies[i]));
-				dirty_sets |= 1u << i;
+				dirty_sets_realloc |= 1u << i;
 			}
 		}
 	}

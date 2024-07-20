@@ -502,6 +502,8 @@ const PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayo
 	h.data(layout.spec_constant_mask, sizeof(layout.spec_constant_mask));
 	h.u32(layout.attribute_mask);
 	h.u32(layout.render_target_mask);
+	// Drivers with and without push descriptor support need to observe different hashes for Fossilize.
+	h.s32(int(ext.supports_push_descriptor));
 	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
 	{
 		Util::for_each_bit(layout.sets[set].immutable_sampler_mask, [&](unsigned bit) {

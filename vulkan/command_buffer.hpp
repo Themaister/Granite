@@ -846,8 +846,8 @@ private:
 	VkRect2D scissor = {};
 
 	CommandBufferDirtyFlags dirty = ~0u;
-	uint32_t dirty_sets = 0;
-	uint32_t dirty_sets_dynamic = 0;
+	uint32_t dirty_sets_realloc = 0;
+	uint32_t dirty_sets_rebind = 0;
 	uint32_t dirty_vbos = 0;
 	uint32_t active_vbos = 0;
 	VkPipelineStageFlags2 uses_swapchain_in_stages = 0;

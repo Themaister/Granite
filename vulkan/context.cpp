@@ -203,10 +203,10 @@ PFN_vkGetInstanceProcAddr Context::get_instance_proc_addr()
 	return instance_proc_addr;
 }
 
-bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
+bool Context::init_loader(PFN_vkGetInstanceProcAddr addr, bool force_reload)
 {
 	std::lock_guard<std::mutex> holder(loader_init_lock);
-	if (loader_init_once && !addr)
+	if (loader_init_once && !force_reload && !addr)
 		return true;
 
 	if (!addr)

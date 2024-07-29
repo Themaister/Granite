@@ -243,7 +243,7 @@ public:
 	Context();
 	Context(const Context &) = delete;
 	void operator=(const Context &) = delete;
-	static bool init_loader(PFN_vkGetInstanceProcAddr addr);
+	static bool init_loader(PFN_vkGetInstanceProcAddr addr, bool force_reload = false);
 	static PFN_vkGetInstanceProcAddr get_instance_proc_addr();
 
 	~Context();

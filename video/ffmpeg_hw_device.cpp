@@ -39,7 +39,7 @@ namespace Granite
 {
 static AVPixelFormat get_pixel_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
 
-static VkResult VKAPI_ATTR override_vkGetPhysicalDeviceVideoCapabilitiesKHR VKAPI_CALL(
+static VKAPI_ATTR VkResult VKAPI_CALL override_vkGetPhysicalDeviceVideoCapabilitiesKHR(
 		VkPhysicalDevice                            physicalDevice,
 		const VkVideoProfileInfoKHR*                pVideoProfile,
 		VkVideoCapabilitiesKHR*                     pCapabilities)

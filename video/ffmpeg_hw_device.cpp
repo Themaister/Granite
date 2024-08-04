@@ -39,6 +39,38 @@ namespace Granite
 {
 static AVPixelFormat get_pixel_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
 
+static VkResult VKAPI_ATTR override_vkGetPhysicalDeviceVideoCapabilitiesKHR VKAPI_CALL(
+		VkPhysicalDevice                            physicalDevice,
+		const VkVideoProfileInfoKHR*                pVideoProfile,
+		VkVideoCapabilitiesKHR*                     pCapabilities)
+{
+	VkResult result = vkGetPhysicalDeviceVideoCapabilitiesKHR(physicalDevice, pVideoProfile, pCapabilities);
+	if (result != VK_SUCCESS)
+		return result;
+
+	if (pVideoProfile->videoCodecOperation != VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR &&
+	    pVideoProfile->videoCodecOperation != VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR)
+		return result;
+
+	// Super hacky. NV at least on 555.58.02 reports caps bits that segfault current libavcodec,
+	// so work around it for now ... Seems to work fine, so not sure why this isn't marked as supported.
+	pCapabilities->flags |= VK_VIDEO_CAPABILITY_SEPARATE_REFERENCE_IMAGES_BIT_KHR;
+
+	return VK_SUCCESS;
+}
+
+static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL override_props_get_instance_proc_addr(
+		VkInstance instance, const char *func)
+{
+	if (func && strcmp(func, "vkGetPhysicalDeviceVideoCapabilitiesKHR") == 0)
+	{
+		return vkGetPhysicalDeviceVideoCapabilitiesKHR ?
+		       reinterpret_cast<PFN_vkVoidFunction>(override_vkGetPhysicalDeviceVideoCapabilitiesKHR) : nullptr;
+	}
+	else
+		return Vulkan::Context::get_instance_proc_addr()(instance, func);
+}
+
 struct FFmpegHWDevice::Impl
 {
 	const AVCodecHWConfig *hw_config = nullptr;
@@ -72,7 +104,12 @@ struct FFmpegHWDevice::Impl
 
 			hwctx->user_opaque = this;
 
-			vk->get_proc_addr = Vulkan::Context::get_instance_proc_addr();
+			// Gross hack. Workaround a bad segfault.
+			if (device->get_device_features().driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
+				vk->get_proc_addr = override_props_get_instance_proc_addr;
+			else
+				vk->get_proc_addr = Vulkan::Context::get_instance_proc_addr();
+
 			vk->inst = device->get_instance();
 			vk->act_dev = device->get_device();
 			vk->phys_dev = device->get_physical_device();

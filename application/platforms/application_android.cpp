@@ -404,7 +404,7 @@ static void engine_handle_input(WSIPlatformAndroid &state)
 			if (Paddleboat_processGameActivityKeyInputEvent(&event, sizeof(event)))
 				continue;
 
-		if (event.source & AINPUT_SOURCE_KEYBOARD)
+		if (event.source == AINPUT_SOURCE_KEYBOARD)
 		{
 			if (action == AKEY_EVENT_ACTION_DOWN && code == AKEYCODE_BACK)
 			{
@@ -421,15 +421,58 @@ static void engine_handle_input(WSIPlatformAndroid &state)
 	{
 		auto &event = input_buffer->motionEvents[i];
 
-		if (Paddleboat_isInitialized())
-			if (Paddleboat_processGameActivityMotionInputEvent(&event, sizeof(event)))
-				continue;
-
 		auto action = event.action & AMOTION_EVENT_ACTION_MASK;
 		auto index = (event.action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
 		auto source = event.source;
 
-		if (source & AINPUT_SOURCE_TOUCHSCREEN)
+		// Paddleboat eats mouse events, and we want to handle them raw.
+		if (source == AINPUT_SOURCE_MOUSE)
+		{
+			switch (action)
+			{
+			case AMOTION_EVENT_ACTION_MOVE:
+			case AMOTION_EVENT_ACTION_HOVER_MOVE:
+			{
+				auto x = GameActivityPointerAxes_getX(&event.pointers[index]);
+				auto y = GameActivityPointerAxes_getY(&event.pointers[index]);
+				state.get_input_tracker().mouse_move_event_absolute(x, y);
+				break;
+			}
+
+			case AMOTION_EVENT_ACTION_DOWN:
+			case AMOTION_EVENT_ACTION_POINTER_DOWN:
+			{
+				auto x = GameActivityPointerAxes_getX(&event.pointers[index]);
+				auto y = GameActivityPointerAxes_getY(&event.pointers[index]);
+				if (event.buttonState & AMOTION_EVENT_BUTTON_PRIMARY)
+					state.get_input_tracker().mouse_button_event(MouseButton::Left, x, y, true);
+				if (event.buttonState & AMOTION_EVENT_BUTTON_SECONDARY)
+					state.get_input_tracker().mouse_button_event(MouseButton::Right, x, y, true);
+				break;
+			}
+
+			case AMOTION_EVENT_ACTION_UP:
+			case AMOTION_EVENT_ACTION_POINTER_UP:
+			{
+				if (!(event.buttonState & AMOTION_EVENT_BUTTON_PRIMARY))
+					state.get_input_tracker().mouse_button_event(MouseButton::Left, false);
+				if (!(event.buttonState & AMOTION_EVENT_BUTTON_SECONDARY))
+					state.get_input_tracker().mouse_button_event(MouseButton::Right, false);
+				break;
+			}
+
+			default:
+				break;
+			}
+
+			continue;
+		}
+
+		if (Paddleboat_isInitialized())
+			if (Paddleboat_processGameActivityMotionInputEvent(&event, sizeof(event)))
+				continue;
+
+		if (source == AINPUT_SOURCE_TOUCHSCREEN)
 		{
 			switch (action)
 			{
@@ -1038,6 +1081,7 @@ static bool motion_event_filter(const GameActivityMotionEvent *event)
 	{
 	case AINPUT_SOURCE_TOUCHSCREEN:
 	case AINPUT_SOURCE_JOYSTICK:
+	case AINPUT_SOURCE_MOUSE:
 		return true;
 
 	default:

@@ -1315,16 +1315,20 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			ADD_CHAIN(ext.storage_8bit_features, 8BIT_STORAGE_FEATURES_KHR);
 			enabled_extensions.push_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
 		}
+	}
 
+	if (ext.device_api_core_version >= VK_API_VERSION_1_3)
+	{
+		ADD_CHAIN(ext.vk13_features, VULKAN_1_3_FEATURES);
+	}
+	else
+	{
 		if (has_extension(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
 		{
 			ADD_CHAIN(ext.subgroup_size_control_features, SUBGROUP_SIZE_CONTROL_FEATURES_EXT);
 			enabled_extensions.push_back(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
 		}
 	}
-
-	if (ext.device_api_core_version >= VK_API_VERSION_1_3)
-		ADD_CHAIN(ext.vk13_features, VULKAN_1_3_FEATURES);
 
 	if (has_extension(VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME))
 	{
@@ -1618,14 +1622,14 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		if (has_extension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME))
 			ADD_CHAIN(driver_properties, DRIVER_PROPERTIES);
-		if (has_extension(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
-			ADD_CHAIN(size_control_props, SUBGROUP_SIZE_CONTROL_PROPERTIES);
 		ADD_CHAIN(id_properties, ID_PROPERTIES);
 		ADD_CHAIN(subgroup_properties, SUBGROUP_PROPERTIES);
 	}
 
 	if (ext.device_api_core_version >= VK_API_VERSION_1_3)
 		ADD_CHAIN(ext.vk13_props, VULKAN_1_3_PROPERTIES);
+	else if (has_extension(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
+		ADD_CHAIN(size_control_props, SUBGROUP_SIZE_CONTROL_PROPERTIES);
 
 	if (ext.supports_external_memory_host)
 		ADD_CHAIN(ext.host_memory_properties, EXTERNAL_MEMORY_HOST_PROPERTIES_EXT);

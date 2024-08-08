@@ -157,8 +157,10 @@ class InputTracker
 public:
 	void key_event(Key key, KeyState state);
 	void mouse_button_event(MouseButton button, double x, double y, bool pressed);
+	void mouse_button_event_normalized(MouseButton button, double x, double y, bool pressed);
 	void mouse_button_event(MouseButton button, bool pressed);
 	void mouse_move_event_absolute(double x, double y);
+	void mouse_move_event_absolute_normalized(double x, double y);
 	void mouse_move_event_relative(double x, double y);
 	void dispatch_current_state(double delta_time, InputTrackerHandler *override_handler = nullptr);
 	void orientation_event(quat rot);

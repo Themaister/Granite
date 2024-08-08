@@ -281,6 +281,16 @@ void InputTracker::mouse_move_event_absolute(double x, double y)
 	}
 }
 
+void InputTracker::mouse_move_event_absolute_normalized(double x, double y)
+{
+	mouse_move_event_absolute(x * double(touch.width), y * double(touch.height));
+}
+
+void InputTracker::mouse_button_event_normalized(MouseButton button, double x, double y, bool pressed)
+{
+	mouse_button_event(button, x * double(touch.width), y * double(touch.height), pressed);
+}
+
 void InputTracker::mouse_enter(double x, double y)
 {
 	mouse_active = true;

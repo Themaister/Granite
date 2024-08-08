@@ -435,7 +435,9 @@ static void engine_handle_input(WSIPlatformAndroid &state)
 			{
 				auto x = GameActivityPointerAxes_getX(&event.pointers[index]);
 				auto y = GameActivityPointerAxes_getY(&event.pointers[index]);
-				state.get_input_tracker().mouse_move_event_absolute(x, y);
+				x /= float(global_state.base_width);
+				y /= float(global_state.base_height);
+				state.get_input_tracker().mouse_move_event_absolute_normalized(x, y);
 				break;
 			}
 
@@ -444,10 +446,12 @@ static void engine_handle_input(WSIPlatformAndroid &state)
 			{
 				auto x = GameActivityPointerAxes_getX(&event.pointers[index]);
 				auto y = GameActivityPointerAxes_getY(&event.pointers[index]);
+				x /= float(global_state.base_width);
+				y /= float(global_state.base_height);
 				if (event.buttonState & AMOTION_EVENT_BUTTON_PRIMARY)
-					state.get_input_tracker().mouse_button_event(MouseButton::Left, x, y, true);
+					state.get_input_tracker().mouse_button_event_normalized(MouseButton::Left, x, y, true);
 				if (event.buttonState & AMOTION_EVENT_BUTTON_SECONDARY)
-					state.get_input_tracker().mouse_button_event(MouseButton::Right, x, y, true);
+					state.get_input_tracker().mouse_button_event_normalized(MouseButton::Right, x, y, true);
 				break;
 			}
 

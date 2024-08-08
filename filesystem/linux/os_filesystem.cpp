@@ -39,6 +39,18 @@
 #include <sys/inotify.h>
 #endif
 
+#ifdef __FreeBSD__
+#define FSTAT64 fstat
+#define FTRUNCATE64 ftruncate
+#define MMAP64 mmap
+#define STAT64 stat
+#else
+#define FSTAT64 fstat64
+#define FTRUNCATE64 ftruncate64
+#define MMAP64 mmap64
+#define STAT64 stat64
+#endif
+
 namespace Granite
 {
 static bool ensure_directory_inner(const std::string &path)
@@ -46,8 +58,8 @@ static bool ensure_directory_inner(const std::string &path)
 	if (Path::is_root_path(path))
 		return false;
 
-	struct stat64 s = {};
-	if (::stat64(path.c_str(), &s) >= 0 && S_ISDIR(s.st_mode))
+	struct STAT64 s = {};
+	if (::STAT64(path.c_str(), &s) >= 0 && S_ISDIR(s.st_mode))
 		return true;
 
 	auto basedir = Path::basedir(path);
@@ -139,7 +151,7 @@ FileMappingHandle MMapFile::map_write(size_t map_size)
 	if (has_write_map)
 		return {};
 
-	if (ftruncate64(fd, off64_t(map_size)) < 0)
+	if (FTRUNCATE64(fd, off64_t(map_size)) < 0)
 	{
 		LOGE("Failed to truncate.\n");
 		report_error();
@@ -148,7 +160,7 @@ FileMappingHandle MMapFile::map_write(size_t map_size)
 
 	size = map_size;
 
-	void *mapped = mmap64(nullptr, map_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+	void *mapped = MMAP64(nullptr, map_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
 	if (mapped == MAP_FAILED)
 	{
 		report_error();
@@ -189,7 +201,7 @@ FileMappingHandle MMapFile::map_subset(uint64_t offset, size_t range)
 
 	// length need not be aligned.
 
-	void *mapped = mmap64(nullptr, mapped_size, PROT_READ, MAP_PRIVATE, fd, off64_t(begin_map));
+	void *mapped = MMAP64(nullptr, mapped_size, PROT_READ, MAP_PRIVATE, fd, off64_t(begin_map));
 	if (mapped == MAP_FAILED)
 	{
 		report_error();
@@ -210,8 +222,8 @@ uint64_t MMapFile::get_size()
 
 bool MMapFile::query_stat()
 {
-	struct stat64 s = {};
-	if (fstat64(fd, &s) < 0)
+	struct STAT64 s = {};
+	if (FSTAT64(fd, &s) < 0)
 		return false;
 
 	if (uint64_t(s.st_size) > SIZE_MAX)
@@ -505,8 +517,8 @@ std::vector<ListEntry> OSFilesystem::list(const std::string &path)
 bool OSFilesystem::stat(const std::string &path, FileStat &stat)
 {
 	auto resolved_path = Path::join(base, path);
-	struct stat64 buf = {};
-	if (::stat64(resolved_path.c_str(), &buf) < 0)
+	struct STAT64 buf = {};
+	if (::STAT64(resolved_path.c_str(), &buf) < 0)
 		return false;
 
 	if (S_ISREG(buf.st_mode))

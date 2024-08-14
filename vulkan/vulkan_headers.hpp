@@ -26,6 +26,10 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
 
+#if defined(__APPLE__) && !defined(VK_USE_PLATFORM_METAL_EXT)
+#define VK_USE_PLATFORM_METAL_EXT
+#endif
+
 #if defined(VULKAN_H_) || defined(VULKAN_CORE_H_)
 #error "Must include vulkan_headers.hpp before Vulkan headers"
 #endif

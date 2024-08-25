@@ -876,7 +876,11 @@ void Device::init_workarounds()
 		workarounds.emulate_event_as_pipeline_barrier = true;
 	}
 
-	if (ext.driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY && gpu_props.driverVersion < VK_VERSION_MAJOR(535))
+	// For whatever ridiculous reason, pipeline cache control causes GPU hangs on Pascal cards in parallel-rdp.
+	// Use mesh shaders as the sentinel to check for that.
+	if (ext.driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
+	    (gpu_props.driverVersion < VK_VERSION_MAJOR(535) ||
+	     !ext.mesh_shader_features.meshShader))
 	{
 		LOGW("Disabling pipeline cache control.\n");
 		workarounds.broken_pipeline_cache_control = true;

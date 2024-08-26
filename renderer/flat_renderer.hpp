@@ -26,6 +26,7 @@
 #include "renderer.hpp"
 #include "sprite.hpp"
 #include <vector>
+#include <functional>
 
 namespace Granite
 {
@@ -99,6 +100,9 @@ public:
 	void push_scissor(const vec2 &offset, const vec2 &size);
 	void pop_scissor();
 
+	void set_opaque_state_callback(std::function<void (Vulkan::CommandBuffer &)> cb);
+	void set_transparent_state_callback(std::function<void (Vulkan::CommandBuffer &)> cb);
+
 	Vulkan::Device &get_device();
 
 private:
@@ -108,6 +112,9 @@ private:
 	const ShaderSuiteResolver *resolver = nullptr;
 	RenderQueue queue;
 	ShaderSuite suite[Util::ecast(RenderableType::Count)];
+
+	std::function<void (Vulkan::CommandBuffer &)> opaque_state_cb;
+	std::function<void (Vulkan::CommandBuffer &)> transparent_state_cb;
 
 	struct Scissor
 	{

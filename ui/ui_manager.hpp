@@ -62,6 +62,11 @@ public:
 	void reset_children();
 	void remove_child(Widget *widget);
 
+	inline FlatRenderer &get_flat_renderer()
+	{
+		return renderer;
+	}
+
 private:
 	FlatRenderer renderer;
 	std::vector<WidgetHandle> widgets;

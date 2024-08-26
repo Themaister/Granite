@@ -88,6 +88,16 @@ void FlatRenderer::begin()
 	queue.set_shader_suites(suite);
 }
 
+void FlatRenderer::set_opaque_state_callback(std::function<void (Vulkan::CommandBuffer &)> cb)
+{
+	opaque_state_cb = std::move(cb);
+}
+
+void FlatRenderer::set_transparent_state_callback(std::function<void (Vulkan::CommandBuffer &)> cb)
+{
+	transparent_state_cb = std::move(cb);
+}
+
 void FlatRenderer::flush(Vulkan::CommandBuffer &cmd, const vec3 &camera_pos, const vec3 &camera_size)
 {
 	struct GlobalData
@@ -108,13 +118,21 @@ void FlatRenderer::flush(Vulkan::CommandBuffer &cmd, const vec3 &camera_pos, con
 
 	queue.sort();
 
-	cmd.set_opaque_sprite_state();
+	if (opaque_state_cb)
+		opaque_state_cb(cmd);
+	else
+		cmd.set_opaque_sprite_state();
+
 	CommandBufferSavedState state = {};
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	queue.dispatch(Queue::Opaque, cmd, &state);
 	queue.dispatch(Queue::OpaqueEmissive, cmd, &state);
 
-	cmd.set_transparent_sprite_state();
+	if (transparent_state_cb)
+		transparent_state_cb(cmd);
+	else
+		cmd.set_transparent_sprite_state();
+
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	queue.dispatch(Queue::Transparent, cmd, &state);
 }

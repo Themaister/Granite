@@ -39,11 +39,12 @@
 #include <sys/inotify.h>
 #endif
 
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) || defined(__APPLE__)
 #define FSTAT64 fstat
 #define FTRUNCATE64 ftruncate
 #define MMAP64 mmap
 #define STAT64 stat
+#define off64_t off_t
 #else
 #define FSTAT64 fstat64
 #define FTRUNCATE64 ftruncate64

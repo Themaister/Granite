@@ -503,7 +503,7 @@ const PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayo
 	h.u32(layout.attribute_mask);
 	h.u32(layout.render_target_mask);
 	// Drivers with and without push descriptor support need to observe different hashes for Fossilize.
-	h.s32(int(ext.supports_push_descriptor));
+	h.s32(int(ext.supports_push_descriptor && !workarounds.broken_push_descriptors));
 	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
 	{
 		Util::for_each_bit(layout.sets[set].immutable_sampler_mask, [&](unsigned bit) {
@@ -855,7 +855,11 @@ void Device::init_workarounds()
 	// Events are not supported in MoltenVK.
 	// TODO: Use VK_KHR_portability_subset to determine this.
 	workarounds.emulate_event_as_pipeline_barrier = true;
+	// MoltenVK is broken with push descriptor templates.
+	// KhronosGroup/MoltenVK issue 2323.
+	workarounds.broken_push_descriptors = true;
 	LOGW("Emulating events as pipeline barriers on Metal emulation.\n");
+	LOGW("Disabling push descriptors on Metal emulation.\n");
 #else
 	bool sync2_workarounds = false;
 	const bool mesa_driver = ext.driver_id == VK_DRIVER_ID_MESA_RADV ||
@@ -896,6 +900,12 @@ void Device::init_workarounds()
 		// Avoids having to add workaround path to events as well, just fallback to plain barriers.
 		workarounds.emulate_event_as_pipeline_barrier = true;
 	}
+
+	// I cannot reproduce this myself, but there are several users experiencing GPU hangs with push descriptors
+	// on AMD drivers (not RADV), so :shrug:.
+	// https://github.com/simple64/simple64/issues/449
+	if (ext.driver_id == VK_DRIVER_ID_AMD_OPEN_SOURCE || ext.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY)
+		workarounds.broken_push_descriptors = true;
 #endif
 
 	if (ext.supports_tooling_info && vkGetPhysicalDeviceToolPropertiesEXT)

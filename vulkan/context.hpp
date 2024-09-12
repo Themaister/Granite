@@ -389,6 +389,7 @@ private:
 	Fossilize::FeatureFilter feature_filter;
 	bool format_is_supported(VkFormat format, VkFormatFeatureFlags features) override;
 	bool descriptor_set_layout_is_supported(const VkDescriptorSetLayoutCreateInfo *set_layout) override;
+	void physical_device_feature_query(VkPhysicalDeviceFeatures2 *pdf2) override;
 #endif
 
 	bool init_profile();

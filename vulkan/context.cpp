@@ -1775,5 +1775,11 @@ bool Context::descriptor_set_layout_is_supported(const VkDescriptorSetLayoutCrea
 	vkGetDescriptorSetLayoutSupport(device, set_layout, &support);
 	return support.supported == VK_TRUE;
 }
+
+void Context::physical_device_feature_query(VkPhysicalDeviceFeatures2 *pdf2_)
+{
+	if (gpu && vkGetPhysicalDeviceFeatures2)
+		vkGetPhysicalDeviceFeatures2(gpu, pdf2_);
+}
 #endif
 }

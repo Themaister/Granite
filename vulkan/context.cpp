@@ -1454,6 +1454,18 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		enabled_extensions.push_back(VK_EXT_LOAD_STORE_OP_NONE_EXTENSION_NAME);
 	}
 
+	if (has_extension(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME);
+		ADD_CHAIN(ext.pipeline_binary_features, PIPELINE_BINARY_FEATURES_KHR);
+	}
+
+	if (has_extension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_MAINTENANCE_5_EXTENSION_NAME);
+		ADD_CHAIN(ext.maintenance5_features, MAINTENANCE_5_FEATURES_KHR);
+	}
+
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
 		if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
@@ -1643,7 +1655,21 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	if (has_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
 		ADD_CHAIN(ext.mesh_shader_properties, MESH_SHADER_PROPERTIES_EXT);
 
+	if (has_extension(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME))
+		ADD_CHAIN(ext.pipeline_binary_properties, PIPELINE_BINARY_PROPERTIES_KHR);
+
 	vkGetPhysicalDeviceProperties2(gpu, &props);
+
+	// If a layer or driver doesn't tell us that internal cache is preferred,
+	// go ahead and take full control over the cache.
+	if (!ext.pipeline_binary_properties.pipelineBinaryPrefersInternalCache &&
+	    ext.pipeline_binary_features.pipelineBinaries &&
+	    ext.pipeline_binary_properties.pipelineBinaryInternalCacheControl)
+	{
+		ext.pipeline_binary_internal_cache_control.disableInternalCache = VK_TRUE;
+		ext.pipeline_binary_internal_cache_control.pNext = device_info.pNext;
+		device_info.pNext = &ext.pipeline_binary_internal_cache_control;
+	}
 
 	if (ext.device_api_core_version < VK_API_VERSION_1_2)
 	{

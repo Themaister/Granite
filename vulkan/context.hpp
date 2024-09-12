@@ -90,6 +90,10 @@ struct DeviceFeatures
 	VkPhysicalDevicePresentWaitFeaturesKHR present_wait_features = {};
 	VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR barycentric_features = {};
 	VkPhysicalDeviceVideoMaintenance1FeaturesKHR video_maintenance1_features = {};
+	VkPhysicalDevicePipelineBinaryFeaturesKHR pipeline_binary_features = {};
+	VkPhysicalDevicePipelineBinaryPropertiesKHR pipeline_binary_properties = {};
+	VkDevicePipelineBinaryInternalCacheControlKHR pipeline_binary_internal_cache_control = {};
+	VkPhysicalDeviceMaintenance5FeaturesKHR maintenance5_features = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};

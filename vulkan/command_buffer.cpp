@@ -1142,7 +1142,7 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 		info.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
 
 	auto start_ts = Util::get_current_time_nsecs();
-	VkResult vr = table.vkCreateComputePipelines(device->get_device(), compile.cache, 1, &info, nullptr, &compute_pipeline);
+	VkResult vr = device->pipeline_binary_cache.create_pipeline(&info, compile.cache, &compute_pipeline);
 	auto end_ts = Util::get_current_time_nsecs();
 	log_compile_time("compute", compile.hash, end_ts - start_ts, vr, mode);
 
@@ -1542,7 +1542,7 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 		pipe.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
 
 	auto start_ts = Util::get_current_time_nsecs();
-	VkResult res = table.vkCreateGraphicsPipelines(device->get_device(), compile.cache, 1, &pipe, nullptr, &pipeline);
+	VkResult res = device->pipeline_binary_cache.create_pipeline(&pipe, compile.cache, &pipeline);
 	auto end_ts = Util::get_current_time_nsecs();
 	log_compile_time("graphics", compile.hash, end_ts - start_ts, res, mode);
 

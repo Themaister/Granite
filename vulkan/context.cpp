@@ -1666,6 +1666,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	    ext.pipeline_binary_features.pipelineBinaries &&
 	    ext.pipeline_binary_properties.pipelineBinaryInternalCacheControl)
 	{
+		ext.pipeline_binary_internal_cache_control.sType =
+				VK_STRUCTURE_TYPE_DEVICE_PIPELINE_BINARY_INTERNAL_CACHE_CONTROL_KHR;
 		ext.pipeline_binary_internal_cache_control.disableInternalCache = VK_TRUE;
 		ext.pipeline_binary_internal_cache_control.pNext = device_info.pNext;
 		device_info.pNext = &ext.pipeline_binary_internal_cache_control;

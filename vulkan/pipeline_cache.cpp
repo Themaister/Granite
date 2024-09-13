@@ -81,9 +81,18 @@ bool PipelineCache::place_binary(VkPipelineBinaryKHR binary, Util::Hash *hash)
 		return false;
 	}
 
+	VK_ASSERT(key.keySize);
+
 	Util::Hasher h;
 	h.data(key.key, key.keySize);
 	*hash = h.get();
+
+	static constexpr uint32_t AllZero[VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR] = {};
+	if (memcmp(AllZero, key.key, VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR) == 0)
+	{
+		LOGW("Driver seems broken? Key is all zeros ...\n");
+		return false;
+	}
 
 	if (binaries.find(h.get()))
 		device.get_device_table().vkDestroyPipelineBinaryKHR(device.get_device(), binary, nullptr);
@@ -221,6 +230,7 @@ bool PipelineCache::find_pipeline_binaries(Util::Hash pso_hash,
 			VkPipelineBinaryDataKHR binary_data = {};
 			keys_and_data_info.binaryCount = 1;
 			keys_and_data_info.pPipelineBinaryKeys = &existing_binary->key;
+			VK_ASSERT(existing_binary->key.keySize);
 			keys_and_data_info.pPipelineBinaryData = &binary_data;
 			create_info.pKeysAndDataInfo = &keys_and_data_info;
 			binary_data.pData = const_cast<void *>(existing_binary->payload);

@@ -299,10 +299,18 @@ bool PipelineCache::parse(const void *payload_, size_t size)
 	device.get_device_table().vkGetPipelineKeyKHR(device.get_device(), nullptr, &key);
 
 	if (memcmp(payload, &key.keySize, sizeof(uint32_t)) != 0)
-		return false;
+	{
+		LOGW("Pipeline binary global key changed, resetting the cache ...\n");
+		return true;
+	}
+
 	payload += sizeof(uint32_t);
+
 	if (memcmp(payload, key.key, key.keySize) != 0)
-		return false;
+	{
+		LOGW("Pipeline binary global key changed, resetting the cache ...\n");
+		return true;
+	}
 	payload += VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR;
 
 	uint32_t num_pipelines = *reinterpret_cast<const uint32_t *>(payload);

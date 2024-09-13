@@ -2032,10 +2032,6 @@ Device::~Device()
 
 	managers.timestamps.log_simple();
 
-	if (legacy_pipeline_cache != VK_NULL_HANDLE || ext.pipeline_binary_features.pipelineBinaries)
-		flush_pipeline_cache();
-	table->vkDestroyPipelineCache(device, legacy_pipeline_cache, nullptr);
-
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	flush_shader_manager_cache();
 #endif
@@ -2043,6 +2039,10 @@ Device::~Device()
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	flush_pipeline_state();
 #endif
+
+	if (legacy_pipeline_cache != VK_NULL_HANDLE || ext.pipeline_binary_features.pipelineBinaries)
+		flush_pipeline_cache();
+	table->vkDestroyPipelineCache(device, legacy_pipeline_cache, nullptr);
 
 	framebuffer_allocator.clear();
 	transient_allocator.clear();

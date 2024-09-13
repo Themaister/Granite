@@ -360,7 +360,11 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 
 	if (!new_context->init_instance(
 			instance_ext.data(), instance_ext.size(),
-			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT | video_context_flags))
+			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT |
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
+			CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT |
+#endif
+			video_context_flags))
 	{
 		LOGE("Failed to create Vulkan instance.\n");
 		return false;
@@ -371,7 +375,11 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 	bool ret = new_context->init_device(
 			VK_NULL_HANDLE, tmp_surface,
 			device_ext.data(), device_ext.size(),
-			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT | video_context_flags);
+			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT |
+#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
+			CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT |
+#endif
+			video_context_flags);
 
 	if (tmp_surface)
 		platform->destroy_surface(new_context->get_instance(), tmp_surface);

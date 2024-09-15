@@ -889,6 +889,12 @@ void Device::init_workarounds()
 		LOGW("Disabling pipeline cache control.\n");
 		workarounds.broken_pipeline_cache_control = true;
 	}
+	else if (ext.driver_id == VK_DRIVER_ID_QUALCOMM_PROPRIETARY_KHR)
+	{
+		// Seems broken on this driver too. Compilation stutter galore ...
+		LOGW("Disabling pipeline cache control.\n");
+		workarounds.broken_pipeline_cache_control = true;
+	}
 
 	if (sync2_workarounds)
 	{

@@ -855,11 +855,13 @@ void Device::init_workarounds()
 	// Events are not supported in MoltenVK.
 	// TODO: Use VK_KHR_portability_subset to determine this.
 	workarounds.emulate_event_as_pipeline_barrier = true;
-	// MoltenVK is broken with push descriptor templates.
-	// KhronosGroup/MoltenVK issue 2323.
-	workarounds.broken_push_descriptors = true;
-	LOGW("Emulating events as pipeline barriers on Metal emulation.\n");
-	LOGW("Disabling push descriptors on Metal emulation.\n");
+	if (gpu_props.driverVersion < VK_MAKE_VERSION(1, 2, 11)) {
+		// MoltenVK was broken with push descriptor templates.
+		// KhronosGroup/MoltenVK issue 2323, fix observed in driver version 1.2.11.
+		workarounds.broken_push_descriptors = true;
+		LOGW("Emulating events as pipeline barriers on Metal emulation.\n");
+		LOGW("Disabling push descriptors on Metal emulation.\n");
+	}
 #else
 	bool sync2_workarounds = false;
 	const bool mesa_driver = ext.driver_id == VK_DRIVER_ID_MESA_RADV ||

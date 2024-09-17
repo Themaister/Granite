@@ -1454,7 +1454,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		enabled_extensions.push_back(VK_EXT_LOAD_STORE_OP_NONE_EXTENSION_NAME);
 	}
 
-#ifndef VULKAN_DEBUG
 	// Pipeline binaries are currently borked in VVL.
 	if ((flags & CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT) != 0 &&
 	    has_extension(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME))
@@ -1462,7 +1461,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		enabled_extensions.push_back(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME);
 		ADD_CHAIN(ext.pipeline_binary_features, PIPELINE_BINARY_FEATURES_KHR);
 	}
-#endif
 
 	if (has_extension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME))
 	{
@@ -1659,12 +1657,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	if (has_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
 		ADD_CHAIN(ext.mesh_shader_properties, MESH_SHADER_PROPERTIES_EXT);
 
-#ifndef VULKAN_DEBUG
 	// Pipeline binaries are currently borked in VVL.
 	if ((flags & CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT) != 0 &&
 	    has_extension(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME))
 		ADD_CHAIN(ext.pipeline_binary_properties, PIPELINE_BINARY_PROPERTIES_KHR);
-#endif
 
 	vkGetPhysicalDeviceProperties2(gpu, &props);
 

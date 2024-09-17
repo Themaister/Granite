@@ -84,11 +84,16 @@ struct DeviceFeatures
 	VkPhysicalDeviceVulkan13Properties vk13_props = {};
 
 	// KHR
+	VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR compute_shader_derivative_features = {};
 	VkPhysicalDevicePerformanceQueryFeaturesKHR performance_query_features = {};
 	VkPhysicalDevicePresentIdFeaturesKHR present_id_features = {};
 	VkPhysicalDevicePresentWaitFeaturesKHR present_wait_features = {};
 	VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR barycentric_features = {};
 	VkPhysicalDeviceVideoMaintenance1FeaturesKHR video_maintenance1_features = {};
+	VkPhysicalDevicePipelineBinaryFeaturesKHR pipeline_binary_features = {};
+	VkPhysicalDevicePipelineBinaryPropertiesKHR pipeline_binary_properties = {};
+	VkDevicePipelineBinaryInternalCacheControlKHR pipeline_binary_internal_cache_control = {};
+	VkPhysicalDeviceMaintenance5FeaturesKHR maintenance5_features = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};
@@ -105,7 +110,6 @@ struct DeviceFeatures
 	VkPhysicalDeviceImageCompressionControlSwapchainFeaturesEXT image_compression_control_swapchain_features = {};
 
 	// Vendor
-	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};
 	VkPhysicalDeviceDeviceGeneratedCommandsFeaturesNV device_generated_commands_features = {};
 	VkPhysicalDeviceDeviceGeneratedCommandsComputeFeaturesNV device_generated_commands_compute_features = {};
 	VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV device_generated_commands_properties = {};
@@ -148,7 +152,8 @@ enum ContextCreationFlagBits
 	CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT = 1 << 1,
 	CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT = 1 << 2,
 	CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT = 1 << 3,
-	CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT = 1 << 4
+	CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT = 1 << 4,
+	CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT = 1 << 5
 };
 using ContextCreationFlags = uint32_t;
 
@@ -389,6 +394,7 @@ private:
 	Fossilize::FeatureFilter feature_filter;
 	bool format_is_supported(VkFormat format, VkFormatFeatureFlags features) override;
 	bool descriptor_set_layout_is_supported(const VkDescriptorSetLayoutCreateInfo *set_layout) override;
+	void physical_device_feature_query(VkPhysicalDeviceFeatures2 *pdf2) override;
 #endif
 
 	bool init_profile();

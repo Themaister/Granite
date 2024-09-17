@@ -39,6 +39,7 @@
 #include "query_pool.hpp"
 #include "buffer_pool.hpp"
 #include "indirect_layout.hpp"
+#include "pipeline_cache.hpp"
 #include <memory>
 #include <vector>
 #include <functional>
@@ -241,7 +242,9 @@ public:
 
 	size_t get_pipeline_cache_size();
 	bool get_pipeline_cache_data(uint8_t *data, size_t size);
-	bool init_pipeline_cache(const uint8_t *data, size_t size);
+	// If persistent_mapping is true, the data pointer lifetime is live as long as the device is.
+	// Useful for read-only file mmap.
+	bool init_pipeline_cache(const uint8_t *data, size_t size, bool persistent_mapping = false);
 
 	// Frame-pushing interface.
 	void next_frame_context();
@@ -439,6 +442,7 @@ public:
 	// in query_initialization_progress().
 	ShaderManager &get_shader_manager();
 	ResourceManager &get_resource_manager();
+	Granite::FileMappingHandle persistent_pipeline_cache;
 #endif
 
 	// Useful for loading screens or otherwise figuring out
@@ -737,7 +741,8 @@ private:
 
 	FramebufferAllocator framebuffer_allocator;
 	TransientAttachmentAllocator transient_allocator;
-	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
+	VkPipelineCache legacy_pipeline_cache = VK_NULL_HANDLE;
+	PipelineCache pipeline_binary_cache;
 
 	void init_pipeline_cache();
 	void flush_pipeline_cache();

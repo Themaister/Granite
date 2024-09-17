@@ -1330,10 +1330,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		}
 	}
 
-	if (has_extension(VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME))
+	if (has_extension(VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME))
 	{
-		enabled_extensions.push_back(VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME);
-		ADD_CHAIN(ext.compute_shader_derivative_features, COMPUTE_SHADER_DERIVATIVES_FEATURES_NV);
+		enabled_extensions.push_back(VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME);
+		ADD_CHAIN(ext.compute_shader_derivative_features, COMPUTE_SHADER_DERIVATIVES_FEATURES_KHR);
 	}
 
 	if (has_extension(VK_KHR_PERFORMANCE_QUERY_EXTENSION_NAME))
@@ -1452,6 +1452,20 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		ext.supports_store_op_none = true;
 		enabled_extensions.push_back(VK_EXT_LOAD_STORE_OP_NONE_EXTENSION_NAME);
+	}
+
+	// Pipeline binaries are currently borked in VVL.
+	if ((flags & CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT) != 0 &&
+	    has_extension(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME);
+		ADD_CHAIN(ext.pipeline_binary_features, PIPELINE_BINARY_FEATURES_KHR);
+	}
+
+	if (has_extension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_MAINTENANCE_5_EXTENSION_NAME);
+		ADD_CHAIN(ext.maintenance5_features, MAINTENANCE_5_FEATURES_KHR);
 	}
 
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
@@ -1643,7 +1657,25 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	if (has_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
 		ADD_CHAIN(ext.mesh_shader_properties, MESH_SHADER_PROPERTIES_EXT);
 
+	// Pipeline binaries are currently borked in VVL.
+	if ((flags & CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT) != 0 &&
+	    has_extension(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME))
+		ADD_CHAIN(ext.pipeline_binary_properties, PIPELINE_BINARY_PROPERTIES_KHR);
+
 	vkGetPhysicalDeviceProperties2(gpu, &props);
+
+	// If a layer or driver doesn't tell us that internal cache is preferred,
+	// go ahead and take full control over the cache.
+	if (!ext.pipeline_binary_properties.pipelineBinaryPrefersInternalCache &&
+	    ext.pipeline_binary_features.pipelineBinaries &&
+	    ext.pipeline_binary_properties.pipelineBinaryInternalCacheControl)
+	{
+		ext.pipeline_binary_internal_cache_control.sType =
+				VK_STRUCTURE_TYPE_DEVICE_PIPELINE_BINARY_INTERNAL_CACHE_CONTROL_KHR;
+		ext.pipeline_binary_internal_cache_control.disableInternalCache = VK_TRUE;
+		ext.pipeline_binary_internal_cache_control.pNext = device_info.pNext;
+		device_info.pNext = &ext.pipeline_binary_internal_cache_control;
+	}
 
 	if (ext.device_api_core_version < VK_API_VERSION_1_2)
 	{
@@ -1774,6 +1806,12 @@ bool Context::descriptor_set_layout_is_supported(const VkDescriptorSetLayoutCrea
 	VkDescriptorSetLayoutSupport support = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT };
 	vkGetDescriptorSetLayoutSupport(device, set_layout, &support);
 	return support.supported == VK_TRUE;
+}
+
+void Context::physical_device_feature_query(VkPhysicalDeviceFeatures2 *pdf2_)
+{
+	if (gpu && vkGetPhysicalDeviceFeatures2)
+		vkGetPhysicalDeviceFeatures2(gpu, pdf2_);
 }
 #endif
 }

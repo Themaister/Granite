@@ -315,7 +315,7 @@ bool Device::fossilize_replay_graphics_pipeline(Fossilize::Hash hash, VkGraphics
 	}
 
 	VkPipeline pipeline = VK_NULL_HANDLE;
-	VkResult res = table->vkCreateGraphicsPipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
+	VkResult res = pipeline_binary_cache.create_pipeline(&info, legacy_pipeline_cache, &pipeline);
 	if (res != VK_SUCCESS)
 	{
 		LOGE("Failed to create graphics pipeline!\n");
@@ -362,7 +362,7 @@ bool Device::fossilize_replay_compute_pipeline(Fossilize::Hash hash, VkComputePi
 	LOGI("Replaying compute pipeline.\n");
 #endif
 	VkPipeline pipeline = VK_NULL_HANDLE;
-	VkResult res = table->vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
+	VkResult res = pipeline_binary_cache.create_pipeline(&info, legacy_pipeline_cache, &pipeline);
 	if (res != VK_SUCCESS)
 	{
 		LOGE("Failed to create compute pipeline!\n");

@@ -80,6 +80,7 @@ static const QueueIndices queue_flush_order[] = {
 Device::Device()
     : framebuffer_allocator(this)
     , transient_allocator(this)
+	, pipeline_binary_cache(this)
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	, shader_manager(this)
 	, resource_manager(this)
@@ -710,8 +711,11 @@ void Device::bake_program(Program &program, const ImmutableSamplerBank *sampler_
 	program.set_pipeline_layout(request_pipeline_layout(layout, &ext_immutable_samplers));
 }
 
-bool Device::init_pipeline_cache(const uint8_t *data, size_t size)
+bool Device::init_pipeline_cache(const uint8_t *data, size_t size, bool persistent_mapping)
 {
+	if (ext.pipeline_binary_features.pipelineBinaries)
+		return pipeline_binary_cache.init_from_payload(data, size, persistent_mapping);
+
 	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
 	static const auto hash_size = sizeof(Util::Hash);
 
@@ -746,10 +750,10 @@ bool Device::init_pipeline_cache(const uint8_t *data, size_t size)
 		}
 	}
 
-	if (pipeline_cache != VK_NULL_HANDLE)
-		table->vkDestroyPipelineCache(device, pipeline_cache, nullptr);
-	pipeline_cache = VK_NULL_HANDLE;
-	return table->vkCreatePipelineCache(device, &info, nullptr, &pipeline_cache) == VK_SUCCESS;
+	if (legacy_pipeline_cache != VK_NULL_HANDLE)
+		table->vkDestroyPipelineCache(device, legacy_pipeline_cache, nullptr);
+	legacy_pipeline_cache = VK_NULL_HANDLE;
+	return table->vkCreatePipelineCache(device, &info, nullptr, &legacy_pipeline_cache) == VK_SUCCESS;
 }
 
 void Device::init_pipeline_cache()
@@ -760,10 +764,16 @@ void Device::init_pipeline_cache()
 	auto file = system_handles.filesystem->open_readonly_mapping("cache://pipeline_cache.bin");
 	if (file)
 	{
+		if (ext.pipeline_binary_features.pipelineBinaries)
+			persistent_pipeline_cache = file;
+
 		auto size = file->get_size();
 		auto *mapped = file->data<uint8_t>();
-		if (mapped && !init_pipeline_cache(mapped, size))
+		if (mapped && !init_pipeline_cache(mapped, size, bool(persistent_pipeline_cache)))
+		{
 			LOGE("Failed to initialize pipeline cache.\n");
+			persistent_pipeline_cache.reset();
+		}
 	}
 	else if (!init_pipeline_cache(nullptr, 0))
 		LOGE("Failed to initialize pipeline cache.\n");
@@ -772,13 +782,13 @@ void Device::init_pipeline_cache()
 
 size_t Device::get_pipeline_cache_size()
 {
-	if (pipeline_cache == VK_NULL_HANDLE)
-		return 0;
+	if (legacy_pipeline_cache == VK_NULL_HANDLE)
+		return pipeline_binary_cache.get_serialized_size();
 
 	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
 	static const auto hash_size = sizeof(Util::Hash);
 	size_t size = 0;
-	if (table->vkGetPipelineCacheData(device, pipeline_cache, &size, nullptr) != VK_SUCCESS)
+	if (table->vkGetPipelineCacheData(device, legacy_pipeline_cache, &size, nullptr) != VK_SUCCESS)
 	{
 		LOGE("Failed to get pipeline cache data.\n");
 		return 0;
@@ -789,8 +799,8 @@ size_t Device::get_pipeline_cache_size()
 
 bool Device::get_pipeline_cache_data(uint8_t *data, size_t size)
 {
-	if (pipeline_cache == VK_NULL_HANDLE)
-		return false;
+	if (legacy_pipeline_cache == VK_NULL_HANDLE)
+		return pipeline_binary_cache.serialize(data, size);
 
 	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
 	static const auto hash_size = sizeof(Util::Hash);
@@ -803,7 +813,7 @@ bool Device::get_pipeline_cache_data(uint8_t *data, size_t size)
 	memcpy(data, gpu_props.pipelineCacheUUID, uuid_size);
 	data = hash_data + hash_size;
 
-	if (table->vkGetPipelineCacheData(device, pipeline_cache, &size, data) != VK_SUCCESS)
+	if (table->vkGetPipelineCacheData(device, legacy_pipeline_cache, &size, data) != VK_SUCCESS)
 	{
 		LOGE("Failed to get pipeline cache data.\n");
 		return false;
@@ -822,6 +832,14 @@ void Device::flush_pipeline_cache()
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	if (!system_handles.filesystem)
 		return;
+
+	if (ext.pipeline_binary_features.pipelineBinaries &&
+	    !pipeline_binary_cache.has_new_binary_entries() &&
+	    persistent_pipeline_cache)
+	{
+		LOGI("No new pipelines have been observed, skipping serialize.\n");
+		return;
+	}
 
 	size_t size = get_pipeline_cache_size();
 	if (!size)
@@ -844,6 +862,8 @@ void Device::flush_pipeline_cache()
 		LOGE("Failed to get pipeline cache data.\n");
 		return;
 	}
+
+	persistent_pipeline_cache.reset();
 #endif
 }
 
@@ -1910,7 +1930,7 @@ CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index,
 	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	table->vkBeginCommandBuffer(cmd, &info);
 	add_frame_counter_nolock();
-	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, pipeline_cache, type));
+	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, legacy_pipeline_cache, type));
 	handle->set_thread_index(thread_index);
 
 	if (profiled)
@@ -1960,7 +1980,7 @@ CommandBufferHandle Device::request_secondary_command_buffer_for_thread(unsigned
 
 	table->vkBeginCommandBuffer(cmd, &info);
 	add_frame_counter_nolock();
-	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, pipeline_cache, type));
+	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, legacy_pipeline_cache, type));
 	handle->set_thread_index(thread_index);
 	handle->set_is_secondary();
 	return handle;
@@ -2018,12 +2038,6 @@ Device::~Device()
 
 	managers.timestamps.log_simple();
 
-	if (pipeline_cache != VK_NULL_HANDLE)
-	{
-		flush_pipeline_cache();
-		table->vkDestroyPipelineCache(device, pipeline_cache, nullptr);
-	}
-
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	flush_shader_manager_cache();
 #endif
@@ -2031,6 +2045,10 @@ Device::~Device()
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	flush_pipeline_state();
 #endif
+
+	if (legacy_pipeline_cache != VK_NULL_HANDLE || ext.pipeline_binary_features.pipelineBinaries)
+		flush_pipeline_cache();
+	table->vkDestroyPipelineCache(device, legacy_pipeline_cache, nullptr);
 
 	framebuffer_allocator.clear();
 	transient_allocator.clear();

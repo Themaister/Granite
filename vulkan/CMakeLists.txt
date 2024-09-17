@@ -16,6 +16,7 @@ add_granite_internal_lib(granite-vulkan
         render_pass.cpp render_pass.hpp
         buffer.cpp buffer.hpp
         indirect_layout.cpp indirect_layout.hpp
+        pipeline_cache.cpp pipeline_cache.hpp
         semaphore.cpp semaphore.hpp
         memory_allocator.cpp memory_allocator.hpp
         fence.hpp fence.cpp

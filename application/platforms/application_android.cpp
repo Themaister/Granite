@@ -302,6 +302,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	bool pending_native_window_init = false;
 	bool pending_native_window_term = false;
 	bool pending_config_change = false;
+	bool has_mouse_input = false;
 };
 
 static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANativeWindow *window)
@@ -428,6 +429,13 @@ static void engine_handle_input(WSIPlatformAndroid &state)
 		// Paddleboat eats mouse events, and we want to handle them raw.
 		if (source == AINPUT_SOURCE_MOUSE)
 		{
+			// TODO: Does Android have concept of focus?
+			if (!state.has_mouse_input)
+			{
+				state.get_input_tracker().mouse_enter(0.0, 0.0);
+				state.has_mouse_input = true;
+			}
+
 			switch (action)
 			{
 			case AMOTION_EVENT_ACTION_MOVE:

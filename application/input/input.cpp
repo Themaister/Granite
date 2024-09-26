@@ -244,6 +244,12 @@ void InputTracker::mouse_button_event(MouseButton button, double x, double y, bo
 	else
 		mouse_button_state &= ~(1ull << ecast(button));
 
+	if (mouse_active)
+	{
+		last_mouse_x = x;
+		last_mouse_y = y;
+	}
+
 	MouseButtonEvent event(button, x, y, pressed);
 	if (handler)
 		handler->dispatch(event);

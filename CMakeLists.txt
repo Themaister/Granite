@@ -28,6 +28,7 @@ option(GRANITE_ASTC_ENCODER_COMPRESSION "Enable astc-encoder texture compression
 option(GRANITE_TOOLS "Build Granite tools." ON)
 option(GRANITE_KHR_DISPLAY_ACQUIRE_XLIB "Try to acquire Xlib display when using VK_KHR_display." OFF)
 option(GRANITE_ANDROID_APK_FILESYSTEM "Use APK file system for assets and builtin files." ON)
+option(GRANITE_ANDROID_SWAPPY "Use swappy on Android." OFF)
 option(GRANITE_SHADER_COMPILER_OPTIMIZE "Optimize SPIR-V." ON)
 option(GRANITE_VULKAN_SYSTEM_HANDLES "Add system handle support to Vulkan backend." ON)
 option(GRANITE_RENDERER "Add higher level rendering functionality." ON)

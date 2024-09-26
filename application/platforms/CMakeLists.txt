@@ -15,7 +15,10 @@ if (ANDROID)
     target_link_libraries(granite-platform PRIVATE granite-rapidjson android-game-activity
             games-controller::paddleboat games-frame-pacing::swappy)
 
-    target_compile_definitions(granite-platform PRIVATE VK_USE_PLATFORM_ANDROID_KHR HAVE_SWAPPY)
+    target_compile_definitions(granite-platform PRIVATE VK_USE_PLATFORM_ANDROID_KHR)
+    if (GRANITE_ANDROID_SWAPPY)
+        target_compile_definitions(granite-platform PRIVATE HAVE_SWAPPY)
+    endif()
     if (GRANITE_ANDROID_APK_FILESYSTEM)
         target_compile_definitions(granite-platform PRIVATE ANDROID_APK_FILESYSTEM)
     endif()

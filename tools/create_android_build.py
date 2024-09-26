@@ -85,6 +85,9 @@ def main():
     parser.add_argument('--fossilize',
                         help = 'Add Fossilize support',
                         action = 'store_true')
+    parser.add_argument('--swappy',
+                        help = 'Add Swappy support',
+                        action = 'store_true')
 
     args = parser.parse_args()
     abis = ['arm64-v8a'] if args.abis is None else args.abis
@@ -173,7 +176,8 @@ def main():
             .replace('$$AUDIO$$', 'ON' if args.audio else 'OFF') \
             .replace('$$PHYSICS$$', 'ON' if args.physics else 'OFF') \
             .replace('$$SHADER_OPTIMIZE$$', 'ON' if args.optimize else 'OFF') \
-            .replace('$$FOSSILIZE$$', 'ON' if args.fossilize else 'OFF')
+            .replace('$$FOSSILIZE$$', 'ON' if args.fossilize else 'OFF') \
+            .replace('$$SWAPPY$$', 'ON' if args.swappy else 'OFF')
 
         with open(target_build_gradle, 'w') as dump_file:
             print(data, file = dump_file)

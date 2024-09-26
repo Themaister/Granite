@@ -7,4 +7,6 @@
 	--app-name "Granite glTF Viewer" \
 	--abis arm64-v8a \
 	--cmake-lists-toplevel ../CMakeLists.txt \
+	--fossilize \
+	--swappy \
 	--assets assets

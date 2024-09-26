@@ -93,7 +93,7 @@ if (GRANITE_VULKAN_SPIRV_CROSS)
     target_compile_definitions(granite-vulkan PRIVATE GRANITE_VULKAN_SPIRV_CROSS=1)
 endif()
 
-if (ANDROID)
+if (ANDROID AND GRANITE_ANDROID_SWAPPY)
     find_package(games-frame-pacing REQUIRED CONFIG)
 	target_link_libraries(granite-vulkan PRIVATE games-frame-pacing::swappy)
 	target_compile_definitions(granite-vulkan PRIVATE HAVE_SWAPPY)

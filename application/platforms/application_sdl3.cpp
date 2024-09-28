@@ -596,6 +596,8 @@ public:
 	{
 		auto ctx = Global::create_thread_context();
 
+		process_events_main_thread();
+
 		if (options.threaded)
 		{
 			async_loop_alive = true;

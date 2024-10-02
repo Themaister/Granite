@@ -225,8 +225,7 @@ void DXGIInteropSwapchain::reset_backbuffer_state()
 	backbuffers.clear();
 }
 
-bool DXGIInteropSwapchain::setup_per_frame_state(PerFrameState &state, unsigned index,
-                                                 unsigned width, unsigned height, VkFormat format)
+bool DXGIInteropSwapchain::setup_per_frame_state(PerFrameState &state, unsigned index)
 {
 	HRESULT hr;
 	if (FAILED(hr = swapchain->GetBuffer(index, IID_PPV_ARGS(&state.backbuffer))))
@@ -363,7 +362,7 @@ bool DXGIInteropSwapchain::init_swapchain(HWND hwnd_, VkSurfaceFormatKHR format,
 
 	backbuffers.resize(desc.BufferCount);
 	for (unsigned i = 0; i < desc.BufferCount; i++)
-		if (!setup_per_frame_state(backbuffers[i], i, width, height, format.format))
+		if (!setup_per_frame_state(backbuffers[i], i))
 			return false;
 
 	ExternalHandle imported_image;

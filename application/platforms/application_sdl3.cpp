@@ -116,7 +116,9 @@ public:
 
 		LOGI("SDL_Init(GAMEPAD) took %.3f seconds async.\n", tmp_timer.end());
 
+		LOGI("Pushing task to main thread.\n");
 		push_task_to_main_thread([this]() {
+			LOGI("Running task in main thread.\n");
 			if (!pad.init(get_input_tracker(), [](std::function<void ()> func) { func(); }))
 				LOGE("Failed to init gamepad tracker.\n");
 
@@ -336,8 +338,12 @@ public:
 		begin_async_input_handling();
 		{
 			process_events_async_thread();
+			LOGI("nyaa 1\n");
 			if (gamepad_init_async.load(std::memory_order_acquire))
+			{
+				LOGI("nyaa 2\n");
 				pad.update(get_input_tracker());
+			}
 		}
 		end_async_input_handling();
 		get_input_tracker().dispatch_current_state(0.0, override_handler);
@@ -429,6 +435,7 @@ public:
 	{
 		if (e.type == wake_event_type)
 		{
+			LOGI("Processing events main thread.\n");
 			process_events_main_thread();
 			return true;
 		}

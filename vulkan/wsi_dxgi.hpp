@@ -75,7 +75,7 @@ private:
 	ComPtr<ID3D12Resource> blit_backbuffer;
 	ImageHandle vulkan_backbuffer;
 
-	bool setup_per_frame_state(PerFrameState &state, unsigned index, unsigned width, unsigned height, VkFormat format);
+	bool setup_per_frame_state(PerFrameState &state, unsigned index);
 	void reset_backbuffer_state();
 
 	uint64_t completed_presents = 0;

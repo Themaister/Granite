@@ -244,14 +244,11 @@ bool WSI::init_surface_swapchain_dxgi(unsigned width, unsigned height)
 	const uint32_t queue_present_support = 1u << context->get_queue_info().family_indices[QUEUE_INDEX_GRAPHICS];
 	device->set_swapchain_queue_family_support(queue_present_support);
 
-	swapchain_images.clear();
-	for (unsigned i = 0; i < num_images; i++)
-		swapchain_images.push_back(dxgi->get_vulkan_image(i));
-
+	swapchain_images = { dxgi->get_vulkan_image() };
 	device->init_swapchain(swapchain_images, swapchain_width, swapchain_height,
 	                       swapchain_surface_format.format,
 	                       swapchain_current_prerotate,
-	                       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+	                       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 
 	platform->event_swapchain_destroyed();
 	platform->event_swapchain_created(device.get(), swapchain, swapchain_width, swapchain_height,
@@ -595,9 +592,10 @@ bool WSI::begin_frame_dxgi()
 
 	while (!acquire)
 	{
-		if (!dxgi->acquire(acquire, swapchain_index))
+		if (!dxgi->acquire(acquire))
 			return false;
 
+		swapchain_index = 0;
 		acquire->signal_external();
 		has_acquired_swapchain_index = true;
 

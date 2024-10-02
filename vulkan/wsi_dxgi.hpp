@@ -42,10 +42,10 @@ public:
 	~DXGIInteropSwapchain();
 
 	bool init_swapchain(HWND hwnd, VkSurfaceFormatKHR format, unsigned width, unsigned height, unsigned count);
-	VkImage get_vulkan_image(unsigned index) const;
+	VkImage get_vulkan_image() const;
 	VkSurfaceFormatKHR get_current_surface_format() const;
 
-	bool acquire(Semaphore &acquire_semaphore, uint32_t &index);
+	bool acquire(Semaphore &acquire_semaphore);
 	bool present(Semaphore release_semaphore, bool vsync);
 	bool wait_latency(unsigned latency_frames);
 
@@ -69,10 +69,11 @@ private:
 	{
 		ComPtr<ID3D12CommandAllocator> allocator;
 		ComPtr<ID3D12Resource> backbuffer;
-		ImageHandle vulkan_backbuffer;
 		uint64_t wait_fence_value = 0;
 	};
 	Util::SmallVector<PerFrameState> backbuffers;
+	ComPtr<ID3D12Resource> blit_backbuffer;
+	ImageHandle vulkan_backbuffer;
 
 	bool setup_per_frame_state(PerFrameState &state, unsigned index, unsigned width, unsigned height, VkFormat format);
 	void reset_backbuffer_state();

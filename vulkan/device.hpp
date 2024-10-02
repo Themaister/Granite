@@ -217,7 +217,7 @@ public:
 	void wait_shader_caches();
 
 	void init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format,
-	                    VkSurfaceTransformFlagBitsKHR transform, VkImageUsageFlags usage);
+	                    VkSurfaceTransformFlagBitsKHR transform, VkImageUsageFlags usage, VkImageLayout layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	void set_swapchain_queue_family_support(uint32_t queue_family_support);
 	bool can_touch_swapchain_in_command_buffer(CommandBuffer::Type type) const;
 	void init_external_swapchain(const std::vector<ImageHandle> &swapchain_images);

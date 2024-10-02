@@ -2140,7 +2140,7 @@ ImageHandle Device::wrap_image(const ImageCreateInfo &info, VkImage image)
 }
 
 void Device::init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format,
-                            VkSurfaceTransformFlagBitsKHR transform, VkImageUsageFlags usage)
+                            VkSurfaceTransformFlagBitsKHR transform, VkImageUsageFlags usage, VkImageLayout layout)
 {
 	DRAIN_FRAME_LOCK();
 	wsi.swapchain.clear();
@@ -2177,7 +2177,7 @@ void Device::init_swapchain(const std::vector<VkImage> &swapchain_images, unsign
 		backbuffer->set_surface_transform(transform);
 		wsi.swapchain.push_back(backbuffer);
 		set_name(*backbuffer, "backbuffer");
-		backbuffer->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+		backbuffer->set_swapchain_layout(layout);
 	}
 }
 

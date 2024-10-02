@@ -176,10 +176,9 @@ bool DXGIInteropSwapchain::init_interop_device(Device &vk_device_)
 	return true;
 }
 
-VkImage DXGIInteropSwapchain::get_vulkan_image(unsigned index) const
+VkImage DXGIInteropSwapchain::get_vulkan_image() const
 {
-	VK_ASSERT(index < backbuffers.size());
-	return backbuffers[index].vulkan_backbuffer->get_image();
+	return vulkan_backbuffer->get_image();
 }
 
 static DXGI_FORMAT convert_vk_format(VkFormat fmt)
@@ -236,31 +235,6 @@ bool DXGIInteropSwapchain::setup_per_frame_state(PerFrameState &state, unsigned 
 		return false;
 	}
 
-	ExternalHandle imported_image;
-	imported_image.memory_handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT;
-
-	if (FAILED(hr = device->CreateSharedHandle(
-	               state.backbuffer.Get(), nullptr,
-	               GENERIC_ALL, nullptr, &imported_image.handle)))
-	{
-		LOGE("Failed to create shared handle, hr #%x.\n", unsigned(hr));
-		return false;
-	}
-
-	auto image_info = ImageCreateInfo::render_target(width, height, format);
-	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-	image_info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	image_info.misc = IMAGE_MISC_EXTERNAL_MEMORY_BIT;
-	image_info.external = imported_image;
-
-	state.vulkan_backbuffer = vk_device->create_image(image_info);
-	if (!state.vulkan_backbuffer)
-	{
-		LOGE("Failed to create shared Vulkan image, hr #%x.\n", unsigned(hr));
-		return false;
-	}
-	state.vulkan_backbuffer->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-
 	if (FAILED(hr = device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
 	                                               IID_PPV_ARGS(&state.allocator))))
 	{
@@ -300,8 +274,7 @@ bool DXGIInteropSwapchain::init_swapchain(HWND hwnd_, VkSurfaceFormatKHR format,
 	BOOL allow_tear = FALSE;
 	if (SUCCEEDED(dxgi_factory->CheckFeatureSupport(
 		DXGI_FEATURE_PRESENT_ALLOW_TEARING,
-		&allow_tear, sizeof(allow_tear)) &&
-	              allow_tear))
+		&allow_tear, sizeof(allow_tear)) && allow_tear))
 	{
 		desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 		allow_tearing = true;
@@ -317,7 +290,7 @@ bool DXGIInteropSwapchain::init_swapchain(HWND hwnd_, VkSurfaceFormatKHR format,
 	if (!swapchain)
 	{
 		if (FAILED(hr = dxgi_factory->CreateSwapChainForHwnd(
-		               queue.Get(), hwnd, &desc, nullptr, nullptr, &swap)))
+				queue.Get(), hwnd, &desc, nullptr, nullptr, &swap)))
 		{
 			LOGE("Failed to create swapchain, hr #%x.\n", unsigned(hr));
 			return false;
@@ -393,6 +366,52 @@ bool DXGIInteropSwapchain::init_swapchain(HWND hwnd_, VkSurfaceFormatKHR format,
 		if (!setup_per_frame_state(backbuffers[i], i, width, height, format.format))
 			return false;
 
+	ExternalHandle imported_image;
+	imported_image.memory_handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT;
+
+	D3D12_RESOURCE_DESC blit_desc = {};
+	blit_desc.Width = width;
+	blit_desc.Height = height;
+	blit_desc.Format = desc.Format;
+	blit_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+	blit_desc.SampleDesc.Count = 1;
+	blit_desc.DepthOrArraySize = 1;
+	blit_desc.MipLevels = 1;
+	blit_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	blit_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+	D3D12_HEAP_PROPERTIES heap_props = {};
+	heap_props.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+	blit_backbuffer.Reset();
+	if (FAILED(hr = device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_SHARED, &blit_desc,
+	                                                D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&blit_backbuffer))))
+	{
+		LOGE("Failed to create blit render target, hr #%x.\n", unsigned(hr));
+		return false;
+	}
+
+	if (FAILED(hr = device->CreateSharedHandle(blit_backbuffer.Get(), nullptr, GENERIC_ALL, nullptr,
+	                                           &imported_image.handle)))
+	{
+		LOGE("Failed to create shared handle, hr #%x.\n", unsigned(hr));
+		return false;
+	}
+
+	auto image_info = ImageCreateInfo::render_target(width, height, format.format);
+	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	image_info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	image_info.misc = IMAGE_MISC_EXTERNAL_MEMORY_BIT;
+	image_info.external = imported_image;
+
+	vulkan_backbuffer = vk_device->create_image(image_info);
+	if (!vulkan_backbuffer)
+	{
+		LOGE("Failed to create shared Vulkan image, hr #%x.\n", unsigned(hr));
+		return false;
+	}
+	vulkan_backbuffer->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
 	return true;
 }
 
@@ -421,41 +440,10 @@ bool DXGIInteropSwapchain::wait_latency(unsigned latency_frames)
 	return true;
 }
 
-bool DXGIInteropSwapchain::acquire(Semaphore &acquire_semaphore, uint32_t &index)
+bool DXGIInteropSwapchain::acquire(Semaphore &acquire_semaphore)
 {
-	index = swapchain->GetCurrentBackBufferIndex();
-	auto &per_frame = backbuffers[index];
-	fence->SetEventOnCompletion(per_frame.wait_fence_value, nullptr);
-
-	if (FAILED(per_frame.allocator->Reset()))
-	{
-		LOGE("Failed to reset command allocator.\n");
-		return false;
-	}
-
-	list->Reset(per_frame.allocator.Get(), nullptr);
-
-	// Somewhat dubious idea, but if the barrier has completed, this should function as an acquire
-	// so that Vulkan can start rendering into the image.
-	D3D12_RESOURCE_BARRIER barrier = {};
-	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-	barrier.Transition.pResource = per_frame.backbuffer.Get();
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	list->ResourceBarrier(1, &barrier);
-	list->DiscardResource(per_frame.backbuffer.Get(), nullptr);
-
-	if (FAILED(list->Close()))
-	{
-		LOGE("Failed to close command list.\n");
-		return false;
-	}
-
-	ID3D12CommandList *cmdlist = list.Get();
-	queue->ExecuteCommandLists(1, &cmdlist);
+	// AMD workaround. Driver freaks out if trying to wait for D3D12 timeline value of 0.
 	queue->Signal(fence.Get(), ++fence_value);
-	per_frame.wait_fence_value = fence_value;
 
 	acquire_semaphore = vk_device->request_timeline_semaphore_as_binary(*vk_fence, fence_value);
 	return true;
@@ -470,7 +458,7 @@ bool DXGIInteropSwapchain::present(Vulkan::Semaphore release_semaphore, bool vsy
 	                              VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, true);
 
 	auto cmd = vk_device->request_command_buffer();
-	cmd->release_image_barrier(*per_frame.vulkan_backbuffer,
+	cmd->release_image_barrier(*vulkan_backbuffer,
 	                           VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_GENERAL,
 	                           VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0);
 
@@ -479,13 +467,32 @@ bool DXGIInteropSwapchain::present(Vulkan::Semaphore release_semaphore, bool vsy
 	vk_device->submit_empty(CommandBuffer::Type::Generic, nullptr, timeline_signal.get());
 	queue->Wait(fence.Get(), fence_value);
 
+	fence->SetEventOnCompletion(per_frame.wait_fence_value, nullptr);
+
+	if (FAILED(per_frame.allocator->Reset()))
+	{
+		LOGE("Failed to reset command allocator.\n");
+		return false;
+	}
+
 	list->Reset(per_frame.allocator.Get(), nullptr);
 
 	D3D12_RESOURCE_BARRIER barrier = {};
 	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 	barrier.Transition.pResource = per_frame.backbuffer.Get();
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+	list->ResourceBarrier(1, &barrier);
+
+	D3D12_TEXTURE_COPY_LOCATION dst = {}, src = {};
+	dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+	src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+	dst.pResource = per_frame.backbuffer.Get();
+	src.pResource = blit_backbuffer.Get();
+	list->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+
+	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
 	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 	list->ResourceBarrier(1, &barrier);
 

@@ -1052,6 +1052,12 @@ void WSI::set_backbuffer_format(BackbufferFormat format)
 	}
 }
 
+void WSI::set_custom_backbuffer_format(VkSurfaceFormatKHR format)
+{
+	custom_backbuffer_format = format;
+	set_backbuffer_format(BackbufferFormat::Custom);
+}
+
 void WSI::set_backbuffer_srgb(bool enable)
 {
 	set_backbuffer_format(enable ? BackbufferFormat::sRGB : BackbufferFormat::UNORM);
@@ -1115,6 +1121,9 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 
 VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats, BackbufferFormat desired_format) const
 {
+	if (desired_format == BackbufferFormat::Custom)
+		return custom_backbuffer_format;
+
 	size_t format_count = formats.size();
 	VkSurfaceFormatKHR format = { VK_FORMAT_UNDEFINED };
 

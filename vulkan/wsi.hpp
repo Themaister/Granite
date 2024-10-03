@@ -158,7 +158,8 @@ enum class BackbufferFormat
 	sRGB,
 	HDR10,
 	DisplayP3,
-	UNORMPassthrough
+	UNORMPassthrough,
+	Custom
 };
 
 class WSI
@@ -168,6 +169,8 @@ public:
 	void set_platform(WSIPlatform *platform);
 	void set_present_mode(PresentMode mode);
 	void set_backbuffer_format(BackbufferFormat format);
+	// This is mostly for debug/development, ignores exposed formats and forces it.
+	void set_custom_backbuffer_format(VkSurfaceFormatKHR format);
 
 	// Latency is normally pretty low, but this aims to target
 	// really low latency. Only suitable for cases where rendering loads are extremely simple.
@@ -338,6 +341,7 @@ private:
 
 	BackbufferFormat backbuffer_format = BackbufferFormat::sRGB;
 	BackbufferFormat current_backbuffer_format = BackbufferFormat::sRGB;
+	VkSurfaceFormatKHR custom_backbuffer_format = {};
 
 	bool support_prerotate = false;
 	VkSurfaceTransformFlagBitsKHR swapchain_current_prerotate = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;

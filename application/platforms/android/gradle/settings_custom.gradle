@@ -1,0 +1,5 @@
+include 'granite:android'
+project(':granite:android').projectDir = file('$$GRANITE_ANDROID_ACTIVITY_PATH$$')
+include 'custom:android'
+project(':custom:android').projectDir = file('$$ANDROID_ACTIVITY_PATH$$')
+include '$$APP$$'

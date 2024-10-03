@@ -2,6 +2,6 @@
     <!-- Base application theme. -->
     <style name="Application.Fullscreen" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowFullscreen">true</item>
-        <item name="android:windowContentOverlay">@null</item>"
+        <item name="android:windowContentOverlay">@null</item>
     </style>
 </resources>

@@ -88,6 +88,10 @@ def main():
     parser.add_argument('--swappy',
                         help = 'Add Swappy support',
                         action = 'store_true')
+    parser.add_argument('--activity-name',
+                        help = 'Use custom activity name')
+    parser.add_argument('--activity-path',
+                        help = 'Path to custom Android activity code')
 
     args = parser.parse_args()
     abis = ['arm64-v8a'] if args.abis is None else args.abis
@@ -99,7 +103,7 @@ def main():
 
     manifest = os.path.join(gradle_base, 'AndroidManifest.xml')
     build_gradle = os.path.join(gradle_base, 'build.gradle')
-    settings_gradle = os.path.join(gradle_base, 'settings.gradle')
+    settings_gradle = os.path.join(gradle_base, 'settings_custom.gradle' if args.activity_name else 'settings.gradle')
     toplevel_gradle = os.path.join(gradle_base, 'toplevel.build.gradle')
     gradle_properties = os.path.join(gradle_base, 'gradle.properties')
     if (not os.path.isfile(manifest)) or \
@@ -122,10 +126,12 @@ def main():
 
     # Write out AndroidManifest.xml
     with open(manifest, 'r') as f:
+        activity_name = args.activity_name if args.activity_name else 'net.themaister.granite.GraniteActivity'
         manifest_data = f.read()
         manifest_data = manifest_data \
             .replace('$$ICON$$', args.activity_icon_drawable) \
             .replace('$$NATIVE_TARGET$$', args.native_target) \
+            .replace('$$ACTIVITY_NAME$$', activity_name) \
             .replace('$$VERSION_CODE$$', args.version_code) \
             .replace('$$VERSION_NAME$$', args.version_name)
 
@@ -177,7 +183,8 @@ def main():
             .replace('$$PHYSICS$$', 'ON' if args.physics else 'OFF') \
             .replace('$$SHADER_OPTIMIZE$$', 'ON' if args.optimize else 'OFF') \
             .replace('$$FOSSILIZE$$', 'ON' if args.fossilize else 'OFF') \
-            .replace('$$SWAPPY$$', 'ON' if args.swappy else 'OFF')
+            .replace('$$SWAPPY$$', 'ON' if args.swappy else 'OFF') \
+            .replace('$$EXTRA_DEPENDENCIES$$', "api project(':custom:android')" if args.activity_name else '')
 
         with open(target_build_gradle, 'w') as dump_file:
             print(data, file = dump_file)
@@ -195,6 +202,10 @@ def main():
         data = data \
             .replace('$$APP$$', granite_app) \
             .replace('$$GRANITE_ANDROID_ACTIVITY_PATH$$', granite_android_activity)
+
+        if args.activity_path:
+            android_activity = find_relative_path(output_settings_gradle, args.activity_path)
+            data = data.replace('$$ANDROID_ACTIVITY_PATH$$', android_activity)
 
         with open(output_settings_gradle, 'w') as dump_file:
             print(data, file = dump_file)

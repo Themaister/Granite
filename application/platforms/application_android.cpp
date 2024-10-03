@@ -251,6 +251,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 
 	void destroy_swapchain_resources(VkSwapchainKHR swapchain) override
 	{
+		(void)swapchain;
 #if defined(HAVE_SWAPPY)
 		if (current_device && swapchain)
 		{

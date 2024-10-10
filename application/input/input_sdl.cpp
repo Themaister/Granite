@@ -51,12 +51,9 @@ void InputTrackerSDL::update(InputTracker &tracker)
 
 	for (int i = 0; i < int(InputTracker::Joypads); i++)
 	{
-		LOGI("SDL polling!\n");
 		auto *pad = pads[i];
 		if (!pad)
 			continue;
-
-		LOGI("SDL polling #2!\n");
 
 		static const struct
 		{

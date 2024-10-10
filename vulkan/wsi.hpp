@@ -349,7 +349,10 @@ private:
 
 	BackbufferFormat backbuffer_format = BackbufferFormat::sRGB;
 	BackbufferFormat current_backbuffer_format = BackbufferFormat::sRGB;
+	VkSurfaceFormatKHR current_custom_backbuffer_format = {};
 	VkSurfaceFormatKHR custom_backbuffer_format = {};
+
+	bool has_backbuffer_format_delta() const;
 
 	bool support_prerotate = false;
 	VkSurfaceTransformFlagBitsKHR swapchain_current_prerotate = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;

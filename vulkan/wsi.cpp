@@ -931,7 +931,7 @@ bool WSI::end_frame()
 
 		// Re-init swapchain.
 		if (present_mode != current_present_mode ||
-		    backbuffer_format != current_backbuffer_format ||
+		    has_backbuffer_format_delta() ||
 		    extra_usage != current_extra_usage ||
 		    compression.type != current_compression.type ||
 		    compression.fixed_rates != current_compression.fixed_rates)
@@ -940,12 +940,25 @@ bool WSI::end_frame()
 			current_backbuffer_format = backbuffer_format;
 			current_extra_usage = extra_usage;
 			current_compression = compression;
+			current_custom_backbuffer_format = custom_backbuffer_format;
 			update_framebuffer(swapchain_width, swapchain_height);
 		}
 	}
 
 	nonblock_delete_swapchains();
 	return true;
+}
+
+bool WSI::has_backbuffer_format_delta() const
+{
+	bool has_format_delta = backbuffer_format != current_backbuffer_format;
+	if (!has_format_delta && backbuffer_format == BackbufferFormat::Custom)
+	{
+		has_format_delta = current_custom_backbuffer_format.format != custom_backbuffer_format.format ||
+		                   current_custom_backbuffer_format.colorSpace != custom_backbuffer_format.colorSpace;
+	}
+
+	return has_format_delta;
 }
 
 void WSI::update_framebuffer(unsigned width, unsigned height)
@@ -1049,9 +1062,11 @@ void WSI::set_extra_usage_flags(VkImageUsageFlags usage)
 void WSI::set_backbuffer_format(BackbufferFormat format)
 {
 	backbuffer_format = format;
-	if (!has_acquired_swapchain_index && backbuffer_format != current_backbuffer_format)
+
+	if (!has_acquired_swapchain_index && has_backbuffer_format_delta())
 	{
 		current_backbuffer_format = backbuffer_format;
+		current_custom_backbuffer_format = custom_backbuffer_format;
 		update_framebuffer(swapchain_width, swapchain_height);
 	}
 }
@@ -1141,7 +1156,7 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats, BackbufferFormat desired_format) const
 {
 	if (desired_format == BackbufferFormat::Custom)
-		return custom_backbuffer_format;
+		return current_custom_backbuffer_format;
 
 	size_t format_count = formats.size();
 	VkSurfaceFormatKHR format = { VK_FORMAT_UNDEFINED };

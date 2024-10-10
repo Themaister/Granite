@@ -930,12 +930,16 @@ bool WSI::end_frame()
 		}
 
 		// Re-init swapchain.
-		if (present_mode != current_present_mode || backbuffer_format != current_backbuffer_format ||
-		    extra_usage != current_extra_usage)
+		if (present_mode != current_present_mode ||
+		    backbuffer_format != current_backbuffer_format ||
+		    extra_usage != current_extra_usage ||
+		    compression.type != current_compression.type ||
+		    compression.fixed_rates != current_compression.fixed_rates)
 		{
 			current_present_mode = present_mode;
 			current_backbuffer_format = backbuffer_format;
 			current_extra_usage = extra_usage;
+			current_compression = compression;
 			update_framebuffer(swapchain_width, swapchain_height);
 		}
 	}
@@ -1048,6 +1052,21 @@ void WSI::set_backbuffer_format(BackbufferFormat format)
 	if (!has_acquired_swapchain_index && backbuffer_format != current_backbuffer_format)
 	{
 		current_backbuffer_format = backbuffer_format;
+		update_framebuffer(swapchain_width, swapchain_height);
+	}
+}
+
+void WSI::set_image_compression_control(const ImageCompression &comp)
+{
+	if (device && !device->get_device_features().image_compression_control_swapchain_features.imageCompressionControlSwapchain)
+		return;
+
+	compression = comp;
+	if (!has_acquired_swapchain_index &&
+	    (compression.type != current_compression.type ||
+	     compression.fixed_rates != current_compression.fixed_rates))
+	{
+		current_compression = compression;
 		update_framebuffer(swapchain_width, swapchain_height);
 	}
 }
@@ -1211,6 +1230,8 @@ struct SurfaceInfo
 	VkSurfaceCapabilitiesKHR surface_capabilities;
 	std::vector<VkSurfaceFormatKHR> formats;
 	VkSwapchainPresentModesCreateInfoEXT present_modes_info;
+	VkImageCompressionControlEXT compression_control;
+	VkImageCompressionFixedRateFlagsEXT compression_control_fixed_rates;
 	std::vector<VkPresentModeKHR> present_mode_compat_group;
 	const void *swapchain_pnext;
 #ifdef _WIN32
@@ -1221,6 +1242,7 @@ struct SurfaceInfo
 
 static bool init_surface_info(Device &device, WSIPlatform &platform,
 	VkSurfaceKHR surface, BackbufferFormat format,
+	const WSI::ImageCompression &compression,
 	PresentMode present_mode, SurfaceInfo &info, bool low_latency_mode_enable)
 {
 	if (surface == VK_NULL_HANDLE)
@@ -1489,14 +1511,41 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 
 	info.present_mode.presentMode = swapchain_present_mode;
 
+	if (ext.image_compression_control_swapchain_features.imageCompressionControlSwapchain &&
+	    compression.type != VK_IMAGE_COMPRESSION_DEFAULT_EXT)
+	{
+		// There is no VU that we cannot just pass in whatever we want here,
+		// but we might not be honored if we pass in something unsupported.
+		// That's fine for now.
+		info.compression_control = { VK_STRUCTURE_TYPE_IMAGE_COMPRESSION_CONTROL_EXT };
+		info.compression_control.pNext = info.swapchain_pnext;
+		info.compression_control.flags = compression.type;
+		if (compression.type == VK_IMAGE_COMPRESSION_FIXED_RATE_EXPLICIT_EXT)
+		{
+			info.compression_control_fixed_rates = compression.fixed_rates;
+			info.compression_control.pFixedRateFlags = &info.compression_control_fixed_rates;
+			info.compression_control.compressionControlPlaneCount = 1;
+			LOGI("Using fixed-rate compression for swapchain (flags #%08x).\n", compression.fixed_rates);
+		}
+		else if (compression.type == VK_IMAGE_COMPRESSION_FIXED_RATE_DEFAULT_EXT)
+			LOGI("Using default fixed-rate compression for swapchain.\n");
+		else if (compression.type == VK_IMAGE_COMPRESSION_DISABLED_EXT)
+			LOGI("Disabling compression for swapchain.\n");
+
+		info.swapchain_pnext = &info.compression_control;
+	}
+
 	return true;
 }
 
 WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 {
 	SurfaceInfo surface_info = {};
-	if (!init_surface_info(*device, *platform, surface, current_backbuffer_format, current_present_mode, surface_info, low_latency_mode_enable))
+	if (!init_surface_info(*device, *platform, surface, current_backbuffer_format, current_compression,
+	                       current_present_mode, surface_info, low_latency_mode_enable))
+	{
 		return SwapchainError::Error;
+	}
 	const auto &caps = surface_info.surface_capabilities;
 
 	// Happens on Windows when you minimize a window.

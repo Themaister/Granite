@@ -172,6 +172,13 @@ public:
 	// This is mostly for debug/development, ignores exposed formats and forces it.
 	void set_custom_backbuffer_format(VkSurfaceFormatKHR format);
 
+	struct ImageCompression
+	{
+		VkImageCompressionFlagBitsEXT type = VK_IMAGE_COMPRESSION_DEFAULT_EXT;
+		VkImageCompressionFixedRateFlagsEXT fixed_rates = 0;
+	};
+	void set_image_compression_control(const ImageCompression &compression);
+
 	// Latency is normally pretty low, but this aims to target
 	// really low latency. Only suitable for cases where rendering loads are extremely simple.
 	void set_low_latency_mode(bool enable);
@@ -317,6 +324,7 @@ private:
 	VkImageUsageFlags current_extra_usage = 0;
 	VkImageUsageFlags extra_usage = 0;
 	bool swapchain_is_suboptimal = false;
+	ImageCompression current_compression, compression;
 
 	enum class SwapchainError
 	{

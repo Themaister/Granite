@@ -58,6 +58,7 @@ public:
 
 	void render(Vulkan::CommandBuffer &cmd);
 	Font &get_font(FontSize size);
+	void reconfigure_font(FontSize size, const char *ttf, unsigned pix);
 
 	void reset_children();
 	void remove_child(Widget *widget);

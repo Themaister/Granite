@@ -95,6 +95,12 @@ void UIManager::render(Vulkan::CommandBuffer &cmd)
 	               vec3(cmd.get_viewport().width, cmd.get_viewport().height, max_layers));
 }
 
+void UIManager::reconfigure_font(FontSize size, const char *ttf, unsigned pix)
+{
+	auto &font = fonts[Util::ecast(size)];
+	font.reset(new Font(ttf, pix));
+}
+
 Font& UIManager::get_font(FontSize size)
 {
 	auto &font = fonts[Util::ecast(size)];

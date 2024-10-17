@@ -91,7 +91,7 @@ public:
 	void render_text(const Font &font, const char *text,
 	                 const vec3 &offset, const vec2 &size,
 	                 const vec4 &color = vec4(1.0f),
-	                 Font::Alignment alignment = Font::Alignment::TopLeft, float scale = 1.0f);
+	                 Font::Alignment alignment = Font::Alignment::TopLeft);
 
 	void flush(Vulkan::CommandBuffer &cmd, const vec3 &camera_pos, const vec3 &camera_size);
 	void render_line_strip(const vec2 *offsets, float layer, unsigned count, const vec4 &color);

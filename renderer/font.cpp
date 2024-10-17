@@ -86,7 +86,7 @@ Font::Font(const std::string &path, unsigned size)
 	EVENT_MANAGER_REGISTER_LATCH(Font, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
-vec2 Font::get_text_geometry(const char *text, float) const
+vec2 Font::get_text_geometry(const char *text) const
 {
 	if (!*text)
 		return vec2(0);
@@ -168,12 +168,12 @@ vec2 Font::get_aligned_offset(Alignment alignment, vec2 text_geometry, vec2 targ
 void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset, const vec2 &size,
                        const vec2 &clip_offset, const vec2 &clip_size,
                        const vec4 &color,
-                       Alignment alignment, float scale) const
+                       Alignment alignment) const
 {
 	if (!*text)
 		return;
 
-	vec2 geometry = get_text_geometry(text, scale);
+	vec2 geometry = get_text_geometry(text);
 	vec2 alignment_offset = get_aligned_offset(alignment, geometry, size);
 
 	size_t len = strlen(text);

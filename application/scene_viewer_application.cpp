@@ -1425,19 +1425,19 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 	Font::Alignment alignment = Font::Alignment::TopRight;
 
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), avg_text, offset, size, color,
-	                          alignment, 1.0f);
+	                          alignment);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), min_text,
-	                          offset + vec3(0.0f, 20.0f, 0.0f), size, color, alignment, 1.0f);
+	                          offset + vec3(0.0f, 20.0f, 0.0f), size, color, alignment);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), max_text,
-	                          offset + vec3(0.0f, 40.0f, 0.0f), size, color, alignment, 1.0f);
+	                          offset + vec3(0.0f, 40.0f, 0.0f), size, color, alignment);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), colorspace_text,
-	                          offset + vec3(0.0f, 65.0f, 0.0f), size, color, alignment, 1.0f);
+	                          offset + vec3(0.0f, 65.0f, 0.0f), size, color, alignment);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), pos_text,
-	                          offset + vec3(0.0f, 80.0f, 0.0f), size, color, alignment, 1.0f);
+	                          offset + vec3(0.0f, 80.0f, 0.0f), size, color, alignment);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), rot_text,
-	                          offset + vec3(0.0f, 95.0f, 0.0f), size, color, alignment, 1.0f);
+	                          offset + vec3(0.0f, 95.0f, 0.0f), size, color, alignment);
 	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), tex_text,
-	                          offset + vec3(0.0f, 110.0f, 0.0f), size, color, alignment, 1.0f);
+	                          offset + vec3(0.0f, 110.0f, 0.0f), size, color, alignment);
 
 	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
 	device.get_memory_budget(budgets);
@@ -1451,7 +1451,7 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 		        double(budgets[i].max_size) / double(1024 * 1024));
 		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), heap_text,
 		                          offset + vec3(0.0f, 145.0f + 15.0f * float(i), 0.0f),
-		                          size, color, alignment, 1.0f);
+		                          size, color, alignment);
 	}
 
 	flat_renderer.flush(cmd, vec3(0.0f), vec3(cmd.get_viewport().width, cmd.get_viewport().height, 1.0f));

@@ -177,14 +177,14 @@ struct HDRTest : Granite::Application, Granite::EventHandler
 		{
 			snprintf(text, sizeof(text), "HDR10 (space to toggle): %s", hdr10 ? "ON" : "OFF");
 			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), text, offset, size,
-			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
+			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft);
 		}
 
 		{
 			snprintf(text, sizeof(text), "Target nits of gradient (Up / Down to change): %d", nits);
 			offset.y += 30.0f;
 			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text, offset, size,
-			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
+			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft);
 		}
 
 		if (hdr10)
@@ -199,7 +199,7 @@ struct HDRTest : Granite::Application, Granite::EventHandler
 		if (hdr10)
 		{
 			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text, offset, size,
-			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
+			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft);
 		}
 
 		// D65 is always assumed in Vulkan. See Table 48. Color Spaces and Attributes.
@@ -225,7 +225,7 @@ struct HDRTest : Granite::Application, Granite::EventHandler
 			snprintf(text, sizeof(text), "sRGB gradient [0, 100] nits (sRGB gamma curve)");
 			offset.y += 50.0f;
 			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text, offset, size,
-			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
+			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft);
 
 			offset.y += 30.0f;
 
@@ -256,7 +256,7 @@ struct HDRTest : Granite::Application, Granite::EventHandler
 		{
 			snprintf(text, sizeof(text), "ST.2084 gradient [0, %d] nits (sRGB gamma curve)", nits);
 			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text, offset, size,
-			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
+			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft);
 			offset.y += 30.0f;
 
 			vec2 vertex_coords[6] = { { 1280.0f, offset.y },
@@ -291,7 +291,7 @@ struct HDRTest : Granite::Application, Granite::EventHandler
 		{
 			snprintf(text, sizeof(text), "sRGB/BT.709 gradient saturated triangle (%d nits)", nits);
 			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text, offset, size,
-			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
+			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft);
 			vec2 vertex_coords[3] = { { 400.0f, offset.y + 30.0f },
 			                          { 400.0f - 350.0f, offset.y + 350.0f },
 			                          { 400.0f + 350.0f, offset.y + 350.0f } };
@@ -320,7 +320,7 @@ struct HDRTest : Granite::Application, Granite::EventHandler
 		{
 			snprintf(text, sizeof(text), "ST.2020 gradient saturated triangle (%d nits)", nits);
 			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), text, vec3(800.0f, 0.0f, 0.0f) + offset, size,
-			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft, 1.0f);
+			                 vec4(nit400_reference, nit400_reference, 0.0f, 1.0f), Font::Alignment::TopLeft);
 			vec2 vertex_coords[3] = { { 1200.0f, offset.y + 30.0f },
 			                          { 1200.0f - 350.0f, offset.y + 350.0f },
 			                          { 1200.0f + 350.0f, offset.y + 350.0f } };

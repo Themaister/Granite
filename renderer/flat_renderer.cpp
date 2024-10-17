@@ -303,13 +303,13 @@ void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned c
 }
 
 void FlatRenderer::render_text(const Font &font, const char *text, const vec3 &offset, const vec2 &size, const vec4 &color,
-                               Font::Alignment alignment, float scale)
+                               Font::Alignment alignment)
 {
 	if (color.w <= 0.0f)
 		return;
 	font.render_text(queue, text, offset, size,
 	                 scissor_stack.back().offset, scissor_stack.back().size,
-	                 color, alignment, scale);
+	                 color, alignment);
 }
 
 void FlatRenderer::push_sprite(const SpriteInfo &info)

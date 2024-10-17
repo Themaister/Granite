@@ -52,10 +52,9 @@ public:
 	                 const vec3 &offset, const vec2 &size,
 	                 const vec2 &clip_offset, const vec2 &clip_size,
 	                 const vec4 &color,
-	                 Alignment alignment = Alignment::TopLeft, float scale = 1.0f) const;
+	                 Alignment alignment = Alignment::TopLeft) const;
 
-	vec2 get_text_geometry(const char *text,
-	                       float scale = 1.0f) const;
+	vec2 get_text_geometry(const char *text) const;
 
 	vec2 get_aligned_offset(Alignment alignment, vec2 text_geometry, vec2 target_geometry) const;
 

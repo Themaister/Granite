@@ -111,15 +111,15 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		snprintf(max_text, sizeof(max_text), "Maximum frame time: %.3f ms", 1000.0 * max_time);
 		flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large),
 		                 avg_text, offset, size, vec4(1.0f, 1.0f, 0.0f, 1.0f),
-		                 Font::Alignment::TopRight, 1.0f);
+		                 Font::Alignment::TopRight);
 		offset.y += 30.0f;
 		flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
 		                 min_text, offset, size, vec4(1.0f, 1.0f, 0.0f, 1.0f),
-		                 Font::Alignment::TopRight, 1.0f);
+		                 Font::Alignment::TopRight);
 		offset.y += 30.0f;
 		flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
 		                 max_text, offset, size, vec4(1.0f, 1.0f, 0.0f, 1.0f),
-		                 Font::Alignment::TopRight, 1.0f);
+		                 Font::Alignment::TopRight);
 
 		offset = { cmd->get_viewport().width - 410.0f, cmd->get_viewport().height - 110.0f, 0.0f };
 		size = { 400.0f, 100.0f };
@@ -148,7 +148,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		snprintf(elapsed_text, sizeof(elapsed_text), "Elapsed: %.3f, Frame: %u", elapsed_time, counter++);
 		flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large),
 						 elapsed_text, { 0, 0, 0 }, { cmd->get_viewport().width, cmd->get_viewport().height },
-						 vec4(1.0f), Font::Alignment::Center, 1.0f);
+						 vec4(1.0f), Font::Alignment::Center);
 
 		flat.flush(*cmd, vec3(0.0f), { cmd->get_viewport().width, cmd->get_viewport().height, 5.0f });
 

@@ -1155,9 +1155,6 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 
 VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats, BackbufferFormat desired_format) const
 {
-	if (desired_format == BackbufferFormat::Custom)
-		return current_custom_backbuffer_format;
-
 	size_t format_count = formats.size();
 	VkSurfaceFormatKHR format = { VK_FORMAT_UNDEFINED };
 
@@ -1177,7 +1174,16 @@ VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurface
 		if (!device->image_format_is_supported(formats[i].format, features))
 			continue;
 
-		if (desired_format == BackbufferFormat::DisplayP3)
+		if (desired_format == BackbufferFormat::Custom)
+		{
+			if (formats[i].colorSpace == current_custom_backbuffer_format.colorSpace &&
+			    formats[i].format == current_custom_backbuffer_format.format)
+			{
+				format = formats[i];
+				break;
+			}
+		}
+		else if (desired_format == BackbufferFormat::DisplayP3)
 		{
 			if (formats[i].colorSpace == VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT &&
 			    (formats[i].format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ||
@@ -1586,7 +1592,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	if (surface_format.format == VK_FORMAT_UNDEFINED &&
 	    (attempt_backbuffer_format == BackbufferFormat::HDR10 ||
 	     attempt_backbuffer_format == BackbufferFormat::DisplayP3 ||
-	     attempt_backbuffer_format == BackbufferFormat::UNORMPassthrough))
+	     attempt_backbuffer_format == BackbufferFormat::UNORMPassthrough ||
+	     attempt_backbuffer_format == BackbufferFormat::Custom))
 	{
 		LOGW("Could not find suitable present format for HDR. Attempting fallback to UNORM.\n");
 		attempt_backbuffer_format = BackbufferFormat::UNORM;

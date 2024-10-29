@@ -108,11 +108,10 @@ struct DeviceFeatures
 	VkPhysicalDeviceRGBA10X6FormatsFeaturesEXT rgba10x6_formats_features = {};
 	VkPhysicalDeviceImageCompressionControlFeaturesEXT image_compression_control_features = {};
 	VkPhysicalDeviceImageCompressionControlSwapchainFeaturesEXT image_compression_control_swapchain_features = {};
+	VkPhysicalDeviceDeviceGeneratedCommandsFeaturesEXT device_generated_commands_features = {};
+	VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT device_generated_commands_properties = {};
 
 	// Vendor
-	VkPhysicalDeviceDeviceGeneratedCommandsFeaturesNV device_generated_commands_features = {};
-	VkPhysicalDeviceDeviceGeneratedCommandsComputeFeaturesNV device_generated_commands_compute_features = {};
-	VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV device_generated_commands_properties = {};
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};
 
 	// Fallback feature structs (Vulkan 1.1)

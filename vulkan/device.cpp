@@ -540,9 +540,13 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 }
 
 const IndirectLayout *Device::request_indirect_layout(
-		const Vulkan::IndirectLayoutToken *tokens, uint32_t num_tokens, uint32_t stride)
+		const PipelineLayout *layout, const Vulkan::IndirectLayoutToken *tokens,
+		uint32_t num_tokens, uint32_t stride)
 {
 	Hasher h;
+
+	h.u64(layout ? layout->get_hash() : 0);
+
 	for (uint32_t i = 0; i < num_tokens; i++)
 		h.u32(Util::ecast(tokens[i].type));
 
@@ -551,7 +555,6 @@ const IndirectLayout *Device::request_indirect_layout(
 		h.u32(tokens[i].offset);
 		if (tokens[i].type == IndirectLayoutToken::Type::PushConstant)
 		{
-			h.u64(tokens[i].data.push.layout->get_hash());
 			h.u32(tokens[i].data.push.offset);
 			h.u32(tokens[i].data.push.range);
 		}
@@ -567,7 +570,7 @@ const IndirectLayout *Device::request_indirect_layout(
 	LOCK_CACHE();
 	auto *ret = indirect_layouts.find(hash);
 	if (!ret)
-		ret = indirect_layouts.emplace_yield(hash, this, tokens, num_tokens, stride);
+		ret = indirect_layouts.emplace_yield(hash, this, layout, tokens, num_tokens, stride);
 	return ret;
 }
 
@@ -4307,10 +4310,11 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	}
 
 	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+	VkBufferUsageFlags2CreateInfoKHR usage2 = { VK_STRUCTURE_TYPE_BUFFER_USAGE_FLAGS_2_CREATE_INFO_KHR };
 	info.size = create_info.size;
-	info.usage = create_info.usage;
+	usage2.usage = create_info.usage;
 	if (get_device_features().vk12_features.bufferDeviceAddress)
-		info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+		usage2.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.pNext = &external_info;
 
@@ -4318,6 +4322,14 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 
 	uint32_t sharing_indices[QUEUE_INDEX_COUNT];
 	fill_buffer_sharing_indices(info, sharing_indices);
+
+	if (ext.maintenance5_features.maintenance5)
+	{
+		usage2.pNext = info.pNext;
+		info.pNext = &usage2;
+	}
+	else
+		info.usage = VkBufferUsageFlags(usage2.usage);
 
 	VkBuffer buffer;
 	VkMemoryRequirements reqs;
@@ -4439,10 +4451,11 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	}
 
 	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+	VkBufferUsageFlags2CreateInfoKHR usage2 = { VK_STRUCTURE_TYPE_BUFFER_USAGE_FLAGS_2_CREATE_INFO_KHR };
 	info.size = create_info.size;
-	info.usage = create_info.usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	usage2.usage = create_info.usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	if (get_device_features().vk12_features.bufferDeviceAddress)
-		info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+		usage2.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.pNext = create_info.pnext;
 
@@ -4463,7 +4476,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 		    { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_BUFFER_INFO };
 		VkExternalBufferProperties external_buffer_props = { VK_STRUCTURE_TYPE_EXTERNAL_BUFFER_PROPERTIES };
 		external_buffer_props_info.handleType = create_info.external.memory_handle_type;
-		external_buffer_props_info.usage = info.usage;
+		external_buffer_props_info.usage = VkBufferUsageFlags(usage2.usage);
 		external_buffer_props_info.flags = info.flags;
 		vkGetPhysicalDeviceExternalBufferProperties(gpu, &external_buffer_props_info, &external_buffer_props);
 
@@ -4489,6 +4502,14 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 		external_info.pNext = info.pNext;
 		info.pNext = &external_info;
 	}
+
+	if (ext.maintenance5_features.maintenance5)
+	{
+		usage2.pNext = info.pNext;
+		info.pNext = &usage2;
+	}
+	else
+		info.usage = VkBufferUsageFlags(usage2.usage);
 
 	if (table->vkCreateBuffer(device, &info, nullptr, &buffer) != VK_SUCCESS)
 		return BufferHandle(nullptr);

@@ -1489,8 +1489,9 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 			{ VK_STRUCTURE_TYPE_GRAPHICS_SHADER_GROUP_CREATE_INFO_NV };
 	Util::SmallVector<VkPipeline, 64> pipelines;
 
-	if (mode == CompileMode::IndirectBindable)
-		pipe.flags |= VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV;
+	// TODO:
+	//if (mode == CompileMode::IndirectBindable)
+	//	pipe.flags |= VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_EXT;
 
 	if (!compile.program_group.empty())
 	{
@@ -2867,12 +2868,12 @@ void CommandBuffer::dispatch_indirect(const Buffer &buffer, VkDeviceSize offset)
 void CommandBuffer::execute_indirect_commands(
 		const IndirectLayout *indirect_layout, uint32_t sequences,
 		const Vulkan::Buffer &indirect, VkDeviceSize offset,
-		const Vulkan::Buffer *count, size_t count_offset)
+		const Vulkan::Buffer *count, size_t count_offset,
+		CommandBuffer &preprocess)
 {
-	VK_ASSERT((is_compute && indirect_layout->get_bind_point() == VK_PIPELINE_BIND_POINT_COMPUTE) ||
-	          (!is_compute && indirect_layout->get_bind_point() == VK_PIPELINE_BIND_POINT_GRAPHICS));
+	VK_ASSERT((is_compute && (indirect_layout->get_shader_stages() & VK_SHADER_STAGE_COMPUTE_BIT) != 0) ||
+	          (!is_compute && (indirect_layout->get_shader_stages() & VK_SHADER_STAGE_COMPUTE_BIT) == 0));
 	VK_ASSERT(device->get_device_features().device_generated_commands_features.deviceGeneratedCommands);
-	VK_ASSERT(!is_compute || device->get_device_features().device_generated_commands_compute_features.deviceGeneratedCompute);
 
 	if (is_compute)
 	{
@@ -2892,44 +2893,43 @@ void CommandBuffer::execute_indirect_commands(
 	}
 
 	// TODO: Linearly allocate these, but big indirect commands like these
-	// should only be done once per render pass anyways.
-	VkGeneratedCommandsMemoryRequirementsInfoNV generated =
-			{ VK_STRUCTURE_TYPE_GENERATED_COMMANDS_MEMORY_REQUIREMENTS_INFO_NV };
+	// should only be done a few times per render pass anyways.
+	VkGeneratedCommandsMemoryRequirementsInfoEXT generated =
+			{ VK_STRUCTURE_TYPE_GENERATED_COMMANDS_MEMORY_REQUIREMENTS_INFO_EXT };
+	VkGeneratedCommandsPipelineInfoEXT pipeline =
+			{ VK_STRUCTURE_TYPE_GENERATED_COMMANDS_PIPELINE_INFO_EXT };
 	VkMemoryRequirements2 reqs = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
 
-	generated.pipeline = current_pipeline.pipeline;
-	generated.pipelineBindPoint = indirect_layout->get_bind_point();
 	generated.indirectCommandsLayout = indirect_layout->get_layout();
-	generated.maxSequencesCount = sequences;
+	generated.maxSequenceCount = sequences;
+	generated.pNext = &pipeline;
+	pipeline.pipeline = current_pipeline.pipeline;
 
-	table.vkGetGeneratedCommandsMemoryRequirementsNV(device->get_device(), &generated, &reqs);
+	table.vkGetGeneratedCommandsMemoryRequirementsEXT(device->get_device(), &generated, &reqs);
 
 	BufferCreateInfo bufinfo = {};
 	bufinfo.size = reqs.memoryRequirements.size;
 	bufinfo.domain = BufferDomain::Device;
-	bufinfo.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 	bufinfo.allocation_requirements = reqs.memoryRequirements;
+	bufinfo.usage = VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_PREPROCESS_BUFFER_BIT_EXT;
+
 	auto preprocess_buffer = device->create_buffer(bufinfo);
 
-	VkIndirectCommandsStreamNV stream = {};
-	stream.buffer = indirect.get_buffer();
-	stream.offset = offset;
-
-	VkGeneratedCommandsInfoNV exec_info = { VK_STRUCTURE_TYPE_GENERATED_COMMANDS_INFO_NV };
+	VkGeneratedCommandsInfoEXT exec_info = { VK_STRUCTURE_TYPE_GENERATED_COMMANDS_INFO_EXT };
 	exec_info.indirectCommandsLayout = indirect_layout->get_layout();
-	exec_info.pipelineBindPoint = indirect_layout->get_bind_point();
-	exec_info.streamCount = 1;
-	exec_info.pStreams = &stream;
+	exec_info.shaderStages = indirect_layout->get_shader_stages();
+	exec_info.indirectAddress = indirect.get_device_address() + offset;
+	exec_info.indirectAddressSize = indirect.get_create_info().size - offset;
 	exec_info.preprocessSize = reqs.memoryRequirements.size;
-	exec_info.preprocessBuffer = preprocess_buffer->get_buffer();
-	exec_info.sequencesCount = sequences;
-	exec_info.pipeline = current_pipeline.pipeline;
+	exec_info.preprocessAddress = preprocess_buffer->get_device_address();
+	exec_info.maxSequenceCount = sequences;
+	exec_info.pNext = &pipeline;
 	if (count)
-	{
-		exec_info.sequencesCountBuffer = count->get_buffer();
-		exec_info.sequencesCountOffset = count_offset;
-	}
-	table.vkCmdExecuteGeneratedCommandsNV(cmd, VK_FALSE, &exec_info);
+		exec_info.sequenceCountAddress = count->get_device_address() + count_offset;
+
+	VK_ASSERT(preprocess.cmd != cmd);
+	table.vkCmdPreprocessGeneratedCommandsEXT(preprocess.cmd, &exec_info, cmd);
+	table.vkCmdExecuteGeneratedCommandsEXT(cmd, VK_TRUE, &exec_info);
 
 	// Everything is nuked after execute generated commands.
 	set_dirty(COMMAND_BUFFER_DYNAMIC_BITS |

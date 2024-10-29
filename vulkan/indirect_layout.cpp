@@ -22,62 +22,75 @@
 
 #include "indirect_layout.hpp"
 #include "device.hpp"
-#include "small_vector.hpp"
 
 namespace Vulkan
 {
-IndirectLayout::IndirectLayout(Device *device_, const IndirectLayoutToken *tokens, uint32_t num_tokens, uint32_t stride)
+IndirectLayout::IndirectLayout(Device *device_,
+                               const PipelineLayout *pipeline_layout, const IndirectLayoutToken *tokens,
+                               uint32_t num_tokens, uint32_t stride)
 	: device(device_)
 {
-	VkIndirectCommandsLayoutCreateInfoNV info = { VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_CREATE_INFO_NV };
-	info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	info.pStreamStrides = &stride;
-	info.streamCount = 1;
+	VkIndirectCommandsLayoutCreateInfoEXT info = { VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_CREATE_INFO_EXT };
+	info.indirectStride = stride;
+	info.pipelineLayout = pipeline_layout ? pipeline_layout->get_layout() : VK_NULL_HANDLE;
+	info.flags = VK_INDIRECT_COMMANDS_LAYOUT_USAGE_EXPLICIT_PREPROCESS_BIT_EXT;
 
-	Util::SmallVector<VkIndirectCommandsLayoutTokenNV, 8> nv_tokens;
-	nv_tokens.reserve(num_tokens);
+	Util::SmallVector<VkIndirectCommandsLayoutTokenEXT, 8> ext_tokens;
+	ext_tokens.reserve(num_tokens);
+	vbo_tokens.reserve(num_tokens);
+	push_tokens.reserve(num_tokens);
 
 	for (uint32_t i = 0; i < num_tokens; i++)
 	{
-		VkIndirectCommandsLayoutTokenNV token = { VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_TOKEN_NV };
+		VkIndirectCommandsLayoutTokenEXT token = { VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_TOKEN_EXT };
 		switch (tokens[i].type)
 		{
 		case IndirectLayoutToken::Type::VBO:
-			token.tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_NV;
-			token.vertexBindingUnit = tokens[i].data.vbo.binding;
+			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT;
+			vbo_tokens.emplace_back();
+			token.data.pVertexBuffer = &vbo_tokens.back();
+			vbo_tokens.back().vertexBindingUnit = tokens[i].data.vbo.binding;
 			break;
 
 		case IndirectLayoutToken::Type::IBO:
-			token.tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_NV;
+			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT;
+			token.data.pIndexBuffer = &ibo_token;
+			ibo_token.mode = VK_INDIRECT_COMMANDS_INPUT_MODE_VULKAN_INDEX_BUFFER_EXT;
 			break;
 
 		case IndirectLayoutToken::Type::PushConstant:
-			token.tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV;
-			token.pushconstantSize = tokens[i].data.push.range;
-			token.pushconstantOffset = tokens[i].data.push.offset;
-			token.pushconstantPipelineLayout = tokens[i].data.push.layout->get_layout();
-			token.pushconstantShaderStageFlags = tokens[i].data.push.layout->get_resource_layout().push_constant_range.stageFlags;
+			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT;
+			push_tokens.emplace_back();
+			token.data.pPushConstant = &push_tokens.back();
+			VK_ASSERT(pipeline_layout->get_layout());
+			push_tokens.back().updateRange.size = tokens[i].data.push.range;
+			push_tokens.back().updateRange.offset = tokens[i].data.push.offset;
+			push_tokens.back().updateRange.stageFlags =
+					pipeline_layout->get_resource_layout().push_constant_range.stageFlags;
 			break;
 
 		case IndirectLayoutToken::Type::Draw:
-			token.tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NV;
+			info.shaderStages |= VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_EXT;
 			break;
 
 		case IndirectLayoutToken::Type::DrawIndexed:
-			token.tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_NV;
+			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_EXT;
+			info.shaderStages |= VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 			break;
 
 		case IndirectLayoutToken::Type::Shader:
-			token.tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_SHADER_GROUP_NV;
+			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT;
 			break;
 
 		case IndirectLayoutToken::Type::MeshTasks:
-			token.tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV;
+			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_EXT;
+			info.shaderStages |= VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 			break;
 
 		case IndirectLayoutToken::Type::Dispatch:
-			token.tokenType = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_NV;
-			info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
+			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_EXT;
+			info.shaderStages |= VK_SHADER_STAGE_COMPUTE_BIT;
 			break;
 
 		default:
@@ -87,15 +100,15 @@ IndirectLayout::IndirectLayout(Device *device_, const IndirectLayoutToken *token
 
 		token.offset = tokens[i].offset;
 
-		nv_tokens.push_back(token);
+		ext_tokens.push_back(token);
 	}
 
-	info.pTokens = nv_tokens.data();
+	info.pTokens = ext_tokens.data();
 	info.tokenCount = num_tokens;
-	bind_point = info.pipelineBindPoint;
+	stages = info.shaderStages;
 
 	auto &table = device->get_device_table();
-	if (table.vkCreateIndirectCommandsLayoutNV(device->get_device(), &info, nullptr, &layout) != VK_SUCCESS)
+	if (table.vkCreateIndirectCommandsLayoutEXT(device->get_device(), &info, nullptr, &layout) != VK_SUCCESS)
 	{
 		LOGE("Failed to create indirect layout.\n");
 	}
@@ -103,6 +116,6 @@ IndirectLayout::IndirectLayout(Device *device_, const IndirectLayoutToken *token
 
 IndirectLayout::~IndirectLayout()
 {
-	device->get_device_table().vkDestroyIndirectCommandsLayoutNV(device->get_device(), layout, nullptr);
+	device->get_device_table().vkDestroyIndirectCommandsLayoutEXT(device->get_device(), layout, nullptr);
 }
 }

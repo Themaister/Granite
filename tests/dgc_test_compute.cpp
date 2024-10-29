@@ -19,16 +19,16 @@ struct Options
 	bool use_indirect_count = false;
 	bool use_indirect = false;
 	bool use_mdi = false;
-	bool use_dgcc = false;
+	bool use_dgc = false;
 	bool async = false;
 };
 
-struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
+struct DGCComputeApplication : Granite::Application, Granite::EventHandler
 {
-	explicit DGCTriangleApplication(const Options &options_)
+	explicit DGCComputeApplication(const Options &options_)
 		: options(options_)
 	{
-		EVENT_MANAGER_REGISTER_LATCH(DGCTriangleApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+		EVENT_MANAGER_REGISTER_LATCH(DGCComputeApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 	}
 
 	Options options;
@@ -59,6 +59,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 			ssbo = e.get_device().create_buffer(buf_info, nullptr);
 			buf_info.domain = BufferDomain::CachedHost;
 			buf_info.misc = 0;
+			buf_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 			ssbo_readback = e.get_device().create_buffer(buf_info, nullptr);
 		}
 
@@ -70,12 +71,11 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		tokens[0].offset = offsetof(DGC, push);
 		tokens[0].data.push.range = 4;
 		tokens[0].data.push.offset = 0;
-		tokens[0].data.push.layout = layout;
 		tokens[1].type = IndirectLayoutToken::Type::Dispatch;
 		tokens[1].offset = offsetof(DGC, dispatch);
 
-		if (e.get_device().get_device_features().device_generated_commands_compute_features.deviceGeneratedCompute)
-			indirect_layout = e.get_device().request_indirect_layout(tokens, 2, sizeof(DGC));
+		if (e.get_device().get_device_features().device_generated_commands_features.deviceGeneratedCommands)
+			indirect_layout = e.get_device().request_indirect_layout(layout, tokens, 2, sizeof(DGC));
 
 		std::vector<DGC> dgc_data(options.max_count);
 		for (unsigned i = 0; i < options.max_count; i++)
@@ -112,7 +112,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
 
-		if (options.use_dgcc && !device.get_device_features().device_generated_commands_compute_features.deviceGeneratedCompute)
+		if (options.use_dgc && !device.get_device_features().device_generated_commands_features.deviceGeneratedCommands)
 		{
 			LOGE("DGCC is not supported.\n");
 			request_shutdown();
@@ -126,6 +126,15 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		auto cmd = device.request_command_buffer(options.async ?
 		                                         CommandBuffer::Type::AsyncCompute :
 		                                         CommandBuffer::Type::Generic);
+
+		auto preprocess_cmd = device.request_command_buffer(
+				options.async ? CommandBuffer::Type::AsyncCompute :
+				CommandBuffer::Type::Generic);
+
+		cmd->fill_buffer(*ssbo, 0);
+		cmd->barrier(VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+		             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
 		cmd->set_storage_buffer(0, 0, *ssbo);
 		cmd->set_program("assets://shaders/dgc_compute.comp");
 		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
@@ -135,10 +144,11 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 			                                   std::min(options.indirect_count, options.max_count) :
 			                                   options.max_count;
 
-			if (options.use_dgcc)
+			if (options.use_dgc)
 			{
 				cmd->execute_indirect_commands(indirect_layout, options.max_count, *dgc_buffer, 0,
-				                               options.use_indirect_count ? dgc_count_buffer.get() : nullptr, 0);
+				                               options.use_indirect_count ? dgc_count_buffer.get() : nullptr, 0,
+											   *preprocess_cmd);
 			}
 			else if (options.use_indirect)
 			{
@@ -156,8 +166,35 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 			num_threads += indirect_dispatch_count * options.dispatch.x * options.dispatch.y * options.dispatch.z * 32;
 		}
 		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
-		device.submit(cmd);
+
+		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+					 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+
+		cmd->copy_buffer(*ssbo_readback, *ssbo);
+
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+		             VK_PIPELINE_STAGE_2_HOST_BIT, VK_ACCESS_2_HOST_READ_BIT);
+
+		if (options.use_dgc)
+		{
+			preprocess_cmd->barrier(VK_PIPELINE_STAGE_COMMAND_PREPROCESS_BIT_EXT, VK_ACCESS_COMMAND_PREPROCESS_WRITE_BIT_EXT,
+			                        VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+			device.submit(preprocess_cmd);
+		}
+		else
+		{
+			device.submit_discard(preprocess_cmd);
+		}
+
+		Fence fence;
+		device.submit(cmd, &fence);
 		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "Shading");
+		fence->wait();
+		{
+			auto *ptr = static_cast<const uint32_t *>(device.map_host_buffer(*ssbo_readback, MEMORY_ACCESS_READ_BIT));
+			for (uint32_t i = 0; i < options.max_count; i++)
+				LOGI("Counter %u = %u\n", i, ptr[i]);
+		}
 
 		if (has_renderdoc && frame_count == 0)
 			device.end_renderdoc_capture();
@@ -189,7 +226,7 @@ static void print_help()
 	     "\t[--iterations (iterations)]\n"
 	     "\t[--indirect (use indirect draw)]\n"
 	     "\t[--dispatch (number of workgroups))]\n"
-	     "\t[--dgcc (use NV_dgcc)]\n"
+	     "\t[--dgc (use EXT_dgc)]\n"
 	     "\t[--async (use async compute)]\n"
 	     "\t[--frames (number of frames to render before exiting)]\n");
 }
@@ -217,8 +254,8 @@ Application *application_create(int argc, char **argv)
 	cbs.add("--dispatch", [&](Util::CLIParser &parser) {
 		options.dispatch.x = parser.next_uint();
 	});
-	cbs.add("--dgcc", [&](Util::CLIParser &) {
-		options.use_dgcc = true;
+	cbs.add("--dgc", [&](Util::CLIParser &) {
+		options.use_dgc = true;
 		options.use_indirect = true;
 	});
 	cbs.add("--frames", [&](Util::CLIParser &parser) {
@@ -240,7 +277,7 @@ Application *application_create(int argc, char **argv)
 
 	try
 	{
-		auto *app = new DGCTriangleApplication(options);
+		auto *app = new DGCComputeApplication(options);
 		return app;
 	}
 	catch (const std::exception &e)

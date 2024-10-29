@@ -313,7 +313,7 @@ public:
 	Program *request_program(Shader *task, Shader *mesh, Shader *fragment, const ImmutableSamplerBank *sampler_bank = nullptr);
 	Program *request_program(Shader *vertex, Shader *fragment, const ImmutableSamplerBank *sampler_bank = nullptr);
 	Program *request_program(Shader *compute, const ImmutableSamplerBank *sampler_bank = nullptr);
-	const IndirectLayout *request_indirect_layout(const IndirectLayoutToken *tokens,
+	const IndirectLayout *request_indirect_layout(const PipelineLayout *layout, const IndirectLayoutToken *tokens,
 	                                              uint32_t num_tokens, uint32_t stride);
 
 	const ImmutableYcbcrConversion *request_immutable_ycbcr_conversion(const VkSamplerYcbcrConversionCreateInfo &info);

@@ -1367,16 +1367,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.pageable_device_local_memory_features, PAGEABLE_DEVICE_LOCAL_MEMORY_FEATURES_EXT);
 	}
 
-	if (has_extension(VK_NV_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME))
+	if (has_extension(VK_EXT_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME))
 	{
-		enabled_extensions.push_back(VK_NV_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME);
-		ADD_CHAIN(ext.device_generated_commands_features, DEVICE_GENERATED_COMMANDS_FEATURES_NV);
-	}
-
-	if (has_extension(VK_NV_DEVICE_GENERATED_COMMANDS_COMPUTE_EXTENSION_NAME))
-	{
-		enabled_extensions.push_back(VK_NV_DEVICE_GENERATED_COMMANDS_COMPUTE_EXTENSION_NAME);
-		ADD_CHAIN(ext.device_generated_commands_compute_features, DEVICE_GENERATED_COMMANDS_COMPUTE_FEATURES_NV);
+		enabled_extensions.push_back(VK_EXT_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME);
+		ADD_CHAIN(ext.device_generated_commands_features, DEVICE_GENERATED_COMMANDS_FEATURES_EXT);
 	}
 
 	if (has_extension(VK_NV_DESCRIPTOR_POOL_OVERALLOCATION_EXTENSION_NAME))
@@ -1556,10 +1550,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.mesh_shader_features.meshShaderQueries = VK_FALSE;
 	ext.mesh_shader_features.multiviewMeshShader = VK_FALSE;
 
-	ext.device_generated_commands_compute_features.deviceGeneratedComputeCaptureReplay = VK_FALSE;
-	// TODO
-	ext.device_generated_commands_compute_features.deviceGeneratedComputePipelines = VK_FALSE;
-
 	// Enable device features we might care about.
 	{
 		VkPhysicalDeviceFeatures enabled_features = *required_features;
@@ -1579,6 +1569,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			enabled_features.independentBlend = VK_TRUE;
 		if (pdf2.features.sampleRateShading)
 			enabled_features.sampleRateShading = VK_TRUE;
+		if (pdf2.features.vertexPipelineStoresAndAtomics)
+			enabled_features.vertexPipelineStoresAndAtomics = VK_TRUE;
 		if (pdf2.features.fragmentStoresAndAtomics)
 			enabled_features.fragmentStoresAndAtomics = VK_TRUE;
 		if (pdf2.features.shaderStorageImageExtendedFormats)
@@ -1648,8 +1640,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	if (ext.supports_external_memory_host)
 		ADD_CHAIN(ext.host_memory_properties, EXTERNAL_MEMORY_HOST_PROPERTIES_EXT);
 
-	if (has_extension(VK_NV_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME))
-		ADD_CHAIN(ext.device_generated_commands_properties, DEVICE_GENERATED_COMMANDS_PROPERTIES_NV);
+	if (has_extension(VK_EXT_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME))
+		ADD_CHAIN(ext.device_generated_commands_properties, DEVICE_GENERATED_COMMANDS_PROPERTIES_EXT);
 
 	if (ext.supports_conservative_rasterization)
 		ADD_CHAIN(ext.conservative_rasterization_properties, CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT);

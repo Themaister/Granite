@@ -70,12 +70,11 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		tokens[0].offset = offsetof(DGC, push);
 		tokens[0].data.push.range = 4;
 		tokens[0].data.push.offset = 0;
-		tokens[0].data.push.layout = layout;
 		tokens[1].type = IndirectLayoutToken::Type::Draw;
 		tokens[1].offset = offsetof(DGC, draw);
 
 		if (e.get_device().get_device_features().device_generated_commands_features.deviceGeneratedCommands)
-			indirect_layout = e.get_device().request_indirect_layout(tokens, 2, sizeof(DGC));
+			indirect_layout = e.get_device().request_indirect_layout(layout, tokens, 2, sizeof(DGC));
 
 		std::vector<DGC> dgc_data(options.max_count);
 		for (unsigned i = 0; i < options.max_count; i++)
@@ -123,6 +122,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 			device.begin_renderdoc_capture();
 
 		auto cmd = device.request_command_buffer();
+		auto preprocess_cmd = device.request_command_buffer();
 
 		unsigned num_primitives = 0;
 
@@ -142,7 +142,8 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 				if (options.use_dgc)
 				{
 					cmd->execute_indirect_commands(indirect_layout, options.max_count, *dgc_buffer, 0,
-					                               options.use_indirect_count ? dgc_count_buffer.get() : nullptr, 0);
+					                               options.use_indirect_count ? dgc_count_buffer.get() : nullptr, 0,
+					                               *preprocess_cmd);
 				}
 				else if (options.use_indirect)
 				{
@@ -162,6 +163,18 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 		}
 		cmd->end_render_pass();
 		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
+
+		if (options.use_dgc)
+		{
+			preprocess_cmd->barrier(VK_PIPELINE_STAGE_COMMAND_PREPROCESS_BIT_EXT, VK_ACCESS_COMMAND_PREPROCESS_WRITE_BIT_EXT,
+			                        VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+			device.submit(preprocess_cmd);
+		}
+		else
+		{
+			device.submit_discard(preprocess_cmd);
+		}
+
 		device.submit(cmd);
 		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "Shading");
 

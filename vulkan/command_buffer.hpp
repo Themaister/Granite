@@ -520,7 +520,8 @@ public:
 	void execute_indirect_commands(const IndirectLayout *indirect_layout,
 	                               uint32_t sequences,
 	                               const Buffer &indirect, VkDeviceSize offset,
-	                               const Buffer *count, size_t count_offset);
+	                               const Buffer *count, size_t count_offset,
+	                               CommandBuffer &preprocess);
 
 	void set_opaque_state();
 	void set_quad_state();

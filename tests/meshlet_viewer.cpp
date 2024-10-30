@@ -553,11 +553,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			*cmd->allocate_typed_constant_data<mat4>(1, 0, 1) = render_context.get_render_parameters().view_projection;
 
 			*cmd->allocate_typed_constant_data<vec4>(1, 2, 1) =
-			    float(1 << 8 /* shader assumes 8 */) *
-			        vec4(cmd->get_viewport().x + 0.5f * cmd->get_viewport().width - 0.5f,
-			             cmd->get_viewport().y + 0.5f * cmd->get_viewport().height - 0.5f,
-			             0.5f * cmd->get_viewport().width,
-			             0.5f * cmd->get_viewport().height) - vec4(1.0f, 1.0f, 0.0f, 0.0f);
+					vec4(cmd->get_viewport().x + 0.5f * cmd->get_viewport().width - 0.5f,
+					     cmd->get_viewport().y + 0.5f * cmd->get_viewport().height - 0.5f,
+					     0.5f * cmd->get_viewport().width,
+					     0.5f * cmd->get_viewport().height);
 
 			bool use_encoded = manager.get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::MeshletEncoded;
 
@@ -779,7 +778,6 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			cmd->copy_buffer(*aabb_visibility_buffer_readback, *aabb_visibility_buffer);
 			cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
-
 		}
 #endif
 

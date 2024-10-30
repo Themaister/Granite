@@ -33,9 +33,14 @@ IndirectLayout::IndirectLayout(Device *device_,
 	VkIndirectCommandsLayoutCreateInfoEXT info = { VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_CREATE_INFO_EXT };
 	info.indirectStride = stride;
 	info.pipelineLayout = pipeline_layout ? pipeline_layout->get_layout() : VK_NULL_HANDLE;
-	info.flags = VK_INDIRECT_COMMANDS_LAYOUT_USAGE_EXPLICIT_PREPROCESS_BIT_EXT;
+	info.flags = VK_INDIRECT_COMMANDS_LAYOUT_USAGE_EXPLICIT_PREPROCESS_BIT_EXT |
+	             VK_INDIRECT_COMMANDS_LAYOUT_USAGE_UNORDERED_SEQUENCES_BIT_EXT;
 
 	Util::SmallVector<VkIndirectCommandsLayoutTokenEXT, 8> ext_tokens;
+	Util::SmallVector<VkIndirectCommandsVertexBufferTokenEXT, 8> vbo_tokens;
+	Util::SmallVector<VkIndirectCommandsPushConstantTokenEXT, 8> push_tokens;
+	VkIndirectCommandsIndexBufferTokenEXT ibo_token;
+	VkIndirectCommandsExecutionSetTokenEXT exec_token;
 	ext_tokens.reserve(num_tokens);
 	vbo_tokens.reserve(num_tokens);
 	push_tokens.reserve(num_tokens);
@@ -59,7 +64,11 @@ IndirectLayout::IndirectLayout(Device *device_,
 			break;
 
 		case IndirectLayoutToken::Type::PushConstant:
-			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT;
+		case IndirectLayoutToken::Type::SequenceCount:
+			token.type = tokens[i].type == IndirectLayoutToken::Type::PushConstant ?
+			             VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT :
+			             VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT;
+
 			push_tokens.emplace_back();
 			token.data.pPushConstant = &push_tokens.back();
 			VK_ASSERT(pipeline_layout->get_layout());
@@ -81,6 +90,7 @@ IndirectLayout::IndirectLayout(Device *device_,
 
 		case IndirectLayoutToken::Type::Shader:
 			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT;
+			token.data.pExecutionSet = &exec_token;
 			break;
 
 		case IndirectLayoutToken::Type::MeshTasks:
@@ -105,6 +115,7 @@ IndirectLayout::IndirectLayout(Device *device_,
 
 	info.pTokens = ext_tokens.data();
 	info.tokenCount = num_tokens;
+	exec_token.shaderStages = info.shaderStages;
 	stages = info.shaderStages;
 
 	auto &table = device->get_device_table();

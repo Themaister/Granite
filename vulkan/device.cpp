@@ -552,8 +552,11 @@ const IndirectLayout *Device::request_indirect_layout(
 
 	for (uint32_t i = 0; i < num_tokens; i++)
 	{
-		h.u32(tokens[i].offset);
-		if (tokens[i].type == IndirectLayoutToken::Type::PushConstant)
+		if (tokens[i].type != IndirectLayoutToken::Type::SequenceCount)
+			h.u32(tokens[i].offset);
+
+		if (tokens[i].type == IndirectLayoutToken::Type::PushConstant ||
+		    tokens[i].type == IndirectLayoutToken::Type::SequenceCount)
 		{
 			h.u32(tokens[i].data.push.offset);
 			h.u32(tokens[i].data.push.range);
@@ -2228,6 +2231,12 @@ void Device::destroy_buffer(VkBuffer buffer)
 	destroy_buffer_nolock(buffer);
 }
 
+void Device::destroy_indirect_execution_set(VkIndirectExecutionSetEXT exec_set)
+{
+	LOCK();
+	destroy_indirect_execution_set_nolock(exec_set);
+}
+
 void Device::destroy_descriptor_pool(VkDescriptorPool desc_pool)
 {
 	LOCK();
@@ -2356,6 +2365,12 @@ void Device::destroy_buffer_nolock(VkBuffer buffer)
 {
 	VK_ASSERT(!exists(frame().destroyed_buffers, buffer));
 	frame().destroyed_buffers.push_back(buffer);
+}
+
+void Device::destroy_indirect_execution_set_nolock(VkIndirectExecutionSetEXT exec_set)
+{
+	VK_ASSERT(!exists(frame().destroyed_execution_sets, exec_set));
+	frame().destroyed_execution_sets.push_back(exec_set);
 }
 
 void Device::destroy_descriptor_pool_nolock(VkDescriptorPool desc_pool)
@@ -2806,6 +2821,8 @@ void Device::PerFrame::begin()
 		table.vkDestroySemaphore(vkdevice, semaphore, nullptr);
 	for (auto &pool : destroyed_descriptor_pools)
 		table.vkDestroyDescriptorPool(vkdevice, pool, nullptr);
+	for (auto &exec_set : destroyed_execution_sets)
+		table.vkDestroyIndirectExecutionSetEXT(vkdevice, exec_set, nullptr);
 	for (auto &semaphore : recycled_semaphores)
 		managers.semaphore.recycle(semaphore);
 	for (auto &event : recycled_events)
@@ -2825,6 +2842,7 @@ void Device::PerFrame::begin()
 	destroyed_buffer_views.clear();
 	destroyed_images.clear();
 	destroyed_buffers.clear();
+	destroyed_execution_sets.clear();
 	destroyed_semaphores.clear();
 	destroyed_descriptor_pools.clear();
 	recycled_semaphores.clear();

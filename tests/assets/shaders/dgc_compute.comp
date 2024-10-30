@@ -10,9 +10,12 @@ layout(set = 0, binding = 0) buffer SSBO
 layout(push_constant) uniform Registers
 {
     uint index;
+    uint sequence;
 };
+
+layout(constant_id = 0) const uint C = 1;
 
 void main()
 {
-    atomicAdd(data[index], 1u);
+    atomicAdd(data[index], C + sequence);
 }

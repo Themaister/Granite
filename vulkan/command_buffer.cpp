@@ -1138,8 +1138,24 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 
 	auto &table = device->get_device_table();
 
+	VkPipelineCreateFlags2CreateInfoKHR flags2 = { VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR };
+	if (compile.static_state.state.indirect_bindable)
+	{
+		flags2.flags |= VK_PIPELINE_CREATE_2_INDIRECT_BINDABLE_BIT_EXT;
+		flags2.pNext = info.pNext;
+		info.pNext = &flags2;
+
+		auto supported_stages = device->get_device_features().
+				device_generated_commands_properties.supportedIndirectCommandsShaderStagesPipelineBinding;
+		(void)supported_stages;
+		VK_ASSERT((supported_stages & VK_SHADER_STAGE_COMPUTE_BIT) != 0);
+	}
+
 	if (mode == CompileMode::FailOnCompileRequired)
+	{
 		info.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
+		flags2.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
+	}
 
 	auto start_ts = Util::get_current_time_nsecs();
 	VkResult vr = device->pipeline_binary_cache.create_pipeline(&info, compile.cache, &compute_pipeline);
@@ -1172,7 +1188,7 @@ void CommandBuffer::extract_pipeline_state(DeferredPipelineCompile &compile) con
 	if (is_compute)
 		update_hash_compute_pipeline(compile);
 	else
-		update_hash_graphics_pipeline(compile, CompileMode::AsyncThread, nullptr);
+		update_hash_graphics_pipeline(compile, nullptr);
 }
 
 bool CommandBuffer::setup_subgroup_size_control(
@@ -1227,10 +1243,6 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	{
 		return {};
 	}
-
-	// Unsupported. Gets pretty complicated since if any dependent pipeline fails, we have to abort.
-	if (mode == CompileMode::FailOnCompileRequired && !compile.program_group.empty())
-		return {};
 
 	// Viewport state
 	VkPipelineViewportStateCreateInfo vp = { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
@@ -1483,53 +1495,21 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	pipe.pStages = stages;
 	pipe.stageCount = num_stages;
 
-	VkGraphicsPipelineShaderGroupsCreateInfoNV groups_info =
-			{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_SHADER_GROUPS_CREATE_INFO_NV };
-	VkGraphicsShaderGroupCreateInfoNV self_group =
-			{ VK_STRUCTURE_TYPE_GRAPHICS_SHADER_GROUP_CREATE_INFO_NV };
-	Util::SmallVector<VkPipeline, 64> pipelines;
-
-	// TODO:
-	//if (mode == CompileMode::IndirectBindable)
-	//	pipe.flags |= VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_EXT;
-
-	if (!compile.program_group.empty())
+	VkPipelineCreateFlags2CreateInfoKHR flags2 = { VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR };
+	if (compile.static_state.state.indirect_bindable)
 	{
-		DeferredPipelineCompile tmp_compile = compile;
-		tmp_compile.program_group.clear();
-		pipelines.reserve(compile.program_group.size());
+		flags2.flags |= VK_PIPELINE_CREATE_2_INDIRECT_BINDABLE_BIT_EXT;
+		flags2.pNext = pipe.pNext;
+		pipe.pNext = &flags2;
 
-		for (auto *p : compile.program_group)
-		{
-			tmp_compile.program = p;
-			update_hash_graphics_pipeline(tmp_compile, CompileMode::IndirectBindable, nullptr);
-			auto group_pipeline = p->get_pipeline(tmp_compile.hash);
-			if (group_pipeline.pipeline == VK_NULL_HANDLE)
-				group_pipeline = build_graphics_pipeline(device, tmp_compile, CompileMode::IndirectBindable);
-
-			if (group_pipeline.pipeline == VK_NULL_HANDLE)
-			{
-				LOGE("Failed to compile group pipeline.\n");
-				return {};
-			}
-
-			pipelines.push_back(group_pipeline.pipeline);
-		}
-
-		self_group.stageCount = pipe.stageCount;
-		self_group.pStages = pipe.pStages;
-		self_group.pVertexInputState = pipe.pVertexInputState;
-
-		// Compile each program individually. Then we just link them.
-		pipe.flags |= VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV;
-
-		groups_info.pNext = pipe.pNext;
-		pipe.pNext = &groups_info;
-		// Trying to use pGroups[0] through self pPipeline reference crashes NV driver.
-		groups_info.pPipelines = pipelines.data() + 1;
-		groups_info.pipelineCount = uint32_t(pipelines.size() - 1);
-		groups_info.pGroups = &self_group;
-		groups_info.groupCount = 1;
+		auto supported_stages = device->get_device_features().
+				device_generated_commands_properties.supportedIndirectCommandsShaderStagesPipelineBinding;
+		(void)supported_stages;
+		VK_ASSERT(!compile.program->get_shader(ShaderStage::Vertex) || (supported_stages & VK_SHADER_STAGE_VERTEX_BIT) != 0);
+		VK_ASSERT(!compile.program->get_shader(ShaderStage::Fragment) || (supported_stages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0);
+		VK_ASSERT(!compile.program->get_shader(ShaderStage::Mesh) || (supported_stages & VK_SHADER_STAGE_MESH_BIT_EXT) != 0);
+		VK_ASSERT(!compile.program->get_shader(ShaderStage::Task) || (supported_stages & VK_SHADER_STAGE_TASK_BIT_EXT) != 0);
+		VK_ASSERT(!compile.program->get_shader(ShaderStage::Compute) || (supported_stages & VK_SHADER_STAGE_COMPUTE_BIT) != 0);
 	}
 
 	VkPipeline pipeline = VK_NULL_HANDLE;
@@ -1540,7 +1520,10 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	auto &table = device->get_device_table();
 
 	if (mode == CompileMode::FailOnCompileRequired)
+	{
 		pipe.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
+		flags2.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
+	}
 
 	auto start_ts = Util::get_current_time_nsecs();
 	VkResult res = device->pipeline_binary_cache.create_pipeline(&pipe, compile.cache, &pipeline);
@@ -1604,8 +1587,7 @@ void CommandBuffer::update_hash_compute_pipeline(DeferredPipelineCompile &compil
 	compile.hash = h.get();
 }
 
-void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compile,
-                                                  CompileMode mode, uint32_t *out_active_vbos)
+void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compile, uint32_t *out_active_vbos)
 {
 	Hasher h;
 	uint32_t active_vbos = 0;
@@ -1629,8 +1611,6 @@ void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compi
 	h.u64(compile.compatible_render_pass->get_hash());
 	h.u32(compile.subpass_index);
 	h.u64(compile.program->get_hash());
-	for (auto *p : compile.program_group)
-		h.u64(p->get_hash());
 	h.u64(compile.layout->get_hash());
 	h.data(compile.static_state.words, sizeof(compile.static_state.words));
 
@@ -1655,7 +1635,6 @@ void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compi
 	for_each_bit(combined_spec_constant, [&](uint32_t bit) {
 		h.u32(compile.potential_static_state.spec_constants[bit]);
 	});
-	h.s32(mode == CompileMode::IndirectBindable);
 
 	if (compile.program->get_shader(ShaderStage::Task))
 	{
@@ -1695,7 +1674,7 @@ void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compi
 bool CommandBuffer::flush_graphics_pipeline(bool synchronous)
 {
 	auto mode = synchronous ? CompileMode::Sync : CompileMode::FailOnCompileRequired;
-	update_hash_graphics_pipeline(pipeline_state, mode, &active_vbos);
+	update_hash_graphics_pipeline(pipeline_state, &active_vbos);
 	current_pipeline = pipeline_state.program->get_pipeline(pipeline_state.hash);
 	if (current_pipeline.pipeline == VK_NULL_HANDLE)
 		current_pipeline = build_graphics_pipeline(device, pipeline_state, mode);
@@ -2036,23 +2015,26 @@ void CommandBuffer::set_program(const std::string &task, const std::string &mesh
 }
 #endif
 
-void CommandBuffer::set_program_group(Program *const *programs, unsigned num_programs,
-                                      const PipelineLayout *layout)
+VkIndirectExecutionSetEXT
+CommandBuffer::bake_and_set_program_group(Program *const *programs, unsigned num_programs,
+										  const ExecutionSetSpecializationConstants *spec_constants,
+                                          const PipelineLayout *layout)
 {
-	pipeline_state.program = num_programs ? programs[0] : nullptr;
-	pipeline_state.program_group = { programs, programs + num_programs };
 	current_pipeline = {};
+	pipeline_state.program = nullptr;
 	set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
 
 	VK_ASSERT(device->get_device_features().device_generated_commands_features.deviceGeneratedCommands);
 
 	if (!num_programs)
-		return;
+		return VK_NULL_HANDLE;
 
-	VK_ASSERT(framebuffer && pipeline_state.program->get_shader(ShaderStage::Fragment));
 #ifdef VULKAN_DEBUG
 	for (unsigned i = 0; i < num_programs; i++)
-		VK_ASSERT(pipeline_state.program_group[i]->get_shader(ShaderStage::Fragment));
+	{
+		VK_ASSERT((framebuffer && programs[i]->get_shader(ShaderStage::Fragment)) ||
+		          (!framebuffer && programs[i]->get_shader(ShaderStage::Compute)));
+	}
 #endif
 
 	if (!layout && pipeline_state.program)
@@ -2064,6 +2046,76 @@ void CommandBuffer::set_program_group(Program *const *programs, unsigned num_pro
 	}
 
 	set_program_layout(layout);
+
+	bool is_compute_pso = programs[0]->get_shader(ShaderStage::Compute);
+
+	VkIndirectExecutionSetPipelineInfoEXT pipeline_info = { VK_STRUCTURE_TYPE_INDIRECT_EXECUTION_SET_PIPELINE_INFO_EXT };
+	VkIndirectExecutionSetCreateInfoEXT info = { VK_STRUCTURE_TYPE_INDIRECT_EXECUTION_SET_CREATE_INFO_EXT };
+	info.type = VK_INDIRECT_EXECUTION_SET_INFO_TYPE_PIPELINES_EXT;
+	info.info.pPipelineInfo = &pipeline_info;
+	pipeline_info.maxPipelineCount = num_programs;
+
+	VkIndirectExecutionSetEXT execution_set = VK_NULL_HANDLE;
+
+	for (unsigned i = 0; i < num_programs; i++)
+	{
+		pipeline_state.program = programs[i];
+		pipeline_state.static_state.state.indirect_bindable = 1;
+		set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT | COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
+
+		if (spec_constants)
+		{
+			set_specialization_constant_mask(spec_constants[i].mask);
+			for_each_bit(spec_constants[i].mask, [&](uint32_t bit) {
+				set_specialization_constant(bit, spec_constants[i].constants[bit]);
+			});
+		}
+
+		if (is_compute_pso)
+		{
+			if (!flush_compute_pipeline(true))
+			{
+				LOGE("Failed to flush compute pipeline state for indirect execution set.\n");
+				return VK_NULL_HANDLE;
+			}
+		}
+		else
+		{
+			if (!flush_graphics_pipeline(true))
+			{
+				LOGE("Failed to flush graphics pipeline state for indirect execution set.\n");
+				return VK_NULL_HANDLE;
+			}
+		}
+
+		// If creating these is expensive, we may want to consider a hash'n'cache approach or explicit ownership.
+		// There really shouldn't be many of these per frame though.
+		if (i == 0)
+		{
+			// Index 0 is implicitly written on creation.
+			pipeline_info.initialPipeline = current_pipeline.pipeline;
+			if (table.vkCreateIndirectExecutionSetEXT(device->get_device(), &info, nullptr, &execution_set) != VK_SUCCESS)
+			{
+				LOGE("Failed to create indirect execution set.\n");
+				return VK_NULL_HANDLE;
+			}
+
+			device->destroy_indirect_execution_set(execution_set);
+		}
+		else
+		{
+			VkWriteIndirectExecutionSetPipelineEXT write = { VK_STRUCTURE_TYPE_WRITE_INDIRECT_EXECUTION_SET_PIPELINE_EXT };
+			write.index = i;
+			write.pipeline = current_pipeline.pipeline;
+			table.vkUpdateIndirectExecutionSetPipelineEXT(device->get_device(), execution_set, 1, &write);
+		}
+	}
+
+	// The initial pipeline must be bound when preprocessing and executing.
+	table.vkCmdBindPipeline(cmd, is_compute_pso ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS,
+	                        pipeline_info.initialPipeline);
+
+	return execution_set;
 }
 
 void CommandBuffer::set_program(Program *program)
@@ -2072,7 +2124,7 @@ void CommandBuffer::set_program(Program *program)
 		return;
 
 	pipeline_state.program = program;
-	pipeline_state.program_group.clear();
+	pipeline_state.static_state.state.indirect_bindable = 0;
 	current_pipeline = {};
 
 	set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
@@ -2866,6 +2918,7 @@ void CommandBuffer::dispatch_indirect(const Buffer &buffer, VkDeviceSize offset)
 }
 
 void CommandBuffer::execute_indirect_commands(
+		VkIndirectExecutionSetEXT execution_set,
 		const IndirectLayout *indirect_layout, uint32_t sequences,
 		const Vulkan::Buffer &indirect, VkDeviceSize offset,
 		const Vulkan::Buffer *count, size_t count_offset,
@@ -2902,18 +2955,27 @@ void CommandBuffer::execute_indirect_commands(
 
 	generated.indirectCommandsLayout = indirect_layout->get_layout();
 	generated.maxSequenceCount = sequences;
-	generated.pNext = &pipeline;
-	pipeline.pipeline = current_pipeline.pipeline;
+	generated.indirectExecutionSet = execution_set;
+
+	if (execution_set == VK_NULL_HANDLE)
+	{
+		generated.pNext = &pipeline;
+		pipeline.pipeline = current_pipeline.pipeline;
+	}
 
 	table.vkGetGeneratedCommandsMemoryRequirementsEXT(device->get_device(), &generated, &reqs);
 
-	BufferCreateInfo bufinfo = {};
-	bufinfo.size = reqs.memoryRequirements.size;
-	bufinfo.domain = BufferDomain::Device;
-	bufinfo.allocation_requirements = reqs.memoryRequirements;
-	bufinfo.usage = VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_PREPROCESS_BUFFER_BIT_EXT;
+	BufferHandle preprocess_buffer;
 
-	auto preprocess_buffer = device->create_buffer(bufinfo);
+	if (reqs.memoryRequirements.size)
+	{
+		BufferCreateInfo bufinfo = {};
+		bufinfo.size = reqs.memoryRequirements.size;
+		bufinfo.domain = BufferDomain::Device;
+		bufinfo.allocation_requirements = reqs.memoryRequirements;
+		bufinfo.usage = VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_PREPROCESS_BUFFER_BIT_EXT;
+		preprocess_buffer = device->create_buffer(bufinfo);
+	}
 
 	VkGeneratedCommandsInfoEXT exec_info = { VK_STRUCTURE_TYPE_GENERATED_COMMANDS_INFO_EXT };
 	exec_info.indirectCommandsLayout = indirect_layout->get_layout();
@@ -2921,9 +2983,13 @@ void CommandBuffer::execute_indirect_commands(
 	exec_info.indirectAddress = indirect.get_device_address() + offset;
 	exec_info.indirectAddressSize = indirect.get_create_info().size - offset;
 	exec_info.preprocessSize = reqs.memoryRequirements.size;
-	exec_info.preprocessAddress = preprocess_buffer->get_device_address();
+	exec_info.preprocessAddress = preprocess_buffer ? preprocess_buffer->get_device_address() : 0;
 	exec_info.maxSequenceCount = sequences;
-	exec_info.pNext = &pipeline;
+	exec_info.indirectExecutionSet = execution_set;
+
+	if (execution_set == VK_NULL_HANDLE)
+		exec_info.pNext = &pipeline;
+
 	if (count)
 		exec_info.sequenceCountAddress = count->get_device_address() + count_offset;
 

@@ -645,6 +645,7 @@ private:
 		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
 		std::vector<VkSemaphore> consumed_semaphores;
+		std::vector<VkIndirectExecutionSetEXT> destroyed_execution_sets;
 
 		struct DebugChannel
 		{
@@ -782,6 +783,7 @@ private:
 	void free_memory(const DeviceAllocation &alloc);
 	void reset_fence(VkFence fence, bool observed_wait);
 	void destroy_descriptor_pool(VkDescriptorPool desc_pool);
+	void destroy_indirect_execution_set(VkIndirectExecutionSetEXT exec_set);
 
 	void destroy_buffer_nolock(VkBuffer buffer);
 	void destroy_image_nolock(VkImage image);
@@ -796,6 +798,7 @@ private:
 	void free_memory_nolock(const DeviceAllocation &alloc);
 	void destroy_descriptor_pool_nolock(VkDescriptorPool desc_pool);
 	void reset_fence_nolock(VkFence fence, bool observed_wait);
+	void destroy_indirect_execution_set_nolock(VkIndirectExecutionSetEXT exec_set);
 
 	void flush_frame_nolock();
 	CommandBufferHandle request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type, bool profiled);

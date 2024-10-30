@@ -42,13 +42,14 @@ struct DGCComputeApplication : Granite::Application, Granite::EventHandler
 
 	struct DGC
 	{
+		uint32_t shader;
 		uint32_t push;
 		VkDispatchIndirectCommand dispatch;
 	};
 
 	void on_device_created(const DeviceCreatedEvent &e)
 	{
-		IndirectLayoutToken tokens[2] = {};
+		IndirectLayoutToken tokens[4] = {};
 
 		{
 			BufferCreateInfo buf_info = {};
@@ -67,20 +68,36 @@ struct DGCComputeApplication : Granite::Application, Granite::EventHandler
 				"assets://shaders/dgc_compute.comp")->
 				register_variant({})->get_program()->get_pipeline_layout();
 
-		tokens[0].type = IndirectLayoutToken::Type::PushConstant;
-		tokens[0].offset = offsetof(DGC, push);
-		tokens[0].data.push.range = 4;
-		tokens[0].data.push.offset = 0;
-		tokens[1].type = IndirectLayoutToken::Type::Dispatch;
-		tokens[1].offset = offsetof(DGC, dispatch);
+		tokens[0].type = IndirectLayoutToken::Type::Shader;
+		tokens[0].offset = offsetof(DGC, shader);
+		tokens[1].type = IndirectLayoutToken::Type::SequenceCount;
+		tokens[1].data.push.offset = 4;
+		tokens[1].data.push.range = 4;
+		tokens[2].type = IndirectLayoutToken::Type::PushConstant;
+		tokens[2].offset = offsetof(DGC, push);
+		tokens[2].data.push.range = 4;
+		tokens[2].data.push.offset = 0;
+		tokens[3].type = IndirectLayoutToken::Type::Dispatch;
+		tokens[3].offset = offsetof(DGC, dispatch);
 
 		if (e.get_device().get_device_features().device_generated_commands_features.deviceGeneratedCommands)
-			indirect_layout = e.get_device().request_indirect_layout(layout, tokens, 2, sizeof(DGC));
+		{
+			if (e.get_device().get_device_features().device_generated_commands_properties.
+					supportedIndirectCommandsShaderStagesPipelineBinding & VK_SHADER_STAGE_COMPUTE_BIT)
+			{
+				indirect_layout = e.get_device().request_indirect_layout(layout, tokens, 4, sizeof(DGC));
+			}
+			else
+			{
+				indirect_layout = e.get_device().request_indirect_layout(layout, tokens + 1, 3, sizeof(DGC));
+			}
+		}
 
 		std::vector<DGC> dgc_data(options.max_count);
 		for (unsigned i = 0; i < options.max_count; i++)
 		{
 			auto &dgc = dgc_data[i];
+			dgc.shader = i & 1;
 			dgc.push = i;
 			dgc.dispatch = options.dispatch;
 		}
@@ -137,6 +154,27 @@ struct DGCComputeApplication : Granite::Application, Granite::EventHandler
 
 		cmd->set_storage_buffer(0, 0, *ssbo);
 		cmd->set_program("assets://shaders/dgc_compute.comp");
+
+		VkIndirectExecutionSetEXT exec_sec = VK_NULL_HANDLE;
+
+		if ((device.get_device_features().device_generated_commands_properties.supportedIndirectCommandsShaderStagesPipelineBinding &
+		     VK_SHADER_STAGE_COMPUTE_BIT) != 0)
+		{
+			auto *program =
+					device.get_shader_manager().register_compute(
+							"assets://shaders/dgc_compute.comp")->register_variant({})->get_program();
+
+			Vulkan::Program *programs[] = { program, program };
+			CommandBuffer::ExecutionSetSpecializationConstants spec_constants[2] = {};
+
+			spec_constants[0].mask = 0x01;
+			spec_constants[0].constants[0] = 3;
+			spec_constants[1].mask = 0x01;
+			spec_constants[1].constants[0] = 5;
+
+			exec_sec = cmd->bake_and_set_program_group(programs, 2, spec_constants, program->get_pipeline_layout());
+		}
+
 		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
 		for (uint32_t i = 0; i < options.iterations; i++)
 		{
@@ -146,9 +184,9 @@ struct DGCComputeApplication : Granite::Application, Granite::EventHandler
 
 			if (options.use_dgc)
 			{
-				cmd->execute_indirect_commands(indirect_layout, options.max_count, *dgc_buffer, 0,
+				cmd->execute_indirect_commands(exec_sec, indirect_layout, options.max_count, *dgc_buffer, 0,
 				                               options.use_indirect_count ? dgc_count_buffer.get() : nullptr, 0,
-											   *preprocess_cmd);
+				                               *preprocess_cmd);
 			}
 			else if (options.use_indirect)
 			{

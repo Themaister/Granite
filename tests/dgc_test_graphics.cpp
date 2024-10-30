@@ -141,7 +141,7 @@ struct DGCTriangleApplication : Granite::Application, Granite::EventHandler
 
 				if (options.use_dgc)
 				{
-					cmd->execute_indirect_commands(indirect_layout, options.max_count, *dgc_buffer, 0,
+					cmd->execute_indirect_commands(VK_NULL_HANDLE, indirect_layout, options.max_count, *dgc_buffer, 0,
 					                               options.use_indirect_count ? dgc_count_buffer.get() : nullptr, 0,
 					                               *preprocess_cmd);
 				}

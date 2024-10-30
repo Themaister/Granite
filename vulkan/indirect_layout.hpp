@@ -39,6 +39,7 @@ struct IndirectLayoutToken
 		Invalid = 0,
 		Shader,
 		PushConstant,
+		SequenceCount,
 		VBO,
 		IBO,
 		Draw,
@@ -88,10 +89,5 @@ private:
 	Device *device;
 	VkIndirectCommandsLayoutEXT layout;
 	VkShaderStageFlags stages;
-
-	// Temporary workaround for borked NV driver.
-	Util::SmallVector<VkIndirectCommandsVertexBufferTokenEXT, 8> vbo_tokens;
-	Util::SmallVector<VkIndirectCommandsPushConstantTokenEXT, 8> push_tokens;
-	VkIndirectCommandsIndexBufferTokenEXT ibo_token;
 };
 }

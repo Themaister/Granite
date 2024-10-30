@@ -494,6 +494,21 @@ bool PipelineCache::serialize(void *data_, size_t size) const
 	return true;
 }
 
+template <typename T>
+static inline const T *find_pnext(VkStructureType type, const void *pNext)
+{
+	while (pNext != nullptr)
+	{
+		auto *sin = static_cast<const VkBaseInStructure *>(pNext);
+		if (sin->sType == type)
+			return static_cast<const T*>(pNext);
+
+		pNext = sin->pNext;
+	}
+
+	return nullptr;
+}
+
 VkPipeline PipelineCache::create_pipeline_and_place(Util::Hash pso_key, void *plain_info)
 {
 	auto *graphics_info = static_cast<VkGraphicsPipelineCreateInfo *>(plain_info);
@@ -508,19 +523,30 @@ VkPipeline PipelineCache::create_pipeline_and_place(Util::Hash pso_key, void *pl
 
 	if (!device.get_device_features().pipeline_binary_properties.pipelineBinaryPrefersInternalCache)
 	{
-		flags2.flags = VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR;
+		auto *existing_flags2 = find_pnext<VkPipelineCreateFlags2CreateInfoKHR>(
+				VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR, plain_info);
 
-		if (graphics_info)
+		if (existing_flags2)
 		{
-			flags2.flags |= graphics_info->flags;
-			flags2.pNext = graphics_info->pNext;
-			graphics_info->pNext = &flags2;
+			const_cast<VkPipelineCreateFlags2CreateInfoKHR *>(existing_flags2)->flags |=
+					VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR;
 		}
-		else if (compute_info)
+		else
 		{
-			flags2.flags |= compute_info->flags;
-			flags2.pNext = compute_info->pNext;
-			compute_info->pNext = &flags2;
+			flags2.flags = VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR;
+
+			if (graphics_info)
+			{
+				flags2.flags |= graphics_info->flags;
+				flags2.pNext = graphics_info->pNext;
+				graphics_info->pNext = &flags2;
+			}
+			else if (compute_info)
+			{
+				flags2.flags |= compute_info->flags;
+				flags2.pNext = compute_info->pNext;
+				compute_info->pNext = &flags2;
+			}
 		}
 	}
 

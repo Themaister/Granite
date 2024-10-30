@@ -180,7 +180,8 @@ union PipelineState {
 		uint32_t subgroup_minimum_size_log2_task : 3;
 		uint32_t subgroup_maximum_size_log2_task : 3;
 		uint32_t conservative_raster : 1;
-		uint32_t padding : 9;
+		uint32_t indirect_bindable : 1;
+		uint32_t padding : 8;
 
 		// Word 3
 		uint32_t write_mask;
@@ -258,7 +259,6 @@ struct DeferredPipelineCompile
 {
 	Program *program;
 	const PipelineLayout *layout;
-	std::vector<Program *> program_group;
 
 	const RenderPass *compatible_render_pass;
 	PipelineState static_state;
@@ -437,7 +437,21 @@ public:
 	                                                                          const RenderPassInfo &rp, unsigned thread_index, unsigned subpass);
 
 	void set_program(Program *program);
-	void set_program_group(Program * const *programs, unsigned num_programs, const PipelineLayout *layout);
+
+	// Pipeline state must not change between calling this and dispatching.
+	// Ideally it's called right before execute indirect commands.
+	// The execution set handle is only valid as long as the creating command buffer is alive.
+
+	struct ExecutionSetSpecializationConstants
+	{
+		uint32_t mask;
+		uint32_t constants[VULKAN_NUM_USER_SPEC_CONSTANTS];
+	};
+
+	VkIndirectExecutionSetEXT bake_and_set_program_group(
+			Program * const *programs, unsigned num_programs,
+			const ExecutionSetSpecializationConstants *spec_constants,
+			const PipelineLayout *layout);
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	// Convenience functions for one-off shader binds.
@@ -517,7 +531,8 @@ public:
 	void draw_mesh_tasks_indirect(const Buffer &buffer, VkDeviceSize offset, uint32_t draw_count, uint32_t stride);
 	void draw_mesh_tasks_multi_indirect(const Buffer &buffer, VkDeviceSize offset, uint32_t draw_count, uint32_t stride,
 										const Buffer &count, VkDeviceSize count_offset);
-	void execute_indirect_commands(const IndirectLayout *indirect_layout,
+	void execute_indirect_commands(VkIndirectExecutionSetEXT execution_set,
+	                               const IndirectLayout *indirect_layout,
 	                               uint32_t sequences,
 	                               const Buffer &indirect, VkDeviceSize offset,
 	                               const Buffer *count, size_t count_offset,
@@ -809,8 +824,7 @@ public:
 	{
 		Sync,
 		FailOnCompileRequired,
-		AsyncThread,
-		IndirectBindable
+		AsyncThread
 	};
 	static Pipeline build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile, CompileMode mode);
 	static Pipeline build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile, CompileMode mode);
@@ -922,7 +936,7 @@ private:
 
 	void bind_pipeline(VkPipelineBindPoint bind_point, VkPipeline pipeline, uint32_t active_dynamic_state);
 
-	static void update_hash_graphics_pipeline(DeferredPipelineCompile &compile, CompileMode mode, uint32_t *active_vbos);
+	static void update_hash_graphics_pipeline(DeferredPipelineCompile &compile, uint32_t *active_vbos);
 	static void update_hash_compute_pipeline(DeferredPipelineCompile &compile);
 	void set_surface_transform_specialization_constants();
 

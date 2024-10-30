@@ -122,7 +122,7 @@ uvec3 remap_index_buffer(uvec3 prim)
 
 float cross2d(vec2 a, vec2 b)
 {
-	return a.x * b.y - a.y * b.x;
+    return a.x * b.y - a.y * b.x;
 }
 
 bool cull_triangle(vec2 a, vec2 b, vec2 c)
@@ -137,64 +137,64 @@ bool cull_triangle(vec2 a, vec2 b, vec2 c)
     precise float pos_area = ab.y * ac.x;
     precise float neg_area = ab.x * ac.y;
 
-	// This check should be done in snapped coordinate space (which we cannot realistically get),
-	// but in practice this is fine.
+    // This check should be done in snapped coordinate space (which we cannot realistically get),
+    // but in practice this is fine.
     bool active_primitive = pos_area >= neg_area;
 
     if (active_primitive)
     {
         // Micropoly test.
-		// Assume a safety band of one subpixel.
-		vec2 bb_lo = min(min(a, b), c) - 1.0 / 256.0;
-		vec2 bb_hi = max(max(a, b), c) + 1.0 / 256.0;
+        // Assume a safety band of one subpixel.
+        vec2 bb_lo = min(min(a, b), c) - 1.0 / 256.0;
+        vec2 bb_hi = max(max(a, b), c) + 1.0 / 256.0;
 
         vec2 lo = floor(bb_lo);
         vec2 hi = floor(bb_hi);
 
-// Does not show any meaningful uplift, but number of micro polys is heavily reduced at least.
+        // Does not show any meaningful uplift, but number of micro polys is heavily reduced at least.
 #define RASTER_CULLING_TEST 1
 
 #if RASTER_CULLING_TEST
-		vec2 delta = hi - lo;
-		if (all(equal(delta, vec2(1.0))))
-		{
-			// Micropoly raster. There is only one pixel that could have coverage. Test it.
-			// Pixel center, we accounted for half pixel offset in the viewport transform already,
-			// so the integer position == sample point.
-			// We're working in whole subpixels here.
-			vec2 p = hi;
-			vec2 bc = c - b;
+        vec2 delta = hi - lo;
+        if (all(equal(delta, vec2(1.0))))
+        {
+            // Micropoly raster. There is only one pixel that could have coverage. Test it.
+            // Pixel center, we accounted for half pixel offset in the viewport transform already,
+            // so the integer position == sample point.
+            // We're working in whole subpixels here.
+            vec2 p = hi;
+            vec2 bc = c - b;
 
-			vec2 ap = p - a;
-			vec2 bp = p - b;
-			vec2 cp = p - c;
+            vec2 ap = p - a;
+            vec2 bp = p - b;
+            vec2 cp = p - c;
 
-			// Use same winding as input.
-			float d0 = cross2d(ap, ab);
-			float d1 = cross2d(bp, bc);
-			float d2 = cross2d(ac, cp);
+            // Use same winding as input.
+            float d0 = cross2d(ap, ab);
+            float d1 = cross2d(bp, bc);
+            float d2 = cross2d(ac, cp);
 
-			// Error estimate of the raster test. At most, ab.x will be off by one subpixel's worth.
-			// We might have made an error where we rounded a.x in the wrong direction (~0.5 subpixel error),
-			// as well as b.x (~0.5 subpixel error), for a total of 1 subpixel error.
-			// So with the cross product: ab.x * ap.y - ab.y * ap.x, the maximum error is approx:
-			// (abs(ap.y) + abs(ap.x)) / 256.0.
-			//float a_error = -abs(ap.x) - abs(ap.y);
-			//float b_error = -abs(bp.x) - abs(bp.y);
-			//float c_error = -abs(cp.x) - abs(cp.y);
-			//active_primitive = all(greaterThanEqual(vec3(d0, d1, d2), (1.0 / 256.0) * vec3(a_error, b_error, c_error)));
+            // Error estimate of the raster test. At most, ab.x will be off by one subpixel's worth.
+            // We might have made an error where we rounded a.x in the wrong direction (~0.5 subpixel error),
+            // as well as b.x (~0.5 subpixel error), for a total of 1 subpixel error.
+            // So with the cross product: ab.x * ap.y - ab.y * ap.x, the maximum error is approx:
+            // (abs(ap.y) + abs(ap.x)) / 256.0.
+            //float a_error = -abs(ap.x) - abs(ap.y);
+            //float b_error = -abs(bp.x) - abs(bp.y);
+            //float c_error = -abs(cp.x) - abs(cp.y);
+            //active_primitive = all(greaterThanEqual(vec3(d0, d1, d2), (1.0 / 256.0) * vec3(a_error, b_error, c_error)));
 
-			// Simplified conservative estimate based on bounding box. Any vector to P cannot be greater than BB distance.
-			float error_x = bb_hi.x - bb_lo.x;
-			float error_y = bb_hi.y - bb_lo.y;
-			float minimum_plane = (-1.0 / 256.0) * (error_x + error_y);
-			active_primitive = all(greaterThanEqual(vec3(d0, d1, d2), vec3(minimum_plane)));
-		}
-		else
+            // Simplified conservative estimate based on bounding box. Any vector to P cannot be greater than BB distance.
+            float error_x = bb_hi.x - bb_lo.x;
+            float error_y = bb_hi.y - bb_lo.y;
+            float minimum_plane = (-1.0 / 256.0) * (error_x + error_y);
+            active_primitive = all(greaterThanEqual(vec3(d0, d1, d2), vec3(minimum_plane)));
+        }
+        else
 #endif
-		{
-			active_primitive = all(notEqual(lo, hi));
-		}
+        {
+            active_primitive = all(notEqual(lo, hi));
+        }
     }
 
     return active_primitive;

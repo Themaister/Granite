@@ -128,6 +128,16 @@ void AssetManager::mark_used_asset(AssetID id)
 	lru_append.push(id);
 }
 
+bool AssetManager::get_wants_mesh_assets() const
+{
+	return wants_mesh_assets;
+}
+
+void AssetManager::enable_mesh_assets()
+{
+	wants_mesh_assets = true;
+}
+
 void AssetManager::set_asset_budget(uint64_t cost)
 {
 	transfer_budget = cost;

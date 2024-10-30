@@ -195,5 +195,7 @@ private:
 	MeshEncoding mesh_encoding = MeshEncoding::Classic;
 
 	bool allocate_asset_mesh(Granite::AssetID id, const Meshlet::MeshView &view);
+
+	void init_mesh_assets();
 };
 }

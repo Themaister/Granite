@@ -75,6 +75,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 {
 	explicit MeshletViewerApplication(const char *path)
 	{
+		GRANITE_ASSET_MANAGER()->enable_mesh_assets();
 		get_wsi().set_present_mode(Vulkan::PresentMode::UnlockedMaybeTear);
 
 		GLTF::Parser parser{path};

@@ -109,6 +109,77 @@ uint64_t ResourceManager::estimate_cost_asset(Granite::AssetID id, Granite::File
 	}
 }
 
+void ResourceManager::init_mesh_assets()
+{
+	Internal::MeshGlobalAllocator::PrimeOpaque opaque = {};
+	opaque.domain = BufferDomain::Device;
+	opaque.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+	if (device->get_device_features().mesh_shader_features.meshShader)
+	{
+		mesh_encoding = MeshEncoding::MeshletEncoded;
+		LOGI("Opting in to meshlet path.\n");
+	}
+
+	std::string encoding;
+	if (Util::get_environment("GRANITE_MESH_ENCODING", encoding))
+	{
+		if (encoding == "encoded")
+			mesh_encoding = MeshEncoding::MeshletEncoded;
+		else if (encoding == "decoded")
+			mesh_encoding = MeshEncoding::MeshletDecoded;
+		else if (encoding == "mdi")
+			mesh_encoding = MeshEncoding::VBOAndIBOMDI;
+		else if (encoding == "classic")
+			mesh_encoding = MeshEncoding::Classic;
+		else
+			LOGE("Unknown encoding: %s\n", encoding.c_str());
+	}
+
+	if (mesh_encoding != MeshEncoding::MeshletEncoded)
+	{
+		unsigned index_size = mesh_encoding == MeshEncoding::Classic ? sizeof(uint32_t) : sizeof(uint8_t);
+		index_buffer_allocator.set_element_size(0, 3 * index_size); // 8-bit or 32-bit indices.
+		attribute_buffer_allocator.set_soa_count(3);
+		attribute_buffer_allocator.set_element_size(0, sizeof(float) * 3);
+		attribute_buffer_allocator.set_element_size(1, sizeof(float) * 2 + sizeof(uint32_t) * 2);
+		attribute_buffer_allocator.set_element_size(2, sizeof(uint32_t) * 2);
+
+		opaque.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		index_buffer_allocator.prime(&opaque);
+		opaque.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		attribute_buffer_allocator.prime(&opaque);
+
+		if (mesh_encoding != MeshEncoding::Classic)
+		{
+			auto element_size = mesh_encoding == MeshEncoding::MeshletDecoded ?
+			                    sizeof(Meshlet::RuntimeHeaderDecoded) : sizeof(VkDrawIndexedIndirectCommand);
+
+			indirect_buffer_allocator.set_soa_count(2);
+			indirect_buffer_allocator.set_element_size(0, Meshlet::ChunkFactor * element_size);
+			indirect_buffer_allocator.set_element_size(1, sizeof(Meshlet::Bound));
+
+			opaque.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+			               VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+			indirect_buffer_allocator.prime(&opaque);
+		}
+	}
+	else
+	{
+		mesh_header_allocator.set_element_size(0, sizeof(Meshlet::RuntimeHeaderEncoded));
+		mesh_stream_allocator.set_element_size(0, sizeof(Meshlet::Stream));
+		mesh_payload_allocator.set_element_size(0, sizeof(Meshlet::PayloadWord));
+
+		mesh_header_allocator.set_soa_count(2);
+		mesh_header_allocator.set_element_size(1, sizeof(Meshlet::Bound));
+
+		opaque.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		mesh_header_allocator.prime(&opaque);
+		mesh_stream_allocator.prime(&opaque);
+		mesh_payload_allocator.prime(&opaque);
+	}
+}
+
 void ResourceManager::init()
 {
 	manager = device->get_system_handles().asset_manager;
@@ -159,76 +230,9 @@ void ResourceManager::init()
 		manager->set_asset_budget_per_iteration(2 * 1000 * 1000);
 	}
 
-	// Need to make this configurable.
-#if 0
-	Internal::MeshGlobalAllocator::PrimeOpaque opaque = {};
-	opaque.domain = BufferDomain::Device;
-	opaque.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-
-	if (device->get_device_features().mesh_shader_features.meshShader)
-	{
-		mesh_encoding = MeshEncoding::MeshletEncoded;
-		LOGI("Opting in to meshlet path.\n");
-	}
-
-	std::string encoding;
-	if (Util::get_environment("GRANITE_MESH_ENCODING", encoding))
-	{
-		if (encoding == "encoded")
-			mesh_encoding = MeshEncoding::MeshletEncoded;
-		else if (encoding == "decoded")
-			mesh_encoding = MeshEncoding::MeshletDecoded;
-		else if (encoding == "mdi")
-			mesh_encoding = MeshEncoding::VBOAndIBOMDI;
-		else if (encoding == "classic")
-			mesh_encoding = MeshEncoding::Classic;
-		else
-			LOGE("Unknown encoding: %s\n", encoding.c_str());
-	}
-
-	if (mesh_encoding != MeshEncoding::MeshletEncoded)
-	{
-		unsigned index_size = mesh_encoding == MeshEncoding::Classic ? sizeof(uint32_t) : sizeof(uint8_t);
-		index_buffer_allocator.set_element_size(0, 3 * index_size); // 8-bit or 32-bit indices.
-		attribute_buffer_allocator.set_soa_count(3);
-		attribute_buffer_allocator.set_element_size(0, sizeof(float) * 3);
-		attribute_buffer_allocator.set_element_size(1, sizeof(float) * 2 + sizeof(uint32_t) * 2);
-		attribute_buffer_allocator.set_element_size(2, sizeof(uint32_t) * 2);
-
-		opaque.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-		index_buffer_allocator.prime(&opaque);
-		opaque.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-		attribute_buffer_allocator.prime(&opaque);
-
-		if (mesh_encoding != MeshEncoding::Classic)
-		{
-			auto element_size = mesh_encoding == MeshEncoding::MeshletDecoded ?
-					sizeof(Meshlet::RuntimeHeaderDecoded) : sizeof(VkDrawIndexedIndirectCommand);
-
-			indirect_buffer_allocator.set_soa_count(2);
-			indirect_buffer_allocator.set_element_size(0, Meshlet::ChunkFactor * element_size);
-			indirect_buffer_allocator.set_element_size(1, sizeof(Meshlet::Bound));
-
-			opaque.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-			               VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-			indirect_buffer_allocator.prime(&opaque);
-		}
-	}
-	else
-	{
-		mesh_header_allocator.set_element_size(0, sizeof(Meshlet::RuntimeHeaderEncoded));
-		mesh_stream_allocator.set_element_size(0, sizeof(Meshlet::Stream));
-		mesh_payload_allocator.set_element_size(0, sizeof(Meshlet::PayloadWord));
-
-		mesh_header_allocator.set_soa_count(2);
-		mesh_header_allocator.set_element_size(1, sizeof(Meshlet::Bound));
-
-		opaque.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-		mesh_header_allocator.prime(&opaque);
-		mesh_stream_allocator.prime(&opaque);
-		mesh_payload_allocator.prime(&opaque);
-	}
-#endif
+	// Opt-in. Normal Granite applications shouldn't allocate up a ton of space up front.
+	if (manager->get_wants_mesh_assets())
+		init_mesh_assets();
 }
 
 ImageHandle ResourceManager::create_gtx(const MemoryMappedTexture &mapped_file, Granite::AssetID id)

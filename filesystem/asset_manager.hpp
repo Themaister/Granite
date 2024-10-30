@@ -129,6 +129,12 @@ public:
 	// When a resource is actually accessed, this is called.
 	void mark_used_asset(AssetID id);
 
+	// Should be called in applications's constructor to make sure we initialize
+	// the mesh asset pool on device creation.
+	// FIXME: Could be made more flexible if need be.
+	void enable_mesh_assets();
+	bool get_wants_mesh_assets() const;
+
 private:
 	struct AssetInfo : Util::IntrusiveHashMapEnabled<AssetInfo>
 	{
@@ -171,5 +177,7 @@ private:
 
 	void update_costs_locked_assets();
 	void update_lru_locked_assets();
+
+	bool wants_mesh_assets = false;
 };
 }

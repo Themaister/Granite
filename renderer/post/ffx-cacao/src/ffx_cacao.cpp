@@ -25,7 +25,7 @@
 #include <string.h> // memcpy
 #include <stdio.h>  // snprintf
 
-// Granite implementation: Copyright (c) 2022-2023 Hans-Kristian Arntzen
+// Granite implementation: Copyright (c) 2022-2024 Hans-Kristian Arntzen
 
 // Define symbol to enable DirectX debug markers created using Cauldron
 #define FFX_CACAO_ENABLE_CAULDRON_DEBUG

@@ -24,7 +24,10 @@ if (GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER)
 endif()
 
 add_subdirectory(renderdoc EXCLUDE_FROM_ALL)
-add_subdirectory(stb)
+
+if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/stb/stb/stb_vorbis.c)
+    add_subdirectory(stb)
+endif()
 
 if ((NOT ANDROID) AND GRANITE_ASTC_ENCODER_COMPRESSION)
     if (CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)")
@@ -53,14 +56,17 @@ endif()
 set(FOSSILIZE_CLI OFF CACHE BOOL "Fossilize CLI." FORCE)
 set(FOSSILIZE_TESTS OFF CACHE BOOL "Fossilize tests." FORCE)
 
-add_library(granite-rapidjson INTERFACE)
-target_include_directories(granite-rapidjson INTERFACE
+if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include/rapidjson/document.h)
+    add_library(granite-rapidjson INTERFACE)
+    target_include_directories(granite-rapidjson INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include)
+endif()
 
 if (NOT TARGET Vulkan::Headers)
     add_subdirectory(khronos/vulkan-headers)
 endif()
+
 add_library(granite-volk-headers INTERFACE)
 target_include_directories(granite-volk-headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/volk)
 target_link_libraries(granite-volk-headers INTERFACE Vulkan::Headers)

@@ -1,8 +1,7 @@
 add_granite_internal_lib(granite-application
         application.hpp
         application_glue.hpp
-        application.cpp
-        platforms/application_headless.cpp)
+        application.cpp)
 
 if (GRANITE_FFMPEG)
     target_link_libraries(granite-application PRIVATE granite-video)
@@ -15,8 +14,12 @@ target_link_libraries(granite-application PUBLIC
         granite-application-global-init
         granite-application-events
         granite-threading
-        granite-filesystem
-        PRIVATE granite-stb granite-rapidjson)
+        granite-filesystem)
+
+if (NOT (${GRANITE_PLATFORM} MATCHES "null"))
+    target_sources(granite-application PRIVATE platforms/application_headless.cpp)
+    target_link_libraries(granite-application PRIVATE granite-stb granite-rapidjson)
+endif()
 
 target_include_directories(granite-application PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

@@ -1,7 +1,0 @@
-if (WIN32)
-	add_granite_third_party_lib(granite-libco libco.h fiber.c)
-else()
-	add_granite_third_party_lib(granite-libco STATIC libco.h sjlj.c)
-	target_compile_options(granite-libco PRIVATE -pthread)
-endif()
-target_include_directories(granite-libco PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

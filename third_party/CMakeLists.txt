@@ -15,9 +15,15 @@ set(MUFFT_ENABLE_FFTW OFF CACHE BOOL "Disable FFTW tests." FORCE)
 set(SKIP_SPIRV_TOOLS_INSTALL ON CACHE BOOL "" FORCE)
 set(SPIRV_CROSS_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 
-add_subdirectory(spirv-cross EXCLUDE_FROM_ALL)
+if (GRANITE_VULKAN_SPIRV_CROSS)
+    add_subdirectory(spirv-cross EXCLUDE_FROM_ALL)
+endif()
+
+if (GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER)
+    add_subdirectory(shaderc EXCLUDE_FROM_ALL)
+endif()
+
 add_subdirectory(renderdoc EXCLUDE_FROM_ALL)
-add_subdirectory(shaderc EXCLUDE_FROM_ALL)
 add_subdirectory(stb)
 
 if ((NOT ANDROID) AND GRANITE_ASTC_ENCODER_COMPRESSION)
@@ -38,10 +44,11 @@ if ((NOT ANDROID) AND GRANITE_ASTC_ENCODER_COMPRESSION)
     endif()
 endif()
 
-add_subdirectory(meshoptimizer EXCLUDE_FROM_ALL)
-add_subdirectory(mikktspace)
-add_subdirectory(muFFT EXCLUDE_FROM_ALL)
-add_subdirectory(libco EXCLUDE_FROM_ALL)
+if (GRANITE_RENDERER)
+    add_subdirectory(meshoptimizer EXCLUDE_FROM_ALL)
+    add_subdirectory(mikktspace)
+    add_subdirectory(muFFT EXCLUDE_FROM_ALL)
+endif()
 
 set(FOSSILIZE_CLI OFF CACHE BOOL "Fossilize CLI." FORCE)
 set(FOSSILIZE_TESTS OFF CACHE BOOL "Fossilize tests." FORCE)

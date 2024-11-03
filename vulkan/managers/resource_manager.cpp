@@ -231,7 +231,7 @@ void ResourceManager::init()
 	}
 
 	// Opt-in. Normal Granite applications shouldn't allocate up a ton of space up front.
-	if (manager->get_wants_mesh_assets())
+	if (manager && manager->get_wants_mesh_assets())
 		init_mesh_assets();
 }
 

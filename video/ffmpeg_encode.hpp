@@ -82,6 +82,7 @@ public:
 		bool realtime = false;
 		const char *encoder = "libx264";
 		bool low_latency = false;
+		bool hdr10 = false;
 
 		struct
 		{

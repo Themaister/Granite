@@ -1014,8 +1014,18 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 	}
 
 	video.av_ctx->color_range = AVCOL_RANGE_MPEG;
-	video.av_ctx->colorspace = AVCOL_SPC_BT709;
-	video.av_ctx->color_primaries = AVCOL_PRI_BT709;
+
+	if (options.hdr10)
+	{
+		video.av_ctx->colorspace = AVCOL_SPC_BT2020_NCL;
+		video.av_ctx->color_primaries = AVCOL_PRI_BT2020;
+		video.av_ctx->color_trc = AVCOL_TRC_SMPTE2084; // PQ
+	}
+	else
+	{
+		video.av_ctx->colorspace = AVCOL_SPC_BT709;
+		video.av_ctx->color_primaries = AVCOL_PRI_BT709;
+	}
 
 	switch (options.siting)
 	{
@@ -1735,6 +1745,22 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	push.base_v = pipeline.constants.base_uv_luma[1];
 	push.dither_strength = pipeline.constants.dither_strength;
 	cmd.push_constants(&push, 0, sizeof(push));
+
+	auto *color_transform = cmd.allocate_typed_constant_data<vec4>(0, 3, 3);
+
+	// Minimal crude implementation to get something HDR10 working.
+	if (impl->options.hdr10)
+	{
+		color_transform[0] = vec4(0.2627f, 0.678f, 0.0593f, 0.0f);
+		color_transform[1] = vec4(-0.13963f, -0.36037f, 0.5f, 0.0f);
+		color_transform[2] = vec4(0.5f, -0.459786f, -0.0402143f, 0.0f);
+	}
+	else
+	{
+		color_transform[0] = vec4(0.2126f, 0.7152f, 0.0722f, 0.0f);
+		color_transform[1] = vec4(-0.114572f, -0.385428f, 0.5f, 0.0f);
+		color_transform[2] = vec4(0.5f, -0.454153f, -0.0458471f, 0.0f);
+	}
 
 	auto start_yuv_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	cmd.dispatch(pipeline.constants.luma_dispatch[0], pipeline.constants.luma_dispatch[1], 1);

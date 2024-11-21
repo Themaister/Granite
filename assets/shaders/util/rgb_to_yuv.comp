@@ -17,11 +17,10 @@ layout(push_constant) uniform Registers
     float dither_strength;
 } registers;
 
-// BT709. Row-major.
-const mediump mat3 rgb_to_yuv = mat3(
-    vec3(0.2126, 0.7152, 0.0722),
-    vec3(-0.114572, -0.385428, 0.5),
-    vec3(0.5, -0.454153, -0.0458471));
+layout(set = 0, binding = 3) uniform Transform
+{
+	mat3 rgb_to_yuv;
+};
 
 #define D(x) ((x) - 0.5)
 const mediump float dither[] = float[](

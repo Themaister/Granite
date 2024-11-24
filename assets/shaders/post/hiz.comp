@@ -73,7 +73,10 @@ void write_image4(ivec2 coord, int mip, vec4 v)
     imageStore(uImages[mip], coord + ivec2(1, 1), v.wwww);
 }
 
-shared float shared_buffer[128];
+const int SHARED_WIDTH = 32;
+const int SHARED_HEIGHT = 32;
+const int BANK_STRIDE = SHARED_WIDTH * SHARED_HEIGHT;
+shared float shared_buffer[2 * BANK_STRIDE];
 shared bool shared_is_last_workgroup;
 
 mat4 fetch_4x4_texture(ivec2 base_coord)
@@ -98,8 +101,7 @@ vec4 fetch_2x2_image_mip6(ivec2 base_coord)
 
 float fetch_image_mip6(ivec2 coord)
 {
-    ivec2 max_coord = mip_resolution(6) - 1;
-    return imageLoad(uImages[6], min(coord, max_coord)).x;
+    return imageLoad(uImages[6], coord).x;
 }
 
 mat4 write_mip0_transformed(mat4 M, ivec2 base_coord)
@@ -151,139 +153,71 @@ void reduce_mip_shared(ivec2 base_coord, int mip)
     bool vert_fold = base_coord.y + 1 == mip_res_target.y && (mip_res_higher.y & 1) != 0;
     bool diag_fold = horiz_fold && vert_fold;
 
-    // Ping-pong the shared buffer to avoid double barrier.
-    uint out_offset = (mip & 1) * 64;
-    uint in_offset = 64 - out_offset;
+    const int DOUBLE_SHARED_WIDTH = SHARED_WIDTH * 2;
 
-    float d00 = shared_buffer[in_offset + base_coord.y * 32 + base_coord.x * 2];
-    float d10 = shared_buffer[in_offset + base_coord.y * 32 + base_coord.x * 2 + 1];
-    float d01 = shared_buffer[in_offset + base_coord.y * 32 + base_coord.x * 2 + 16];
-    float d11 = shared_buffer[in_offset + base_coord.y * 32 + base_coord.x * 2 + 17];
+    // Ping-pong the shared buffer to avoid double barrier.
+    int out_offset = (mip & 1) * BANK_STRIDE;
+    int in_offset = BANK_STRIDE - out_offset;
+    int base_in_coord = in_offset + base_coord.y * DOUBLE_SHARED_WIDTH + base_coord.x * 2;
+
+    float d00 = shared_buffer[base_in_coord];
+    float d10 = shared_buffer[base_in_coord + 1];
+    float d01 = shared_buffer[base_in_coord + SHARED_WIDTH];
+    float d11 = shared_buffer[base_in_coord + SHARED_WIDTH + 1];
 
     float reduced = reduce(vec4(d00, d10, d01, d11));
+
     if (horiz_fold)
     {
-        reduced = REDUCE_OPERATOR(reduced, shared_buffer[in_offset + base_coord.y * 32 + base_coord.x * 2 + 2]);
-        reduced = REDUCE_OPERATOR(reduced, shared_buffer[in_offset + base_coord.y * 32 + base_coord.x * 2 + 18]);
+        reduced = REDUCE_OPERATOR(reduced, shared_buffer[base_in_coord + 2]);
+        reduced = REDUCE_OPERATOR(reduced, shared_buffer[base_in_coord + 2 + SHARED_WIDTH]);
     }
 
     if (vert_fold)
     {
-        reduced = REDUCE_OPERATOR(reduced, shared_buffer[in_offset + base_coord.y * 32 + base_coord.x * 2 + 32]);
-        reduced = REDUCE_OPERATOR(reduced, shared_buffer[in_offset + base_coord.y * 32 + base_coord.x * 2 + 33]);
+        reduced = REDUCE_OPERATOR(reduced, shared_buffer[base_in_coord + DOUBLE_SHARED_WIDTH]);
+        reduced = REDUCE_OPERATOR(reduced, shared_buffer[base_in_coord + DOUBLE_SHARED_WIDTH + 1]);
     }
 
     if (diag_fold)
-        reduced = REDUCE_OPERATOR(reduced, shared_buffer[in_offset + base_coord.y * 32 + base_coord.x * 2 + 34]);
+        reduced = REDUCE_OPERATOR(reduced, shared_buffer[base_in_coord + DOUBLE_SHARED_WIDTH + 2]);
 
-    shared_buffer[out_offset + base_coord.y * 16 + base_coord.x] = reduced;
+    shared_buffer[out_offset + base_coord.y * SHARED_WIDTH + base_coord.x] = reduced;
     write_image(base_coord, mip, reduced);
 }
 
-void reduce_mip_lod7_lod8(ivec2 base_coord_lod8)
+void reduce_mip_lod7(ivec2 base_coord)
 {
     ivec2 mip_res6 = mip_resolution(6);
     ivec2 mip_res7 = mip_resolution(7);
-    ivec2 base_coord_lod6 = base_coord_lod8 * 4;
-    ivec2 base_coord_lod7 = base_coord_lod8 * 2;
 
-    float d00 = reduce(fetch_2x2_image_mip6(base_coord_lod6 + ivec2(0, 0)));
-    float d10 = reduce(fetch_2x2_image_mip6(base_coord_lod6 + ivec2(2, 0)));
-    float d01 = reduce(fetch_2x2_image_mip6(base_coord_lod6 + ivec2(0, 2)));
-    float d11 = reduce(fetch_2x2_image_mip6(base_coord_lod6 + ivec2(2, 2)));
+    float reduced = reduce(fetch_2x2_image_mip6(2 * base_coord));
 
     // NPOT folding for LOD 7. Our group will write the edge,
     // so need to fold in any last neighbor in previous LOD which may contribute,
     // but would be otherwise lost to the rounding down.
 
-    bool horiz_fold = base_coord_lod7.x + 2 == mip_res7.x && (mip_res6.x & 1) != 0;
-    bool vert_fold = base_coord_lod7.y + 2 == mip_res7.y && (mip_res6.y & 1) != 0;
+    bool horiz_fold = base_coord.x + 1 == mip_res7.x && (mip_res6.x & 1) != 0;
+    bool vert_fold = base_coord.y + 1 == mip_res7.y && (mip_res6.y & 1) != 0;
     bool diag_fold = horiz_fold && vert_fold;
 
     if (horiz_fold)
     {
-        float d20 = REDUCE_OPERATOR(
-            fetch_image_mip6(base_coord_lod6 + ivec2(4, 0)),
-            fetch_image_mip6(base_coord_lod6 + ivec2(4, 1)));
-
-        float d21 = REDUCE_OPERATOR(
-            fetch_image_mip6(base_coord_lod6 + ivec2(4, 2)),
-            fetch_image_mip6(base_coord_lod6 + ivec2(4, 3)));
-
-        d10 = REDUCE_OPERATOR(d10, d20);
-        d11 = REDUCE_OPERATOR(d11, d21);
+        reduced = REDUCE_OPERATOR(reduced, fetch_image_mip6(2 * base_coord + ivec2(2, 0)));
+        reduced = REDUCE_OPERATOR(reduced, fetch_image_mip6(2 * base_coord + ivec2(2, 1)));
     }
 
     if (vert_fold)
     {
-        float d02 = REDUCE_OPERATOR(
-            fetch_image_mip6(base_coord_lod6 + ivec2(0, 4)),
-            fetch_image_mip6(base_coord_lod6 + ivec2(1, 4)));
-
-        float d12 = REDUCE_OPERATOR(
-            fetch_image_mip6(base_coord_lod6 + ivec2(2, 4)),
-            fetch_image_mip6(base_coord_lod6 + ivec2(3, 4)));
-
-        d01 = REDUCE_OPERATOR(d01, d02);
-        d11 = REDUCE_OPERATOR(d11, d12);
+        reduced = REDUCE_OPERATOR(reduced, fetch_image_mip6(2 * base_coord + ivec2(0, 2)));
+        reduced = REDUCE_OPERATOR(reduced, fetch_image_mip6(2 * base_coord + ivec2(1, 2)));
     }
 
     if (diag_fold)
-    {
-        float d22 = fetch_image_mip6(base_coord_lod6 + ivec2(4, 4));
-        d11 = REDUCE_OPERATOR(d11, d22);
-    }
+        reduced = REDUCE_OPERATOR(reduced, fetch_image_mip6(2 * base_coord + ivec2(2, 2)));
 
-    // If the edge pixels will be dropped, fold them into the top-left pixel.
-    horiz_fold = base_coord_lod7.x + 1 == mip_res7.x;
-    vert_fold = base_coord_lod7.y + 1 == mip_res7.y;
-    diag_fold = horiz_fold && vert_fold;
-
-    if (horiz_fold)
-    {
-        d00 = REDUCE_OPERATOR(d00, d10);
-        d01 = REDUCE_OPERATOR(d01, d11);
-    }
-
-    if (vert_fold)
-    {
-        d00 = REDUCE_OPERATOR(d00, d01);
-        d10 = REDUCE_OPERATOR(d10, d11);
-    }
-
-    if (diag_fold)
-        d00 = REDUCE_OPERATOR(d00, d11);
-
-    vec4 quad = vec4(d00, d10, d01, d11);
-    write_image4(base_coord_lod7, 7, quad);
-
-    if (registers.mips > 8)
-    {
-        float lod8 = reduce(quad);
-        shared_buffer[base_coord_lod8.y * 16 + base_coord_lod8.x] = lod8;
-
-        // If writes to mip 8 may be sliced, fixup.
-        if (((mip_res7.x | mip_res7.y) & 1) != 0)
-        {
-            barrier();
-
-            ivec2 mip_res8 = mip_resolution(8);
-            horiz_fold = base_coord_lod8.x + 1 == mip_res8.x && (mip_res7.x & 1) != 0;
-            vert_fold = base_coord_lod8.y + 1 == mip_res8.y && (mip_res7.y & 1) != 0;
-            diag_fold = horiz_fold && vert_fold;
-
-            if (horiz_fold)
-                lod8 = REDUCE_OPERATOR(lod8, shared_buffer[base_coord_lod8.y * 16 + base_coord_lod8.x + 1]);
-            if (vert_fold)
-                lod8 = REDUCE_OPERATOR(lod8, shared_buffer[base_coord_lod8.y * 16 + base_coord_lod8.x + 16]);
-            if (diag_fold)
-                lod8 = REDUCE_OPERATOR(lod8, shared_buffer[base_coord_lod8.y * 16 + base_coord_lod8.x + 17]);
-            if (horiz_fold || vert_fold)
-                shared_buffer[base_coord_lod8.y * 16 + base_coord_lod8.x] = lod8;
-        }
-
-        write_image(base_coord_lod8, 8, lod8);
-    }
+    write_image(base_coord, 7, reduced);
+    shared_buffer[BANK_STRIDE + base_coord.y * SHARED_WIDTH + base_coord.x] = reduced;
 }
 
 float reduce_mips_simd16(ivec2 base_coord, uint local_index, int mip, float d)
@@ -369,9 +303,20 @@ void main()
         atomic_counter = 0u;
 
     // At this point, the mip resolutions may be non-POT and things get spicy.
+    // Not using subgroup ops anymore, so use straight linear coordinates.
+    local_coord.x = bitfieldExtract(local_index, 0, 4);
+    local_coord.y = bitfieldExtract(local_index, 4, 4);
 
     // Write LOD 7-8, Compute LOD 8
-    reduce_mip_lod7_lod8(ivec2(local_coord));
+    ivec2 mip_res7 = mip_resolution(7);
+    for (int y = 0; y < mip_res7.y; y += 16)
+        for (int x = 0; x < mip_res7.x; x += 16)
+            reduce_mip_lod7(ivec2(local_coord) + ivec2(x, y));
+
+    if (registers.mips <= 8)
+        return;
+    barrier();
+    reduce_mip_shared(ivec2(local_coord), 8);
 
     if (registers.mips <= 9)
         return;

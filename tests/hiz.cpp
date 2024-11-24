@@ -40,8 +40,8 @@ int main()
 	Device dev;
 	dev.set_context(ctx);
 
-	constexpr unsigned WIDTH = 7 * 64;
-	constexpr unsigned HEIGHT = 7 * 64;
+	constexpr unsigned WIDTH = 15 * 64;
+	constexpr unsigned HEIGHT = 5 * 64;
 
 	std::vector<float> values(WIDTH * HEIGHT);
 	for (unsigned y = 0; y < HEIGHT; y++)

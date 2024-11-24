@@ -40,18 +40,18 @@ int main()
 	Device dev;
 	dev.set_context(ctx);
 
-	constexpr unsigned WIDTH = 7;
-	constexpr unsigned HEIGHT = 3;
+	constexpr unsigned WIDTH = 7 * 64;
+	constexpr unsigned HEIGHT = 7 * 64;
 
-	float values[HEIGHT][WIDTH];
+	std::vector<float> values(WIDTH * HEIGHT);
 	for (unsigned y = 0; y < HEIGHT; y++)
 		for (unsigned x = 0; x < WIDTH; x++)
-			values[y][x] = float(y * 100000 + x);
+			values[y * WIDTH + x] = float(x + y);
 
 	auto info = ImageCreateInfo::immutable_2d_image(WIDTH, HEIGHT, VK_FORMAT_R32_SFLOAT);
 	info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 	ImageInitialData init = {};
-	init.data = values;
+	init.data = values.data();
 	auto img = dev.create_image(info, &init);
 
 	info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;

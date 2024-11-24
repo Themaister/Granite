@@ -107,6 +107,8 @@ protected:
 	float transform_z_scale = 1.0f;
 	bool ortho = false;
 	float ortho_height = 0.0f;
+
+	void ensure_normalized_rotation();
 };
 
 class FPSCamera : public Camera, public EventHandler

@@ -112,7 +112,17 @@ void Camera::set_transform(const mat4 &m)
 
 	position = t;
 	rotation = conjugate(r);
+	ensure_normalized_rotation();
 	transform_z_scale = s.x;
+}
+
+void Camera::ensure_normalized_rotation()
+{
+	// Try to keep a stable rotation quat as long as camera isn't moving.
+	// Technically not *needed*, but can make debugging static scenes more reproducible.
+	float sqr_len_diff = dot(rotation.as_vec4(), rotation.as_vec4()) - 1.0f;
+	if (muglm::abs(sqr_len_diff) > 0.00001f)
+		rotation = normalize(rotation);
 }
 
 FPSCamera::FPSCamera()
@@ -185,9 +195,13 @@ bool FPSCamera::on_input_state(const InputStateEvent &state)
 	if (state.get_key_pressed(Key::Down))
 		dy += 1.0f * state.get_delta_time();
 
-	quat pitch = angleAxis(dy, vec3(1.0f, 0.0f, 0.0f));
-	quat yaw = angleAxis(dx, vec3(0.0f, 1.0f, 0.0f));
-	rotation = normalize(pitch * rotation * yaw);
+	if (dx != 0.0f || dy != 0.0f)
+	{
+		quat pitch = angleAxis(dy, vec3(1.0f, 0.0f, 0.0f));
+		quat yaw = angleAxis(dx, vec3(0.0f, 1.0f, 0.0f));
+		rotation = pitch * rotation * yaw;
+	}
+	ensure_normalized_rotation();
 
 	return true;
 }
@@ -206,9 +220,13 @@ bool FPSCamera::on_joypad_state(const JoypadStateEvent &state)
 	float dx = 2.0f * p0.get_axis(JoypadAxis::RightX) * state.get_delta_time();
 	float dy = 1.0f * p0.get_axis(JoypadAxis::RightY) * state.get_delta_time();
 
-	quat pitch = angleAxis(dy, vec3(1.0f, 0.0f, 0.0f));
-	quat yaw = angleAxis(dx, vec3(0.0f, 1.0f, 0.0f));
-	rotation = normalize(pitch * rotation * yaw);
+	if (dx != 0.0f || dy != 0.0f)
+	{
+		quat pitch = angleAxis(dy, vec3(1.0f, 0.0f, 0.0f));
+		quat yaw = angleAxis(dx, vec3(0.0f, 1.0f, 0.0f));
+		rotation = pitch * rotation * yaw;
+	}
+	ensure_normalized_rotation();
 
 	return true;
 }
@@ -220,9 +238,14 @@ bool FPSCamera::on_mouse_move(const MouseMoveEvent &m)
 
 	auto dx = float(m.get_delta_x());
 	auto dy = float(m.get_delta_y());
-	quat pitch = angleAxis(dy * 0.005f, vec3(1.0f, 0.0f, 0.0f));
-	quat yaw = angleAxis(dx * 0.005f, vec3(0.0f, 1.0f, 0.0f));
-	rotation = normalize(pitch * rotation * yaw);
+
+	if (dx != 0.0f || dy != 0.0f)
+	{
+		quat pitch = angleAxis(dy * 0.005f, vec3(1.0f, 0.0f, 0.0f));
+		quat yaw = angleAxis(dx * 0.005f, vec3(0.0f, 1.0f, 0.0f));
+		rotation = pitch * rotation * yaw;
+	}
+	ensure_normalized_rotation();
 
 	return true;
 }
@@ -230,7 +253,10 @@ bool FPSCamera::on_mouse_move(const MouseMoveEvent &m)
 bool FPSCamera::on_orientation(const OrientationEvent &o)
 {
 	if (!ignore_orientation)
+	{
 		rotation = conjugate(o.get_rotation());
+		ensure_normalized_rotation();
+	}
 	return !ignore_orientation;
 }
 }

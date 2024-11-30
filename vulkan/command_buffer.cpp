@@ -2247,6 +2247,12 @@ void *CommandBuffer::update_buffer(const Buffer &buffer, VkDeviceSize offset, Vk
 	return data.host;
 }
 
+void CommandBuffer::update_buffer_inline(const Buffer &buffer, VkDeviceSize offset, VkDeviceSize size, const void *data)
+{
+	VK_ASSERT(size <= 64 * 1024);
+	table.vkCmdUpdateBuffer(cmd, buffer.get_buffer(), offset, size, data);
+}
+
 void *CommandBuffer::update_image(const Image &image, const VkOffset3D &offset, const VkExtent3D &extent,
                                   uint32_t row_length, uint32_t image_height,
                                   const VkImageSubresourceLayers &subresource)

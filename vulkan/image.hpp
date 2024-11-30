@@ -79,6 +79,7 @@ enum ImageMiscFlagBits
 	IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DUPLEX =
 		IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT |
 		IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_ENCODE_BIT,
+	IMAGE_MISC_CREATE_PER_MIP_LEVEL_VIEWS_BIT = 1 << 14
 };
 using ImageMiscFlags = uint32_t;
 
@@ -139,6 +140,12 @@ public:
 		render_target_views = std::move(views);
 	}
 
+	void set_mip_views(std::vector<VkImageView> views)
+	{
+		VK_ASSERT(mip_views.empty());
+		mip_views = std::move(views);
+	}
+
 	void set_unorm_view(VkImageView view_)
 	{
 		VK_ASSERT(unorm_view == VK_NULL_HANDLE);
@@ -159,6 +166,7 @@ public:
 	}
 
 	VkImageView get_render_target_view(unsigned layer) const;
+	VkImageView get_mip_view(unsigned level) const;
 
 	// Gets an image view which only includes floating point domains.
 	// Takes effect when we want to sample from an image which is Depth/Stencil,
@@ -209,6 +217,7 @@ private:
 	Device *device;
 	VkImageView view;
 	std::vector<VkImageView> render_target_views;
+	std::vector<VkImageView> mip_views;
 	VkImageView depth_view = VK_NULL_HANDLE;
 	VkImageView stencil_view = VK_NULL_HANDLE;
 	VkImageView unorm_view = VK_NULL_HANDLE;

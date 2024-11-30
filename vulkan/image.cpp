@@ -51,6 +51,19 @@ VkImageView ImageView::get_render_target_view(unsigned layer) const
 	}
 }
 
+VkImageView ImageView::get_mip_view(unsigned level) const
+{
+	VK_ASSERT(level < get_create_info().levels);
+
+	if (mip_views.empty())
+		return view;
+	else
+	{
+		VK_ASSERT(level < mip_views.size());
+		return mip_views[level];
+	}
+}
+
 ImageView::~ImageView()
 {
 	if (internal_sync)
@@ -67,6 +80,8 @@ ImageView::~ImageView()
 
 		for (auto &v : render_target_views)
 			device->destroy_image_view_nolock(v);
+		for (auto &v : mip_views)
+			device->destroy_image_view_nolock(v);
 	}
 	else
 	{
@@ -81,6 +96,8 @@ ImageView::~ImageView()
 			device->destroy_image_view(srgb_view);
 
 		for (auto &v : render_target_views)
+			device->destroy_image_view(v);
+		for (auto &v : mip_views)
 			device->destroy_image_view(v);
 	}
 }

@@ -472,6 +472,7 @@ public:
 	void set_texture(unsigned set, unsigned binding, const ImageView &view, const Sampler &sampler);
 	void set_texture(unsigned set, unsigned binding, const ImageView &view, StockSampler sampler);
 	void set_storage_texture(unsigned set, unsigned binding, const ImageView &view);
+	void set_storage_texture_level(unsigned set, unsigned binding, const ImageView &view, unsigned level);
 	void set_unorm_storage_texture(unsigned set, unsigned binding, const ImageView &view);
 	void set_sampler(unsigned set, unsigned binding, const Sampler &sampler);
 	void set_sampler(unsigned set, unsigned binding, StockSampler sampler);

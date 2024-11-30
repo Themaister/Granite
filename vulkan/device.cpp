@@ -3137,6 +3137,7 @@ public:
 	VkImageView srgb_view = VK_NULL_HANDLE;
 	VkImageViewType default_view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
 	std::vector<VkImageView> rt_views;
+	std::vector<VkImageView> mip_views;
 	DeviceAllocation allocation;
 	DeviceAllocator *allocator = nullptr;
 	bool owned = true;
@@ -3213,7 +3214,8 @@ public:
 
 	bool create_default_views(const ImageCreateInfo &create_info, const VkImageViewCreateInfo *view_info,
 	                          const ImmutableYcbcrConversion *ycbcr_conversion,
-	                          bool create_unorm_srgb_views = false, const VkFormat *view_formats = nullptr)
+	                          bool create_unorm_srgb_views = false, bool create_mip_level_views = false,
+	                          const VkFormat *view_formats = nullptr)
 	{
 		VkDevice vkdevice = device->get_device();
 
@@ -3284,6 +3286,9 @@ public:
 				return false;
 		}
 
+		if (create_mip_level_views && !create_mip_views(*view_info))
+			return false;
+
 		return true;
 	}
 
@@ -3315,6 +3320,30 @@ private:
 
 				rt_views.push_back(rt_view);
 			}
+		}
+
+		return true;
+	}
+
+	bool create_mip_views(const VkImageViewCreateInfo &info)
+	{
+		VK_ASSERT(info.subresourceRange.levelCount != VK_REMAINING_MIP_LEVELS);
+		if (info.subresourceRange.levelCount <= 1)
+			return true;
+		mip_views.reserve(info.subresourceRange.levelCount);
+
+		auto view_info = info;
+
+		for (unsigned level = 0; level < info.subresourceRange.levelCount; level++)
+		{
+			view_info.subresourceRange.baseMipLevel = level;
+			view_info.subresourceRange.levelCount = 1;
+			VkImageView mip_view;
+
+			if (table.vkCreateImageView(device->get_device(), &view_info, nullptr, &mip_view) != VK_SUCCESS)
+				return false;
+
+			mip_views.push_back(mip_view);
 		}
 
 		return true;
@@ -3378,6 +3407,8 @@ private:
 			table.vkDestroyImageView(vkdevice, srgb_view, nullptr);
 		for (auto &view : rt_views)
 			table.vkDestroyImageView(vkdevice, view, nullptr);
+		for (auto &view : mip_views)
+			table.vkDestroyImageView(vkdevice, view, nullptr);
 
 		if (image)
 			table.vkDestroyImage(vkdevice, image, nullptr);
@@ -3440,6 +3471,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 		holder.owned = false;
 		ret->set_alt_views(holder.depth_view, holder.stencil_view);
 		ret->set_render_target_views(std::move(holder.rt_views));
+		ret->set_mip_views(std::move(holder.mip_views));
 		return ret;
 	}
 	else
@@ -4005,12 +4037,13 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	                               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
 	                               image_usage_video_flags)) != 0 &&
 	                (create_info.misc & IMAGE_MISC_NO_DEFAULT_VIEWS_BIT) == 0;
+	bool create_mip_views = info.mipLevels > 1 && (create_info.misc & IMAGE_MISC_CREATE_PER_MIP_LEVEL_VIEWS_BIT) != 0;
 
 	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
 	if (has_view)
 	{
 		if (!holder.create_default_views(tmpinfo, nullptr, create_info.ycbcr_conversion,
-		                                 create_unorm_srgb_views, view_formats))
+		                                 create_unorm_srgb_views, create_mip_views, view_formats))
 		{
 			return ImageHandle(nullptr);
 		}
@@ -4025,6 +4058,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		{
 			handle->get_view().set_alt_views(holder.depth_view, holder.stencil_view);
 			handle->get_view().set_render_target_views(std::move(holder.rt_views));
+			handle->get_view().set_mip_views(std::move(holder.mip_views));
 			handle->get_view().set_unorm_view(holder.unorm_view);
 			handle->get_view().set_srgb_view(holder.srgb_view);
 		}

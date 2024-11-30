@@ -2471,7 +2471,8 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView 
 enum CookieBits
 {
 	COOKIE_BIT_UNORM = 1 << 0,
-	COOKIE_BIT_SRGB = 1 << 1
+	COOKIE_BIT_SRGB = 1 << 1,
+	COOKIE_BIT_PER_MIP = 1 << 4
 };
 
 void CommandBuffer::set_unorm_texture(unsigned set, unsigned binding, const ImageView &view)
@@ -2518,6 +2519,16 @@ void CommandBuffer::set_storage_texture(unsigned set, unsigned binding, const Im
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT);
 	set_texture(set, binding, view.get_float_view(), view.get_integer_view(),
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL), view.get_cookie());
+}
+
+void CommandBuffer::set_storage_texture_level(unsigned set, unsigned binding,
+                                              const Vulkan::ImageView &view, unsigned level)
+{
+	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT);
+	auto mip_view = view.get_mip_view(level);
+	set_texture(set, binding, mip_view, mip_view,
+	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL),
+	            view.get_cookie() | COOKIE_BIT_PER_MIP | level);
 }
 
 void CommandBuffer::set_unorm_storage_texture(unsigned set, unsigned binding, const ImageView &view)

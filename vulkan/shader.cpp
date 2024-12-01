@@ -28,6 +28,10 @@
 using namespace spirv_cross;
 #endif
 
+#ifdef HAVE_GRANITE_VULKAN_POST_MORTEM
+#include "post_mortem.hpp"
+#endif
+
 using namespace Util;
 
 namespace Vulkan
@@ -603,6 +607,10 @@ Shader::Shader(Hash hash, Device *device_, const uint32_t *data, size_t size,
 	auto &table = device->get_device_table();
 	if (table.vkCreateShaderModule(device->get_device(), &info, nullptr, &module) != VK_SUCCESS)
 		LOGE("Failed to create shader module.\n");
+
+#ifdef HAVE_GRANITE_VULKAN_POST_MORTEM
+	PostMortem::register_shader(data, size);
+#endif
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	device->register_shader_module(module, get_hash(), info);

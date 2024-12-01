@@ -41,6 +41,10 @@
 #include "swappy/swappyVk.h"
 #endif
 
+#ifdef HAVE_GRANITE_VULKAN_POST_MORTEM
+#include "post_mortem.hpp"
+#endif
+
 //#undef VULKAN_DEBUG
 
 #ifdef GRANITE_VULKAN_PROFILES
@@ -294,6 +298,10 @@ void Context::destroy_device()
 #if defined(ANDROID) && defined(HAVE_SWAPPY)
 	if (device != VK_NULL_HANDLE)
 		SwappyVk_destroyDevice(device);
+#endif
+
+#ifdef HAVE_GRANITE_VULKAN_POST_MORTEM
+	PostMortem::deinit();
 #endif
 
 	if (owned_device && device != VK_NULL_HANDLE)
@@ -1610,6 +1618,26 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	device_info.pNext = &pdf2;
 
+#ifdef HAVE_GRANITE_VULKAN_POST_MORTEM
+	VkPhysicalDeviceDiagnosticsConfigFeaturesNV diagnostic_config_nv;
+	VkDeviceDiagnosticsConfigCreateInfoNV diagnostic_config_create_nv;
+	if (has_extension(VK_NV_DEVICE_DIAGNOSTICS_CONFIG_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_NV_DEVICE_DIAGNOSTICS_CONFIG_EXTENSION_NAME);
+		diagnostic_config_nv = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DIAGNOSTICS_CONFIG_FEATURES_NV };
+		diagnostic_config_create_nv = { VK_STRUCTURE_TYPE_DEVICE_DIAGNOSTICS_CONFIG_CREATE_INFO_NV };
+		diagnostic_config_nv.diagnosticsConfig = VK_TRUE;
+		diagnostic_config_create_nv.flags = VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_AUTOMATIC_CHECKPOINTS_BIT_NV |
+		                                    VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_SHADER_DEBUG_INFO_BIT_NV |
+		                                    VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_RESOURCE_TRACKING_BIT_NV |
+		                                    VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_SHADER_ERROR_REPORTING_BIT_NV;
+		diagnostic_config_nv.pNext = &diagnostic_config_create_nv;
+		diagnostic_config_create_nv.pNext = device_info.pNext;
+		device_info.pNext = &diagnostic_config_nv;
+		PostMortem::init_nv_aftermath();
+	}
+#endif
+
 	// Only need GetPhysicalDeviceProperties2 for Vulkan 1.1-only code, so don't bother getting KHR variant.
 	VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
 	// Fallback, query some important Vulkan 1.1 structs if we cannot use core 1.2 method.
@@ -1649,10 +1677,11 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	if (has_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
 		ADD_CHAIN(ext.mesh_shader_properties, MESH_SHADER_PROPERTIES_EXT);
 
-	// Pipeline binaries are currently borked in VVL.
+#ifndef HAVE_GRANITE_VULKAN_POST_MORTEM
 	if ((flags & CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT) != 0 &&
 	    has_extension(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME))
 		ADD_CHAIN(ext.pipeline_binary_properties, PIPELINE_BINARY_PROPERTIES_KHR);
+#endif
 
 	vkGetPhysicalDeviceProperties2(gpu, &props);
 

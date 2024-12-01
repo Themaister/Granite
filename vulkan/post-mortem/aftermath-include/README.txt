@@ -1,0 +1,1 @@
+Place Aftermath SDK headers here. They are not allowed to be re-distributed :(

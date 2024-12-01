@@ -24,3 +24,4 @@ perf.data
 /viewer/build.gradle
 /viewer/android
 /viewer/assets
+/vulkan/post-mortem/aftermath-include/GFSDK*.h

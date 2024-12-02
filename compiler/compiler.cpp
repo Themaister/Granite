@@ -285,11 +285,8 @@ std::vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const st
 	options.SetOptimizationLevel(shaderc_optimization_level_zero);
 #endif
 
-	if (!strip)
-	{
-		// Need this for some reflection purposes with immutable samplers.
+	if (!strip && optimization == Optimization::ForceOff)
 		options.SetGenerateDebugInfo();
-	}
 
 	shaderc_shader_kind kind;
 	switch (stage)

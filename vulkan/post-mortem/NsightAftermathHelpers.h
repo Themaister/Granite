@@ -28,7 +28,6 @@
 #include <string>
 #include <sstream>
 
-#include <vulkan/vulkan.hpp>
 #include "GFSDK_Aftermath.h"
 #include "GFSDK_Aftermath_GpuCrashDump.h"
 #include "GFSDK_Aftermath_GpuCrashDumpDecoding.h"

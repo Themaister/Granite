@@ -30,6 +30,10 @@
 
 #include "NsightAftermathGpuCrashTracker.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 // Modified from the official sample to fit Granite better.
 
 //*********************************************************
@@ -229,7 +233,19 @@ void GpuCrashTracker::WriteGpuCrashDumpToFile(const void* pGpuCrashDump, const u
     // Destroy the GPU crash dump decoder object.
     AFTERMATH_CHECK_ERROR(GFSDK_Aftermath_GpuCrashDump_DestroyDecoder(decoder));
 
+#ifdef _WIN32
+	char print_buffer[1024];
+	char current_dir[1024];
+
+	GetCurrentDirectoryA(sizeof(current_dir), current_dir);
+	snprintf(print_buffer, sizeof(print_buffer),
+	         "GPU hang detected with NV Aftermath. Dump files have been written to %s\\%s. Terminating process ...",
+	         current_dir, crashDumpFileName.c_str());
+	MessageBoxA(nullptr, print_buffer, "VK_ERROR_DEVICE_LOST", MB_OK);
+	TerminateProcess(GetCurrentProcess(), 1);
+#else
 	std::terminate();
+#endif
 }
 
 void GpuCrashTracker::RegisterShader(const void *code, size_t size)

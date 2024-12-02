@@ -24,8 +24,11 @@
 
 #pragma once
 
+#include <vulkan/vulkan.h>
 #include <map>
 #include <mutex>
+#include <vector>
+#include <array>
 
 #include "NsightAftermathHelpers.h"
 

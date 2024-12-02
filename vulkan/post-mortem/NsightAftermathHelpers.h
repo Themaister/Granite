@@ -27,6 +27,7 @@
 #include <iomanip>
 #include <string>
 #include <sstream>
+#include <string.h>
 
 #include "GFSDK_Aftermath.h"
 #include "GFSDK_Aftermath_GpuCrashDump.h"

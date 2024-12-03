@@ -39,6 +39,7 @@ enum class BufferDomain
 	CachedHost,
 	CachedCoherentHostPreferCoherent, // Aim for both cached and coherent, but prefer COHERENT
 	CachedCoherentHostPreferCached, // Aim for both cached and coherent, but prefer CACHED
+	UMACachedCoherentPreferDevice, // Aim for DEVICE | CACHED | COHERENT, but fallback to plain DEVICE if not supported.
 };
 
 enum BufferMiscFlagBits

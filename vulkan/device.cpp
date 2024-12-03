@@ -2987,6 +2987,23 @@ uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask) const
 		prio[1] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 		prio[2] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 		break;
+
+	case BufferDomain::UMACachedCoherentPreferDevice:
+		prio[0] = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+		          VK_MEMORY_PROPERTY_HOST_CACHED_BIT |
+		          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		prio[1] = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+		          VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+
+		// On GPU, we expect to find a UMA type, but RADV tends to report split heaps on iGPU for app compat reasons.
+		// If the device type is integrated we just assume that host visible memory isn't meaningfully slower than
+		// "device local" memory.
+		if (gpu_props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
+			prio[2] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+		else
+			prio[2] = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+		break;
 	}
 
 	for (auto &p : prio)

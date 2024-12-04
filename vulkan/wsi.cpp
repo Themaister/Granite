@@ -555,6 +555,17 @@ void WSI::wait_swapchain_latency()
 {
 	unsigned effective_latency = low_latency_mode_enable ? 0 : present_frame_latency;
 
+	// If we're using duped frames, make sure we're waiting for the previous "real" frame,
+	// instead of a duped one.
+	// E.g. when doing frame dupes:
+	// 0,      1,    2,   3,    4,   5 ...
+	// real, dup, real, dup, real, dup ...
+	// With present frame latency of 1 (default), after presenting 2
+	// we will wait for 0 to be done rather than 1.
+	// Similarly, after presenting 3 we'll still wait for 0 to be done, so we can get on submitting work
+	// for the next real frame, 4 before the GPU drains of work.
+	effective_latency += last_duplicated_frames;
+
 	if (device->get_device_features().present_wait_features.presentWait &&
 	    present_last_id > effective_latency &&
 	    current_present_mode == PresentMode::SyncToVBlank)
@@ -787,6 +798,21 @@ bool WSI::end_frame_dxgi()
 }
 #endif
 
+void WSI::set_frame_duplication_aware(bool enable)
+{
+	frame_dupe_aware = enable;
+	if (!has_acquired_swapchain_index && current_frame_dupe_aware != frame_dupe_aware)
+	{
+		current_frame_dupe_aware = frame_dupe_aware;
+		update_framebuffer(swapchain_width, swapchain_height);
+	}
+}
+
+void WSI::set_next_present_is_duplicated()
+{
+	next_present_is_dupe = true;
+}
+
 bool WSI::end_frame()
 {
 	device->end_frame_context();
@@ -894,13 +920,28 @@ bool WSI::end_frame()
 		LOGI("vkQueuePresentKHR took %.3f ms.\n", (present_end - present_start) * 1e-6);
 #endif
 
+		bool dupes_frame = next_present_is_dupe && current_frame_dupe_aware && !low_latency_mode_enable;
+
 		// The presentID only seems to get updated if QueuePresent returns success.
 		// This makes sense I guess. Record the latest present ID which was successfully presented
 		// so we don't risk deadlock.
 		if ((result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) &&
-		    device->get_device_features().present_id_features.presentId)
+		    device->get_device_features().present_id_features.presentId &&
+		    !dupes_frame)
 		{
 			present_last_id = present_id;
+		}
+
+		next_present_is_dupe = false;
+
+		if (dupes_frame)
+		{
+			duplicated_frames++;
+		}
+		else
+		{
+			last_duplicated_frames = duplicated_frames;
+			duplicated_frames = 0;
 		}
 
 		if (overall == VK_SUBOPTIMAL_KHR || result == VK_SUBOPTIMAL_KHR)
@@ -934,13 +975,15 @@ bool WSI::end_frame()
 		    has_backbuffer_format_delta() ||
 		    extra_usage != current_extra_usage ||
 		    compression.type != current_compression.type ||
-		    compression.fixed_rates != current_compression.fixed_rates)
+		    compression.fixed_rates != current_compression.fixed_rates ||
+		    frame_dupe_aware != current_frame_dupe_aware)
 		{
 			current_present_mode = present_mode;
 			current_backbuffer_format = backbuffer_format;
 			current_extra_usage = extra_usage;
 			current_compression = compression;
 			current_custom_backbuffer_format = custom_backbuffer_format;
+			current_frame_dupe_aware = frame_dupe_aware;
 			update_framebuffer(swapchain_width, swapchain_height);
 		}
 	}
@@ -1706,6 +1749,11 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	uint32_t desired_swapchain_images =
 		low_latency_mode_enable && current_present_mode == PresentMode::SyncToVBlank ? 2 : 3;
+
+	// Need a deeper swapchain to avoid potential stalls when duping frames.
+	// We only do this when present wait is supported, so latency should not be compromised.
+	if (current_frame_dupe_aware && device->get_device_features().present_wait_features.presentWait)
+		desired_swapchain_images = 5;
 
 	desired_swapchain_images = Util::get_environment_uint("GRANITE_VULKAN_SWAPCHAIN_IMAGES", desired_swapchain_images);
 	LOGI("Targeting %u swapchain images.\n", desired_swapchain_images);

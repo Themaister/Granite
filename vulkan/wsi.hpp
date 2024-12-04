@@ -263,6 +263,16 @@ public:
 	// The normal app loop is something like begin_frame() -> submit work -> end_frame().
 	bool end_frame();
 
+	// Signals that the next present is merely a dupe of a previous one,
+	// and that frame should not participate in present wait.
+	void set_next_present_is_duplicated();
+
+	// If true, and present wait is supported, the implementation will use more swapchain images than normal,
+	// and make it feasible to render duplicate frames without needlessly draining the GPU of work.
+	// This is mostly just a thing for an emulator which may be outputting at 30 unique FPS, but at 60 VI/s,
+	// meaning the same frames is duplicated.
+	void set_frame_duplication_aware(bool enable);
+
 	// For external swapchains we don't have a normal acquire -> present cycle.
 	// - set_external_frame()
 	//   - index replaces the acquire next image index.
@@ -366,6 +376,12 @@ private:
 	uint64_t present_id = 0;
 	uint64_t present_last_id = 0;
 	unsigned present_frame_latency = 0;
+
+	bool next_present_is_dupe = false;
+	bool frame_dupe_aware = false;
+	bool current_frame_dupe_aware = false;
+	unsigned duplicated_frames = 0;
+	unsigned last_duplicated_frames = 0;
 
 	void tear_down_swapchain();
 	void drain_swapchain(bool in_tear_down);

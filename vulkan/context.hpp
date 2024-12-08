@@ -72,16 +72,17 @@ struct DeviceFeatures
 	bool supports_swapchain_colorspace = false;
 	bool supports_surface_maintenance1 = false;
 	bool supports_store_op_none = false;
-	bool supports_push_descriptor = false;
 
 	VkPhysicalDeviceFeatures enabled_features = {};
 
 	VkPhysicalDeviceVulkan11Features vk11_features = {};
 	VkPhysicalDeviceVulkan12Features vk12_features = {};
 	VkPhysicalDeviceVulkan13Features vk13_features = {};
+	VkPhysicalDeviceVulkan14Features vk14_features = {};
 	VkPhysicalDeviceVulkan11Properties vk11_props = {};
 	VkPhysicalDeviceVulkan12Properties vk12_props = {};
 	VkPhysicalDeviceVulkan13Properties vk13_props = {};
+	VkPhysicalDeviceVulkan14Properties vk14_props = {};
 
 	// KHR
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR compute_shader_derivative_features = {};

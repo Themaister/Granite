@@ -183,9 +183,9 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 		device->register_descriptor_set_layout(set_layout_pool, get_hash(), info);
 #endif
 
-	if (!bindless && device->get_device_features().supports_push_descriptor)
+	if (!bindless && device->get_device_features().vk14_features.pushDescriptor)
 	{
-		info.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+		info.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT;
 		for (auto &b : bindings)
 			if (b.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
 				b.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;

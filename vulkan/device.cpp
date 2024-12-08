@@ -4368,7 +4368,7 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	}
 
 	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-	VkBufferUsageFlags2CreateInfoKHR usage2 = { VK_STRUCTURE_TYPE_BUFFER_USAGE_FLAGS_2_CREATE_INFO_KHR };
+	VkBufferUsageFlags2CreateInfo usage2 = { VK_STRUCTURE_TYPE_BUFFER_USAGE_FLAGS_2_CREATE_INFO };
 	info.size = create_info.size;
 	usage2.usage = create_info.usage;
 	if (get_device_features().vk12_features.bufferDeviceAddress)
@@ -4381,7 +4381,7 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	uint32_t sharing_indices[QUEUE_INDEX_COUNT];
 	fill_buffer_sharing_indices(info, sharing_indices);
 
-	if (ext.maintenance5_features.maintenance5)
+	if (ext.vk14_features.maintenance5)
 	{
 		usage2.pNext = info.pNext;
 		info.pNext = &usage2;
@@ -4509,7 +4509,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	}
 
 	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-	VkBufferUsageFlags2CreateInfoKHR usage2 = { VK_STRUCTURE_TYPE_BUFFER_USAGE_FLAGS_2_CREATE_INFO_KHR };
+	VkBufferUsageFlags2CreateInfo usage2 = { VK_STRUCTURE_TYPE_BUFFER_USAGE_FLAGS_2_CREATE_INFO };
 	info.size = create_info.size;
 	usage2.usage = create_info.usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	if (get_device_features().vk12_features.bufferDeviceAddress)
@@ -4561,7 +4561,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 		info.pNext = &external_info;
 	}
 
-	if (ext.maintenance5_features.maintenance5)
+	if (ext.vk14_features.maintenance5)
 	{
 		usage2.pNext = info.pNext;
 		info.pNext = &usage2;

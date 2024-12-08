@@ -696,7 +696,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 			cmd->set_program("assets://shaders/meshlet_debug.vert", "assets://shaders/meshlet_debug.frag",
 			                 {{ "SINGLE_INSTANCE_RENDER", 0}});
-			cmd->set_index_buffer(*ibo, 0, VK_INDEX_TYPE_UINT8_EXT);
+			cmd->set_index_buffer(*ibo, 0, VK_INDEX_TYPE_UINT8);
 			cmd->set_vertex_binding(0, *pos, 0, 12);
 			cmd->set_vertex_binding(1, *attr, 0, 16);
 			cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);

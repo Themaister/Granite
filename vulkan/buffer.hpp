@@ -54,7 +54,7 @@ struct BufferCreateInfo
 {
 	BufferDomain domain = BufferDomain::Device;
 	VkDeviceSize size = 0;
-	VkBufferUsageFlags2KHR usage = 0;
+	VkBufferUsageFlags2 usage = 0;
 	BufferMiscFlags misc = 0;
 	VkMemoryRequirements allocation_requirements = {};
 	ExternalHandle external;

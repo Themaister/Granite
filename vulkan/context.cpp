@@ -548,8 +548,8 @@ VkApplicationInfo Context::get_promoted_application_info() const
 	// Granite min-req is 1.1.
 	app_info.apiVersion = std::max(VK_API_VERSION_1_1, app_info.apiVersion);
 
-	// Target Vulkan 1.3 if available.
-	app_info.apiVersion = std::max(app_info.apiVersion, std::min(VK_API_VERSION_1_3, volkGetInstanceVersion()));
+	// Target Vulkan 1.4 if available.
+	app_info.apiVersion = std::max(app_info.apiVersion, std::min(VK_API_VERSION_1_4, volkGetInstanceVersion()));
 
 	return app_info;
 }
@@ -1338,6 +1338,33 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		}
 	}
 
+	bool supports_khr_push_descriptor = false;
+
+	if (ext.device_api_core_version >= VK_API_VERSION_1_4)
+	{
+		ADD_CHAIN(ext.vk14_features, VULKAN_1_4_FEATURES);
+	}
+	else
+	{
+		if ((flags & CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT) != 0 && has_extension(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+			supports_khr_push_descriptor = true;
+		}
+
+		if (has_extension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME);
+			ADD_CHAIN(ext.index_type_uint8_features, INDEX_TYPE_UINT8_FEATURES_EXT);
+		}
+
+		if (has_extension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_MAINTENANCE_5_EXTENSION_NAME);
+			ADD_CHAIN(ext.maintenance5_features, MAINTENANCE_5_FEATURES_KHR);
+		}
+	}
+
 	if (has_extension(VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME);
@@ -1393,12 +1420,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.mesh_shader_features, MESH_SHADER_FEATURES_EXT);
 	}
 
-	if (has_extension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME))
-	{
-		enabled_extensions.push_back(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME);
-		ADD_CHAIN(ext.index_type_uint8_features, INDEX_TYPE_UINT8_FEATURES_EXT);
-	}
-
 	if (has_extension(VK_EXT_RGBA10X6_FORMATS_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_EXT_RGBA10X6_FORMATS_EXTENSION_NAME);
@@ -1421,12 +1442,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		enabled_extensions.push_back(VK_KHR_VIDEO_MAINTENANCE_1_EXTENSION_NAME);
 		ADD_CHAIN(ext.video_maintenance1_features, VIDEO_MAINTENANCE_1_FEATURES_KHR);
-	}
-
-	if ((flags & CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT) != 0 && has_extension(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME))
-	{
-		enabled_extensions.push_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
-		ext.supports_push_descriptor = true;
 	}
 
 	if (has_extension(VK_EXT_IMAGE_COMPRESSION_CONTROL_EXTENSION_NAME))
@@ -1462,12 +1477,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		enabled_extensions.push_back(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME);
 		ADD_CHAIN(ext.pipeline_binary_features, PIPELINE_BINARY_FEATURES_KHR);
-	}
-
-	if (has_extension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME))
-	{
-		enabled_extensions.push_back(VK_KHR_MAINTENANCE_5_EXTENSION_NAME);
-		ADD_CHAIN(ext.maintenance5_features, MAINTENANCE_5_FEATURES_KHR);
 	}
 
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
@@ -1538,6 +1547,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ext.vk13_features.computeFullSubgroups = VK_TRUE;
 	if (ext.subgroup_size_control_features.subgroupSizeControl)
 		ext.vk13_features.subgroupSizeControl = VK_TRUE;
+
+	if (ext.maintenance5_features.maintenance5)
+		ext.vk14_features.maintenance5 = VK_TRUE;
+	if (supports_khr_push_descriptor)
+		ext.vk14_features.pushDescriptor = VK_TRUE;
+	if (ext.index_type_uint8_features.indexTypeUint8)
+		ext.vk14_features.indexTypeUint8 = VK_TRUE;
 	///
 
 	ext.vk11_features.multiviewGeometryShader = VK_FALSE;
@@ -1553,6 +1569,24 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.vk13_features.descriptorBindingInlineUniformBlockUpdateAfterBind = VK_FALSE;
 	ext.vk13_features.inlineUniformBlock = VK_FALSE;
 	ext.vk13_features.privateData = VK_FALSE;
+
+	// Might be relevant when we move fully to 1.4.
+	ext.vk14_features.dynamicRenderingLocalRead = VK_FALSE;
+	// TODO: Maybe later.
+	ext.vk14_features.hostImageCopy = VK_FALSE;
+	ext.vk14_features.globalPriorityQuery = VK_FALSE;
+	ext.vk14_features.pipelineProtectedAccess = VK_FALSE;
+	ext.vk14_features.pipelineRobustness = VK_FALSE;
+	ext.vk14_features.vertexAttributeInstanceRateDivisor = VK_FALSE;
+	ext.vk14_features.vertexAttributeInstanceRateZeroDivisor = VK_FALSE;
+	ext.vk14_features.stippledBresenhamLines = VK_FALSE;
+	ext.vk14_features.stippledRectangularLines = VK_FALSE;
+	ext.vk14_features.stippledSmoothLines = VK_FALSE;
+	ext.vk14_features.rectangularLines = VK_FALSE;
+	ext.vk14_features.smoothLines = VK_FALSE;
+	ext.vk14_features.bresenhamLines = VK_FALSE;
+	if ((flags & CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT) == 0)
+		ext.vk14_features.pushDescriptor = VK_FALSE;
 
 	ext.mesh_shader_features.primitiveFragmentShadingRateMeshShader = VK_FALSE;
 	ext.mesh_shader_features.meshShaderQueries = VK_FALSE;
@@ -1664,6 +1698,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.vk13_props, VULKAN_1_3_PROPERTIES);
 	else if (has_extension(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
 		ADD_CHAIN(size_control_props, SUBGROUP_SIZE_CONTROL_PROPERTIES);
+
+	if (ext.device_api_core_version >= VK_API_VERSION_1_4)
+		ADD_CHAIN(ext.vk14_props, VULKAN_1_4_PROPERTIES);
 
 	if (ext.supports_external_memory_host)
 		ADD_CHAIN(ext.host_memory_properties, EXTERNAL_MEMORY_HOST_PROPERTIES_EXT);
@@ -1777,6 +1814,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		device_table.vkCreateRenderPass2 = device_table.vkCreateRenderPass2KHR;
 	if (!device_table.vkResetQueryPool)
 		device_table.vkResetQueryPool = device_table.vkResetQueryPoolEXT;
+	if (!device_table.vkCmdPushDescriptorSetWithTemplate)
+		device_table.vkCmdPushDescriptorSetWithTemplate = device_table.vkCmdPushDescriptorSetWithTemplateKHR;
 
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
 	{

@@ -287,7 +287,7 @@ void PipelineLayout::create_update_templates()
 		if (desc_set == push_set_index)
 		{
 			info.descriptorSetLayout = set_allocators[desc_set]->get_layout_for_push();
-			info.templateType = VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR;
+			info.templateType = VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS;
 		}
 		else
 		{

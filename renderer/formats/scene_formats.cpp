@@ -240,7 +240,7 @@ static bool mesh_unroll_vertices(Mesh &mesh)
 			       mesh.attribute_stride);
 		}
 	}
-	else if (mesh.index_type == VK_INDEX_TYPE_UINT8_EXT)
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT8)
 	{
 		const auto *ibo = mesh.indices.data();
 		for (unsigned i = 0; i < mesh.count; i++)
@@ -291,7 +291,7 @@ bool mesh_canonicalize_indices(SceneFormats::Mesh &mesh)
 		for (unsigned i = 0; i < mesh.count; i++)
 			unrolled_indices.push_back(mesh.primitive_restart && indices[i] == UINT16_MAX ? UINT32_MAX : indices[i]);
 	}
-	else if (mesh.index_type == VK_INDEX_TYPE_UINT8_EXT)
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT8)
 	{
 		auto *indices = reinterpret_cast<const uint8_t *>(mesh.indices.data());
 		for (unsigned i = 0; i < mesh.count; i++)

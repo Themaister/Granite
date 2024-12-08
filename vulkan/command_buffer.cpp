@@ -2688,7 +2688,7 @@ void CommandBuffer::push_descriptor_set(uint32_t set)
 
 	VkDescriptorUpdateTemplate update_template = pipeline_state.layout->get_update_template(set);
 	VK_ASSERT(update_template);
-	table.vkCmdPushDescriptorSetWithTemplateKHR(
+	table.vkCmdPushDescriptorSetWithTemplate(
 		cmd, update_template,
 		pipeline_state.layout->get_layout(), set, bindings.bindings[set]);
 }

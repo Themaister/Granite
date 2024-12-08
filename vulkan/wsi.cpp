@@ -358,6 +358,7 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 	if (!new_context->init_instance(
 			instance_ext.data(), instance_ext.size(),
 			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT |
+			CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT |
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 			CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT |
 #endif
@@ -373,6 +374,7 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 			VK_NULL_HANDLE, tmp_surface,
 			device_ext.data(), device_ext.size(),
 			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT |
+			CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT |
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 			CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT |
 #endif

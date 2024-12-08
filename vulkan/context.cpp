@@ -633,6 +633,7 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 	};
 
 	force_no_validation = Util::get_environment_bool("GRANITE_VULKAN_NO_VALIDATION", false);
+	VkValidationFeaturesEXT validation_features = { VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT };
 
 	if (!force_no_validation && has_layer("VK_LAYER_KHRONOS_validation"))
 	{
@@ -644,24 +645,24 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		std::vector<VkExtensionProperties> layer_exts(layer_ext_count);
 		vkEnumerateInstanceExtensionProperties("VK_LAYER_KHRONOS_validation", &layer_ext_count, layer_exts.data());
 
-#if 0
-		VkValidationFeaturesEXT validation_features = { VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT };
-
-		// Tons of false positives around timeline semaphores atm, so don't bother.
-		if (find_if(begin(layer_exts), end(layer_exts), [](const VkExtensionProperties &e) {
-			return strcmp(e.extensionName, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) == 0;
-		}) != end(layer_exts))
+		if (Util::get_environment_bool("GRANITE_VULKAN_SYNC_VALIDATION", false))
 		{
-			instance_exts.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
-			static const VkValidationFeatureEnableEXT validation_sync_features[1] = {
-				VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT,
-			};
-			LOGI("Enabling VK_EXT_validation_features for synchronization validation.\n");
-			validation_features.enabledValidationFeatureCount = 1;
-			validation_features.pEnabledValidationFeatures = validation_sync_features;
-			info.pNext = &validation_features;
+			// Tons of false positives around timeline semaphores atm, so don't bother.
+			if (find_if(begin(layer_exts), end(layer_exts), [](const VkExtensionProperties &e)
+			{
+				return strcmp(e.extensionName, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) == 0;
+			}) != end(layer_exts))
+			{
+				instance_exts.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
+				static const VkValidationFeatureEnableEXT validation_sync_features[1] = {
+					VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT,
+				};
+				LOGI("Enabling VK_EXT_validation_features for synchronization validation.\n");
+				validation_features.enabledValidationFeatureCount = 1;
+				validation_features.pEnabledValidationFeatures = validation_sync_features;
+				info.pNext = &validation_features;
+			}
 		}
-#endif
 
 		if (!ext.supports_debug_utils &&
 		    find_if(begin(layer_exts), end(layer_exts), [](const VkExtensionProperties &e) {

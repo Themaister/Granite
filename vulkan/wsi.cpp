@@ -1510,8 +1510,15 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 
 			// Accept the present mode if it does not modify minImageCount.
 			// If image count changes, we should probably recreate the swapchain.
-			if (surface_capabilities2.surfaceCapabilities.minImageCount == info.surface_capabilities.minImageCount)
+			// If we have present wait we're at no risk of adding more latency, so just go ahead.
+			if (surface_capabilities2.surfaceCapabilities.minImageCount == info.surface_capabilities.minImageCount ||
+			    device.get_device_features().present_wait_features.presentWait)
+			{
 				info.present_mode_compat_group.push_back(mode);
+				info.surface_capabilities.minImageCount =
+						std::max<uint32_t>(info.surface_capabilities.minImageCount,
+						                   surface_capabilities2.surfaceCapabilities.minImageCount);
+			}
 		}
 	}
 

@@ -7,7 +7,8 @@
 
 layout(local_size_x = 256) in;
 
-layout(set = 0, binding = 0, r32f) uniform coherent image2D uImages[13];
+layout(set = 0, binding = 0, r32f) uniform writeonly image2D uImageTop;
+layout(set = 0, binding = 1, r32f) coherent uniform image2D uImages[12];
 layout(set = 1, binding = 0) uniform sampler2D uTexture;
 layout(set = 1, binding = 1) buffer Counter
 {
@@ -62,22 +63,37 @@ vec4 transform_z(vec4 zs)
 void write_image(ivec2 coord, int mip, float v)
 {
     // Rely on image robustness to clean up the OOB writes here.
-    imageStore(uImages[mip], coord, vec4(v));
+    imageStore(uImages[mip - 1], coord, vec4(v));
 }
 
-void write_image4(ivec2 coord, int mip, vec4 v)
+void write_image4_top(ivec2 coord, int mip, vec4 v)
 {
-    imageStore(uImages[mip], coord + ivec2(0, 0), v.xxxx);
-    imageStore(uImages[mip], coord + ivec2(1, 0), v.yyyy);
-    imageStore(uImages[mip], coord + ivec2(0, 1), v.zzzz);
-    imageStore(uImages[mip], coord + ivec2(1, 1), v.wwww);
+    imageStore(uImageTop, coord + ivec2(0, 0), v.xxxx);
+    imageStore(uImageTop, coord + ivec2(1, 0), v.yyyy);
+    imageStore(uImageTop, coord + ivec2(0, 1), v.zzzz);
+    imageStore(uImageTop, coord + ivec2(1, 1), v.wwww);
 }
 
 const int SHARED_WIDTH = 32;
 const int SHARED_HEIGHT = 32;
-const int BANK_STRIDE = SHARED_WIDTH * SHARED_HEIGHT;
-shared float shared_buffer[2 * BANK_STRIDE];
+shared float shared_buffer[SHARED_HEIGHT][SHARED_WIDTH];
 shared bool shared_is_last_workgroup;
+
+void store_shared(ivec2 coord, float d)
+{
+    shared_buffer[coord.y][coord.x] = d;
+}
+
+float load_shared(ivec2 coord)
+{
+    return shared_buffer[coord.y][coord.x];
+}
+
+vec4 fetch_2x2_texture(ivec2 base_coord)
+{
+    vec2 fcoord = vec2(base_coord) * registers.inv_resolution;
+    return textureGatherOffset(uTexture, fcoord, ivec2(1, 1)).wzxy;
+}
 
 mat4 fetch_4x4_texture(ivec2 base_coord)
 {
@@ -92,59 +108,38 @@ mat4 fetch_4x4_texture(ivec2 base_coord)
 vec4 fetch_2x2_image_mip6(ivec2 base_coord)
 {
     ivec2 max_coord = mip_resolution(6) - 1;
-    float d0 = imageLoad(uImages[6], min(base_coord + ivec2(0, 0), max_coord)).x;
-    float d1 = imageLoad(uImages[6], min(base_coord + ivec2(1, 0), max_coord)).x;
-    float d2 = imageLoad(uImages[6], min(base_coord + ivec2(0, 1), max_coord)).x;
-    float d3 = imageLoad(uImages[6], min(base_coord + ivec2(1, 1), max_coord)).x;
+    float d0 = imageLoad(uImages[5], min(base_coord + ivec2(0, 0), max_coord)).x;
+    float d1 = imageLoad(uImages[5], min(base_coord + ivec2(1, 0), max_coord)).x;
+    float d2 = imageLoad(uImages[5], min(base_coord + ivec2(0, 1), max_coord)).x;
+    float d3 = imageLoad(uImages[5], min(base_coord + ivec2(1, 1), max_coord)).x;
     return vec4(d0, d1, d2, d3);
 }
 
 float fetch_image_mip6(ivec2 coord)
 {
-    return imageLoad(uImages[6], coord).x;
+    return imageLoad(uImages[5], coord).x;
 }
 
-mat4 write_mip0_transformed(mat4 M, ivec2 base_coord)
+vec4 write_mip0_transformed(vec4 v, ivec2 base_coord)
 {
-    vec4 q00 = transform_z(M[0]);
-    vec4 q10 = transform_z(M[1]);
-    vec4 q01 = transform_z(M[2]);
-    vec4 q11 = transform_z(M[3]);
-
+    v = transform_z(v);
     // Write out transformed LOD 0
-    write_image4(base_coord + ivec2(0, 0), 0, q00);
-    write_image4(base_coord + ivec2(2, 0), 0, q10);
-    write_image4(base_coord + ivec2(0, 2), 0, q01);
-    write_image4(base_coord + ivec2(2, 2), 0, q11);
-
-    return mat4(q00, q10, q01, q11);
+    write_image4_top(base_coord, 0, v);
+    return v;
 }
 
 // For LOD 0 to 6, it is expected that the division is exact,
 // i.e., the lower resolution mip is exactly half resolution.
 // This way we avoid needing to fold in neighbors.
 
-float reduce_mip_registers(mat4 M, ivec2 base_coord, int mip)
+float reduce_mip_simple(vec4 v, ivec2 base_coord, int mip)
 {
-    vec4 q00 = M[0];
-    vec4 q10 = M[1];
-    vec4 q01 = M[2];
-    vec4 q11 = M[3];
-
-    ivec2 mip_res = mip_resolution(mip);
-
-    float d00 = reduce(q00);
-    float d10 = reduce(q10);
-    float d01 = reduce(q01);
-    float d11 = reduce(q11);
-
-    q00 = vec4(d00, d10, d01, d11);
-    write_image4(base_coord, mip, q00);
-
-    return reduce(q00);
+    float reduced = reduce(v);
+    write_image(base_coord, mip, reduced);
+    return reduced;
 }
 
-void reduce_mip_shared(ivec2 base_coord, int mip)
+float reduce_mip_shared(ivec2 base_coord, int mip)
 {
     ivec2 mip_res_higher = mip_resolution(mip - 1);
     ivec2 mip_res_target = mip_resolution(mip);
@@ -153,37 +148,31 @@ void reduce_mip_shared(ivec2 base_coord, int mip)
     bool vert_fold = base_coord.y + 1 == mip_res_target.y && (mip_res_higher.y & 1) != 0;
     bool diag_fold = horiz_fold && vert_fold;
 
-    const int DOUBLE_SHARED_WIDTH = SHARED_WIDTH * 2;
-
     // Ping-pong the shared buffer to avoid double barrier.
-    int out_offset = (mip & 1) * BANK_STRIDE;
-    int in_offset = BANK_STRIDE - out_offset;
-    int base_in_coord = in_offset + base_coord.y * DOUBLE_SHARED_WIDTH + base_coord.x * 2;
-
-    float d00 = shared_buffer[base_in_coord];
-    float d10 = shared_buffer[base_in_coord + 1];
-    float d01 = shared_buffer[base_in_coord + SHARED_WIDTH];
-    float d11 = shared_buffer[base_in_coord + SHARED_WIDTH + 1];
+    float d00 = load_shared(2 * base_coord + ivec2(0, 0));
+    float d10 = load_shared(2 * base_coord + ivec2(1, 0));
+    float d01 = load_shared(2 * base_coord + ivec2(0, 1));
+    float d11 = load_shared(2 * base_coord + ivec2(1, 1));
 
     float reduced = reduce(vec4(d00, d10, d01, d11));
 
     if (horiz_fold)
     {
-        reduced = REDUCE_OPERATOR(reduced, shared_buffer[base_in_coord + 2]);
-        reduced = REDUCE_OPERATOR(reduced, shared_buffer[base_in_coord + 2 + SHARED_WIDTH]);
+        reduced = REDUCE_OPERATOR(reduced, load_shared(2 * base_coord + ivec2(2, 0)));
+        reduced = REDUCE_OPERATOR(reduced, load_shared(2 * base_coord + ivec2(2, 1)));
     }
 
     if (vert_fold)
     {
-        reduced = REDUCE_OPERATOR(reduced, shared_buffer[base_in_coord + DOUBLE_SHARED_WIDTH]);
-        reduced = REDUCE_OPERATOR(reduced, shared_buffer[base_in_coord + DOUBLE_SHARED_WIDTH + 1]);
+        reduced = REDUCE_OPERATOR(reduced, load_shared(2 * base_coord + ivec2(0, 2)));
+        reduced = REDUCE_OPERATOR(reduced, load_shared(2 * base_coord + ivec2(1, 2)));
     }
 
     if (diag_fold)
-        reduced = REDUCE_OPERATOR(reduced, shared_buffer[base_in_coord + DOUBLE_SHARED_WIDTH + 2]);
+        reduced = REDUCE_OPERATOR(reduced, load_shared(2 * base_coord + ivec2(2, 2)));
 
-    shared_buffer[out_offset + base_coord.y * SHARED_WIDTH + base_coord.x] = reduced;
     write_image(base_coord, mip, reduced);
+    return reduced;
 }
 
 void reduce_mip_lod7(ivec2 base_coord)
@@ -217,35 +206,18 @@ void reduce_mip_lod7(ivec2 base_coord)
         reduced = REDUCE_OPERATOR(reduced, fetch_image_mip6(2 * base_coord + ivec2(2, 2)));
 
     write_image(base_coord, 7, reduced);
-    shared_buffer[BANK_STRIDE + base_coord.y * SHARED_WIDTH + base_coord.x] = reduced;
+    store_shared(base_coord, reduced);
 }
 
-float reduce_mips_simd16(ivec2 base_coord, uint local_index, int mip, float d)
+float reduce_mip_simd4(float d, ivec2 base_coord, int mip)
 {
-    ivec2 mip_res = mip_resolution(mip);
-    float d_horiz, d_vert, d_diag;
-    bool swap_horiz, swap_vert;
-
-    d_horiz = subgroupQuadSwapHorizontal(d);
-    d_vert = subgroupQuadSwapVertical(d);
-    d_diag = subgroupQuadSwapDiagonal(d);
-    write_image(base_coord, mip, d);
-
-    if (registers.mips > mip + 1)
-    {
-        base_coord >>= 1;
-        mip_res = mip_resolution(mip + 1);
-        d = reduce(vec4(d, d_horiz, d_vert, d_diag));
-
-        // This requires only SIMD16, which everyone can do.
-        d_horiz = subgroupShuffleXor(d, SHUFFLE_X1);
-        d_vert = subgroupShuffleXor(d, SHUFFLE_Y1);
-        d_diag = subgroupShuffleXor(d, SHUFFLE_X1 | SHUFFLE_Y1);
-        if ((local_index & 3) == 0)
-            write_image(base_coord, mip + 1, d);
-    }
-
-    return reduce(vec4(d, d_horiz, d_vert, d_diag));
+    float d_horiz = subgroupQuadSwapHorizontal(d);
+    float d_vert = subgroupQuadSwapVertical(d);
+    float d_diag = subgroupQuadSwapDiagonal(d);
+    d = reduce(vec4(d, d_horiz, d_vert, d_diag));
+    if ((gl_SubgroupInvocationID & 3) == 0)
+        write_image(base_coord, mip, d);
+    return d;
 }
 
 // Each workgroup reduces 64x64 on its own.
@@ -256,37 +228,99 @@ void main()
     uint local_index = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
     uvec2 local_coord = unswizzle16x16(local_index);
 
-    // LOD 0 feedback
-    ivec2 base_coord = ivec2(local_coord) * 4 + ivec2(gl_WorkGroupID.xy * 64u);
-    mat4 M = fetch_4x4_texture(base_coord);
-    M = write_mip0_transformed(M, base_coord);
+    bool is_8x8 = local_index < 64u;
+    bool is_2x2 = local_index < 4u;
 
-    // Write LOD 1, Compute LOD 2
+    ivec2 base_coord = ivec2(local_coord) * 2 + ivec2(gl_WorkGroupID.xy * 64u);
+    ivec2 base_coord_00 = base_coord + ivec2( 0,  0);
+    ivec2 base_coord_10 = base_coord + ivec2(32,  0);
+    ivec2 base_coord_01 = base_coord + ivec2( 0, 32);
+    ivec2 base_coord_11 = base_coord + ivec2(32, 32);
+
+    // Follow FFX SPD's access pattern here.
+    // It seems like we need to be super careful about memory access patterns to get optimal bandwidth.
+
+    // LOD 0 feedback with transform.
+    vec4 tile00 = write_mip0_transformed(fetch_2x2_texture(base_coord_00), base_coord_00);
+    vec4 tile10 = write_mip0_transformed(fetch_2x2_texture(base_coord_10), base_coord_10);
+    vec4 tile01 = write_mip0_transformed(fetch_2x2_texture(base_coord_01), base_coord_01);
+    vec4 tile11 = write_mip0_transformed(fetch_2x2_texture(base_coord_11), base_coord_11);
     if (registers.mips <= 1)
         return;
-    float d = reduce_mip_registers(M, base_coord >> 1, 1);
+
+    // Write LOD 1
+    ivec2 base_coord_lod1 = base_coord >> 1;
+    float reduced00 = reduce_mip_simple(tile00, base_coord_lod1 + ivec2( 0,  0), 1);
+    float reduced10 = reduce_mip_simple(tile10, base_coord_lod1 + ivec2(16,  0), 1);
+    float reduced01 = reduce_mip_simple(tile01, base_coord_lod1 + ivec2( 0, 16), 1);
+    float reduced11 = reduce_mip_simple(tile11, base_coord_lod1 + ivec2(16, 16), 1);
     if (registers.mips <= 2)
         return;
 
-    // Write LOD 2, Compute LOD 3-4
-    d = reduce_mips_simd16(base_coord >> 2, local_index, 2, d);
-    if (registers.mips <= 4)
+    // Write LOD 2
+    ivec2 base_coord_lod2 = base_coord >> 2;
+    reduced00 = reduce_mip_simd4(reduced00, base_coord_lod2 + ivec2(0, 0), 2);
+    reduced10 = reduce_mip_simd4(reduced10, base_coord_lod2 + ivec2(8, 0), 2);
+    reduced01 = reduce_mip_simd4(reduced01, base_coord_lod2 + ivec2(0, 8), 2);
+    reduced11 = reduce_mip_simd4(reduced11, base_coord_lod2 + ivec2(8, 8), 2);
+
+    if (registers.mips <= 3)
         return;
 
-    // Write LOD 4 to shared
-    if ((local_index & 15) == 0)
-        shared_buffer[local_index >> 4] = d;
+    if ((gl_SubgroupInvocationID & 3) == 0)
+    {
+        ivec2 local_coord_shared = ivec2(local_coord) >> 1;
+        store_shared(local_coord_shared + ivec2(0, 0), reduced00);
+        store_shared(local_coord_shared + ivec2(8, 0), reduced10);
+        store_shared(local_coord_shared + ivec2(0, 8), reduced01);
+        store_shared(local_coord_shared + ivec2(8, 8), reduced11);
+    }
     barrier();
 
-    // Write LOD 4, Compute LOD 5-6.
-    if (local_index < 16)
-        d = reduce_mips_simd16(ivec2(gl_WorkGroupID.xy * 4u + local_coord), local_index, 4, shared_buffer[local_index]);
+    // Write LOD 3
+    float reduced = 0.0;
+    if (is_8x8)
+    {
+        ivec2 base_coord_lod3 = ivec2(gl_WorkGroupID.xy * 8u) + ivec2(local_coord);
+        ivec2 shared_coord = ivec2(local_coord) * 2;
+        float d00 = load_shared(shared_coord + ivec2(0, 0));
+        float d10 = load_shared(shared_coord + ivec2(1, 0));
+        float d01 = load_shared(shared_coord + ivec2(0, 1));
+        float d11 = load_shared(shared_coord + ivec2(1, 1));
+        reduced = reduce_mip_simple(vec4(d00, d10, d01, d11), base_coord_lod3, 3);
 
-    // Write LOD 6.
-    if (registers.mips <= 6)
+        // Write LOD 4
+        if (registers.mips > 4)
+            reduced = reduce_mip_simd4(reduced, base_coord_lod3 >> 1, 4);
+    }
+
+    if (registers.mips <= 5)
         return;
-    if (local_index == 0)
-        write_image(ivec2(gl_WorkGroupID.xy), 6, d);
+
+    // Need this to ensure there is no write-after-read hazard on the shared buffer.
+    barrier();
+
+    if (is_8x8 && (gl_SubgroupInvocationID & 3) == 0)
+        store_shared(ivec2(local_coord) >> 1, reduced);
+
+    barrier();
+
+    // Write LOD 5.
+    if (is_2x2)
+    {
+        ivec2 base_coord_lod5 = ivec2(gl_WorkGroupID.xy * 2u) + ivec2(local_coord);
+        ivec2 shared_coord = ivec2(local_coord) * 2;
+        float d00 = load_shared(shared_coord + ivec2(0, 0));
+        float d10 = load_shared(shared_coord + ivec2(1, 0));
+        float d01 = load_shared(shared_coord + ivec2(0, 1));
+        float d11 = load_shared(shared_coord + ivec2(1, 1));
+        reduced = reduce_mip_simple(vec4(d00, d10, d01, d11), base_coord_lod5, 5);
+
+        // Write LOD 6
+        if (registers.mips > 6)
+            reduce_mip_simd4(reduced, base_coord_lod5 >> 1, 6);
+    }
+
     if (registers.mips <= 7)
         return;
 
@@ -302,43 +336,22 @@ void main()
     if (local_index == 0)
         atomic_counter = 0u;
 
-    // At this point, the mip resolutions may be non-POT and things get spicy.
-    // Not using subgroup ops anymore, so use straight linear coordinates.
-    local_coord.x = bitfieldExtract(local_index, 0, 4);
-    local_coord.y = bitfieldExtract(local_index, 4, 4);
-
     // Write LOD 7-8, Compute LOD 8
     ivec2 mip_res7 = mip_resolution(7);
     for (int y = 0; y < mip_res7.y; y += 16)
         for (int x = 0; x < mip_res7.x; x += 16)
             reduce_mip_lod7(ivec2(local_coord) + ivec2(x, y));
 
-    if (registers.mips <= 8)
-        return;
-    barrier();
-    reduce_mip_shared(ivec2(local_coord), 8);
-
-    if (registers.mips <= 9)
-        return;
-    barrier();
-    if (local_index < 64)
-        reduce_mip_shared(ivec2(local_coord), 9);
-
-    if (registers.mips <= 10)
-        return;
-    barrier();
-    if (local_index < 16)
-        reduce_mip_shared(ivec2(local_coord), 10);
-
-    if (registers.mips <= 11)
-        return;
-    barrier();
-    if (local_index < 4)
-        reduce_mip_shared(ivec2(local_coord), 11);
-
-    if (registers.mips <= 12)
-        return;
-    barrier();
-    if (local_index == 0)
-        reduce_mip_shared(ivec2(0), 12);
+    for (int mip = 8, invocations = 256; mip <= 12; mip++, invocations /= 4)
+    {
+        if (registers.mips <= mip)
+            break;
+        barrier();
+        float d;
+        if (local_index < invocations)
+            d = reduce_mip_shared(ivec2(local_coord), mip);
+        barrier();
+        if (local_index < invocations)
+            store_shared(ivec2(local_coord), d);
+    }
 }

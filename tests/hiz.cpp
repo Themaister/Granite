@@ -97,14 +97,14 @@ int main()
 		dev.begin_renderdoc_capture();
 
 	auto cmd = dev.request_command_buffer();
-	cmd->set_program("builtin://shaders/post/hiz.comp");
+	cmd->set_program("builtin://shaders/post/hiz.comp", {{ "WRITE_TOP_LEVEL", 1 }});
 	for (unsigned i = 0; i < 13; i++)
 		cmd->set_storage_texture(0, i, *views[i < push.mips ? i : (push.mips - 1)]);
 	cmd->set_texture(1, 0, img->get_view(), StockSampler::NearestClamp);
 	cmd->set_storage_buffer(1, 1, *counter_buffer);
 	cmd->push_constants(&push, 0, sizeof(push));
 	cmd->enable_subgroup_size_control(true);
-	cmd->set_subgroup_size_log2(true, 4, 7);
+	cmd->set_subgroup_size_log2(true, 2, 7);
 	cmd->dispatch(wg_x, wg_y, 1);
 	dev.submit(cmd);
 

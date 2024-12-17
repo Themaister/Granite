@@ -1,13 +1,14 @@
 #version 450
 #extension GL_KHR_shader_subgroup_basic : require
-#extension GL_KHR_shader_subgroup_shuffle : require
 #extension GL_KHR_shader_subgroup_quad : require
 
 // A rewrite of SPD to support HiZ correctly and moar wave ops for good measure.
 
 layout(local_size_x = 256) in;
 
-layout(set = 0, binding = 0, r32f) uniform writeonly image2D uImageTop;
+#if defined(WRITE_TOP_LEVEL) && WRITE_TOP_LEVEL
+layout(set = 0, binding = 0, r32f) coherent writeonly uniform image2D uImageTop;
+#endif
 layout(set = 0, binding = 1, r32f) coherent uniform image2D uImages[12];
 layout(set = 1, binding = 0) uniform sampler2D uTexture;
 layout(set = 1, binding = 1) buffer Counter
@@ -66,13 +67,12 @@ void write_image(ivec2 coord, int mip, float v)
     imageStore(uImages[mip - 1], coord, vec4(v));
 }
 
-void write_image4_top(ivec2 coord, int mip, vec4 v)
+#if defined(WRITE_TOP_LEVEL) && WRITE_TOP_LEVEL
+void write_image_top(ivec2 coord, float v)
 {
-    imageStore(uImageTop, coord + ivec2(0, 0), v.xxxx);
-    imageStore(uImageTop, coord + ivec2(1, 0), v.yyyy);
-    imageStore(uImageTop, coord + ivec2(0, 1), v.zzzz);
-    imageStore(uImageTop, coord + ivec2(1, 1), v.wwww);
+    imageStore(uImageTop, coord, vec4(v, 0, 0, 0));
 }
+#endif
 
 const int SHARED_WIDTH = 32;
 const int SHARED_HEIGHT = 32;
@@ -120,11 +120,35 @@ float fetch_image_mip6(ivec2 coord)
     return imageLoad(uImages[5], coord).x;
 }
 
-vec4 write_mip0_transformed(vec4 v, ivec2 base_coord)
+vec4 write_mip0_transformed(vec4 v, ivec2 base_coord, ivec2 local_coord)
 {
     v = transform_z(v);
+
+#if defined(WRITE_TOP_LEVEL) && WRITE_TOP_LEVEL
+    // Ensure that top-level image is written with full cache lines per warp.
+    // Writing in the strided 2x2 pattern is noticably bad for L2 performance.
+    // Taking extra time on the shader cores to reshuffle data is actually beneficial since we're fully bandwidth bound
+    // in these shaders, so we should give the memory system all the help it can get.
+    store_shared(2 * local_coord + ivec2(0, 0), v.x);
+    store_shared(2 * local_coord + ivec2(1, 0), v.y);
+    store_shared(2 * local_coord + ivec2(0, 1), v.z);
+    store_shared(2 * local_coord + ivec2(1, 1), v.w);
+
+    barrier();
+
     // Write out transformed LOD 0
-    write_image4_top(base_coord, 0, v);
+    for (int y = 0; y < 2; y++)
+    {
+        for (int x = 0; x < 2; x++)
+        {
+            ivec2 tile_offset = ivec2(x, y) * 16;
+            write_image_top(base_coord + tile_offset + local_coord, load_shared(local_coord + tile_offset));
+        }
+    }
+
+    barrier();
+#endif
+
     return v;
 }
 
@@ -241,10 +265,14 @@ void main()
     // It seems like we need to be super careful about memory access patterns to get optimal bandwidth.
 
     // LOD 0 feedback with transform.
-    vec4 tile00 = write_mip0_transformed(fetch_2x2_texture(base_coord_00), base_coord_00);
-    vec4 tile10 = write_mip0_transformed(fetch_2x2_texture(base_coord_10), base_coord_10);
-    vec4 tile01 = write_mip0_transformed(fetch_2x2_texture(base_coord_01), base_coord_01);
-    vec4 tile11 = write_mip0_transformed(fetch_2x2_texture(base_coord_11), base_coord_11);
+    vec4 tile00 = write_mip0_transformed(
+        fetch_2x2_texture(base_coord_00), ivec2(gl_WorkGroupID.xy * 64u) + ivec2(0, 0), ivec2(local_coord));
+    vec4 tile10 = write_mip0_transformed(
+        fetch_2x2_texture(base_coord_10), ivec2(gl_WorkGroupID.xy * 64u) + ivec2(32, 0), ivec2(local_coord));
+    vec4 tile01 = write_mip0_transformed(
+        fetch_2x2_texture(base_coord_01), ivec2(gl_WorkGroupID.xy * 64u) + ivec2(0, 32), ivec2(local_coord));
+    vec4 tile11 = write_mip0_transformed(
+        fetch_2x2_texture(base_coord_11), ivec2(gl_WorkGroupID.xy * 64u) + ivec2(32, 32), ivec2(local_coord));
     if (registers.mips <= 1)
         return;
 
@@ -275,6 +303,7 @@ void main()
         store_shared(local_coord_shared + ivec2(0, 8), reduced01);
         store_shared(local_coord_shared + ivec2(8, 8), reduced11);
     }
+
     barrier();
 
     // Write LOD 3

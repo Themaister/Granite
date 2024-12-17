@@ -438,6 +438,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			mat4 view;
 			vec4 viewport_scale_bias;
 			uvec2 hiz_resolution;
+			uint hiz_min_lod;
 			uint hiz_max_lod;
 		};
 
@@ -463,9 +464,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 				ubo->view = render_context.get_render_parameters().view;
 				ubo->viewport_scale_bias = viewport_scale_bias;
-				ubo->hiz_resolution.x = hiz->get_view_width();
-				ubo->hiz_resolution.y = hiz->get_view_height();
-				ubo->hiz_max_lod = hiz->get_create_info().levels - 1;
+				ubo->hiz_resolution.x = hiz->get_view_width() * 2;
+				ubo->hiz_resolution.y = hiz->get_view_height() * 2;
+				ubo->hiz_min_lod = 1;
+				ubo->hiz_max_lod = hiz->get_create_info().levels;
 			}
 		};
 
@@ -805,23 +807,14 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		    (depth_view.get_view_width() + 63u) & ~63u,
 		    (depth_view.get_view_height() + 63u) & ~63u,
 		    VK_FORMAT_R32_SFLOAT);
+		info.width /= 2;
+		info.height /= 2;
 		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		info.levels = Util::floor_log2(max(depth_view.get_view_width(), depth_view.get_view_height()));
+		info.levels = Util::floor_log2(max(depth_view.get_view_width(), depth_view.get_view_height())) - 1;
+		info.misc |= IMAGE_MISC_CREATE_PER_MIP_LEVEL_VIEWS_BIT;
 
 		auto hiz = device.create_image(info);
-
-		ImageViewHandle views[13];
-		for (unsigned i = 0; i < info.levels; i++)
-		{
-			ImageViewCreateInfo view = {};
-			view.base_level = i;
-			view.levels = 1;
-			view.image = hiz.get();
-			view.view_type = VK_IMAGE_VIEW_TYPE_2D;
-			view.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-			views[i] = device.create_image_view(view);
-		}
 
 		struct Push
 		{
@@ -846,22 +839,22 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		Push push = {};
 		push.z_transform = inv_z;
-		push.resolution = uvec2(info.width, info.height);
+		push.resolution = uvec2(info.width * 2, info.height * 2);
 		push.inv_resolution = vec2(1.0f / float(depth_view.get_view_width()), 1.0f / float(depth_view.get_view_height()));
-		push.mips = info.levels;
+		push.mips = info.levels + 1;
 
 		uint32_t wg_x = (push.resolution.x + 63) / 64;
 		uint32_t wg_y = (push.resolution.y + 63) / 64;
 		push.target_counter = wg_x * wg_y;
 
 		cmd->set_program("builtin://shaders/post/hiz.comp");
-		for (unsigned i = 0; i < 13; i++)
-			cmd->set_storage_texture(0, i, *views[i < push.mips ? i : (push.mips - 1)]);
+		for (unsigned i = 0; i < 12; i++)
+			cmd->set_storage_texture_level(0, i + 1, hiz->get_view(), i < info.levels ? i : (info.levels - 1));
 		cmd->set_texture(1, 0, depth_view, StockSampler::NearestClamp);
 		cmd->set_storage_buffer(1, 1, *counter);
 		cmd->push_constants(&push, 0, sizeof(push));
 		cmd->enable_subgroup_size_control(true);
-		cmd->set_subgroup_size_log2(true, 4, 7);
+		cmd->set_subgroup_size_log2(true, 2, 7);
 
 		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 

@@ -57,6 +57,7 @@ layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_FRUSTUM_BIN
 	mat4 view;
 	vec4 viewport_scale_bias;
 	ivec2 hiz_resolution;
+	int hiz_min_lod;
 	int hiz_max_lod;
 } frustum;
 
@@ -114,12 +115,15 @@ bool hiz_cull(vec2 view_range_x, vec2 view_range_y, float closest_z)
 	// We need to sample from a LOD where where there is at most one texel delta
 	// between lo/hi values.
 	int max_delta = max(ix.y - ix.x, iy.y - iy.x);
-	int lod = min(findMSB(max_delta - 1) + 1, frustum.hiz_max_lod);
+	int lod = clamp(findMSB(max_delta - 1) + 1, frustum.hiz_min_lod, frustum.hiz_max_lod);
 	ivec2 lod_max_coord = max(frustum.hiz_resolution >> lod, ivec2(1)) - 1;
 	ix = min(ix >> lod, lod_max_coord.xx);
 	iy = min(iy >> lod, lod_max_coord.yy);
 
 	ivec2 hiz_coord = ivec2(ix.x, iy.x);
+
+	// We didn't write the top LOD.
+	lod -= frustum.hiz_min_lod;
 
 	float d = texelFetch(uHiZDepth, hiz_coord, lod).x;
 	bool nx = ix.y != ix.x;

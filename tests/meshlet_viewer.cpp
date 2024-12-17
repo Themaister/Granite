@@ -45,6 +45,8 @@
 #include <float.h>
 #include <stdexcept>
 
+#define FULL_RES 0
+
 using namespace Granite;
 using namespace Vulkan;
 using namespace Vulkan::Meshlet;
@@ -464,10 +466,18 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 				ubo->view = render_context.get_render_parameters().view;
 				ubo->viewport_scale_bias = viewport_scale_bias;
+
+#if FULL_RES
+				ubo->hiz_resolution.x = hiz->get_view_width();
+				ubo->hiz_resolution.y = hiz->get_view_height();
+				ubo->hiz_min_lod = 0;
+				ubo->hiz_max_lod = hiz->get_create_info().levels - 1;
+#else
 				ubo->hiz_resolution.x = hiz->get_view_width() * 2;
 				ubo->hiz_resolution.y = hiz->get_view_height() * 2;
 				ubo->hiz_min_lod = 1;
 				ubo->hiz_max_lod = hiz->get_create_info().levels;
+#endif
 			}
 		};
 
@@ -807,11 +817,20 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		    (depth_view.get_view_width() + 63u) & ~63u,
 		    (depth_view.get_view_height() + 63u) & ~63u,
 		    VK_FORMAT_R32_SFLOAT);
+
+#if !FULL_RES
 		info.width /= 2;
 		info.height /= 2;
+#endif
+
 		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		info.levels = Util::floor_log2(max(depth_view.get_view_width(), depth_view.get_view_height())) - 1;
+		info.levels = Util::floor_log2(max(depth_view.get_view_width(), depth_view.get_view_height()));
+
+#if !FULL_RES
+		info.levels -= 1;
+#endif
+
 		info.misc |= IMAGE_MISC_CREATE_PER_MIP_LEVEL_VIEWS_BIT;
 
 		auto hiz = device.create_image(info);
@@ -839,7 +858,10 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		Push push = {};
 		push.z_transform = inv_z;
-		push.resolution = uvec2(info.width * 2, info.height * 2);
+		push.resolution = uvec2(info.width, info.height);
+#if !FULL_RES
+		push.resolution *= 2u;
+#endif
 		push.inv_resolution = vec2(1.0f / float(depth_view.get_view_width()), 1.0f / float(depth_view.get_view_height()));
 		push.mips = info.levels + 1;
 
@@ -847,9 +869,14 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 		uint32_t wg_y = (push.resolution.y + 63) / 64;
 		push.target_counter = wg_x * wg_y;
 
-		cmd->set_program("builtin://shaders/post/hiz.comp");
+		cmd->set_program("builtin://shaders/post/hiz.comp", {{ "WRITE_TOP_LEVEL", FULL_RES }});
+#if FULL_RES
+		for (unsigned i = 0; i < 13; i++)
+			cmd->set_storage_texture_level(0, i, hiz->get_view(), i < info.levels ? i : (info.levels - 1));
+#else
 		for (unsigned i = 0; i < 12; i++)
 			cmd->set_storage_texture_level(0, i + 1, hiz->get_view(), i < info.levels ? i : (info.levels - 1));
+#endif
 		cmd->set_texture(1, 0, depth_view, StockSampler::NearestClamp);
 		cmd->set_storage_buffer(1, 1, *counter);
 		cmd->push_constants(&push, 0, sizeof(push));

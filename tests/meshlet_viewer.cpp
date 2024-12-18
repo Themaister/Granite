@@ -381,7 +381,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 
 		push.camera_pos = render_context.get_render_parameters().camera_position;
 
-		ui.target_meshlet_workgroup_size = 32;
+		ui.target_meshlet_workgroup_size = device.get_device_features().mesh_shader_properties.maxPreferredMeshWorkGroupInvocations;
 		ui.target_meshlet_workgroup_size = Util::get_environment_uint("MESHLET_SIZE", ui.target_meshlet_workgroup_size);
 
 		ui.target_meshlet_workgroup_size = max(32u, min(256u, ui.target_meshlet_workgroup_size));
@@ -552,8 +552,11 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 			             VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 		}
 
-		ui.supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
-		ui.use_hierarchical = device.get_device_features().driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY;
+		ui.supports_wave32 = device.supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
+		                     device.get_device_features().vk13_props.minSubgroupSize == 32;
+
+		// Neither Arc nor NV seems to like hierarchical task shaders.
+		ui.use_hierarchical = device.get_gpu_properties().vendorID == VENDOR_ID_AMD;
 
 		if (ui.use_meshlets)
 		{

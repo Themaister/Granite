@@ -548,8 +548,9 @@ VkApplicationInfo Context::get_promoted_application_info() const
 	// Granite min-req is 1.1.
 	app_info.apiVersion = std::max(VK_API_VERSION_1_1, app_info.apiVersion);
 
-	// Target Vulkan 1.4 if available.
-	app_info.apiVersion = std::max(app_info.apiVersion, std::min(VK_API_VERSION_1_4, volkGetInstanceVersion()));
+	// Target Vulkan 1.4 if available,
+	// but the tooling ecosystem isn't quite ready for this yet, so stick to 1.3 for the time being.
+	app_info.apiVersion = std::max(app_info.apiVersion, std::min(VK_API_VERSION_1_3, volkGetInstanceVersion()));
 
 	return app_info;
 }

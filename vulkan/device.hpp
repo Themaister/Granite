@@ -248,6 +248,7 @@ public:
 
 	// Frame-pushing interface.
 	void next_frame_context();
+	bool next_frame_context_is_non_blocking();
 
 	// Normally, the main thread ensures forward progress of the frame context
 	// so that async tasks don't have to care about it,
@@ -611,6 +612,7 @@ private:
 		void operator=(const PerFrame &) = delete;
 		PerFrame(const PerFrame &) = delete;
 
+		bool wait(uint64_t timeout);
 		void begin();
 		void trim_command_pools();
 

@@ -2489,6 +2489,17 @@ void Device::next_frame_context_in_async_thread()
 		next_frame_context();
 }
 
+bool Device::next_frame_context_is_non_blocking()
+{
+	DRAIN_FRAME_LOCK();
+
+	uint32_t next_context = frame_context_index + 1;
+	if (next_context >= per_frame.size())
+		next_context = 0;
+
+	return per_frame[next_context]->wait(0);
+}
+
 void Device::next_frame_context()
 {
 	DRAIN_FRAME_LOCK();
@@ -2718,15 +2729,11 @@ void Device::PerFrame::trim_command_pools()
 			pool.trim();
 }
 
-void Device::PerFrame::begin()
+bool Device::PerFrame::wait(uint64_t timeout)
 {
 	VkDevice vkdevice = device.get_device();
-
-	Vulkan::QueryPoolHandle wait_fence_ts;
-	if (!in_destructor)
-		wait_fence_ts = device.write_calibrated_timestamp_nolock();
-
 	bool has_timeline = true;
+
 	for (auto &sem : timeline_semaphores)
 	{
 		if (sem == VK_NULL_HANDLE)
@@ -2755,19 +2762,34 @@ void Device::PerFrame::begin()
 		{
 			info.pSemaphores = sems;
 			info.pValues = values;
-			table.vkWaitSemaphores(vkdevice, &info, UINT64_MAX);
+			if (table.vkWaitSemaphores(vkdevice, &info, timeout) != VK_SUCCESS)
+				return false;
 		}
 	}
 
 	// If we're using timeline semaphores, these paths should never be hit (or only for swapchain maintenance1).
 	if (!wait_and_recycle_fences.empty())
 	{
-		table.vkWaitForFences(vkdevice, wait_and_recycle_fences.size(), wait_and_recycle_fences.data(), VK_TRUE, UINT64_MAX);
+		if (table.vkWaitForFences(vkdevice, wait_and_recycle_fences.size(), wait_and_recycle_fences.data(), VK_TRUE, timeout) != VK_SUCCESS)
+			return false;
 		table.vkResetFences(vkdevice, wait_and_recycle_fences.size(), wait_and_recycle_fences.data());
 		for (auto &fence : wait_and_recycle_fences)
 			managers.fence.recycle_fence(fence);
 		wait_and_recycle_fences.clear();
 	}
+
+	return true;
+}
+
+void Device::PerFrame::begin()
+{
+	VkDevice vkdevice = device.get_device();
+
+	Vulkan::QueryPoolHandle wait_fence_ts;
+	if (!in_destructor)
+		wait_fence_ts = device.write_calibrated_timestamp_nolock();
+
+	wait(UINT64_MAX);
 
 	for (auto &cmd_pool : cmd_pools)
 		for (auto &pool : cmd_pool)

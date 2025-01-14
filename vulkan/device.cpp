@@ -2920,17 +2920,33 @@ Device::PerFrame::~PerFrame()
 
 uint32_t Device::find_memory_type(uint32_t required, uint32_t mask) const
 {
+	uint32_t valid_device_local_mask = 0;
+	uint32_t valid_mask = 0;
+
 	for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
 	{
-		if ((1u << i) & mask)
+		if (((1u << i) & mask) != 0)
 		{
 			uint32_t flags = mem_props.memoryTypes[i].propertyFlags;
 			if ((flags & required) == required)
-				return i;
+			{
+				valid_mask |= 1u << i;
+				if ((flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0)
+					valid_device_local_mask |= 1u << i;
+			}
 		}
 	}
 
-	return UINT32_MAX;
+	// If we don't request device local, try to avoid it.
+	// Avoids a quirk of NVK where we end up allocating device memory instead since DEVICE | COHERENT
+	// appears before COHERENT | CACHED.
+	if ((required & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0 && valid_mask != valid_device_local_mask)
+		valid_mask &= ~valid_device_local_mask;
+
+	if (valid_mask != 0)
+		return Util::trailing_zeroes(valid_mask);
+	else
+		return UINT32_MAX;
 }
 
 uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask) const
@@ -3006,7 +3022,7 @@ uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask) const
 		prio[1] = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 		          VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 
-		// On GPU, we expect to find a UMA type, but RADV tends to report split heaps on iGPU for app compat reasons.
+		// On iGPU, we expect to find a UMA type, but RADV tends to report split heaps on iGPU for app compat reasons.
 		// If the device type is integrated we just assume that host visible memory isn't meaningfully slower than
 		// "device local" memory.
 		if (gpu_props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)

@@ -550,7 +550,7 @@ VkApplicationInfo Context::get_promoted_application_info() const
 
 	// Target Vulkan 1.4 if available,
 	// but the tooling ecosystem isn't quite ready for this yet, so stick to 1.3 for the time being.
-	app_info.apiVersion = std::max(app_info.apiVersion, std::min(VK_API_VERSION_1_3, volkGetInstanceVersion()));
+	app_info.apiVersion = std::max(app_info.apiVersion, std::min(VK_API_VERSION_1_4, volkGetInstanceVersion()));
 
 	return app_info;
 }

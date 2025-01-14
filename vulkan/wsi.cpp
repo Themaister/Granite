@@ -406,7 +406,7 @@ void WSI::reinit_surface_and_swapchain(VkSurfaceKHR new_surface)
 	update_framebuffer(swapchain_width, swapchain_height);
 }
 
-void WSI::nonblock_delete_swapchains()
+void WSI::nonblock_delete_swapchain_resources()
 {
 	if (swapchain != VK_NULL_HANDLE && device->get_device_features().present_wait_features.presentWait)
 	{
@@ -415,7 +415,7 @@ void WSI::nonblock_delete_swapchains()
 			return;
 	}
 
-	Util::SmallVector<DeferredDeletion> keep;
+	Util::SmallVector<DeferredDeletionSwapchain> keep;
 	size_t pending = deferred_swapchains.size();
 	for (auto &swap : deferred_swapchains)
 	{
@@ -437,6 +437,11 @@ void WSI::nonblock_delete_swapchains()
 	}
 
 	deferred_swapchains = std::move(keep);
+
+	auto itr = std::remove_if(deferred_semaphore.begin(), deferred_semaphore.end(), [](DeferredDeletionSemaphore &sem) {
+		return !sem.fence || sem.fence->wait_timeout(0);
+	});
+	deferred_semaphore.erase(itr, deferred_semaphore.end());
 }
 
 void WSI::drain_swapchain(bool in_tear_down)
@@ -465,6 +470,7 @@ void WSI::drain_swapchain(bool in_tear_down)
 			}
 
 			deferred_swapchains.clear();
+			deferred_semaphore.clear();
 		}
 	}
 	else if (swapchain != VK_NULL_HANDLE && device->get_device_features().present_wait_features.presentWait && present_last_id)
@@ -966,6 +972,9 @@ bool WSI::end_frame()
 		}
 		else
 		{
+			if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
+				deferred_semaphore.push_back({ std::move(release_semaphores[swapchain_index]), last_present_fence });
+
 			// Cannot release the WSI wait semaphore until we observe that the image has been
 			// waited on again.
 			// Could make this a bit tighter with swapchain_maintenance1, but not that important here.
@@ -990,7 +999,7 @@ bool WSI::end_frame()
 		}
 	}
 
-	nonblock_delete_swapchains();
+	nonblock_delete_swapchain_resources();
 	return true;
 }
 

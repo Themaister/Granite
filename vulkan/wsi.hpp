@@ -389,14 +389,22 @@ private:
 
 	VkHdrMetadataEXT hdr_metadata = { VK_STRUCTURE_TYPE_HDR_METADATA_EXT };
 
-	struct DeferredDeletion
+	struct DeferredDeletionSwapchain
 	{
 		VkSwapchainKHR swapchain;
 		Fence fence;
 	};
-	Util::SmallVector<DeferredDeletion> deferred_swapchains;
+
+	struct DeferredDeletionSemaphore
+	{
+		Semaphore semaphore;
+		Fence fence;
+	};
+
+	Util::SmallVector<DeferredDeletionSwapchain> deferred_swapchains;
+	Util::SmallVector<DeferredDeletionSemaphore> deferred_semaphore;
 	Vulkan::Fence last_present_fence;
-	void nonblock_delete_swapchains();
+	void nonblock_delete_swapchain_resources();
 
 	VkSurfaceFormatKHR find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats, BackbufferFormat desired_format) const;
 

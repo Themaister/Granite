@@ -2594,15 +2594,15 @@ void Device::init_calibrated_timestamps()
 	}
 
 	uint32_t count;
-	vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(gpu, &count, nullptr);
+	vkGetPhysicalDeviceCalibrateableTimeDomainsKHR(gpu, &count, nullptr);
 	std::vector<VkTimeDomainEXT> domains(count);
-	if (vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(gpu, &count, domains.data()) != VK_SUCCESS)
+	if (vkGetPhysicalDeviceCalibrateableTimeDomainsKHR(gpu, &count, domains.data()) != VK_SUCCESS)
 		return;
 
 	bool supports_device_domain = false;
 	for (auto &domain : domains)
 	{
-		if (domain == VK_TIME_DOMAIN_DEVICE_EXT)
+		if (domain == VK_TIME_DOMAIN_DEVICE_KHR)
 		{
 			supports_device_domain = true;
 			break;
@@ -2615,11 +2615,11 @@ void Device::init_calibrated_timestamps()
 	for (auto &domain : domains)
 	{
 #ifdef _WIN32
-		const auto supported_domain = VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT;
+		const auto supported_domain = VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR;
 #elif defined(ANDROID)
-		const auto supported_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT;
+		const auto supported_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR;
 #else
-		const auto supported_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT;
+		const auto supported_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR;
 #endif
 		if (domain == supported_domain)
 		{
@@ -2628,7 +2628,7 @@ void Device::init_calibrated_timestamps()
 		}
 	}
 
-	if (calibrated_time_domain == VK_TIME_DOMAIN_DEVICE_EXT)
+	if (calibrated_time_domain == VK_TIME_DOMAIN_DEVICE_KHR)
 	{
 		LOGE("Could not find a suitable time domain for calibrated timestamps.\n");
 		return;
@@ -2637,25 +2637,25 @@ void Device::init_calibrated_timestamps()
 	if (!resample_calibrated_timestamps())
 	{
 		LOGE("Failed to get calibrated timestamps.\n");
-		calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_EXT;
+		calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_KHR;
 		return;
 	}
 }
 
 bool Device::resample_calibrated_timestamps()
 {
-	VkCalibratedTimestampInfoEXT infos[2] = {};
-	infos[0].sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT;
-	infos[1].sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT;
+	VkCalibratedTimestampInfoKHR infos[2] = {};
+	infos[0].sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_KHR;
+	infos[1].sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_KHR;
 	infos[0].timeDomain = calibrated_time_domain;
-	infos[1].timeDomain = VK_TIME_DOMAIN_DEVICE_EXT;
+	infos[1].timeDomain = VK_TIME_DOMAIN_DEVICE_KHR;
 	uint64_t timestamps[2] = {};
 	uint64_t max_deviation;
 
-	if (table->vkGetCalibratedTimestampsEXT(device, 2, infos, timestamps, &max_deviation) != VK_SUCCESS)
+	if (table->vkGetCalibratedTimestampsKHR(device, 2, infos, timestamps, &max_deviation) != VK_SUCCESS)
 	{
 		LOGE("Failed to get calibrated timestamps.\n");
-		calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_EXT;
+		calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_KHR;
 		return false;
 	}
 

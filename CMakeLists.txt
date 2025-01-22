@@ -53,6 +53,7 @@ option(GRANITE_FFMPEG "Enable FFmpeg." OFF)
 option(GRANITE_FFMPEG_VULKAN "Enable experimental Vulkan HW decode support in FFmpeg." OFF)
 option(GRANITE_FAST_MATH "Enable fast math." ON)
 option(GRANITE_SHIPPING "Disable code paths not related to development." OFF)
+option(GRANITE_SYSTEM_SDL "Use system SDL3 instead of vendored submodule." OFF)
 
 if (GRANITE_FAST_MATH)
     message("Enabling fast math.")

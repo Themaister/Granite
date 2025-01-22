@@ -4,5 +4,11 @@ target_link_libraries(granite-input PUBLIC granite-util granite-event granite-ma
 
 if (${GRANITE_PLATFORM} MATCHES "SDL")
     add_granite_internal_static_lib(granite-input-sdl input_sdl.cpp input_sdl.hpp)
-    target_link_libraries(granite-input-sdl PUBLIC granite-input SDL3-static)
+    target_link_libraries(granite-input-sdl PUBLIC granite-input)
+    if (GRANITE_SYSTEM_SDL)
+        find_package(SDL3 REQUIRED)
+        target_link_libraries(granite-input-sdl PUBLIC SDL3::SDL3-shared)
+    else()
+        target_link_libraries(granite-input-sdl PUBLIC SDL3-static)
+    endif()
 endif()

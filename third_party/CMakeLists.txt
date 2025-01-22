@@ -113,7 +113,7 @@ else()
 endif()
 target_link_libraries(granite-volk PRIVATE granite-volk-headers)
 
-if ((NOT ANDROID) AND (${GRANITE_PLATFORM} MATCHES "SDL"))
+if ((NOT ANDROID) AND (${GRANITE_PLATFORM} MATCHES "SDL") AND (NOT GRANITE_SYSTEM_SDL))
     set(SDL_SHARED OFF CACHE BOOL "" FORCE)
     set(SDL_STATIC ON CACHE BOOL "" FORCE)
     set(SDL_TIMERS ON CACHE BOOL "" FORCE)

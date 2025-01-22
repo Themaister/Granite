@@ -108,7 +108,7 @@ public:
 		Util::Timer tmp_timer;
 		tmp_timer.start();
 
-		if (SDL_Init(SDL_INIT_GAMEPAD) < 0)
+		if (!SDL_Init(SDL_INIT_GAMEPAD))
 		{
 			LOGE("Failed to init gamepad.\n");
 			return;
@@ -172,7 +172,7 @@ public:
 
 		Util::Timer tmp_timer;
 		tmp_timer.start();
-		if (SDL_Init(SDL_INIT_EVENTS | SDL_INIT_VIDEO) < 0)
+		if (!SDL_Init(SDL_INIT_EVENTS | SDL_INIT_VIDEO))
 		{
 			LOGE("Failed to init SDL.\n");
 			return false;
@@ -181,10 +181,10 @@ public:
 
 		kick_gamepad_init();
 
-		SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, SDL_FALSE);
-		SDL_SetEventEnabled(SDL_EVENT_DROP_TEXT, SDL_FALSE);
+		SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, false);
+		SDL_SetEventEnabled(SDL_EVENT_DROP_TEXT, false);
 
-		if (SDL_Vulkan_LoadLibrary(nullptr) < 0)
+		if (!SDL_Vulkan_LoadLibrary(nullptr))
 		{
 			LOGE("Failed to load Vulkan library.\n");
 			return false;
@@ -230,7 +230,7 @@ public:
 	void begin_drop_event() override
 	{
 		push_task_to_main_thread([]() {
-			SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, SDL_TRUE);
+			SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, true);
 		});
 	}
 
@@ -280,7 +280,7 @@ public:
 
 		if (!is_fullscreen)
 		{
-			if (SDL_SetWindowFullscreen(window, SDL_TRUE) < 0)
+			if (!SDL_SetWindowFullscreen(window, true))
 			{
 				LOGE("Failed to toggle fullscreen.\n");
 			}
@@ -305,7 +305,7 @@ public:
 				set_hmonitor(nullptr);
 			});
 #endif
-			SDL_SetWindowFullscreen(window, SDL_FALSE);
+			SDL_SetWindowFullscreen(window, false);
 		}
 	}
 
@@ -359,7 +359,7 @@ public:
 	VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice) override
 	{
 		VkSurfaceKHR surface = VK_NULL_HANDLE;
-		if (SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface) < 0)
+		if (!SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface))
 			return VK_NULL_HANDLE;
 
 		int actual_width, actual_height;
@@ -559,7 +559,7 @@ public:
 			break;
 
 		case SDL_EVENT_DROP_COMPLETE:
-			SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, SDL_FALSE);
+			SDL_SetEventEnabled(SDL_EVENT_DROP_FILE, false);
 			break;
 
 		case SDL_EVENT_CLIPBOARD_UPDATE:

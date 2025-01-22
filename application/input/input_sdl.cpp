@@ -35,12 +35,12 @@ bool InputTrackerSDL::init(InputTracker &tracker, const Dispatcher &dispatcher)
 		SDL_free(gamepad_ids);
 
 	// Poll these separately, inline in poll_input().
-	SDL_SetGamepadEventsEnabled(SDL_FALSE);
-	SDL_SetJoystickEventsEnabled(SDL_FALSE);
-	SDL_SetEventEnabled(SDL_EVENT_GAMEPAD_ADDED, SDL_TRUE);
-	SDL_SetEventEnabled(SDL_EVENT_GAMEPAD_REMOVED, SDL_TRUE);
-	SDL_SetEventEnabled(SDL_EVENT_JOYSTICK_UPDATE_COMPLETE, SDL_FALSE);
-	SDL_SetEventEnabled(SDL_EVENT_GAMEPAD_UPDATE_COMPLETE, SDL_FALSE);
+	SDL_SetGamepadEventsEnabled(false);
+	SDL_SetJoystickEventsEnabled(false);
+	SDL_SetEventEnabled(SDL_EVENT_GAMEPAD_ADDED, true);
+	SDL_SetEventEnabled(SDL_EVENT_GAMEPAD_REMOVED, true);
+	SDL_SetEventEnabled(SDL_EVENT_JOYSTICK_UPDATE_COMPLETE, false);
+	SDL_SetEventEnabled(SDL_EVENT_GAMEPAD_UPDATE_COMPLETE, false);
 
 	return true;
 }

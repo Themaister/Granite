@@ -143,7 +143,7 @@ static bool init_swapchain(SDL_Window *window, D3DContext &ctx)
 
 int main()
 {
-	if (SDL_Init(SDL_INIT_VIDEO) < 0)
+	if (!SDL_Init(SDL_INIT_VIDEO))
 		return EXIT_FAILURE;
 
 	Granite::Global::init(Granite::Global::MANAGER_FEATURE_DEFAULT_BITS, 1);

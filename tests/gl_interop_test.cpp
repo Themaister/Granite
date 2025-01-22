@@ -39,7 +39,7 @@ static void import_semaphore(GLuint &glsem, const ExternalHandle &handle)
 int main()
 {
 	Granite::Global::init(Granite::Global::MANAGER_FEATURE_DEFAULT_BITS, 1);
-	if (SDL_Init(SDL_INIT_VIDEO) < 0)
+	if (!SDL_Init(SDL_INIT_VIDEO))
 		return EXIT_FAILURE;
 
 	SDL_Window *window = SDL_CreateWindow("GL interop", 1280, 720, SDL_WINDOW_OPENGL);

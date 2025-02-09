@@ -37,7 +37,7 @@ void Parser::flush_mesh()
 	if (current_positions.empty())
 		return;
 
-	Mesh mesh = {};
+	Mesh mesh;
 
 	if (current_material >= 0)
 	{

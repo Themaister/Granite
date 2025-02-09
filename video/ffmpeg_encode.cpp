@@ -1244,6 +1244,10 @@ bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
 		pyro_codec.video_codec = PYRO_VIDEO_CODEC_H264;
 		break;
 
+	case PyroEnc::Profile::H265_Main:
+		pyro_codec.video_codec = PYRO_VIDEO_CODEC_H265;
+		break;
+
 	default:
 		return false;
 	}
@@ -1268,14 +1272,24 @@ bool VideoEncoder::Impl::init_video_codec()
 	// Only allow PyroEnc path for pure streaming scenario for now.
 	if (!codec && options.realtime &&
 	    mux_stream_callback && !options.realtime_options.local_backup_path &&
-	    options.encoder && strcmp(options.encoder, "h264_pyro") == 0)
+	    options.encoder && (strcmp(options.encoder, "h264_pyro") == 0 || strcmp(options.encoder, "h265_pyro") == 0))
 	{
 		// Use custom.
 		using_pyro_encoder = true;
 
-		if (options.format == Format::NV12 && device->get_device_features().supports_video_encode_h264)
+		auto &ext = device->get_device_features();
+
+		if (options.format == Format::NV12 &&
+		    ext.supports_video_encode_h264 &&
+		    strcmp(options.encoder, "h264_pyro") == 0)
 		{
 			pyro_profile = PyroEnc::Profile::H264_High;
+		}
+		else if (options.format == Format::NV12 &&
+		         ext.supports_video_encode_h265 &&
+		         strcmp(options.encoder, "h265_pyro") == 0)
+		{
+			pyro_profile = PyroEnc::Profile::H265_Main;
 		}
 		else
 		{

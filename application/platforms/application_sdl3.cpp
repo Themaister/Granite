@@ -338,12 +338,8 @@ public:
 		begin_async_input_handling();
 		{
 			process_events_async_thread();
-			LOGI("nyaa 1\n");
 			if (gamepad_init_async.load(std::memory_order_acquire))
-			{
-				LOGI("nyaa 2\n");
 				pad.update(get_input_tracker());
-			}
 		}
 		end_async_input_handling();
 		get_input_tracker().dispatch_current_state(0.0, override_handler);

@@ -1291,6 +1291,12 @@ bool VideoEncoder::Impl::init_video_codec()
 		{
 			pyro_profile = PyroEnc::Profile::H265_Main;
 		}
+		else if ((options.format == Format::P010 || options.format == Format::P016) &&
+		         ext.supports_video_encode_h265 &&
+		         strcmp(options.encoder, "h265_pyro") == 0)
+		{
+			pyro_profile = PyroEnc::Profile::H265_Main10;
+		}
 		else
 		{
 			LOGE("Could not find supported pyroenc profile for requested codec.\n");

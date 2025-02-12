@@ -1245,6 +1245,7 @@ bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
 		break;
 
 	case PyroEnc::Profile::H265_Main:
+	case PyroEnc::Profile::H265_Main10:
 		pyro_codec.video_codec = PYRO_VIDEO_CODEC_H265;
 		break;
 

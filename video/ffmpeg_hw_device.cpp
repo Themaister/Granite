@@ -157,18 +157,36 @@ struct FFmpegHWDevice::Impl
 		}
 	}
 
-	bool init_hw_device(const AVCodec *av_codec, const char *type)
+	bool init_hw_device(const AVCodec *av_codec, const char *type, bool encode)
 	{
 #ifdef HAVE_FFMPEG_VULKAN
-		bool use_vulkan = device->get_device_features().supports_video_decode_queue;
-		if (use_vulkan)
+		bool use_vulkan = false;
+
+		if (encode)
 		{
-			if (av_codec->id == AV_CODEC_ID_H264)
-				use_vulkan = device->get_device_features().supports_video_decode_h264;
-			else if (av_codec->id == AV_CODEC_ID_HEVC)
-				use_vulkan = device->get_device_features().supports_video_decode_h265;
-			else
-				use_vulkan = false;
+			use_vulkan = device->get_device_features().supports_video_encode_queue;
+			if (use_vulkan)
+			{
+				if (av_codec->id == AV_CODEC_ID_H264)
+					use_vulkan = device->get_device_features().supports_video_encode_h264;
+				else if (av_codec->id == AV_CODEC_ID_HEVC)
+					use_vulkan = device->get_device_features().supports_video_encode_h265;
+				else
+					use_vulkan = false;
+			}
+		}
+		else
+		{
+			use_vulkan = device->get_device_features().supports_video_decode_queue;
+			if (use_vulkan)
+			{
+				if (av_codec->id == AV_CODEC_ID_H264)
+					use_vulkan = device->get_device_features().supports_video_decode_h264;
+				else if (av_codec->id == AV_CODEC_ID_HEVC)
+					use_vulkan = device->get_device_features().supports_video_decode_h265;
+				else
+					use_vulkan = false;
+			}
 		}
 #endif
 
@@ -263,7 +281,7 @@ struct FFmpegHWDevice::Impl
 	}
 
 	bool init_codec_context(const AVCodec *av_codec, Vulkan::Device *device_,
-	                        AVCodecContext *av_ctx, const char *type)
+	                        AVCodecContext *av_ctx, const char *type, bool encode)
 	{
 		if (device && (device != device_ || av_codec != cached_av_codec))
 		{
@@ -277,7 +295,7 @@ struct FFmpegHWDevice::Impl
 		device = device_;
 		cached_av_codec = av_codec;
 
-		if (!init_hw_device(av_codec, type))
+		if (!init_hw_device(av_codec, type, encode))
 			return false;
 
 		if (av_ctx && (hw_config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0)
@@ -337,11 +355,11 @@ FFmpegHWDevice::~FFmpegHWDevice()
 }
 
 bool FFmpegHWDevice::init_codec_context(const AVCodec *codec, Vulkan::Device *device,
-                                        AVCodecContext *ctx, const char *type)
+                                        AVCodecContext *ctx, const char *type, bool encode)
 {
 	if (!impl)
 		impl.reset(new Impl);
-	return impl->init_codec_context(codec, device, ctx, type);
+	return impl->init_codec_context(codec, device, ctx, type, encode);
 }
 
 bool FFmpegHWDevice::init_frame_context(AVCodecContext *ctx,

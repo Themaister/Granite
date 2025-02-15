@@ -21,7 +21,7 @@ int main()
 	options.width = 640;
 	options.height = 480;
 	options.frame_timebase = { 1, 60 };
-	options.encoder = "h264_pyro";
+	options.encoder = "hevc_vulkan";
 	options.low_latency = true;
 	options.realtime = true;
 
@@ -33,7 +33,8 @@ int main()
 	ctx.set_system_handles(handles);
 	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0,
 	                                  Vulkan::CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT |
-	                                  Vulkan::CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT))
+	                                  Vulkan::CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT |
+	                                  Vulkan::CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT))
 	{
 		return 1;
 	}

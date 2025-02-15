@@ -40,7 +40,7 @@ public:
 	FFmpegHWDevice();
 	~FFmpegHWDevice();
 
-	bool init_codec_context(const AVCodec *codec, Vulkan::Device *device, AVCodecContext *ctx, const char *type);
+	bool init_codec_context(const AVCodec *codec, Vulkan::Device *device, AVCodecContext *ctx, const char *type, bool encode);
 	bool init_frame_context(AVCodecContext *ctx, unsigned width, unsigned height, int sw_pixel_format);
 	int get_hw_device_type() const;
 	int get_pix_fmt() const;

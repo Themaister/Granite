@@ -1056,7 +1056,7 @@ void VideoDecoder::Impl::begin_audio_stream()
 
 bool VideoDecoder::Impl::init_video_decoder_post_device()
 {
-	if (!hw.init_codec_context(video.av_codec, device, video.av_ctx, opts.hwdevice))
+	if (!hw.init_codec_context(video.av_codec, device, video.av_ctx, opts.hwdevice, false))
 		LOGW("Failed to init hardware decode context. Falling back to software.\n");
 
 	if (avcodec_open2(video.av_ctx, video.av_codec, nullptr) < 0)

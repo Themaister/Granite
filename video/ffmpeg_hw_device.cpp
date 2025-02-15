@@ -84,17 +84,46 @@ struct FFmpegHWDevice::Impl
 
 			auto &q = device->get_queue_info();
 
-			vk->queue_family_index = int(q.family_indices[Vulkan::QUEUE_INDEX_GRAPHICS]);
-			vk->queue_family_comp_index = int(q.family_indices[Vulkan::QUEUE_INDEX_COMPUTE]);
-			vk->queue_family_tx_index = int(q.family_indices[Vulkan::QUEUE_INDEX_TRANSFER]);
-			vk->queue_family_decode_index = int(q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_DECODE]);
+			vk->nb_qf = 0;
 
-			vk->nb_graphics_queues = int(q.counts[Vulkan::QUEUE_INDEX_GRAPHICS]);
-			vk->nb_comp_queues = int(q.counts[Vulkan::QUEUE_INDEX_COMPUTE]);
-			vk->nb_tx_queues = int(q.counts[Vulkan::QUEUE_INDEX_TRANSFER]);
-			vk->nb_decode_queues = int(q.counts[Vulkan::QUEUE_INDEX_VIDEO_DECODE]);
-			vk->queue_family_encode_index = int(q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_ENCODE]);
-			vk->nb_encode_queues = int(q.counts[Vulkan::QUEUE_INDEX_VIDEO_ENCODE]);
+			const auto alloc_qf = [&](Vulkan::QueueIndices index, VkQueueFlags flags) -> AVVulkanDeviceQueueFamily & {
+				for (int i = 0; i < vk->nb_qf; i++)
+					if (vk->qf[i].idx == int(q.family_indices[index]))
+						return vk->qf[i];
+
+				auto &qf = vk->qf[vk->nb_qf++];
+				qf = {};
+				qf.idx = int(q.family_indices[index]);
+				qf.num = std::max<int>(qf.num, int(q.counts[index]));
+				// Workaround buggy header.
+				qf.flags = VkQueueFlagBits(qf.flags | flags);
+				return qf;
+			};
+
+			if (q.family_indices[Vulkan::QUEUE_INDEX_GRAPHICS] != UINT32_MAX)
+				alloc_qf(Vulkan::QUEUE_INDEX_GRAPHICS, VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT);
+			if (q.family_indices[Vulkan::QUEUE_INDEX_COMPUTE] != UINT32_MAX)
+				alloc_qf(Vulkan::QUEUE_INDEX_COMPUTE, VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT);
+			if (q.family_indices[Vulkan::QUEUE_INDEX_TRANSFER] != UINT32_MAX)
+				alloc_qf(Vulkan::QUEUE_INDEX_TRANSFER, VK_QUEUE_TRANSFER_BIT);
+
+			if (q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_ENCODE] != UINT32_MAX)
+			{
+				auto &qf = alloc_qf(Vulkan::QUEUE_INDEX_VIDEO_ENCODE, VK_QUEUE_VIDEO_ENCODE_BIT_KHR);
+				if (device->get_device_features().supports_video_encode_h264)
+					qf.video_caps = VkVideoCodecOperationFlagBitsKHR(qf.video_caps | VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR);
+				if (device->get_device_features().supports_video_encode_h265)
+					qf.video_caps = VkVideoCodecOperationFlagBitsKHR(qf.video_caps | VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR);
+			}
+
+			if (q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_DECODE] != UINT32_MAX)
+			{
+				auto &qf = alloc_qf(Vulkan::QUEUE_INDEX_VIDEO_DECODE, VK_QUEUE_VIDEO_DECODE_BIT_KHR);
+				if (device->get_device_features().supports_video_decode_h264)
+					qf.video_caps = VkVideoCodecOperationFlagBitsKHR(qf.video_caps | VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR);
+				if (device->get_device_features().supports_video_decode_h265)
+					qf.video_caps = VkVideoCodecOperationFlagBitsKHR(qf.video_caps | VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR);
+			}
 
 			vk->lock_queue = [](AVHWDeviceContext *ctx, uint32_t, uint32_t) {
 				auto *self = static_cast<Impl *>(ctx->user_opaque);

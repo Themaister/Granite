@@ -1086,7 +1086,11 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 		video.av_ctx->rc_max_rate = options.realtime_options.max_bitrate_kbits * 1000;
 		video.av_ctx->gop_size = int(options.realtime_options.gop_seconds *
 				float(video.av_ctx->framerate.num) / float(video.av_ctx->framerate.den));
-		if (video.av_ctx->gop_size == 0)
+
+		// TODO: Is there a way to express infinite GOP here?
+		if (video.av_ctx->gop_size < 0)
+			video.av_ctx->gop_size = 120;
+		else if (video.av_ctx->gop_size == 0)
 			video.av_ctx->gop_size = 1;
 
 		if (is_x264)
@@ -1229,8 +1233,17 @@ bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
 	rate_info.mode = options.low_latency ? PyroEnc::RateControlMode::CBR : PyroEnc::RateControlMode::VBR;
 	rate_info.bitrate_kbits = options.realtime_options.bitrate_kbits;
 	rate_info.max_bitrate_kbits = options.realtime_options.max_bitrate_kbits;
-	rate_info.gop_frames = unsigned(
-			options.realtime_options.gop_seconds * float(pyro_info.frame_rate_num) / float(pyro_info.frame_rate_den));
+
+	if (options.realtime_options.gop_seconds < 0.0f)
+	{
+		rate_info.gop_frames = UINT32_MAX;
+	}
+	else
+	{
+		rate_info.gop_frames = unsigned(
+				options.realtime_options.gop_seconds * float(pyro_info.frame_rate_num) /
+				float(pyro_info.frame_rate_den));
+	}
 
 	if (!pyro_encoder.set_rate_control_info(rate_info))
 	{

@@ -49,7 +49,7 @@ static int main_inner()
 	buf.size = sizeof(vec4) * 2;
 	auto output_ssbo = dev.create_buffer(buf);
 
-	cmd->set_storage_buffer(0, 0, *input_ssbo, 0, 28);
+	cmd->set_storage_buffer(0, 0, *input_ssbo, 0, 32);
 	cmd->set_storage_buffer(0, 1, *output_ssbo);
 	cmd->dispatch(1, 1, 1);
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,

@@ -1482,7 +1482,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	}
 
 	if ((flags & CONTEXT_CREATION_ENABLE_ROBUSTNESS_2_BIT) != 0 && has_extension(VK_EXT_ROBUSTNESS_2_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_ROBUSTNESS_2_EXTENSION_NAME);
 		ADD_CHAIN(ext.robustness2_features, ROBUSTNESS_2_FEATURES_EXT);
+	}
 
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{

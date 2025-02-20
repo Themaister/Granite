@@ -1,10 +1,11 @@
 #version 450
+#extension GL_EXT_scalar_block_layout : require
 
 layout(local_size_x = 1) in;
 
-layout(set = 0, binding = 0) readonly buffer Buf0
+layout(set = 0, binding = 0, scalar) readonly buffer Buf0
 {
-    layout(offset = 16) mat2x4 m;
+    layout(offset = 16) vec4 m;
 };
 
 layout(set = 0, binding = 1) writeonly buffer Output
@@ -14,6 +15,6 @@ layout(set = 0, binding = 1) writeonly buffer Output
 
 void main()
 {
-    mat2x4 loaded = m;
-    data = loaded;
+    vec4 loaded = m;
+    data = mat2x4(loaded, loaded);
 }

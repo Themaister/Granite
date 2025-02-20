@@ -1,0 +1,19 @@
+#version 450
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) readonly buffer Buf0
+{
+    layout(offset = 16) mat2x4 m;
+};
+
+layout(set = 0, binding = 1) writeonly buffer Output
+{
+    mat2x4 data;
+};
+
+void main()
+{
+    mat2x4 loaded = m;
+    data = loaded;
+}

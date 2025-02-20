@@ -111,6 +111,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceImageCompressionControlSwapchainFeaturesEXT image_compression_control_swapchain_features = {};
 	VkPhysicalDeviceDeviceGeneratedCommandsFeaturesEXT device_generated_commands_features = {};
 	VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT device_generated_commands_properties = {};
+	VkPhysicalDeviceRobustness2FeaturesEXT robustness2_features = {};
 
 	// Vendor
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};
@@ -154,7 +155,8 @@ enum ContextCreationFlagBits
 	CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT = 1 << 3,
 	CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT = 1 << 4,
 	CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT = 1 << 5,
-	CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT = 1 << 6
+	CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT = 1 << 6,
+	CONTEXT_CREATION_ENABLE_ROBUSTNESS_2_BIT = 1 << 7
 };
 using ContextCreationFlags = uint32_t;
 

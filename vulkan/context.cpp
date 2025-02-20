@@ -1481,6 +1481,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.pipeline_binary_features, PIPELINE_BINARY_FEATURES_KHR);
 	}
 
+	if ((flags & CONTEXT_CREATION_ENABLE_ROBUSTNESS_2_BIT) != 0 && has_extension(VK_EXT_ROBUSTNESS_2_EXTENSION_NAME))
+		ADD_CHAIN(ext.robustness2_features, ROBUSTNESS_2_FEATURES_EXT);
+
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
 		if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
@@ -1597,6 +1600,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	// Enable device features we might care about.
 	{
 		VkPhysicalDeviceFeatures enabled_features = *required_features;
+		if (pdf2.features.robustBufferAccess && (flags & CONTEXT_CREATION_ENABLE_ROBUSTNESS_2_BIT) != 0)
+			enabled_features.robustBufferAccess = VK_TRUE;
 		if (pdf2.features.textureCompressionETC2)
 			enabled_features.textureCompressionETC2 = VK_TRUE;
 		if (pdf2.features.textureCompressionBC)

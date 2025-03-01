@@ -1252,6 +1252,19 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 							 VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR) != 0;
 				}
 			}
+
+			if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_AV1_BIT) != 0 &&
+			    has_extension(VK_KHR_VIDEO_DECODE_AV1_EXTENSION_NAME))
+			{
+				enabled_extensions.push_back(VK_KHR_VIDEO_DECODE_AV1_EXTENSION_NAME);
+
+				if (queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE] != VK_QUEUE_FAMILY_IGNORED)
+				{
+					ext.supports_video_decode_av1 =
+							(video_queue_props2[queue_info.family_indices[QUEUE_INDEX_VIDEO_DECODE]].videoCodecOperations &
+							 VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR) != 0;
+				}
+			}
 		}
 
 		if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT) != 0 &&
@@ -1285,6 +1298,19 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 							 VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR) != 0;
 				}
 			}
+
+			if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_AV1_BIT) != 0 &&
+			    has_extension(VK_KHR_VIDEO_ENCODE_AV1_EXTENSION_NAME))
+			{
+				enabled_extensions.push_back(VK_KHR_VIDEO_ENCODE_AV1_EXTENSION_NAME);
+
+				if (queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE] != VK_QUEUE_FAMILY_IGNORED)
+				{
+					ext.supports_video_encode_av1 =
+							(video_queue_props2[queue_info.family_indices[QUEUE_INDEX_VIDEO_ENCODE]].videoCodecOperations &
+							 VK_VIDEO_CODEC_OPERATION_ENCODE_AV1_BIT_KHR) != 0;
+				}
+			}
 		}
 	}
 
@@ -1297,6 +1323,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	*ppNext = &(s); \
 	ppNext = &((s).pNext); \
 } while(0)
+
+	if (ext.supports_video_encode_av1)
+		ADD_CHAIN(ext.av1_features, VIDEO_ENCODE_AV1_FEATURES_KHR);
 
 	if (ext.device_api_core_version >= VK_API_VERSION_1_2)
 	{

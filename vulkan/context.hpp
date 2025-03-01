@@ -60,12 +60,14 @@ struct DeviceFeatures
 	bool supports_video_decode_queue = false;
 	bool supports_video_decode_h264 = false;
 	bool supports_video_decode_h265 = false;
+	bool supports_video_decode_av1 = false;
 	bool supports_astc_decode_mode = false;
 	bool supports_image_format_list = false;
 	bool supports_format_feature_flags2 = false;
 	bool supports_video_encode_queue = false;
 	bool supports_video_encode_h264 = false;
 	bool supports_video_encode_h265 = false;
+	bool supports_video_encode_av1 = false;
 	bool supports_external = false;
 	bool supports_tooling_info = false;
 	bool supports_hdr_metadata = false;
@@ -95,6 +97,7 @@ struct DeviceFeatures
 	VkPhysicalDevicePipelineBinaryPropertiesKHR pipeline_binary_properties = {};
 	VkDevicePipelineBinaryInternalCacheControlKHR pipeline_binary_internal_cache_control = {};
 	VkPhysicalDeviceMaintenance5FeaturesKHR maintenance5_features = {};
+	VkPhysicalDeviceVideoEncodeAV1FeaturesKHR av1_features = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};
@@ -156,7 +159,8 @@ enum ContextCreationFlagBits
 	CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT = 1 << 4,
 	CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT = 1 << 5,
 	CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT = 1 << 6,
-	CONTEXT_CREATION_ENABLE_ROBUSTNESS_2_BIT = 1 << 7
+	CONTEXT_CREATION_ENABLE_ROBUSTNESS_2_BIT = 1 << 7,
+	CONTEXT_CREATION_ENABLE_VIDEO_AV1_BIT = 1 << 8
 };
 using ContextCreationFlags = uint32_t;
 

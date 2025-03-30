@@ -181,7 +181,9 @@ public:
 
 	// Latency is normally pretty low, but this aims to target
 	// really low latency. Only suitable for cases where rendering loads are extremely simple.
-	void set_low_latency_mode(bool enable);
+	void set_present_low_latency_mode(bool enable);
+	// Engages NV_low_latency2 / AMD_anti_lag, etc, which aim to reduce CPU <-> GPU submit delays.
+	void set_gpu_submit_low_latency_mode(bool enable);
 
 	inline BackbufferFormat get_backbuffer_format() const
 	{
@@ -325,7 +327,12 @@ private:
 	VkSurfaceFormatKHR swapchain_surface_format = { VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
 	PresentMode current_present_mode = PresentMode::SyncToVBlank;
 	PresentMode present_mode = PresentMode::SyncToVBlank;
-	bool low_latency_mode_enable = false;
+	bool low_latency_mode_enable_present = false;
+	bool low_latency_mode_enable_gpu_submit = false;
+
+	void emit_marker_pre_present();
+	void emit_marker_post_present();
+	void emit_end_of_frame_markers();
 
 	VkPresentModeKHR active_present_mode = VK_PRESENT_MODE_FIFO_KHR;
 	std::vector<VkPresentModeKHR> present_mode_compat_group;
@@ -373,9 +380,12 @@ private:
 	double smooth_frame_time = 0.0;
 	double smooth_elapsed_time = 0.0;
 
-	uint64_t present_id = 0;
+	uint64_t next_present_id = 1;
 	uint64_t present_last_id = 0;
 	unsigned present_frame_latency = 0;
+
+	Semaphore low_latency_semaphore;
+	uint64_t low_latency_semaphore_value = 0;
 
 	bool next_present_is_dupe = false;
 	bool frame_dupe_aware = false;

@@ -1487,6 +1487,18 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.image_compression_control_swapchain_features, IMAGE_COMPRESSION_CONTROL_SWAPCHAIN_FEATURES_EXT);
 	}
 
+	if (has_extension(VK_NV_LOW_LATENCY_2_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_NV_LOW_LATENCY_2_EXTENSION_NAME);
+		ext.supports_low_latency2_nv = true;
+	}
+
+	if (has_extension(VK_AMD_ANTI_LAG_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_AMD_ANTI_LAG_EXTENSION_NAME);
+		ADD_CHAIN(ext.anti_lag_features, ANTI_LAG_FEATURES_AMD);
+	}
+
 	if (ext.device_api_core_version >= VK_API_VERSION_1_3)
 	{
 		ext.supports_store_op_none = true;

@@ -130,7 +130,7 @@ class BatchComposer
 public:
 	enum { MaxSubmissions = 8 };
 
-	BatchComposer();
+	explicit BatchComposer(uint64_t present_id_nv);
 	void add_wait_submissions(WaitSemaphores &sem);
 	void add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags2 stage);
 	void add_wait_semaphore(VkSemaphore sem, VkPipelineStageFlags2 stage);
@@ -144,10 +144,12 @@ private:
 	Util::SmallVector<VkSubmitInfo2, MaxSubmissions> submits;
 	VkPerformanceQuerySubmitInfoKHR profiling_infos[Helper::BatchComposer::MaxSubmissions];
 
+	Util::SmallVector<VkLatencySubmissionPresentIdNV> present_ids_nv;
 	Util::SmallVector<VkSemaphoreSubmitInfo> waits[MaxSubmissions];
 	Util::SmallVector<VkSemaphoreSubmitInfo> signals[MaxSubmissions];
 	Util::SmallVector<VkCommandBufferSubmitInfo> cmds[MaxSubmissions];
 
+	uint64_t present_id_nv = 0;
 	unsigned submit_index = 0;
 };
 }
@@ -538,6 +540,7 @@ private:
 	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlags2 stage);
 
 	void set_acquire_semaphore(unsigned index, Semaphore acquire);
+	void set_present_id(VkSwapchainKHR low_latency_swapchain, uint64_t present_id);
 	Semaphore consume_release_semaphore();
 	VkQueue get_current_present_queue() const;
 	CommandBuffer::Type get_current_present_queue_type() const;
@@ -682,6 +685,13 @@ private:
 		uint32_t queue_family_support_mask = 0;
 		unsigned index = 0;
 		bool consumed = false;
+
+		struct
+		{
+			uint64_t present_id;
+			bool need_submit_begin_marker;
+			VkSwapchainKHR swapchain;
+		} low_latency = {};
 	} wsi;
 	bool can_touch_swapchain_in_command_buffer(QueueIndices physical_type) const;
 

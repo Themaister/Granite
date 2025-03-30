@@ -1388,7 +1388,7 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 
 	// Add external wait semaphores.
 	Helper::WaitSemaphores wait_semaphores;
-	Helper::BatchComposer composer;
+	Helper::BatchComposer composer(get_device_features().supports_low_latency2_nv ? wsi.low_latency.present_id : 0);
 	collect_wait_semaphores(data, wait_semaphores);
 	composer.add_wait_submissions(wait_semaphores);
 
@@ -1470,7 +1470,8 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 	data.wait_semaphores.clear();
 }
 
-Helper::BatchComposer::BatchComposer()
+Helper::BatchComposer::BatchComposer(uint64_t present_id_nv_)
+	: present_id_nv(present_id_nv_)
 {
 	submits.emplace_back();
 }
@@ -1499,6 +1500,9 @@ void Helper::BatchComposer::add_wait_submissions(WaitSemaphores &sem)
 SmallVector<VkSubmitInfo2, Helper::BatchComposer::MaxSubmissions> &
 Helper::BatchComposer::bake(int profiling_iteration)
 {
+	if (present_id_nv)
+		present_ids_nv.resize(submits.size());
+
 	for (size_t i = 0, n = submits.size(); i < n; i++)
 	{
 		auto &submit = submits[i];
@@ -1510,6 +1514,11 @@ Helper::BatchComposer::bake(int profiling_iteration)
 		submit.pSignalSemaphoreInfos = signals[i].data();
 		submit.waitSemaphoreInfoCount = uint32_t(waits[i].size());
 		submit.pWaitSemaphoreInfos = waits[i].data();
+
+		present_ids_nv[i].sType = VK_STRUCTURE_TYPE_LATENCY_SUBMISSION_PRESENT_ID_NV;
+		present_ids_nv[i].presentID = present_id_nv;
+		present_ids_nv[i].pNext = submit.pNext;
+		submit.pNext = &present_ids_nv[i];
 
 		if (profiling_iteration >= 0)
 		{
@@ -1747,13 +1756,24 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 		return;
 	}
 
+	if (get_device_features().supports_low_latency2_nv &&
+	    wsi.low_latency.need_submit_begin_marker &&
+	    wsi.low_latency.present_id &&
+	    wsi.low_latency.swapchain)
+	{
+		VkSetLatencyMarkerInfoNV marker_info = { VK_STRUCTURE_TYPE_SET_LATENCY_MARKER_INFO_NV };
+		marker_info.presentID = wsi.low_latency.present_id;
+		table->vkSetLatencyMarkerNV(device, wsi.low_latency.swapchain, &marker_info);
+		wsi.low_latency.need_submit_begin_marker = false;
+	}
+
 	VkSemaphore timeline_semaphore = data.timeline_semaphore;
 	uint64_t timeline_value = ++data.current_timeline;
 
 	VkQueue queue = queue_info.queues[physical_type];
 	frame().timeline_fences[physical_type] = data.current_timeline;
 
-	Helper::BatchComposer composer;
+	Helper::BatchComposer composer(get_device_features().supports_low_latency2_nv ? wsi.low_latency.present_id : 0);
 	Helper::WaitSemaphores wait_semaphores;
 	collect_wait_semaphores(data, wait_semaphores);
 
@@ -1992,6 +2012,14 @@ void Device::set_acquire_semaphore(unsigned index, Semaphore acquire)
 		wsi.acquire->set_internal_sync_object();
 		VK_ASSERT(wsi.acquire->is_signalled());
 	}
+}
+
+void Device::set_present_id(VkSwapchainKHR swapchain, uint64_t present_id)
+{
+	if (wsi.low_latency.present_id != present_id)
+		wsi.low_latency.need_submit_begin_marker = true;
+	wsi.low_latency.swapchain = swapchain;
+	wsi.low_latency.present_id = present_id;
 }
 
 Semaphore Device::consume_release_semaphore()

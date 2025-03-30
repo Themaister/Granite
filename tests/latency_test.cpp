@@ -41,13 +41,20 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 	{
 		EVENT_MANAGER_REGISTER(LatencyTest, on_key_down, KeyboardEvent);
 		frame_times.reserve(100);
-		get_wsi().set_low_latency_mode(true);
+		get_wsi().set_gpu_submit_low_latency_mode(true);
 	}
+
+	bool gpu_low_latency_state = true;
 
 	bool on_key_down(const KeyboardEvent &e)
 	{
 		if (e.get_key_state() == KeyState::Pressed && e.get_key() == Key::Space)
 			state = !state;
+		if (e.get_key_state() == KeyState::Pressed && e.get_key() == Key::L)
+		{
+			gpu_low_latency_state = !gpu_low_latency_state;
+			get_wsi().set_gpu_submit_low_latency_mode(gpu_low_latency_state);
+		}
 		return true;
 	}
 
@@ -94,6 +101,10 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 
 		cmd->begin_render_pass(rp);
 		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+		const uint32_t burn_count = 10000;
+		cmd->push_constants(&burn_count, 0, sizeof(burn_count));
+		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "assets://shaders/burn.frag");
 
 		flat.begin();
 
@@ -169,7 +180,7 @@ namespace Granite
 {
 Application *application_create(int argc, char **argv)
 {
-	application_setup_default_filesystem(".");
+	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
 	unsigned count = 0;
 	if (argc == 2)

@@ -74,6 +74,7 @@ struct DeviceFeatures
 	bool supports_swapchain_colorspace = false;
 	bool supports_surface_maintenance1 = false;
 	bool supports_store_op_none = false;
+	bool supports_low_latency2_nv = false;
 
 	VkPhysicalDeviceFeatures enabled_features = {};
 
@@ -118,6 +119,7 @@ struct DeviceFeatures
 
 	// Vendor
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};
+	VkPhysicalDeviceAntiLagFeaturesAMD anti_lag_features = {};
 
 	// Fallback feature structs (Vulkan 1.1)
 	VkPhysicalDeviceHostQueryResetFeatures host_query_reset_features = {};

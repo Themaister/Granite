@@ -619,6 +619,21 @@ void WSI::wait_swapchain_latency()
 		latency_marker_info.marker = VK_LATENCY_MARKER_SIMULATION_START_NV;
 		device->get_device_table().vkSetLatencyMarkerNV(device->get_device(), swapchain, &latency_marker_info);
 	}
+	else if (device->get_device_features().anti_lag_features.antiLag)
+	{
+		auto wait_ts = device->write_calibrated_timestamp();
+
+		VkAntiLagDataAMD anti_lag = { VK_STRUCTURE_TYPE_ANTI_LAG_DATA_AMD };
+		VkAntiLagPresentationInfoAMD present_info = { VK_STRUCTURE_TYPE_ANTI_LAG_PRESENTATION_INFO_AMD };
+		anti_lag.pPresentationInfo = &present_info;
+		present_info.stage = VK_ANTI_LAG_STAGE_INPUT_AMD;
+		present_info.frameIndex = ++low_latency_semaphore_value;
+		anti_lag.mode = low_latency_mode_enable_gpu_submit ? VK_ANTI_LAG_MODE_ON_AMD : VK_ANTI_LAG_MODE_OFF_AMD;
+		device->get_device_table().vkAntiLagUpdateAMD(device->get_device(), &anti_lag);
+		low_latency_anti_lag_present_valid = low_latency_mode_enable_gpu_submit;
+		device->register_time_interval("WSI", std::move(wait_ts), device->write_calibrated_timestamp(),
+		                               "low_latency_sleep");
+	}
 }
 
 void WSI::emit_end_of_frame_markers()
@@ -645,6 +660,17 @@ void WSI::emit_marker_pre_present()
 		latency_marker_info.marker = VK_LATENCY_MARKER_PRESENT_START_NV;
 		latency_marker_info.presentID = next_present_id;
 		device->get_device_table().vkSetLatencyMarkerNV(device->get_device(), swapchain, &latency_marker_info);
+	}
+	else if (device->get_device_features().anti_lag_features.antiLag && low_latency_anti_lag_present_valid)
+	{
+		VkAntiLagDataAMD anti_lag = { VK_STRUCTURE_TYPE_ANTI_LAG_DATA_AMD };
+		VkAntiLagPresentationInfoAMD present_info = { VK_STRUCTURE_TYPE_ANTI_LAG_PRESENTATION_INFO_AMD };
+		anti_lag.pPresentationInfo = &present_info;
+		present_info.stage = VK_ANTI_LAG_STAGE_PRESENT_AMD;
+		present_info.frameIndex = low_latency_semaphore_value;
+		anti_lag.mode = low_latency_mode_enable_gpu_submit ? VK_ANTI_LAG_MODE_ON_AMD : VK_ANTI_LAG_MODE_OFF_AMD;
+		device->get_device_table().vkAntiLagUpdateAMD(device->get_device(), &anti_lag);
+		low_latency_anti_lag_present_valid = false;
 	}
 }
 

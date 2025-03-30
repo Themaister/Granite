@@ -329,6 +329,7 @@ private:
 	PresentMode present_mode = PresentMode::SyncToVBlank;
 	bool low_latency_mode_enable_present = false;
 	bool low_latency_mode_enable_gpu_submit = false;
+	bool low_latency_anti_lag_present_valid = false;
 
 	void emit_marker_pre_present();
 	void emit_marker_post_present();

@@ -102,7 +102,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		cmd->begin_render_pass(rp);
 		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
-		const uint32_t burn_count = 10000;
+		const uint32_t burn_count = 7000;
 		cmd->push_constants(&burn_count, 0, sizeof(burn_count));
 		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "assets://shaders/burn.frag");
 

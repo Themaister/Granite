@@ -235,9 +235,10 @@ std::string get_executable_path()
 		         unsigned(pid), ext);
 		ssize_t ret = readlink(link_path, target, sizeof(target) - 1);
 		if (ret >= 0)
+		{
 			target[ret] = '\0';
-
-		return std::string(target);
+			return std::string(target);
+		}
 	}
 
 	return "";

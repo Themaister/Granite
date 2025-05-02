@@ -368,7 +368,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
 		if (messageType == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
 		{
-			LOGE("[Vulkan]: Validation Error: %s\n", pCallbackData->pMessage);
+			LOGE("[Vulkan]: Validation Error: %s - %s\n", pCallbackData->pMessageIdName, pCallbackData->pMessage);
 			context->notify_validation_error(pCallbackData->pMessage);
 		}
 		else
@@ -377,7 +377,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
 		if (messageType == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
-			LOGW("[Vulkan]: Validation Warning: %s\n", pCallbackData->pMessage);
+			LOGW("[Vulkan]: Validation Warning: %s - %s\n", pCallbackData->pMessageIdName, pCallbackData->pMessage);
 		else
 			LOGW("[Vulkan]: Other Warning: %s\n", pCallbackData->pMessage);
 		break;

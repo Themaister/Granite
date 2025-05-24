@@ -1004,6 +1004,7 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 	}
 	else if (options.walltime_to_pts)
 	{
+		video.ticks_per_frame = 16;
 		video.av_ctx->time_base = {options.frame_timebase.num, options.frame_timebase.den * video.ticks_per_frame};
 
 #if defined(_MSC_VER)
@@ -1016,8 +1017,8 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 
 		// NVENC B-frames break without this since it computes DTS by subtracting PTS by ticks_per_frame * N factor.
 		DISABLE_DEPRECATION_WARNINGS
-#if LIBAVCODEC_VERSION_MAJOR < 61
-		video.av_ctx->ticks_per_frame = 16;
+#if FF_API_TICKS_PER_FRAME
+		video.av_ctx->ticks_per_frame = video.ticks_per_frame;
 #else
 #warning "Not using av_ctx->ticks_per_frame, NVENC b-frames will break!"
 #endif

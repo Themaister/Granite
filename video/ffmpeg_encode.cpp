@@ -76,7 +76,7 @@ struct VideoEncoder::YCbCrPipelineData
 {
 	Vulkan::ImageHandle luma;
 	Vulkan::ImageHandle chroma_full;
-	Vulkan::ImageHandle chroma;
+	Vulkan::ImageHandle chroma[2];
 	Vulkan::BufferHandle buffer;
 	Vulkan::Fence fence;
 	Vulkan::Program *rgb_to_ycbcr = nullptr;
@@ -259,6 +259,9 @@ static unsigned format_to_planes(VideoEncoder::Format fmt)
 	case VideoEncoder::Format::P016:
 	case VideoEncoder::Format::P010:
 		return 2;
+
+	case VideoEncoder::Format::YUV420P:
+		return 3;
 
 	default:
 		return 0;
@@ -551,18 +554,28 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 	// Feels a bit dumb to use swscale just to copy.
 	// Ideally we'd be able to set the data pointers directly in AVFrame,
 	// but encoder reference buffers probably require a copy anyways ...
-	unsigned pix_size = options.format != VideoEncoder::Format::NV12 ? 2 : 1;
+	unsigned pix_size = options.format != VideoEncoder::Format::NV12 &&
+	                    options.format != VideoEncoder::Format::YUV420P ? 2 : 1;
 	const auto *src_luma = buffer + planes[0].offset;
 	const auto *src_chroma = buffer + planes[1].offset;
+	const auto *src_chroma3 = buffer + planes[2].offset;
 	auto *dst_luma = video.av_frame->data[0];
 	auto *dst_chroma = video.av_frame->data[1];
+	auto *dst_chroma3 = video.av_frame->data[2];
 
-	unsigned chroma_width = (options.width >> 1) * 2;
+	unsigned chroma_width = options.width >> 1;
+	if (num_planes == 2)
+		chroma_width *= 2;
+
 	unsigned chroma_height = options.height >> 1;
 	for (unsigned y = 0; y < options.height; y++, dst_luma += video.av_frame->linesize[0], src_luma += planes[0].stride)
 		memcpy(dst_luma, src_luma, options.width * pix_size);
 	for (unsigned y = 0; y < chroma_height; y++, dst_chroma += video.av_frame->linesize[1], src_chroma += planes[1].stride)
 		memcpy(dst_chroma, src_chroma, chroma_width * pix_size);
+
+	if (num_planes == 3)
+		for (unsigned y = 0; y < chroma_height; y++, dst_chroma3 += video.av_frame->linesize[2], src_chroma3 += planes[2].stride)
+			memcpy(dst_chroma3, src_chroma3, chroma_width * pix_size);
 
 	video.av_frame->pict_type = AV_PICTURE_TYPE_NONE;
 
@@ -953,6 +966,10 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 	{
 	case Format::NV12:
 		video.av_ctx->pix_fmt = AV_PIX_FMT_NV12;
+		break;
+
+	case Format::YUV420P:
+		video.av_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 		break;
 
 	case Format::P016:
@@ -1737,11 +1754,14 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
 	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
-	if (pipeline.chroma)
+	for (auto &img : pipeline.chroma)
 	{
-		cmd.image_barrier(*pipeline.chroma, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+		if (img)
+		{
+			cmd.image_barrier(*img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+		}
 	}
 
 	cmd.set_program(pipeline.rgb_to_ycbcr);
@@ -1813,7 +1833,10 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 
 	cmd.set_program(pipeline.chroma_downsample);
 	cmd.set_texture(0, 0, pipeline.chroma_full->get_view(), Vulkan::StockSampler::LinearClamp);
-	cmd.set_storage_texture(0, 1, wrapped_planes[1] ? *wrapped_planes[1] : pipeline.chroma->get_view());
+	for (int i = 1; i < 3; i++)
+		cmd.set_storage_texture(0, i, wrapped_planes[1] ? *wrapped_planes[1] : pipeline.chroma[0]->get_view());
+	if (pipeline.chroma[1])
+		cmd.set_storage_texture(0, 2, pipeline.chroma[1]->get_view());
 
 	push.inv_width = pipeline.constants.inv_resolution_chroma[0];
 	push.inv_height = pipeline.constants.inv_resolution_chroma[1];
@@ -1821,24 +1844,39 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	push.base_v = pipeline.constants.base_uv_chroma[1];
 	cmd.push_constants(&push, 0, sizeof(push));
 	auto start_chroma_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+	cmd.set_specialization_constant_mask(1);
+	cmd.set_specialization_constant(0, bool(pipeline.chroma[1]));
 	cmd.dispatch(pipeline.constants.chroma_dispatch[0], pipeline.constants.chroma_dispatch[1], 1);
+	cmd.set_specialization_constant_mask(0);
 	auto end_chroma_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-	if (pipeline.chroma)
+	if (pipeline.chroma[0])
 	{
-		cmd.image_barrier(*pipeline.chroma, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-		                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		for (auto &img : pipeline.chroma)
+		{
+			if (img)
+			{
+				cmd.image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+				                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+			}
+		}
 
 		cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.luma, pipeline.planes[0].offset,
 		                         {},
 		                         {pipeline.luma->get_width(), pipeline.luma->get_height(), 1},
 		                         pipeline.planes[0].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
 
-		cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma, pipeline.planes[1].offset,
-		                         {},
-		                         {pipeline.chroma->get_width(), pipeline.chroma->get_height(), 1},
-		                         pipeline.planes[1].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+		for (int i = 0; i < 2; i++)
+		{
+			if (pipeline.chroma[i])
+			{
+				cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma[i], pipeline.planes[i + 1].offset,
+				                         {},
+				                         {pipeline.chroma[i]->get_width(), pipeline.chroma[i]->get_height(), 1},
+				                         pipeline.planes[i + 1].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+			}
+		}
 
 		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
@@ -1909,31 +1947,35 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 	pipeline.chroma_downsample = shaders.chroma_downsample;
 	pipeline.rgb_scale = shaders.rgb_scale;
 
-	VkFormat luma_format, chroma_format;
+	VkFormat luma_format, chroma_format, chroma_format_full;
 	unsigned pixel_size;
 
 	if (impl->using_pyro_encoder)
 	{
 		luma_format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-		chroma_format = VK_FORMAT_UNDEFINED;
+		chroma_format_full = VK_FORMAT_UNDEFINED;
 		pixel_size = 4;
 		pipeline.constants.dither_strength = 1.0f / 1023.0f;
 		pipeline.pyroenc = true;
 	}
-	else if (impl->options.format != Format::NV12)
+	else if (impl->options.format != Format::NV12 && impl->options.format != Format::YUV420P)
 	{
 		luma_format = VK_FORMAT_R16_UNORM;
-		chroma_format = VK_FORMAT_R16G16_UNORM;
+		chroma_format_full = VK_FORMAT_R16G16_UNORM;
 		pixel_size = 2;
 		pipeline.constants.dither_strength = 1.0f / 1023.0f;
 	}
 	else
 	{
 		luma_format = VK_FORMAT_R8_UNORM;
-		chroma_format = VK_FORMAT_R8G8_UNORM;
+		chroma_format_full = VK_FORMAT_R8G8_UNORM;
 		pixel_size = 1;
 		pipeline.constants.dither_strength = 1.0f / 255.0f;
 	}
+
+	chroma_format = chroma_format_full;
+	if (impl->options.format == Format::YUV420P)
+		chroma_format = VK_FORMAT_R8_UNORM;
 
 	auto image_info = Vulkan::ImageCreateInfo::immutable_2d_image(impl->options.width, impl->options.height, luma_format);
 	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1994,7 +2036,7 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 		break;
 	}
 
-	image_info.format = chroma_format;
+	image_info.format = chroma_format_full;
 
 	if (!impl->using_pyro_encoder)
 	{
@@ -2002,6 +2044,7 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 		impl->device->set_name(*pipeline.chroma_full, "video-encode-chroma-full-res");
 	}
 
+	image_info.format = chroma_format;
 	image_info.width = impl->options.width / 2;
 	image_info.height = impl->options.height / 2;
 
@@ -2011,18 +2054,34 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 		if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)
 #endif
 		{
-			pipeline.chroma = impl->device->create_image(image_info);
-			impl->device->set_name(*pipeline.chroma, "video-encode-chroma-downsampled");
+			pipeline.chroma[0] = impl->device->create_image(image_info);
+			impl->device->set_name(*pipeline.chroma[0], "video-encode-chroma-downsampled");
 
 			aligned_width = (image_info.width + 63) & ~63;
 			pipeline.planes[pipeline.num_planes].row_length = aligned_width;
-			aligned_width *= 2;
+
+			if (impl->options.format != Format::YUV420P)
+				aligned_width *= 2;
 
 			pipeline.planes[pipeline.num_planes].offset = total_size;
 			pipeline.planes[pipeline.num_planes].stride = aligned_width * pixel_size;
 			pipeline.num_planes++;
+
 			VkDeviceSize chroma_size = aligned_width * image_info.height * pixel_size;
 			total_size += chroma_size;
+
+			if (impl->options.format == Format::YUV420P)
+			{
+				pipeline.chroma[1] = impl->device->create_image(image_info);
+				impl->device->set_name(*pipeline.chroma[1], "video-encode-chroma-downsampled");
+
+				pipeline.planes[pipeline.num_planes].offset = total_size;
+				pipeline.planes[pipeline.num_planes].stride = aligned_width * pixel_size;
+				pipeline.planes[pipeline.num_planes].row_length = aligned_width;
+				pipeline.num_planes++;
+
+				total_size += chroma_size;
+			}
 		}
 	}
 

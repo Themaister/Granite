@@ -3,6 +3,9 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(set = 0, binding = 0) uniform mediump sampler2D uInputChroma;
 layout(set = 0, binding = 1) writeonly uniform mediump image2D uOutputChroma;
+layout(set = 0, binding = 2) writeonly uniform mediump image2D uOutputChroma3;
+
+layout(constant_id = 0) const bool YUV420P = false;
 
 layout(push_constant) uniform Registers
 {
@@ -42,6 +45,13 @@ void main()
         }
 
         chroma /= W;
-        imageStore(uOutputChroma, ivec2(coord), chroma.xyxy);
+
+        if (YUV420P)
+        {
+            imageStore(uOutputChroma, ivec2(coord), chroma.xxxx);
+            imageStore(uOutputChroma3, ivec2(coord), chroma.yyyy);
+        }
+        else
+            imageStore(uOutputChroma, ivec2(coord), chroma.xyxy);
     }
 }

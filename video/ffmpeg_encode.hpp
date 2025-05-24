@@ -60,6 +60,7 @@ public:
 	enum class Format
 	{
 		NV12,
+		YUV420P,
 		P016,
 		P010
 	};

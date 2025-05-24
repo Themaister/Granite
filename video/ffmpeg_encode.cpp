@@ -432,7 +432,7 @@ void VideoEncoder::Impl::write_frames_interleaved_f32(const float *data, size_t 
 		mux_stream_callback->write_audio_packet(
 				pts, pts, audio_buffer_s16.data(), audio_buffer_s16.size() * sizeof(int16_t));
 	}
-	else
+	else if (audio.av_ctx)
 	{
 		encode_audio_stream(data, frames, audio_compensate_us.load(std::memory_order_relaxed));
 	}

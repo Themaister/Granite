@@ -116,6 +116,10 @@ public:
 	// A video frame can be released when the returned PTS is out of date.
 	bool acquire_video_frame(VideoFrame &frame, int timeout_ms = -1);
 
+	// Try to force a decode operation, even if the frame is incomplete.
+	// For certain error-resistant codecs, this is fine.
+	void acquire_damaged_video_frame(VideoFrame &frame);
+
 	// Poll acquire. Returns positive on success, 0 on no available image, negative number on EOF.
 	int try_acquire_video_frame(VideoFrame &frame);
 

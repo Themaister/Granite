@@ -543,6 +543,7 @@ struct VideoDecoder::Impl
 	void latch_audio_buffering_target(double target_buffer_time);
 
 	bool acquire_video_frame(VideoFrame &frame, int timeout_ms);
+	void acquire_damaged_video_frame(VideoFrame &frame);
 	int try_acquire_video_frame(VideoFrame &frame);
 	bool is_eof();
 	void release_video_frame(unsigned index, Vulkan::Semaphore sem);
@@ -586,6 +587,7 @@ struct VideoDecoder::Impl
 	std::mutex iteration_lock;
 	bool teardown = false;
 	bool acquire_blocking = false;
+	bool acquire_damaged = false;
 	TaskSignal video_upload_signal;
 	uint64_t video_upload_count = 0;
 	ThreadGroup *thread_group = nullptr;
@@ -1966,7 +1968,7 @@ bool VideoDecoder::Impl::should_iterate_locked()
 
 	// We will never stop decoding, since we have to drain UDP/TDP queues.
 	// If player cannot keep up or won't keep up, we drop frames.
-	if (opts.realtime)
+	if (opts.realtime || acquire_damaged)
 		return true;
 
 #ifdef HAVE_GRANITE_AUDIO
@@ -2058,8 +2060,17 @@ void VideoDecoder::Impl::thread_main()
 			std::lock_guard<std::mutex> holder{lock};
 			teardown = true;
 			acquire_is_eof = true;
+			acquire_damaged = false;
 			cond.notify_one();
 			break;
+		}
+
+		// If we didn't flush out a new frame, notify blocking thread.
+		std::lock_guard<std::mutex> holder{lock};
+		if (acquire_damaged)
+		{
+			acquire_damaged = false;
+			cond.notify_one();
 		}
 	}
 }
@@ -2102,6 +2113,46 @@ int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 	{
 		return acquire_is_eof || teardown ? -1 : 0;
 	}
+}
+
+void VideoDecoder::Impl::acquire_damaged_video_frame(VideoFrame &frame)
+{
+	if (!decode_thread.joinable())
+		return;
+
+	std::unique_lock<std::mutex> holder{lock};
+
+	// Wake up decode thread to make sure it knows acquire thread
+	// is blocking and awaits forward progress.
+	acquire_blocking = true;
+
+	int index = find_acquire_video_frame_locked();
+
+	if (index < 0)
+	{
+		acquire_damaged = true;
+		cond.notify_one();
+		cond.wait(holder, [this, &index]() {
+			return (index = find_acquire_video_frame_locked()) >= 0 || acquire_is_eof || teardown || !acquire_damaged;
+		});
+	}
+
+	if (index >= 0)
+	{
+		// Now we can return a frame.
+		frame.sem.reset();
+		std::swap(frame.sem, video_queue[index].sem_to_client);
+		video_queue[index].state = ImageState::Acquired;
+		frame.view = &video_queue[index].rgb_image->get_view();
+		frame.index = index;
+		frame.pts = video_queue[index].pts;
+		frame.done_ts = video_queue[index].done_ts;
+	}
+
+	// Progress.
+	acquire_blocking = false;
+	acquire_damaged = false;
+	cond.notify_one();
 }
 
 bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame, int timeout_ms)
@@ -2642,6 +2693,11 @@ double VideoDecoder::get_estimated_audio_playback_timestamp_raw()
 bool VideoDecoder::acquire_video_frame(VideoFrame &frame, int timeout_ms)
 {
 	return impl->acquire_video_frame(frame, timeout_ms);
+}
+
+void VideoDecoder::acquire_damaged_video_frame(VideoFrame &frame)
+{
+	impl->acquire_damaged_video_frame(frame);
 }
 
 int VideoDecoder::try_acquire_video_frame(VideoFrame &frame)

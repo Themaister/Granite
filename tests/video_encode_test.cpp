@@ -23,7 +23,7 @@ int main()
 	options.frame_timebase = { 1, 60 };
 	options.encoder = "hevc_vulkan";
 	options.low_latency = true;
-	options.realtime = true;
+	options.walltime_to_pts = true;
 
 	if (!Vulkan::Context::init_loader(nullptr))
 		return 1;

@@ -79,25 +79,27 @@ public:
 		Timebase frame_timebase = {};
 		Format format = Format::NV12; // Default for HW encode.
 		ChromaSiting siting = ChromaSiting::Left; // Default for H.264.
-		// Correlate PTS with wall time.
-		bool realtime = false;
 		const char *encoder = "libx264";
+
+		// Correlate PTS with wall time.
+		bool walltime_to_pts = false;
 		bool low_latency = false;
+
+		// Hack for now, set PQ trc.
 		bool hdr10 = false;
 
-		struct
-		{
-			unsigned bitrate_kbits = 6000;
-			unsigned max_bitrate_kbits = 8000;
-			float gop_seconds = 2.0f;
-			unsigned vbv_size_kbits = 6000;
-			const char *x264_preset = "fast";
-			const char *x264_tune = nullptr;
-			const char *muxer_format = nullptr;
-			// Also writes packets to a local file.
-			const char *local_backup_path = nullptr;
-			unsigned threads = 0;
-		} realtime_options;
+		bool color_full_range = false;
+
+		unsigned bitrate_kbits = 6000;
+		unsigned max_bitrate_kbits = 8000;
+		float gop_seconds = 2.0f;
+		unsigned vbv_size_kbits = 6000;
+		const char *x264_preset = "fast";
+		const char *x264_tune = nullptr;
+		const char *muxer_format = nullptr;
+		// Also writes packets to a local file.
+		const char *local_backup_path = nullptr;
+		unsigned threads = 0;
 	};
 
 	void set_audio_source(Audio::DumpBackend *backend);

@@ -411,7 +411,7 @@ bool VideoEncoder::Impl::encode_audio_stream(const float *data, size_t frames, i
 bool VideoEncoder::Impl::encode_audio()
 {
 	// For realtime, we'll pump from a record callback.
-	if (!options.realtime && audio_source)
+	if (!options.walltime_to_pts && audio_source)
 		return encode_audio_source();
 	else
 		return true;
@@ -503,7 +503,7 @@ bool VideoEncoder::Impl::encode_frame(const Vulkan::ImageView &view, int64_t pts
 
 bool VideoEncoder::Impl::encode_frame(AVFrame *hw_frame, int64_t pts, int compensate_audio_us)
 {
-	if (options.realtime)
+	if (options.walltime_to_pts)
 		hw_frame->pts = pts;
 	else
 		hw_frame->pts = encode_video_pts++;
@@ -588,7 +588,7 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 		video.av_frame->pts = pts;
 		encode_video_pts = pts;
 	}
-	else if (options.realtime)
+	else if (options.walltime_to_pts)
 	{
 		int64_t target_pts = av_rescale_q_rnd(pts, AV_TIME_BASE_Q, video.av_ctx->time_base, AV_ROUND_ZERO);
 
@@ -774,7 +774,7 @@ bool VideoEncoder::Impl::init_audio_codec()
 	// Streaming wants AAC.
 	// Just hardcode sample format for what FFmpeg supports.
 	// We control which encoders we care about.
-	if (options.realtime)
+	if (options.walltime_to_pts)
 	{
 		if (mux_stream_callback)
 		{
@@ -796,7 +796,7 @@ bool VideoEncoder::Impl::init_audio_codec()
 			}
 
 			pyro_codec.channels = 2;
-			if (options.realtime)
+			if (options.walltime_to_pts)
 				pyro_codec.rate = uint32_t(audio_stream->get_sample_rate());
 			else
 				pyro_codec.rate = uint32_t(audio_source->get_sample_rate());
@@ -849,14 +849,14 @@ bool VideoEncoder::Impl::init_audio_codec()
 
 	audio.av_ctx->sample_fmt = sample_fmt;
 
-	if (options.realtime)
+	if (options.walltime_to_pts)
 		audio.av_ctx->sample_rate = int(audio_stream->get_sample_rate());
 	else
 		audio.av_ctx->sample_rate = int(audio_source->get_sample_rate());
 
 	audio.av_ctx->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
 
-	if (options.realtime)
+	if (options.walltime_to_pts)
 		audio.av_ctx->time_base = {1, 1000000};
 	else
 		audio.av_ctx->time_base = {1, audio.av_ctx->sample_rate};
@@ -878,7 +878,7 @@ bool VideoEncoder::Impl::init_audio_codec()
 		audio.av_stream_local->time_base = audio.av_ctx->time_base;
 	}
 
-	if (options.realtime)
+	if (options.walltime_to_pts)
 		audio.av_ctx->bit_rate = 256 * 1024;
 
 	int ret = avcodec_open2(audio.av_ctx, codec, nullptr);
@@ -894,7 +894,7 @@ bool VideoEncoder::Impl::init_audio_codec()
 		avcodec_parameters_from_context(audio.av_stream_local->codecpar, audio.av_ctx);
 
 	unsigned samples_per_tick;
-	if (!options.realtime && (codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE) != 0)
+	if (!options.walltime_to_pts && (codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE) != 0)
 		samples_per_tick = audio_source->get_frames_per_tick();
 	else
 	{
@@ -1002,9 +1002,8 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 		// Don't attempt to smooth out PTS values.
 		video.av_ctx->time_base = AV_TIME_BASE_Q;
 	}
-	else if (options.realtime)
+	else if (options.walltime_to_pts)
 	{
-		video.ticks_per_frame = 16;
 		video.av_ctx->time_base = {options.frame_timebase.num, options.frame_timebase.den * video.ticks_per_frame};
 
 #if defined(_MSC_VER)
@@ -1030,7 +1029,7 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 		video.ticks_per_frame = 1;
 	}
 
-	video.av_ctx->color_range = AVCOL_RANGE_MPEG;
+	video.av_ctx->color_range = options.color_full_range ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
 
 	if (options.hdr10)
 	{
@@ -1042,6 +1041,7 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 	{
 		video.av_ctx->colorspace = AVCOL_SPC_BT709;
 		video.av_ctx->color_primaries = AVCOL_PRI_BT709;
+		video.av_ctx->color_trc = AVCOL_TRC_BT709;
 	}
 
 	switch (options.siting)
@@ -1096,59 +1096,51 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 			av_dict_set_int(&opts, "async_depth", 1, 0);
 	}
 
-	if (options.realtime || !is_x264)
+	video.av_ctx->bit_rate = options.bitrate_kbits * 1000;
+	video.av_ctx->rc_buffer_size = options.vbv_size_kbits * 1000;
+	video.av_ctx->rc_max_rate = options.max_bitrate_kbits * 1000;
+	video.av_ctx->gop_size = int(options.gop_seconds *
+			float(video.av_ctx->framerate.num) / float(video.av_ctx->framerate.den));
+
+	// TODO: Is there a way to express infinite GOP here?
+	if (video.av_ctx->gop_size < 0)
+		video.av_ctx->gop_size = 120;
+	else if (video.av_ctx->gop_size == 0)
+		video.av_ctx->gop_size = 1;
+
+	if (is_x264)
 	{
-		video.av_ctx->bit_rate = options.realtime_options.bitrate_kbits * 1000;
-		video.av_ctx->rc_buffer_size = options.realtime_options.vbv_size_kbits * 1000;
-		video.av_ctx->rc_max_rate = options.realtime_options.max_bitrate_kbits * 1000;
-		video.av_ctx->gop_size = int(options.realtime_options.gop_seconds *
-				float(video.av_ctx->framerate.num) / float(video.av_ctx->framerate.den));
-
-		// TODO: Is there a way to express infinite GOP here?
-		if (video.av_ctx->gop_size < 0)
-			video.av_ctx->gop_size = 120;
-		else if (video.av_ctx->gop_size == 0)
-			video.av_ctx->gop_size = 1;
-
-		if (is_x264)
+		if (options.x264_preset)
+			av_dict_set(&opts, "preset", options.x264_preset, 0);
+		if (options.x264_tune)
+			av_dict_set(&opts, "tune", options.x264_tune, 0);
+		if (options.threads)
+			av_dict_set_int(&opts, "threads", options.threads, 0);
+	}
+	else if (is_nvenc)
+	{
+		// Codec delay. We want blocking realtime.
+		av_dict_set_int(&opts, "delay", 0, 0);
+		if (options.low_latency)
 		{
-			if (options.realtime_options.x264_preset)
-				av_dict_set(&opts, "preset", options.realtime_options.x264_preset, 0);
-			if (options.realtime_options.x264_tune)
-				av_dict_set(&opts, "tune", options.realtime_options.x264_tune, 0);
-			if (options.realtime_options.threads)
-				av_dict_set_int(&opts, "threads", options.realtime_options.threads, 0);
+			av_dict_set_int(&opts, "zerolatency", 1, 0);
+			av_dict_set(&opts, "rc", "cbr", 0);
+			av_dict_set(&opts, "preset", "p1", 0);
+			av_dict_set(&opts, "tune", "ll", 0);
 		}
-		else if (is_nvenc)
+		else
 		{
-			// Codec delay. We want blocking realtime.
-			av_dict_set_int(&opts, "delay", 0, 0);
-			if (options.low_latency)
-			{
-				av_dict_set_int(&opts, "zerolatency", 1, 0);
-				av_dict_set(&opts, "rc", "cbr", 0);
-				av_dict_set(&opts, "preset", "p1", 0);
-				av_dict_set(&opts, "tune", "ll", 0);
-			}
-			else
-			{
-				av_dict_set(&opts, "rc", "vbr", 0);
-				av_dict_set(&opts, "tune", "hq", 0);
-				av_dict_set(&opts, "preset", "p7", 0);
-			}
-		}
-
-		if ((is_x264 || is_nvenc) && options.low_latency)
-		{
-			av_dict_set_int(&opts, "intra-refresh", 1, 0);
-			av_dict_set_int(&opts, "forced-idr", 1, 0);
-			video.av_ctx->refs = 1;
+			av_dict_set(&opts, "rc", "vbr", 0);
+			av_dict_set(&opts, "tune", "hq", 0);
+			av_dict_set(&opts, "preset", "p7", 0);
 		}
 	}
-	else
+
+	if ((is_x264 || is_nvenc) && options.low_latency)
 	{
-		av_dict_set(&opts, "preset", "fast", 0);
-		av_dict_set_int(&opts, "crf", 18, 0);
+		av_dict_set_int(&opts, "intra-refresh", 1, 0);
+		av_dict_set_int(&opts, "forced-idr", 1, 0);
+		video.av_ctx->refs = 1;
 	}
 
 	int ret = avcodec_open2(video.av_ctx, codec, &opts);
@@ -1248,17 +1240,17 @@ bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
 
 	PyroEnc::RateControlInfo rate_info = {};
 	rate_info.mode = options.low_latency ? PyroEnc::RateControlMode::CBR : PyroEnc::RateControlMode::VBR;
-	rate_info.bitrate_kbits = options.realtime_options.bitrate_kbits;
-	rate_info.max_bitrate_kbits = options.realtime_options.max_bitrate_kbits;
+	rate_info.bitrate_kbits = options.bitrate_kbits;
+	rate_info.max_bitrate_kbits = options.max_bitrate_kbits;
 
-	if (options.realtime_options.gop_seconds < 0.0f)
+	if (options.gop_seconds < 0.0f)
 	{
 		rate_info.gop_frames = UINT32_MAX;
 	}
 	else
 	{
 		rate_info.gop_frames = unsigned(
-				options.realtime_options.gop_seconds * float(pyro_info.frame_rate_num) /
+				options.gop_seconds * float(pyro_info.frame_rate_num) /
 				float(pyro_info.frame_rate_den));
 	}
 
@@ -1301,8 +1293,8 @@ bool VideoEncoder::Impl::init_video_codec()
 	PyroEnc::Profile pyro_profile = {};
 
 	// Only allow PyroEnc path for pure streaming scenario for now.
-	if (!codec && options.realtime &&
-	    mux_stream_callback && !options.realtime_options.local_backup_path &&
+	if (!codec && options.walltime_to_pts &&
+	    mux_stream_callback && !options.local_backup_path &&
 	    options.encoder && (strcmp(options.encoder, "h264_pyro") == 0 || strcmp(options.encoder, "h265_pyro") == 0))
 	{
 		// Use custom.
@@ -1355,8 +1347,8 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 
 	// For file-less formats like RTMP need to specify muxer format.
 	const char *muxer = nullptr;
-	if (options.realtime && options.realtime_options.muxer_format)
-		muxer = options.realtime_options.muxer_format;
+	if (options.walltime_to_pts && options.muxer_format)
+		muxer = options.muxer_format;
 
 	if ((!path && !mux_stream_callback) || (path && mux_stream_callback))
 	{
@@ -1393,10 +1385,10 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		}
 	}
 
-	if (options.realtime && options.realtime_options.local_backup_path)
+	if (options.walltime_to_pts && options.local_backup_path)
 	{
 		if ((ret = avformat_alloc_output_context2(&av_format_ctx_local, nullptr, nullptr,
-		                                          options.realtime_options.local_backup_path)) < 0)
+		                                          options.local_backup_path)) < 0)
 		{
 			LOGE("Failed to open format context: %d\n", ret);
 			return false;
@@ -1409,7 +1401,7 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		return false;
 	}
 
-	if ((options.realtime && audio_stream) || (!options.realtime && audio_source))
+	if ((options.walltime_to_pts && audio_stream) || (!options.walltime_to_pts && audio_source))
 	{
 		if (!init_audio_codec())
 		{
@@ -1429,7 +1421,7 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	if (av_format_ctx)
 		av_dump_format(av_format_ctx, 0, path, 1);
 	if (av_format_ctx_local)
-		av_dump_format(av_format_ctx_local, 0, options.realtime_options.local_backup_path, 1);
+		av_dump_format(av_format_ctx_local, 0, options.local_backup_path, 1);
 
 	AVDictionary *muxer_opts = nullptr;
 
@@ -1466,7 +1458,7 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 		return false;
 	}
 
-	if (av_format_ctx_local && !open_file(av_format_ctx_local, options.realtime_options.local_backup_path))
+	if (av_format_ctx_local && !open_file(av_format_ctx_local, options.local_backup_path))
 	{
 		cleanup_format_context();
 		return false;
@@ -1816,6 +1808,11 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		color_transform[2] = vec4(0.5f, -0.454153f, -0.0458471f, 0.0f);
 	}
 
+	cmd.set_specialization_constant_mask(7);
+	cmd.set_specialization_constant(0, !impl->options.color_full_range);
+	cmd.set_specialization_constant(1, !impl->options.color_full_range);
+	cmd.set_specialization_constant(2, push.width != view.get_view_width() || push.height != view.get_view_height());
+
 	auto start_yuv_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	cmd.dispatch(pipeline.constants.luma_dispatch[0], pipeline.constants.luma_dispatch[1], 1);
 	auto end_yuv_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -1847,7 +1844,6 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	cmd.set_specialization_constant_mask(1);
 	cmd.set_specialization_constant(0, bool(pipeline.chroma[1]));
 	cmd.dispatch(pipeline.constants.chroma_dispatch[0], pipeline.constants.chroma_dispatch[1], 1);
-	cmd.set_specialization_constant_mask(0);
 	auto end_chroma_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
 	if (pipeline.chroma[0])
@@ -1884,6 +1880,7 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 
 	cmd.get_device().register_time_interval("GPU", std::move(start_yuv_ts), std::move(end_yuv_ts), "rgb-to-yuv");
 	cmd.get_device().register_time_interval("GPU", std::move(start_chroma_ts), std::move(end_chroma_ts), "chroma-downsample");
+	cmd.set_specialization_constant_mask(0);
 }
 
 bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int compensate_audio_us)

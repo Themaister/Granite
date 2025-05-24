@@ -248,7 +248,7 @@ public:
 		enc_opts.frame_timebase.den = int(frame_rate);
 
 #ifdef HAVE_GRANITE_AUDIO
-		enc_opts.realtime = true;
+		enc_opts.walltime_to_pts = true;
 		record_stream.reset(Audio::create_default_audio_record_backend("headless", 44100.0f, 2));
 		if (record_stream)
 			encoder.set_audio_record_stream(record_stream.get());

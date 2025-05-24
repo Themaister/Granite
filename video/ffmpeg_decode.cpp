@@ -35,6 +35,7 @@
 #include "timeline_trace_file.hpp"
 #include "timer.hpp"
 #include "thread_name.hpp"
+#include "pyrowave_decoder.hpp"
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -481,6 +482,10 @@ struct VideoDecoder::Impl
 	AVPacket *av_pkt = nullptr;
 	CodecStream video, audio;
 
+	PyroWave::Decoder pyrowave_decoder;
+	int64_t pyrofling_last_pts = 0;
+	bool using_pyrowave = false;
+
 	enum class ImageState
 	{
 		Idle, // Was released by application.
@@ -557,8 +562,8 @@ struct VideoDecoder::Impl
 	int find_acquire_video_frame_locked() const;
 
 	unsigned acquire_decode_video_frame();
-	void process_video_frame(AVFrame *frame);
-	void process_video_frame_in_task(unsigned frame, AVFrame *av_frame);
+	void process_video_frame(AVFrame *frame, int64_t pts);
+	void process_video_frame_in_task(unsigned frame, AVFrame *av_frame, int64_t pts);
 
 	void dispatch_conversion(Vulkan::CommandBuffer &cmd, DecodedImage &img, const Vulkan::ImageView * const *views);
 	void process_video_frame_in_task_upload(DecodedImage &img, AVFrame *av_frame, Vulkan::Semaphore &compute_to_user);
@@ -690,9 +695,7 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 	// format we're dealing with.
 	if (!img.rgb_image)
 	{
-		auto info = Vulkan::ImageCreateInfo::immutable_2d_image(video.av_ctx->width,
-		                                                        video.av_ctx->height,
-		                                                        VK_FORMAT_R8G8B8A8_SRGB);
+		auto info = Vulkan::ImageCreateInfo::immutable_2d_image(get_width(), get_height(), VK_FORMAT_R8G8B8A8_SRGB);
 		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
 		             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -719,9 +722,9 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 
 void VideoDecoder::Impl::init_yuv_to_rgb()
 {
-	ubo.resolution = uvec2(video.av_ctx->width, video.av_ctx->height);
+	ubo.resolution = uvec2(get_width(), get_height());
 
-	if (video.av_ctx->hw_frames_ctx && hw.get_hw_device_type() == AV_HWDEVICE_TYPE_VULKAN)
+	if (video.av_ctx && video.av_ctx->hw_frames_ctx && hw.get_hw_device_type() == AV_HWDEVICE_TYPE_VULKAN)
 	{
 		// Frames may be padded.
 		auto *frames = reinterpret_cast<AVHWFramesContext *>(video.av_ctx->hw_frames_ctx->data);
@@ -729,14 +732,17 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	}
 	else
 	{
-		ubo.inv_resolution = vec2(1.0f / float(video.av_ctx->width),
-		                          1.0f / float(video.av_ctx->height));
+		ubo.inv_resolution = vec2(1.0f / float(ubo.resolution.x), 1.0f / float(ubo.resolution.y));
 	}
 
 	ubo.chroma_clamp = (vec2(ubo.resolution) - 0.5f * float(1u << plane_subsample_log2[1])) * ubo.inv_resolution;
 	const char *siting;
 
-	switch (video.av_ctx->chroma_sample_location)
+	auto chroma_sample_location = video.av_ctx ? video.av_ctx->chroma_sample_location :
+	                              (pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420 ?
+	                               AVCHROMA_LOC_CENTER : AVCHROMA_LOC_LEFT);
+
+	switch (chroma_sample_location)
 	{
 	case AVCHROMA_LOC_TOPLEFT:
 		ubo.chroma_siting = vec2(1.0f);
@@ -770,7 +776,8 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 		break;
 	}
 
-	bool full_range = video.av_ctx->color_range == AVCOL_RANGE_JPEG;
+	bool full_range = video.av_ctx ? video.av_ctx->color_range == AVCOL_RANGE_JPEG :
+	                  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420;
 	LOGI("Range: %s\n", full_range ? "full" : "limited");
 	LOGI("Chroma: %s\n", siting);
 
@@ -804,7 +811,8 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	const vec3 yuv_scale = full_range ? vec3(1.0f) :
 	                       vec3(luma_scale, chroma_scale, chroma_scale);
 
-	AVColorSpace col_space = video.av_ctx->colorspace;
+	AVColorSpace col_space = video.av_ctx ? video.av_ctx->colorspace : AVCOL_SPC_BT709;
+
 	if (col_space == AVCOL_SPC_UNSPECIFIED)
 	{
 		// The common case is when we have an unspecified color space.
@@ -1058,12 +1066,28 @@ void VideoDecoder::Impl::begin_audio_stream()
 
 bool VideoDecoder::Impl::init_video_decoder_post_device()
 {
-	if (!hw.init_codec_context(video.av_codec, device, video.av_ctx, opts.hwdevice, false))
-		LOGW("Failed to init hardware decode context. Falling back to software.\n");
-
-	if (avcodec_open2(video.av_ctx, video.av_codec, nullptr) < 0)
+	if (video.av_ctx)
 	{
-		LOGE("Failed to open codec.\n");
+		if (!hw.init_codec_context(video.av_codec, device, video.av_ctx, opts.hwdevice, false))
+			LOGW("Failed to init hardware decode context. Falling back to software.\n");
+
+		if (avcodec_open2(video.av_ctx, video.av_codec, nullptr) < 0)
+		{
+			LOGE("Failed to open codec.\n");
+			return false;
+		}
+	}
+	else if (using_pyrowave)
+	{
+		if (!pyrowave_decoder.init(device, pyro_codec.width, pyro_codec.height))
+		{
+			LOGE("Failed to init pyrowave decoder.\n");
+			return false;
+		}
+	}
+	else
+	{
+		LOGE("Failed to init decoder.\n");
 		return false;
 	}
 
@@ -1132,24 +1156,31 @@ bool VideoDecoder::Impl::init_video_decoder_pre_device()
 			codec = avcodec_find_decoder(AV_CODEC_ID_AV1);
 			break;
 
+		case PYRO_VIDEO_CODEC_PYROWAVE:
+			using_pyrowave = true;
+			break;
+
 		default:
 			LOGE("Unknown video codec.\n");
 			return false;
 		}
 	}
 
-	if (!codec)
+	if (!codec && !using_pyrowave)
 	{
 		LOGE("Failed to find codec.\n");
 		return false;
 	}
 
-	video.av_codec = codec;
-	video.av_ctx = avcodec_alloc_context3(codec);
-	if (!video.av_ctx)
+	if (codec)
 	{
-		LOGE("Failed to allocate codec context.\n");
-		return false;
+		video.av_codec = codec;
+		video.av_ctx = avcodec_alloc_context3(codec);
+		if (!video.av_ctx)
+		{
+			LOGE("Failed to allocate codec context.\n");
+			return false;
+		}
 	}
 
 	if (video.av_stream)
@@ -1160,7 +1191,7 @@ bool VideoDecoder::Impl::init_video_decoder_pre_device()
 			return false;
 		}
 	}
-	else
+	else if (codec)
 	{
 		video.av_ctx->width = pyro_codec.width;
 		video.av_ctx->height = pyro_codec.height;
@@ -1177,18 +1208,19 @@ bool VideoDecoder::Impl::init_video_decoder_pre_device()
 		video.av_ctx->chroma_sample_location = AVCHROMA_LOC_LEFT;
 	}
 
-	video.av_ctx->opaque = &hw;
+	if (video.av_ctx)
+		video.av_ctx->opaque = &hw;
 	return true;
 }
 
 unsigned VideoDecoder::Impl::get_width() const
 {
-	return video.av_ctx->width;
+	return video.av_ctx ? video.av_ctx->width : pyro_codec.width;
 }
 
 unsigned VideoDecoder::Impl::get_height() const
 {
-	return video.av_ctx->height;
+	return video.av_ctx ? video.av_ctx->height : pyro_codec.height;
 }
 
 bool VideoDecoder::Impl::init(Audio::Mixer *mixer_, const char *path, const DecodeOptions &opts_)
@@ -1523,10 +1555,11 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 		if (!plane)
 		{
 			auto info = Vulkan::ImageCreateInfo::immutable_2d_image(
-					video.av_ctx->width >> plane_subsample_log2[i],
-					video.av_ctx->height >> plane_subsample_log2[i],
+					get_width() >> plane_subsample_log2[i],
+					get_height() >> plane_subsample_log2[i],
 					plane_formats[i]);
-			info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+			info.usage = (using_pyrowave ? VK_IMAGE_USAGE_STORAGE_BIT : VK_IMAGE_USAGE_TRANSFER_DST_BIT) |
+			             VK_IMAGE_USAGE_SAMPLED_BIT;
 			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 			info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
 			            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
@@ -1545,47 +1578,80 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 		img.sem_from_client = {};
 	}
 
-	auto cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
-
-	for (unsigned i = 0; i < num_planes; i++)
-	{
-		cmd->image_barrier(*img.planes[i],
-		                   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                   VK_PIPELINE_STAGE_2_COPY_BIT, 0,
-		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
-	}
-
-	for (unsigned i = 0; i < num_planes; i++)
-	{
-		auto *buf = static_cast<uint8_t *>(cmd->update_image(*img.planes[i]));
-		int byte_width = int(img.planes[i]->get_width());
-		byte_width *= int(Vulkan::TextureFormatLayout::format_block_size(plane_formats[i], VK_IMAGE_ASPECT_COLOR_BIT));
-
-		av_image_copy_plane(buf, byte_width,
-		                    av_frame->data[i], av_frame->linesize[i],
-		                    byte_width, int(img.planes[i]->get_height()));
-	}
-
-	for (unsigned i = 0; i < num_planes; i++)
-	{
-		cmd->image_barrier(*img.planes[i],
-		                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_NONE, 0);
-	}
-
-	device->submit(cmd, nullptr, 1, &transfer_to_compute);
-
 	auto conversion_queue = opts.mipgen ?
 	                        Vulkan::CommandBuffer::Type::Generic :
 	                        Vulkan::CommandBuffer::Type::AsyncCompute;
 
-	device->add_wait_semaphore(conversion_queue,
-	                           std::move(transfer_to_compute),
-	                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	                           true);
+	Vulkan::CommandBufferHandle cmd;
 
-	cmd = device->request_command_buffer(conversion_queue);
+	if (using_pyrowave)
+	{
+		cmd = device->request_command_buffer(conversion_queue);
+		PyroWave::ViewBuffers views = {};
+
+		for (unsigned i = 0; i < num_planes; i++)
+		{
+			cmd->image_barrier(*img.planes[i],
+			                   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+			                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, 0,
+			                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+			views.planes[i] = &img.planes[i]->get_view();
+		}
+
+		if (!pyrowave_decoder.decode(*cmd, views))
+			LOGE("Failed to decode.\n");
+
+		for (unsigned i = 0; i < num_planes; i++)
+		{
+			cmd->image_barrier(*img.planes[i],
+			                   VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+		}
+	}
+	else
+	{
+		cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
+
+		for (unsigned i = 0; i < num_planes; i++)
+		{
+			cmd->image_barrier(*img.planes[i],
+			                   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			                   VK_PIPELINE_STAGE_2_COPY_BIT, 0,
+			                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		}
+
+		for (unsigned i = 0; i < num_planes; i++)
+		{
+			auto *buf = static_cast<uint8_t *>(cmd->update_image(*img.planes[i]));
+			int byte_width = int(img.planes[i]->get_width());
+			byte_width *= int(
+					Vulkan::TextureFormatLayout::format_block_size(plane_formats[i], VK_IMAGE_ASPECT_COLOR_BIT));
+
+			av_image_copy_plane(buf, byte_width,
+			                    av_frame->data[i], av_frame->linesize[i],
+			                    byte_width, int(img.planes[i]->get_height()));
+		}
+
+		for (unsigned i = 0; i < num_planes; i++)
+		{
+			cmd->image_barrier(*img.planes[i],
+			                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_NONE, 0);
+		}
+
+		device->submit(cmd, nullptr, 1, &transfer_to_compute);
+		cmd.reset();
+
+		device->add_wait_semaphore(conversion_queue,
+		                           std::move(transfer_to_compute),
+		                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		                           true);
+	}
+
+	if (!cmd)
+		cmd = device->request_command_buffer(conversion_queue);
 
 	const Vulkan::ImageView *views[3] = {};
 	for (unsigned i = 0; i < num_planes; i++)
@@ -1603,15 +1669,14 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 		device->next_frame_context_in_async_thread();
 }
 
-void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av_frame)
+void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av_frame, int64_t pts)
 {
 	auto &img = video_queue[frame];
-	img.pts = video.av_stream ? (av_q2d(video.av_stream->time_base) * double(av_frame->pts)) :
-	          double(av_frame->pts) * 1e-6;
+	img.pts = video.av_stream ? (av_q2d(video.av_stream->time_base) * double(pts)) : double(pts) * 1e-6;
 	img.sem_to_client.reset();
 	assert(img.state == ImageState::Locked);
 
-	if (hw.get_hw_device_type() != AV_HWDEVICE_TYPE_NONE
+	if (av_frame && hw.get_hw_device_type() != AV_HWDEVICE_TYPE_NONE
 #ifdef HAVE_FFMPEG_VULKAN
 	    && av_frame->format != AV_PIX_FMT_VULKAN
 #endif
@@ -1629,7 +1694,7 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 		}
 		else
 		{
-			sw_frame->pts = av_frame->pts;
+			sw_frame->pts = pts;
 			av_frame_free(&av_frame);
 			av_frame = sw_frame;
 		}
@@ -1658,7 +1723,13 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	else
 #endif
 	{
-		if (!av_frame || active_upload_pix_fmt != av_frame->format)
+		if (using_pyrowave)
+		{
+			if (active_upload_pix_fmt != AV_PIX_FMT_YUV420P)
+				reset_planes = true;
+			active_upload_pix_fmt = AV_PIX_FMT_YUV420P;
+		}
+		else if (!av_frame || active_upload_pix_fmt != av_frame->format)
 		{
 			// Not sure if it's possible to just spuriously change the format like this,
 			// but be defensive.
@@ -1705,7 +1776,7 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	cond.notify_all();
 }
 
-void VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
+void VideoDecoder::Impl::process_video_frame(AVFrame *av_frame, int64_t pts)
 {
 	unsigned frame = acquire_decode_video_frame();
 
@@ -1713,23 +1784,37 @@ void VideoDecoder::Impl::process_video_frame(AVFrame *av_frame)
 	video_queue[frame].state = ImageState::Locked;
 	video_queue[frame].lock_order = video_upload_count;
 
-	// This decode thread does not have a TLS thread index allocated in the device,
-	// only main threads registered as such as well as task group threads satisfy this.
-	// Also, we can parallelize video decode and upload + conversion submission,
-	// so it's a good idea either way.
-	auto task = thread_group->create_task([this, frame, av_frame]() {
-		process_video_frame_in_task(frame, av_frame);
-	});
-	task->set_desc("ffmpeg-decode-upload");
-	task->set_task_class(TaskClass::Background);
-	task->set_fence_counter_signal(&video_upload_signal);
+	if (using_pyrowave)
+	{
+		// The work here is trivial, so just do it synchronous.
+		auto task = thread_group->create_task([this, frame, pts]() {
+			process_video_frame_in_task(frame, nullptr, pts);
+		});
+		task->set_desc("ffmpeg-decode-upload");
+		task->set_task_class(TaskClass::Background);
+		task->set_fence_counter_signal(&video_upload_signal);
+		task->wait();
+	}
+	else
+	{
+		// This decode thread does not have a TLS thread index allocated in the device,
+		// only main threads registered as such as well as task group threads satisfy this.
+		// Also, we can parallelize video decode and upload + conversion submission,
+		// so it's a good idea either way.
+		auto task = thread_group->create_task([this, frame, av_frame, pts]() {
+			process_video_frame_in_task(frame, av_frame, pts);
+		});
+		task->set_desc("ffmpeg-decode-upload");
+		task->set_task_class(TaskClass::Background);
+		task->set_fence_counter_signal(&video_upload_signal);
 
-	// Need to make sure upload tasks are ordered to ensure that frames
-	// are acquired in order.
-	if (upload_dependency)
-		thread_group->add_dependency(*task, *upload_dependency);
-	upload_dependency = thread_group->create_task();
-	thread_group->add_dependency(*upload_dependency, *task);
+		// Need to make sure upload tasks are ordered to ensure that frames
+		// are acquired in order.
+		if (upload_dependency)
+			thread_group->add_dependency(*task, *upload_dependency);
+		upload_dependency = thread_group->create_task();
+		thread_group->add_dependency(*upload_dependency, *task);
+	}
 }
 
 bool VideoDecoder::Impl::drain_audio_frame()
@@ -1810,19 +1895,35 @@ bool VideoDecoder::Impl::decode_audio_packet(AVPacket *pkt)
 bool VideoDecoder::Impl::drain_video_frame()
 {
 	GRANITE_SCOPED_TIMELINE_EVENT("drain-video-frame");
-	AVFrame *frame = av_frame_alloc();
-	if (!frame)
-		return false;
 
-	if (avcodec_receive_frame(video.av_ctx, frame) >= 0)
+	if (using_pyrowave)
 	{
-		process_video_frame(frame);
-		return true;
+		if (pyrowave_decoder.decode_is_ready(acquire_damaged))
+		{
+			process_video_frame(nullptr, pyrofling_last_pts);
+			return true;
+		}
+		else
+		{
+			return false;
+		}
 	}
 	else
 	{
-		av_frame_free(&frame);
-		return false;
+		AVFrame *frame = av_frame_alloc();
+		if (!frame)
+			return false;
+
+		if (avcodec_receive_frame(video.av_ctx, frame) >= 0)
+		{
+			process_video_frame(frame, frame->pts);
+			return true;
+		}
+		else
+		{
+			av_frame_free(&frame);
+			return false;
+		}
 	}
 }
 
@@ -1832,7 +1933,17 @@ bool VideoDecoder::Impl::decode_video_packet(AVPacket *pkt)
 	int ret;
 	if (pkt)
 	{
-		ret = avcodec_send_packet(video.av_ctx, pkt);
+		if (video.av_ctx)
+			ret = avcodec_send_packet(video.av_ctx, pkt);
+		else if (using_pyrowave)
+		{
+			ret = pyrowave_decoder.push_packet(pkt->data, pkt->size) ? 0 : -1;
+			if (ret == 0)
+				pyrofling_last_pts = pkt->pts;
+		}
+		else
+			ret = -1;
+
 		if (ret < 0)
 		{
 			LOGE("Failed to send packet.\n");
@@ -1940,7 +2051,8 @@ bool VideoDecoder::Impl::iterate()
 		{
 			// Send a flush packet, so we can drain the codecs.
 			// There will be no more packets from the file.
-			avcodec_send_packet(video.av_ctx, nullptr);
+			if (video.av_ctx)
+				avcodec_send_packet(video.av_ctx, nullptr);
 			if (audio.av_ctx)
 				avcodec_send_packet(audio.av_ctx, nullptr);
 			is_flushing = true;

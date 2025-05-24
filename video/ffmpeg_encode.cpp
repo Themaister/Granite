@@ -34,6 +34,7 @@
 #include <thread>
 #include <cstdlib>
 #include "pyroenc.hpp"
+#include "pyrowave_encoder.hpp"
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
 #include "dsp/dsp.hpp"
@@ -122,6 +123,7 @@ struct VideoEncoder::Impl final
 	                  int64_t pts, int compensate_audio_us);
 	bool encode_frame(AVFrame *hw_frame, int64_t pts, int compensate_audio_us);
 	bool encode_frame(const Vulkan::ImageView &view, int64_t pts, int compensate_audio_us);
+	bool encode_frame(const PyroWave::ViewBuffers &views, int64_t pts, int compensate_audio_us);
 	~Impl();
 
 	AVFormatContext *av_format_ctx = nullptr;
@@ -142,6 +144,7 @@ struct VideoEncoder::Impl final
 
 	bool init_video_codec_av(const AVCodec *codec);
 	bool init_video_codec_pyro(PyroEnc::Profile profile);
+	bool init_video_codec_pyrowave();
 	bool init_video_codec();
 	bool init_audio_codec();
 
@@ -175,11 +178,26 @@ struct VideoEncoder::Impl final
 #endif
 	void submit_process_rgb_readback(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
 	void submit_process_rgb_pyro(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
+	void submit_process_rgb_pyrowave(Vulkan::CommandBufferHandle &cmd, YCbCrPipelineData &pipeline);
 
 	pyro_codec_parameters pyro_codec = {};
 	std::mutex mux_lock;
 	PyroEnc::Encoder pyro_encoder;
+	PyroWave::Encoder pyrowave_encoder;
 	bool using_pyro_encoder = false;
+	bool using_pyrowave_encoder = false;
+
+	struct
+	{
+		size_t payload_size = 0;
+		Vulkan::BufferHandle bitstream_gpu;
+		Vulkan::BufferHandle bitstream_cpu;
+		Vulkan::BufferHandle meta_gpu;
+		Vulkan::BufferHandle meta_cpu;
+		std::vector<PyroWave::Encoder::Packet> packets;
+		std::vector<uint8_t> bitstream;
+		PyroWave::Encoder::BitstreamBuffers buffers;
+	} pyrowave;
 };
 
 static void free_av_objects(CodecStream &stream)
@@ -438,6 +456,55 @@ void VideoEncoder::Impl::write_frames_interleaved_f32(const float *data, size_t 
 	}
 }
 #endif
+
+bool VideoEncoder::Impl::encode_frame(const PyroWave::ViewBuffers &views, int64_t pts, int compensate_audio_us)
+{
+	assert(mux_stream_callback);
+
+	auto cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncCompute);
+	pyrowave_encoder.encode(*cmd, views, pyrowave.buffers);
+	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+				 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+	cmd->copy_buffer(*pyrowave.bitstream_cpu, *pyrowave.bitstream_gpu);
+	cmd->copy_buffer(*pyrowave.meta_cpu, *pyrowave.meta_gpu);
+	cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+
+	Vulkan::Fence fence;
+	device->submit(cmd, &fence);
+	fence->wait();
+
+	const auto *mapped_meta = device->map_host_buffer(*pyrowave.meta_cpu, Vulkan::MEMORY_ACCESS_READ_BIT);
+	const auto *mapped_bits = device->map_host_buffer(*pyrowave.bitstream_cpu, Vulkan::MEMORY_ACCESS_READ_BIT);
+
+	size_t num_packets = pyrowave_encoder.compute_num_packets(mapped_meta, 8 * 1024);
+	pyrowave.packets.resize(num_packets);
+	size_t out_packets = pyrowave_encoder.packetize(pyrowave.packets.data(), 8 * 1024,
+	                                                pyrowave.bitstream.data(),
+	                                                pyrowave.bitstream.size(),
+	                                                mapped_meta, mapped_bits);
+
+	(void)out_packets;
+	assert(num_packets == out_packets);
+
+	for (auto &packet : pyrowave.packets)
+	{
+		mux_stream_callback->write_video_packet(
+				pts, pts, pyrowave.bitstream.data() + packet.offset, packet.size, true);
+	}
+
+	audio_compensate_us.store(compensate_audio_us, std::memory_order_relaxed);
+
+#ifdef HAVE_GRANITE_AUDIO
+	if (!encode_audio())
+	{
+		LOGE("Failed to encode audio.\n");
+		return false;
+	}
+#endif
+
+	return true;
+}
 
 bool VideoEncoder::Impl::encode_frame(const Vulkan::ImageView &view, int64_t pts, int compensate_audio_us)
 {
@@ -1042,7 +1109,6 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 	{
 		video.av_ctx->colorspace = AVCOL_SPC_BT709;
 		video.av_ctx->color_primaries = AVCOL_PRI_BT709;
-		video.av_ctx->color_trc = AVCOL_TRC_BT709;
 	}
 
 	switch (options.siting)
@@ -1210,6 +1276,53 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 	return true;
 }
 
+bool VideoEncoder::Impl::init_video_codec_pyrowave()
+{
+	if (!pyrowave_encoder.init(device, int(options.width), int(options.height)))
+		return false;
+
+	pyro_codec.video_codec = PYRO_VIDEO_CODEC_PYROWAVE;
+	pyro_codec.width = options.width;
+	pyro_codec.height = options.height;
+	pyro_codec.frame_rate_num = options.frame_timebase.den;
+	pyro_codec.frame_rate_den = options.frame_timebase.num;
+	pyro_codec.video_color_profile = PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420;
+
+	pyrowave.payload_size = (1000ull * options.bitrate_kbits * options.frame_timebase.num) /
+	                        (options.frame_timebase.den * 8);
+
+	pyrowave.payload_size &= ~3;
+
+	Vulkan::BufferCreateInfo bufinfo = {};
+	bufinfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+	                VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+	                VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+	bufinfo.size = pyrowave.payload_size + pyrowave_encoder.get_meta_required_size();
+	bufinfo.domain = Vulkan::BufferDomain::Device;
+	pyrowave.bitstream_gpu = device->create_buffer(bufinfo);
+	bufinfo.domain = Vulkan::BufferDomain::CachedHost;
+	pyrowave.bitstream_cpu = device->create_buffer(bufinfo);
+
+	bufinfo.size = pyrowave_encoder.get_meta_required_size();
+	bufinfo.domain = Vulkan::BufferDomain::Device;
+	pyrowave.meta_gpu = device->create_buffer(bufinfo);
+	bufinfo.domain = Vulkan::BufferDomain::CachedHost;
+	pyrowave.meta_cpu = device->create_buffer(bufinfo);
+
+	pyrowave.buffers.target_size = pyrowave.payload_size;
+	pyrowave.buffers.bitstream.buffer = pyrowave.bitstream_gpu.get();
+	pyrowave.buffers.bitstream.offset = 0;
+	pyrowave.buffers.bitstream.size = pyrowave.bitstream_gpu->get_create_info().size;
+	pyrowave.buffers.meta.buffer = pyrowave.meta_gpu.get();
+	pyrowave.buffers.meta.offset = 0;
+	pyrowave.buffers.meta.size = pyrowave.meta_gpu->get_create_info().size;
+
+	pyrowave.bitstream.resize(pyrowave.payload_size);
+
+	return true;
+}
+
 bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
 {
 	PyroEnc::EncoderCreateInfo pyro_info = {};
@@ -1293,42 +1406,53 @@ bool VideoEncoder::Impl::init_video_codec()
 
 	PyroEnc::Profile pyro_profile = {};
 
-	// Only allow PyroEnc path for pure streaming scenario for now.
 	if (!codec && options.walltime_to_pts &&
-	    mux_stream_callback && !options.local_backup_path &&
-	    options.encoder && (strcmp(options.encoder, "h264_pyro") == 0 || strcmp(options.encoder, "h265_pyro") == 0))
+	    mux_stream_callback && !options.local_backup_path && options.encoder)
 	{
-		// Use custom.
-		using_pyro_encoder = true;
+		// Only allow PyroEnc path for pure streaming scenario for now.
+		if (strcmp(options.encoder, "h264_pyro") == 0 || strcmp(options.encoder, "h265_pyro") == 0)
+		{
+			// Use custom.
+			using_pyro_encoder = true;
 
-		auto &ext = device->get_device_features();
+			auto &ext = device->get_device_features();
 
-		if (options.format == Format::NV12 &&
-		    ext.supports_video_encode_h264 &&
-		    strcmp(options.encoder, "h264_pyro") == 0)
-		{
-			pyro_profile = PyroEnc::Profile::H264_High;
+			if (options.format == Format::NV12 &&
+			    ext.supports_video_encode_h264 &&
+			    strcmp(options.encoder, "h264_pyro") == 0)
+			{
+				pyro_profile = PyroEnc::Profile::H264_High;
+			}
+			else if (options.format == Format::NV12 &&
+			         ext.supports_video_encode_h265 &&
+			         strcmp(options.encoder, "h265_pyro") == 0)
+			{
+				pyro_profile = PyroEnc::Profile::H265_Main;
+			}
+			else if ((options.format == Format::P010 || options.format == Format::P016) &&
+			         ext.supports_video_encode_h265 &&
+			         strcmp(options.encoder, "h265_pyro") == 0)
+			{
+				pyro_profile = PyroEnc::Profile::H265_Main10;
+			}
+			else
+			{
+				LOGE("Could not find supported pyroenc profile for requested codec.\n");
+				return false;
+			}
 		}
-		else if (options.format == Format::NV12 &&
-		         ext.supports_video_encode_h265 &&
-		         strcmp(options.encoder, "h265_pyro") == 0)
+		else if (strcmp(options.encoder, "pyrowave") == 0)
 		{
-			pyro_profile = PyroEnc::Profile::H265_Main;
-		}
-		else if ((options.format == Format::P010 || options.format == Format::P016) &&
-		         ext.supports_video_encode_h265 &&
-		         strcmp(options.encoder, "h265_pyro") == 0)
-		{
-			pyro_profile = PyroEnc::Profile::H265_Main10;
-		}
-		else
-		{
-			LOGE("Could not find supported pyroenc profile for requested codec.\n");
-			return false;
+			using_pyrowave_encoder = true;
+			if (options.format != Format::YUV420P)
+			{
+				LOGE("Pyrowave needs yuv420p format for now.\n");
+				return false;
+			}
 		}
 	}
 
-	if (!codec && !using_pyro_encoder)
+	if (!codec && !using_pyro_encoder && !using_pyrowave_encoder)
 	{
 		LOGE("Could not find requested encoder \"%s\".\n", options.encoder);
 		return false;
@@ -1336,6 +1460,8 @@ bool VideoEncoder::Impl::init_video_codec()
 
 	if (codec)
 		return init_video_codec_av(codec);
+	else if (using_pyrowave_encoder)
+		return init_video_codec_pyrowave();
 	else
 		return init_video_codec_pyro(pyro_profile);
 }
@@ -1568,6 +1694,15 @@ void VideoEncoder::Impl::submit_process_rgb_pyro(Vulkan::CommandBufferHandle &cm
 	}
 }
 
+void VideoEncoder::Impl::submit_process_rgb_pyrowave(Vulkan::CommandBufferHandle &cmd,
+                                                     VideoEncoder::YCbCrPipelineData &)
+{
+	Vulkan::Semaphore sem;
+	device->submit(cmd, nullptr, 1, &sem);
+	device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncCompute, std::move(sem),
+	                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, true);
+}
+
 void VideoEncoder::Impl::submit_process_rgb_readback(Vulkan::CommandBufferHandle &cmd,
                                                      VideoEncoder::YCbCrPipelineData &pipeline)
 {
@@ -1780,8 +1915,8 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		float dither_strength;
 	} push = {};
 
-	push.width = impl->video.av_ctx->width;
-	push.height = impl->video.av_ctx->height;
+	push.width = impl->options.width;
+	push.height = impl->options.height;
 	push.inv_width = pipeline.constants.inv_resolution_luma[0];
 	push.inv_height = pipeline.constants.inv_resolution_luma[1];
 	push.input_width = float(view.get_view_width());
@@ -1820,9 +1955,18 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 
 	if (pipeline.luma)
 	{
-		cmd.image_barrier(*pipeline.luma, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-		                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		if (impl->using_pyrowave_encoder)
+		{
+			cmd.image_barrier(*pipeline.luma, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+		}
+		else
+		{
+			cmd.image_barrier(*pipeline.luma, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+			                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		}
 	}
 
 	cmd.image_barrier(*pipeline.chroma_full, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -1853,30 +1997,43 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		{
 			if (img)
 			{
-				cmd.image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-				                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+				if (impl->using_pyrowave_encoder)
+				{
+					cmd.image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+					                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+					                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+				}
+				else
+				{
+					cmd.image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+					                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+					                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+				}
 			}
 		}
 
-		cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.luma, pipeline.planes[0].offset,
-		                         {},
-		                         {pipeline.luma->get_width(), pipeline.luma->get_height(), 1},
-		                         pipeline.planes[0].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
-
-		for (int i = 0; i < 2; i++)
+		if (!impl->using_pyrowave_encoder)
 		{
-			if (pipeline.chroma[i])
-			{
-				cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma[i], pipeline.planes[i + 1].offset,
-				                         {},
-				                         {pipeline.chroma[i]->get_width(), pipeline.chroma[i]->get_height(), 1},
-				                         pipeline.planes[i + 1].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
-			}
-		}
+			cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.luma, pipeline.planes[0].offset,
+			                         {},
+			                         {pipeline.luma->get_width(), pipeline.luma->get_height(), 1},
+			                         pipeline.planes[0].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
 
-		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		            VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+			for (int i = 0; i < 2; i++)
+			{
+				if (pipeline.chroma[i])
+				{
+					cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma[i], pipeline.planes[i + 1].offset,
+					                         {},
+					                         {pipeline.chroma[i]->get_width(), pipeline.chroma[i]->get_height(), 1},
+					                         pipeline.planes[i + 1].row_length, 0,
+					                         {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+				}
+			}
+
+			cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			            VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+		}
 	}
 
 	cmd.get_device().register_time_interval("GPU", std::move(start_yuv_ts), std::move(end_yuv_ts), "rgb-to-yuv");
@@ -1887,6 +2044,16 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int compensate_audio_us)
 {
 	auto &pipeline = *pipeline_ptr;
+
+	if (impl->using_pyrowave_encoder)
+	{
+		PyroWave::ViewBuffers buffers = {};
+		buffers.planes[0] = &pipeline.luma->get_view();
+		buffers.planes[1] = &pipeline.chroma[0]->get_view();
+		buffers.planes[2] = &pipeline.chroma[1]->get_view();
+		return impl->encode_frame(buffers, pts, compensate_audio_us);
+	}
+
 	if (!pipeline.fence)
 		return false;
 
@@ -1931,6 +2098,11 @@ void VideoEncoder::submit_process_rgb(Vulkan::CommandBufferHandle &cmd, YCbCrPip
 	}
 	else
 #endif
+	if (impl->using_pyrowave_encoder)
+	{
+		impl->submit_process_rgb_pyrowave(cmd, pipeline);
+	}
+	else
 	{
 		impl->submit_process_rgb_readback(cmd, pipeline);
 	}

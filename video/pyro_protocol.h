@@ -21,6 +21,7 @@ typedef enum pyro_video_codec_type
 	PYRO_VIDEO_CODEC_H264 = 1,
 	PYRO_VIDEO_CODEC_H265 = 2,
 	PYRO_VIDEO_CODEC_AV1 = 3,
+	PYRO_VIDEO_CODEC_PYROWAVE = 4,
 	PYRO_VIDEO_CODEC_MAX_INT = INT32_MAX
 } pyro_video_codec_type;
 
@@ -37,6 +38,8 @@ typedef enum pyro_video_color_profile
 {
 	/* Standard 4:2:0 H.264 / H.265. ChromaX is even sited, ChromaY is center with BT709 primaries and limited range. */
 	PYRO_VIDEO_COLOR_BT709_LIMITED_LEFT_CHROMA_420 = 0,
+	/* Standard JPEG style chroma coding. */
+	PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420 = 1,
 	PYRO_VIDEO_COLOR_MAX_INT = INT32_MAX
 } pyro_video_color;
 

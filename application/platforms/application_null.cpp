@@ -20,6 +20,9 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "../application_glue.hpp"
+#include <stddef.h>
+
 namespace Granite
 {
 int application_main(

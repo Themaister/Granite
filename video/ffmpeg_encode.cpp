@@ -464,7 +464,7 @@ bool VideoEncoder::Impl::encode_frame(const PyroWave::ViewBuffers &views, int64_
 	auto cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncCompute);
 	pyrowave_encoder.encode(*cmd, views, pyrowave.buffers);
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-				 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+                 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 	cmd->copy_buffer(*pyrowave.bitstream_cpu, *pyrowave.bitstream_gpu);
 	cmd->copy_buffer(*pyrowave.meta_cpu, *pyrowave.meta_gpu);
 	cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,

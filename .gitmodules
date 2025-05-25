@@ -49,3 +49,6 @@
 [submodule "third_party/pyroenc"]
 	path = third_party/pyroenc
 	url = https://github.com/HansKristian-Work/pyroenc
+[submodule "third_party/pyrowave"]
+	path = third_party/pyrowave
+	url = https://github.com/Themaister/pyrowave

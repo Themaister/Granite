@@ -1786,13 +1786,15 @@ void VideoDecoder::Impl::process_video_frame(AVFrame *av_frame, int64_t pts)
 
 	if (using_pyrowave)
 	{
-		// The work here is trivial, so just do it synchronous.
 		auto task = thread_group->create_task([this, frame, pts]() {
 			process_video_frame_in_task(frame, nullptr, pts);
 		});
 		task->set_desc("ffmpeg-decode-upload");
 		task->set_task_class(TaskClass::Background);
 		task->set_fence_counter_signal(&video_upload_signal);
+
+		// The work here is trivial, so just do it synchronous.
+		// If using acquire_damaged, this must be synchronous to be correct.
 		task->wait();
 	}
 	else
@@ -1910,6 +1912,10 @@ bool VideoDecoder::Impl::drain_video_frame()
 	}
 	else
 	{
+		// TODO: We have no good way to deal with this.
+		if (acquire_damaged)
+			return false;
+
 		AVFrame *frame = av_frame_alloc();
 		if (!frame)
 			return false;

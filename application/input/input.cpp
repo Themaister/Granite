@@ -161,25 +161,26 @@ void InputTracker::joypad_key_state(unsigned index, JoypadKey key, JoypadKeyStat
 
 	auto &joy = joypads[index];
 	unsigned key_index = Util::ecast(key);
+	unsigned key_mask = 1u << key_index;
 	if (state == JoypadKeyState::Pressed)
 	{
-		if ((joy.button_mask & key_index) == 0)
+		if ((joy.button_mask & key_mask) == 0)
 		{
 			JoypadButtonEvent event(index, key, state);
 			if (handler)
 				handler->dispatch(event);
 		}
-		joy.button_mask |= 1u << key_index;
+		joy.button_mask |= key_mask;
 	}
 	else if (state == JoypadKeyState::Released)
 	{
-		if ((joy.button_mask & key_index) == 1)
+		if ((joy.button_mask & key_mask) != 0)
 		{
 			JoypadButtonEvent event(index, key, state);
 			if (handler)
 				handler->dispatch(event);
 		}
-		joy.button_mask &= ~(1u << key_index);
+		joy.button_mask &= ~key_mask;
 	}
 }
 

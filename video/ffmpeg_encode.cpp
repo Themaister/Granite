@@ -1946,7 +1946,7 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 
 	cmd.set_specialization_constant_mask(7);
 	cmd.set_specialization_constant(0, !impl->options.color_full_range);
-	cmd.set_specialization_constant(1, !impl->options.color_full_range);
+	cmd.set_specialization_constant(1, true);
 	cmd.set_specialization_constant(2, push.width != view.get_view_width() || push.height != view.get_view_height());
 
 	auto start_yuv_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);

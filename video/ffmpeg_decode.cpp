@@ -1898,9 +1898,31 @@ bool VideoDecoder::Impl::drain_video_frame()
 {
 	GRANITE_SCOPED_TIMELINE_EVENT("drain-video-frame");
 
+	struct AcquireDamageNotifier
+	{
+		explicit AcquireDamageNotifier(VideoDecoder::Impl &impl_) : impl(impl_)
+		{
+			std::lock_guard<std::mutex> holder{impl.lock};
+			acquire_damaged = impl.acquire_damaged;
+		}
+		VideoDecoder::Impl &impl;
+		bool acquire_damaged = false;
+
+		~AcquireDamageNotifier()
+		{
+			// If we didn't flush out a new frame, notify blocking thread.
+			if (acquire_damaged)
+			{
+				std::lock_guard<std::mutex> holder{impl.lock};
+				impl.acquire_damaged = false;
+				impl.cond.notify_one();
+			}
+		}
+	} acquire_damaged_release{*this};
+
 	if (using_pyrowave)
 	{
-		if (pyrowave_decoder.decode_is_ready(acquire_damaged))
+		if (pyrowave_decoder.decode_is_ready(acquire_damaged_release.acquire_damaged))
 		{
 			process_video_frame(nullptr, pyrofling_last_pts);
 			return true;
@@ -2178,17 +2200,8 @@ void VideoDecoder::Impl::thread_main()
 			std::lock_guard<std::mutex> holder{lock};
 			teardown = true;
 			acquire_is_eof = true;
-			acquire_damaged = false;
 			cond.notify_one();
 			break;
-		}
-
-		// If we didn't flush out a new frame, notify blocking thread.
-		std::lock_guard<std::mutex> holder{lock};
-		if (acquire_damaged)
-		{
-			acquire_damaged = false;
-			cond.notify_one();
 		}
 	}
 }

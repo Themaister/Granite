@@ -48,6 +48,7 @@ enum class Stage
 enum class Target
 {
 	Vulkan11,
+	Vulkan12,
 	Vulkan13
 };
 

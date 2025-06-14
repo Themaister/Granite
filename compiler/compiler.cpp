@@ -328,10 +328,22 @@ std::vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const st
 		return {};
 	}
 
-	options.SetTargetEnvironment(shaderc_target_env_vulkan,
-	                             target == Target::Vulkan13 ?
-	                             shaderc_env_version_vulkan_1_3 : shaderc_env_version_vulkan_1_1);
-	options.SetTargetSpirv(target == Target::Vulkan13 ? shaderc_spirv_version_1_6 : shaderc_spirv_version_1_3);
+	auto env = shaderc_env_version_vulkan_1_1;
+	auto spv_version = shaderc_spirv_version_1_3;
+
+	if (target == Target::Vulkan12)
+	{
+		env = shaderc_env_version_vulkan_1_2;
+		spv_version = shaderc_spirv_version_1_5;
+	}
+	else if (target == Target::Vulkan13)
+	{
+		env = shaderc_env_version_vulkan_1_3;
+		spv_version = shaderc_spirv_version_1_6;
+	}
+
+	options.SetTargetEnvironment(shaderc_target_env_vulkan, env);
+	options.SetTargetSpirv(spv_version);
 	options.SetSourceLanguage(shaderc_source_language_glsl);
 
 	shaderc::SpvCompilationResult result;

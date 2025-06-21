@@ -78,7 +78,7 @@ struct VideoEncoder::YCbCrPipelineData
 {
 	Vulkan::ImageHandle rgb;
 	Vulkan::ImageHandle luma;
-	Vulkan::ImageHandle chroma_full;
+	Vulkan::ImageHandle chroma_full[2];
 	Vulkan::ImageHandle chroma[2];
 	Vulkan::BufferHandle buffer;
 	Vulkan::Fence fence;
@@ -283,10 +283,25 @@ static unsigned format_to_planes(VideoEncoder::Format fmt)
 
 	case VideoEncoder::Format::YUV420P:
 	case VideoEncoder::Format::YUV420P16:
+	case VideoEncoder::Format::YUV444P:
+	case VideoEncoder::Format::YUV444P16:
 		return 3;
 
 	default:
 		return 0;
+	}
+}
+
+static bool format_needs_downsample(VideoEncoder::Format fmt)
+{
+	switch (fmt)
+	{
+	case VideoEncoder::Format::YUV444P:
+	case VideoEncoder::Format::YUV444P16:
+		return false;
+
+	default:
+		return true;
 	}
 }
 
@@ -634,11 +649,17 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 	auto *dst_chroma = video.av_frame->data[1];
 	auto *dst_chroma3 = video.av_frame->data[2];
 
-	unsigned chroma_width = options.width >> 1;
+	unsigned chroma_width = options.width;
+	unsigned chroma_height = options.height;
 	if (num_planes == 2)
 		chroma_width *= 2;
 
-	unsigned chroma_height = options.height >> 1;
+	if (format_needs_downsample(options.format))
+	{
+		chroma_width >>= 1;
+		chroma_height >>= 1;
+	}
+
 	for (unsigned y = 0; y < options.height; y++, dst_luma += video.av_frame->linesize[0], src_luma += planes[0].stride)
 		memcpy(dst_luma, src_luma, options.width * pix_size);
 	for (unsigned y = 0; y < chroma_height; y++, dst_chroma += video.av_frame->linesize[1], src_chroma += planes[1].stride)
@@ -1043,8 +1064,16 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 		video.av_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 		break;
 
+	case Format::YUV444P:
+		video.av_ctx->pix_fmt = AV_PIX_FMT_YUV444P;
+		break;
+
 	case Format::YUV420P16:
 		video.av_ctx->pix_fmt = AV_PIX_FMT_YUV420P16;
+		break;
+
+	case Format::YUV444P16:
+		video.av_ctx->pix_fmt = AV_PIX_FMT_YUV444P16;
 		break;
 
 	case Format::P016:
@@ -1277,9 +1306,19 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 	pyro_codec.height = video.av_ctx->height;
 	pyro_codec.frame_rate_num = video.av_ctx->framerate.num;
 	pyro_codec.frame_rate_den = video.av_ctx->framerate.den;
-	pyro_codec.video_color_profile =
-			options.hdr10 ? PYRO_VIDEO_COLOR_BT2020NCL_PQ_LIMITED_LEFT_CHROMA_420:
-			PYRO_VIDEO_COLOR_BT709_LIMITED_LEFT_CHROMA_420;
+
+	if (format_needs_downsample(options.format))
+	{
+		pyro_codec.video_color_profile = options.hdr10 ?
+		                                 PYRO_VIDEO_COLOR_BT2020NCL_PQ_LIMITED_LEFT_CHROMA_420 :
+		                                 PYRO_VIDEO_COLOR_BT709_LIMITED_LEFT_CHROMA_420;
+	}
+	else
+	{
+		pyro_codec.video_color_profile = options.hdr10 ?
+		                                 PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CHROMA_444 :
+		                                 PYRO_VIDEO_COLOR_BT709_FULL_CHROMA_444;
+	}
 
 	video.av_pkt = av_packet_alloc();
 	if (!video.av_pkt)
@@ -1289,7 +1328,10 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 
 bool VideoEncoder::Impl::init_video_codec_pyrowave()
 {
-	if (!pyrowave_encoder.init(device, int(options.width), int(options.height)))
+	if (!pyrowave_encoder.init(device, int(options.width), int(options.height),
+	                           format_needs_downsample(options.format) ?
+	                           PyroWave::ChromaSubsampling::Chroma420 :
+	                           PyroWave::ChromaSubsampling::Chroma444))
 		return false;
 
 	pyro_codec.video_codec = PYRO_VIDEO_CODEC_PYROWAVE;
@@ -1297,9 +1339,19 @@ bool VideoEncoder::Impl::init_video_codec_pyrowave()
 	pyro_codec.height = options.height;
 	pyro_codec.frame_rate_num = options.frame_timebase.den;
 	pyro_codec.frame_rate_den = options.frame_timebase.num;
-	pyro_codec.video_color_profile =
-			options.hdr10 ? PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 :
-			PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420;
+
+	if (format_needs_downsample(options.format))
+	{
+		pyro_codec.video_color_profile = options.hdr10 ?
+		                                 PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 :
+		                                 PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420;
+	}
+	else
+	{
+		pyro_codec.video_color_profile = options.hdr10 ?
+		                                 PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CHROMA_444 :
+		                                 PYRO_VIDEO_COLOR_BT709_FULL_CHROMA_444;
+	}
 
 	pyrowave.payload_size = (1000ull * options.bitrate_kbits * options.frame_timebase.num) /
 	                        (options.frame_timebase.den * 8);
@@ -1407,6 +1459,12 @@ bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
 	pyro_codec.frame_rate_num = pyro_info.frame_rate_num;
 	pyro_codec.frame_rate_den = pyro_info.frame_rate_den;
 	pyro_codec.video_color_profile = PYRO_VIDEO_COLOR_BT709_LIMITED_LEFT_CHROMA_420;
+
+	if (options.color_full_range || options.siting != ChromaSiting::Left)
+	{
+		LOGE("PyroEnc currently only supports 4:2:0 left siting.\n");
+		return false;
+	}
 
 	LOGI("Initialized PyroEnc encoder.\n");
 
@@ -1944,9 +2002,15 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 	}
 
-	cmd.image_barrier(*pipeline.chroma_full, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+	for (auto &img : pipeline.chroma_full)
+	{
+		if (img)
+		{
+			cmd.image_barrier(*img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+		}
+	}
 
 	for (auto &img : pipeline.chroma)
 	{
@@ -1978,7 +2042,8 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		cmd.set_texture(0, 0, *input_view, Vulkan::StockSampler::NearestClamp);
 
 	cmd.set_storage_texture(0, 1, wrapped_planes[0] ? *wrapped_planes[0] : pipeline.luma->get_view());
-	cmd.set_storage_texture(0, 2, pipeline.chroma_full->get_view());
+	cmd.set_storage_texture(0, 2, pipeline.chroma_full[0]->get_view());
+	cmd.set_storage_texture(0, 3, pipeline.chroma_full[1]->get_view());
 
 	struct Push
 	{
@@ -2003,8 +2068,8 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	push.dither_strength = pipeline.constants.dither_strength;
 	cmd.push_constants(&push, 0, sizeof(push));
 
-	auto *color_transform = cmd.allocate_typed_constant_data<vec4>(0, 3, 3);
-	auto *primary_transform = cmd.allocate_typed_constant_data<vec4>(0, 4, 3);
+	auto *color_transform = cmd.allocate_typed_constant_data<vec4>(0, 4, 3);
+	auto *primary_transform = cmd.allocate_typed_constant_data<vec4>(0, 5, 3);
 
 	// Minimal crude implementation to get something HDR10 working.
 	if (impl->options.hdr10)
@@ -2069,76 +2134,110 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		}
 	}
 
-	cmd.image_barrier(*pipeline.chroma_full, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-					  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-					  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-
-	cmd.set_program(pipeline.chroma_downsample);
-	cmd.set_texture(0, 0, pipeline.chroma_full->get_view(), Vulkan::StockSampler::LinearClamp);
-	for (int i = 1; i < 3; i++)
-		cmd.set_storage_texture(0, i, wrapped_planes[1] ? *wrapped_planes[1] : pipeline.chroma[0]->get_view());
-	if (pipeline.chroma[1])
-		cmd.set_storage_texture(0, 2, pipeline.chroma[1]->get_view());
-
-	push.inv_width = pipeline.constants.inv_resolution_chroma[0];
-	push.inv_height = pipeline.constants.inv_resolution_chroma[1];
-	push.base_u = pipeline.constants.base_uv_chroma[0];
-	push.base_v = pipeline.constants.base_uv_chroma[1];
-	cmd.push_constants(&push, 0, sizeof(push));
-	auto start_chroma_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-	cmd.set_specialization_constant_mask(1);
-	cmd.set_specialization_constant(0, bool(pipeline.chroma[1]));
-	cmd.dispatch(pipeline.constants.chroma_dispatch[0], pipeline.constants.chroma_dispatch[1], 1);
-	auto end_chroma_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-
-	if (pipeline.chroma[0])
+	for (auto &img : pipeline.chroma_full)
 	{
-		for (auto &img : pipeline.chroma)
+		if (img)
 		{
-			if (img)
-			{
-				if (impl->using_pyrowave_encoder)
-				{
-					cmd.image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-					                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-					                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-				}
-				else
-				{
-					cmd.image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-					                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-					                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-				}
-			}
-		}
-
-		if (!impl->using_pyrowave_encoder)
-		{
-			cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.luma, pipeline.planes[0].offset,
-			                         {},
-			                         {pipeline.luma->get_width(), pipeline.luma->get_height(), 1},
-			                         pipeline.planes[0].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
-
-			for (int i = 0; i < 2; i++)
-			{
-				if (pipeline.chroma[i])
-				{
-					cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma[i], pipeline.planes[i + 1].offset,
-					                         {},
-					                         {pipeline.chroma[i]->get_width(), pipeline.chroma[i]->get_height(), 1},
-					                         pipeline.planes[i + 1].row_length, 0,
-					                         {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
-				}
-			}
-
-			cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			            VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+			cmd.image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 		}
 	}
 
+	if (!impl->using_pyrowave_encoder)
+	{
+		cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.luma, pipeline.planes[0].offset,
+		                         {},
+		                         {pipeline.luma->get_width(), pipeline.luma->get_height(), 1},
+		                         pipeline.planes[0].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+	}
+
+	if (format_needs_downsample(impl->options.format))
+	{
+		cmd.set_program(pipeline.chroma_downsample);
+		cmd.set_texture(0, 0, pipeline.chroma_full[0]->get_view(), Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(0, 1, pipeline.chroma_full[1]->get_view(), Vulkan::StockSampler::LinearClamp);
+		for (int i = 2; i < 4; i++)
+			cmd.set_storage_texture(0, i, wrapped_planes[1] ? *wrapped_planes[1] : pipeline.chroma[0]->get_view());
+		if (pipeline.chroma[1])
+			cmd.set_storage_texture(0, 3, pipeline.chroma[1]->get_view());
+
+		push.inv_width = pipeline.constants.inv_resolution_chroma[0];
+		push.inv_height = pipeline.constants.inv_resolution_chroma[1];
+		push.base_u = pipeline.constants.base_uv_chroma[0];
+		push.base_v = pipeline.constants.base_uv_chroma[1];
+		cmd.push_constants(&push, 0, sizeof(push));
+		auto start_chroma_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+		cmd.set_specialization_constant_mask(1);
+		cmd.set_specialization_constant(0, bool(pipeline.chroma[1]));
+		cmd.dispatch(pipeline.constants.chroma_dispatch[0], pipeline.constants.chroma_dispatch[1], 1);
+		auto end_chroma_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+		if (pipeline.chroma[0])
+		{
+			for (auto &img: pipeline.chroma)
+			{
+				if (img)
+				{
+					if (impl->using_pyrowave_encoder)
+					{
+						cmd.image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+						                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+						                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+					}
+					else
+					{
+						cmd.image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+						                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+						                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+					}
+				}
+			}
+
+			if (!impl->using_pyrowave_encoder)
+			{
+				cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.luma, pipeline.planes[0].offset,
+				                         {},
+				                         {pipeline.luma->get_width(), pipeline.luma->get_height(), 1},
+				                         pipeline.planes[0].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+
+				for (int i = 0; i < 2; i++)
+				{
+					if (pipeline.chroma[i])
+					{
+						cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma[i], pipeline.planes[i + 1].offset,
+						                         {},
+						                         {pipeline.chroma[i]->get_width(), pipeline.chroma[i]->get_height(), 1},
+						                         pipeline.planes[i + 1].row_length, 0,
+						                         {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+					}
+				}
+			}
+		}
+
+		cmd.get_device().register_time_interval(
+				"GPU", std::move(start_chroma_ts), std::move(end_chroma_ts), "chroma-downsample");
+		cmd.set_specialization_constant_mask(0);
+	}
+	else
+	{
+		for (int i = 0; i < 2; i++)
+		{
+			cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma_full[i], pipeline.planes[i + 1].offset,
+			                         {},
+			                         {pipeline.chroma_full[i]->get_width(), pipeline.chroma_full[i]->get_height(), 1},
+			                         pipeline.planes[i + 1].row_length, 0,
+			                         {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+		}
+	}
+
+	if (!impl->using_pyrowave_encoder)
+	{
+		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+	}
+
 	cmd.get_device().register_time_interval("GPU", std::move(start_yuv_ts), std::move(end_yuv_ts), "rgb-to-yuv");
-	cmd.get_device().register_time_interval("GPU", std::move(start_chroma_ts), std::move(end_chroma_ts), "chroma-downsample");
-	cmd.set_specialization_constant_mask(0);
 }
 
 bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int compensate_audio_us)
@@ -2149,8 +2248,16 @@ bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int co
 	{
 		PyroWave::ViewBuffers buffers = {};
 		buffers.planes[0] = &pipeline.luma->get_view();
-		buffers.planes[1] = &pipeline.chroma[0]->get_view();
-		buffers.planes[2] = &pipeline.chroma[1]->get_view();
+		if (format_needs_downsample(impl->options.format))
+		{
+			buffers.planes[1] = &pipeline.chroma[0]->get_view();
+			buffers.planes[2] = &pipeline.chroma[1]->get_view();
+		}
+		else
+		{
+			buffers.planes[1] = &pipeline.chroma_full[0]->get_view();
+			buffers.planes[2] = &pipeline.chroma_full[1]->get_view();
+		}
 		return impl->encode_frame(buffers, pts, compensate_audio_us);
 	}
 
@@ -2229,28 +2336,30 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 		pipeline.constants.dither_strength = 1.0f / 1023.0f;
 		pipeline.pyroenc = true;
 	}
-	else if (impl->options.format != Format::NV12 && impl->options.format != Format::YUV420P)
+	else if (impl->options.format != Format::NV12 &&
+	         impl->options.format != Format::YUV420P &&
+	         impl->options.format != Format::YUV444P)
 	{
 		luma_format = VK_FORMAT_R16_UNORM;
-		chroma_format_full = VK_FORMAT_R16G16_UNORM;
+		chroma_format_full = VK_FORMAT_R16_UNORM;
 		pixel_size = 2;
 		pipeline.constants.dither_strength = 1.0f / 1023.0f;
-		if (impl->options.format == Format::YUV420P16)
+		if (impl->options.format == Format::YUV420P16 || impl->options.format == Format::YUV444P16)
 			pipeline.constants.dither_strength = 1.0f / float(0xffff);
 	}
 	else
 	{
 		luma_format = VK_FORMAT_R8_UNORM;
-		chroma_format_full = VK_FORMAT_R8G8_UNORM;
+		chroma_format_full = VK_FORMAT_R8_UNORM;
 		pixel_size = 1;
 		pipeline.constants.dither_strength = 1.0f / 255.0f;
 	}
 
 	chroma_format = chroma_format_full;
-	if (impl->options.format == Format::YUV420P)
-		chroma_format = VK_FORMAT_R8_UNORM;
-	else if (impl->options.format == Format::YUV420P16)
-		chroma_format = VK_FORMAT_R16_UNORM;
+	if (impl->options.format == Format::NV12)
+		chroma_format = VK_FORMAT_R8G8_UNORM;
+	else if (impl->options.format == Format::P016 || impl->options.format == Format::P010)
+		chroma_format = VK_FORMAT_R16G16_UNORM;
 
 	auto image_info = Vulkan::ImageCreateInfo::immutable_2d_image(impl->options.width, impl->options.height, luma_format);
 	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -2315,13 +2424,21 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 
 	if (!impl->using_pyro_encoder)
 	{
-		pipeline.chroma_full = impl->device->create_image(image_info);
-		impl->device->set_name(*pipeline.chroma_full, "video-encode-chroma-full-res");
+		pipeline.chroma_full[0] = impl->device->create_image(image_info);
+		impl->device->set_name(*pipeline.chroma_full[0], "video-encode-chroma-full-res");
+		pipeline.chroma_full[1] = impl->device->create_image(image_info);
+		impl->device->set_name(*pipeline.chroma_full[1], "video-encode-chroma-full-res");
+		pipeline.chroma_full[0]->set_layout(Vulkan::Layout::General);
+		pipeline.chroma_full[1]->set_layout(Vulkan::Layout::General);
 	}
 
 	image_info.format = chroma_format;
-	image_info.width = impl->options.width / 2;
-	image_info.height = impl->options.height / 2;
+
+	if (format_needs_downsample(impl->options.format))
+	{
+		image_info.width = impl->options.width / 2;
+		image_info.height = impl->options.height / 2;
+	}
 
 	if (!impl->using_pyro_encoder)
 	{
@@ -2329,8 +2446,11 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 		if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)
 #endif
 		{
-			pipeline.chroma[0] = impl->device->create_image(image_info);
-			impl->device->set_name(*pipeline.chroma[0], "video-encode-chroma-downsampled");
+			if (format_needs_downsample(impl->options.format))
+			{
+				pipeline.chroma[0] = impl->device->create_image(image_info);
+				impl->device->set_name(*pipeline.chroma[0], "video-encode-chroma-downsampled");
+			}
 
 			aligned_width = (image_info.width + 63) & ~63;
 			pipeline.planes[pipeline.num_planes].row_length = aligned_width;
@@ -2347,8 +2467,11 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 
 			if (format_to_planes(impl->options.format) == 3)
 			{
-				pipeline.chroma[1] = impl->device->create_image(image_info);
-				impl->device->set_name(*pipeline.chroma[1], "video-encode-chroma-downsampled");
+				if (format_needs_downsample(impl->options.format))
+				{
+					pipeline.chroma[1] = impl->device->create_image(image_info);
+					impl->device->set_name(*pipeline.chroma[1], "video-encode-chroma-downsampled");
+				}
 
 				pipeline.planes[pipeline.num_planes].offset = total_size;
 				pipeline.planes[pipeline.num_planes].stride = aligned_width * pixel_size;

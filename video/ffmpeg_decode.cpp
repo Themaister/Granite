@@ -697,7 +697,8 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 		active_transfer_function =
 				video.av_ctx ? video.av_ctx->color_trc :
 				((pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 ||
-				  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_LIMITED_LEFT_CHROMA_420) ?
+				  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_LIMITED_LEFT_CHROMA_420 ||
+				  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CHROMA_444) ?
 				 AVCOL_TRC_SMPTEST2084 : AVCOL_TRC_BT709);
 	}
 
@@ -759,7 +760,9 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	auto chroma_sample_location =
 			video.av_ctx ? video.av_ctx->chroma_sample_location :
 			((pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420 ||
-			  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420) ?
+			  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 ||
+			  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CHROMA_444 ||
+			  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CHROMA_444) ?
 			 AVCHROMA_LOC_CENTER : AVCHROMA_LOC_LEFT);
 
 	switch (chroma_sample_location)
@@ -798,7 +801,9 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 
 	bool full_range = video.av_ctx ? video.av_ctx->color_range == AVCOL_RANGE_JPEG :
 	                  (pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420 ||
-	                   pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420);
+	                   pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 ||
+	                   pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CHROMA_444 ||
+	                   pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CHROMA_444);
 
 	LOGI("Range: %s\n", full_range ? "full" : "limited");
 	LOGI("Chroma: %s\n", siting);
@@ -1101,7 +1106,11 @@ bool VideoDecoder::Impl::init_video_decoder_post_device()
 	}
 	else if (using_pyrowave)
 	{
-		if (!pyrowave_decoder.init(device, pyro_codec.width, pyro_codec.height))
+		if (!pyrowave_decoder.init(
+				device, pyro_codec.width, pyro_codec.height,
+				(pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CHROMA_444 ||
+				 pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CHROMA_444) ?
+				PyroWave::ChromaSubsampling::Chroma444 : PyroWave::ChromaSubsampling::Chroma420))
 		{
 			LOGE("Failed to init pyrowave decoder.\n");
 			return false;
@@ -1362,16 +1371,29 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 	case AV_PIX_FMT_YUV420P10:
 	case AV_PIX_FMT_YUV420P16:
 	case AV_PIX_FMT_YUV444P10:
+	case AV_PIX_FMT_YUV444P16:
 		plane_formats[0] = VK_FORMAT_R16_UNORM;
 		plane_formats[1] = VK_FORMAT_R16_UNORM;
 		plane_formats[2] = VK_FORMAT_R16_UNORM;
 		num_planes = 3;
 		plane_subsample_log2[0] = 0;
-		plane_subsample_log2[1] = active_upload_pix_fmt != AV_PIX_FMT_YUV444P10 ? 1 : 0;
-		plane_subsample_log2[2] = active_upload_pix_fmt != AV_PIX_FMT_YUV444P10 ? 1 : 0;
+
+		if (active_upload_pix_fmt != AV_PIX_FMT_YUV444P10 && active_upload_pix_fmt != AV_PIX_FMT_YUV444P16)
+		{
+			plane_subsample_log2[1] = 1;
+			plane_subsample_log2[2] = 1;
+		}
+		else
+		{
+			plane_subsample_log2[1] = 0;
+			plane_subsample_log2[2] = 0;
+		}
+
 		// The high bits are zero, rescale to 1.0 range.
 		// This format is only returned by software decoding.
-		ubo.unorm_rescale = active_upload_pix_fmt != AV_PIX_FMT_YUV420P16 ? float(0xffff) / float(1023) : 1.0f;
+		ubo.unorm_rescale =
+				active_upload_pix_fmt != AV_PIX_FMT_YUV420P16 && active_upload_pix_fmt != AV_PIX_FMT_YUV444P16 ?
+				float(0xffff) / float(1023) : 1.0f;
 		break;
 
 	case AV_PIX_FMT_P016:
@@ -1748,11 +1770,20 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	{
 		if (using_pyrowave)
 		{
-			if (active_upload_pix_fmt != AV_PIX_FMT_YUV420P && active_upload_pix_fmt != AV_PIX_FMT_YUV420P16)
+			if (active_upload_pix_fmt != AV_PIX_FMT_YUV420P && active_upload_pix_fmt != AV_PIX_FMT_YUV420P16 &&
+			    active_upload_pix_fmt != AV_PIX_FMT_YUV444P && active_upload_pix_fmt != AV_PIX_FMT_YUV444P16)
 				reset_planes = true;
 
-			if (pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 ||
-			    pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_LIMITED_LEFT_CHROMA_420)
+			if (pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CHROMA_444)
+			{
+				active_upload_pix_fmt = AV_PIX_FMT_YUV444P16;
+			}
+			else if (pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CHROMA_444)
+			{
+				active_upload_pix_fmt = AV_PIX_FMT_YUV444P;
+			}
+			else if (pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 ||
+			         pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_LIMITED_LEFT_CHROMA_420)
 			{
 				active_upload_pix_fmt = AV_PIX_FMT_YUV420P16;
 			}

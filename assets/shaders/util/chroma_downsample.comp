@@ -1,9 +1,10 @@
 #version 450
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(set = 0, binding = 0) uniform mediump sampler2D uInputChroma;
-layout(set = 0, binding = 1) writeonly uniform mediump image2D uOutputChroma;
-layout(set = 0, binding = 2) writeonly uniform mediump image2D uOutputChroma3;
+layout(set = 0, binding = 0) uniform mediump sampler2D uInputChromaCb;
+layout(set = 0, binding = 1) uniform mediump sampler2D uInputChromaCr;
+layout(set = 0, binding = 2) writeonly uniform mediump image2D uOutputChroma;
+layout(set = 0, binding = 3) writeonly uniform mediump image2D uOutputChroma3;
 
 layout(constant_id = 0) const bool YUV420P = false;
 
@@ -40,7 +41,7 @@ void main()
                 vec2 uv = uv11 + (vec2(x, y) * 0.5) * registers.inv_resolution;
                 mediump float w = weight(x, y);
                 W += w;
-                chroma += w * textureLod(uInputChroma, uv, 0.0).xy;
+                chroma += w * vec2(textureLod(uInputChromaCb, uv, 0.0).x, textureLod(uInputChromaCr, uv, 0.0).x);
             }
         }
 

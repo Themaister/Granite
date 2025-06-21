@@ -3,7 +3,8 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(set = 0, binding = 0) uniform mediump sampler2D uImage;
 layout(set = 0, binding = 1) writeonly uniform mediump image2D uLuma;
-layout(set = 0, binding = 2) writeonly uniform mediump image2D uChroma;
+layout(set = 0, binding = 2) writeonly uniform mediump image2D uChromaCb;
+layout(set = 0, binding = 3) writeonly uniform mediump image2D uChromaCr;
 
 #include "../post/lanczos2.h"
 
@@ -17,12 +18,12 @@ layout(push_constant) uniform Registers
     float dither_strength;
 } registers;
 
-layout(set = 0, binding = 3) uniform Transform
+layout(set = 0, binding = 4) uniform Transform
 {
 	mat3 rgb_to_yuv;
 };
 
-layout(set = 0, binding = 4) uniform PrimaryTransform
+layout(set = 0, binding = 5) uniform PrimaryTransform
 {
 	mat3 primaries;
 };
@@ -87,6 +88,7 @@ void main()
             ycbcr += dither[(coord.y & 3u) * 4 + (coord.x & 3u)] * registers.dither_strength;
 
         imageStore(uLuma, ivec2(coord), ycbcr.xxxx);
-        imageStore(uChroma, ivec2(coord), ycbcr.yzyz);
+        imageStore(uChromaCb, ivec2(coord), ycbcr.yyyy);
+        imageStore(uChromaCr, ivec2(coord), ycbcr.zzzz);
     }
 }

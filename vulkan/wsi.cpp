@@ -223,6 +223,10 @@ bool WSI::init_surface_swapchain_dxgi(unsigned width, unsigned height)
 		format = { VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_COLOR_SPACE_HDR10_ST2084_EXT };
 		break;
 
+	case BackbufferFormat::scRGB:
+		format = { VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT };
+		break;
+
 	default:
 		return false;
 	}
@@ -1378,6 +1382,15 @@ VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurface
 				break;
 			}
 		}
+		else if (desired_format == BackbufferFormat::scRGB)
+		{
+			if (formats[i].colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT &&
+			    formats[i].format == VK_FORMAT_R16G16B16A16_SFLOAT)
+			{
+				format = formats[i];
+				break;
+			}
+		}
 		else if (desired_format == BackbufferFormat::sRGB)
 		{
 			if (formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
@@ -1464,7 +1477,8 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		if (ext.driver_id == VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS)
 			prefer_exclusive = false; // Broken on Intel Windows
 
-		if (ext.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY && format == BackbufferFormat::HDR10)
+		if (ext.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY &&
+		    (format == BackbufferFormat::HDR10 || format == BackbufferFormat::scRGB))
 		{
 			LOGI("Win32: HDR requested on AMD Windows. Forcing exclusive fullscreen, or HDR will not work properly.\n");
 			prefer_exclusive = true;
@@ -1770,6 +1784,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	if (surface_format.format == VK_FORMAT_UNDEFINED &&
 	    (attempt_backbuffer_format == BackbufferFormat::HDR10 ||
+	     attempt_backbuffer_format == BackbufferFormat::scRGB ||
 	     attempt_backbuffer_format == BackbufferFormat::DisplayP3 ||
 	     attempt_backbuffer_format == BackbufferFormat::UNORMPassthrough ||
 	     attempt_backbuffer_format == BackbufferFormat::Custom))

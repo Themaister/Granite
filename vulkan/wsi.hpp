@@ -159,6 +159,7 @@ enum class BackbufferFormat
 	HDR10,
 	DisplayP3,
 	UNORMPassthrough,
+	scRGB,
 	Custom
 };
 

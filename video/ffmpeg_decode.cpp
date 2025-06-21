@@ -606,6 +606,7 @@ struct VideoDecoder::Impl
 	void begin_audio_stream();
 	AVPixelFormat active_upload_pix_fmt = AV_PIX_FMT_NONE;
 	AVColorSpace active_color_space = AVCOL_SPC_UNSPECIFIED;
+	AVColorTransferCharacteristic active_transfer_function = AVCOL_TRC_UNSPECIFIED;
 
 	~Impl();
 
@@ -691,26 +692,42 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 
 	auto &img = video_queue[best_index];
 
+	if (active_transfer_function == AVCOL_TRC_UNSPECIFIED)
+	{
+		active_transfer_function =
+				video.av_ctx ? video.av_ctx->color_trc :
+				((pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 ||
+				  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_LIMITED_LEFT_CHROMA_420) ?
+				 AVCOL_TRC_SMPTEST2084 : AVCOL_TRC_BT709);
+	}
+
 	// Defer allocating the planar images until we know for sure what kind of
 	// format we're dealing with.
 	if (!img.rgb_image)
 	{
-		auto info = Vulkan::ImageCreateInfo::immutable_2d_image(get_width(), get_height(), VK_FORMAT_R8G8B8A8_SRGB);
+		auto info = Vulkan::ImageCreateInfo::immutable_2d_image(
+				get_width(), get_height(),
+				active_transfer_function == AVCOL_TRC_SMPTEST2084 ?
+				VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_R8G8B8A8_SRGB);
+
 		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
 		             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		info.flags = VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
 		info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
-		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT |
-		            Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
+		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
+
+		if (info.format == VK_FORMAT_R8G8B8A8_SRGB)
+			info.misc |= Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
+
 		if (opts.mipgen)
 			info.levels = 0;
 		img.rgb_image = device->create_image(info);
 
 		Vulkan::ImageViewCreateInfo view = {};
 		view.image = img.rgb_image.get();
-		view.format = VK_FORMAT_R8G8B8A8_UNORM;
+		view.format = info.format == VK_FORMAT_R8G8B8A8_SRGB ? VK_FORMAT_R8G8B8A8_UNORM : info.format;
 		view.layers = 1;
 		view.levels = 1;
 		view.view_type = VK_IMAGE_VIEW_TYPE_2D;
@@ -738,9 +755,11 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	ubo.chroma_clamp = (vec2(ubo.resolution) - 0.5f * float(1u << plane_subsample_log2[1])) * ubo.inv_resolution;
 	const char *siting;
 
-	auto chroma_sample_location = video.av_ctx ? video.av_ctx->chroma_sample_location :
-	                              (pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420 ?
-	                               AVCHROMA_LOC_CENTER : AVCHROMA_LOC_LEFT);
+	auto chroma_sample_location =
+			video.av_ctx ? video.av_ctx->chroma_sample_location :
+			((pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420 ||
+			  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420) ?
+			 AVCHROMA_LOC_CENTER : AVCHROMA_LOC_LEFT);
 
 	switch (chroma_sample_location)
 	{
@@ -777,7 +796,9 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	}
 
 	bool full_range = video.av_ctx ? video.av_ctx->color_range == AVCOL_RANGE_JPEG :
-	                  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420;
+	                  (pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420 ||
+	                   pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420);
+
 	LOGI("Range: %s\n", full_range ? "full" : "limited");
 	LOGI("Chroma: %s\n", siting);
 
@@ -825,7 +846,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 		else if (video.av_ctx->height < 2160)
 			col_space = AVCOL_SPC_BT709; // BT709 HD
 		else
-			col_space = AVCOL_SPC_BT2020_CL; // UHD
+			col_space = AVCOL_SPC_BT2020_NCL; // UHD
 	}
 
 	// Khronos Data Format Specification 15.1.1:
@@ -1338,17 +1359,18 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		break;
 
 	case AV_PIX_FMT_YUV420P10:
+	case AV_PIX_FMT_YUV420P16:
 	case AV_PIX_FMT_YUV444P10:
 		plane_formats[0] = VK_FORMAT_R16_UNORM;
 		plane_formats[1] = VK_FORMAT_R16_UNORM;
 		plane_formats[2] = VK_FORMAT_R16_UNORM;
 		num_planes = 3;
 		plane_subsample_log2[0] = 0;
-		plane_subsample_log2[1] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P10 ? 1 : 0;
-		plane_subsample_log2[2] = active_upload_pix_fmt == AV_PIX_FMT_YUV420P10 ? 1 : 0;
+		plane_subsample_log2[1] = active_upload_pix_fmt != AV_PIX_FMT_YUV444P10 ? 1 : 0;
+		plane_subsample_log2[2] = active_upload_pix_fmt != AV_PIX_FMT_YUV444P10 ? 1 : 0;
 		// The high bits are zero, rescale to 1.0 range.
 		// This format is only returned by software decoding.
-		ubo.unorm_rescale = float(0xffff) / float(1023);
+		ubo.unorm_rescale = active_upload_pix_fmt != AV_PIX_FMT_YUV420P16 ? float(0xffff) / float(1023) : 1.0f;
 		break;
 
 	case AV_PIX_FMT_P016:
@@ -1497,10 +1519,10 @@ void VideoDecoder::Impl::dispatch_conversion(Vulkan::CommandBuffer &cmd, Decoded
 
 		cmd.set_program(program);
 
-		cmd.set_specialization_constant_mask(7u);
-		cmd.set_specialization_constant(0, uint32_t(active_color_space != AVCOL_SPC_BT709));
+		cmd.set_specialization_constant_mask(0x7);
+		cmd.set_specialization_constant(0, active_transfer_function == AVCOL_TRC_SMPTEST2084);
 		cmd.set_specialization_constant(1, num_planes);
-		cmd.set_specialization_constant(2, uint32_t(active_upload_pix_fmt == AV_PIX_FMT_NV21));
+		cmd.set_specialization_constant(2, active_upload_pix_fmt == AV_PIX_FMT_NV21);
 
 		memcpy(cmd.allocate_typed_constant_data<UBO>(1, 0, 1), &ubo, sizeof(ubo));
 
@@ -1725,9 +1747,16 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	{
 		if (using_pyrowave)
 		{
-			if (active_upload_pix_fmt != AV_PIX_FMT_YUV420P)
+			if (active_upload_pix_fmt != AV_PIX_FMT_YUV420P && active_upload_pix_fmt != AV_PIX_FMT_YUV420P16)
 				reset_planes = true;
-			active_upload_pix_fmt = AV_PIX_FMT_YUV420P;
+
+			if (pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 ||
+			    pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_LIMITED_LEFT_CHROMA_420)
+			{
+				active_upload_pix_fmt = AV_PIX_FMT_YUV420P16;
+			}
+			else
+				active_upload_pix_fmt = AV_PIX_FMT_YUV420P;
 		}
 		else if (!av_frame || active_upload_pix_fmt != av_frame->format)
 		{

@@ -61,6 +61,7 @@ public:
 	{
 		NV12,
 		YUV420P,
+		YUV420P16,
 		P016,
 		P010
 	};

@@ -279,6 +279,7 @@ static unsigned format_to_planes(VideoEncoder::Format fmt)
 		return 2;
 
 	case VideoEncoder::Format::YUV420P:
+	case VideoEncoder::Format::YUV420P16:
 		return 3;
 
 	default:
@@ -1039,6 +1040,10 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 		video.av_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 		break;
 
+	case Format::YUV420P16:
+		video.av_ctx->pix_fmt = AV_PIX_FMT_YUV420P16;
+		break;
+
 	case Format::P016:
 		video.av_ctx->pix_fmt = AV_PIX_FMT_P016;
 		break;
@@ -1269,6 +1274,9 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 	pyro_codec.height = video.av_ctx->height;
 	pyro_codec.frame_rate_num = video.av_ctx->framerate.num;
 	pyro_codec.frame_rate_den = video.av_ctx->framerate.den;
+	pyro_codec.video_color_profile =
+			options.hdr10 ? PYRO_VIDEO_COLOR_BT2020NCL_PQ_LIMITED_LEFT_CHROMA_420:
+			PYRO_VIDEO_COLOR_BT709_LIMITED_LEFT_CHROMA_420;
 
 	video.av_pkt = av_packet_alloc();
 	if (!video.av_pkt)
@@ -1286,7 +1294,9 @@ bool VideoEncoder::Impl::init_video_codec_pyrowave()
 	pyro_codec.height = options.height;
 	pyro_codec.frame_rate_num = options.frame_timebase.den;
 	pyro_codec.frame_rate_den = options.frame_timebase.num;
-	pyro_codec.video_color_profile = PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420;
+	pyro_codec.video_color_profile =
+			options.hdr10 ? PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 :
+			PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420;
 
 	pyrowave.payload_size = (1000ull * options.bitrate_kbits * options.frame_timebase.num) /
 	                        (options.frame_timebase.den * 8);
@@ -1444,9 +1454,9 @@ bool VideoEncoder::Impl::init_video_codec()
 		else if (strcmp(options.encoder, "pyrowave") == 0)
 		{
 			using_pyrowave_encoder = true;
-			if (options.format != Format::YUV420P)
+			if (format_to_planes(options.format) != 3)
 			{
-				LOGE("Pyrowave needs yuv420p format for now.\n");
+				LOGE("Pyrowave needs 3-plane format for now.\n");
 				return false;
 			}
 		}
@@ -2134,6 +2144,8 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 		chroma_format_full = VK_FORMAT_R16G16_UNORM;
 		pixel_size = 2;
 		pipeline.constants.dither_strength = 1.0f / 1023.0f;
+		if (impl->options.format == Format::YUV420P16)
+			pipeline.constants.dither_strength = 1.0f / float(0xffff);
 	}
 	else
 	{
@@ -2146,6 +2158,8 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 	chroma_format = chroma_format_full;
 	if (impl->options.format == Format::YUV420P)
 		chroma_format = VK_FORMAT_R8_UNORM;
+	else if (impl->options.format == Format::YUV420P16)
+		chroma_format = VK_FORMAT_R16_UNORM;
 
 	auto image_info = Vulkan::ImageCreateInfo::immutable_2d_image(impl->options.width, impl->options.height, luma_format);
 	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -2230,7 +2244,7 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 			aligned_width = (image_info.width + 63) & ~63;
 			pipeline.planes[pipeline.num_planes].row_length = aligned_width;
 
-			if (impl->options.format != Format::YUV420P)
+			if (format_to_planes(impl->options.format) != 3)
 				aligned_width *= 2;
 
 			pipeline.planes[pipeline.num_planes].offset = total_size;
@@ -2240,7 +2254,7 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 			VkDeviceSize chroma_size = aligned_width * image_info.height * pixel_size;
 			total_size += chroma_size;
 
-			if (impl->options.format == Format::YUV420P)
+			if (format_to_planes(impl->options.format) == 3)
 			{
 				pipeline.chroma[1] = impl->device->create_image(image_info);
 				impl->device->set_name(*pipeline.chroma[1], "video-encode-chroma-downsampled");

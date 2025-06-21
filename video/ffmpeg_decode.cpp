@@ -708,7 +708,8 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 		auto info = Vulkan::ImageCreateInfo::immutable_2d_image(
 				get_width(), get_height(),
 				active_transfer_function == AVCOL_TRC_SMPTEST2084 ?
-				VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_R8G8B8A8_SRGB);
+				(opts.mipgen ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_A2B10G10R10_UNORM_PACK32) :
+				VK_FORMAT_R8G8B8A8_SRGB);
 
 		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
 		             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -1520,7 +1521,7 @@ void VideoDecoder::Impl::dispatch_conversion(Vulkan::CommandBuffer &cmd, Decoded
 		cmd.set_program(program);
 
 		cmd.set_specialization_constant_mask(0x7);
-		cmd.set_specialization_constant(0, active_transfer_function == AVCOL_TRC_SMPTEST2084);
+		cmd.set_specialization_constant(0, active_transfer_function == AVCOL_TRC_SMPTEST2084 && opts.mipgen);
 		cmd.set_specialization_constant(1, num_planes);
 		cmd.set_specialization_constant(2, active_upload_pix_fmt == AV_PIX_FMT_NV21);
 

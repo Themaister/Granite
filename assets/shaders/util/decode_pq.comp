@@ -1,0 +1,21 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0) uniform texture2D uImage;
+layout(set = 0, binding = 1) writeonly uniform image2D uPQ;
+
+void main()
+{
+	vec3 rgb = texelFetch(uImage, ivec2(gl_GlobalInvocationID.xy), 0).rgb;
+	const float m1 = 0.1593017578125;
+	const float m2 = 78.84375;
+	const float c2 = 18.8515625;
+	const float c3 = 18.6875;
+	const float c1 = c3 - c2 + 1.0;
+	vec3 e_pow = pow(rgb, vec3(1.0 / m2));
+	vec3 num = max(e_pow - c1, vec3(0.0));
+	vec3 den = c2 - c3 * e_pow;
+	rgb = pow(num / den, vec3(1.0 / m1)) * 10000.0;
+	imageStore(uPQ, ivec2(gl_GlobalInvocationID.xy), vec4(rgb, 0.0));
+}

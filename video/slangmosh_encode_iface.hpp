@@ -16,6 +16,7 @@ struct Shaders
 	Program rgb_to_yuv = {};
 	Program rgb_scale = {};
 	Program chroma_downsample = {};
+	Program decode_pq = {};
 	Shaders() = default;
 
 	template <typename Device, typename Layout, typename Resolver>

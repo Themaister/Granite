@@ -27,6 +27,7 @@
 #include "logging.hpp"
 #include "math.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "muglm/matrix_helper.hpp"
 #include "transforms.hpp"
 #include "thread_group.hpp"
 #include "timer.hpp"
@@ -75,6 +76,7 @@ struct CodecStream
 
 struct VideoEncoder::YCbCrPipelineData
 {
+	Vulkan::ImageHandle rgb;
 	Vulkan::ImageHandle luma;
 	Vulkan::ImageHandle chroma_full;
 	Vulkan::ImageHandle chroma[2];
@@ -83,6 +85,7 @@ struct VideoEncoder::YCbCrPipelineData
 	Vulkan::Program *rgb_to_ycbcr = nullptr;
 	Vulkan::Program *chroma_downsample = nullptr;
 	Vulkan::Program *rgb_scale = nullptr;
+	Vulkan::Program *decode_pq = nullptr;
 	PlaneLayout planes[3] = {};
 	unsigned num_planes = 0;
 	bool pyroenc = false;
@@ -1795,7 +1798,8 @@ void VideoEncoder::process_rgb_pyro(Vulkan::CommandBuffer &cmd, VideoEncoder::YC
 	cmd.set_specialization_constant_mask(0);
 }
 
-void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline_ptr, const Vulkan::ImageView &view)
+void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline_ptr, const Vulkan::ImageView &view,
+                               VkColorSpaceKHR color_space)
 {
 	auto &pipeline = *pipeline_ptr;
 
@@ -1874,6 +1878,58 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	}
 #endif
 
+	bool requires_fp16_temporary = false;
+	bool requires_pq_encode = false;
+	bool requires_bt709_to_bt2020_primaries = false;
+	float sdr_scale = 1.0f;
+
+	if (impl->options.hdr10)
+	{
+		if (color_space == VK_COLOR_SPACE_HDR10_ST2084_EXT &&
+		    (impl->options.width != view.get_view_width() ||
+		     impl->options.height != view.get_view_height()))
+		{
+			// If we need to scale PQ, we have to do so in linear space.
+			// For sRGB, we don't really care all that much.
+			requires_fp16_temporary = true;
+			requires_pq_encode = true;
+		}
+		else if (color_space != VK_COLOR_SPACE_HDR10_ST2084_EXT)
+		{
+			requires_bt709_to_bt2020_primaries = true;
+			requires_pq_encode = true;
+		}
+
+		if (color_space == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+			sdr_scale = 200.0f;
+		else if (color_space == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT)
+			sdr_scale = 80.0f;
+	}
+
+	if (requires_fp16_temporary)
+	{
+		auto info = pipeline.luma->get_create_info();
+		info.width = view.get_view_width();
+		info.height = view.get_view_height();
+		info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+		if (!pipeline.rgb || info.width != pipeline.rgb->get_width() || info.height != pipeline.rgb->get_height())
+			pipeline.rgb = device.create_image(info);
+
+		cmd.image_barrier(*pipeline.rgb, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+		cmd.set_program(pipeline.decode_pq);
+		cmd.set_texture(0, 0, view);
+		cmd.set_storage_texture(0, 1, pipeline.rgb->get_view());
+		cmd.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 1);
+
+		cmd.image_barrier(*pipeline.rgb, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+	}
+
 	if (wrapped_image)
 	{
 		cmd.image_barrier(*wrapped_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
@@ -1904,13 +1960,22 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 
 	cmd.set_program(pipeline.rgb_to_ycbcr);
 
-	if (Vulkan::format_is_srgb(view.get_format()))
+	const auto *input_view = requires_fp16_temporary ? &pipeline.rgb->get_view() : &view;
+
+	if (input_view->get_format() == VK_FORMAT_R8G8B8A8_UNORM ||
+	    input_view->get_format() == VK_FORMAT_R8G8B8A8_SRGB ||
+	    input_view->get_format() == VK_FORMAT_B8G8R8A8_UNORM ||
+	    input_view->get_format() == VK_FORMAT_B8G8R8A8_SRGB)
 	{
-		cmd.set_unorm_texture(0, 0, view);
+		if (requires_pq_encode)
+			cmd.set_srgb_texture(0, 0, *input_view);
+		else
+			cmd.set_unorm_texture(0, 0, *input_view);
+
 		cmd.set_sampler(0, 0, Vulkan::StockSampler::NearestClamp);
 	}
 	else
-		cmd.set_texture(0, 0, view, Vulkan::StockSampler::NearestClamp);
+		cmd.set_texture(0, 0, *input_view, Vulkan::StockSampler::NearestClamp);
 
 	cmd.set_storage_texture(0, 1, wrapped_planes[0] ? *wrapped_planes[0] : pipeline.luma->get_view());
 	cmd.set_storage_texture(0, 2, pipeline.chroma_full->get_view());
@@ -1939,6 +2004,7 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	auto *color_transform = cmd.allocate_typed_constant_data<vec4>(0, 3, 3);
+	auto *primary_transform = cmd.allocate_typed_constant_data<vec4>(0, 4, 3);
 
 	// Minimal crude implementation to get something HDR10 working.
 	if (impl->options.hdr10)
@@ -1954,10 +2020,34 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		color_transform[2] = vec4(0.5f, -0.454153f, -0.0458471f, 0.0f);
 	}
 
-	cmd.set_specialization_constant_mask(7);
+	if (requires_bt709_to_bt2020_primaries)
+	{
+		const Primaries bt709 = {
+			{ 0.640f, 0.330f },
+			{ 0.300f, 0.600f },
+			{ 0.150f, 0.060f },
+			{ 0.3127f, 0.3290f },
+		};
+
+		const Primaries bt2020 = {
+			{ 0.708f, 0.292f },
+			{ 0.170f, 0.797f },
+			{ 0.131f, 0.046f },
+			{ 0.3127f, 0.3290f },
+		};
+
+		auto conv = inverse(compute_xyz_matrix(bt2020)) * compute_xyz_matrix(bt709);
+		primary_transform[0] = vec4(sdr_scale * conv[0], 0.0f);
+		primary_transform[1] = vec4(sdr_scale * conv[1], 0.0f);
+		primary_transform[2] = vec4(sdr_scale * conv[2], 0.0f);
+	}
+
+	cmd.set_specialization_constant_mask(0x1f);
 	cmd.set_specialization_constant(0, !impl->options.color_full_range);
 	cmd.set_specialization_constant(1, true);
 	cmd.set_specialization_constant(2, push.width != view.get_view_width() || push.height != view.get_view_height());
+	cmd.set_specialization_constant(3, requires_pq_encode);
+	cmd.set_specialization_constant(4, requires_bt709_to_bt2020_primaries);
 
 	auto start_yuv_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	cmd.dispatch(pipeline.constants.luma_dispatch[0], pipeline.constants.luma_dispatch[1], 1);
@@ -2126,6 +2216,7 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 	pipeline.rgb_to_ycbcr = shaders.rgb_to_yuv;
 	pipeline.chroma_downsample = shaders.chroma_downsample;
 	pipeline.rgb_scale = shaders.rgb_scale;
+	pipeline.decode_pq = shaders.decode_pq;
 
 	VkFormat luma_format, chroma_format, chroma_format_full;
 	unsigned pixel_size;

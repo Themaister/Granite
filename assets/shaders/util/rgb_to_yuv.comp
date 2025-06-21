@@ -22,9 +22,16 @@ layout(set = 0, binding = 3) uniform Transform
 	mat3 rgb_to_yuv;
 };
 
+layout(set = 0, binding = 4) uniform PrimaryTransform
+{
+	mat3 primaries;
+};
+
 layout(constant_id = 0) const bool LIMITED = false;
 layout(constant_id = 1) const bool DITHER = false;
 layout(constant_id = 2) const bool RESCALE = false;
+layout(constant_id = 3) const bool PQ = false;
+layout(constant_id = 4) const bool PRIMARY_TRANSFORM = false;
 
 #define D(x) ((x) - 0.5)
 const mediump float dither[] = float[](
@@ -50,6 +57,22 @@ void main()
             rgb = texelFetch(uImage, ivec2(coord), 0).rgb;
         }
 
+		if (PRIMARY_TRANSFORM)
+			rgb = primaries * rgb;
+
+		if (PQ)
+		{
+			vec3 y = clamp(vec3(rgb) / 10000.0, vec3(0.0), vec3(1.0));
+			const float c1 = 0.8359375;
+			const float c2 = 18.8515625;
+			const float c3 = 18.6875;
+			const float m1 = 0.1593017578125;
+			const float m2 = 78.84375;
+			vec3 num = c1 + c2 * pow(y, vec3(m1));
+			vec3 den = 1.0 + c3 * pow(y, vec3(m1));
+			rgb = pow(num / den, vec3(m2));
+		}
+
         mediump vec3 ycbcr = rgb * rgb_to_yuv;
 
         if (LIMITED)
@@ -61,9 +84,7 @@ void main()
             ycbcr += vec3(0.0 / 255.0, 128.0 / 255.0, 128.0 / 255.0);
 
         if (DITHER)
-        {
             ycbcr += dither[(coord.y & 3u) * 4 + (coord.x & 3u)] * registers.dither_strength;
-        }
 
         imageStore(uLuma, ivec2(coord), ycbcr.xxxx);
         imageStore(uChroma, ivec2(coord), ycbcr.yzyz);

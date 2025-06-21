@@ -124,7 +124,8 @@ public:
 	using YCbCrPipeline = std::unique_ptr<YCbCrPipelineData, YCbCrPipelineDataDeleter>;
 
 	YCbCrPipeline create_ycbcr_pipeline(const FFmpegEncode::Shaders<> &shaders) const;
-	void process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view);
+	void process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view,
+	                 VkColorSpaceKHR color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
 	// Handles GPU synchronization if required.
 	void submit_process_rgb(Vulkan::CommandBufferHandle &cmd, YCbCrPipeline &pipeline);
 

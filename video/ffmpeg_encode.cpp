@@ -1166,6 +1166,10 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 		return false;
 	}
 
+	// Allow higher precision raw formats when dumping y4m video.
+	if (av_format_ctx && strstr(options.encoder, "raw"))
+		av_format_ctx->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
+
 	if (av_format_ctx && (av_format_ctx->oformat->flags & AVFMT_GLOBALHEADER))
 		video.av_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 

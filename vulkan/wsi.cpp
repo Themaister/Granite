@@ -66,6 +66,8 @@ WSI::WSI()
 void WSI::set_hdr_metadata(const VkHdrMetadataEXT &hdr)
 {
 	hdr_metadata = hdr;
+	valid_hdr_metadata = true;
+
 	if (swapchain && swapchain_surface_format.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT &&
 	    device->get_device_features().supports_hdr_metadata)
 	{
@@ -2018,7 +2020,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	                                  swapchain_current_prerotate);
 
 	if (swapchain_surface_format.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT &&
-	    device->get_device_features().supports_hdr_metadata)
+	    valid_hdr_metadata && device->get_device_features().supports_hdr_metadata)
 	{
 		table->vkSetHdrMetadataEXT(device->get_device(), 1, &swapchain, &hdr_metadata);
 	}

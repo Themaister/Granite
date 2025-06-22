@@ -400,6 +400,7 @@ private:
 	void wait_swapchain_latency();
 
 	VkHdrMetadataEXT hdr_metadata = { VK_STRUCTURE_TYPE_HDR_METADATA_EXT };
+	bool valid_hdr_metadata = false;
 
 	struct DeferredDeletionSwapchain
 	{

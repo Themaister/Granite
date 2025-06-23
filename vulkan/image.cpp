@@ -104,12 +104,28 @@ ImageView::~ImageView()
 
 unsigned ImageView::get_view_width() const
 {
-	return info.image->get_width(info.base_level);
+	unsigned width = info.image->get_width(info.base_level);
+
+	if (info.aspect == VK_IMAGE_ASPECT_PLANE_1_BIT || info.aspect == VK_IMAGE_ASPECT_PLANE_2_BIT)
+	{
+		unsigned h = 0;
+		format_ycbcr_downsample_dimensions(info.image->get_format(), info.aspect, width, h);
+	}
+
+	return width;
 }
 
 unsigned ImageView::get_view_height() const
 {
-	return info.image->get_height(info.base_level);
+	unsigned height = info.image->get_height(info.base_level);
+
+	if (info.aspect == VK_IMAGE_ASPECT_PLANE_1_BIT || info.aspect == VK_IMAGE_ASPECT_PLANE_2_BIT)
+	{
+		unsigned w = 0;
+		format_ycbcr_downsample_dimensions(info.image->get_format(), info.aspect, w, height);
+	}
+
+	return height;
 }
 
 unsigned ImageView::get_view_depth() const

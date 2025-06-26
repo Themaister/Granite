@@ -567,6 +567,51 @@ void WSI::wait_swapchain_latency()
 {
 	unsigned effective_latency = low_latency_mode_enable_present ? 0 : present_frame_latency;
 
+	if (device->get_device_features().supports_low_latency2_nv && swapchain && low_latency_mode_enable_gpu_submit)
+	{
+		if (!low_latency_semaphore)
+			low_latency_semaphore = device->request_semaphore(VK_SEMAPHORE_TYPE_TIMELINE);
+
+		auto wait_ts = device->write_calibrated_timestamp();
+		VkLatencySleepInfoNV sleep_info = { VK_STRUCTURE_TYPE_LATENCY_SLEEP_INFO_NV };
+		sleep_info.signalSemaphore = low_latency_semaphore->get_semaphore();
+		sleep_info.value = ++low_latency_semaphore_value;
+		if (device->get_device_table().vkLatencySleepNV(device->get_device(), swapchain, &sleep_info) == VK_SUCCESS)
+			low_latency_semaphore->wait_timeline(low_latency_semaphore_value);
+		else
+			LOGE("Failed to call vkLatencySleepNV.\n");
+		device->register_time_interval("WSI", std::move(wait_ts), device->write_calibrated_timestamp(), "low_latency_sleep");
+
+		VkSetLatencyMarkerInfoNV latency_marker_info = { VK_STRUCTURE_TYPE_SET_LATENCY_MARKER_INFO_NV };
+		latency_marker_info.marker = VK_LATENCY_MARKER_INPUT_SAMPLE_NV;
+		latency_marker_info.presentID = next_present_id;
+		device->get_device_table().vkSetLatencyMarkerNV(device->get_device(), swapchain, &latency_marker_info);
+
+		latency_marker_info.marker = VK_LATENCY_MARKER_SIMULATION_START_NV;
+		device->get_device_table().vkSetLatencyMarkerNV(device->get_device(), swapchain, &latency_marker_info);
+
+		// Avoid conflicting wait cycles when doing reflex style latency limiting.
+		effective_latency = std::max<uint32_t>(effective_latency, 2);
+	}
+	else if (device->get_device_features().anti_lag_features.antiLag)
+	{
+		auto wait_ts = device->write_calibrated_timestamp();
+
+		VkAntiLagDataAMD anti_lag = { VK_STRUCTURE_TYPE_ANTI_LAG_DATA_AMD };
+		VkAntiLagPresentationInfoAMD present_info = { VK_STRUCTURE_TYPE_ANTI_LAG_PRESENTATION_INFO_AMD };
+		anti_lag.pPresentationInfo = &present_info;
+		present_info.stage = VK_ANTI_LAG_STAGE_INPUT_AMD;
+		present_info.frameIndex = ++low_latency_semaphore_value;
+		anti_lag.mode = low_latency_mode_enable_gpu_submit ? VK_ANTI_LAG_MODE_ON_AMD : VK_ANTI_LAG_MODE_OFF_AMD;
+		device->get_device_table().vkAntiLagUpdateAMD(device->get_device(), &anti_lag);
+		low_latency_anti_lag_present_valid = low_latency_mode_enable_gpu_submit;
+		device->register_time_interval("WSI", std::move(wait_ts), device->write_calibrated_timestamp(),
+		                               "low_latency_sleep");
+
+		// Avoid conflicting wait cycles when doing reflex style latency limiting.
+		effective_latency = std::max<uint32_t>(effective_latency, 2);
+	}
+
 	// If we're using duped frames, make sure we're waiting for the previous "real" frame,
 	// instead of a duped one.
 	// E.g. when doing frame dupes:
@@ -600,45 +645,6 @@ void WSI::wait_swapchain_latency()
 		auto end_wait = Util::get_current_time_nsecs();
 				LOGI("WaitForPresentKHR took %.3f ms.\n", 1e-6 * double(end_wait - begin_wait));
 #endif
-	}
-
-	if (device->get_device_features().supports_low_latency2_nv && swapchain && low_latency_mode_enable_gpu_submit)
-	{
-		if (!low_latency_semaphore)
-			low_latency_semaphore = device->request_semaphore(VK_SEMAPHORE_TYPE_TIMELINE);
-
-		auto wait_ts = device->write_calibrated_timestamp();
-		VkLatencySleepInfoNV sleep_info = { VK_STRUCTURE_TYPE_LATENCY_SLEEP_INFO_NV };
-		sleep_info.signalSemaphore = low_latency_semaphore->get_semaphore();
-		sleep_info.value = ++low_latency_semaphore_value;
-		if (device->get_device_table().vkLatencySleepNV(device->get_device(), swapchain, &sleep_info) == VK_SUCCESS)
-			low_latency_semaphore->wait_timeline(low_latency_semaphore_value);
-		else
-			LOGE("Failed to call vkLatencySleepNV.\n");
-		device->register_time_interval("WSI", std::move(wait_ts), device->write_calibrated_timestamp(), "low_latency_sleep");
-
-		VkSetLatencyMarkerInfoNV latency_marker_info = { VK_STRUCTURE_TYPE_SET_LATENCY_MARKER_INFO_NV };
-		latency_marker_info.marker = VK_LATENCY_MARKER_INPUT_SAMPLE_NV;
-		latency_marker_info.presentID = next_present_id;
-		device->get_device_table().vkSetLatencyMarkerNV(device->get_device(), swapchain, &latency_marker_info);
-
-		latency_marker_info.marker = VK_LATENCY_MARKER_SIMULATION_START_NV;
-		device->get_device_table().vkSetLatencyMarkerNV(device->get_device(), swapchain, &latency_marker_info);
-	}
-	else if (device->get_device_features().anti_lag_features.antiLag)
-	{
-		auto wait_ts = device->write_calibrated_timestamp();
-
-		VkAntiLagDataAMD anti_lag = { VK_STRUCTURE_TYPE_ANTI_LAG_DATA_AMD };
-		VkAntiLagPresentationInfoAMD present_info = { VK_STRUCTURE_TYPE_ANTI_LAG_PRESENTATION_INFO_AMD };
-		anti_lag.pPresentationInfo = &present_info;
-		present_info.stage = VK_ANTI_LAG_STAGE_INPUT_AMD;
-		present_info.frameIndex = ++low_latency_semaphore_value;
-		anti_lag.mode = low_latency_mode_enable_gpu_submit ? VK_ANTI_LAG_MODE_ON_AMD : VK_ANTI_LAG_MODE_OFF_AMD;
-		device->get_device_table().vkAntiLagUpdateAMD(device->get_device(), &anti_lag);
-		low_latency_anti_lag_present_valid = low_latency_mode_enable_gpu_submit;
-		device->register_time_interval("WSI", std::move(wait_ts), device->write_calibrated_timestamp(),
-		                               "low_latency_sleep");
 	}
 }
 

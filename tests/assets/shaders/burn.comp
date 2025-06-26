@@ -1,0 +1,17 @@
+#version 450
+
+layout(push_constant) uniform Regs { uint burn_count; };
+layout(local_size_x = 256) in;
+
+layout(set = 0, binding = 0) buffer SSBO
+{
+    vec4 data[];
+};
+
+void main()
+{
+    vec4 FragColor = data[gl_GlobalInvocationID.x];
+    for (uint i = 0; i < burn_count; i++)
+        FragColor = sin(FragColor);
+    data[gl_GlobalInvocationID.x] = FragColor;
+}

@@ -34,17 +34,30 @@
 using namespace Granite;
 using namespace Vulkan;
 
+#define WAIT_IDLE 0
+
 struct LatencyTest : Granite::Application, Granite::EventHandler
 {
 	explicit LatencyTest(unsigned count_)
 		: count(count_)
 	{
 		EVENT_MANAGER_REGISTER(LatencyTest, on_key_down, KeyboardEvent);
+		EVENT_MANAGER_REGISTER_LATCH(LatencyTest, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 		frame_times.reserve(100);
 		get_wsi().set_gpu_submit_low_latency_mode(true);
 	}
 
 	bool gpu_low_latency_state = true;
+
+	void on_device_created(const DeviceCreatedEvent &e)
+	{
+		(void)e;
+		//e.get_device().init_frame_contexts(3);
+	}
+
+	void on_device_destroyed(const DeviceCreatedEvent &)
+	{
+	}
 
 	bool on_key_down(const KeyboardEvent &e)
 	{
@@ -56,6 +69,33 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 			get_wsi().set_gpu_submit_low_latency_mode(gpu_low_latency_state);
 		}
 		return true;
+	}
+
+	void burn_compute()
+	{
+		auto &wsi = get_wsi();
+		auto &device = wsi.get_device();
+		auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncCompute);
+
+		BufferCreateInfo info = {};
+		info.size = 64 * 1024;
+		info.domain = BufferDomain::Device;
+		info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		auto buf = device.create_buffer(info);
+
+		const uint32_t burn_count = 20000;
+		cmd->push_constants(&burn_count, 0, sizeof(burn_count));
+		cmd->set_program("assets://shaders/burn.comp");
+		cmd->set_storage_buffer(0, 0, *buf);
+		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+		cmd->dispatch(1, 1, 1);
+		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "Compute Burn");
+
+		Semaphore sem;
+		device.submit(cmd, nullptr, 1, &sem);
+		device.add_wait_semaphore(CommandBuffer::Type::Generic, std::move(sem), VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, true);
 	}
 
 	void render_frame(double frame_time, double elapsed_time) override
@@ -82,6 +122,8 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 			avg_time += t;
 		}
 		avg_time /= double(frame_times.size());
+
+		burn_compute();
 
 		auto cmd = device.request_command_buffer();
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
@@ -166,7 +208,14 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		cmd->end_render_pass();
 		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "RenderPass");
+
+#if WAIT_IDLE
+		Fence fence;
+		device.submit(cmd, &fence);
+		fence->wait();
+#else
 		device.submit(cmd);
+#endif
 	}
 
 	unsigned counter = 0;

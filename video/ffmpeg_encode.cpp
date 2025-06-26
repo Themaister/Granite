@@ -1880,9 +1880,9 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 
 	Vulkan::ImageViewHandle wrapped_planes[2];
 	Vulkan::ImageHandle wrapped_image;
+	auto &device = cmd.get_device();
 
 #ifdef HAVE_FFMPEG_VULKAN
-	auto &device = cmd.get_device();
 	AVHWFramesContext *frames = nullptr;
 	AVVulkanFramesContext *vk = nullptr;
 	AVVkFrame *vk_frame = nullptr;

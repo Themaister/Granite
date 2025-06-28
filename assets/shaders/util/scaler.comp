@@ -54,17 +54,17 @@ layout(push_constant) uniform Registers
 {
     ivec2 resolution;
     vec2 scaling_to_input;
-    vec2 inv_resolution;
 } registers;
 
 void main()
 {
     int local_index = int(gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID);
-    ivec2 base_output = ivec2(gl_WorkGroupSize.xy * gl_WorkGroupID.xy);
+
+    ivec2 base_output = ivec2(gl_WorkGroupID.xy) * ivec2(OUTPUT_WIDTH, OUTPUT_HEIGHT);
     precise vec2 base_input = (vec2(base_output) + 0.5) * registers.scaling_to_input - 0.5;
 
     ivec2 unswizzle_coord = unswizzle8x8(local_index);
-    ivec2 local_coord = ivec2(base_input) + unswizzle_coord - APRON;
+    ivec2 local_coord = ivec2(floor(base_input)) + unswizzle_coord - (APRON - 1);
 
     for (int y = 0; y < PADDED_INPUT_HEIGHT; y += OUTPUT_HEIGHT)
     {
@@ -76,33 +76,33 @@ void main()
             coord = clamp(coord, ivec2(0), registers.resolution - 1);
             vec3 rgb = texelFetch(uTexture, coord, 0).rgb;
 
-            shared_r[y][x] = rgb.r;
-            shared_g[y][x] = rgb.g;
-            shared_b[y][x] = rgb.b;
+            shared_r[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgb.r;
+            shared_g[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgb.g;
+            shared_b[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgb.b;
         }
     }
 
     // Load vertical filter weights.
-    for (int phase_index = int(gl_LocalInvocationIndex) / TAPS;
+    for (int phase_index = local_index / TAPS;
         phase_index < OUTPUT_HEIGHT;
         phase_index += int(gl_WorkGroupSize.x / TAPS))
     {
         precise int shared_coord =
             int(float(PHASES) * (base_input.y + registers.scaling_to_input.y * float(phase_index)) + 0.5);
-        int shared_phase = bitfieldExtract(shared_coord, 0, PHASES_BITS);
-        int tap = int(gl_LocalInvocationIndex) & (TAPS - 1);
-        shared_vert_weights[phase_index][tap] = weights[shared_phase * TAPS + tap];
+        int shared_phase = int(bitfieldExtract(uint(shared_coord), 0, PHASES_BITS));
+        int tap = local_index & (TAPS - 1);
+        shared_vert_weights[phase_index][tap] = weights[TAPS * PHASES + shared_phase * TAPS + tap];
     }
 
     // Load horizontal filter weights.
-    for (int phase_index = int(gl_LocalInvocationIndex) / TAPS;
+    for (int phase_index = local_index / TAPS;
         phase_index < OUTPUT_WIDTH;
         phase_index += int(gl_WorkGroupSize.x / TAPS))
     {
         precise int shared_coord =
             int(float(PHASES) * (base_input.x + registers.scaling_to_input.x * float(phase_index)) + 0.5);
-        int shared_phase = bitfieldExtract(shared_coord, 0, PHASES_BITS);
-        int tap = int(gl_LocalInvocationIndex) & (TAPS - 1);
+        int shared_phase = int(bitfieldExtract(uint(shared_coord), 0, PHASES_BITS));
+        int tap = local_index & (TAPS - 1);
         shared_horiz_weights[phase_index][tap] = weights[shared_phase * TAPS + tap];
     }
 
@@ -128,6 +128,7 @@ void main()
         for (int i = 0; i < TAPS; i++)
         {
             float w = shared_vert_weights[off_y][i];
+            //float w = i == 3 ? 1.0 : 0.0;
             float r = shared_r[shared_coord_y + i][off_x];
             float g = shared_g[shared_coord_y + i][off_x];
             float b = shared_b[shared_coord_y + i][off_x];
@@ -153,6 +154,7 @@ void main()
     // Filter horizontally.
     vec3 tmp = vec3(0.0);
 
+    #if 1
     precise int shared_coord_x =
         int(float(PHASES) * (base_input.x + registers.scaling_to_input.x * float(unswizzle_coord.x)) + 0.5);
     shared_coord_x >>= PHASES_BITS;
@@ -166,6 +168,7 @@ void main()
         float b = shared_b[unswizzle_coord.y][shared_coord_x + i];
         tmp += vec3(r, g, b) * w;
     }
+    #endif
 
     imageStore(uOutput, base_output + unswizzle_coord, vec4(tmp, 1.0));
 }

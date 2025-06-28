@@ -25,13 +25,14 @@ const int PADDED_INPUT_HEIGHT = INPUT_HEIGHT + 2 * APRON;
 const int OUTPUT_WIDTH = 8;
 const int OUTPUT_HEIGHT = 8;
 
+const int TAPS_HALF = APRON;
 const int TAPS = APRON * 2;
 const int PHASES_BITS = 8;
 const int PHASES = 1 << PHASES_BITS;
 
 layout(set = 0, binding = 4, std430) readonly buffer Weights
 {
-    float weights[];
+    f16vec2 weights[];
 };
 
 ivec2 unswizzle8x8(uint index)
@@ -43,12 +44,10 @@ ivec2 unswizzle8x8(uint index)
     return ivec2(x, y);
 }
 
-shared float shared_r[PADDED_INPUT_HEIGHT][PADDED_INPUT_WIDTH];
-shared float shared_g[PADDED_INPUT_HEIGHT][PADDED_INPUT_WIDTH];
-shared float shared_b[PADDED_INPUT_HEIGHT][PADDED_INPUT_WIDTH];
-
-shared float shared_horiz_weights[OUTPUT_WIDTH][TAPS];
-shared float shared_vert_weights[OUTPUT_HEIGHT][TAPS];
+shared f16vec2 shared_rg[PADDED_INPUT_HEIGHT][PADDED_INPUT_WIDTH + 1];
+shared f16vec2 shared_ba[PADDED_INPUT_HEIGHT][PADDED_INPUT_WIDTH + 1];
+shared f16vec2 shared_horiz_weights[OUTPUT_WIDTH][TAPS_HALF + 1];
+shared f16vec2 shared_vert_weights[OUTPUT_HEIGHT][TAPS_HALF + 1];
 
 layout(push_constant) uniform Registers
 {
@@ -74,48 +73,46 @@ void main()
             // TODO: Make it configurable whether to clamp or not?
             // TODO: Use implicit first-stage low quality downsample with texture sample as alternative path.
             coord = clamp(coord, ivec2(0), registers.resolution - 1);
-            vec3 rgb = texelFetch(uTexture, coord, 0).rgb;
-
-            shared_r[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgb.r;
-            shared_g[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgb.g;
-            shared_b[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgb.b;
+            f16vec4 rgb = f16vec4(texelFetch(uTexture, coord, 0));
+            shared_rg[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgb.rg;
+            shared_ba[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgb.ba;
         }
     }
 
     // Load vertical filter weights.
-    for (int phase_index = local_index / TAPS;
+    for (int phase_index = local_index / TAPS_HALF;
         phase_index < OUTPUT_HEIGHT;
-        phase_index += int(gl_WorkGroupSize.x / TAPS))
+        phase_index += int(gl_WorkGroupSize.x / TAPS_HALF))
     {
         precise int shared_coord =
             int(float(PHASES) * (base_input.y + registers.scaling_to_input.y * float(phase_index)) + 0.5);
         int shared_phase = int(bitfieldExtract(uint(shared_coord), 0, PHASES_BITS));
-        int tap = local_index & (TAPS - 1);
-        shared_vert_weights[phase_index][tap] = weights[TAPS * PHASES + shared_phase * TAPS + tap];
+        int tap = local_index & (TAPS_HALF - 1);
+        shared_vert_weights[phase_index][tap] = weights[TAPS_HALF * PHASES + shared_phase * TAPS_HALF + tap];
     }
 
     // Load horizontal filter weights.
-    for (int phase_index = local_index / TAPS;
+    for (int phase_index = local_index / TAPS_HALF;
         phase_index < OUTPUT_WIDTH;
-        phase_index += int(gl_WorkGroupSize.x / TAPS))
+        phase_index += int(gl_WorkGroupSize.x / TAPS_HALF))
     {
         precise int shared_coord =
             int(float(PHASES) * (base_input.x + registers.scaling_to_input.x * float(phase_index)) + 0.5);
         int shared_phase = int(bitfieldExtract(uint(shared_coord), 0, PHASES_BITS));
-        int tap = local_index & (TAPS - 1);
-        shared_horiz_weights[phase_index][tap] = weights[shared_phase * TAPS + tap];
+        int tap = local_index & (TAPS_HALF - 1);
+        shared_horiz_weights[phase_index][tap] = weights[shared_phase * TAPS_HALF + tap];
     }
 
     barrier();
 
     const int NUM_HORIZONTAL_PIXELS_PER_ITERATION = int(gl_WorkGroupSize.x) / OUTPUT_HEIGHT;
     const int NUM_HORIZONTAL_ITERATIONS = PADDED_INPUT_WIDTH / NUM_HORIZONTAL_PIXELS_PER_ITERATION;
-    vec3 result[NUM_HORIZONTAL_ITERATIONS];
+    f16vec4 result[NUM_HORIZONTAL_ITERATIONS];
 
     for (int iter = 0; iter < NUM_HORIZONTAL_ITERATIONS; iter++)
     {
         // Filter vertically.
-        vec3 tmp = vec3(0.0);
+        f16vec4 tmp = f16vec4(0.0);
 
         int off_x = int(local_index) / OUTPUT_HEIGHT + NUM_HORIZONTAL_PIXELS_PER_ITERATION * iter;
         int off_y = int(local_index) % OUTPUT_HEIGHT;
@@ -125,14 +122,14 @@ void main()
         shared_coord_y >>= PHASES_BITS;
         shared_coord_y -= int(base_input.y);
 
-        for (int i = 0; i < TAPS; i++)
+        for (int i = 0; i < TAPS_HALF; i++)
         {
-            float w = shared_vert_weights[off_y][i];
-            //float w = i == 3 ? 1.0 : 0.0;
-            float r = shared_r[shared_coord_y + i][off_x];
-            float g = shared_g[shared_coord_y + i][off_x];
-            float b = shared_b[shared_coord_y + i][off_x];
-            tmp += vec3(r, g, b) * w;
+            f16vec2 w = shared_vert_weights[off_y][i];
+            f16vec2 rg0 = shared_rg[shared_coord_y + 2 * i + 0][off_x];
+            f16vec2 rg1 = shared_rg[shared_coord_y + 2 * i + 1][off_x];
+            f16vec2 ba0 = shared_ba[shared_coord_y + 2 * i + 0][off_x];
+            f16vec2 ba1 = shared_ba[shared_coord_y + 2 * i + 1][off_x];
+            tmp += f16vec4(rg0, ba0) * w.x + f16vec4(rg1, ba1) * w.y;
         }
 
         result[iter] = tmp;
@@ -144,31 +141,29 @@ void main()
     {
         int off_x = int(local_index) / OUTPUT_HEIGHT + NUM_HORIZONTAL_PIXELS_PER_ITERATION * iter;
         int off_y = int(local_index) % OUTPUT_HEIGHT;
-        shared_r[off_y][off_x] = result[iter].r;
-        shared_g[off_y][off_x] = result[iter].g;
-        shared_b[off_y][off_x] = result[iter].b;
+        shared_rg[off_y][off_x] = result[iter].rg;
+        shared_ba[off_y][off_x] = result[iter].ba;
     }
 
     barrier();
 
     // Filter horizontally.
-    vec3 tmp = vec3(0.0);
+    f16vec4 tmp = f16vec4(0.0);
 
-    #if 1
     precise int shared_coord_x =
         int(float(PHASES) * (base_input.x + registers.scaling_to_input.x * float(unswizzle_coord.x)) + 0.5);
     shared_coord_x >>= PHASES_BITS;
     shared_coord_x -= int(base_input.x);
 
-    for (int i = 0; i < TAPS; i++)
+    for (int i = 0; i < TAPS_HALF; i++)
     {
-        float w = shared_horiz_weights[unswizzle_coord.x][i];
-        float r = shared_r[unswizzle_coord.y][shared_coord_x + i];
-        float g = shared_g[unswizzle_coord.y][shared_coord_x + i];
-        float b = shared_b[unswizzle_coord.y][shared_coord_x + i];
-        tmp += vec3(r, g, b) * w;
+        f16vec2 w = shared_horiz_weights[unswizzle_coord.x][i];
+        f16vec2 rg0 = shared_rg[unswizzle_coord.y][shared_coord_x + 2 * i + 0];
+        f16vec2 rg1 = shared_rg[unswizzle_coord.y][shared_coord_x + 2 * i + 1];
+        f16vec2 ba0 = shared_ba[unswizzle_coord.y][shared_coord_x + 2 * i + 0];
+        f16vec2 ba1 = shared_ba[unswizzle_coord.y][shared_coord_x + 2 * i + 1];
+        tmp += f16vec4(rg0, ba0) * w.x + f16vec4(rg1, ba1) * w.y;
     }
-    #endif
 
-    imageStore(uOutput, base_output + unswizzle_coord, vec4(tmp, 1.0));
+    imageStore(uOutput, base_output + unswizzle_coord, tmp);
 }

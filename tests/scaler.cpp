@@ -95,6 +95,7 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 		float bh = 1.0f / push.scaling_to_input.y * 0.8f;
 
 		float weights_data[2][Phases][Taps] = {};
+		uint16_t weights_data16[2][Phases][Taps] = {};
 
 		for (int phase = 0; phase < Phases; phase++)
 		{
@@ -123,12 +124,17 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 				w /= total_vert;
 		}
 
+		for (int dim = 0; dim < 2; dim++)
+			for (int phase = 0; phase < Phases; phase++)
+				for (int tap = 0; tap < Taps; tap++)
+					weights_data16[dim][phase][tap] = muglm::floatToHalf(weights_data[dim][phase][tap]);
+
 		BufferCreateInfo weights_info = {};
-		weights_info.size = Phases * Taps * sizeof(float) * 2;
+		weights_info.size = Phases * Taps * sizeof(uint16_t) * 2;
 		weights_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 		weights_info.domain = BufferDomain::Device;
 
-		auto weights = device.create_buffer(weights_info, weights_data);
+		auto weights = device.create_buffer(weights_info, weights_data16);
 
 		cmd.set_program("builtin://shaders/util/scaler.comp");
 		cmd.set_texture(0, 0, *view);

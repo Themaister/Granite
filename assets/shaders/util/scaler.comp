@@ -46,8 +46,6 @@ ivec2 unswizzle8x8(uint index)
 
 shared f16vec2 shared_rg[PADDED_INPUT_HEIGHT][PADDED_INPUT_WIDTH + 1];
 shared f16vec2 shared_ba[PADDED_INPUT_HEIGHT][PADDED_INPUT_WIDTH + 1];
-shared f16vec2 shared_horiz_weights[OUTPUT_WIDTH][TAPS_HALF + 1];
-shared f16vec2 shared_vert_weights[OUTPUT_HEIGHT][TAPS_HALF + 1];
 
 layout(push_constant) uniform Registers
 {
@@ -79,30 +77,6 @@ void main()
         }
     }
 
-    // Load vertical filter weights.
-    for (int phase_index = local_index / TAPS_HALF;
-        phase_index < OUTPUT_HEIGHT;
-        phase_index += int(gl_WorkGroupSize.x / TAPS_HALF))
-    {
-        precise int shared_coord =
-            int(float(PHASES) * (base_input.y + registers.scaling_to_input.y * float(phase_index)) + 0.5);
-        int shared_phase = int(bitfieldExtract(uint(shared_coord), 0, PHASES_BITS));
-        int tap = local_index & (TAPS_HALF - 1);
-        shared_vert_weights[phase_index][tap] = weights[TAPS_HALF * PHASES + shared_phase * TAPS_HALF + tap];
-    }
-
-    // Load horizontal filter weights.
-    for (int phase_index = local_index / TAPS_HALF;
-        phase_index < OUTPUT_WIDTH;
-        phase_index += int(gl_WorkGroupSize.x / TAPS_HALF))
-    {
-        precise int shared_coord =
-            int(float(PHASES) * (base_input.x + registers.scaling_to_input.x * float(phase_index)) + 0.5);
-        int shared_phase = int(bitfieldExtract(uint(shared_coord), 0, PHASES_BITS));
-        int tap = local_index & (TAPS_HALF - 1);
-        shared_horiz_weights[phase_index][tap] = weights[shared_phase * TAPS_HALF + tap];
-    }
-
     barrier();
 
     const int NUM_HORIZONTAL_PIXELS_PER_ITERATION = int(gl_WorkGroupSize.x) / OUTPUT_HEIGHT;
@@ -119,12 +93,14 @@ void main()
 
         precise int shared_coord_y =
             int(float(PHASES) * (base_input.y + registers.scaling_to_input.y * float(off_y)) + 0.5);
+        int shared_phase = int(bitfieldExtract(uint(shared_coord_y), 0, PHASES_BITS));
         shared_coord_y >>= PHASES_BITS;
         shared_coord_y -= int(base_input.y);
 
         for (int i = 0; i < TAPS_HALF; i++)
         {
-            f16vec2 w = shared_vert_weights[off_y][i];
+            f16vec2 w = weights[TAPS_HALF * PHASES + shared_phase * TAPS_HALF + i];
+
             f16vec2 rg0 = shared_rg[shared_coord_y + 2 * i + 0][off_x];
             f16vec2 rg1 = shared_rg[shared_coord_y + 2 * i + 1][off_x];
             f16vec2 ba0 = shared_ba[shared_coord_y + 2 * i + 0][off_x];
@@ -152,12 +128,13 @@ void main()
 
     precise int shared_coord_x =
         int(float(PHASES) * (base_input.x + registers.scaling_to_input.x * float(unswizzle_coord.x)) + 0.5);
+    int shared_phase = int(bitfieldExtract(uint(shared_coord_x), 0, PHASES_BITS));
     shared_coord_x >>= PHASES_BITS;
     shared_coord_x -= int(base_input.x);
 
     for (int i = 0; i < TAPS_HALF; i++)
     {
-        f16vec2 w = shared_horiz_weights[unswizzle_coord.x][i];
+        f16vec2 w = weights[shared_phase * TAPS_HALF + i];
         f16vec2 rg0 = shared_rg[unswizzle_coord.y][shared_coord_x + 2 * i + 0];
         f16vec2 rg1 = shared_rg[unswizzle_coord.y][shared_coord_x + 2 * i + 1];
         f16vec2 ba0 = shared_ba[unswizzle_coord.y][shared_coord_x + 2 * i + 0];

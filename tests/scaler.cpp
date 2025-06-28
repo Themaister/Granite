@@ -68,7 +68,7 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
 		auto asset_id = GRANITE_ASSET_MANAGER()->register_asset(
-				*GRANITE_FILESYSTEM(), "/tmp/test.jpg", AssetClass::ImageColor);
+				*GRANITE_FILESYSTEM(), "/tmp/test.png", AssetClass::ImageColor);
 		auto *view = device.get_resource_manager().get_image_view_blocking(asset_id);
 
 		constexpr int Phases = 256;
@@ -91,8 +91,8 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 		cmd.enable_subgroup_size_control(true);
 		cmd.set_subgroup_size_log2(true, 2, 6);
 
-		float bw = 1.0f / push.scaling_to_input.x * 0.8f;
-		float bh = 1.0f / push.scaling_to_input.y * 0.8f;
+		float bw = 1.0f / push.scaling_to_input.x * 0.9f;
+		float bh = 1.0f / push.scaling_to_input.y * 0.9f;
 
 		float weights_data[2][Phases][Taps] = {};
 		uint16_t weights_data16[2][Phases][Taps] = {};

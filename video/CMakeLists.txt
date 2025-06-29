@@ -4,6 +4,7 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
 
 add_granite_internal_lib(granite-video
         ffmpeg_encode.cpp ffmpeg_encode.hpp
+        scaler.cpp scaler.hpp
         slangmosh_encode_iface.hpp
         ffmpeg_decode.cpp ffmpeg_decode.hpp slangmosh_decode_iface.hpp
         ffmpeg_hw_device.cpp ffmpeg_hw_device.hpp)

@@ -26,6 +26,7 @@
 #include "os_filesystem.hpp"
 #include "muglm/muglm_impl.hpp"
 #include <string.h>
+#include "scaler.hpp"
 
 using namespace Granite;
 using namespace Vulkan;
@@ -39,36 +40,25 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 	}
 
 	ImageHandle render_target;
+	VideoScaler scaler;
 
 	void on_swapchain_create(const SwapchainParameterEvent &e)
 	{
-		auto info = ImageCreateInfo::immutable_2d_image(e.get_width(), e.get_height(), VK_FORMAT_R16G16B16A16_SFLOAT);
+		auto info = ImageCreateInfo::immutable_2d_image(e.get_width(), e.get_height(), VK_FORMAT_R8G8B8A8_SRGB);
 		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		info.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+		info.misc = IMAGE_MISC_MUTABLE_SRGB_BIT;
 		render_target = e.get_device().create_image(info);
 		render_target->set_layout(Layout::General);
+
+		auto *shader = e.get_device().get_shader_manager().register_compute("builtin://shaders/util/scaler.comp");
+		scaler.set_program(shader->register_variant({})->get_program());
 	}
 
 	void on_swapchain_destroy(const SwapchainParameterEvent &)
 	{
 		render_target.reset();
-	}
-
-	static float sinc(float v)
-	{
-		v *= muglm::pi<float>();
-		if (muglm::abs(v) < 0.0001f)
-			return 1.0f;
-		else
-			return muglm::sin(v) / v;
-	}
-
-	static float hann(float v)
-	{
-		// Raised cosine.
-		assert(v >= -1.0f && v <= 1.0f);
-		v = muglm::cos(0.5f * v * muglm::pi<float>());
-		return v * v;
 	}
 
 	void scale_image(CommandBuffer &cmd)
@@ -79,133 +69,17 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 				*GRANITE_FILESYSTEM(), "/tmp/test.png", AssetClass::ImageColor);
 		auto *view = device.get_resource_manager().get_image_view_blocking(asset_id);
 
-		constexpr int Phases = 256;
-		constexpr int Taps = 8;
+		VideoScaler::RescaleInfo info = {};
+		info.num_output_planes = 1;
+		info.output_planes[0] = &render_target->get_view();
+		info.input = view;
+		info.input_color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+		info.output_color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 
-		struct Push
-		{
-			ivec2 resolution;
-			vec2 scaling_to_input;
-			vec2 inv_input_resolution;
-		} push = {};
+		scaler.rescale(cmd, info);
 
-		push.resolution.x = int(view->get_view_width());
-		push.resolution.y = int(view->get_view_height());
-
-		push.scaling_to_input.x = float(push.resolution.x) / float(device.get_swapchain_view().get_view_width());
-		push.scaling_to_input.y = float(push.resolution.y) / float(device.get_swapchain_view().get_view_height());
-		bool sampled_downscaling = push.scaling_to_input.x > 2.0f || push.scaling_to_input.y > 2.0f;
-		// The filter doesn't have shared memory or kernel support to deal with ridiculous downsampling ratios,
-		// do it in multiple stages if need be.
-		push.scaling_to_input = muglm::min(vec2(2.0f), push.scaling_to_input);
-		push.inv_input_resolution.x = 1.0f / (float(render_target->get_width()) * push.scaling_to_input.x);
-		push.inv_input_resolution.y = 1.0f / (float(render_target->get_height()) * push.scaling_to_input.y);
-
-		cmd.push_constants(&push, 0, sizeof(push));
-
-		enum
-		{
-			CONTROL_SKIP_RESCALE_BIT = 1 << 0,
-			CONTROL_DOWNSCALING_BIT = 1 << 1,
-			CONTROL_SAMPLED_DOWNSCALING_BIT = 1 << 2,
-			CONTROL_CLAMP_COORD_BIT = 1 << 3,
-			CONTROL_CHROMA_SUBSAMPLE_BIT = 1 << 4,
-			CONTROL_PRIMARY_CONVERSION_BIT = 1 << 5
-		};
-
-		enum
-		{
-			TRANSFER_IDENTITY = 0
-		};
-
-		uint32_t flags = 0;
-		uint32_t eotf = TRANSFER_IDENTITY;
-		uint32_t oetf = TRANSFER_IDENTITY;
-		uint32_t output_planes = 1;
-
-		if (int(render_target->get_width()) == push.resolution.x && int(render_target->get_height()) == push.resolution.y)
-			flags |= CONTROL_SKIP_RESCALE_BIT;
-		if (push.scaling_to_input.x > 1.0f || push.scaling_to_input.y > 1.0f)
-			flags |= CONTROL_DOWNSCALING_BIT;
-		if (sampled_downscaling)
-			flags |= CONTROL_SAMPLED_DOWNSCALING_BIT;
-		flags |= CONTROL_CLAMP_COORD_BIT;
-
-		cmd.set_specialization_constant_mask(0xf);
-		cmd.set_specialization_constant(0, flags);
-		cmd.set_specialization_constant(1, eotf);
-		cmd.set_specialization_constant(2, oetf);
-		cmd.set_specialization_constant(3, output_planes);
-		cmd.enable_subgroup_size_control(true);
-		cmd.set_subgroup_size_log2(true, 2, 6);
-
-		float bw = std::min<float>(1.0f, 1.0f / push.scaling_to_input.x * 0.9f);
-		float bh = std::min<float>(1.0f, 1.0f / push.scaling_to_input.y * 0.9f);
-
-		float weights_data[2][Phases][Taps] = {};
-		uint16_t weights_data16[2][Phases][Taps] = {};
-
-		for (int phase = 0; phase < Phases; phase++)
-		{
-			float total_horiz = 0.0f;
-			float total_vert = 0.0f;
-
-			for (int tap = 0; tap < Taps; tap++)
-			{
-				constexpr int HalfTaps = Taps / 2;
-				constexpr int TapOffset = HalfTaps - 1;
-				float l = float(tap - TapOffset) - float(phase) / float(Phases);
-
-				float w_horiz = hann(l / float(HalfTaps)) * sinc(bw * l);
-				float w_vert = hann(l / float(HalfTaps)) * sinc(bh * l);
-
-				total_horiz += w_horiz;
-				total_vert += w_vert;
-
-				weights_data[0][phase][tap] = w_horiz;
-				weights_data[1][phase][tap] = w_vert;
-			}
-
-			for (auto &w : weights_data[0][phase])
-				w /= total_horiz;
-			for (auto &w : weights_data[1][phase])
-				w /= total_vert;
-		}
-
-		for (int dim = 0; dim < 2; dim++)
-			for (int phase = 0; phase < Phases; phase++)
-				for (int tap = 0; tap < Taps; tap++)
-					weights_data16[dim][phase][tap] = muglm::floatToHalf(weights_data[dim][phase][tap]);
-
-		BufferCreateInfo weights_info = {};
-		weights_info.size = Phases * Taps * sizeof(uint16_t) * 2;
-		weights_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-		weights_info.domain = BufferDomain::Device;
-
-		auto weights = device.create_buffer(weights_info, weights_data16);
-
-		cmd.set_program("builtin://shaders/util/scaler.comp");
-		cmd.set_texture(0, 0, *view);
-		cmd.set_sampler(0, 1, StockSampler::LinearClamp);
-		cmd.set_storage_texture(0, 2, render_target->get_view());
-		cmd.set_storage_buffer(0, 3, *weights);
-
-		struct UBO
-		{
-			mat4 gamma_space_transform;
-			mat3 primary_transform;
-		};
-		auto *ubo = cmd.allocate_typed_constant_data<UBO>(0, 4, 1);
-
-		cmd.set_storage_texture(0, 5, render_target->get_view());
-		cmd.set_storage_texture(0, 6, render_target->get_view());
-
-		auto start_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-		cmd.dispatch((render_target->get_width() + 7) / 8, (render_target->get_height() + 7) / 8, 1);
-		auto end_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "scale");
 	}
 
 	void render_frame(double, double) override

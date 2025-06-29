@@ -3,7 +3,6 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
 #extension GL_KHR_shader_subgroup_basic : require
 #extension GL_KHR_shader_subgroup_quad : require
-#extension GL_EXT_shader_subgroup_extended_types_float16 : require
 
 layout(local_size_x = 64) in;
 const int CONTROL_SKIP_RESCALE_BIT = 1 << 0;
@@ -12,6 +11,7 @@ const int CONTROL_SAMPLED_DOWNSCALING_BIT = 1 << 2;
 const int CONTROL_CLAMP_COORD_BIT = 1 << 3;
 const int CONTROL_CHROMA_SUBSAMPLE_BIT = 1 << 4;
 const int CONTROL_PRIMARY_CONVERSION_BIT = 1 << 5;
+const int CONTROL_DITHER_BIT = 1 << 6;
 layout(constant_id = 0) const int CONTROL = 0;
 
 const bool SKIP_RESCALE = (CONTROL & CONTROL_SKIP_RESCALE_BIT) != 0;
@@ -20,8 +20,12 @@ const bool SAMPLED_DOWNSCALING = (CONTROL & CONTROL_SAMPLED_DOWNSCALING_BIT) != 
 const bool CLAMP_COORD = (CONTROL & CONTROL_CLAMP_COORD_BIT) != 0;
 const bool CHROMA_SUBSAMPLE = (CONTROL & CONTROL_CHROMA_SUBSAMPLE_BIT) != 0;
 const bool PRIMARY_CONVERSION = (CONTROL & CONTROL_PRIMARY_CONVERSION_BIT) != 0;
+const bool DITHER = (CONTROL & CONTROL_DITHER_BIT) != 0;
 
 const int TRANSFER_IDENTITY = 0;
+const int TRANSFER_SRGB = 1;
+const int TRANSFER_PQ = 2;
+
 layout(constant_id = 1) const int EOTF = TRANSFER_IDENTITY;
 layout(constant_id = 2) const int OETF = TRANSFER_IDENTITY;
 layout(constant_id = 3) const int OUTPUT_PLANES = 1;
@@ -52,7 +56,7 @@ layout(set = 0, binding = 3, std430) readonly buffer Weights
 
 layout(set = 0, binding = 4) uniform UBO
 {
-    mat4 gamma_space_transform;
+    layout(row_major) mat4x3 gamma_space_transform;
     mat3 primary_transform;
 } ubo;
 
@@ -76,10 +80,30 @@ layout(push_constant) uniform Registers
     ivec2 resolution;
     vec2 scaling_to_input;
     vec2 inv_input_resolution;
+    float dither_strength;
 } registers;
+
+#include "../inc/srgb.h"
 
 f16vec4 apply_eotf(f16vec4 v)
 {
+    if (EOTF == TRANSFER_SRGB)
+    {
+        v.rgb = f16vec3(decode_srgb(v.rgb));
+    }
+    else if (EOTF == TRANSFER_PQ)
+    {
+        const float m1 = 0.1593017578125;
+        const float m2 = 78.84375;
+        const float c2 = 18.8515625;
+        const float c3 = 18.6875;
+        const float c1 = c3 - c2 + 1.0;
+        vec3 e_pow = pow(vec3(v.rgb), vec3(1.0 / m2));
+        vec3 num = max(e_pow - c1, vec3(0.0));
+        vec3 den = c2 - c3 * e_pow;
+        v.rgb = f16vec3(pow(num / den, vec3(1.0 / m1)) * 10000.0);
+    }
+
     return v;
 }
 
@@ -92,12 +116,29 @@ f16vec4 apply_primary_transform(f16vec4 v)
 
 f16vec4 apply_oetf(f16vec4 v)
 {
+    if (OETF == TRANSFER_SRGB)
+    {
+        v.rgb = f16vec3(encode_srgb(v.rgb));
+    }
+    else if (OETF == TRANSFER_PQ)
+    {
+        vec3 y = clamp(vec3(v.rgb) / 10000.0, vec3(0.0), vec3(1.0));
+        const float c1 = 0.8359375;
+        const float c2 = 18.8515625;
+        const float c3 = 18.6875;
+        const float m1 = 0.1593017578125;
+        const float m2 = 78.84375;
+        vec3 num = c1 + c2 * pow(y, vec3(m1));
+        vec3 den = 1.0 + c3 * pow(y, vec3(m1));
+        vec3 n = pow(num / den, vec3(m2));
+        v.rgb = f16vec3(n);
+    }
+
     return v;
 }
 
 f16vec4 rescale_image(ivec2 base_output, int local_index, ivec2 unswizzle_coord)
 {
-    f16vec4 final_result = f16vec4(0.0);
     precise vec2 base_input = (vec2(base_output) + 0.5) * registers.scaling_to_input - 0.5;
     ivec2 base_input_int = ivec2(floor(base_input));
     ivec2 local_coord = base_input_int + unswizzle_coord - (APRON - 1);
@@ -186,6 +227,8 @@ f16vec4 rescale_image(ivec2 base_output, int local_index, ivec2 unswizzle_coord)
     shared_coord_x >>= PHASES_BITS;
     shared_coord_x -= base_input_int.x;
 
+    f16vec4 final_result = f16vec4(0.0);
+
     for (int i = 0; i < TAPS_HALF; i++)
     {
         f16vec2 w = weights[shared_phase * TAPS_HALF + i];
@@ -198,6 +241,13 @@ f16vec4 rescale_image(ivec2 base_output, int local_index, ivec2 unswizzle_coord)
 
     return final_result;
 }
+
+#define D(x) ((x) - 0.5)
+const mediump float dither[] = float[](
+    D(0.0625), D(0.5625), D(0.1875), D(0.6875),
+    D(0.8125), D(0.3125), D(0.9375), D(0.4375),
+    D(0.25), D(0.75), D(0.125), D(0.625),
+    D(1.00), D(0.5), D(0.875), D(0.375));
 
 void main()
 {
@@ -224,14 +274,20 @@ void main()
 
     if (OUTPUT_PLANES == 1)
     {
-        imageStore(uOutput, output_coord, final_result);
+        vec4 res = final_result;
+        if (DITHER)
+            res += dither[(output_coord.y & 3) * 4 + (output_coord.x & 3)] * registers.dither_strength;
+        imageStore(uOutput, output_coord, res);
     }
     else
     {
-        final_result = clamp(final_result, f16vec4(0.0), f16vec4(1.0));
-        final_result.rgb = f16vec3((ubo.gamma_space_transform * vec4(final_result.rgb, 1.0)).rgb);
+        vec3 res = clamp(vec3(final_result.rgb), vec3(0.0), vec3(1.0));
+        res = f16vec3(ubo.gamma_space_transform * vec4(res, 1.0));
 
-        imageStore(uOutput, output_coord, final_result.gggg);
+        if (DITHER)
+            res.g += dither[(output_coord.y & 3) * 4 + (output_coord.x & 3)] * registers.dither_strength;
+
+        imageStore(uOutput, output_coord, res.gggg);
 
         ivec2 chroma_coord = output_coord;
         bool write_chroma = true;
@@ -240,21 +296,24 @@ void main()
         {
             chroma_coord >>= 1;
             write_chroma = (gl_SubgroupInvocationID & 3) == 0;
-            final_result.rb += subgroupQuadSwapHorizontal(final_result.rb);
-            final_result.rb += subgroupQuadSwapVertical(final_result.rb);
-            final_result.rb *= 0.25hf;
+            res.rb += subgroupQuadSwapHorizontal(res.rb);
+            res.rb += subgroupQuadSwapVertical(res.rb);
+            res.rb *= 0.25;
         }
 
         if (write_chroma)
         {
+            if (DITHER)
+                res.br += dither[(chroma_coord.y & 3) * 4 + (chroma_coord.x & 3)] * registers.dither_strength;
+
             if (OUTPUT_PLANES == 3)
             {
-                imageStore(uChromaPlane2, chroma_coord, final_result.bbbb);
-                imageStore(uChromaPlane3, chroma_coord, final_result.rrrr);
+                imageStore(uChromaPlane2, chroma_coord, res.bbbb);
+                imageStore(uChromaPlane3, chroma_coord, res.rrrr);
             }
             else
             {
-                imageStore(uChromaPlane2, chroma_coord, final_result.brbr);
+                imageStore(uChromaPlane2, chroma_coord, res.brbr);
             }
         }
     }

@@ -91,8 +91,8 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 		cmd.enable_subgroup_size_control(true);
 		cmd.set_subgroup_size_log2(true, 2, 6);
 
-		float bw = 1.0f / push.scaling_to_input.x * 0.9f;
-		float bh = 1.0f / push.scaling_to_input.y * 0.9f;
+		float bw = std::min<float>(1.0f, 1.0f / push.scaling_to_input.x * 0.9f);
+		float bh = std::min<float>(1.0f, 1.0f / push.scaling_to_input.y * 0.9f);
 
 		float weights_data[2][Phases][Taps] = {};
 		uint16_t weights_data16[2][Phases][Taps] = {};

@@ -118,7 +118,7 @@ f16vec4 apply_oetf(f16vec4 v)
 {
     if (OETF == TRANSFER_SRGB)
     {
-        v.rgb = f16vec3(encode_srgb(v.rgb));
+        v.rgb = f16vec3(encode_srgb(max(vec3(v.rgb), vec3(0.0))));
     }
     else if (OETF == TRANSFER_PQ)
     {

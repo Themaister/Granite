@@ -66,14 +66,14 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
 		auto asset_id = GRANITE_ASSET_MANAGER()->register_asset(
-				*GRANITE_FILESYSTEM(), "/tmp/test.png", AssetClass::ImageColor);
+				*GRANITE_FILESYSTEM(), "/tmp/test.png", AssetClass::ImageGeneric);
 		auto *view = device.get_resource_manager().get_image_view_blocking(asset_id);
 
 		VideoScaler::RescaleInfo info = {};
 		info.num_output_planes = 1;
 		info.output_planes[0] = &render_target->get_view();
 		info.input = view;
-		info.input_color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+		info.input_color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;
 		info.output_color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 
 		scaler.rescale(cmd, info);

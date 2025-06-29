@@ -2,24 +2,9 @@
 	"include": [ "../assets/shaders/inc" ],
 	"shaders": [
 		{
-			"name": "rgb_to_yuv",
+			"name": "scaler",
 			"compute": true,
-			"path": "../assets/shaders/util/rgb_to_yuv.comp"
-		},
-		{
-			"name": "rgb_scale",
-			"compute": true,
-			"path": "../assets/shaders/util/rgb_scale.comp"
-		},
-		{
-			"name": "chroma_downsample",
-			"compute": true,
-			"path": "../assets/shaders/util/chroma_downsample.comp"
-		},
-		{
-			"name": "decode_pq",
-			"compute": true,
-			"path": "../assets/shaders/util/decode_pq.comp"
+			"path": "../assets/shaders/util/scaler.comp"
 		}
 	]
 }

@@ -266,11 +266,8 @@ public:
 			auto &device = app->get_wsi().get_device();
 			FFmpegEncode::Shaders<> shaders;
 
-			shaders.rgb_to_yuv = device.get_shader_manager().register_compute(
-					"builtin://shaders/util/rgb_to_yuv.comp")->register_variant({})->get_program();
-			shaders.chroma_downsample = device.get_shader_manager().register_compute(
-					"builtin://shaders/util/chroma_downsample.comp")->register_variant({})->get_program();
-
+			shaders.scaler = device.get_shader_manager().register_compute(
+					"builtin://shaders/util/scaler.comp")->register_variant({})->get_program();
 			ycbcr_pipelines.push_back(encoder.create_ycbcr_pipeline(shaders));
 		}
 #endif

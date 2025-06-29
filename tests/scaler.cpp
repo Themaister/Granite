@@ -63,6 +63,14 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 			return muglm::sin(v) / v;
 	}
 
+	static float hann(float v)
+	{
+		// Raised cosine.
+		assert(v >= -1.0f && v <= 1.0f);
+		v = muglm::cos(0.5f * v * muglm::pi<float>());
+		return v * v;
+	}
+
 	void scale_image(CommandBuffer &cmd)
 	{
 		auto &wsi = get_wsi();
@@ -78,16 +86,27 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 		{
 			ivec2 resolution;
 			vec2 scaling_to_input;
+			vec2 inv_input_resolution;
 		} push = {};
 
 		push.resolution.x = int(view->get_view_width());
 		push.resolution.y = int(view->get_view_height());
+
 		push.scaling_to_input.x = float(push.resolution.x) / float(device.get_swapchain_view().get_view_width());
 		push.scaling_to_input.y = float(push.resolution.y) / float(device.get_swapchain_view().get_view_height());
+		bool sampled_downscaling = push.scaling_to_input.x > 2.0f || push.scaling_to_input.y > 2.0f;
+		// The filter doesn't have shared memory or kernel support to deal with ridiculous downsampling ratios,
+		// do it in multiple stages if need be.
+		push.scaling_to_input = muglm::min(vec2(2.0f), push.scaling_to_input);
+		push.inv_input_resolution.x = 1.0f / (float(render_target->get_width()) * push.scaling_to_input.x);
+		push.inv_input_resolution.y = 1.0f / (float(render_target->get_height()) * push.scaling_to_input.y);
+
 		cmd.push_constants(&push, 0, sizeof(push));
 
-		cmd.set_specialization_constant_mask(1);
+		cmd.set_specialization_constant_mask(7);
 		cmd.set_specialization_constant(0, push.scaling_to_input.x > 1.0f || push.scaling_to_input.y > 1.0f);
+		cmd.set_specialization_constant(1, sampled_downscaling);
+		cmd.set_specialization_constant(2, true);
 		cmd.enable_subgroup_size_control(true);
 		cmd.set_subgroup_size_log2(true, 2, 6);
 
@@ -108,8 +127,8 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 				constexpr int TapOffset = HalfTaps - 1;
 				float l = float(tap - TapOffset) - float(phase) / float(Phases);
 
-				float w_horiz = sinc(l / float(HalfTaps)) * sinc(bw * l);
-				float w_vert = sinc(l / float(HalfTaps)) * sinc(bh * l);
+				float w_horiz = hann(l / float(HalfTaps)) * sinc(bw * l);
+				float w_vert = hann(l / float(HalfTaps)) * sinc(bh * l);
 
 				total_horiz += w_horiz;
 				total_vert += w_vert;
@@ -140,6 +159,7 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 		cmd.set_texture(0, 0, *view);
 		cmd.set_storage_texture(0, 1, render_target->get_view());
 		cmd.set_storage_buffer(0, 4, *weights);
+		cmd.set_sampler(0, 5, StockSampler::LinearClamp);
 
 		auto start_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		cmd.dispatch((render_target->get_width() + 7) / 8, (render_target->get_height() + 7) / 8, 1);

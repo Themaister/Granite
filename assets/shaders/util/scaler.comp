@@ -5,6 +5,8 @@
 
 layout(local_size_x = 64) in;
 layout(constant_id = 0) const bool DOWNSCALING = false;
+layout(constant_id = 1) const bool SAMPLED_DOWNSCALING = false;
+layout(constant_id = 2) const bool CLAMP_COORD = false;
 
 layout(set = 0, binding = 0) uniform mediump texture2D uTexture;
 layout(set = 0, binding = 1) writeonly uniform mediump image2D uOutput;
@@ -14,6 +16,8 @@ layout(set = 0, binding = 2) writeonly uniform mediump image2D uChromaPlane2;
 #if PLANES >= 3
 layout(set = 0, binding = 3) writeonly uniform mediump image2D uChromaPlane3;
 #endif
+
+layout(set = 0, binding = 5) uniform sampler uLinearSampler;
 
 // Downscaling requires more aggressive filtering, and ensures that everything is POT.
 const int INPUT_WIDTH = DOWNSCALING ? 16 : 8;
@@ -51,6 +55,7 @@ layout(push_constant) uniform Registers
 {
     ivec2 resolution;
     vec2 scaling_to_input;
+    vec2 inv_input_resolution;
 } registers;
 
 void main()
@@ -68,12 +73,27 @@ void main()
         for (int x = 0; x < PADDED_INPUT_WIDTH; x += OUTPUT_WIDTH)
         {
             ivec2 coord = local_coord + ivec2(x, y);
-            // TODO: Make it configurable whether to clamp or not?
-            // TODO: Use implicit first-stage low quality downsample with texture sample as alternative path.
-            coord = clamp(coord, ivec2(0), registers.resolution - 1);
-            f16vec4 rgb = f16vec4(texelFetch(uTexture, coord, 0));
-            shared_rg[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgb.rg;
-            shared_ba[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgb.ba;
+
+            f16vec4 rgba;
+
+            if (SAMPLED_DOWNSCALING)
+            {
+                // For very high downsampling ratios, pre-filter to double target resolution first.
+                // This should retain most interesting frequencies at half-nyquist.
+                // For extreme downsampling ratios, can just run the filter multiple times
+                // (but there's no reasonable use case for that for me).
+                vec2 uv = (vec2(coord) + 0.5) * registers.inv_input_resolution;
+                rgba = f16vec4(textureLod(sampler2D(uTexture, uLinearSampler), uv, 0.0));
+            }
+            else
+            {
+                if (CLAMP_COORD)
+                    coord = clamp(coord, ivec2(0), registers.resolution - 1);
+                rgba = f16vec4(texelFetch(uTexture, coord, 0));
+            }
+
+            shared_rg[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgba.rg;
+            shared_ba[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgba.ba;
         }
     }
 

@@ -68,20 +68,12 @@ public:
 		P010
 	};
 
-	enum ChromaSiting
-	{
-		Center,
-		TopLeft,
-		Left
-	};
-
 	struct Options
 	{
 		unsigned width = 0;
 		unsigned height = 0;
 		Timebase frame_timebase = {};
 		Format format = Format::NV12; // Default for HW encode.
-		ChromaSiting siting = ChromaSiting::Left; // Default for H.264.
 		const char *encoder = "libx264";
 
 		// Correlate PTS with wall time.
@@ -90,8 +82,6 @@ public:
 
 		// Hack for now, set PQ trc.
 		bool hdr10 = false;
-
-		bool color_full_range = false;
 
 		unsigned bitrate_kbits = 6000;
 		unsigned max_bitrate_kbits = 8000;
@@ -138,6 +128,5 @@ public:
 private:
 	struct Impl;
 	std::unique_ptr<Impl> impl;
-	void process_rgb_pyro(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline, const Vulkan::ImageView &view);
 };
 }

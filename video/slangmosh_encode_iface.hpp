@@ -13,10 +13,7 @@ namespace FFmpegEncode
 template <typename Program = Vulkan::Program *, typename Shader = Vulkan::Shader *>
 struct Shaders
 {
-	Program rgb_to_yuv = {};
-	Program rgb_scale = {};
-	Program chroma_downsample = {};
-	Program decode_pq = {};
+	Program scaler = {};
 	Shaders() = default;
 
 	template <typename Device, typename Layout, typename Resolver>

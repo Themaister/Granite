@@ -1,0 +1,320 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_quad : require
+
+layout(local_size_x = 64) in;
+const int CONTROL_SKIP_RESCALE_BIT = 1 << 0;
+const int CONTROL_DOWNSCALING_BIT = 1 << 1;
+const int CONTROL_SAMPLED_DOWNSCALING_BIT = 1 << 2;
+const int CONTROL_CLAMP_COORD_BIT = 1 << 3;
+const int CONTROL_CHROMA_SUBSAMPLE_BIT = 1 << 4;
+const int CONTROL_PRIMARY_CONVERSION_BIT = 1 << 5;
+const int CONTROL_DITHER_BIT = 1 << 6;
+layout(constant_id = 0) const int CONTROL = 0;
+
+const bool SKIP_RESCALE = (CONTROL & CONTROL_SKIP_RESCALE_BIT) != 0;
+const bool DOWNSCALING = (CONTROL & CONTROL_DOWNSCALING_BIT) != 0;
+const bool SAMPLED_DOWNSCALING = (CONTROL & CONTROL_SAMPLED_DOWNSCALING_BIT) != 0;
+const bool CLAMP_COORD = (CONTROL & CONTROL_CLAMP_COORD_BIT) != 0;
+const bool CHROMA_SUBSAMPLE = (CONTROL & CONTROL_CHROMA_SUBSAMPLE_BIT) != 0;
+const bool PRIMARY_CONVERSION = (CONTROL & CONTROL_PRIMARY_CONVERSION_BIT) != 0;
+const bool DITHER = (CONTROL & CONTROL_DITHER_BIT) != 0;
+
+const int TRANSFER_IDENTITY = 0;
+const int TRANSFER_SRGB = 1;
+const int TRANSFER_PQ = 2;
+
+layout(constant_id = 1) const int EOTF = TRANSFER_IDENTITY;
+layout(constant_id = 2) const int OETF = TRANSFER_IDENTITY;
+layout(constant_id = 3) const int OUTPUT_PLANES = 1;
+
+layout(set = 0, binding = 0) uniform mediump texture2D uTexture;
+layout(set = 0, binding = 1) uniform sampler uLinearSampler;
+layout(set = 0, binding = 2) writeonly uniform mediump image2D uOutput;
+
+// Downscaling requires more aggressive filtering, and ensures that everything is POT.
+const int INPUT_WIDTH = DOWNSCALING ? 16 : 8;
+const int INPUT_HEIGHT = DOWNSCALING ? 16 : 8;
+const int APRON = 4;
+
+const int PADDED_INPUT_WIDTH = INPUT_WIDTH + 2 * APRON;
+const int PADDED_INPUT_HEIGHT = INPUT_HEIGHT + 2 * APRON;
+const int OUTPUT_WIDTH = 8;
+const int OUTPUT_HEIGHT = 8;
+
+const int TAPS_HALF = APRON;
+const int TAPS = APRON * 2;
+const int PHASES_BITS = 8;
+const int PHASES = 1 << PHASES_BITS;
+
+layout(set = 0, binding = 3, std430) readonly buffer Weights
+{
+    f16vec2 weights[];
+};
+
+layout(set = 0, binding = 4) uniform UBO
+{
+    layout(row_major) mat4x3 gamma_space_transform;
+    mat3 primary_transform;
+} ubo;
+
+layout(set = 0, binding = 5) writeonly uniform mediump image2D uChromaPlane2;
+layout(set = 0, binding = 6) writeonly uniform mediump image2D uChromaPlane3;
+
+ivec2 unswizzle8x8(uint index)
+{
+    uint y = bitfieldExtract(index, 0, 1);
+    uint x = bitfieldExtract(index, 1, 2);
+    y |= bitfieldExtract(index, 3, 2) << 1;
+    x |= bitfieldExtract(index, 5, 1) << 2;
+    return ivec2(x, y);
+}
+
+shared f16vec2 shared_rg[PADDED_INPUT_HEIGHT][PADDED_INPUT_WIDTH + 1];
+shared f16vec2 shared_ba[PADDED_INPUT_HEIGHT][PADDED_INPUT_WIDTH + 1];
+
+layout(push_constant) uniform Registers
+{
+    ivec2 resolution;
+    vec2 scaling_to_input;
+    vec2 inv_input_resolution;
+    float dither_strength;
+} registers;
+
+#include "../inc/srgb.h"
+
+f16vec4 apply_eotf(f16vec4 v)
+{
+    if (EOTF == TRANSFER_SRGB)
+    {
+        v.rgb = f16vec3(decode_srgb(v.rgb));
+    }
+    else if (EOTF == TRANSFER_PQ)
+    {
+        const float m1 = 0.1593017578125;
+        const float m2 = 78.84375;
+        const float c2 = 18.8515625;
+        const float c3 = 18.6875;
+        const float c1 = c3 - c2 + 1.0;
+        vec3 e_pow = pow(vec3(v.rgb), vec3(1.0 / m2));
+        vec3 num = max(e_pow - c1, vec3(0.0));
+        vec3 den = c2 - c3 * e_pow;
+        v.rgb = f16vec3(pow(num / den, vec3(1.0 / m1)) * 10000.0);
+    }
+
+    return v;
+}
+
+f16vec4 apply_primary_transform(f16vec4 v)
+{
+    if (PRIMARY_CONVERSION)
+        v = f16vec4(ubo.primary_transform * vec3(v.rgb), v.a);
+    return v;
+}
+
+f16vec4 apply_oetf(f16vec4 v)
+{
+    if (OETF == TRANSFER_SRGB)
+    {
+        v.rgb = f16vec3(encode_srgb(max(vec3(v.rgb), vec3(0.0))));
+    }
+    else if (OETF == TRANSFER_PQ)
+    {
+        vec3 y = clamp(vec3(v.rgb) / 10000.0, vec3(0.0), vec3(1.0));
+        const float c1 = 0.8359375;
+        const float c2 = 18.8515625;
+        const float c3 = 18.6875;
+        const float m1 = 0.1593017578125;
+        const float m2 = 78.84375;
+        vec3 num = c1 + c2 * pow(y, vec3(m1));
+        vec3 den = 1.0 + c3 * pow(y, vec3(m1));
+        vec3 n = pow(num / den, vec3(m2));
+        v.rgb = f16vec3(n);
+    }
+
+    return v;
+}
+
+f16vec4 rescale_image(ivec2 base_output, int local_index, ivec2 unswizzle_coord)
+{
+    precise vec2 base_input = (vec2(base_output) + 0.5) * registers.scaling_to_input - 0.5;
+    ivec2 base_input_int = ivec2(floor(base_input));
+    ivec2 local_coord = base_input_int + unswizzle_coord - (APRON - 1);
+
+    for (int y = 0; y < PADDED_INPUT_HEIGHT; y += OUTPUT_HEIGHT)
+    {
+        for (int x = 0; x < PADDED_INPUT_WIDTH; x += OUTPUT_WIDTH)
+        {
+            ivec2 coord = local_coord + ivec2(x, y);
+
+            f16vec4 rgba;
+
+            if (SAMPLED_DOWNSCALING)
+            {
+                // For very high downsampling ratios, pre-filter to double target resolution first.
+                // This should retain most interesting frequencies at half-nyquist.
+                // For extreme downsampling ratios, can just run the filter multiple times
+                // (but there's no reasonable use case for that for me).
+                vec2 uv = (vec2(coord) + 0.5) * registers.inv_input_resolution;
+                rgba = f16vec4(textureLod(sampler2D(uTexture, uLinearSampler), uv, 0.0));
+            }
+            else
+            {
+                if (CLAMP_COORD)
+                    coord = clamp(coord, ivec2(0), registers.resolution - 1);
+                rgba = f16vec4(texelFetch(uTexture, coord, 0));
+            }
+
+            rgba = apply_eotf(rgba);
+
+            shared_rg[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgba.rg;
+            shared_ba[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgba.ba;
+        }
+    }
+
+    barrier();
+
+    const int NUM_HORIZONTAL_PIXELS_PER_ITERATION = int(gl_WorkGroupSize.x) / OUTPUT_HEIGHT;
+    const int NUM_HORIZONTAL_ITERATIONS = PADDED_INPUT_WIDTH / NUM_HORIZONTAL_PIXELS_PER_ITERATION;
+    f16vec4 result[NUM_HORIZONTAL_ITERATIONS];
+
+    for (int iter = 0; iter < NUM_HORIZONTAL_ITERATIONS; iter++)
+    {
+        // Filter vertically.
+        f16vec4 tmp = f16vec4(0.0);
+
+        int off_x = int(local_index) / OUTPUT_HEIGHT + NUM_HORIZONTAL_PIXELS_PER_ITERATION * iter;
+        int off_y = int(local_index) % OUTPUT_HEIGHT;
+
+        precise int shared_coord_y =
+            int(float(PHASES) * (base_input.y + registers.scaling_to_input.y * float(off_y)) + 0.5);
+        int shared_phase = int(bitfieldExtract(uint(shared_coord_y), 0, PHASES_BITS));
+        shared_coord_y >>= PHASES_BITS;
+        shared_coord_y -= base_input_int.y;
+
+        for (int i = 0; i < TAPS_HALF; i++)
+        {
+            f16vec2 w = weights[TAPS_HALF * PHASES + shared_phase * TAPS_HALF + i];
+
+            f16vec2 rg0 = shared_rg[shared_coord_y + 2 * i + 0][off_x];
+            f16vec2 rg1 = shared_rg[shared_coord_y + 2 * i + 1][off_x];
+            f16vec2 ba0 = shared_ba[shared_coord_y + 2 * i + 0][off_x];
+            f16vec2 ba1 = shared_ba[shared_coord_y + 2 * i + 1][off_x];
+            tmp += f16vec4(rg0, ba0) * w.x + f16vec4(rg1, ba1) * w.y;
+        }
+
+        result[iter] = tmp;
+    }
+
+    barrier();
+
+    for (int iter = 0; iter < NUM_HORIZONTAL_ITERATIONS; iter++)
+    {
+        int off_x = int(local_index) / OUTPUT_HEIGHT + NUM_HORIZONTAL_PIXELS_PER_ITERATION * iter;
+        int off_y = int(local_index) % OUTPUT_HEIGHT;
+        shared_rg[off_y][off_x] = result[iter].rg;
+        shared_ba[off_y][off_x] = result[iter].ba;
+    }
+
+    barrier();
+
+    // Filter horizontally.
+    precise int shared_coord_x =
+        int(float(PHASES) * (base_input.x + registers.scaling_to_input.x * float(unswizzle_coord.x)) + 0.5);
+    int shared_phase = int(bitfieldExtract(uint(shared_coord_x), 0, PHASES_BITS));
+    shared_coord_x >>= PHASES_BITS;
+    shared_coord_x -= base_input_int.x;
+
+    f16vec4 final_result = f16vec4(0.0);
+
+    for (int i = 0; i < TAPS_HALF; i++)
+    {
+        f16vec2 w = weights[shared_phase * TAPS_HALF + i];
+        f16vec2 rg0 = shared_rg[unswizzle_coord.y][shared_coord_x + 2 * i + 0];
+        f16vec2 rg1 = shared_rg[unswizzle_coord.y][shared_coord_x + 2 * i + 1];
+        f16vec2 ba0 = shared_ba[unswizzle_coord.y][shared_coord_x + 2 * i + 0];
+        f16vec2 ba1 = shared_ba[unswizzle_coord.y][shared_coord_x + 2 * i + 1];
+        final_result += f16vec4(rg0, ba0) * w.x + f16vec4(rg1, ba1) * w.y;
+    }
+
+    return final_result;
+}
+
+#define D(x) ((x) - 0.5)
+const mediump float dither[] = float[](
+    D(0.0625), D(0.5625), D(0.1875), D(0.6875),
+    D(0.8125), D(0.3125), D(0.9375), D(0.4375),
+    D(0.25), D(0.75), D(0.125), D(0.625),
+    D(1.00), D(0.5), D(0.875), D(0.375));
+
+void main()
+{
+    ivec2 base_output = ivec2(gl_WorkGroupID.xy) * ivec2(OUTPUT_WIDTH, OUTPUT_HEIGHT);
+    int local_index = int(gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID);
+    ivec2 unswizzle_coord = unswizzle8x8(local_index);
+    f16vec4 final_result;
+
+    if (SKIP_RESCALE)
+    {
+        final_result = f16vec4(texelFetch(uTexture, base_output + unswizzle_coord, 0));
+        final_result = apply_eotf(final_result);
+    }
+    else
+    {
+        final_result = rescale_image(base_output, local_index, unswizzle_coord);
+    }
+
+    // E.g. 709 <-> 2020 primaries
+    final_result = apply_primary_transform(final_result);
+    final_result = apply_oetf(final_result);
+
+    ivec2 output_coord = base_output + unswizzle_coord;
+
+    if (OUTPUT_PLANES == 1)
+    {
+        vec4 res = final_result;
+        if (DITHER)
+            res += dither[(output_coord.y & 3) * 4 + (output_coord.x & 3)] * registers.dither_strength;
+        imageStore(uOutput, output_coord, res);
+    }
+    else
+    {
+        vec3 res = clamp(vec3(final_result.rgb), vec3(0.0), vec3(1.0));
+        res = f16vec3(ubo.gamma_space_transform * vec4(res, 1.0));
+
+        if (DITHER)
+            res.g += dither[(output_coord.y & 3) * 4 + (output_coord.x & 3)] * registers.dither_strength;
+
+        imageStore(uOutput, output_coord, res.gggg);
+
+        ivec2 chroma_coord = output_coord;
+        bool write_chroma = true;
+
+        if (CHROMA_SUBSAMPLE)
+        {
+            chroma_coord >>= 1;
+            write_chroma = (gl_SubgroupInvocationID & 3) == 0;
+            res.rb += subgroupQuadSwapHorizontal(res.rb);
+            res.rb += subgroupQuadSwapVertical(res.rb);
+            res.rb *= 0.25;
+        }
+
+        if (write_chroma)
+        {
+            if (DITHER)
+                res.br += dither[(chroma_coord.y & 3) * 4 + (chroma_coord.x & 3)] * registers.dither_strength;
+
+            if (OUTPUT_PLANES == 3)
+            {
+                imageStore(uChromaPlane2, chroma_coord, res.bbbb);
+                imageStore(uChromaPlane3, chroma_coord, res.rrrr);
+            }
+            else
+            {
+                imageStore(uChromaPlane2, chroma_coord, res.brbr);
+            }
+        }
+    }
+}

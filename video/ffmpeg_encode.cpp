@@ -36,6 +36,7 @@
 #include <cstdlib>
 #include "pyroenc.hpp"
 #include "pyrowave_encoder.hpp"
+#include "scaler.hpp"
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
 #include "dsp/dsp.hpp"
@@ -76,30 +77,14 @@ struct CodecStream
 
 struct VideoEncoder::YCbCrPipelineData
 {
-	Vulkan::ImageHandle rgb;
-	Vulkan::ImageHandle luma;
-	Vulkan::ImageHandle chroma_full[2];
-	Vulkan::ImageHandle chroma[2];
+	Vulkan::ImageHandle output_planes[3];
 	Vulkan::BufferHandle buffer;
 	Vulkan::Fence fence;
-	Vulkan::Program *rgb_to_ycbcr = nullptr;
-	Vulkan::Program *chroma_downsample = nullptr;
-	Vulkan::Program *rgb_scale = nullptr;
-	Vulkan::Program *decode_pq = nullptr;
+	Vulkan::Program *scale = nullptr;
 	PlaneLayout planes[3] = {};
 	unsigned num_planes = 0;
-	bool pyroenc = false;
 
-	struct Constants
-	{
-		float inv_resolution_luma[2];
-		float inv_resolution_chroma[2];
-		float base_uv_luma[2];
-		float base_uv_chroma[2];
-		uint32_t luma_dispatch[2];
-		uint32_t chroma_dispatch[2];
-		float dither_strength;
-	} constants = {};
+	VideoScaler scaler;
 
 	AVFrame *hw_frame = nullptr;
 	~YCbCrPipelineData()
@@ -1134,7 +1119,9 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 		video.ticks_per_frame = 1;
 	}
 
-	video.av_ctx->color_range = options.color_full_range ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
+	// Nice and simple.
+	video.av_ctx->color_range = AVCOL_RANGE_JPEG;
+	video.av_ctx->chroma_sample_location = AVCHROMA_LOC_CENTER;
 
 	if (options.hdr10)
 	{
@@ -1146,24 +1133,6 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 	{
 		video.av_ctx->colorspace = AVCOL_SPC_BT709;
 		video.av_ctx->color_primaries = AVCOL_PRI_BT709;
-	}
-
-	switch (options.siting)
-	{
-	case ChromaSiting::TopLeft:
-		video.av_ctx->chroma_sample_location = AVCHROMA_LOC_TOPLEFT;
-		break;
-
-	case ChromaSiting::Left:
-		video.av_ctx->chroma_sample_location = AVCHROMA_LOC_LEFT;
-		break;
-
-	case ChromaSiting::Center:
-		video.av_ctx->chroma_sample_location = AVCHROMA_LOC_CENTER;
-		break;
-
-	default:
-		return false;
 	}
 
 	// Allow higher precision raw formats when dumping y4m video.
@@ -1463,12 +1432,6 @@ bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
 	pyro_codec.frame_rate_num = pyro_info.frame_rate_num;
 	pyro_codec.frame_rate_den = pyro_info.frame_rate_den;
 	pyro_codec.video_color_profile = PYRO_VIDEO_COLOR_BT709_LIMITED_LEFT_CHROMA_420;
-
-	if (options.color_full_range || options.siting != ChromaSiting::Left)
-	{
-		LOGE("PyroEnc currently only supports 4:2:0 left siting.\n");
-		return false;
-	}
 
 	LOGI("Initialized PyroEnc encoder.\n");
 
@@ -1806,60 +1769,6 @@ void VideoEncoder::set_mux_stream_callback(Granite::MuxStreamCallback *callback)
 	impl->set_mux_stream_callback(callback);
 }
 
-void VideoEncoder::process_rgb_pyro(Vulkan::CommandBuffer &cmd, VideoEncoder::YCbCrPipeline &pipeline_ptr,
-                                    const Vulkan::ImageView &view)
-{
-	auto &pipeline = *pipeline_ptr;
-	cmd.image_barrier(*pipeline.luma, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-
-	cmd.set_program(pipeline.rgb_scale);
-	cmd.set_specialization_constant_mask(1);
-
-	if (Vulkan::format_is_srgb(view.get_format()) || view.get_format() == VK_FORMAT_R16G16B16A16_SFLOAT)
-	{
-		cmd.set_specialization_constant(0, 1);
-		cmd.set_texture(0, 0, view, Vulkan::StockSampler::NearestClamp);
-	}
-	else
-	{
-		cmd.set_specialization_constant(0, 0);
-		cmd.set_texture(0, 0, view, Vulkan::StockSampler::NearestClamp);
-	}
-
-	cmd.set_storage_texture(0, 1, pipeline.luma->get_view());
-
-	struct Push
-	{
-		uint32_t width, height;
-		float inv_width, inv_height;
-		float input_width, input_height;
-		float inv_input_width, inv_input_height;
-		float dither_strength;
-	} push = {};
-
-	push.width = impl->options.width;
-	push.height = impl->options.height;
-	push.inv_width = pipeline.constants.inv_resolution_luma[0];
-	push.inv_height = pipeline.constants.inv_resolution_luma[1];
-	push.input_width = float(view.get_view_width());
-	push.input_height = float(view.get_view_height());
-	push.inv_input_width = 1.0f / push.input_width;
-	push.inv_input_height = 1.0f / push.input_height;
-	push.dither_strength = pipeline.constants.dither_strength;
-	cmd.push_constants(&push, 0, sizeof(push));
-
-	auto start_yuv_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-	cmd.dispatch(pipeline.constants.luma_dispatch[0], pipeline.constants.luma_dispatch[1], 1);
-	auto end_yuv_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-	cmd.image_barrier(*pipeline.luma, VK_IMAGE_LAYOUT_GENERAL, impl->pyro_encoder.get_conversion_image_layout(),
-	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-	                  impl->pyro_encoder.get_conversion_dst_stage(), impl->pyro_encoder.get_conversion_dst_access());
-	cmd.get_device().register_time_interval("GPU", std::move(start_yuv_ts), std::move(end_yuv_ts), "rgb-scale");
-	cmd.set_specialization_constant_mask(0);
-}
-
 void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeline_ptr, const Vulkan::ImageView &view,
                                VkColorSpaceKHR color_space)
 {
@@ -1869,18 +1778,33 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		pipeline.fence->wait();
 	pipeline.fence.reset();
 
-	if (pipeline.pyroenc)
-	{
-		process_rgb_pyro(cmd, pipeline_ptr, view);
-		return;
-	}
-
 	if (pipeline.hw_frame)
 		av_frame_free(&pipeline.hw_frame);
 
 	Vulkan::ImageViewHandle wrapped_planes[2];
 	Vulkan::ImageHandle wrapped_image;
 	auto &device = cmd.get_device();
+
+	pipeline.scaler.set_program(pipeline.scale);
+	VideoScaler::RescaleInfo rescale_info = {};
+
+	rescale_info.num_output_planes = pipeline.num_planes;
+
+	for (unsigned plane = 0; plane < pipeline.num_planes; plane++)
+	{
+		if (pipeline.output_planes[plane])
+		{
+			rescale_info.output_planes[plane] = &pipeline.output_planes[plane]->get_view();
+			cmd.image_barrier(*pipeline.output_planes[plane],
+			                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+			                  VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+		}
+	}
+
+	rescale_info.input = &view;
+	rescale_info.input_color_space = color_space;
+	rescale_info.output_color_space = impl->options.hdr10 ? VK_COLOR_SPACE_HDR10_ST2084_EXT : VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 
 #ifdef HAVE_FFMPEG_VULKAN
 	AVHWFramesContext *frames = nullptr;
@@ -1933,6 +1857,9 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		view_info.format = VK_FORMAT_R8G8_UNORM;
 		wrapped_planes[1] = device.create_image_view(view_info);
 
+		rescale_info.output_planes[0] = wrapped_planes[0].get();
+		rescale_info.output_planes[1] = wrapped_planes[1].get();
+
 		vk_frame->layout[0] = VK_IMAGE_LAYOUT_GENERAL;
 		// XXX: FFmpeg header bug.
 		// Semaphore ensures memory avail / vis.
@@ -1940,308 +1867,43 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	}
 #endif
 
-	bool requires_fp16_temporary = false;
-	bool requires_pq_encode = false;
-	bool requires_bt709_to_bt2020_primaries = false;
-	float sdr_scale = 1.0f;
+	pipeline.scaler.rescale(cmd, rescale_info);
 
-	if (impl->options.hdr10)
+	for (unsigned plane = 0; plane < pipeline.num_planes; plane++)
 	{
-		if (color_space == VK_COLOR_SPACE_HDR10_ST2084_EXT &&
-		    (impl->options.width != view.get_view_width() ||
-		     impl->options.height != view.get_view_height()))
+		if (pipeline.output_planes[plane])
 		{
-			// If we need to scale PQ, we have to do so in linear space.
-			// For sRGB, we don't really care all that much.
-			requires_fp16_temporary = true;
-			requires_pq_encode = true;
-		}
-		else if (color_space != VK_COLOR_SPACE_HDR10_ST2084_EXT)
-		{
-			requires_bt709_to_bt2020_primaries = true;
-			requires_pq_encode = true;
-		}
-
-		if (color_space == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
-			sdr_scale = 200.0f;
-		else if (color_space == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT)
-			sdr_scale = 80.0f;
-	}
-
-	if (requires_fp16_temporary)
-	{
-		auto info = pipeline.luma->get_create_info();
-		info.width = view.get_view_width();
-		info.height = view.get_view_height();
-		info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-
-		if (!pipeline.rgb || info.width != pipeline.rgb->get_width() || info.height != pipeline.rgb->get_height())
-			pipeline.rgb = device.create_image(info);
-
-		cmd.image_barrier(*pipeline.rgb, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-
-		cmd.set_program(pipeline.decode_pq);
-		cmd.set_texture(0, 0, view);
-		cmd.set_storage_texture(0, 1, pipeline.rgb->get_view());
-		cmd.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 1);
-
-		cmd.image_barrier(*pipeline.rgb, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-	}
-
-	if (wrapped_image)
-	{
-		cmd.image_barrier(*wrapped_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-	}
-
-	if (pipeline.luma)
-	{
-		cmd.image_barrier(*pipeline.luma, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-	}
-
-	for (auto &img : pipeline.chroma_full)
-	{
-		if (img)
-		{
-			cmd.image_barrier(*img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-		}
-	}
-
-	for (auto &img : pipeline.chroma)
-	{
-		if (img)
-		{
-			cmd.image_barrier(*img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-		}
-	}
-
-	cmd.set_program(pipeline.rgb_to_ycbcr);
-
-	const auto *input_view = requires_fp16_temporary ? &pipeline.rgb->get_view() : &view;
-
-	if (input_view->get_format() == VK_FORMAT_R8G8B8A8_UNORM ||
-	    input_view->get_format() == VK_FORMAT_R8G8B8A8_SRGB ||
-	    input_view->get_format() == VK_FORMAT_B8G8R8A8_UNORM ||
-	    input_view->get_format() == VK_FORMAT_B8G8R8A8_SRGB)
-	{
-		if (requires_pq_encode)
-			cmd.set_srgb_texture(0, 0, *input_view);
-		else
-			cmd.set_unorm_texture(0, 0, *input_view);
-
-		cmd.set_sampler(0, 0, Vulkan::StockSampler::NearestClamp);
-	}
-	else
-		cmd.set_texture(0, 0, *input_view, Vulkan::StockSampler::NearestClamp);
-
-	cmd.set_storage_texture(0, 1, wrapped_planes[0] ? *wrapped_planes[0] : pipeline.luma->get_view());
-	cmd.set_storage_texture(0, 2, pipeline.chroma_full[0]->get_view());
-	cmd.set_storage_texture(0, 3, pipeline.chroma_full[1]->get_view());
-
-	struct Push
-	{
-		uint32_t width, height;
-		float base_u, base_v;
-		float inv_width, inv_height;
-		float input_width, input_height;
-		float inv_input_width, inv_input_height;
-		float dither_strength;
-	} push = {};
-
-	push.width = impl->options.width;
-	push.height = impl->options.height;
-	push.inv_width = pipeline.constants.inv_resolution_luma[0];
-	push.inv_height = pipeline.constants.inv_resolution_luma[1];
-	push.input_width = float(view.get_view_width());
-	push.input_height = float(view.get_view_height());
-	push.inv_input_width = 1.0f / push.input_width;
-	push.inv_input_height = 1.0f / push.input_height;
-	push.base_u = pipeline.constants.base_uv_luma[0];
-	push.base_v = pipeline.constants.base_uv_luma[1];
-	push.dither_strength = pipeline.constants.dither_strength;
-	cmd.push_constants(&push, 0, sizeof(push));
-
-	auto *color_transform = cmd.allocate_typed_constant_data<vec4>(0, 4, 3);
-	auto *primary_transform = cmd.allocate_typed_constant_data<vec4>(0, 5, 3);
-
-	// Minimal crude implementation to get something HDR10 working.
-	if (impl->options.hdr10)
-	{
-		color_transform[0] = vec4(0.2627f, 0.678f, 0.0593f, 0.0f);
-		color_transform[1] = vec4(-0.13963f, -0.36037f, 0.5f, 0.0f);
-		color_transform[2] = vec4(0.5f, -0.459786f, -0.0402143f, 0.0f);
-	}
-	else
-	{
-		color_transform[0] = vec4(0.2126f, 0.7152f, 0.0722f, 0.0f);
-		color_transform[1] = vec4(-0.114572f, -0.385428f, 0.5f, 0.0f);
-		color_transform[2] = vec4(0.5f, -0.454153f, -0.0458471f, 0.0f);
-	}
-
-	if (requires_bt709_to_bt2020_primaries)
-	{
-		const Primaries bt709 = {
-			{ 0.640f, 0.330f },
-			{ 0.300f, 0.600f },
-			{ 0.150f, 0.060f },
-			{ 0.3127f, 0.3290f },
-		};
-
-		const Primaries bt2020 = {
-			{ 0.708f, 0.292f },
-			{ 0.170f, 0.797f },
-			{ 0.131f, 0.046f },
-			{ 0.3127f, 0.3290f },
-		};
-
-		auto conv = inverse(compute_xyz_matrix(bt2020)) * compute_xyz_matrix(bt709);
-		primary_transform[0] = vec4(sdr_scale * conv[0], 0.0f);
-		primary_transform[1] = vec4(sdr_scale * conv[1], 0.0f);
-		primary_transform[2] = vec4(sdr_scale * conv[2], 0.0f);
-	}
-
-	cmd.set_specialization_constant_mask(0x1f);
-	cmd.set_specialization_constant(0, !impl->options.color_full_range);
-	cmd.set_specialization_constant(1, true);
-	cmd.set_specialization_constant(2, push.width != view.get_view_width() || push.height != view.get_view_height());
-	cmd.set_specialization_constant(3, requires_pq_encode);
-	cmd.set_specialization_constant(4, requires_bt709_to_bt2020_primaries);
-
-	auto start_yuv_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-	cmd.dispatch(pipeline.constants.luma_dispatch[0], pipeline.constants.luma_dispatch[1], 1);
-	auto end_yuv_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-
-	if (pipeline.luma)
-	{
-		if (impl->using_pyrowave_encoder)
-		{
-			cmd.image_barrier(*pipeline.luma, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-		}
-		else
-		{
-			cmd.image_barrier(*pipeline.luma, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-			                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-		}
-	}
-
-	for (auto &img : pipeline.chroma_full)
-	{
-		if (img)
-		{
-			cmd.image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-		}
-	}
-
-	if (!impl->using_pyrowave_encoder)
-	{
-		cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.luma, pipeline.planes[0].offset,
-		                         {},
-		                         {pipeline.luma->get_width(), pipeline.luma->get_height(), 1},
-		                         pipeline.planes[0].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
-	}
-
-	if (format_needs_downsample(impl->options.format))
-	{
-		cmd.set_program(pipeline.chroma_downsample);
-		cmd.set_texture(0, 0, pipeline.chroma_full[0]->get_view(), Vulkan::StockSampler::LinearClamp);
-		cmd.set_texture(0, 1, pipeline.chroma_full[1]->get_view(), Vulkan::StockSampler::LinearClamp);
-		for (int i = 2; i < 4; i++)
-			cmd.set_storage_texture(0, i, wrapped_planes[1] ? *wrapped_planes[1] : pipeline.chroma[0]->get_view());
-		if (pipeline.chroma[1])
-			cmd.set_storage_texture(0, 3, pipeline.chroma[1]->get_view());
-
-		push.inv_width = pipeline.constants.inv_resolution_chroma[0];
-		push.inv_height = pipeline.constants.inv_resolution_chroma[1];
-		push.base_u = pipeline.constants.base_uv_chroma[0];
-		push.base_v = pipeline.constants.base_uv_chroma[1];
-		cmd.push_constants(&push, 0, sizeof(push));
-		auto start_chroma_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-		cmd.set_specialization_constant_mask(1);
-		cmd.set_specialization_constant(0, bool(pipeline.chroma[1]));
-		cmd.dispatch(pipeline.constants.chroma_dispatch[0], pipeline.constants.chroma_dispatch[1], 1);
-		auto end_chroma_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-
-		if (pipeline.chroma[0])
-		{
-			for (auto &img: pipeline.chroma)
+			if (impl->using_pyrowave_encoder || impl->using_pyro_encoder)
 			{
-				if (img)
-				{
-					if (impl->using_pyrowave_encoder)
-					{
-						cmd.image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-						                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-						                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-					}
-					else
-					{
-						cmd.image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-						                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-						                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-					}
-				}
+				cmd.image_barrier(*pipeline.output_planes[plane],
+								  VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+				                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+				                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 			}
-
-			if (!impl->using_pyrowave_encoder)
+			else
 			{
-				cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.luma, pipeline.planes[0].offset,
-				                         {},
-				                         {pipeline.luma->get_width(), pipeline.luma->get_height(), 1},
-				                         pipeline.planes[0].row_length, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
-
-				for (int i = 0; i < 2; i++)
-				{
-					if (pipeline.chroma[i])
-					{
-						cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma[i], pipeline.planes[i + 1].offset,
-						                         {},
-						                         {pipeline.chroma[i]->get_width(), pipeline.chroma[i]->get_height(), 1},
-						                         pipeline.planes[i + 1].row_length, 0,
-						                         {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
-					}
-				}
+				cmd.image_barrier(*pipeline.output_planes[plane],
+				                  VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+				                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 			}
 		}
-
-		cmd.get_device().register_time_interval(
-				"GPU", std::move(start_chroma_ts), std::move(end_chroma_ts), "chroma-downsample");
-		cmd.set_specialization_constant_mask(0);
 	}
-	else
+
+	if (pipeline.buffer)
 	{
-		for (int i = 0; i < 2; i++)
+		for (unsigned plane = 0; plane < pipeline.num_planes; plane++)
 		{
-			cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.chroma_full[i], pipeline.planes[i + 1].offset,
+			cmd.copy_image_to_buffer(*pipeline.buffer, *pipeline.output_planes[plane],
+									 pipeline.planes[plane].offset,
 			                         {},
-			                         {pipeline.chroma_full[i]->get_width(), pipeline.chroma_full[i]->get_height(), 1},
-			                         pipeline.planes[i + 1].row_length, 0,
-			                         {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+			                         { pipeline.output_planes[plane]->get_width(), pipeline.output_planes[plane]->get_height(), 1 },
+			                         pipeline.planes[plane].row_length, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
 		}
-	}
 
-	if (!impl->using_pyrowave_encoder)
-	{
 		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	}
-
-	cmd.get_device().register_time_interval("GPU", std::move(start_yuv_ts), std::move(end_yuv_ts), "rgb-to-yuv");
 }
 
 bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int compensate_audio_us)
@@ -2251,17 +1913,8 @@ bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int co
 	if (impl->using_pyrowave_encoder)
 	{
 		PyroWave::ViewBuffers buffers = {};
-		buffers.planes[0] = &pipeline.luma->get_view();
-		if (format_needs_downsample(impl->options.format))
-		{
-			buffers.planes[1] = &pipeline.chroma[0]->get_view();
-			buffers.planes[2] = &pipeline.chroma[1]->get_view();
-		}
-		else
-		{
-			buffers.planes[1] = &pipeline.chroma_full[0]->get_view();
-			buffers.planes[2] = &pipeline.chroma_full[1]->get_view();
-		}
+		for (int i = 0; i < 3; i++)
+			buffers.planes[i] = &pipeline.output_planes[i]->get_view();
 		return impl->encode_frame(buffers, pts, compensate_audio_us);
 	}
 
@@ -2270,9 +1923,9 @@ bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int co
 
 	bool ret;
 
-	if (pipeline.pyroenc)
+	if (impl->using_pyro_encoder)
 	{
-		ret = impl->encode_frame(pipeline.luma->get_view(), pts, compensate_audio_us);
+		ret = impl->encode_frame(pipeline.output_planes[0]->get_view(), pts, compensate_audio_us);
 	}
 	else if (pipeline.hw_frame)
 	{
@@ -2299,8 +1952,10 @@ void VideoEncoder::submit_process_rgb(Vulkan::CommandBufferHandle &cmd, YCbCrPip
 {
 	auto &pipeline = *pipeline_ptr;
 
-	if (pipeline.pyroenc)
+	if (impl->using_pyro_encoder)
+	{
 		impl->submit_process_rgb_pyro(cmd, pipeline);
+	}
 	else
 #ifdef HAVE_FFMPEG_VULKAN
 	if (pipeline.hw_frame)
@@ -2323,49 +1978,60 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 {
 	YCbCrPipeline pipeline_ptr{new YCbCrPipelineData};
 	auto &pipeline = *pipeline_ptr;
+	pipeline.scale = shaders.scaler;
 
-	pipeline.rgb_to_ycbcr = shaders.rgb_to_yuv;
-	pipeline.chroma_downsample = shaders.chroma_downsample;
-	pipeline.rgb_scale = shaders.rgb_scale;
-	pipeline.decode_pq = shaders.decode_pq;
-
-	VkFormat luma_format, chroma_format, chroma_format_full;
+	VkFormat luma_format, chroma_format;
 	unsigned pixel_size;
 
 	if (impl->using_pyro_encoder)
 	{
+		pipeline.num_planes = 1;
 		luma_format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-		chroma_format_full = VK_FORMAT_UNDEFINED;
+		chroma_format = VK_FORMAT_UNDEFINED;
 		pixel_size = 4;
-		pipeline.constants.dither_strength = 1.0f / 1023.0f;
-		pipeline.pyroenc = true;
-	}
-	else if (impl->options.format != Format::NV12 &&
-	         impl->options.format != Format::YUV420P &&
-	         impl->options.format != Format::YUV444P)
-	{
-		luma_format = VK_FORMAT_R16_UNORM;
-		chroma_format_full = VK_FORMAT_R16_UNORM;
-		pixel_size = 2;
-		pipeline.constants.dither_strength = 1.0f / 1023.0f;
-		if (impl->options.format == Format::YUV420P16 || impl->options.format == Format::YUV444P16)
-			pipeline.constants.dither_strength = 1.0f / float(0xffff);
 	}
 	else
 	{
-		luma_format = VK_FORMAT_R8_UNORM;
-		chroma_format_full = VK_FORMAT_R8_UNORM;
-		pixel_size = 1;
-		pipeline.constants.dither_strength = 1.0f / 255.0f;
+		switch (impl->options.format)
+		{
+		case Format::NV12:
+			pixel_size = 1;
+			luma_format = VK_FORMAT_R8_UNORM;
+			chroma_format = VK_FORMAT_R8G8_UNORM;
+			pipeline.num_planes = 2;
+			break;
+
+		case Format::P010:
+		case Format::P016:
+			pixel_size = 2;
+			luma_format = VK_FORMAT_R16_UNORM;
+			chroma_format = VK_FORMAT_R16G16_UNORM;
+			pipeline.num_planes = 2;
+			break;
+
+		case Format::YUV420P:
+		case Format::YUV444P:
+			pixel_size = 1;
+			luma_format = VK_FORMAT_R8_UNORM;
+			chroma_format = VK_FORMAT_R8_UNORM;
+			pipeline.num_planes = 3;
+			break;
+
+		case Format::YUV420P16:
+		case Format::YUV444P16:
+			pixel_size = 2;
+			luma_format = VK_FORMAT_R16_UNORM;
+			chroma_format = VK_FORMAT_R16_UNORM;
+			pipeline.num_planes = 3;
+			break;
+
+		default:
+			return {};
+		}
 	}
 
-	chroma_format = chroma_format_full;
-	if (impl->options.format == Format::NV12)
-		chroma_format = VK_FORMAT_R8G8_UNORM;
-	else if (impl->options.format == Format::P016 || impl->options.format == Format::P010)
-		chroma_format = VK_FORMAT_R16G16_UNORM;
-
-	auto image_info = Vulkan::ImageCreateInfo::immutable_2d_image(impl->options.width, impl->options.height, luma_format);
+	auto image_info = Vulkan::ImageCreateInfo::immutable_2d_image(
+			impl->options.width, impl->options.height, luma_format);
 	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	image_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
@@ -2375,122 +2041,44 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 		                  Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
 	}
 
-#ifdef HAVE_FFMPEG_VULKAN
-	if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)
-#endif
-	{
-		pipeline.luma = impl->device->create_image(image_info);
-		impl->device->set_name(*pipeline.luma, "video-encode-luma");
-	}
-
 	VkDeviceSize total_size = 0;
-	VkDeviceSize aligned_width = (image_info.width + 63) & ~63;
-	VkDeviceSize luma_size = aligned_width * image_info.height * pixel_size;
 
-	pipeline.planes[pipeline.num_planes].offset = total_size;
-	pipeline.planes[pipeline.num_planes].stride = aligned_width * pixel_size;
-	pipeline.planes[pipeline.num_planes].row_length = aligned_width;
-	pipeline.num_planes++;
-	total_size += luma_size;
-
-	pipeline.constants.inv_resolution_luma[0] = 1.0f / float(image_info.width);
-	pipeline.constants.inv_resolution_luma[1] = 1.0f / float(image_info.height);
-	pipeline.constants.base_uv_luma[0] = 0.5f / float(image_info.width);
-	pipeline.constants.base_uv_luma[1] = 0.5f / float(image_info.height);
-	pipeline.constants.luma_dispatch[0] = (image_info.width + 7) / 8;
-	pipeline.constants.luma_dispatch[1] = (image_info.height + 7) / 8;
-
-	pipeline.constants.inv_resolution_chroma[0] = 2.0f * pipeline.constants.inv_resolution_luma[0];
-	pipeline.constants.inv_resolution_chroma[1] = 2.0f * pipeline.constants.inv_resolution_luma[1];
-
-	switch (impl->options.siting)
+	for (unsigned plane = 0; plane < pipeline.num_planes; plane++)
 	{
-	case ChromaSiting::Center:
-		pipeline.constants.base_uv_chroma[0] = 1.0f / float(image_info.width);
-		pipeline.constants.base_uv_chroma[1] = 1.0f / float(image_info.height);
-		break;
+		image_info.format = plane == 0 ? luma_format : chroma_format;
 
-	case ChromaSiting::TopLeft:
-		pipeline.constants.base_uv_chroma[0] = 0.5f / float(image_info.width);
-		pipeline.constants.base_uv_chroma[1] = 0.5f / float(image_info.height);
-		break;
+		image_info.width = impl->options.width;
+		image_info.height = impl->options.height;
 
-	case ChromaSiting::Left:
-		pipeline.constants.base_uv_chroma[0] = 0.5f / float(image_info.width);
-		pipeline.constants.base_uv_chroma[1] = 1.0f / float(image_info.height);
-		break;
+		if (format_needs_downsample(impl->options.format) && plane != 0)
+		{
+			image_info.width >>= 1;
+			image_info.height >>= 1;
+		}
 
-	default:
-		break;
-	}
-
-	image_info.format = chroma_format_full;
-
-	if (!impl->using_pyro_encoder)
-	{
-		pipeline.chroma_full[0] = impl->device->create_image(image_info);
-		impl->device->set_name(*pipeline.chroma_full[0], "video-encode-chroma-full-res");
-		pipeline.chroma_full[1] = impl->device->create_image(image_info);
-		impl->device->set_name(*pipeline.chroma_full[1], "video-encode-chroma-full-res");
-		pipeline.chroma_full[0]->set_layout(Vulkan::Layout::General);
-		pipeline.chroma_full[1]->set_layout(Vulkan::Layout::General);
-	}
-
-	image_info.format = chroma_format;
-
-	if (format_needs_downsample(impl->options.format))
-	{
-		image_info.width = impl->options.width / 2;
-		image_info.height = impl->options.height / 2;
-	}
-
-	if (!impl->using_pyro_encoder)
-	{
 #ifdef HAVE_FFMPEG_VULKAN
 		if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)
 #endif
 		{
-			if (format_needs_downsample(impl->options.format))
-			{
-				pipeline.chroma[0] = impl->device->create_image(image_info);
-				impl->device->set_name(*pipeline.chroma[0], "video-encode-chroma-downsampled");
-			}
-
-			aligned_width = (image_info.width + 63) & ~63;
-			pipeline.planes[pipeline.num_planes].row_length = aligned_width;
-
-			if (format_to_planes(impl->options.format) != 3)
-				aligned_width *= 2;
-
-			pipeline.planes[pipeline.num_planes].offset = total_size;
-			pipeline.planes[pipeline.num_planes].stride = aligned_width * pixel_size;
-			pipeline.num_planes++;
-
-			VkDeviceSize chroma_size = aligned_width * image_info.height * pixel_size;
-			total_size += chroma_size;
-
-			if (format_to_planes(impl->options.format) == 3)
-			{
-				if (format_needs_downsample(impl->options.format))
-				{
-					pipeline.chroma[1] = impl->device->create_image(image_info);
-					impl->device->set_name(*pipeline.chroma[1], "video-encode-chroma-downsampled");
-				}
-
-				pipeline.planes[pipeline.num_planes].offset = total_size;
-				pipeline.planes[pipeline.num_planes].stride = aligned_width * pixel_size;
-				pipeline.planes[pipeline.num_planes].row_length = aligned_width;
-				pipeline.num_planes++;
-
-				total_size += chroma_size;
-			}
+			pipeline.output_planes[plane] = impl->device->create_image(image_info);
 		}
+
+		VkDeviceSize aligned_width = (image_info.width + 63) & ~63;
+
+		unsigned components_per_plane = 1;
+		if (plane == 1 && pipeline.num_planes == 2)
+			components_per_plane = 2;
+
+		VkDeviceSize plane_size = aligned_width * image_info.height * pixel_size * components_per_plane;
+
+		pipeline.planes[plane].offset = total_size;
+		pipeline.planes[plane].stride = aligned_width * pixel_size * components_per_plane;
+		pipeline.planes[plane].row_length = aligned_width;
+		total_size += plane_size;
 	}
 
-	pipeline.constants.chroma_dispatch[0] = (image_info.width + 7) / 8;
-	pipeline.constants.chroma_dispatch[1] = (image_info.height + 7) / 8;
-
-	if (!impl->using_pyro_encoder)
+	// Only allocate readback buffer if we intend to encode with software (or roundtrip via CPU).
+	if (!impl->using_pyro_encoder && !impl->using_pyrowave_encoder)
 	{
 #ifdef HAVE_FFMPEG_VULKAN
 		if (impl->hw.get_pix_fmt() != AV_PIX_FMT_VULKAN)

@@ -2,22 +2,33 @@
 #extension GL_EXT_samplerless_texture_functions : require
 #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
 #extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_quad : require
+#extension GL_EXT_shader_subgroup_extended_types_float16 : require
 
 layout(local_size_x = 64) in;
-layout(constant_id = 0) const bool DOWNSCALING = false;
-layout(constant_id = 1) const bool SAMPLED_DOWNSCALING = false;
-layout(constant_id = 2) const bool CLAMP_COORD = false;
+const int CONTROL_SKIP_RESCALE_BIT = 1 << 0;
+const int CONTROL_DOWNSCALING_BIT = 1 << 1;
+const int CONTROL_SAMPLED_DOWNSCALING_BIT = 1 << 2;
+const int CONTROL_CLAMP_COORD_BIT = 1 << 3;
+const int CONTROL_CHROMA_SUBSAMPLE_BIT = 1 << 4;
+const int CONTROL_PRIMARY_CONVERSION_BIT = 1 << 5;
+layout(constant_id = 0) const int CONTROL = 0;
+
+const bool SKIP_RESCALE = (CONTROL & CONTROL_SKIP_RESCALE_BIT) != 0;
+const bool DOWNSCALING = (CONTROL & CONTROL_DOWNSCALING_BIT) != 0;
+const bool SAMPLED_DOWNSCALING = (CONTROL & CONTROL_SAMPLED_DOWNSCALING_BIT) != 0;
+const bool CLAMP_COORD = (CONTROL & CONTROL_CLAMP_COORD_BIT) != 0;
+const bool CHROMA_SUBSAMPLE = (CONTROL & CONTROL_CHROMA_SUBSAMPLE_BIT) != 0;
+const bool PRIMARY_CONVERSION = (CONTROL & CONTROL_PRIMARY_CONVERSION_BIT) != 0;
+
+const int TRANSFER_IDENTITY = 0;
+layout(constant_id = 1) const int EOTF = TRANSFER_IDENTITY;
+layout(constant_id = 2) const int OETF = TRANSFER_IDENTITY;
+layout(constant_id = 3) const int OUTPUT_PLANES = 1;
 
 layout(set = 0, binding = 0) uniform mediump texture2D uTexture;
-layout(set = 0, binding = 1) writeonly uniform mediump image2D uOutput;
-#if PLANES >= 2
-layout(set = 0, binding = 2) writeonly uniform mediump image2D uChromaPlane2;
-#endif
-#if PLANES >= 3
-layout(set = 0, binding = 3) writeonly uniform mediump image2D uChromaPlane3;
-#endif
-
-layout(set = 0, binding = 5) uniform sampler uLinearSampler;
+layout(set = 0, binding = 1) uniform sampler uLinearSampler;
+layout(set = 0, binding = 2) writeonly uniform mediump image2D uOutput;
 
 // Downscaling requires more aggressive filtering, and ensures that everything is POT.
 const int INPUT_WIDTH = DOWNSCALING ? 16 : 8;
@@ -34,10 +45,19 @@ const int TAPS = APRON * 2;
 const int PHASES_BITS = 8;
 const int PHASES = 1 << PHASES_BITS;
 
-layout(set = 0, binding = 4, std430) readonly buffer Weights
+layout(set = 0, binding = 3, std430) readonly buffer Weights
 {
     f16vec2 weights[];
 };
+
+layout(set = 0, binding = 4) uniform UBO
+{
+    mat4 gamma_space_transform;
+    mat3 primary_transform;
+} ubo;
+
+layout(set = 0, binding = 5) writeonly uniform mediump image2D uChromaPlane2;
+layout(set = 0, binding = 6) writeonly uniform mediump image2D uChromaPlane3;
 
 ivec2 unswizzle8x8(uint index)
 {
@@ -58,15 +78,29 @@ layout(push_constant) uniform Registers
     vec2 inv_input_resolution;
 } registers;
 
-void main()
+f16vec4 apply_eotf(f16vec4 v)
 {
-    int local_index = int(gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID);
+    return v;
+}
 
-    ivec2 base_output = ivec2(gl_WorkGroupID.xy) * ivec2(OUTPUT_WIDTH, OUTPUT_HEIGHT);
+f16vec4 apply_primary_transform(f16vec4 v)
+{
+    if (PRIMARY_CONVERSION)
+        v = f16vec4(ubo.primary_transform * vec3(v.rgb), v.a);
+    return v;
+}
+
+f16vec4 apply_oetf(f16vec4 v)
+{
+    return v;
+}
+
+f16vec4 rescale_image(ivec2 base_output, int local_index, ivec2 unswizzle_coord)
+{
+    f16vec4 final_result = f16vec4(0.0);
     precise vec2 base_input = (vec2(base_output) + 0.5) * registers.scaling_to_input - 0.5;
-
-    ivec2 unswizzle_coord = unswizzle8x8(local_index);
-    ivec2 local_coord = ivec2(floor(base_input)) + unswizzle_coord - (APRON - 1);
+    ivec2 base_input_int = ivec2(floor(base_input));
+    ivec2 local_coord = base_input_int + unswizzle_coord - (APRON - 1);
 
     for (int y = 0; y < PADDED_INPUT_HEIGHT; y += OUTPUT_HEIGHT)
     {
@@ -92,6 +126,8 @@ void main()
                 rgba = f16vec4(texelFetch(uTexture, coord, 0));
             }
 
+            rgba = apply_eotf(rgba);
+
             shared_rg[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgba.rg;
             shared_ba[y + unswizzle_coord.y][x + unswizzle_coord.x] = rgba.ba;
         }
@@ -115,7 +151,7 @@ void main()
             int(float(PHASES) * (base_input.y + registers.scaling_to_input.y * float(off_y)) + 0.5);
         int shared_phase = int(bitfieldExtract(uint(shared_coord_y), 0, PHASES_BITS));
         shared_coord_y >>= PHASES_BITS;
-        shared_coord_y -= int(base_input.y);
+        shared_coord_y -= base_input_int.y;
 
         for (int i = 0; i < TAPS_HALF; i++)
         {
@@ -144,13 +180,11 @@ void main()
     barrier();
 
     // Filter horizontally.
-    f16vec4 tmp = f16vec4(0.0);
-
     precise int shared_coord_x =
         int(float(PHASES) * (base_input.x + registers.scaling_to_input.x * float(unswizzle_coord.x)) + 0.5);
     int shared_phase = int(bitfieldExtract(uint(shared_coord_x), 0, PHASES_BITS));
     shared_coord_x >>= PHASES_BITS;
-    shared_coord_x -= int(base_input.x);
+    shared_coord_x -= base_input_int.x;
 
     for (int i = 0; i < TAPS_HALF; i++)
     {
@@ -159,8 +193,69 @@ void main()
         f16vec2 rg1 = shared_rg[unswizzle_coord.y][shared_coord_x + 2 * i + 1];
         f16vec2 ba0 = shared_ba[unswizzle_coord.y][shared_coord_x + 2 * i + 0];
         f16vec2 ba1 = shared_ba[unswizzle_coord.y][shared_coord_x + 2 * i + 1];
-        tmp += f16vec4(rg0, ba0) * w.x + f16vec4(rg1, ba1) * w.y;
+        final_result += f16vec4(rg0, ba0) * w.x + f16vec4(rg1, ba1) * w.y;
     }
 
-    imageStore(uOutput, base_output + unswizzle_coord, tmp);
+    return final_result;
+}
+
+void main()
+{
+    ivec2 base_output = ivec2(gl_WorkGroupID.xy) * ivec2(OUTPUT_WIDTH, OUTPUT_HEIGHT);
+    int local_index = int(gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID);
+    ivec2 unswizzle_coord = unswizzle8x8(local_index);
+    f16vec4 final_result;
+
+    if (SKIP_RESCALE)
+    {
+        final_result = f16vec4(texelFetch(uTexture, base_output + unswizzle_coord, 0));
+        final_result = apply_eotf(final_result);
+    }
+    else
+    {
+        final_result = rescale_image(base_output, local_index, unswizzle_coord);
+    }
+
+    // E.g. 709 <-> 2020 primaries
+    final_result = apply_primary_transform(final_result);
+    final_result = apply_oetf(final_result);
+
+    ivec2 output_coord = base_output + unswizzle_coord;
+
+    if (OUTPUT_PLANES == 1)
+    {
+        imageStore(uOutput, output_coord, final_result);
+    }
+    else
+    {
+        final_result = clamp(final_result, f16vec4(0.0), f16vec4(1.0));
+        final_result.rgb = f16vec3((ubo.gamma_space_transform * vec4(final_result.rgb, 1.0)).rgb);
+
+        imageStore(uOutput, output_coord, final_result.gggg);
+
+        ivec2 chroma_coord = output_coord;
+        bool write_chroma = true;
+
+        if (CHROMA_SUBSAMPLE)
+        {
+            chroma_coord >>= 1;
+            write_chroma = (gl_SubgroupInvocationID & 3) == 0;
+            final_result.rb += subgroupQuadSwapHorizontal(final_result.rb);
+            final_result.rb += subgroupQuadSwapVertical(final_result.rb);
+            final_result.rb *= 0.25hf;
+        }
+
+        if (write_chroma)
+        {
+            if (OUTPUT_PLANES == 3)
+            {
+                imageStore(uChromaPlane2, chroma_coord, final_result.bbbb);
+                imageStore(uChromaPlane3, chroma_coord, final_result.rrrr);
+            }
+            else
+            {
+                imageStore(uChromaPlane2, chroma_coord, final_result.brbr);
+            }
+        }
+    }
 }

@@ -103,10 +103,39 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 
 		cmd.push_constants(&push, 0, sizeof(push));
 
-		cmd.set_specialization_constant_mask(7);
-		cmd.set_specialization_constant(0, push.scaling_to_input.x > 1.0f || push.scaling_to_input.y > 1.0f);
-		cmd.set_specialization_constant(1, sampled_downscaling);
-		cmd.set_specialization_constant(2, true);
+		enum
+		{
+			CONTROL_SKIP_RESCALE_BIT = 1 << 0,
+			CONTROL_DOWNSCALING_BIT = 1 << 1,
+			CONTROL_SAMPLED_DOWNSCALING_BIT = 1 << 2,
+			CONTROL_CLAMP_COORD_BIT = 1 << 3,
+			CONTROL_CHROMA_SUBSAMPLE_BIT = 1 << 4,
+			CONTROL_PRIMARY_CONVERSION_BIT = 1 << 5
+		};
+
+		enum
+		{
+			TRANSFER_IDENTITY = 0
+		};
+
+		uint32_t flags = 0;
+		uint32_t eotf = TRANSFER_IDENTITY;
+		uint32_t oetf = TRANSFER_IDENTITY;
+		uint32_t output_planes = 1;
+
+		if (int(render_target->get_width()) == push.resolution.x && int(render_target->get_height()) == push.resolution.y)
+			flags |= CONTROL_SKIP_RESCALE_BIT;
+		if (push.scaling_to_input.x > 1.0f || push.scaling_to_input.y > 1.0f)
+			flags |= CONTROL_DOWNSCALING_BIT;
+		if (sampled_downscaling)
+			flags |= CONTROL_SAMPLED_DOWNSCALING_BIT;
+		flags |= CONTROL_CLAMP_COORD_BIT;
+
+		cmd.set_specialization_constant_mask(0xf);
+		cmd.set_specialization_constant(0, flags);
+		cmd.set_specialization_constant(1, eotf);
+		cmd.set_specialization_constant(2, oetf);
+		cmd.set_specialization_constant(3, output_planes);
 		cmd.enable_subgroup_size_control(true);
 		cmd.set_subgroup_size_log2(true, 2, 6);
 
@@ -157,9 +186,19 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 
 		cmd.set_program("builtin://shaders/util/scaler.comp");
 		cmd.set_texture(0, 0, *view);
-		cmd.set_storage_texture(0, 1, render_target->get_view());
-		cmd.set_storage_buffer(0, 4, *weights);
-		cmd.set_sampler(0, 5, StockSampler::LinearClamp);
+		cmd.set_sampler(0, 1, StockSampler::LinearClamp);
+		cmd.set_storage_texture(0, 2, render_target->get_view());
+		cmd.set_storage_buffer(0, 3, *weights);
+
+		struct UBO
+		{
+			mat4 gamma_space_transform;
+			mat3 primary_transform;
+		};
+		auto *ubo = cmd.allocate_typed_constant_data<UBO>(0, 4, 1);
+
+		cmd.set_storage_texture(0, 5, render_target->get_view());
+		cmd.set_storage_texture(0, 6, render_target->get_view());
 
 		auto start_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		cmd.dispatch((render_target->get_width() + 7) / 8, (render_target->get_height() + 7) / 8, 1);

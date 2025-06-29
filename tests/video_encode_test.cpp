@@ -105,12 +105,8 @@ int main()
 	auto img = device.create_image(info);
 
 	FFmpegEncode::Shaders<> shaders;
-	shaders.rgb_to_yuv = device.get_shader_manager().register_compute(
-			"builtin://shaders/util/rgb_to_yuv.comp")->register_variant({})->get_program();
-	shaders.chroma_downsample = device.get_shader_manager().register_compute(
-			"builtin://shaders/util/chroma_downsample.comp")->register_variant({})->get_program();
-	shaders.rgb_scale = device.get_shader_manager().register_compute(
-			"builtin://shaders/util/rgb_scale.comp")->register_variant({})->get_program();
+	shaders.scaler = device.get_shader_manager().register_compute(
+			"builtin://shaders/util/scaler.comp")->register_variant({})->get_program();
 	auto pipe = encoder.create_ycbcr_pipeline(shaders);
 
 	for (unsigned i = 0; i < 1000; i++)

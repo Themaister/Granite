@@ -1499,6 +1499,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.anti_lag_features, ANTI_LAG_FEATURES_AMD);
 	}
 
+	if (has_extension(VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME))
+	{
+		ext.supports_drm_modifiers = true;
+		enabled_extensions.push_back(VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME);
+	}
+
 	if (ext.device_api_core_version >= VK_API_VERSION_1_3)
 	{
 		ext.supports_store_op_none = true;

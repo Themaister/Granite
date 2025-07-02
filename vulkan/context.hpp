@@ -75,6 +75,7 @@ struct DeviceFeatures
 	bool supports_surface_maintenance1 = false;
 	bool supports_store_op_none = false;
 	bool supports_low_latency2_nv = false;
+	bool supports_drm_modifiers = false;
 
 	VkPhysicalDeviceFeatures enabled_features = {};
 

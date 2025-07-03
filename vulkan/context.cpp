@@ -1179,6 +1179,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	else
 		ext.supports_external = false;
 
+	if (ext.supports_external && has_extension(VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME))
+		enabled_extensions.push_back(VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME);
+
 	if (has_extension(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME))
 	{
 		ext.supports_calibrated_timestamps = true;
@@ -1497,6 +1500,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		enabled_extensions.push_back(VK_AMD_ANTI_LAG_EXTENSION_NAME);
 		ADD_CHAIN(ext.anti_lag_features, ANTI_LAG_FEATURES_AMD);
+	}
+
+	if (has_extension(VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME))
+	{
+		ext.supports_drm_modifiers = true;
+		enabled_extensions.push_back(VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME);
 	}
 
 	if (has_extension(VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME))

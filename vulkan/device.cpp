@@ -3888,6 +3888,18 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	}
 
+	if ((create_info.misc & IMAGE_MISC_EXTERNAL_MEMORY_BIT) != 0)
+	{
+		if (info.initialLayout != VK_IMAGE_LAYOUT_UNDEFINED)
+		{
+			LOGE("Cannot use non-undefined initial layout for external memory.\n");
+			return {};
+		}
+
+		if (create_info.external.memory_handle_type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT)
+			info.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
+	}
+
 	info.usage = create_info.usage;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	if (create_info.domain == ImageDomain::Transient)
@@ -4054,6 +4066,38 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		VkPhysicalDeviceExternalImageFormatInfo external_format_info =
 		    { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO };
 		external_format_info.handleType = create_info.external.memory_handle_type;
+
+		VkPhysicalDeviceImageDrmFormatModifierInfoEXT modifier_info =
+				{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_DRM_FORMAT_MODIFIER_INFO_EXT };
+
+		VkImageFormatListCreateInfo format_list = {};
+		if (const auto *list_info = find_pnext<VkImageFormatListCreateInfo>(
+				info.pNext, VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO))
+		{
+			format_list = *list_info;
+			format_list.pNext = nullptr;
+			external_format_info.pNext = &format_list;
+		}
+
+		if (info.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
+		{
+			modifier_info.pNext = external_format_info.pNext;
+			external_format_info.pNext = &modifier_info;
+
+			auto *drm_info = find_pnext<VkImageDrmFormatModifierExplicitCreateInfoEXT>(
+					info.pNext, VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT);
+			if (!drm_info)
+			{
+				// There's also the modifier list for export purposes, but we don't care about that yet.
+				LOGE("Trying to create DRM modifier image without explicit info.\n");
+				return ImageHandle(nullptr);
+			}
+
+			modifier_info.drmFormatModifier = drm_info->drmFormatModifier;
+			modifier_info.sharingMode = info.sharingMode;
+			modifier_info.queueFamilyIndexCount = info.queueFamilyIndexCount;
+			modifier_info.pQueueFamilyIndices = info.pQueueFamilyIndices;
+		}
 
 		props2.pNext = &external_props;
 		if (!get_image_format_properties(info.format, info.imageType, info.tiling,

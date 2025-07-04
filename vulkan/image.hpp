@@ -232,7 +232,8 @@ enum class ImageDomain
 	Physical,
 	Transient,
 	LinearHostCached,
-	LinearHost
+	LinearHost,
+	HostCopy
 };
 
 struct ImageCreateInfo

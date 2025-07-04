@@ -1636,8 +1636,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	// Might be relevant when we move fully to 1.4.
 	ext.vk14_features.dynamicRenderingLocalRead = VK_FALSE;
-	// TODO: Maybe later.
-	ext.vk14_features.hostImageCopy = VK_FALSE;
 	ext.vk14_features.globalPriorityQuery = VK_FALSE;
 	ext.vk14_features.pipelineProtectedAccess = VK_FALSE;
 	ext.vk14_features.pipelineRobustness = VK_FALSE;

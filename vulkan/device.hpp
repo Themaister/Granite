@@ -910,7 +910,7 @@ private:
 	void fill_buffer_sharing_indices(VkBufferCreateInfo &create_info, uint32_t *sharing_indices);
 
 	bool allocate_image_memory(DeviceAllocation *allocation, const ImageCreateInfo &info,
-	                           VkImage image, VkImageTiling tiling);
+	                           VkImage image, VkImageTiling tiling, VkImageUsageFlags usage);
 
 	void promote_read_write_caches_to_read_only();
 };

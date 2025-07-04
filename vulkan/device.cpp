@@ -3095,6 +3095,11 @@ uint32_t Device::find_memory_type(ImageDomain domain, uint32_t mask) const
 		desired = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 		fallback = 0;
 		break;
+
+	case ImageDomain::HostCopy:
+		desired = 0;
+		fallback = 0;
+		break;
 	}
 
 	uint32_t index = find_memory_type(desired, mask);
@@ -3710,7 +3715,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 }
 
 bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCreateInfo &info,
-                                   VkImage image, VkImageTiling tiling)
+                                   VkImage image, VkImageTiling tiling, VkImageUsageFlags usage)
 {
 	if ((info.flags & VK_IMAGE_CREATE_DISJOINT_BIT) != 0 && info.num_memory_aliases == 0)
 	{
@@ -3809,7 +3814,8 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 			if (reqs.alignment < 64 * 1024)
 				reqs.alignment = 64 * 1024;
 
-		uint32_t memory_type = find_memory_type(info.domain, reqs.memoryTypeBits);
+		auto domain = (usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT) != 0 ? ImageDomain::HostCopy : info.domain;
+		uint32_t memory_type = find_memory_type(domain, reqs.memoryTypeBits);
 		if (memory_type == UINT32_MAX)
 		{
 			LOGE("Failed to find memory type.\n");
@@ -4140,13 +4146,33 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		info.pNext = &external_info;
 	}
 
+	// FIXME: Is there a more intelligent way to detect if we should be using host image copy?
+	if (ext.vk14_features.hostImageCopy && staging_buffer && staging_buffer->host.size &&
+	    (gpu_props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ||
+	     gpu_props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU))
+	{
+		VkHostImageCopyDevicePerformanceQuery query =
+				{ VK_STRUCTURE_TYPE_HOST_IMAGE_COPY_DEVICE_PERFORMANCE_QUERY };
+		VkImageFormatProperties2 props2 = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2 };
+		props2.pNext = &query;
+
+		if (get_image_format_properties(info.format, info.imageType, info.tiling,
+		                                info.usage | VK_IMAGE_USAGE_HOST_TRANSFER_BIT,
+										info.flags, info.pNext, &props2))
+		{
+			// If we don't lose compression, go ahead.
+			if (query.optimalDeviceAccess)
+				info.usage |= VK_IMAGE_USAGE_HOST_TRANSFER_BIT;
+		}
+	}
+
 	if (table->vkCreateImage(device, &info, nullptr, &holder.image) != VK_SUCCESS)
 	{
 		LOGE("Failed to create image in vkCreateImage.\n");
 		return ImageHandle(nullptr);
 	}
 
-	if (!allocate_image_memory(&holder.allocation, create_info, holder.image, info.tiling))
+	if (!allocate_image_memory(&holder.allocation, create_info, holder.image, info.tiling, info.usage))
 	{
 		LOGE("Failed to allocate memory for image.\n");
 		return ImageHandle(nullptr);
@@ -4197,7 +4223,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 		// TODO: If we have host image copy, we can bypass this whole thing.
 		BufferHandle scratch_buffer;
-		if (!buffer)
+		if (!buffer && (info.usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT) == 0)
 		{
 			if (staging_buffer->host.size == 0)
 			{
@@ -4222,29 +4248,75 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		// the transfer queue is designed for CPU <-> GPU and that's it.
 		// For concurrent queue mode, we just need to inject a semaphore.
 
-		auto transfer_cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
+		CommandBufferHandle transfer_cmd;
 
-		transfer_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                            VK_PIPELINE_STAGE_NONE, 0, VK_PIPELINE_STAGE_2_COPY_BIT,
-		                            VK_ACCESS_TRANSFER_WRITE_BIT);
+		if ((info.usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT) == 0)
+		{
+			transfer_cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 
-		transfer_cmd->begin_region("copy-image-to-gpu");
-		transfer_cmd->copy_buffer_to_image(*handle, *buffer,
-		                                   staging_buffer->blits.size(), staging_buffer->blits.data());
-		transfer_cmd->end_region();
+			transfer_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			                            VK_PIPELINE_STAGE_NONE, 0, VK_PIPELINE_STAGE_2_COPY_BIT,
+			                            VK_ACCESS_TRANSFER_WRITE_BIT);
+
+			transfer_cmd->begin_region("copy-image-to-gpu");
+			transfer_cmd->copy_buffer_to_image(*handle, *buffer,
+			                                   staging_buffer->blits.size(), staging_buffer->blits.data());
+			transfer_cmd->end_region();
+		}
+		else
+		{
+			VkHostImageLayoutTransitionInfo transition = { VK_STRUCTURE_TYPE_HOST_IMAGE_LAYOUT_TRANSITION_INFO };
+			transition.image = holder.image;
+			transition.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			transition.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+			transition.subresourceRange = {
+				format_to_aspect_mask(info.format),
+				0, VK_REMAINING_MIP_LEVELS,
+				0, VK_REMAINING_ARRAY_LAYERS,
+			};
+			table->vkTransitionImageLayout(device, 1, &transition);
+
+			VkCopyMemoryToImageInfo copy = { VK_STRUCTURE_TYPE_COPY_MEMORY_TO_IMAGE_INFO };
+			copy.dstImage = handle->get_image();
+			copy.dstImageLayout = VK_IMAGE_LAYOUT_GENERAL;
+			copy.regionCount = staging_buffer->blits.size();
+			SmallVector<VkMemoryToImageCopy, 32> copies(copy.regionCount);
+			copy.pRegions = copies.data();
+
+			for (uint32_t i = 0; i < copy.regionCount; i++)
+			{
+				auto &dst = copies[i];
+				auto &src = staging_buffer->blits[i];
+				dst.sType = VK_STRUCTURE_TYPE_MEMORY_TO_IMAGE_COPY;
+				dst.pHostPointer = static_cast<const uint8_t *>(staging_buffer->host.data) + src.bufferOffset;
+				dst.imageSubresource = src.imageSubresource;
+				dst.imageOffset = src.imageOffset;
+				dst.imageExtent = src.imageExtent;
+				dst.memoryRowLength = src.bufferRowLength;
+				dst.memoryImageHeight = src.bufferImageHeight;
+			}
+
+			// Bang the memory straight into the image without a staging copy.
+			table->vkCopyMemoryToImage(device, &copy);
+		}
 
 		if (generate_mips)
 		{
 			auto graphics_cmd = request_command_buffer(CommandBuffer::Type::Generic);
 			Semaphore sem;
 
-			submit(transfer_cmd, nullptr, 1, &sem);
-			add_wait_semaphore(CommandBuffer::Type::Generic, sem, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
+			if (transfer_cmd)
+			{
+				submit(transfer_cmd, nullptr, 1, &sem);
+				add_wait_semaphore(CommandBuffer::Type::Generic, sem, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
+			}
+
+			auto src_layout =
+					(info.usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT) != 0 ?
+					VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
 			graphics_cmd->begin_region("mipgen");
-			graphics_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			                                              VK_PIPELINE_STAGE_NONE,
-			                                              0, true);
+			graphics_cmd->barrier_prepare_generate_mipmap(*handle, src_layout, VK_PIPELINE_STAGE_NONE, 0, true);
 			graphics_cmd->generate_mipmap(*handle);
 			graphics_cmd->end_region();
 
@@ -4256,7 +4328,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 			transition_cmd = std::move(graphics_cmd);
 		}
-		else
+		else if (transfer_cmd)
 		{
 			transfer_cmd->image_barrier(
 					*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -4265,6 +4337,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 					VK_PIPELINE_STAGE_NONE, 0);
 
 			transition_cmd = std::move(transfer_cmd);
+		}
+		else
+		{
+			// With host copies, we should just stay in general layout.
+			handle->set_layout(Layout::General);
 		}
 	}
 	else if (create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)

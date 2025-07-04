@@ -3553,30 +3553,16 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 InitialImageBuffer Device::create_image_staging_buffer(const TextureFormatLayout &layout)
 {
 	InitialImageBuffer result;
-
-	BufferCreateInfo buffer_info = {};
-	buffer_info.domain = BufferDomain::Host;
-	buffer_info.size = layout.get_required_size();
-	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	{
-		GRANITE_SCOPED_TIMELINE_EVENT_FILE(system_handles.timeline_trace_file, "allocate-image-staging-buffer");
-		result.buffer = create_buffer(buffer_info, nullptr);
-	}
-	set_name(*result.buffer, "image-upload-staging-buffer");
-
-	auto *mapped = static_cast<uint8_t *>(map_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE_BIT));
-	{
-		GRANITE_SCOPED_TIMELINE_EVENT_FILE(system_handles.timeline_trace_file, "copy-image-staging-buffer");
-		memcpy(mapped, layout.data(), layout.get_required_size());
-	}
-	unmap_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE_BIT);
-
+	result.host = { layout.data(), layout.get_required_size() };
 	layout.build_buffer_image_copies(result.blits);
 	return result;
 }
 
 InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &info, const ImageInitialData *initial)
 {
+	// This method is very annoying to deal with and requires shuffling a lot of data around.
+	// Plumbing this through to host image copy is a hot mess and is avoided.
+
 	InitialImageBuffer result;
 
 	bool generate_mips = (info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
@@ -3603,6 +3589,28 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 		break;
 	default:
 		return {};
+	}
+
+	if (copy_levels == 1 && info.layers == 1)
+	{
+		result.host = { initial[0].data, layout.get_required_size() };
+		layout.build_buffer_image_copies(result.blits);
+		auto &blit = result.blits.front();
+		const auto &mip_info = layout.get_mip_info(0);
+
+		// Adjust the blit in case it's not tightly packed.
+		uint32_t src_row_length =
+				initial[0].row_length ? initial[0].row_length : mip_info.row_length;
+		uint32_t src_array_height =
+				initial[0].image_height ? initial[0].image_height : mip_info.image_height;
+
+		result.host.size = format_get_layer_size(
+				info.format, blit.imageSubresource.aspectMask, src_row_length, src_array_height, info.depth);
+
+		blit.bufferOffset = 0;
+		blit.bufferRowLength = src_row_length;
+		blit.bufferImageHeight = src_array_height;
+		return result;
 	}
 
 	BufferCreateInfo buffer_info = {};
@@ -3638,8 +3646,8 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 			uint32_t src_row_stride = layout.row_byte_stride(src_row_length);
 			uint32_t src_height_stride = layout.layer_byte_stride(src_array_height, src_row_stride);
 
-			uint8_t *dst = static_cast<uint8_t *>(layout.data(layer, level));
-			const uint8_t *src = static_cast<const uint8_t *>(initial[index].data);
+			auto *dst = static_cast<uint8_t *>(layout.data(layer, level));
+			const auto *src = static_cast<const uint8_t *>(initial[index].data);
 
 			for (uint32_t z = 0; z < mip_info.depth; z++)
 				for (uint32_t y = 0; y < mip_info.block_image_height; y++)
@@ -4185,6 +4193,26 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	// Copy initial data to texture.
 	if (staging_buffer)
 	{
+		auto *buffer = staging_buffer->buffer.get();
+
+		// TODO: If we have host image copy, we can bypass this whole thing.
+		BufferHandle scratch_buffer;
+		if (!buffer)
+		{
+			if (staging_buffer->host.size == 0)
+			{
+				LOGE("Must specifiy either host scratch or buffer.\n");
+				return ImageHandle(nullptr);
+			}
+
+			BufferCreateInfo scratch_info = {};
+			scratch_info.domain = BufferDomain::Host;
+			scratch_info.size = staging_buffer->host.size;
+			scratch_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+			scratch_buffer = create_buffer(scratch_info, staging_buffer->host.data);
+			buffer = scratch_buffer.get();
+		}
+
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
 		VK_ASSERT(create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED);
 		bool generate_mips = (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
@@ -4201,7 +4229,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		                            VK_ACCESS_TRANSFER_WRITE_BIT);
 
 		transfer_cmd->begin_region("copy-image-to-gpu");
-		transfer_cmd->copy_buffer_to_image(*handle, *staging_buffer->buffer,
+		transfer_cmd->copy_buffer_to_image(*handle, *buffer,
 		                                   staging_buffer->blits.size(), staging_buffer->blits.data());
 		transfer_cmd->end_region();
 

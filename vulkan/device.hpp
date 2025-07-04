@@ -81,9 +81,17 @@ enum class SwapchainRenderPass
 	DepthStencil
 };
 
+struct HostReference
+{
+	const void *data;
+	size_t size;
+};
+
 struct InitialImageBuffer
 {
+	// Either buffer or host is used. Ideally host is used so that host image copy can be used for uploads.
 	BufferHandle buffer;
+	HostReference host;
 	Util::SmallVector<VkBufferImageCopy, 32> blits;
 };
 
@@ -344,7 +352,13 @@ public:
 	DeviceAllocationOwnerHandle allocate_memory(const MemoryAllocateInfo &info);
 
 	// Create staging buffers for images.
+
+	// This is deprecated and considered slow path.
+	// If number of subresources is 1, the fast path can be taken.
 	InitialImageBuffer create_image_staging_buffer(const ImageCreateInfo &info, const ImageInitialData *initial);
+
+	// Only takes a reference to the layout.
+	// Ideal path when uploading resources since it's compatible with host image copy, etc.
 	InitialImageBuffer create_image_staging_buffer(const TextureFormatLayout &layout);
 
 	// Create image view, buffer views and samplers.

@@ -1341,6 +1341,7 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 	// Could use BLOCK_VIEW flag to work around this, but don't really need to rely on it.
 	Vulkan::InitialImageBuffer split_staging;
 	split_staging.buffer = staging.buffer;
+	split_staging.host = staging.host;
 	split_staging.blits.resize(1);
 	Util::SmallVector<Vulkan::ImageHandle, 32> uploaded_images(layout.get_levels());
 

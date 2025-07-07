@@ -3918,8 +3918,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	if (create_info.domain == ImageDomain::Transient)
 		info.usage |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-	if (staging_buffer)
-		info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 	info.flags = create_info.flags;
 
@@ -4166,6 +4164,10 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		}
 	}
 
+	bool generate_mips = (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
+	if (staging_buffer && !generate_mips && (info.usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT) == 0)
+		info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
 	if (table->vkCreateImage(device, &info, nullptr, &holder.image) != VK_SUCCESS)
 	{
 		LOGE("Failed to create image in vkCreateImage.\n");
@@ -4241,7 +4243,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
 		VK_ASSERT(create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED);
-		bool generate_mips = (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
 
 		// Now we've used the TRANSFER queue to copy data over to the GPU.
 		// For mipmapping, we're now moving over to graphics,

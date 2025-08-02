@@ -93,6 +93,6 @@ private:
 		MaterialOffsets offsets;
 	};
 	Util::IntrusiveHashMap<MaterialGroup> material;
-	VkDescriptorSet vk_set = VK_NULL_HANDLE;
+	Vulkan::BindlessDescriptorSet vk_set = {};
 };
 }

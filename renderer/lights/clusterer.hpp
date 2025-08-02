@@ -77,7 +77,7 @@ public:
 	const Vulkan::Buffer *get_cluster_transform_buffer() const;
 	const Vulkan::Buffer *get_cluster_bitmask_buffer() const;
 	const Vulkan::Buffer *get_cluster_range_buffer() const;
-	VkDescriptorSet get_cluster_bindless_set() const;
+	Vulkan::BindlessDescriptorSet get_cluster_bindless_set() const;
 	bool clusterer_is_bindless() const;
 
 	void set_enable_volumetric_diffuse(bool enable);
@@ -260,7 +260,7 @@ private:
 		const Vulkan::Buffer *transformed_spots = nullptr;
 		const Vulkan::Buffer *cull_data = nullptr;
 
-		VkDescriptorSet desc_set = VK_NULL_HANDLE;
+		Vulkan::BindlessDescriptorSet desc_set = {};
 
 		std::vector<uvec2> volume_index_range;
 

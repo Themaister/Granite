@@ -68,6 +68,17 @@ struct BindlessDescriptorPoolDeleter
 	void operator()(BindlessDescriptorPool *pool);
 };
 
+struct BindlessDescriptorSet
+{
+	union Handle
+	{
+		VkDescriptorSet set;
+		VkDeviceSize offset;
+	} handle = {};
+	bool valid = false;
+	explicit operator bool() const { return valid; }
+};
+
 class BindlessDescriptorPool : public Util::IntrusivePtrEnabled<BindlessDescriptorPool, BindlessDescriptorPoolDeleter, HandleCounter>,
                                public InternalSyncEnabled
 {
@@ -81,7 +92,7 @@ public:
 
 	void reset();
 	bool allocate_descriptors(unsigned count);
-	VkDescriptorSet get_descriptor_set() const;
+	BindlessDescriptorSet get_descriptor_set() const;
 
 	void push_texture(const ImageView &view);
 	void push_texture_unorm(const ImageView &view);
@@ -92,7 +103,7 @@ private:
 	Device *device;
 	DescriptorSetAllocator *allocator;
 	VkDescriptorPool desc_pool;
-	VkDescriptorSet desc_set = VK_NULL_HANDLE;
+	BindlessDescriptorSet desc_set;
 
 	uint32_t allocated_sets = 0;
 	uint32_t total_sets = 0;
@@ -142,7 +153,7 @@ public:
 
 	// Legacy descriptors.
 	VkDescriptorPool allocate_bindless_pool(unsigned num_sets, unsigned num_descriptors);
-	VkDescriptorSet allocate_bindless_set(VkDescriptorPool pool, unsigned num_descriptors);
+	BindlessDescriptorSet allocate_bindless_set(VkDescriptorPool pool, unsigned num_descriptors);
 	void reset_bindless_pool(VkDescriptorPool pool);
 
 	// Descriptor buffer integration.
@@ -197,7 +208,8 @@ public:
 
 	void begin();
 	unsigned push(const ImageView &view);
-	VkDescriptorSet commit(Device &device);
+
+	BindlessDescriptorSet commit(Device &device);
 
 	unsigned get_next_offset() const;
 

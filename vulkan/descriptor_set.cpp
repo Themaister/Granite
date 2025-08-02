@@ -260,10 +260,10 @@ void DescriptorSetAllocator::reset_bindless_pool(VkDescriptorPool pool)
 	table.vkResetDescriptorPool(device->get_device(), pool, 0);
 }
 
-VkDescriptorSet DescriptorSetAllocator::allocate_bindless_set(VkDescriptorPool pool, unsigned num_descriptors)
+BindlessDescriptorSet DescriptorSetAllocator::allocate_bindless_set(VkDescriptorPool pool, unsigned num_descriptors)
 {
 	if (!pool || !bindless)
-		return VK_NULL_HANDLE;
+		return {};
 
 	VkDescriptorSetAllocateInfo info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
 	info.descriptorPool = pool;
@@ -278,10 +278,11 @@ VkDescriptorSet DescriptorSetAllocator::allocate_bindless_set(VkDescriptorPool p
 	count_info.pDescriptorCounts = &num_desc;
 	info.pNext = &count_info;
 
-	VkDescriptorSet desc_set = VK_NULL_HANDLE;
-	if (table.vkAllocateDescriptorSets(device->get_device(), &info, &desc_set) != VK_SUCCESS)
-		return VK_NULL_HANDLE;
+	BindlessDescriptorSet desc_set;
+	if (table.vkAllocateDescriptorSets(device->get_device(), &info, &desc_set.handle.set) != VK_SUCCESS)
+		return {};
 
+	desc_set.valid = true;
 	return desc_set;
 }
 
@@ -425,7 +426,7 @@ BindlessDescriptorPool::~BindlessDescriptorPool()
 	}
 }
 
-VkDescriptorSet BindlessDescriptorPool::get_descriptor_set() const
+BindlessDescriptorSet BindlessDescriptorPool::get_descriptor_set() const
 {
 	return desc_set;
 }
@@ -434,7 +435,7 @@ void BindlessDescriptorPool::reset()
 {
 	if (desc_pool != VK_NULL_HANDLE)
 		allocator->reset_bindless_pool(desc_pool);
-	desc_set = VK_NULL_HANDLE;
+	desc_set = {};
 	allocated_descriptor_count = 0;
 	allocated_sets = 0;
 }
@@ -455,7 +456,7 @@ bool BindlessDescriptorPool::allocate_descriptors(unsigned count)
 	infos.reserve(count);
 	write_count = 0;
 
-	return desc_set != VK_NULL_HANDLE;
+	return bool(desc_set);
 }
 
 void BindlessDescriptorPool::push_texture(const ImageView &view)
@@ -487,7 +488,7 @@ void BindlessDescriptorPool::update()
 	VkWriteDescriptorSet desc = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
 	desc.descriptorCount = write_count;
 	desc.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-	desc.dstSet = desc_set;
+	desc.dstSet = desc_set.handle.set;
 
 	desc.pImageInfo = infos.data();
 	desc.pBufferInfo = nullptr;
@@ -544,7 +545,7 @@ void BindlessAllocator::set_bindless_resource_type(BindlessResourceType type)
 	resource_type = type;
 }
 
-VkDescriptorSet BindlessAllocator::commit(Device &device)
+BindlessDescriptorSet BindlessAllocator::commit(Device &device)
 {
 	max_sets_per_pool = std::max(1u, max_sets_per_pool);
 	max_descriptors_per_pool = std::max<unsigned>(views.size(), max_descriptors_per_pool);
@@ -566,13 +567,14 @@ VkDescriptorSet BindlessAllocator::commit(Device &device)
 		if (!descriptor_pool->allocate_descriptors(to_allocate))
 		{
 			LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
-			return VK_NULL_HANDLE;
+			return {};
 		}
 	}
 
 	for (size_t i = 0, n = views.size(); i < n; i++)
 		descriptor_pool->push_texture(*views[i]);
 	descriptor_pool->update();
+
 	return descriptor_pool->get_descriptor_set();
 }
 }

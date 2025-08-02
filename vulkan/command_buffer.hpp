@@ -483,8 +483,7 @@ public:
 	void set_storage_buffer(unsigned set, unsigned binding, const Buffer &buffer, VkDeviceSize offset,
 	                        VkDeviceSize range);
 
-	void set_bindless(unsigned set, VkDescriptorSet desc_set);
-	void set_bindless_offset(unsigned set, VkDeviceSize desc_offset);
+	void set_bindless(unsigned set, const BindlessDescriptorSet &handle);
 
 	void push_constants(const void *data, VkDeviceSize offset, VkDeviceSize range);
 
@@ -930,6 +929,7 @@ private:
 	DescriptorBufferAllocation desc_buffer = {};
 	VkDeviceSize desc_buffer_alloc_offset = 0;
 	VkDeviceSize desc_buffer_offsets[VULKAN_NUM_DESCRIPTOR_SETS];
+	bool desc_buffer_enable = false;
 
 	void set_texture(unsigned set, unsigned binding, VkImageView float_view, VkImageView integer_view,
 	                 VkImageLayout layout,

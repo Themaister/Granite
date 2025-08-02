@@ -464,7 +464,7 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 	{
 		flags |= POSITIONAL_LIGHT_ENABLE_BIT;
 		if ((lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows()) ||
-		    (lighting.cluster->get_cluster_bindless_set() != VK_NULL_HANDLE))
+		    lighting.cluster->get_cluster_bindless_set())
 		{
 			flags |= POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
 			if (lighting.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
@@ -571,7 +571,7 @@ static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const Li
 		cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_RANGE_DECAL, *cluster.get_cluster_range_decal_buffer());
 	}
 
-	if (cluster.get_cluster_bindless_set() != VK_NULL_HANDLE)
+	if (cluster.get_cluster_bindless_set())
 	{
 		cmd.set_bindless(1, cluster.get_cluster_bindless_set());
 

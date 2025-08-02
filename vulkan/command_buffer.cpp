@@ -60,6 +60,19 @@ CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCa
 			(features.vk13_props.maxSubgroupSize << 8);
 
 	device->lock.read_only_cache.lock_read();
+
+	if (device->get_device_features().supports_descriptor_buffer)
+	{
+		VkDescriptorBufferBindingInfoEXT buf_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT };
+		buf_info.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
+		                 VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT |
+		                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+		                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+		                 VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		buf_info.address = device->managers.descriptor_buffer.get_heap_address();
+		table.vkCmdBindDescriptorBuffersEXT(cmd, 1, &buf_info);
+		desc_buffer_enable = true;
+	}
 }
 
 CommandBuffer::~CommandBuffer()
@@ -2334,7 +2347,7 @@ void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buf
 	{
 		if (b.buffer.push.offset != offset)
 		{
-			if (device->get_device_features().supports_descriptor_buffer)
+			if (desc_buffer_enable)
 				dirty_sets_realloc |= 1u << set;
 			else
 				dirty_sets_rebind |= 1u << set;
@@ -2470,17 +2483,14 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding,
 	dirty_sets_realloc |= 1u << set;
 }
 
-void CommandBuffer::set_bindless(unsigned set, VkDescriptorSet desc_set)
+void CommandBuffer::set_bindless(unsigned set, const BindlessDescriptorSet &handle)
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
-	bindless_sets[set] = desc_set;
-	dirty_sets_realloc |= 1u << set;
-}
-
-void CommandBuffer::set_bindless_offset(unsigned set, VkDeviceSize desc_offset)
-{
-	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
-	desc_buffer_offsets[set] = desc_offset;
+	VK_ASSERT(handle.valid);
+	if (desc_buffer_enable)
+		desc_buffer_offsets[set] = handle.handle.offset;
+	else
+		bindless_sets[set] = handle.handle.set;
 	dirty_sets_realloc |= 1u << set;
 }
 
@@ -2912,14 +2922,11 @@ void CommandBuffer::flush_descriptor_sets()
 
 	uint32_t first_set = 0;
 	uint32_t set_count = 0;
-	VkDescriptorSet sets[VULKAN_NUM_DESCRIPTOR_SETS];
-	uint32_t dynamic_offsets[VULKAN_NUM_DYNAMIC_UBOS];
-	uint32_t num_dynamic_offsets = 0;
 
 	dirty_sets_rebind |= dirty_sets_realloc;
 	uint32_t set_update_mask = layout.descriptor_set_mask & dirty_sets_rebind;
 
-	if (device->get_device_features().supports_descriptor_buffer)
+	if (desc_buffer_enable)
 	{
 		for_each_bit(set_update_mask, [&](uint32_t set)
 		{
@@ -2933,6 +2940,10 @@ void CommandBuffer::flush_descriptor_sets()
 	}
 	else
 	{
+		VkDescriptorSet sets[VULKAN_NUM_DESCRIPTOR_SETS];
+		uint32_t dynamic_offsets[VULKAN_NUM_DYNAMIC_UBOS];
+		uint32_t num_dynamic_offsets = 0;
+
 		uint32_t push_set_index = pipeline_state.layout->get_push_set_index();
 		if (push_set_index != UINT32_MAX && (dirty_sets_rebind & (1u << push_set_index)) != 0)
 		{

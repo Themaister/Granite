@@ -537,46 +537,6 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 	return ret;
 }
 
-uint32_t Device::get_descriptor_size_for_type(VkDescriptorType type) const
-{
-	switch (type)
-	{
-	case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-		return ext.descriptor_buffer_properties.combinedImageSamplerDescriptorSize;
-	case VK_DESCRIPTOR_TYPE_SAMPLER:
-		return ext.descriptor_buffer_properties.samplerDescriptorSize;
-	case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-		return ext.descriptor_buffer_properties.sampledImageDescriptorSize;
-	case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-		return ext.descriptor_buffer_properties.storageImageDescriptorSize;
-	case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-		if (ext.enabled_features.robustBufferAccess)
-			return ext.descriptor_buffer_properties.robustUniformBufferDescriptorSize;
-		else
-			return ext.descriptor_buffer_properties.uniformBufferDescriptorSize;
-	case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
-		if (ext.enabled_features.robustBufferAccess)
-			return ext.descriptor_buffer_properties.robustUniformTexelBufferDescriptorSize;
-		else
-			return ext.descriptor_buffer_properties.uniformTexelBufferDescriptorSize;
-	case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-		if (ext.enabled_features.robustBufferAccess)
-			return ext.descriptor_buffer_properties.robustStorageBufferDescriptorSize;
-		else
-			return ext.descriptor_buffer_properties.storageBufferDescriptorSize;
-	case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-		if (ext.enabled_features.robustBufferAccess)
-			return ext.descriptor_buffer_properties.robustStorageTexelBufferDescriptorSize;
-		else
-			return ext.descriptor_buffer_properties.storageTexelBufferDescriptorSize;
-	case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
-		return ext.descriptor_buffer_properties.accelerationStructureDescriptorSize;
-	default:
-		LOGE("Invalid descriptor type %u\n", type);
-		return 0;
-	}
-}
-
 const IndirectLayout *Device::request_indirect_layout(
 		const PipelineLayout *layout, const Vulkan::IndirectLayoutToken *tokens,
 		uint32_t num_tokens, uint32_t stride)
@@ -2099,6 +2059,7 @@ Device::~Device()
 	wsi.acquire.reset();
 	wsi.release.reset();
 	wsi.swapchain.clear();
+	managers.descriptor_buffer.teardown();
 
 	wait_idle();
 

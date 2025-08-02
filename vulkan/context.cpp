@@ -1544,6 +1544,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	    has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
 	{
 		ADD_CHAIN(ext.descriptor_buffer_features, DESCRIPTOR_BUFFER_FEATURES_EXT);
+		enabled_extensions.push_back(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME);
 	}
 
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
@@ -1920,14 +1921,19 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			LOGI("%s queue: family %u, index %u.\n", family_names[i], queue_info.family_indices[i], queue_indices[i]);
 #endif
 
-	// Only expose this if we can easily linearly allocate samplers and combined image samplers.
-	// Cba to deal with planar arrays of combined image samplers either.
-	ext.supports_descriptor_buffer = ext.descriptor_buffer_features.descriptorBuffer &&
-	                                 ext.descriptor_buffer_properties.samplerDescriptorSize * 512ull * 1024ull <=
-	                                 ext.descriptor_buffer_properties.maxSamplerDescriptorBufferRange &&
-	                                 ext.descriptor_buffer_properties.sampledImageDescriptorSize * 512ull * 1024ull <=
-	                                 ext.descriptor_buffer_properties.maxSamplerDescriptorBufferRange &&
-									 ext.descriptor_buffer_properties.combinedImageSamplerDescriptorSingleArray;
+	if (ext.descriptor_buffer_features.descriptorBuffer)
+	{
+		auto max_heap_size = std::min<VkDeviceSize>(
+				ext.descriptor_buffer_properties.maxSamplerDescriptorBufferRange,
+				ext.descriptor_buffer_properties.maxResourceDescriptorBufferRange);
+
+		// Only expose this if we can easily linearly allocate samplers and combined image samplers.
+		// Cba to deal with planar arrays of combined image samplers either.
+		ext.supports_descriptor_buffer =
+				ext.descriptor_buffer_properties.samplerDescriptorSize * 512ull * 1024ull <= max_heap_size &&
+				ext.descriptor_buffer_properties.sampledImageDescriptorSize * 512ull * 1024ull <= max_heap_size &&
+				ext.descriptor_buffer_properties.combinedImageSamplerDescriptorSingleArray;
+	}
 
 	return true;
 }

@@ -209,7 +209,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 			for (auto &bind : bindings)
 			{
 				VkDeviceSize offset = 0;
-				VkDeviceSize stride = device->get_descriptor_size_for_type(bind.descriptorType);
+				VkDeviceSize stride = device->managers.descriptor_buffer.get_descriptor_size_for_type(bind.descriptorType);
 
 				table.vkGetDescriptorSetLayoutBindingOffsetEXT(
 						device->get_device(), set_layout_pool, bind.binding, &offset);

@@ -566,7 +566,6 @@ private:
 	                                                         const ImmutableSampler * const *immutable_samplers);
 	const Framebuffer &request_framebuffer(const RenderPassInfo &info);
 	const RenderPass &request_render_pass(const RenderPassInfo &info, bool compatible);
-	uint32_t get_descriptor_size_for_type(VkDescriptorType type) const;
 
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkPhysicalDeviceProperties gpu_props;

@@ -310,11 +310,15 @@ struct DescriptorBufferAllocation
 	Util::AllocatedSlice backing_slice;
 };
 
+using DescriptorCopyFunc = void (*)(void *, const void *, size_t size);
+
 class DescriptorBufferAllocator : private Util::SliceAllocator
 {
 public:
 	bool init(Device *device);
 	~DescriptorBufferAllocator();
+
+	void teardown();
 
 	VkDeviceAddress get_heap_address();
 	uint8_t *get_mapped_heap();
@@ -323,6 +327,20 @@ public:
 	void free(const DescriptorBufferAllocation &alloc);
 	void free(const DescriptorBufferAllocation *alloc, size_t count);
 
+	uint32_t get_descriptor_size_for_type(VkDescriptorType type) const;
+
+#define IMPL_COPY(type) \
+	inline void copy_##type(void *dst, const void *src) const { type##_copy.func(dst, src, type##_copy.size); }
+	IMPL_COPY(combined_image)
+	IMPL_COPY(sampled_image)
+	IMPL_COPY(storage_image)
+	IMPL_COPY(sampler)
+	IMPL_COPY(input_attachment)
+	IMPL_COPY(ubo)
+	IMPL_COPY(ssbo)
+	IMPL_COPY(uniform_texel)
+	IMPL_COPY(storage_texel)
+
 private:
 	Device *device = nullptr;
 	Buffer *buffer = nullptr;
@@ -330,5 +348,14 @@ private:
 	VkDeviceSize alignment = 0;
 	VkDeviceSize sub_block_size = 0;
 	std::mutex lock;
+
+	struct DescriptorTypeInfo
+	{
+		DescriptorCopyFunc func;
+		size_t size;
+	};
+	DescriptorTypeInfo sampled_image_copy, storage_image_copy, combined_image_copy, sampler_copy, input_attachment_copy;
+	DescriptorTypeInfo ubo_copy, ssbo_copy, uniform_texel_copy, storage_texel_copy;
+	void init_copy_func(DescriptorTypeInfo &info, VkDescriptorType type) const;
 };
 }

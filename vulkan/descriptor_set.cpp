@@ -58,15 +58,24 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 
 	if (bindless)
 	{
-		info.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
+		if (!device->ext.supports_descriptor_buffer)
+			info.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 		info.pNext = &flags;
 
 		flags.bindingCount = 1;
 		flags.pBindingFlags = &binding_flags;
-		binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT |
-		                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT |
-		                VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;
+
+		binding_flags = VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+		if (!device->ext.supports_descriptor_buffer)
+		{
+			// These flags are implied when using descriptor buffer.
+			binding_flags |= VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+			                 VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+		}
 	}
+
+	if (device->ext.supports_descriptor_buffer)
+		info.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
 
 	for (unsigned i = 0; i < VULKAN_NUM_BINDINGS; i++)
 	{
@@ -179,11 +188,26 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 		LOGE("Failed to create descriptor set layout.");
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
+	if (device->ext.supports_descriptor_buffer)
+	{
+		// Normalize the recorded flags.
+		if (bindless)
+		{
+			info.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+			binding_flags |= VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+			                 VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+		}
+
+		info.flags &= ~VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+	}
+
 	if (set_layout_pool)
 		device->register_descriptor_set_layout(set_layout_pool, get_hash(), info);
 #endif
 
-	if (!bindless && device->get_device_features().vk14_features.pushDescriptor)
+	// Push descriptors is not used with descriptor buffer.
+	if (!bindless && device->get_device_features().vk14_features.pushDescriptor &&
+	    !device->get_device_features().descriptor_buffer_features.descriptorBuffer)
 	{
 		info.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT;
 		for (auto &b : bindings)

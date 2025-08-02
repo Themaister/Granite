@@ -76,6 +76,7 @@ struct DeviceFeatures
 	bool supports_store_op_none = false;
 	bool supports_low_latency2_nv = false;
 	bool supports_drm_modifiers = false;
+	bool supports_descriptor_buffer = false;
 
 	VkPhysicalDeviceFeatures enabled_features = {};
 
@@ -117,6 +118,8 @@ struct DeviceFeatures
 	VkPhysicalDeviceDeviceGeneratedCommandsFeaturesEXT device_generated_commands_features = {};
 	VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT device_generated_commands_properties = {};
 	VkPhysicalDeviceRobustness2FeaturesEXT robustness2_features = {};
+	VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptor_buffer_features = {};
+	VkPhysicalDeviceDescriptorBufferPropertiesEXT descriptor_buffer_properties = {};
 
 	// Vendor
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};
@@ -163,7 +166,8 @@ enum ContextCreationFlagBits
 	CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT = 1 << 5,
 	CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT = 1 << 6,
 	CONTEXT_CREATION_ENABLE_ROBUSTNESS_2_BIT = 1 << 7,
-	CONTEXT_CREATION_ENABLE_VIDEO_AV1_BIT = 1 << 8
+	CONTEXT_CREATION_ENABLE_VIDEO_AV1_BIT = 1 << 8,
+	CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT = 1 << 9
 };
 using ContextCreationFlags = uint32_t;
 

@@ -822,4 +822,95 @@ void DeviceAllocationDeleter::operator()(DeviceAllocationOwner *owner)
 {
 	owner->device->handle_pool.allocations.free(owner);
 }
+
+bool DescriptorBufferAllocator::init(Vulkan::Device *device_)
+{
+	device = device_;
+	alignment = device->get_device_features().descriptor_buffer_properties.descriptorBufferOffsetAlignment;
+
+	sub_block_size = std::max<uint32_t>(
+			device->get_gpu_properties().limits.nonCoherentAtomSize,
+			device->get_device_features().descriptor_buffer_properties.descriptorBufferOffsetAlignment);
+
+	auto max_range = std::min<VkDeviceSize>(
+			device->get_device_features().descriptor_buffer_properties.maxResourceDescriptorBufferRange,
+			device->get_device_features().descriptor_buffer_properties.maxSamplerDescriptorBufferRange);
+
+	auto max_descriptor_size = std::max<uint32_t>(
+			device->get_device_features().descriptor_buffer_properties.sampledImageDescriptorSize,
+			device->get_device_features().descriptor_buffer_properties.robustStorageBufferDescriptorSize);
+
+	// Aim for a global heap of about 1M descriptors. Should be enough to avoid exhaustion.
+	max_range = std::min<VkDeviceSize>(max_range, 1024ull * 1024ull * max_descriptor_size);
+
+	auto max_sub_blocks = max_range / sub_block_size;
+	auto max_sub_blocks_log2 = Util::floor_log2(max_sub_blocks);
+
+	Util::SliceAllocator::init(sub_block_size, max_sub_blocks_log2, &backing_va);
+
+	BufferCreateInfo info = {};
+	info.size = VkDeviceSize(sub_block_size) << max_sub_blocks_log2;
+	info.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT | VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
+	info.domain = BufferDomain::LinkedDeviceHost;
+
+	auto buf = device->create_buffer(info);
+	if (!buf)
+	{
+		LOGE("Failed to allocate descriptor buffer.\n");
+		return false;
+	}
+
+	buffer = buf.release();
+	return true;
+}
+
+uint8_t *DescriptorBufferAllocator::get_mapped_heap()
+{
+	return static_cast<uint8_t *>(device->map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));
+}
+
+void DescriptorBufferAllocator::free(const DescriptorBufferAllocation &alloc)
+{
+	std::lock_guard<std::mutex> holder{lock};
+	Util::SliceAllocator::free(alloc.backing_slice);
+}
+
+void DescriptorBufferAllocator::free(const DescriptorBufferAllocation *alloc, size_t count)
+{
+	std::lock_guard<std::mutex> holder{lock};
+	for (size_t i = 0; i < count; i++)
+		Util::SliceAllocator::free(alloc[i].backing_slice);
+}
+
+DescriptorBufferAllocation DescriptorBufferAllocator::allocate(VkDeviceSize size)
+{
+	size = (size + alignment - 1) & ~(alignment - 1);
+
+	std::lock_guard<std::mutex> holder{lock};
+
+	DescriptorBufferAllocation alloc = {};
+	if (!Util::SliceAllocator::allocate(size, &alloc.backing_slice))
+	{
+		LOGE("Descriptor buffer arena is exhausted! This should not happen.\n");
+		return alloc;
+	}
+
+	alloc.offset = alloc.backing_slice.offset * sub_block_size;
+	alloc.size = size;
+	return alloc;
+}
+
+VkDeviceAddress DescriptorBufferAllocator::get_heap_address()
+{
+	return buffer->get_device_address();
+}
+
+DescriptorBufferAllocator::~DescriptorBufferAllocator()
+{
+	if (buffer)
+	{
+		buffer->set_internal_sync_object();
+		buffer->release_reference();
+	}
+}
 }

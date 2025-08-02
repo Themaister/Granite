@@ -137,7 +137,20 @@ void Device::register_compute_pipeline(Fossilize::Hash hash, const VkComputePipe
 		return;
 	}
 
-	if (!recorder_state->recorder.record_compute_pipeline(VK_NULL_HANDLE, info, nullptr, 0, hash))
+	// Normalize the creation for both non-DB and DB.
+	auto tmp = info;
+
+	if (const auto *flags = find_pnext<VkPipelineCreateFlags2CreateInfo>(
+			info.pNext, VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO))
+	{
+		const_cast<VkPipelineCreateFlags2CreateInfo *>(flags)->flags &= ~VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT;
+	}
+	else
+	{
+		tmp.flags &= ~VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+	}
+
+	if (!recorder_state->recorder.record_compute_pipeline(VK_NULL_HANDLE, tmp, nullptr, 0, hash))
 		LOGW("Failed to register compute pipeline.\n");
 }
 
@@ -152,7 +165,20 @@ void Device::register_graphics_pipeline(Fossilize::Hash hash, const VkGraphicsPi
 		return;
 	}
 
-	if (!recorder_state->recorder.record_graphics_pipeline(VK_NULL_HANDLE, info, nullptr, 0, hash))
+	// Normalize the creation for both non-DB and DB.
+	auto tmp = info;
+
+	if (const auto *flags = find_pnext<VkPipelineCreateFlags2CreateInfo>(
+			info.pNext, VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO))
+	{
+		const_cast<VkPipelineCreateFlags2CreateInfo *>(flags)->flags &= ~VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT;
+	}
+	else
+	{
+		tmp.flags &= ~VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+	}
+
+	if (!recorder_state->recorder.record_graphics_pipeline(VK_NULL_HANDLE, tmp, nullptr, 0, hash))
 		LOGW("Failed to register graphics pipeline.\n");
 }
 
@@ -399,6 +425,10 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash,
 		return true;
 	}
 
+	// Re-introduce descriptor buffer flag if needed.
+	if (ext.supports_descriptor_buffer)
+		const_cast<VkGraphicsPipelineCreateInfo *>(create_info)->flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+
 	// The lifetime of create_info is tied to the replayer itself.
 	replayer_state->graphics_pipelines.emplace_back(hash, const_cast<VkGraphicsPipelineCreateInfo *>(create_info));
 	return true;
@@ -414,6 +444,10 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash,
 		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return true;
 	}
+
+	// Re-introduce descriptor buffer flag if needed.
+	if (ext.supports_descriptor_buffer)
+		const_cast<VkComputePipelineCreateInfo *>(create_info)->flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
 
 	// The lifetime of create_info is tied to the replayer itself.
 	replayer_state->compute_pipelines.emplace_back(hash, const_cast<VkComputePipelineCreateInfo *>(create_info));
@@ -480,9 +514,15 @@ bool Device::enqueue_create_descriptor_set_layout(Fossilize::Hash, const VkDescr
 
 	auto &alloc = replayer_state->base_replayer.get_allocator();
 	auto *sampler_bank = alloc.allocate_n_cleared<const ImmutableSampler *>(VULKAN_NUM_BINDINGS);
-	for (uint32_t i = 0; i < info->bindingCount; i++)
-		if (info->pBindings[i].pImmutableSamplers && info->pBindings[i].pImmutableSamplers[0] != VK_NULL_HANDLE)
-			sampler_bank[i] = reinterpret_cast<const ImmutableSampler *>(info->pBindings[i].pImmutableSamplers[0]);
+
+	if (!ext.supports_descriptor_buffer)
+	{
+		// For now, we have no easy way of supporting immutable samplers with descriptor buffers.
+		// They are never really used anyway, so ...
+		for (uint32_t i = 0; i < info->bindingCount; i++)
+			if (info->pBindings[i].pImmutableSamplers && info->pBindings[i].pImmutableSamplers[0] != VK_NULL_HANDLE)
+				sampler_bank[i] = reinterpret_cast<const ImmutableSampler *>(info->pBindings[i].pImmutableSamplers[0]);
+	}
 
 	*layout = reinterpret_cast<VkDescriptorSetLayout>(sampler_bank);
 	return true;

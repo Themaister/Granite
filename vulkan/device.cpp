@@ -1005,6 +1005,9 @@ void Device::set_context(const Context &context)
 	managers.ubo.set_max_retained_blocks(64);
 	managers.staging.set_max_retained_blocks(32);
 
+	if (ext.supports_descriptor_buffer)
+		managers.descriptor_buffer.init(this);
+
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
 	{
 		if (queue_info.family_indices[i] == VK_QUEUE_FAMILY_IGNORED)
@@ -2320,6 +2323,12 @@ void Device::destroy_image_view(VkImageView view)
 	destroy_image_view_nolock(view);
 }
 
+void Device::free_descriptor_buffer_allocation(const DescriptorBufferAllocation &alloc)
+{
+	LOCK();
+	frame().descriptor_buffer_allocs.push_back(alloc);
+}
+
 void Device::destroy_image_view_nolock(VkImageView view)
 {
 	VK_ASSERT(!exists(frame().destroyed_image_views, view));
@@ -2866,6 +2875,7 @@ void Device::PerFrame::begin()
 		managers.semaphore.recycle(semaphore);
 	for (auto &event : recycled_events)
 		managers.event.recycle(event);
+	managers.descriptor_buffer.free(descriptor_buffer_allocs.data(), descriptor_buffer_allocs.size());
 	VK_ASSERT(consumed_semaphores.empty());
 
 	if (!allocations.empty())
@@ -2887,6 +2897,7 @@ void Device::PerFrame::begin()
 	recycled_semaphores.clear();
 	recycled_events.clear();
 	allocations.clear();
+	descriptor_buffer_allocs.clear();
 
 	if (!in_destructor)
 		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence + recycle");

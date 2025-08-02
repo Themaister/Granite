@@ -609,6 +609,7 @@ private:
 		EventManager event;
 		BufferPool vbo, ibo, ubo, staging;
 		TimestampIntervalManager timestamps;
+		DescriptorBufferAllocator descriptor_buffer;
 	};
 	Managers managers;
 
@@ -665,6 +666,7 @@ private:
 		std::vector<VkSemaphore> destroyed_semaphores;
 		std::vector<VkSemaphore> consumed_semaphores;
 		std::vector<VkIndirectExecutionSetEXT> destroyed_execution_sets;
+		std::vector<DescriptorBufferAllocation> descriptor_buffer_allocs;
 
 		struct DebugChannel
 		{
@@ -810,6 +812,7 @@ private:
 	void reset_fence(VkFence fence, bool observed_wait);
 	void destroy_descriptor_pool(VkDescriptorPool desc_pool);
 	void destroy_indirect_execution_set(VkIndirectExecutionSetEXT exec_set);
+	void free_descriptor_buffer_allocation(const DescriptorBufferAllocation &alloc);
 
 	void destroy_buffer_nolock(VkBuffer buffer);
 	void destroy_image_nolock(VkImage image);

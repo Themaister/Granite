@@ -1157,6 +1157,9 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 		flags2.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
 	}
 
+	if (device->get_device_features().supports_descriptor_buffer)
+		info.flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+
 	auto start_ts = Util::get_current_time_nsecs();
 	VkResult vr = device->pipeline_binary_cache.create_pipeline(&info, compile.cache, &compute_pipeline);
 	auto end_ts = Util::get_current_time_nsecs();
@@ -1524,6 +1527,9 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 		pipe.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
 		flags2.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
 	}
+
+	if (device->get_device_features().supports_descriptor_buffer)
+		pipe.flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
 
 	auto start_ts = Util::get_current_time_nsecs();
 	VkResult res = device->pipeline_binary_cache.create_pipeline(&pipe, compile.cache, &pipeline);

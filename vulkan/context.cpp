@@ -1540,6 +1540,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.robustness2_features, ROBUSTNESS_2_FEATURES_EXT);
 	}
 
+	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
+	    has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
+	{
+		ADD_CHAIN(ext.descriptor_buffer_features, DESCRIPTOR_BUFFER_FEATURES_EXT);
+	}
+
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
 		if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
@@ -1650,6 +1656,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.mesh_shader_features.primitiveFragmentShadingRateMeshShader = VK_FALSE;
 	ext.mesh_shader_features.meshShaderQueries = VK_FALSE;
 	ext.mesh_shader_features.multiviewMeshShader = VK_FALSE;
+
+	ext.descriptor_buffer_features.descriptorBufferCaptureReplay = VK_FALSE;
+	ext.descriptor_buffer_features.descriptorBufferImageLayoutIgnored = VK_FALSE;
+	ext.descriptor_buffer_features.descriptorBufferPushDescriptors = VK_FALSE;
 
 	// Enable device features we might care about.
 	{
@@ -1774,6 +1784,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	if (has_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
 		ADD_CHAIN(ext.mesh_shader_properties, MESH_SHADER_PROPERTIES_EXT);
+
+	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
+	    has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
+	{
+		ADD_CHAIN(ext.descriptor_buffer_properties, DESCRIPTOR_BUFFER_PROPERTIES_EXT);
+	}
 
 #ifndef HAVE_GRANITE_VULKAN_POST_MORTEM
 	if ((flags & CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT) != 0 &&
@@ -1903,6 +1919,15 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		if (queue_info.family_indices[i] != VK_QUEUE_FAMILY_IGNORED)
 			LOGI("%s queue: family %u, index %u.\n", family_names[i], queue_info.family_indices[i], queue_indices[i]);
 #endif
+
+	// Only expose this if we can easily linearly allocate samplers and combined image samplers.
+	// Cba to deal with planar arrays of combined image samplers either.
+	ext.supports_descriptor_buffer = ext.descriptor_buffer_features.descriptorBuffer &&
+	                                 ext.descriptor_buffer_properties.samplerDescriptorSize * 512ull * 1024ull <=
+	                                 ext.descriptor_buffer_properties.maxSamplerDescriptorBufferRange &&
+	                                 ext.descriptor_buffer_properties.sampledImageDescriptorSize * 512ull * 1024ull <=
+	                                 ext.descriptor_buffer_properties.maxSamplerDescriptorBufferRange &&
+									 ext.descriptor_buffer_properties.combinedImageSamplerDescriptorSingleArray;
 
 	return true;
 }

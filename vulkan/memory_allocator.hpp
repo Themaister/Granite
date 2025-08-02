@@ -297,4 +297,38 @@ private:
 	bool memory_heap_is_budget_critical[VK_MAX_MEMORY_HEAPS] = {};
 	void get_memory_budget_nolock(HeapBudget *heaps);
 };
+
+// Avoid cross-dependency in header.
+class Buffer;
+
+struct DescriptorBufferAllocation
+{
+	VkDeviceSize offset;
+	VkDeviceSize size;
+
+	// Internal detail.
+	Util::AllocatedSlice backing_slice;
+};
+
+class DescriptorBufferAllocator : private Util::SliceAllocator
+{
+public:
+	bool init(Device *device);
+	~DescriptorBufferAllocator();
+
+	VkDeviceAddress get_heap_address();
+	uint8_t *get_mapped_heap();
+
+	DescriptorBufferAllocation allocate(VkDeviceSize size);
+	void free(const DescriptorBufferAllocation &alloc);
+	void free(const DescriptorBufferAllocation *alloc, size_t count);
+
+private:
+	Device *device = nullptr;
+	Buffer *buffer = nullptr;
+	Util::SliceBackingAllocatorVA backing_va;
+	VkDeviceSize alignment = 0;
+	VkDeviceSize sub_block_size = 0;
+	std::mutex lock;
+};
 }

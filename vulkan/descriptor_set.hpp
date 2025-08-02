@@ -140,15 +140,36 @@ public:
 		return bindless;
 	}
 
+	// Legacy descriptors.
 	VkDescriptorPool allocate_bindless_pool(unsigned num_sets, unsigned num_descriptors);
 	VkDescriptorSet allocate_bindless_set(VkDescriptorPool pool, unsigned num_descriptors);
 	void reset_bindless_pool(VkDescriptorPool pool);
+
+	// Descriptor buffer integration.
+	VkDeviceSize get_size() const
+	{
+		return desc_set_size;
+	}
+
+	VkDeviceSize get_variable_offset() const
+	{
+		return desc_set_variable_offset;
+	}
+
+	uint32_t get_binding_offset(uint32_t binding) const
+	{
+		return desc_offsets[binding];
+	}
 
 private:
 	Device *device;
 	const VolkDeviceTable &table;
 	VkDescriptorSetLayout set_layout_pool = VK_NULL_HANDLE;
 	VkDescriptorSetLayout set_layout_push = VK_NULL_HANDLE;
+
+	VkDeviceSize desc_set_size = 0;
+	VkDeviceSize desc_set_variable_offset = 0;
+	uint32_t desc_offsets[VULKAN_NUM_BINDINGS] = {};
 
 	struct Pool
 	{

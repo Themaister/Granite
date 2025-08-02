@@ -128,8 +128,10 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 
 		if (layout.uniform_buffer_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, array_size, stages, nullptr });
-			pool_size.push_back({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, pool_array_size });
+			auto type = device->get_device_features().supports_descriptor_buffer ?
+			            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+			bindings.push_back({ i, type, array_size, stages, nullptr });
+			pool_size.push_back({ type, pool_array_size });
 			types++;
 		}
 
@@ -157,7 +159,12 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 		if (layout.sampler_mask & (1u << i))
 		{
 			if ((layout.immutable_sampler_mask & (1u << i)) && immutable_samplers && immutable_samplers[i])
-				vk_immutable_samplers[i] = immutable_samplers[i]->get_sampler().get_sampler();
+			{
+				if (!device->get_device_features().supports_descriptor_buffer)
+					vk_immutable_samplers[i] = immutable_samplers[i]->get_sampler().get_sampler();
+				else
+					LOGE("Cannot use immutable samplers with descriptor buffer. Ignoring.\n");
+			}
 
 			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLER, array_size, stages,
 			                     vk_immutable_samplers[i] != VK_NULL_HANDLE ? &vk_immutable_samplers[i] : nullptr });
@@ -186,6 +193,32 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 #endif
 	if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout_pool) != VK_SUCCESS)
 		LOGE("Failed to create descriptor set layout.");
+
+	if (device->ext.supports_descriptor_buffer)
+	{
+		// Query the memory layout.
+		table.vkGetDescriptorSetLayoutSizeEXT(device->get_device(), set_layout_pool, &desc_set_size);
+
+		if (bindless)
+		{
+			table.vkGetDescriptorSetLayoutBindingOffsetEXT(
+					device->get_device(), set_layout_pool, 0, &desc_set_variable_offset);
+		}
+		else
+		{
+			for (auto &bind : bindings)
+			{
+				VkDeviceSize offset = 0;
+				VkDeviceSize stride = device->get_descriptor_size_for_type(bind.descriptorType);
+
+				table.vkGetDescriptorSetLayoutBindingOffsetEXT(
+						device->get_device(), set_layout_pool, bind.binding, &offset);
+
+				for (uint32_t i = 0; i < bind.descriptorCount; i++)
+					desc_offsets[bind.binding + i] = offset + i * stride;
+			}
+		}
+	}
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	if (device->ext.supports_descriptor_buffer)

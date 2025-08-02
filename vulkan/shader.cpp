@@ -111,7 +111,8 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourc
 	device->register_pipeline_layout(pipe_layout, get_hash(), info);
 #endif
 
-	create_update_templates();
+	if (!device->get_device_features().descriptor_buffer_features.descriptorBuffer)
+		create_update_templates();
 }
 
 void PipelineLayout::create_update_templates()

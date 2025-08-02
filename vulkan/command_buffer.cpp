@@ -2334,7 +2334,11 @@ void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buf
 	{
 		if (b.buffer.push.offset != offset)
 		{
-			dirty_sets_rebind |= 1u << set;
+			if (device->get_device_features().supports_descriptor_buffer)
+				dirty_sets_realloc |= 1u << set;
+			else
+				dirty_sets_rebind |= 1u << set;
+
 			b.buffer.push.offset = offset;
 		}
 	}
@@ -2473,6 +2477,13 @@ void CommandBuffer::set_bindless(unsigned set, VkDescriptorSet desc_set)
 	dirty_sets_realloc |= 1u << set;
 }
 
+void CommandBuffer::set_bindless_offset(unsigned set, VkDeviceSize desc_offset)
+{
+	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+	desc_buffer_offsets[set] = desc_offset;
+	dirty_sets_realloc |= 1u << set;
+}
+
 void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView &view)
 {
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_SAMPLED_BIT);
@@ -2552,6 +2563,20 @@ void CommandBuffer::set_unorm_storage_texture(unsigned set, unsigned binding, co
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL), view.get_cookie() | COOKIE_BIT_UNORM);
 }
 
+void CommandBuffer::flush_descriptor_offsets(uint32_t &first_set, uint32_t &set_count)
+{
+	if (!set_count)
+		return;
+
+	// We only have one global descriptor buffer.
+	static uint32_t indices[VULKAN_NUM_DESCRIPTOR_SETS];
+	table.vkCmdSetDescriptorBufferOffsetsEXT(
+			cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
+			current_pipeline_layout, first_set, set_count, indices, desc_buffer_offsets + first_set);
+
+	set_count = 0;
+}
+
 void CommandBuffer::flush_descriptor_binds(const VkDescriptorSet *sets,
                                            uint32_t &first_set, uint32_t &set_count,
                                            uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets)
@@ -2560,8 +2585,8 @@ void CommandBuffer::flush_descriptor_binds(const VkDescriptorSet *sets,
 		return;
 
 	table.vkCmdBindDescriptorSets(
-	    cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
-	    current_pipeline_layout, first_set, set_count, sets, num_dynamic_offsets, dynamic_offsets);
+			cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
+			current_pipeline_layout, first_set, set_count, sets, num_dynamic_offsets, dynamic_offsets);
 
 	set_count = 0;
 	num_dynamic_offsets = 0;
@@ -2571,7 +2596,9 @@ void CommandBuffer::rebind_descriptor_set(uint32_t set, VkDescriptorSet *sets, u
                                           uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets)
 {
 	if (set_count == 0)
+	{
 		first_set = set;
+	}
 	else if (first_set + set_count != set)
 	{
 		flush_descriptor_binds(sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
@@ -2599,6 +2626,21 @@ void CommandBuffer::rebind_descriptor_set(uint32_t set, VkDescriptorSet *sets, u
 	});
 
 	sets[set_count++] = allocated_sets[set];
+}
+
+void CommandBuffer::rebind_descriptor_offset(uint32_t set, uint32_t &first_set, uint32_t &set_count)
+{
+	if (set_count == 0)
+	{
+		first_set = set;
+	}
+	else if (first_set + set_count != set)
+	{
+		flush_descriptor_offsets(first_set, set_count);
+		first_set = set;
+	}
+
+	set_count++;
 }
 
 void CommandBuffer::validate_descriptor_binds(uint32_t set)
@@ -2699,12 +2741,56 @@ void CommandBuffer::push_descriptor_set(uint32_t set)
 		pipeline_state.layout->get_layout(), set, bindings.bindings[set]);
 }
 
+void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set, uint32_t &set_count)
+{
+	if (set_count == 0)
+	{
+		first_set = set;
+	}
+	else if (first_set + set_count != set)
+	{
+		flush_descriptor_offsets(first_set, set_count);
+		first_set = set;
+	}
+
+	auto &layout = pipeline_state.layout->get_resource_layout();
+	if (layout.bindless_descriptor_set_mask & (1u << set))
+	{
+		VK_ASSERT(bindless_sets[set]);
+		set_count++;
+		return;
+	}
+
+	auto &set_layout = layout.sets[set];
+	auto *set_allocator = pipeline_state.layout->get_allocator(set);
+	auto size = set_allocator->get_size();
+
+	if (desc_buffer_alloc_offset + size > desc_buffer.size)
+	{
+		// Page in a new block.
+		if (desc_buffer.size)
+			device->free_descriptor_buffer_allocation(desc_buffer);
+		VkDeviceSize padded_size = std::max<VkDeviceSize>(size, 16 * 1024);
+		desc_buffer = device->managers.descriptor_buffer.allocate(padded_size);
+		desc_buffer_alloc_offset = 0;
+	}
+
+	desc_buffer_offsets[set] = desc_buffer_alloc_offset;
+
+	// TODO: Use an optimized template to copy over raw payloads. For now, spam vkGetDescriptorEXT.
+
+	desc_buffer_alloc_offset += size;
+	set_count++;
+}
+
 void CommandBuffer::flush_descriptor_set(uint32_t set, VkDescriptorSet *sets,
                                          uint32_t &first_set, uint32_t &set_count,
                                          uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets)
 {
 	if (set_count == 0)
+	{
 		first_set = set;
+	}
 	else if (first_set + set_count != set)
 	{
 		flush_descriptor_binds(sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
@@ -2754,23 +2840,40 @@ void CommandBuffer::flush_descriptor_sets()
 	dirty_sets_rebind |= dirty_sets_realloc;
 	uint32_t set_update_mask = layout.descriptor_set_mask & dirty_sets_rebind;
 
-	uint32_t push_set_index = pipeline_state.layout->get_push_set_index();
-	if (push_set_index != UINT32_MAX && (dirty_sets_rebind & (1u << push_set_index)) != 0)
+	if (device->get_device_features().supports_descriptor_buffer)
 	{
-		push_descriptor_set(push_set_index);
-		set_update_mask &= ~(1u << push_set_index);
-	}
+		for_each_bit(set_update_mask, [&](uint32_t set)
+		{
+			if ((dirty_sets_realloc & (1u << set)) != 0)
+				allocate_descriptor_offset(set, first_set, set_count);
+			else
+				rebind_descriptor_offset(set, first_set, set_count);
+		});
 
-	for_each_bit(set_update_mask, [&](uint32_t set) {
-		if ((dirty_sets_realloc & (1u << set)) != 0)
-			flush_descriptor_set(set, sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
-		else
-			rebind_descriptor_set(set, sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
-	});
+		flush_descriptor_offsets(first_set, set_count);
+	}
+	else
+	{
+		uint32_t push_set_index = pipeline_state.layout->get_push_set_index();
+		if (push_set_index != UINT32_MAX && (dirty_sets_rebind & (1u << push_set_index)) != 0)
+		{
+			push_descriptor_set(push_set_index);
+			set_update_mask &= ~(1u << push_set_index);
+		}
+
+		for_each_bit(set_update_mask, [&](uint32_t set)
+		{
+			if ((dirty_sets_realloc & (1u << set)) != 0)
+				flush_descriptor_set(set, sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+			else
+				rebind_descriptor_set(set, sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+		});
+
+		flush_descriptor_binds(sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
+	}
 
 	dirty_sets_realloc = 0;
 	dirty_sets_rebind = 0;
-	flush_descriptor_binds(sets, first_set, set_count, dynamic_offsets, num_dynamic_offsets);
 }
 
 void CommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance)
@@ -3242,6 +3345,8 @@ void CommandBuffer::end()
 		device->request_uniform_block_nolock(ubo_block, 0);
 	if (staging_block.is_mapped())
 		device->request_staging_block_nolock(staging_block, 0);
+	if (desc_buffer.size)
+		device->free_descriptor_buffer_allocation(desc_buffer);
 }
 
 void CommandBuffer::insert_label(const char *name, const float *color)

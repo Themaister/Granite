@@ -931,8 +931,9 @@ private:
 	VkDeviceSize desc_buffer_offsets[VULKAN_NUM_DESCRIPTOR_SETS];
 	bool desc_buffer_enable = false;
 
-	void set_texture(unsigned set, unsigned binding, VkImageView float_view, VkImageView integer_view,
-	                 VkImageLayout layout,
+	void set_texture(unsigned set, unsigned binding,
+	                 VkImageView float_view, VkImageView integer_view, VkImageLayout layout,
+	                 const uint8_t *float_ptr, const uint8_t *integer_ptr,
 	                 uint64_t cookie);
 	void set_buffer_view_common(unsigned set, unsigned binding, const BufferView &view, VkDescriptorType type);
 

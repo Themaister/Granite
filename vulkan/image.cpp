@@ -33,6 +33,8 @@ ImageView::ImageView(Device *device_, VkImageView view_, const ImageViewCreateIn
     , view({ view_ })
     , info(info_)
 {
+	if (usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)
+		usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 }
 
 const ImageView::CachedView &ImageView::get_render_target_view(unsigned layer) const

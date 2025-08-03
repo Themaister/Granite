@@ -56,14 +56,14 @@ Sampler::~Sampler()
 			device->destroy_sampler_nolock(sampler);
 		else
 			device->destroy_sampler(sampler);
+	}
 
-		if (payload)
-		{
-			if (internal_sync)
-				device->free_cached_descriptor_payload_nolock(payload);
-			else
-				device->free_cached_descriptor_payload(payload);
-		}
+	if (payload)
+	{
+		if (internal_sync)
+			device->free_cached_descriptor_payload_nolock(payload);
+		else
+			device->free_cached_descriptor_payload(payload);
 	}
 }
 

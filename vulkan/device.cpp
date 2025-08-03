@@ -978,12 +978,8 @@ void Device::set_context(const Context &context)
 	system_handles = context.get_system_handles();
 
 	init_workarounds();
-
-	init_stock_samplers();
 	init_pipeline_cache();
-
 	init_timeline_semaphores();
-
 	init_frame_contexts(2); // By default, regular double buffer between CPU and GPU.
 
 	managers.memory.init(this);
@@ -1007,6 +1003,8 @@ void Device::set_context(const Context &context)
 
 	if (ext.supports_descriptor_buffer)
 		managers.descriptor_buffer.init(this);
+
+	init_stock_samplers();
 
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
 	{

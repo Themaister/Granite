@@ -188,6 +188,9 @@ void ImageView::rebuild_cached_descriptor_payloads(CachedView &v, VkImageLayout 
 
 void ImageView::rebuild_cached_descriptor_payloads(VkImageLayout sampled_layout)
 {
+	if (!device->get_device_features().supports_descriptor_buffer)
+		return;
+
 	rebuild_cached_descriptor_payloads(view, sampled_layout, usage);
 	rebuild_cached_descriptor_payloads(depth_view, sampled_layout, usage);
 	rebuild_cached_descriptor_payloads(stencil_view, sampled_layout, usage);

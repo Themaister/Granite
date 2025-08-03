@@ -2856,8 +2856,9 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 		desc_buffer_alloc_offset = 0;
 	}
 
-	desc_buffer_offsets[set] = desc_buffer_alloc_offset;
-	auto *mapped = device->managers.descriptor_buffer.get_mapped_heap() + desc_buffer_alloc_offset;
+	desc_buffer_offsets[set] = desc_buffer.offset + desc_buffer_alloc_offset;
+	auto *mapped = device->managers.descriptor_buffer.get_mapped_heap() +
+	               desc_buffer.offset + desc_buffer_alloc_offset;
 
 	VkDescriptorGetInfoEXT info = { VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT };
 

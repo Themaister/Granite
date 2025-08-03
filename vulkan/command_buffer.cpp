@@ -2844,10 +2844,10 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	auto *set_allocator = pipeline_state.layout->get_allocator(set);
 	auto size = set_allocator->get_size();
 
-	if (desc_buffer_alloc_offset + size > desc_buffer.size)
+	if (desc_buffer_alloc_offset + size > desc_buffer.get_size())
 	{
 		// Page in a new block.
-		if (desc_buffer.size)
+		if (desc_buffer.get_size())
 			device->free_descriptor_buffer_allocation(desc_buffer);
 
 		// The descriptor heap is precious, don't be too wasteful.
@@ -2856,9 +2856,9 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 		desc_buffer_alloc_offset = 0;
 	}
 
-	desc_buffer_offsets[set] = desc_buffer.offset + desc_buffer_alloc_offset;
+	desc_buffer_offsets[set] = desc_buffer.get_offset() + desc_buffer_alloc_offset;
 	auto *mapped = device->managers.descriptor_buffer.get_mapped_heap() +
-	               desc_buffer.offset + desc_buffer_alloc_offset;
+	               desc_buffer.get_offset() + desc_buffer_alloc_offset;
 
 	VkDescriptorGetInfoEXT info = { VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT };
 
@@ -3524,8 +3524,8 @@ void CommandBuffer::end()
 		device->request_uniform_block_nolock(ubo_block, 0);
 	if (staging_block.is_mapped())
 		device->request_staging_block_nolock(staging_block, 0);
-	if (desc_buffer.size)
-		device->free_descriptor_buffer_allocation(desc_buffer);
+	if (desc_buffer.get_size())
+		device->free_descriptor_buffer_allocation_nolock(desc_buffer);
 }
 
 void CommandBuffer::insert_label(const char *name, const float *color)

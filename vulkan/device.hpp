@@ -830,6 +830,7 @@ private:
 	void destroy_descriptor_pool_nolock(VkDescriptorPool desc_pool);
 	void reset_fence_nolock(VkFence fence, bool observed_wait);
 	void destroy_indirect_execution_set_nolock(VkIndirectExecutionSetEXT exec_set);
+	void free_descriptor_buffer_allocation_nolock(const DescriptorBufferAllocation &alloc);
 	void free_cached_descriptor_payload_nolock(const CachedDescriptorPayload &payload);
 
 	void flush_frame_nolock();

@@ -442,6 +442,10 @@ void BindlessDescriptorPool::reset()
 
 bool BindlessDescriptorPool::allocate_descriptors(unsigned count)
 {
+	// TODO.
+	if (device->get_device_features().supports_descriptor_buffer)
+		return false;
+
 	// Not all drivers will exhaust the pool for us, so make sure we don't allocate more than expected.
 	if (allocated_sets == total_sets)
 		return false;
@@ -547,6 +551,10 @@ void BindlessAllocator::set_bindless_resource_type(BindlessResourceType type)
 
 BindlessDescriptorSet BindlessAllocator::commit(Device &device)
 {
+	// TODO
+	if (device.get_device_features().supports_descriptor_buffer)
+		return {};
+
 	max_sets_per_pool = std::max(1u, max_sets_per_pool);
 	max_descriptors_per_pool = std::max<unsigned>(views.size(), max_descriptors_per_pool);
 	max_descriptors_per_pool = std::max<unsigned>(1u, max_descriptors_per_pool);

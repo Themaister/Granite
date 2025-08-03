@@ -945,8 +945,6 @@ DescriptorBufferAllocation DescriptorBufferAllocator::allocate(VkDeviceSize size
 		return alloc;
 	}
 
-	alloc.offset = alloc.backing_slice.offset;
-	alloc.size = size;
 	return alloc;
 }
 

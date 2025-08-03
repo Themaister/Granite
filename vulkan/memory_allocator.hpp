@@ -304,8 +304,8 @@ class Buffer;
 
 struct DescriptorBufferAllocation
 {
-	VkDeviceSize offset;
-	VkDeviceSize size;
+	inline VkDeviceSize get_offset() const { return backing_slice.offset; }
+	inline VkDeviceSize get_size() const { return backing_slice.count; }
 
 	// Internal detail.
 	Util::AllocatedSlice backing_slice;

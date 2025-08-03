@@ -2327,7 +2327,7 @@ void Device::destroy_image_view(VkImageView view)
 void Device::free_descriptor_buffer_allocation(const DescriptorBufferAllocation &alloc)
 {
 	LOCK();
-	frame().descriptor_buffer_allocs.push_back(alloc);
+	free_descriptor_buffer_allocation_nolock(alloc);
 }
 
 void Device::free_cached_descriptor_payload(const CachedDescriptorPayload &payload)
@@ -2381,6 +2381,11 @@ void Device::reset_fence_nolock(VkFence fence, bool observed_wait)
 	}
 	else
 		frame().wait_and_recycle_fences.push_back(fence);
+}
+
+void Device::free_descriptor_buffer_allocation_nolock(const DescriptorBufferAllocation &alloc)
+{
+	frame().descriptor_buffer_allocs.push_back(alloc);
 }
 
 void Device::free_cached_descriptor_payload_nolock(const CachedDescriptorPayload &payload)

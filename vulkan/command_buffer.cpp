@@ -2343,15 +2343,33 @@ void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buf
 	VK_ASSERT(buffer.get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	auto &b = bindings.bindings[set][binding];
 
-	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.dynamic.range == range)
+	if (desc_buffer_enable)
+	{
+		if (range == VK_WHOLE_SIZE)
+			range = buffer.get_create_info().size - offset;
+
+		if (buffer.get_cookie() == bindings.cookies[set][binding] &&
+		    b.buffer_addr.address == buffer.get_device_address() + offset &&
+		    b.buffer_addr.range == range)
+		{
+			return;
+		}
+
+		b.buffer_addr.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT;
+		b.buffer_addr.pNext = nullptr;
+		b.buffer_addr.address = buffer.get_device_address() + offset;
+		b.buffer_addr.range = range;
+		b.buffer_addr.format = VK_FORMAT_UNDEFINED;
+
+		bindings.cookies[set][binding] = buffer.get_cookie();
+		bindings.secondary_cookies[set][binding] = 0;
+		dirty_sets_realloc |= 1u << set;
+	}
+	else if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.dynamic.range == range)
 	{
 		if (b.buffer.push.offset != offset)
 		{
-			if (desc_buffer_enable)
-				dirty_sets_realloc |= 1u << set;
-			else
-				dirty_sets_rebind |= 1u << set;
-
+			dirty_sets_rebind |= 1u << set;
 			b.buffer.push.offset = offset;
 		}
 	}
@@ -2373,11 +2391,37 @@ void CommandBuffer::set_storage_buffer(unsigned set, unsigned binding, const Buf
 	VK_ASSERT(buffer.get_create_info().usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 	auto &b = bindings.bindings[set][binding];
 
-	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.dynamic.offset == offset && b.buffer.dynamic.range == range)
-		return;
+	if (desc_buffer_enable)
+	{
+		if (range == VK_WHOLE_SIZE)
+			range = buffer.get_create_info().size - offset;
 
-	b.buffer.dynamic = { buffer.get_buffer(), offset, range };
-	b.buffer.push = b.buffer.dynamic;
+		if (buffer.get_cookie() == bindings.cookies[set][binding] &&
+		    b.buffer_addr.address == buffer.get_device_address() + offset &&
+		    b.buffer_addr.range == range)
+		{
+			return;
+		}
+
+		b.buffer_addr.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT;
+		b.buffer_addr.pNext = nullptr;
+		b.buffer_addr.address = buffer.get_device_address() + offset;
+		b.buffer_addr.range = range;
+		b.buffer_addr.format = VK_FORMAT_UNDEFINED;
+	}
+	else
+	{
+		if (buffer.get_cookie() == bindings.cookies[set][binding] &&
+		    b.buffer.dynamic.offset == offset &&
+		    b.buffer.dynamic.range == range)
+		{
+			return;
+		}
+
+		b.buffer.dynamic = {buffer.get_buffer(), offset, range};
+		b.buffer.push = b.buffer.dynamic;
+	}
+
 	bindings.cookies[set][binding] = buffer.get_cookie();
 	bindings.secondary_cookies[set][binding] = 0;
 	dirty_sets_realloc |= 1u << set;
@@ -2802,10 +2846,11 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	desc_buffer_offsets[set] = desc_buffer_alloc_offset;
 	auto *mapped = device->managers.descriptor_buffer.get_mapped_heap() + desc_buffer_alloc_offset;
 
-	// TODO: Use an optimized template to copy over raw payloads. For now, spam vkGetDescriptorEXT.
 	VkDescriptorGetInfoEXT info = { VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT };
 
 	Util::for_each_bit(set_layout.sampled_image_mask, [&](unsigned binding) {
+		// TODO: Figure out something smarter for combined image samplers.
+		// Most likely we can cache the combined variant for normal stock samplers.
 		info.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 
 		if (set_layout.fp_mask & (1u << binding))
@@ -2813,8 +2858,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 		else
 			info.data.pSampledImage = &bindings.bindings[set][binding].image.integer;
 
-		VK_ASSERT(bindings.bindings[set][binding].image.fp.imageView &&
-		          bindings.bindings[set][binding].image.fp.sampler);
+		VK_ASSERT(info.data.pSampledImage->imageView && info.data.pSampledImage->sampler);
 
 		table.vkGetDescriptorEXT(
 				device->get_device(), &info,
@@ -2823,33 +2867,54 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	});
 
 	Util::for_each_bit(set_layout.separate_image_mask, [&](unsigned binding) {
-		info.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+		auto *ptr = (set_layout.fp_mask & (1u << binding)) != 0 ?
+		            bindings.bindings[set][binding].image.fp_ptr :
+		            bindings.bindings[set][binding].image.integer_ptr;
+		VK_ASSERT(ptr);
+		device->managers.descriptor_buffer.copy_sampled_image(mapped + set_allocator->get_binding_offset(binding), ptr);
+	});
 
-		if (set_layout.fp_mask & (1u << binding))
-			info.data.pSampledImage = &bindings.bindings[set][binding].image.fp;
-		else
-			info.data.pSampledImage = &bindings.bindings[set][binding].image.integer;
+	Util::for_each_bit(set_layout.input_attachment_mask, [&](unsigned binding) {
+		auto *ptr = (set_layout.fp_mask & (1u << binding)) != 0 ?
+		            bindings.bindings[set][binding].image.fp_ptr :
+		            bindings.bindings[set][binding].image.integer_ptr;
+		VK_ASSERT(ptr);
+		device->managers.descriptor_buffer.copy_input_attachment(mapped + set_allocator->get_binding_offset(binding), ptr);
+	});
 
-		VK_ASSERT(bindings.bindings[set][binding].image.fp.imageView);
+	Util::for_each_bit(set_layout.storage_image_mask, [&](unsigned binding) {
+		auto *ptr = bindings.bindings[set][binding].image.fp_ptr;
+		VK_ASSERT(ptr);
+		device->managers.descriptor_buffer.copy_storage_image(mapped + set_allocator->get_binding_offset(binding), ptr);
+	});
+
+	Util::for_each_bit(set_layout.sampler_mask, [&](unsigned binding) {
+		auto *ptr = bindings.bindings[set][binding].image.sampler_ptr;
+		VK_ASSERT(ptr);
+		device->managers.descriptor_buffer.copy_sampler(mapped + set_allocator->get_binding_offset(binding), ptr);
+	});
+
+	auto ubo_size = device->managers.descriptor_buffer.get_descriptor_size_for_type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+	auto ssbo_size = device->managers.descriptor_buffer.get_descriptor_size_for_type(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+
+	Util::for_each_bit(set_layout.uniform_buffer_mask, [&](unsigned binding) {
+		info.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		info.data.pUniformBuffer = &bindings.bindings[set][binding].buffer_addr;
+		VK_ASSERT(info.data.pUniformBuffer->sType == VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT &&
+		          info.data.pUniformBuffer->address);
 		table.vkGetDescriptorEXT(
 				device->get_device(), &info,
-				device->get_device_features().descriptor_buffer_properties.sampledImageDescriptorSize,
-				mapped + set_allocator->get_binding_offset(binding));
+				ubo_size, mapped + set_allocator->get_binding_offset(binding));
 	});
 
 	Util::for_each_bit(set_layout.storage_buffer_mask, [&](unsigned binding) {
-		info.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-
-		if (set_layout.fp_mask & (1u << binding))
-			info.data.pStorageImage = &bindings.bindings[set][binding].image.fp;
-		else
-			info.data.pStorageImage = &bindings.bindings[set][binding].image.integer;
-
-		VK_ASSERT(bindings.bindings[set][binding].image.fp.imageView);
+		info.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		info.data.pStorageBuffer = &bindings.bindings[set][binding].buffer_addr;
+		VK_ASSERT(info.data.pStorageBuffer->sType == VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT &&
+		          info.data.pStorageBuffer->address);
 		table.vkGetDescriptorEXT(
 				device->get_device(), &info,
-				device->get_device_features().descriptor_buffer_properties.storageImageDescriptorSize,
-				mapped + set_allocator->get_binding_offset(binding));
+				ssbo_size, mapped + set_allocator->get_binding_offset(binding));
 	});
 
 	Util::for_each_bit(set_layout.sampler_mask, [&](unsigned binding) {
@@ -2859,21 +2924,6 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 		table.vkGetDescriptorEXT(
 				device->get_device(), &info,
 				device->get_device_features().descriptor_buffer_properties.samplerDescriptorSize,
-				mapped + set_allocator->get_binding_offset(binding));
-	});
-
-	Util::for_each_bit(set_layout.input_attachment_mask, [&](unsigned binding) {
-		info.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-
-		if (set_layout.fp_mask & (1u << binding))
-			info.data.pSampledImage = &bindings.bindings[set][binding].image.fp;
-		else
-			info.data.pSampledImage = &bindings.bindings[set][binding].image.integer;
-
-		VK_ASSERT(bindings.bindings[set][binding].image.fp.imageView);
-		table.vkGetDescriptorEXT(
-				device->get_device(), &info,
-				device->get_device_features().descriptor_buffer_properties.inputAttachmentDescriptorSize,
 				mapped + set_allocator->get_binding_offset(binding));
 	});
 

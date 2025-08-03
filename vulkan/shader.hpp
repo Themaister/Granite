@@ -95,7 +95,12 @@ union ResourceBinding
 	{
 		VkDescriptorImageInfo fp;
 		VkDescriptorImageInfo integer;
+		const uint8_t *fp_ptr;
+		const uint8_t *integer_ptr;
+		const uint8_t *sampler_ptr;
 	} image;
+
+	VkDescriptorAddressInfoEXT buffer_addr;
 
 	union
 	{

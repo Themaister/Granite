@@ -990,7 +990,7 @@ DescriptorBufferAllocation DescriptorBufferAllocator::allocate(VkDeviceSize size
 		high_water_mark = total_size;
 #ifdef VULKAN_DEBUG
 		LOGI("Descriptor arena high water mark increased to: %llu bytes.\n",
-			 static_cast<unsigned long long>(high_water_mark));
+		     static_cast<unsigned long long>(high_water_mark));
 #else
 		if (high_water_mark * 4 > total_size)
 		{

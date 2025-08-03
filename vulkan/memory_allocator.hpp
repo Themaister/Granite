@@ -375,5 +375,9 @@ private:
 	DescriptorTypeInfo sampled_image_copy, storage_image_copy, combined_image_copy, sampler_copy, input_attachment_copy;
 	DescriptorTypeInfo ubo_copy, ssbo_copy, uniform_texel_copy, storage_texel_copy;
 	void init_copy_func(DescriptorTypeInfo &info, VkDescriptorType type) const;
+
+	VkDeviceSize total_size = 0;
+	VkDeviceSize high_water_mark = 0;
+	VkDeviceSize max_size = 0;
 };
 }

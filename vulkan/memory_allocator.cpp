@@ -855,6 +855,8 @@ bool DescriptorBufferAllocator::init(Vulkan::Device *device_)
 	             VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
 	info.domain = BufferDomain::LinkedDeviceHost;
 
+	max_size = info.size;
+
 	auto buf = device->create_buffer(info);
 	if (!buf)
 	{
@@ -963,7 +965,10 @@ void DescriptorBufferAllocator::free(const DescriptorBufferAllocation *alloc, si
 {
 	std::lock_guard<std::mutex> holder{lock};
 	for (size_t i = 0; i < count; i++)
+	{
+		total_size -= alloc[i].backing_slice.count;
 		Util::SliceAllocator::free(alloc[i].backing_slice);
+	}
 }
 
 DescriptorBufferAllocation DescriptorBufferAllocator::allocate(VkDeviceSize size)
@@ -977,6 +982,22 @@ DescriptorBufferAllocation DescriptorBufferAllocator::allocate(VkDeviceSize size
 	{
 		LOGE("Descriptor buffer arena is exhausted! This should not happen.\n");
 		return alloc;
+	}
+
+	total_size += alloc.backing_slice.count;
+	if (total_size > high_water_mark)
+	{
+		high_water_mark = total_size;
+#ifdef VULKAN_DEBUG
+		LOGI("Descriptor arena high water mark increased to: %llu bytes.\n",
+			 static_cast<unsigned long long>(high_water_mark));
+#else
+		if (high_water_mark * 4 > total_size)
+		{
+			LOGW("Descriptor arena pressure: high water mark increased to: %llu bytes.\n",
+			     static_cast<unsigned long long>(high_water_mark));
+		}
+#endif
 	}
 
 	return alloc;
@@ -1001,6 +1022,7 @@ DescriptorBufferAllocator::~DescriptorBufferAllocator()
 {
 	// Call teardown before destroying device.
 	VK_ASSERT(!buffer);
+	VK_ASSERT(total_size == 0);
 }
 
 uint32_t DescriptorBufferAllocator::get_descriptor_size_for_type(VkDescriptorType type) const

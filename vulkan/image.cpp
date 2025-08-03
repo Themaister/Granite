@@ -186,6 +186,8 @@ void ImageView::rebuild_cached_descriptor_payloads(CachedView &v, VkImageLayout 
 void ImageView::rebuild_cached_descriptor_payloads(VkImageLayout sampled_layout)
 {
 	rebuild_cached_descriptor_payloads(view, sampled_layout, usage);
+	rebuild_cached_descriptor_payloads(depth_view, sampled_layout, usage);
+	rebuild_cached_descriptor_payloads(stencil_view, sampled_layout, usage);
 	rebuild_cached_descriptor_payloads(unorm_view, sampled_layout, info.image->get_create_info().usage);
 	rebuild_cached_descriptor_payloads(srgb_view, sampled_layout, usage & ~VK_IMAGE_USAGE_STORAGE_BIT);
 	for (auto &l : mip_views)

@@ -2823,7 +2823,6 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	auto &layout = pipeline_state.layout->get_resource_layout();
 	if (layout.bindless_descriptor_set_mask & (1u << set))
 	{
-		VK_ASSERT(bindless_sets[set]);
 		set_count++;
 		return;
 	}
@@ -2876,11 +2875,22 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	});
 
 	Util::for_each_bit(set_layout.input_attachment_mask, [&](unsigned binding) {
-		auto *ptr = (set_layout.fp_mask & (1u << binding)) != 0 ?
-		            bindings.bindings[set][binding].image.fp_ptr :
-		            bindings.bindings[set][binding].image.integer_ptr;
-		VK_ASSERT(ptr);
-		device->managers.descriptor_buffer.copy_input_attachment(mapped + set_allocator->get_binding_offset(binding), ptr);
+		// The layout of input attachments is somewhat volatile depending on the subpass,
+		// and I can't be arsed to plumb all that through.
+		// Could take advantage of descriptorBufferIgnoreLayouts, but, eh ...
+		info.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+
+		if (set_layout.fp_mask & (1u << binding))
+			info.data.pSampledImage = &bindings.bindings[set][binding].image.fp;
+		else
+			info.data.pSampledImage = &bindings.bindings[set][binding].image.integer;
+
+		VK_ASSERT(info.data.pSampledImage->imageView);
+
+		table.vkGetDescriptorEXT(
+				device->get_device(), &info,
+				device->get_device_features().descriptor_buffer_properties.inputAttachmentDescriptorSize,
+				mapped + set_allocator->get_binding_offset(binding));
 	});
 
 	Util::for_each_bit(set_layout.storage_image_mask, [&](unsigned binding) {
@@ -2898,6 +2908,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	auto ubo_size = device->managers.descriptor_buffer.get_descriptor_size_for_type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 	auto ssbo_size = device->managers.descriptor_buffer.get_descriptor_size_for_type(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
+	// UBOs and SSBOs cannot really be cached since there is no view and they are expected to get suballocated anyway.
 	Util::for_each_bit(set_layout.uniform_buffer_mask, [&](unsigned binding) {
 		info.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		info.data.pUniformBuffer = &bindings.bindings[set][binding].buffer_addr;
@@ -2916,16 +2927,6 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 		table.vkGetDescriptorEXT(
 				device->get_device(), &info,
 				ssbo_size, mapped + set_allocator->get_binding_offset(binding));
-	});
-
-	Util::for_each_bit(set_layout.sampler_mask, [&](unsigned binding) {
-		info.type = VK_DESCRIPTOR_TYPE_SAMPLER;
-		info.data.pSampler = &bindings.bindings[set][binding].image.fp.sampler;
-		VK_ASSERT(bindings.bindings[set][binding].image.fp.sampler);
-		table.vkGetDescriptorEXT(
-				device->get_device(), &info,
-				device->get_device_features().descriptor_buffer_properties.samplerDescriptorSize,
-				mapped + set_allocator->get_binding_offset(binding));
 	});
 
 	Util::for_each_bit(set_layout.sampled_texel_buffer_mask, [&](unsigned binding) {

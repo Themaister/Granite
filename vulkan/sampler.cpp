@@ -32,6 +32,18 @@ Sampler::Sampler(Device *device_, VkSampler sampler_, const SamplerCreateInfo &i
     , create_info(info)
     , immutable(immutable_)
 {
+	if (device->get_device_features().supports_descriptor_buffer)
+	{
+		payload = device->managers.descriptor_buffer.alloc_sampler();
+		VkDescriptorGetInfoEXT get_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT };
+		get_info.type = VK_DESCRIPTOR_TYPE_SAMPLER;
+		get_info.data.pSampler = &sampler;
+		device->get_device_table().vkGetDescriptorEXT(
+				device->get_device(),
+				&get_info,
+				device->get_device_features().descriptor_buffer_properties.samplerDescriptorSize,
+				payload.ptr);
+	}
 }
 
 Sampler::~Sampler()
@@ -44,6 +56,14 @@ Sampler::~Sampler()
 			device->destroy_sampler_nolock(sampler);
 		else
 			device->destroy_sampler(sampler);
+
+		if (payload)
+		{
+			if (internal_sync)
+				device->free_cached_descriptor_payload_nolock(payload);
+			else
+				device->free_cached_descriptor_payload(payload);
+		}
 	}
 }
 

@@ -78,6 +78,7 @@ struct BindlessApplication : Granite::Application, Granite::EventHandler
 		bindless->allocate_descriptors(1024);
 		for (unsigned i = 0; i < 1024; i++)
 			bindless->push_texture(images[i & 3]->get_view());
+		bindless->update();
 		cmd->set_bindless(0, bindless->get_descriptor_set());
 		cmd->set_bindless(2, bindless->get_descriptor_set());
 		cmd->set_sampler(1, 2, StockSampler::LinearClamp);

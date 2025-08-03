@@ -548,7 +548,7 @@ void BindlessDescriptorPool::push_texture(VkImageView view, VkImageLayout layout
 
 void BindlessDescriptorPool::push_texture(const uint8_t *ptr)
 {
-	VK_ASSERT(write_count < infos.get_capacity());
+	VK_ASSERT(write_count < info_ptrs.get_capacity());
 	info_ptrs[write_count++] = ptr;
 }
 

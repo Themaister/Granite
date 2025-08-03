@@ -286,6 +286,28 @@ BindlessDescriptorSet DescriptorSetAllocator::allocate_bindless_set(VkDescriptor
 	return desc_set;
 }
 
+DescriptorBufferAllocation DescriptorSetAllocator::allocate_bindless_buffer(unsigned num_sets, unsigned num_descriptors)
+{
+	if (!bindless)
+		return {};
+
+	VkDeviceSize size = get_variable_offset() * num_sets +
+	                    device->managers.descriptor_buffer.get_descriptor_size_for_type(pool_size[0].type) *
+	                    num_descriptors;
+
+	size += (std::max<uint32_t>(num_sets, 1u) - 1u) *
+			device->get_device_features().descriptor_buffer_properties.descriptorBufferOffsetAlignment;
+
+	return device->managers.descriptor_buffer.allocate(size);
+}
+
+VkDeviceSize DescriptorSetAllocator::get_variable_size(unsigned count) const
+{
+	return get_variable_offset() +
+	       device->managers.descriptor_buffer.get_descriptor_size_for_type(pool_size[0].type) *
+	       count;
+}
+
 VkDescriptorPool DescriptorSetAllocator::allocate_bindless_pool(unsigned num_sets, unsigned num_descriptors)
 {
 	if (!bindless)
@@ -413,6 +435,8 @@ BindlessDescriptorPool::BindlessDescriptorPool(Device *device_, DescriptorSetAll
                                                VkDescriptorPool pool, uint32_t num_sets, uint32_t num_desc)
 	: device(device_), allocator(allocator_), desc_pool(pool), total_sets(num_sets), total_descriptors(num_desc)
 {
+	if (!desc_pool)
+		bindless_buffer = allocator->allocate_bindless_buffer(num_sets, num_desc);
 }
 
 BindlessDescriptorPool::~BindlessDescriptorPool()
@@ -423,6 +447,14 @@ BindlessDescriptorPool::~BindlessDescriptorPool()
 			device->destroy_descriptor_pool_nolock(desc_pool);
 		else
 			device->destroy_descriptor_pool(desc_pool);
+	}
+
+	if (bindless_buffer.get_size() != 0)
+	{
+		if (internal_sync)
+			device->free_descriptor_buffer_allocation_nolock(bindless_buffer);
+		else
+			device->free_descriptor_buffer_allocation(bindless_buffer);
 	}
 }
 
@@ -438,45 +470,72 @@ void BindlessDescriptorPool::reset()
 	desc_set = {};
 	allocated_descriptor_count = 0;
 	allocated_sets = 0;
+	bindless_buffer_offset = 0;
 }
 
 bool BindlessDescriptorPool::allocate_descriptors(unsigned count)
 {
-	// TODO.
 	if (device->get_device_features().supports_descriptor_buffer)
-		return false;
+	{
+		VkDeviceSize alignment = device->get_device_features().descriptor_buffer_properties.descriptorBufferOffsetAlignment;
+		bindless_buffer_offset = (bindless_buffer_offset + alignment - 1) & ~(alignment - 1);
+		VkDeviceSize size = allocator->get_variable_size(count);
 
-	// Not all drivers will exhaust the pool for us, so make sure we don't allocate more than expected.
-	if (allocated_sets == total_sets)
-		return false;
-	if (allocated_descriptor_count + count > total_descriptors)
-		return false;
+		desc_set = {};
+		if (bindless_buffer_offset + size <= bindless_buffer.get_size())
+		{
+			desc_set.handle.offset = bindless_buffer_offset + bindless_buffer.get_offset();
+			desc_set.valid = true;
+			bindless_buffer_offset += size;
 
-	allocated_descriptor_count += count;
-	allocated_sets++;
+			allocated_descriptor_count += count;
+			allocated_sets++;
+		}
 
-	desc_set = allocator->allocate_bindless_set(desc_pool, count);
+		info_ptrs.reserve(count);
+	}
+	else
+	{
+		// Not all drivers will exhaust the pool for us, so make sure we don't allocate more than expected.
+		if (allocated_sets == total_sets)
+			return false;
+		if (allocated_descriptor_count + count > total_descriptors)
+			return false;
 
-	infos.reserve(count);
+		allocated_descriptor_count += count;
+		allocated_sets++;
+
+		desc_set = allocator->allocate_bindless_set(desc_pool, count);
+		infos.reserve(count);
+	}
+
 	write_count = 0;
-
 	return bool(desc_set);
 }
 
 void BindlessDescriptorPool::push_texture(const ImageView &view)
 {
 	// TODO: Deal with integer view for depth-stencil images?
-	push_texture(view.get_float_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+	if (!desc_pool)
+		push_texture(view.get_float_view().sampled.ptr);
+	else
+		push_texture(view.get_float_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 }
 
 void BindlessDescriptorPool::push_texture_unorm(const ImageView &view)
 {
-	push_texture(view.get_unorm_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+	if (!desc_pool)
+		push_texture(view.get_unorm_view().sampled.ptr);
+	else
+		push_texture(view.get_unorm_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 }
 
 void BindlessDescriptorPool::push_texture_srgb(const ImageView &view)
 {
-	push_texture(view.get_srgb_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+	if (!desc_pool)
+		push_texture(view.get_srgb_view().sampled.ptr);
+	else
+		push_texture(view.get_srgb_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 }
 
 void BindlessDescriptorPool::push_texture(VkImageView view, VkImageLayout layout)
@@ -487,21 +546,37 @@ void BindlessDescriptorPool::push_texture(VkImageView view, VkImageLayout layout
 	write_count++;
 }
 
+void BindlessDescriptorPool::push_texture(const uint8_t *ptr)
+{
+	VK_ASSERT(write_count < infos.get_capacity());
+	info_ptrs[write_count++] = ptr;
+}
+
 void BindlessDescriptorPool::update()
 {
-	VkWriteDescriptorSet desc = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-	desc.descriptorCount = write_count;
-	desc.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-	desc.dstSet = desc_set.handle.set;
-
-	desc.pImageInfo = infos.data();
-	desc.pBufferInfo = nullptr;
-	desc.pTexelBufferView = nullptr;
-
-	if (write_count)
+	if (device->get_device_features().supports_descriptor_buffer)
 	{
-		auto &table = device->get_device_table();
-		table.vkUpdateDescriptorSets(device->get_device(), 1, &desc, 0, nullptr);
+		device->managers.descriptor_buffer.copy_sampled_image_n(
+				device->managers.descriptor_buffer.get_mapped_heap() +
+				desc_set.handle.offset + allocator->get_variable_offset(),
+				info_ptrs.data(), write_count);
+	}
+	else
+	{
+		VkWriteDescriptorSet desc = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+		desc.descriptorCount = write_count;
+		desc.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+		desc.dstSet = desc_set.handle.set;
+
+		desc.pImageInfo = infos.data();
+		desc.pBufferInfo = nullptr;
+		desc.pTexelBufferView = nullptr;
+
+		if (write_count)
+		{
+			auto &table = device->get_device_table();
+			table.vkUpdateDescriptorSets(device->get_device(), 1, &desc, 0, nullptr);
+		}
 	}
 }
 
@@ -551,10 +626,6 @@ void BindlessAllocator::set_bindless_resource_type(BindlessResourceType type)
 
 BindlessDescriptorSet BindlessAllocator::commit(Device &device)
 {
-	// TODO
-	if (device.get_device_features().supports_descriptor_buffer)
-		return {};
-
 	max_sets_per_pool = std::max(1u, max_sets_per_pool);
 	max_descriptors_per_pool = std::max<unsigned>(views.size(), max_descriptors_per_pool);
 	max_descriptors_per_pool = std::max<unsigned>(1u, max_descriptors_per_pool);

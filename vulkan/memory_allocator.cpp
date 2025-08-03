@@ -877,15 +877,29 @@ bool DescriptorBufferAllocator::init(Vulkan::Device *device_)
 }
 
 template <size_t N>
-static void static_memcpy(void *dst, const void *src, size_t)
+static void static_memcpy(uint8_t *dst, const uint8_t *src, size_t)
 {
 	// memcpy with static size is way more efficient than dynamic size.
 	memcpy(dst, src, N);
 }
 
-static void dynamic_memcpy(void *dst, const void *src, size_t n)
+static void dynamic_memcpy(uint8_t *dst, const uint8_t *src, size_t n)
 {
 	memcpy(dst, src, n);
+}
+
+template <size_t N>
+static void static_memcpy_n(uint8_t *dst, const uint8_t * const *src, size_t count, size_t)
+{
+	// memcpy with static size is way more efficient than dynamic size.
+	for (size_t i = 0; i < count; i++, dst += N)
+		memcpy(dst, src[i], N);
+}
+
+static void dynamic_memcpy_n(uint8_t *dst, const uint8_t * const *src, size_t count, size_t n)
+{
+	for (size_t i = 0; i < count; i++, dst += n)
+		memcpy(dst, src[i], n);
 }
 
 static DescriptorCopyFunc get_optimized_copy_func(size_t size)
@@ -907,10 +921,30 @@ static DescriptorCopyFunc get_optimized_copy_func(size_t size)
 	}
 }
 
+static DescriptorCopyNFunc get_optimized_copy_n_func(size_t size)
+{
+	switch (size)
+	{
+	case 0: return static_memcpy_n<0>;
+	case 4: return static_memcpy_n<4>;
+	case 8: return static_memcpy_n<8>;
+	case 16: return static_memcpy_n<16>;
+	case 32: return static_memcpy_n<32>;
+	case 48: return static_memcpy_n<48>;
+	case 64: return static_memcpy_n<64>;
+	case 96: return static_memcpy_n<96>;
+	case 128: return static_memcpy_n<128>;
+	case 192: return static_memcpy_n<192>;
+	case 256: return static_memcpy_n<256>;
+	default: LOGW("Unrecognized special memcpy size %zu. Using slow fallback.\n", size); return dynamic_memcpy_n;
+	}
+}
+
 void DescriptorBufferAllocator::init_copy_func(DescriptorTypeInfo &info, VkDescriptorType type) const
 {
 	info.size = get_descriptor_size_for_type(type);
 	info.func = get_optimized_copy_func(info.size);
+	info.func_n = get_optimized_copy_n_func(info.size);
 	info.slab.init(info.size);
 }
 

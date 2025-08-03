@@ -311,7 +311,8 @@ struct DescriptorBufferAllocation
 	Util::AllocatedSlice backing_slice;
 };
 
-using DescriptorCopyFunc = void (*)(void *, const void *, size_t size);
+using DescriptorCopyFunc = void (*)(uint8_t *, const uint8_t *, size_t size);
+using DescriptorCopyNFunc = void (*)(uint8_t *, const uint8_t * const *, size_t count, size_t size);
 
 struct CachedDescriptorPayload
 {
@@ -340,6 +341,7 @@ public:
 
 #define IMPL_TYPE(type, desc_type) \
 	inline void copy_##type(uint8_t *dst, const uint8_t *src) const { type##_copy.func(dst, src, type##_copy.size); } \
+	inline void copy_##type##_n(uint8_t *dst, const uint8_t * const *src, size_t count) const { type##_copy.func_n(dst, src, count, type##_copy.size); } \
 	inline CachedDescriptorPayload alloc_##type() { return { type##_copy.slab.allocate(), desc_type }; } \
 	inline void free_##type(uint8_t *ptr) { type##_copy.slab.free(ptr); }
 
@@ -366,6 +368,7 @@ private:
 	struct DescriptorTypeInfo
 	{
 		DescriptorCopyFunc func;
+		DescriptorCopyNFunc func_n;
 		size_t size;
 		Util::ThreadSafeSlabAllocator slab;
 	};

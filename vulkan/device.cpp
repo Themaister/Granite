@@ -4611,13 +4611,17 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 	auto *allocator = request_descriptor_set_allocator(layout, stages_for_sets, nullptr);
 
 	VkDescriptorPool pool = VK_NULL_HANDLE;
-	if (allocator)
-		pool = allocator->allocate_bindless_pool(num_sets, num_descriptors);
 
-	if (!pool)
+	if (!ext.supports_descriptor_buffer)
 	{
-		LOGE("Failed to allocate bindless pool.\n");
-		return BindlessDescriptorPoolHandle{nullptr};
+		if (allocator)
+			pool = allocator->allocate_bindless_pool(num_sets, num_descriptors);
+
+		if (!pool)
+		{
+			LOGE("Failed to allocate bindless pool.\n");
+			return BindlessDescriptorPoolHandle{nullptr};
+		}
 	}
 
 	auto *handle = handle_pool.bindless_descriptor_pool.allocate(this, allocator, pool,

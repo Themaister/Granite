@@ -32,6 +32,7 @@
 #include <utility>
 #include <vector>
 #include "cookie.hpp"
+#include "memory_allocator.hpp"
 
 namespace Vulkan
 {
@@ -102,7 +103,11 @@ public:
 private:
 	Device *device;
 	DescriptorSetAllocator *allocator;
+
 	VkDescriptorPool desc_pool;
+	DescriptorBufferAllocation bindless_buffer;
+	VkDeviceSize bindless_buffer_offset = 0;
+
 	BindlessDescriptorSet desc_set;
 
 	uint32_t allocated_sets = 0;
@@ -111,7 +116,9 @@ private:
 	uint32_t total_descriptors = 0;
 
 	void push_texture(VkImageView view, VkImageLayout layout);
+	void push_texture(const uint8_t *ptr);
 	Util::DynamicArray<VkDescriptorImageInfo> infos;
+	Util::DynamicArray<const uint8_t *> info_ptrs;
 	uint32_t write_count = 0;
 };
 using BindlessDescriptorPoolHandle = Util::IntrusivePtr<BindlessDescriptorPool>;
@@ -157,6 +164,8 @@ public:
 	void reset_bindless_pool(VkDescriptorPool pool);
 
 	// Descriptor buffer integration.
+	DescriptorBufferAllocation allocate_bindless_buffer(unsigned num_sets, unsigned num_descriptors);
+
 	VkDeviceSize get_size() const
 	{
 		return desc_set_size;
@@ -166,6 +175,8 @@ public:
 	{
 		return desc_set_variable_offset;
 	}
+
+	VkDeviceSize get_variable_size(unsigned count) const;
 
 	uint32_t get_binding_offset(uint32_t binding) const
 	{

@@ -61,7 +61,8 @@ CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCa
 
 	device->lock.read_only_cache.lock_read();
 
-	if (device->get_device_features().supports_descriptor_buffer)
+	if (device->get_device_features().supports_descriptor_buffer &&
+	    (type == Type::Generic || type == Type::AsyncCompute))
 	{
 		VkDescriptorBufferBindingInfoEXT buf_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT };
 		buf_info.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
@@ -2511,8 +2512,8 @@ void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 		auto &b = bindings.bindings[set][start_binding + i];
 		b.image.fp.imageLayout = ref.layout;
 		b.image.integer.imageLayout = ref.layout;
-		b.image.fp.imageView = view->get_float_view();
-		b.image.integer.imageView = view->get_integer_view();
+		b.image.fp.imageView = view->get_float_view().view;
+		b.image.integer.imageView = view->get_integer_view().view;
 		bindings.cookies[set][start_binding + i] = view->get_cookie();
 		dirty_sets_realloc |= 1u << set;
 	}
@@ -2552,7 +2553,7 @@ void CommandBuffer::set_bindless(unsigned set, const BindlessDescriptorSet &hand
 void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView &view)
 {
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_SAMPLED_BIT);
-	set_texture(set, binding, view.get_float_view(), view.get_integer_view(),
+	set_texture(set, binding, view.get_float_view().view, view.get_integer_view().view,
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), view.get_cookie());
 }
 
@@ -2560,13 +2561,13 @@ enum CookieBits
 {
 	COOKIE_BIT_UNORM = 1 << 0,
 	COOKIE_BIT_SRGB = 1 << 1,
-	COOKIE_BIT_PER_MIP = 1 << 2
+	COOKIE_BIT_PER_MIP = 1 << 4
 };
 
 void CommandBuffer::set_unorm_texture(unsigned set, unsigned binding, const ImageView &view)
 {
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_SAMPLED_BIT);
-	auto unorm_view = view.get_unorm_view();
+	auto unorm_view = view.get_unorm_view().view;
 	VK_ASSERT(unorm_view != VK_NULL_HANDLE);
 	set_texture(set, binding, unorm_view, unorm_view,
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), view.get_cookie() | COOKIE_BIT_UNORM);
@@ -2575,7 +2576,7 @@ void CommandBuffer::set_unorm_texture(unsigned set, unsigned binding, const Imag
 void CommandBuffer::set_srgb_texture(unsigned set, unsigned binding, const ImageView &view)
 {
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_SAMPLED_BIT);
-	auto srgb_view = view.get_srgb_view();
+	auto srgb_view = view.get_srgb_view().view;
 	VK_ASSERT(srgb_view != VK_NULL_HANDLE);
 	set_texture(set, binding, srgb_view, srgb_view,
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), view.get_cookie() | COOKIE_BIT_SRGB);
@@ -2605,7 +2606,7 @@ void CommandBuffer::set_sampler(unsigned set, unsigned binding, StockSampler sto
 void CommandBuffer::set_storage_texture(unsigned set, unsigned binding, const ImageView &view)
 {
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT);
-	set_texture(set, binding, view.get_float_view(), view.get_integer_view(),
+	set_texture(set, binding, view.get_float_view().view, view.get_integer_view().view,
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL), view.get_cookie());
 }
 
@@ -2613,7 +2614,7 @@ void CommandBuffer::set_storage_texture_level(unsigned set, unsigned binding,
                                               const Vulkan::ImageView &view, unsigned level)
 {
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT);
-	auto mip_view = view.get_mip_view(level);
+	auto mip_view = view.get_mip_view(level).view;
 	set_texture(set, binding, mip_view, mip_view,
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL),
 	            view.get_cookie() | COOKIE_BIT_PER_MIP | level);
@@ -2622,7 +2623,7 @@ void CommandBuffer::set_storage_texture_level(unsigned set, unsigned binding,
 void CommandBuffer::set_unorm_storage_texture(unsigned set, unsigned binding, const ImageView &view)
 {
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT);
-	auto unorm_view = view.get_unorm_view();
+	auto unorm_view = view.get_unorm_view().view;
 	VK_ASSERT(unorm_view != VK_NULL_HANDLE);
 	set_texture(set, binding, unorm_view, unorm_view,
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL), view.get_cookie() | COOKIE_BIT_UNORM);

@@ -3571,6 +3571,14 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 
 	VkFormat format = create_info.format != VK_FORMAT_UNDEFINED ? create_info.format : image_create_info.format;
 
+	VkImageUsageFlags usage = create_info.image->get_create_info().usage;
+	VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
+	get_format_properties(format, &props3);
+	if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) == 0)
+		usage &= ~VK_IMAGE_USAGE_SAMPLED_BIT;
+	if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) == 0)
+		usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+
 	VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 	view_info.image = create_info.image->get_image();
 	view_info.format = format;
@@ -3610,13 +3618,14 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 
 	ImageViewCreateInfo tmp = create_info;
 	tmp.format = format;
-	ImageViewHandle ret(handle_pool.image_views.allocate(this, holder.image_view, tmp));
+	ImageViewHandle ret(handle_pool.image_views.allocate(this, holder.image_view, tmp, usage));
 	if (ret)
 	{
 		holder.owned = false;
 		ret->set_alt_views(holder.depth_view, holder.stencil_view);
 		ret->set_render_target_views(std::move(holder.rt_views));
 		ret->set_mip_views(std::move(holder.mip_views));
+		ret->rebuild_cached_descriptor_payloads(create_info.image->get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 		return ret;
 	}
 	else
@@ -4277,10 +4286,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (has_view)
 		{
 			handle->get_view().set_alt_views(holder.depth_view, holder.stencil_view);
-			handle->get_view().set_render_target_views(std::move(holder.rt_views));
-			handle->get_view().set_mip_views(std::move(holder.mip_views));
+			handle->get_view().set_render_target_views(holder.rt_views);
+			handle->get_view().set_mip_views(holder.mip_views);
 			handle->get_view().set_unorm_view(holder.unorm_view);
 			handle->get_view().set_srgb_view(holder.srgb_view);
+			handle->get_view().rebuild_cached_descriptor_payloads(handle->get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 		}
 	}
 
@@ -5101,7 +5111,7 @@ VkFormat Device::get_default_depth_format() const
 uint64_t Device::allocate_cookie()
 {
 	// Reserve lower bits for "special purposes".
-	return cookie.fetch_add(16, std::memory_order_relaxed) + 16;
+	return cookie.fetch_add(32, std::memory_order_relaxed) + 32;
 }
 
 const RenderPass &Device::request_render_pass(const RenderPassInfo &info, bool compatible)

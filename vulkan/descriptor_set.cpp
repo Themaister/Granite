@@ -462,17 +462,17 @@ bool BindlessDescriptorPool::allocate_descriptors(unsigned count)
 void BindlessDescriptorPool::push_texture(const ImageView &view)
 {
 	// TODO: Deal with integer view for depth-stencil images?
-	push_texture(view.get_float_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+	push_texture(view.get_float_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 }
 
 void BindlessDescriptorPool::push_texture_unorm(const ImageView &view)
 {
-	push_texture(view.get_unorm_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+	push_texture(view.get_unorm_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 }
 
 void BindlessDescriptorPool::push_texture_srgb(const ImageView &view)
 {
-	push_texture(view.get_srgb_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+	push_texture(view.get_srgb_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 }
 
 void BindlessDescriptorPool::push_texture(VkImageView view, VkImageLayout layout)

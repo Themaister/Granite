@@ -934,7 +934,7 @@ private:
 	void set_texture(unsigned set, unsigned binding, VkImageView float_view, VkImageView integer_view,
 	                 VkImageLayout layout,
 	                 uint64_t cookie);
-	void set_buffer_view_common(unsigned set, unsigned binding, const BufferView &view);
+	void set_buffer_view_common(unsigned set, unsigned binding, const BufferView &view, VkDescriptorType type);
 
 	void init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *framebuffer);
 	void init_surface_transform(const RenderPassInfo &info);

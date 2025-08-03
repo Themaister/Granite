@@ -667,6 +667,7 @@ private:
 		std::vector<VkSemaphore> consumed_semaphores;
 		std::vector<VkIndirectExecutionSetEXT> destroyed_execution_sets;
 		std::vector<DescriptorBufferAllocation> descriptor_buffer_allocs;
+		std::vector<CachedDescriptorPayload> cached_descriptor_payloads;
 
 		struct DebugChannel
 		{
@@ -813,6 +814,7 @@ private:
 	void destroy_descriptor_pool(VkDescriptorPool desc_pool);
 	void destroy_indirect_execution_set(VkIndirectExecutionSetEXT exec_set);
 	void free_descriptor_buffer_allocation(const DescriptorBufferAllocation &alloc);
+	void free_cached_descriptor_payload(const CachedDescriptorPayload &payload);
 
 	void destroy_buffer_nolock(VkBuffer buffer);
 	void destroy_image_nolock(VkImage image);
@@ -828,6 +830,7 @@ private:
 	void destroy_descriptor_pool_nolock(VkDescriptorPool desc_pool);
 	void reset_fence_nolock(VkFence fence, bool observed_wait);
 	void destroy_indirect_execution_set_nolock(VkIndirectExecutionSetEXT exec_set);
+	void free_cached_descriptor_payload_nolock(const CachedDescriptorPayload &payload);
 
 	void flush_frame_nolock();
 	CommandBufferHandle request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type, bool profiled);

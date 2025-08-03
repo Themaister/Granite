@@ -175,7 +175,7 @@ void PipelineLayout::create_update_templates()
 				entry.dstBinding = binding;
 				entry.dstArrayElement = i;
 				entry.descriptorCount = 1;
-				entry.offset = offsetof(ResourceBinding, buffer_view) + sizeof(ResourceBinding) * (binding + i);
+				entry.offset = offsetof(ResourceBinding, buffer_view.handle) + sizeof(ResourceBinding) * (binding + i);
 				entry.stride = sizeof(ResourceBinding);
 			}
 		});
@@ -190,7 +190,7 @@ void PipelineLayout::create_update_templates()
 				entry.dstBinding = binding;
 				entry.dstArrayElement = i;
 				entry.descriptorCount = 1;
-				entry.offset = offsetof(ResourceBinding, buffer_view) + sizeof(ResourceBinding) * (binding + i);
+				entry.offset = offsetof(ResourceBinding, buffer_view.handle) + sizeof(ResourceBinding) * (binding + i);
 				entry.stride = sizeof(ResourceBinding);
 			}
 		});

@@ -68,6 +68,18 @@ BufferView::BufferView(Device *device_, VkBufferView view_, const BufferViewCrea
 {
 }
 
+BufferView::BufferView(Device *device_,
+					   CachedDescriptorPayload desc_uniform_,
+					   CachedDescriptorPayload desc_storage_,
+					   const BufferViewCreateInfo &create_info_)
+	: Cookie(device_)
+	, device(device_)
+	, desc_uniform(desc_uniform_)
+	, desc_storage(desc_storage_)
+	, info(create_info_)
+{
+}
+
 BufferView::~BufferView()
 {
 	if (view != VK_NULL_HANDLE)
@@ -76,6 +88,22 @@ BufferView::~BufferView()
 			device->destroy_buffer_view_nolock(view);
 		else
 			device->destroy_buffer_view(view);
+	}
+
+	if (desc_uniform)
+	{
+		if (internal_sync)
+			device->free_cached_descriptor_payload_nolock(desc_uniform);
+		else
+			device->free_cached_descriptor_payload(desc_uniform);
+	}
+
+	if (desc_storage)
+	{
+		if (internal_sync)
+			device->free_cached_descriptor_payload_nolock(desc_storage);
+		else
+			device->free_cached_descriptor_payload(desc_storage);
 	}
 }
 

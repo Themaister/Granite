@@ -24,6 +24,7 @@
 
 #include "intrusive.hpp"
 #include "object_pool.hpp"
+#include "slab_allocator.hpp"
 #include "intrusive_list.hpp"
 #include "vulkan_headers.hpp"
 #include "logging.hpp"
@@ -312,6 +313,14 @@ struct DescriptorBufferAllocation
 
 using DescriptorCopyFunc = void (*)(void *, const void *, size_t size);
 
+struct CachedDescriptorPayload
+{
+	uint8_t *ptr;
+	VkDescriptorType type;
+
+	explicit operator bool() const { return ptr != nullptr; }
+};
+
 class DescriptorBufferAllocator : private Util::SliceAllocator
 {
 public:
@@ -329,17 +338,22 @@ public:
 
 	uint32_t get_descriptor_size_for_type(VkDescriptorType type) const;
 
-#define IMPL_COPY(type) \
-	inline void copy_##type(void *dst, const void *src) const { type##_copy.func(dst, src, type##_copy.size); }
-	IMPL_COPY(combined_image)
-	IMPL_COPY(sampled_image)
-	IMPL_COPY(storage_image)
-	IMPL_COPY(sampler)
-	IMPL_COPY(input_attachment)
-	IMPL_COPY(ubo)
-	IMPL_COPY(ssbo)
-	IMPL_COPY(uniform_texel)
-	IMPL_COPY(storage_texel)
+#define IMPL_TYPE(type, desc_type) \
+	inline void copy_##type(uint8_t *dst, const uint8_t *src) const { type##_copy.func(dst, src, type##_copy.size); } \
+	inline CachedDescriptorPayload alloc_##type() { return { type##_copy.slab.allocate(), desc_type }; } \
+	inline void free_##type(uint8_t *ptr) { type##_copy.slab.free(ptr); }
+
+	IMPL_TYPE(combined_image, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+	IMPL_TYPE(sampled_image, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
+	IMPL_TYPE(storage_image, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+	IMPL_TYPE(sampler, VK_DESCRIPTOR_TYPE_SAMPLER)
+	IMPL_TYPE(input_attachment, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT)
+	IMPL_TYPE(ubo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+	IMPL_TYPE(ssbo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+	IMPL_TYPE(uniform_texel, VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER)
+	IMPL_TYPE(storage_texel, VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)
+
+	void free_cached_descriptors(const CachedDescriptorPayload *payloads, size_t count);
 
 private:
 	Device *device = nullptr;
@@ -353,6 +367,7 @@ private:
 	{
 		DescriptorCopyFunc func;
 		size_t size;
+		Util::ThreadSafeSlabAllocator slab;
 	};
 	DescriptorTypeInfo sampled_image_copy, storage_image_copy, combined_image_copy, sampler_copy, input_attachment_copy;
 	DescriptorTypeInfo ubo_copy, ssbo_copy, uniform_texel_copy, storage_texel_copy;

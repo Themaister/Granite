@@ -911,6 +911,7 @@ void DescriptorBufferAllocator::init_copy_func(DescriptorTypeInfo &info, VkDescr
 {
 	info.size = get_descriptor_size_for_type(type);
 	info.func = get_optimized_copy_func(info.size);
+	info.slab.init(info.size);
 }
 
 uint8_t *DescriptorBufferAllocator::get_mapped_heap()
@@ -1014,4 +1015,42 @@ uint32_t DescriptorBufferAllocator::get_descriptor_size_for_type(VkDescriptorTyp
 	}
 }
 
+void DescriptorBufferAllocator::free_cached_descriptors(const CachedDescriptorPayload *payloads, size_t count)
+{
+	for (size_t i = 0; i < count; i++)
+	{
+		switch (payloads[i].type)
+		{
+		case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+			combined_image_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_SAMPLER:
+			sampler_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+			sampled_image_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+			input_attachment_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+			storage_image_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+			ubo_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+			uniform_texel_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+			ssbo_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+			storage_texel_copy.slab.free(payloads[i].ptr);
+			break;
+		default:
+			break;
+		}
+	}
+}
 }

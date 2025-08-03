@@ -154,6 +154,9 @@ void ImageView::rebuild_cached_descriptor_payloads(CachedView &v, VkImageLayout 
 	image_info.imageView = v.view;
 	free_cached_view_payloads(v);
 
+	if (v.view == VK_NULL_HANDLE)
+		return;
+
 	if (specific_usage & VK_IMAGE_USAGE_SAMPLED_BIT)
 	{
 		image_info.imageLayout = sampled_layout;

@@ -69,9 +69,9 @@ BufferView::BufferView(Device *device_, VkBufferView view_, const BufferViewCrea
 }
 
 BufferView::BufferView(Device *device_,
-					   CachedDescriptorPayload desc_uniform_,
-					   CachedDescriptorPayload desc_storage_,
-					   const BufferViewCreateInfo &create_info_)
+                       CachedDescriptorPayload desc_uniform_,
+                       CachedDescriptorPayload desc_storage_,
+                       const BufferViewCreateInfo &create_info_)
 	: Cookie(device_)
 	, device(device_)
 	, desc_uniform(desc_uniform_)

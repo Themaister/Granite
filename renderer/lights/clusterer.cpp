@@ -226,7 +226,7 @@ void LightClusterer::set_enable_volumetric_decals(bool enable)
 	enable_volumetric_decals = enable;
 }
 
-VkDescriptorSet LightClusterer::get_cluster_bindless_set() const
+Vulkan::BindlessDescriptorSet LightClusterer::get_cluster_bindless_set() const
 {
 	return bindless.desc_set;
 }
@@ -1568,7 +1568,7 @@ void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
 {
 	if (!enable_shadows)
 	{
-		bindless.desc_set = VK_NULL_HANDLE;
+		bindless.desc_set = {};
 		return;
 	}
 

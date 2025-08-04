@@ -24,6 +24,7 @@
 
 #include "intrusive.hpp"
 #include "object_pool.hpp"
+#include "slab_allocator.hpp"
 #include "intrusive_list.hpp"
 #include "vulkan_headers.hpp"
 #include "logging.hpp"
@@ -296,5 +297,87 @@ private:
 	std::vector<Heap> heaps;
 	bool memory_heap_is_budget_critical[VK_MAX_MEMORY_HEAPS] = {};
 	void get_memory_budget_nolock(HeapBudget *heaps);
+};
+
+// Avoid cross-dependency in header.
+class Buffer;
+
+struct DescriptorBufferAllocation
+{
+	inline VkDeviceSize get_offset() const { return backing_slice.offset; }
+	inline VkDeviceSize get_size() const { return backing_slice.count; }
+
+	// Internal detail.
+	Util::AllocatedSlice backing_slice;
+};
+
+using DescriptorCopyFunc = void (*)(uint8_t *, const uint8_t *, size_t size);
+using DescriptorCopyNFunc = void (*)(uint8_t *, const uint8_t * const *, size_t count, size_t size);
+
+struct CachedDescriptorPayload
+{
+	uint8_t *ptr;
+	VkDescriptorType type;
+
+	explicit operator bool() const { return ptr != nullptr; }
+};
+
+class DescriptorBufferAllocator : private Util::SliceAllocator
+{
+public:
+	bool init(Device *device);
+	~DescriptorBufferAllocator();
+
+	void teardown();
+
+	VkDeviceAddress get_heap_address();
+	uint8_t *get_mapped_heap();
+
+	DescriptorBufferAllocation allocate(VkDeviceSize size);
+	void free(const DescriptorBufferAllocation &alloc);
+	void free(const DescriptorBufferAllocation *alloc, size_t count);
+
+	uint32_t get_descriptor_size_for_type(VkDescriptorType type) const;
+
+#define IMPL_TYPE(type, desc_type) \
+	inline void copy_##type(uint8_t *dst, const uint8_t *src) const { type##_copy.func(dst, src, type##_copy.size); } \
+	inline void copy_##type##_n(uint8_t *dst, const uint8_t * const *src, size_t count) const { type##_copy.func_n(dst, src, count, type##_copy.size); } \
+	inline CachedDescriptorPayload alloc_##type() { return { type##_copy.slab.allocate(), desc_type }; } \
+	inline void free_##type(uint8_t *ptr) { type##_copy.slab.free(ptr); }
+
+	IMPL_TYPE(combined_image, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+	IMPL_TYPE(sampled_image, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
+	IMPL_TYPE(storage_image, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+	IMPL_TYPE(sampler, VK_DESCRIPTOR_TYPE_SAMPLER)
+	IMPL_TYPE(input_attachment, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT)
+	IMPL_TYPE(ubo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+	IMPL_TYPE(ssbo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+	IMPL_TYPE(uniform_texel, VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER)
+	IMPL_TYPE(storage_texel, VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)
+
+	void free_cached_descriptors(const CachedDescriptorPayload *payloads, size_t count);
+
+private:
+	Device *device = nullptr;
+	Buffer *buffer = nullptr;
+	Util::SliceBackingAllocatorVA backing_va;
+	VkDeviceSize alignment = 0;
+	VkDeviceSize sub_block_size = 0;
+	std::mutex lock;
+
+	struct DescriptorTypeInfo
+	{
+		DescriptorCopyFunc func;
+		DescriptorCopyNFunc func_n;
+		size_t size;
+		Util::ThreadSafeSlabAllocator slab;
+	};
+	DescriptorTypeInfo sampled_image_copy, storage_image_copy, combined_image_copy, sampler_copy, input_attachment_copy;
+	DescriptorTypeInfo ubo_copy, ssbo_copy, uniform_texel_copy, storage_texel_copy;
+	void init_copy_func(DescriptorTypeInfo &info, VkDescriptorType type) const;
+
+	VkDeviceSize total_size = 0;
+	VkDeviceSize high_water_mark = 0;
+	VkDeviceSize max_size = 0;
 };
 }

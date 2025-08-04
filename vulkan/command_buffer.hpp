@@ -483,7 +483,7 @@ public:
 	void set_storage_buffer(unsigned set, unsigned binding, const Buffer &buffer, VkDeviceSize offset,
 	                        VkDeviceSize range);
 
-	void set_bindless(unsigned set, VkDescriptorSet desc_set);
+	void set_bindless(unsigned set, const BindlessDescriptorSet &handle);
 
 	void push_constants(const void *data, VkDeviceSize offset, VkDeviceSize range);
 
@@ -913,6 +913,9 @@ private:
 	void flush_descriptor_binds(const VkDescriptorSet *sets,
 		uint32_t &first_set, uint32_t &set_count,
 		uint32_t *dynamic_offsets, uint32_t &num_dynamic_offsets);
+	void rebind_descriptor_offset(uint32_t set, uint32_t &first_set, uint32_t &set_count);
+	void allocate_descriptor_offset(uint32_t set, uint32_t &first_set, uint32_t &set_count);
+	void flush_descriptor_offsets(uint32_t &first_set, uint32_t &set_count);
 	void validate_descriptor_binds(uint32_t set);
 
 	void begin_compute();
@@ -923,10 +926,16 @@ private:
 	BufferBlock ubo_block;
 	BufferBlock staging_block;
 
-	void set_texture(unsigned set, unsigned binding, VkImageView float_view, VkImageView integer_view,
-	                 VkImageLayout layout,
+	DescriptorBufferAllocation desc_buffer = {};
+	VkDeviceSize desc_buffer_alloc_offset = 0;
+	VkDeviceSize desc_buffer_offsets[VULKAN_NUM_DESCRIPTOR_SETS];
+	bool desc_buffer_enable = false;
+
+	void set_texture(unsigned set, unsigned binding,
+	                 VkImageView float_view, VkImageView integer_view, VkImageLayout layout,
+	                 const uint8_t *float_ptr, const uint8_t *integer_ptr,
 	                 uint64_t cookie);
-	void set_buffer_view_common(unsigned set, unsigned binding, const BufferView &view);
+	void set_buffer_view_common(unsigned set, unsigned binding, const BufferView &view, VkDescriptorType type);
 
 	void init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *framebuffer);
 	void init_surface_transform(const RenderPassInfo &info);

@@ -978,12 +978,8 @@ void Device::set_context(const Context &context)
 	system_handles = context.get_system_handles();
 
 	init_workarounds();
-
-	init_stock_samplers();
 	init_pipeline_cache();
-
 	init_timeline_semaphores();
-
 	init_frame_contexts(2); // By default, regular double buffer between CPU and GPU.
 
 	managers.memory.init(this);
@@ -1004,6 +1000,11 @@ void Device::set_context(const Context &context)
 	managers.ibo.set_max_retained_blocks(256);
 	managers.ubo.set_max_retained_blocks(64);
 	managers.staging.set_max_retained_blocks(32);
+
+	if (ext.supports_descriptor_buffer)
+		managers.descriptor_buffer.init(this);
+
+	init_stock_samplers();
 
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
 	{
@@ -2056,6 +2057,7 @@ Device::~Device()
 	wsi.acquire.reset();
 	wsi.release.reset();
 	wsi.swapchain.clear();
+	managers.descriptor_buffer.teardown();
 
 	wait_idle();
 
@@ -2320,6 +2322,18 @@ void Device::destroy_image_view(VkImageView view)
 	destroy_image_view_nolock(view);
 }
 
+void Device::free_descriptor_buffer_allocation(const DescriptorBufferAllocation &alloc)
+{
+	LOCK();
+	free_descriptor_buffer_allocation_nolock(alloc);
+}
+
+void Device::free_cached_descriptor_payload(const CachedDescriptorPayload &payload)
+{
+	LOCK();
+	free_cached_descriptor_payload_nolock(payload);
+}
+
 void Device::destroy_image_view_nolock(VkImageView view)
 {
 	VK_ASSERT(!exists(frame().destroyed_image_views, view));
@@ -2365,6 +2379,16 @@ void Device::reset_fence_nolock(VkFence fence, bool observed_wait)
 	}
 	else
 		frame().wait_and_recycle_fences.push_back(fence);
+}
+
+void Device::free_descriptor_buffer_allocation_nolock(const DescriptorBufferAllocation &alloc)
+{
+	frame().descriptor_buffer_allocs.push_back(alloc);
+}
+
+void Device::free_cached_descriptor_payload_nolock(const CachedDescriptorPayload &payload)
+{
+	frame().cached_descriptor_payloads.push_back(payload);
 }
 
 PipelineEvent Device::request_pipeline_event()
@@ -2459,10 +2483,13 @@ void Device::wait_idle_nolock()
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
 
-	for (auto &allocator : descriptor_set_allocators.get_read_only())
-		allocator.clear();
-	for (auto &allocator : descriptor_set_allocators.get_read_write())
-		allocator.clear();
+	if (!ext.supports_descriptor_buffer)
+	{
+		for (auto &allocator: descriptor_set_allocators.get_read_only())
+			allocator.clear();
+		for (auto &allocator: descriptor_set_allocators.get_read_write())
+			allocator.clear();
+	}
 
 	for (auto &frame : per_frame)
 	{
@@ -2545,10 +2572,13 @@ void Device::next_frame_context()
 	framebuffer_allocator.begin_frame();
 	transient_allocator.begin_frame();
 
-	for (auto &allocator : descriptor_set_allocators.get_read_only())
-		allocator.begin_frame();
-	for (auto &allocator : descriptor_set_allocators.get_read_write())
-		allocator.begin_frame();
+	if (!ext.supports_descriptor_buffer)
+	{
+		for (auto &allocator: descriptor_set_allocators.get_read_only())
+			allocator.begin_frame();
+		for (auto &allocator: descriptor_set_allocators.get_read_write())
+			allocator.begin_frame();
+	}
 
 	VK_ASSERT(!per_frame.empty());
 	frame_context_index++;
@@ -2866,6 +2896,9 @@ void Device::PerFrame::begin()
 		managers.semaphore.recycle(semaphore);
 	for (auto &event : recycled_events)
 		managers.event.recycle(event);
+	managers.descriptor_buffer.free(descriptor_buffer_allocs.data(), descriptor_buffer_allocs.size());
+	managers.descriptor_buffer.free_cached_descriptors(
+			cached_descriptor_payloads.data(), cached_descriptor_payloads.size());
 	VK_ASSERT(consumed_semaphores.empty());
 
 	if (!allocations.empty())
@@ -2887,6 +2920,8 @@ void Device::PerFrame::begin()
 	recycled_semaphores.clear();
 	recycled_events.clear();
 	allocations.clear();
+	descriptor_buffer_allocs.clear();
+	cached_descriptor_payloads.clear();
 
 	if (!in_destructor)
 		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence + recycle");
@@ -3173,18 +3208,60 @@ static inline VkImageViewType get_image_view_type(const ImageCreateInfo &create_
 
 BufferViewHandle Device::create_buffer_view(const BufferViewCreateInfo &view_info)
 {
-	VkBufferViewCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO };
-	info.buffer = view_info.buffer->get_buffer();
-	info.format = view_info.format;
-	info.offset = view_info.offset;
-	info.range = view_info.range;
+	if (ext.supports_descriptor_buffer)
+	{
+		VkDescriptorAddressInfoEXT addr = { VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT };
+		VkDescriptorGetInfoEXT info = { VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT };
+		CachedDescriptorPayload ro = {};
+		CachedDescriptorPayload rw = {};
 
-	VkBufferView view;
-	auto res = table->vkCreateBufferView(device, &info, nullptr, &view);
-	if (res != VK_SUCCESS)
-		return BufferViewHandle(nullptr);
+		addr.address = view_info.buffer->get_device_address() + view_info.offset;
+		if (view_info.range == VK_WHOLE_SIZE)
+			addr.range = view_info.buffer->get_create_info().size - view_info.offset;
+		else
+			addr.range = view_info.range;
+		addr.format = view_info.format;
 
-	return BufferViewHandle(handle_pool.buffer_views.allocate(this, view, view_info));
+		VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
+		get_format_properties(view_info.format, &props3);
+
+		if ((view_info.buffer->get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) != 0 &&
+		    (props3.bufferFeatures & VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) != 0)
+		{
+			ro = managers.descriptor_buffer.alloc_uniform_texel();
+			info.type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+			info.data.pUniformTexelBuffer = &addr;
+			table->vkGetDescriptorEXT(
+					device, &info, managers.descriptor_buffer.get_descriptor_size_for_type(info.type), ro.ptr);
+		}
+
+		if ((view_info.buffer->get_create_info().usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) != 0 &&
+		    (props3.bufferFeatures & VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) != 0)
+		{
+			rw = managers.descriptor_buffer.alloc_storage_texel();
+			info.type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+			info.data.pStorageTexelBuffer = &addr;
+			table->vkGetDescriptorEXT(
+					device, &info, managers.descriptor_buffer.get_descriptor_size_for_type(info.type), rw.ptr);
+		}
+
+		return BufferViewHandle(handle_pool.buffer_views.allocate(this, ro, rw, view_info));
+	}
+	else
+	{
+		VkBufferViewCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO };
+		info.buffer = view_info.buffer->get_buffer();
+		info.format = view_info.format;
+		info.offset = view_info.offset;
+		info.range = view_info.range;
+
+		VkBufferView view;
+		auto res = table->vkCreateBufferView(device, &info, nullptr, &view);
+		if (res != VK_SUCCESS)
+			return BufferViewHandle(nullptr);
+
+		return BufferViewHandle(handle_pool.buffer_views.allocate(this, view, view_info));
+	}
 }
 
 class ImageResourceHolder
@@ -3503,6 +3580,14 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 
 	VkFormat format = create_info.format != VK_FORMAT_UNDEFINED ? create_info.format : image_create_info.format;
 
+	VkImageUsageFlags usage = create_info.image->get_create_info().usage;
+	VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
+	get_format_properties(format, &props3);
+	if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) == 0)
+		usage &= ~VK_IMAGE_USAGE_SAMPLED_BIT;
+	if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) == 0)
+		usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+
 	VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 	view_info.image = create_info.image->get_image();
 	view_info.format = format;
@@ -3542,13 +3627,14 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 
 	ImageViewCreateInfo tmp = create_info;
 	tmp.format = format;
-	ImageViewHandle ret(handle_pool.image_views.allocate(this, holder.image_view, tmp));
+	ImageViewHandle ret(handle_pool.image_views.allocate(this, holder.image_view, tmp, usage));
 	if (ret)
 	{
 		holder.owned = false;
 		ret->set_alt_views(holder.depth_view, holder.stencil_view);
 		ret->set_render_target_views(std::move(holder.rt_views));
 		ret->set_mip_views(std::move(holder.mip_views));
+		ret->rebuild_cached_descriptor_payloads(create_info.image->get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 		return ret;
 	}
 	else
@@ -4165,7 +4251,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	}
 
 	bool generate_mips = (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
-	if (staging_buffer && !generate_mips && (info.usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT) == 0)
+	if (staging_buffer && (generate_mips || (info.usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT) == 0))
 		info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 	if (table->vkCreateImage(device, &info, nullptr, &holder.image) != VK_SUCCESS)
@@ -4209,10 +4295,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (has_view)
 		{
 			handle->get_view().set_alt_views(holder.depth_view, holder.stencil_view);
-			handle->get_view().set_render_target_views(std::move(holder.rt_views));
-			handle->get_view().set_mip_views(std::move(holder.mip_views));
+			handle->get_view().set_render_target_views(holder.rt_views);
+			handle->get_view().set_mip_views(holder.mip_views);
 			handle->get_view().set_unorm_view(holder.unorm_view);
 			handle->get_view().set_srgb_view(holder.srgb_view);
+			handle->get_view().rebuild_cached_descriptor_payloads(handle->get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 		}
 	}
 
@@ -4522,13 +4609,17 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 	auto *allocator = request_descriptor_set_allocator(layout, stages_for_sets, nullptr);
 
 	VkDescriptorPool pool = VK_NULL_HANDLE;
-	if (allocator)
-		pool = allocator->allocate_bindless_pool(num_sets, num_descriptors);
 
-	if (!pool)
+	if (!ext.supports_descriptor_buffer)
 	{
-		LOGE("Failed to allocate bindless pool.\n");
-		return BindlessDescriptorPoolHandle{nullptr};
+		if (allocator)
+			pool = allocator->allocate_bindless_pool(num_sets, num_descriptors);
+
+		if (!pool)
+		{
+			LOGE("Failed to allocate bindless pool.\n");
+			return BindlessDescriptorPoolHandle{nullptr};
+		}
 	}
 
 	auto *handle = handle_pool.bindless_descriptor_pool.allocate(this, allocator, pool,
@@ -5033,7 +5124,7 @@ VkFormat Device::get_default_depth_format() const
 uint64_t Device::allocate_cookie()
 {
 	// Reserve lower bits for "special purposes".
-	return cookie.fetch_add(16, std::memory_order_relaxed) + 16;
+	return cookie.fetch_add(32, std::memory_order_relaxed) + 32;
 }
 
 const RenderPass &Device::request_render_pass(const RenderPassInfo &info, bool compatible)

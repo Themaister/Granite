@@ -111,7 +111,8 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourc
 	device->register_pipeline_layout(pipe_layout, get_hash(), info);
 #endif
 
-	create_update_templates();
+	if (!device->get_device_features().descriptor_buffer_features.descriptorBuffer)
+		create_update_templates();
 }
 
 void PipelineLayout::create_update_templates()
@@ -174,7 +175,7 @@ void PipelineLayout::create_update_templates()
 				entry.dstBinding = binding;
 				entry.dstArrayElement = i;
 				entry.descriptorCount = 1;
-				entry.offset = offsetof(ResourceBinding, buffer_view) + sizeof(ResourceBinding) * (binding + i);
+				entry.offset = offsetof(ResourceBinding, buffer_view.handle) + sizeof(ResourceBinding) * (binding + i);
 				entry.stride = sizeof(ResourceBinding);
 			}
 		});
@@ -189,7 +190,7 @@ void PipelineLayout::create_update_templates()
 				entry.dstBinding = binding;
 				entry.dstArrayElement = i;
 				entry.descriptorCount = 1;
-				entry.offset = offsetof(ResourceBinding, buffer_view) + sizeof(ResourceBinding) * (binding + i);
+				entry.offset = offsetof(ResourceBinding, buffer_view.handle) + sizeof(ResourceBinding) * (binding + i);
 				entry.stride = sizeof(ResourceBinding);
 			}
 		});
@@ -255,10 +256,7 @@ void PipelineLayout::create_update_templates()
 				entry.dstBinding = binding;
 				entry.dstArrayElement = i;
 				entry.descriptorCount = 1;
-				if (set_layout.fp_mask & (1u << binding))
-					entry.offset = offsetof(ResourceBinding, image.fp) + sizeof(ResourceBinding) * (binding + i);
-				else
-					entry.offset = offsetof(ResourceBinding, image.integer) + sizeof(ResourceBinding) * (binding + i);
+				entry.offset = offsetof(ResourceBinding, image.fp) + sizeof(ResourceBinding) * (binding + i);
 				entry.stride = sizeof(ResourceBinding);
 			}
 		});

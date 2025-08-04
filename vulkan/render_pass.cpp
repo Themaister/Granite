@@ -853,18 +853,18 @@ unsigned Framebuffer::setup_raw_views(VkImageView *views, const RenderPassInfo &
 
 		// For multiview, we use view indices to pick right layers.
 		if (info.num_layers > 1)
-			views[num_views++] = info.color_attachments[i]->get_view();
+			views[num_views++] = info.color_attachments[i]->get_view().view;
 		else
-			views[num_views++] = info.color_attachments[i]->get_render_target_view(info.base_layer);
+			views[num_views++] = info.color_attachments[i]->get_render_target_view(info.base_layer).view;
 	}
 
 	if (info.depth_stencil)
 	{
 		// For multiview, we use view indices to pick right layers.
 		if (info.num_layers > 1)
-			views[num_views++] = info.depth_stencil->get_view();
+			views[num_views++] = info.depth_stencil->get_view().view;
 		else
-			views[num_views++] = info.depth_stencil->get_render_target_view(info.base_layer);
+			views[num_views++] = info.depth_stencil->get_render_target_view(info.base_layer).view;
 	}
 
 	return num_views;

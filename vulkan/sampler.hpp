@@ -26,6 +26,7 @@
 #include "vulkan_common.hpp"
 #include "vulkan_headers.hpp"
 #include "object_pool.hpp"
+#include "memory_allocator.hpp"
 
 namespace Vulkan
 {
@@ -81,6 +82,12 @@ public:
 		return sampler;
 	}
 
+	CachedDescriptorPayload get_descriptor_payload() const
+	{
+		VK_ASSERT(payload && payload.type == VK_DESCRIPTOR_TYPE_SAMPLER);
+		return payload;
+	}
+
 	const SamplerCreateInfo &get_create_info() const
 	{
 		return create_info;
@@ -95,6 +102,7 @@ private:
 
 	Device *device;
 	VkSampler sampler;
+	CachedDescriptorPayload payload;
 	SamplerCreateInfo create_info;
 	bool immutable;
 };

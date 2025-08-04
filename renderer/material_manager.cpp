@@ -95,7 +95,7 @@ void MaterialManager::set_material_payloads(Vulkan::CommandBuffer &cmd, unsigned
 
 void MaterialManager::set_bindless(Vulkan::CommandBuffer &cmd, unsigned set_index)
 {
-	if (vk_set == VK_NULL_HANDLE)
+	if (!vk_set)
 	{
 		allocator.begin();
 		vk_set = allocator.commit(*device);

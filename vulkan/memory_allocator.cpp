@@ -822,4 +822,289 @@ void DeviceAllocationDeleter::operator()(DeviceAllocationOwner *owner)
 {
 	owner->device->handle_pool.allocations.free(owner);
 }
+
+bool DescriptorBufferAllocator::init(Vulkan::Device *device_)
+{
+	device = device_;
+	alignment = device->get_device_features().descriptor_buffer_properties.descriptorBufferOffsetAlignment;
+
+	sub_block_size = std::max<uint32_t>(
+			device->get_gpu_properties().limits.nonCoherentAtomSize,
+			device->get_device_features().descriptor_buffer_properties.descriptorBufferOffsetAlignment);
+
+	auto max_range = std::min<VkDeviceSize>(
+			device->get_device_features().descriptor_buffer_properties.maxResourceDescriptorBufferRange,
+			device->get_device_features().descriptor_buffer_properties.maxSamplerDescriptorBufferRange);
+
+	auto max_descriptor_size = std::max<uint32_t>(
+			device->get_device_features().descriptor_buffer_properties.sampledImageDescriptorSize,
+			device->get_device_features().descriptor_buffer_properties.robustStorageBufferDescriptorSize);
+
+	// Aim for a global heap of about 1M descriptors. Should be enough to avoid exhaustion.
+	max_range = std::min<VkDeviceSize>(max_range, 1024ull * 1024ull * max_descriptor_size);
+
+	auto max_sub_blocks = max_range / sub_block_size;
+	auto max_sub_blocks_log2 = Util::floor_log2(max_sub_blocks);
+
+	Util::SliceAllocator::init(sub_block_size, max_sub_blocks_log2, &backing_va);
+
+	// Allocate this early so we're guaranteed to fit in smol BAR as well.
+	BufferCreateInfo info = {};
+	info.size = VkDeviceSize(sub_block_size) << max_sub_blocks_log2;
+	info.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
+	             VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
+	info.domain = BufferDomain::LinkedDeviceHost;
+
+	max_size = info.size;
+
+	auto buf = device->create_buffer(info);
+	if (!buf)
+	{
+		LOGE("Failed to allocate descriptor buffer.\n");
+		return false;
+	}
+
+	init_copy_func(sampled_image_copy, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
+	init_copy_func(storage_image_copy, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+	init_copy_func(input_attachment_copy, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT);
+	init_copy_func(combined_image_copy, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	init_copy_func(sampler_copy, VK_DESCRIPTOR_TYPE_SAMPLER);
+	init_copy_func(uniform_texel_copy, VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER);
+	init_copy_func(storage_texel_copy, VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER);
+	init_copy_func(ubo_copy, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+	init_copy_func(ssbo_copy, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+
+	buffer = buf.release();
+	return true;
+}
+
+template <size_t N>
+static void static_memcpy(uint8_t *dst, const uint8_t *src, size_t)
+{
+	// memcpy with static size is way more efficient than dynamic size.
+	memcpy(dst, src, N);
+}
+
+static void dynamic_memcpy(uint8_t *dst, const uint8_t *src, size_t n)
+{
+	memcpy(dst, src, n);
+}
+
+template <size_t N>
+static void static_memcpy_n(uint8_t *dst, const uint8_t * const *src, size_t count, size_t)
+{
+	// memcpy with static size is way more efficient than dynamic size.
+	for (size_t i = 0; i < count; i++, dst += N)
+		memcpy(dst, src[i], N);
+}
+
+static void dynamic_memcpy_n(uint8_t *dst, const uint8_t * const *src, size_t count, size_t n)
+{
+	for (size_t i = 0; i < count; i++, dst += n)
+		memcpy(dst, src[i], n);
+}
+
+static DescriptorCopyFunc get_optimized_copy_func(size_t size)
+{
+	switch (size)
+	{
+	case 0: return static_memcpy<0>;
+	case 4: return static_memcpy<4>;
+	case 8: return static_memcpy<8>;
+	case 16: return static_memcpy<16>;
+	case 32: return static_memcpy<32>;
+	case 48: return static_memcpy<48>;
+	case 64: return static_memcpy<64>;
+	case 96: return static_memcpy<96>;
+	case 128: return static_memcpy<128>;
+	case 192: return static_memcpy<192>;
+	case 256: return static_memcpy<256>;
+	default: LOGW("Unrecognized special memcpy size %zu. Using slow fallback.\n", size); return dynamic_memcpy;
+	}
+}
+
+static DescriptorCopyNFunc get_optimized_copy_n_func(size_t size)
+{
+	switch (size)
+	{
+	case 0: return static_memcpy_n<0>;
+	case 4: return static_memcpy_n<4>;
+	case 8: return static_memcpy_n<8>;
+	case 16: return static_memcpy_n<16>;
+	case 32: return static_memcpy_n<32>;
+	case 48: return static_memcpy_n<48>;
+	case 64: return static_memcpy_n<64>;
+	case 96: return static_memcpy_n<96>;
+	case 128: return static_memcpy_n<128>;
+	case 192: return static_memcpy_n<192>;
+	case 256: return static_memcpy_n<256>;
+	default: LOGW("Unrecognized special memcpy size %zu. Using slow fallback.\n", size); return dynamic_memcpy_n;
+	}
+}
+
+void DescriptorBufferAllocator::init_copy_func(DescriptorTypeInfo &info, VkDescriptorType type) const
+{
+	info.size = get_descriptor_size_for_type(type);
+	info.func = get_optimized_copy_func(info.size);
+	info.func_n = get_optimized_copy_n_func(info.size);
+	info.slab.init(info.size);
+}
+
+uint8_t *DescriptorBufferAllocator::get_mapped_heap()
+{
+	return static_cast<uint8_t *>(device->map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));
+}
+
+void DescriptorBufferAllocator::free(const DescriptorBufferAllocation &alloc)
+{
+	std::lock_guard<std::mutex> holder{lock};
+	Util::SliceAllocator::free(alloc.backing_slice);
+}
+
+void DescriptorBufferAllocator::free(const DescriptorBufferAllocation *alloc, size_t count)
+{
+	std::lock_guard<std::mutex> holder{lock};
+	for (size_t i = 0; i < count; i++)
+	{
+		total_size -= alloc[i].backing_slice.count;
+		Util::SliceAllocator::free(alloc[i].backing_slice);
+	}
+}
+
+DescriptorBufferAllocation DescriptorBufferAllocator::allocate(VkDeviceSize size)
+{
+	size = (size + alignment - 1) & ~(alignment - 1);
+
+	std::lock_guard<std::mutex> holder{lock};
+
+	DescriptorBufferAllocation alloc = {};
+	if (!Util::SliceAllocator::allocate(size, &alloc.backing_slice))
+	{
+		LOGE("Descriptor buffer arena is exhausted! This should not happen.\n");
+		return alloc;
+	}
+
+	total_size += alloc.backing_slice.count;
+	if (total_size > high_water_mark)
+	{
+		high_water_mark = total_size;
+#ifdef VULKAN_DEBUG
+		LOGI("Descriptor arena high water mark increased to: %llu bytes.\n",
+		     static_cast<unsigned long long>(high_water_mark));
+#else
+		if (high_water_mark * 4 > total_size)
+		{
+			LOGW("Descriptor arena pressure: high water mark increased to: %llu bytes.\n",
+			     static_cast<unsigned long long>(high_water_mark));
+		}
+#endif
+	}
+
+	return alloc;
+}
+
+VkDeviceAddress DescriptorBufferAllocator::get_heap_address()
+{
+	return buffer->get_device_address();
+}
+
+void DescriptorBufferAllocator::teardown()
+{
+	if (buffer)
+	{
+		buffer->set_internal_sync_object();
+		buffer->release_reference();
+		buffer = nullptr;
+	}
+}
+
+DescriptorBufferAllocator::~DescriptorBufferAllocator()
+{
+	// Call teardown before destroying device.
+	VK_ASSERT(!buffer);
+	VK_ASSERT(total_size == 0);
+}
+
+uint32_t DescriptorBufferAllocator::get_descriptor_size_for_type(VkDescriptorType type) const
+{
+	auto &ext = device->get_device_features();
+
+	switch (type)
+	{
+	case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+		return ext.descriptor_buffer_properties.combinedImageSamplerDescriptorSize;
+	case VK_DESCRIPTOR_TYPE_SAMPLER:
+		return ext.descriptor_buffer_properties.samplerDescriptorSize;
+	case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+		return ext.descriptor_buffer_properties.sampledImageDescriptorSize;
+	case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+		return ext.descriptor_buffer_properties.inputAttachmentDescriptorSize;
+	case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+		return ext.descriptor_buffer_properties.storageImageDescriptorSize;
+	case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+		if (ext.enabled_features.robustBufferAccess)
+			return ext.descriptor_buffer_properties.robustUniformBufferDescriptorSize;
+		else
+			return ext.descriptor_buffer_properties.uniformBufferDescriptorSize;
+	case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+		if (ext.enabled_features.robustBufferAccess)
+			return ext.descriptor_buffer_properties.robustUniformTexelBufferDescriptorSize;
+		else
+			return ext.descriptor_buffer_properties.uniformTexelBufferDescriptorSize;
+	case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+		if (ext.enabled_features.robustBufferAccess)
+			return ext.descriptor_buffer_properties.robustStorageBufferDescriptorSize;
+		else
+			return ext.descriptor_buffer_properties.storageBufferDescriptorSize;
+	case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+		if (ext.enabled_features.robustBufferAccess)
+			return ext.descriptor_buffer_properties.robustStorageTexelBufferDescriptorSize;
+		else
+			return ext.descriptor_buffer_properties.storageTexelBufferDescriptorSize;
+	case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
+		return ext.descriptor_buffer_properties.accelerationStructureDescriptorSize;
+	default:
+		LOGE("Invalid descriptor type %u\n", type);
+		return 0;
+	}
+}
+
+void DescriptorBufferAllocator::free_cached_descriptors(const CachedDescriptorPayload *payloads, size_t count)
+{
+	for (size_t i = 0; i < count; i++)
+	{
+		switch (payloads[i].type)
+		{
+		case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+			combined_image_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_SAMPLER:
+			sampler_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+			sampled_image_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+			input_attachment_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+			storage_image_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+			ubo_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+			uniform_texel_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+			ssbo_copy.slab.free(payloads[i].ptr);
+			break;
+		case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+			storage_texel_copy.slab.free(payloads[i].ptr);
+			break;
+		default:
+			break;
+		}
+	}
+}
 }

@@ -95,9 +95,18 @@ union ResourceBinding
 	{
 		VkDescriptorImageInfo fp;
 		VkDescriptorImageInfo integer;
+		const uint8_t *fp_ptr;
+		const uint8_t *integer_ptr;
+		const uint8_t *sampler_ptr;
 	} image;
 
-	VkBufferView buffer_view;
+	VkDescriptorAddressInfoEXT buffer_addr;
+
+	union
+	{
+		VkBufferView handle;
+		const uint8_t *ptr;
+	} buffer_view;
 };
 
 struct ResourceBindings

@@ -32,6 +32,7 @@
 #include <utility>
 #include <vector>
 #include "cookie.hpp"
+#include "memory_allocator.hpp"
 
 namespace Vulkan
 {
@@ -68,6 +69,17 @@ struct BindlessDescriptorPoolDeleter
 	void operator()(BindlessDescriptorPool *pool);
 };
 
+struct BindlessDescriptorSet
+{
+	union Handle
+	{
+		VkDescriptorSet set;
+		VkDeviceSize offset;
+	} handle = {};
+	bool valid = false;
+	explicit operator bool() const { return valid; }
+};
+
 class BindlessDescriptorPool : public Util::IntrusivePtrEnabled<BindlessDescriptorPool, BindlessDescriptorPoolDeleter, HandleCounter>,
                                public InternalSyncEnabled
 {
@@ -81,7 +93,7 @@ public:
 
 	void reset();
 	bool allocate_descriptors(unsigned count);
-	VkDescriptorSet get_descriptor_set() const;
+	BindlessDescriptorSet get_descriptor_set() const;
 
 	void push_texture(const ImageView &view);
 	void push_texture_unorm(const ImageView &view);
@@ -91,8 +103,12 @@ public:
 private:
 	Device *device;
 	DescriptorSetAllocator *allocator;
+
 	VkDescriptorPool desc_pool;
-	VkDescriptorSet desc_set = VK_NULL_HANDLE;
+	DescriptorBufferAllocation bindless_buffer;
+	VkDeviceSize bindless_buffer_offset = 0;
+
+	BindlessDescriptorSet desc_set;
 
 	uint32_t allocated_sets = 0;
 	uint32_t total_sets = 0;
@@ -100,7 +116,9 @@ private:
 	uint32_t total_descriptors = 0;
 
 	void push_texture(VkImageView view, VkImageLayout layout);
+	void push_texture(const uint8_t *ptr);
 	Util::DynamicArray<VkDescriptorImageInfo> infos;
+	Util::DynamicArray<const uint8_t *> info_ptrs;
 	uint32_t write_count = 0;
 };
 using BindlessDescriptorPoolHandle = Util::IntrusivePtr<BindlessDescriptorPool>;
@@ -140,15 +158,40 @@ public:
 		return bindless;
 	}
 
+	// Legacy descriptors.
 	VkDescriptorPool allocate_bindless_pool(unsigned num_sets, unsigned num_descriptors);
-	VkDescriptorSet allocate_bindless_set(VkDescriptorPool pool, unsigned num_descriptors);
+	BindlessDescriptorSet allocate_bindless_set(VkDescriptorPool pool, unsigned num_descriptors);
 	void reset_bindless_pool(VkDescriptorPool pool);
+
+	// Descriptor buffer integration.
+	DescriptorBufferAllocation allocate_bindless_buffer(unsigned num_sets, unsigned num_descriptors);
+
+	VkDeviceSize get_size() const
+	{
+		return desc_set_size;
+	}
+
+	VkDeviceSize get_variable_offset() const
+	{
+		return desc_set_variable_offset;
+	}
+
+	VkDeviceSize get_variable_size(unsigned count) const;
+
+	uint32_t get_binding_offset(uint32_t binding) const
+	{
+		return desc_offsets[binding];
+	}
 
 private:
 	Device *device;
 	const VolkDeviceTable &table;
 	VkDescriptorSetLayout set_layout_pool = VK_NULL_HANDLE;
 	VkDescriptorSetLayout set_layout_push = VK_NULL_HANDLE;
+
+	VkDeviceSize desc_set_size = 0;
+	VkDeviceSize desc_set_variable_offset = 0;
+	uint32_t desc_offsets[VULKAN_NUM_BINDINGS] = {};
 
 	struct Pool
 	{
@@ -176,7 +219,8 @@ public:
 
 	void begin();
 	unsigned push(const ImageView &view);
-	VkDescriptorSet commit(Device &device);
+
+	BindlessDescriptorSet commit(Device &device);
 
 	unsigned get_next_offset() const;
 

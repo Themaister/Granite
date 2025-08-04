@@ -519,7 +519,7 @@ bool VideoEncoder::Impl::encode_frame(const Vulkan::ImageView &view, int64_t pts
 	frame.force_idr = mux_stream_callback->should_force_idr();
 	frame.width = view.get_view_width();
 	frame.height = view.get_view_height();
-	frame.view = view.get_view();
+	frame.view = view.get_view().view;
 
 	device->external_queue_lock();
 	auto send_result = pyro_encoder.send_frame(frame);

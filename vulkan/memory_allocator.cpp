@@ -992,10 +992,10 @@ DescriptorBufferAllocation DescriptorBufferAllocator::allocate(VkDeviceSize size
 		LOGI("Descriptor arena high water mark increased to: %llu bytes.\n",
 		     static_cast<unsigned long long>(high_water_mark));
 #else
-		if (high_water_mark * 4 > total_size)
+		if (high_water_mark * 4 > max_size)
 		{
-			LOGW("Descriptor arena pressure: high water mark increased to: %llu bytes.\n",
-			     static_cast<unsigned long long>(high_water_mark));
+			LOGW("Descriptor arena pressure: high water mark increased to: %llu bytes (arena %llu bytes).\n",
+			     static_cast<unsigned long long>(high_water_mark), static_cast<unsigned long long>(max_size));
 		}
 #endif
 	}

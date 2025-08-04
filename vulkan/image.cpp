@@ -27,11 +27,11 @@
 namespace Vulkan
 {
 ImageView::ImageView(Device *device_, VkImageView view_, const ImageViewCreateInfo &info_, VkImageUsageFlags usage_)
-    : Cookie(device_)
-    , device(device_)
+	: Cookie(device_)
+	, device(device_)
 	, usage(usage_)
-    , view({ view_ })
-    , info(info_)
+	, view({ view_ })
+	, info(info_)
 {
 	if (usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)
 		usage |= VK_IMAGE_USAGE_SAMPLED_BIT;

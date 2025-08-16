@@ -32,7 +32,8 @@ android {
                             "-DGRANITE_AUDIO=$$AUDIO$$",
                             "-DGRANITE_BULLET=$$PHYSICS$$",
                             "-DANDROID_ARM_NEON=ON",
-                            "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=OFF"
+                            "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=OFF",
+                            "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
 
                     targets "$$TARGET$$"
                 }
@@ -55,7 +56,8 @@ android {
                             "-DGRANITE_AUDIO=$$AUDIO$$",
                             "-DGRANITE_BULLET=$$PHYSICS$$",
                             "-DANDROID_ARM_NEON=ON",
-                            "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=OFF"
+                            "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=OFF",
+                            "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
 
                     targets "$$TARGET$$"
                 }

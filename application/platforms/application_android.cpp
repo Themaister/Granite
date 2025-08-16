@@ -548,12 +548,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	{
 		LOGI("Lifecycle resume\n");
 		enable_sensors();
-		if (auto *e = GRANITE_EVENT_MANAGER())
-		{
-			e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-			e->enqueue_latched<ApplicationLifecycleEvent>(
-					ApplicationLifecycle::Running);
-		}
+
 		global_state.active = true;
 		break;
 	}
@@ -562,12 +557,6 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	{
 		LOGI("Lifecycle pause\n");
 		disable_sensors();
-		if (auto *e = GRANITE_EVENT_MANAGER())
-		{
-			e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-			e->enqueue_latched<ApplicationLifecycleEvent>(
-					ApplicationLifecycle::Paused);
-		}
 		global_state.active = false;
 		break;
 	}
@@ -575,12 +564,6 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	case APP_CMD_START:
 	{
 		LOGI("Lifecycle start\n");
-		if (auto *e = GRANITE_EVENT_MANAGER())
-		{
-			e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-			e->enqueue_latched<ApplicationLifecycleEvent>(
-					ApplicationLifecycle::Paused);
-		}
 		if (jni.env && Paddleboat_isInitialized())
 			Paddleboat_onStart(jni.env);
 		break;
@@ -589,12 +572,6 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	case APP_CMD_STOP:
 	{
 		LOGI("Lifecycle stop\n");
-		if (auto *e = GRANITE_EVENT_MANAGER())
-		{
-			e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-			e->enqueue_latched<ApplicationLifecycleEvent>(
-					ApplicationLifecycle::Stopped);
-		}
 		if (jni.env && Paddleboat_isInitialized())
 			Paddleboat_onStop(jni.env);
 		break;
@@ -1236,7 +1213,8 @@ void android_main(android_app *app)
 			if (ident == LOOPER_ID_USER)
 				handle_sensors();
 
-			if (Granite::global_state.has_window && Granite::global_state.content_rect_changed)
+			if (Granite::global_state.has_window && Granite::global_state.active &&
+			    Granite::global_state.content_rect_changed)
 			{
 				Granite::global_state.content_rect_changed = false;
 				app->onAppCmd = Granite::engine_handle_cmd;
@@ -1270,6 +1248,16 @@ void android_main(android_app *app)
 						LOGI("Using resolution: %u x %u\n", global_config.target_width, global_config.target_height);
 						app_handle->get_wsi().set_support_prerotate(global_config.support_prerotate);
 
+						if (auto *e = GRANITE_EVENT_MANAGER())
+						{
+							e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+							e->enqueue_latched<ApplicationLifecycleEvent>(
+									ApplicationLifecycle::Paused);
+							e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+							e->enqueue_latched<ApplicationLifecycleEvent>(
+									ApplicationLifecycle::Running);
+						}
+
 						auto platform = std::make_unique<Granite::WSIPlatformAndroid>();
 						if (platform->init(global_config.target_width, global_config.target_height))
 						{
@@ -1279,8 +1267,7 @@ void android_main(android_app *app)
 							else
 							{
 								// Defer initializing audio until the application has loaded.
-								if (global_state.active)
-									Granite::Global::start_audio_system();
+								Granite::Global::start_audio_system();
 
 								while (app_handle->poll())
 									app_handle->run_frame();

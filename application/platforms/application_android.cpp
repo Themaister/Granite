@@ -555,7 +555,6 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 					ApplicationLifecycle::Running);
 		}
 		global_state.active = true;
-		Granite::Global::start_audio_system();
 		break;
 	}
 
@@ -570,7 +569,6 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 					ApplicationLifecycle::Paused);
 		}
 		global_state.active = false;
-		Granite::Global::stop_audio_system();
 		break;
 	}
 
@@ -652,6 +650,7 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 					ApplicationLifecycle::Running);
 		}
 		enable_sensors();
+
 		Granite::Global::start_audio_system();
 
 		state.active = true;
@@ -1279,6 +1278,10 @@ void android_main(android_app *app)
 								ret = 1;
 							else
 							{
+								// Defer initializing audio until the application has loaded.
+								if (global_state.active)
+									Granite::Global::start_audio_system();
+
 								while (app_handle->poll())
 									app_handle->run_frame();
 								ret = 0;
@@ -1303,6 +1306,7 @@ void android_main(android_app *app)
 					app_handle.reset();
 					Global::deinit();
 					deinit_jni();
+					global_state.app->userData = nullptr;
 					return;
 				}
 				catch (const std::exception &e)

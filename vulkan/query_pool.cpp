@@ -151,7 +151,10 @@ void PerformanceQueryPool::begin_command_buffer(VkCommandBuffer cmd)
 		return;
 
 	auto &table = device->get_device_table();
-	table.vkResetQueryPoolEXT(device->get_device(), pool, 0, 1);
+	if (device->get_device_features().vk12_features.hostQueryReset)
+		table.vkResetQueryPool(device->get_device(), pool, 0, 1);
+	else
+		table.vkCmdResetQueryPool(cmd, pool, 0, 1);
 	table.vkCmdBeginQuery(cmd, pool, 0, 0);
 
 	VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
@@ -356,7 +359,8 @@ void QueryPool::begin()
 		for (unsigned j = 0; j < pool.index; j++)
 			pool.cookies[j]->signal_timestamp_ticks(pool.query_results[j]);
 
-		table.vkResetQueryPool(device->get_device(), pool.pool, 0, pool.index);
+		if (device->get_device_features().vk12_features.hostQueryReset)
+			table.vkResetQueryPool(device->get_device(), pool.pool, 0, pool.index);
 	}
 
 	pool_index = 0;
@@ -377,7 +381,8 @@ void QueryPool::add_pool()
 	pool.query_results.resize(pool.size);
 	pool.cookies.resize(pool.size);
 
-	table.vkResetQueryPool(device->get_device(), pool.pool, 0, pool.size);
+	if (device->get_device_features().vk12_features.hostQueryReset)
+		table.vkResetQueryPool(device->get_device(), pool.pool, 0, pool.size);
 
 	pools.push_back(std::move(pool));
 }
@@ -402,6 +407,9 @@ QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageF
 
 	auto cookie = QueryPoolHandle(device->handle_pool.query.allocate(device, true));
 	pool.cookies[pool.index] = cookie;
+
+	if (!device->get_device_features().vk12_features.hostQueryReset)
+		table.vkCmdResetQueryPool(cmd, pool.pool, pool.index, 1);
 
 	if (device->get_device_features().vk13_features.synchronization2)
 		table.vkCmdWriteTimestamp2(cmd, stage, pool.pool, pool.index);

@@ -548,8 +548,12 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	{
 		LOGI("Lifecycle resume\n");
 		enable_sensors();
-		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		if (auto *e = GRANITE_EVENT_MANAGER())
+		{
+			e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			e->enqueue_latched<ApplicationLifecycleEvent>(
+					ApplicationLifecycle::Running);
+		}
 		global_state.active = true;
 		Granite::Global::start_audio_system();
 		break;
@@ -559,8 +563,12 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	{
 		LOGI("Lifecycle pause\n");
 		disable_sensors();
-		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		if (auto *e = GRANITE_EVENT_MANAGER())
+		{
+			e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			e->enqueue_latched<ApplicationLifecycleEvent>(
+					ApplicationLifecycle::Paused);
+		}
 		global_state.active = false;
 		Granite::Global::stop_audio_system();
 		break;
@@ -569,8 +577,12 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	case APP_CMD_START:
 	{
 		LOGI("Lifecycle start\n");
-		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		if (auto *e = GRANITE_EVENT_MANAGER())
+		{
+			e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			e->enqueue_latched<ApplicationLifecycleEvent>(
+					ApplicationLifecycle::Paused);
+		}
 		if (jni.env && Paddleboat_isInitialized())
 			Paddleboat_onStart(jni.env);
 		break;
@@ -579,8 +591,12 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	case APP_CMD_STOP:
 	{
 		LOGI("Lifecycle stop\n");
-		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		if (auto *e = GRANITE_EVENT_MANAGER())
+		{
+			e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			e->enqueue_latched<ApplicationLifecycleEvent>(
+					ApplicationLifecycle::Stopped);
+		}
 		if (jni.env && Paddleboat_isInitialized())
 			Paddleboat_onStop(jni.env);
 		break;
@@ -629,8 +645,12 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	case APP_CMD_RESUME:
 	{
 		LOGI("Lifecycle resume\n");
-		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		if (auto *e = GRANITE_EVENT_MANAGER())
+		{
+			e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			e->enqueue_latched<ApplicationLifecycleEvent>(
+					ApplicationLifecycle::Running);
+		}
 		enable_sensors();
 		Granite::Global::start_audio_system();
 
@@ -646,8 +666,12 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	case APP_CMD_PAUSE:
 	{
 		LOGI("Lifecycle pause\n");
-		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		if (auto *e = GRANITE_EVENT_MANAGER())
+		{
+			e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			e->enqueue_latched<ApplicationLifecycleEvent>(
+					ApplicationLifecycle::Paused);
+		}
 		disable_sensors();
 		Granite::Global::stop_audio_system();
 
@@ -660,8 +684,12 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	case APP_CMD_START:
 	{
 		LOGI("Lifecycle start\n");
-		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		if (auto *e = GRANITE_EVENT_MANAGER())
+		{
+			e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			e->enqueue_latched<ApplicationLifecycleEvent>(
+					ApplicationLifecycle::Paused);
+		}
 		if (jni.env && Paddleboat_isInitialized())
 			Paddleboat_onStart(jni.env);
 		break;
@@ -670,8 +698,12 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	case APP_CMD_STOP:
 	{
 		LOGI("Lifecycle stop\n");
-		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		if (auto *e = GRANITE_EVENT_MANAGER())
+		{
+			e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			e->enqueue_latched<ApplicationLifecycleEvent>(
+					ApplicationLifecycle::Stopped);
+		}
 		if (jni.env && Paddleboat_isInitialized())
 			Paddleboat_onStop(jni.env);
 		break;
@@ -1155,11 +1187,21 @@ void android_main(android_app *app)
 #endif
 
 	AssetManagerFilesystem::global_asset_manager = app->activity->assetManager;
-	GRANITE_FILESYSTEM()->register_protocol("builtin", std::make_unique<AssetManagerFilesystem>(ANDROID_BUILTIN_ASSET_PATH));
-	GRANITE_FILESYSTEM()->register_protocol("assets", std::make_unique<AssetManagerFilesystem>(ANDROID_ASSET_PATH));
-	GRANITE_FILESYSTEM()->register_protocol("fsr2", std::make_unique<AssetManagerFilesystem>(ANDROID_FSR2_ASSET_PATH));
-	GRANITE_FILESYSTEM()->register_protocol("cache", std::make_unique<OSFilesystem>(app->activity->internalDataPath));
-	GRANITE_FILESYSTEM()->register_protocol("external", std::make_unique<OSFilesystem>(app->activity->externalDataPath));
+	if (auto *fs = GRANITE_FILESYSTEM())
+	{
+		fs->register_protocol("builtin", std::make_unique<AssetManagerFilesystem>(
+				ANDROID_BUILTIN_ASSET_PATH));
+		fs->register_protocol("assets", std::make_unique<AssetManagerFilesystem>(
+				ANDROID_ASSET_PATH));
+		fs->register_protocol("fsr2", std::make_unique<AssetManagerFilesystem>(
+				ANDROID_FSR2_ASSET_PATH));
+		fs->register_protocol("cache", std::make_unique<OSFilesystem>(
+				app->activity->internalDataPath));
+		fs->register_protocol("external", std::make_unique<OSFilesystem>(
+				app->activity->externalDataPath));
+
+		parse_config();
+	}
 #endif
 
 	android_app_set_key_event_filter(app, key_event_filter);
@@ -1167,12 +1209,11 @@ void android_main(android_app *app)
 	app->onAppCmd = engine_handle_cmd_init;
 	app->userData = nullptr;
 
-	parse_config();
-
 	if (global_config.support_gyro)
 		init_sensors();
 
-	GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+	if (auto *e = GRANITE_EVENT_MANAGER())
+		e->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 
 	for (;;)
 	{
@@ -1186,7 +1227,8 @@ void android_main(android_app *app)
 
 			if (app->destroyRequested)
 			{
-				GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+				if (auto *e = GRANITE_EVENT_MANAGER())
+					e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 				Global::deinit();
 				deinit_jni();
 				return;
@@ -1252,7 +1294,8 @@ void android_main(android_app *app)
 					}
 
 					LOGI("Application returned %d.\n", ret);
-					GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+					if (auto *e = GRANITE_EVENT_MANAGER())
+						e->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 					GameActivity_finish(global_state.app->activity);
 
 					wait_for_complete_teardown(global_state.app);

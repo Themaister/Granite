@@ -267,7 +267,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	void poll_input_async(Granite::InputTrackerHandler *override_handler) override;
 
 	void request_teardown();
-	void gamepad_update();
+	void gamepad_update(bool async);
 
 	std::vector<const char *> get_instance_extensions() override
 	{
@@ -755,29 +755,33 @@ void WSIPlatformAndroid::request_teardown()
 	requesting_teardown = true;
 }
 
-void WSIPlatformAndroid::gamepad_update()
+void WSIPlatformAndroid::gamepad_update(bool async)
 {
-	if (jni.env && Paddleboat_isInitialized())
-		Paddleboat_update(jni.env);
-
-	// Need to explicitly enables axes we care about.
-	const uint64_t new_active_axes = Paddleboat_getActiveAxisMask();
-	uint64_t new_axes = new_active_axes ^ active_axes;
-
-	if (new_axes != 0)
+	// Don't deal with anything JNI related in async callbacks.
+	if (!async)
 	{
-		active_axes = new_active_axes;
-		int32_t axis_index = 0;
+		if (jni.env && Paddleboat_isInitialized())
+			Paddleboat_update(jni.env);
 
-		while (new_axes != 0)
+		// Need to explicitly enables axes we care about.
+		const uint64_t new_active_axes = Paddleboat_getActiveAxisMask();
+		uint64_t new_axes = new_active_axes ^ active_axes;
+
+		if (new_axes != 0)
 		{
-			if ((new_axes & 1) != 0)
+			active_axes = new_active_axes;
+			int32_t axis_index = 0;
+
+			while (new_axes != 0)
 			{
-				LOGI("Enable Axis: %d", axis_index);
-				GameActivityPointerAxes_enableAxis(axis_index);
+				if ((new_axes & 1) != 0)
+				{
+					LOGI("Enable Axis: %d", axis_index);
+					GameActivityPointerAxes_enableAxis(axis_index);
+				}
+				axis_index++;
+				new_axes >>= 1;
 			}
-			axis_index++;
-			new_axes >>= 1;
 		}
 	}
 
@@ -868,14 +872,20 @@ void WSIPlatformAndroid::poll_input()
 	}
 
 	engine_handle_input(*this);
-	gamepad_update();
+	gamepad_update(false);
 	get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 }
 
 void WSIPlatformAndroid::poll_input_async(Granite::InputTrackerHandler *override_handler)
 {
-	// Not really used on Android, so implement it in the trivial way.
 	std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
+	begin_async_input_handling();
+	{
+		// Only process input events here, not anything related to lifetimes.
+		engine_handle_input(*this);
+		gamepad_update(true);
+	}
+	end_async_input_handling();
 	get_input_tracker().dispatch_current_state(0.0, override_handler);
 }
 

@@ -1086,10 +1086,10 @@ static void wait_for_complete_teardown(android_app *app)
 static bool key_event_filter(const GameActivityKeyEvent *event)
 {
 	// For some inexplicable reason, this can be a bitmask of GAMEPAD and KEYBOARD ...
-	if (event->source & AINPUT_SOURCE_GAMEPAD)
+	if (event->source & (AINPUT_SOURCE_GAMEPAD & AINPUT_SOURCE_ANY))
 		return true;
 
-	if (event->source & AINPUT_SOURCE_KEYBOARD)
+	if (event->source & (AINPUT_SOURCE_KEYBOARD & AINPUT_SOURCE_ANY))
 	{
 		// System level keycodes that we don't care about
 		// should be handled by system.
@@ -1104,7 +1104,9 @@ static bool key_event_filter(const GameActivityKeyEvent *event)
 
 static bool motion_event_filter(const GameActivityMotionEvent *event)
 {
-	return (event->source & (AINPUT_SOURCE_TOUCHSCREEN | AINPUT_SOURCE_JOYSTICK | AINPUT_SOURCE_MOUSE)) != 0;
+	return (event->source &
+	        (AINPUT_SOURCE_TOUCHSCREEN | AINPUT_SOURCE_JOYSTICK | AINPUT_SOURCE_MOUSE) &
+	        AINPUT_SOURCE_ANY) != 0;
 }
 
 static void parse_config()

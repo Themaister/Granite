@@ -90,6 +90,12 @@ public class GraniteActivity extends GameActivity
             hideSystemUI();
     }
 
+    @Override
+    public void onBackPressed()
+    {
+        // Do nothing. We catch this inside native code instead.
+    }
+
     public int getDisplayRotation()
     {
         Display display = getWindowManager().getDefaultDisplay();

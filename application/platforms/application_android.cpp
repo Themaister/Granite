@@ -416,8 +416,7 @@ static void engine_handle_input(WSIPlatformAndroid &state)
 		}
 	}
 
-	if (input_buffer->keyEventsCount)
-		android_app_clear_key_events(input_buffer);
+	android_app_clear_key_events(input_buffer);
 
 	for (uint32_t i = 0; i < input_buffer->motionEventsCount; i++)
 	{
@@ -536,8 +535,7 @@ static void engine_handle_input(WSIPlatformAndroid &state)
 		}
 	}
 
-	if (input_buffer->motionEventsCount)
-		android_app_clear_motion_events(input_buffer);
+	android_app_clear_motion_events(input_buffer);
 }
 
 static void engine_handle_cmd_init(android_app *app, int32_t cmd)
@@ -868,8 +866,8 @@ void WSIPlatformAndroid::poll_input()
 			return;
 	}
 
-	gamepad_update();
 	engine_handle_input(*this);
+	gamepad_update();
 	get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 }
 

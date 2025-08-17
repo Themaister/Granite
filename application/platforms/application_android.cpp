@@ -828,6 +828,7 @@ void WSIPlatformAndroid::gamepad_update()
 			{ JoypadKey::RightShoulder, PADDLEBOAT_BUTTON_R1 },
 			{ JoypadKey::LeftThumb, PADDLEBOAT_BUTTON_L3 },
 			{ JoypadKey::RightThumb, PADDLEBOAT_BUTTON_R3 },
+			{ JoypadKey::Mode, PADDLEBOAT_BUTTON_SYSTEM },
 		};
 
 		for (auto &m : map)
@@ -1074,12 +1075,11 @@ static void wait_for_complete_teardown(android_app *app)
 
 static bool key_event_filter(const GameActivityKeyEvent *event)
 {
-	switch (event->source)
-	{
-	case AINPUT_SOURCE_GAMEPAD:
+	// For some inexplicable reason, this can be a bitmask of GAMEPAD and KEYBOARD ...
+	if (event->source & AINPUT_SOURCE_GAMEPAD)
 		return true;
 
-	case AINPUT_SOURCE_KEYBOARD:
+	if (event->source & AINPUT_SOURCE_KEYBOARD)
 	{
 		// System level keycodes that we don't care about
 		// should be handled by system.
@@ -1089,23 +1089,12 @@ static bool key_event_filter(const GameActivityKeyEvent *event)
 		return handled;
 	}
 
-	default:
-		return false;
-	}
+	return false;
 }
 
 static bool motion_event_filter(const GameActivityMotionEvent *event)
 {
-	switch (event->source)
-	{
-	case AINPUT_SOURCE_TOUCHSCREEN:
-	case AINPUT_SOURCE_JOYSTICK:
-	case AINPUT_SOURCE_MOUSE:
-		return true;
-
-	default:
-		return false;
-	}
+	return (event->source & (AINPUT_SOURCE_TOUCHSCREEN | AINPUT_SOURCE_JOYSTICK | AINPUT_SOURCE_MOUSE)) != 0;
 }
 
 static void parse_config()

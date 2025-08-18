@@ -891,8 +891,6 @@ static void game_text_input_cb(void *userdata, const struct GameTextInputState *
 	if (!app || !state)
 		return;
 
-	auto *platform = static_cast<WSIPlatformAndroid *>(app->userData);
-
 	if (auto *e = GRANITE_EVENT_MANAGER())
 		e->enqueue<ApplicationSoftKeyboardUpdateEvent>(state->text_UTF8);
 

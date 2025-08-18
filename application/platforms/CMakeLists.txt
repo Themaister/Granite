@@ -5,8 +5,8 @@ if (ANDROID)
     find_package(game-activity REQUIRED CONFIG)
     find_package(games-controller REQUIRED CONFIG)
     find_package(games-frame-pacing REQUIRED CONFIG)
-    get_target_property(game-activity-include game-activity::game-activity INTERFACE_INCLUDE_DIRECTORIES)
-    target_link_libraries(granite-platform PRIVATE granite-rapidjson game-activity::game-activity
+    target_link_libraries(granite-platform PRIVATE granite-rapidjson
+            game-activity::game-activity_static
             games-controller::paddleboat games-frame-pacing::swappy)
 
     target_compile_definitions(granite-platform PRIVATE VK_USE_PLATFORM_ANDROID_KHR)

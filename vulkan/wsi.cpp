@@ -2066,5 +2066,7 @@ void WSIPlatform::destroy_swapchain_resources(VkSwapchainKHR) {}
 void WSIPlatform::event_frame_tick(double, double) {}
 void WSIPlatform::event_swapchain_index(Device *, unsigned) {}
 void WSIPlatform::begin_drop_event() {}
+void WSIPlatform::begin_soft_keyboard(const std::string &) {}
+void WSIPlatform::end_soft_keyboard() {}
 void WSIPlatform::show_message_box(const std::string &, Vulkan::WSIPlatform::MessageType) {}
 }

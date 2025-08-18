@@ -237,4 +237,22 @@ public:
 private:
 	std::string str;
 };
+
+class ApplicationSoftKeyboardUpdateEvent : public Granite::Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(ApplicationSoftKeyboardUpdateEvent)
+	explicit ApplicationSoftKeyboardUpdateEvent(std::string str_)
+		: str(std::move(str_))
+	{
+	}
+
+	const std::string &get_text() const
+	{
+		return str;
+	}
+
+private:
+	std::string str;
+};
 }

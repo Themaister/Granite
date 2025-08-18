@@ -131,6 +131,8 @@ public:
 	virtual const VkApplicationInfo *get_application_info();
 
 	virtual void begin_drop_event();
+	virtual void begin_soft_keyboard(const std::string &initial);
+	virtual void end_soft_keyboard();
 
 	enum class MessageType { Error, Warning, Info };
 	virtual void show_message_box(const std::string &str, MessageType type);

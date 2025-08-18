@@ -304,6 +304,38 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	bool pending_native_window_term = false;
 	bool pending_config_change = false;
 	bool has_mouse_input = false;
+
+	struct
+	{
+		GameTextInputState state = {};
+		char buffer[1024];
+	} ime = {};
+
+	void begin_soft_keyboard(const std::string &initial) override
+	{
+		if (global_state.app && global_state.app->activity)
+		{
+			// Very unclear from documentation what the lifetime of this struct is.
+			// Just keep it alive until end of time.
+			ime.state.composingRegion.start = SPAN_UNDEFINED;
+			ime.state.composingRegion.end = SPAN_UNDEFINED;
+			ime.state.text_UTF8 = ime.buffer;
+			strncpy(ime.buffer, initial.c_str(), sizeof(ime.buffer) - 1);
+			ime.state.text_length = strlen(ime.state.text_UTF8);
+			// Might be broken w.r.t. unicode?
+			ime.state.selection.start = ime.state.text_length;
+			ime.state.selection.end = ime.state.text_length;
+			GameActivity_setTextInputState(global_state.app->activity, &ime.state);
+			GameActivity_showSoftInput(global_state.app->activity,
+			                           GAMEACTIVITY_SHOW_SOFT_INPUT_IMPLICIT);
+		}
+	}
+
+	void end_soft_keyboard() override
+	{
+		if (global_state.app && global_state.app->activity)
+			GameActivity_hideSoftInput(global_state.app->activity, GAMEACTIVITY_HIDE_SOFT_INPUT_IMPLICIT_ONLY);
+	}
 };
 
 static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANativeWindow *window)
@@ -851,6 +883,24 @@ void WSIPlatformAndroid::gamepad_update(bool async)
 	}
 }
 
+extern "C"
+{
+static void game_text_input_cb(void *userdata, const struct GameTextInputState *state)
+{
+	auto *app = static_cast<android_app *>(userdata);
+	if (!app || !state)
+		return;
+
+	auto *platform = static_cast<WSIPlatformAndroid *>(app->userData);
+
+	if (auto *e = GRANITE_EVENT_MANAGER())
+		e->enqueue<ApplicationSoftKeyboardUpdateEvent>(state->text_UTF8);
+
+	// Clear the text input flag.
+	app->textInputState = 0;
+}
+}
+
 void WSIPlatformAndroid::poll_input()
 {
 	std::lock_guard<std::mutex> holder{get_input_tracker().get_lock()};
@@ -869,6 +919,12 @@ void WSIPlatformAndroid::poll_input()
 
 		if (global_state.app->destroyRequested)
 			return;
+	}
+
+	if (global_state.app->textInputState)
+	{
+		GameActivity_getTextInputState(global_state.app->activity, game_text_input_cb,
+		                               global_state.app);
 	}
 
 	engine_handle_input(*this);

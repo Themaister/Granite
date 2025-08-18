@@ -1143,7 +1143,7 @@ void android_main(android_app *app)
 
 	ApplicationQueryDefaultManagerFlags flags{Global::MANAGER_FEATURE_DEFAULT_BITS};
 	query_application_interface(ApplicationQuery::DefaultManagerFlags, &flags, sizeof(flags));
-	Global::init(flags.manager_feature_flags);
+	Global::init(flags.manager_feature_flags | Global::MANAGER_FEATURE_FILESYSTEM_BIT);
 
 	LOGI("Starting Granite!\n");
 

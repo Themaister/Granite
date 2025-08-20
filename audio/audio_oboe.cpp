@@ -38,6 +38,8 @@ void set_oboe_low_latency_parameters(unsigned sample_rate, unsigned block_frames
 	// For OpenSL ES fallback path.
 	oboe::DefaultStreamValues::SampleRate = sample_rate;
 	oboe::DefaultStreamValues::FramesPerBurst = block_frames;
+
+	LOGI("OpenSL ES low latency parameters: %u Hz, %u frames\n", sample_rate, block_frames);
 }
 
 struct OboeBackend final : Backend, oboe::AudioStreamCallback
@@ -174,6 +176,11 @@ void OboeBackend::setup_stream_builder(oboe::AudioStreamBuilder &builder)
 	if (!callback)
 		builder.setFormat(oboe::AudioFormat::Float);
 
+	// We cannot trust Oboe to use the proper sample rate by default,
+	// even if we set the default stream parameters it seems ...
+	if (sample_rate == 0.0f)
+		sample_rate = float(oboe::DefaultStreamValues::SampleRate);
+
 	// If we have already committed to a sample rate, keep using it.
 	if (sample_rate != 0.0f && builder.getSampleRate() != sample_rate)
 	{
@@ -200,6 +207,8 @@ bool OboeBackend::init(float sample_rate_, unsigned channels)
 	inv_sample_rate = 1.0 / sample_rate;
 	num_channels = unsigned(stream->getChannelCount());
 	format = stream->getFormat();
+
+	LOGI("Oboe: Sample rate %f, channels: %u\n", sample_rate, channels);
 
 	// Aim for roughly 50ms latency.
 	const auto align = [](int32_t a, int32_t b) {

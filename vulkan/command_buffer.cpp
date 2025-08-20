@@ -2854,6 +2854,9 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	auto *set_allocator = pipeline_state.layout->get_allocator(set);
 	auto size = set_allocator->get_size();
 
+	auto align = device->get_device_features().descriptor_buffer_properties.descriptorBufferOffsetAlignment;
+	desc_buffer_alloc_offset = (desc_buffer_alloc_offset + align - 1) & ~(align - 1);
+
 	if (desc_buffer_alloc_offset + size > desc_buffer.get_size())
 	{
 		// Page in a new block.

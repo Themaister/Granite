@@ -56,6 +56,7 @@ using namespace Vulkan;
 namespace Granite
 {
 uint32_t android_api_version;
+void *java_vm;
 
 void application_dummy()
 {
@@ -1051,6 +1052,7 @@ static void init_jni()
 {
 	auto *app = global_state.app;
 	app->activity->vm->AttachCurrentThread(&jni.env, nullptr);
+	java_vm = app->activity->vm;
 
 	if (Paddleboat_init(jni.env, app->activity->javaGameActivity) != PADDLEBOAT_NO_ERROR)
 		LOGE("Failed to initialize Paddleboat.\n");

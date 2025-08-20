@@ -56,6 +56,9 @@ extern "C"
 #ifdef HAVE_FFMPEG_VULKAN
 #include <libavutil/hwcontext_vulkan.h>
 #endif
+#ifdef __ANDROID__
+#include <libavcodec/jni.h>
+#endif
 }
 
 #ifndef AV_CHANNEL_LAYOUT_STEREO
@@ -69,6 +72,10 @@ extern "C"
 
 namespace Granite
 {
+#ifdef __ANDROID__
+extern void *java_vm;
+#endif
+
 struct CodecStream
 {
 	AVStream *av_stream = nullptr;
@@ -1176,15 +1183,33 @@ bool VideoDecoder::Impl::init_video_decoder_pre_device()
 		switch (pyro_codec.video_codec)
 		{
 		case PYRO_VIDEO_CODEC_H264:
+#ifdef __ANDROID__
+			codec = avcodec_find_decoder_by_name("h264_mediacodec");
+			if (!codec)
+				codec = avcodec_find_decoder(AV_CODEC_ID_H264);
+#else
 			codec = avcodec_find_decoder(AV_CODEC_ID_H264);
+#endif
 			break;
 
 		case PYRO_VIDEO_CODEC_H265:
+#ifdef __ANDROID__
+			codec = avcodec_find_decoder_by_name("hevc_mediacodec");
+			if (!codec)
+				codec = avcodec_find_decoder(AV_CODEC_ID_H265);
+#else
 			codec = avcodec_find_decoder(AV_CODEC_ID_H265);
+#endif
 			break;
 
 		case PYRO_VIDEO_CODEC_AV1:
+#ifdef __ANDROID__
+			codec = avcodec_find_decoder_by_name("av1_mediacodec");
+			if (!codec)
+				codec = avcodec_find_decoder(AV_CODEC_ID_AV1);
+#else
 			codec = avcodec_find_decoder(AV_CODEC_ID_AV1);
+#endif
 			break;
 
 		case PYRO_VIDEO_CODEC_PYROWAVE:
@@ -1205,6 +1230,7 @@ bool VideoDecoder::Impl::init_video_decoder_pre_device()
 
 	if (codec)
 	{
+		LOGI("Selected avcodec: %s\n", codec->name);
 		video.av_codec = codec;
 		video.av_ctx = avcodec_alloc_context3(codec);
 		if (!video.av_ctx)
@@ -2785,6 +2811,10 @@ VideoDecoder::Impl::~Impl()
 
 VideoDecoder::VideoDecoder()
 {
+#ifdef __ANDROID__
+	LOGI("Setting Java VM %p\n", java_vm);
+	av_jni_set_java_vm(java_vm, nullptr);
+#endif
 	impl.reset(new Impl);
 }
 

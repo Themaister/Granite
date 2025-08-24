@@ -260,6 +260,32 @@ void CommandBuffer::clear_quad(const VkClearRect &rect, const VkClearAttachment 
 	table.vkCmdClearAttachments(cmd, num_attachments, attachments, 1, &tmp_rect);
 }
 
+void CommandBuffer::begin_barrier_batch()
+{
+	VK_ASSERT(!barrier_batch.active);
+	barrier_batch.active = true;
+}
+
+void CommandBuffer::end_barrier_batch()
+{
+	VK_ASSERT(barrier_batch.active);
+	barrier_batch.active = false;
+
+	VkDependencyInfo dep = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	dep.pMemoryBarriers = barrier_batch.memory_barriers.data();
+	dep.memoryBarrierCount = barrier_batch.memory_barriers.size();
+	dep.pBufferMemoryBarriers = barrier_batch.buffer_barriers.data();
+	dep.bufferMemoryBarrierCount = barrier_batch.buffer_barriers.size();
+	dep.pImageMemoryBarriers = barrier_batch.image_barriers.data();
+	dep.imageMemoryBarrierCount = barrier_batch.image_barriers.size();
+
+	barrier(dep);
+
+	barrier_batch.memory_barriers.clear();
+	barrier_batch.buffer_barriers.clear();
+	barrier_batch.image_barriers.clear();
+}
+
 void CommandBuffer::full_barrier()
 {
 	VK_ASSERT(!actual_render_pass);
@@ -362,6 +388,35 @@ void CommandBuffer::barrier(const VkDependencyInfo &dep)
 {
 	VK_ASSERT(!actual_render_pass);
 	VK_ASSERT(!framebuffer);
+
+	if (barrier_batch.active)
+	{
+		if (dep.memoryBarrierCount)
+		{
+			barrier_batch.memory_barriers.insert(
+					barrier_batch.memory_barriers.end(),
+					dep.pMemoryBarriers,
+					dep.pMemoryBarriers + dep.memoryBarrierCount);
+		}
+
+		if (dep.bufferMemoryBarrierCount)
+		{
+			barrier_batch.buffer_barriers.insert(
+					barrier_batch.buffer_barriers.end(),
+					dep.pBufferMemoryBarriers,
+					dep.pBufferMemoryBarriers + dep.bufferMemoryBarrierCount);
+		}
+
+		if (dep.imageMemoryBarrierCount)
+		{
+			barrier_batch.image_barriers.insert(
+					barrier_batch.image_barriers.end(),
+					dep.pImageMemoryBarriers,
+					dep.pImageMemoryBarriers + dep.imageMemoryBarrierCount);
+		}
+
+		return;
+	}
 
 #ifdef VULKAN_DEBUG
 	VkPipelineStageFlags2 stages = 0;
@@ -796,6 +851,8 @@ void CommandBuffer::begin_context()
 
 	if (debug_channel_buffer)
 		set_storage_buffer(VULKAN_NUM_DESCRIPTOR_SETS - 1, VULKAN_NUM_BINDINGS - 1, *debug_channel_buffer);
+
+	VK_ASSERT(!barrier_batch.active);
 }
 
 void CommandBuffer::begin_compute()
@@ -1713,6 +1770,7 @@ void CommandBuffer::bind_pipeline(VkPipelineBindPoint bind_point, VkPipeline pip
 
 VkPipeline CommandBuffer::flush_compute_state(bool synchronous)
 {
+	VK_ASSERT(!barrier_batch.active);
 	if (!pipeline_state.program)
 		return VK_NULL_HANDLE;
 	VK_ASSERT(pipeline_state.layout);
@@ -1752,6 +1810,7 @@ VkPipeline CommandBuffer::flush_compute_state(bool synchronous)
 
 VkPipeline CommandBuffer::flush_render_state(bool synchronous)
 {
+	VK_ASSERT(!barrier_batch.active);
 	if (!pipeline_state.program)
 		return VK_NULL_HANDLE;
 	VK_ASSERT(pipeline_state.layout);
@@ -3556,6 +3615,8 @@ void CommandBuffer::end_threaded_recording()
 
 void CommandBuffer::end()
 {
+	VK_ASSERT(!barrier_batch.active);
+
 	end_threaded_recording();
 
 	if (vbo_block.is_mapped())

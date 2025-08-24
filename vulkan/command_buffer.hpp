@@ -369,6 +369,9 @@ public:
 	                          const VkExtent3D &extent, unsigned row_length, unsigned slice_height,
 	                          const VkImageSubresourceLayers &subresrouce);
 
+	void begin_barrier_batch();
+	void end_barrier_batch();
+
 	void full_barrier();
 	void pixel_barrier();
 
@@ -958,6 +961,14 @@ private:
 	                                        VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT &required_info,
 	                                        VkShaderStageFlagBits stage,
 	                                        bool full_group, unsigned min_size_log2, unsigned max_size_log2);
+
+	struct
+	{
+		Util::SmallVector<VkMemoryBarrier2> memory_barriers;
+		Util::SmallVector<VkBufferMemoryBarrier2> buffer_barriers;
+		Util::SmallVector<VkImageMemoryBarrier2> image_barriers;
+		bool active = false;
+	} barrier_batch;
 };
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES

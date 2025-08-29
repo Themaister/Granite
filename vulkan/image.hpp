@@ -251,6 +251,7 @@ enum class ImageDomain
 	Transient,
 	LinearHostCached,
 	LinearHost,
+	LinearDevice,
 	HostCopy
 };
 

@@ -3131,6 +3131,11 @@ uint32_t Device::find_memory_type(ImageDomain domain, uint32_t mask) const
 		fallback = 0;
 		break;
 
+	case ImageDomain::LinearDevice:
+		desired = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+		fallback = 0;
+		break;
+
 	case ImageDomain::HostCopy:
 		desired = 0;
 		fallback = 0;
@@ -3920,12 +3925,19 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 
 		AllocationMode mode;
 		if (use_external)
+		{
 			mode = AllocationMode::External;
+		}
 		else if (tiling == VK_IMAGE_TILING_OPTIMAL &&
 		         (info.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT)) != 0)
+		{
 			mode = AllocationMode::OptimalRenderTarget;
+		}
 		else
-			mode = tiling == VK_IMAGE_TILING_OPTIMAL ? AllocationMode::OptimalResource : AllocationMode::LinearHostMappable;
+		{
+			mode = tiling == VK_IMAGE_TILING_OPTIMAL || info.domain == ImageDomain::LinearDevice ?
+			       AllocationMode::OptimalResource : AllocationMode::LinearHostMappable;
+		}
 
 		{
 			LOCK_MEMORY();
@@ -3977,7 +3989,9 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	info.samples = create_info.samples;
 	info.pNext = create_info.pnext;
 
-	if (create_info.domain == ImageDomain::LinearHostCached || create_info.domain == ImageDomain::LinearHost)
+	if (create_info.domain == ImageDomain::LinearHostCached ||
+	    create_info.domain == ImageDomain::LinearHost ||
+	    create_info.domain == ImageDomain::LinearDevice)
 	{
 		info.tiling = VK_IMAGE_TILING_LINEAR;
 		info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;

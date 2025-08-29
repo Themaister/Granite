@@ -4121,7 +4121,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			return ImageHandle(nullptr);
 
 		VkImageFormatProperties2 props = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2 };
-		if (!get_image_format_properties(info.format, info.imageType, info.tiling, info.usage, info.flags, nullptr, &props))
+		if (!get_image_format_properties(info.format, info.imageType, info.tiling, info.usage, info.flags, info.pNext, &props))
 			return ImageHandle(nullptr);
 
 		if (!props.imageFormatProperties.maxArrayLayers ||

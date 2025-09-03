@@ -1120,7 +1120,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		if (strcmp(required_device_extensions[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0)
 			requires_swapchain = true;
 		else if (strcmp(required_device_extensions[i], VK_KHR_PRESENT_ID_EXTENSION_NAME) == 0 ||
+		         strcmp(required_device_extensions[i], VK_KHR_PRESENT_ID_2_EXTENSION_NAME) == 0 ||
 		         strcmp(required_device_extensions[i], VK_KHR_PRESENT_WAIT_EXTENSION_NAME) == 0 ||
+		         strcmp(required_device_extensions[i], VK_KHR_PRESENT_WAIT_2_EXTENSION_NAME) == 0 ||
 		         strcmp(required_device_extensions[i], VK_EXT_HDR_METADATA_EXTENSION_NAME) == 0 ||
 		         strcmp(required_device_extensions[i], VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0 ||
 		         strcmp(required_device_extensions[i], VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0)
@@ -1563,13 +1565,23 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
-		if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
+		if (has_extension(VK_KHR_PRESENT_ID_2_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_PRESENT_ID_2_EXTENSION_NAME);
+			ADD_CHAIN(ext.present_id2_features, PRESENT_ID_2_FEATURES_KHR);
+		}
+		else if (has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME))
 		{
 			enabled_extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
 			ADD_CHAIN(ext.present_id_features, PRESENT_ID_FEATURES_KHR);
 		}
 
-		if (has_extension(VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
+		if (has_extension(VK_KHR_PRESENT_WAIT_2_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_PRESENT_WAIT_2_EXTENSION_NAME);
+			ADD_CHAIN(ext.present_wait2_features, PRESENT_WAIT_2_FEATURES_KHR);
+		}
+		else if (has_extension(VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
 		{
 			enabled_extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
 			ADD_CHAIN(ext.present_wait_features, PRESENT_WAIT_FEATURES_KHR);

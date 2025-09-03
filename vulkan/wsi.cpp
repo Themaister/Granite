@@ -414,14 +414,30 @@ void WSI::reinit_surface_and_swapchain(VkSurfaceKHR new_surface)
 	update_framebuffer(swapchain_width, swapchain_height);
 }
 
+VkResult WSI::wait_for_present(uint64_t id, uint64_t timeout)
+{
+	if (!swapchain)
+		return VK_SUCCESS;
+
+	if (supports_present_wait2 && device->get_device_features().present_wait2_features.presentWait2)
+	{
+		VkPresentWait2InfoKHR wait_info = { VK_STRUCTURE_TYPE_PRESENT_WAIT_2_INFO_KHR };
+		wait_info.presentId = id;
+		wait_info.timeout = timeout;
+		LOGI("Present wait 2\n");
+		return table->vkWaitForPresent2KHR(context->get_device(), swapchain, &wait_info);
+	}
+	else if (device->get_device_features().present_wait_features.presentWait)
+		return table->vkWaitForPresentKHR(context->get_device(), swapchain, id, timeout);
+	else
+		return VK_NOT_READY;
+}
+
 void WSI::nonblock_delete_swapchain_resources()
 {
-	if (swapchain != VK_NULL_HANDLE && device->get_device_features().present_wait_features.presentWait)
-	{
-		// If we can help it, don't try to destroy swapchains until we know the new swapchain has presented at least one frame on screen.
-		if (table->vkWaitForPresentKHR(context->get_device(), swapchain, 1, 0) != VK_SUCCESS)
-			return;
-	}
+	// If we can help it, don't try to destroy swapchains until we know the new swapchain has presented at least one frame on screen.
+	if (swapchain != VK_NULL_HANDLE && wait_for_present(1, 0) != VK_SUCCESS)
+		return;
 
 	Util::SmallVector<DeferredDeletionSwapchain> keep;
 	size_t pending = deferred_swapchains.size();
@@ -481,13 +497,11 @@ void WSI::drain_swapchain(bool in_tear_down)
 			deferred_semaphore.clear();
 		}
 	}
-	else if (swapchain != VK_NULL_HANDLE && device->get_device_features().present_wait_features.presentWait && present_last_id)
+	else if (swapchain != VK_NULL_HANDLE)
 	{
-		table->vkWaitForPresentKHR(context->get_device(), swapchain, present_last_id, UINT64_MAX);
+		wait_for_present(present_last_id);
 		device->wait_idle();
 	}
-	else
-		device->wait_idle();
 }
 
 void WSI::tear_down_swapchain()
@@ -625,7 +639,7 @@ void WSI::wait_swapchain_latency()
 	// for the next real frame, 4 before the GPU drains of work.
 	effective_latency += last_duplicated_frames;
 
-	if (device->get_device_features().present_wait_features.presentWait &&
+	if ((device->get_device_features().present_wait_features.presentWait || supports_present_wait2) &&
 	    present_last_id > effective_latency &&
 	    current_present_mode == PresentMode::SyncToVBlank)
 	{
@@ -638,10 +652,11 @@ void WSI::wait_swapchain_latency()
 		auto begin_wait = Util::get_current_time_nsecs();
 #endif
 		auto wait_ts = device->write_calibrated_timestamp();
-		VkResult wait_result = table->vkWaitForPresentKHR(context->get_device(), swapchain, target, UINT64_MAX);
+		auto wait_result = wait_for_present(target);
+
 		device->register_time_interval("WSI", std::move(wait_ts),
 		                               device->write_calibrated_timestamp(), "wait_frame_latency");
-		if (wait_result != VK_SUCCESS)
+		if (wait_result < 0)
 			LOGE("vkWaitForPresentKHR failed, vr %d.\n", wait_result);
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto end_wait = Util::get_current_time_nsecs();
@@ -984,8 +999,16 @@ bool WSI::end_frame()
 		VkSwapchainPresentFenceInfoKHR present_fence = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_KHR };
 		VkSwapchainPresentModeInfoKHR present_mode_info = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_KHR };
 		VkPresentIdKHR present_id_info = { VK_STRUCTURE_TYPE_PRESENT_ID_KHR };
+		VkPresentId2KHR present_id2_info = { VK_STRUCTURE_TYPE_PRESENT_ID_2_KHR };
 
-		if (device->get_device_features().present_id_features.presentId)
+		if (supports_present_wait2)
+		{
+			present_id2_info.swapchainCount = 1;
+			present_id2_info.pPresentIds = &next_present_id;
+			present_id2_info.pNext = info.pNext;
+			info.pNext = &present_id2_info;
+		}
+		else if (device->get_device_features().present_id_features.presentId)
 		{
 			present_id_info.swapchainCount = 1;
 			present_id_info.pPresentIds = &next_present_id;
@@ -1054,7 +1077,7 @@ bool WSI::end_frame()
 		// This makes sense I guess. Record the latest present ID which was successfully presented
 		// so we don't risk deadlock.
 		if ((result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) &&
-		    device->get_device_features().present_id_features.presentId &&
+		    (device->get_device_features().present_id_features.presentId || supports_present_wait2) &&
 		    !dupes_frame)
 		{
 			present_last_id = next_present_id;
@@ -1439,6 +1462,8 @@ struct SurfaceInfo
 	VkSwapchainPresentModesCreateInfoKHR present_modes_info;
 	VkImageCompressionControlEXT compression_control;
 	VkImageCompressionFixedRateFlagsEXT compression_control_fixed_rates;
+	VkSurfaceCapabilitiesPresentId2KHR present_id2;
+	VkSurfaceCapabilitiesPresentWait2KHR present_wait2;
 	std::vector<VkPresentModeKHR> present_mode_compat_group;
 	const void *swapchain_pnext;
 	VkSwapchainLatencyCreateInfoNV latency_create_info;
@@ -1595,6 +1620,15 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 	if (ext.supports_surface_capabilities2)
 	{
 		VkSurfaceCapabilities2KHR surface_capabilities2 = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR };
+
+		if (ext.present_id2_features.presentId2 && ext.present_wait2_features.presentWait2)
+		{
+			info.present_wait2 = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_PRESENT_WAIT_2_KHR };
+			info.present_id2 = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_PRESENT_ID_2_KHR };
+			info.present_wait2.pNext = &info.present_id2;
+			surface_capabilities2.pNext = &info.present_wait2;
+		}
+
 		if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
 			return false;
 		info.surface_capabilities = surface_capabilities2.surfaceCapabilities;
@@ -1965,6 +1999,13 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	}
 
 	platform->event_swapchain_destroyed();
+
+	supports_present_wait2 = surface_info.present_id2.presentId2Supported &&
+	                         surface_info.present_wait2.presentWait2Supported;
+
+	if (supports_present_wait2)
+		info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_ID_2_BIT_KHR | VK_SWAPCHAIN_CREATE_PRESENT_WAIT_2_BIT_KHR;
+
 	auto res = table->vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
 	platform->destroy_swapchain_resources(old_swapchain);
 	table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);

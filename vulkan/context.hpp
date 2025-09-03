@@ -93,7 +93,9 @@ struct DeviceFeatures
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR compute_shader_derivative_features = {};
 	VkPhysicalDevicePerformanceQueryFeaturesKHR performance_query_features = {};
 	VkPhysicalDevicePresentIdFeaturesKHR present_id_features = {};
+	VkPhysicalDevicePresentId2FeaturesKHR present_id2_features = {};
 	VkPhysicalDevicePresentWaitFeaturesKHR present_wait_features = {};
+	VkPhysicalDevicePresentWait2FeaturesKHR present_wait2_features = {};
 	VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR barycentric_features = {};
 	VkPhysicalDeviceVideoMaintenance1FeaturesKHR video_maintenance1_features = {};
 	VkPhysicalDevicePipelineBinaryFeaturesKHR pipeline_binary_features = {};

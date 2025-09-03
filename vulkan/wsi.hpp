@@ -387,6 +387,7 @@ private:
 	uint64_t next_present_id = 1;
 	uint64_t present_last_id = 0;
 	unsigned present_frame_latency = 0;
+	bool supports_present_wait2 = false;
 
 	Semaphore low_latency_semaphore;
 	uint64_t low_latency_semaphore_value = 0;
@@ -422,6 +423,8 @@ private:
 	void nonblock_delete_swapchain_resources();
 
 	VkSurfaceFormatKHR find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats, BackbufferFormat desired_format) const;
+
+	VkResult wait_for_present(uint64_t id, uint64_t timeout = UINT64_MAX);
 
 #ifdef HAVE_WSI_DXGI_INTEROP
 	std::unique_ptr<DXGIInteropSwapchain> dxgi;

@@ -676,19 +676,27 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 	}
 #endif
 
-	if (ext.supports_surface_capabilities2 && has_extension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME))
+	if (ext.supports_surface_capabilities2)
 	{
+		bool supports_khr = has_extension(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+		bool supports_ext = has_extension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+
+		if (supports_khr || supports_ext)
+		{
 #ifdef VULKAN_DEBUG
-		// It seems like there are some bugs with EXT_swapchain_maint1 in VVL atm.
-		const bool support_maint1 = force_no_validation;
+			// It seems like there are some bugs with KHR_swapchain_maint1 in VVL atm.
+			const bool support_maint1 = force_no_validation;
 #else
-		constexpr bool support_maint1 = true;
+			constexpr bool support_maint1 = true;
 #endif
 
-		if (support_maint1)
-		{
-			instance_exts.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
-			ext.supports_surface_maintenance1 = true;
+			if (support_maint1)
+			{
+				instance_exts.push_back(
+						supports_khr ? VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME
+						             : VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+				ext.supports_surface_maintenance1 = true;
+			}
 		}
 	}
 
@@ -1114,7 +1122,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		else if (strcmp(required_device_extensions[i], VK_KHR_PRESENT_ID_EXTENSION_NAME) == 0 ||
 		         strcmp(required_device_extensions[i], VK_KHR_PRESENT_WAIT_EXTENSION_NAME) == 0 ||
 		         strcmp(required_device_extensions[i], VK_EXT_HDR_METADATA_EXTENSION_NAME) == 0 ||
-		         strcmp(required_device_extensions[i], VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0)
+		         strcmp(required_device_extensions[i], VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0 ||
+		         strcmp(required_device_extensions[i], VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0)
 		{
 			flags |= CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT;
 		}
@@ -1566,10 +1575,18 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			ADD_CHAIN(ext.present_wait_features, PRESENT_WAIT_FEATURES_KHR);
 		}
 
-		if (ext.supports_surface_maintenance1 && has_extension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME))
+		if (ext.supports_surface_maintenance1)
 		{
-			enabled_extensions.push_back(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
-			ADD_CHAIN(ext.swapchain_maintenance1_features, SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT);
+			if (has_extension(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME))
+			{
+				enabled_extensions.push_back(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+				ADD_CHAIN(ext.swapchain_maintenance1_features, SWAPCHAIN_MAINTENANCE_1_FEATURES_KHR);
+			}
+			else if (has_extension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME))
+			{
+				enabled_extensions.push_back(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+				ADD_CHAIN(ext.swapchain_maintenance1_features, SWAPCHAIN_MAINTENANCE_1_FEATURES_KHR);
+			}
 		}
 
 		if (ext.supports_swapchain_colorspace && has_extension(VK_EXT_HDR_METADATA_EXTENSION_NAME))

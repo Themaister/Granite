@@ -981,8 +981,8 @@ bool WSI::end_frame()
 		info.pImageIndices = &swapchain_index;
 		info.pResults = &result;
 
-		VkSwapchainPresentFenceInfoEXT present_fence = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT };
-		VkSwapchainPresentModeInfoEXT present_mode_info = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_EXT };
+		VkSwapchainPresentFenceInfoKHR present_fence = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_KHR };
+		VkSwapchainPresentModeInfoKHR present_mode_info = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_KHR };
 		VkPresentIdKHR present_id_info = { VK_STRUCTURE_TYPE_PRESENT_ID_KHR };
 
 		if (device->get_device_features().present_id_features.presentId)
@@ -1433,10 +1433,10 @@ VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurface
 struct SurfaceInfo
 {
 	VkPhysicalDeviceSurfaceInfo2KHR surface_info;
-	VkSurfacePresentModeEXT present_mode;
+	VkSurfacePresentModeKHR present_mode;
 	VkSurfaceCapabilitiesKHR surface_capabilities;
 	std::vector<VkSurfaceFormatKHR> formats;
-	VkSwapchainPresentModesCreateInfoEXT present_modes_info;
+	VkSwapchainPresentModesCreateInfoKHR present_modes_info;
 	VkImageCompressionControlEXT compression_control;
 	VkImageCompressionFixedRateFlagsEXT compression_control_fixed_rates;
 	std::vector<VkPresentModeKHR> present_mode_compat_group;
@@ -1610,8 +1610,8 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 	    ext.supports_surface_capabilities2)
 	{
 		VkSurfaceCapabilities2KHR surface_capabilities2 = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR };
-		VkSurfacePresentModeCompatibilityEXT present_mode_caps =
-		    { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_COMPATIBILITY_EXT };
+		VkSurfacePresentModeCompatibilityKHR present_mode_caps =
+		    { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_COMPATIBILITY_KHR };
 		std::vector<VkPresentModeKHR> present_mode_compat_group;
 
 		present_mode_compat_group.resize(32);
@@ -1620,7 +1620,7 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 
 		info.present_mode.pNext = const_cast<void *>(info.surface_info.pNext);
 		info.surface_info.pNext = &info.present_mode;
-		info.present_mode = { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT };
+		info.present_mode = { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_KHR };
 		info.present_mode.presentMode = swapchain_present_mode;
 
 		surface_capabilities2.pNext = &present_mode_caps;
@@ -1718,7 +1718,7 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 	// Allow for seamless toggle between presentation modes.
 	if (ext.swapchain_maintenance1_features.swapchainMaintenance1)
 	{
-		info.present_modes_info = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_EXT };
+		info.present_modes_info = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_KHR };
 		info.present_modes_info.pNext = const_cast<void *>(info.swapchain_pnext);
 		info.present_modes_info.presentModeCount = info.present_mode_compat_group.size();
 		info.present_modes_info.pPresentModes = info.present_mode_compat_group.data();

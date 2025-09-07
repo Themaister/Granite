@@ -424,7 +424,6 @@ VkResult WSI::wait_for_present(uint64_t id, uint64_t timeout)
 		VkPresentWait2InfoKHR wait_info = { VK_STRUCTURE_TYPE_PRESENT_WAIT_2_INFO_KHR };
 		wait_info.presentId = id;
 		wait_info.timeout = timeout;
-		LOGI("Present wait 2\n");
 		return table->vkWaitForPresent2KHR(context->get_device(), swapchain, &wait_info);
 	}
 	else if (device->get_device_features().present_wait_features.presentWait)

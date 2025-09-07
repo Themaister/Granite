@@ -1516,10 +1516,13 @@ Helper::BatchComposer::bake(int profiling_iteration)
 		submit.waitSemaphoreInfoCount = uint32_t(waits[i].size());
 		submit.pWaitSemaphoreInfos = waits[i].data();
 
-		present_ids_nv[i].sType = VK_STRUCTURE_TYPE_LATENCY_SUBMISSION_PRESENT_ID_NV;
-		present_ids_nv[i].presentID = present_id_nv;
-		present_ids_nv[i].pNext = submit.pNext;
-		submit.pNext = &present_ids_nv[i];
+		if (present_id_nv)
+		{
+			present_ids_nv[i].sType = VK_STRUCTURE_TYPE_LATENCY_SUBMISSION_PRESENT_ID_NV;
+			present_ids_nv[i].presentID = present_id_nv;
+			present_ids_nv[i].pNext = submit.pNext;
+			submit.pNext = &present_ids_nv[i];
+		}
 
 		if (profiling_iteration >= 0)
 		{

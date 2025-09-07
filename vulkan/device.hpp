@@ -721,6 +721,8 @@ private:
 		VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
 		uint64_t current_timeline = 0;
 		PerformanceQueryPool performance_query_pool;
+		uint32_t implicit_sync_to_queues = 0;
+		uint32_t has_incoming_queue_dependencies = 0;
 	} queue_data[QUEUE_INDEX_COUNT];
 
 	struct InternalFence
@@ -778,13 +780,11 @@ private:
 	void flush_pipeline_cache();
 
 	PerformanceQueryPool &get_performance_query_pool(QueueIndices physical_type);
-	void clear_wait_semaphores();
-	void submit_staging(CommandBufferHandle &cmd, bool flush);
 	PipelineEvent request_pipeline_event();
 
 	std::function<void ()> queue_lock_callback;
 	std::function<void ()> queue_unlock_callback;
-	void flush_frame(QueueIndices physical_type);
+	void flush_frame_nolock(QueueIndices physical_type);
 	void submit_empty_inner(QueueIndices type, InternalFence *fence,
 	                        SemaphoreHolder *external_semaphore,
 	                        unsigned semaphore_count,
@@ -795,6 +795,7 @@ private:
 	                        SemaphoreHolder *external_semaphore,
 	                        VkSemaphore sem, uint64_t timeline, InternalFence *fence,
 	                        unsigned semaphore_count, Semaphore *semaphores);
+	void emit_implicit_sync_to_queues(QueueIndices physical_type);
 	VkResult submit_batches(Helper::BatchComposer &composer, VkQueue queue, VkFence fence,
 	                        int profiling_iteration = -1);
 	VkResult queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo2 *submits, VkFence fence);
@@ -836,6 +837,7 @@ private:
 	void flush_frame_nolock();
 	CommandBufferHandle request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type, bool profiled);
 	void submit_discard_nolock(CommandBufferHandle &cmd);
+	void submit_and_sync_to_queues(CommandBufferHandle &cmd, uint32_t sync_to_queues);
 	void submit_nolock(CommandBufferHandle cmd, Fence *fence,
 	                   unsigned semaphore_count, Semaphore *semaphore);
 	void submit_empty_nolock(QueueIndices physical_type, Fence *fence,

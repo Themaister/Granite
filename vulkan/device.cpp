@@ -236,7 +236,7 @@ void Device::add_wait_semaphore_nolock(QueueIndices physical_type, Semaphore sem
                                        VkPipelineStageFlags2 stages, bool flush)
 {
 	if (flush)
-		flush_frame(physical_type);
+		flush_frame_nolock(physical_type);
 	auto &data = queue_data[physical_type];
 
 #ifdef VULKAN_DEBUG
@@ -1263,6 +1263,58 @@ void Device::submit(CommandBufferHandle &cmd, Fence *fence, unsigned semaphore_c
 	submit_nolock(std::move(cmd), fence, semaphore_count, semaphores);
 }
 
+void Device::submit_and_sync_to_queues(CommandBufferHandle &cmd, uint32_t sync_to_queues)
+{
+	LOCK();
+
+	auto type = cmd->get_command_buffer_type();
+	auto physical_type = get_physical_queue_type(type);
+	auto &data = queue_data[physical_type];
+
+	// Resolve obvious cycles.
+	uint32_t cycle_queues = queue_data[physical_type].has_incoming_queue_dependencies & sync_to_queues;
+	Util::for_each_bit(cycle_queues, [&](unsigned bit) {
+		flush_frame_nolock(QueueIndices(bit));
+	});
+
+	submit_nolock(std::move(cmd), nullptr, 0, nullptr);
+
+	// Avoid self-sync which causes a loop.
+	sync_to_queues &= ~(1u << physical_type);
+	data.implicit_sync_to_queues |= sync_to_queues;
+	Util::for_each_bit(sync_to_queues, [&](unsigned bit) {
+		queue_data[QueueIndices(bit)].has_incoming_queue_dependencies |= 1u << physical_type;
+	});
+
+	// This is only used internally, and we should never introduce cycles on our own.
+	// Verify that there is a flush path which does not cause cycles.
+#ifdef VULKAN_DEBUG
+	uint32_t executing_queues = 0;
+	for (auto &i : queue_flush_order)
+		executing_queues |= queue_data[i].has_incoming_queue_dependencies;
+	uint32_t new_executing_queues = executing_queues;
+
+	while (new_executing_queues != 0)
+	{
+		auto tmp_queues = new_executing_queues;
+		new_executing_queues = 0;
+		Util::for_each_bit(tmp_queues, [&](unsigned i) {
+			if ((executing_queues & queue_data[i].has_incoming_queue_dependencies) != 0)
+			{
+				LOGE("Found cycle in internal staging commands.\n");
+				abort();
+			}
+			else
+			{
+				new_executing_queues |= queue_data[i].has_incoming_queue_dependencies;
+			}
+		});
+
+		executing_queues |= new_executing_queues;
+	}
+#endif
+}
+
 void Device::submit_discard_nolock(CommandBufferHandle &cmd)
 {
 #ifdef VULKAN_DEBUG
@@ -1415,6 +1467,8 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 	auto end_ts = write_calibrated_timestamp_nolock();
 	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit");
 
+	emit_implicit_sync_to_queues(physical_type);
+
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit2 failed (code: %d).\n", int(result));
 
@@ -1426,16 +1480,6 @@ Fence Device::request_legacy_fence()
 {
 	VkFence fence = managers.fence.request_cleared_fence();
 	return Fence(handle_pool.fences.allocate(this, fence));
-}
-
-void Device::submit_staging(CommandBufferHandle &cmd, bool flush)
-{
-	Semaphore semaphores[2];
-	submit_nolock(cmd, nullptr, 2, semaphores);
-	semaphores[0]->set_internal_sync_object();
-	semaphores[1]->set_internal_sync_object();
-	add_wait_semaphore_nolock(QUEUE_INDEX_GRAPHICS, semaphores[0], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, flush);
-	add_wait_semaphore_nolock(QUEUE_INDEX_COMPUTE, semaphores[1], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, flush);
 }
 
 void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &sem)
@@ -1592,6 +1636,46 @@ void Helper::BatchComposer::add_wait_semaphore(VkSemaphore sem, VkPipelineStageF
 	info.stageMask = stage;
 	info.value = 0;
 	waits[submit_index].push_back(info);
+}
+
+void Device::emit_implicit_sync_to_queues(QueueIndices physical_type)
+{
+	auto &data = queue_data[physical_type];
+	auto sync_to_queues = data.implicit_sync_to_queues;
+	// Clear this early to avoid infinite recursion.
+	data.implicit_sync_to_queues = 0;
+
+	if (ext.vk12_features.timelineSemaphore)
+	{
+		Util::for_each_bit(sync_to_queues, [&](unsigned bit)
+		{
+			auto queue_index = QueueIndices(bit);
+			auto sem = Semaphore(
+					handle_pool.semaphores.allocate(this, data.current_timeline, data.timeline_semaphore, false));
+			sem->signal_external();
+
+			// Ensure that all pending command buffers observe the wait since we have deferred adding the signal.
+			auto &dependee = queue_data[queue_index];
+			dependee.wait_semaphores.push_back(std::move(sem));
+			dependee.wait_stages.push_back(VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+			dependee.has_incoming_queue_dependencies &= ~(1u << physical_type);
+		});
+	}
+	else
+	{
+		Util::for_each_bit(sync_to_queues, [&](unsigned bit)
+		{
+			auto sem = request_legacy_semaphore();
+			submit_empty_inner(physical_type, nullptr, sem.get(), 0, nullptr);
+
+			auto queue_index = QueueIndices(bit);
+
+			// Ensure that all pending command buffers observe the wait since we have deferred adding the signal.
+			queue_data[queue_index].wait_semaphores.push_back(std::move(sem));
+			queue_data[queue_index].wait_stages.push_back(VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+			queue_data[queue_index].has_incoming_queue_dependencies &= ~(1u << physical_type);
+		});
+	}
 }
 
 void Device::emit_queue_signals(Helper::BatchComposer &composer,
@@ -1751,11 +1835,17 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
                           unsigned semaphore_count, Semaphore *semaphores, int profiling_iteration)
 {
 	auto &data = queue_data[physical_type];
+	Util::for_each_bit(data.has_incoming_queue_dependencies, [&](unsigned bits) {
+		VK_ASSERT(physical_type != bits);
+		submit_queue(QueueIndices(bits), nullptr);
+	});
+	VK_ASSERT(data.has_incoming_queue_dependencies == 0);
+
 	auto &submissions = frame().submissions[physical_type];
 
 	if (submissions.empty())
 	{
-		if (fence || semaphore_count || external_semaphore)
+		if (fence || semaphore_count || external_semaphore || data.implicit_sync_to_queues || !data.wait_semaphores.empty())
 			submit_empty_inner(physical_type, fence, external_semaphore, semaphore_count, semaphores);
 		return;
 	}
@@ -1856,11 +1946,13 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 		LOGE("vkQueueSubmit2 failed (code: %d).\n", int(result));
 	submissions.clear();
 
+	emit_implicit_sync_to_queues(physical_type);
+
 	if (!ext.vk12_features.timelineSemaphore)
 		data.need_fence = true;
 }
 
-void Device::flush_frame(QueueIndices physical_type)
+void Device::flush_frame_nolock(QueueIndices physical_type)
 {
 	if (queue_info.queues[physical_type] != VK_NULL_HANDLE)
 		submit_queue(physical_type, nullptr);
@@ -1874,6 +1966,11 @@ void Device::end_frame_context()
 
 void Device::end_frame_nolock()
 {
+	// Flushing one queue may require flushes on other queues.
+	// Make sure everything is resolved before we check for fences.
+	// This is mostly unnecessary with timeline semaphores.
+	flush_frame_nolock();
+
 	// Make sure we have a fence which covers all submissions in the frame.
 	for (auto &i : queue_flush_order)
 	{
@@ -1886,6 +1983,8 @@ void Device::end_frame_nolock()
 			if (fence.fence != VK_NULL_HANDLE)
 				frame().wait_and_recycle_fences.push_back(fence.fence);
 			queue_data[i].need_fence = false;
+
+			VK_ASSERT(queue_data[i].wait_semaphores.empty());
 		}
 	}
 }
@@ -1899,7 +1998,7 @@ void Device::flush_frame()
 void Device::flush_frame_nolock()
 {
 	for (auto &i : queue_flush_order)
-		flush_frame(i);
+		flush_frame_nolock(i);
 }
 
 PerformanceQueryPool &Device::get_performance_query_pool(QueueIndices physical_index)
@@ -2435,17 +2534,6 @@ void Device::destroy_framebuffer_nolock(VkFramebuffer framebuffer)
 	frame().destroyed_framebuffers.push_back(framebuffer);
 }
 
-void Device::clear_wait_semaphores()
-{
-	for (auto &data : queue_data)
-	{
-		for (auto &sem : data.wait_semaphores)
-			table->vkDestroySemaphore(device, sem->consume(), nullptr);
-		data.wait_semaphores.clear();
-		data.wait_stages.clear();
-	}
-}
-
 void Device::wait_idle()
 {
 	DRAIN_FRAME_LOCK();
@@ -2467,8 +2555,6 @@ void Device::wait_idle_nolock()
 		if (queue_unlock_callback)
 			queue_unlock_callback();
 	}
-
-	clear_wait_semaphores();
 
 	// Free memory for buffer pools.
 	managers.vbo.reset();
@@ -4411,10 +4497,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			Semaphore sem;
 
 			if (transfer_cmd)
-			{
-				submit(transfer_cmd, nullptr, 1, &sem);
-				add_wait_semaphore(CommandBuffer::Type::Generic, sem, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
-			}
+				submit_and_sync_to_queues(transfer_cmd, 1u << QUEUE_INDEX_GRAPHICS);
 
 			auto src_layout =
 					(info.usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT) != 0 ?
@@ -4425,21 +4508,27 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			graphics_cmd->generate_mipmap(*handle);
 			graphics_cmd->end_region();
 
+			bool sync_with_graphics = (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT) != 0;
+
 			graphics_cmd->image_barrier(
 					*handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 					create_info.initial_layout,
 					VK_PIPELINE_STAGE_2_BLIT_BIT, 0,
-					VK_PIPELINE_STAGE_NONE, 0);
+					sync_with_graphics ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_NONE,
+					sync_with_graphics ? VK_ACCESS_MEMORY_READ_BIT : VK_ACCESS_NONE);
 
 			transition_cmd = std::move(graphics_cmd);
 		}
 		else if (transfer_cmd)
 		{
+			bool sync_with_transfer = (create_info.misc & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT) != 0;
+
 			transfer_cmd->image_barrier(
 					*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 					create_info.initial_layout,
 					VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-					VK_PIPELINE_STAGE_NONE, 0);
+					sync_with_transfer ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_NONE,
+					sync_with_transfer ? VK_ACCESS_MEMORY_READ_BIT : VK_ACCESS_NONE);
 
 			transition_cmd = std::move(transfer_cmd);
 		}
@@ -4478,57 +4567,31 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	// For concurrent queue, make sure that compute, transfer or video decode can see the final image as well.
 	if (transition_cmd)
 	{
-		constexpr auto max_queues = Util::ecast(CommandBuffer::Type::Count);
-		VkPipelineStageFlags2 stages[max_queues];
-		CommandBuffer::Type types[max_queues];
-		Semaphore sem[max_queues];
-		uint32_t sem_count = 0;
+		uint32_t sync_queues = 0;
 
+		// These are implied by default.
 		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT)
-		{
-			types[sem_count] = CommandBuffer::Type::Generic;
-			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-			sem_count++;
-		}
-
+			sync_queues |= 1u << QUEUE_INDEX_GRAPHICS;
 		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT)
-		{
-			types[sem_count] = CommandBuffer::Type::AsyncCompute;
-			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-			if (stages[sem_count] != 0)
-				sem_count++;
-		}
+			sync_queues |= 1u << QUEUE_INDEX_COMPUTE;
 
 		// Do not synchronize transfer/video queues here unless we explicitly asked for it.
 		if (create_info.misc & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT)
 		{
-			types[sem_count] = CommandBuffer::Type::AsyncTransfer;
-			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-			if (stages[sem_count] != 0)
-				sem_count++;
+			// Avoid transfer -> graphics -> transfer cycle, have to flush transfer queue before we introduce dependency.
+			if (generate_mips)
+			{
+				LOCK();
+				flush_frame_nolock(QUEUE_INDEX_TRANSFER);
+			}
+			sync_queues |= 1u << QUEUE_INDEX_TRANSFER;
 		}
-
 		if (create_info.misc & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_DECODE_BIT)
-		{
-			types[sem_count] = CommandBuffer::Type::VideoDecode;
-			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-			if (stages[sem_count] != 0)
-				sem_count++;
-		}
-
+			sync_queues |= 1u << QUEUE_INDEX_VIDEO_DECODE;
 		if (create_info.misc & IMAGE_MISC_CONCURRENT_QUEUE_VIDEO_ENCODE_BIT)
-		{
-			types[sem_count] = CommandBuffer::Type::VideoEncode;
-			stages[sem_count] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-			if (stages[sem_count] != 0)
-				sem_count++;
-		}
+			sync_queues |= 1u << QUEUE_INDEX_VIDEO_ENCODE;
 
-		VK_ASSERT(sem_count);
-
-		submit(transition_cmd, nullptr, sem_count, sem);
-		for (uint32_t i = 0; i < sem_count; i++)
-			add_wait_semaphore(types[i], sem[i], stages[i], true);
+		submit_and_sync_to_queues(transition_cmd, sync_queues);
 	}
 
 	return handle;
@@ -5023,8 +5086,12 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 			cmd->end_region();
 		}
 
-		LOCK();
-		submit_staging(cmd, true);
+		uint32_t queue_indices = (1u << QUEUE_INDEX_GRAPHICS) | (1u << QUEUE_INDEX_COMPUTE);
+		if (ext.supports_video_decode_queue)
+			queue_indices |= 1u << QUEUE_INDEX_VIDEO_DECODE;
+		if (ext.supports_video_encode_queue)
+			queue_indices |= 1u << QUEUE_INDEX_VIDEO_ENCODE;
+		submit_and_sync_to_queues(cmd, queue_indices);
 	}
 	else if (need_init)
 	{

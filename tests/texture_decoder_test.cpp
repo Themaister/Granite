@@ -1306,19 +1306,89 @@ int main()
 	if (!Context::init_loader(nullptr))
 		return EXIT_FAILURE;
 
-	Context ctx;
+	Context ctx, ctx_alt;
 
 	Context::SystemHandles handles;
 	handles.filesystem = GRANITE_FILESYSTEM();
 	handles.thread_group = GRANITE_THREAD_GROUP();
 	ctx.set_system_handles(handles);
-
 	ctx.set_num_thread_indices(2);
+
+	VkApplicationInfo app_info = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
+	app_info.apiVersion = VK_API_VERSION_1_3;
+	ctx.set_application_info(&app_info);
 	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0))
 		return EXIT_FAILURE;
 
+	struct InstanceFactory : Vulkan::InstanceFactory
+	{
+		VkInstance create_instance(const VkInstanceCreateInfo *) override
+		{
+			return instance;
+		}
+
+		const VkInstanceCreateInfo *get_existing_create_info() override
+		{
+			return &info;
+		}
+
+		bool factory_owns_created_instance() override
+		{
+			return true;
+		}
+
+		VkInstanceCreateInfo info;
+		VkInstance instance;
+	} instance_factory = {};
+
+	struct DeviceFactory : Vulkan::DeviceFactory
+	{
+		VkDevice create_device(VkPhysicalDevice, const VkDeviceCreateInfo *) override
+		{
+			return device;
+		}
+
+		const VkDeviceCreateInfo *get_existing_create_info() override
+		{
+			return &info;
+		}
+
+		bool factory_owns_created_device() override
+		{
+			return true;
+		}
+
+		VkDeviceCreateInfo info;
+		VkDevice device;
+	} device_factory = {};
+
+	instance_factory.instance = ctx.get_instance();
+	device_factory.device = ctx.get_device();
+	instance_factory.info = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
+	instance_factory.info.ppEnabledExtensionNames = ctx.get_enabled_device_features().instance_extensions;
+	instance_factory.info.enabledExtensionCount = ctx.get_enabled_device_features().num_instance_extensions;
+	instance_factory.info.pApplicationInfo = &ctx.get_application_info();
+	device_factory.info = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
+	device_factory.info.ppEnabledExtensionNames = ctx.get_enabled_device_features().device_extensions;
+	device_factory.info.enabledExtensionCount = ctx.get_enabled_device_features().num_device_extensions;
+	device_factory.info.pNext = ctx.get_enabled_device_features().pdf2;
+
+	VkDeviceQueueCreateInfo queue = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
+	queue.queueCount = 1;
+	device_factory.info.queueCreateInfoCount = 1;
+	device_factory.info.pQueueCreateInfos = &queue;
+
+	ctx_alt.set_system_handles(handles);
+	ctx_alt.set_num_thread_indices(2);
+	ctx_alt.set_instance_factory(&instance_factory);
+	ctx_alt.set_device_factory(&device_factory);
+	if (!ctx_alt.init_instance(nullptr, 0))
+		return EXIT_FAILURE;
+	if (!ctx_alt.init_device(ctx.get_gpu(), VK_NULL_HANDLE, nullptr, 0))
+		return EXIT_FAILURE;
+
 	Device device;
-	device.set_context(ctx);
+	device.set_context(ctx_alt);
 
 	if (!test_s3tc(device))
 		return EXIT_FAILURE;

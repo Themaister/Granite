@@ -186,12 +186,21 @@ struct InstanceFactory
 {
 	virtual ~InstanceFactory() = default;
 	virtual VkInstance create_instance(const VkInstanceCreateInfo *info) = 0;
+
+	// Lifetime of any data in create info must remain as long as Context is alive.
+	virtual const VkInstanceCreateInfo *get_existing_create_info();
+	virtual bool factory_owns_created_instance();
 };
 
 struct DeviceFactory
 {
 	virtual ~DeviceFactory() = default;
 	virtual VkDevice create_device(VkPhysicalDevice gpu, const VkDeviceCreateInfo *info) = 0;
+
+	// Lifetime of any data in create info must remain as long as Context is alive.
+	// If pNext is not NULL, the first link in the pNext chain must be VkPhysicalDeviceFeatures2.
+	virtual const VkDeviceCreateInfo *get_existing_create_info();
+	virtual bool factory_owns_created_device();
 };
 
 class CopiedApplicationInfo
@@ -233,7 +242,7 @@ public:
 
 	// Call before initializing instances. app_info may be freed after returning.
 	// API_VERSION must be at least 1.1.
-	// By default, a Vulkan 1.1 instance is created.
+	// By default, a Vulkan 1.1 to 1.4 instance is created depending on support.
 	void set_application_info(const VkApplicationInfo *app_info);
 
 	// Recommended interface.

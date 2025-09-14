@@ -161,7 +161,7 @@ bool Context::init_instance(const char * const *instance_ext, uint32_t instance_
 	destroy_device();
 	destroy_instance();
 
-	owned_instance = true;
+	owned_instance = !instance_factory || !instance_factory->factory_owns_created_instance();
 	if (!create_instance(instance_ext, instance_ext_count, flags))
 	{
 		destroy_instance();
@@ -175,7 +175,7 @@ bool Context::init_instance(const char * const *instance_ext, uint32_t instance_
 bool Context::init_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface_compat, const char *const *device_ext,
                           uint32_t device_ext_count, ContextCreationFlags flags)
 {
-	owned_device = true;
+	owned_device = !device_factory || !device_factory->factory_owns_created_device();
 	VkPhysicalDeviceFeatures features = {};
 	if (!create_device(gpu_, surface_compat, device_ext, device_ext_count, &features, flags))
 	{
@@ -543,14 +543,19 @@ VkResult Context::create_device_from_profile(const VkDeviceCreateInfo &info, VkD
 
 VkApplicationInfo Context::get_promoted_application_info() const
 {
+	auto *inherit_info = instance_factory ? instance_factory->get_existing_create_info() : nullptr;
 	auto app_info = get_application_info();
+
+	VK_ASSERT(!inherit_info || inherit_info->pApplicationInfo);
+	uint32_t supported_instance_version =
+			inherit_info ? inherit_info->pApplicationInfo->apiVersion : volkGetInstanceVersion();
 
 	// Granite min-req is 1.1.
 	app_info.apiVersion = std::max(VK_API_VERSION_1_1, app_info.apiVersion);
 
 	// Target Vulkan 1.4 if available,
 	// but the tooling ecosystem isn't quite ready for this yet, so stick to 1.3 for the time being.
-	app_info.apiVersion = std::max(app_info.apiVersion, std::min(VK_API_VERSION_1_4, volkGetInstanceVersion()));
+	app_info.apiVersion = std::max(app_info.apiVersion, std::min(VK_API_VERSION_1_4, supported_instance_version));
 
 	return app_info;
 }
@@ -559,8 +564,11 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 {
 	VkInstanceCreateInfo info = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	auto app_info = get_promoted_application_info();
+	auto *inherit_info = instance_factory ? instance_factory->get_existing_create_info() : nullptr;
+	uint32_t supported_instance_version =
+			inherit_info ? inherit_info->pApplicationInfo->apiVersion : volkGetInstanceVersion();
 
-	if (volkGetInstanceVersion() < app_info.apiVersion)
+	if (supported_instance_version < app_info.apiVersion)
 	{
 		LOGE("Vulkan loader does not support required Vulkan version.\n");
 		return false;
@@ -574,22 +582,35 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		instance_exts.push_back(instance_ext[i]);
 
 	uint32_t ext_count = 0;
-	vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, nullptr);
+	if (!inherit_info)
+		vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, nullptr);
 	std::vector<VkExtensionProperties> queried_extensions(ext_count);
-	if (ext_count)
+	if (ext_count && !inherit_info)
 		vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, queried_extensions.data());
 
 	uint32_t layer_count = 0;
-	vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
+	if (!inherit_info)
+		vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
 	std::vector<VkLayerProperties> queried_layers(layer_count);
-	if (layer_count)
+	if (layer_count && !inherit_info)
 		vkEnumerateInstanceLayerProperties(&layer_count, queried_layers.data());
 
-	LOGI("Layer count: %u\n", layer_count);
-	for (auto &layer : queried_layers)
-		LOGI("Found layer: %s.\n", layer.layerName);
+	if (!inherit_info)
+	{
+		LOGI("Layer count: %u\n", layer_count);
+		for (auto &layer: queried_layers)
+			LOGI("Found layer: %s.\n", layer.layerName);
+	}
 
 	const auto has_extension = [&](const char *name) -> bool {
+		if (inherit_info)
+		{
+			for (uint32_t i = 0; i < inherit_info->enabledExtensionCount; i++)
+				if (strcmp(inherit_info->ppEnabledExtensionNames[i], name) == 0)
+					return true;
+			return false;
+		}
+
 		auto itr = find_if(begin(queried_extensions), end(queried_extensions), [name](const VkExtensionProperties &e) -> bool {
 			return strcmp(e.extensionName, name) == 0;
 		});
@@ -627,6 +648,14 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 
 #ifdef VULKAN_DEBUG
 	const auto has_layer = [&](const char *name) -> bool {
+		if (inherit_info)
+		{
+			for (uint32_t i = 0; i < inherit_info->enabledLayerCount; i++)
+				if (strcmp(inherit_info->ppEnabledLayerNames[i], name) == 0)
+					return true;
+			return false;
+		}
+
 		auto layer_itr = find_if(begin(queried_layers), end(queried_layers), [name](const VkLayerProperties &e) -> bool {
 			return strcmp(e.layerName, name) == 0;
 		});
@@ -700,13 +729,23 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		}
 	}
 
-	info.enabledExtensionCount = instance_exts.size();
-	info.ppEnabledExtensionNames = instance_exts.empty() ? nullptr : instance_exts.data();
-	info.enabledLayerCount = instance_layers.size();
-	info.ppEnabledLayerNames = instance_layers.empty() ? nullptr : instance_layers.data();
+	if (inherit_info)
+	{
+		info.enabledExtensionCount = inherit_info->enabledExtensionCount;
+		info.ppEnabledExtensionNames = inherit_info->ppEnabledExtensionNames;
+		info.enabledLayerCount = inherit_info->enabledLayerCount;
+		info.ppEnabledLayerNames = inherit_info->ppEnabledLayerNames;
+	}
+	else
+	{
+		info.enabledExtensionCount = instance_exts.size();
+		info.ppEnabledExtensionNames = instance_exts.empty() ? nullptr : instance_exts.data();
+		info.enabledLayerCount = instance_layers.size();
+		info.ppEnabledLayerNames = instance_layers.empty() ? nullptr : instance_layers.data();
+	}
 
-	for (auto *ext_name : instance_exts)
-		LOGI("Enabling instance extension: %s.\n", ext_name);
+	for (uint32_t i = 0; i < info.enabledExtensionCount; i++)
+		LOGI("Enabling instance extension: %s.\n", info.ppEnabledExtensionNames[i]);
 
 #ifdef GRANITE_VULKAN_PROFILES
 	if (!init_profile())
@@ -737,9 +776,17 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		ext.instance_api_core_version = app_info.apiVersion;
 	}
 
-	enabled_instance_extensions = std::move(instance_exts);
-	ext.instance_extensions = enabled_instance_extensions.data();
-	ext.num_instance_extensions = uint32_t(enabled_instance_extensions.size());
+	if (inherit_info)
+	{
+		ext.instance_extensions = inherit_info->ppEnabledExtensionNames;
+		ext.num_instance_extensions = inherit_info->enabledExtensionCount;
+	}
+	else
+	{
+		enabled_instance_extensions = std::move(instance_exts);
+		ext.instance_extensions = enabled_instance_extensions.data();
+		ext.num_instance_extensions = uint32_t(enabled_instance_extensions.size());
+	}
 
 	volkLoadInstance(instance);
 
@@ -921,6 +968,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		return false;
 	}
 
+	auto *inherit_info = device_factory ? device_factory->get_existing_create_info() : nullptr;
 	std::vector<VkExtensionProperties> queried_extensions;
 
 #ifdef GRANITE_VULKAN_PROFILES
@@ -938,13 +986,22 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 #endif
 	{
 		uint32_t ext_count = 0;
-		vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, nullptr);
+		if (!inherit_info)
+			vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, nullptr);
 		queried_extensions.resize(ext_count);
-		if (ext_count)
+		if (ext_count && !inherit_info)
 			vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, queried_extensions.data());
 	}
 
 	const auto has_extension = [&](const char *name) -> bool {
+		if (inherit_info)
+		{
+			for (uint32_t i = 0; i < inherit_info->enabledExtensionCount; i++)
+				if (strcmp(inherit_info->ppEnabledExtensionNames[i], name) == 0)
+					return true;
+			return false;
+		}
+
 		auto itr = find_if(begin(queried_extensions), end(queried_extensions), [name](const VkExtensionProperties &e) -> bool {
 			return strcmp(e.extensionName, name) == 0;
 		});
@@ -1000,6 +1057,21 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	Util::SmallVector<uint32_t> queue_offsets(queue_family_count);
 	Util::SmallVector<Util::SmallVector<float, QUEUE_INDEX_COUNT>> queue_priorities(queue_family_count);
 	vkGetPhysicalDeviceQueueFamilyProperties2(gpu, &queue_family_count, queue_props.data());
+
+	if (inherit_info)
+	{
+		for (uint32_t i = 0; i < queue_family_count; i++)
+		{
+			auto itr = std::find_if(inherit_info->pQueueCreateInfos,
+			                        inherit_info->pQueueCreateInfos + inherit_info->queueCreateInfoCount,
+			                        [&](const VkDeviceQueueCreateInfo &queue) { return queue.queueFamilyIndex == i; });
+
+			if (itr != inherit_info->pQueueCreateInfos + inherit_info->queueCreateInfoCount)
+				queue_props[i].queueFamilyProperties.queueCount = itr->queueCount;
+			else
+				queue_props[i].queueFamilyProperties.queueCount = 0;
+		}
+	}
 
 	queue_info = {};
 	uint32_t queue_indices[QUEUE_INDEX_COUNT] = {};
@@ -1108,8 +1180,17 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		info.pQueuePriorities = queue_priorities[family_index].data();
 		queue_infos.push_back(info);
 	}
-	device_info.pQueueCreateInfos = queue_infos.data();
-	device_info.queueCreateInfoCount = uint32_t(queue_infos.size());
+
+	if (inherit_info)
+	{
+		device_info.pQueueCreateInfos = inherit_info->pQueueCreateInfos;
+		device_info.queueCreateInfoCount = inherit_info->queueCreateInfoCount;
+	}
+	else
+	{
+		device_info.pQueueCreateInfos = queue_infos.data();
+		device_info.queueCreateInfoCount = uint32_t(queue_infos.size());
+	}
 
 	std::vector<const char *> enabled_extensions;
 
@@ -1338,14 +1419,26 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	}
 
 	pdf2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
-	void **ppNext = &pdf2.pNext;
+	auto **ppNext = reinterpret_cast<VkBaseOutStructure **>(&pdf2.pNext);
 
-#define ADD_CHAIN(s, type) do { \
-	s.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ ## type; \
-	s.pNext = nullptr; \
-	*ppNext = &(s); \
-	ppNext = &((s).pNext); \
-} while(0)
+	const auto add_chain = [&](void *pnext, size_t size,
+	                           VkStructureType type, const VkDeviceCreateInfo *device_create_info) {
+		auto *sout = static_cast<VkBaseOutStructure *>(pnext);
+		memset(sout, 0, size);
+		sout->sType = type;
+
+		if (device_create_info)
+		{
+			auto *existing = find_pnext<VkBaseOutStructure>(device_create_info->pNext, type);
+			if (existing)
+				memcpy(sout + 1, existing + 1, size - sizeof(*sout));
+		}
+
+		*ppNext = sout;
+		ppNext = &sout->pNext;
+	};
+
+#define ADD_CHAIN(s, type) add_chain(&(s), sizeof(s), VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ ## type, inherit_info)
 
 	if (ext.supports_video_encode_av1)
 		ADD_CHAIN(ext.av1_features, VIDEO_ENCODE_AV1_FEATURES_KHR);
@@ -1617,7 +1710,19 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	else
 #endif
 	{
-		vkGetPhysicalDeviceFeatures2(gpu, &pdf2);
+		if (!inherit_info)
+		{
+			vkGetPhysicalDeviceFeatures2(gpu, &pdf2);
+		}
+		else if (inherit_info->pNext)
+		{
+			auto *features = find_pnext<VkPhysicalDeviceFeatures2>(inherit_info->pNext, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
+			pdf2.features = features->features;
+		}
+		else if (inherit_info->pEnabledFeatures)
+		{
+			pdf2.features = *inherit_info->pEnabledFeatures;
+		}
 	}
 
 	// Promote fallback features to core structs.
@@ -1756,7 +1861,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ext.enabled_features = enabled_features;
 	}
 
-	device_info.pNext = &pdf2;
+	device_info.pNext = inherit_info ? inherit_info->pNext : &pdf2;
 
 #ifdef HAVE_GRANITE_VULKAN_POST_MORTEM
 	VkPhysicalDeviceDiagnosticsConfigFeaturesNV diagnostic_config_nv;
@@ -1785,7 +1890,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	VkPhysicalDeviceIDProperties id_properties = {};
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
 	VkPhysicalDeviceSubgroupSizeControlProperties size_control_props = {};
-	ppNext = &props.pNext;
+
+#undef ADD_CHAIN
+#define ADD_CHAIN(s, type) add_chain(&(s), sizeof(s), VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ ## type, nullptr)
+	ppNext = reinterpret_cast<VkBaseOutStructure **>(&props.pNext);
 
 	if (ext.device_api_core_version >= VK_API_VERSION_1_2)
 	{
@@ -1882,11 +1990,19 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		vpGetProfileProperties(profile.profile, &props);
 #endif
 
-	device_info.enabledExtensionCount = enabled_extensions.size();
-	device_info.ppEnabledExtensionNames = enabled_extensions.empty() ? nullptr : enabled_extensions.data();
+	if (inherit_info)
+	{
+		device_info.enabledExtensionCount = inherit_info->enabledExtensionCount;
+		device_info.ppEnabledExtensionNames = inherit_info->ppEnabledExtensionNames;
+	}
+	else
+	{
+		device_info.enabledExtensionCount = enabled_extensions.size();
+		device_info.ppEnabledExtensionNames = enabled_extensions.empty() ? nullptr : enabled_extensions.data();
+	}
 
-	for (auto *enabled_extension : enabled_extensions)
-		LOGI("Enabling device extension: %s.\n", enabled_extension);
+	for (uint32_t i = 0; i < device_info.enabledExtensionCount; i++)
+		LOGI("Enabling device extension: %s.\n", device_info.ppEnabledExtensionNames[i]);
 
 #ifdef GRANITE_VULKAN_PROFILES
 	if (!required_profile.empty())
@@ -1907,14 +2023,32 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			return false;
 	}
 
-	enabled_device_extensions = std::move(enabled_extensions);
-	ext.device_extensions = enabled_device_extensions.data();
-	ext.num_device_extensions = uint32_t(enabled_device_extensions.size());
-	ext.pdf2 = &pdf2;
+	if (inherit_info)
+	{
+		ext.device_extensions = inherit_info->ppEnabledExtensionNames;
+		ext.num_device_extensions = inherit_info->enabledExtensionCount;
+
+		if (inherit_info->pNext)
+		{
+			ext.pdf2 = static_cast<const VkPhysicalDeviceFeatures2 *>(inherit_info->pNext);
+			VK_ASSERT(ext.pdf2->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
+		}
+		else
+		{
+			ext.pdf2 = &pdf2;
+		}
+	}
+	else
+	{
+		enabled_device_extensions = std::move(enabled_extensions);
+		ext.device_extensions = enabled_device_extensions.data();
+		ext.num_device_extensions = uint32_t(enabled_device_extensions.size());
+		ext.pdf2 = &pdf2;
+	}
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	feature_filter.init(ext.device_api_core_version,
-	                    enabled_device_extensions.data(),
+	                    const_cast<const char **>(device_info.ppEnabledExtensionNames),
 	                    device_info.enabledExtensionCount,
 	                    &pdf2, &props);
 	feature_filter.set_device_query_interface(this);
@@ -1970,6 +2104,26 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	}
 
 	return true;
+}
+
+const VkDeviceCreateInfo *DeviceFactory::get_existing_create_info()
+{
+	return nullptr;
+}
+
+bool DeviceFactory::factory_owns_created_device()
+{
+	return false;
+}
+
+const VkInstanceCreateInfo *InstanceFactory::get_existing_create_info()
+{
+	return nullptr;
+}
+
+bool InstanceFactory::factory_owns_created_instance()
+{
+	return false;
 }
 
 #ifdef GRANITE_VULKAN_FOSSILIZE

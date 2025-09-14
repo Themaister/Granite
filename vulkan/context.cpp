@@ -574,6 +574,12 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		return false;
 	}
 
+	if (inherit_info)
+	{
+		instance_ext = inherit_info->ppEnabledExtensionNames;
+		instance_ext_count = inherit_info->enabledExtensionCount;
+	}
+
 	info.pApplicationInfo = &app_info;
 
 	std::vector<const char *> instance_exts;
@@ -617,9 +623,10 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		return itr != end(queried_extensions);
 	};
 
-	for (uint32_t i = 0; i < instance_ext_count; i++)
-		if (!has_extension(instance_ext[i]))
-			return false;
+	if (!inherit_info)
+		for (uint32_t i = 0; i < instance_ext_count; i++)
+			if (!has_extension(instance_ext[i]))
+				return false;
 
 	if (has_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
 	{
@@ -971,6 +978,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	auto *inherit_info = device_factory ? device_factory->get_existing_create_info() : nullptr;
 	std::vector<VkExtensionProperties> queried_extensions;
 
+	if (inherit_info)
+	{
+		required_device_extensions = inherit_info->ppEnabledExtensionNames;
+		num_required_device_extensions = inherit_info->enabledExtensionCount;
+	}
+
 #ifdef GRANITE_VULKAN_PROFILES
 	// Only allow extensions that profile declares.
 	ProfileHolder profile{required_profile};
@@ -1008,9 +1021,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		return itr != end(queried_extensions);
 	};
 
-	for (uint32_t i = 0; i < num_required_device_extensions; i++)
-		if (!has_extension(required_device_extensions[i]))
-			return false;
+	if (!inherit_info)
+		for (uint32_t i = 0; i < num_required_device_extensions; i++)
+			if (!has_extension(required_device_extensions[i]))
+				return false;
 
 	vkGetPhysicalDeviceProperties(gpu, &gpu_props);
 	// We can use core device functionality if enabled VkInstance apiVersion and physical device supports it.

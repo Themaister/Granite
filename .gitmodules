@@ -6,10 +6,10 @@
 	url = https://github.com/google/shaderc.git
 [submodule "third_party/glslang"]
 	path = third_party/glslang
-	url = https://github.com/KhronosGroup/glslang.git
+	url = https://github.com/Themaister/glslang.git
 [submodule "third_party/spirv-tools"]
 	path = third_party/spirv-tools
-	url = https://github.com/KhronosGroup/SPIRV-Tools
+	url = https://github.com/Themaister/SPIRV-Tools
 [submodule "third_party/spirv-headers"]
 	path = third_party/spirv-headers
 	url = https://github.com/KhronosGroup/SPIRV-Headers
@@ -39,7 +39,7 @@
 	url = https://github.com/google/oboe
 [submodule "third_party/khronos/vulkan-headers"]
 	path = third_party/khronos/vulkan-headers
-	url = https://github.com/KhronosGroup/Vulkan-Headers
+	url = https://github.com/Themaister/Vulkan-Headers
 [submodule "third_party/fsr2"]
 	path = third_party/fsr2
 	url = https://github.com/Themaister/FidelityFX-FSR2

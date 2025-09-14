@@ -1287,11 +1287,9 @@ void Device::submit_and_sync_to_queues(CommandBufferHandle &cmd, uint32_t sync_t
 	});
 
 	// This is only used internally, and we should never introduce cycles on our own.
-	// Verify that there is a flush path which does not cause cycles.
+	// Verify that there is a flush path for the dependees which does not cause cycles.
 #ifdef VULKAN_DEBUG
-	uint32_t executing_queues = 0;
-	for (auto &i : queue_flush_order)
-		executing_queues |= queue_data[i].has_incoming_queue_dependencies;
+	uint32_t executing_queues = sync_to_queues;
 	uint32_t new_executing_queues = executing_queues;
 
 	while (new_executing_queues != 0)

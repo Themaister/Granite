@@ -129,10 +129,6 @@ ImmutableSampler::ImmutableSampler(Util::Hash hash, Device *device_, const Sampl
 		info.pNext = &conv_info;
 	}
 
-#ifdef VULKAN_DEBUG
-	LOGI("Creating immutable sampler.\n");
-#endif
-
 	VkSampler vk_sampler = VK_NULL_HANDLE;
 	if (device->get_device_table().vkCreateSampler(device->get_device(), &info, nullptr, &vk_sampler) != VK_SUCCESS)
 		LOGE("Failed to create sampler.\n");

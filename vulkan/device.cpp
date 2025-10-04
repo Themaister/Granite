@@ -4781,6 +4781,10 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 
 	table->vkGetBufferMemoryRequirements(device, buffer, &reqs);
 
+	reqs.alignment = std::max<uint32_t>(reqs.alignment, gpu_props.limits.nonCoherentAtomSize);
+	// For BDA purposes
+	reqs.alignment = std::max<uint32_t>(reqs.alignment, 16u);
+
 	// Weird workaround for latest AMD Windows drivers which sets memoryTypeBits to 0 when using the external handle type.
 	if (!reqs.memoryTypeBits)
 		reqs.memoryTypeBits = ~0u;
@@ -4961,6 +4965,10 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	VkBufferMemoryRequirementsInfo2 req_info = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2 };
 	req_info.buffer = buffer;
 	table->vkGetBufferMemoryRequirements2(device, &req_info, &reqs);
+
+	reqs.memoryRequirements.alignment = std::max<uint32_t>(reqs.memoryRequirements.alignment, gpu_props.limits.nonCoherentAtomSize);
+	// For BDA purposes
+	reqs.memoryRequirements.alignment = std::max<uint32_t>(reqs.memoryRequirements.alignment, 16u);
 
 	if (create_info.allocation_requirements.size)
 	{

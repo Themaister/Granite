@@ -97,8 +97,16 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		uint32_t counts[64] = {};
 		auto work_list_count = create_ssbo(counts, sizeof(counts));
 
-		cmd->set_program("assets://shaders/compute_bucket_allocate.comp");
-		cmd->set_storage_buffer(0, 0, *variant_buffer);
+		auto info = ImageCreateInfo::immutable_2d_image(64, 64, VK_FORMAT_R8G8B8A8_UNORM, true);
+		info.misc |= IMAGE_MISC_GENERATE_MIPS_BIT;
+		uint32_t v[64 * 64];
+		for (auto &d : v)
+			d = 0x80808080;
+		ImageInitialData init_data = { v, 0, 0 };
+		auto tex = device.create_image(info, &init_data);
+
+		cmd->set_program("/tmp/test.comp");
+		cmd->set_texture(0, 0, tex->get_view());
 		cmd->set_storage_buffer(0, 1, *work_list_buffer);
 		cmd->set_storage_buffer(0, 2, *work_list_count);
 		cmd->dispatch(1, 1, 1);

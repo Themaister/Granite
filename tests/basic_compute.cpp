@@ -67,10 +67,15 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		img.reset();
 	}
 
+	unsigned frames = 0;
+
 	void render_frame(double, double) override
 	{
 		auto &device = get_wsi().get_device();
 		auto cmd = device.request_command_buffer();
+		frames++;
+		if (frames >= 1000)
+			request_shutdown();
 
 		struct Config {
 			const char *tag;

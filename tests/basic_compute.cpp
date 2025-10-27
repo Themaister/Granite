@@ -29,54 +29,42 @@
 using namespace Granite;
 using namespace Vulkan;
 
+static constexpr uint32_t Width = 1024;
+static constexpr uint32_t Height = 576;
+static constexpr uint32_t Depth = 64;
+
+#if 1
+static constexpr VkImageUsageFlags ImageUsage =
+		VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+static constexpr VkImageCreateFlags ImageCreate = VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
+#else
+static constexpr VkImageUsageFlags ImageUsage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+static constexpr VkImageCreateFlags ImageCreate = 0;
+#endif
+
 struct BasicComputeTest : Granite::Application, Granite::EventHandler
 {
 	BasicComputeTest()
 	{
 		EVENT_MANAGER_REGISTER_LATCH(BasicComputeTest, on_device_create, on_device_destroy, DeviceCreatedEvent);
+		get_wsi().set_present_mode(PresentMode::UnlockedMaybeTear);
 	}
 
-	void on_device_create(const DeviceCreatedEvent &)
+	ImageHandle img;
+
+	void on_device_create(const DeviceCreatedEvent &e)
 	{
+		auto info = ImageCreateInfo::immutable_3d_image(Width, Height, Depth, VK_FORMAT_R8G8B8A8_UNORM);
+		info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+		info.usage = ImageUsage;
+		info.flags = ImageCreate;
+		img = e.get_device().create_image(info);
+		img->set_layout(Layout::General);
 	}
 
 	void on_device_destroy(const DeviceCreatedEvent &)
 	{
-	}
-
-	BufferHandle create_ssbo(const void *data, size_t size)
-	{
-		BufferCreateInfo info = {};
-		info.size = size;
-		info.domain = BufferDomain::Device;
-		info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-		if (!data)
-			info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
-		return get_wsi().get_device().create_buffer(info, data);
-	}
-
-	void readback_ssbo(void *data, size_t size, const Buffer &src)
-	{
-		BufferCreateInfo info = {};
-		info.size = size;
-		info.domain = BufferDomain::CachedHost;
-		info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-		auto buffer = get_wsi().get_device().create_buffer(info);
-
-		auto cmd = get_wsi().get_device().request_command_buffer();
-		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
-		             VK_ACCESS_TRANSFER_READ_BIT);
-		cmd->copy_buffer(*buffer, src);
-		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_HOST_BIT,
-		             VK_ACCESS_HOST_READ_BIT);
-
-		Fence fence;
-		get_wsi().get_device().submit(cmd, &fence);
-		fence->wait();
-
-		auto *mapped = get_wsi().get_device().map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
-		memcpy(data, mapped, size);
-		get_wsi().get_device().unmap_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
+		img.reset();
 	}
 
 	void render_frame(double, double) override
@@ -84,47 +72,43 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		auto &device = get_wsi().get_device();
 		auto cmd = device.request_command_buffer();
 
-		cmd->barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-		             VK_ACCESS_MEMORY_READ_BIT);
+		struct Config {
+			const char *tag;
+			uint32_t wg_size[3];
+			bool rmw;
+		};
 
-		uint32_t variants[64];
-		for (unsigned i = 0; i < 64; i++)
-			variants[i] = i & 3;
-		auto variant_buffer = create_ssbo(variants, sizeof(variants));
+		static const Config configs[] = {
+			{ "8x8x1 write-only", { 8, 8, 1 }, false },
+			{ "8x8x1 read-write", { 8, 8, 1 }, true },
+			{ "16x16x1 write-only", { 16, 16, 1 }, false },
+			{ "16x16x1 read-write", { 16, 16, 1 }, true },
+			{ "4x4x4 write-only", { 4, 4, 4 }, false },
+			{ "4x4x4 read-write", { 4, 4, 4 }, true },
+			{ "8x8x4 write-only", { 8, 8, 4 }, false },
+			{ "8x8x4 read-write", { 8, 8, 4 }, true },
+			{ "8x8x8 write-only", { 8, 8, 8 }, false },
+			{ "8x8x8 read-write", { 8, 8, 8 }, true },
+		};
 
-		auto work_list_buffer = create_ssbo(nullptr, 64 * 64 * sizeof(uint32_t));
+		cmd->set_program("assets://shaders/image-3d.comp");
+		cmd->set_storage_texture(0, 0, img->get_view());
 
-		uint32_t counts[64] = {};
-		auto work_list_count = create_ssbo(counts, sizeof(counts));
-
-		auto info = ImageCreateInfo::immutable_2d_image(64, 64, VK_FORMAT_R8G8B8A8_UNORM, true);
-		info.misc |= IMAGE_MISC_GENERATE_MIPS_BIT;
-		uint32_t v[64 * 64];
-		for (auto &d : v)
-			d = 0x80808080;
-		ImageInitialData init_data = { v, 0, 0 };
-		auto tex = device.create_image(info, &init_data);
-
-		cmd->set_program("/tmp/test.comp");
-		cmd->set_texture(0, 0, tex->get_view());
-		cmd->set_storage_buffer(0, 1, *work_list_buffer);
-		cmd->set_storage_buffer(0, 2, *work_list_count);
-		cmd->dispatch(1, 1, 1);
-		device.submit(cmd);
-
-		uint32_t readback_work_list[64][64];
-		readback_ssbo(readback_work_list, sizeof(readback_work_list), *work_list_buffer);
-
-		uint32_t readback_counts[64];
-		readback_ssbo(readback_counts, sizeof(readback_counts), *work_list_count);
-
-		for (unsigned i = 0; i < 64; i++)
+		for (auto &config : configs)
 		{
-			LOGI("Variant: %u\n", i);
-			LOGI("  Count: %u\n", readback_counts[i]);
-			for (unsigned j = 0; j < readback_counts[i]; j++)
-				LOGI("    %u\n", readback_work_list[i][j]);
+			cmd->set_specialization_constant_mask(0xf);
+			for (int i = 0; i < 3; i++)
+				cmd->set_specialization_constant(i, config.wg_size[i]);
+			cmd->set_specialization_constant(3, config.rmw);
+
+			auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+			cmd->dispatch(img->get_width() / config.wg_size[0], img->get_height() / config.wg_size[1], img->get_depth() / config.wg_size[2]);
+			auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+			cmd->barrier(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+						 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+			device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), config.tag);
 		}
+		device.submit(cmd);
 
 		cmd = device.request_command_buffer();
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);

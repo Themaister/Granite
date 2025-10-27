@@ -736,6 +736,10 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		}
 	}
 
+	// Permit MoltenVK (and other portability drivers) when enumerating drivers via the Vulkan loader.
+	info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+	instance_exts.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+
 	if (inherit_info)
 	{
 		info.enabledExtensionCount = inherit_info->enabledExtensionCount;

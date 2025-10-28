@@ -25,22 +25,13 @@
 #include "device.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "os_filesystem.hpp"
+#include <cmath>
 
 using namespace Granite;
 using namespace Vulkan;
 
-static constexpr uint32_t Width = 1024;
-static constexpr uint32_t Height = 576;
-static constexpr uint32_t Depth = 64;
-
-#if 1
-static constexpr VkImageUsageFlags ImageUsage =
-		VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-static constexpr VkImageCreateFlags ImageCreate = VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
-#else
-static constexpr VkImageUsageFlags ImageUsage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-static constexpr VkImageCreateFlags ImageCreate = 0;
-#endif
+static constexpr uint32_t Width = 4096;
+static constexpr uint32_t Height = 2304;
 
 struct BasicComputeTest : Granite::Application, Granite::EventHandler
 {
@@ -50,21 +41,39 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		get_wsi().set_present_mode(PresentMode::UnlockedMaybeTear);
 	}
 
-	ImageHandle img;
+	ImageHandle dst, src;
 
 	void on_device_create(const DeviceCreatedEvent &e)
 	{
-		auto info = ImageCreateInfo::immutable_3d_image(Width, Height, Depth, VK_FORMAT_R8G8B8A8_UNORM);
-		info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
-		info.usage = ImageUsage;
-		info.flags = ImageCreate;
-		img = e.get_device().create_image(info);
-		img->set_layout(Layout::General);
+		auto info = ImageCreateInfo::immutable_2d_image(Width, Height, VK_FORMAT_D32_SFLOAT_S8_UINT);
+		info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+		             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+		info.initial_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		dst = e.get_device().create_image(info);
+		info.initial_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		src = e.get_device().create_image(info);
+
+		auto cmd = e.get_device().request_command_buffer();
+		auto *init_depth = static_cast<float *>(cmd->update_image(*src, {}, { Width, Height, 1 }, 0, 0, { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1 }));
+		for (unsigned i = 0; i < Width * Height; i++)
+			init_depth[i] = 0.5f + 0.1f * std::sin(float(i));
+		auto *init_stencil = static_cast<uint8_t *>(cmd->update_image(*src, {}, { Width, Height, 1 }, 0, 0, { VK_IMAGE_ASPECT_STENCIL_BIT, 0, 0, 1 }));
+		for (unsigned i = 0; i < Width * Height; i++)
+			init_stencil[i] = uint8_t(i * 3);
+
+		cmd->image_barrier(*src, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+
+		e.get_device().submit(cmd);
 	}
 
 	void on_device_destroy(const DeviceCreatedEvent &)
 	{
-		img.reset();
+		dst.reset();
+		src.reset();
 	}
 
 	unsigned frames = 0;
@@ -74,46 +83,29 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		auto &device = get_wsi().get_device();
 		auto cmd = device.request_command_buffer();
 		frames++;
-		if (frames >= 1000)
-			request_shutdown();
+		//if (frames >= 1000)
+		//	request_shutdown();
 
-		struct Config {
-			const char *tag;
-			uint32_t wg_size[3];
-			bool rmw;
-		};
-
-		static const Config configs[] = {
-			{ "8x8x1 write-only", { 8, 8, 1 }, false },
-			{ "8x8x1 read-write", { 8, 8, 1 }, true },
-			{ "16x16x1 write-only", { 16, 16, 1 }, false },
-			{ "16x16x1 read-write", { 16, 16, 1 }, true },
-			{ "4x4x4 write-only", { 4, 4, 4 }, false },
-			{ "4x4x4 read-write", { 4, 4, 4 }, true },
-			{ "8x8x4 write-only", { 8, 8, 4 }, false },
-			{ "8x8x4 read-write", { 8, 8, 4 }, true },
-			{ "8x8x8 write-only", { 8, 8, 8 }, false },
-			{ "8x8x8 read-write", { 8, 8, 8 }, true },
-		};
-
-		cmd->set_program("assets://shaders/image-3d.comp");
-		cmd->set_storage_texture(0, 0, img->get_view());
-
-		for (auto &config : configs)
-		{
-			cmd->set_specialization_constant_mask(0xf);
-			for (int i = 0; i < 3; i++)
-				cmd->set_specialization_constant(i, config.wg_size[i]);
-			cmd->set_specialization_constant(3, config.rmw);
-
-			auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-			cmd->dispatch(img->get_width() / config.wg_size[0], img->get_height() / config.wg_size[1], img->get_depth() / config.wg_size[2]);
-			auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-			cmd->barrier(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-						 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
-			device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), config.tag);
-		}
+		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_2_COPY_BIT);
+		cmd->copy_image(*dst, *src);
+		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_2_COPY_BIT);
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+					 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
 		device.submit(cmd);
+
+		cmd = device.request_command_buffer();
+		auto start_slow_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_2_COPY_BIT);
+		cmd->copy_image(*dst, *src, {}, {}, { Width, Height, 1 },
+						{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1 }, { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1 });
+		cmd->copy_image(*dst, *src, {}, {}, { Width, Height, 1 },
+		                { VK_IMAGE_ASPECT_STENCIL_BIT, 0, 0, 1 }, { VK_IMAGE_ASPECT_STENCIL_BIT, 0, 0, 1 });
+		auto end_slow_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_2_COPY_BIT);
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+		             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+		device.submit(cmd);
+
+		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "Copy Fused");
+		device.register_time_interval("GPU", std::move(start_slow_ts), std::move(end_slow_ts), "Copy Split");
 
 		cmd = device.request_command_buffer();
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);

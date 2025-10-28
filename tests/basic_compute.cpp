@@ -83,8 +83,8 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		auto &device = get_wsi().get_device();
 		auto cmd = device.request_command_buffer();
 		frames++;
-		//if (frames >= 1000)
-		//	request_shutdown();
+		if (frames >= 8000)
+			request_shutdown();
 
 		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_2_COPY_BIT);
 		cmd->copy_image(*dst, *src);
@@ -92,6 +92,8 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
 					 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
 		device.submit(cmd);
+		device.flush_frame();
+		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "Copy Fused");
 
 		cmd = device.request_command_buffer();
 		auto start_slow_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_2_COPY_BIT);
@@ -103,9 +105,18 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
 		             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
 		device.submit(cmd);
-
-		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "Copy Fused");
+		device.flush_frame();
 		device.register_time_interval("GPU", std::move(start_slow_ts), std::move(end_slow_ts), "Copy Split");
+
+		cmd = device.request_command_buffer();
+		start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_2_COPY_BIT);
+		cmd->copy_image(*dst, *src);
+		end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_2_COPY_BIT);
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+		             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+		device.submit(cmd);
+		device.flush_frame();
+		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "Copy Fused (late, cache sanity check)");
 
 		cmd = device.request_command_buffer();
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);

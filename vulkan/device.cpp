@@ -4898,6 +4898,117 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	return handle;
 }
 
+RTASHandle Device::create_rtas(const BottomRTASCreateInfo &info, CommandBuffer *cmd, QueryPoolHandle *compacted_size)
+{
+	if (!ext.rtas_features.accelerationStructure)
+	{
+		LOGE("RTAS not supported on this driver.\n");
+		return {};
+	}
+
+	if (compacted_size && !cmd)
+	{
+		LOGE("If specifying compacted size, must have a command buffer.\n");
+		return {};
+	}
+
+	if (compacted_size && info.mode != BLASMode::Static)
+	{
+		LOGE("Only Static mode supports compaction.\n");
+		return {};
+	}
+
+	VkAccelerationStructureBuildGeometryInfoKHR geom_info =
+			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
+	VkAccelerationStructureBuildSizesInfoKHR size_info;
+
+	geom_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+	geom_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+
+	switch (info.mode)
+	{
+	case BLASMode::Static:
+		geom_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR |
+		                  VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR;
+		break;
+
+	case BLASMode::Skinned:
+		geom_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR |
+		                  VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+		break;
+	}
+
+	Util::SmallVector<VkAccelerationStructureGeometryKHR> geometries;
+	Util::SmallVector<uint32_t> primitive_counts;
+
+	geometries.reserve(info.count);
+	primitive_counts.reserve(info.count);
+
+	for (size_t i = 0; i < info.count; i++)
+	{
+		auto &input = info.geometries[i];
+		VkAccelerationStructureGeometryKHR geom = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
+		geom.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+		auto &tri = geom.geometry.triangles;
+		tri.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+
+		tri.vertexFormat = input.format;
+		tri.vertexData.deviceAddress = input.vbo;
+		tri.maxVertex = input.num_vertices - 1;
+		tri.vertexStride = input.stride;
+
+		tri.indexData.deviceAddress = input.ibo;
+		tri.indexType = input.index_type;
+
+		tri.transformData.deviceAddress = input.transform;
+
+		geometries.push_back(geom);
+		primitive_counts.push_back(input.num_primitives);
+	}
+
+	geom_info.geometryCount = info.count;
+	geom_info.pGeometries = geometries.data();
+
+	table->vkGetAccelerationStructureBuildSizesKHR(device,
+												   VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+												   &geom_info, primitive_counts.data(), &size_info);
+
+	BufferHandle buffer;
+	BufferCreateInfo buffer_info = {};
+	buffer_info.size = size_info.accelerationStructureSize;
+	buffer_info.domain = BufferDomain::Device;
+	buffer_info.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
+	buffer = create_buffer(buffer_info);
+
+	VkAccelerationStructureCreateInfoKHR rtas_info = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR };
+	rtas_info.buffer = buffer->get_buffer();
+	rtas_info.size = size_info.accelerationStructureSize;
+	rtas_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+
+	VkAccelerationStructureKHR rtas;
+	if (table->vkCreateAccelerationStructureKHR(device, &rtas_info, nullptr, &rtas) != VK_SUCCESS)
+	{
+		LOGE("Failed to create RTAS.\n");
+		return {};
+	}
+
+	RTASHandle handle(handle_pool.rtas.allocate(this, rtas, rtas_info.type, std::move(buffer)));
+
+	if (cmd)
+	{
+		cmd->build_rtas(geom_info.mode, *handle, info);
+
+		if (compacted_size)
+		{
+			auto query = frame().query_pool_rtas.allocate_query(cmd->get_command_buffer());
+			cmd->write_compacted_rtas(*rtas, query->get_query_pool(), query->get_query_pool_index());
+			*compacted_size = std::move(query);
+		}
+	}
+
+	return handle;
+}
+
 BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const void *initial)
 {
 	DeviceAllocation allocation;

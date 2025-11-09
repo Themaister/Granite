@@ -37,6 +37,12 @@ struct RTASDeleter
 	void operator()(RTAS *rtas);
 };
 
+enum class BLASMode
+{
+	Static, // fast trace, compactable, not updateable
+	Skinned // fast update, updateable
+};
+
 struct BottomRTASGeometry
 {
 	VkFormat format;
@@ -53,6 +59,7 @@ struct BottomRTASGeometry
 
 struct BottomRTASCreateInfo
 {
+	BLASMode mode;
 	const BottomRTASGeometry *geometries;
 	size_t count;
 };

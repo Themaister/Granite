@@ -98,6 +98,7 @@ struct InitialImageBuffer
 struct HandlePool
 {
 	VulkanObjectPool<Buffer> buffers;
+	VulkanObjectPool<RTAS> rtas;
 	VulkanObjectPool<Image> images;
 	VulkanObjectPool<LinearHostImage> linear_images;
 	VulkanObjectPool<ImageView> image_views;
@@ -352,6 +353,10 @@ public:
 	ImageHandle wrap_image(const ImageCreateInfo &info, VkImage img);
 	DeviceAllocationOwnerHandle take_device_allocation_ownership(Image &image);
 	DeviceAllocationOwnerHandle allocate_memory(const MemoryAllocateInfo &info);
+
+	// If cmd is not null, the RTAS is immediately built.
+	// If compacted_size is not null, a compacted size query will be made. info.mode must be compatible with compaction.
+	RTASHandle create_rtas(const BottomRTASCreateInfo &info, CommandBuffer *cmd, QueryPoolHandle *compacted_size);
 
 	// Create staging buffers for images.
 

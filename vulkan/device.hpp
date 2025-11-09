@@ -645,7 +645,7 @@ private:
 		VkSemaphore timeline_semaphores[QUEUE_INDEX_COUNT] = {};
 		uint64_t timeline_fences[QUEUE_INDEX_COUNT] = {};
 
-		QueryPool query_pool;
+		QueryPool query_pool_ts, query_pool_rtas;
 
 		std::vector<BufferBlock> vbo_blocks;
 		std::vector<BufferBlock> ibo_blocks;

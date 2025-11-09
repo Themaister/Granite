@@ -320,14 +320,24 @@ bool PerformanceQueryPool::init_counters(const std::vector<std::string> &counter
 	return true;
 }
 
-QueryPool::QueryPool(Device *device_)
+QueryPool::QueryPool(Device *device_, VkQueryType type_)
 	: device(device_)
 	, table(device_->get_device_table())
+	, type(type_)
 {
-	supports_timestamp = device->get_gpu_properties().limits.timestampComputeAndGraphics;
+	supports_type = false;
 
-	// Ignore timestampValidBits and friends for now.
-	if (supports_timestamp)
+	if (type == VK_QUERY_TYPE_TIMESTAMP)
+	{
+		// Ignore timestampValidBits and friends for now.
+		supports_type = device->get_gpu_properties().limits.timestampComputeAndGraphics;
+	}
+	else if (type == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR)
+	{
+		supports_type = device->get_device_features().rtas_features.accelerationStructure == VK_TRUE;
+	}
+
+	if (supports_type)
 		add_pool();
 }
 
@@ -356,7 +366,7 @@ void QueryPool::begin()
 		                            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
 
 		for (unsigned j = 0; j < pool.index; j++)
-			pool.cookies[j]->signal_timestamp_ticks(pool.query_results[j]);
+			pool.cookies[j]->signal_value(pool.query_results[j]);
 
 		if (device->get_device_features().vk12_features.hostQueryReset)
 			table.vkResetQueryPool(device->get_device(), pool.pool, 0, pool.index);
@@ -370,7 +380,7 @@ void QueryPool::begin()
 void QueryPool::add_pool()
 {
 	VkQueryPoolCreateInfo pool_info = { VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO };
-	pool_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+	pool_info.queryType = type;
 	pool_info.queryCount = 64;
 
 	Pool pool;
@@ -388,13 +398,34 @@ void QueryPool::add_pool()
 
 QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlags2 stage)
 {
-	if (!supports_timestamp)
+	if (!supports_type)
 	{
 		LOGI("Timestamps are not supported on this implementation.\n");
 		return {};
 	}
 
 	VK_ASSERT((stage & (stage - 1)) == 0);
+
+	auto handle = allocate_query(cmd);
+
+	if (device->get_device_features().vk13_features.synchronization2)
+		table.vkCmdWriteTimestamp2(cmd, stage, handle->get_query_pool(), handle->get_query_pool_index());
+	else
+	{
+		table.vkCmdWriteTimestamp(cmd, static_cast<VkPipelineStageFlagBits>(convert_vk_src_stage2(stage)),
+								  handle->get_query_pool(), handle->get_query_pool_index());
+	}
+
+	return handle;
+}
+
+QueryPoolHandle QueryPool::allocate_query(VkCommandBuffer cmd)
+{
+	if (!supports_type)
+	{
+		LOGI("Query type %u not supported on this implementation.\n", type);
+		return {};
+	}
 
 	if (pools[pool_index].index >= pools[pool_index].size)
 		pool_index++;
@@ -404,19 +435,11 @@ QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageF
 
 	auto &pool = pools[pool_index];
 
-	auto cookie = QueryPoolHandle(device->handle_pool.query.allocate(device, true));
+	auto cookie = QueryPoolHandle(device->handle_pool.query.allocate(device, false, type, pool.pool, pool.index));
 	pool.cookies[pool.index] = cookie;
 
 	if (!device->get_device_features().vk12_features.hostQueryReset)
 		table.vkCmdResetQueryPool(cmd, pool.pool, pool.index, 1);
-
-	if (device->get_device_features().vk13_features.synchronization2)
-		table.vkCmdWriteTimestamp2(cmd, stage, pool.pool, pool.index);
-	else
-	{
-		table.vkCmdWriteTimestamp(cmd, static_cast<VkPipelineStageFlagBits>(convert_vk_src_stage2(stage)),
-		                          pool.pool, pool.index);
-	}
 
 	pool.index++;
 	return cookie;

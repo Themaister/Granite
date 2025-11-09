@@ -2313,7 +2313,8 @@ Device::PerFrame::PerFrame(Device *device_, unsigned frame_index_)
     , frame_index(frame_index_)
     , table(device_->get_device_table())
     , managers(device_->managers)
-    , query_pool(device_)
+    , query_pool_ts(device_, VK_QUERY_TYPE_TIMESTAMP)
+	, query_pool_rtas(device_, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR)
 {
 	unsigned count = device_->num_thread_indices;
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
@@ -2701,7 +2702,7 @@ QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlag
 
 QueryPoolHandle Device::write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlags2 stage)
 {
-	return frame().query_pool.write_timestamp(cmd, stage);
+	return frame().query_pool_ts.write_timestamp(cmd, stage);
 }
 
 QueryPoolHandle Device::write_calibrated_timestamp()
@@ -2715,8 +2716,9 @@ QueryPoolHandle Device::write_calibrated_timestamp_nolock()
 	if (!system_handles.timeline_trace_file)
 		return {};
 
-	auto handle = QueryPoolHandle(handle_pool.query.allocate(this, false));
-	handle->signal_timestamp_ticks(get_current_time_nsecs());
+	auto handle = QueryPoolHandle(handle_pool.query.allocate(
+			this, false, VK_QUERY_TYPE_TIMESTAMP, VK_NULL_HANDLE, 0));
+	handle->signal_value(get_current_time_nsecs());
 	return handle;
 }
 
@@ -2954,7 +2956,8 @@ void Device::PerFrame::begin()
 		for (auto &pool : cmd_pool)
 			pool.begin();
 
-	query_pool.begin();
+	query_pool_ts.begin();
+	query_pool_rtas.begin();
 
 	for (auto &channel : debug_channels)
 		device.parse_debug_channel(channel);

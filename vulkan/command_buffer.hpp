@@ -23,6 +23,7 @@
 #pragma once
 
 #include "buffer.hpp"
+#include "rtas.hpp"
 #include "buffer_pool.hpp"
 #include "vulkan_headers.hpp"
 #include "image.hpp"
@@ -485,6 +486,7 @@ public:
 	void set_storage_buffer(unsigned set, unsigned binding, const Buffer &buffer);
 	void set_storage_buffer(unsigned set, unsigned binding, const Buffer &buffer, VkDeviceSize offset,
 	                        VkDeviceSize range);
+	void set_rtas(unsigned set, unsigned binding, const RTAS &rtas);
 
 	void set_bindless(unsigned set, const BindlessDescriptorSet &handle);
 

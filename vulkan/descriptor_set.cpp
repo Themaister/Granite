@@ -142,6 +142,13 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 			types++;
 		}
 
+		if (layout.rtas_mask & (1u << i))
+		{
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, array_size, stages, nullptr });
+			pool_size.push_back({ VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, pool_array_size });
+			types++;
+		}
+
 		if (layout.input_attachment_mask & (1u << i))
 		{
 			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, array_size, stages, nullptr });

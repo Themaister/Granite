@@ -2352,6 +2352,12 @@ void Device::destroy_buffer(VkBuffer buffer)
 	destroy_buffer_nolock(buffer);
 }
 
+void Device::destroy_rtas(VkAccelerationStructureKHR rtas)
+{
+	LOCK();
+	destroy_rtas_nolock(rtas);
+}
+
 void Device::destroy_indirect_execution_set(VkIndirectExecutionSetEXT exec_set)
 {
 	LOCK();
@@ -2508,6 +2514,12 @@ void Device::destroy_buffer_nolock(VkBuffer buffer)
 {
 	VK_ASSERT(!exists(frame().destroyed_buffers, buffer));
 	frame().destroyed_buffers.push_back(buffer);
+}
+
+void Device::destroy_rtas_nolock(VkAccelerationStructureKHR rtas)
+{
+	VK_ASSERT(!exists(frame().destroyed_rtas, rtas));
+	frame().destroyed_rtas.push_back(rtas);
 }
 
 void Device::destroy_indirect_execution_set_nolock(VkIndirectExecutionSetEXT exec_set)
@@ -2973,6 +2985,8 @@ void Device::PerFrame::begin()
 		table.vkDestroyBufferView(vkdevice, view, nullptr);
 	for (auto &image : destroyed_images)
 		table.vkDestroyImage(vkdevice, image, nullptr);
+	for (auto &rtas : destroyed_rtas)
+		table.vkDestroyAccelerationStructureKHR(vkdevice, rtas, nullptr);
 	for (auto &buffer : destroyed_buffers)
 		table.vkDestroyBuffer(vkdevice, buffer, nullptr);
 	for (auto &semaphore : destroyed_semaphores)
@@ -3003,6 +3017,7 @@ void Device::PerFrame::begin()
 	destroyed_buffer_views.clear();
 	destroyed_images.clear();
 	destroyed_buffers.clear();
+	destroyed_rtas.clear();
 	destroyed_execution_sets.clear();
 	destroyed_semaphores.clear();
 	destroyed_descriptor_pools.clear();

@@ -2497,6 +2497,22 @@ void CommandBuffer::set_storage_buffer(unsigned set, unsigned binding, const Buf
 	set_storage_buffer(set, binding, buffer, 0, buffer.get_create_info().size);
 }
 
+void CommandBuffer::set_rtas(unsigned set, unsigned binding, const RTAS &rtas)
+{
+	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+	VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
+	auto &b = bindings.bindings[set][binding];
+
+	if (rtas.get_cookie() == bindings.cookies[set][binding])
+		return;
+	bindings.cookies[set][binding] = rtas.get_cookie();
+
+	if (desc_buffer_enable)
+		b.buffer_addr.address = rtas.get_device_address();
+	else
+		b.rtas = rtas.get_rtas();
+}
+
 void CommandBuffer::set_sampler(unsigned set, unsigned binding, const Sampler &sampler)
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
@@ -2815,6 +2831,15 @@ void CommandBuffer::validate_descriptor_binds(uint32_t set)
 			             VK_ASSERT(bindings.bindings[set][binding + i].buffer.dynamic.buffer != VK_NULL_HANDLE);
 	             });
 
+	// RTAS
+	for_each_bit(set_layout.rtas_mask,
+	             [&](uint32_t binding)
+	             {
+		             unsigned array_size = set_layout.array_size[binding];
+		             for (unsigned i = 0; i < array_size; i++)
+			             VK_ASSERT(bindings.bindings[set][binding + i].rtas != VK_NULL_HANDLE);
+	             });
+
 	// Texel buffers
 	for_each_bit(set_layout.sampled_texel_buffer_mask | set_layout.storage_texel_buffer_mask,
 	             [&](uint32_t binding)
@@ -3010,6 +3035,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 
 	auto ubo_size = device->managers.descriptor_buffer.get_descriptor_size_for_type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 	auto ssbo_size = device->managers.descriptor_buffer.get_descriptor_size_for_type(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+	auto rtas_size = device->managers.descriptor_buffer.get_descriptor_size_for_type(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR);
 
 	// UBOs and SSBOs cannot really be cached since there is no view and they are expected to get suballocated anyway.
 	Util::for_each_bit(set_layout.uniform_buffer_mask, [&](unsigned binding) {
@@ -3035,6 +3061,18 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 			table.vkGetDescriptorEXT(
 					device->get_device(), &info,
 					ssbo_size, mapped + set_allocator->get_binding_offset(binding + i));
+		}
+	});
+
+	Util::for_each_bit(set_layout.rtas_mask, [&](unsigned binding) {
+		info.type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+		for (unsigned i = 0; i < set_layout.array_size[binding]; i++)
+		{
+			info.data.accelerationStructure = bindings.bindings[set][binding + i].buffer_addr.address;
+			VK_ASSERT(info.data.accelerationStructure != 0);
+			table.vkGetDescriptorEXT(
+					device->get_device(), &info,
+					rtas_size, mapped + set_allocator->get_binding_offset(binding + i));
 		}
 	});
 

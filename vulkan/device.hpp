@@ -185,6 +185,8 @@ public:
 	friend class ImmutableYcbcrConversion;
 	friend class Buffer;
 	friend struct BufferDeleter;
+	friend class RTAS;
+	friend struct RTASDeleter;
 	friend class BufferView;
 	friend struct BufferViewDeleter;
 	friend class ImageView;
@@ -659,6 +661,7 @@ private:
 		std::vector<VkBufferView> destroyed_buffer_views;
 		std::vector<VkImage> destroyed_images;
 		std::vector<VkBuffer> destroyed_buffers;
+		std::vector<VkAccelerationStructureKHR> destroyed_rtas;
 		std::vector<VkDescriptorPool> destroyed_descriptor_pools;
 		Util::SmallVector<CommandBufferHandle> submissions[QUEUE_INDEX_COUNT];
 		std::vector<VkSemaphore> recycled_semaphores;
@@ -801,6 +804,7 @@ private:
 	VkResult queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo2 *submits, VkFence fence);
 
 	void destroy_buffer(VkBuffer buffer);
+	void destroy_rtas(VkAccelerationStructureKHR rtas);
 	void destroy_image(VkImage image);
 	void destroy_image_view(VkImageView view);
 	void destroy_buffer_view(VkBufferView view);
@@ -818,6 +822,7 @@ private:
 	void free_cached_descriptor_payload(const CachedDescriptorPayload &payload);
 
 	void destroy_buffer_nolock(VkBuffer buffer);
+	void destroy_rtas_nolock(VkAccelerationStructureKHR rtas);
 	void destroy_image_nolock(VkImage image);
 	void destroy_image_view_nolock(VkImageView view);
 	void destroy_buffer_view_nolock(VkBufferView view);

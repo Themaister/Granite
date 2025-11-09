@@ -103,6 +103,9 @@ struct DeviceFeatures
 	VkDevicePipelineBinaryInternalCacheControlKHR pipeline_binary_internal_cache_control = {};
 	VkPhysicalDeviceMaintenance5FeaturesKHR maintenance5_features = {};
 	VkPhysicalDeviceVideoEncodeAV1FeaturesKHR av1_features = {};
+	VkPhysicalDeviceAccelerationStructureFeaturesKHR rtas_features = {};
+	VkPhysicalDeviceAccelerationStructurePropertiesKHR rtas_properties = {};
+	VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};

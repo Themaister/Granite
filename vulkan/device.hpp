@@ -358,6 +358,9 @@ public:
 	// If compacted_size is not null, a compacted size query will be made. info.mode must be compatible with compaction.
 	RTASHandle create_rtas(const BottomRTASCreateInfo &info, CommandBuffer *cmd, QueryPoolHandle *compacted_size);
 	RTASHandle create_rtas(const TopRTASCreateInfo &info, CommandBuffer *cmd);
+	// Generic creation methods.
+	RTASHandle create_rtas(VkAccelerationStructureTypeKHR type, VkDeviceSize size);
+	RTASHandle create_rtas(VkAccelerationStructureTypeKHR type, BufferHandle buffer, VkDeviceSize offset, VkDeviceSize size);
 
 	// Create staging buffers for images.
 

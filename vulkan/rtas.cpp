@@ -26,15 +26,12 @@
 namespace Vulkan
 {
 RTAS::RTAS(Device *device_, VkAccelerationStructureKHR rtas_,
-           VkAccelerationStructureTypeKHR type_, BufferHandle backing_,
-		   VkDeviceSize build_size_, VkDeviceSize update_size_)
+           VkAccelerationStructureTypeKHR type_, BufferHandle backing_)
 	: Cookie(device_)
 	, device(device_)
 	, rtas(rtas_)
 	, type(type_)
 	, backing(std::move(backing_))
-	, build_size(build_size_)
-	, update_size(update_size_)
 {
 	VkAccelerationStructureDeviceAddressInfoKHR info =
 			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR };

@@ -2501,6 +2501,7 @@ void CommandBuffer::set_rtas(unsigned set, unsigned binding, const RTAS &rtas)
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
 	VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
+	VK_ASSERT(rtas.get_type() == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
 	auto &b = bindings.bindings[set][binding];
 
 	if (rtas.get_cookie() == bindings.cookies[set][binding])
@@ -3536,6 +3537,9 @@ void CommandBuffer::setup_batch(VkAccelerationStructureTypeKHR rtas_type)
 		total_scratch = (total_scratch + scratch_align) & ~scratch_align;
 		total_scratch += rtas_batch.ranges[i].scratch;
 	}
+
+	// Safety net in case the implementation doesn't require scratch somehow.
+	total_scratch = std::max<VkDeviceSize>(total_scratch, 16);
 
 	if (!rtas_batch.scratch || total_scratch > rtas_batch.scratch->get_create_info().size)
 	{

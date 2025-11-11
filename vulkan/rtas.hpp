@@ -107,11 +107,16 @@ public:
 
 	VkDeviceSize get_scratch_size(BuildMode mode) const;
 
+	inline void set_scratch_size(VkDeviceSize build_size_, VkDeviceSize update_size_)
+	{
+		build_size = build_size_;
+		update_size = update_size_;
+	}
+
 private:
 	friend class Util::ObjectPool<RTAS>;
 	RTAS(Device *device, VkAccelerationStructureKHR rtas,
-	     VkAccelerationStructureTypeKHR type, BufferHandle backing,
-		 VkDeviceSize build_size, VkDeviceSize update_size);
+	     VkAccelerationStructureTypeKHR type, BufferHandle backing);
 	Device *device;
 	VkAccelerationStructureKHR rtas;
 	VkAccelerationStructureTypeKHR type;

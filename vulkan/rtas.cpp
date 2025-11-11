@@ -54,6 +54,9 @@ RTAS::~RTAS()
 
 void RTASDeleter::operator()(Vulkan::RTAS *rtas)
 {
+	// Avoid hitting destruction callback inside a callback.
+	rtas->backing.reset();
+
 	rtas->device->handle_pool.rtas.free(rtas);
 }
 }

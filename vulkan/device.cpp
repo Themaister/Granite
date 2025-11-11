@@ -4898,6 +4898,63 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	return handle;
 }
 
+RTASHandle Device::create_rtas(const TopRTASCreateInfo &info, CommandBuffer *cmd)
+{
+	if (!ext.rtas_features.accelerationStructure)
+	{
+		LOGE("RTAS not supported on this driver.\n");
+		return {};
+	}
+	VkAccelerationStructureBuildGeometryInfoKHR geom_info =
+			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
+	VkAccelerationStructureBuildSizesInfoKHR size_info;
+
+	geom_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+	geom_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+	geom_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+
+	uint32_t primitive_count = info.count;
+
+	VkAccelerationStructureGeometryKHR geom = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
+	geom.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+	auto &inst = geom.geometry.instances;
+	inst.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+	inst.arrayOfPointers = VK_TRUE;
+	geom_info.geometryCount = 1;
+	geom_info.pGeometries = &geom;
+
+	table->vkGetAccelerationStructureBuildSizesKHR(
+			device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+			&geom_info, &primitive_count, &size_info);
+
+	BufferHandle buffer;
+	BufferCreateInfo buffer_info = {};
+	buffer_info.size = size_info.accelerationStructureSize;
+	buffer_info.domain = BufferDomain::Device;
+	buffer_info.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
+	buffer = create_buffer(buffer_info);
+
+	VkAccelerationStructureCreateInfoKHR rtas_info = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR };
+	rtas_info.buffer = buffer->get_buffer();
+	rtas_info.size = size_info.accelerationStructureSize;
+	rtas_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+
+	VkAccelerationStructureKHR rtas;
+	if (table->vkCreateAccelerationStructureKHR(device, &rtas_info, nullptr, &rtas) != VK_SUCCESS)
+	{
+		LOGE("Failed to create RTAS.\n");
+		return {};
+	}
+
+	RTASHandle handle(handle_pool.rtas.allocate(this, rtas, rtas_info.type, std::move(buffer),
+	                                            size_info.buildScratchSize, size_info.updateScratchSize));
+
+	if (cmd)
+		cmd->build_rtas(BuildMode::Build, *handle, info);
+
+	return handle;
+}
+
 RTASHandle Device::create_rtas(const BottomRTASCreateInfo &info, CommandBuffer *cmd, QueryPoolHandle *compacted_size)
 {
 	if (!ext.rtas_features.accelerationStructure)

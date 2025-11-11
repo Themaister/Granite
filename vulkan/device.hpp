@@ -357,6 +357,7 @@ public:
 	// If cmd is not null, the RTAS is immediately built.
 	// If compacted_size is not null, a compacted size query will be made. info.mode must be compatible with compaction.
 	RTASHandle create_rtas(const BottomRTASCreateInfo &info, CommandBuffer *cmd, QueryPoolHandle *compacted_size);
+	RTASHandle create_rtas(const TopRTASCreateInfo &info, CommandBuffer *cmd);
 
 	// Create staging buffers for images.
 

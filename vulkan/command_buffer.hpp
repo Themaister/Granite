@@ -546,6 +546,13 @@ public:
 	                               const Buffer *count, size_t count_offset,
 	                               CommandBuffer &preprocess);
 
+	void begin_rtas_batch();
+	void build_rtas(BuildMode mode, const RTAS &rtas, const BottomRTASCreateInfo &info);
+	void build_rtas(BuildMode mode, const RTAS &rtas, const TopRTASCreateInfo &info);
+	void write_compacted_rtas_size(const RTAS &rtas, const QueryPoolResult &query);
+	void compact_rtas(const RTAS &dst, const RTAS &src);
+	void end_rtas_batch();
+
 	void set_opaque_state();
 	void set_quad_state();
 	void set_opaque_sprite_state();
@@ -971,6 +978,32 @@ private:
 		Util::SmallVector<VkImageMemoryBarrier2> image_barriers;
 		bool active = false;
 	} barrier_batch;
+
+	struct RTASBatch
+	{
+		struct Range { VkAccelerationStructureKHR dst, src; VkDeviceSize scratch; size_t start, count; };
+		struct Query { VkAccelerationStructureKHR rtas; VkQueryPool pool; uint32_t index; };
+
+		Util::SmallVector<VkAccelerationStructureGeometryKHR, 4> geometries_conv;
+		Util::SmallVector<VkAccelerationStructureBuildGeometryInfoKHR, 4> geom_info;
+		Util::SmallVector<VkAccelerationStructureBuildRangeInfoKHR, 4> range_infos;
+		Util::SmallVector<const VkAccelerationStructureBuildRangeInfoKHR *, 4> range_info_ptrs;
+
+		Util::SmallVector<BottomRTASGeometry, 4> geometries; // BLAS
+		Util::SmallVector<RTASInstance, 4> instances; // TLAS
+		Util::SmallVector<Range, 4> ranges;
+		Util::SmallVector<BuildMode, 4> build_modes;
+		Util::SmallVector<BLASMode, 4> blas_modes;
+		Util::SmallVector<Query, 4> queries;
+
+		BufferHandle scratch;
+		bool in_batch = false;
+	} rtas_batch;
+
+	void build_blas_batch();
+	void build_tlas_batch();
+	void setup_batch(VkAccelerationStructureTypeKHR rtas_type);
+	void emit_scratch_barrier();
 };
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES

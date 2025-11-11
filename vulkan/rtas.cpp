@@ -26,21 +26,35 @@
 namespace Vulkan
 {
 RTAS::RTAS(Device *device_, VkAccelerationStructureKHR rtas_,
-           VkAccelerationStructureTypeKHR type_, BufferHandle backing_)
+           VkAccelerationStructureTypeKHR type_, BufferHandle backing_,
+		   VkDeviceSize build_size_, VkDeviceSize update_size_)
 	: Cookie(device_)
 	, device(device_)
 	, rtas(rtas_)
 	, type(type_)
 	, backing(std::move(backing_))
+	, build_size(build_size_)
+	, update_size(update_size_)
 {
-	VkAccelerationStructureDeviceAddressInfoKHR info = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR };
+	VkAccelerationStructureDeviceAddressInfoKHR info =
+			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR };
 	info.accelerationStructure = rtas;
 	bda = device->get_device_table().vkGetAccelerationStructureDeviceAddressKHR(device->get_device(), &info);
+}
+
+VkDeviceSize RTAS::get_scratch_size(BuildMode mode) const
+{
+	return mode == BuildMode::Build ? build_size : update_size;
 }
 
 RTAS::~RTAS()
 {
 	device->destroy_rtas(rtas);
+}
+
+void RTASDeleter::operator()(Vulkan::RTAS *rtas)
+{
+	rtas->device->handle_pool.rtas.free(rtas);
 }
 }
 

@@ -43,6 +43,12 @@ enum class BLASMode
 	Skinned // fast update, updateable
 };
 
+enum class BuildMode
+{
+	Build,
+	Update
+};
+
 struct BottomRTASGeometry
 {
 	VkFormat format;
@@ -84,29 +90,34 @@ public:
 	friend struct RTASDeleter;
 	~RTAS();
 
-	VkAccelerationStructureKHR get_rtas() const
+	inline VkAccelerationStructureKHR get_rtas() const
 	{
 		return rtas;
 	}
 
-	VkAccelerationStructureTypeKHR get_type() const
+	inline VkAccelerationStructureTypeKHR get_type() const
 	{
 		return type;
 	}
 
-	VkDeviceAddress get_device_address() const
+	inline VkDeviceAddress get_device_address() const
 	{
 		return bda;
 	}
 
+	VkDeviceSize get_scratch_size(BuildMode mode) const;
+
 private:
 	friend class Util::ObjectPool<RTAS>;
 	RTAS(Device *device, VkAccelerationStructureKHR rtas,
-	     VkAccelerationStructureTypeKHR type, BufferHandle backing);
+	     VkAccelerationStructureTypeKHR type, BufferHandle backing,
+		 VkDeviceSize build_size, VkDeviceSize update_size);
 	Device *device;
 	VkAccelerationStructureKHR rtas;
 	VkAccelerationStructureTypeKHR type;
 	BufferHandle backing;
+	VkDeviceSize build_size;
+	VkDeviceSize update_size;
 	VkDeviceAddress bda = 0;
 };
 

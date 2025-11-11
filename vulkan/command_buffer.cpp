@@ -3456,6 +3456,298 @@ void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t grou
 		LOGE("Failed to flush render state, dispatch will be dropped.\n");
 }
 
+void CommandBuffer::begin_rtas_batch()
+{
+	VK_ASSERT(!framebuffer);
+	VK_ASSERT(!rtas_batch.in_batch);
+}
+
+void CommandBuffer::emit_scratch_barrier()
+{
+	// If we're reusing the scratch buffer, we have to synchronize it.
+	barrier(VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+	        VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+	        VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+	        VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR |
+	        VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR);
+}
+
+void CommandBuffer::setup_batch(VkAccelerationStructureTypeKHR rtas_type)
+{
+	rtas_batch.geom_info.resize(rtas_batch.ranges.size());
+	rtas_batch.range_info_ptrs.resize(rtas_batch.ranges.size());
+
+	if (rtas_type == VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR)
+	{
+		rtas_batch.range_infos.resize(rtas_batch.geometries.size());
+		rtas_batch.geometries_conv.resize(rtas_batch.geometries.size());
+	}
+	else
+	{
+		rtas_batch.range_infos.resize(rtas_batch.ranges.size());
+		rtas_batch.geometries_conv.resize(rtas_batch.ranges.size());
+	}
+
+	VkDeviceSize total_scratch = 0;
+	VkDeviceSize scratch_align =
+			device->get_device_features().rtas_properties.minAccelerationStructureScratchOffsetAlignment;
+	scratch_align -= 1;
+
+	for (size_t i = 0, n = rtas_batch.ranges.size(); i < n; i++)
+	{
+		auto &geom_info = rtas_batch.geom_info[i];
+		geom_info = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
+		geom_info.mode = rtas_batch.build_modes[i] == BuildMode::Build ?
+		                 VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR :
+		                 VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR;
+		geom_info.type = rtas_type;
+
+		if (rtas_type == VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR)
+		{
+			switch (rtas_batch.blas_modes[i])
+			{
+			case BLASMode::Static:
+				geom_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR |
+				                  VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR;
+				break;
+
+			case BLASMode::Skinned:
+				geom_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR |
+				                  VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+				break;
+			}
+
+			rtas_batch.range_info_ptrs[i] = rtas_batch.range_infos.data() + rtas_batch.ranges[i].start;
+			geom_info.pGeometries = rtas_batch.geometries_conv.data() + rtas_batch.ranges[i].start;
+			geom_info.geometryCount = rtas_batch.ranges[i].count;
+		}
+		else
+		{
+			geom_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+
+			rtas_batch.range_info_ptrs[i] = rtas_batch.range_infos.data() + i;
+			geom_info.pGeometries = rtas_batch.geometries_conv.data() + i;
+			geom_info.geometryCount = 1;
+		}
+
+		geom_info.dstAccelerationStructure = rtas_batch.ranges[i].dst;
+		geom_info.srcAccelerationStructure = rtas_batch.ranges[i].src;
+
+		total_scratch = (total_scratch + scratch_align) & ~scratch_align;
+		total_scratch += rtas_batch.ranges[i].scratch;
+	}
+
+	if (!rtas_batch.scratch || total_scratch > rtas_batch.scratch->get_create_info().size)
+	{
+		BufferCreateInfo scratch_info = {};
+		scratch_info.domain = BufferDomain::Device;
+		// Let the size grow a bit to avoid too much realloc explosion.
+		scratch_info.size = !rtas_batch.scratch ? total_scratch : (total_scratch * 3 / 2);
+		scratch_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		rtas_batch.scratch = device->create_buffer(scratch_info);
+	}
+	else
+	{
+		// Reusing memory, need barrier.
+		emit_scratch_barrier();
+	}
+
+	total_scratch = 0;
+	for (size_t i = 0, n = rtas_batch.ranges.size(); i < n; i++)
+	{
+		auto &geom_info = rtas_batch.geom_info[i];
+		total_scratch = (total_scratch + scratch_align) & ~scratch_align;
+		geom_info.scratchData.deviceAddress = rtas_batch.scratch->get_device_address() + total_scratch;
+		total_scratch += rtas_batch.ranges[i].scratch;
+	}
+}
+
+void CommandBuffer::build_blas_batch()
+{
+	setup_batch(VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
+
+	for (size_t i = 0, n = rtas_batch.geometries.size(); i < n; i++)
+	{
+		auto &geom = rtas_batch.geometries_conv[i];
+		auto &input = rtas_batch.geometries[i];
+		auto &range = rtas_batch.range_infos[i];
+		geom.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+
+		auto &tri = geom.geometry.triangles;
+		tri.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+
+		tri.vertexFormat = input.format;
+		tri.vertexData.deviceAddress = input.vbo;
+		tri.maxVertex = input.num_vertices - 1;
+		tri.vertexStride = input.stride;
+
+		tri.indexData.deviceAddress = input.ibo;
+		tri.indexType = input.index_type;
+
+		tri.transformData.deviceAddress = input.transform;
+
+		// Rest is 0.
+		range.primitiveCount = input.num_primitives;
+	}
+
+	table.vkCmdBuildAccelerationStructuresKHR(
+			cmd, rtas_batch.ranges.size(), rtas_batch.geom_info.data(), rtas_batch.range_info_ptrs.data());
+}
+
+void CommandBuffer::build_tlas_batch()
+{
+	setup_batch(VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
+
+	// We have array-of-pointer situation since we don't guarantee linear addressing of instances.
+	// Ensure that all instances are backed by device addresses.
+
+	VkDeviceSize required_scratch_storage = 0;
+	for (auto &instance : rtas_batch.instances)
+	{
+		if (instance.bda == 0)
+		{
+			VK_ASSERT(instance.instance);
+			required_scratch_storage += sizeof(*instance.instance);
+		}
+	}
+
+	required_scratch_storage += rtas_batch.instances.size() * sizeof(VkDeviceAddress);
+
+	// Could add scratch for this, but we shouldn't be building more than one TLAS per frame or something ...
+	BufferCreateInfo scratch_info = {};
+	scratch_info.size = required_scratch_storage;
+	scratch_info.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+	scratch_info.domain = BufferDomain::LinkedDeviceHost;
+	auto instance_storage_scratch = device->create_buffer(scratch_info);
+	VkDeviceAddress va = instance_storage_scratch->get_device_address();
+
+	auto *upload_instances = static_cast<VkAccelerationStructureInstanceKHR *>(
+			device->map_host_buffer(*instance_storage_scratch, MEMORY_ACCESS_WRITE_BIT));
+
+	for (auto &instance : rtas_batch.instances)
+	{
+		if (instance.bda == 0)
+		{
+			*upload_instances++ = *instance.instance;
+			instance.bda = va;
+			va += sizeof(VkDeviceAddress);
+		}
+	}
+
+	auto *addrs = reinterpret_cast<VkDeviceAddress *>(upload_instances);
+	for (auto &instance : rtas_batch.instances)
+	{
+		VK_ASSERT(instance.bda);
+		*addrs++ = instance.bda;
+	}
+
+	device->unmap_host_buffer(*instance_storage_scratch, MEMORY_ACCESS_WRITE_BIT);
+
+	for (size_t i = 0, n = rtas_batch.ranges.size(); i < n; i++)
+	{
+		auto &geom = rtas_batch.geometries_conv[i];
+		auto &range = rtas_batch.range_infos[i];
+		geom.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+
+		auto &inst = geom.geometry.instances;
+		inst.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+		inst.arrayOfPointers = VK_TRUE;
+		inst.data.deviceAddress = va + rtas_batch.ranges[i].start * sizeof(VkDeviceAddress);
+
+		// Rest is 0.
+		range.primitiveCount = rtas_batch.ranges[i].count;
+	}
+
+	table.vkCmdBuildAccelerationStructuresKHR(
+			cmd, rtas_batch.ranges.size(), rtas_batch.geom_info.data(), rtas_batch.range_info_ptrs.data());
+}
+
+void CommandBuffer::end_rtas_batch()
+{
+	VK_ASSERT(!framebuffer);
+	VK_ASSERT(rtas_batch.in_batch);
+	rtas_batch.in_batch = false;
+
+	if (!rtas_batch.ranges.empty())
+	{
+		if (!rtas_batch.geometries.empty())
+			build_blas_batch();
+		else
+			build_tlas_batch();
+
+		if (!rtas_batch.queries.empty())
+		{
+			// Unlike most queries, these have to be synchronized.
+			barrier(VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+			        VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+			        VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR,
+			        VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR);
+		}
+	}
+
+	for (auto &query : rtas_batch.queries)
+	{
+		table.vkCmdWriteAccelerationStructuresPropertiesKHR(
+				cmd, 1, &query.rtas, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
+				query.pool, query.index);
+	}
+
+	rtas_batch.geometries.clear();
+	rtas_batch.instances.clear();
+	rtas_batch.ranges.clear();
+	rtas_batch.build_modes.clear();
+	rtas_batch.blas_modes.clear();
+	rtas_batch.queries.clear();
+}
+
+void CommandBuffer::compact_rtas(const Vulkan::RTAS &dst, const Vulkan::RTAS &src)
+{
+	VK_ASSERT(!framebuffer);
+	VK_ASSERT(!rtas_batch.in_batch);
+
+	VkCopyAccelerationStructureInfoKHR info = { VK_STRUCTURE_TYPE_COPY_ACCELERATION_STRUCTURE_INFO_KHR };
+	info.src = src.get_rtas();
+	info.dst = dst.get_rtas();
+	info.mode = VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR;
+	table.vkCmdCopyAccelerationStructureKHR(cmd, &info);
+}
+
+void CommandBuffer::write_compacted_rtas_size(const RTAS &rtas, const QueryPoolResult &query)
+{
+	VK_ASSERT(!framebuffer);
+	VK_ASSERT(rtas_batch.in_batch);
+	rtas_batch.queries.push_back({ rtas.get_rtas(), query.get_query_pool(), query.get_query_pool_index() });
+}
+
+void CommandBuffer::build_rtas(BuildMode mode, const RTAS &rtas, const TopRTASCreateInfo &info)
+{
+	VK_ASSERT(!framebuffer);
+	VK_ASSERT(rtas_batch.in_batch);
+
+	VK_ASSERT(rtas_batch.ranges.size() == rtas_batch.instances.size());
+	RTASBatch::Range new_range = { rtas.get_rtas(), mode == BuildMode::Update ? rtas.get_rtas() : VK_NULL_HANDLE,
+	                               rtas.get_scratch_size(mode),
+	                               rtas_batch.instances.size(), info.count };
+	rtas_batch.instances.insert(rtas_batch.instances.end(), info.instances, info.instances + info.count);
+	rtas_batch.ranges.push_back(new_range);
+	rtas_batch.build_modes.push_back(mode);
+}
+
+void CommandBuffer::build_rtas(BuildMode mode, const RTAS &rtas, const BottomRTASCreateInfo &info)
+{
+	VK_ASSERT(!framebuffer);
+	VK_ASSERT(rtas_batch.in_batch);
+
+	VK_ASSERT(rtas_batch.ranges.size() == rtas_batch.geometries.size());
+	RTASBatch::Range new_range = { rtas.get_rtas(), mode == BuildMode::Update ? rtas.get_rtas() : VK_NULL_HANDLE,
+								   rtas.get_scratch_size(mode),
+	                               rtas_batch.ranges.size(), info.count };
+	rtas_batch.ranges.push_back(new_range);
+	rtas_batch.geometries.insert(rtas_batch.geometries.end(), info.geometries, info.geometries + info.count);
+	rtas_batch.build_modes.push_back(mode);
+	rtas_batch.blas_modes.push_back(info.mode);
+}
+
 void CommandBuffer::clear_render_state()
 {
 	// Preserve spec constant mask.

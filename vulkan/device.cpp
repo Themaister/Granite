@@ -4969,9 +4969,9 @@ RTASHandle Device::create_rtas(const BottomRTASCreateInfo &info, CommandBuffer *
 	geom_info.geometryCount = info.count;
 	geom_info.pGeometries = geometries.data();
 
-	table->vkGetAccelerationStructureBuildSizesKHR(device,
-												   VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
-												   &geom_info, primitive_counts.data(), &size_info);
+	table->vkGetAccelerationStructureBuildSizesKHR(
+			device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+			&geom_info, primitive_counts.data(), &size_info);
 
 	BufferHandle buffer;
 	BufferCreateInfo buffer_info = {};
@@ -4992,16 +4992,17 @@ RTASHandle Device::create_rtas(const BottomRTASCreateInfo &info, CommandBuffer *
 		return {};
 	}
 
-	RTASHandle handle(handle_pool.rtas.allocate(this, rtas, rtas_info.type, std::move(buffer)));
+	RTASHandle handle(handle_pool.rtas.allocate(this, rtas, rtas_info.type, std::move(buffer),
+	                                            size_info.buildScratchSize, size_info.updateScratchSize));
 
 	if (cmd)
 	{
-		cmd->build_rtas(geom_info.mode, *handle, info);
+		cmd->build_rtas(BuildMode::Build, *handle, info);
 
 		if (compacted_size)
 		{
 			auto query = frame().query_pool_rtas.allocate_query(cmd->get_command_buffer());
-			cmd->write_compacted_rtas(*rtas, query->get_query_pool(), query->get_query_pool_index());
+			cmd->write_compacted_rtas_size(*handle, *query);
 			*compacted_size = std::move(query);
 		}
 	}

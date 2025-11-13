@@ -3461,6 +3461,7 @@ void CommandBuffer::begin_rtas_batch()
 {
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(!rtas_batch.in_batch);
+	rtas_batch.in_batch = true;
 }
 
 void CommandBuffer::emit_scratch_barrier()
@@ -3575,6 +3576,7 @@ void CommandBuffer::build_blas_batch()
 		auto &geom = rtas_batch.geometries_conv[i];
 		auto &input = rtas_batch.geometries[i];
 		auto &range = rtas_batch.range_infos[i];
+		geom.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
 		geom.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
 
 		auto &tri = geom.geometry.triangles;
@@ -3587,6 +3589,7 @@ void CommandBuffer::build_blas_batch()
 
 		tri.indexData.deviceAddress = input.ibo;
 		tri.indexType = input.index_type;
+		VK_ASSERT(input.ibo || input.index_type == VK_INDEX_TYPE_NONE_KHR);
 
 		tri.transformData.deviceAddress = input.transform;
 
@@ -3651,6 +3654,7 @@ void CommandBuffer::build_tlas_batch()
 	{
 		auto &geom = rtas_batch.geometries_conv[i];
 		auto &range = rtas_batch.range_infos[i];
+		geom.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
 		geom.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
 
 		auto &inst = geom.geometry.instances;
@@ -3684,7 +3688,8 @@ void CommandBuffer::end_rtas_batch()
 			// Unlike most queries, these have to be synchronized.
 			barrier(VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
 			        VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
-			        VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR,
+					// COPY is maintenance1 and we don't need to rely on that.
+			        VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
 			        VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR);
 		}
 	}
@@ -3950,7 +3955,9 @@ void CommandBuffer::end_threaded_recording()
 void CommandBuffer::end()
 {
 	VK_ASSERT(!barrier_batch.active);
+	VK_ASSERT(!rtas_batch.in_batch);
 
+	// When called, we're holding a device submission lock.
 	end_threaded_recording();
 
 	if (vbo_block.is_mapped())
@@ -3963,6 +3970,12 @@ void CommandBuffer::end()
 		device->request_staging_block_nolock(staging_block, 0);
 	if (desc_buffer.get_size())
 		device->free_descriptor_buffer_allocation_nolock(desc_buffer);
+
+	if (rtas_batch.scratch)
+	{
+		rtas_batch.scratch->set_internal_sync_object();
+		rtas_batch.scratch.reset();
+	}
 }
 
 void CommandBuffer::insert_label(const char *name, const float *color)

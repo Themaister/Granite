@@ -1323,7 +1323,11 @@ void Device::submit_discard_nolock(CommandBufferHandle &cmd)
 	pool.signal_submitted(cmd->get_command_buffer());
 #endif
 
-	cmd->end();
+	{
+		LOCK();
+		cmd->end();
+	}
+
 	cmd.reset();
 	decrement_frame_counter_nolock();
 }
@@ -4954,7 +4958,8 @@ RTASHandle Device::create_rtas(const TopRTASCreateInfo &info, CommandBuffer *cmd
 	}
 	VkAccelerationStructureBuildGeometryInfoKHR geom_info =
 			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
-	VkAccelerationStructureBuildSizesInfoKHR size_info;
+	VkAccelerationStructureBuildSizesInfoKHR size_info =
+			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR };
 
 	geom_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
 	geom_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
@@ -5005,7 +5010,8 @@ RTASHandle Device::create_rtas(const BottomRTASCreateInfo &info, CommandBuffer *
 
 	VkAccelerationStructureBuildGeometryInfoKHR geom_info =
 			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
-	VkAccelerationStructureBuildSizesInfoKHR size_info;
+	VkAccelerationStructureBuildSizesInfoKHR size_info =
+			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR };
 
 	geom_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
 	geom_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
@@ -5044,6 +5050,7 @@ RTASHandle Device::create_rtas(const BottomRTASCreateInfo &info, CommandBuffer *
 
 		tri.indexData.deviceAddress = input.ibo;
 		tri.indexType = input.index_type;
+		VK_ASSERT(input.ibo || input.index_type == VK_INDEX_TYPE_NONE_KHR);
 
 		tri.transformData.deviceAddress = input.transform;
 

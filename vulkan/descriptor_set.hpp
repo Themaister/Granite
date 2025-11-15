@@ -43,6 +43,7 @@ struct DescriptorSetLayout
 	uint32_t storage_image_mask = 0;
 	uint32_t uniform_buffer_mask = 0;
 	uint32_t storage_buffer_mask = 0;
+	uint32_t rtas_mask = 0;
 	uint32_t sampled_texel_buffer_mask = 0;
 	uint32_t storage_texel_buffer_mask = 0;
 	uint32_t input_attachment_mask = 0;
@@ -51,7 +52,6 @@ struct DescriptorSetLayout
 	uint32_t fp_mask = 0;
 	uint32_t immutable_sampler_mask = 0;
 	uint8_t array_size[VULKAN_NUM_BINDINGS] = {};
-	uint32_t padding = 0;
 	enum { UNSIZED_ARRAY = 0xff };
 };
 

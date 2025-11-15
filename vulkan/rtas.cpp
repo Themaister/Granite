@@ -1,0 +1,61 @@
+/* Copyright (c) 2017-2025 Hans-Kristian Arntzen
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+#include "rtas.hpp"
+#include "device.hpp"
+
+namespace Vulkan
+{
+RTAS::RTAS(Device *device_, VkAccelerationStructureKHR rtas_,
+           VkAccelerationStructureTypeKHR type_, BufferHandle backing_)
+	: Cookie(device_)
+	, device(device_)
+	, rtas(rtas_)
+	, type(type_)
+	, backing(std::move(backing_))
+{
+	VkAccelerationStructureDeviceAddressInfoKHR info =
+			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR };
+	info.accelerationStructure = rtas;
+	bda = device->get_device_table().vkGetAccelerationStructureDeviceAddressKHR(device->get_device(), &info);
+}
+
+VkDeviceSize RTAS::get_scratch_size(BuildMode mode) const
+{
+	return mode == BuildMode::Build ? build_size : update_size;
+}
+
+RTAS::~RTAS()
+{
+	device->destroy_rtas(rtas);
+}
+
+void RTASDeleter::operator()(Vulkan::RTAS *rtas)
+{
+	// Avoid hitting destruction callback inside a callback.
+	rtas->backing.reset();
+
+	rtas->device->handle_pool.rtas.free(rtas);
+}
+}
+
+

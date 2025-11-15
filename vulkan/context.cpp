@@ -1643,6 +1643,15 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.anti_lag_features, ANTI_LAG_FEATURES_AMD);
 	}
 
+	if (has_extension(VK_KHR_RAY_QUERY_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
+		enabled_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+		enabled_extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+		ADD_CHAIN(ext.ray_query_features, RAY_QUERY_FEATURES_KHR);
+		ADD_CHAIN(ext.rtas_features, ACCELERATION_STRUCTURE_FEATURES_KHR);
+	}
+
 	if (ext.device_api_core_version >= VK_API_VERSION_1_3)
 	{
 		ext.supports_store_op_none = true;
@@ -1958,6 +1967,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		ADD_CHAIN(ext.descriptor_buffer_properties, DESCRIPTOR_BUFFER_PROPERTIES_EXT);
 	}
+
+	if (has_extension(VK_KHR_RAY_QUERY_EXTENSION_NAME))
+		ADD_CHAIN(ext.rtas_properties, ACCELERATION_STRUCTURE_PROPERTIES_KHR);
 
 #ifndef HAVE_GRANITE_VULKAN_POST_MORTEM
 	if ((flags & CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT) != 0 &&

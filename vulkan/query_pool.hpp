@@ -73,38 +73,59 @@ class QueryPoolResult : public Util::IntrusivePtrEnabled<QueryPoolResult, QueryP
 public:
 	friend struct QueryPoolResultDeleter;
 
-	void signal_timestamp_ticks(uint64_t ticks)
+	inline void signal_value(uint64_t ticks)
 	{
-		timestamp_ticks = ticks;
-		has_timestamp = true;
+		value = ticks;
+		has_value = true;
 	}
 
-	uint64_t get_timestamp_ticks() const
+	// Compatibility alias.
+	inline uint64_t get_timestamp_ticks() const
 	{
-		return timestamp_ticks;
+		VK_ASSERT(type == VK_QUERY_TYPE_TIMESTAMP);
+		return value;
 	}
 
-	bool is_signalled() const
+	inline uint64_t get_value() const
 	{
-		return has_timestamp;
+		return value;
 	}
 
-	bool is_device_timebase() const
+	inline bool is_signalled() const
+	{
+		return has_value;
+	}
+
+	inline bool is_device_timebase() const
 	{
 		return device_timebase;
+	}
+
+	inline VkQueryPool get_query_pool() const
+	{
+		return pool;
+	}
+
+	inline uint32_t get_query_pool_index() const
+	{
+		return index;
 	}
 
 private:
 	friend class Util::ObjectPool<QueryPoolResult>;
 
-	explicit QueryPoolResult(Device *device_, bool device_timebase_)
-		: device(device_), device_timebase(device_timebase_)
+	explicit QueryPoolResult(Device *device_, bool device_timebase_, VkQueryType type_,
+							 VkQueryPool pool_, uint32_t index_)
+		: device(device_), device_timebase(device_timebase_), type(type_), pool(pool_), index(index_)
 	{}
 
 	Device *device;
-	uint64_t timestamp_ticks = 0;
-	bool has_timestamp = false;
+	uint64_t value = 0;
+	bool has_value = false;
 	bool device_timebase = false;
+	VkQueryType type;
+	VkQueryPool pool;
+	uint32_t index;
 };
 
 using QueryPoolHandle = Util::IntrusivePtr<QueryPoolResult>;
@@ -112,17 +133,18 @@ using QueryPoolHandle = Util::IntrusivePtr<QueryPoolResult>;
 class QueryPool
 {
 public:
-	explicit QueryPool(Device *device);
-
+	QueryPool(Device *device, VkQueryType type);
 	~QueryPool();
 
 	void begin();
 
 	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlags2 stage);
+	QueryPoolHandle allocate_query(VkCommandBuffer cmd);
 
 private:
 	Device *device;
 	const VolkDeviceTable &table;
+	VkQueryType type;
 
 	struct Pool
 	{
@@ -137,7 +159,7 @@ private:
 
 	void add_pool();
 
-	bool supports_timestamp = false;
+	bool supports_type = false;
 };
 
 class TimestampInterval : public Util::IntrusiveHashMapEnabled<TimestampInterval>

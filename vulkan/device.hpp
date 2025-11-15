@@ -98,6 +98,7 @@ struct InitialImageBuffer
 struct HandlePool
 {
 	VulkanObjectPool<Buffer> buffers;
+	VulkanObjectPool<RTAS> rtas;
 	VulkanObjectPool<Image> images;
 	VulkanObjectPool<LinearHostImage> linear_images;
 	VulkanObjectPool<ImageView> image_views;
@@ -185,6 +186,8 @@ public:
 	friend class ImmutableYcbcrConversion;
 	friend class Buffer;
 	friend struct BufferDeleter;
+	friend class RTAS;
+	friend struct RTASDeleter;
 	friend class BufferView;
 	friend struct BufferViewDeleter;
 	friend class ImageView;
@@ -350,6 +353,14 @@ public:
 	ImageHandle wrap_image(const ImageCreateInfo &info, VkImage img);
 	DeviceAllocationOwnerHandle take_device_allocation_ownership(Image &image);
 	DeviceAllocationOwnerHandle allocate_memory(const MemoryAllocateInfo &info);
+
+	// If cmd is not null, the RTAS is immediately built.
+	// If compacted_size is not null, a compacted size query will be made. info.mode must be compatible with compaction.
+	RTASHandle create_rtas(const BottomRTASCreateInfo &info, CommandBuffer *cmd, QueryPoolHandle *compacted_size);
+	RTASHandle create_rtas(const TopRTASCreateInfo &info, CommandBuffer *cmd);
+	// Generic creation methods.
+	RTASHandle create_rtas(VkAccelerationStructureTypeKHR type, VkDeviceSize size);
+	RTASHandle create_rtas(VkAccelerationStructureTypeKHR type, BufferHandle buffer, VkDeviceSize offset, VkDeviceSize size);
 
 	// Create staging buffers for images.
 
@@ -643,7 +654,7 @@ private:
 		VkSemaphore timeline_semaphores[QUEUE_INDEX_COUNT] = {};
 		uint64_t timeline_fences[QUEUE_INDEX_COUNT] = {};
 
-		QueryPool query_pool;
+		QueryPool query_pool_ts, query_pool_rtas;
 
 		std::vector<BufferBlock> vbo_blocks;
 		std::vector<BufferBlock> ibo_blocks;
@@ -659,6 +670,7 @@ private:
 		std::vector<VkBufferView> destroyed_buffer_views;
 		std::vector<VkImage> destroyed_images;
 		std::vector<VkBuffer> destroyed_buffers;
+		std::vector<VkAccelerationStructureKHR> destroyed_rtas;
 		std::vector<VkDescriptorPool> destroyed_descriptor_pools;
 		Util::SmallVector<CommandBufferHandle> submissions[QUEUE_INDEX_COUNT];
 		std::vector<VkSemaphore> recycled_semaphores;
@@ -801,6 +813,7 @@ private:
 	VkResult queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo2 *submits, VkFence fence);
 
 	void destroy_buffer(VkBuffer buffer);
+	void destroy_rtas(VkAccelerationStructureKHR rtas);
 	void destroy_image(VkImage image);
 	void destroy_image_view(VkImageView view);
 	void destroy_buffer_view(VkBufferView view);
@@ -818,6 +831,7 @@ private:
 	void free_cached_descriptor_payload(const CachedDescriptorPayload &payload);
 
 	void destroy_buffer_nolock(VkBuffer buffer);
+	void destroy_rtas_nolock(VkAccelerationStructureKHR rtas);
 	void destroy_image_nolock(VkImage image);
 	void destroy_image_view_nolock(VkImageView view);
 	void destroy_buffer_view_nolock(VkBufferView view);

@@ -165,6 +165,21 @@ void PipelineLayout::create_update_templates()
 			}
 		});
 
+		for_each_bit(set_layout.rtas_mask, [&](uint32_t binding) {
+			unsigned array_size = set_layout.array_size[binding];
+			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
+			for (unsigned i = 0; i < array_size; i++)
+			{
+				auto &entry = update_entries[update_count++];
+				entry.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+				entry.dstBinding = binding;
+				entry.dstArrayElement = i;
+				entry.descriptorCount = 1;
+				entry.offset = offsetof(ResourceBinding, rtas) + sizeof(ResourceBinding) * (binding + i);
+				entry.stride = sizeof(ResourceBinding);
+			}
+		});
+
 		for_each_bit(set_layout.sampled_texel_buffer_mask, [&](uint32_t binding) {
 			unsigned array_size = set_layout.array_size[binding];
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
@@ -544,6 +559,17 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 		VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
 
 		layout.sets[set].storage_buffer_mask |= 1u << binding;
+		update_array_info(layout, compiler.get_type(buffer.type_id), set, binding);
+	}
+
+	for (auto &buffer : resources.acceleration_structures)
+	{
+		auto set = compiler.get_decoration(buffer.id, spv::DecorationDescriptorSet);
+		auto binding = compiler.get_decoration(buffer.id, spv::DecorationBinding);
+		VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+		VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
+
+		layout.sets[set].rtas_mask |= 1u << binding;
 		update_array_info(layout, compiler.get_type(buffer.type_id), set, binding);
 	}
 

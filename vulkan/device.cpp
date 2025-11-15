@@ -598,6 +598,7 @@ void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, cons
 			layout.sets[set].storage_image_mask |= shader_layout.sets[set].storage_image_mask;
 			layout.sets[set].uniform_buffer_mask |= shader_layout.sets[set].uniform_buffer_mask;
 			layout.sets[set].storage_buffer_mask |= shader_layout.sets[set].storage_buffer_mask;
+			layout.sets[set].rtas_mask |= shader_layout.sets[set].rtas_mask;
 			layout.sets[set].sampled_texel_buffer_mask |= shader_layout.sets[set].sampled_texel_buffer_mask;
 			layout.sets[set].storage_texel_buffer_mask |= shader_layout.sets[set].storage_texel_buffer_mask;
 			layout.sets[set].input_attachment_mask |= shader_layout.sets[set].input_attachment_mask;
@@ -610,6 +611,7 @@ void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, cons
 					shader_layout.sets[set].storage_image_mask |
 					shader_layout.sets[set].uniform_buffer_mask|
 					shader_layout.sets[set].storage_buffer_mask |
+					shader_layout.sets[set].rtas_mask |
 					shader_layout.sets[set].sampled_texel_buffer_mask |
 					shader_layout.sets[set].storage_texel_buffer_mask |
 					shader_layout.sets[set].input_attachment_mask |
@@ -1323,7 +1325,11 @@ void Device::submit_discard_nolock(CommandBufferHandle &cmd)
 	pool.signal_submitted(cmd->get_command_buffer());
 #endif
 
-	cmd->end();
+	{
+		LOCK();
+		cmd->end();
+	}
+
 	cmd.reset();
 	decrement_frame_counter_nolock();
 }
@@ -2313,7 +2319,8 @@ Device::PerFrame::PerFrame(Device *device_, unsigned frame_index_)
     , frame_index(frame_index_)
     , table(device_->get_device_table())
     , managers(device_->managers)
-    , query_pool(device_)
+    , query_pool_ts(device_, VK_QUERY_TYPE_TIMESTAMP)
+	, query_pool_rtas(device_, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR)
 {
 	unsigned count = device_->num_thread_indices;
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
@@ -2350,6 +2357,12 @@ void Device::destroy_buffer(VkBuffer buffer)
 {
 	LOCK();
 	destroy_buffer_nolock(buffer);
+}
+
+void Device::destroy_rtas(VkAccelerationStructureKHR rtas)
+{
+	LOCK();
+	destroy_rtas_nolock(rtas);
 }
 
 void Device::destroy_indirect_execution_set(VkIndirectExecutionSetEXT exec_set)
@@ -2508,6 +2521,12 @@ void Device::destroy_buffer_nolock(VkBuffer buffer)
 {
 	VK_ASSERT(!exists(frame().destroyed_buffers, buffer));
 	frame().destroyed_buffers.push_back(buffer);
+}
+
+void Device::destroy_rtas_nolock(VkAccelerationStructureKHR rtas)
+{
+	VK_ASSERT(!exists(frame().destroyed_rtas, rtas));
+	frame().destroyed_rtas.push_back(rtas);
 }
 
 void Device::destroy_indirect_execution_set_nolock(VkIndirectExecutionSetEXT exec_set)
@@ -2689,7 +2708,7 @@ QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlag
 
 QueryPoolHandle Device::write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlags2 stage)
 {
-	return frame().query_pool.write_timestamp(cmd, stage);
+	return frame().query_pool_ts.write_timestamp(cmd, stage);
 }
 
 QueryPoolHandle Device::write_calibrated_timestamp()
@@ -2703,8 +2722,9 @@ QueryPoolHandle Device::write_calibrated_timestamp_nolock()
 	if (!system_handles.timeline_trace_file)
 		return {};
 
-	auto handle = QueryPoolHandle(handle_pool.query.allocate(this, false));
-	handle->signal_timestamp_ticks(get_current_time_nsecs());
+	auto handle = QueryPoolHandle(handle_pool.query.allocate(
+			this, false, VK_QUERY_TYPE_TIMESTAMP, VK_NULL_HANDLE, 0));
+	handle->signal_value(get_current_time_nsecs());
 	return handle;
 }
 
@@ -2942,7 +2962,8 @@ void Device::PerFrame::begin()
 		for (auto &pool : cmd_pool)
 			pool.begin();
 
-	query_pool.begin();
+	query_pool_ts.begin();
+	query_pool_rtas.begin();
 
 	for (auto &channel : debug_channels)
 		device.parse_debug_channel(channel);
@@ -2973,6 +2994,8 @@ void Device::PerFrame::begin()
 		table.vkDestroyBufferView(vkdevice, view, nullptr);
 	for (auto &image : destroyed_images)
 		table.vkDestroyImage(vkdevice, image, nullptr);
+	for (auto &rtas : destroyed_rtas)
+		table.vkDestroyAccelerationStructureKHR(vkdevice, rtas, nullptr);
 	for (auto &buffer : destroyed_buffers)
 		table.vkDestroyBuffer(vkdevice, buffer, nullptr);
 	for (auto &semaphore : destroyed_semaphores)
@@ -3003,6 +3026,7 @@ void Device::PerFrame::begin()
 	destroyed_buffer_views.clear();
 	destroyed_images.clear();
 	destroyed_buffers.clear();
+	destroyed_rtas.clear();
 	destroyed_execution_sets.clear();
 	destroyed_semaphores.clear();
 	destroyed_descriptor_pools.clear();
@@ -4877,6 +4901,187 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 	}
 
 	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, create_info, bda));
+	return handle;
+}
+
+RTASHandle Device::create_rtas(VkAccelerationStructureTypeKHR type, BufferHandle buffer,
+                               VkDeviceSize offset, VkDeviceSize size)
+{
+	if (!ext.rtas_features.accelerationStructure)
+	{
+		LOGE("RTAS not supported on this driver.\n");
+		return {};
+	}
+
+	VK_ASSERT(buffer->get_create_info().usage & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR);
+	VK_ASSERT(offset + size <= buffer->get_create_info().size);
+
+	VkAccelerationStructureCreateInfoKHR rtas_info = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR };
+	rtas_info.buffer = buffer->get_buffer();
+	rtas_info.offset = offset;
+	rtas_info.size = size;
+	rtas_info.type = type;
+
+	VkAccelerationStructureKHR rtas;
+	if (table->vkCreateAccelerationStructureKHR(device, &rtas_info, nullptr, &rtas) != VK_SUCCESS)
+	{
+		LOGE("Failed to create RTAS.\n");
+		return {};
+	}
+
+	RTASHandle handle(handle_pool.rtas.allocate(this, rtas, rtas_info.type, std::move(buffer)));
+	return handle;
+}
+
+RTASHandle Device::create_rtas(VkAccelerationStructureTypeKHR type, VkDeviceSize size)
+{
+	if (!ext.rtas_features.accelerationStructure)
+	{
+		LOGE("RTAS not supported on this driver.\n");
+		return {};
+	}
+
+	BufferHandle buffer;
+	BufferCreateInfo buffer_info = {};
+	buffer_info.size = size;
+	buffer_info.domain = BufferDomain::Device;
+	buffer_info.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
+	buffer = create_buffer(buffer_info);
+
+	return create_rtas(type, std::move(buffer), 0, size);
+}
+
+RTASHandle Device::create_rtas(const TopRTASCreateInfo &info, CommandBuffer *cmd)
+{
+	if (!ext.rtas_features.accelerationStructure)
+	{
+		LOGE("RTAS not supported on this driver.\n");
+		return {};
+	}
+	VkAccelerationStructureBuildGeometryInfoKHR geom_info =
+			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
+	VkAccelerationStructureBuildSizesInfoKHR size_info =
+			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR };
+
+	geom_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+	geom_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+	geom_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+
+	uint32_t primitive_count = info.count;
+
+	VkAccelerationStructureGeometryKHR geom = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
+	geom.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+	auto &inst = geom.geometry.instances;
+	inst.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+	inst.arrayOfPointers = VK_TRUE;
+	geom_info.geometryCount = 1;
+	geom_info.pGeometries = &geom;
+
+	table->vkGetAccelerationStructureBuildSizesKHR(
+			device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+			&geom_info, &primitive_count, &size_info);
+
+	auto handle = create_rtas(geom_info.type, size_info.accelerationStructureSize);
+	handle->set_scratch_size(size_info.buildScratchSize, size_info.updateScratchSize);
+
+	if (cmd)
+		cmd->build_rtas(BuildMode::Build, *handle, info);
+
+	return handle;
+}
+
+RTASHandle Device::create_rtas(const BottomRTASCreateInfo &info, CommandBuffer *cmd, QueryPoolHandle *compacted_size)
+{
+	if (!ext.rtas_features.accelerationStructure)
+	{
+		LOGE("RTAS not supported on this driver.\n");
+		return {};
+	}
+
+	if (compacted_size && !cmd)
+	{
+		LOGE("If specifying compacted size, must have a command buffer.\n");
+		return {};
+	}
+
+	if (compacted_size && info.mode != BLASMode::Static)
+	{
+		LOGE("Only Static mode supports compaction.\n");
+		return {};
+	}
+
+	VkAccelerationStructureBuildGeometryInfoKHR geom_info =
+			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
+	VkAccelerationStructureBuildSizesInfoKHR size_info =
+			{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR };
+
+	geom_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+	geom_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+
+	switch (info.mode)
+	{
+	case BLASMode::Static:
+		geom_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR |
+		                  VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR;
+		break;
+
+	case BLASMode::Skinned:
+		geom_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR |
+		                  VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+		break;
+	}
+
+	Util::SmallVector<VkAccelerationStructureGeometryKHR> geometries;
+	Util::SmallVector<uint32_t> primitive_counts;
+
+	geometries.reserve(info.count);
+	primitive_counts.reserve(info.count);
+
+	for (size_t i = 0; i < info.count; i++)
+	{
+		auto &input = info.geometries[i];
+		VkAccelerationStructureGeometryKHR geom = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
+		geom.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+		auto &tri = geom.geometry.triangles;
+		tri.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+
+		tri.vertexFormat = input.format;
+		tri.vertexData.deviceAddress = input.vbo;
+		tri.maxVertex = input.num_vertices - 1;
+		tri.vertexStride = input.stride;
+
+		tri.indexData.deviceAddress = input.ibo;
+		tri.indexType = input.index_type;
+		VK_ASSERT(input.ibo || input.index_type == VK_INDEX_TYPE_NONE_KHR);
+
+		tri.transformData.deviceAddress = input.transform;
+
+		geometries.push_back(geom);
+		primitive_counts.push_back(input.num_primitives);
+	}
+
+	geom_info.geometryCount = info.count;
+	geom_info.pGeometries = geometries.data();
+
+	table->vkGetAccelerationStructureBuildSizesKHR(
+			device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+			&geom_info, primitive_counts.data(), &size_info);
+
+	auto handle = create_rtas(geom_info.type, size_info.accelerationStructureSize);
+	handle->set_scratch_size(size_info.buildScratchSize, size_info.updateScratchSize);
+
+	if (cmd)
+	{
+		cmd->build_rtas(BuildMode::Build, *handle, info);
+
+		if (compacted_size)
+		{
+			auto query = frame().query_pool_rtas.allocate_query(cmd->get_command_buffer());
+			cmd->write_compacted_rtas_size(*handle, *query);
+			*compacted_size = std::move(query);
+		}
+	}
+
 	return handle;
 }
 

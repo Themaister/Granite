@@ -23,6 +23,7 @@
 #include "device.hpp"
 #include "event_manager.hpp"
 #include "event.hpp"
+#include <cmath>
 
 using namespace Granite;
 using namespace Vulkan;
@@ -35,7 +36,8 @@ struct RayQueryApplication : Application, EventHandler
 		EVENT_MANAGER_REGISTER_LATCH(RayQueryApplication, on_device_create, on_device_destroy, DeviceCreatedEvent);
 	}
 
-	RTASHandle blas;
+	RTASHandle blas_compacted;
+	RTASHandle blas_skinned;
 	RTASHandle tlas;
 	ImageHandle img;
 	QueryPoolHandle compaction;
@@ -97,13 +99,15 @@ struct RayQueryApplication : Application, EventHandler
 
 		auto cmd = e.get_device().request_command_buffer(CommandBuffer::Type::AsyncCompute);
 		cmd->begin_rtas_batch();
-		blas = e.get_device().create_rtas(bottom_info, cmd.get(), &compaction);
+		blas_compacted = e.get_device().create_rtas(bottom_info, cmd.get(), &compaction);
+		bottom_info.mode = BLASMode::Skinned;
+		blas_skinned = e.get_device().create_rtas(bottom_info, cmd.get(), nullptr);
 		cmd->end_rtas_batch();
 
 		VkAccelerationStructureInstanceKHR instances[2] = {};
 
 		instances[0].mask = 0xff;
-		instances[0].accelerationStructureReference = blas->get_device_address();
+		instances[0].accelerationStructureReference = blas_compacted->get_device_address();
 		instances[0].transform.matrix[0][0] = 1.0f;
 		instances[0].transform.matrix[1][1] = 1.0f;
 		instances[0].transform.matrix[2][2] = 1.0f;
@@ -112,7 +116,7 @@ struct RayQueryApplication : Application, EventHandler
 		instances[0].instanceShaderBindingTableRecordOffset = 1;
 
 		instances[1].mask = 0xff;
-		instances[1].accelerationStructureReference = blas->get_device_address();
+		instances[1].accelerationStructureReference = blas_skinned->get_device_address();
 		instances[1].transform.matrix[0][0] = 1.0f;
 		instances[1].transform.matrix[1][1] = 1.0f;
 		instances[1].transform.matrix[2][2] = 1.0f;
@@ -147,12 +151,133 @@ struct RayQueryApplication : Application, EventHandler
 
 	void on_device_destroy(const DeviceCreatedEvent &)
 	{
-		blas.reset();
+		blas_compacted.reset();
+		blas_skinned.reset();
 		tlas.reset();
 		img.reset();
 	}
 
-	void render_frame(double, double) override
+	void check_rtas_updates(CommandBuffer &cmd, double elapsed_time)
+	{
+		auto &device = cmd.get_device();
+
+		if (compaction && compaction->is_signalled())
+		{
+			auto new_blas = device.create_rtas(
+					VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR, compaction->get_value());
+			cmd.compact_rtas(*new_blas, *blas_compacted);
+			compaction.reset();
+			blas_compacted = new_blas;
+
+		}
+
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+					VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0);
+
+		{
+			vec3 vbo_data[3] = {
+				{ -1, -1, 0 },
+				{ +1, -1, 0 },
+				{ 0, 1.0f + 0.1f * float(std::sin(elapsed_time)), 0 },
+			};
+
+			vec4 transform_data[3] = {
+				vec4(0.5f + 0.5f * float(std::sin(elapsed_time)), 0, 0, 3),
+				vec4(0, 1, 0, 0),
+				vec4(0, 0, 1, 0),
+			};
+
+			BufferCreateInfo vbo_info = {};
+			vbo_info.size = sizeof(vbo_data);
+			vbo_info.domain = BufferDomain::Device;
+			vbo_info.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+			auto vbo = device.create_buffer(vbo_info, vbo_data);
+
+			BufferCreateInfo transform_info = {};
+			transform_info.size = sizeof(transform_data);
+			transform_info.domain = BufferDomain::Device;
+			transform_info.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+			auto transform = device.create_buffer(transform_info, transform_data);
+
+			BottomRTASGeometry geoms[2] = {};
+			geoms[0].vbo = vbo->get_device_address();
+			geoms[0].stride = sizeof(vec3);
+			geoms[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+			geoms[0].num_vertices = 3;
+			geoms[0].num_primitives = 1;
+			geoms[0].index_type = VK_INDEX_TYPE_NONE_KHR;
+
+			geoms[1].vbo = vbo->get_device_address();
+			geoms[1].stride = sizeof(vec3);
+			geoms[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+			geoms[1].transform = transform->get_device_address();
+			geoms[1].num_vertices = 3;
+			geoms[1].num_primitives = 1;
+			geoms[1].index_type = VK_INDEX_TYPE_NONE_KHR;
+
+			BottomRTASCreateInfo bottom_info = {};
+			bottom_info.mode = BLASMode::Skinned;
+			bottom_info.count = 2;
+			bottom_info.geometries = geoms;
+
+			cmd.begin_rtas_batch();
+			cmd.build_rtas(BuildMode::Update, *blas_skinned, bottom_info);
+			cmd.end_rtas_batch();
+		}
+
+		cmd.barrier(VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+		            VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+		            VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+		            VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR);
+
+		{
+			VkAccelerationStructureInstanceKHR instances[2] = {};
+
+			instances[0].mask = 0xff;
+			instances[0].accelerationStructureReference = blas_compacted->get_device_address();
+			instances[0].transform.matrix[0][0] = 1.0f;
+			instances[0].transform.matrix[0][3] = 0.2f * float(std::sin(elapsed_time));
+			instances[0].transform.matrix[1][1] = 1.0f;
+			instances[0].transform.matrix[2][2] = 1.0f;
+			instances[0].transform.matrix[1][3] = -2.0f;
+			instances[0].instanceCustomIndex = 1;
+			instances[0].instanceShaderBindingTableRecordOffset = 1;
+
+			instances[1].mask = 0xff;
+			instances[1].accelerationStructureReference = blas_skinned->get_device_address();
+			instances[1].transform.matrix[0][0] = 1.0f;
+			instances[1].transform.matrix[1][1] = 1.0f;
+			instances[1].transform.matrix[1][3] = 0.2f * float(std::sin(elapsed_time));
+			instances[1].transform.matrix[2][2] = 1.0f;
+			instances[1].transform.matrix[1][3] += 2.0f;
+			instances[1].instanceCustomIndex = 200;
+			instances[1].instanceShaderBindingTableRecordOffset = 0;
+
+			RTASInstance inst[2] = {};
+			inst[0].instance = &instances[0];
+			inst[1].instance = &instances[1];
+
+			TopRTASCreateInfo top_info = {};
+			top_info.count = 2;
+			top_info.instances = inst;
+
+			cmd.barrier(VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+			            VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+			            VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+			            VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR);
+
+			cmd.begin_rtas_batch();
+			cmd.build_rtas(BuildMode::Update, *tlas, top_info);
+			cmd.end_rtas_batch();
+
+			cmd.barrier(VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+			            VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+			            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			            VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR);
+		}
+	}
+
+	void render_frame(double, double elapsed_time) override
 	{
 		auto &device = get_wsi().get_device();
 
@@ -163,6 +288,8 @@ struct RayQueryApplication : Application, EventHandler
 		}
 
 		auto cmd = device.request_command_buffer();
+
+		check_rtas_updates(*cmd, elapsed_time);
 
 		cmd->image_barrier(*img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
 						   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,

@@ -3549,6 +3549,12 @@ void CommandBuffer::setup_batch(VkAccelerationStructureTypeKHR rtas_type)
 		// Let the size grow a bit to avoid too much realloc explosion.
 		scratch_info.size = !rtas_batch.scratch ? total_scratch : (total_scratch * 3 / 2);
 		scratch_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+		// Scratch buffers have higher VkBuffer alignment.
+		scratch_info.allocation_requirements.size = scratch_info.size;
+		scratch_info.allocation_requirements.memoryTypeBits = UINT32_MAX;
+		scratch_info.allocation_requirements.alignment = scratch_align + 1;
+
 		rtas_batch.scratch = device->create_buffer(scratch_info);
 	}
 	else
@@ -3746,11 +3752,12 @@ void CommandBuffer::build_rtas(BuildMode mode, const RTAS &rtas, const BottomRTA
 {
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(rtas_batch.in_batch);
+	VK_ASSERT(mode == BuildMode::Build || info.mode == BLASMode::Skinned);
 
-	VK_ASSERT(rtas_batch.ranges.size() == rtas_batch.geometries.size());
+	VK_ASSERT(rtas_batch.ranges.size() == rtas_batch.blas_modes.size());
 	RTASBatch::Range new_range = { rtas.get_rtas(), mode == BuildMode::Update ? rtas.get_rtas() : VK_NULL_HANDLE,
 								   rtas.get_scratch_size(mode),
-	                               rtas_batch.ranges.size(), info.count };
+	                               rtas_batch.geometries.size(), info.count };
 	rtas_batch.ranges.push_back(new_range);
 	rtas_batch.geometries.insert(rtas_batch.geometries.end(), info.geometries, info.geometries + info.count);
 	rtas_batch.build_modes.push_back(mode);

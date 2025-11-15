@@ -3637,7 +3637,7 @@ void CommandBuffer::build_tlas_batch()
 		{
 			*upload_instances++ = *instance.instance;
 			instance.bda = va;
-			va += sizeof(VkDeviceAddress);
+			va += sizeof(*instance.instance);
 		}
 	}
 

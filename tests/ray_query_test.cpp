@@ -108,6 +108,8 @@ struct RayQueryApplication : Application, EventHandler
 		instances[0].transform.matrix[1][1] = 1.0f;
 		instances[0].transform.matrix[2][2] = 1.0f;
 		instances[0].transform.matrix[1][3] = -2.0f;
+		instances[0].instanceCustomIndex = 1;
+		instances[0].instanceShaderBindingTableRecordOffset = 1;
 
 		instances[1].mask = 0xff;
 		instances[1].accelerationStructureReference = blas->get_device_address();
@@ -115,6 +117,8 @@ struct RayQueryApplication : Application, EventHandler
 		instances[1].transform.matrix[1][1] = 1.0f;
 		instances[1].transform.matrix[2][2] = 1.0f;
 		instances[1].transform.matrix[1][3] = +2.0f;
+		instances[1].instanceCustomIndex = 200;
+		instances[1].instanceShaderBindingTableRecordOffset = 0;
 
 		RTASInstance inst[2] = {};
 		inst[0].instance = &instances[0];
@@ -130,7 +134,7 @@ struct RayQueryApplication : Application, EventHandler
 		             VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR);
 
 		cmd->begin_rtas_batch();
-		e.get_device().create_rtas(top_info, cmd.get());
+		tlas = e.get_device().create_rtas(top_info, cmd.get());
 		cmd->end_rtas_batch();
 
 		cmd->barrier(VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
@@ -160,7 +164,22 @@ struct RayQueryApplication : Application, EventHandler
 
 		auto cmd = device.request_command_buffer();
 
+		cmd->image_barrier(*img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+						   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+						   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+		cmd->set_program("assets://shaders/ray_query.comp");
+		cmd->set_rtas(0, 0, *tlas);
+		cmd->set_storage_texture(0, 1, img->get_view());
+		cmd->dispatch(img->get_width() / 8, img->get_height() / 8, 1);
+
+		cmd->image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+						   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+						   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+
 		cmd->begin_render_pass(device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly));
+		cmd->set_texture(0, 0, img->get_view(), StockSampler::LinearClamp);
+		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
 		cmd->end_render_pass();
 		device.submit(cmd);
 	}

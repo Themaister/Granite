@@ -598,6 +598,7 @@ void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, cons
 			layout.sets[set].storage_image_mask |= shader_layout.sets[set].storage_image_mask;
 			layout.sets[set].uniform_buffer_mask |= shader_layout.sets[set].uniform_buffer_mask;
 			layout.sets[set].storage_buffer_mask |= shader_layout.sets[set].storage_buffer_mask;
+			layout.sets[set].rtas_mask |= shader_layout.sets[set].rtas_mask;
 			layout.sets[set].sampled_texel_buffer_mask |= shader_layout.sets[set].sampled_texel_buffer_mask;
 			layout.sets[set].storage_texel_buffer_mask |= shader_layout.sets[set].storage_texel_buffer_mask;
 			layout.sets[set].input_attachment_mask |= shader_layout.sets[set].input_attachment_mask;
@@ -610,6 +611,7 @@ void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, cons
 					shader_layout.sets[set].storage_image_mask |
 					shader_layout.sets[set].uniform_buffer_mask|
 					shader_layout.sets[set].storage_buffer_mask |
+					shader_layout.sets[set].rtas_mask |
 					shader_layout.sets[set].sampled_texel_buffer_mask |
 					shader_layout.sets[set].storage_texel_buffer_mask |
 					shader_layout.sets[set].input_attachment_mask |

@@ -389,6 +389,13 @@ private:
 	unsigned present_frame_latency = 0;
 	bool supports_present_wait2 = false;
 
+	struct
+	{
+		VkPresentStageFlagsEXT feedback;
+		bool absolute;
+		bool relative;
+	} supports_present_timing = {};
+
 	Semaphore low_latency_semaphore;
 	uint64_t low_latency_semaphore_value = 0;
 

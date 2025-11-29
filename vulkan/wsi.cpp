@@ -1470,6 +1470,7 @@ struct SurfaceInfo
 	VkImageCompressionFixedRateFlagsEXT compression_control_fixed_rates;
 	VkSurfaceCapabilitiesPresentId2KHR present_id2;
 	VkSurfaceCapabilitiesPresentWait2KHR present_wait2;
+	VkPresentTimingSurfaceCapabilitiesEXT present_timing;
 	std::vector<VkPresentModeKHR> present_mode_compat_group;
 	const void *swapchain_pnext;
 	VkSwapchainLatencyCreateInfoNV latency_create_info;
@@ -1633,6 +1634,13 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 			info.present_id2 = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_PRESENT_ID_2_KHR };
 			info.present_wait2.pNext = &info.present_id2;
 			surface_capabilities2.pNext = &info.present_wait2;
+		}
+
+		if (ext.present_timing_features.presentTiming)
+		{
+			info.present_timing = { VK_STRUCTURE_TYPE_PRESENT_TIMING_SURFACE_CAPABILITIES_EXT };
+			info.present_timing.pNext = surface_capabilities2.pNext;
+			surface_capabilities2.pNext = &info.present_timing;
 		}
 
 		if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
@@ -2009,8 +2017,19 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	supports_present_wait2 = surface_info.present_id2.presentId2Supported &&
 	                         surface_info.present_wait2.presentWait2Supported;
 
+	supports_present_timing.feedback = surface_info.present_timing.presentTimingSupported ?
+			surface_info.present_timing.presentStageQueries : 0;
+
+	supports_present_timing.absolute = surface_info.present_timing.presentTimingSupported &&
+	                                   surface_info.present_timing.presentAtAbsoluteTimeSupported;
+
+	supports_present_timing.relative = surface_info.present_timing.presentTimingSupported &&
+	                                   surface_info.present_timing.presentAtRelativeTimeSupported;
+
 	if (supports_present_wait2)
 		info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_ID_2_BIT_KHR | VK_SWAPCHAIN_CREATE_PRESENT_WAIT_2_BIT_KHR;
+	if (supports_present_timing.feedback)
+		info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_TIMING_BIT_EXT;
 
 	auto res = table->vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
 	if (res < 0)

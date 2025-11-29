@@ -858,6 +858,7 @@ void WSI::poll_present_timing_feedback()
 	if (props.timingPropertiesCounter != present_timing.refresh_counter)
 		update_present_timing_properties();
 
+	// NV bug on X11: props.timingPropertiesCounter is always 0, even if TimingPropertiesEXT returns 1.
 	if (props.timingPropertiesCounter != present_timing.refresh_counter)
 	{
 		LOGW("Got presentation timing counter (%llu) which does not map to current state of swapchain (%llu).\n",
@@ -875,6 +876,7 @@ void WSI::poll_present_timing_feedback()
 			return;
 		}
 
+		// NV bug on X11: 3 identical time domains are returned for whatever reason ...
 		present_timing.time_domains.resize(time_domain_properties.timeDomainCount);
 		present_timing.time_domain_ids.resize(time_domain_properties.timeDomainCount);
 		time_domain_properties.pTimeDomains = present_timing.time_domains.data();

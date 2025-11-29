@@ -396,6 +396,31 @@ private:
 		bool relative;
 	} supports_present_timing = {};
 
+	enum class RefreshMode { Unknown, FRR, VRR };
+
+	struct
+	{
+		VkPresentStageFlagsEXT present_stage;
+		uint64_t reference_time;
+		uint64_t present_id;
+		VkTimeDomainKHR time_domain;
+		uint64_t time_domain_id;
+
+		uint64_t refresh_duration;
+		uint64_t refresh_interval;
+		uint64_t refresh_counter;
+		bool has_refresh_feedback;
+		RefreshMode refresh_mode = RefreshMode::Unknown;
+
+		uint64_t time_domain_counter;
+		bool has_time_domain_props;
+		Util::SmallVector<VkTimeDomainKHR> time_domains;
+		Util::SmallVector<uint64_t> time_domain_ids;
+	} present_timing = {};
+
+	void update_present_timing_properties();
+	void poll_present_timing_feedback();
+
 	Semaphore low_latency_semaphore;
 	uint64_t low_latency_semaphore_value = 0;
 

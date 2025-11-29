@@ -1704,7 +1704,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			ADD_CHAIN(ext.present_wait_features, PRESENT_WAIT_FEATURES_KHR);
 		}
 
-#ifndef ANDROID
+#if !defined(ANDROID) || !defined(HAVE_SWAPPY)
 		// Assume that swappy takes care of all this on Android.
 		if (has_extension(VK_EXT_PRESENT_TIMING_EXTENSION_NAME))
 		{

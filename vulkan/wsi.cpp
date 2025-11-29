@@ -29,6 +29,8 @@
 #include "swappy/swappyVk.h"
 #endif
 
+static constexpr uint32_t PresentTimingQueueSize = 8;
+
 namespace Vulkan
 {
 WSI::WSI()
@@ -787,6 +789,164 @@ bool WSI::begin_frame_dxgi()
 }
 #endif
 
+void WSI::update_present_timing_properties()
+{
+	VkSwapchainTimingPropertiesEXT props = { VK_STRUCTURE_TYPE_SWAPCHAIN_TIMING_PROPERTIES_EXT };
+	uint64_t counter = 0;
+	if (table->vkGetSwapchainTimingPropertiesEXT(context->get_device(), swapchain, &props, &counter) != VK_SUCCESS)
+		return;
+
+	if (counter == present_timing.refresh_counter && present_timing.has_refresh_feedback)
+		return;
+
+	present_timing.refresh_counter = counter;
+	present_timing.refresh_duration = props.refreshDuration;
+	present_timing.refresh_interval = props.refreshInterval;
+
+	const char *refresh_mode = "Unknown";
+
+	if (props.refreshInterval == 0)
+	{
+		present_timing.refresh_mode = RefreshMode::Unknown;
+	}
+	else if (props.refreshInterval == UINT64_MAX)
+	{
+		present_timing.refresh_mode = RefreshMode::VRR;
+		refresh_mode = "VRR";
+	}
+	else
+	{
+		present_timing.refresh_mode = RefreshMode::FRR;
+		refresh_mode = "FRR";
+	}
+
+	if (present_timing.refresh_duration)
+	{
+		LOGE("Present timing: detected refresh duration of %llu nsec (%.6f Hz), mode %s.\n",
+		     static_cast<unsigned long long>(present_timing.refresh_duration),
+		     1e9 / double(present_timing.refresh_duration), refresh_mode);
+	}
+
+	present_timing.has_refresh_feedback = true;
+}
+
+void WSI::poll_present_timing_feedback()
+{
+	VkPastPresentationTimingEXT timings[PresentTimingQueueSize] = {};
+	VkPresentStageTimeEXT stage_time[PresentTimingQueueSize][4] = {};
+
+	for (uint32_t i = 0; i < PresentTimingQueueSize; i++)
+	{
+		auto &t = timings[i];
+		t.sType = VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_EXT;
+		t.pPresentStages = stage_time[i];
+		t.presentStageCount = 4;
+	}
+
+	VkPastPresentationTimingInfoEXT info = { VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_INFO_EXT };
+	VkPastPresentationTimingPropertiesEXT props = { VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_PROPERTIES_EXT };
+	props.presentationTimingCount = PresentTimingQueueSize;
+	props.pPresentationTimings = timings;
+	info.swapchain = swapchain;
+
+	if (table->vkGetPastPresentationTimingEXT(context->get_device(), &info, &props) != VK_SUCCESS)
+		return;
+
+	if (props.presentationTimingCount == 0)
+		return;
+
+	if (props.timingPropertiesCounter != present_timing.refresh_counter)
+		update_present_timing_properties();
+
+	if (props.timingPropertiesCounter != present_timing.refresh_counter)
+	{
+		LOGW("Got presentation timing counter (%llu) which does not map to current state of swapchain (%llu).\n",
+		     static_cast<unsigned long long>(props.timingPropertiesCounter),
+		     static_cast<unsigned long long>(present_timing.refresh_counter));
+	}
+
+	if (props.timeDomainsCounter != present_timing.time_domain_counter ||
+	    !present_timing.has_time_domain_props)
+	{
+		VkSwapchainTimeDomainPropertiesEXT time_domain_properties = { VK_STRUCTURE_TYPE_SWAPCHAIN_TIME_DOMAIN_PROPERTIES_EXT };
+		if (table->vkGetSwapchainTimeDomainPropertiesEXT(context->get_device(), swapchain, &time_domain_properties, nullptr) != VK_SUCCESS)
+		{
+			LOGE("Failed to query time domain properties.\n");
+			return;
+		}
+
+		present_timing.time_domains.resize(time_domain_properties.timeDomainCount);
+		present_timing.time_domain_ids.resize(time_domain_properties.timeDomainCount);
+		time_domain_properties.pTimeDomains = present_timing.time_domains.data();
+		time_domain_properties.pTimeDomainIds = present_timing.time_domain_ids.data();
+
+		if (table->vkGetSwapchainTimeDomainPropertiesEXT(context->get_device(), swapchain,
+														 &time_domain_properties, nullptr) != VK_SUCCESS)
+		{
+			LOGE("Failed to query time domain properties.\n");
+			return;
+		}
+
+		present_timing.has_time_domain_props = true;
+	}
+
+	for (uint32_t i = 0; i < props.presentationTimingCount; i++)
+	{
+		// By default, these reports must be sorted based on QueuePresent().
+
+		auto &timing = props.pPresentationTimings[i];
+
+		if (!timing.reportComplete)
+		{
+			// This should never happen since we don't request partial timestamps.
+			LOGE("Implementation does not report complete timestamps?\n");
+			continue;
+		}
+
+		LOGI("Timing for presentID %llu, time domain %u, time domain ID %llu:\n",
+		     static_cast<unsigned long long>(timing.presentId),
+		     timing.timeDomain, static_cast<unsigned long long>(timing.timeDomainId));
+
+		present_timing.present_stage = 0;
+		present_timing.reference_time = 0;
+		present_timing.present_id = timing.presentId;
+		present_timing.time_domain = timing.timeDomain;
+		present_timing.time_domain_id = timing.timeDomainId;
+
+		std::sort(timing.pPresentStages, timing.pPresentStages + timing.presentStageCount,
+		          [](const VkPresentStageTimeEXT &a, const VkPresentStageTimeEXT &b) { return a.stage < b.stage; });
+
+		for (uint32_t stage_index = 0; stage_index < timing.presentStageCount; stage_index++)
+		{
+			auto &stage = timing.pPresentStages[stage_index];
+			switch (stage.stage)
+			{
+			case VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT:
+				LOGI("  QueueOperations end: %llu\n", static_cast<unsigned long long>(stage.time));
+				break;
+
+			case VK_PRESENT_STAGE_REQUEST_DEQUEUED_BIT_EXT:
+				LOGI("  Dequeued: %llu\n", static_cast<unsigned long long>(stage.time));
+				break;
+
+			case VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT:
+				LOGI("  FirstPixelOut: %llu\n", static_cast<unsigned long long>(stage.time));
+				break;
+
+			case VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT:
+				LOGI("  FirstPixelVisible: %llu\n", static_cast<unsigned long long>(stage.time));
+				break;
+
+			default:
+				break;
+			}
+
+			present_timing.present_stage = stage.stage;
+			present_timing.reference_time = stage.time;
+		}
+	}
+}
+
 bool WSI::begin_frame()
 {
 	if (frame_is_external)
@@ -827,6 +987,12 @@ bool WSI::begin_frame()
 	{
 		LOGE("Completely lost swapchain. Cannot continue.\n");
 		return false;
+	}
+
+	if (supports_present_timing.feedback)
+	{
+		update_present_timing_properties();
+		poll_present_timing_feedback();
 	}
 
 	VkResult result;
@@ -1002,6 +1168,8 @@ bool WSI::end_frame()
 		VkSwapchainPresentModeInfoKHR present_mode_info = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_KHR };
 		VkPresentIdKHR present_id_info = { VK_STRUCTURE_TYPE_PRESENT_ID_KHR };
 		VkPresentId2KHR present_id2_info = { VK_STRUCTURE_TYPE_PRESENT_ID_2_KHR };
+		VkPresentTimingsInfoEXT timings_info = { VK_STRUCTURE_TYPE_PRESENT_TIMINGS_INFO_EXT };
+		VkPresentTimingInfoEXT timing_info = { VK_STRUCTURE_TYPE_PRESENT_TIMING_INFO_EXT };
 
 		if (supports_present_wait2)
 		{
@@ -1036,6 +1204,17 @@ bool WSI::end_frame()
 			present_mode_info.pPresentModes = &active_present_mode;
 			present_mode_info.pNext = const_cast<void *>(info.pNext);
 			info.pNext = &present_mode_info;
+		}
+
+		if (supports_present_timing.feedback)
+		{
+			// Only interested in query for now.
+			timing_info.presentStageQueries = supports_present_timing.feedback;
+
+			timings_info.swapchainCount = 1;
+			timings_info.pTimingInfos = &timing_info;
+			timings_info.pNext = info.pNext;
+			info.pNext = &timings_info;
 		}
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
@@ -2040,6 +2219,13 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	auto res = table->vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
 	if (res < 0)
 		swapchain = VK_NULL_HANDLE;
+
+	if (res == VK_SUCCESS && supports_present_timing.feedback)
+	{
+		table->vkSetSwapchainPresentTimingQueueSizeEXT(context->get_device(), swapchain, PresentTimingQueueSize);
+		present_timing = {};
+		update_present_timing_properties();
+	}
 
 	platform->destroy_swapchain_resources(old_swapchain);
 	table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);

@@ -2029,7 +2029,13 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	if (supports_present_wait2)
 		info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_ID_2_BIT_KHR | VK_SWAPCHAIN_CREATE_PRESENT_WAIT_2_BIT_KHR;
 	if (supports_present_timing.feedback)
+	{
 		info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_TIMING_BIT_EXT;
+		LOGI("Enabling present timing, queries #%x, absolute %u, relative %u.\n",
+		     supports_present_timing.feedback,
+		     supports_present_timing.absolute,
+		     supports_present_timing.relative);
+	}
 
 	auto res = table->vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
 	if (res < 0)

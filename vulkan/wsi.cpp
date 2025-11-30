@@ -807,6 +807,7 @@ void WSI::update_present_timing_properties()
 
 	if (props.refreshInterval == 0)
 	{
+		// NV bug (WL): It cannot figure out VRR vs FRR.
 		present_timing.refresh_mode = RefreshMode::Unknown;
 	}
 	else if (props.refreshInterval == UINT64_MAX)
@@ -828,6 +829,133 @@ void WSI::update_present_timing_properties()
 	}
 
 	present_timing.has_refresh_feedback = true;
+}
+
+void WSI::recalibrate_present_timing_domains()
+{
+	if (!context->get_enabled_device_features().supports_calibrated_timestamps)
+		return;
+
+	present_timing.calibration.clear();
+
+	uint32_t count;
+	vkGetPhysicalDeviceCalibrateableTimeDomainsKHR(context->get_gpu(), &count, nullptr);
+	Util::SmallVector<VkTimeDomainKHR> domains(count);
+	vkGetPhysicalDeviceCalibrateableTimeDomainsKHR(context->get_gpu(), &count, domains.data());
+	domains.resize(count);
+
+#ifdef _WIN32
+	constexpr auto host_domain = VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR;
+#elif defined(ANDROID)
+	constexpr auto host_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR;
+#else
+	constexpr auto host_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR;
+#endif
+
+	if (std::find(domains.begin(), domains.end(), host_domain) == domains.end())
+	{
+		LOGW("Cannot calibrate timestamp domain %u\n", host_domain);
+		return;
+	}
+
+	present_timing.calibration.resize(present_timing.time_domains.size());
+
+	for (size_t i = 0, n = present_timing.time_domains.size(); i < n; i++)
+	{
+		if (present_timing.time_domains[i] == host_domain)
+		{
+			present_timing.calibration[i] = { 1, { 1, 1, 1, 1 } };
+			continue;
+		}
+
+		if (std::find(domains.begin(), domains.end(), present_timing.time_domains[i]) == domains.end())
+		{
+			LOGW("Cannot calibrate timestamp domain %u\n", host_domain);
+			return;
+		}
+
+		VkCalibratedTimestampInfoKHR infos[2] = {};
+		infos[0].sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_KHR;
+		infos[1].sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_KHR;
+		infos[0].timeDomain = host_domain;
+		infos[1].timeDomain = present_timing.time_domains[i];
+		uint64_t timestamps[2] = {};
+		uint64_t max_deviation;
+
+		VkSwapchainCalibratedTimestampInfoEXT swapchain_info =
+				{ VK_STRUCTURE_TYPE_SWAPCHAIN_CALIBRATED_TIMESTAMP_INFO_EXT };
+
+		if (present_timing.time_domains[i] == VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT)
+		{
+			// Every present stage has a unique time domain, query each stage one-by-one.
+			infos[1].pNext = &swapchain_info;
+			swapchain_info.timeDomainId = present_timing.time_domain_ids[i];
+			swapchain_info.swapchain = swapchain;
+
+			Util::for_each_bit(supports_present_timing.feedback, [&](unsigned bit) {
+				swapchain_info.presentStage = 1u << bit;
+
+				if (table->vkGetCalibratedTimestampsKHR(context->get_device(), 2, infos,
+				                                        timestamps, &max_deviation) != VK_SUCCESS)
+				{
+					LOGE("Failed to get calibrated timestamps.\n");
+					return;
+				}
+
+				present_timing.calibration[i].host_time = timestamps[0];
+				present_timing.calibration[i].stage_times[bit] = timestamps[1];
+			});
+		}
+		else if (present_timing.time_domains[i] == VK_TIME_DOMAIN_SWAPCHAIN_LOCAL_EXT)
+		{
+			infos[1].pNext = &swapchain_info;
+			swapchain_info.timeDomainId = present_timing.time_domain_ids[i];
+			swapchain_info.swapchain = swapchain;
+
+			if (table->vkGetCalibratedTimestampsKHR(context->get_device(), 2, infos,
+			                                        timestamps, &max_deviation) != VK_SUCCESS)
+			{
+				LOGE("Failed to get calibrated timestamps.\n");
+				return;
+			}
+
+			present_timing.calibration[i].host_time = timestamps[0];
+			Util::for_each_bit(supports_present_timing.feedback, [&](unsigned bit) {
+				present_timing.calibration[i].stage_times[bit] = timestamps[1];
+			});
+		}
+		else
+		{
+			// This probably needs spec clarification.
+			// We assume it's normal nanoseconds for now.
+			if (infos[1].timeDomain == VK_TIME_DOMAIN_DEVICE_KHR &&
+			    (context->get_gpu_props().limits.timestampPeriod != 1.0f ||
+			     context->get_queue_info().timestamp_valid_bits != 64))
+			{
+				LOGW("Implementation reports DEVICE domain timestamps, "
+					 "but it's unclear how to deal with non-trivial periods and valid bits.\n");
+			}
+
+			if (table->vkGetCalibratedTimestampsKHR(context->get_device(), 2, infos,
+													timestamps, &max_deviation) != VK_SUCCESS)
+			{
+				LOGE("Failed to get calibrated timestamps.\n");
+				return;
+			}
+
+			present_timing.calibration[i].host_time = timestamps[0];
+			Util::for_each_bit(supports_present_timing.feedback, [&](unsigned bit) {
+				present_timing.calibration[i].stage_times[bit] = timestamps[1];
+			});
+		}
+	}
+
+#ifdef _WIN32
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	for (auto &calibration : present_timing.calibration)
+		calibration.host_time = uint64_t(1e9 * calibration.host_time / double(freq.QuadPart));
+#endif
 }
 
 void WSI::poll_present_timing_feedback()
@@ -890,12 +1018,28 @@ void WSI::poll_present_timing_feedback()
 		}
 
 		present_timing.has_time_domain_props = true;
+		present_timing.need_recalibration = true;
+	}
+
+	auto current_time = Util::get_current_time_nsecs();
+	if (present_timing.last_recalibration_time + 1000000000 < current_time)
+	{
+		present_timing.need_recalibration = true;
+		present_timing.last_recalibration_time = current_time;
+	}
+
+	if (present_timing.need_recalibration)
+	{
+		recalibrate_present_timing_domains();
+		present_timing.need_recalibration = false;
 	}
 
 	for (uint32_t i = 0; i < props.presentationTimingCount; i++)
 	{
 		// By default, these reports must be sorted based on QueuePresent().
 
+		// NV bug (WL): QueueOperations is DEVICE domain, but FirstPixelOut looks like CLOCK_MONOTONIC,
+		// yet driver reports DEVICE clock domain, it should have used PRESENT_STAGE_LOCAL in this case ...
 		auto &timing = props.pPresentationTimings[i];
 
 		if (!timing.reportComplete)
@@ -915,38 +1059,79 @@ void WSI::poll_present_timing_feedback()
 		present_timing.time_domain = timing.timeDomain;
 		present_timing.time_domain_id = timing.timeDomainId;
 
+		// Try to calibrate the timestamp so we can report them in host time domain.
+		const CalibratedTimestamp *calibrated = nullptr;
+		for (size_t j = 0, n = present_timing.time_domain_ids.size(); j < n; j++)
+		{
+			if (present_timing.time_domain_ids[j] == timing.timeDomainId)
+			{
+				if (j < present_timing.calibration.size())
+					calibrated = &present_timing.calibration[j];
+				break;
+			}
+		}
+
+		if (calibrated && calibrated->host_time == 0)
+			calibrated = nullptr;
+
 		std::sort(timing.pPresentStages, timing.pPresentStages + timing.presentStageCount,
 		          [](const VkPresentStageTimeEXT &a, const VkPresentStageTimeEXT &b) { return a.stage < b.stage; });
 
 		for (uint32_t stage_index = 0; stage_index < timing.presentStageCount; stage_index++)
 		{
 			auto &stage = timing.pPresentStages[stage_index];
-			switch (stage.stage)
+
+			// Safety. Shouldn't happen since we don't request it.
+			if (stage.stage > VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT || stage.stage == 0)
+				continue;
+
+			uint64_t calibrated_stage_time = calibrated ? calibrated->stage_times[Util::trailing_zeroes(stage.stage)] : 0;
+			static const char *stage_tags[] = { "QueueOperations", "Dequeued", "FirstPixelOut", "FirstPixelVisible" };
+			const char *stage_tag = stage_tags[Util::trailing_zeroes(stage.stage)];
+
+			present_timing.present_done_host_time = 0;
+
+			if (calibrated)
 			{
-			case VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT:
-				LOGI("  QueueOperations end: %llu\n", static_cast<unsigned long long>(stage.time));
-				break;
-
-			case VK_PRESENT_STAGE_REQUEST_DEQUEUED_BIT_EXT:
-				LOGI("  Dequeued: %llu\n", static_cast<unsigned long long>(stage.time));
-				break;
-
-			case VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT:
-				LOGI("  FirstPixelOut: %llu\n", static_cast<unsigned long long>(stage.time));
-				break;
-
-			case VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT:
-				LOGI("  FirstPixelVisible: %llu\n", static_cast<unsigned long long>(stage.time));
-				break;
-
-			default:
-				break;
+				uint64_t calibrated_ts = calibrated->host_time + (stage.time - calibrated_stage_time);
+				if (stage.stage == VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT)
+					present_timing.gpu_done_host_time = calibrated_ts;
+				else
+					present_timing.present_done_host_time = calibrated_ts;
+				LOGI("  %s: %.3f s (calibrated)\n", stage_tag, calibrated_ts * 1e-9);
+			}
+			else
+			{
+				LOGI("  %s: %llu (raw ns)\n", stage_tag, static_cast<unsigned long long>(stage.time));
 			}
 
 			present_timing.present_stage = stage.stage;
 			present_timing.reference_time = stage.time;
 		}
 	}
+}
+
+bool WSI::get_presentation_stats(PresentationStats &stats)
+{
+	if (!present_timing.reference_time)
+		return false;
+
+	stats.last_submitted_present_id = present_last_id;
+	stats.feedback_present_id = present_timing.present_id;
+	stats.gpu_done_ts = present_timing.gpu_done_host_time;
+	stats.present_done_ts = present_timing.present_done_host_time;
+	return true;
+}
+
+bool WSI::get_refresh_rate_info(RefreshRateInfo &info)
+{
+	if (present_timing.refresh_duration == 0)
+		return false;
+
+	info.refresh_duration = present_timing.refresh_duration;
+	info.refresh_interval = present_timing.refresh_interval;
+	info.mode = present_timing.refresh_mode;
+	return true;
 }
 
 bool WSI::begin_frame()
@@ -2201,6 +2386,13 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	supports_present_timing.feedback = surface_info.present_timing.presentTimingSupported ?
 			surface_info.present_timing.presentStageQueries : 0;
 
+	// Only ackknowledge present stages we understand in case there are future extensions.
+	supports_present_timing.feedback &=
+			VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT |
+			VK_PRESENT_STAGE_REQUEST_DEQUEUED_BIT_EXT |
+			VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT |
+			VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT;
+
 	supports_present_timing.absolute = surface_info.present_timing.presentTimingSupported &&
 	                                   surface_info.present_timing.presentAtAbsoluteTimeSupported;
 
@@ -2209,6 +2401,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	if (supports_present_wait2)
 		info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_ID_2_BIT_KHR | VK_SWAPCHAIN_CREATE_PRESENT_WAIT_2_BIT_KHR;
+
 	if (supports_present_timing.feedback)
 	{
 		info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_TIMING_BIT_EXT;

@@ -112,6 +112,30 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 			frame_times.push_back(frame_time);
 		}
 
+		RefreshRateInfo refresh_info;
+		PresentationStats stats;
+
+		if (wsi.get_presentation_stats(stats) && wsi.get_refresh_rate_info(refresh_info))
+		{
+			uint64_t expected_duration = 0;
+			if (refresh_info.refresh_interval != UINT64_MAX && refresh_info.refresh_interval != 0)
+				expected_duration = refresh_info.refresh_interval;
+			else
+				expected_duration = refresh_info.refresh_duration;
+
+			if (expected_duration)
+			{
+				uint64_t prediction =
+						(1 + stats.last_submitted_present_id - stats.feedback_present_id) *
+						expected_duration + stats.present_done_ts;
+
+				LOGI("Current time: %.3f, estimating present ID %llu to complete at %.3fs.\n",
+					 1e-9 * double(Util::get_current_time_nsecs()),
+					 static_cast<unsigned long long>(stats.last_submitted_present_id + 1),
+					 1e-9 * double(prediction));
+			}
+		}
+
 		double min_time = std::numeric_limits<double>::max();
 		double max_time = 0.0;
 		double avg_time = 0.0;
@@ -144,7 +168,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		cmd->begin_render_pass(rp);
 		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
-		const uint32_t burn_count = 7000;
+		const uint32_t burn_count = 1000;
 		cmd->push_constants(&burn_count, 0, sizeof(burn_count));
 		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "assets://shaders/burn.frag");
 

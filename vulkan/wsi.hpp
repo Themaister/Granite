@@ -165,6 +165,23 @@ enum class BackbufferFormat
 	Custom
 };
 
+struct PresentationStats
+{
+	uint64_t last_submitted_present_id;
+	uint64_t feedback_present_id;
+	uint64_t gpu_done_ts;
+	uint64_t present_done_ts; // This is the latest stage that is reported.
+};
+
+enum class RefreshMode { Unknown, FRR, VRR };
+
+struct RefreshRateInfo
+{
+	RefreshMode mode;
+	uint64_t refresh_duration;
+	uint64_t refresh_interval;
+};
+
 class WSI
 {
 public:
@@ -313,6 +330,9 @@ public:
 	double get_smooth_frame_time() const;
 	double get_smooth_elapsed_time() const;
 
+	bool get_presentation_stats(PresentationStats &stats);
+	bool get_refresh_rate_info(RefreshRateInfo &info);
+
 private:
 	void update_framebuffer(unsigned width, unsigned height);
 
@@ -396,30 +416,46 @@ private:
 		bool relative;
 	} supports_present_timing = {};
 
-	enum class RefreshMode { Unknown, FRR, VRR };
+	struct CalibratedTimestamp
+	{
+		uint64_t host_time;
+		uint64_t stage_times[4];
+	};
 
 	struct
 	{
+		// Used for setting target time.
 		VkPresentStageFlagsEXT present_stage;
 		uint64_t reference_time;
-		uint64_t present_id;
 		VkTimeDomainKHR time_domain;
 		uint64_t time_domain_id;
 
+		// Feedback.
+		uint64_t gpu_done_host_time;
+		uint64_t present_done_host_time;
+		uint64_t present_id;
+
+		// Display refresh rate information.
 		uint64_t refresh_duration;
 		uint64_t refresh_interval;
 		uint64_t refresh_counter;
 		bool has_refresh_feedback;
 		RefreshMode refresh_mode = RefreshMode::Unknown;
 
+		// Calibration information.
 		uint64_t time_domain_counter;
 		bool has_time_domain_props;
 		Util::SmallVector<VkTimeDomainKHR> time_domains;
 		Util::SmallVector<uint64_t> time_domain_ids;
+		Util::SmallVector<CalibratedTimestamp> calibration;
+
+		bool need_recalibration;
+		int64_t last_recalibration_time;
 	} present_timing = {};
 
 	void update_present_timing_properties();
 	void poll_present_timing_feedback();
+	void recalibrate_present_timing_domains();
 
 	Semaphore low_latency_semaphore;
 	uint64_t low_latency_semaphore_value = 0;

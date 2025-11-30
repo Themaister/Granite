@@ -29,7 +29,7 @@
 #include "swappy/swappyVk.h"
 #endif
 
-static constexpr uint32_t PresentTimingQueueSize = 8;
+static constexpr uint32_t PresentTimingQueueSize = 16;
 
 namespace Vulkan
 {
@@ -1111,6 +1111,133 @@ void WSI::poll_present_timing_feedback()
 	}
 }
 
+void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
+{
+	// No stable way to set targets yet.
+	if (present_timing.refresh_duration == 0 || present_timing.reference_time == 0 ||
+	    present_timing.present_done_host_time == 0)
+		return;
+
+	// Presentation timing is only meaningful for FIFO.
+	if (active_present_mode != VK_PRESENT_MODE_FIFO_KHR &&
+	    active_present_mode != VK_PRESENT_MODE_FIFO_RELAXED_KHR &&
+	    active_present_mode != VK_PRESENT_MODE_FIFO_LATEST_READY_KHR)
+		return;
+
+	// Not supported.
+	if (!supports_present_timing.absolute && !supports_present_timing.relative)
+		return;
+
+	// No request to set time.
+	if (present_timing.target_absolute_time == 0 && present_timing.target_relative_time == 0)
+		return;
+
+	// VRR does not have to align to boundaries, so rounding is somewhat meaningless.
+	if (present_timing.refresh_mode != RefreshMode::VRR)
+		timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_NEAREST_REFRESH_CYCLE_BIT_EXT;
+
+	if (present_timing.time_domain == VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT)
+		timing.targetTimeDomainPresentStage = present_timing.present_stage;
+
+	uint64_t minimum_interval;
+	if (present_timing.refresh_interval != 0 && present_timing.refresh_interval != UINT64_MAX)
+		minimum_interval = present_timing.refresh_interval;
+	else
+		minimum_interval = present_timing.refresh_duration;
+
+	minimum_interval = std::max<uint64_t>(minimum_interval, present_timing.target_relative_time);
+
+	if (supports_present_timing.relative && present_timing.target_relative_time)
+	{
+		timing.timeDomainId = present_timing.time_domain_id;
+		timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT;
+		timing.targetTime = present_timing.target_relative_time;
+	}
+	else
+	{
+		// We estimate that the last present we did couldn't possibly have been presented before this time.
+		uint64_t estimated_minimum_time = present_timing.present_done_host_time +
+		                                  (present_last_id - present_timing.present_id) * minimum_interval;
+
+		// If we only care about absolute timestamps, don't let any estimation screw us over.
+		if (present_timing.target_relative_time)
+		{
+			present_timing.last_absolute_target_time =
+					std::max<uint64_t>(present_timing.last_absolute_target_time,
+					                   estimated_minimum_time);
+		}
+		else
+		{
+			present_timing.last_absolute_target_time = 0;
+		}
+
+		// Go for absolute timing.
+		uint64_t next_absolute_time = std::max<uint64_t>(
+				present_timing.last_absolute_target_time + present_timing.target_relative_time,
+				present_timing.target_absolute_time);
+
+		timing.timeDomainId = present_timing.time_domain_id;
+
+		if (supports_present_timing.absolute)
+		{
+			timing.targetTime = next_absolute_time;
+		}
+		else
+		{
+			// This is kinda crude. We're emulating absolute timestamp with relative.
+			timing.targetTime = std::max<uint64_t>(next_absolute_time, present_timing.last_absolute_target_time) -
+			                    present_timing.last_absolute_target_time;
+			timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT;
+		}
+
+		present_timing.last_absolute_target_time = next_absolute_time;
+	}
+
+	if ((timing.flags & VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT) == 0)
+	{
+		bool has_calibrated_time = false;
+		size_t n = std::min<size_t>(present_timing.time_domain_ids.size(), present_timing.calibration.size());
+
+		for (size_t i = 0; i < n; i++)
+		{
+			if (present_timing.time_domain_ids[i] == timing.timeDomainId)
+			{
+				auto &c = present_timing.calibration[i];
+
+				// Spec seems to suggest that targetTime is always in terms of FIRST_PIXEL_VISIBLE,
+				// but we can only use timestamps based on the latest present stage we get feedback for.
+				uint64_t stage_time = c.stage_times[Util::trailing_zeroes(present_timing.present_stage)];
+
+				if (stage_time == 0)
+				{
+					LOGW("Cannot compute targetTime.\n");
+				}
+				else
+				{
+					// Recompute the absolute time to target the domain.
+					timing.targetTime = (timing.targetTime - c.host_time) + stage_time;
+
+					if (timing.targetTime >= (1ull << 63))
+						LOGW("Detected strange overflow, ignoring time request.\n");
+					else
+						has_calibrated_time = true;
+				}
+
+				break;
+			}
+		}
+
+		if (!has_calibrated_time)
+			timing.targetTime = 0;
+	}
+
+	//if (present_timing.refresh_mode != RefreshMode::VRR && timing.targetTime != 0)
+	//	timing.targetTime -= std::min<uint64_t>(timing.targetTime, present_timing.refresh_duration / 16);
+
+	// Completely meaningless to keep targeting absolute.
+	present_timing.target_absolute_time = 0;
+}
+
 bool WSI::get_presentation_stats(PresentationStats &stats)
 {
 	if (!present_timing.reference_time)
@@ -1132,6 +1259,21 @@ bool WSI::get_refresh_rate_info(RefreshRateInfo &info)
 	info.refresh_interval = present_timing.refresh_interval;
 	info.mode = present_timing.refresh_mode;
 	return true;
+}
+
+bool WSI::set_target_presentation_time(uint64_t absolute_time_ns, uint64_t relative_time_ns)
+{
+	present_timing.target_absolute_time = absolute_time_ns;
+	present_timing.target_relative_time = relative_time_ns;
+
+	if (active_present_mode != VK_PRESENT_MODE_FIFO_KHR &&
+	    active_present_mode != VK_PRESENT_MODE_FIFO_RELAXED_KHR &&
+	    active_present_mode != VK_PRESENT_MODE_FIFO_LATEST_READY_KHR)
+		return false;
+
+	return present_timing.refresh_duration != 0 && present_timing.reference_time != 0 &&
+	       present_timing.present_done_host_time != 0 &&
+	       (supports_present_timing.relative || supports_present_timing.absolute);
 }
 
 bool WSI::begin_frame()
@@ -1395,8 +1537,8 @@ bool WSI::end_frame()
 
 		if (supports_present_timing.feedback)
 		{
-			// Only interested in query for now.
 			timing_info.presentStageQueries = supports_present_timing.feedback;
+			set_present_timing_request(timing_info);
 
 			timings_info.swapchainCount = 1;
 			timings_info.pTimingInfos = &timing_info;

@@ -98,6 +98,8 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		device.add_wait_semaphore(CommandBuffer::Type::Generic, std::move(sem), VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, true);
 	}
 
+	uint64_t last_prediction = 0;
+
 	void render_frame(double frame_time, double elapsed_time) override
 	{
 		auto &wsi = get_wsi();
@@ -123,16 +125,32 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 			else
 				expected_duration = refresh_info.refresh_duration;
 
+			expected_duration *= 2;
+
+			// Relative time test.
+			wsi.set_target_presentation_time(0, expected_duration);
+
 			if (expected_duration)
 			{
 				uint64_t prediction =
 						(1 + stats.last_submitted_present_id - stats.feedback_present_id) *
 						expected_duration + stats.present_done_ts;
 
-				LOGI("Current time: %.3f, estimating present ID %llu to complete at %.3fs.\n",
+				prediction = std::max<uint64_t>(prediction, last_prediction + expected_duration);
+				last_prediction = prediction;
+
+				// Absolute test.
+				//wsi.set_target_presentation_time(prediction, 0);
+
+				LOGI("Current time: %.3f, estimating present ID %llu to complete at %.3f s.\n",
 					 1e-9 * double(Util::get_current_time_nsecs()),
 					 static_cast<unsigned long long>(stats.last_submitted_present_id + 1),
 					 1e-9 * double(prediction));
+
+				LOGI("  Next submit ID %llu, known presentID %llu, done %.3f s.\n",
+					 static_cast<unsigned long long>(stats.last_submitted_present_id + 1),
+					 static_cast<unsigned long long>(stats.feedback_present_id),
+					 1e-9 * double(stats.present_done_ts));
 			}
 		}
 

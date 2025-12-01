@@ -119,6 +119,8 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 
 		if (wsi.get_presentation_stats(stats) && wsi.get_refresh_rate_info(refresh_info))
 		{
+			LOGI("VRR: %u\n", refresh_info.mode == RefreshMode::VRR ? 1 : 0);
+
 			uint64_t expected_duration = 0;
 			if (refresh_info.refresh_interval != UINT64_MAX && refresh_info.refresh_interval != 0)
 				expected_duration = refresh_info.refresh_interval;

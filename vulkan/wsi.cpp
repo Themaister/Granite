@@ -807,7 +807,7 @@ void WSI::update_present_timing_properties()
 
 	if (props.refreshInterval == 0)
 	{
-		// NV bug (WL): It cannot figure out VRR vs FRR.
+		// Wayland issue: It cannot figure out VRR vs FRR. Seems like we will need presentation-timing v3.
 		present_timing.refresh_mode = RefreshMode::Unknown;
 	}
 	else if (props.refreshInterval == UINT64_MAX)
@@ -987,14 +987,15 @@ void WSI::poll_present_timing_feedback()
 		update_present_timing_properties();
 
 	// NV bug on X11: props.timingPropertiesCounter is always 0, even if TimingPropertiesEXT returns 1.
-	if (props.timingPropertiesCounter != present_timing.refresh_counter)
+	if (props.timingPropertiesCounter != 0 && props.timingPropertiesCounter != present_timing.refresh_counter)
 	{
 		LOGW("Got presentation timing counter (%llu) which does not map to current state of swapchain (%llu).\n",
 		     static_cast<unsigned long long>(props.timingPropertiesCounter),
 		     static_cast<unsigned long long>(present_timing.refresh_counter));
 	}
 
-	if (props.timeDomainsCounter != present_timing.time_domain_counter ||
+	// NV bug on X11: timeDomainsCount remains 0.
+	if ((props.timeDomainsCounter != 0 && props.timeDomainsCounter != present_timing.time_domain_counter) ||
 	    !present_timing.has_time_domain_props)
 	{
 		VkSwapchainTimeDomainPropertiesEXT time_domain_properties = { VK_STRUCTURE_TYPE_SWAPCHAIN_TIME_DOMAIN_PROPERTIES_EXT };
@@ -1011,11 +1012,21 @@ void WSI::poll_present_timing_feedback()
 		time_domain_properties.pTimeDomainIds = present_timing.time_domain_ids.data();
 
 		if (table->vkGetSwapchainTimeDomainPropertiesEXT(context->get_device(), swapchain,
-														 &time_domain_properties, nullptr) != VK_SUCCESS)
+														 &time_domain_properties,
+														 &present_timing.time_domain_counter) != VK_SUCCESS)
 		{
 			LOGE("Failed to query time domain properties.\n");
 			return;
 		}
+
+#ifdef VULKAN_DEBUG
+		for (uint32_t i = 0; i < time_domain_properties.timeDomainCount; i++)
+		{
+			LOGI("Got time domain %u, ID %llu\n",
+			     present_timing.time_domains[i],
+			     static_cast<unsigned long long>(present_timing.time_domain_ids[i]));
+		}
+#endif
 
 		present_timing.has_time_domain_props = true;
 		present_timing.need_recalibration = true;
@@ -1133,7 +1144,8 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 		return;
 
 	// VRR does not have to align to boundaries, so rounding is somewhat meaningless.
-	if (present_timing.refresh_mode != RefreshMode::VRR)
+	// If Unknown, it's a bit too risky to be off by half refresh cycle, since it might be VRR.
+	if (present_timing.refresh_mode == RefreshMode::FRR)
 		timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_NEAREST_REFRESH_CYCLE_BIT_EXT;
 
 	if (present_timing.time_domain == VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT)
@@ -1145,26 +1157,24 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 	else
 		minimum_interval = present_timing.refresh_duration;
 
-	minimum_interval = std::max<uint64_t>(minimum_interval, present_timing.target_relative_time);
-
 	if (supports_present_timing.relative && present_timing.target_relative_time)
 	{
+		// Relative time is very nice, since it's not our job to align frames :)
 		timing.timeDomainId = present_timing.time_domain_id;
 		timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT;
 		timing.targetTime = present_timing.target_relative_time;
 	}
 	else
 	{
-		// We estimate that the last present we did couldn't possibly have been presented before this time.
-		uint64_t estimated_minimum_time = present_timing.present_done_host_time +
-		                                  (present_last_id - present_timing.present_id) * minimum_interval;
-
 		// If we only care about absolute timestamps, don't let any estimation screw us over.
 		if (present_timing.target_relative_time)
 		{
+			// We estimate that the last present we did couldn't possibly have been presented before this time.
+			uint64_t estimated_minimum_time = present_timing.present_done_host_time +
+			                                  (present_last_id - present_timing.present_id) * minimum_interval;
+
 			present_timing.last_absolute_target_time =
-					std::max<uint64_t>(present_timing.last_absolute_target_time,
-					                   estimated_minimum_time);
+					std::max<uint64_t>(present_timing.last_absolute_target_time, estimated_minimum_time);
 		}
 		else
 		{
@@ -1191,6 +1201,19 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 		}
 
 		present_timing.last_absolute_target_time = next_absolute_time;
+
+		// If we keep accumulating time, we need to account for clock drift.
+		if (present_timing.refresh_mode != RefreshMode::VRR)
+		{
+			uint64_t align =
+					(present_timing.last_absolute_target_time - present_timing.present_done_host_time) %
+					present_timing.refresh_duration;
+
+			if (align > present_timing.refresh_duration / 2)
+				present_timing.last_absolute_target_time += 1000;
+			else
+				present_timing.last_absolute_target_time -= 1000;
+		}
 	}
 
 	if ((timing.flags & VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT) == 0)
@@ -1231,8 +1254,10 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 			timing.targetTime = 0;
 	}
 
-	//if (present_timing.refresh_mode != RefreshMode::VRR && timing.targetTime != 0)
-	//	timing.targetTime -= std::min<uint64_t>(timing.targetTime, present_timing.refresh_duration / 16);
+	// If we cannot use nearest refresh style, round down the time very slightly to make sure we align
+	// with FRR, and if VRR we get a very minor deviation.
+	if (present_timing.refresh_mode == RefreshMode::Unknown && timing.targetTime != 0)
+		timing.targetTime -= std::min<uint64_t>(timing.targetTime, present_timing.refresh_duration / 64);
 
 	// Completely meaningless to keep targeting absolute.
 	present_timing.target_absolute_time = 0;

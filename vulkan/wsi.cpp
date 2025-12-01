@@ -957,6 +957,58 @@ void WSI::recalibrate_present_timing_domains()
 	for (auto &calibration : present_timing.calibration)
 		calibration.host_time = uint64_t(1e9 * calibration.host_time / double(freq.QuadPart));
 #endif
+
+	if (present_timing.present_stage == 0)
+	{
+		// Make sure that our requests use a supported time domain, otherwise NV driver gets confused.
+		for (size_t i = 0, n = present_timing.calibration.size(); i < n; i++)
+		{
+			auto &cal = present_timing.calibration[i];
+			if (cal.host_time &&
+			    std::any_of(std::begin(cal.stage_times), std::end(cal.stage_times), [](uint64_t v) { return v != 0; }))
+			{
+				present_timing.time_domain = present_timing.time_domains[i];
+				present_timing.time_domain_id = present_timing.time_domain_ids[i];
+				break;
+			}
+		}
+	}
+}
+
+void WSI::update_time_domain_properties()
+{
+	VkSwapchainTimeDomainPropertiesEXT time_domain_properties = { VK_STRUCTURE_TYPE_SWAPCHAIN_TIME_DOMAIN_PROPERTIES_EXT };
+	if (table->vkGetSwapchainTimeDomainPropertiesEXT(context->get_device(), swapchain, &time_domain_properties, nullptr) != VK_SUCCESS)
+	{
+		LOGE("Failed to query time domain properties.\n");
+		return;
+	}
+
+	// NV bug on X11: 3 identical time domains are returned for whatever reason ...
+	present_timing.time_domains.resize(time_domain_properties.timeDomainCount);
+	present_timing.time_domain_ids.resize(time_domain_properties.timeDomainCount);
+	time_domain_properties.pTimeDomains = present_timing.time_domains.data();
+	time_domain_properties.pTimeDomainIds = present_timing.time_domain_ids.data();
+
+	if (table->vkGetSwapchainTimeDomainPropertiesEXT(context->get_device(), swapchain,
+	                                                 &time_domain_properties,
+	                                                 &present_timing.time_domain_counter) != VK_SUCCESS)
+	{
+		LOGE("Failed to query time domain properties.\n");
+		return;
+	}
+
+#ifdef VULKAN_DEBUG
+	for (uint32_t i = 0; i < time_domain_properties.timeDomainCount; i++)
+	{
+		LOGI("Got time domain %u, ID %llu\n",
+		     present_timing.time_domains[i],
+		     static_cast<unsigned long long>(present_timing.time_domain_ids[i]));
+	}
+#endif
+
+	present_timing.has_time_domain_props = true;
+	present_timing.need_recalibration = true;
 }
 
 void WSI::poll_present_timing_feedback()
@@ -999,38 +1051,7 @@ void WSI::poll_present_timing_feedback()
 	if ((props.timeDomainsCounter != 0 && props.timeDomainsCounter != present_timing.time_domain_counter) ||
 	    !present_timing.has_time_domain_props)
 	{
-		VkSwapchainTimeDomainPropertiesEXT time_domain_properties = { VK_STRUCTURE_TYPE_SWAPCHAIN_TIME_DOMAIN_PROPERTIES_EXT };
-		if (table->vkGetSwapchainTimeDomainPropertiesEXT(context->get_device(), swapchain, &time_domain_properties, nullptr) != VK_SUCCESS)
-		{
-			LOGE("Failed to query time domain properties.\n");
-			return;
-		}
-
-		// NV bug on X11: 3 identical time domains are returned for whatever reason ...
-		present_timing.time_domains.resize(time_domain_properties.timeDomainCount);
-		present_timing.time_domain_ids.resize(time_domain_properties.timeDomainCount);
-		time_domain_properties.pTimeDomains = present_timing.time_domains.data();
-		time_domain_properties.pTimeDomainIds = present_timing.time_domain_ids.data();
-
-		if (table->vkGetSwapchainTimeDomainPropertiesEXT(context->get_device(), swapchain,
-														 &time_domain_properties,
-														 &present_timing.time_domain_counter) != VK_SUCCESS)
-		{
-			LOGE("Failed to query time domain properties.\n");
-			return;
-		}
-
-#ifdef VULKAN_DEBUG
-		for (uint32_t i = 0; i < time_domain_properties.timeDomainCount; i++)
-		{
-			LOGI("Got time domain %u, ID %llu\n",
-			     present_timing.time_domains[i],
-			     static_cast<unsigned long long>(present_timing.time_domain_ids[i]));
-		}
-#endif
-
-		present_timing.has_time_domain_props = true;
-		present_timing.need_recalibration = true;
+		update_time_domain_properties();
 	}
 
 	auto current_time = Util::get_current_time_nsecs();
@@ -1161,7 +1182,6 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 	if (supports_present_timing.relative && present_timing.target_relative_time)
 	{
 		// Relative time is very nice, since it's not our job to align frames :)
-		timing.timeDomainId = present_timing.time_domain_id;
 		timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT;
 		timing.targetTime = present_timing.target_relative_time;
 	}
@@ -1186,8 +1206,6 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 		uint64_t next_absolute_time = std::max<uint64_t>(
 				present_timing.last_absolute_target_time + present_timing.target_relative_time,
 				present_timing.target_absolute_time);
-
-		timing.timeDomainId = present_timing.time_domain_id;
 
 		if (supports_present_timing.absolute)
 		{
@@ -1564,6 +1582,7 @@ bool WSI::end_frame()
 		if (supports_present_timing.feedback)
 		{
 			timing_info.presentStageQueries = supports_present_timing.feedback;
+			timing_info.timeDomainId = present_timing.time_domain_id;
 			set_present_timing_request(timing_info);
 
 			timings_info.swapchainCount = 1;
@@ -2588,6 +2607,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		table->vkSetSwapchainPresentTimingQueueSizeEXT(context->get_device(), swapchain, PresentTimingQueueSize);
 		present_timing = {};
 		update_present_timing_properties();
+		update_time_domain_properties();
+		recalibrate_present_timing_domains();
 	}
 
 	platform->destroy_swapchain_resources(old_swapchain);

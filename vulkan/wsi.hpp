@@ -482,6 +482,7 @@ private:
 	void update_present_timing_properties();
 	void poll_present_timing_feedback();
 	void recalibrate_present_timing_domains();
+	void update_time_domain_properties();
 	void set_present_timing_request(VkPresentTimingInfoEXT &timing);
 
 	Semaphore low_latency_semaphore;

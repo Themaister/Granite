@@ -499,7 +499,10 @@ void WSI::drain_swapchain(bool in_tear_down)
 	else if (swapchain != VK_NULL_HANDLE)
 	{
 		wait_for_present(present_last_id);
-		device->wait_idle();
+
+		device->external_queue_lock();
+		table->vkDeviceWaitIdle(device->get_device());
+		device->external_queue_unlock();
 	}
 }
 

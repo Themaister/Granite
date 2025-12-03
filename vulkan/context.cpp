@@ -719,20 +719,10 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 
 		if (supports_khr || supports_ext)
 		{
-#ifdef VULKAN_DEBUG
-			// It seems like there are some bugs with KHR_swapchain_maint1 in VVL atm.
-			const bool support_maint1 = force_no_validation;
-#else
-			constexpr bool support_maint1 = true;
-#endif
-
-			if (support_maint1)
-			{
-				instance_exts.push_back(
-						supports_khr ? VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME
-						             : VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
-				ext.supports_surface_maintenance1 = true;
-			}
+			instance_exts.push_back(
+					supports_khr ? VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME
+					             : VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+			ext.supports_surface_maintenance1 = true;
 		}
 	}
 

@@ -2009,6 +2009,9 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_ID_2_BIT_KHR | VK_SWAPCHAIN_CREATE_PRESENT_WAIT_2_BIT_KHR;
 
 	auto res = table->vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
+	if (res < 0)
+		swapchain = VK_NULL_HANDLE;
+
 	platform->destroy_swapchain_resources(old_swapchain);
 	table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
@@ -2016,7 +2019,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	present_last_id = 0;
 	device->set_present_id(VK_NULL_HANDLE, 0);
 
-	if (device->get_device_features().supports_low_latency2_nv)
+	if (res == VK_SUCCESS && device->get_device_features().supports_low_latency2_nv)
 	{
 		VkLatencySleepModeInfoNV sleep_mode_info = { VK_STRUCTURE_TYPE_LATENCY_SLEEP_MODE_INFO_NV };
 		sleep_mode_info.lowLatencyBoost = low_latency_mode_enable_gpu_submit;

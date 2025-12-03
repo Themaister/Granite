@@ -1023,11 +1023,14 @@ bool WSI::end_frame()
 
 		if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
 		{
-			last_present_fence = device->request_legacy_fence();
-			present_fence.swapchainCount = 1;
-			present_fence.pFences = &last_present_fence->get_fence();
-			present_fence.pNext = const_cast<void *>(info.pNext);
-			info.pNext = &present_fence;
+			if (!device->get_workarounds().broken_present_fence)
+			{
+				last_present_fence = device->request_legacy_fence();
+				present_fence.swapchainCount = 1;
+				present_fence.pFences = &last_present_fence->get_fence();
+				present_fence.pNext = const_cast<void *>(info.pNext);
+				info.pNext = &present_fence;
+			}
 
 			present_mode_info.swapchainCount = 1;
 			present_mode_info.pPresentModes = &active_present_mode;
@@ -1118,8 +1121,9 @@ bool WSI::end_frame()
 		}
 		else
 		{
-			if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
-				deferred_semaphore.push_back({ std::move(release_semaphores[swapchain_index]), last_present_fence });
+			if (!device->get_workarounds().broken_present_fence)
+				if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
+					deferred_semaphore.push_back({ std::move(release_semaphores[swapchain_index]), last_present_fence });
 
 			// Cannot release the WSI wait semaphore until we observe that the image has been
 			// waited on again.
@@ -1994,7 +1998,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	// Defer the deletion instead.
 	if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1 &&
-	    old_swapchain != VK_NULL_HANDLE)
+	    old_swapchain != VK_NULL_HANDLE && !device->get_workarounds().broken_present_fence)
 	{
 		deferred_swapchains.push_back({ old_swapchain, last_present_fence });
 		old_swapchain = VK_NULL_HANDLE;

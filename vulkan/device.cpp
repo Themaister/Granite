@@ -929,6 +929,9 @@ void Device::init_workarounds()
 		// Avoids having to add workaround path to events as well, just fallback to plain barriers.
 		workarounds.emulate_event_as_pipeline_barrier = true;
 	}
+
+	if (ext.driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
+		workarounds.broken_present_fence = true;
 #endif
 
 	if (ext.supports_tooling_info && vkGetPhysicalDeviceToolPropertiesEXT)

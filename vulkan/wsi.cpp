@@ -1276,7 +1276,7 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 	// If we cannot use nearest refresh style, round down the time very slightly to make sure we align
 	// with FRR, and if VRR we get a very minor deviation.
 	if (present_timing.refresh_mode == RefreshMode::Unknown && timing.targetTime != 0)
-		timing.targetTime -= std::min<uint64_t>(timing.targetTime, present_timing.refresh_duration / 64);
+		timing.targetTime -= std::min<uint64_t>(timing.targetTime, present_timing.refresh_duration / 8);
 
 	// Completely meaningless to keep targeting absolute.
 	present_timing.target_absolute_time = 0;

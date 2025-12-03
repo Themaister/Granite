@@ -83,7 +83,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 		auto buf = device.create_buffer(info);
 
-		const uint32_t burn_count = 20000;
+		const uint32_t burn_count = 200;
 		cmd->push_constants(&burn_count, 0, sizeof(burn_count));
 		cmd->set_program("assets://shaders/burn.comp");
 		cmd->set_storage_buffer(0, 0, *buf);
@@ -130,7 +130,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 			expected_duration *= 2;
 
 			// Relative time test.
-			wsi.set_target_presentation_time(0, expected_duration);
+			//wsi.set_target_presentation_time(0, expected_duration);
 
 			if (expected_duration)
 			{
@@ -142,7 +142,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 				last_prediction = prediction;
 
 				// Absolute test.
-				//wsi.set_target_presentation_time(prediction, 0);
+				wsi.set_target_presentation_time(prediction, 0);
 
 				LOGI("Current time: %.3f, estimating present ID %llu to complete at %.3f s.\n",
 					 1e-9 * double(Util::get_current_time_nsecs()),
@@ -188,7 +188,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		cmd->begin_render_pass(rp);
 		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
-		const uint32_t burn_count = 1000;
+		const uint32_t burn_count = 500;
 		cmd->push_constants(&burn_count, 0, sizeof(burn_count));
 		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "assets://shaders/burn.frag");
 

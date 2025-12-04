@@ -99,6 +99,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 	}
 
 	uint64_t last_prediction = 0;
+	bool supports_request = false;
 
 	void render_frame(double frame_time, double elapsed_time) override
 	{
@@ -120,9 +121,10 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		if (wsi.get_presentation_stats(stats) && wsi.get_refresh_rate_info(refresh_info))
 		{
 			LOGI("VRR: %u\n", refresh_info.mode == RefreshMode::VRR ? 1 : 0);
+			LOGI("Hz: %.3f\n", 1e9 / double(refresh_info.refresh_duration));
 
 			uint64_t expected_duration = refresh_info.refresh_duration;
-			expected_duration *= 2;
+			expected_duration *= supports_request ? 2 : 1;
 
 			// Relative time test.
 			//wsi.set_target_presentation_time(0, expected_duration);
@@ -133,11 +135,8 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 						(1 + stats.last_submitted_present_id - stats.feedback_present_id) *
 						expected_duration + stats.present_done_ts;
 
-				prediction = std::max<uint64_t>(prediction, last_prediction + expected_duration);
-				last_prediction = prediction;
-
 				// Absolute test.
-				wsi.set_target_presentation_time(prediction, 0);
+				supports_request = wsi.set_target_presentation_time(prediction, 0);
 
 				LOGI("Current time: %.3f, estimating present ID %llu to complete at %.3f s.\n",
 					 1e-9 * double(Util::get_current_time_nsecs()),

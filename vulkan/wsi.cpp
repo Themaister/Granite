@@ -984,7 +984,6 @@ void WSI::update_time_domain_properties()
 		return;
 	}
 
-	// NV bug on X11: 3 identical time domains are returned for whatever reason ...
 	present_timing.time_domains.resize(time_domain_properties.timeDomainCount);
 	present_timing.time_domain_ids.resize(time_domain_properties.timeDomainCount);
 	time_domain_properties.pTimeDomains = present_timing.time_domains.data();
@@ -1071,8 +1070,6 @@ void WSI::poll_present_timing_feedback()
 	{
 		// By default, these reports must be sorted based on QueuePresent().
 
-		// NV bug (WL): QueueOperations is DEVICE domain, but FirstPixelOut looks like CLOCK_MONOTONIC,
-		// yet driver reports DEVICE clock domain, it should have used PRESENT_STAGE_LOCAL in this case ...
 		auto &timing = props.pPresentationTimings[i];
 
 		if (!timing.reportComplete)

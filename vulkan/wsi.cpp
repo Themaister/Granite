@@ -2573,7 +2573,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 			VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT |
 			VK_PRESENT_STAGE_REQUEST_DEQUEUED_BIT_EXT |
 			VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT |
-			VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT;
+			VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT;
 
 	supports_present_timing.absolute = surface_info.present_timing.presentTimingSupported &&
 	                                   surface_info.present_timing.presentAtAbsoluteTimeSupported;

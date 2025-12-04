@@ -1196,7 +1196,8 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 		// If we only care about absolute timestamps, don't let any estimation screw us over.
 		if (present_timing.target_relative_time)
 		{
-			// We estimate that the last present we did couldn't possibly have been presented before this time.
+			// If presentations get sufficiently delayed, we will need to catch up
+			// with our internal accumulator.
 			uint64_t estimated_minimum_time = present_timing.present_done_host_time +
 			                                  (present_last_id - present_timing.present_id) * minimum_interval;
 
@@ -1234,10 +1235,11 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 					(present_timing.last_absolute_target_time - present_timing.present_done_host_time) %
 					present_timing.refresh_duration;
 
+			// Try to quickly-ish align to a refresh cycle.
 			if (align > present_timing.refresh_duration / 2)
-				present_timing.last_absolute_target_time += 1000;
+				present_timing.last_absolute_target_time += (present_timing.refresh_duration - align) / 8;
 			else
-				present_timing.last_absolute_target_time -= 1000;
+				present_timing.last_absolute_target_time -= align / 8;
 		}
 	}
 

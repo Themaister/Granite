@@ -1112,7 +1112,9 @@ void WSI::poll_present_timing_feedback()
 			auto &stage = timing.pPresentStages[stage_index];
 
 			// Safety. Shouldn't happen since we don't request it.
-			if (stage.stage > VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT || stage.stage == 0)
+			// Time of 0 can happen according to spec and means timing information is not available.
+			// Can happen for e.g. discarded, occluded surfaces on WL. Just skip the update.
+			if (stage.stage > VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT || stage.stage == 0 || stage.time == 0)
 				continue;
 
 			uint64_t calibrated_stage_time = calibrated ? calibrated->stage_times[Util::trailing_zeroes(stage.stage)] : 0;

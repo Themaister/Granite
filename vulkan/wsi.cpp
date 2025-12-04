@@ -1079,9 +1079,11 @@ void WSI::poll_present_timing_feedback()
 			continue;
 		}
 
+#ifdef VULKAN_DEBUG
 		LOGI("Timing for presentID %llu, time domain %u, time domain ID %llu:\n",
 		     static_cast<unsigned long long>(timing.presentId),
 		     timing.timeDomain, static_cast<unsigned long long>(timing.timeDomainId));
+#endif
 
 		present_timing.present_stage = 0;
 		present_timing.reference_time = 0;
@@ -1107,6 +1109,9 @@ void WSI::poll_present_timing_feedback()
 		std::sort(timing.pPresentStages, timing.pPresentStages + timing.presentStageCount,
 		          [](const VkPresentStageTimeEXT &a, const VkPresentStageTimeEXT &b) { return a.stage < b.stage; });
 
+		present_timing.present_done_host_time = 0;
+		present_timing.gpu_done_host_time = 0;
+
 		for (uint32_t stage_index = 0; stage_index < timing.presentStageCount; stage_index++)
 		{
 			auto &stage = timing.pPresentStages[stage_index];
@@ -1118,10 +1123,10 @@ void WSI::poll_present_timing_feedback()
 				continue;
 
 			uint64_t calibrated_stage_time = calibrated ? calibrated->stage_times[Util::trailing_zeroes(stage.stage)] : 0;
+#ifdef VULKAN_DEBUG
 			static const char *stage_tags[] = { "QueueOperations", "Dequeued", "FirstPixelOut", "FirstPixelVisible" };
 			const char *stage_tag = stage_tags[Util::trailing_zeroes(stage.stage)];
-
-			present_timing.present_done_host_time = 0;
+#endif
 
 			if (calibrated)
 			{
@@ -1130,12 +1135,19 @@ void WSI::poll_present_timing_feedback()
 					present_timing.gpu_done_host_time = calibrated_ts;
 				else
 					present_timing.present_done_host_time = calibrated_ts;
+#ifdef VULKAN_DEBUG
 				LOGI("  %s: %.3f s (calibrated)\n", stage_tag, calibrated_ts * 1e-9);
+#endif
 			}
+#ifdef VULKAN_DEBUG
 			else
 			{
 				LOGI("  %s: %llu (raw ns)\n", stage_tag, static_cast<unsigned long long>(stage.time));
 			}
+
+			if (timing.targetTime && (stage.stage & ~VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT) != 0)
+				LOGI("    Error: %.3f ms\n", 1e-6 * double(int64_t(stage.time) - int64_t(timing.targetTime)));
+#endif
 
 			present_timing.present_stage = stage.stage;
 			present_timing.reference_time = stage.time;
@@ -1165,8 +1177,7 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 		return;
 
 	// VRR does not have to align to boundaries, so rounding is somewhat meaningless.
-	// If Unknown, it's a bit too risky to be off by half refresh cycle, since it might be VRR.
-	if (present_timing.refresh_mode == RefreshMode::FRR)
+	if (present_timing.refresh_mode != RefreshMode::VRR)
 		timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_NEAREST_REFRESH_CYCLE_BIT_EXT;
 
 	if (present_timing.time_domain == VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT)
@@ -1267,11 +1278,6 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 		if (!has_calibrated_time)
 			timing.targetTime = 0;
 	}
-
-	// If we cannot use nearest refresh style, round down the time very slightly to make sure we align
-	// with FRR, and if VRR we get a very minor deviation.
-	if (present_timing.refresh_mode == RefreshMode::Unknown && timing.targetTime != 0)
-		timing.targetTime -= std::min<uint64_t>(timing.targetTime, present_timing.refresh_duration / 8);
 
 	// Completely meaningless to keep targeting absolute.
 	present_timing.target_absolute_time = 0;

@@ -121,12 +121,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		{
 			LOGI("VRR: %u\n", refresh_info.mode == RefreshMode::VRR ? 1 : 0);
 
-			uint64_t expected_duration = 0;
-			if (refresh_info.refresh_interval != UINT64_MAX && refresh_info.refresh_interval != 0)
-				expected_duration = refresh_info.refresh_interval;
-			else
-				expected_duration = refresh_info.refresh_duration;
-
+			uint64_t expected_duration = refresh_info.refresh_duration;
 			expected_duration *= 2;
 
 			// Relative time test.

@@ -1172,11 +1172,7 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 	if (present_timing.time_domain == VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT)
 		timing.targetTimeDomainPresentStage = present_timing.present_stage;
 
-	uint64_t minimum_interval;
-	if (present_timing.refresh_interval != 0 && present_timing.refresh_interval != UINT64_MAX)
-		minimum_interval = present_timing.refresh_interval;
-	else
-		minimum_interval = present_timing.refresh_duration;
+	uint64_t minimum_interval = present_timing.refresh_duration;
 
 	if (supports_present_timing.relative && present_timing.target_relative_time)
 	{

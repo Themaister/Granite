@@ -1177,7 +1177,7 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 		return;
 
 	// VRR does not have to align to boundaries, so rounding is somewhat meaningless.
-	if (present_timing.refresh_mode == RefreshMode::FRR)
+	if (present_timing.refresh_mode != RefreshMode::VRR)
 		timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_NEAREST_REFRESH_CYCLE_BIT_EXT;
 
 	if (present_timing.time_domain == VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT)
@@ -1242,9 +1242,6 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 				present_timing.last_absolute_target_time -= align / 8;
 		}
 	}
-
-	if (present_timing.refresh_mode == RefreshMode::Unknown && timing.targetTime)
-		timing.targetTime -= present_timing.refresh_duration / 64;
 
 	if ((timing.flags & VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT) == 0)
 	{

@@ -352,7 +352,8 @@ public:
 	// This state remains set until another request is made.
 	// For relative timings, this will work as expected as a method to set absolute target automatically,
 	// but absolute time obviously will not, since application is expected to set a new target time every frame.
-	bool set_target_presentation_time(uint64_t absolute_time_ns, uint64_t relative_time_ns);
+	// If force_vrr is true, the relative or absolute times are passed down with no bias.
+	bool set_target_presentation_time(uint64_t absolute_time_ns, uint64_t relative_time_ns, bool force_vrr);
 
 private:
 	void update_framebuffer(unsigned width, unsigned height);
@@ -455,6 +456,7 @@ private:
 		uint64_t target_absolute_time;
 		uint64_t target_relative_time;
 		uint64_t last_absolute_target_time;
+		bool force_vrr;
 
 		// Feedback.
 		uint64_t gpu_done_host_time;

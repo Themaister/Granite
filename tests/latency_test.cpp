@@ -124,10 +124,11 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 			//LOGI("Hz: %.3f\n", 1e9 / double(refresh_info.refresh_duration));
 
 			uint64_t expected_duration = refresh_info.refresh_duration;
-			expected_duration *= supports_request ? 2 : 1;
+			//expected_duration *= supports_request ? 2 : 1;
+			expected_duration = 10 * 1000 * 1000;
 
 			// Relative time test.
-			supports_request = wsi.set_target_presentation_time(0, expected_duration);
+			supports_request = wsi.set_target_presentation_time(0, expected_duration, true);
 
 			if (expected_duration)
 			{

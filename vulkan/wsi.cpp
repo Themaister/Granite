@@ -2594,6 +2594,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	if (supports_present_wait2)
 		info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_ID_2_BIT_KHR | VK_SWAPCHAIN_CREATE_PRESENT_WAIT_2_BIT_KHR;
+	else
+		supports_present_timing.feedback = 0;
 
 	if (supports_present_timing.feedback)
 	{

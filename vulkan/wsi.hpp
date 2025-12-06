@@ -330,8 +330,9 @@ public:
 	double get_smooth_frame_time() const;
 	double get_smooth_elapsed_time() const;
 
-	bool get_presentation_stats(PresentationStats &stats);
-	bool get_refresh_rate_info(RefreshRateInfo &info);
+	bool get_presentation_stats(PresentationStats &stats) const;
+	bool get_refresh_rate_info(RefreshRateInfo &info) const;
+	uint64_t get_last_submitted_present_id() const;
 
 	// Absolute time is in terms of the Util::get_current_time_nsec() domain,
 	// i.e., time reported in presentation stats.

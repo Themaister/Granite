@@ -34,7 +34,57 @@
 using namespace Granite;
 using namespace Vulkan;
 
-#define WAIT_IDLE 0
+static constexpr unsigned WindowSize = 100;
+
+template <typename Itr>
+static auto minmax_range(Itr begin, Itr end) -> std::pair<std::decay_t<decltype(*begin)>, std::decay_t<decltype(*begin)>>
+{
+	using T = std::decay_t<decltype(*begin)>;
+	std::pair<T, T> res {std::numeric_limits<T>::max(), T(0)};
+
+	while (begin != end)
+	{
+		res.first = std::min<T>(res.first, *begin);
+		res.second = std::max<T>(res.second, *begin);
+		++begin;
+	}
+
+	return res;
+}
+
+template <typename Itr>
+static auto average_range(Itr begin, Itr end) -> std::decay_t<decltype(*begin)>
+{
+	using T = std::decay_t<decltype(*begin)>;
+	T avg = {};
+
+	size_t num = 0;
+	while (begin != end)
+	{
+		avg += *begin;
+		num++;
+		++begin;
+	}
+
+	return avg / T(num);
+}
+
+template <typename Itr, typename Op>
+static auto average_range(Itr begin, Itr end, const Op &op) -> decltype(op(*begin))
+{
+	using T = decltype(op(*begin));
+	T avg = {};
+
+	size_t num = 0;
+	while (begin != end)
+	{
+		avg += op(*begin);
+		num++;
+		++begin;
+	}
+
+	return avg / T(num);
+}
 
 struct PresentTiming : Granite::Application, Granite::EventHandler
 {
@@ -42,16 +92,183 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 		: count(count_)
 	{
 		EVENT_MANAGER_REGISTER(PresentTiming, on_key_down, KeyboardEvent);
-		frame_times.reserve(100);
+		frame_times.reserve(WindowSize);
 	}
 
 	bool on_key_down(const KeyboardEvent &e)
 	{
+		if (e.get_key_state() == KeyState::Released)
+			return true;
+
+		switch (e.get_key())
+		{
+		case Key::Up:
+			burn_count++;
+			break;
+
+		case Key::Down:
+			if (burn_count)
+				burn_count--;
+			break;
+
+		case Key::V:
+			force_vrr_timing = !force_vrr_timing;
+			break;
+
+		case Key::T:
+			timing_request = !timing_request;
+			break;
+
+		case Key::P:
+			present_wait_low_latency = !present_wait_low_latency;
+			get_wsi().set_present_low_latency_mode(present_wait_low_latency);
+			break;
+
+		case Key::L:
+			gpu_submit_low_latency = !gpu_submit_low_latency;
+			get_wsi().set_gpu_submit_low_latency_mode(gpu_submit_low_latency);
+			break;
+
+		default:
+			break;
+		}
+
 		return true;
 	}
 
+	struct QueryResult
+	{
+		uint64_t present_id;
+		uint64_t cpu_time_submit;
+		uint64_t queue_done;
+		uint64_t present_done;
+		double burn_time;
+	};
+	Util::SmallVector<QueryResult, WindowSize> retired_results;
+
+	struct PendingQueryResult : QueryResult
+	{
+		QueryPoolHandle start, end;
+		bool complete;
+	};
+	Util::SmallVector<PendingQueryResult, 16> queries;
+
 	uint64_t last_prediction = 0;
 	bool supports_request = false;
+	bool timing_request = false;
+	uint32_t burn_count = 1;
+	RefreshRateInfo refresh_info = {};
+	PresentationStats stats = {};
+	bool force_vrr_timing = false;
+	bool present_wait_low_latency = false;
+	bool gpu_submit_low_latency = false;
+
+	void retire_query(PendingQueryResult &query)
+	{
+		auto &device = get_wsi().get_device();
+		query.queue_done = std::max<uint64_t>(device.convert_timestamp_to_absolute_nsec(*query.end), query.queue_done);
+		query.burn_time = device.convert_device_timestamp_delta(query.start->get_timestamp_ticks(),
+																query.end->get_timestamp_ticks());
+		if (retired_results.size() >= 100)
+			retired_results.erase(retired_results.begin());
+		retired_results.push_back(query);
+	}
+
+	void poll_timestamps()
+	{
+		for (size_t i = 0; i < queries.size(); )
+		{
+			if (queries[i].complete && queries[i].start->is_signalled() && queries[i].end->is_signalled())
+			{
+				retire_query(queries[i]);
+				queries[i] = std::move(queries.back());
+				queries.pop_back();
+			}
+			else
+			{
+				i++;
+			}
+		}
+
+		// Safety if something is not supported.
+		if (queries.size() >= 16)
+			queries.clear();
+	}
+
+	void poll_present_timing()
+	{
+		auto &wsi = get_wsi();
+
+		if (!wsi.get_presentation_stats(stats) || !wsi.get_refresh_rate_info(refresh_info))
+			return;
+
+		for (auto &query : queries)
+		{
+			if (query.present_id == stats.feedback_present_id)
+			{
+				query.queue_done = stats.gpu_done_ts;
+				query.present_done = stats.present_done_ts;
+			}
+
+			// Possible that we skipped ahead in the feedback.
+			if (stats.feedback_present_id >= query.present_id)
+				query.complete = true;
+		}
+
+		uint64_t expected_duration = refresh_info.refresh_duration;
+		//expected_duration *= supports_request ? 2 : 1;
+		expected_duration = 10 * 1000 * 1000;
+
+		// Relative time test.
+		if (timing_request)
+			supports_request = wsi.set_target_presentation_time(0, expected_duration, force_vrr_timing);
+		else
+			supports_request = wsi.set_target_presentation_time(0, 0, false);
+
+		if (expected_duration)
+		{
+			uint64_t prediction =
+					(1 + stats.last_submitted_present_id - stats.feedback_present_id) *
+					expected_duration + stats.present_done_ts;
+			//supports_request = wsi.set_target_presentation_time(prediction, 0);
+		}
+	}
+
+	void render_history(const double *times, size_t num_times, vec2 offset, vec2 size)
+	{
+		Util::SmallVector<vec2, WindowSize> offsets;
+		offsets.resize(num_times);
+
+		std::pair<double, double> minmax;
+
+		if (refresh_info.refresh_duration)
+		{
+			minmax.first = 0.0;
+			minmax.second = double(refresh_info.refresh_duration) * 4e-9;
+		}
+		else
+		{
+			minmax = minmax_range(times, times + num_times);
+		}
+
+		const auto remap_range = [&](double t) -> float {
+			if (t <= minmax.first)
+				return 0.0f;
+			else if (t >= minmax.second)
+				return 1.0f;
+			else
+				return float((t - minmax.first) / (minmax.second - minmax.first));
+		};
+
+		for (size_t i = 0; i < num_times; i++)
+		{
+			offsets[i].x = offset.x + float(i) / (float(num_times) - 1.0f) * size.x;
+			offsets[i].y = offset.y + size.y;
+			offsets[i].y -= remap_range(times[i]) * size.y;
+		}
+
+		flat.render_line_strip(offsets.data(), 0.0f, num_times, vec4(1.0f, 1.0f, 0.0f, 1.0f));
+	}
 
 	void render_frame(double frame_time, double elapsed_time) override
 	{
@@ -59,7 +276,10 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 		auto &device = wsi.get_device();
 
 		if (frame_times.empty())
-			frame_times.resize(100, frame_time);
+		{
+			for (unsigned i = 0; i < WindowSize; i++)
+				frame_times.push_back(frame_time);
+		}
 		else
 		{
 			if (frame_times.size() >= 100)
@@ -67,151 +287,151 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 			frame_times.push_back(frame_time);
 		}
 
-		RefreshRateInfo refresh_info;
-		PresentationStats stats;
-
-		if (wsi.get_presentation_stats(stats) && wsi.get_refresh_rate_info(refresh_info))
-		{
-			LOGI("VRR: %u\n", refresh_info.mode == RefreshMode::VRR ? 1 : 0);
-			LOGI("Hz: %.3f\n", 1e9 / double(refresh_info.refresh_duration));
-
-			uint64_t expected_duration = refresh_info.refresh_duration;
-			//expected_duration *= supports_request ? 2 : 1;
-			expected_duration = 10 * 1000 * 1000;
-
-			// Relative time test.
-			supports_request = wsi.set_target_presentation_time(0, expected_duration, true);
-
-			if (expected_duration)
-			{
-				uint64_t prediction =
-						(1 + stats.last_submitted_present_id - stats.feedback_present_id) *
-						expected_duration + stats.present_done_ts;
-
-				// Absolute test.
-				//supports_request = wsi.set_target_presentation_time(prediction, 0);
-
-#if 1
-				LOGI("Current time: %.3f, estimating present ID %llu to complete at %.3f s.\n",
-					 1e-9 * double(Util::get_current_time_nsecs()),
-					 static_cast<unsigned long long>(stats.last_submitted_present_id + 1),
-					 1e-9 * double(prediction));
-
-				LOGI("  Next submit ID %llu, known presentID %llu, done %.3f s.\n",
-					 static_cast<unsigned long long>(stats.last_submitted_present_id + 1),
-					 static_cast<unsigned long long>(stats.feedback_present_id),
-					 1e-9 * double(stats.present_done_ts));
-#endif
-			}
-		}
-
-		double min_time = std::numeric_limits<double>::max();
-		double max_time = 0.0;
-		double avg_time = 0.0;
-		for (auto &t : frame_times)
-		{
-			min_time = std::min(min_time, t);
-			max_time = std::max(max_time, t);
-			avg_time += t;
-		}
-		avg_time /= double(frame_times.size());
+		poll_present_timing();
+		poll_timestamps();
 
 		auto cmd = device.request_command_buffer();
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
 
-		if (state)
-		{
-			rp.clear_color[0].float32[0] = 0.1f;
-			rp.clear_color[0].float32[1] = 0.2f;
-			rp.clear_color[0].float32[2] = 0.3f;
-		}
-		else
-		{
-			rp.clear_color[0].float32[0] = 0.3f;
-			rp.clear_color[0].float32[1] = 0.2f;
-			rp.clear_color[0].float32[2] = 0.1f;
-		}
-
 		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
 		cmd->begin_render_pass(rp);
 
-		const uint32_t burn_count = 40000;
-		cmd->push_constants(&burn_count, 0, sizeof(burn_count));
+		uint32_t burn_count_mul = burn_count * 100;
+		cmd->push_constants(&burn_count_mul, 0, sizeof(burn_count_mul));
 		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "assets://shaders/burn.frag");
+		VkClearValue clear_value = {};
+		clear_value.color.float32[0] = 0.01f;
+		clear_value.color.float32[1] = 0.02f;
+		clear_value.color.float32[2] = 0.03f;
+		cmd->clear_quad(0, {{{ 0, 0 }, { uint32_t(cmd->get_viewport().width), uint32_t(cmd->get_viewport().height) }}, 0, 1},
+						clear_value);
 
 		flat.begin();
 
 		for (unsigned i = 0; i < count; i++)
 		{
-			flat.render_quad({0.0f, 0.0f, 4.0f}, {cmd->get_viewport().width, cmd->get_viewport().height},
+			flat.render_quad({ 0.0f, 0.0f, 4.0f }, { cmd->get_viewport().width, cmd->get_viewport().height },
 			                 { 1.0f, 0.0f, 0.0f, 2.0f / 255.0f });
 		}
 
-		char avg_text[1024], min_text[1024], max_text[1024];
 		vec3 offset = { 10.0f, 10.0f, 0.0f };
 		vec2 size = { cmd->get_viewport().width - 20.0f, cmd->get_viewport().height - 20.0f };
-		snprintf(avg_text, sizeof(avg_text), "Average frame time: %.3f ms", 1000.0 * avg_time);
-		snprintf(min_text, sizeof(min_text), "Minimum frame time: %.3f ms", 1000.0 * min_time);
-		snprintf(max_text, sizeof(max_text), "Maximum frame time: %.3f ms", 1000.0 * max_time);
-		flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large),
-		                 avg_text, offset, size, vec4(1.0f, 1.0f, 0.0f, 1.0f),
-		                 Font::Alignment::TopRight);
-		offset.y += 30.0f;
-		flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
-		                 min_text, offset, size, vec4(1.0f, 1.0f, 0.0f, 1.0f),
-		                 Font::Alignment::TopRight);
-		offset.y += 30.0f;
-		flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
-		                 max_text, offset, size, vec4(1.0f, 1.0f, 0.0f, 1.0f),
-		                 Font::Alignment::TopRight);
 
-		offset = { cmd->get_viewport().width - 410.0f, cmd->get_viewport().height - 110.0f, 0.0f };
-		size = { 400.0f, 100.0f };
-		flat.render_quad(offset, size, vec4(0.0f, 0.0f, 0.0f, 0.9f));
+		const auto print_line = [&](const char *fmt, ...)
+		{
+			char text[1024];
+			va_list va;
+			va_start(va, fmt);
+			vsnprintf(text, sizeof(text), fmt, va);
+			va_end(va);
 
-		vec2 offsets[100];
+			flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal),
+			                 text, offset, size, vec4(1.0f, 1.0f, 0.0f, 1.0f),
+			                 Font::Alignment::TopRight);
 
-		const auto remap_range = [&](double t) -> float {
-			if (t == min_time)
-				return 0.0f;
-			else if (t == max_time)
-				return 1.0f;
-			else
-				return float((t - min_time) / (max_time - min_time));
+			offset.y += 30.0f;
 		};
 
-		for (unsigned i = 0; i < 100; i++)
-		{
-			offsets[i].x = offset.x + float(i) / (100.0f - 1.0f) * size.x;
-			offsets[i].y = offset.y + size.y;
-			offsets[i].y -= remap_range(frame_times[i]) * size.y;
-		}
-		flat.render_line_strip(offsets, 0.0f, 100, vec4(1.0f, 1.0f, 0.0f, 1.0f));
+		auto minmax = minmax_range(frame_times.begin(), frame_times.end());
+		auto avg = average_range(frame_times.begin(), frame_times.end());
 
-		char elapsed_text[256];
-		snprintf(elapsed_text, sizeof(elapsed_text), "Elapsed: %.3f, Frame: %u", elapsed_time, counter++);
-		flat.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large),
-						 elapsed_text, { 0, 0, 0 }, { cmd->get_viewport().width, cmd->get_viewport().height },
-						 vec4(1.0f), Font::Alignment::Center);
+		print_line("Average CPU sampled frame time: %.3f ms", 1000.0 * avg);
+		print_line("Minimum CPU sampled frame time: %.3f ms", 1000.0 * minmax.first);
+		print_line("Maximum CPU sampled frame time: %.3f ms", 1000.0 * minmax.second);
+		print_line("Burn iterations: %u", burn_count_mul);
+		if (!retired_results.empty())
+		{
+			auto avg_burn = average_range(retired_results.begin(), retired_results.end(),
+			                              [](const QueryResult &result) { return result.burn_time; });
+			print_line("Burn GPU time: %.3f ms", avg_burn * 1000.0);
+		}
+		print_line("%s", refresh_info.mode == RefreshMode::Unknown ? "FRR vs VRR unknown" :
+		                                       refresh_info.mode == RefreshMode::VRR ? "VRR" : "FRR");
+		print_line("Reported refreshDuration %.3f ms", refresh_info.refresh_duration * 1e-6);
+		if (refresh_info.mode == RefreshMode::FRR)
+			print_line("Reported refreshInterval %.3f ms", refresh_info.refresh_interval * 1e-6);
+		print_line("Supports targetTime: %s", supports_request ? "yes" : "no");
+		print_line("Force VRR relative timing: %s", force_vrr_timing ? "yes" : "no");
+		print_line("Timing request: %s", timing_request ? "yes" : "no");
+		print_line("PresentWait low latency: %s", present_wait_low_latency ? "yes" : "no");
+		print_line("GPU submit low latency: %s", gpu_submit_low_latency ? "yes" : "no");
+
+		offset = { 100.0f, 100.0f, 0.0f };
+		size = { 600.0f, 150.0f };
+
+		// Render CPU timestamps
+		{
+			if (refresh_info.refresh_duration)
+				print_line("CPU sampled frame time range 0 - 4 refresh cycles");
+			else
+				print_line("CPU sampled frame time range %.3f ms - %.3f ms", 1000.0 * minmax.first, 1000.0 * minmax.second);
+
+			flat.render_quad(offset, size, vec4(0.0f, 0.0f, 0.0f, 0.9f));
+			render_history(frame_times.data(), frame_times.size(), offset.xy(), size);
+			offset.y += size.y + 10.0f;
+		}
+
+		// GPU -> present delays
+		{
+			Util::SmallVector<double, WindowSize> gpu_done_present_delays;
+			for (auto &retired : retired_results)
+				if (retired.present_done && retired.queue_done)
+					gpu_done_present_delays.push_back(1e-9 * double(int64_t(retired.present_done) - int64_t(retired.queue_done)));
+
+			if (!gpu_done_present_delays.empty())
+			{
+				minmax = minmax_range(gpu_done_present_delays.begin(), gpu_done_present_delays.end());
+				if (refresh_info.refresh_duration)
+					print_line("GPU done to present complete delay (time range 0 - 4 refresh cycles)");
+				else
+					print_line("GPU done to present complete delay (time range %.3f ms - %.3f ms",
+					           1000.0 * minmax.first, 1000.0 * minmax.second);
+
+				flat.render_quad(offset, size, vec4(0.0f, 0.0f, 0.0f, 0.9f));
+				render_history(gpu_done_present_delays.data(), gpu_done_present_delays.size(), offset.xy(), size);
+				offset.y += size.y + 10.0f;
+			}
+		}
+
+		// CPU record -> present delay
+		{
+			Util::SmallVector<double, WindowSize> cpu_record_present_delays;
+			for (auto &retired : retired_results)
+				if (retired.present_done && retired.queue_done)
+					cpu_record_present_delays.push_back(1e-9 * double(int64_t(retired.present_done) - int64_t(retired.cpu_time_submit)));
+
+			if (!cpu_record_present_delays.empty())
+			{
+				minmax = minmax_range(cpu_record_present_delays.begin(), cpu_record_present_delays.end());
+				if (refresh_info.refresh_duration)
+					print_line("CPU record to present complete delay (time range 0 - 4 refresh cycles)");
+				else
+					print_line("CPU record to present complete delay (time range %.3f ms - %.3f ms",
+					           1000.0 * minmax.first, 1000.0 * minmax.second);
+
+				flat.render_quad(offset, size, vec4(0.0f, 0.0f, 0.0f, 0.9f));
+				render_history(cpu_record_present_delays.data(), cpu_record_present_delays.size(), offset.xy(), size);
+				offset.y += size.y + 10.0f;
+			}
+		}
 
 		flat.flush(*cmd, vec3(0.0f), { cmd->get_viewport().width, cmd->get_viewport().height, 5.0f });
 
 		cmd->end_render_pass();
 		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "RenderPass");
 
-#if WAIT_IDLE
-		Fence fence;
-		device.submit(cmd, &fence);
-		fence->wait();
-#else
+		PendingQueryResult pending = {};
+		pending.start = std::move(start_ts);
+		pending.end = std::move(end_ts);
+		pending.present_id = wsi.get_last_submitted_present_id() + 1;
+		pending.cpu_time_submit = Util::get_current_time_nsecs();
+		queries.push_back(std::move(pending));
+
 		device.submit(cmd);
-#endif
 	}
 
 	unsigned counter = 0;
-	std::vector<double> frame_times;
-	bool state = false;
+	Util::SmallVector<double, WindowSize> frame_times;
 	FlatRenderer flat;
 	unsigned count;
 };

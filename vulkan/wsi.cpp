@@ -1285,7 +1285,7 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 	present_timing.target_absolute_time = 0;
 }
 
-bool WSI::get_presentation_stats(PresentationStats &stats)
+bool WSI::get_presentation_stats(PresentationStats &stats) const
 {
 	if (!present_timing.reference_time)
 		return false;
@@ -1297,7 +1297,7 @@ bool WSI::get_presentation_stats(PresentationStats &stats)
 	return true;
 }
 
-bool WSI::get_refresh_rate_info(RefreshRateInfo &info)
+bool WSI::get_refresh_rate_info(RefreshRateInfo &info) const
 {
 	if (present_timing.refresh_duration == 0)
 		return false;
@@ -1306,6 +1306,11 @@ bool WSI::get_refresh_rate_info(RefreshRateInfo &info)
 	info.refresh_interval = present_timing.refresh_interval;
 	info.mode = present_timing.refresh_mode;
 	return true;
+}
+
+uint64_t WSI::get_last_submitted_present_id() const
+{
+	return present_last_id;
 }
 
 bool WSI::set_target_presentation_time(uint64_t absolute_time_ns, uint64_t relative_time_ns, bool force_vrr)

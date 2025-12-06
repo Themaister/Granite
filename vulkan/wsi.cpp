@@ -1453,8 +1453,11 @@ bool WSI::begin_frame()
 			platform->event_swapchain_index(device.get(), swapchain_index);
 
 			device->set_acquire_semaphore(swapchain_index, acquire);
-			if (device->get_device_features().present_id_features.presentId)
+			if (device->get_device_features().present_id_features.presentId ||
+			    device->get_device_features().present_id2_features.presentId2)
+			{
 				device->set_present_id(swapchain, next_present_id);
+			}
 		}
 		else if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
 		{
@@ -1559,6 +1562,15 @@ bool WSI::end_frame()
 			present_id2_info.pPresentIds = &next_present_id;
 			present_id2_info.pNext = info.pNext;
 			info.pNext = &present_id2_info;
+
+			if (low_latency_mode_enable_gpu_submit && device->get_device_features().supports_low_latency2_nv)
+			{
+				// NV_ll2 should be tied to presentID 1. Unsure if driver cares ...
+				present_id_info.swapchainCount = 1;
+				present_id_info.pPresentIds = &next_present_id;
+				present_id_info.pNext = info.pNext;
+				info.pNext = &present_id_info;
+			}
 		}
 		else if (device->get_device_features().present_id_features.presentId)
 		{

@@ -1562,16 +1562,6 @@ bool WSI::end_frame()
 			present_id2_info.pPresentIds = &next_present_id;
 			present_id2_info.pNext = info.pNext;
 			info.pNext = &present_id2_info;
-
-			if (device->get_device_features().supports_low_latency2_nv &&
-			    device->get_device_features().present_id_features.presentId)
-			{
-				// NV_ll2 should be tied to presentID 1. Unsure if driver cares ...
-				present_id_info.swapchainCount = 1;
-				present_id_info.pPresentIds = &next_present_id;
-				present_id_info.pNext = info.pNext;
-				info.pNext = &present_id_info;
-			}
 		}
 		else if (device->get_device_features().present_id_features.presentId)
 		{

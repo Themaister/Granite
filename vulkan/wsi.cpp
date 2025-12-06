@@ -1563,7 +1563,8 @@ bool WSI::end_frame()
 			present_id2_info.pNext = info.pNext;
 			info.pNext = &present_id2_info;
 
-			if (low_latency_mode_enable_gpu_submit && device->get_device_features().supports_low_latency2_nv)
+			if (device->get_device_features().supports_low_latency2_nv &&
+			    device->get_device_features().present_id_features.presentId)
 			{
 				// NV_ll2 should be tied to presentID 1. Unsure if driver cares ...
 				present_id_info.swapchainCount = 1;

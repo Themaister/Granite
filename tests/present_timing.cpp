@@ -111,6 +111,15 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 				burn_count--;
 			break;
 
+		case Key::Right:
+			cycles_num++;
+			break;
+
+		case Key::Left:
+			if (cycles_num)
+				cycles_num--;
+			break;
+
 		case Key::V:
 			force_vrr_timing = !force_vrr_timing;
 			break;
@@ -153,7 +162,6 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 	};
 	Util::SmallVector<PendingQueryResult, 16> queries;
 
-	uint64_t last_prediction = 0;
 	bool supports_request = false;
 	bool timing_request = false;
 	uint32_t burn_count = 1;
@@ -162,6 +170,8 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 	bool force_vrr_timing = false;
 	bool present_wait_low_latency = false;
 	bool gpu_submit_low_latency = false;
+	unsigned cycles_num = 8;
+	unsigned cycles_den = 8;
 
 	void retire_query(PendingQueryResult &query)
 	{
@@ -215,9 +225,7 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 				query.complete = true;
 		}
 
-		uint64_t expected_duration = refresh_info.refresh_duration;
-		//expected_duration *= supports_request ? 2 : 1;
-		expected_duration = 10 * 1000 * 1000;
+		uint64_t expected_duration = refresh_info.refresh_duration * cycles_num / cycles_den;
 
 		// Relative time test.
 		if (timing_request)
@@ -343,7 +351,7 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 		{
 			auto avg_burn = average_range(retired_results.begin(), retired_results.end(),
 			                              [](const QueryResult &result) { return result.burn_time; });
-			print_line("Burn GPU time: %.3f ms", avg_burn * 1000.0);
+			print_line("Burn GPU time (Up/Down to toggle): %.3f ms", avg_burn * 1000.0);
 		}
 		print_line("%s", refresh_info.mode == RefreshMode::Unknown ? "FRR vs VRR unknown" :
 		                                       refresh_info.mode == RefreshMode::VRR ? "VRR" : "FRR");
@@ -351,10 +359,16 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 		if (refresh_info.mode == RefreshMode::FRR)
 			print_line("Reported refreshInterval %.3f ms", refresh_info.refresh_interval * 1e-6);
 		print_line("Supports targetTime: %s", supports_request ? "yes" : "no");
-		print_line("Force VRR relative timing: %s", force_vrr_timing ? "yes" : "no");
-		print_line("Timing request: %s", timing_request ? "yes" : "no");
-		print_line("PresentWait low latency: %s", present_wait_low_latency ? "yes" : "no");
-		print_line("GPU submit low latency: %s", gpu_submit_low_latency ? "yes" : "no");
+		print_line("Force VRR relative timing (V to toggle): %s", force_vrr_timing ? "yes" : "no");
+		print_line("Timing request (T to toggle): %s", timing_request ? "yes" : "no");
+		print_line("PresentWait low latency (P to toggle): %s", present_wait_low_latency ? "yes" : "no");
+		print_line("GPU submit low latency (L to toggle): %s", gpu_submit_low_latency ? "yes" : "no");
+
+		if (refresh_info.refresh_duration)
+		{
+			print_line("Minimum target frame time: %u / %u cycles, %.3f ms (Left/Right to toggle)",
+			           cycles_num, cycles_den, 1e-6 * double(refresh_info.refresh_duration * cycles_num / cycles_den));
+		}
 
 		offset = { 100.0f, 100.0f, 0.0f };
 		size = { 600.0f, 150.0f };

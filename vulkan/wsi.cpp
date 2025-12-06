@@ -1176,6 +1176,25 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 	if (present_timing.target_absolute_time == 0 && present_timing.target_relative_time == 0)
 		return;
 
+	uint64_t relative_time = present_timing.target_relative_time;
+	if (relative_time && !supports_present_timing.relative && present_timing.refresh_duration &&
+	    !present_timing.force_vrr && present_timing.refresh_mode != RefreshMode::VRR)
+	{
+		// If we keep accumulating relative time in a non-locked way, we'll get terrible pacing.
+		// Realign the relative time to boundary unless we're in VRR mode.
+
+		uint64_t interval = present_timing.refresh_duration;
+		relative_time = std::max<uint64_t>(relative_time, interval);
+
+		// The refresh interval represents the alignment of a refresh cycle.
+		// Duration is a multiple of interval.
+		if (present_timing.refresh_interval)
+			interval = present_timing.refresh_interval;
+
+		auto cycles = (relative_time + interval - 1) / interval;
+		relative_time = interval * cycles;
+	}
+
 	// VRR does not have to align to boundaries, so rounding is somewhat meaningless.
 	if (present_timing.refresh_mode != RefreshMode::VRR && !present_timing.force_vrr)
 		timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_NEAREST_REFRESH_CYCLE_BIT_EXT;
@@ -1185,16 +1204,16 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 
 	uint64_t minimum_interval = present_timing.refresh_duration;
 
-	if (supports_present_timing.relative && present_timing.target_relative_time)
+	if (supports_present_timing.relative && relative_time)
 	{
 		// Relative time is very nice, since it's not our job to align frames :)
 		timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT;
-		timing.targetTime = present_timing.target_relative_time;
+		timing.targetTime = relative_time;
 	}
 	else
 	{
 		// If we only care about absolute timestamps, don't let any estimation screw us over.
-		if (present_timing.target_relative_time)
+		if (relative_time)
 		{
 			// If presentations get sufficiently delayed, we will need to catch up
 			// with our internal accumulator.
@@ -1211,7 +1230,7 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 
 		// Go for absolute timing.
 		uint64_t next_absolute_time = std::max<uint64_t>(
-				present_timing.last_absolute_target_time + present_timing.target_relative_time,
+				present_timing.last_absolute_target_time + relative_time,
 				present_timing.target_absolute_time);
 
 		if (supports_present_timing.absolute)

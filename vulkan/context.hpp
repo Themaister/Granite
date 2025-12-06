@@ -125,6 +125,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceRobustness2FeaturesEXT robustness2_features = {};
 	VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptor_buffer_features = {};
 	VkPhysicalDeviceDescriptorBufferPropertiesEXT descriptor_buffer_properties = {};
+	VkPhysicalDevicePresentTimingFeaturesEXT present_timing_features = {};
 
 	// Vendor
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};

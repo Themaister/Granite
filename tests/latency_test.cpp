@@ -83,7 +83,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 		auto buf = device.create_buffer(info);
 
-		const uint32_t burn_count = 20000;
+		const uint32_t burn_count = 10;
 		cmd->push_constants(&burn_count, 0, sizeof(burn_count));
 		cmd->set_program("assets://shaders/burn.comp");
 		cmd->set_storage_buffer(0, 0, *buf);
@@ -98,6 +98,9 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		device.add_wait_semaphore(CommandBuffer::Type::Generic, std::move(sem), VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, true);
 	}
 
+	uint64_t last_prediction = 0;
+	bool supports_request = false;
+
 	void render_frame(double frame_time, double elapsed_time) override
 	{
 		auto &wsi = get_wsi();
@@ -110,6 +113,44 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 			if (frame_times.size() >= 100)
 				frame_times.erase(frame_times.begin());
 			frame_times.push_back(frame_time);
+		}
+
+		RefreshRateInfo refresh_info;
+		PresentationStats stats;
+
+		if (wsi.get_presentation_stats(stats) && wsi.get_refresh_rate_info(refresh_info))
+		{
+			LOGI("VRR: %u\n", refresh_info.mode == RefreshMode::VRR ? 1 : 0);
+			LOGI("Hz: %.3f\n", 1e9 / double(refresh_info.refresh_duration));
+
+			uint64_t expected_duration = refresh_info.refresh_duration;
+			//expected_duration *= supports_request ? 2 : 1;
+			expected_duration = 10 * 1000 * 1000;
+
+			// Relative time test.
+			supports_request = wsi.set_target_presentation_time(0, expected_duration, true);
+
+			if (expected_duration)
+			{
+				uint64_t prediction =
+						(1 + stats.last_submitted_present_id - stats.feedback_present_id) *
+						expected_duration + stats.present_done_ts;
+
+				// Absolute test.
+				//supports_request = wsi.set_target_presentation_time(prediction, 0);
+
+#if 1
+				LOGI("Current time: %.3f, estimating present ID %llu to complete at %.3f s.\n",
+					 1e-9 * double(Util::get_current_time_nsecs()),
+					 static_cast<unsigned long long>(stats.last_submitted_present_id + 1),
+					 1e-9 * double(prediction));
+
+				LOGI("  Next submit ID %llu, known presentID %llu, done %.3f s.\n",
+					 static_cast<unsigned long long>(stats.last_submitted_present_id + 1),
+					 static_cast<unsigned long long>(stats.feedback_present_id),
+					 1e-9 * double(stats.present_done_ts));
+#endif
+			}
 		}
 
 		double min_time = std::numeric_limits<double>::max();
@@ -141,10 +182,10 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 			rp.clear_color[0].float32[2] = 0.1f;
 		}
 
+		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 		cmd->begin_render_pass(rp);
-		auto start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
-		const uint32_t burn_count = 7000;
+		const uint32_t burn_count = 10;
 		cmd->push_constants(&burn_count, 0, sizeof(burn_count));
 		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "assets://shaders/burn.frag");
 
@@ -206,7 +247,7 @@ struct LatencyTest : Granite::Application, Granite::EventHandler
 		flat.flush(*cmd, vec3(0.0f), { cmd->get_viewport().width, cmd->get_viewport().height, 5.0f });
 
 		cmd->end_render_pass();
-		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 		device.register_time_interval("GPU", std::move(start_ts), std::move(end_ts), "RenderPass");
 
 #if WAIT_IDLE

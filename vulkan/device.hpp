@@ -519,6 +519,7 @@ public:
 	bool swapchain_touched() const;
 
 	double convert_device_timestamp_delta(uint64_t start_ticks, uint64_t end_ticks) const;
+	int64_t convert_timestamp_to_absolute_nsec(const QueryPoolResult &handle);
 	// Writes a timestamp on host side, which is calibrated to the GPU timebase.
 	QueryPoolHandle write_calibrated_timestamp();
 
@@ -589,7 +590,6 @@ private:
 	void deinit_timeline_semaphores();
 
 	uint64_t update_wrapped_device_timestamp(uint64_t ts);
-	int64_t convert_timestamp_to_absolute_nsec(const QueryPoolResult &handle);
 	Context::SystemHandles system_handles;
 
 	QueryPoolHandle write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlags2 stage);
@@ -602,7 +602,6 @@ private:
 
 	// Calibrated timestamps.
 	void init_calibrated_timestamps();
-	void recalibrate_timestamps_fallback();
 	void recalibrate_timestamps();
 	bool resample_calibrated_timestamps();
 	VkTimeDomainEXT calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_EXT;

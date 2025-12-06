@@ -435,7 +435,7 @@ QueryPoolHandle QueryPool::allocate_query(VkCommandBuffer cmd)
 
 	auto &pool = pools[pool_index];
 
-	auto cookie = QueryPoolHandle(device->handle_pool.query.allocate(device, false, type, pool.pool, pool.index));
+	auto cookie = QueryPoolHandle(device->handle_pool.query.allocate(device, type == VK_QUERY_TYPE_TIMESTAMP, type, pool.pool, pool.index));
 	pool.cookies[pool.index] = cookie;
 
 	if (!device->get_device_features().vk12_features.hostQueryReset)

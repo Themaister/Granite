@@ -29,6 +29,8 @@
 #include "swappy/swappyVk.h"
 #endif
 
+static constexpr uint32_t PresentTimingQueueSize = 16;
+
 namespace Vulkan
 {
 WSI::WSI()
@@ -787,6 +789,640 @@ bool WSI::begin_frame_dxgi()
 }
 #endif
 
+void WSI::update_present_timing_properties()
+{
+	VkSwapchainTimingPropertiesEXT props = { VK_STRUCTURE_TYPE_SWAPCHAIN_TIMING_PROPERTIES_EXT };
+	uint64_t counter = 0;
+	if (table->vkGetSwapchainTimingPropertiesEXT(context->get_device(), swapchain, &props, &counter) != VK_SUCCESS)
+		return;
+
+	if (counter == present_timing.refresh_counter && present_timing.has_refresh_feedback)
+		return;
+
+	present_timing.refresh_counter = counter;
+	present_timing.refresh_duration = props.refreshDuration;
+	present_timing.refresh_interval = props.refreshInterval;
+
+	const char *refresh_mode = "Unknown";
+
+	if (props.refreshInterval == 0)
+	{
+		// Wayland issue: It cannot figure out VRR vs FRR. Seems like we will need presentation-timing v3.
+		present_timing.refresh_mode = RefreshMode::Unknown;
+	}
+	else if (props.refreshInterval == UINT64_MAX)
+	{
+		present_timing.refresh_mode = RefreshMode::VRR;
+		refresh_mode = "VRR";
+	}
+	else
+	{
+		present_timing.refresh_mode = RefreshMode::FRR;
+		refresh_mode = "FRR";
+	}
+
+	if (present_timing.refresh_duration)
+	{
+		LOGE("Present timing (count %llu): detected refresh duration of %llu nsec (%.6f Hz), mode %s.\n",
+			 static_cast<unsigned long long>(counter),
+		     static_cast<unsigned long long>(present_timing.refresh_duration),
+		     1e9 / double(present_timing.refresh_duration), refresh_mode);
+	}
+
+	present_timing.has_refresh_feedback = true;
+}
+
+void WSI::recalibrate_present_timing_domains()
+{
+	if (!context->get_enabled_device_features().supports_calibrated_timestamps)
+		return;
+
+	present_timing.calibration.clear();
+
+	uint32_t count;
+	vkGetPhysicalDeviceCalibrateableTimeDomainsKHR(context->get_gpu(), &count, nullptr);
+	Util::SmallVector<VkTimeDomainKHR> domains(count);
+	vkGetPhysicalDeviceCalibrateableTimeDomainsKHR(context->get_gpu(), &count, domains.data());
+	domains.resize(count);
+
+#ifdef _WIN32
+	constexpr auto host_domain = VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR;
+#elif defined(ANDROID)
+	constexpr auto host_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR;
+#else
+	constexpr auto host_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR;
+#endif
+
+	if (std::find(domains.begin(), domains.end(), host_domain) == domains.end())
+	{
+		LOGW("Cannot calibrate timestamp domain %u\n", host_domain);
+		return;
+	}
+
+	present_timing.calibration.resize(present_timing.time_domains.size());
+
+	for (size_t i = 0, n = present_timing.time_domains.size(); i < n; i++)
+	{
+		if (present_timing.time_domains[i] == host_domain)
+		{
+			present_timing.calibration[i] = { 1, { 1, 1, 1, 1 } };
+			continue;
+		}
+
+		if (std::find(domains.begin(), domains.end(), present_timing.time_domains[i]) == domains.end())
+		{
+			LOGW("Cannot calibrate timestamp domain %u\n", host_domain);
+			return;
+		}
+
+		VkCalibratedTimestampInfoKHR infos[2] = {};
+		infos[0].sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_KHR;
+		infos[1].sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_KHR;
+		infos[0].timeDomain = host_domain;
+		infos[1].timeDomain = present_timing.time_domains[i];
+		uint64_t timestamps[2] = {};
+		uint64_t max_deviation;
+
+		VkSwapchainCalibratedTimestampInfoEXT swapchain_info =
+				{ VK_STRUCTURE_TYPE_SWAPCHAIN_CALIBRATED_TIMESTAMP_INFO_EXT };
+
+		if (present_timing.time_domains[i] == VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT)
+		{
+			// Every present stage has a unique time domain, query each stage one-by-one.
+			infos[1].pNext = &swapchain_info;
+			swapchain_info.timeDomainId = present_timing.time_domain_ids[i];
+			swapchain_info.swapchain = swapchain;
+
+			Util::for_each_bit(supports_present_timing.feedback, [&](unsigned bit) {
+				swapchain_info.presentStage = 1u << bit;
+
+				if (table->vkGetCalibratedTimestampsKHR(context->get_device(), 2, infos,
+				                                        timestamps, &max_deviation) != VK_SUCCESS)
+				{
+					LOGE("Failed to get calibrated timestamps.\n");
+					return;
+				}
+
+				present_timing.calibration[i].host_time = timestamps[0];
+				present_timing.calibration[i].stage_times[bit] = timestamps[1];
+			});
+		}
+		else if (present_timing.time_domains[i] == VK_TIME_DOMAIN_SWAPCHAIN_LOCAL_EXT)
+		{
+			infos[1].pNext = &swapchain_info;
+			swapchain_info.timeDomainId = present_timing.time_domain_ids[i];
+			swapchain_info.swapchain = swapchain;
+
+			if (table->vkGetCalibratedTimestampsKHR(context->get_device(), 2, infos,
+			                                        timestamps, &max_deviation) != VK_SUCCESS)
+			{
+				LOGE("Failed to get calibrated timestamps.\n");
+				return;
+			}
+
+			present_timing.calibration[i].host_time = timestamps[0];
+			Util::for_each_bit(supports_present_timing.feedback, [&](unsigned bit) {
+				present_timing.calibration[i].stage_times[bit] = timestamps[1];
+			});
+		}
+		else
+		{
+			// This probably needs spec clarification.
+			// We assume it's normal nanoseconds for now.
+			if (infos[1].timeDomain == VK_TIME_DOMAIN_DEVICE_KHR &&
+			    (context->get_gpu_props().limits.timestampPeriod != 1.0f ||
+			     context->get_queue_info().timestamp_valid_bits != 64))
+			{
+				LOGW("Implementation reports DEVICE domain timestamps, "
+					 "but it's unclear how to deal with non-trivial periods and valid bits.\n");
+			}
+
+			if (table->vkGetCalibratedTimestampsKHR(context->get_device(), 2, infos,
+													timestamps, &max_deviation) != VK_SUCCESS)
+			{
+				LOGE("Failed to get calibrated timestamps.\n");
+				return;
+			}
+
+			present_timing.calibration[i].host_time = timestamps[0];
+			Util::for_each_bit(supports_present_timing.feedback, [&](unsigned bit) {
+				present_timing.calibration[i].stage_times[bit] = timestamps[1];
+			});
+		}
+	}
+
+#ifdef _WIN32
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	for (auto &calibration : present_timing.calibration)
+		calibration.host_time = uint64_t(1e9 * calibration.host_time / double(freq.QuadPart));
+#endif
+
+	if (present_timing.present_stage == 0)
+	{
+		// Make sure that our requests use a supported time domain, otherwise NV driver gets confused.
+		for (size_t i = 0, n = present_timing.calibration.size(); i < n; i++)
+		{
+			auto &cal = present_timing.calibration[i];
+			if (cal.host_time &&
+			    std::any_of(std::begin(cal.stage_times), std::end(cal.stage_times), [](uint64_t v) { return v != 0; }))
+			{
+				present_timing.time_domain = present_timing.time_domains[i];
+				present_timing.time_domain_id = present_timing.time_domain_ids[i];
+				break;
+			}
+		}
+	}
+}
+
+void WSI::update_time_domain_properties()
+{
+	VkSwapchainTimeDomainPropertiesEXT time_domain_properties = { VK_STRUCTURE_TYPE_SWAPCHAIN_TIME_DOMAIN_PROPERTIES_EXT };
+	if (table->vkGetSwapchainTimeDomainPropertiesEXT(context->get_device(), swapchain, &time_domain_properties, nullptr) != VK_SUCCESS)
+	{
+		LOGE("Failed to query time domain properties.\n");
+		return;
+	}
+
+	present_timing.time_domains.resize(time_domain_properties.timeDomainCount);
+	present_timing.time_domain_ids.resize(time_domain_properties.timeDomainCount);
+	time_domain_properties.pTimeDomains = present_timing.time_domains.data();
+	time_domain_properties.pTimeDomainIds = present_timing.time_domain_ids.data();
+
+	if (table->vkGetSwapchainTimeDomainPropertiesEXT(context->get_device(), swapchain,
+	                                                 &time_domain_properties,
+	                                                 &present_timing.time_domain_counter) != VK_SUCCESS)
+	{
+		LOGE("Failed to query time domain properties.\n");
+		return;
+	}
+
+#ifdef VULKAN_DEBUG
+	for (uint32_t i = 0; i < time_domain_properties.timeDomainCount; i++)
+	{
+		LOGI("Got time domain %u, ID %llu\n",
+		     present_timing.time_domains[i],
+		     static_cast<unsigned long long>(present_timing.time_domain_ids[i]));
+	}
+#endif
+
+	present_timing.has_time_domain_props = true;
+	present_timing.need_recalibration = true;
+}
+
+void WSI::poll_present_timing_feedback()
+{
+	VkPastPresentationTimingEXT timings[PresentTimingQueueSize] = {};
+	VkPresentStageTimeEXT stage_time[PresentTimingQueueSize][4] = {};
+
+	for (uint32_t i = 0; i < PresentTimingQueueSize; i++)
+	{
+		auto &t = timings[i];
+		t.sType = VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_EXT;
+		t.pPresentStages = stage_time[i];
+		t.presentStageCount = 4;
+	}
+
+	VkPastPresentationTimingInfoEXT info = { VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_INFO_EXT };
+	VkPastPresentationTimingPropertiesEXT props = { VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_PROPERTIES_EXT };
+	props.presentationTimingCount = PresentTimingQueueSize;
+	props.pPresentationTimings = timings;
+	info.swapchain = swapchain;
+
+	if (table->vkGetPastPresentationTimingEXT(context->get_device(), &info, &props) != VK_SUCCESS)
+		return;
+
+	if (props.presentationTimingCount == 0)
+		return;
+
+	if (props.timingPropertiesCounter != present_timing.refresh_counter)
+		update_present_timing_properties();
+
+	// NV bug on X11: props.timingPropertiesCounter is always 0, even if TimingPropertiesEXT returns 1.
+	if (props.timingPropertiesCounter != 0 && props.timingPropertiesCounter != present_timing.refresh_counter)
+	{
+		LOGW("Got presentation timing counter (%llu) which does not map to current state of swapchain (%llu).\n",
+		     static_cast<unsigned long long>(props.timingPropertiesCounter),
+		     static_cast<unsigned long long>(present_timing.refresh_counter));
+	}
+
+	// NV bug on X11: timeDomainsCount remains 0.
+	if ((props.timeDomainsCounter != 0 && props.timeDomainsCounter != present_timing.time_domain_counter) ||
+	    !present_timing.has_time_domain_props)
+	{
+		update_time_domain_properties();
+	}
+
+	auto current_time = Util::get_current_time_nsecs();
+	if (present_timing.last_recalibration_time + 1000000000 < current_time)
+	{
+		present_timing.need_recalibration = true;
+		present_timing.last_recalibration_time = current_time;
+	}
+
+	if (present_timing.need_recalibration)
+	{
+		recalibrate_present_timing_domains();
+		present_timing.need_recalibration = false;
+	}
+
+	for (uint32_t i = 0; i < props.presentationTimingCount; i++)
+	{
+		// By default, these reports must be sorted based on QueuePresent().
+
+		auto &timing = props.pPresentationTimings[i];
+
+		if (!timing.reportComplete)
+		{
+			// This should never happen since we don't request partial timestamps.
+			LOGE("Implementation does not report complete timestamps?\n");
+			continue;
+		}
+
+#ifdef VULKAN_DEBUG
+		LOGI("Timing for presentID %llu, time domain %u, time domain ID %llu:\n",
+		     static_cast<unsigned long long>(timing.presentId),
+		     timing.timeDomain, static_cast<unsigned long long>(timing.timeDomainId));
+#endif
+
+		present_timing.present_stage = 0;
+		present_timing.reference_time = 0;
+		present_timing.present_id = timing.presentId;
+		present_timing.time_domain = timing.timeDomain;
+		present_timing.time_domain_id = timing.timeDomainId;
+
+		// Try to calibrate the timestamp so we can report them in host time domain.
+		const CalibratedTimestamp *calibrated = nullptr;
+		for (size_t j = 0, n = present_timing.time_domain_ids.size(); j < n; j++)
+		{
+			if (present_timing.time_domain_ids[j] == timing.timeDomainId)
+			{
+				if (j < present_timing.calibration.size())
+					calibrated = &present_timing.calibration[j];
+				break;
+			}
+		}
+
+		if (calibrated && calibrated->host_time == 0)
+			calibrated = nullptr;
+
+		std::sort(timing.pPresentStages, timing.pPresentStages + timing.presentStageCount,
+		          [](const VkPresentStageTimeEXT &a, const VkPresentStageTimeEXT &b) { return a.stage < b.stage; });
+
+		present_timing.present_done_host_time = 0;
+		present_timing.gpu_done_host_time = 0;
+
+		for (uint32_t stage_index = 0; stage_index < timing.presentStageCount; stage_index++)
+		{
+			auto &stage = timing.pPresentStages[stage_index];
+
+			// Safety. Shouldn't happen since we don't request it.
+			// Time of 0 can happen according to spec and means timing information is not available.
+			// Can happen for e.g. discarded, occluded surfaces on WL. Just skip the update.
+			if (stage.stage > VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT || stage.stage == 0 || stage.time == 0)
+				continue;
+
+			uint64_t calibrated_stage_time = calibrated ? calibrated->stage_times[Util::trailing_zeroes(stage.stage)] : 0;
+#ifdef VULKAN_DEBUG
+			static const char *stage_tags[] = { "QueueOperations", "Dequeued", "FirstPixelOut", "FirstPixelVisible" };
+			const char *stage_tag = stage_tags[Util::trailing_zeroes(stage.stage)];
+#endif
+
+			if (calibrated)
+			{
+				uint64_t calibrated_ts = calibrated->host_time + (stage.time - calibrated_stage_time);
+				if (stage.stage == VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT)
+					present_timing.gpu_done_host_time = calibrated_ts;
+				else
+					present_timing.present_done_host_time = calibrated_ts;
+#ifdef VULKAN_DEBUG
+				LOGI("  %s: %.3f s (calibrated)\n", stage_tag, calibrated_ts * 1e-9);
+#endif
+			}
+#ifdef VULKAN_DEBUG
+			else
+			{
+				LOGI("  %s: %llu (raw ns)\n", stage_tag, static_cast<unsigned long long>(stage.time));
+			}
+#endif
+
+			present_timing.present_stage = stage.stage;
+			present_timing.reference_time = stage.time;
+		}
+
+		auto itr = std::find_if(
+				present_timing.error_stats.begin(), present_timing.error_stats.end(),
+				[&](const ErrorStats &err) {
+					return err.present_id == timing.presentId;
+				});
+
+		present_timing.presentation_time_error = 0;
+
+		if (itr != present_timing.error_stats.end())
+		{
+			// Retire the pending compensation.
+			present_timing.pending_compensation -= itr->compensation;
+
+			if (present_timing.present_done_host_time && itr->target_absolute)
+			{
+				auto err = int64_t(present_timing.present_done_host_time) - int64_t(itr->target_absolute);
+				present_timing.presentation_time_error = err;
+#ifdef VULKAN_DEBUG
+				LOGI("    Error: %.3f ms\n", 1e-6 * double(err));
+#endif
+			}
+
+			present_timing.error_stats.erase(itr);
+		}
+	}
+}
+
+void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
+{
+	// No stable way to set targets yet.
+	if (present_timing.refresh_duration == 0 || present_timing.reference_time == 0 ||
+	    present_timing.present_done_host_time == 0)
+		return;
+
+	// Presentation timing is only meaningful for FIFO.
+	if (active_present_mode != VK_PRESENT_MODE_FIFO_KHR &&
+	    active_present_mode != VK_PRESENT_MODE_FIFO_RELAXED_KHR &&
+	    active_present_mode != VK_PRESENT_MODE_FIFO_LATEST_READY_KHR)
+		return;
+
+	// Not supported.
+	if (!supports_present_timing.absolute && !supports_present_timing.relative)
+		return;
+
+	// No request to set time.
+	if (present_timing.target_absolute_time == 0 && present_timing.target_relative_time == 0)
+		return;
+
+	uint64_t relative_time = present_timing.target_relative_time;
+	if (relative_time && !present_timing.force_vrr && present_timing.refresh_mode != RefreshMode::VRR)
+	{
+		// If we keep accumulating relative time in a non-locked way, we'll get terrible pacing.
+		// Realign the relative time to boundary unless we're in VRR mode.
+
+		uint64_t interval = present_timing.refresh_duration;
+		relative_time = std::max<uint64_t>(relative_time, interval);
+
+		// The refresh interval represents the alignment of a refresh cycle.
+		// Duration is a multiple of interval.
+		if (present_timing.refresh_interval)
+			interval = present_timing.refresh_interval;
+
+		auto cycles = (relative_time + interval - 1) / interval;
+		relative_time = interval * cycles;
+	}
+
+	// VRR does not have to align to boundaries, so rounding is somewhat meaningless.
+	if (present_timing.refresh_mode != RefreshMode::VRR && !present_timing.force_vrr)
+		timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_NEAREST_REFRESH_CYCLE_BIT_EXT;
+
+	if (present_timing.time_domain == VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT)
+		timing.targetTimeDomainPresentStage = present_timing.present_stage;
+
+	uint64_t minimum_interval = present_timing.refresh_duration;
+
+	if (supports_present_timing.relative && relative_time)
+	{
+		// Relative time is very nice, since it's not our job to align frames :)
+		timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT;
+		timing.targetTime = relative_time;
+
+		// If we're using pure relative timing, we don't care about error accumulation and compensation,
+		// since it's expected that application will be driven by feedback rather than opposite.
+	}
+	else
+	{
+		if (!supports_present_timing.absolute)
+		{
+			// Ensure that we don't attempt to compensate for errors when absolute times are very tight.
+			// The emulated relative time must never be smaller than duration.
+			relative_time = std::max<uint64_t>(relative_time, present_timing.refresh_duration);
+		}
+
+		// If presentations get sufficiently delayed, we will need to catch up with our internal accumulator.
+		// If we're using present interval > 1, we'll catch up in a few frames.
+		uint64_t estimated_minimum_time = present_timing.present_done_host_time +
+		                                  (present_last_id - present_timing.present_id) * minimum_interval;
+
+		present_timing.last_absolute_target_time =
+				std::max<uint64_t>(present_timing.last_absolute_target_time, estimated_minimum_time);
+
+		// Compute the target absolute timing.
+		uint64_t next_absolute_time = std::max<uint64_t>(
+				present_timing.last_absolute_target_time + relative_time,
+				present_timing.target_absolute_time);
+
+		int64_t compensation = 0;
+
+		if (supports_present_timing.absolute)
+		{
+			timing.targetTime = next_absolute_time;
+		}
+		else
+		{
+			if (present_timing.last_absolute_target_time)
+			{
+				// This is kinda crude. We're emulating absolute timestamp with relative.
+				timing.targetTime = std::max<uint64_t>(next_absolute_time, present_timing.last_absolute_target_time) -
+				                    present_timing.last_absolute_target_time;
+
+				// Safety against deadlocks.
+				timing.targetTime = std::min<uint64_t>(timing.targetTime, 1000 * 1000 * 1000);
+
+				// If we lost frames, relative timing will remain delayed, so pull back the relative timing
+				// to realign with absolute time.
+				// The value can be negative in theory if we got back frames too early,
+				// but that shouldn't really happen.
+				int64_t in_flight_error = present_timing.presentation_time_error - present_timing.pending_compensation;
+
+				VK_ASSERT(timing.targetTime >= present_timing.refresh_duration);
+
+				// Don't aim to compensate all error in one go. That seems to create some unfortunate feedback loop effects,
+				// especially on Windows. We'll accept some error as long as it means more stable pacing.
+				compensation = std::min<int64_t>(timing.targetTime - present_timing.refresh_duration, in_flight_error / 2);
+				timing.targetTime -= compensation;
+
+#ifdef _WIN32
+				if (device->get_device_features().driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
+				    (timing.flags & VK_PRESENT_TIMING_INFO_PRESENT_AT_NEAREST_REFRESH_CYCLE_BIT_EXT) != 0)
+				{
+					// The driver seems very temperamental here, and it seems to round down the relative time
+					// to DXGI present intervals or something (which is a bug) ... Realign the next_absolute_time exactly.
+					uint64_t interval = present_timing.refresh_interval ?
+						present_timing.refresh_interval : present_timing.refresh_duration;
+
+					auto cycles = (timing.targetTime + interval / 2) / interval;
+					auto new_relative_time = cycles * interval;
+					auto adj = new_relative_time - timing.targetTime;
+					next_absolute_time += adj;
+					compensation -= adj;
+					timing.targetTime = new_relative_time;
+				}
+#endif
+
+				present_timing.pending_compensation += compensation;
+
+#ifdef VULKAN_DEBUG
+				LOGI("Relative target time: %.3f ms.\n", timing.targetTime * 1e-6);
+				LOGI("  Abs target time: %.3f ms.\n", next_absolute_time * 1e-6);
+				LOGI("  Compensation offset: %.3f ms\n", compensation * 1e-6);
+#endif
+			}
+
+			timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT;
+		}
+
+		present_timing.last_absolute_target_time = next_absolute_time;
+		present_timing.error_stats.push_back({ next_present_id, next_absolute_time, compensation });
+
+		// If we keep accumulating time through relative time emulation, we need to account for clock drift.
+		if (supports_present_timing.absolute && relative_time &&
+		    present_timing.refresh_mode != RefreshMode::VRR && !present_timing.force_vrr)
+		{
+			uint64_t interval = present_timing.refresh_interval ?
+			                    present_timing.refresh_interval : present_timing.refresh_duration;
+
+			uint64_t align =
+					(present_timing.last_absolute_target_time - present_timing.present_done_host_time) % interval;
+
+			// Try to quickly-ish align to a refresh cycle.
+			if (align > interval / 2)
+				present_timing.last_absolute_target_time += (interval - align) / 8;
+			else
+				present_timing.last_absolute_target_time -= align / 8;
+		}
+	}
+
+	if ((timing.flags & VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT) == 0)
+	{
+		bool has_calibrated_time = false;
+		size_t n = std::min<size_t>(present_timing.time_domain_ids.size(), present_timing.calibration.size());
+
+		for (size_t i = 0; i < n; i++)
+		{
+			if (present_timing.time_domain_ids[i] == timing.timeDomainId)
+			{
+				auto &c = present_timing.calibration[i];
+
+				// Spec seems to suggest that targetTime is always in terms of FIRST_PIXEL_VISIBLE,
+				// but we can only use timestamps based on the latest present stage we get feedback for.
+				uint64_t stage_time = c.stage_times[Util::trailing_zeroes(present_timing.present_stage)];
+
+				if (stage_time == 0)
+				{
+					LOGW("Cannot compute targetTime.\n");
+				}
+				else
+				{
+					// Recompute the absolute time to target the domain.
+					timing.targetTime = (timing.targetTime - c.host_time) + stage_time;
+
+					if (timing.targetTime >= (1ull << 63))
+						LOGW("Detected strange overflow, ignoring time request.\n");
+					else
+						has_calibrated_time = true;
+				}
+
+				break;
+			}
+		}
+
+		if (!has_calibrated_time)
+			timing.targetTime = 0;
+	}
+
+	// Completely meaningless to keep targeting absolute.
+	present_timing.target_absolute_time = 0;
+}
+
+bool WSI::get_presentation_stats(PresentationStats &stats) const
+{
+	if (!present_timing.reference_time)
+		return false;
+
+	stats.feedback_present_id = present_timing.present_id;
+	stats.gpu_done_ts = present_timing.gpu_done_host_time;
+	stats.present_done_ts = present_timing.present_done_host_time;
+	stats.error = present_timing.presentation_time_error;
+	return true;
+}
+
+bool WSI::get_refresh_rate_info(RefreshRateInfo &info) const
+{
+	if (present_timing.refresh_duration == 0)
+		return false;
+
+	info.refresh_duration = present_timing.refresh_duration;
+	info.refresh_interval = present_timing.refresh_interval;
+	info.mode = present_timing.refresh_mode;
+	return true;
+}
+
+uint64_t WSI::get_last_submitted_present_id() const
+{
+	return present_last_id;
+}
+
+bool WSI::set_target_presentation_time(uint64_t absolute_time_ns, uint64_t relative_time_ns, bool force_vrr)
+{
+	present_timing.target_absolute_time = absolute_time_ns;
+	present_timing.target_relative_time = relative_time_ns;
+	present_timing.force_vrr = force_vrr;
+
+	if (active_present_mode != VK_PRESENT_MODE_FIFO_KHR &&
+	    active_present_mode != VK_PRESENT_MODE_FIFO_RELAXED_KHR &&
+	    active_present_mode != VK_PRESENT_MODE_FIFO_LATEST_READY_KHR)
+		return false;
+
+	return present_timing.refresh_duration != 0 && present_timing.reference_time != 0 &&
+	       present_timing.present_done_host_time != 0 &&
+	       (supports_present_timing.relative || supports_present_timing.absolute);
+}
+
 bool WSI::begin_frame()
 {
 	if (frame_is_external)
@@ -827,6 +1463,12 @@ bool WSI::begin_frame()
 	{
 		LOGE("Completely lost swapchain. Cannot continue.\n");
 		return false;
+	}
+
+	if (supports_present_timing.feedback)
+	{
+		update_present_timing_properties();
+		poll_present_timing_feedback();
 	}
 
 	VkResult result;
@@ -905,8 +1547,11 @@ bool WSI::begin_frame()
 			platform->event_swapchain_index(device.get(), swapchain_index);
 
 			device->set_acquire_semaphore(swapchain_index, acquire);
-			if (device->get_device_features().present_id_features.presentId)
+			if (device->get_device_features().present_id_features.presentId ||
+			    device->get_device_features().present_id2_features.presentId2)
+			{
 				device->set_present_id(swapchain, next_present_id);
+			}
 		}
 		else if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
 		{
@@ -1002,6 +1647,8 @@ bool WSI::end_frame()
 		VkSwapchainPresentModeInfoKHR present_mode_info = { VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_KHR };
 		VkPresentIdKHR present_id_info = { VK_STRUCTURE_TYPE_PRESENT_ID_KHR };
 		VkPresentId2KHR present_id2_info = { VK_STRUCTURE_TYPE_PRESENT_ID_2_KHR };
+		VkPresentTimingsInfoEXT timings_info = { VK_STRUCTURE_TYPE_PRESENT_TIMINGS_INFO_EXT };
+		VkPresentTimingInfoEXT timing_info = { VK_STRUCTURE_TYPE_PRESENT_TIMING_INFO_EXT };
 
 		if (supports_present_wait2)
 		{
@@ -1036,6 +1683,18 @@ bool WSI::end_frame()
 			present_mode_info.pPresentModes = &active_present_mode;
 			present_mode_info.pNext = const_cast<void *>(info.pNext);
 			info.pNext = &present_mode_info;
+		}
+
+		if (supports_present_timing.feedback)
+		{
+			timing_info.presentStageQueries = supports_present_timing.feedback;
+			timing_info.timeDomainId = present_timing.time_domain_id;
+			set_present_timing_request(timing_info);
+
+			timings_info.swapchainCount = 1;
+			timings_info.pTimingInfos = &timing_info;
+			timings_info.pNext = info.pNext;
+			info.pNext = &timings_info;
 		}
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
@@ -1470,6 +2129,7 @@ struct SurfaceInfo
 	VkImageCompressionFixedRateFlagsEXT compression_control_fixed_rates;
 	VkSurfaceCapabilitiesPresentId2KHR present_id2;
 	VkSurfaceCapabilitiesPresentWait2KHR present_wait2;
+	VkPresentTimingSurfaceCapabilitiesEXT present_timing;
 	std::vector<VkPresentModeKHR> present_mode_compat_group;
 	const void *swapchain_pnext;
 	VkSwapchainLatencyCreateInfoNV latency_create_info;
@@ -1633,6 +2293,13 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 			info.present_id2 = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_PRESENT_ID_2_KHR };
 			info.present_wait2.pNext = &info.present_id2;
 			surface_capabilities2.pNext = &info.present_wait2;
+		}
+
+		if (ext.present_timing_features.presentTiming)
+		{
+			info.present_timing = { VK_STRUCTURE_TYPE_PRESENT_TIMING_SURFACE_CAPABILITIES_EXT };
+			info.present_timing.pNext = surface_capabilities2.pNext;
+			surface_capabilities2.pNext = &info.present_timing;
 		}
 
 		if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
@@ -2009,12 +2676,48 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	supports_present_wait2 = surface_info.present_id2.presentId2Supported &&
 	                         surface_info.present_wait2.presentWait2Supported;
 
+	supports_present_timing.feedback = surface_info.present_timing.presentTimingSupported ?
+			surface_info.present_timing.presentStageQueries : 0;
+
+	// Only ackknowledge present stages we understand in case there are future extensions.
+	supports_present_timing.feedback &=
+			VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT |
+			VK_PRESENT_STAGE_REQUEST_DEQUEUED_BIT_EXT |
+			VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT |
+			VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT;
+
+	supports_present_timing.absolute = surface_info.present_timing.presentTimingSupported &&
+	                                   surface_info.present_timing.presentAtAbsoluteTimeSupported;
+
+	supports_present_timing.relative = surface_info.present_timing.presentTimingSupported &&
+	                                   surface_info.present_timing.presentAtRelativeTimeSupported;
+
 	if (supports_present_wait2)
 		info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_ID_2_BIT_KHR | VK_SWAPCHAIN_CREATE_PRESENT_WAIT_2_BIT_KHR;
+	else
+		supports_present_timing.feedback = 0;
+
+	if (supports_present_timing.feedback)
+	{
+		info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_TIMING_BIT_EXT;
+		LOGI("Enabling present timing, queries #%x, absolute %u, relative %u.\n",
+		     supports_present_timing.feedback,
+		     supports_present_timing.absolute,
+		     supports_present_timing.relative);
+	}
 
 	auto res = table->vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
 	if (res < 0)
 		swapchain = VK_NULL_HANDLE;
+
+	if (res == VK_SUCCESS && supports_present_timing.feedback)
+	{
+		table->vkSetSwapchainPresentTimingQueueSizeEXT(context->get_device(), swapchain, PresentTimingQueueSize);
+		present_timing = {};
+		update_present_timing_properties();
+		update_time_domain_properties();
+		recalibrate_present_timing_domains();
+	}
 
 	platform->destroy_swapchain_resources(old_swapchain);
 	table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);

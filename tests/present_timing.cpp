@@ -138,6 +138,10 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 			get_wsi().set_gpu_submit_low_latency_mode(gpu_submit_low_latency);
 			break;
 
+		case Key::R:
+			relative_timing = !relative_timing;
+			break;
+
 		default:
 			break;
 		}
@@ -151,6 +155,7 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 		uint64_t cpu_time_submit;
 		uint64_t queue_done;
 		uint64_t present_done;
+		int64_t error;
 		double burn_time;
 	};
 	Util::SmallVector<QueryResult, WindowSize> retired_results;
@@ -172,6 +177,7 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 	bool gpu_submit_low_latency = false;
 	unsigned cycles_num = 8;
 	unsigned cycles_den = 8;
+	bool relative_timing = true;
 
 	void retire_query(PendingQueryResult &query)
 	{
@@ -205,6 +211,8 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 			queries.clear();
 	}
 
+	uint64_t absolute_timing_accumulator = 0;
+
 	void poll_present_timing()
 	{
 		auto &wsi = get_wsi();
@@ -218,6 +226,7 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 			{
 				query.queue_done = stats.gpu_done_ts;
 				query.present_done = stats.present_done_ts;
+				query.error = stats.error;
 			}
 
 			// Possible that we skipped ahead in the feedback.
@@ -227,18 +236,35 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 
 		uint64_t expected_duration = refresh_info.refresh_duration * cycles_num / cycles_den;
 
-		// Relative time test.
-		if (timing_request)
-			supports_request = wsi.set_target_presentation_time(0, expected_duration, force_vrr_timing);
-		else
-			supports_request = wsi.set_target_presentation_time(0, 0, false);
-
-		if (expected_duration)
+		if (relative_timing)
 		{
-			uint64_t prediction =
-					(1 + stats.last_submitted_present_id - stats.feedback_present_id) *
-					expected_duration + stats.present_done_ts;
-			//supports_request = wsi.set_target_presentation_time(prediction, 0);
+			// Relative time test.
+			if (timing_request)
+				supports_request = wsi.set_target_presentation_time(0, expected_duration, force_vrr_timing);
+			else
+				supports_request = wsi.set_target_presentation_time(0, 0, false);
+		}
+		else if (timing_request)
+		{
+			if (expected_duration)
+			{
+				uint64_t lower_prediction =
+						(1 + wsi.get_last_submitted_present_id() - stats.feedback_present_id) *
+						expected_duration + stats.present_done_ts;
+
+				absolute_timing_accumulator += expected_duration;
+				absolute_timing_accumulator = std::max(absolute_timing_accumulator, lower_prediction);
+
+				if (refresh_info.mode != RefreshMode::VRR && !force_vrr_timing && stats.present_done_ts)
+				{
+					// Align to nearest refresh cycle to avoid drift.
+					auto cycles = (absolute_timing_accumulator - stats.present_done_ts + refresh_info.refresh_duration / 2) /
+					              refresh_info.refresh_duration;
+					absolute_timing_accumulator = stats.present_done_ts + cycles * refresh_info.refresh_duration;
+				}
+
+				supports_request = wsi.set_target_presentation_time(absolute_timing_accumulator, 0, force_vrr_timing);
+			}
 		}
 	}
 
@@ -363,6 +389,7 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 		print_line("Timing request (T to toggle): %s", timing_request ? "yes" : "no");
 		print_line("PresentWait low latency (P to toggle): %s", present_wait_low_latency ? "yes" : "no");
 		print_line("GPU submit low latency (L to toggle): %s", gpu_submit_low_latency ? "yes" : "no");
+		print_line("Relative timing (R to toggle): %s", relative_timing ? "yes" : "no");
 
 		if (refresh_info.refresh_duration)
 		{
@@ -425,6 +452,22 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 
 				flat.render_quad(offset, size, vec4(0.0f, 0.0f, 0.0f, 0.9f));
 				render_history(cpu_record_present_delays.data(), cpu_record_present_delays.size(), offset.xy(), size);
+				offset.y += size.y + 10.0f;
+			}
+		}
+
+		// Error from estimated completion vs actual completion
+		if (refresh_info.refresh_duration)
+		{
+			Util::SmallVector<double, WindowSize> errors;
+			for (auto &retired : retired_results)
+				errors.push_back(1e-9 * double(retired.error + 2 * int64_t(refresh_info.refresh_duration)));
+
+			if (!errors.empty())
+			{
+				print_line("Presentation error (+/- 2 refresh cycles)");
+				flat.render_quad(offset, size, vec4(0.0f, 0.0f, 0.0f, 0.9f));
+				render_history(errors.data(), errors.size(), offset.xy(), size);
 				offset.y += size.y + 10.0f;
 			}
 		}

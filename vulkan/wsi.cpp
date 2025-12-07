@@ -1144,13 +1144,35 @@ void WSI::poll_present_timing_feedback()
 			{
 				LOGI("  %s: %llu (raw ns)\n", stage_tag, static_cast<unsigned long long>(stage.time));
 			}
-
-			if (timing.targetTime && (stage.stage & ~VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT) != 0)
-				LOGI("    Error: %.3f ms\n", 1e-6 * double(int64_t(stage.time) - int64_t(timing.targetTime)));
 #endif
 
 			present_timing.present_stage = stage.stage;
 			present_timing.reference_time = stage.time;
+		}
+
+		auto itr = std::find_if(
+				present_timing.error_stats.begin(), present_timing.error_stats.end(),
+				[&](const ErrorStats &err) {
+					return err.present_id == timing.presentId;
+				});
+
+		present_timing.presentation_time_error = 0;
+
+		if (itr != present_timing.error_stats.end())
+		{
+			// Retire the pending compensation.
+			present_timing.pending_compensation -= itr->compensation;
+
+			if (present_timing.present_done_host_time && itr->target_absolute)
+			{
+				auto err = int64_t(present_timing.present_done_host_time) - int64_t(itr->target_absolute);
+				present_timing.presentation_time_error = err;
+#ifdef VULKAN_DEBUG
+				LOGI("    Error: %.3f ms\n", 1e-6 * double(err));
+#endif
+			}
+
+			present_timing.error_stats.erase(itr);
 		}
 	}
 }
@@ -1177,8 +1199,7 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 		return;
 
 	uint64_t relative_time = present_timing.target_relative_time;
-	if (relative_time && !supports_present_timing.relative && present_timing.refresh_duration &&
-	    !present_timing.force_vrr && present_timing.refresh_mode != RefreshMode::VRR)
+	if (relative_time && !present_timing.force_vrr && present_timing.refresh_mode != RefreshMode::VRR)
 	{
 		// If we keep accumulating relative time in a non-locked way, we'll get terrible pacing.
 		// Realign the relative time to boundary unless we're in VRR mode.
@@ -1209,29 +1230,33 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 		// Relative time is very nice, since it's not our job to align frames :)
 		timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT;
 		timing.targetTime = relative_time;
+
+		// If we're using pure relative timing, we don't care about error accumulation and compensation,
+		// since it's expected that application will be driven by feedback rather than opposite.
 	}
 	else
 	{
-		// If we only care about absolute timestamps, don't let any estimation screw us over.
-		if (relative_time)
+		if (!supports_present_timing.absolute)
 		{
-			// If presentations get sufficiently delayed, we will need to catch up
-			// with our internal accumulator.
-			uint64_t estimated_minimum_time = present_timing.present_done_host_time +
-			                                  (present_last_id - present_timing.present_id) * minimum_interval;
-
-			present_timing.last_absolute_target_time =
-					std::max<uint64_t>(present_timing.last_absolute_target_time, estimated_minimum_time);
-		}
-		else
-		{
-			present_timing.last_absolute_target_time = 0;
+			// Ensure that we don't attempt to compensate for errors when absolute times are very tight.
+			// The emulated relative time must never be smaller than duration.
+			relative_time = std::max<uint64_t>(relative_time, present_timing.refresh_duration);
 		}
 
-		// Go for absolute timing.
+		// If presentations get sufficiently delayed, we will need to catch up with our internal accumulator.
+		// If we're using present interval > 1, we'll catch up in a few frames.
+		uint64_t estimated_minimum_time = present_timing.present_done_host_time +
+		                                  (present_last_id - present_timing.present_id) * minimum_interval;
+
+		present_timing.last_absolute_target_time =
+				std::max<uint64_t>(present_timing.last_absolute_target_time, estimated_minimum_time);
+
+		// Compute the target absolute timing.
 		uint64_t next_absolute_time = std::max<uint64_t>(
 				present_timing.last_absolute_target_time + relative_time,
 				present_timing.target_absolute_time);
+
+		int64_t compensation = 0;
 
 		if (supports_present_timing.absolute)
 		{
@@ -1239,24 +1264,51 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 		}
 		else
 		{
-			// This is kinda crude. We're emulating absolute timestamp with relative.
-			timing.targetTime = std::max<uint64_t>(next_absolute_time, present_timing.last_absolute_target_time) -
-			                    present_timing.last_absolute_target_time;
+			if (present_timing.last_absolute_target_time)
+			{
+				// This is kinda crude. We're emulating absolute timestamp with relative.
+				timing.targetTime = std::max<uint64_t>(next_absolute_time, present_timing.last_absolute_target_time) -
+				                    present_timing.last_absolute_target_time;
+
+				// Safety against deadlocks.
+				timing.targetTime = std::min<uint64_t>(timing.targetTime, 1000 * 1000 * 1000);
+
+				// If we lost frames, relative timing will remain delayed, so pull back the relative timing
+				// to realign with absolute time.
+				// The value can be negative in theory if we got back frames too early,
+				// but that shouldn't really happen.
+				int64_t in_flight_error = present_timing.presentation_time_error - present_timing.pending_compensation;
+
+				VK_ASSERT(timing.targetTime >= present_timing.refresh_duration);
+				compensation = std::min<int64_t>(timing.targetTime - present_timing.refresh_duration, in_flight_error);
+				timing.targetTime -= compensation;
+				present_timing.pending_compensation += compensation;
+
+#ifdef VULKAN_DEBUG
+				LOGI("Relative target time: %.3f ms.\n", timing.targetTime * 1e-6);
+				LOGI("  Abs target time: %.3f ms.\n", next_absolute_time * 1e-6);
+#endif
+			}
+
 			timing.flags |= VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT;
 		}
 
 		present_timing.last_absolute_target_time = next_absolute_time;
+		present_timing.error_stats.push_back({ next_present_id, next_absolute_time, compensation });
 
-		// If we keep accumulating time, we need to account for clock drift.
-		if (present_timing.refresh_mode != RefreshMode::VRR)
+		// If we keep accumulating time through relative time emulation, we need to account for clock drift.
+		if (supports_present_timing.absolute && relative_time &&
+		    present_timing.refresh_mode != RefreshMode::VRR && !present_timing.force_vrr)
 		{
+			uint64_t interval = present_timing.refresh_interval ?
+			                    present_timing.refresh_interval : present_timing.refresh_duration;
+
 			uint64_t align =
-					(present_timing.last_absolute_target_time - present_timing.present_done_host_time) %
-					present_timing.refresh_duration;
+					(present_timing.last_absolute_target_time - present_timing.present_done_host_time) % interval;
 
 			// Try to quickly-ish align to a refresh cycle.
-			if (align > present_timing.refresh_duration / 2)
-				present_timing.last_absolute_target_time += (present_timing.refresh_duration - align) / 8;
+			if (align > interval / 2)
+				present_timing.last_absolute_target_time += (interval - align) / 8;
 			else
 				present_timing.last_absolute_target_time -= align / 8;
 		}
@@ -1309,10 +1361,10 @@ bool WSI::get_presentation_stats(PresentationStats &stats) const
 	if (!present_timing.reference_time)
 		return false;
 
-	stats.last_submitted_present_id = present_last_id;
 	stats.feedback_present_id = present_timing.present_id;
 	stats.gpu_done_ts = present_timing.gpu_done_host_time;
 	stats.present_done_ts = present_timing.present_done_host_time;
+	stats.error = present_timing.presentation_time_error;
 	return true;
 }
 

@@ -167,10 +167,20 @@ enum class BackbufferFormat
 
 struct PresentationStats
 {
-	uint64_t last_submitted_present_id;
+	// Correlate with WSI::get_last_submitted_present_id() + 1.
 	uint64_t feedback_present_id;
+
+	// QUEUE_COMPLETE query. May be 0 if implementation does not support it.
+	// Application can trivially implement this on its own if needed.
 	uint64_t gpu_done_ts;
-	uint64_t present_done_ts; // This is the latest stage that is reported.
+
+	// This is the latest stage that is reported.
+	uint64_t present_done_ts;
+
+	// actual presented - intended target presentation.
+	// Intended target presentation may be adjusted internally,
+	// especially when emulating absolute over relative and vice versa.
+	int64_t error;
 };
 
 enum class RefreshMode { Unknown, FRR, VRR };
@@ -445,6 +455,13 @@ private:
 		uint64_t stage_times[4];
 	};
 
+	struct ErrorStats
+	{
+		uint64_t present_id;
+		uint64_t target_absolute;
+		int64_t compensation;
+	};
+
 	struct
 	{
 		// Used for setting target time.
@@ -480,6 +497,10 @@ private:
 
 		bool need_recalibration;
 		int64_t last_recalibration_time;
+
+		int64_t presentation_time_error;
+		int64_t pending_compensation;
+		Util::SmallVector<ErrorStats, 16> error_stats;
 	} present_timing = {};
 
 	void update_present_timing_properties();

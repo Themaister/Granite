@@ -1030,8 +1030,7 @@ void Device::set_context(const Context &context)
 			queue_data[i].performance_query_pool.init_device(this, queue_info.family_indices[i]);
 	}
 
-	if (system_handles.timeline_trace_file)
-		init_calibrated_timestamps();
+	init_calibrated_timestamps();
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	resource_manager.init();
@@ -2731,37 +2730,11 @@ QueryPoolHandle Device::write_calibrated_timestamp_nolock()
 	return handle;
 }
 
-void Device::recalibrate_timestamps_fallback()
-{
-	wait_idle_nolock();
-	auto cmd = request_command_buffer_nolock(0, CommandBuffer::Type::Generic, false);
-	auto ts = write_timestamp_nolock(cmd->get_command_buffer(), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
-	if (!ts)
-	{
-		submit_discard_nolock(cmd);
-		return;
-	}
-	auto start_ts = Util::get_current_time_nsecs();
-	submit_nolock(cmd, nullptr, 0, nullptr);
-	wait_idle_nolock();
-	auto end_ts = Util::get_current_time_nsecs();
-	auto host_ts = (start_ts + end_ts) / 2;
-
-	LOGI("Calibrated timestamps with a fallback method. Uncertainty: %.3f us.\n", 1e-3 * (end_ts - start_ts));
-
-	calibrated_timestamp_host = host_ts;
-	VK_ASSERT(ts->is_signalled());
-	calibrated_timestamp_device = ts->get_timestamp_ticks();
-	calibrated_timestamp_device_accum = calibrated_timestamp_device;
-}
-
 void Device::init_calibrated_timestamps()
 {
+	calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_KHR;
 	if (!get_device_features().supports_calibrated_timestamps)
-	{
-		recalibrate_timestamps_fallback();
 		return;
-	}
 
 	uint32_t count;
 	vkGetPhysicalDeviceCalibrateableTimeDomainsKHR(gpu, &count, nullptr);
@@ -2843,8 +2816,7 @@ bool Device::resample_calibrated_timestamps()
 
 void Device::recalibrate_timestamps()
 {
-	// Don't bother recalibrating timestamps if we're not tracing.
-	if (!system_handles.timeline_trace_file)
+	if (calibrated_time_domain == VK_TIME_DOMAIN_DEVICE_KHR)
 		return;
 
 	// Recalibrate every once in a while ...
@@ -2852,11 +2824,7 @@ void Device::recalibrate_timestamps()
 	if (timestamp_calibration_counter < 1000)
 		return;
 	timestamp_calibration_counter = 0;
-
-	if (calibrated_time_domain == VK_TIME_DOMAIN_DEVICE_EXT)
-		recalibrate_timestamps_fallback();
-	else
-		resample_calibrated_timestamps();
+	resample_calibrated_timestamps();
 }
 
 void Device::register_time_interval(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,
@@ -5754,6 +5722,9 @@ int64_t Device::convert_timestamp_to_absolute_nsec(const QueryPoolResult &handle
 	auto ts = int64_t(handle.get_timestamp_ticks());
 	if (handle.is_device_timebase())
 	{
+		if (calibrated_time_domain == VK_TIME_DOMAIN_DEVICE_KHR)
+			LOGW("Attempting to convert device timestamp to calibrated domain, but calibrated timestamps are not supported.");
+
 		// Ensure that we deal with timestamp wraparound correctly.
 		// On some hardware, we have < 64 valid bits and the timestamp counters will wrap around at some interval.
 		// As long as timestamps come in at a reasonably steady pace, we can deal with wraparound cleanly.

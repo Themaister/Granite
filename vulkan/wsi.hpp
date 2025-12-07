@@ -165,6 +165,33 @@ enum class BackbufferFormat
 	Custom
 };
 
+struct PresentationStats
+{
+	// Correlate with WSI::get_last_submitted_present_id() + 1.
+	uint64_t feedback_present_id;
+
+	// QUEUE_COMPLETE query. May be 0 if implementation does not support it.
+	// Application can trivially implement this on its own if needed.
+	uint64_t gpu_done_ts;
+
+	// This is the latest stage that is reported.
+	uint64_t present_done_ts;
+
+	// actual presented - intended target presentation.
+	// Intended target presentation may be adjusted internally,
+	// especially when emulating absolute over relative and vice versa.
+	int64_t error;
+};
+
+enum class RefreshMode { Unknown, FRR, VRR };
+
+struct RefreshRateInfo
+{
+	RefreshMode mode;
+	uint64_t refresh_duration;
+	uint64_t refresh_interval;
+};
+
 class WSI
 {
 public:
@@ -313,6 +340,32 @@ public:
 	double get_smooth_frame_time() const;
 	double get_smooth_elapsed_time() const;
 
+	bool get_presentation_stats(PresentationStats &stats) const;
+	bool get_refresh_rate_info(RefreshRateInfo &info) const;
+	uint64_t get_last_submitted_present_id() const;
+
+	// Absolute time is in terms of the Util::get_current_time_nsec() domain,
+	// i.e., time reported in presentation stats.
+	//
+	// For absolute time, the image must not be presented before the time given.
+	// For relative time, the time is intended to be abs_time = last_present + rel_time.
+	//
+	// If relative time is supported by implementation and relative_time_ns is not 0,
+	// absolute time requests are ignored. If absolute time is supported by implementation,
+	// a target absolute time will be computed based on absolute_time_ns and relative_time_ns.
+	//
+	// Rounding adjustments are allowed when the absolute time aligns closely
+	// with a refresh cycle, up to half a refresh cycle for FRR. For VRR, no adjustments are made.
+	//
+	// If this returns true, the request is expected to work as intended.
+	// If false, either it's unsupported, or we're not yet in a steady state where
+	// presentation timing reliably work (the first few frames after a swapchain is created may hit this).
+	// This state remains set until another request is made.
+	// For relative timings, this will work as expected as a method to set absolute target automatically,
+	// but absolute time obviously will not, since application is expected to set a new target time every frame.
+	// If force_vrr is true, the relative or absolute times are passed down with no bias.
+	bool set_target_presentation_time(uint64_t absolute_time_ns, uint64_t relative_time_ns, bool force_vrr);
+
 private:
 	void update_framebuffer(unsigned width, unsigned height);
 
@@ -388,6 +441,73 @@ private:
 	uint64_t present_last_id = 0;
 	unsigned present_frame_latency = 0;
 	bool supports_present_wait2 = false;
+
+	struct
+	{
+		VkPresentStageFlagsEXT feedback;
+		bool absolute;
+		bool relative;
+	} supports_present_timing = {};
+
+	struct CalibratedTimestamp
+	{
+		uint64_t host_time;
+		uint64_t stage_times[4];
+	};
+
+	struct ErrorStats
+	{
+		uint64_t present_id;
+		uint64_t target_absolute;
+		int64_t compensation;
+	};
+
+	struct
+	{
+		// Used for setting target time.
+		VkPresentStageFlagsEXT present_stage;
+		uint64_t reference_time;
+		VkTimeDomainKHR time_domain;
+		uint64_t time_domain_id;
+
+		// Target
+		uint64_t target_absolute_time;
+		uint64_t target_relative_time;
+		uint64_t last_absolute_target_time;
+		bool force_vrr;
+
+		// Feedback.
+		uint64_t gpu_done_host_time;
+		uint64_t present_done_host_time;
+		uint64_t present_id;
+
+		// Display refresh rate information.
+		uint64_t refresh_duration;
+		uint64_t refresh_interval;
+		uint64_t refresh_counter;
+		bool has_refresh_feedback;
+		RefreshMode refresh_mode = RefreshMode::Unknown;
+
+		// Calibration information.
+		uint64_t time_domain_counter;
+		bool has_time_domain_props;
+		Util::SmallVector<VkTimeDomainKHR> time_domains;
+		Util::SmallVector<uint64_t> time_domain_ids;
+		Util::SmallVector<CalibratedTimestamp> calibration;
+
+		bool need_recalibration;
+		int64_t last_recalibration_time;
+
+		int64_t presentation_time_error;
+		int64_t pending_compensation;
+		Util::SmallVector<ErrorStats, 16> error_stats;
+	} present_timing = {};
+
+	void update_present_timing_properties();
+	void poll_present_timing_feedback();
+	void recalibrate_present_timing_domains();
+	void update_time_domain_properties();
+	void set_present_timing_request(VkPresentTimingInfoEXT &timing);
 
 	Semaphore low_latency_semaphore;
 	uint64_t low_latency_semaphore_value = 0;

@@ -59,6 +59,11 @@ if (NOT ANDROID)
     target_compile_definitions(latency-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
+add_granite_application(present-timing present_timing.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(present-timing PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+
 add_granite_application(hdr-test hdr_test.cpp)
 if (NOT ANDROID)
     target_compile_definitions(hdr-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")

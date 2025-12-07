@@ -1280,13 +1280,36 @@ void WSI::set_present_timing_request(VkPresentTimingInfoEXT &timing)
 				int64_t in_flight_error = present_timing.presentation_time_error - present_timing.pending_compensation;
 
 				VK_ASSERT(timing.targetTime >= present_timing.refresh_duration);
-				compensation = std::min<int64_t>(timing.targetTime - present_timing.refresh_duration, in_flight_error);
+
+				// Don't aim to compensate all error in one go. That seems to create some unfortunate feedback loop effects,
+				// especially on Windows. We'll accept some error as long as it means more stable pacing.
+				compensation = std::min<int64_t>(timing.targetTime - present_timing.refresh_duration, in_flight_error / 2);
 				timing.targetTime -= compensation;
+
+#ifdef _WIN32
+				if (device->get_device_features().driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
+				    (timing.flags & VK_PRESENT_TIMING_INFO_PRESENT_AT_NEAREST_REFRESH_CYCLE_BIT_EXT) != 0)
+				{
+					// The driver seems very temperamental here, and it seems to round down the relative time
+					// to DXGI present intervals or something (which is a bug) ... Realign the next_absolute_time exactly.
+					uint64_t interval = present_timing.refresh_interval ?
+						present_timing.refresh_interval : present_timing.refresh_duration;
+
+					auto cycles = (timing.targetTime + interval / 2) / interval;
+					auto new_relative_time = cycles * interval;
+					auto adj = new_relative_time - timing.targetTime;
+					next_absolute_time += adj;
+					compensation -= adj;
+					timing.targetTime = new_relative_time;
+				}
+#endif
+
 				present_timing.pending_compensation += compensation;
 
 #ifdef VULKAN_DEBUG
 				LOGI("Relative target time: %.3f ms.\n", timing.targetTime * 1e-6);
 				LOGI("  Abs target time: %.3f ms.\n", next_absolute_time * 1e-6);
+				LOGI("  Compensation offset: %.3f ms\n", compensation * 1e-6);
 #endif
 			}
 

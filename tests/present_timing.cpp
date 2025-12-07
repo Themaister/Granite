@@ -250,9 +250,14 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 			{
 				uint64_t lower_prediction =
 						(1 + wsi.get_last_submitted_present_id() - stats.feedback_present_id) *
-						expected_duration + stats.present_done_ts;
+						refresh_info.refresh_duration + stats.present_done_ts;
+
+				LOGI("Current time is %.3f s\n", Util::get_current_time_nsecs() * 1e-9);
 
 				absolute_timing_accumulator += expected_duration;
+
+				if (lower_prediction > absolute_timing_accumulator)
+					LOGI("Bumping absolute_timing_accumulator by %.3f ms\n", 1e-6 * double(lower_prediction - absolute_timing_accumulator));
 				absolute_timing_accumulator = std::max(absolute_timing_accumulator, lower_prediction);
 
 				if (refresh_info.mode != RefreshMode::VRR && !force_vrr_timing && stats.present_done_ts)
@@ -262,6 +267,8 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 					              refresh_info.refresh_duration;
 					absolute_timing_accumulator = stats.present_done_ts + cycles * refresh_info.refresh_duration;
 				}
+
+				LOGI("Requesting %.3f ms\n", 1e-6 * absolute_timing_accumulator);
 
 				supports_request = wsi.set_target_presentation_time(absolute_timing_accumulator, 0, force_vrr_timing);
 			}

@@ -1465,12 +1465,6 @@ bool WSI::begin_frame()
 		return false;
 	}
 
-	if (supports_present_timing.feedback)
-	{
-		update_present_timing_properties();
-		poll_present_timing_feedback();
-	}
-
 	VkResult result;
 	do
 	{
@@ -1533,6 +1527,12 @@ bool WSI::begin_frame()
 			acquire->set_signal_is_foreign_queue();
 
 			wait_swapchain_latency();
+
+			if (supports_present_timing.feedback)
+			{
+				update_present_timing_properties();
+				poll_present_timing_feedback();
+			}
 
 			auto frame_time = platform->get_frame_timer().frame();
 			auto elapsed_time = platform->get_frame_timer().get_elapsed();

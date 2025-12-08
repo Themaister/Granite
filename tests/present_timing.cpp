@@ -182,7 +182,8 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 	void retire_query(PendingQueryResult &query)
 	{
 		auto &device = get_wsi().get_device();
-		query.queue_done = std::max<uint64_t>(device.convert_timestamp_to_absolute_nsec(*query.end), query.queue_done);
+		if (!query.queue_done)
+			query.queue_done = device.convert_timestamp_to_absolute_nsec(*query.end);
 		query.burn_time = device.convert_device_timestamp_delta(query.start->get_timestamp_ticks(),
 																query.end->get_timestamp_ticks());
 		if (retired_results.size() >= 100)
@@ -311,7 +312,7 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 		flat.render_line_strip(offsets.data(), 0.0f, num_times, vec4(1.0f, 1.0f, 0.0f, 1.0f));
 	}
 
-	void render_frame(double frame_time, double elapsed_time) override
+	void render_frame(double frame_time, double) override
 	{
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
@@ -492,6 +493,16 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 		queries.push_back(std::move(pending));
 
 		device.submit(cmd);
+	}
+
+	unsigned get_default_width() override
+	{
+		return 1600;
+	}
+
+	unsigned get_default_height() override
+	{
+		return 900;
 	}
 
 	unsigned counter = 0;

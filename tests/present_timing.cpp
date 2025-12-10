@@ -102,6 +102,10 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 
 		switch (e.get_key())
 		{
+		case Key::Escape:
+			request_shutdown();
+			break;
+
 		case Key::Up:
 			burn_count++;
 			break;

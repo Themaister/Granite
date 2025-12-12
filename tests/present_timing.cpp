@@ -146,6 +146,12 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 			relative_timing = !relative_timing;
 			break;
 
+		case Key::Space:
+			get_wsi().set_present_mode(
+					get_wsi().get_present_mode() == PresentMode::SyncToVBlank ?
+					PresentMode::UnlockedMaybeTear : PresentMode::SyncToVBlank);
+			break;
+
 		default:
 			break;
 		}
@@ -402,6 +408,8 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 		print_line("PresentWait low latency (P to toggle): %s", present_wait_low_latency ? "yes" : "no");
 		print_line("GPU submit low latency (L to toggle): %s", gpu_submit_low_latency ? "yes" : "no");
 		print_line("Relative timing (R to toggle): %s", relative_timing ? "yes" : "no");
+		print_line("Present mode (Space to toggle): %s",
+		           get_wsi().get_present_mode() == PresentMode::SyncToVBlank ? "vsync" : "unlocked (no timing target)");
 
 		if (refresh_info.refresh_duration)
 		{

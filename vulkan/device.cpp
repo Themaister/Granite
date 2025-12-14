@@ -2821,7 +2821,7 @@ void Device::recalibrate_timestamps()
 
 	// Recalibrate every once in a while ...
 	timestamp_calibration_counter++;
-	if (timestamp_calibration_counter < 1000)
+	if (timestamp_calibration_counter < 64)
 		return;
 	timestamp_calibration_counter = 0;
 	resample_calibrated_timestamps();

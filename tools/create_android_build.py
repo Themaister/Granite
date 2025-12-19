@@ -184,7 +184,7 @@ def main():
             .replace('$$SHADER_OPTIMIZE$$', 'ON' if args.optimize else 'OFF') \
             .replace('$$FOSSILIZE$$', 'ON' if args.fossilize else 'OFF') \
             .replace('$$SWAPPY$$', 'ON' if args.swappy else 'OFF') \
-            .replace('$$EXTRA_DEPENDENCIES$$', "api project(':custom:android')" if args.activity_name else '')
+            .replace('$$EXTRA_DEPENDENCIES$$', "api project(':custom')" if args.activity_name else '')
 
         with open(target_build_gradle, 'w') as dump_file:
             print(data, file = dump_file)

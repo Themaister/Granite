@@ -1,25 +1,25 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "$$NAMESPACE$$"
-    compileSdkVersion 34
+    namespace = '$$NAMESPACE$$'
+    compileSdkVersion = 34
 
     defaultConfig {
-        minSdkVersion 26
-        targetSdkVersion 34
+        minSdkVersion = 26
+        targetSdkVersion = 34
 
         ndk {
-            abiFilters $$ABIS$$
+            abiFilters = [$$ABIS$$]
         }
     }
 
-    ndkVersion '26.3.11579264'
+    ndkVersion = '26.3.11579264'
 
     buildTypes {
         debug {
             externalNativeBuild {
                 cmake {
-                    arguments "-DANDROID_TOOLCHAIN=clang",
+                    arguments = ["-DANDROID_TOOLCHAIN=clang",
                             "-DANDROID_STL=c++_shared",
                             "-DANDROID_ARM_MODE=arm",
                             "-DANDROID_CPP_FEATURES=exceptions",
@@ -33,17 +33,17 @@ android {
                             "-DGRANITE_BULLET=$$PHYSICS$$",
                             "-DANDROID_ARM_NEON=ON",
                             "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=OFF",
-                            "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+                            "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
 
-                    targets "$$TARGET$$"
+                    targets = ["$$TARGET$$"]
                 }
             }
-            jniDebuggable true
+            jniDebuggable = true
         }
         release {
             externalNativeBuild {
                 cmake {
-                    arguments "-DANDROID_TOOLCHAIN=clang",
+                    arguments = ["-DANDROID_TOOLCHAIN=clang",
                             "-DANDROID_STL=c++_shared",
                             "-DANDROID_ARM_MODE=arm",
                             "-DANDROID_CPP_FEATURES=exceptions",
@@ -57,14 +57,14 @@ android {
                             "-DGRANITE_BULLET=$$PHYSICS$$",
                             "-DANDROID_ARM_NEON=ON",
                             "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=OFF",
-                            "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+                            "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
 
-                    targets "$$TARGET$$"
+                    targets = ["$$TARGET$$"]
                 }
             }
-            debuggable true
-            signingConfig signingConfigs.debug
-            jniDebuggable true
+            debuggable = true
+            signingConfig = signingConfigs.debug
+            jniDebuggable = true
         }
     }
 
@@ -81,13 +81,13 @@ android {
 
     externalNativeBuild {
         cmake {
-            path "$$CMAKELISTS$$"
-            version "3.22.0+"
+            path = "$$CMAKELISTS$$"
+            version = "3.22.0+"
         }
     }
 
     buildFeatures {
-        prefab true
+        prefab = true
     }
 }
 

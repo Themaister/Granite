@@ -37,6 +37,8 @@
 
 #elif defined(__AVX__)
 #include <immintrin.h>
+#elif defined(__SSE4_1__)
+#include <smmintrin.h>
 #elif defined(__SSE3__)
 #include <pmmintrin.h>
 #elif defined(__SSE__)

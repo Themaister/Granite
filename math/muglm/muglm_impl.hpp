@@ -641,10 +641,9 @@ inline mat3 transpose(const mat3 &m)
 
 inline mat4 transpose(const mat4 &m)
 {
-	return mat4(vec4(m[0].x, m[1].x, m[2].x, m[3].x),
-	            vec4(m[0].y, m[1].y, m[2].y, m[3].y),
-	            vec4(m[0].z, m[1].z, m[2].z, m[3].z),
-	            vec4(m[0].w, m[1].w, m[2].w, m[3].w));
+	mat4 dst;
+	transpose(dst, m);
+	return dst;
 }
 
 // dot

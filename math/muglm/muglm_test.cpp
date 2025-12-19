@@ -22,6 +22,7 @@
 
 #include "muglm_impl.hpp"
 #include "matrix_helper.hpp"
+#include "simd.hpp"
 #include <assert.h>
 #include <stdlib.h>
 
@@ -63,6 +64,13 @@ static void assert_equal_epsilon(const mat4 &a, const mat4 &b, float epsilon = 0
 	assert_equal_epsilon(a[1], b[1], epsilon);
 	assert_equal_epsilon(a[2], b[2], epsilon);
 	assert_equal_epsilon(a[3], b[3], epsilon);
+}
+
+static void assert_equal_epsilon(const mat_affine &a, const mat_affine &b, float epsilon = 0.0001f)
+{
+	assert_equal_epsilon(a[0], b[0], epsilon);
+	assert_equal_epsilon(a[1], b[1], epsilon);
+	assert_equal_epsilon(a[2], b[2], epsilon);
 }
 
 static void assert_equal(const mat2 &a, const mat2 &b)
@@ -159,6 +167,60 @@ static void test_decompose()
 	assert_equal_epsilon(original, reconstructed);
 }
 
+static void test_transpose()
+{
+	mat4 original(vec4(1, 2, 3, 4), vec4(5, 6, 7, 8), vec4(9, 10, 11, 12), vec4(13, 14, 15, 16));
+	mat4 transposed = transpose(original);
+	mat_affine aff{original};
+
+	const mat4 expected_transposed(
+			vec4(1, 5, 9, 13),
+			vec4(2, 6, 10, 14),
+			vec4(3, 7, 11, 15),
+			vec4(4, 8, 12, 16));
+
+	mat_affine expected_aff;
+	for (int i = 0; i < 3; i++)
+		expected_aff[i] = expected_transposed[i];
+
+	assert_equal_epsilon(expected_transposed, transposed, 0.0f);
+	assert_equal_epsilon(expected_aff, aff, 0.0f);
+}
+
+static void test_affine()
+{
+	mat4 a(vec4(1, 2, 3, 0), vec4(5, 6, 7, 0),
+		   vec4(9, 10, 11, 0), vec4(13, 14, 15, 1));
+	mat4 b(vec4(17, 18, 19, 0), vec4(21, 22, 23, 0),
+		   vec4(25, 26, 27, 0), vec4(29, 30, 31, 1));
+
+	mat4 c = a * b;
+	mat_affine aff_c(c);
+	mat_affine aff_a(a);
+	mat_affine aff_b(b);
+
+	mat_affine res;
+	Granite::SIMD::mul(res, aff_a, aff_b);
+	assert_equal_epsilon(res, aff_c, 0.0f);
+}
+
+static void test_affine_mul()
+{
+	mat4 a(vec4(1, 2, 3, 0), vec4(5, 6, 7, 0),
+	       vec4(9, 10, 11, 0), vec4(13, 14, 15, 1));
+	vec4 b(1, 2, 3, 1);
+
+	mat_affine aff_a(a);
+
+	vec4 ref = a * b;
+	vec4 res4, res_affine;
+	Granite::SIMD::mul(res4, a, b);
+	Granite::SIMD::mul(res_affine, aff_a, b);
+
+	assert_equal_epsilon(ref, res4, 0.0f);
+	assert_equal_epsilon(ref, res_affine, 0.0f);
+}
+
 int main()
 {
 	test_mat2();
@@ -166,4 +228,7 @@ int main()
 	test_mat4();
 	test_quat();
 	test_decompose();
+	test_transpose();
+	test_affine();
+	test_affine_mul();
 }

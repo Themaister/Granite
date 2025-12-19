@@ -893,6 +893,34 @@ using bvec2 = tvec2<bool>;
 using bvec3 = tvec3<bool>;
 using bvec4 = tvec4<bool>;
 
+void transpose(mat4 &dst, const mat4 &src);
+void transpose_to_affine(vec4 dst[3], const mat4 &src);
+
+struct mat_affine
+{
+	mat_affine() = default;
+	mat_affine(const mat_affine &) = default;
+	mat_affine &operator=(const mat_affine &) = default;
+
+	explicit inline mat_affine(const mat4 &m)
+	{
+		transpose_to_affine(vec, m);
+	}
+
+	inline vec4 &operator[](size_t index)
+	{
+		return vec[index];
+	}
+
+	inline const vec4 &operator[](size_t index) const
+	{
+		return vec[index];
+	}
+
+private:
+	vec4 vec[3];
+};
+
 struct quat : private vec4
 {
 	quat() = default;

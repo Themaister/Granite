@@ -22,6 +22,7 @@
 
 #include "matrix_helper.hpp"
 #include "muglm_impl.hpp"
+#include "simd_headers.hpp"
 
 namespace muglm
 {
@@ -290,5 +291,51 @@ mat4 perspective(float fovy, float aspect, float near, float far)
 	result[3].y *= -1.0f;
 
 	return result;
+}
+
+void transpose(mat4 &dst, const mat4 &src)
+{
+#if __SSE__
+	__m128 r0 = _mm_loadu_ps(src[0].data);
+	__m128 r1 = _mm_loadu_ps(src[1].data);
+	__m128 r2 = _mm_loadu_ps(src[2].data);
+	__m128 r3 = _mm_loadu_ps(src[3].data);
+	_MM_TRANSPOSE4_PS(r0, r1, r2, r3);
+	_mm_storeu_ps(dst[0].data, r0);
+	_mm_storeu_ps(dst[1].data, r1);
+	_mm_storeu_ps(dst[2].data, r2);
+	_mm_storeu_ps(dst[3].data, r3);
+#elif defined(__ARM_NEON)
+	float32x4x4_t a = vld4q_f32(src[0].data);
+	vst1q_f32(dst[0].data, a.val[0]);
+	vst1q_f32(dst[1].data, a.val[1]);
+	vst1q_f32(dst[2].data, a.val[2]);
+	vst1q_f32(dst[3].data, a.val[3]);
+#else
+	dst = transpose(src);
+#endif
+}
+
+void transpose_to_affine(vec4 dst[3], const mat4 &src)
+{
+#if __SSE__
+	__m128 r0 = _mm_loadu_ps(src[0].data);
+	__m128 r1 = _mm_loadu_ps(src[1].data);
+	__m128 r2 = _mm_loadu_ps(src[2].data);
+	__m128 r3 = _mm_loadu_ps(src[3].data);
+	_MM_TRANSPOSE4_PS(r0, r1, r2, r3);
+	_mm_storeu_ps(dst[0].data, r0);
+	_mm_storeu_ps(dst[1].data, r1);
+	_mm_storeu_ps(dst[2].data, r2);
+#elif defined(__ARM_NEON)
+	float32x4x4_t a = vld4q_f32(src[0].data);
+	vst1q_f32(dst[0].data, a.val[0]);
+	vst1q_f32(dst[1].data, a.val[1]);
+	vst1q_f32(dst[2].data, a.val[2]);
+#else
+	mat4 m = transpose(src);
+	for (int i = 0; i < 3; i++)
+		dst[i] = m[i];
+#endif
 }
 }

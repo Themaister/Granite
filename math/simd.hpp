@@ -104,6 +104,69 @@ static inline bool frustum_cull(const AABB &aabb, const vec4 *planes)
 #endif
 }
 
+static inline void mul(vec4 &c, const mat_affine &a, const vec4 &b)
+{
+#if defined(__SSE4_1__)
+	__m128 a0 = _mm_loadu_ps(a[0].data);
+	__m128 a1 = _mm_loadu_ps(a[1].data);
+	__m128 a2 = _mm_loadu_ps(a[2].data);
+	__m128 b0 = _mm_loadu_ps(b.data);
+	__m128 r0 = _mm_dp_ps(a0, b0, 0xf1);
+	__m128 r1 = _mm_dp_ps(a1, b0, 0xf2);
+	__m128 r2 = _mm_dp_ps(a2, b0, 0xf4);
+	__m128 r = _mm_or_ps(_mm_or_ps(r0, r1), r2);
+	r = _mm_insert_ps(r, _mm_set_ss(1.0f), 0x30);
+	_mm_storeu_ps(c.data, r);
+#elif defined(__SSE__)
+	__m128 a0 = _mm_loadu_ps(a[0].data);
+	__m128 a1 = _mm_loadu_ps(a[1].data);
+	__m128 a2 = _mm_loadu_ps(a[2].data);
+	__m128 a3 = _mm_set_ps(1, 0, 0, 0);
+	_MM_TRANSPOSE4_PS(a0, a1, a2, a3);
+	__m128 b0 = _mm_loadu_ps(b.data);
+
+	__m128 b00 = _mm_shuffle_ps(b0, b0, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 b01 = _mm_shuffle_ps(b0, b0, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 b02 = _mm_shuffle_ps(b0, b0, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 b03 = _mm_shuffle_ps(b0, b0, _MM_SHUFFLE(3, 3, 3, 3));
+
+	__m128 col0 = _mm_mul_ps(a0, b00);
+	col0 = _mm_add_ps(col0, _mm_mul_ps(a1, b01));
+	col0 = _mm_add_ps(col0, _mm_mul_ps(a2, b02));
+	col0 = _mm_add_ps(col0, _mm_mul_ps(a3, b03));
+
+	_mm_storeu_ps(c.data, col0);
+#elif defined(__aarch64__)
+	alignas(16) static const float a3_data[] = { 0, 0, 0, 1 };
+	float32x4_t a0 = vld1q_f32(a[0].data);
+	float32x4_t a1 = vld1q_f32(a[1].data);
+	float32x4_t a2 = vld1q_f32(a[2].data);
+	float32x4_t a3 = vld1q_f32(a3_data);
+
+	// From sse2neon.h
+	float64x2_t r0 = (float64x2_t)vtrn1q_f32(a0, a1);
+	float64x2_t r1 = (float64x2_t)vtrn2q_f32(a0, a1);
+	float64x2_t r2 = (float64x2_t)vtrn1q_f32(a2, a3);
+	float64x2_t r3 = (float64x2_t)vtrn2q_f32(a2, a3);
+
+	a0 = (float32x4_t)vtrn1q_f64(r0, r2);
+	a1 = (float32x4_t)vtrn1q_f64(r1, r3);
+	a2 = (float32x4_t)vtrn2q_f64(r0, r2);
+	a3 = (float32x4_t)vtrn2q_f64(r1, r3);
+
+	float32x4_t b0 = vld1q_f32(b.data);
+
+	float32x4_t col0 = vmulq_n_f32(a0, vgetq_lane_f32(b0, 0));
+	col0 = vmlaq_n_f32(col0, a1, vgetq_lane_f32(b0, 1));
+	col0 = vmlaq_n_f32(col0, a2, vgetq_lane_f32(b0, 2));
+	col0 = vmlaq_n_f32(col0, a3, vgetq_lane_f32(b0, 3));
+
+	vst1q_f32(c.data, col0);
+#else
+	c = transpose(mat4(a[0], a[1], a[2], vec4(0, 0, 0, 1))) * b;
+#endif
+}
+
 static inline void mul(vec4 &c, const mat4 &a, const vec4 &b)
 {
 #if defined(__SSE__)
@@ -139,6 +202,89 @@ static inline void mul(vec4 &c, const mat4 &a, const vec4 &b)
 	vst1q_f32(c.data, col0);
 #else
 	c = a * b;
+#endif
+}
+
+static inline void mul(mat_affine &c, const mat_affine &a, const mat_affine &b)
+{
+#if defined(__SSE__)
+	// Swap the arguments to allow treating the multiplication as column-major.
+	__m128 a0 = _mm_loadu_ps(b[0].data);
+	__m128 a1 = _mm_loadu_ps(b[1].data);
+	__m128 a2 = _mm_loadu_ps(b[2].data);
+	__m128 b0 = _mm_loadu_ps(a[0].data);
+	__m128 b1 = _mm_loadu_ps(a[1].data);
+	__m128 b2 = _mm_loadu_ps(a[2].data);
+	const __m128 a3 = _mm_set_ps(1, 0, 0, 0);
+
+	__m128 b00 = _mm_shuffle_ps(b0, b0, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 b01 = _mm_shuffle_ps(b0, b0, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 b02 = _mm_shuffle_ps(b0, b0, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 b03 = _mm_shuffle_ps(b0, b0, _MM_SHUFFLE(3, 3, 3, 3));
+
+	__m128 col0 = _mm_mul_ps(a0, b00);
+	col0 = _mm_add_ps(col0, _mm_mul_ps(a1, b01));
+	col0 = _mm_add_ps(col0, _mm_mul_ps(a2, b02));
+	col0 = _mm_add_ps(col0, _mm_mul_ps(a3, b03));
+	__m128 b10 = _mm_shuffle_ps(b1, b1, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 b11 = _mm_shuffle_ps(b1, b1, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 b12 = _mm_shuffle_ps(b1, b1, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 b13 = _mm_shuffle_ps(b1, b1, _MM_SHUFFLE(3, 3, 3, 3));
+
+	__m128 col1 = _mm_mul_ps(a0, b10);
+	col1 = _mm_add_ps(col1, _mm_mul_ps(a1, b11));
+	col1 = _mm_add_ps(col1, _mm_mul_ps(a2, b12));
+	col1 = _mm_add_ps(col1, _mm_mul_ps(a3, b13));
+
+	__m128 b20 = _mm_shuffle_ps(b2, b2, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 b21 = _mm_shuffle_ps(b2, b2, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 b22 = _mm_shuffle_ps(b2, b2, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 b23 = _mm_shuffle_ps(b2, b2, _MM_SHUFFLE(3, 3, 3, 3));
+
+	__m128 col2 = _mm_mul_ps(a0, b20);
+	col2 = _mm_add_ps(col2, _mm_mul_ps(a1, b21));
+	col2 = _mm_add_ps(col2, _mm_mul_ps(a2, b22));
+	col2 = _mm_add_ps(col2, _mm_mul_ps(a3, b23));
+
+	_mm_storeu_ps(c[0].data, col0);
+	_mm_storeu_ps(c[1].data, col1);
+	_mm_storeu_ps(c[2].data, col2);
+
+#elif defined(__ARM_NEON)
+	alignas(16) static const float a3_data[] = { 0, 0, 0, 1 };
+	float32x4_t a0 = vld1q_f32(b[0].data);
+	float32x4_t a1 = vld1q_f32(b[1].data);
+	float32x4_t a2 = vld1q_f32(b[2].data);
+	float32x4_t a3 = vld1q_f32(a3_data);
+	float32x4_t b0 = vld1q_f32(a[0].data);
+	float32x4_t b1 = vld1q_f32(a[1].data);
+	float32x4_t b2 = vld1q_f32(a[2].data);
+
+	float32x4_t col0 = vmulq_n_f32(a0, vgetq_lane_f32(b0, 0));
+	float32x4_t col1 = vmulq_n_f32(a0, vgetq_lane_f32(b1, 0));
+	float32x4_t col2 = vmulq_n_f32(a0, vgetq_lane_f32(b2, 0));
+
+	col0 = vmlaq_n_f32(col0, a1, vgetq_lane_f32(b0, 1));
+	col1 = vmlaq_n_f32(col1, a1, vgetq_lane_f32(b1, 1));
+	col2 = vmlaq_n_f32(col2, a1, vgetq_lane_f32(b2, 1));
+
+	col0 = vmlaq_n_f32(col0, a2, vgetq_lane_f32(b0, 2));
+	col1 = vmlaq_n_f32(col1, a2, vgetq_lane_f32(b1, 2));
+	col2 = vmlaq_n_f32(col2, a2, vgetq_lane_f32(b2, 2));
+
+	col0 = vmlaq_n_f32(col0, a3, vgetq_lane_f32(b0, 3));
+	col1 = vmlaq_n_f32(col1, a3, vgetq_lane_f32(b1, 3));
+	col2 = vmlaq_n_f32(col2, a3, vgetq_lane_f32(b2, 3));
+
+	vst1q_f32(c[0].data, col0);
+	vst1q_f32(c[1].data, col1);
+	vst1q_f32(c[2].data, col2);
+#else
+	mat4 a4(a[0], a[1], a[2], vec4(0.0f, 0.0f, 0.0f, 1.0f));
+	mat4 b4(b[0], b[1], b[2], vec4(0.0f, 0.0f, 0.0f, 1.0f));
+	mat4 c4 = b4 * a4;
+	for (int i = 0; i < 3; i++)
+		c[i] = c4[i];
 #endif
 }
 

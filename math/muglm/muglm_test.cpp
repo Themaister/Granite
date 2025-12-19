@@ -25,6 +25,7 @@
 #include "simd.hpp"
 #include <assert.h>
 #include <stdlib.h>
+#include "aabb.hpp"
 
 using namespace muglm;
 
@@ -221,6 +222,21 @@ static void test_affine_mul()
 	assert_equal_epsilon(ref, res_affine, 0.0f);
 }
 
+static void test_aabb_transform()
+{
+	mat4 m(vec4(1, 2, 3, 0), vec4(5, 6, 7, 0),
+	       vec4(9, 10, 11, 0), vec4(13, 14, 15, 1));
+
+	Granite::AABB aabb{vec3(-1, -2, -4), vec3(3, 7, 4)};
+
+	Granite::AABB reference_aabb, affine_aabb;
+	Granite::SIMD::transform_aabb(reference_aabb, aabb, m);
+	Granite::SIMD::transform_aabb(affine_aabb, aabb, mat_affine(m));
+
+	assert_equal_epsilon(reference_aabb.get_maximum4(), affine_aabb.get_maximum4(), 0.0f);
+	assert_equal_epsilon(reference_aabb.get_minimum4(), affine_aabb.get_minimum4(), 0.0f);
+}
+
 int main()
 {
 	test_mat2();
@@ -231,4 +247,5 @@ int main()
 	test_transpose();
 	test_affine();
 	test_affine_mul();
+	test_aabb_transform();
 }

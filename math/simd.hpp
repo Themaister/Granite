@@ -383,6 +383,90 @@ static inline void mul(mat4 &c, const mat4 &a, const mat4 &b)
 #endif
 }
 
+static inline void transform_aabb(AABB &output, const AABB &aabb, const mat_affine &m)
+{
+#if defined(__SSE__)
+	__m128 lo = _mm_loadu_ps(aabb.get_minimum4().data);
+	__m128 hi = _mm_loadu_ps(aabb.get_maximum4().data);
+
+	__m128 m0 = _mm_loadu_ps(m[0].data);
+	__m128 m1 = _mm_loadu_ps(m[1].data);
+	__m128 m2 = _mm_loadu_ps(m[2].data);
+	__m128 m3 = _mm_set_ps(1, 0, 0, 0);
+	_MM_TRANSPOSE4_PS(m0, m1, m2, m3);
+
+	__m128 m0_pos = _mm_cmpgt_ps(m0, _mm_setzero_ps());
+	__m128 m1_pos = _mm_cmpgt_ps(m1, _mm_setzero_ps());
+	__m128 m2_pos = _mm_cmpgt_ps(m2, _mm_setzero_ps());
+
+	__m128 hi0 = _mm_shuffle_ps(hi, hi, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 hi1 = _mm_shuffle_ps(hi, hi, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 hi2 = _mm_shuffle_ps(hi, hi, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 lo0 = _mm_shuffle_ps(lo, lo, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 lo1 = _mm_shuffle_ps(lo, lo, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 lo2 = _mm_shuffle_ps(lo, lo, _MM_SHUFFLE(2, 2, 2, 2));
+
+	__m128 hi_result = m3;
+	hi_result = _mm_add_ps(hi_result, _mm_mul_ps(m0, _mm_or_ps(_mm_and_ps(m0_pos, hi0), _mm_andnot_ps(m0_pos, lo0))));
+	hi_result = _mm_add_ps(hi_result, _mm_mul_ps(m1, _mm_or_ps(_mm_and_ps(m1_pos, hi1), _mm_andnot_ps(m1_pos, lo1))));
+	hi_result = _mm_add_ps(hi_result, _mm_mul_ps(m2, _mm_or_ps(_mm_and_ps(m2_pos, hi2), _mm_andnot_ps(m2_pos, lo2))));
+
+	__m128 lo_result = m3;
+	lo_result = _mm_add_ps(lo_result, _mm_mul_ps(m0, _mm_or_ps(_mm_andnot_ps(m0_pos, hi0), _mm_and_ps(m0_pos, lo0))));
+	lo_result = _mm_add_ps(lo_result, _mm_mul_ps(m1, _mm_or_ps(_mm_andnot_ps(m1_pos, hi1), _mm_and_ps(m1_pos, lo1))));
+	lo_result = _mm_add_ps(lo_result, _mm_mul_ps(m2, _mm_or_ps(_mm_andnot_ps(m2_pos, hi2), _mm_and_ps(m2_pos, lo2))));
+
+	_mm_storeu_ps(output.get_minimum4().data, lo_result);
+	_mm_storeu_ps(output.get_maximum4().data, hi_result);
+#elif defined(__aarch64__)
+	alignas(16) static const float m3_data[] = { 0, 0, 0, 1 };
+	float32x4_t lo = vld1q_f32(aabb.get_minimum4().data);
+	float32x4_t hi = vld1q_f32(aabb.get_maximum4().data);
+
+	float32x4_t m0 = vld1q_f32(m[0].data);
+	float32x4_t m1 = vld1q_f32(m[1].data);
+	float32x4_t m2 = vld1q_f32(m[2].data);
+	float32x4_t m3 = vld1q_f32(m3_data);
+
+	// From sse2neon.h
+	float64x2_t r0 = (float64x2_t)vtrn1q_f32(m0, m1);
+	float64x2_t r1 = (float64x2_t)vtrn2q_f32(m0, m1);
+	float64x2_t r2 = (float64x2_t)vtrn1q_f32(m2, m3);
+	float64x2_t r3 = (float64x2_t)vtrn2q_f32(m2, m3);
+
+	m0 = (float32x4_t)vtrn1q_f64(r0, r2);
+	m1 = (float32x4_t)vtrn1q_f64(r1, r3);
+	m2 = (float32x4_t)vtrn2q_f64(r0, r2);
+	m3 = (float32x4_t)vtrn2q_f64(r1, r3);
+
+	uint32x4_t m0_pos = vcgtq_f32(m0, vdupq_n_f32(0.0f));
+	uint32x4_t m1_pos = vcgtq_f32(m1, vdupq_n_f32(0.0f));
+	uint32x4_t m2_pos = vcgtq_f32(m2, vdupq_n_f32(0.0f));
+
+	float32x4_t lo0 = vdupq_lane_f32(vget_low_f32(lo), 0);
+	float32x4_t lo1 = vdupq_lane_f32(vget_low_f32(lo), 1);
+	float32x4_t lo2 = vdupq_lane_f32(vget_high_f32(lo), 0);
+	float32x4_t hi0 = vdupq_lane_f32(vget_low_f32(hi), 0);
+	float32x4_t hi1 = vdupq_lane_f32(vget_low_f32(hi), 1);
+	float32x4_t hi2 = vdupq_lane_f32(vget_high_f32(hi), 0);
+
+	float32x4_t hi_result = m3;
+	hi_result = vmlaq_f32(hi_result, m0, vbslq_f32(m0_pos, hi0, lo0));
+	hi_result = vmlaq_f32(hi_result, m1, vbslq_f32(m1_pos, hi1, lo1));
+	hi_result = vmlaq_f32(hi_result, m2, vbslq_f32(m2_pos, hi2, lo2));
+
+	float32x4_t lo_result = m3;
+	lo_result = vmlaq_f32(lo_result, m0, vbslq_f32(m0_pos, lo0, hi0));
+	lo_result = vmlaq_f32(lo_result, m1, vbslq_f32(m1_pos, lo1, hi1));
+	lo_result = vmlaq_f32(lo_result, m2, vbslq_f32(m2_pos, lo2, hi2));
+
+	vst1q_f32(output.get_minimum4().data, lo_result);
+	vst1q_f32(output.get_maximum4().data, hi_result);
+#else
+	output = aabb.transform(transpose(mat4(m[0], m[1], m[2], vec4(0, 0, 0, 1))));
+#endif
+}
+
 static inline void transform_aabb(AABB &output, const AABB &aabb, const mat4 &m)
 {
 #if defined(__SSE__)
@@ -454,7 +538,8 @@ static inline void transform_aabb(AABB &output, const AABB &aabb, const mat4 &m)
 #endif
 }
 
-static inline void transform_and_expand_aabb(AABB &expandee, const AABB &aabb, const mat4 &m)
+template <typename T>
+static inline void transform_and_expand_aabb(AABB &expandee, const AABB &aabb, const T &m)
 {
 	alignas(16) AABB tmp;
 	transform_aabb(tmp, aabb, m);

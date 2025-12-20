@@ -37,14 +37,16 @@ void main()
     if (index >= registers.num_lights)
         return;
 
-    mat4 m = cluster_transforms.model[index];
+    mat_affine m = cluster_transforms.model[index];
     vec3 p[5];
-    p[0] = m[3].xyz;
-    vec3 pz = p[0] - m[2].xyz;
-    p[1] = pz + m[0].xyz + m[1].xyz;
-    p[2] = pz - m[0].xyz + m[1].xyz;
-    p[3] = pz - m[0].xyz - m[1].xyz;
-    p[4] = pz + m[0].xyz - m[1].xyz;
+    p[0] = mat_affine_get_translation(m);
+    vec3 pz = p[0] + mat_affine_get_forward(m);
+    vec3 right = mat_affine_get_right(m);
+    vec3 up = mat_affine_get_up(m);
+    p[1] = pz + right + up;
+    p[2] = pz - right + up;
+    p[3] = pz - right - up;
+    p[4] = pz + right - up;
 
     float z[5];
     for (int i = 0; i < 5; i++)

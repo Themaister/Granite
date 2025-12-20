@@ -123,7 +123,7 @@ struct Animation
 
 struct Skin
 {
-	std::vector<mat4> inverse_bind_pose;
+	std::vector<mat_affine> inverse_bind_pose;
 	std::vector<NodeTransform> joint_transforms;
 
 	struct Bone

@@ -66,9 +66,9 @@ struct MeshAttributeLayout
 
 struct StaticMeshVertex
 {
-	mat4 Model;
-	mat4 *PrevModel = nullptr;
-	//mat4 Normal;
+	mat_affine Model;
+	mat_affine *PrevModel = nullptr;
+	//mat_affine Normal;
 	enum
 	{
 		max_instances = 256
@@ -104,9 +104,9 @@ struct StaticMeshInstanceInfo
 
 struct SkinnedMeshInstanceInfo
 {
-	mat4 *world_transforms = nullptr;
-	mat4 *prev_world_transforms = nullptr;
-	//mat4 *normal_transforms = nullptr;
+	mat_affine *world_transforms = nullptr;
+	mat_affine *prev_world_transforms = nullptr;
+	//mat_affine *normal_transforms = nullptr;
 	uint32_t num_bones = 0;
 };
 

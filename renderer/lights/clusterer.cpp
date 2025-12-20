@@ -1140,12 +1140,12 @@ void LightClusterer::refresh_legacy(const RenderContext& context_)
 }
 
 static void set_spot_model_transform(ClustererBindlessTransforms &transforms, unsigned index,
-                                     const SpotLight &spot, const mat4 &transform)
+                                     const SpotLight &spot, const mat_affine &transform)
 {
 	transforms.model[index] = spot.build_model_matrix(transform);
 }
 
-static void set_spot_model_transform(ClustererGlobalTransforms &, unsigned, const SpotLight &, const mat4 &)
+static void set_spot_model_transform(ClustererGlobalTransforms &, unsigned, const SpotLight &, const mat_affine &)
 {
 }
 
@@ -1703,7 +1703,7 @@ void LightClusterer::update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd
 	update_bindless_range_buffer_gpu(cmd, *bindless.range_buffer, bindless.volume_index_range);
 }
 
-static vec2 decal_z_range(const RenderContext &context, const mat4 &transform)
+static vec2 decal_z_range(const RenderContext &context, const mat_affine &transform)
 {
 	float lo = std::numeric_limits<float>::infinity();
 	float hi = -lo;
@@ -1764,7 +1764,7 @@ void LightClusterer::update_bindless_mask_buffer_decal_gpu(Vulkan::CommandBuffer
 	for (uint32_t i = 0; i < count; i++)
 	{
 		SIMD::mul(mapped_mvps[i], context->get_render_parameters().view_projection,
-		          visible_decals[i].transform->get_world_transform());
+		          visible_decals[i].transform->get_world_transform().to_mat4());
 	}
 	cmd.get_device().unmap_host_buffer(*mvps, MEMORY_ACCESS_WRITE_BIT);
 	cmd.set_storage_buffer(2, 0, *mvps);

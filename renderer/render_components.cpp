@@ -25,13 +25,13 @@
 
 namespace Granite
 {
-const mat4 &RenderInfoComponent::get_world_transform() const
+const mat_affine &RenderInfoComponent::get_world_transform() const
 {
 	assert(scene_node->transform.count);
 	return scene_node->parent_scene.get_transforms().get_cached_transforms()[scene_node->transform.offset];
 }
 
-const mat4 &RenderInfoComponent::get_prev_world_transform() const
+const mat_affine &RenderInfoComponent::get_prev_world_transform() const
 {
 	assert(scene_node->transform.count);
 	return scene_node->parent_scene.get_transforms().get_cached_prev_transforms()[scene_node->transform.offset];

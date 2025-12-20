@@ -1,13 +1,14 @@
 #version 450
 
 #include "../inc/render_parameters.h"
+#include "../inc/affine.h"
 
 layout(std140, set = 2, binding = 1) uniform Parameters
 {
 #if defined(VARIANT_BIT_2)
-    mat4 transforms[128];
+    mat_affine transforms[128];
 #else
-    mat4 transform;
+    mat_affine transform;
 #endif
 };
 
@@ -24,11 +25,11 @@ void main()
 #else
     const float fudge_factor = 1.15; // Make sure cover the entire volume.
     #if defined(VARIANT_BIT_2)
-        vec4 world = transforms[gl_InstanceIndex] * (vec4(fudge_factor, fudge_factor, fudge_factor, 1.0) * vec4(Position));
+        vec3 world = mul(transforms[gl_InstanceIndex], vec4(fudge_factor, fudge_factor, fudge_factor, 1.0) * vec4(Position));
     #else
-        vec4 world = transform * (vec4(fudge_factor, fudge_factor, fudge_factor, 1.0) * vec4(Position));
+        vec3 world = mul(transform, vec4(fudge_factor, fudge_factor, fudge_factor, 1.0) * vec4(Position));
     #endif
-    vec4 clip = global.view_projection * world;
+    vec4 clip = global.view_projection * vec4(world, 1.0);
     gl_Position = clip;
 #endif
 

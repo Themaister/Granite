@@ -126,7 +126,7 @@ struct ClustererParametersBindless
 
 struct DiffuseVolumeParameters
 {
-	vec4 world_to_texture[3];
+	mat_affine world_to_texture;
 	vec4 world_lo;
 	vec4 world_hi;
 	float lo_tex_coord_x;
@@ -147,7 +147,7 @@ struct ClustererParametersVolumetric
 
 struct FogRegionParameters
 {
-	vec4 world_to_texture[3];
+	mat_affine world_to_texture;
 	vec4 world_lo;
 	vec4 world_hi;
 };
@@ -166,14 +166,14 @@ struct ClustererParametersFogRegions
 
 struct BindlessDecalTransform
 {
-	vec4 world_to_texture[3];
+	mat_affine world_to_texture;
 };
 
 struct ClustererBindlessTransforms
 {
 	PositionalFragmentInfo lights[CLUSTERER_MAX_LIGHTS_BINDLESS];
 	mat4 shadow[CLUSTERER_MAX_LIGHTS_BINDLESS];
-	mat4 model[CLUSTERER_MAX_LIGHTS_BINDLESS];
+	mat_affine model[CLUSTERER_MAX_LIGHTS_BINDLESS];
 	uint32_t type_mask[CLUSTERER_MAX_LIGHTS_BINDLESS / 32];
 	BindlessDecalTransform decals[CLUSTERER_MAX_DECALS_BINDLESS];
 };

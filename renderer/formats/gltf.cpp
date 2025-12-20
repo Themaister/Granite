@@ -561,6 +561,26 @@ void Parser::extract_attribute(std::vector<vec4> &attributes, const Accessor &ac
 	}
 }
 
+void Parser::extract_attribute(std::vector<mat_affine> &attributes, const Accessor &accessor)
+{
+	if (accessor.type != ScalarType::Float32)
+		throw std::logic_error("Attribute is not Float32.");
+	if (accessor.components != 16)
+		throw std::logic_error("Attribute is not single component.");
+
+	auto &view = json_views[accessor.view];
+	auto &buffer = json_buffers[view.buffer_index];
+	for (uint32_t i = 0; i < accessor.count; i++)
+	{
+		uint32_t offset = view.offset + accessor.offset + i * accessor.stride;
+		const auto *data = reinterpret_cast<const float *>(&buffer[offset]);
+		attributes.emplace_back(
+			vec4(data[0], data[4], data[8], data[12]),
+			vec4(data[1], data[5], data[9], data[13]),
+			vec4(data[2], data[6], data[10], data[14]));
+	}
+}
+
 void Parser::extract_attribute(std::vector<mat4> &attributes, const Accessor &accessor)
 {
 	if (accessor.type != ScalarType::Float32)
@@ -574,11 +594,11 @@ void Parser::extract_attribute(std::vector<mat4> &attributes, const Accessor &ac
 	{
 		uint32_t offset = view.offset + accessor.offset + i * accessor.stride;
 		const auto *data = reinterpret_cast<const float *>(&buffer[offset]);
-		attributes.push_back(mat4(
+		attributes.emplace_back(
 			vec4(data[0], data[1], data[2], data[3]),
 			vec4(data[4], data[5], data[6], data[7]),
 			vec4(data[8], data[9], data[10], data[11]),
-			vec4(data[12], data[13], data[14], data[15])));
+			vec4(data[12], data[13], data[14], data[15]));
 	}
 }
 
@@ -1163,7 +1183,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 			}
 		}
 
-		std::vector<mat4> inverse_bind_matrices;
+		std::vector<mat_affine> inverse_bind_matrices;
 		inverse_bind_matrices.reserve(joint_transforms.size());
 
 		if (skin.HasMember("inverseBindMatrices"))
@@ -1174,7 +1194,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 		else
 		{
 			for (uint32_t i = 0; i < joints.GetArray().Size(); i++)
-				inverse_bind_matrices.push_back(mat4(1.0f));
+				inverse_bind_matrices.push_back(mat_affine(1.0f));
 		}
 
 		auto compat = hasher.get();

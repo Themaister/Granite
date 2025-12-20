@@ -31,6 +31,7 @@
 #include "quirks.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "common_renderer_data.hpp"
+#include "simd.hpp"
 #include <atomic>
 #include <float.h>
 
@@ -101,17 +102,19 @@ void SpotLight::set_shadow_info(const Vulkan::ImageView *shadow, const mat4 &tra
 	shadow_transform = transform;
 }
 
-mat4 SpotLight::build_model_matrix(const mat4 &transform) const
+mat_affine SpotLight::build_model_matrix(const mat_affine &transform) const
 {
 	float max_range = min(falloff_range, cutoff_range);
-	return transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
+	mat_affine res;
+	SIMD::mul(res, transform, scale_affine(vec3(xy_range * max_range, xy_range * max_range, max_range)));
+	return res;
 }
 
-PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
+PositionalFragmentInfo SpotLight::get_shader_info(const mat_affine &transform) const
 {
 	// If the point light node has been scaled, renormalize this.
 	// This assumes a uniform scale.
-	float scale_factor = length(transform[0]);
+	float scale_factor = transform.get_uniform_scale();
 
 	// This assumes a uniform scale.
 	float max_range = min(falloff_range, cutoff_range) * scale_factor;
@@ -143,9 +146,9 @@ PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
 	return {
 		color * (scale_factor * scale_factor),
 		floatToHalf(vec2(spot_scale, spot_bias)),
-		transform[3].xyz(),
+		transform.get_translation(),
 		floatToHalf(vec2(spot_offset, spot_radius)),
-		-normalize(transform[2].xyz()),
+		normalize(transform.get_forward()),
 		1.0f / max_range,
 	};
 }
@@ -175,7 +178,7 @@ struct PositionalLightRenderInfo
 
 struct PositionalVertexInfo
 {
-	mat4 model;
+	mat_affine model;
 };
 
 struct PositionalShaderInfo
@@ -388,11 +391,12 @@ void SpotLight::get_depth_render_info(const RenderContext &, const RenderInfoCom
 	}
 }
 
-vec2 SpotLight::get_z_range(const RenderContext &context, const mat4 &transform) const
+vec2 SpotLight::get_z_range(const RenderContext &context, const mat_affine &transform) const
 {
 	auto &params = context.get_render_parameters();
 	float max_range = min(falloff_range, cutoff_range);
-	mat4 model = transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
+	mat_affine model;
+	SIMD::mul(model, transform, scale_affine(vec3(xy_range * max_range, xy_range * max_range, max_range)));
 
 	static const vec4 sample_points[] = {
 		vec4(0.0f, 0.0f, 0.0f, 1.0f), // Cone origin
@@ -406,8 +410,9 @@ vec2 SpotLight::get_z_range(const RenderContext &context, const mat4 &transform)
 	vec2 range(FLT_MAX, -FLT_MAX);
 	for (auto &s : sample_points)
 	{
-		vec3 pos = (model * s).xyz();
-		float z = dot(pos - params.camera_position, params.camera_front);
+		vec4 pos;
+		SIMD::mul(pos, model, s);
+		float z = dot(pos.xyz() - params.camera_position, params.camera_front);
 		range.x = muglm::min(range.x, z);
 		range.y = muglm::max(range.y, z);
 	}
@@ -489,11 +494,12 @@ PointLight::PointLight()
 {
 }
 
-vec2 PointLight::get_z_range(const RenderContext &context, const mat4 &transform) const
+vec2 PointLight::get_z_range(const RenderContext &context, const mat_affine &transform) const
 {
-	float scale_factor = length(transform[0]);
+	float scale_factor = transform.get_uniform_scale();
 	float max_range = 1.15f * min(falloff_range, cutoff_range) * scale_factor;
-	float z = dot(transform[3].xyz() - context.get_render_parameters().camera_position, context.get_render_parameters().camera_front);
+	float z = dot(transform.get_translation() - context.get_render_parameters().camera_position,
+	              context.get_render_parameters().camera_front);
 	return vec2(z - max_range, z + max_range);
 }
 
@@ -504,11 +510,11 @@ void PointLight::set_range(float range)
 	aabb = AABB(vec3(-max_range), vec3(max_range));
 }
 
-PositionalFragmentInfo PointLight::get_shader_info(const mat4 &transform) const
+PositionalFragmentInfo PointLight::get_shader_info(const mat_affine &transform) const
 {
 	// If the point light node has been scaled, renormalize this.
 	// This assumes a uniform scale.
-	float scale_factor = length(transform[0]);
+	float scale_factor = transform.get_uniform_scale();
 
 	// This assumes a uniform scale.
 	float max_range = min(falloff_range, cutoff_range) * scale_factor;
@@ -516,9 +522,9 @@ PositionalFragmentInfo PointLight::get_shader_info(const mat4 &transform) const
 	return {
 		color * (scale_factor * scale_factor),
 		{},
-		transform[3].xyz(),
+		transform.get_translation(),
 		floatToHalf(vec2(0.0f, max_range)),
-		normalize(transform[2].xyz()),
+		transform.get_forward(), // This shouldn't matter
 		1.0f / max_range,
 	};
 }
@@ -541,7 +547,7 @@ void PointLight::get_depth_render_info(const RenderContext &, const RenderInfoCo
 	auto sorting_key = h.get();
 	auto *point = queue.allocate_one<PositionalShaderInfo>();
 
-	point->vertex.model = transform->get_world_transform() * scale(vec3(min(falloff_range, cutoff_range)));
+	SIMD::mul(point->vertex.model, transform->get_world_transform(), scale_affine(vec3(min(falloff_range, cutoff_range))));
 
 	auto *point_info = queue.push<PositionalLightRenderInfo>(Queue::Opaque, instance_key, sorting_key,
 	                                                         func, point);
@@ -592,7 +598,7 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
 
 	auto *point = queue.allocate_one<PositionalShaderInfo>();
 
-	point->vertex.model = transform->get_world_transform() * scale(vec3(min(falloff_range, cutoff_range)));
+	SIMD::mul(point->vertex.model, transform->get_world_transform(), scale_affine(vec3(min(falloff_range, cutoff_range))));
 	point->fragment = get_shader_info(transform->get_world_transform());
 	point->u.point_transform = shadow_transform;
 
@@ -742,7 +748,7 @@ vec2 point_light_z_range(const RenderContext &context, const vec3 &center, float
 	return vec2(z - radius, z + radius);
 }
 
-vec2 spot_light_z_range(const RenderContext &context, const mat4 &model)
+vec2 spot_light_z_range(const RenderContext &context, const mat_affine &model)
 {
 	auto &pos = context.get_render_parameters().camera_position;
 	auto &front = context.get_render_parameters().camera_front;
@@ -750,19 +756,19 @@ vec2 spot_light_z_range(const RenderContext &context, const mat4 &model)
 	float lo = std::numeric_limits<float>::infinity();
 	float hi = -lo;
 
-	vec3 base_pos = model[3].xyz();
-	vec3 x_off = model[0].xyz();
-	vec3 y_off = model[1].xyz();
-	vec3 z_off = -model[2].xyz();
+	vec3 base_pos = model.get_translation();
+	vec3 x_off = model.get_right();
+	vec3 y_off = model.get_up();
+	vec3 z_off = model.get_forward();
 
 	vec3 z_base = base_pos + z_off;
 
 	const vec3 world_pos[5] = {
-			base_pos,
-			z_base + x_off + y_off,
-			z_base - x_off + y_off,
-			z_base + x_off - y_off,
-			z_base - x_off - y_off,
+		base_pos,
+		z_base + x_off + y_off,
+		z_base - x_off + y_off,
+		z_base + x_off - y_off,
+		z_base - x_off - y_off,
 	};
 
 	for (auto &p : world_pos)

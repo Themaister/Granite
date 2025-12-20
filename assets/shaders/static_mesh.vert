@@ -5,6 +5,7 @@
 #endif
 
 #include "inc/render_parameters.h"
+#include "inc/affine.h"
 
 layout(location = 0) in highp vec3 Position;
 
@@ -55,19 +56,19 @@ layout(location = 5) in mediump vec4 BoneWeights;
 #if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
 layout(std140, set = 3, binding = 1) uniform BonesWorld
 {
-    mat4 CurrentBoneWorldTransforms[256];
+    mat_affine CurrentBoneWorldTransforms[256];
 };
 
 #if defined(RENDERER_MOTION_VECTOR)
 layout(std140, set = 3, binding = 3) uniform BonesWorldPrev
 {
-    mat4 PrevBoneWorldTransforms[256];
+    mat_affine PrevBoneWorldTransforms[256];
 };
 #endif
 #else
 struct StaticMeshInfo
 {
-    mat4 Model;
+    mat_affine Model;
 };
 
 layout(set = 3, binding = 0, std140) uniform PerVertexData
@@ -87,39 +88,22 @@ invariant gl_Position;
 
 #if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
 #define MODEL_VIEW_TRANSFORM(prefix) \
-    mat4x3( \
-        prefix##BoneWorldTransforms[BoneIndices.x][0].xyz * BoneWeights.x + \
-        prefix##BoneWorldTransforms[BoneIndices.y][0].xyz * BoneWeights.y + \
-        prefix##BoneWorldTransforms[BoneIndices.z][0].xyz * BoneWeights.z + \
-        prefix##BoneWorldTransforms[BoneIndices.w][0].xyz * BoneWeights.w, \
-        prefix##BoneWorldTransforms[BoneIndices.x][1].xyz * BoneWeights.x + \
-        prefix##BoneWorldTransforms[BoneIndices.y][1].xyz * BoneWeights.y + \
-        prefix##BoneWorldTransforms[BoneIndices.z][1].xyz * BoneWeights.z + \
-        prefix##BoneWorldTransforms[BoneIndices.w][1].xyz * BoneWeights.w, \
-        prefix##BoneWorldTransforms[BoneIndices.x][2].xyz * BoneWeights.x + \
-        prefix##BoneWorldTransforms[BoneIndices.y][2].xyz * BoneWeights.y + \
-        prefix##BoneWorldTransforms[BoneIndices.z][2].xyz * BoneWeights.z + \
-        prefix##BoneWorldTransforms[BoneIndices.w][2].xyz * BoneWeights.w, \
-        prefix##BoneWorldTransforms[BoneIndices.x][3].xyz * BoneWeights.x + \
-        prefix##BoneWorldTransforms[BoneIndices.y][3].xyz * BoneWeights.y + \
-        prefix##BoneWorldTransforms[BoneIndices.z][3].xyz * BoneWeights.z + \
-        prefix##BoneWorldTransforms[BoneIndices.w][3].xyz * BoneWeights.w)
+    mat_affine_to_transposed(prefix##BoneWorldTransforms[BoneIndices.x]) * BoneWeights.x + \
+    mat_affine_to_transposed(prefix##BoneWorldTransforms[BoneIndices.y]) * BoneWeights.y + \
+    mat_affine_to_transposed(prefix##BoneWorldTransforms[BoneIndices.z]) * BoneWeights.z + \
+    mat_affine_to_transposed(prefix##BoneWorldTransforms[BoneIndices.w]) * BoneWeights.w
 #else
 #define MODEL_VIEW_TRANSFORM(prefix) \
-    mat4x3( \
-        prefix##Infos[gl_InstanceIndex].Model[0].xyz, \
-        prefix##Infos[gl_InstanceIndex].Model[1].xyz, \
-        prefix##Infos[gl_InstanceIndex].Model[2].xyz, \
-        prefix##Infos[gl_InstanceIndex].Model[3].xyz)
+    mat_affine_to_transposed(prefix##Infos[gl_InstanceIndex].Model)
 #endif
 
 void main()
 {
-    mat4x3 WorldTransform = MODEL_VIEW_TRANSFORM(Current);
-    vec3 World = WorldTransform * vec4(Position, 1.0);
+    mat3x4 WorldTransform = MODEL_VIEW_TRANSFORM(Current);
+    vec3 World = vec4(Position, 1.0) * WorldTransform;
 
 #if defined(RENDERER_MOTION_VECTOR)
-    vec3 OldWorld = MODEL_VIEW_TRANSFORM(Prev) * vec4(Position, 1.0);
+    vec3 OldWorld = vec4(Position, 1.0) * MODEL_VIEW_TRANSFORM(Prev);
     vOldClip = (global.unjittered_prev_view_projection * vec4(OldWorld, 1.0)).xyw;
     vNewClip = (global.unjittered_view_projection * vec4(World, 1.0)).xyw;
 #endif
@@ -133,16 +117,16 @@ void main()
 #if !defined(RENDERER_DEPTH) && !defined(RENDERER_MOTION_VECTOR)
     vPos = World;
     #if HAVE_NORMAL
-        mat3 NormalTransform = mat3(WorldTransform[0], WorldTransform[1], WorldTransform[2]);
+        mat3 NormalTransform = mat3(WorldTransform[0].xyz, WorldTransform[1].xyz, WorldTransform[2].xyz);
         #if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
-            vNormal = normalize(NormalTransform * Normal);
+            vNormal = normalize(Normal * NormalTransform);
             #if HAVE_TANGENT
-                vTangent = vec4(normalize(NormalTransform * Tangent.xyz), Tangent.w);
+                vTangent = vec4(normalize(Tangent.xyz * NormalTransform), Tangent.w);
             #endif
         #else
-            vNormal = normalize(NormalTransform * Normal);
+            vNormal = normalize(Normal * NormalTransform);
             #if HAVE_TANGENT
-                vTangent = vec4(normalize(NormalTransform * Tangent.xyz), Tangent.w);
+                vTangent = vec4(normalize(Tangent.xyz * NormalTransform), Tangent.w);
             #endif
         #endif
     #endif

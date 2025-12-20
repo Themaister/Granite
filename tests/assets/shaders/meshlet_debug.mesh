@@ -42,6 +42,7 @@ shared vec4 shared_clip_pos[MESHLET_SIZE];
 #endif
 
 #include "meshlet_primitive_cull.h"
+#include "affine.h"
 
 layout(location = 0) out vec3 vNormal[];
 layout(location = 1) out vec4 vTangent[];
@@ -69,7 +70,7 @@ layout(set = 0, binding = 4, std430) readonly buffer CompactedDraws
 
 layout(set = 0, binding = 5, std430) readonly buffer Transforms
 {
-    mat4 data[];
+    mat_affine data[];
 } transforms;
 
 layout(set = 0, binding = 10) buffer Stats
@@ -95,7 +96,7 @@ void main()
     CompactedDrawInfo task = mesh_payload.infos[compacted_meshlet_index];
 #endif
 
-    mat4 M = transforms.data[task.node_offset];
+    mat_affine M = transforms.data[task.node_offset];
 
     uint linear_index, sublet_index;
     if (gl_SubgroupSize == 32)
@@ -128,7 +129,7 @@ void main()
             meta.stream_offset + MESHLET_STREAM_TYPE_POSITION,
             linear_index, exponent);
         vec3 pos = ldexp(vec3(ipos), ivec3(exponent));
-        world_pos = (M * vec4(pos, 1.0)).xyz;
+        world_pos = mul(M, pos);
         clip_pos = VP * vec4(world_pos, 1.0);
     }
 
@@ -156,8 +157,8 @@ void main()
         gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
         vUV[out_vert_index] = attribute_decode_snorm_exp_uv(uv, exponent);
         mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
-        vNormal[out_vert_index] = mat3(M) * NT[0].xyz;
-        vTangent[out_vert_index] = vec4(mat3(M) * NT[1].xyz, NT[1].w);
+        vNormal[out_vert_index] = mul_normal(M, NT[0].xyz);
+        vTangent[out_vert_index] = vec4(mul_normal(M, NT[1].xyz), NT[1].w);
 #endif
     }
 
@@ -173,8 +174,8 @@ void main()
         gl_MeshVerticesEXT[gl_LocalInvocationIndex].gl_Position = shared_clip_pos[gl_LocalInvocationIndex];
         vUV[gl_LocalInvocationIndex] = attribute_decode_snorm_exp_uv(uv, exponent);
         mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
-        vNormal[gl_LocalInvocationIndex] = mat3(M) * NT[0].xyz;
-        vTangent[gl_LocalInvocationIndex] = vec4(mat3(M) * NT[1].xyz, NT[1].w);
+        vNormal[gl_LocalInvocationIndex] = mul_normal(M, NT[0].xyz);
+        vTangent[gl_LocalInvocationIndex] = vec4(mul_normal(M, NT[1].xyz), NT[1].w);
     }
 #endif
 

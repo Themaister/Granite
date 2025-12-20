@@ -61,6 +61,11 @@ mat4 mat4_cast(const quat &q)
 	return mat4(mat3_cast(q));
 }
 
+mat_affine mat_affine_cast(const quat &q)
+{
+	return mat_affine(mat3_cast(q));
+}
+
 mat4 translate(const vec3 &v)
 {
 	return mat4(
@@ -77,6 +82,22 @@ mat4 scale(const vec3 &v)
 			vec4(0.0f, v.y, 0.0f, 0.0f),
 			vec4(0.0f, 0.0f, v.z, 0.0f),
 			vec4(0.0f, 0.0f, 0.0f, 1.0f));
+}
+
+mat_affine translate_affine(const vec3 &v)
+{
+	return mat_affine(
+			vec4(1.0f, 0.0f, 0.0f, v.x),
+			vec4(0.0f, 1.0f, 0.0f, v.y),
+			vec4(0.0f, 0.0f, 1.0f, v.z));
+}
+
+mat_affine scale_affine(const vec3 &v)
+{
+	return mat_affine(
+			vec4(v.x, 0.0f, 0.0f, 0.0f),
+			vec4(0.0f, v.y, 0.0f, 0.0f),
+			vec4(0.0f, 0.0f, v.z, 0.0f));
 }
 
 mat2 inverse(const mat2 &m)
@@ -337,5 +358,71 @@ void transpose_to_affine(vec4 dst[3], const mat4 &src)
 	for (int i = 0; i < 3; i++)
 		dst[i] = m[i];
 #endif
+}
+
+void transpose_from_affine(mat4 &dst, const vec4 src[3])
+{
+#if __SSE__
+	__m128 r0 = _mm_loadu_ps(src[0].data);
+	__m128 r1 = _mm_loadu_ps(src[1].data);
+	__m128 r2 = _mm_loadu_ps(src[2].data);
+	__m128 r3 = _mm_set_ps(1, 0, 0, 0);
+	_MM_TRANSPOSE4_PS(r0, r1, r2, r3);
+	_mm_storeu_ps(dst[0].data, r0);
+	_mm_storeu_ps(dst[1].data, r1);
+	_mm_storeu_ps(dst[2].data, r2);
+	_mm_storeu_ps(dst[3].data, r3);
+#elif defined(__ARM_NEON)
+	alignas(16) static const float r3_data[] = { 0, 0, 0, 1 };
+	float32x4_t r0 = vld1q_f32(src[0].data);
+	float32x4_t r1 = vld1q_f32(src[1].data);
+	float32x4_t r2 = vld1q_f32(src[2].data);
+	float32x4_t r3 = vld1q_f32(r3_data);
+	float32x4x4_t r = { r0, r1, r2, r3 };
+	vst4q_f32(dst[0].data, r);
+#else
+	mat4 m = transpose(src);
+	for (int i = 0; i < 3; i++)
+		dst[i] = m[i];
+#endif
+}
+
+void mat_affine::to_mat4(muglm::mat4 &m) const
+{
+	transpose_from_affine(m, vec);
+}
+
+mat4 mat_affine::to_mat4() const
+{
+	mat4 m;
+	to_mat4(m);
+	return m;
+}
+
+float mat_affine::get_uniform_scale() const
+{
+	return length(vec[0].xyz());
+}
+
+vec3 mat_affine::get_translation() const
+{
+	// this * vec4(0, 0, 0, 1)
+	return { vec[0].w, vec[1].w, vec[2].w };
+}
+
+vec3 mat_affine::get_forward() const
+{
+	// this * vec4(0, 0, -1, 0).
+	return { -vec[0].z, -vec[1].z, -vec[2].z };
+}
+
+vec3 mat_affine::get_right() const
+{
+	return { vec[0].x, vec[1].x, vec[2].x };
+}
+
+vec3 mat_affine::get_up() const
+{
+	return { vec[0].y, vec[1].y, vec[2].y };
 }
 }

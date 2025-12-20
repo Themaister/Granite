@@ -199,5 +199,6 @@ private:
 	void extract_attribute(std::vector<vec3> &attributes, const Accessor &accessor);
 	void extract_attribute(std::vector<vec4> &attributes, const Accessor &accessor);
 	void extract_attribute(std::vector<mat4> &attributes, const Accessor &accessor);
+	void extract_attribute(std::vector<mat_affine> &attributes, const Accessor &accessor);
 };
 }

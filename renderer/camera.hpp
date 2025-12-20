@@ -96,6 +96,7 @@ public:
 	}
 
 	void set_transform(const mat4 &m);
+	void set_transform(const mat_affine &m);
 
 protected:
 	vec3 position = vec3(0.0f);

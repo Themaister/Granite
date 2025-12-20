@@ -27,9 +27,12 @@
 namespace muglm
 {
 mat4 mat4_cast(const quat &q);
+mat_affine mat_affine_cast(const quat &q);
 mat3 mat3_cast(const quat &q);
 mat4 translate(const vec3 &v);
 mat4 scale(const vec3 &v);
+mat_affine translate_affine(const vec3 &v);
+mat_affine scale_affine(const vec3 &v);
 mat4 frustum(float left, float right, float bottom, float top, float near, float far);
 mat2 inverse(const mat2 &m);
 mat3 inverse(const mat3 &m);

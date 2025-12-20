@@ -26,11 +26,11 @@ static void test_matrix_multiply()
 
 static void test_aabb_transform()
 {
-	mat4 test_transform;
-	compute_model_transform(test_transform, vec3(8.0f, 6.0f, -3.0f), angleAxis(0.8f, vec3(0.1f, 0.2f, 0.3f)), vec3(8.0f, 1.0f, -0.5f), mat4(1.0f));
+	mat_affine test_transform;
+	compute_model_transform(test_transform, vec3(8.0f, 6.0f, -3.0f), angleAxis(0.8f, vec3(0.1f, 0.2f, 0.3f)), vec3(8.0f, 1.0f, -0.5f), mat_affine(1.0f));
 
 	AABB aabb(vec3(-10.0f, 4.0f, 2.0f), vec3(5.0f, 6.0f, 7.0f));
-	AABB ref_aabb = aabb.transform(test_transform);
+	AABB ref_aabb = aabb.transform(test_transform.to_mat4());
 	AABB optim_aabb;
 	SIMD::transform_aabb(optim_aabb, aabb, test_transform);
 	if (distance(ref_aabb.get_minimum4(), optim_aabb.get_minimum4()) > 0.00001f)

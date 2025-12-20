@@ -907,6 +907,23 @@ struct mat_affine
 		transpose_to_affine(vec, m);
 	}
 
+	explicit inline mat_affine(const mat3 &m)
+		: vec{{m[0][0], m[1][0], m[2][0], 0.0f},
+		      {m[0][1], m[1][1], m[2][1], 0.0f},
+		      {m[0][2], m[1][2], m[2][2], 0.0f}}
+	{
+	}
+
+	explicit inline mat_affine(float v)
+		: vec{{v, 0, 0, 0}, {0, v, 0, 0}, {0, 0, v, 0}}
+	{
+	}
+
+	inline mat_affine(const vec4 &r0, const vec4 &r1, const vec4 &r2)
+		: vec{r0, r1, r2}
+	{
+	}
+
 	inline vec4 &operator[](size_t index)
 	{
 		return vec[index];
@@ -915,6 +932,25 @@ struct mat_affine
 	inline const vec4 &operator[](size_t index) const
 	{
 		return vec[index];
+	}
+
+	float get_uniform_scale() const;
+	vec3 get_translation() const;
+	// Based on identity view pointing to -Z axis, Y up.
+	vec3 get_forward() const;
+	vec3 get_right() const;
+	vec3 get_up() const;
+
+	mat4 to_mat4() const;
+	void to_mat4(mat4 &m) const;
+
+	inline mat3 to_mat3() const
+	{
+		return {
+			vec3(vec[0][0], vec[1][0], vec[2][0]),
+			vec3(vec[0][1], vec[1][1], vec[2][1]),
+			vec3(vec[0][2], vec[1][2], vec[2][2]),
+		};
 	}
 
 private:

@@ -554,7 +554,7 @@ static void update_skinning(Node &node)
 	}
 }
 
-static const mat4 identity_transform(1.0f);
+static const mat_affine identity_transform(1.0f);
 
 size_t Scene::get_cached_transforms_count() const
 {
@@ -715,17 +715,13 @@ void Scene::update_transform_listener_components()
 			// This is a somewhat expensive operation, so timestamp it.
 			// We only expect this to run once since diffuse volumes really
 			// cannot freely move around the scene due to the semi-baked nature of it.
-			auto texture_to_world = transform->get_world_transform() * translate(vec3(-0.5f));
-			auto world_to_texture = inverse(texture_to_world);
+			mat_affine texture_to_world;
+			SIMD::mul(texture_to_world, transform->get_world_transform(), translate_affine(vec3(-0.5f)));
+			auto world_to_texture = mat_affine(inverse(texture_to_world.to_mat4()));
 
-			world_to_texture = transpose(world_to_texture);
-			texture_to_world = transpose(texture_to_world);
+			l->world_to_texture = world_to_texture;
+			l->texture_to_world = texture_to_world;
 
-			for (int i = 0; i < 3; i++)
-			{
-				l->world_to_texture[i] = world_to_texture[i];
-				l->texture_to_world[i] = texture_to_world[i];
-			}
 			l->world_lo = transform->get_aabb().get_minimum4();
 			l->world_hi = transform->get_aabb().get_maximum4();
 			l->timestamp = timestamp->last_timestamp;
@@ -742,13 +738,11 @@ void Scene::update_transform_listener_components()
 		if (timestamp->last_timestamp != r->timestamp)
 		{
 			// This is a somewhat expensive operation, so timestamp it.
-			auto texture_to_world = transform->get_world_transform() * translate(vec3(-0.5f));
-			auto world_to_texture = inverse(texture_to_world);
+			mat_affine texture_to_world;
+			SIMD::mul(texture_to_world, transform->get_world_transform(), translate_affine(vec3(-0.5f)));
+			auto world_to_texture = mat_affine(inverse(texture_to_world.to_mat4()));
 
-			world_to_texture = transpose(world_to_texture);
-
-			for (int i = 0; i < 3; i++)
-				r->world_to_texture[i] = world_to_texture[i];
+			r->world_to_texture = world_to_texture;
 			r->world_lo = transform->get_aabb().get_minimum4();
 			r->world_hi = transform->get_aabb().get_maximum4();
 			r->timestamp = timestamp->last_timestamp;
@@ -765,16 +759,10 @@ void Scene::update_transform_listener_components()
 		{
 			// This is a somewhat expensive operation, so timestamp it.
 			auto texture_to_world = transform->get_world_transform();
-			auto world_to_texture = inverse(texture_to_world);
+			auto world_to_texture = mat_affine(inverse(texture_to_world.to_mat4()));
 
-			world_to_texture = transpose(world_to_texture);
-			texture_to_world = transpose(texture_to_world);
-
-			for (int i = 0; i < 3; i++)
-			{
-				d->world_to_texture[i] = world_to_texture[i];
-				d->texture_to_world[i] = texture_to_world[i];
-			}
+			d->world_to_texture = world_to_texture;
+			d->texture_to_world = texture_to_world;
 			d->timestamp = timestamp->last_timestamp;
 		}
 	}
@@ -875,7 +863,7 @@ void Scene::distribute_per_level_updates(TaskGroup *group)
 	}
 }
 
-static void update_transform_tree_node(Node &node, const mat4 &transform)
+static void update_transform_tree_node(Node &node, const mat_affine &transform)
 {
 	node.get_cached_prev_transform() = node.get_cached_transform();
 	auto &t = node.get_transform();

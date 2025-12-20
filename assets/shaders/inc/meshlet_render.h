@@ -26,6 +26,7 @@
 #endif
 
 #include "meshlet_render_types.h"
+#include "affine.h"
 
 layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_BOUND_BINDING, std430) readonly buffer Bounds
 {
@@ -43,7 +44,7 @@ layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_AABB_BINDIN
 
 layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_TRANSFORM_BINDING, std430) readonly buffer Transforms
 {
-	mat4 data[];
+	mat_affine data[];
 } transforms;
 
 #ifdef MESHLET_RENDER_HIZ_BINDING
@@ -206,13 +207,15 @@ vec2 project_sphere_flat(float view_xy, float view_z, float radius)
 	return vec2(rot_lo.x / rot_lo.y, rot_hi.x / rot_hi.y);
 }
 
-bool cluster_cull(mat4 M, Bound bound, vec3 camera_pos)
+bool cluster_cull(mat_affine M, Bound bound, vec3 camera_pos)
 {
-	vec3 bound_center = (M * vec4(bound.center_radius.xyz, 1.0)).xyz;
+	vec3 bound_center = mul(M, bound.center_radius.xyz);
 
-	float s0 = dot(M[0].xyz, M[0].xyz);
-	float s1 = dot(M[1].xyz, M[1].xyz);
-	float s2 = dot(M[2].xyz, M[2].xyz);
+	mat3 M3 = mat_affine_to_transposed3x3(M);
+	mat3 MT = transpose(M3);
+	float s0 = dot(MT[0], MT[0]);
+	float s1 = dot(MT[1], MT[1]);
+	float s2 = dot(MT[2], MT[2]);
 
 	float max_scale_factor = sqrt(max(max(s0, s1), s2));
 	float effective_radius = bound.center_radius.w * max_scale_factor;
@@ -223,7 +226,7 @@ bool cluster_cull(mat4 M, Bound bound, vec3 camera_pos)
 	vec4 cone = bound.cone;
 	if (cone.w < 1.0)
 	{
-		cone = vec4(normalize(mat3(M) * cone.xyz), cone.w);
+		cone = vec4(normalize(cone.xyz * M3), cone.w);
 		ret = dot(bound_center - camera_pos, cone.xyz) <= cone.w * length(bound_center - camera_pos) + effective_radius;
 	}
 

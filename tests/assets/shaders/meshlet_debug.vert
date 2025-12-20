@@ -4,6 +4,7 @@
 invariant gl_Position;
 
 #include "meshlet_render_types.h"
+#include "affine.h"
 
 layout(location = 0) in vec3 POS;
 layout(location = 1) in mediump vec3 NORMAL;
@@ -26,7 +27,7 @@ layout(set = 1, binding = 0) uniform UBO
 #if SINGLE_INSTANCE_RENDER
 layout(set = 1, binding = 1) uniform DrawParameters
 {
-    mat4 M;
+    mat_affine M;
 };
 #else
 layout(set = 0, binding = 0) readonly buffer DrawParameters
@@ -36,18 +37,18 @@ layout(set = 0, binding = 0) readonly buffer DrawParameters
 
 layout(set = 0, binding = 1) readonly buffer Transforms
 {
-    mat4 data[];
+    mat_affine data[];
 } transforms;
 #endif
 
 void main()
 {
 #if !SINGLE_INSTANCE_RENDER
-    mat4 M = transforms.data[draw_info.data[gl_DrawIDARB].node_offset];
+    mat_affine M = transforms.data[draw_info.data[gl_DrawIDARB].node_offset];
 #endif
-    vec3 world_pos = (M * vec4(POS, 1.0)).xyz;
-    vNormal = mat3(M) * NORMAL;
-    vTangent = vec4(mat3(M) * TANGENT.xyz, TANGENT.w);
+    vec3 world_pos = mul(M, POS);
+    vNormal = mul_normal(M, NORMAL);
+    vTangent = vec4(mul_normal(M, TANGENT.xyz), TANGENT.w);
     vUV = UV;
 #if !SINGLE_INSTANCE_RENDER
     vDrawID = draw_info.data[gl_DrawIDARB].meshlet_index;

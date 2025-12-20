@@ -87,7 +87,7 @@ void process_task(TaskInfo task)
     bool alloc_draw = false;
     if (visible && gl_LocalInvocationIndex < count)
     {
-        mat4 M = transforms.data[node_instance];
+        mat_affine M = transforms.data[node_instance];
         Bound b = bounds.data[meshlet_index];
 
 #if MESHLET_RENDER_PHASE == 1

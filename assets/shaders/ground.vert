@@ -1,5 +1,6 @@
 #version 450
 #include "inc/render_parameters.h"
+#include "inc/affine.h"
 
 layout(location = 0) in uvec4 aPosition;
 layout(location = 1) in vec4 aLODWeights;
@@ -35,8 +36,8 @@ layout(std140, set = 3, binding = 1) uniform GroundData
 
 layout(push_constant, std430) uniform Constants
 {
-    mat4 Model;
-    mat4 Normal;
+    mat_affine Model;
+    mat_affine Normal;
 } registers;
 
 vec2 warp_position()
@@ -85,9 +86,9 @@ void main()
 #endif
     float height_displacement = sample_height_displacement(uv, off, lod);
 
-    vec4 world = registers.Model * vec4(pos.x, height_displacement, pos.y, 1.0);
+    vec3 world = mul(registers.Model, vec4(pos.x, height_displacement, pos.y, 1.0));
 #ifndef RENDERER_DEPTH
-    vPos = world.xyz;
+    vPos = world;
 #endif
-    gl_Position = global.view_projection * world;
+    gl_Position = global.view_projection * vec4(world, 1.0);
 }

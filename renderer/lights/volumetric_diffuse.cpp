@@ -247,8 +247,8 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 
 	struct ProbeTransform
 	{
-		alignas(16) vec4 texture_to_world[3];
-		alignas(16) vec4 world_to_texture[3];
+		alignas(16) mat_affine texture_to_world;
+		alignas(16) mat_affine world_to_texture;
 		alignas(16) vec3 inv_resolution;
 		alignas(8) uvec2 probe_size_xy;
 	};
@@ -257,8 +257,8 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	light.update_iteration++;
 
 	auto *probe_transform = cmd.allocate_typed_constant_data<ProbeTransform>(3, 1, 1);
-	memcpy(probe_transform->texture_to_world, light.texture_to_world, sizeof(light.texture_to_world));
-	memcpy(probe_transform->world_to_texture, light.world_to_texture, sizeof(light.world_to_texture));
+	probe_transform->texture_to_world = light.texture_to_world;
+	probe_transform->world_to_texture = light.world_to_texture;
 	probe_transform->inv_resolution = vec3(1.0f) / vec3(light.light.get_resolution());
 	probe_transform->probe_size_xy = light.light.get_resolution().xy();
 
@@ -662,14 +662,14 @@ void VolumetricDiffuseLightManager::cull_probe_buffer(Vulkan::CommandBuffer &cmd
 
 	struct VolumeParameters
 	{
-		vec4 tex_to_world[3];
+		mat_affine tex_to_world;
 		vec3 inv_resolution;
 		float radius;
 		uvec3 resolution;
 		uint32_t iteration;
 	};
 	auto *params = cmd.allocate_typed_constant_data<VolumeParameters>(1, 0, 1);
-	memcpy(params->tex_to_world, light.texture_to_world, sizeof(light.texture_to_world));
+	params->tex_to_world = light.texture_to_world;
 
 	vec3 inv_resolution = vec3(1.0f) / vec3(res);
 	params->inv_resolution = inv_resolution;

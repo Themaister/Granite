@@ -145,13 +145,13 @@ void static_mesh_render(CommandBuffer &cmd, const RenderQueueData *infos, unsign
 	{
 		to_render = min<unsigned>(StaticMeshVertex::max_instances, instances - i);
 
-		auto *vertex_data = cmd.allocate_typed_constant_data<mat4>(3, 0, to_render);
+		auto *vertex_data = cmd.allocate_typed_constant_data<mat_affine>(3, 0, to_render);
 		for (unsigned j = 0; j < to_render; j++)
 			vertex_data[j] = static_cast<const StaticMeshInstanceInfo *>(infos[i + j].instance_data)->vertex.Model;
 
 		if (static_cast<const StaticMeshInstanceInfo *>(infos[i].instance_data)->vertex.PrevModel)
 		{
-			vertex_data = cmd.allocate_typed_constant_data<mat4>(3, 2, to_render);
+			vertex_data = cmd.allocate_typed_constant_data<mat_affine>(3, 2, to_render);
 			for (unsigned j = 0; j < to_render; j++)
 				vertex_data[j] = *static_cast<const StaticMeshInstanceInfo *>(infos[i + j].instance_data)->vertex.PrevModel;
 		}
@@ -171,15 +171,15 @@ void skinned_mesh_render(CommandBuffer &cmd, const RenderQueueData *infos, unsig
 	for (unsigned i = 0; i < instances; i++)
 	{
 		auto &info = *static_cast<const SkinnedMeshInstanceInfo *>(infos[i].instance_data);
-		auto *world_transforms = cmd.allocate_typed_constant_data<mat4>(3, 1, info.num_bones);
-		//auto *normal_transforms = static_cast<mat4 *>(cmd.allocate_constant_data(3, 2, sizeof(mat4) * info.num_bones));
-		memcpy(world_transforms, info.world_transforms, sizeof(mat4) * info.num_bones);
-		//memcpy(normal_transforms, info.normal_transforms, sizeof(mat4) * info.num_bones);
+		auto *world_transforms = cmd.allocate_typed_constant_data<mat_affine>(3, 1, info.num_bones);
+		//auto *normal_transforms = static_cast<mat_affine *>(cmd.allocate_constant_data(3, 2, sizeof(mat_affine) * info.num_bones));
+		memcpy(world_transforms, info.world_transforms, sizeof(mat_affine) * info.num_bones);
+		//memcpy(normal_transforms, info.normal_transforms, sizeof(mat_affine) * info.num_bones);
 
 		if (info.prev_world_transforms)
 		{
-			world_transforms = cmd.allocate_typed_constant_data<mat4>(3, 3, info.num_bones);
-			memcpy(world_transforms, info.prev_world_transforms, sizeof(mat4) * info.num_bones);
+			world_transforms = cmd.allocate_typed_constant_data<mat_affine>(3, 3, info.num_bones);
+			memcpy(world_transforms, info.prev_world_transforms, sizeof(mat_affine) * info.num_bones);
 		}
 
 		if (static_info->ibo)
@@ -265,7 +265,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoC
 	instance_data->vertex.Model = transform->get_world_transform();
 	if (mv)
 	{
-		instance_data->vertex.PrevModel = queue.allocate_one<mat4>();
+		instance_data->vertex.PrevModel = queue.allocate_one<mat_affine>();
 		*instance_data->vertex.PrevModel = transform->get_prev_world_transform();
 	}
 
@@ -334,17 +334,17 @@ void SkinnedMesh::get_render_info(const RenderContext &context, const RenderInfo
 	auto *skin = transform->get_skin();
 	unsigned num_bones = skin->transform.count;
 	instance_data->num_bones = num_bones;
-	instance_data->world_transforms = queue.allocate_many<mat4>(num_bones);
+	instance_data->world_transforms = queue.allocate_many<mat_affine>(num_bones);
 	memcpy(instance_data->world_transforms,
 	       transform->scene_node->parent_scene.get_transforms().get_cached_transforms() + skin->transform.offset,
-	       num_bones * sizeof(mat4));
+	       num_bones * sizeof(mat_affine));
 
 	if (mv)
 	{
-		instance_data->prev_world_transforms = queue.allocate_many<mat4>(num_bones);
+		instance_data->prev_world_transforms = queue.allocate_many<mat_affine>(num_bones);
 		memcpy(instance_data->prev_world_transforms,
 		       transform->scene_node->parent_scene.get_transforms().get_cached_prev_transforms() + skin->transform.offset,
-		       num_bones * sizeof(mat4));
+		       num_bones * sizeof(mat_affine));
 	}
 
 	auto *mesh_info = queue.push<StaticMeshInfo>(type, instance_key, sorting_key,

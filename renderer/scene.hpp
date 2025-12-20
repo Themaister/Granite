@@ -46,9 +46,8 @@ struct TransformBackingAllocator final : Util::SliceBackingAllocator
 	void prime(uint32_t count, const void *opaque_meta) override;
 
 	Util::DynamicArray<Transform> transforms;
-	// TODO: Move to 3x4 affine.
-	Util::DynamicArray<mat4> cached_transforms;
-	Util::DynamicArray<mat4> cached_prev_transforms;
+	Util::DynamicArray<mat_affine> cached_transforms;
+	Util::DynamicArray<mat_affine> cached_prev_transforms;
 	bool allocated_global = false;
 };
 
@@ -67,11 +66,11 @@ class TransformAllocator : public Util::SliceAllocator
 public:
 	TransformAllocator();
 	inline Transform *get_transforms() { return allocator.transforms.data(); }
-	inline mat4 *get_cached_transforms() { return allocator.cached_transforms.data(); }
-	inline mat4 *get_cached_prev_transforms() { return allocator.cached_prev_transforms.data(); }
+	inline mat_affine *get_cached_transforms() { return allocator.cached_transforms.data(); }
+	inline mat_affine *get_cached_prev_transforms() { return allocator.cached_prev_transforms.data(); }
 	inline const Transform *get_transforms() const { return allocator.transforms.data(); }
-	inline const mat4 *get_cached_transforms() const { return allocator.cached_transforms.data(); }
-	inline const mat4 *get_cached_prev_transforms() const { return allocator.cached_prev_transforms.data(); }
+	inline const mat_affine *get_cached_transforms() const { return allocator.cached_transforms.data(); }
+	inline const mat_affine *get_cached_prev_transforms() const { return allocator.cached_prev_transforms.data(); }
 
 	uint32_t get_count() const { return high_water_mark; }
 	bool allocate(uint32_t count, Util::AllocatedSlice *slice);

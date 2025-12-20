@@ -28,6 +28,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "transforms.hpp"
 #include "asset_manager.hpp"
+#include "simd.hpp"
 
 using namespace Vulkan;
 using namespace Util;
@@ -58,7 +59,7 @@ struct PatchInfo
 	const Vulkan::ImageView *lod_map;
 	const Vulkan::ImageView *type_map;
 
-	mat4 push[2];
+	mat_affine push[2];
 
 	vec2 inv_heightmap_size;
 	vec2 tiling_factor;
@@ -303,9 +304,9 @@ void Ground::get_render_info(const RenderContext &context, const RenderInfoCompo
 	// However, the base mesh [0, normal_size) is squashed to [0, 1] size in X/Z direction.
 	// We compensate for this scaling by doing the inverse transposed normal matrix properly here.
 	//patch.push[1] = transform->transform->normal_transform * scale(vec3(info.normal_size, 1.0f, info.normal_size));
-	mat4 normal_transform;
+	mat_affine normal_transform;
 	compute_normal_transform(normal_transform, transform->get_world_transform());
-	patch.push[1] = normal_transform * scale(vec3(info.normal_size, 1.0f, info.normal_size));
+	SIMD::mul(patch.push[1], normal_transform, scale_affine(vec3(info.normal_size, 1.0f, info.normal_size)));
 
 	// Find something concrete to put here.
 	patch.tangent_scale = vec2(1.0f / 10.0f);

@@ -172,8 +172,8 @@ struct RenderInfoComponent : ComponentBase
 	// e.g. per instance material information.
 	const void *extra_data = nullptr;
 
-	const mat4 &get_world_transform() const;
-	const mat4 &get_prev_world_transform() const;
+	const mat_affine &get_world_transform() const;
+	const mat_affine &get_prev_world_transform() const;
 	const AABB &get_aabb() const;
 
 	inline const Node::Skinning *get_skin() const
@@ -190,7 +190,7 @@ struct RenderInfoComponent : ComponentBase
 struct CachedTransformComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(CachedTransformComponent)
-	mat4 *transform = nullptr;
+	mat_affine *transform = nullptr;
 };
 
 struct CachedSpatialTransformTimestampComponent : ComponentBase
@@ -239,8 +239,8 @@ struct VolumetricDiffuseLightComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(VolumetricDiffuseLightComponent)
 	VolumetricDiffuseLight light;
-	vec4 world_to_texture[3];
-	vec4 texture_to_world[3];
+	mat_affine world_to_texture;
+	mat_affine texture_to_world;
 	vec4 world_lo;
 	vec4 world_hi;
 	uint32_t timestamp = 0;
@@ -251,7 +251,7 @@ struct VolumetricFogRegionComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(VolumetricFogRegionComponent)
 	VolumetricFogRegion region;
-	vec4 world_to_texture[3];
+	mat_affine world_to_texture;
 	vec4 world_lo;
 	vec4 world_hi;
 	uint32_t timestamp = 0;
@@ -261,8 +261,8 @@ struct VolumetricDecalComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(VolumetricDecalComponent)
 	VolumetricDecal decal;
-	vec4 world_to_texture[3];
-	vec4 texture_to_world[3];
+	mat_affine world_to_texture;
+	mat_affine texture_to_world;
 	uint32_t timestamp = 0;
 };
 

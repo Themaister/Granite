@@ -35,9 +35,10 @@ bool compute_plane_reflection(mat4 &projection, mat4 &view, vec3 camera_pos, vec
 bool compute_plane_refraction(mat4 &projection, mat4 &view, vec3 camera_pos, vec3 center, vec3 normal, vec3 look_up,
                               float radius_up, float radius_other, float &z_near, float z_far);
 
-void compute_model_transform(mat4 &world, vec3 scale, quat rotation, vec3 translation, const mat4 &parent);
+void compute_model_transform(mat_affine &world, vec3 scale, quat rotation, vec3 translation, const mat_affine &parent);
 
 void compute_normal_transform(mat4 &normal, const mat4 &world);
+void compute_normal_transform(mat_affine &normal, const mat_affine &world);
 
 quat rotate_vector(vec3 from, vec3 to);
 

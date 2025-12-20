@@ -98,17 +98,25 @@ bool compute_plane_refraction(mat4 &projection, mat4 &view, vec3 camera_pos, vec
 	return true;
 }
 
-void compute_model_transform(mat4 &world, vec3 s, quat rot, vec3 trans, const mat4 &parent)
+void compute_model_transform(mat_affine &world, vec3 s, quat rot, vec3 trans, const mat_affine &parent)
 {
+	// TODO: Make this more affine friendly.
 	mat4 model;
 	model[3] = vec4(trans, 1.0f);
 	SIMD::convert_quaternion_with_scale(&model[0], rot, s);
-	SIMD::mul(world, parent, model);
+
+	SIMD::mul(world, parent, mat_affine(model));
 }
 
 void compute_normal_transform(mat4 &normal, const mat4 &world)
 {
 	normal = mat4(transpose(inverse(mat3(world))));
+}
+
+void compute_normal_transform(mat_affine &normal, const mat_affine &world)
+{
+	// Can be done better, but not important unless it gets used a lot.
+	normal = mat_affine(mat4(transpose(inverse(world.to_mat3()))));
 }
 
 quat rotate_vector(vec3 from, vec3 to)

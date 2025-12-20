@@ -50,12 +50,12 @@ Transform &Node::get_transform()
 	return parent_scene.get_transforms().get_transforms()[transform.offset];
 }
 
-mat4 &Node::get_cached_transform()
+mat_affine &Node::get_cached_transform()
 {
 	return parent_scene.get_transforms().get_cached_transforms()[transform.offset];
 }
 
-mat4 &Node::get_cached_prev_transform()
+mat_affine &Node::get_cached_prev_transform()
 {
 	return parent_scene.get_transforms().get_cached_prev_transforms()[transform.offset];
 }
@@ -65,13 +65,13 @@ Transform *Node::get_transform_base()
 	return parent_scene.get_transforms().get_transforms();
 }
 
-mat4 *Node::get_skin_cached()
+mat_affine *Node::get_skin_cached()
 {
 	assert(skinning);
 	return parent_scene.get_transforms().get_cached_transforms() + skinning->transform.offset;
 }
 
-mat4 *Node::get_skin_prev_cached()
+mat_affine *Node::get_skin_prev_cached()
 {
 	assert(skinning);
 	return parent_scene.get_transforms().get_cached_prev_transforms() + skinning->transform.offset;

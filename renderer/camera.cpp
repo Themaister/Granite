@@ -116,6 +116,11 @@ void Camera::set_transform(const mat4 &m)
 	transform_z_scale = s.x;
 }
 
+void Camera::set_transform(const mat_affine &m)
+{
+	set_transform(m.to_mat4());
+}
+
 void Camera::ensure_normalized_rotation()
 {
 	// Try to keep a stable rotation quat as long as camera isn't moving.

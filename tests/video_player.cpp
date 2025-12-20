@@ -82,7 +82,7 @@ struct VideoTextureRenderable : AbstractRenderable
 		if (!frame.view)
 			return;
 
-		auto mvp = context.get_render_parameters().view_projection * transform->get_world_transform();
+		auto mvp = context.get_render_parameters().view_projection * transform->get_world_transform().to_mat4();
 		auto *info = queue.allocate_one<TexInstanceInfo>();
 		info->mvp = mvp;
 		info->view = frame.view;

@@ -762,7 +762,7 @@ struct MeshletViewerApplication : Granite::Application, Granite::EventHandler //
 				auto *render = static_cast<const MeshletRenderable *>(draw.renderable);
 				auto indexed = manager.get_mesh_draw_range(render->mesh).indexed;
 
-				*cmd->allocate_typed_constant_data<mat4>(1, 1, 1) = draw.transform->get_world_transform();
+				*cmd->allocate_typed_constant_data<mat_affine>(1, 1, 1) = draw.transform->get_world_transform();
 
 				DrawParameters params = {};
 				params.meshlet_index = unsigned(&draw - list.data());

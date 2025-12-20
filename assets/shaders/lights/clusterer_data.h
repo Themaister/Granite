@@ -1,6 +1,8 @@
 #ifndef CLUSTERER_DATA_H_
 #define CLUSTERER_DATA_H_
 
+#include "../inc/affine.h"
+
 #define CLUSTERER_MAX_LIGHTS_GLOBAL 32
 #ifdef CLUSTERER_BINDLESS
 #define CLUSTERER_MAX_LIGHTS 4096
@@ -43,14 +45,14 @@ struct ClustererParametersBindless
 
 struct BindlessDecalTransform
 {
-	vec4 world_to_texture[3];
+	mat_affine world_to_texture;
 };
 
 struct ClustererBindlessTransforms
 {
 	PositionalLightInfo lights[CLUSTERER_MAX_LIGHTS];
 	mat4 shadow[CLUSTERER_MAX_LIGHTS];
-	mat4 model[CLUSTERER_MAX_LIGHTS];
+	mat_affine model[CLUSTERER_MAX_LIGHTS];
 	uint type_mask[CLUSTERER_MAX_LIGHTS / 32];
 	BindlessDecalTransform decals[CLUSTERER_MAX_DECALS];
 };

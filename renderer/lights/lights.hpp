@@ -74,7 +74,7 @@ public:
 		return cookie;
 	}
 
-	virtual vec2 get_z_range(const RenderContext &context, const mat4 &transform) const = 0;
+	virtual vec2 get_z_range(const RenderContext &context, const mat_affine &transform) const = 0;
 
 	Util::Hash get_shadow_transform_hash() const
 	{
@@ -111,7 +111,7 @@ public:
 	                           RenderQueue &queue) const override;
 
 	void set_spot_parameters(float inner_cone, float outer_cone);
-	PositionalFragmentInfo get_shader_info(const mat4 &transform) const;
+	PositionalFragmentInfo get_shader_info(const mat_affine &transform) const;
 
 	void set_shadow_info(const Vulkan::ImageView *shadow, const mat4 &transform);
 
@@ -130,7 +130,7 @@ public:
 		return xy_range;
 	}
 
-	mat4 build_model_matrix(const mat4 &transform) const;
+	mat_affine build_model_matrix(const mat_affine &transform) const;
 
 private:
 	float inner_cone = 0.4f;
@@ -141,7 +141,7 @@ private:
 	mat4 shadow_transform;
 
 	void set_range(float range) override;
-	vec2 get_z_range(const RenderContext &context, const mat4 &transform) const override final;
+	vec2 get_z_range(const RenderContext &context, const mat_affine &transform) const override final;
 };
 
 class PointLight : public PositionalLight
@@ -153,13 +153,13 @@ public:
 	                     RenderQueue &queue) const override;
 	void get_depth_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                           RenderQueue &queue) const override;
-	PositionalFragmentInfo get_shader_info(const mat4 &transform) const;
+	PositionalFragmentInfo get_shader_info(const mat_affine &transform) const;
 
 	void set_shadow_info(const Vulkan::ImageView *shadow, const PointTransform &transform);
 
 private:
 	void set_range(float range) override;
-	vec2 get_z_range(const RenderContext &context, const mat4 &transform) const override final;
+	vec2 get_z_range(const RenderContext &context, const mat_affine &transform) const override final;
 
 	const Vulkan::ImageView *shadow_atlas = nullptr;
 	PointTransform shadow_transform;
@@ -206,6 +206,6 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
 };
 
-vec2 spot_light_z_range(const RenderContext &context, const mat4 &model);
+vec2 spot_light_z_range(const RenderContext &context, const mat_affine &model);
 vec2 point_light_z_range(const RenderContext &context, const vec3 &pos, float radius);
 }

@@ -58,11 +58,11 @@ public:
 	Util::AllocatedSlice transform;
 
 	Transform &get_transform();
-	mat4 &get_cached_transform();
-	mat4 &get_cached_prev_transform();
+	mat_affine &get_cached_transform();
+	mat_affine &get_cached_prev_transform();
 	Transform *get_transform_base();
-	mat4 *get_skin_cached();
-	mat4 *get_skin_prev_cached();
+	mat_affine *get_skin_cached();
+	mat_affine *get_skin_prev_cached();
 
 	void invalidate_cached_transform();
 	void add_child(Util::IntrusivePtr<Node> node);
@@ -88,7 +88,7 @@ public:
 	{
 		Util::AllocatedSlice transform;
 		std::vector<uint32_t> skin;
-		std::vector<mat4> inverse_bind_poses;
+		std::vector<mat_affine> inverse_bind_poses;
 		Util::Hash skin_compat = 0;
 	};
 

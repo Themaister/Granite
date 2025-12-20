@@ -365,6 +365,7 @@ public:
 	// but absolute time obviously will not, since application is expected to set a new target time every frame.
 	// If force_vrr is true, the relative or absolute times are passed down with no bias.
 	bool set_target_presentation_time(uint64_t absolute_time_ns, uint64_t relative_time_ns, bool force_vrr);
+	void set_enable_timing_feedback(bool enable);
 
 private:
 	void update_framebuffer(unsigned width, unsigned height);
@@ -502,6 +503,8 @@ private:
 		int64_t pending_compensation;
 		Util::SmallVector<ErrorStats, 16> error_stats;
 	} present_timing = {};
+
+	bool present_feedback_enable = false;
 
 	void update_present_timing_properties();
 	void poll_present_timing_feedback();

@@ -823,6 +823,7 @@ void WSI::update_present_timing_properties()
 
 	if (present_timing.refresh_duration)
 	{
+		(void)refresh_mode;
 #ifdef VULKAN_DEBUG
 		LOGI("Present timing (count %llu): detected refresh duration of %llu nsec (%.6f Hz), mode %s.\n",
 			 static_cast<unsigned long long>(counter),
@@ -1415,6 +1416,9 @@ bool WSI::set_target_presentation_time(uint64_t absolute_time_ns, uint64_t relat
 	present_timing.target_relative_time = relative_time_ns;
 	present_timing.force_vrr = force_vrr;
 
+	if (absolute_time_ns || relative_time_ns)
+		present_feedback_enable = true;
+
 	if (active_present_mode != VK_PRESENT_MODE_FIFO_KHR &&
 	    active_present_mode != VK_PRESENT_MODE_FIFO_RELAXED_KHR &&
 	    active_present_mode != VK_PRESENT_MODE_FIFO_LATEST_READY_KHR)
@@ -1423,6 +1427,11 @@ bool WSI::set_target_presentation_time(uint64_t absolute_time_ns, uint64_t relat
 	return present_timing.refresh_duration != 0 && present_timing.reference_time != 0 &&
 	       present_timing.present_done_host_time != 0 &&
 	       (supports_present_timing.relative || supports_present_timing.absolute);
+}
+
+void WSI::set_enable_timing_feedback(bool enable)
+{
+	present_feedback_enable = enable;
 }
 
 bool WSI::begin_frame()
@@ -1687,7 +1696,7 @@ bool WSI::end_frame()
 			info.pNext = &present_mode_info;
 		}
 
-		if (supports_present_timing.feedback)
+		if (supports_present_timing.feedback && present_feedback_enable)
 		{
 			timing_info.presentStageQueries = supports_present_timing.feedback;
 			timing_info.timeDomainId = present_timing.time_domain_id;

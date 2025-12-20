@@ -93,6 +93,7 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 	{
 		EVENT_MANAGER_REGISTER(PresentTiming, on_key_down, KeyboardEvent);
 		frame_times.reserve(WindowSize);
+		get_wsi().set_enable_timing_feedback(true);
 	}
 
 	bool on_key_down(const KeyboardEvent &e)

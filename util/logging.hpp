@@ -90,7 +90,73 @@ void debug_output_log(const char *tag, const char *fmt, ...);
 	} while (false)
 #endif
 
-#define LOGE(...) do { if (!::Util::interface_log("[ERROR]: ", __VA_ARGS__)) { LOGE_FALLBACK(__VA_ARGS__); }} while(0)
+#ifndef _MSC_VER
+#include <stdio.h>
+
+namespace Internal
+{
+// Stole idea from RenderDoc.
+struct IsDebugged
+{
+	IsDebugged()
+	{
+		FILE *f = ::fopen("/proc/self/status", "r");
+		if (!f)
+			return;
+
+		while (!feof(f))
+		{
+			constexpr int size = 512;
+			char line[size];
+			line[size - 1] = '\0';
+			if (!fgets(line, sizeof(line) - 1, f))
+				break;
+
+			int pid = 0;
+			if (sscanf(line, "TracerPid: %d", &pid) == 1 && pid != 0)
+			{
+				state = true;
+				break;
+			}
+		}
+
+		::fclose(f);
+	}
+
+	bool state = false;
+};
+
+static inline bool is_debugged()
+{
+	static IsDebugged is_debugged;
+	return is_debugged.state;
+}
+}
+#else
+#include <debugapi.h>
+#endif
+
+static inline void debug_break()
+{
+#ifdef VULKAN_DEBUG
+#ifdef _MSC_VER
+	if (IsDebuggerPresent())
+		__debugbreak();
+#else
+#if defined(__GNUC__) && defined(__linux__) && (defined(__i386__) || defined(__x86_64__))
+	// __builtin_trap on GCC is SIGILL, not SIGTRAP.
+	// Stole idea from RenderDoc.
+	if (Internal::is_debugged())
+		__asm__ volatile("int $0x03;");
+#elif defined(__clang__)
+	if (Internal::is_debugged())
+		__builtin_debugtrap();
+#endif
+#endif
+#endif
+}
+
+#define LOGE(...) do { if (!::Util::interface_log("[ERROR]: ", __VA_ARGS__)) { LOGE_FALLBACK(__VA_ARGS__); } debug_break(); } while(0)
 #define LOGW(...) do { if (!::Util::interface_log("[WARN]: ", __VA_ARGS__)) { LOGW_FALLBACK(__VA_ARGS__); }} while(0)
 #define LOGI(...) do { if (!::Util::interface_log("[INFO]: ", __VA_ARGS__)) { LOGI_FALLBACK(__VA_ARGS__); }} while(0)
 

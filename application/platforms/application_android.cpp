@@ -908,7 +908,7 @@ void WSIPlatformAndroid::poll_input()
 	android_poll_source *source;
 	app_wsi = nullptr;
 
-	while ((ident = ALooper_pollAll(0, nullptr, &events, reinterpret_cast<void **>(&source))) >= 0)
+	while ((ident = ALooper_pollOnce(0, nullptr, &events, reinterpret_cast<void **>(&source))) > ALOOPER_POLL_TIMEOUT)
 	{
 		if (source)
 			source->process(global_state.app, source);
@@ -991,8 +991,8 @@ bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)
 
 	while (!once || !state.active || !state.has_window)
 	{
-		while ((ident = ALooper_pollAll((state.has_window && state.active) ? 0 : -1,
-										nullptr, &events, reinterpret_cast<void **>(&source))) >= 0)
+		while ((ident = ALooper_pollOnce((state.has_window && state.active) ? 0 : -1,
+										  nullptr, &events, reinterpret_cast<void **>(&source))) > ALOOPER_POLL_TIMEOUT)
 		{
 			if (source)
 				source->process(global_state.app, source);
@@ -1129,7 +1129,7 @@ static void wait_for_complete_teardown(android_app *app)
 		android_poll_source *source = nullptr;
 		int events = 0;
 
-		if (ALooper_pollAll(-1, nullptr, &events, reinterpret_cast<void **>(&source)) >= 0)
+		if (ALooper_pollOnce(-1, nullptr, &events, reinterpret_cast<void **>(&source)) > ALOOPER_POLL_TIMEOUT)
 		{
 			if (source)
 				source->process(app, source);
@@ -1251,7 +1251,7 @@ void android_main(android_app *app)
 		int events;
 		int ident;
 		android_poll_source *source;
-		while ((ident = ALooper_pollAll(-1, nullptr, &events, reinterpret_cast<void **>(&source))) >= 0)
+		while ((ident = ALooper_pollOnce(-1, nullptr, &events, reinterpret_cast<void **>(&source))) > ALOOPER_POLL_TIMEOUT)
 		{
 			if (source)
 				source->process(app, source);

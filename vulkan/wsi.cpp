@@ -823,10 +823,12 @@ void WSI::update_present_timing_properties()
 
 	if (present_timing.refresh_duration)
 	{
-		LOGE("Present timing (count %llu): detected refresh duration of %llu nsec (%.6f Hz), mode %s.\n",
+#ifdef VULKAN_DEBUG
+		LOGI("Present timing (count %llu): detected refresh duration of %llu nsec (%.6f Hz), mode %s.\n",
 			 static_cast<unsigned long long>(counter),
 		     static_cast<unsigned long long>(present_timing.refresh_duration),
 		     1e9 / double(present_timing.refresh_duration), refresh_mode);
+#endif
 	}
 
 	present_timing.has_refresh_feedback = true;

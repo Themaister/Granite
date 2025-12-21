@@ -190,26 +190,26 @@ float sample_nearest_depth_box(sampler2D Depth, vec2 UV, vec2 inv_resolution)
     vec2 ShiftUV = UV - 0.5 * inv_resolution;
     vec3 quad0 = textureGather(Depth, ShiftUV).xyz;
     vec2 quad1 = textureGatherOffset(Depth, ShiftUV, ivec2(1)).xz;
-    vec2 min0 = min(quad0.xy, quad1);
-    float result = min(min0.x, min0.y);
-    return min(result, quad0.z);
+    vec2 max0 = max(quad0.xy, quad1);
+    float result = max(max0.x, max0.y);
+    return max(result, quad0.z);
 #elif NEAREST_METHOD == NEAREST_METHOD_5TAP_DIAMOND
 	float d0 = textureLodOffset(Depth, UV, 0.0, ivec2(-1, -1)).x;
 	float d1 = textureLodOffset(Depth, UV, 0.0, ivec2(+1, -1)).x;
 	float d2 = textureLodOffset(Depth, UV, 0.0, ivec2(-1, +1)).x;
 	float d3 = textureLodOffset(Depth, UV, 0.0, ivec2(+1, +1)).x;
 	float d4 = textureLod(Depth, UV, 0.0).x;
-	return min(d4, min(min(d0, d1), min(d2, d3)));
+	return max(d4, max(max(d0, d1), max(d2, d3)));
 #elif NEAREST_METHOD == NEAREST_METHOD_3x3
     vec2 ShiftUV = UV - 0.5 * inv_resolution;
     vec4 quad0 = textureGather(Depth, ShiftUV, 0);
     vec2 quad1 = textureGatherOffset(Depth, ShiftUV, ivec2(1, 0), 0).yz;
     vec2 quad2 = textureGatherOffset(Depth, ShiftUV, ivec2(0, 1), 0).xy;
     float quad3 = textureLodOffset(Depth, UV, 0.0, ivec2(1)).x;
-	vec4 m0 = min(quad0, vec4(quad1, quad2));
-    vec2 m1 = min(m0.xy, m0.zw);
-    float m2 = min(m1.x, m1.y);
-    return min(m2, quad3);
+	vec4 m0 = max(quad0, vec4(quad1, quad2));
+    vec2 m1 = max(m0.xy, m0.zw);
+    float m2 = max(m1.x, m1.y);
+    return max(m2, quad3);
 #else
 #error "Unknown nearest method."
 #endif
@@ -230,10 +230,10 @@ vec3 sample_nearest_velocity(sampler2D Depth, sampler2D MVs, vec2 UV, vec2 inv_r
     vec2 mv = vec2(mvx_quad0.x, mvy_quad0.x);
     float d = depth_quad0.x;
 
-    if (depth_quad0.y < d) { mv = vec2(mvx_quad0.y, mvy_quad0.y); d = depth_quad0.y; }
-    if (depth_quad0.z < d) { mv = vec2(mvx_quad0.z, mvy_quad0.z); d = depth_quad0.z; }
-    if (depth_quad1.x < d) { mv = vec2(mvx_quad1.x, mvy_quad1.x); d = depth_quad1.x; }
-    if (depth_quad1.y < d) { mv = vec2(mvx_quad1.y, mvy_quad1.y); d = depth_quad1.y; }
+    if (depth_quad0.y > d) { mv = vec2(mvx_quad0.y, mvy_quad0.y); d = depth_quad0.y; }
+    if (depth_quad0.z > d) { mv = vec2(mvx_quad0.z, mvy_quad0.z); d = depth_quad0.z; }
+    if (depth_quad1.x > d) { mv = vec2(mvx_quad1.x, mvy_quad1.x); d = depth_quad1.x; }
+    if (depth_quad1.y > d) { mv = vec2(mvx_quad1.y, mvy_quad1.y); d = depth_quad1.y; }
     return vec3(mv, d);
 #elif NEAREST_METHOD == NEAREST_METHOD_5TAP_DIAMOND
     float d = textureLod(Depth, UV, 0.0).x;
@@ -248,10 +248,10 @@ vec3 sample_nearest_velocity(sampler2D Depth, sampler2D MVs, vec2 UV, vec2 inv_r
     vec2 mv2 = textureLodOffset(MVs, UV, 0.0, ivec2(-1, +1)).xy;
     vec2 mv3 = textureLodOffset(MVs, UV, 0.0, ivec2(+1, +1)).xy;
 
-    if (d0 < d) { mv = mv0; d = d0; }
-    if (d1 < d) { mv = mv1; d = d1; }
-    if (d2 < d) { mv = mv2; d = d2; }
-    if (d3 < d) { mv = mv3; d = d3; }
+    if (d0 > d) { mv = mv0; d = d0; }
+    if (d1 > d) { mv = mv1; d = d1; }
+    if (d2 > d) { mv = mv2; d = d2; }
+    if (d3 > d) { mv = mv3; d = d3; }
     return vec3(mv, d);
 #elif NEAREST_METHOD == NEAREST_METHOD_3x3
     vec2 mv = textureLodOffset(MVs, UV, 0.0, ivec2(1)).xy;
@@ -270,14 +270,14 @@ vec3 sample_nearest_velocity(sampler2D Depth, sampler2D MVs, vec2 UV, vec2 inv_r
     vec2 mvy_quad1 = textureGatherOffset(MVs, ShiftUV, ivec2(1, 0), 1).yz;
     vec2 mvy_quad2 = textureGatherOffset(MVs, ShiftUV, ivec2(0, 1), 1).xy;
 
-    if (quad0.x < d) { mv = vec2(mvx_quad0.x, mvy_quad0.x); d = quad0.x; }
-    if (quad0.y < d) { mv = vec2(mvx_quad0.y, mvy_quad0.y); d = quad0.y; }
-    if (quad0.z < d) { mv = vec2(mvx_quad0.z, mvy_quad0.z); d = quad0.z; }
-    if (quad0.w < d) { mv = vec2(mvx_quad0.w, mvy_quad0.w); d = quad0.w; }
-    if (quad1.x < d) { mv = vec2(mvx_quad1.x, mvy_quad1.x); d = quad1.x; }
-    if (quad1.y < d) { mv = vec2(mvx_quad1.y, mvy_quad1.y); d = quad1.y; }
-    if (quad2.x < d) { mv = vec2(mvx_quad2.x, mvy_quad2.x); d = quad2.x; }
-    if (quad2.y < d) { mv = vec2(mvx_quad2.y, mvy_quad2.y); d = quad2.y; }
+    if (quad0.x > d) { mv = vec2(mvx_quad0.x, mvy_quad0.x); d = quad0.x; }
+    if (quad0.y > d) { mv = vec2(mvx_quad0.y, mvy_quad0.y); d = quad0.y; }
+    if (quad0.z > d) { mv = vec2(mvx_quad0.z, mvy_quad0.z); d = quad0.z; }
+    if (quad0.w > d) { mv = vec2(mvx_quad0.w, mvy_quad0.w); d = quad0.w; }
+    if (quad1.x > d) { mv = vec2(mvx_quad1.x, mvy_quad1.x); d = quad1.x; }
+    if (quad1.y > d) { mv = vec2(mvx_quad1.y, mvy_quad1.y); d = quad1.y; }
+    if (quad2.x > d) { mv = vec2(mvx_quad2.x, mvy_quad2.x); d = quad2.x; }
+    if (quad2.y > d) { mv = vec2(mvx_quad2.y, mvy_quad2.y); d = quad2.y; }
 	return vec3(mv, d);
 #endif
 }

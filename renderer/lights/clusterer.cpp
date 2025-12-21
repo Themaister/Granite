@@ -373,7 +373,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 		rp.color_attachments[1] = &scratch_vsm_rt->get_view();
 		rp.num_color_attachments = 2;
 		rp.depth_stencil = &depth_att->get_view();
-		rp.clear_depth_stencil.depth = 1.0f;
+		rp.clear_depth_stencil.depth = 0.0f;
 		rp.clear_depth_stencil.stencil = 0;
 
 		float z_far = depth_context.get_render_parameters().z_far;
@@ -459,7 +459,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 		              RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
 		rp.num_color_attachments = 0;
 		rp.depth_stencil = &rt;
-		rp.clear_depth_stencil.depth = 1.0f;
+		rp.clear_depth_stencil.depth = 0.0f;
 		rp.render_area.offset.x = off_x;
 		rp.render_area.offset.y = off_y;
 		rp.render_area.extent.width = res_x;

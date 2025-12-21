@@ -1109,7 +1109,7 @@ void Device::init_stock_sampler(StockSampler mode, float max_aniso, float lod_bi
 	case StockSampler::NearestShadow:
 	case StockSampler::LinearShadow:
 		info.compare_enable = true;
-		info.compare_op = VK_COMPARE_OP_LESS_OR_EQUAL;
+		info.compare_op = VK_COMPARE_OP_GREATER_OR_EQUAL;
 		break;
 
 	default:
@@ -5379,10 +5379,10 @@ bool Device::image_format_is_supported(VkFormat format, VkFormatFeatureFlags2 re
 
 VkFormat Device::get_default_depth_stencil_format() const
 {
-	if (image_format_is_supported(VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_TILING_OPTIMAL))
-		return VK_FORMAT_D24_UNORM_S8_UINT;
 	if (image_format_is_supported(VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_TILING_OPTIMAL))
 		return VK_FORMAT_D32_SFLOAT_S8_UINT;
+	if (image_format_is_supported(VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_TILING_OPTIMAL))
+		return VK_FORMAT_D24_UNORM_S8_UINT;
 
 	return VK_FORMAT_UNDEFINED;
 }

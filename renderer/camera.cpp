@@ -36,6 +36,12 @@ void Camera::set_depth_range(float znear_, float zfar_)
 	zfar = zfar_;
 }
 
+void Camera::set_depth_range_infinite(float znear_)
+{
+	znear = znear_;
+	zfar = InfiniteFarPlane;
+}
+
 void Camera::set_ortho(bool enable, float height)
 {
 	ortho = enable;

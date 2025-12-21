@@ -697,7 +697,7 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	if (options & DEPTH_BIAS_BIT)
 	{
 		cmd.set_depth_bias(true);
-		cmd.set_depth_bias(+4.0f, +3.0f);
+		cmd.set_depth_bias(-4.0f, -3.0f);
 	}
 
 	if (options & BACKFACE_BIT)

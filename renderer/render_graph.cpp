@@ -50,7 +50,7 @@ bool RenderPassInterface::need_render_pass() const
 bool RenderPassInterface::get_clear_depth_stencil(VkClearDepthStencilValue *value) const
 {
 	if (value)
-		*value = { 1.0f, 0u };
+		*value = {};
 	return true;
 }
 

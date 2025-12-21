@@ -263,10 +263,11 @@ mat4 ortho(float left, float right, float bottom, float top, float near, float f
 	mat4 result(1.0f);
 	result[0][0] = 2.0f / (right - left);
 	result[1][1] = 2.0f / (top - bottom);
-	result[2][2] = -1.0f / (far - near);
 	result[3][0] = -(right + left) / (right - left);
 	result[3][1] = -(top + bottom) / (top - bottom);
-	result[3][2] = -near / (far - near);
+
+	result[2][2] = 1.0f / (far - near);
+	result[3][2] = 1.0f + near / (far - near);
 
 	result[0].y *= -1.0f;
 	result[1].y *= -1.0f;
@@ -283,10 +284,21 @@ mat4 frustum(float left, float right, float bottom, float top, float near, float
 	result[1][1] = (2.0f * near) / (top - bottom);
 	result[2][0] = (right + left) / (right - left);
 	result[2][1] = (top + bottom) / (top - bottom);
-	result[2][2] = far / (near - far);
-	result[2][3] = -1.0f;
-	result[3][2] = -(far * near) / (far - near);
 
+	// Inverse Z
+	if (far == InfiniteFarPlane)
+	{
+		result[3][2] = -near;
+	}
+	else
+	{
+		result[2][2] = -1.0f - far / (near - far);
+		result[3][2] = -(far * near) / (near - far);
+	}
+
+	result[2][3] = -1.0f;
+
+	// Y-flip so we don't have to bother with negative viewport heights.
 	result[0].y *= -1.0f;
 	result[1].y *= -1.0f;
 	result[2].y *= -1.0f;
@@ -302,10 +314,21 @@ mat4 perspective(float fovy, float aspect, float near, float far)
 	mat4 result(0.0f);
 	result[0][0] = 1.0f / (aspect * tanHalfFovy);
 	result[1][1] = 1.0f / (tanHalfFovy);
-	result[2][2] = far / (near - far);
-	result[2][3] = -1.0f;
-	result[3][2] = -(far * near) / (far - near);
 
+	// Inverse Z
+	if (far == InfiniteFarPlane)
+	{
+		result[3][2] = near;
+	}
+	else
+	{
+		result[2][2] = -1.0f - far / (near - far);
+		result[3][2] = -(far * near) / (near - far);
+	}
+
+	result[2][3] = -1.0f;
+
+	// Y-flip so we don't have to bother with negative viewport heights.
 	result[0].y *= -1.0f;
 	result[1].y *= -1.0f;
 	result[2].y *= -1.0f;

@@ -20,7 +20,8 @@ layout(set = 2, binding = 0) uniform mediump sampler3D uFogVolume;
 float to_world_depth(float z)
 {
     vec2 zw = z * registers.inverse_z.xy + registers.inverse_z.zw;
-    return -zw.x / zw.y;
+    // Avoid problems with infinite-Z.
+    return min(-zw.x / zw.y, 1e30);
 }
 
 void main()

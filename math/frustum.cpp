@@ -59,8 +59,16 @@ bool Frustum::intersects_sphere(const AABB &aabb) const
 	return true;
 }
 
+static constexpr float FarClipInfiniteClamp = 1e-10f;
+
 vec3 Frustum::get_coord(float dx, float dy, float dz) const
 {
+	dz = 1.0f - dz;
+
+	bool infinite_z = inv_view_projection[3][3] == 0.0f;
+	if (infinite_z)
+		dz = muglm::max<float>(dz, FarClipInfiniteClamp);
+
 	vec4 clip = vec4(2.0f * dx - 1.0f, 2.0f * dy - 1.0f, dz, 1.0f);
 	clip = inv_view_projection * clip;
 	return clip.xyz() / clip.w;
@@ -101,15 +109,16 @@ vec4 Frustum::get_bounding_sphere(const mat4 &inv_projection, const mat4 &inv_vi
 void Frustum::build_planes(const mat4 &inv_view_projection_)
 {
 	inv_view_projection = inv_view_projection_;
-	static const vec4 tln(-1.0f, -1.0f, 0.0f, 1.0f);
-	static const vec4 tlf(-1.0f, -1.0f, 1.0f, 1.0f);
-	static const vec4 bln(-1.0f, +1.0f, 0.0f, 1.0f);
-	static const vec4 blf(-1.0f, +1.0f, 1.0f, 1.0f);
-	static const vec4 trn(+1.0f, -1.0f, 0.0f, 1.0f);
-	static const vec4 trf(+1.0f, -1.0f, 1.0f, 1.0f);
-	static const vec4 brn(+1.0f, +1.0f, 0.0f, 1.0f);
-	static const vec4 brf(+1.0f, +1.0f, 1.0f, 1.0f);
-	static const vec4 c(0.0f, 0.0f, 0.5f, 1.0f);
+	bool infinite_z = inv_view_projection[3][3] == 0.0f;
+	float far_clip_z = infinite_z ? FarClipInfiniteClamp : 0.0f;
+	const vec4 tln(-1.0f, -1.0f, 1.0f, 1.0f);
+	const vec4 bln(-1.0f, +1.0f, 1.0f, 1.0f);
+	const vec4 blf(-1.0f, +1.0f, far_clip_z, 1.0f);
+	const vec4 trn(+1.0f, -1.0f, 1.0f, 1.0f);
+	const vec4 trf(+1.0f, -1.0f, far_clip_z, 1.0f);
+	const vec4 brn(+1.0f, +1.0f, 1.0f, 1.0f);
+	const vec4 brf(+1.0f, +1.0f, far_clip_z, 1.0f);
+	const vec4 c(0.0f, 0.0f, 0.5f, 1.0f);
 
 	const auto project = [](const vec4 &v) {
 		return v.xyz() / vec3(v.w);
@@ -134,7 +143,7 @@ void Frustum::build_planes(const mat4 &inv_view_projection_)
 	planes[0] = vec4(l, -dot(l, BLN));
 	planes[1] = vec4(r, -dot(r, TRN));
 	planes[2] = vec4(n, -dot(n, BRN));
-	planes[3] = vec4(f, -dot(f, BRF));
+	planes[3] = infinite_z ? vec4(0.0f) : vec4(f, -dot(f, BRF));
 	planes[4] = vec4(t, -dot(t, TRN));
 	planes[5] = vec4(b, -dot(b, BRN));
 

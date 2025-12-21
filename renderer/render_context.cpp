@@ -84,8 +84,11 @@ void RenderContext::set_camera(const mat4 &projection, const mat4 &view)
 	const auto project = [](const vec2 &zw) -> float {
 		return -zw.x / zw.y;
 	};
-	camera.z_near = project(inv_zw * vec2(0.0f, 1.0f));
-	camera.z_far = project(inv_zw * vec2(1.0f, 1.0f));
+
+	bool infinite_z = camera.inv_view_projection[3][3] == 0.0f;
+
+	camera.z_near = project(inv_zw * vec2(1.0f, 1.0f));
+	camera.z_far = project(inv_zw * vec2(infinite_z ? 1e-10f : 0.0f, 1.0f));
 }
 
 }

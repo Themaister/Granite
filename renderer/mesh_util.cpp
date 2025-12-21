@@ -932,11 +932,6 @@ static void skycylinder_render(CommandBuffer &cmd, const RenderQueueData *infos,
 		vec4 color_scale(info->color, info->scale);
 		cmd.push_constants(&color_scale, 0, sizeof(color_scale));
 
-		auto vp = cmd.get_viewport();
-		vp.minDepth = 1.0f;
-		vp.maxDepth = 1.0f;
-		cmd.set_viewport(vp);
-
 		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(CylinderVertex, pos));
 		cmd.set_vertex_attrib(1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(CylinderVertex, uv));
 		cmd.set_vertex_binding(0, *info->vbo, 0, sizeof(CylinderVertex));
@@ -1302,7 +1297,7 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 	lighting.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
 		if (value)
 		{
-			value->depth = 1.0f;
+			value->depth = 0.0f;
 			value->stencil = 0;
 		}
 		return true;

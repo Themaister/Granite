@@ -23,6 +23,7 @@
 #pragma once
 
 #include "muglm.hpp"
+#include <limits>
 
 namespace muglm
 {
@@ -33,11 +34,15 @@ mat4 translate(const vec3 &v);
 mat4 scale(const vec3 &v);
 mat_affine translate_affine(const vec3 &v);
 mat_affine scale_affine(const vec3 &v);
-mat4 frustum(float left, float right, float bottom, float top, float near, float far);
 mat2 inverse(const mat2 &m);
 mat3 inverse(const mat3 &m);
 mat4 inverse(const mat4 &m);
+
+constexpr float InfiniteFarPlane = std::numeric_limits<float>::max();
 mat4 perspective(float fovy, float aspect, float near, float far);
+mat4 frustum(float left, float right, float bottom, float top, float near, float far);
+
+// Orthogonal projection cannot have infinite far-plane.
 mat4 ortho(float left, float right, float bottom, float top, float near, float far);
 
 void decompose(const mat4 &m, vec3 &scale, quat &rot, vec3 &trans);

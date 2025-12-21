@@ -62,7 +62,7 @@ struct RenderPassInfo
 	VkRect2D render_area = { { 0, 0 }, { UINT32_MAX, UINT32_MAX } };
 
 	VkClearColorValue clear_color[VULKAN_NUM_ATTACHMENTS] = {};
-	VkClearDepthStencilValue clear_depth_stencil = { 1.0f, 0 };
+	VkClearDepthStencilValue clear_depth_stencil = {};
 
 	enum class DepthStencil
 	{

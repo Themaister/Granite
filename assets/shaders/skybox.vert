@@ -7,6 +7,6 @@ layout(location = 0) out highp vec3 vDirection;
 
 void main()
 {
-    gl_Position = vec4(Position, 1.0, 1.0);
-    vDirection = (global.inv_local_view_projection * vec4(Position, 0.0, 1.0)).xyz;
+    gl_Position = vec4(Position, 0.0, 1.0);
+    vDirection = (global.inv_local_view_projection * vec4(Position, 1.0, 1.0)).xyz;
 }

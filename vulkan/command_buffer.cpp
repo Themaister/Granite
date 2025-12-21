@@ -3779,7 +3779,7 @@ void CommandBuffer::set_opaque_state()
 	state.cull_mode = VK_CULL_MODE_BACK_BIT;
 	state.blend_enable = false;
 	state.depth_test = true;
-	state.depth_compare = VK_COMPARE_OP_LESS_OR_EQUAL;
+	state.depth_compare = VK_COMPARE_OP_GREATER_OR_EQUAL;
 	state.depth_write = true;
 	state.depth_bias_enable = false;
 	state.primitive_restart = false;
@@ -3810,7 +3810,7 @@ void CommandBuffer::set_opaque_sprite_state()
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = false;
-	state.depth_compare = VK_COMPARE_OP_LESS;
+	state.depth_compare = VK_COMPARE_OP_GREATER;
 	state.depth_test = true;
 	state.depth_write = true;
 	state.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
@@ -3826,7 +3826,7 @@ void CommandBuffer::set_transparent_sprite_state()
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = true;
 	state.depth_test = true;
-	state.depth_compare = VK_COMPARE_OP_LESS;
+	state.depth_compare = VK_COMPARE_OP_GREATER;
 	state.depth_write = false;
 	state.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
 	state.write_mask = ~0u;

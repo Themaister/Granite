@@ -35,7 +35,7 @@ void main()
 
     if (DepthTransform)
     {
-        if (v.x < 1.0)
+        if (v.x != 0.0)
         {
             vec2 linear_depth2 = mat2(inv_projection_zw.xy, inv_projection_zw.zw) * vec2(v.x, 1.0);
             float linear_depth = -linear_depth2.x / linear_depth2.y;

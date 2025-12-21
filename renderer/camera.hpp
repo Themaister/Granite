@@ -39,6 +39,7 @@ public:
 	mat4 get_view() const;
 
 	void set_depth_range(float znear, float zfar);
+	void set_depth_range_infinite(float znear);
 
 	void set_ortho(bool enable = true, float height = 0.0f);
 

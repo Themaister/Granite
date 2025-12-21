@@ -131,7 +131,7 @@ void debug_mesh_render(CommandBuffer &cmd, const RenderQueueData *infos, unsigne
 	}
 
 	cmd.set_depth_bias(true);
-	cmd.set_depth_bias(-1.0f, -1.0f);
+	cmd.set_depth_bias(+1.0f, +1.0f);
 	cmd.draw(count);
 }
 

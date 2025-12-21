@@ -340,7 +340,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);
 	fallback_depth_context.set_lighting_parameters(&fallback_lighting);
-	cam.set_depth_range(0.1f, 1000.0f);
+	cam.set_depth_range_infinite(0.1f);
 
 	// Create a dummy background if there isn't any background.
 	if (scene_loader.get_scene().get_entity_pool().get_component_group<BackgroundComponent>().empty())
@@ -709,7 +709,7 @@ void SceneViewerApplication::capture_environment_probe()
 		auto depth_att = device.get_transient_attachment(512, 512, device.get_default_depth_format(), 0);
 		rp.depth_stencil = &depth_att->get_view();
 		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
-		rp.clear_depth_stencil.depth = 1.0f;
+		rp.clear_depth_stencil.depth = 0.0f;
 		rp.clear_depth_stencil.stencil = 0;
 		rp.clear_color[0].float32[0] = 0.0f;
 		rp.clear_color[0].float32[1] = 0.0f;

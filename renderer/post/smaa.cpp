@@ -104,7 +104,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		smaa_edge.set_get_clear_depth_stencil([&](VkClearDepthStencilValue *value) {
 			if (value)
 			{
-				value->depth = 1.0f;
+				value->depth = 0.0f;
 				value->stencil = 0;
 			}
 			return true;

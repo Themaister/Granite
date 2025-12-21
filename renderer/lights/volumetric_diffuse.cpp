@@ -426,7 +426,7 @@ void VolumetricDiffuseLightManager::render_probe_gbuffer_slice(VolumetricDiffuse
 
 			Vulkan::RenderPassInfo rp;
 			memset(rp.clear_color, 0, sizeof(rp.clear_color));
-			rp.clear_depth_stencil.depth = 1.0f;
+			rp.clear_depth_stencil.depth = 0.0f;
 			rp.clear_depth_stencil.stencil = 0;
 			rp.clear_attachments = 0xf;
 			rp.store_attachments = 0xf;

@@ -477,7 +477,8 @@ void setup_fsr2_pass(RenderGraph &graph, TemporalJitter &jitter,
 	fsr2->desc.displaySize.height = graph.get_resource_dimensions(*fsr2->output).height;
 	fsr2->desc.maxRenderSize.width = graph.get_resource_dimensions(*fsr2->color).width;
 	fsr2->desc.maxRenderSize.height = graph.get_resource_dimensions(*fsr2->color).height;
-	fsr2->desc.flags |= FFX_FSR2_ENABLE_AUTO_EXPOSURE | FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE;
+	fsr2->desc.flags |= FFX_FSR2_ENABLE_AUTO_EXPOSURE | FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE |
+	                    FFX_FSR2_ENABLE_DEPTH_INFINITE | FFX_FSR2_ENABLE_DEPTH_INVERTED;
 	fsr2->jitter = &jitter;
 	fsr2->render_context = &context;
 

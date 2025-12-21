@@ -151,7 +151,7 @@ void setup_triangle(inout uint num_triangles, mat3 triangle, float cull)
     vec3 c1 = triangle[1];
     vec3 c2 = triangle[2];
 
-    bvec3 clip_z = greaterThan(vec3(c0.z, c1.z, c2.z), vec3(1.0));
+    bvec3 clip_z = lessThan(vec3(c0.z, c1.z, c2.z), vec3(0.0));
     uint clip_code = uint(clip_z.x) + uint(clip_z.y) * 2u + uint(clip_z.z) * 4u;
     mat3x2 clipped0, clipped1;
     bool dual = false;
@@ -163,30 +163,30 @@ void setup_triangle(inout uint num_triangles, mat3 triangle, float cull)
         break;
 
     case 1:
-        clip_dual_output(clipped0, clipped1, c0, c1, c2, 1.0);
+        clip_dual_output(clipped0, clipped1, c0, c1, c2, 0.0);
         dual = true;
         break;
 
     case 2:
-        clip_dual_output(clipped0, clipped1, c1, c2, c0, 1.0);
+        clip_dual_output(clipped0, clipped1, c1, c2, c0, 0.0);
         dual = true;
         break;
 
     case 4:
-        clip_dual_output(clipped0, clipped1, c2, c0, c1, 1.0);
+        clip_dual_output(clipped0, clipped1, c2, c0, c1, 0.0);
         dual = true;
         break;
 
     case 3:
-        clip_single_output(clipped0, c0, c1, c2, 1.0);
+        clip_single_output(clipped0, c0, c1, c2, 0.0);
         break;
 
     case 5:
-        clip_single_output(clipped0, c2, c0, c1, 1.0);
+        clip_single_output(clipped0, c2, c0, c1, 0.0);
         break;
 
     case 6:
-        clip_single_output(clipped0, c1, c2, c0, 1.0);
+        clip_single_output(clipped0, c1, c2, c0, 0.0);
         break;
 
     case 7:

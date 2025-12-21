@@ -951,8 +951,18 @@ void Device::init_workarounds()
 			if ((t.purposes & VK_TOOL_PURPOSE_TRACING_BIT_EXT) != 0 &&
 			    (t.purposes & VK_TOOL_PURPOSE_PROFILING_BIT) == 0)
 			{
-				LOGI("Detected non-profiling tracing tool, forcing host cached memory types for performance.\n");
-				workarounds.force_host_cached = true;
+				// Workaround a now-fixed RenderDoc where using ReBAR memory
+				// causes horrible performance.
+				if (strcmp(t.name, "RenderDoc") == 0)
+				{
+					unsigned major = 0, minor = 0;
+					int tokens = sscanf(t.version, "v%d.%d", &major, &minor);
+					if (tokens == 2 && major * 1000 + minor < 1042)
+					{
+						LOGI("Detected non-profiling tracing tool, forcing host cached memory types for performance.\n");
+						workarounds.force_host_cached = true;
+					}
+				}
 			}
 
 			if (!debug_marker_sensitive && (t.purposes & VK_TOOL_PURPOSE_DEBUG_MARKERS_BIT_EXT) != 0)

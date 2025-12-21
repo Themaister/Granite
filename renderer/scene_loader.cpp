@@ -654,47 +654,6 @@ NodeHandle SceneLoader::parse_scene_format(const std::string &path, const std::s
 		root->add_child(handles.node);
 	}
 
-	if (doc.HasMember("planes"))
-	{
-		auto &planes = doc["planes"];
-		for (auto itr = planes.Begin(); itr != planes.End(); ++itr)
-		{
-			auto &info = *itr;
-
-			auto plane = Util::make_handle<TexturePlane>(
-					Path::relpath(path, info["normalMap"].GetString()));
-
-			auto entity = scene->create_renderable(plane, nullptr);
-
-			vec3 center = vec3(info["center"][0].GetFloat(), info["center"][1].GetFloat(), info["center"][2].GetFloat());
-			vec3 normal = vec3(info["normal"][0].GetFloat(), info["normal"][1].GetFloat(), info["normal"][2].GetFloat());
-			vec3 up = vec3(info["up"][0].GetFloat(), info["up"][1].GetFloat(), info["up"][2].GetFloat());
-			vec3 emissive = vec3(info["baseEmissive"][0].GetFloat(), info["baseEmissive"][1].GetFloat(), info["baseEmissive"][2].GetFloat());
-			float rad_up = info["radiusUp"].GetFloat();
-			float rad_x = info["radiusAcross"].GetFloat();
-			float zfar = info["zFar"].GetFloat();
-
-			plane->set_plane(center, normal, up, rad_up, rad_x);
-			plane->set_zfar(zfar);
-
-			if (info.HasMember("reflectionName"))
-				plane->set_reflection_name(info["reflectionName"].GetString());
-			if (info.HasMember("refractionName"))
-				plane->set_refraction_name(info["refractionName"].GetString());
-
-			plane->set_resolution_scale(info["resolutionScale"][0].GetFloat(), info["resolutionScale"][1].GetFloat());
-
-			plane->set_base_emissive(emissive);
-			entity->free_component<UnboundedComponent>();
-			entity->allocate_component<RenderPassSinkComponent>();
-			auto *cull_plane = entity->allocate_component<CullPlaneComponent>();
-			cull_plane->plane = plane->get_plane();
-
-			auto *rpass = entity->allocate_component<RenderPassComponent>();
-			rpass->creator = plane.get();
-		}
-	}
-
 	return root;
 }
 

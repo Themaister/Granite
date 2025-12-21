@@ -354,9 +354,6 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 	auto &ocean = suite[ecast(RenderableType::Ocean)];
 	ocean.get_base_defines() = global_defines;
 	ocean.bake_base_defines();
-	auto &plane = suite[ecast(RenderableType::TexturePlane)];
-	plane.get_base_defines() = global_defines;
-	plane.bake_base_defines();
 
 	// Skybox renderers only depend on VOLUMETRIC_FOG.
 	ShaderSuite *suites[] = {
@@ -1029,10 +1026,6 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/ocean/ocean.vert", "builtin://shaders/ocean/ocean.frag");
 			break;
 
-		case RenderableType::TexturePlane:
-			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/texture_plane.vert", "builtin://shaders/texture_plane.frag");
-			break;
-
 		default:
 			break;
 		}
@@ -1054,10 +1047,6 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 
 		case RenderableType::Ocean:
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/ocean/ocean.vert", "builtin://shaders/dummy_depth.frag");
-			break;
-
-		case RenderableType::TexturePlane:
-			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/texture_plane.vert", "builtin://shaders/dummy_depth.frag");
 			break;
 
 		default:

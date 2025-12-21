@@ -35,7 +35,6 @@ enum class RenderableType
 	Ocean,
 	Sprite,
 	LineUI,
-	TexturePlane,
 	Custom,
 	Count
 };

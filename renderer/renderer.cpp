@@ -641,13 +641,6 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	if (options & DEPTH_TEST_EQUAL_BIT)
 		cmd.set_depth_compare(VK_COMPARE_OP_EQUAL);
 
-	if (options & STENCIL_WRITE_REFERENCE_BIT)
-	{
-		cmd.set_stencil_test(true);
-		cmd.set_stencil_ops(VK_COMPARE_OP_ALWAYS, VK_STENCIL_OP_REPLACE, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
-		cmd.set_stencil_reference(parameters->stencil.compare_mask, parameters->stencil.write_mask, parameters->stencil.ref);
-	}
-
 	CommandBufferSavedState state = {};
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	// No need to spend write bandwidth on writing 0 to light buffer, render opaque emissive on top.
@@ -664,14 +657,6 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
 		cmd.set_blend_op(VK_BLEND_OP_ADD);
 
-		cmd.set_stencil_test(true);
-		if (options & STENCIL_COMPARE_REFERENCE_BIT)
-			cmd.set_stencil_reference(parameters->stencil.compare_mask, 0, parameters->stencil.ref);
-		else
-			cmd.set_stencil_reference(0xff, 0, 0);
-
-		cmd.set_stencil_front_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
-		cmd.set_stencil_back_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 		queue.dispatch_subset(Queue::Light, cmd, &state, index, num_indices);
 	}
@@ -959,7 +944,6 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_SRC_ALPHA);
 		// Always render volumetric fog.
 		cmd.set_depth_test(false, false);
-		cmd.set_stencil_test(false);
 		CommandBufferUtil::draw_fullscreen_quad(cmd);
 	}
 	else if (light.fog.falloff > 0.0f)

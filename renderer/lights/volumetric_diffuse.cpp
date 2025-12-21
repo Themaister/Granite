@@ -329,7 +329,7 @@ static VolumetricDiffuseLight::GBuffer allocate_gbuffer(Vulkan::Device &device, 
 	gbuffer_info.format = VK_FORMAT_R8G8_UNORM;
 	allocated_gbuffer.pbr = device.create_image(gbuffer_info);
 
-	gbuffer_info.format = compute ? VK_FORMAT_R16_SFLOAT : device.get_default_depth_stencil_format();
+	gbuffer_info.format = compute ? VK_FORMAT_R16_SFLOAT : device.get_default_depth_format();
 	gbuffer_info.usage = (compute ? VK_IMAGE_USAGE_STORAGE_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) |
 	                     VK_IMAGE_USAGE_SAMPLED_BIT;
 	allocated_gbuffer.depth = device.create_image(gbuffer_info);

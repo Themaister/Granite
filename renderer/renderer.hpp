@@ -44,13 +44,6 @@ public:
 
 struct FlushParameters
 {
-	struct
-	{
-		uint8_t compare_mask;
-		uint8_t write_mask;
-		uint8_t ref;
-	} stencil;
-
 	uint32_t layer;
 	bool layered;
 };
@@ -93,8 +86,6 @@ public:
 		DEPTH_BIAS_BIT = 1 << 1,
 		DEPTH_STENCIL_READ_ONLY_BIT = 1 << 2,
 		NO_COLOR_BIT = 1 << 3,
-		STENCIL_WRITE_REFERENCE_BIT = 1 << 5,
-		STENCIL_COMPARE_REFERENCE_BIT = 1 << 6,
 		SKIP_SORTING_BIT = 1 << 7,
 		DEPTH_TEST_EQUAL_BIT = 1 << 9
 	};

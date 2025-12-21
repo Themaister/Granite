@@ -852,7 +852,7 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	albedo.format = VK_FORMAT_R8G8B8A8_SRGB;
 	normal.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 	pbr.format = VK_FORMAT_R8G8_UNORM;
-	depth.format = device.get_default_depth_stencil_format();
+	depth.format = device.get_default_depth_format();
 
 	auto &gbuffer = graph.add_pass(tagcat("gbuffer", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	gbuffer.add_color_output(tagcat("emissive", tag), emissive);

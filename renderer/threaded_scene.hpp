@@ -54,9 +54,9 @@ enum class PushType
 	Depth,
 	MotionVector
 };
-void compose_parallel_push_renderables(TaskComposer &composer, const RenderContext &context,
+void compose_parallel_push_renderables(TaskComposer &composer, const RenderContext *contexts,
                                        RenderQueue *queues, VisibilityList *visibility, unsigned count,
-                                       PushType type);
+                                       PushType type, bool layered);
 
 void scene_update_cached_transforms(Scene &scene, TaskComposer &composer, unsigned num_tasks);
 }

@@ -1032,8 +1032,10 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 	if (config.directional_light_shadows_vsm)
 		setup.flags |= SCENE_RENDERER_SHADOW_VSM_BIT;
 
-	setup.context = &depth_context;
+	setup.context = depth_contexts;
 	setup.flags |= SCENE_RENDERER_DEPTH_DYNAMIC_BIT;
+	setup.flags |= SCENE_RENDERER_SEPARATE_PER_LAYER_BIT;
+	setup.layers = NumShadowCascades;
 
 	handle = Util::make_handle<RenderPassSceneRenderer>();
 	handle->init(setup);
@@ -1242,9 +1244,6 @@ void SceneViewerApplication::setup_shadow_map()
 
 	if (config.directional_light_cascaded_shadows)
 	{
-		mat4 cascade_transforms[NumShadowCascades];
-		AABB combined_aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
-
 		for (int i = 0; i < NumShadowCascades; i++)
 		{
 			float cascade_cutoffs_lo;
@@ -1269,25 +1268,20 @@ void SceneViewerApplication::setup_shadow_map()
 			AABB ortho_range = AABB(vec3(center_xy - vec2(sphere.w), ortho_range_depth.get_minimum().z),
 			                        vec3(center_xy + vec2(sphere.w), ortho_range_depth.get_maximum().z));
 
-			combined_aabb.expand(ortho_range);
-
 			mat4 proj = ortho(ortho_range);
-			cascade_transforms[i] = proj * view;
+			mat4 cascade_transform = proj * view;
 			lighting.shadow.transforms[i] =
 					translate(vec3(0.5f, 0.5f, 0.0f)) *
 					scale(vec3(0.5f, 0.5f, 1.0f)) *
-					cascade_transforms[i];
+					cascade_transform;
+
+			depth_contexts[i].set_camera(proj, view);
 		}
-
-		depth_context.set_shadow_cascades(cascade_transforms);
-
-		mat4 proj = ortho(combined_aabb);
-		depth_context.set_camera(proj, view);
 	}
 	else
 	{
 		mat4 proj = ortho(ortho_range_depth);
-		depth_context.set_camera(proj, view);
+		depth_contexts[0].set_camera(proj, view);
 		lighting.shadow.transforms[0] =
 				translate(vec3(0.5f, 0.5f, 0.0f)) *
 				scale(vec3(0.5f, 0.5f, 1.0f)) *

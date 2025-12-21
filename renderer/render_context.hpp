@@ -52,7 +52,6 @@ public:
 
 	void set_camera(const mat4 &projection, const mat4 &view);
 	void set_camera(const Camera &camera);
-	void set_shadow_cascades(const mat4 cascades[NumShadowCascades]);
 	void set_motion_vector_projections(const TemporalJitter &jitter);
 	void set_frame_parameters(const FrameParameters &frame);
 

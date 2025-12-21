@@ -68,7 +68,7 @@ protected:
 	void post_frame() override;
 
 	RenderContext context;
-	RenderContext depth_context;
+	RenderContext depth_contexts[NumShadowCascades];
 	RenderContext fallback_depth_context;
 
 	RendererSuite renderer_suite;

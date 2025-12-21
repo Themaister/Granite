@@ -42,11 +42,25 @@ public:
 	                               RendererType renderer, RenderableType drawable) const;
 };
 
+struct FlushParameters
+{
+	struct
+	{
+		uint8_t compare_mask;
+		uint8_t write_mask;
+		uint8_t ref;
+	} stencil;
+
+	uint32_t layer;
+	bool layered;
+};
+
 class RenderContextParameterBinder
 {
 public:
 	virtual ~RenderContextParameterBinder() = default;
-	virtual void bind_render_context_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context) = 0;
+	virtual void bind_render_context_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context,
+	                                            const FlushParameters *params) = 0;
 };
 
 class Renderer : public EventHandler, public Util::IntrusivePtrEnabled<Renderer>
@@ -68,7 +82,6 @@ public:
 		SHADOW_PCF_KERNEL_WIDE_BIT = 1 << 9,
 		VOLUMETRIC_FOG_ENABLE_BIT = 1 << 10,
 		ALPHA_TEST_DISABLE_BIT = 1 << 11,
-		MULTIVIEW_BIT = 1 << 13,
 		AMBIENT_OCCLUSION_BIT = 1 << 14,
 		POSITIONAL_DECALS_BIT = 1 << 15
 	};
@@ -105,15 +118,6 @@ public:
 
 	void begin(RenderQueue &queue) const;
 
-	struct FlushParameters
-	{
-		struct
-		{
-			uint8_t compare_mask;
-			uint8_t write_mask;
-			uint8_t ref;
-		} stencil;
-	};
 	void flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context,
 	           RendererFlushFlags options = 0, const FlushParameters *params = nullptr) const;
 	// If queue is const, SKIP_SORTING must be set in options.

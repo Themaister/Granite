@@ -1,9 +1,5 @@
 #version 450
 
-#if defined(MULTIVIEW) && MULTIVIEW
-#extension GL_EXT_multiview : require
-#endif
-
 #include "inc/render_parameters.h"
 #include "inc/affine.h"
 
@@ -108,11 +104,7 @@ void main()
     vNewClip = (global.unjittered_view_projection * vec4(World, 1.0)).xyw;
 #endif
 
-#if defined(MULTIVIEW) && MULTIVIEW
-    gl_Position = global.multiview_view_projection[gl_ViewIndex] * vec4(World, 1.0);
-#else
     gl_Position = global.view_projection * vec4(World, 1.0);
-#endif
 
 #if !defined(RENDERER_DEPTH) && !defined(RENDERER_MOTION_VECTOR)
     vPos = World;

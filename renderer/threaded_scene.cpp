@@ -152,15 +152,16 @@ void scene_gather_positional_light_renderables_sorted(const Scene &scene, TaskCo
 	}
 }
 
-void compose_parallel_push_renderables(TaskComposer &composer, const RenderContext &context,
+void compose_parallel_push_renderables(TaskComposer &composer, const RenderContext *contexts,
                                        RenderQueue *queues, VisibilityList *visibility, unsigned count,
-                                       PushType type)
+                                       PushType type, bool layered)
 {
 	{
 		auto &group = composer.begin_pipeline_stage();
 		group.set_desc("parallel-push-renderables");
 		for (unsigned i = 0; i < count; i++)
 		{
+			auto &context = contexts[layered ? i : 0];
 			group.enqueue_task([i, &context, visibility, queues, type]() {
 				switch (type)
 				{
@@ -180,6 +181,7 @@ void compose_parallel_push_renderables(TaskComposer &composer, const RenderConte
 		}
 	}
 
+	if (!layered)
 	{
 		auto &group = composer.begin_pipeline_stage();
 		group.set_desc("parallel-push-renderables-sort");
@@ -188,6 +190,13 @@ void compose_parallel_push_renderables(TaskComposer &composer, const RenderConte
 				queues[0].combine_render_info(queues[i]);
 			queues[0].sort();
 		});
+	}
+	else
+	{
+		auto &group = composer.begin_pipeline_stage();
+		group.set_desc("parallel-push-renderables-sort");
+		for (unsigned i = 0; i < count; i++)
+			group.enqueue_task([=]() { queues[i].sort(); });
 	}
 }
 

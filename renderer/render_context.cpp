@@ -33,12 +33,6 @@ void RenderContext::set_camera(const Camera &camera_)
 	set_camera(camera_.get_projection(), camera_.get_view());
 }
 
-void RenderContext::set_shadow_cascades(const mat4 cascades[NumShadowCascades])
-{
-	for (unsigned i = 0; i < NumShadowCascades; i++)
-		camera.multiview_view_projection[i] = cascades[i];
-}
-
 void RenderContext::set_motion_vector_projections(const TemporalJitter &jitter)
 {
 	camera.unjittered_view_projection = jitter.get_history_view_proj(0);

@@ -107,8 +107,6 @@ Vulkan::Program *ShaderSuite::get_program(VariantSignatureKey signature)
 		uint32_t attribute_mask = signature.flags.attribute_mask;
 
 		defines.emplace_back("HAVE_EMISSIVE", !!(texture_mask & MATERIAL_EMISSIVE_BIT));
-		defines.emplace_back("HAVE_EMISSIVE_REFRACTION", !!(texture_mask & MATERIAL_EMISSIVE_REFRACTION_BIT));
-		defines.emplace_back("HAVE_EMISSIVE_REFLECTION", !!(texture_mask & MATERIAL_EMISSIVE_REFLECTION_BIT));
 		defines.emplace_back("HAVE_POSITION", !!(attribute_mask & MESH_ATTRIBUTE_POSITION_BIT));
 		defines.emplace_back("HAVE_UV", !!(attribute_mask & MESH_ATTRIBUTE_UV_BIT));
 		defines.emplace_back("HAVE_NORMAL", !!(attribute_mask & MESH_ATTRIBUTE_NORMAL_BIT));

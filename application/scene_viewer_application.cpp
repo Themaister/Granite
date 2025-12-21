@@ -1313,8 +1313,6 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 		context.set_camera(jitter.get_jittered_projection(), selected_camera->get_view());
 		context.set_motion_vector_projections(jitter);
 
-		lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
-
 		lighting.directional.direction = selected_directional->direction;
 		lighting.directional.color = selected_directional->color;
 

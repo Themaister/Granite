@@ -64,8 +64,6 @@ enum MaterialTextureFlagBits
 	MATERIAL_TEXTURE_OCCLUSION_BIT = 1u << Util::ecast(TextureKind::Occlusion),
 	MATERIAL_TEXTURE_EMISSIVE_BIT = 1u << Util::ecast(TextureKind::Emissive),
 	MATERIAL_EMISSIVE_BIT = 1u << 5,
-	MATERIAL_EMISSIVE_REFRACTION_BIT = 1u << 6,
-	MATERIAL_EMISSIVE_REFLECTION_BIT = 1u << 7
 };
 
 enum MaterialShaderVariantFlagBits

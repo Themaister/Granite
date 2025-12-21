@@ -64,13 +64,6 @@ void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump 
     lighting = apply_fog(lighting, pos - global.camera_position, fog.color, fog.falloff);
 #endif
 
-#ifdef REFRACTION
-	vec4 pos_near_clip = global.inv_view_projection * vec4(2.0 * gl_FragCoord.xy * resolution.inv_resolution - 1.0, 0.0, 1.0);
-	vec3 pos_near = pos_near_clip.xyz / pos_near_clip.w;
-    float distance = distance(pos, pos_near);
-    lighting *= exp2(-refraction.falloff * distance);
-#endif
-
     Color = vec4(lighting, base_color.a);
 }
 #endif

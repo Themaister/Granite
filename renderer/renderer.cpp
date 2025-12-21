@@ -398,8 +398,6 @@ std::vector<std::pair<std::string, int>> Renderer::build_defines_from_renderer_o
 		global_defines.emplace_back("FOG", 1);
 	if (flags & VOLUMETRIC_FOG_ENABLE_BIT)
 		global_defines.emplace_back("VOLUMETRIC_FOG", 1);
-	if (flags & REFRACTION_ENABLE_BIT)
-		global_defines.emplace_back("REFRACTION", 1);
 	if (flags & POSITIONAL_LIGHT_ENABLE_BIT)
 		global_defines.emplace_back("POSITIONAL_LIGHTS", 1);
 	if (flags & POSITIONAL_LIGHT_SHADOW_ENABLE_BIT)
@@ -568,7 +566,6 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 
 	combined->shadow = lighting->shadow;
 	combined->directional = lighting->directional;
-	combined->refraction = lighting->refraction;
 
 	combined->resolution.resolution = vec2(cmd.get_viewport().width, cmd.get_viewport().height);
 	combined->resolution.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);

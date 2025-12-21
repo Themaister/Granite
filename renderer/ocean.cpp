@@ -188,11 +188,6 @@ void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target, Re
 	{
 		target.add_texture_input("ocean-gradient-jacobian-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 		target.add_texture_input("ocean-normal-fft-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-
-		if (!config.refraction.input.empty())
-			refraction_resource = &target.add_texture_input(config.refraction.input);
-		else
-			refraction_resource = nullptr;
 	}
 }
 
@@ -248,10 +243,6 @@ void Ocean::setup_render_pass_resources(RenderGraph &graph_)
 			normal_mip_views.push_back(graph_.get_device().create_image_view(view));
 		}
 	}
-
-	refraction = nullptr;
-	if (!config.refraction.input.empty())
-		refraction = &graph_.get_physical_texture_resource(*refraction_resource);
 
 	auto *program = graph_.get_device().get_shader_manager().register_compute("builtin://shaders/ocean/generate_fft.comp");
 	programs.height_variant = program->register_variant({
@@ -843,15 +834,6 @@ struct OceanData
 	alignas(8) vec2 heightmap_range;
 };
 
-struct RefractionData
-{
-	vec4 texture_size;
-	vec4 depths;
-	float uv_scale;
-	float emissive_mod;
-	uint32_t layers;
-};
-
 struct OceanInfo
 {
 	Vulkan::Program *program;
@@ -874,9 +856,6 @@ struct OceanInfo
 	unsigned lods;
 	unsigned lod_stride;
 	OceanData data;
-
-	const Vulkan::ImageView *refraction;
-	RefractionData refraction_data;
 };
 
 struct OceanInfoPlane
@@ -892,9 +871,6 @@ struct OceanInfoPlane
 	unsigned border_count;
 
 	OceanData data;
-
-	const Vulkan::ImageView *refraction;
-	RefractionData refraction_data;
 };
 
 namespace RenderFunctions
@@ -911,12 +887,6 @@ static void ocean_render_plane(Vulkan::CommandBuffer &cmd, const RenderQueueData
 		cmd.set_program(ocean_info.program);
 		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 		cmd.set_texture(2, 3, *ocean_info.normal, Vulkan::StockSampler::DefaultGeometryFilterWrap);
-
-		if (ocean_info.refraction)
-		{
-			cmd.set_texture(2, 4, *ocean_info.refraction, Vulkan::StockSampler::DefaultGeometryFilterWrap);
-			*cmd.allocate_typed_constant_data<RefractionData>(2, 5, 1) = ocean_info.refraction_data;
-		}
 
 		memcpy(cmd.allocate_typed_constant_data<OceanData>(2, 6, 1),
 		       &ocean_info.data, sizeof(ocean_info.data));
@@ -945,12 +915,6 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 		cmd.set_texture(2, 1, *ocean_info.lod_map, Vulkan::StockSampler::LinearWrap);
 		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::DefaultGeometryFilterWrap);
 		cmd.set_texture(2, 3, *ocean_info.normal, Vulkan::StockSampler::DefaultGeometryFilterWrap);
-
-		if (ocean_info.refraction)
-		{
-			cmd.set_texture(2, 4, *ocean_info.refraction, Vulkan::StockSampler::DefaultGeometryFilterWrap);
-			*cmd.allocate_typed_constant_data<RefractionData>(2, 5, 1) = ocean_info.refraction_data;
-		}
 
 		memcpy(cmd.allocate_typed_constant_data<OceanData>(2, 6, 1),
 		       &ocean_info.data, sizeof(ocean_info.data));
@@ -990,9 +954,7 @@ enum VariantFlags : uint32_t
 {
 	VARIANT_FLAG_NONE = 0,
 	VARIANT_FLAG_BORDER = 1 << 0,
-	VARIANT_FLAG_REFRACTION = 1 << 1,
-	VARIANT_FLAG_REFRACTION_BANDLIMITED_PIXEL = 1 << 2, // Dirty hack for a demo ...
-	VARIANT_FLAG_PLANE = 1 << 3
+	VARIANT_FLAG_PLANE = 1 << 1
 };
 
 vec3 Ocean::get_world_offset() const
@@ -1023,13 +985,7 @@ void Ocean::get_render_info_plane(const RenderContext &, const RenderInfoCompone
 
 	auto instance_key = hasher.get();
 
-	if (refraction)
-		hasher.u64(refraction->get_cookie());
-	else
-		hasher.u32(0);
-
-	auto *patch_data = queue.push<OceanInfoPlane>(refraction ?
-	                                              Queue::OpaqueEmissive : Queue::Opaque,
+	auto *patch_data = queue.push<OceanInfoPlane>(Queue::Opaque,
 	                                              instance_key, 1,
 	                                              RenderFunctions::ocean_render_plane,
 	                                              nullptr);
@@ -1037,10 +993,6 @@ void Ocean::get_render_info_plane(const RenderContext &, const RenderInfoCompone
 	if (patch_data)
 	{
 		uint32_t plane_flag = VARIANT_FLAG_PLANE;
-		if (refraction)
-			plane_flag |= VARIANT_FLAG_REFRACTION;
-		if (config.refraction.bandlimited_pixel)
-			plane_flag |= VARIANT_FLAG_REFRACTION_BANDLIMITED_PIXEL;
 
 		patch_data->program =
 			queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(
@@ -1064,24 +1016,6 @@ void Ocean::get_render_info_plane(const RenderContext &, const RenderInfoCompone
 		patch_data->border_ibo = border_ibo.get();
 		patch_data->index_type = index_type;
 		patch_data->border_count = border_count;
-
-		patch_data->refraction = refraction;
-		if (refraction)
-		{
-			patch_data->refraction_data.texture_size = vec4(
-					float(refraction->get_image().get_width()),
-					float(refraction->get_image().get_height()),
-					1.0f / float(refraction->get_image().get_width()),
-					1.0f / float(refraction->get_image().get_height()));
-
-			patch_data->refraction_data.uv_scale = config.refraction.uv_scale;
-
-			for (unsigned i = 0; i < MaxOceanLayers; i++)
-				patch_data->refraction_data.depths[i] = config.refraction.depth[i];
-
-			patch_data->refraction_data.emissive_mod = config.refraction.emissive_mod;
-			patch_data->refraction_data.layers = std::min(4u, refraction->get_create_info().layers);
-		}
 	}
 }
 
@@ -1106,31 +1040,20 @@ void Ocean::get_render_info_heightmap(const RenderContext &,
 	hasher.u64(ubo.get_cookie());
 	hasher.u64(indirect.get_cookie());
 
-	if (refraction)
-		hasher.u64(refraction->get_cookie());
-	else
-		hasher.u32(0);
-
 	auto instance_key = hasher.get();
 
-	auto *patch_data = queue.push<OceanInfo>(refraction ?
-	                                         Queue::OpaqueEmissive : Queue::Opaque,
+	auto *patch_data = queue.push<OceanInfo>(Queue::Opaque,
 	                                         instance_key, 1,
 	                                         RenderFunctions::ocean_render,
 	                                         nullptr);
 
 	if (patch_data)
 	{
-		uint32_t refraction_flag = refraction ? VARIANT_FLAG_REFRACTION : VARIANT_FLAG_NONE;
-		if (config.refraction.bandlimited_pixel)
-			refraction_flag |= VARIANT_FLAG_REFRACTION_BANDLIMITED_PIXEL;
-
 		patch_data->program =
 			queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(
 				VariantSignatureKey::build(DrawPipeline::Opaque,
 				                           MESH_ATTRIBUTE_POSITION_BIT,
-				                           MATERIAL_TEXTURE_BASE_COLOR_BIT,
-				                           refraction_flag));
+				                           MATERIAL_TEXTURE_BASE_COLOR_BIT, 0));
 
 		// If we have fixed transform, don't render an "infinite" border.
 		if (!node)
@@ -1140,7 +1063,7 @@ void Ocean::get_render_info_heightmap(const RenderContext &,
 					VariantSignatureKey::build(DrawPipeline::Opaque,
 					                           MESH_ATTRIBUTE_POSITION_BIT,
 					                           MATERIAL_TEXTURE_BASE_COLOR_BIT,
-					                           VARIANT_FLAG_BORDER | refraction_flag));
+					                           VARIANT_FLAG_BORDER));
 
 			patch_data->border_vbo = border_vbo.get();
 			patch_data->border_ibo = border_ibo.get();
@@ -1167,24 +1090,6 @@ void Ocean::get_render_info_heightmap(const RenderContext &,
 		patch_data->data.coord_offset = get_coord_offset();
 
 		patch_data->index_type = index_type;
-
-		patch_data->refraction = refraction;
-		if (refraction)
-		{
-			patch_data->refraction_data.texture_size = vec4(
-					float(refraction->get_image().get_width()),
-					float(refraction->get_image().get_height()),
-					1.0f / float(refraction->get_image().get_width()),
-					1.0f / float(refraction->get_image().get_height()));
-
-			patch_data->refraction_data.uv_scale = config.refraction.uv_scale;
-
-			for (unsigned i = 0; i < MaxOceanLayers; i++)
-				patch_data->refraction_data.depths[i] = config.refraction.depth[i];
-
-			patch_data->refraction_data.emissive_mod = config.refraction.emissive_mod;
-			patch_data->refraction_data.layers = std::min(4u, refraction->get_create_info().layers);
-		}
 
 		for (unsigned i = 0; i < unsigned(quad_lod.size()); i++)
 		{

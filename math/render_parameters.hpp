@@ -89,11 +89,6 @@ struct ShadowParameters
 	float cascade_log_bias;
 };
 
-struct RefractionParameters
-{
-	alignas(16) vec3 falloff;
-};
-
 #define CLUSTERER_MAX_LIGHTS 32
 struct ClustererParametersLegacy
 {
@@ -194,7 +189,6 @@ struct CombinedRenderParameters
 	alignas(16) ShadowParameters shadow;
 	alignas(16) VolumetricFogParameters volumetric_fog;
 	alignas(16) DirectionalParameters directional;
-	alignas(16) RefractionParameters refraction;
 	alignas(16) ResolutionParameters resolution;
 	alignas(16) ClustererParametersLegacy clusterer;
 };
@@ -205,7 +199,6 @@ struct LightingParameters
 	FogParameters fog = {};
 	DirectionalParameters directional;
 	ShadowParameters shadow;
-	RefractionParameters refraction;
 
 	Vulkan::ImageView *shadows = nullptr;
 	Vulkan::ImageView *ambient_occlusion = nullptr;

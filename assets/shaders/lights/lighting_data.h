@@ -30,11 +30,6 @@ struct DirectionalParameters
 	vec3 direction;
 };
 
-struct RefractionParameters
-{
-	vec3 falloff;
-};
-
 struct ResolutionParameters
 {
 	vec2 resolution;
@@ -47,7 +42,6 @@ layout(set = 0, binding = BINDING_GLOBAL_RENDER_PARAMETERS, std140) uniform Ligh
 	ShadowParameters shadow;
 	VolumetricFogParameters volumetric_fog;
 	DirectionalParameters directional;
-	RefractionParameters refraction;
 	ResolutionParameters resolution;
 };
 

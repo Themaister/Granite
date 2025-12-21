@@ -74,15 +74,6 @@ struct OceanConfig
 
 	// Fudge factor.
 	float lod_bias = -3.5f;
-
-	struct
-	{
-		std::string input;
-		float uv_scale = 0.01f;
-		float depth[MaxOceanLayers] = { 2.0f, 4.0f, 6.0f, 8.0f };
-		float emissive_mod = 1.0f;
-		bool bandlimited_pixel = false;
-	} refraction;
 };
 
 class Ocean : public AbstractRenderable,
@@ -224,9 +215,6 @@ private:
 	vec2 normalmap_world_size() const;
 	vec3 get_world_offset() const;
 	vec2 get_coord_offset() const;
-
-	Vulkan::ImageView *refraction = nullptr;
-	RenderTextureResource *refraction_resource = nullptr;
 
 	struct
 	{

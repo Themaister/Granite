@@ -8,7 +8,7 @@ invariant gl_Position;
 #define OCEAN_BORDER
 #endif
 
-#if defined(VARIANT_BIT_3)
+#if defined(VARIANT_BIT_1)
 #define NO_HEIGHTMAP
 #endif
 

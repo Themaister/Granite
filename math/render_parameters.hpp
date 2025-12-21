@@ -49,8 +49,6 @@ struct RenderParameters
 	mat4 unjittered_inv_view_projection;
 	mat4 unjittered_prev_view_projection;
 
-	mat4 multiview_view_projection[NumShadowCascades];
-
 	alignas(16) vec3 camera_position;
 	alignas(16) vec3 camera_front;
 	alignas(16) vec3 camera_right;

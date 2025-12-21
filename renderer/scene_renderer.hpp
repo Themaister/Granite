@@ -36,6 +36,7 @@ enum SceneRendererFlagBits : uint32_t
 	SCENE_RENDERER_FORWARD_TRANSPARENT_BIT = 1 << 1,
 	SCENE_RENDERER_FORWARD_Z_PREPASS_BIT = 1 << 2,
 	SCENE_RENDERER_DEFERRED_GBUFFER_BIT = 1 << 3,
+	SCENE_RENDERER_SEPARATE_PER_LAYER_BIT = 1 << 4,
 	SCENE_RENDERER_DEFERRED_LIGHTING_BIT = 1 << 5,
 	SCENE_RENDERER_DEFERRED_CLUSTER_BIT = 1 << 6,
 	SCENE_RENDERER_SHADOW_PCF_WIDE_BIT = 1 << 7,
@@ -59,21 +60,27 @@ public:
 	struct Setup
 	{
 		Scene *scene;
-		const RenderContext *context;
 		const RendererSuite *suite;
 		SceneRendererFlags flags;
+
+		// For per-layer rendering, each layer gets its own context.
+		const RenderContext *context;
+		unsigned layers;
 	};
 	void init(const Setup &setup);
 	void set_clear_color(const VkClearColorValue &value);
 	void set_extra_flush_flags(Renderer::RendererFlushFlags flags);
 
-	void build_render_pass(Vulkan::CommandBuffer &cmd) const;
+	void build_render_pass(Vulkan::CommandBuffer &cmd, unsigned layer) const;
 	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
+	void build_render_pass_separate_layer(Vulkan::CommandBuffer &cmd, unsigned layer) override;
 	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
 	void enqueue_prepare_render_pass(RenderGraph &graph, TaskComposer &composer) override;
 
 	// An immediate version of enqueue_prepare_render_pass.
 	void prepare_render_pass();
+
+	bool render_pass_is_separate_layered() const override final;
 
 protected:
 	Setup setup_data = {};
@@ -89,7 +96,7 @@ protected:
 	RenderQueue queue_per_task_transparent[MaxTasks];
 	mutable RenderQueue queue_non_tasked;
 
-	void build_render_pass_inner(Vulkan::CommandBuffer &cmd) const;
+	void build_render_pass_inner(Vulkan::CommandBuffer &cmd, unsigned layer) const;
 	void setup_debug_probes();
 	void render_debug_probes(const Renderer &renderer, Vulkan::CommandBuffer &cmd, RenderQueue &queue,
 	                         const RenderContext &context) const;

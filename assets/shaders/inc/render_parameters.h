@@ -18,8 +18,6 @@ layout(set = 0, binding = BINDING_GLOBAL_TRANSFORM, std140) uniform RenderParame
 	mat4 unjittered_inv_view_projection;
 	mat4 unjittered_prev_view_projection;
 
-	mat4 multiview_view_projection[4];
-
 	vec3 camera_position;
 	vec3 camera_front;
 	vec3 camera_right;
@@ -32,7 +30,7 @@ layout(set = 0, binding = BINDING_GLOBAL_TRANSFORM, std140) uniform RenderParame
 float clip_z_to_linear(float clip_z)
 {
 	vec2 z = global.inv_projection[2].zw * clip_z + global.inv_projection[3].zw;
-	return -z.x / z.y;
+	return min(-z.x / z.y, 1e10);
 }
 
 #endif

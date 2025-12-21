@@ -32,6 +32,8 @@ void RenderPassSceneRenderer::init(const Setup &setup)
 	setup_data = setup;
 	if (setup_data.flags & SCENE_RENDERER_DEBUG_PROBES_BIT)
 		setup_debug_probes();
+
+	VK_ASSERT(setup.layers <= MaxTasks);
 }
 
 void RenderPassSceneRenderer::setup_debug_probes()
@@ -251,10 +253,17 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 		prepare_setup_queues();
 	});
 
+	bool layered = render_pass_is_separate_layered();
+	auto num_tasks = layered ? setup_data.layers : unsigned(MaxTasks);
+
+	unsigned gather_iterations = layered ? num_tasks : 1;
+	unsigned tasks_per_gather = layered ? 1 : unsigned(MaxTasks);
+
 	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT |
 	                        SCENE_RENDERER_FORWARD_Z_PREPASS_BIT |
 	                        SCENE_RENDERER_MOTION_VECTOR_BIT))
 	{
+		if (!layered)
 		{
 			auto &group = composer.begin_pipeline_stage();
 			group.enqueue_task([this]() {
@@ -266,16 +275,27 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 			});
 		}
 
-		if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
-			Threaded::scene_gather_opaque_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task, MaxTasks);
-		else if (setup_data.flags & SCENE_RENDERER_MOTION_VECTOR_BIT)
-			Threaded::scene_gather_motion_vector_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task, MaxTasks);
+		for (unsigned gather_iter = 0; gather_iter < gather_iterations; gather_iter++)
+		{
+			if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
+			{
+				Threaded::scene_gather_opaque_renderables(*setup_data.scene, composer,
+				                                          setup_data.context[gather_iter].get_visibility_frustum(),
+				                                          visible_per_task, tasks_per_gather);
+			}
+			else if (setup_data.flags & SCENE_RENDERER_MOTION_VECTOR_BIT)
+			{
+				Threaded::scene_gather_motion_vector_renderables(*setup_data.scene, composer,
+				                                                 setup_data.context[gather_iter].get_visibility_frustum(),
+				                                                 visible_per_task, tasks_per_gather);
+			}
+		}
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
 		{
-			Threaded::compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_depth,
-			                                            visible_per_task, MaxTasks,
-			                                            Threaded::PushType::Depth);
+			Threaded::compose_parallel_push_renderables(composer, setup_data.context, queue_per_task_depth,
+			                                            visible_per_task, num_tasks,
+			                                            Threaded::PushType::Depth, layered);
 		}
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
@@ -287,20 +307,21 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 					setup_data.scene->gather_unbounded_renderables(visible_per_task[0]);
 				});
 			}
-			Threaded::compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_opaque,
-			                                            visible_per_task, MaxTasks,
-			                                            Threaded::PushType::Normal);
+			Threaded::compose_parallel_push_renderables(composer, setup_data.context, queue_per_task_opaque,
+			                                            visible_per_task, num_tasks,
+			                                            Threaded::PushType::Normal, layered);
 		}
 		else if (setup_data.flags & SCENE_RENDERER_MOTION_VECTOR_BIT)
 		{
-			Threaded::compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_opaque,
-			                                            visible_per_task, MaxTasks,
-			                                            Threaded::PushType::MotionVector);
+			Threaded::compose_parallel_push_renderables(composer, setup_data.context, queue_per_task_opaque,
+			                                            visible_per_task, num_tasks,
+			                                            Threaded::PushType::MotionVector, layered);
 		}
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
 	{
+		if (!layered)
 		{
 			auto &group = composer.begin_pipeline_stage();
 			group.enqueue_task([this]() {
@@ -311,53 +332,80 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 					setup_data.scene->gather_unbounded_renderables(visible_per_task[0]);
 			});
 		}
-		Threaded::scene_gather_opaque_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task, MaxTasks);
-		Threaded::compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_opaque,
-		                                            visible_per_task, MaxTasks,
-		                                            Threaded::PushType::Normal);
+
+		for (unsigned gather_iter = 0; gather_iter < gather_iterations; gather_iter++)
+		{
+			Threaded::scene_gather_opaque_renderables(*setup_data.scene, composer,
+			                                          setup_data.context[gather_iter].get_visibility_frustum(), visible_per_task,
+			                                          tasks_per_gather);
+		}
+
+		Threaded::compose_parallel_push_renderables(composer, setup_data.context, queue_per_task_opaque,
+		                                            visible_per_task, num_tasks,
+		                                            Threaded::PushType::Normal, layered);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_FORWARD_TRANSPARENT_BIT)
 	{
-		Threaded::scene_gather_transparent_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task_transparent, MaxTasks);
-		Threaded::compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_transparent,
-		                                            visible_per_task_transparent, MaxTasks,
-		                                            Threaded::PushType::Normal);
+		for (unsigned gather_iter = 0; gather_iter < gather_iterations; gather_iter++)
+		{
+			Threaded::scene_gather_transparent_renderables(*setup_data.scene, composer,
+			                                               setup_data.context[gather_iter].get_visibility_frustum(),
+			                                               visible_per_task_transparent, tasks_per_gather);
+		}
+
+		Threaded::compose_parallel_push_renderables(composer, setup_data.context, queue_per_task_transparent,
+		                                            visible_per_task_transparent, num_tasks,
+		                                            Threaded::PushType::Normal, layered);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
 	{
-		if (setup_data.flags & SCENE_RENDERER_DEPTH_DYNAMIC_BIT)
+		for (unsigned gather_iter = 0; gather_iter < gather_iterations; gather_iter++)
 		{
-			Threaded::scene_gather_dynamic_shadow_renderables(*setup_data.scene, composer,
-			                                                  setup_data.context->get_visibility_frustum(),
-			                                                  visible_per_task, nullptr, MaxTasks);
+			if (setup_data.flags & SCENE_RENDERER_DEPTH_DYNAMIC_BIT)
+			{
+				Threaded::scene_gather_dynamic_shadow_renderables(*setup_data.scene, composer,
+				                                                  setup_data.context[gather_iter].get_visibility_frustum(),
+				                                                  visible_per_task, nullptr, tasks_per_gather);
+			}
+
+			if (setup_data.flags & SCENE_RENDERER_DEPTH_STATIC_BIT)
+			{
+				Threaded::scene_gather_static_shadow_renderables(*setup_data.scene, composer,
+				                                                 setup_data.context[gather_iter].get_visibility_frustum(),
+				                                                 visible_per_task, nullptr, tasks_per_gather);
+			}
 		}
 
-		if (setup_data.flags & SCENE_RENDERER_DEPTH_STATIC_BIT)
-		{
-			Threaded::scene_gather_static_shadow_renderables(*setup_data.scene, composer,
-			                                                 setup_data.context->get_visibility_frustum(),
-			                                                 visible_per_task, nullptr, MaxTasks);
-		}
-
-		Threaded::compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_depth,
-		                                            visible_per_task, MaxTasks,
-		                                            Threaded::PushType::Depth);
+		Threaded::compose_parallel_push_renderables(composer, setup_data.context, queue_per_task_depth,
+		                                            visible_per_task, num_tasks,
+		                                            Threaded::PushType::Depth, layered);
 	}
 }
 
-void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd) const
+void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd, unsigned layer) const
 {
 	auto *suite = setup_data.suite;
+
+	FlushParameters flush_params = {};
+	unsigned bucket_index = 0;
+
+	if (render_pass_is_separate_layered())
+	{
+		flush_params.layered = true;
+		flush_params.layer = layer;
+		bucket_index = layer;
+	}
 
 	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
 	{
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
 		{
-			suite->get_renderer(RendererSuite::Type::PrepassDepth).flush(cmd, queue_per_task_depth[0], *setup_data.context,
-			                                                             Renderer::NO_COLOR_BIT | Renderer::SKIP_SORTING_BIT |
-			                                                             flush_flags);
+			suite->get_renderer(RendererSuite::Type::PrepassDepth).flush(
+					cmd, queue_per_task_depth[bucket_index], setup_data.context[bucket_index],
+					Renderer::NO_COLOR_BIT | Renderer::SKIP_SORTING_BIT |
+					flush_flags, &flush_params);
 		}
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
@@ -365,7 +413,8 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 			Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT | flush_flags;
 			if (setup_data.flags & (SCENE_RENDERER_FORWARD_Z_PREPASS_BIT | SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT))
 				opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
-			suite->get_renderer(RendererSuite::Type::ForwardOpaque).flush(cmd, queue_per_task_opaque[0], *setup_data.context, opt);
+			suite->get_renderer(RendererSuite::Type::ForwardOpaque).flush(
+					cmd, queue_per_task_opaque[bucket_index], setup_data.context[bucket_index], opt, &flush_params);
 
 			if (setup_data.flags & SCENE_RENDERER_DEBUG_PROBES_BIT)
 			{
@@ -385,13 +434,17 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 		                                    Renderer::DEPTH_STENCIL_READ_ONLY_BIT |
 		                                    Renderer::DEPTH_TEST_EQUAL_BIT |
 		                                    flush_flags;
-		suite->get_renderer(RendererSuite::Type::MotionVector).flush(cmd, queue_per_task_opaque[0], *setup_data.context, opt);
+		suite->get_renderer(RendererSuite::Type::MotionVector).flush(cmd, queue_per_task_opaque[bucket_index],
+		                                                             setup_data.context[bucket_index], opt,
+		                                                             &flush_params);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
 	{
-		suite->get_renderer(RendererSuite::Type::Deferred).flush(cmd, queue_per_task_opaque[0], *setup_data.context,
-		                                                         Renderer::SKIP_SORTING_BIT | flush_flags);
+		suite->get_renderer(RendererSuite::Type::Deferred).flush(cmd, queue_per_task_opaque[bucket_index],
+		                                                         setup_data.context[bucket_index],
+		                                                         Renderer::SKIP_SORTING_BIT | flush_flags,
+		                                                         &flush_params);
 
 		if (setup_data.flags & SCENE_RENDERER_DEBUG_PROBES_BIT)
 		{
@@ -406,27 +459,33 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 
 	if (setup_data.flags & SCENE_RENDERER_FORWARD_TRANSPARENT_BIT)
 	{
-		suite->get_renderer(RendererSuite::Type::ForwardTransparent).flush(cmd, queue_per_task_transparent[0], *setup_data.context,
+		suite->get_renderer(RendererSuite::Type::ForwardTransparent).flush(cmd, queue_per_task_transparent[bucket_index], setup_data.context[bucket_index],
 		                                                                   Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::SKIP_SORTING_BIT |
-		                                                                   flush_flags);
+		                                                                   flush_flags, &flush_params);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
 	{
 		auto type = get_depth_renderer_type(setup_data.flags);
-		suite->get_renderer(type).flush(cmd, queue_per_task_depth[0], *setup_data.context,
-		                                Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT | flush_flags);
+		suite->get_renderer(type).flush(cmd, queue_per_task_depth[bucket_index], setup_data.context[bucket_index],
+		                                Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT | flush_flags,
+										&flush_params);
 	}
 }
 
-void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd) const
+void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd, unsigned layer) const
 {
-	build_render_pass_inner(cmd);
+	build_render_pass_inner(cmd, layer);
 }
 
 void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 {
-	build_render_pass_inner(cmd);
+	build_render_pass_inner(cmd, 0);
+}
+
+void RenderPassSceneRenderer::build_render_pass_separate_layer(Vulkan::CommandBuffer &cmd, unsigned layer)
+{
+	build_render_pass_inner(cmd, layer);
 }
 
 void RenderPassSceneRenderer::set_clear_color(const VkClearColorValue &value)
@@ -439,5 +498,10 @@ bool RenderPassSceneRenderer::get_clear_color(unsigned, VkClearColorValue *value
 	if (value)
 		*value = clear_color_value;
 	return true;
+}
+
+bool RenderPassSceneRenderer::render_pass_is_separate_layered() const
+{
+	return (setup_data.flags & SCENE_RENDERER_SEPARATE_PER_LAYER_BIT) != 0;
 }
 }

@@ -110,12 +110,10 @@ void RendererSuite::set_default_renderers()
 
 void RendererSuite::update_mesh_rendering_options(const RenderContext &context, const Config &config)
 {
-	get_renderer(Type::ShadowDepthDirectionalPCF).set_mesh_renderer_options(
-			config.cascaded_directional_shadows ? Renderer::MULTIVIEW_BIT : 0);
+	get_renderer(Type::ShadowDepthDirectionalPCF).set_mesh_renderer_options(0);
 	get_renderer(Type::ShadowDepthDirectionalFallbackPCF).set_mesh_renderer_options(0);
 	get_renderer(Type::ShadowDepthPositionalPCF).set_mesh_renderer_options(0);
-	get_renderer(Type::ShadowDepthDirectionalVSM).set_mesh_renderer_options(
-			(config.cascaded_directional_shadows ? Renderer::MULTIVIEW_BIT : 0) | Renderer::SHADOW_VSM_BIT);
+	get_renderer(Type::ShadowDepthDirectionalVSM).set_mesh_renderer_options(Renderer::SHADOW_VSM_BIT);
 	get_renderer(Type::ShadowDepthPositionalVSM).set_mesh_renderer_options(
 			Renderer::POSITIONAL_LIGHT_SHADOW_VSM_BIT);
 	get_renderer(Type::PrepassDepth).set_mesh_renderer_options(0);
@@ -418,9 +416,6 @@ std::vector<std::pair<std::string, int>> Renderer::build_defines_from_renderer_o
 	if (flags & ALPHA_TEST_DISABLE_BIT)
 		global_defines.emplace_back("ALPHA_TEST_DISABLE", 1);
 
-	if (flags & MULTIVIEW_BIT)
-		global_defines.emplace_back("MULTIVIEW", 1);
-
 	if (flags & AMBIENT_OCCLUSION_BIT)
 		global_defines.emplace_back("AMBIENT_OCCLUSION", 1);
 
@@ -618,7 +613,7 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 
 	if (render_context_parameter_binder)
 	{
-		render_context_parameter_binder->bind_render_context_parameters(cmd, context);
+		render_context_parameter_binder->bind_render_context_parameters(cmd, context, parameters);
 	}
 	else
 	{

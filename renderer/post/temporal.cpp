@@ -435,8 +435,10 @@ void FSR2State::build_render_pass(Vulkan::CommandBuffer &cmd)
 	dispatch.preExposure = 0.0f; // Using AUTO
 	dispatch.reset = render_context->get_frame_parameters().discontinuous_camera;
 	dispatch.frameTimeDelta = float(render_context->get_frame_parameters().frame_time * 1000.0);
-	dispatch.cameraFar = render_context->get_render_parameters().z_far;
-	dispatch.cameraNear = render_context->get_render_parameters().z_near;
+
+	// In inverse depth mode, these are flipped for whatever reason.
+	dispatch.cameraFar = render_context->get_render_parameters().z_near;
+	dispatch.cameraNear = std::numeric_limits<float>::max();
 
 	// Not sure if this is correct.
 	float proj_y_scale = muglm::abs(render_context->get_render_parameters().inv_projection[1][1]);

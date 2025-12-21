@@ -10,3 +10,9 @@ else()
     target_compile_definitions(granite-compiler PRIVATE GRANITE_COMPILER_OPTIMIZE=0)
 endif()
 
+if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
+	target_compile_definitions(granite-compiler PRIVATE GRANITE_COMPILER_DEBUG=1)
+else()
+	target_compile_definitions(granite-compiler PRIVATE GRANITE_COMPILER_DEBUG=0)
+endif()
+

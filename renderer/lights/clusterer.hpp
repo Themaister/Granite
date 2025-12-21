@@ -326,5 +326,7 @@ private:
 	void external_release(Vulkan::Semaphore sem) override;
 	Vulkan::Semaphore acquire_semaphore;
 	Util::SmallVector<Vulkan::Semaphore> release_semaphores;
+
+	float get_z_slice_extent(const RenderContext &ctx) const;
 };
 }

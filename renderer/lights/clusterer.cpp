@@ -1202,6 +1202,11 @@ unsigned LightClusterer::scan_visible_positional_lights(const PositionalLightLis
 	return index;
 }
 
+float LightClusterer::get_z_slice_extent(const RenderContext &ctx) const
+{
+	return muglm::min(0.5f, ctx.get_render_parameters().z_far / float(resolution_z));
+}
+
 void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 {
 	bindless.parameters.num_lights = 0;
@@ -1227,7 +1232,7 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 	bindless.global_transforms.num_lights = global_count;
 	bindless.global_transforms.descriptor_offset = local_count;
 
-	float z_slice_size = context_.get_render_parameters().z_far / float(resolution_z);
+	float z_slice_size = get_z_slice_extent(context_);
 	bindless.parameters.clip_scale =
 			vec4(context_.get_render_parameters().projection[0][0],
 			     -context_.get_render_parameters().projection[1][1],
@@ -1622,7 +1627,7 @@ bool LightClusterer::bindless_light_is_point(unsigned index) const
 
 uvec2 LightClusterer::compute_uint_range(vec2 range) const
 {
-	range = range * (float(resolution_z) / context->get_render_parameters().z_far);
+	range = range / get_z_slice_extent(*context);
 	if (range.y < 0.0f)
 		return uvec2(0xffffffffu, 0u);
 	range.x = muglm::max(range.x, 0.0f);

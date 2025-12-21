@@ -842,7 +842,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	auto *variant = program->register_variant(defines);
 	cmd.set_program(variant->get_program());
 	cmd.set_depth_test(true, false);
-	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
+	cmd.set_depth_compare(VK_COMPARE_OP_NOT_EQUAL);
 
 	auto *brdf = device.get_resource_manager().get_image_view_blocking(GRANITE_COMMON_RENDERER_DATA()->brdf_tables);
 	VK_ASSERT(brdf);

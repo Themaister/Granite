@@ -12,6 +12,6 @@ layout(std140, set = 0, binding = 0) uniform Transforms
 
 void main()
 {
-    gl_Position = vec4(Position, 1.0, 1.0);
+    gl_Position = vec4(Position, 0.0, 1.0);
     vClip = inverse_view_projection * vec4(Position, 0.0, 1.0);
 }

@@ -31,7 +31,7 @@
 
 namespace Granite
 {
-class PositionalLight : public AbstractRenderable
+class PositionalLight : public Util::IntrusivePtrEnabled<PositionalLight>
 {
 public:
 	enum class Type
@@ -41,6 +41,7 @@ public:
 	};
 
 	PositionalLight(Type type);
+	virtual ~PositionalLight() = default;
 
 	Type get_type() const
 	{
@@ -53,12 +54,7 @@ public:
 		return cutoff_range;
 	}
 
-	bool has_static_aabb() const override
-	{
-		return true;
-	}
-
-	const AABB *get_static_aabb() const override
+	const AABB *get_static_aabb() const
 	{
 		return &aabb;
 	}
@@ -100,15 +96,12 @@ private:
 	virtual void set_range(float range) = 0;
 };
 
+using PositionalLightHandle = Util::IntrusivePtr<PositionalLight>;
+
 class SpotLight : public PositionalLight
 {
 public:
 	SpotLight();
-
-	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
-	                     RenderQueue &queue) const override;
-	void get_depth_render_info(const RenderContext &context, const RenderInfoComponent *transform,
-	                           RenderQueue &queue) const override;
 
 	void set_spot_parameters(float inner_cone, float outer_cone);
 	PositionalFragmentInfo get_shader_info(const mat_affine &transform) const;
@@ -149,10 +142,6 @@ class PointLight : public PositionalLight
 public:
 	PointLight();
 
-	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
-	                     RenderQueue &queue) const override;
-	void get_depth_render_info(const RenderContext &context, const RenderInfoComponent *transform,
-	                           RenderQueue &queue) const override;
 	PositionalFragmentInfo get_shader_info(const mat_affine &transform) const;
 
 	void set_shadow_info(const Vulkan::ImageView *shadow, const PointTransform &transform);

@@ -1,7 +1,6 @@
 #version 450
 layout(local_size_x = 64) in;
 
-#define CLUSTERER_BINDLESS
 #include "clusterer_data.h"
 
 layout(push_constant) uniform Registers

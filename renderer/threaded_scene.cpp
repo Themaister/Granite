@@ -109,19 +109,6 @@ void scene_gather_dynamic_shadow_renderables(const Scene &scene, TaskComposer &c
 	}
 }
 
-void scene_gather_positional_light_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
-                                               VisibilityList *lists, unsigned num_tasks)
-{
-	auto &group = composer.begin_pipeline_stage();
-	group.set_desc("gather-positional-light-renderables");
-	for (unsigned i = 0; i < num_tasks; i++)
-	{
-		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {
-			scene.gather_visible_positional_lights_subset(frustum, lists[i], i, num_tasks);
-		});
-	}
-}
-
 void scene_gather_positional_light_renderables_sorted(const Scene &scene, TaskComposer &composer,
                                                       const RenderContext &context,
                                                       PositionalLightList *lists, unsigned num_tasks)

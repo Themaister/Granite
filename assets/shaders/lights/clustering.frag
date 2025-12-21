@@ -40,11 +40,7 @@ void main()
 
     FragColor = compute_cluster_light(
 		base_color_ambient.rgb, N, mr.x, mr.y,
-		pos, registers.camera_pos
-#ifdef CLUSTERER_BINDLESS
-        , registers.inv_resolution
-#endif
-    );
+		pos, registers.camera_pos, registers.inv_resolution);
 
 #ifdef VOLUMETRIC_DIFFUSE
 #ifdef AMBIENT_OCCLUSION

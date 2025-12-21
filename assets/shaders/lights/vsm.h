@@ -1,9 +1,7 @@
 #ifndef VSM_H_
 #define VSM_H_
 
-#ifdef CLUSTERER_BINDLESS
 #include "linear_clamp_sampler.h"
-#endif
 
 mediump float vsm(float depth, vec2 moments)
 {

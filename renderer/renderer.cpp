@@ -357,12 +357,6 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 	auto &plane = suite[ecast(RenderableType::TexturePlane)];
 	plane.get_base_defines() = global_defines;
 	plane.bake_base_defines();
-	auto &spot = suite[ecast(RenderableType::SpotLight)];
-	spot.get_base_defines() = global_defines;
-	spot.bake_base_defines();
-	auto &point = suite[ecast(RenderableType::PointLight)];
-	point.get_base_defines() = global_defines;
-	point.bake_base_defines();
 
 	// Skybox renderers only depend on VOLUMETRIC_FOG.
 	ShaderSuite *suites[] = {
@@ -413,8 +407,6 @@ std::vector<std::pair<std::string, int>> Renderer::build_defines_from_renderer_o
 		global_defines.emplace_back("POSITIONAL_LIGHTS", 1);
 	if (flags & POSITIONAL_LIGHT_SHADOW_ENABLE_BIT)
 		global_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
-	if (flags & POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT)
-		global_defines.emplace_back("CLUSTERER_BINDLESS", 1);
 	if (flags & POSITIONAL_DECALS_BIT)
 		global_defines.emplace_back("CLUSTERER_DECALS", 1);
 
@@ -460,23 +452,19 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 	else if (lighting.fog.falloff > 0.0f)
 		flags |= FOG_ENABLE_BIT;
 
-	if (lighting.cluster && (lighting.cluster->get_cluster_image() || lighting.cluster->get_cluster_bitmask_buffer()))
+	if (lighting.cluster)
 	{
 		flags |= POSITIONAL_LIGHT_ENABLE_BIT;
-		if ((lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows()) ||
-		    lighting.cluster->get_cluster_bindless_set())
+
+		if (lighting.cluster->get_cluster_bindless_set())
 		{
 			flags |= POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
 			if (lighting.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
 				flags |= POSITIONAL_LIGHT_SHADOW_VSM_BIT;
 		}
 
-		if (lighting.cluster->clusterer_is_bindless())
-		{
-			flags |= POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT;
-			if (lighting.cluster->clusterer_has_volumetric_decals())
-				flags |= POSITIONAL_DECALS_BIT;
-		}
+		if (lighting.cluster->clusterer_has_volumetric_decals())
+			flags |= POSITIONAL_DECALS_BIT;
 
 		if (lighting.cluster->clusterer_has_volumetric_diffuse())
 			flags |= VOLUMETRIC_DIFFUSE_ENABLE_BIT;
@@ -528,37 +516,6 @@ void Renderer::begin(RenderQueue &queue) const
 	queue.set_device(device);
 }
 
-static void set_cluster_parameters_legacy(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
-{
-	auto &params = *cmd.allocate_typed_constant_data<ClustererParametersLegacy>(0, BINDING_GLOBAL_CLUSTERER_PARAMETERS, 1);
-	memset(&params, 0, sizeof(params));
-
-	cmd.set_texture(0, BINDING_GLOBAL_CLUSTER_IMAGE_LEGACY, *cluster.get_cluster_image(), StockSampler::NearestClamp);
-
-	params.transform = cluster.get_cluster_transform();
-	memcpy(params.spots, cluster.get_active_spot_lights(),
-	       cluster.get_active_spot_light_count() * sizeof(PositionalFragmentInfo));
-	memcpy(params.points, cluster.get_active_point_lights(),
-	       cluster.get_active_point_light_count() * sizeof(PositionalFragmentInfo));
-
-	if (cluster.get_spot_light_shadows() && cluster.get_point_light_shadows())
-	{
-		auto spot_sampler = format_has_depth_or_stencil_aspect(cluster.get_spot_light_shadows()->get_format()) ?
-		                    StockSampler::LinearShadow : StockSampler::LinearClamp;
-		auto point_sampler = format_has_depth_or_stencil_aspect(cluster.get_point_light_shadows()->get_format()) ?
-		                     StockSampler::LinearShadow : StockSampler::LinearClamp;
-
-		cmd.set_texture(0, BINDING_GLOBAL_CLUSTER_SPOT_LEGACY, *cluster.get_spot_light_shadows(), spot_sampler);
-		cmd.set_texture(0, BINDING_GLOBAL_CLUSTER_POINT_LEGACY, *cluster.get_point_light_shadows(), point_sampler);
-
-		memcpy(params.spot_shadow_transforms, cluster.get_active_spot_light_shadow_matrices(),
-		       cluster.get_active_spot_light_count() * sizeof(mat4));
-
-		memcpy(params.point_shadow, cluster.get_active_point_light_shadow_transform(),
-		       cluster.get_active_point_light_count() * sizeof(PointTransform));
-	}
-}
-
 static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
 {
 	*cmd.allocate_typed_constant_data<ClustererParametersBindless>(0, BINDING_GLOBAL_CLUSTERER_PARAMETERS, 1) = cluster.get_cluster_parameters_bindless();
@@ -589,14 +546,6 @@ static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const Li
 			memcpy(parameters, &cluster.get_cluster_volumetric_fog_data(), size);
 		}
 	}
-}
-
-static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
-{
-	if (cluster.clusterer_is_bindless())
-		set_cluster_parameters_bindless(cmd, cluster);
-	else
-		set_cluster_parameters_legacy(cmd, cluster);
 }
 
 void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
@@ -641,8 +590,8 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 	if (lighting->ambient_occlusion)
 		cmd.set_texture(0, BINDING_GLOBAL_AMBIENT_OCCLUSION, *lighting->ambient_occlusion, StockSampler::LinearClamp);
 
-	if (lighting->cluster && (lighting->cluster->get_cluster_image() || lighting->cluster->get_cluster_bitmask_buffer()))
-		set_cluster_parameters(cmd, *lighting->cluster);
+	if (lighting->cluster && lighting->cluster->get_cluster_bitmask_buffer())
+		set_cluster_parameters_bindless(cmd, *lighting->cluster);
 
 	if (lighting->volumetric_diffuse)
 	{
@@ -700,16 +649,8 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 		cmd.set_depth_bias(-4.0f, -3.0f);
 	}
 
-	if (options & BACKFACE_BIT)
-	{
-		cmd.set_cull_mode(VK_CULL_MODE_FRONT_BIT);
-		cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
-	}
-
 	if (options & DEPTH_TEST_EQUAL_BIT)
 		cmd.set_depth_compare(VK_COMPARE_OP_EQUAL);
-	else if (options & DEPTH_TEST_INVERT_BIT)
-		cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 
 	if (options & STENCIL_WRITE_REFERENCE_BIT)
 	{
@@ -958,7 +899,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	CommandBufferUtil::draw_fullscreen_quad(cmd);
 
 	// Clustered lighting.
-	if (light.cluster && (light.cluster->get_cluster_image() || light.cluster->get_cluster_bitmask_buffer()))
+	if (light.cluster && light.cluster->get_cluster_bitmask_buffer())
 	{
 		struct ClusterPush
 		{
@@ -974,8 +915,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 		};
 
 		std::vector<std::pair<std::string, int>> cluster_defines;
-		if (light.cluster->get_spot_light_shadows() ||
-		    light.cluster->get_cluster_bindless_set())
+		if (light.cluster->get_cluster_bindless_set())
 		{
 			cluster_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
 			if (light.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
@@ -984,24 +924,20 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 				cluster_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDE", 1);
 		}
 
-		if (light.cluster->clusterer_is_bindless())
+		if (light.cluster->get_cluster_bindless_set())
 		{
-			cluster_defines.emplace_back("CLUSTERER_BINDLESS", 1);
-			if (light.cluster->get_cluster_bindless_set())
+			if (cluster_volumetric_diffuse)
 			{
-				if (cluster_volumetric_diffuse)
+				cluster_defines.emplace_back("VOLUMETRIC_DIFFUSE", 1);
+				if (light.volumetric_diffuse)
 				{
-					cluster_defines.emplace_back("VOLUMETRIC_DIFFUSE", 1);
-					if (light.volumetric_diffuse)
-					{
-						cmd.set_buffer_view(0, BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_FALLBACK_VOLUME,
-											light.volumetric_diffuse->get_fallback_volume_view());
-					}
+					cmd.set_buffer_view(0, BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_FALLBACK_VOLUME,
+					                    light.volumetric_diffuse->get_fallback_volume_view());
 				}
-
-				if (light.ambient_occlusion)
-					cluster_defines.emplace_back("AMBIENT_OCCLUSION", 1);
 			}
+
+			if (light.ambient_occlusion)
+				cluster_defines.emplace_back("AMBIENT_OCCLUSION", 1);
 		}
 
 		Renderer::add_subgroup_defines(device, cluster_defines, VK_SHADER_STAGE_FRAGMENT_BIT);
@@ -1011,7 +947,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 		                cluster_defines);
 
 		cmd.push_constants(&cluster_push, 0, sizeof(cluster_push));
-		set_cluster_parameters(cmd, *light.cluster);
+		set_cluster_parameters_bindless(cmd, *light.cluster);
 		CommandBufferUtil::draw_fullscreen_quad(cmd);
 	}
 
@@ -1124,14 +1060,6 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/texture_plane.vert", "builtin://shaders/dummy_depth.frag");
 			break;
 
-		case RenderableType::SpotLight:
-			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/lights/spot.vert", "builtin://shaders/dummy.frag");
-			break;
-
-		case RenderableType::PointLight:
-			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/lights/point.vert", "builtin://shaders/dummy.frag");
-			break;
-
 		default:
 			break;
 		}
@@ -1142,14 +1070,6 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/sprite.vert", "builtin://shaders/sprite.frag");
 		else if (drawable == RenderableType::LineUI)
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/line_ui.vert", "builtin://shaders/debug_mesh.frag");
-	}
-
-	if (renderer == RendererType::GeneralDeferred)
-	{
-		if (drawable == RenderableType::SpotLight)
-			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/lights/spot.vert", "builtin://shaders/lights/spot.frag");
-		else if (drawable == RenderableType::PointLight)
-			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/lights/point.vert", "builtin://shaders/lights/point.frag");
 	}
 }
 

@@ -220,7 +220,7 @@ struct TransparentComponent : ComponentBase
 struct PositionalLightComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(PositionalLightComponent)
-	PositionalLight *light;
+	PositionalLightHandle light;
 };
 
 struct IrradianceAffectingComponent : ComponentBase

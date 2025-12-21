@@ -1,10 +1,6 @@
 #ifndef VOLUMETRIC_DECAL_H_
 #define VOLUMETRIC_DECAL_H_
 
-#ifndef CLUSTERER_BINDLESS
-#define CLUSTERER_BINDLESS
-#endif
-
 #extension GL_EXT_nonuniform_qualifier : require
 #include "clusterer_bindless_buffers.h"
 #include "../inc/subgroup_extensions.h"

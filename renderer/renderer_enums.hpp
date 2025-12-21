@@ -36,8 +36,6 @@ enum class RenderableType
 	Sprite,
 	LineUI,
 	TexturePlane,
-	SpotLight,
-	PointLight,
 	Custom,
 	Count
 };

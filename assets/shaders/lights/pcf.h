@@ -2,10 +2,7 @@
 #define PCF_H_
 
 #include "../inc/global_bindings.h"
-
-#ifdef CLUSTERER_BINDLESS
 #include "linear_shadow_sampler.h"
-#endif
 
 #ifdef SHADOW_MAP_PCF_KERNEL_WIDE
 // 6x6 kernel with 3x3 gathers.

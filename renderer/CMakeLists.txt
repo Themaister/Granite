@@ -35,7 +35,6 @@ add_granite_internal_lib(granite-renderer
         lights/clusterer.cpp lights/clusterer.hpp
         lights/volumetric_fog.cpp lights/volumetric_fog.hpp lights/volumetric_fog_region.hpp
         lights/light_info.hpp
-        lights/deferred_lights.hpp lights/deferred_lights.cpp
         lights/volumetric_diffuse.hpp lights/volumetric_diffuse.cpp
         lights/decal_volume.hpp lights/decal_volume.cpp
         formats/scene_formats.hpp formats/scene_formats.cpp

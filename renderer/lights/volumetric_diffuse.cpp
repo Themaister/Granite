@@ -539,7 +539,6 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 	setup->flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT |
 	               SCENE_RENDERER_SKIP_UNBOUNDED_BIT |
 	               SCENE_RENDERER_SKIP_OPAQUE_FLOATING_BIT;
-	setup->deferred_lights = nullptr;
 	setup->suite = suite;
 	setup->scene = scene;
 

@@ -4,58 +4,23 @@
 #include "pbr.h"
 #include "clusterer_data.h"
 
-#ifdef POSITIONAL_LIGHT_DEFERRED
-layout(std140, set = 2, binding = 0) uniform SpotParameters
-{
-    PositionalLightInfo data[256];
-} spot;
-#endif
-
 #ifdef POSITIONAL_LIGHTS_SHADOW
-#ifdef POSITIONAL_LIGHT_DEFERRED
-#define SPOT_LIGHT_SHADOW_ATLAS_SET 2
-#define SPOT_LIGHT_SHADOW_ATLAS_BINDING 2
-
-layout(std140, set = 2, binding = 3) uniform SpotShadowParameters
-{
-	mat4 data[256];
-} spot_shadow;
-#endif
 
 #ifdef POSITIONAL_SHADOW_VSM
 #include "vsm.h"
-#if defined(CLUSTERER_BINDLESS)
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = 0) uniform texture2D uSpotShadowAtlas[];
-#else
-layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BINDING) uniform sampler2D uSpotShadowAtlas;
-#endif
 #else
 #include "pcf.h"
-#if defined(CLUSTERER_BINDLESS)
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = 0) uniform texture2D uSpotShadowAtlas[];
-#else
-layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BINDING) uniform sampler2DShadow uSpotShadowAtlas;
-#endif
 #endif
 #endif
 
-#ifdef POSITIONAL_LIGHT_DEFERRED
-	#ifdef POSITIONAL_LIGHT_INSTANCING
-		#define SPOT_DATA(index) spot.data[index]
-		#define SPOT_SHADOW_TRANSFORM(index) spot_shadow.data[index]
-	#else
-		#define SPOT_DATA(index) spot.data[0]
-		#define SPOT_SHADOW_TRANSFORM(index) spot_shadow.data[0]
-	#endif
-#elif defined(CLUSTERER_GLOBAL)
+#if defined(CLUSTERER_GLOBAL)
 	#define SPOT_DATA(index) cluster_global_transforms.lights[index]
 	#define SPOT_SHADOW_TRANSFORM(index) cluster_global_transforms.shadow[index]
-#elif defined(CLUSTERER_BINDLESS)
+#else
 	#define SPOT_DATA(index) cluster_transforms.lights[index]
 	#define SPOT_SHADOW_TRANSFORM(index) cluster_transforms.shadow[index]
-#else
-	#define SPOT_DATA(index) cluster.spots[index]
-	#define SPOT_SHADOW_TRANSFORM(index) cluster.spot_shadow[index]
 #endif
 
 mediump float spot_scatter_phase_function(mediump float VoL)
@@ -91,10 +56,8 @@ mediump vec3 compute_spot_color(int index, PositionalLightInfo spot, vec3 world_
 			vec2 shadow_moments = textureLod(sampler2D(uSpotShadowAtlas[index + cluster_global_transforms.desc_offset],
 											  LinearClampSampler),
 									shadow_uv, 0.0).xy;
-		#elif defined(CLUSTERER_BINDLESS)
-			vec2 shadow_moments = textureLod(nonuniformEXT(sampler2D(uSpotShadowAtlas[index], LinearClampSampler)), shadow_uv, 0.0).xy;
 		#else
-			vec2 shadow_moments = textureLod(uSpotShadowAtlas, shadow_uv, 0.0).xy;
+			vec2 shadow_moments = textureLod(nonuniformEXT(sampler2D(uSpotShadowAtlas[index], LinearClampSampler)), shadow_uv, 0.0).xy;
 		#endif
 		float shadow_z = dot(light_primary_direction, world_pos - light_pos);
 		mediump float shadow_falloff = vsm(shadow_z, shadow_moments);
@@ -105,10 +68,8 @@ mediump vec3 compute_spot_color(int index, PositionalLightInfo spot, vec3 world_
 			shadow_falloff = textureProjLod(sampler2DShadow(uSpotShadowAtlas[index + cluster_global_transforms.desc_offset],
 												   LinearShadowSampler),
 								   spot_shadow_clip, 0.0);
-		#elif defined(CLUSTERER_BINDLESS)
-			SAMPLE_PCF_KERNEL_BINDLESS(shadow_falloff, uSpotShadowAtlas, index, spot_shadow_clip);
 		#else
-			SAMPLE_PCF_KERNEL(shadow_falloff, uSpotShadowAtlas, spot_shadow_clip);
+			SAMPLE_PCF_KERNEL_BINDLESS(shadow_falloff, uSpotShadowAtlas, index, spot_shadow_clip);
 		#endif
 	#endif
 #else

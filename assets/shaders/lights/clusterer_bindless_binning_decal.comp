@@ -8,7 +8,6 @@ layout(local_size_x_id = 0) in;
 layout(local_size_x = 32) in;
 #endif
 
-#define CLUSTERER_BINDLESS
 #include "clusterer_data.h"
 
 layout(std140, set = 1, binding = 0) uniform ClustererParameters

@@ -213,10 +213,6 @@ void SceneViewerApplication::read_config(const std::string &path)
 			config.pcf_flags = 0;
 		renderer_suite_config.pcf_wide = wide;
 	}
-	if (doc.HasMember("clusteredLights"))
-		config.clustered_lights = doc["clusteredLights"].GetBool();
-	if (doc.HasMember("clusteredLightsBindless"))
-		config.clustered_lights_bindless = doc["clusteredLightsBindless"].GetBool();
 	if (doc.HasMember("clusteredLightsShadows"))
 		config.clustered_lights_shadows = doc["clusteredLightsShadows"].GetBool();
 	if (doc.HasMember("clusteredLightsShadowsResolution"))
@@ -231,8 +227,6 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.show_ui = doc["showUi"].GetBool();
 	if (doc.HasMember("forwardDepthPrepass"))
 		config.forward_depth_prepass = doc["forwardDepthPrepass"].GetBool();
-	if (doc.HasMember("deferredClusteredStencilCulling"))
-		config.deferred_clustered_stencil_culling = doc["deferredClusteredStencilCulling"].GetBool();
 
 	if (doc.HasMember("shadowMapResolution"))
 		config.shadow_map_resolution = doc["shadowMapResolution"].GetFloat();
@@ -381,29 +375,17 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	else
 		selected_directional = &default_directional_light;
 
-	if (config.clustered_lights_shadows || config.clustered_lights)
 	{
 		cluster = std::make_unique<LightClusterer>();
 		auto entity = scene_loader.get_scene().create_entity();
 		auto *refresh = entity->allocate_component<PerFrameUpdateComponent>();
 		refresh->refresh = cluster.get();
 
-		if (config.clustered_lights)
-		{
-			auto *rp = entity->allocate_component<RenderPassComponent>();
-			rp->creator = cluster.get();
-			lighting.cluster = cluster.get();
-		}
-		else
-		{
-			cluster->set_scene(&scene_loader.get_scene());
-			cluster->set_base_renderer(&renderer_suite);
-			cluster->set_base_render_context(&context);
-		}
+		auto *rp = entity->allocate_component<RenderPassComponent>();
+		rp->creator = cluster.get();
+		lighting.cluster = cluster.get();
 
 		cluster->set_enable_shadows(config.clustered_lights_shadows);
-		cluster->set_enable_clustering(config.clustered_lights);
-		cluster->set_enable_bindless(config.clustered_lights_bindless);
 		cluster->set_shadow_resolution(config.clustered_lights_shadow_resolution);
 		cluster->set_enable_volumetric_fog(config.volumetric_fog && config.volumetric_fog_regions);
 
@@ -412,10 +394,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		else
 			cluster->set_shadow_type(LightClusterer::ShadowType::PCF);
 
-		if (config.clustered_lights_bindless)
-		{
-			cluster->set_resolution(128, 64, 4 * 1024);
-		}
+		cluster->set_resolution(128, 64, 4 * 1024);
 	}
 
 	if (config.volumetric_fog)
@@ -428,25 +407,15 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		auto *rp = entity->allocate_component<RenderPassComponent>();
 		rp->creator = volumetric_fog.get();
 
-		if (config.clustered_lights)
-		{
-			if (config.clustered_lights_bindless)
-			{
-				volumetric_fog->add_storage_buffer_dependency("cluster-bitmask");
-				volumetric_fog->add_storage_buffer_dependency("cluster-range");
-				volumetric_fog->add_storage_buffer_dependency("cluster-transforms");
-			}
-			else
-				volumetric_fog->add_texture_dependency("light-cluster");
-		}
+		volumetric_fog->add_storage_buffer_dependency("cluster-bitmask");
+		volumetric_fog->add_storage_buffer_dependency("cluster-range");
+		volumetric_fog->add_storage_buffer_dependency("cluster-transforms");
 
 		if (config.directional_light_shadows)
 			volumetric_fog->add_texture_dependency("shadow-main");
 	}
 
-	if (config.clustered_lights &&
-	    config.clustered_lights_bindless &&
-	    config.volumetric_diffuse)
+	if (config.volumetric_diffuse)
 	{
 		volumetric_diffuse = std::make_unique<VolumetricDiffuseLightManager>();
 		lighting.volumetric_diffuse = volumetric_diffuse.get();
@@ -470,15 +439,6 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		cluster->set_enable_volumetric_diffuse(config.volumetric_diffuse);
 		cluster->set_enable_volumetric_decals(false);
 	}
-
-	if (config.deferred_clustered_stencil_culling)
-	{
-		auto entity = scene_loader.get_scene().create_entity();
-		entity->allocate_component<PerFrameUpdateComponent>()->refresh = &deferred_lights;
-	}
-	deferred_lights.set_scene(&scene_loader.get_scene());
-	deferred_lights.set_renderers(&renderer_suite);
-	deferred_lights.set_enable_clustered_stencil_culling(config.deferred_clustered_stencil_culling);
 
 	context.set_camera(*selected_camera);
 
@@ -670,9 +630,6 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 
 void SceneViewerApplication::capture_environment_probe()
 {
-	if (!config.clustered_lights)
-		LOGE("Clustered lights are not enabled, lights will not be captured in the environment!\n");
-
 	ImageCreateInfo info = ImageCreateInfo::render_target(512, 512, VK_FORMAT_R16G16B16A16_SFLOAT);
 	info.levels = 1;
 	info.layers = 6;
@@ -847,7 +804,6 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	auto renderer = Util::make_handle<RenderPassSceneRenderer>();
 	RenderPassSceneRenderer::Setup setup = {};
 	setup.scene = &scene_loader.get_scene();
-	setup.deferred_lights = &deferred_lights;
 	setup.context = &context;
 	setup.suite = &renderer_suite;
 	setup.flags = SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
@@ -909,12 +865,9 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
 		RenderPassSceneRenderer::Setup setup = {};
 		setup.scene = &scene_loader.get_scene();
-		setup.deferred_lights = &deferred_lights;
 		setup.context = &context;
 		setup.suite = &renderer_suite;
 		setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT;
-		if (!config.clustered_lights && config.deferred_clustered_stencil_culling)
-			setup.flags |= SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT;
 		if (config.debug_probes)
 			setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
 
@@ -942,12 +895,9 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
 		RenderPassSceneRenderer::Setup setup = {};
 		setup.scene = &scene_loader.get_scene();
-		setup.deferred_lights = &deferred_lights;
 		setup.context = &context;
 		setup.suite = &renderer_suite;
 		setup.flags = SCENE_RENDERER_DEFERRED_LIGHTING_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
-		if (config.clustered_lights)
-			setup.flags |= SCENE_RENDERER_DEFERRED_CLUSTER_BIT;
 		renderer->init(setup);
 
 		lighting_pass.set_render_pass_interface(std::move(renderer));

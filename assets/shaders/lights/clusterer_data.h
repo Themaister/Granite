@@ -4,12 +4,8 @@
 #include "../inc/affine.h"
 
 #define CLUSTERER_MAX_LIGHTS_GLOBAL 32
-#ifdef CLUSTERER_BINDLESS
 #define CLUSTERER_MAX_LIGHTS 4096
 #define CLUSTERER_MAX_DECALS 4096
-#else
-#define CLUSTERER_MAX_LIGHTS CLUSTERER_MAX_LIGHTS_GLOBAL
-#endif
 
 struct PositionalLightInfo
 {
@@ -21,7 +17,6 @@ struct PositionalLightInfo
 	mediump float inv_radius;
 };
 
-#ifdef CLUSTERER_BINDLESS
 struct ClustererParametersBindless
 {
 	mat4 transform;
@@ -56,22 +51,6 @@ struct ClustererBindlessTransforms
 	uint type_mask[CLUSTERER_MAX_LIGHTS / 32];
 	BindlessDecalTransform decals[CLUSTERER_MAX_DECALS];
 };
-#else
-struct PointShadowData
-{
-	vec4 transform;
-	vec4 slice;
-};
-
-struct ClustererParametersLegacy
-{
-	mat4 transform;
-	PositionalLightInfo spots[CLUSTERER_MAX_LIGHTS];
-	PositionalLightInfo points[CLUSTERER_MAX_LIGHTS];
-	mat4 spot_shadow[CLUSTERER_MAX_LIGHTS];
-	PointShadowData point_shadow[CLUSTERER_MAX_LIGHTS];
-};
-#endif
 
 struct ClustererGlobalTransforms
 {

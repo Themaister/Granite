@@ -32,31 +32,9 @@
 
 namespace Granite
 {
-class LightMesh : public EventHandler
-{
-public:
-	LightMesh();
-
-	Vulkan::BufferHandle spot_vbo;
-	Vulkan::BufferHandle spot_ibo;
-	unsigned spot_count = 0;
-
-	Vulkan::BufferHandle point_vbo;
-	Vulkan::BufferHandle point_ibo;
-	unsigned point_count = 0;
-
-private:
-	void create_point_mesh(const Vulkan::DeviceCreatedEvent &e);
-	void create_spot_mesh(const Vulkan::DeviceCreatedEvent &e);
-
-	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
-};
-
 class CommonRendererData final : public CommonRendererDataInterface
 {
 public:
-	LightMesh light_mesh;
 	AssetID brdf_tables;
 	void initialize_static_assets(AssetManager *iface, Filesystem *file_iface);
 };

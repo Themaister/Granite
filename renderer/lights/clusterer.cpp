@@ -39,12 +39,7 @@ namespace Granite
 {
 LightClusterer::LightClusterer()
 {
-	EVENT_MANAGER_REGISTER_LATCH(LightClusterer, on_pipeline_created, on_pipeline_destroyed, DevicePipelineReadyEvent);
-	for (unsigned i = 0; i < MaxLights; i++)
-	{
-		legacy.points.index_remap[i] = i;
-		legacy.spots.index_remap[i] = i;
-	}
+	EVENT_MANAGER_REGISTER_LATCH(LightClusterer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 
 	bindless.allocator.reserve_max_resources_per_pool(256, MaxLightsBindless +
 	                                                       MaxLightsGlobal +
@@ -53,30 +48,15 @@ LightClusterer::LightClusterer()
 	bindless.allocator.set_bindless_resource_type(BindlessResourceType::Image);
 }
 
-void LightClusterer::on_pipeline_created(const Vulkan::DevicePipelineReadyEvent &e)
+void LightClusterer::on_device_created(const Vulkan::DeviceCreatedEvent &)
 {
-	auto &shader_manager = e.get_device().get_shader_manager();
-	legacy.program = shader_manager.register_compute("builtin://shaders/lights/clustering.comp");
-	legacy.inherit_variant = legacy.program->register_variant({{ "INHERIT", 1 }});
-	legacy.cull_variant = legacy.program->register_variant({});
 }
 
-void LightClusterer::on_pipeline_destroyed(const Vulkan::DevicePipelineReadyEvent &)
+void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 {
-	legacy.program = nullptr;
-	legacy.inherit_variant = nullptr;
-	legacy.cull_variant = nullptr;
-
-	legacy.spots.atlas.reset();
-	legacy.points.atlas.reset();
 	scratch_vsm_rt.reset();
 	scratch_vsm_down.reset();
-
-	std::fill(std::begin(legacy.spots.cookie), std::end(legacy.spots.cookie), 0);
-	std::fill(std::begin(legacy.points.cookie), std::end(legacy.points.cookie), 0);
-
 	bindless.allocator.reset();
-
 	acquire_semaphore.reset();
 	release_semaphores.clear();
 }
@@ -104,17 +84,10 @@ void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &t
 {
 	if ((dep_flags & RenderPassCreator::LIGHTING_BIT) != 0)
 	{
-		if (enable_bindless)
-		{
-			target_.add_storage_read_only_input("cluster-bitmask");
-			target_.add_storage_read_only_input("cluster-range");
-			target_.add_storage_read_only_input("cluster-transforms");
-			target_.add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-		}
-		else
-		{
-			target_.add_texture_input("light-cluster");
-		}
+		target_.add_storage_read_only_input("cluster-bitmask");
+		target_.add_storage_read_only_input("cluster-range");
+		target_.add_storage_read_only_input("cluster-transforms");
+		target_.add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 	}
 }
 
@@ -129,61 +102,13 @@ void LightClusterer::set_base_render_context(const RenderContext *context_)
 
 void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
 {
-	if (enable_bindless)
-	{
-		bindless.bitmask_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-bitmask"));
-		bindless.range_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-range"));
-		bindless.bitmask_buffer_decal = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-bitmask-decal"));
-		bindless.range_buffer_decal = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-range-decal"));
-		bindless.transforms_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-transforms"));
-		bindless.transformed_spots = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-transformed-spot"));
-		bindless.cull_data = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-cull-setup"));
-	}
-	else
-	{
-		legacy.target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster").get_physical_index());
-		legacy.pre_cull_target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster-prepass").get_physical_index());
-	}
-}
-
-unsigned LightClusterer::get_active_point_light_count() const
-{
-	return legacy.points.count;
-}
-
-unsigned LightClusterer::get_active_spot_light_count() const
-{
-	return legacy.spots.count;
-}
-
-const PositionalFragmentInfo *LightClusterer::get_active_point_lights() const
-{
-	return legacy.points.lights;
-}
-
-const mat4 *LightClusterer::get_active_spot_light_shadow_matrices() const
-{
-	return legacy.spots.shadow_transforms;
-}
-
-const PointTransform *LightClusterer::get_active_point_light_shadow_transform() const
-{
-	return legacy.points.shadow_transforms;
-}
-
-const PositionalFragmentInfo *LightClusterer::get_active_spot_lights() const
-{
-	return legacy.spots.lights;
-}
-
-void LightClusterer::set_enable_clustering(bool enable)
-{
-	enable_clustering = enable;
-}
-
-void LightClusterer::set_enable_bindless(bool enable)
-{
-	enable_bindless = enable;
+	bindless.bitmask_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-bitmask"));
+	bindless.range_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-range"));
+	bindless.bitmask_buffer_decal = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-bitmask-decal"));
+	bindless.range_buffer_decal = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-range-decal"));
+	bindless.transforms_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-transforms"));
+	bindless.transformed_spots = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-transformed-spot"));
+	bindless.cull_data = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-cull-setup"));
 }
 
 const ClustererParametersBindless &LightClusterer::get_cluster_parameters_bindless() const
@@ -231,11 +156,6 @@ Vulkan::BindlessDescriptorSet LightClusterer::get_cluster_bindless_set() const
 	return bindless.desc_set;
 }
 
-bool LightClusterer::clusterer_is_bindless() const
-{
-	return enable_bindless;
-}
-
 void LightClusterer::set_shadow_type(ShadowType shadow_type_)
 {
 	shadow_type = shadow_type_;
@@ -254,79 +174,6 @@ void LightClusterer::set_enable_shadows(bool enable)
 void LightClusterer::set_force_update_shadows(bool enable)
 {
 	force_update_shadows = enable;
-}
-
-const Vulkan::ImageView *LightClusterer::get_cluster_image() const
-{
-	return enable_clustering ? legacy.target : nullptr;
-}
-
-const Vulkan::ImageView *LightClusterer::get_spot_light_shadows() const
-{
-	return (enable_shadows && legacy.spots.atlas) ? &legacy.spots.atlas->get_view() : nullptr;
-}
-
-const Vulkan::ImageView *LightClusterer::get_point_light_shadows() const
-{
-	return (enable_shadows && legacy.points.atlas) ? &legacy.points.atlas->get_view() : nullptr;
-}
-
-const mat4 &LightClusterer::get_cluster_transform() const
-{
-	return legacy.cluster_transform;
-}
-
-template <typename T>
-static uint32_t reassign_indices_legacy(T &type)
-{
-	uint32_t partial_mask = 0;
-
-	for (unsigned i = 0; i < type.count; i++)
-	{
-		// Try to inherit shadow information from some other index.
-		auto itr = std::find_if(std::begin(type.cookie), std::end(type.cookie), [=](unsigned cookie) {
-			return cookie == type.handles[i]->get_cookie();
-		});
-
-		if (itr != std::end(type.cookie))
-		{
-			auto index = std::distance(std::begin(type.cookie), itr);
-			if (i != unsigned(index))
-			{
-				// Reuse the shadow data from the atlas.
-				std::swap(type.cookie[i], type.cookie[index]);
-				std::swap(type.shadow_transforms[i], type.shadow_transforms[index]);
-				std::swap(type.index_remap[i], type.index_remap[index]);
-			}
-		}
-
-		// Try to find an atlas slot which has never been used.
-		if (type.handles[i]->get_cookie() != type.cookie[i] && type.cookie[i] != 0)
-		{
-			auto cookie_itr = std::find(std::begin(type.cookie), std::end(type.cookie), 0);
-
-			if (cookie_itr != std::end(type.cookie))
-			{
-				auto index = std::distance(std::begin(type.cookie), cookie_itr);
-				if (i != unsigned(index))
-				{
-					// Reuse the shadow data from the atlas.
-					std::swap(type.cookie[i], type.cookie[index]);
-					std::swap(type.shadow_transforms[i], type.shadow_transforms[index]);
-					std::swap(type.index_remap[i], type.index_remap[index]);
-				}
-			}
-		}
-
-		if (type.handles[i]->get_cookie() != type.cookie[i])
-			partial_mask |= 1u << i;
-		else
-			type.handles[i]->set_shadow_info(&type.atlas->get_view(), type.shadow_transforms[i]);
-
-		type.cookie[i] = type.handles[i]->get_cookie();
-	}
-
-	return partial_mask;
 }
 
 void LightClusterer::setup_scratch_buffers_vsm(Vulkan::Device &device)
@@ -474,196 +321,6 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 		cmd.end_render_pass();
 		cmd.end_region();
 	}
-}
-
-void LightClusterer::render_shadow_legacy(Vulkan::CommandBuffer &cmd, const RenderContext &depth_context, VisibilityList &visible,
-                                          unsigned off_x, unsigned off_y, unsigned res_x, unsigned res_y,
-                                          const Vulkan::ImageView &rt, unsigned layer, Renderer::RendererFlushFlags flags)
-{
-	visible.clear();
-	scene->gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), visible);
-
-	auto &depth_renderer = get_shadow_renderer();
-	depth_renderer.begin(internal_queue);
-	internal_queue.push_depth_renderables(depth_context, visible.data(), visible.size());
-	internal_queue.sort();
-
-	render_shadow(cmd, depth_context, internal_queue,
-	              off_x, off_y, res_x, res_y,
-	              rt, layer, flags | Renderer::SKIP_SORTING_BIT);
-}
-
-void LightClusterer::render_atlas_point(const RenderContext &context_)
-{
-	bool vsm = shadow_type == ShadowType::VSM;
-	uint32_t partial_mask = reassign_indices_legacy(legacy.points);
-
-	if (!legacy.points.atlas || force_update_shadows)
-		partial_mask = ~0u;
-
-	if (partial_mask == 0 && legacy.points.atlas && !force_update_shadows)
-		return;
-
-	bool partial_update = partial_mask != ~0u;
-	auto &device = context_.get_device();
-	auto cmd = device.request_command_buffer();
-
-	if (!legacy.points.atlas)
-	{
-		auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
-		ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, format);
-		info.layers = 6 * MaxLights;
-		info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-		info.initial_layout = vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
-
-		if (vsm)
-			info.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-		else
-			info.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-
-		legacy.points.atlas = device.create_image(info, nullptr);
-	}
-	else if (partial_update)
-	{
-		VkImageMemoryBarrier2 barriers[32];
-		unsigned barrier_count = 0;
-
-		Util::for_each_bit(partial_mask, [&](unsigned bit) {
-			auto &b = barriers[barrier_count++];
-			b = {};
-			b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-			b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			b.image = legacy.points.atlas->get_image();
-			b.srcAccessMask = 0;
-
-			if (vsm)
-			{
-				b.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-				                  VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-				b.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-				b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-				b.srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-				b.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			}
-			else
-			{
-				b.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-				                  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-				b.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-				b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-				b.srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-				b.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-			}
-
-			b.subresourceRange.baseArrayLayer = 6u * legacy.points.index_remap[bit];
-			b.subresourceRange.layerCount = 6;
-			b.subresourceRange.levelCount = 1;
-		});
-
-		cmd->image_barriers(barrier_count, barriers);
-	}
-	else if (vsm)
-	{
-		cmd->image_barrier(*legacy.points.atlas, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		                   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT);
-	}
-	else
-	{
-		cmd->image_barrier(*legacy.points.atlas, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-		                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
-	}
-
-	RenderContext depth_context;
-	VisibilityList visible;
-
-	for (unsigned i = 0; i < legacy.points.count; i++)
-	{
-		if ((partial_mask & (1u << i)) == 0)
-			continue;
-
-		LOGI("Rendering shadow for point light %u (%p)\n", i, static_cast<void *>(legacy.points.handles[i]));
-
-		unsigned remapped = legacy.points.index_remap[i];
-
-		for (unsigned face = 0; face < 6; face++)
-		{
-			mat4 view, proj;
-			compute_cube_render_transform(legacy.points.lights[i].position, face, proj, view,
-			                              0.005f / legacy.points.lights[i].inv_radius,
-			                              1.0f / legacy.points.lights[i].inv_radius);
-			depth_context.set_camera(proj, view);
-
-			if (face == 0)
-			{
-				legacy.points.shadow_transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
-				legacy.points.shadow_transforms[i].slice.x = float(remapped);
-				legacy.points.handles[i]->set_shadow_info(&legacy.points.atlas->get_view(), legacy.points.shadow_transforms[i]);
-			}
-
-			render_shadow_legacy(*cmd, depth_context, visible,
-			                     0, 0, shadow_resolution, shadow_resolution,
-			                     legacy.points.atlas->get_view(),
-			                     6 * remapped + face,
-			                     Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT);
-		}
-	}
-
-	if (partial_update)
-	{
-		VkImageMemoryBarrier2 barriers[32];
-		unsigned barrier_count = 0;
-
-		Util::for_each_bit(partial_mask, [&](unsigned bit) {
-			auto &b = barriers[barrier_count++];
-			b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
-			b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			b.image = legacy.points.atlas->get_image();
-
-			if (vsm)
-			{
-				b.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-				b.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-				b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-				b.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			}
-			else
-			{
-				b.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-				b.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-				b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-				b.srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-			}
-
-			b.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
-			b.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-			b.subresourceRange.baseArrayLayer = 6u * legacy.points.index_remap[bit];
-			b.subresourceRange.layerCount = 6;
-			b.subresourceRange.levelCount = 1;
-		});
-
-		cmd->image_barriers(barrier_count, barriers);
-	}
-	else if (vsm)
-	{
-		cmd->image_barrier(*legacy.points.atlas, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-	}
-	else
-	{
-		cmd->image_barrier(*legacy.points.atlas, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-	}
-
-	device.submit(cmd);
 }
 
 void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
@@ -956,186 +613,6 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 		});
 
 		composer.get_thread_group().add_dependency(per_face_stage, *face_composer.get_outgoing_task());
-	}
-}
-
-void LightClusterer::render_atlas_spot(const RenderContext &context_)
-{
-	bool vsm = shadow_type == ShadowType::VSM;
-	uint32_t partial_mask = reassign_indices_legacy(legacy.spots);
-
-	if (!legacy.spots.atlas || force_update_shadows)
-		partial_mask = ~0u;
-
-	if (partial_mask == 0 && legacy.spots.atlas && !force_update_shadows)
-		return;
-
-	auto &device = context_.get_device();
-	auto cmd = device.request_command_buffer();
-
-	if (!legacy.spots.atlas)
-	{
-		auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
-		ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution * 8, shadow_resolution * 4, format);
-		info.initial_layout = vsm ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
-
-		if (vsm)
-			info.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-		else
-			info.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-		legacy.spots.atlas = device.create_image(info, nullptr);
-
-		// Make sure we have a cleared atlas so we don't spuriously filter against NaN.
-		if (vsm)
-		{
-			cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			                   VK_PIPELINE_STAGE_NONE, 0,
-			                   VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
-			cmd->clear_image(*legacy.spots.atlas, {});
-			cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			                   VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
-		}
-	}
-	else
-	{
-		// Preserve data if we're not overwriting the entire shadow atlas.
-		auto access = vsm ?
-		              (VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT) :
-		              (VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
-		auto stages = vsm ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT :
-		              (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
-
-		VkImageLayout layout = vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		cmd->image_barrier(*legacy.spots.atlas,
-		                   partial_mask != ~0u ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED, layout,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-		                   stages, access);
-	}
-
-	RenderContext depth_context;
-	VisibilityList visible;
-
-	for (unsigned i = 0; i < legacy.spots.count; i++)
-	{
-		if ((partial_mask & (1u << i)) == 0)
-			continue;
-
-		LOGI("Rendering shadow for spot light %u (%p)\n", i, static_cast<void *>(legacy.spots.handles[i]));
-
-		float range = tan(legacy.spots.handles[i]->get_xy_range());
-		mat4 view = mat4_cast(look_at_arbitrary_up(legacy.spots.lights[i].direction)) *
-		            translate(-legacy.spots.lights[i].position);
-		mat4 proj = projection(range * 2.0f, 1.0f,
-		                       0.005f / legacy.spots.lights[i].inv_radius,
-		                       1.0f / legacy.spots.lights[i].inv_radius);
-
-		unsigned remapped = legacy.spots.index_remap[i];
-
-		// Carve out the atlas region where the spot light shadows live.
-		legacy.spots.shadow_transforms[i] =
-				translate(vec3(float(remapped & 7) / 8.0f, float(remapped >> 3) / 4.0f, 0.0f)) *
-				scale(vec3(1.0f / 8.0f, 1.0f / 4.0f, 1.0f)) *
-				translate(vec3(0.5f, 0.5f, 0.0f)) *
-				scale(vec3(0.5f, 0.5f, 1.0f)) *
-				proj * view;
-
-		legacy.spots.handles[i]->set_shadow_info(&legacy.spots.atlas->get_view(), legacy.spots.shadow_transforms[i]);
-
-		depth_context.set_camera(proj, view);
-
-		render_shadow_legacy(*cmd, depth_context, visible,
-		                     shadow_resolution * (remapped & 7), shadow_resolution * (remapped >> 3),
-		                     shadow_resolution, shadow_resolution,
-		                     legacy.spots.atlas->get_view(), 0, Renderer::DEPTH_BIAS_BIT);
-	}
-
-	if (vsm)
-	{
-		cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-	}
-	else
-	{
-		cmd->image_barrier(*legacy.spots.atlas, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-	}
-
-	device.submit(cmd);
-}
-
-void LightClusterer::refresh_legacy(const RenderContext& context_)
-{
-	legacy.points.count = 0;
-	legacy.spots.count = 0;
-
-	for (auto &light : light_sort_caches[0])
-	{
-		auto &l = *light.light;
-		auto *transform = light.transform;
-
-		if (l.get_type() == PositionalLight::Type::Spot)
-		{
-			auto &spot = static_cast<SpotLight &>(l);
-			spot.set_shadow_info(nullptr, {});
-			if (legacy.spots.count < max_spot_lights)
-			{
-				legacy.spots.lights[legacy.spots.count] = spot.get_shader_info(transform->get_world_transform());
-				legacy.spots.handles[legacy.spots.count] = &spot;
-				legacy.spots.count++;
-			}
-		}
-		else if (l.get_type() == PositionalLight::Type::Point)
-		{
-			auto &point = static_cast<PointLight &>(l);
-			point.set_shadow_info(nullptr, {});
-			if (legacy.points.count < max_point_lights)
-			{
-				legacy.points.lights[legacy.points.count] = point.get_shader_info(transform->get_world_transform());
-				legacy.points.handles[legacy.points.count] = &point;
-				legacy.points.count++;
-			}
-		}
-	}
-
-	// Figure out aabb bounds in view space.
-	auto &inv_proj = context_.get_render_parameters().inv_projection;
-	const auto project = [](const vec4 &v) -> vec3 {
-		return v.xyz() / v.w;
-	};
-
-	vec3 ul = project(inv_proj * vec4(-1.0f, -1.0f, 1.0f, 1.0f));
-	vec3 ll = project(inv_proj * vec4(-1.0f, +1.0f, 1.0f, 1.0f));
-	vec3 ur = project(inv_proj * vec4(+1.0f, -1.0f, 1.0f, 1.0f));
-	vec3 lr = project(inv_proj * vec4(+1.0f, +1.0f, 1.0f, 1.0f));
-
-	vec3 min_view = min(min(ul, ll), min(ur, lr));
-	vec3 max_view = max(max(ul, ll), max(ur, lr));
-	// Make sure scaling the box does not move the near plane.
-	max_view.z = 0.0f;
-
-	mat4 ortho_box = ortho(AABB(min_view, max_view));
-
-	if (legacy.points.count || legacy.spots.count)
-		legacy.cluster_transform = scale(vec3(1 << (ClusterHierarchies - 1))) * ortho_box * context_.get_render_parameters().view;
-	else
-		legacy.cluster_transform = scale(vec3(0.0f, 0.0f, 0.0f));
-
-	if (enable_shadows)
-	{
-		render_atlas_spot(context_);
-		render_atlas_point(context_);
-	}
-	else
-	{
-		legacy.spots.atlas.reset();
-		legacy.points.atlas.reset();
 	}
 }
 
@@ -1522,19 +999,7 @@ void LightClusterer::refresh(const RenderContext &context_, TaskComposer &incomi
 		}
 	});
 
-	if (enable_bindless)
-	{
-		refresh_bindless(context_, composer);
-	}
-	else
-	{
-		// For legacy path, just do everything in one thread.
-		auto &group = incoming_composer.begin_pipeline_stage();
-		group.enqueue_task([this, &context_]() {
-			refresh_legacy(context_);
-		});
-	}
-
+	refresh_bindless(context_, composer);
 	incoming_composer.get_thread_group().add_dependency(incoming_composer.get_group(), *composer.get_outgoing_task());
 }
 
@@ -1935,63 +1400,6 @@ void LightClusterer::build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd)
 	update_bindless_range_buffer_decal_gpu(cmd);
 }
 
-void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled)
-{
-	unsigned res_x = resolution_x;
-	unsigned res_y = resolution_y;
-	unsigned res_z = resolution_z;
-	if (!pre_culled)
-	{
-		res_x /= ClusterPrepassDownsample;
-		res_y /= ClusterPrepassDownsample;
-		res_z /= ClusterPrepassDownsample;
-	}
-
-	cmd.set_program(pre_culled ? legacy.inherit_variant->get_program() : legacy.cull_variant->get_program());
-	cmd.set_storage_texture(0, 0, view);
-	if (pre_culled)
-		cmd.set_texture(0, 1, *pre_culled, StockSampler::NearestWrap);
-
-	auto *spot_buffer = cmd.allocate_typed_constant_data<PositionalFragmentInfo>(1, 0, MaxLights);
-	auto *point_buffer = cmd.allocate_typed_constant_data<PositionalFragmentInfo>(1, 1, MaxLights);
-	memcpy(spot_buffer, legacy.spots.lights, legacy.spots.count * sizeof(PositionalFragmentInfo));
-	memcpy(point_buffer, legacy.points.lights, legacy.points.count * sizeof(PositionalFragmentInfo));
-
-	auto *spot_lut_buffer = cmd.allocate_typed_constant_data<vec4>(1, 2, MaxLights);
-	for (unsigned i = 0; i < legacy.spots.count; i++)
-	{
-		spot_lut_buffer[i] = vec4(cosf(legacy.spots.handles[i]->get_xy_range()),
-		                          sinf(legacy.spots.handles[i]->get_xy_range()),
-		                          1.0f / legacy.spots.lights[i].inv_radius,
-		                          0.0f);
-	}
-
-	struct Push
-	{
-		mat4 inverse_cluster_transform;
-		uvec4 size_z_log2;
-		vec4 inv_texture_size;
-		vec4 inv_size_radius;
-		uint32_t spot_count;
-		uint32_t point_count;
-	};
-
-	auto inverse_cluster_transform = inverse(legacy.cluster_transform);
-
-	vec3 inv_res = vec3(1.0f / res_x, 1.0f / res_y, 1.0f / res_z);
-	float radius = 0.5f * length(mat3(inverse_cluster_transform) * (vec3(2.0f, 2.0f, 0.5f) * inv_res));
-
-	Push push = {
-		inverse_cluster_transform,
-		uvec4(res_x, res_y, res_z, Util::trailing_zeroes(res_z)),
-		vec4(1.0f / res_x, 1.0f / res_y, 1.0f / ((ClusterHierarchies + 1) * res_z), 1.0f),
-		vec4(inv_res, radius),
-		legacy.spots.count, legacy.points.count,
-	};
-	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.dispatch((res_x + 3) / 4, (res_y + 3) / 4, (ClusterHierarchies + 1) * ((res_z + 3) / 4));
-}
-
 void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 {
 	BufferInfo att;
@@ -2032,58 +1440,10 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 	});
 }
 
-void LightClusterer::add_render_passes_legacy(RenderGraph &graph)
-{
-	AttachmentInfo att;
-	att.levels = 1;
-	att.layers = 1;
-	att.format = VK_FORMAT_R32G32B32A32_UINT;
-	att.samples = 1;
-	att.size_class = SizeClass::Absolute;
-	att.size_x = resolution_x;
-	att.size_y = resolution_y;
-	att.size_z = resolution_z * (ClusterHierarchies + 1);
-	att.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
-	att.flags |= ATTACHMENT_INFO_PERSISTENT_BIT;
-
-	att.format = VK_FORMAT_R32G32_UINT;
-
-	AttachmentInfo att_prepass = att;
-	assert((resolution_x % ClusterPrepassDownsample) == 0);
-	assert((resolution_y % ClusterPrepassDownsample) == 0);
-	assert((resolution_z % ClusterPrepassDownsample) == 0);
-	assert((resolution_z & (resolution_z - 1)) == 0);
-	att_prepass.size_x /= ClusterPrepassDownsample;
-	att_prepass.size_y /= ClusterPrepassDownsample;
-	att_prepass.size_z /= ClusterPrepassDownsample;
-
-	auto &pass = graph.add_pass("clustering", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
-	pass.add_storage_texture_output("light-cluster", att);
-	pass.add_storage_texture_output("light-cluster-prepass", att_prepass);
-	pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		build_cluster(cmd, *legacy.pre_cull_target, nullptr);
-		cmd.image_barrier(legacy.pre_cull_target->get_image(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		                  VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-		                  VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-		build_cluster(cmd, *legacy.target, legacy.pre_cull_target);
-	});
-}
-
 void LightClusterer::add_render_passes(RenderGraph &graph)
 {
-	if (enable_clustering)
-	{
-		if (enable_bindless)
-		{
-			add_render_passes_bindless(graph);
-			graph.add_external_lock_interface("bindless-shadowmaps", this);
-		}
-		else
-			add_render_passes_legacy(graph);
-	}
+	add_render_passes_bindless(graph);
+	graph.add_external_lock_interface("bindless-shadowmaps", this);
 }
 
 void LightClusterer::set_base_renderer(const RendererSuite *suite)

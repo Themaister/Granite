@@ -58,7 +58,7 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 
 	for (auto &light : pos)
 	{
-		auto *l = get_component<PositionalLightComponent>(light)->light;
+		auto *l = get_component<PositionalLightComponent>(light)->light.get();
 		auto &world_transform = get_component<RenderInfoComponent>(light)->get_world_transform();
 
 		Value light_pos(kArrayType);

@@ -27,7 +27,6 @@
 #include "render_queue.hpp"
 #include "render_context.hpp"
 #include "render_graph.hpp"
-#include "lights/deferred_lights.hpp"
 
 namespace Granite
 {
@@ -37,7 +36,6 @@ enum SceneRendererFlagBits : uint32_t
 	SCENE_RENDERER_FORWARD_TRANSPARENT_BIT = 1 << 1,
 	SCENE_RENDERER_FORWARD_Z_PREPASS_BIT = 1 << 2,
 	SCENE_RENDERER_DEFERRED_GBUFFER_BIT = 1 << 3,
-	SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT = 1 << 4,
 	SCENE_RENDERER_DEFERRED_LIGHTING_BIT = 1 << 5,
 	SCENE_RENDERER_DEFERRED_CLUSTER_BIT = 1 << 6,
 	SCENE_RENDERER_SHADOW_PCF_WIDE_BIT = 1 << 7,
@@ -63,7 +61,6 @@ public:
 		Scene *scene;
 		const RenderContext *context;
 		const RendererSuite *suite;
-		DeferredLights *deferred_lights;
 		SceneRendererFlags flags;
 	};
 	void init(const Setup &setup);

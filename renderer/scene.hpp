@@ -132,7 +132,6 @@ public:
 	void gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_static_shadow_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list) const;
-	void gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_positional_lights(const Frustum &frustum, PositionalLightList &list) const;
 	void gather_irradiance_affecting_positional_lights(PositionalLightList &list) const;
 	void gather_visible_volumetric_diffuse_lights(const Frustum &frustum, VolumetricDiffuseLightList &list) const;
@@ -149,8 +148,6 @@ public:
 	                                                     unsigned index, unsigned num_indices) const;
 	void gather_visible_dynamic_shadow_renderables_subset(const Frustum &frustum, VisibilityList &list,
 	                                                      unsigned index, unsigned num_indices) const;
-	void gather_visible_positional_lights_subset(const Frustum &frustum, VisibilityList &list,
-	                                             unsigned index, unsigned num_indices) const;
 	void gather_visible_positional_lights_subset(const Frustum &frustum, PositionalLightList &list,
 	                                             unsigned index, unsigned num_indices) const;
 
@@ -243,7 +240,6 @@ private:
 			TransparentComponent> &transparent;
 	const ComponentGroupVector<
 			RenderInfoComponent,
-			RenderableComponent,
 			CachedSpatialTransformTimestampComponent,
 			PositionalLightComponent> &positional_lights;
 	const ComponentGroupVector<

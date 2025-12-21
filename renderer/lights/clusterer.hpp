@@ -51,25 +51,11 @@ public:
 
 	void set_enable_shadows(bool enable);
 	void set_force_update_shadows(bool enable);
-	void set_enable_clustering(bool enable);
-	void set_enable_bindless(bool enable);
 	void set_shadow_type(ShadowType shadow_type);
 	ShadowType get_shadow_type() const;
 
 	void set_resolution(unsigned x, unsigned y, unsigned z);
 	void set_shadow_resolution(unsigned res);
-
-	// Legacy clustering.
-	const Vulkan::ImageView *get_cluster_image() const;
-	const Vulkan::ImageView *get_spot_light_shadows() const;
-	const Vulkan::ImageView *get_point_light_shadows() const;
-	const PositionalFragmentInfo *get_active_point_lights() const;
-	const PositionalFragmentInfo *get_active_spot_lights() const;
-	const mat4 *get_active_spot_light_shadow_matrices() const;
-	const PointTransform *get_active_point_light_shadow_transform() const;
-	unsigned get_active_point_light_count() const;
-	unsigned get_active_spot_light_count() const;
-	const mat4 &get_cluster_transform() const;
 
 	// Bindless clustering.
 	const ClustererParametersBindless &get_cluster_parameters_bindless() const;
@@ -78,7 +64,6 @@ public:
 	const Vulkan::Buffer *get_cluster_bitmask_buffer() const;
 	const Vulkan::Buffer *get_cluster_range_buffer() const;
 	Vulkan::BindlessDescriptorSet get_cluster_bindless_set() const;
-	bool clusterer_is_bindless() const;
 
 	void set_enable_volumetric_diffuse(bool enable);
 	bool clusterer_has_volumetric_diffuse() const;
@@ -123,7 +108,6 @@ public:
 
 private:
 	void add_render_passes(RenderGraph &graph) override;
-	void add_render_passes_legacy(RenderGraph &graph);
 	void add_render_passes_bindless(RenderGraph &graph);
 
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target,
@@ -138,7 +122,6 @@ private:
 	                                        unsigned max_lights, unsigned handle_offset);
 
 	void refresh_bindless_prepare(const RenderContext &context_);
-	void refresh_legacy(const RenderContext &context_);
 
 	Scene *scene = nullptr;
 	const RenderContext *context = nullptr;
@@ -156,66 +139,18 @@ private:
 	unsigned shadow_resolution = 512;
 	unsigned max_spot_lights = MaxLights;
 	unsigned max_point_lights = MaxLights;
-	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled);
 	void build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd);
-	void on_pipeline_created(const Vulkan::DevicePipelineReadyEvent &e);
-	void on_pipeline_destroyed(const Vulkan::DevicePipelineReadyEvent &e);
-
-	struct
-	{
-		struct
-		{
-			PositionalFragmentInfo lights[MaxLights] = {};
-			PointLight *handles[MaxLights] = {};
-			PointTransform shadow_transforms[MaxLights] = {};
-			vec4 model_transforms[MaxLights] = {};
-			unsigned cookie[MaxLights] = {};
-			unsigned count = 0;
-			uint8_t index_remap[MaxLights];
-			Vulkan::ImageHandle atlas;
-		} points;
-
-		struct
-		{
-			PositionalFragmentInfo lights[MaxLights] = {};
-			SpotLight *handles[MaxLights] = {};
-			mat4 shadow_transforms[MaxLights] = {};
-			unsigned cookie[MaxLights] = {};
-			unsigned count = 0;
-			uint8_t index_remap[MaxLights];
-			Vulkan::ImageHandle atlas;
-		} spots;
-
-		Vulkan::ShaderProgramVariant *inherit_variant = nullptr;
-		Vulkan::ShaderProgramVariant *cull_variant = nullptr;
-
-		mat4 cluster_transform;
-
-		Vulkan::ShaderProgram *program = nullptr;
-		Vulkan::ImageView *target = nullptr;
-		Vulkan::ImageView *pre_cull_target = nullptr;
-	} legacy;
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
 	const RendererSuite *renderer_suite = nullptr;
-	void render_atlas_spot(const RenderContext &context_);
-	void render_atlas_point(const RenderContext &context_);
 
 	bool enable_shadows = true;
-	bool enable_clustering = true;
-	bool enable_bindless = false;
 	bool force_update_shadows = false;
 	bool enable_volumetric_diffuse = false;
 	bool enable_volumetric_fog = false;
 	bool enable_volumetric_decals = false;
 	ShadowType shadow_type = ShadowType::PCF;
-
-	void render_shadow_legacy(Vulkan::CommandBuffer &cmd,
-	                          const RenderContext &context,
-	                          VisibilityList &visibility,
-	                          unsigned off_x, unsigned off_y,
-	                          unsigned res_x, unsigned res_y,
-	                          const Vulkan::ImageView &rt, unsigned layer,
-	                          Renderer::RendererFlushFlags flags);
 
 	void render_shadow(Vulkan::CommandBuffer &cmd,
 	                   const RenderContext &context,

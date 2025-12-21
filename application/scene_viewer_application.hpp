@@ -36,7 +36,6 @@
 #include "scene_renderer.hpp"
 #include "lights/clusterer.hpp"
 #include "lights/volumetric_fog.hpp"
-#include "lights/deferred_lights.hpp"
 #include "lights/volumetric_diffuse.hpp"
 #include "camera_export.hpp"
 #include "post/aa.hpp"
@@ -98,7 +97,6 @@ protected:
 	std::unique_ptr<LightClusterer> cluster;
 	std::unique_ptr<VolumetricFog> volumetric_fog;
 	std::unique_ptr<VolumetricDiffuseLightManager> volumetric_diffuse;
-	DeferredLights deferred_lights;
 	RenderQueue queue;
 
 	void setup_shadow_map();
@@ -139,14 +137,11 @@ private:
 		bool directional_light_shadows = true;
 		bool directional_light_cascaded_shadows = true;
 		bool directional_light_shadows_vsm = false;
-		bool clustered_lights = true;
-		bool clustered_lights_bindless = true;
 		bool clustered_lights_shadows = true;
 		bool clustered_lights_shadows_vsm = false;
 		bool hdr_bloom = true;
 		bool hdr_bloom_dynamic_exposure = true;
 		bool forward_depth_prepass = true;
-		bool deferred_clustered_stencil_culling = true;
 		bool rt_fp16 = false;
 		bool rescale_scene = false;
 		bool show_ui = true;

@@ -33,7 +33,7 @@ Scene::Scene()
 	: spatials(pool.get_component_group<BoundedComponent, RenderInfoComponent, CachedSpatialTransformTimestampComponent>()),
 	  opaque(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, OpaqueComponent>()),
 	  transparent(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, TransparentComponent>()),
-	  positional_lights(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, PositionalLightComponent>()),
+	  positional_lights(pool.get_component_group<RenderInfoComponent, CachedSpatialTransformTimestampComponent, PositionalLightComponent>()),
 	  irradiance_affecting_positional_lights(pool.get_component_group<RenderInfoComponent, PositionalLightComponent, CachedSpatialTransformTimestampComponent, IrradianceAffectingComponent>()),
 	  static_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsStaticShadowComponent>()),
 	  dynamic_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
@@ -322,38 +322,8 @@ void Scene::gather_visible_dynamic_shadow_renderables_subset(const Frustum &frus
 			list.push_back({ get_component<RenderableComponent>(object)->renderable.get(), nullptr });
 }
 
-static void gather_positional_lights(const Frustum &frustum, VisibilityList &list,
-                                     const ComponentGroupVector<
-		                                     RenderInfoComponent,
-		                                     RenderableComponent,
-		                                     CachedSpatialTransformTimestampComponent,
-		                                     PositionalLightComponent> &positional,
-                                     size_t start_index, size_t end_index)
-{
-	for (size_t i = start_index; i < end_index; i++)
-	{
-		auto &o = positional[i];
-		auto *transform = get_component<RenderInfoComponent>(o);
-		auto *renderable = get_component<RenderableComponent>(o);
-		auto *timestamp = get_component<CachedSpatialTransformTimestampComponent>(o);
-
-		Util::Hasher h;
-		h.u64(timestamp->cookie);
-		h.u32(timestamp->last_timestamp);
-
-		if (transform->has_scene_node())
-		{
-			if (SIMD::frustum_cull(transform->get_aabb(), frustum.get_planes()))
-				list.push_back({ renderable->renderable.get(), transform, h.get() });
-		}
-		else
-			list.push_back({ renderable->renderable.get(), nullptr, h.get() });
-	}
-}
-
 static void gather_positional_lights(const Frustum &frustum, PositionalLightList &list,
                                      const ComponentGroupVector<RenderInfoComponent,
-		                                     RenderableComponent,
 		                                     CachedSpatialTransformTimestampComponent,
 		                                     PositionalLightComponent> &positional,
                                      size_t start_index, size_t end_index)
@@ -362,7 +332,7 @@ static void gather_positional_lights(const Frustum &frustum, PositionalLightList
 	{
 		auto &o = positional[i];
 		auto *transform = get_component<RenderInfoComponent>(o);
-		auto *light = get_component<PositionalLightComponent>(o)->light;
+		auto *light = get_component<PositionalLightComponent>(o)->light.get();
 		auto *timestamp = get_component<CachedSpatialTransformTimestampComponent>(o);
 
 		Util::Hasher h;
@@ -379,17 +349,12 @@ static void gather_positional_lights(const Frustum &frustum, PositionalLightList
 	}
 }
 
-void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list) const
-{
-	gather_positional_lights(frustum, list, positional_lights, 0, positional_lights.size());
-}
-
 void Scene::gather_irradiance_affecting_positional_lights(PositionalLightList &list) const
 {
 	for (auto &light_tup : irradiance_affecting_positional_lights)
 	{
 		auto *transform = get_component<RenderInfoComponent>(light_tup);
-		auto *light = get_component<PositionalLightComponent>(light_tup)->light;
+		auto *light = get_component<PositionalLightComponent>(light_tup)->light.get();
 		auto *timestamp = get_component<CachedSpatialTransformTimestampComponent>(light_tup);
 
 		Util::Hasher h;
@@ -462,14 +427,6 @@ void Scene::gather_visible_volumetric_fog_regions(const Frustum &frustum, Volume
 				list.push_back({ region, transform });
 		}
 	}
-}
-
-void Scene::gather_visible_positional_lights_subset(const Frustum &frustum, VisibilityList &list,
-                                                    unsigned index, unsigned num_indices) const
-{
-	size_t start_index = (index * positional_lights.size()) / num_indices;
-	size_t end_index = ((index + 1) * positional_lights.size()) / num_indices;
-	gather_positional_lights(frustum, list, positional_lights, start_index, end_index);
 }
 
 void Scene::gather_visible_positional_lights_subset(const Frustum &frustum, PositionalLightList &list,
@@ -1061,23 +1018,21 @@ Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 	case SceneFormats::LightInfo::Type::Point:
 	case SceneFormats::LightInfo::Type::Spot:
 	{
-		AbstractRenderableHandle renderable;
+		PositionalLightHandle positional;
 		if (light.type == SceneFormats::LightInfo::Type::Point)
-			renderable = Util::make_handle<PointLight>();
+			positional = Util::make_handle<PointLight>();
 		else
 		{
-			renderable = Util::make_handle<SpotLight>();
-			auto &spot = static_cast<SpotLight &>(*renderable);
+			positional = Util::make_handle<SpotLight>();
+			auto &spot = static_cast<SpotLight &>(*positional);
 			spot.set_spot_parameters(light.inner_cone, light.outer_cone);
 		}
 
-		auto &positional = static_cast<PositionalLight &>(*renderable);
-		positional.set_color(light.color);
+		positional->set_color(light.color);
 		if (light.range > 0.0f)
-			positional.set_maximum_range(light.range);
+			positional->set_maximum_range(light.range);
 
-		entity->allocate_component<PositionalLightComponent>()->light = &positional;
-		entity->allocate_component<RenderableComponent>()->renderable = renderable;
+		entity->allocate_component<PositionalLightComponent>()->light = positional;
 
 		auto *transform = entity->allocate_component<RenderInfoComponent>();
 		auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
@@ -1090,7 +1045,7 @@ Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 		}
 
 		auto *bounded = entity->allocate_component<BoundedComponent>();
-		bounded->aabb = renderable->get_static_aabb();
+		bounded->aabb = positional->get_static_aabb();
 
 		if (!get_aabbs().allocate(1, &transform->aabb))
 			LOGE("Exhausted AABB pool.\n");

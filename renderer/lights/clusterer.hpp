@@ -86,25 +86,12 @@ public:
 
 	enum
 	{
-		MaxLights = CLUSTERER_MAX_LIGHTS,
 		MaxLightsBindless = CLUSTERER_MAX_LIGHTS_BINDLESS,
 		MaxLightsGlobal = CLUSTERER_MAX_LIGHTS_GLOBAL,
 		MaxLightsVolume = CLUSTERER_MAX_VOLUMES,
 		MaxFogRegions = CLUSTERER_MAX_FOG_REGIONS,
 		MaxDecalsBindless = CLUSTERER_MAX_DECALS_BINDLESS,
-		ClusterHierarchies = 8,
-		ClusterPrepassDownsample = 4
 	};
-
-	void set_max_spot_lights(unsigned count)
-	{
-		max_spot_lights = count;
-	}
-
-	void set_max_point_lights(unsigned count)
-	{
-		max_point_lights = count;
-	}
 
 private:
 	void add_render_passes(RenderGraph &graph) override;
@@ -137,8 +124,6 @@ private:
 
 	unsigned resolution_x = 64, resolution_y = 32, resolution_z = 16;
 	unsigned shadow_resolution = 512;
-	unsigned max_spot_lights = MaxLights;
-	unsigned max_point_lights = MaxLights;
 	void build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);

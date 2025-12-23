@@ -87,16 +87,6 @@ struct ShadowParameters
 	float cascade_log_bias;
 };
 
-#define CLUSTERER_MAX_LIGHTS 32
-struct ClustererParametersLegacy
-{
-	mat4 transform;
-	PositionalFragmentInfo spots[CLUSTERER_MAX_LIGHTS];
-	PositionalFragmentInfo points[CLUSTERER_MAX_LIGHTS];
-	mat4 spot_shadow_transforms[CLUSTERER_MAX_LIGHTS];
-	PointTransform point_shadow[CLUSTERER_MAX_LIGHTS];
-};
-
 struct ClustererParametersBindless
 {
 	alignas(16) mat4 transform;
@@ -188,7 +178,6 @@ struct CombinedRenderParameters
 	alignas(16) VolumetricFogParameters volumetric_fog;
 	alignas(16) DirectionalParameters directional;
 	alignas(16) ResolutionParameters resolution;
-	alignas(16) ClustererParametersLegacy clusterer;
 };
 static_assert(sizeof(CombinedRenderParameters) <= Vulkan::VULKAN_MAX_UBO_SIZE, "CombinedRenderParameters cannot fit in min-spec.");
 

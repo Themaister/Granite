@@ -65,9 +65,19 @@ public:
 		lighting = lighting_;
 	}
 
+	void set_scene_transform_parameters(const SceneTransformParameters *transforms_)
+	{
+		transforms = transforms_;
+	}
+
 	const LightingParameters *get_lighting_parameters() const
 	{
 		return lighting;
+	}
+
+	const SceneTransformParameters *get_scene_transform_parameters() const
+	{
+		return transforms;
 	}
 
 	const Frustum &get_visibility_frustum() const
@@ -91,6 +101,7 @@ private:
 	Vulkan::Device *device = nullptr;
 	const Scene *scene = nullptr;
 	const LightingParameters *lighting = nullptr;
+	const SceneTransformParameters *transforms = nullptr;
 	RenderParameters camera;
 	Frustum frustum;
 	FrameParameters frame;

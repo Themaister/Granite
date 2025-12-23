@@ -193,4 +193,15 @@ struct LightingParameters
 	const VolumetricFog *volumetric_fog = nullptr;
 	const VolumetricDiffuseLightManager *volumetric_diffuse = nullptr;
 };
+
+struct SceneTransformParameters
+{
+	// Intended to be shared by all parts of the renderer that render scene objects.
+	const Vulkan::Buffer *node_transforms = nullptr;
+	const Vulkan::Buffer *cluster_bounds = nullptr;
+	const Vulkan::Buffer *node_aabb = nullptr;
+
+	// This is unique per camera effectively.
+	const Vulkan::Buffer *aabb_visibility = nullptr;
+};
 }

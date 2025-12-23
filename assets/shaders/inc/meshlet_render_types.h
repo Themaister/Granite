@@ -12,13 +12,16 @@ struct Bound
 	vec4 cone;
 };
 
-struct TaskInfo
+struct MeshAssetDrawTaskInfo
 {
+	uint asset_id; // Effectively padding.
 	uint aabb_instance;
 	uint node_instance;
-	uint material_index;
+	uint material_index_texture;
+	uint material_index_payload;
 	uint mesh_index_count;
 	uint occluder_state_offset;
+	uint flags;
 };
 
 struct CompactedDrawInfo

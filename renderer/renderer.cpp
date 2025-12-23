@@ -67,7 +67,12 @@ enum GlobalDescriptorSetBindings
 	BINDING_GLOBAL_SHADOW_SAMPLER = 15,
 	BINDING_GLOBAL_GEOMETRY_SAMPLER = 16,
 
-	BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_FALLBACK_VOLUME = 17
+	BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_FALLBACK_VOLUME = 17,
+
+	BINDING_GLOBAL_SCENE_NODE_TRANSFORMS = 18,
+	BINDING_GLOBAL_SCENE_NODE_AABBS = 19,
+	BINDING_GLOBAL_SCENE_CLUSTER_BOUNDS = 20,
+	BINDING_GLOBAL_SCENE_AABB_VISIBILITY_CACHE = 21,
 };
 
 namespace Granite
@@ -533,6 +538,23 @@ static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const Li
 	}
 }
 
+void Renderer::bind_scene_transform_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
+{
+	auto *transforms = context.get_scene_transform_parameters();
+	if (!transforms)
+		return;
+
+	if (transforms->node_transforms)
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_NODE_TRANSFORMS, *transforms->node_transforms);
+	if (transforms->node_aabb)
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_NODE_AABBS, *transforms->node_aabb);
+	if (transforms->cluster_bounds)
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_CLUSTER_BOUNDS, *transforms->cluster_bounds);
+	if (transforms->aabb_visibility)
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_AABB_VISIBILITY_CACHE, *transforms->aabb_visibility);
+}
+
+
 void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
 {
 	auto *lighting = context.get_lighting_parameters();
@@ -608,11 +630,46 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderQueue:
 	auto encoding = manager.get_mesh_encoding();
 	auto &vec = skinned ? data.mesh_asset_skinned_info : data.mesh_asset_static_info;
 
+	if (encoding == ResourceManager::MeshEncoding::Classic || encoding == ResourceManager::MeshEncoding::VBOAndIBOMDI)
+	{
+		auto *ibo = manager.get_index_buffer();
+		auto *pos = manager.get_position_buffer();
+		auto *attr = manager.get_attribute_buffer();
+
+		cmd.set_index_buffer(*ibo, 0, VK_INDEX_TYPE_UINT32);
+		cmd.set_vertex_binding(0, *pos, 0, 12);
+		cmd.set_vertex_binding(1, *attr, 0, 16);
+		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
+		cmd.set_vertex_attrib(1, 1, VK_FORMAT_A2B10G10R10_SNORM_PACK32, 0);
+		cmd.set_vertex_attrib(2, 1, VK_FORMAT_A2B10G10R10_SNORM_PACK32, 4);
+		cmd.set_vertex_attrib(3, 1, VK_FORMAT_R32G32_SFLOAT, 8);
+
+		if (skinned)
+		{
+			auto *skin = manager.get_skinning_buffer();
+			cmd.set_vertex_binding(2, *skin, 0, 8);
+			cmd.set_vertex_attrib(4, 2, VK_FORMAT_R8G8B8A8_UINT, 0);
+			cmd.set_vertex_attrib(5, 2, VK_FORMAT_R8G8B8A8_UNORM, 4);
+		}
+
+		GRANITE_MATERIAL_MANAGER()->set_bindless(cmd, 2);
+	}
+
 	switch (encoding)
 	{
 	case ResourceManager::MeshEncoding::Classic:
+	{
+		for (auto &draw : vec)
+		{
+			auto indexed = manager.get_mesh_draw_range(AssetID(draw.asset_id)).indexed;
+			cmd.push_constants(&draw, 0, sizeof(draw));
+			cmd.draw_indexed(indexed.indexCount, indexed.instanceCount, indexed.firstIndex, indexed.vertexOffset,
+			                 indexed.firstInstance);
+		}
 		break;
+	}
 
+		// TODO: Figure how we're going to do culling.
 	case ResourceManager::MeshEncoding::VBOAndIBOMDI:
 		break;
 
@@ -640,6 +697,7 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	{
 		bind_global_parameters(cmd, context);
 		bind_lighting_parameters(cmd, context);
+		bind_scene_transform_parameters(cmd, context);
 	}
 
 	cmd.set_opaque_state();

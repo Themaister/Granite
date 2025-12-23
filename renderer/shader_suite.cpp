@@ -38,6 +38,14 @@ void ShaderSuite::init_graphics(ShaderManager *manager_, const std::string &vert
 	base_defines.clear();
 }
 
+void ShaderSuite::init_graphics(ShaderManager *manager_, const std::string &task, const std::string &mesh, const std::string &fragment)
+{
+	manager = manager_;
+	program = manager->register_graphics(task, mesh, fragment);
+	variants.clear();
+	base_defines.clear();
+}
+
 void ShaderSuite::init_compute(Vulkan::ShaderManager *manager_, const std::string &compute)
 {
 	manager = manager_;

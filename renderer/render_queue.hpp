@@ -157,7 +157,7 @@ struct MeshAssetDrawTaskInfo
 	uint32_t material_texture_index; // Material textures.
 	uint32_t material_payload_offset; // Material side-band information as needed.
 	uint32_t mesh_index_count; // Packed meshlet index (upper 27 bits), and count - 1 (lower 5 bits).
-	uint32_t padding;
+	uint32_t flags;
 };
 
 static_assert(sizeof(MeshAssetDrawTaskInfo) == 32, "Expected MeshAssetDrawInfo to be 32 bytes.");

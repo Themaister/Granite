@@ -172,7 +172,7 @@ bool RendererSuite::load_variant_cache(const std::string &path)
 	unsigned version = doc["rendererSuiteCacheVersion"].GetUint();
 	if (version != CacheVersion)
 	{
-		LOGE("Mismatch in renderer suite cache version, %u != %u.\n", version, CacheVersion);
+		LOGW("Mismatch in renderer suite cache version, %u != %u.\n", version, CacheVersion);
 		return false;
 	}
 
@@ -332,15 +332,10 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 {
 	auto global_defines = build_defines_from_renderer_options(type, flags);
 
-	if (device)
-	{
-		// Safe early-discard.
-		if (device->get_device_features().vk13_features.shaderDemoteToHelperInvocation)
-			global_defines.emplace_back("DEMOTE", 1);
-		add_subgroup_defines(*device, global_defines, VK_SHADER_STAGE_FRAGMENT_BIT);
-	}
-
-	auto &meshes = suite[ecast(RenderableType::Mesh)];
+	auto &meshlet = suite[ecast(RenderableType::Meshlet)];
+	meshlet.get_base_defines() = global_defines;
+	meshlet.bake_base_defines();
+	auto &meshes = suite[ecast(RenderableType::LegacyMesh)];
 	meshes.get_base_defines() = global_defines;
 	meshes.bake_base_defines();
 	auto &probes = suite[ecast(RenderableType::DebugProbe)];
@@ -606,6 +601,32 @@ void Renderer::promote_read_write_cache_to_read_only()
 		s.promote_read_write_cache_to_read_only();
 }
 
+void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderQueue::RenderQueueDataVector &data,
+                                  bool skinned) const
+{
+	auto &manager = device->get_resource_manager();
+	auto encoding = manager.get_mesh_encoding();
+	auto &vec = skinned ? data.mesh_asset_skinned_info : data.mesh_asset_static_info;
+
+	switch (encoding)
+	{
+	case ResourceManager::MeshEncoding::Classic:
+		break;
+
+	case ResourceManager::MeshEncoding::VBOAndIBOMDI:
+		break;
+
+	case ResourceManager::MeshEncoding::MeshletDecoded:
+		break;
+
+	case ResourceManager::MeshEncoding::MeshletEncoded:
+		break;
+
+	default:
+		break;
+	}
+}
+
 void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,
                             RendererFlushFlags options, const FlushParameters *parameters, unsigned index, unsigned num_indices) const
 {
@@ -643,6 +664,13 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 
 	CommandBufferSavedState state = {};
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
+
+	auto &opaque = queue.get_queue_data(Queue::Opaque);
+	if (options & MESH_ASSET_STATIC_BIT)
+		render_mesh_assets(cmd, opaque, false);
+	if (options & MESH_ASSET_SKINNED_BIT)
+		render_mesh_assets(cmd, opaque, true);
+
 	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);
 
 	if (type == RendererType::GeneralForward)
@@ -654,6 +682,13 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 		cmd.set_blend_op(VK_BLEND_OP_ADD);
 		cmd.set_depth_test(true, false);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
+
+		auto &transparent = queue.get_queue_data(Queue::Transparent);
+		if (options & MESH_ASSET_STATIC_BIT)
+			render_mesh_assets(cmd, transparent, false);
+		if (options & MESH_ASSET_SKINNED_BIT)
+			render_mesh_assets(cmd, transparent, true);
+
 		queue.dispatch_subset(Queue::Transparent, cmd, &state, index, num_indices);
 	}
 }
@@ -959,7 +994,31 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 	{
 		switch (drawable)
 		{
-		case RenderableType::Mesh:
+		case RenderableType::Meshlet:
+		{
+			switch (device.get_resource_manager().get_mesh_encoding())
+			{
+			case ResourceManager::MeshEncoding::Classic:
+				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet_classic.vert",
+				                    "builtin://shaders/meshlet.frag");
+				break;
+			case ResourceManager::MeshEncoding::VBOAndIBOMDI:
+				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet_mdi.vert",
+									"builtin://shaders/meshlet.frag");
+				break;
+			case ResourceManager::MeshEncoding::MeshletDecoded:
+				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",
+				                    "builtin://shaders/meshlet_decoded.mesh", "builtin://shaders/meshlet.frag");
+				break;
+			case ResourceManager::MeshEncoding::MeshletEncoded:
+				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",
+				                    "builtin://shaders/meshlet_encoded.mesh", "builtin://shaders/meshlet.frag");
+				break;
+			}
+			break;
+		}
+
+		case RenderableType::LegacyMesh:
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/static_mesh.vert", "builtin://shaders/static_mesh.frag");
 			break;
 
@@ -995,7 +1054,7 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 	{
 		switch (drawable)
 		{
-		case RenderableType::Mesh:
+		case RenderableType::LegacyMesh:
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/static_mesh.vert",
 			                    renderer == RendererType::DepthOnly ?
 			                    "builtin://shaders/static_mesh_depth.frag" :

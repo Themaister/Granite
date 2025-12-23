@@ -210,6 +210,7 @@ void RenderQueue::push_mesh_asset_renderable(const MeshAssetRenderable &mesh, co
 	draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
 	draw.material_texture_index = mesh.get_material_offsets().texture_offset;
 	draw.material_payload_offset = mesh.get_material_offsets().uniform_offset;
+	draw.flags = mesh.get_flags();
 	VK_ASSERT((range.meshlet.offset & 31) == 0);
 
 	bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;

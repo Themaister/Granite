@@ -86,8 +86,10 @@ public:
 		DEPTH_BIAS_BIT = 1 << 1,
 		DEPTH_STENCIL_READ_ONLY_BIT = 1 << 2,
 		NO_COLOR_BIT = 1 << 3,
-		SKIP_SORTING_BIT = 1 << 7,
-		DEPTH_TEST_EQUAL_BIT = 1 << 9
+		MESH_ASSET_STATIC_BIT = 1 << 4,
+		MESH_ASSET_SKINNED_BIT = 1 << 5,
+		SKIP_SORTING_BIT = 1 << 6,
+		DEPTH_TEST_EQUAL_BIT = 1 << 7
 	};
 	using RendererFlushFlags = uint32_t;
 
@@ -148,6 +150,8 @@ private:
 	uint32_t renderer_options = ~0u;
 
 	void set_mesh_renderer_options_internal(RendererOptionFlags flags);
+
+	void render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderQueue::RenderQueueDataVector &data, bool skinned) const;
 };
 using RendererHandle = Util::IntrusivePtr<Renderer>;
 
@@ -169,7 +173,7 @@ public:
 		Count
 	};
 
-	enum { CacheVersion = 2 };
+	enum { CacheVersion = 3 };
 
 	void set_renderer(Type type, RendererHandle handle);
 	void set_default_renderers();

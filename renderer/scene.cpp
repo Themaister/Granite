@@ -1078,15 +1078,14 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 		if (!get_aabbs().allocate(1, &transform->aabb))
 			LOGE("Exhausted AABB pool.\n");
 
-		// FIXME: This is guess-work.
-		// Ideally, we'll know number of meshlets in advance.
-		// We can also allocate this slice later if need be ...
-		// 256 words is enough for 256 * 32 meshlets, which is ~2M primitive objects.
-		// It's possible to never allocate occluder state.
-		// In that case, we can just assume occluder state is all 0,
-		// so it will never be rendered in phase 1 cull.
-		if (!get_occluder_states().allocate(256, &transform->occluder_state))
-			LOGE("Exhausted occluder state pool.\n");
+		auto num_occluder_states = renderable->get_num_occluder_states();
+
+		if (num_occluder_states)
+		{
+			auto num_occluder_words = (num_occluder_states + 31) / 32;
+			if (!get_occluder_states().allocate(num_occluder_words, &transform->occluder_state))
+				LOGE("Exhausted occluder state pool.\n");
+		}
 	}
 	else
 		entity->allocate_component<UnboundedComponent>();

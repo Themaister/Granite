@@ -95,14 +95,33 @@ public:
 		return DrawPipeline::Opaque;
 	}
 
+	virtual size_t get_num_occluder_states() const
+	{
+		return 0;
+	}
+
 	RenderableFlags flags = 0;
 };
 using AbstractRenderableHandle = Util::IntrusivePtr<AbstractRenderable>;
 
+using MeshAssetRenderFlags = uint32_t;
+
 // A specialized fixed function renderable that is intended to supplant StaticMesh and SkinnedMesh.
+// Compatible with two-phase cull and optimized mesh/task rendering.
 class MeshAssetRenderable final : public AbstractRenderable
 {
 public:
+	MeshAssetRenderable(DrawPipeline pipeline, AssetID asset_id, const MaterialOffsets &offsets, const AABB &aabb_,
+	                    size_t num_occluder_states_, MeshAssetRenderFlags flags_)
+	    : mesh_asset(asset_id)
+	    , material_offsets(offsets)
+	    , aabb(aabb_)
+	    , draw_pipeline(pipeline)
+	    , num_occluder_states(num_occluder_states_)
+	    , asset_flags(flags_)
+	{
+	}
+
 	// This should not be used directly.
 	void get_render_info(const RenderContext &, const RenderInfoComponent *, RenderQueue &) const override
 	{
@@ -133,10 +152,22 @@ public:
 		return material_offsets;
 	}
 
+	size_t get_num_occluder_states() const override
+	{
+		return num_occluder_states;
+	}
+
+	MeshAssetRenderFlags get_flags() const
+	{
+		return asset_flags;
+	}
+
 private:
 	AssetID mesh_asset;
 	MaterialOffsets material_offsets = {};
 	AABB aabb = {};
 	DrawPipeline draw_pipeline = DrawPipeline::Opaque;
+	size_t num_occluder_states = 0;
+	MeshAssetRenderFlags asset_flags;
 };
 } // namespace Granite

@@ -234,8 +234,6 @@ static Queue material_to_queue(const Material &mat)
 {
 	if (mat.get_info().pipeline == DrawPipeline::AlphaBlend)
 		return Queue::Transparent;
-	else if (mat.needs_emissive)
-		return Queue::OpaqueEmissive;
 	else
 		return Queue::Opaque;
 }
@@ -280,7 +278,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoC
 			if (material.textures[i])
 				textures |= 1u << i;
 
-		if (type == Queue::OpaqueEmissive)
+		if (material.needs_emissive)
 			textures |= MATERIAL_EMISSIVE_BIT;
 
 		fill_render_info(queue.get_resource_manager(), *mesh_info);

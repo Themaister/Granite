@@ -24,6 +24,7 @@
 
 #include "aabb.hpp"
 #include "intrusive.hpp"
+#include "material_manager.hpp"
 
 namespace Granite
 {
@@ -49,7 +50,9 @@ enum class DrawPipelineCoverage : unsigned char
 enum RenderableFlagBits
 {
 	RENDERABLE_FORCE_VISIBLE_BIT = 1 << 0,
-	RENDERABLE_IMPLICIT_MOTION_BIT = 1 << 1
+	RENDERABLE_IMPLICIT_MOTION_BIT = 1 << 1,
+	RENDERABLE_MESH_ASSET_BIT = 1 << 2,
+	RENDERABLE_MESH_ASSET_SKINNED_BIT = 1 << 3,
 };
 using RenderableFlags = uint32_t;
 
@@ -57,14 +60,17 @@ class AbstractRenderable : public Util::IntrusivePtrEnabled<AbstractRenderable>
 {
 public:
 	virtual ~AbstractRenderable() = default;
-	virtual void get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const = 0;
+	virtual void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
+	                             RenderQueue &queue) const = 0;
 
-	virtual void get_depth_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const
+	virtual void get_depth_render_info(const RenderContext &context, const RenderInfoComponent *transform,
+	                                   RenderQueue &queue) const
 	{
 		return get_render_info(context, transform, queue);
 	}
 
-	virtual void get_motion_vector_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const
+	virtual void get_motion_vector_render_info(const RenderContext &context, const RenderInfoComponent *transform,
+	                                           RenderQueue &queue) const
 	{
 		return get_render_info(context, transform, queue);
 	}
@@ -92,4 +98,45 @@ public:
 	RenderableFlags flags = 0;
 };
 using AbstractRenderableHandle = Util::IntrusivePtr<AbstractRenderable>;
-}
+
+// A specialized fixed function renderable that is intended to supplant StaticMesh and SkinnedMesh.
+class MeshAssetRenderable final : public AbstractRenderable
+{
+public:
+	// This should not be used directly.
+	void get_render_info(const RenderContext &, const RenderInfoComponent *, RenderQueue &) const override
+	{
+	}
+
+	bool has_static_aabb() const override
+	{
+		return true;
+	}
+
+	const AABB *get_static_aabb() const override
+	{
+		return &aabb;
+	}
+
+	DrawPipeline get_mesh_draw_pipeline() const override
+	{
+		return draw_pipeline;
+	}
+
+	AssetID get_asset_id() const
+	{
+		return mesh_asset;
+	}
+
+	const MaterialOffsets &get_material_offsets() const
+	{
+		return material_offsets;
+	}
+
+private:
+	AssetID mesh_asset;
+	MaterialOffsets material_offsets = {};
+	AABB aabb = {};
+	DrawPipeline draw_pipeline = DrawPipeline::Opaque;
+};
+} // namespace Granite

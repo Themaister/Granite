@@ -643,24 +643,9 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 
 	CommandBufferSavedState state = {};
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
-	// No need to spend write bandwidth on writing 0 to light buffer, render opaque emissive on top.
 	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);
-	queue.dispatch_subset(Queue::OpaqueEmissive, cmd, &state, index, num_indices);
 
-	if (type == RendererType::GeneralDeferred)
-	{
-		// General deferred renderers can render light volumes.
-		cmd.restore_state(state);
-		cmd.set_input_attachments(3, 0);
-		cmd.set_depth_test(true, false);
-		cmd.set_blend_enable(true);
-		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
-		cmd.set_blend_op(VK_BLEND_OP_ADD);
-
-		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
-		queue.dispatch_subset(Queue::Light, cmd, &state, index, num_indices);
-	}
-	else if (type == RendererType::GeneralForward)
+	if (type == RendererType::GeneralForward)
 	{
 		// Forward renderers can also render transparent objects.
 		cmd.restore_state(state);

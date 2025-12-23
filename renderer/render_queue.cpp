@@ -22,10 +22,11 @@
 
 #define NOMINMAX
 #include "render_queue.hpp"
+#include "abstract_renderable.hpp"
 #include "render_context.hpp"
+#include <assert.h>
 #include <cstring>
 #include <iterator>
-#include <assert.h>
 
 using namespace Vulkan;
 using namespace Util;
@@ -60,13 +61,21 @@ void RenderQueue::combine_render_info(const RenderQueue &queue)
 {
 	for (unsigned i = 0; i < ecast(Queue::Count); i++)
 	{
-		auto e = static_cast<Queue>(i);
-		auto &q = queue.get_queue_data(e).raw_input;
-		queues[i].raw_input.insert(std::end(queues[i].raw_input), std::begin(q), std::end(q));
+		auto &q = queues[i];
+		auto &other = queue.get_queue_data(Queue(i));
+
+		q.raw_input.insert(q.raw_input.end(), other.raw_input.begin(), other.raw_input.end());
+		q.mesh_asset_static_info.insert(q.mesh_asset_static_info.end(), other.mesh_asset_static_info.begin(),
+		                                other.mesh_asset_static_info.end());
+		q.mesh_asset_skinned_info.insert(q.mesh_asset_skinned_info.end(), other.mesh_asset_skinned_info.begin(),
+		                                 other.mesh_asset_skinned_info.end());
+		q.num_static_draws += other.num_static_draws;
+		q.num_skinned_draws += other.num_skinned_draws;
 	}
 }
 
-void RenderQueue::dispatch_range(Queue queue_type, CommandBuffer &cmd, const CommandBufferSavedState *state, size_t begin, size_t end) const
+void RenderQueue::dispatch_range(Queue queue_type, CommandBuffer &cmd, const CommandBufferSavedState *state,
+                                 size_t begin, size_t end) const
 {
 	auto *queue = queues[ecast(queue_type)].sorted_data();
 
@@ -187,22 +196,88 @@ void *RenderQueue::allocate(size_t size, size_t alignment)
 	return data;
 }
 
+void RenderQueue::push_mesh_asset_renderable(const MeshAssetRenderable &mesh, const RenderInfoComponent &transform)
+{
+	auto range = resource_manager->get_mesh_draw_range(mesh.get_asset_id());
+	auto pipe = mesh.get_mesh_draw_pipeline();
+	auto &q = queues[Util::ecast(pipe == DrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque)];
+	MeshAssetDrawTaskInfo draw = {};
+
+	draw.aabb_instance = transform.aabb.offset;
+	draw.occluder_state_offset = transform.occluder_state.offset;
+	auto *node = transform.scene_node;
+	auto *skin = node->get_skin();
+	draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
+	draw.material_texture_index = mesh.get_material_offsets().texture_offset;
+	draw.material_payload_offset = mesh.get_material_offsets().uniform_offset;
+	VK_ASSERT((range.meshlet.offset & 31) == 0);
+
+	bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;
+	auto &draw_counter = skinned ? q.num_skinned_draws : q.num_static_draws;
+	draw_counter += range.meshlet.count;
+
+	for (uint32_t j = 0; j < range.meshlet.count; j += 32)
+	{
+		draw.mesh_index_count = range.meshlet.offset + j + (std::min(range.meshlet.count - j, 32u) - 1);
+		if (skinned)
+			q.mesh_asset_skinned_info.push_back(draw);
+		else
+			q.mesh_asset_static_info.push_back(draw);
+		draw.occluder_state_offset++;
+	}
+}
+
 void RenderQueue::push_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count)
 {
 	for (size_t i = 0; i < count; i++)
-		visible[i].renderable->get_render_info(context, visible[i].transform, *this);
+	{
+		auto &vis = visible[i];
+		if ((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0)
+		{
+			auto &mesh = static_cast<const MeshAssetRenderable &>(*vis.renderable);
+			push_mesh_asset_renderable(mesh, *vis.transform);
+		}
+		else
+		{
+			// Generic renderables.
+			vis.renderable->get_render_info(context, visible[i].transform, *this);
+		}
+	}
 }
 
 void RenderQueue::push_depth_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count)
 {
 	for (size_t i = 0; i < count; i++)
-		visible[i].renderable->get_depth_render_info(context, visible[i].transform, *this);
+	{
+		auto &vis = visible[i];
+		if ((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0)
+		{
+			auto &mesh = static_cast<const MeshAssetRenderable &>(*vis.renderable);
+			push_mesh_asset_renderable(mesh, *vis.transform);
+		}
+		else
+		{
+			visible[i].renderable->get_depth_render_info(context, visible[i].transform, *this);
+		}
+	}
 }
 
-void RenderQueue::push_motion_vector_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count)
+void RenderQueue::push_motion_vector_renderables(const RenderContext &context, const RenderableInfo *visible,
+                                                 size_t count)
 {
 	for (size_t i = 0; i < count; i++)
-		visible[i].renderable->get_motion_vector_render_info(context, visible[i].transform, *this);
+	{
+		auto &vis = visible[i];
+		if ((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0)
+		{
+			auto &mesh = static_cast<const MeshAssetRenderable &>(*vis.renderable);
+			push_mesh_asset_renderable(mesh, *vis.transform);
+		}
+		else
+		{
+			vis.renderable->get_motion_vector_render_info(context, visible[i].transform, *this);
+		}
+	}
 }
 
 uint64_t RenderInfo::get_background_sort_key(Queue queue_type, Util::Hash pipeline_hash, Util::Hash draw_hash)
@@ -216,8 +291,8 @@ uint64_t RenderInfo::get_background_sort_key(Queue queue_type, Util::Hash pipeli
 		return (UINT64_MAX << 32) | (pipeline_hash & 0xffffffffu);
 }
 
-uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_hash, Util::Hash draw_hash,
-                                         float z, StaticLayer layer)
+uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_hash, Util::Hash draw_hash, float z,
+                                         StaticLayer layer)
 {
 	static_assert(ecast(StaticLayer::Count) == 4, "Number of static layers is not 4.");
 
@@ -249,10 +324,10 @@ uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_h
 }
 
 uint64_t RenderInfo::get_sort_key(const RenderContext &context, Queue queue_type, Util::Hash pipeline_hash,
-                                  Util::Hash draw_hash,
-                                  const vec3 &center, StaticLayer layer)
+                                  Util::Hash draw_hash, const vec3 &center, StaticLayer layer)
 {
-	float z = dot(context.get_render_parameters().camera_front, center - context.get_render_parameters().camera_position);
+	float z =
+	    dot(context.get_render_parameters().camera_front, center - context.get_render_parameters().camera_position);
 	return get_sprite_sort_key(queue_type, pipeline_hash, draw_hash, z, layer);
 }
-}
+} // namespace Granite

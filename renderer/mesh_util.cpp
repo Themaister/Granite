@@ -625,7 +625,7 @@ DebugProbeMesh::DebugProbeMesh()
 void DebugProbeMesh::get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
                                      RenderQueue &queue) const
 {
-	auto type = Queue::OpaqueEmissive;
+	constexpr auto type = Queue::Opaque;
 	auto *extra = static_cast<const DebugProbeMeshExtra *>(transform->extra_data);
 
 	Hasher h;
@@ -1022,7 +1022,7 @@ void SkyCylinder::get_render_info(const RenderContext &, const RenderInfoCompone
 	h.pointer(info.view);
 
 	auto instance_key = h.get();
-	auto sorting_key = RenderInfo::get_background_sort_key(Queue::OpaqueEmissive, 0, 0);
+	auto sorting_key = RenderInfo::get_background_sort_key(Queue::Opaque, 0, 0);
 	info.sampler = sampler.get();
 	info.color = color;
 	info.scale = scale;
@@ -1031,7 +1031,7 @@ void SkyCylinder::get_render_info(const RenderContext &, const RenderInfoCompone
 	info.vbo = vbo.get();
 	info.count = count;
 
-	auto *cylinder_info = queue.push<SkyCylinderRenderInfo>(Queue::OpaqueEmissive, instance_key, sorting_key,
+	auto *cylinder_info = queue.push<SkyCylinderRenderInfo>(Queue::Opaque, instance_key, sorting_key,
 	                                                        skycylinder_render,
 	                                                        nullptr);
 
@@ -1111,7 +1111,7 @@ void Skybox::get_render_info(const RenderContext &context, const RenderInfoCompo
 		h.u32(0);
 
 	auto instance_key = h.get();
-	auto sorting_key = RenderInfo::get_background_sort_key(Queue::OpaqueEmissive, 0, 0);
+	auto sorting_key = RenderInfo::get_background_sort_key(Queue::Opaque, 0, 0);
 
 	info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearClamp);
 
@@ -1128,7 +1128,7 @@ void Skybox::get_render_info(const RenderContext &context, const RenderInfoCompo
 		info.direction = context.get_lighting_parameters()->directional.direction;
 	}
 
-	auto *skydome_info = queue.push<SkyboxRenderInfo>(Queue::OpaqueEmissive, instance_key, sorting_key,
+	auto *skydome_info = queue.push<SkyboxRenderInfo>(Queue::Opaque, instance_key, sorting_key,
 	                                                  skybox_render,
 	                                                  nullptr);
 

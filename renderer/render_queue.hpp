@@ -90,8 +90,6 @@ using VolumetricDecalList = std::vector<VolumetricDecalInfo>;
 enum class Queue : unsigned
 {
 	Opaque = 0,
-	OpaqueEmissive,
-	Light, // Relevant only for classic deferred rendering
 	Transparent,
 	Count
 };
@@ -148,6 +146,23 @@ struct QueueDataWrapped : QueueDataWrappedErased
 {
 	T data;
 };
+
+// The fixed function optimized path.
+struct MeshAssetDrawTaskInfo
+{
+	uint32_t asset_id; // Fallback for MDI or legacy draw calls path.
+	uint32_t aabb_instance;
+	uint32_t occluder_state_offset;
+	uint32_t node_instance; // Index to transform node.
+	uint32_t material_texture_index; // Material textures.
+	uint32_t material_payload_offset; // Material side-band information as needed.
+	uint32_t mesh_index_count; // Packed meshlet index (upper 27 bits), and count - 1 (lower 5 bits).
+	uint32_t padding;
+};
+
+static_assert(sizeof(MeshAssetDrawTaskInfo) == 32, "Expected MeshAssetDrawInfo to be 32 bytes.");
+
+class MeshAssetRenderable;
 
 class RenderQueue
 {
@@ -225,9 +240,26 @@ public:
 		Util::SmallVector<RenderQueueData, 64> raw_input;
 		Util::DynamicArray<RenderQueueData> sorted_output;
 		Util::RadixSorter<uint64_t, 8, 8, 8, 8, 8, 8, 8, 8> sorter;
-		inline size_t size() const { return raw_input.size(); }
-		inline void clear() { raw_input.clear(); sorter.resize(0); }
-		inline const RenderQueueData *sorted_data() const { return sorted_output.data(); }
+		size_t size() const { return raw_input.size(); }
+		void clear()
+		{
+			raw_input.clear();
+			sorter.resize(0);
+			mesh_asset_static_info.clear();
+			mesh_asset_skinned_info.clear();
+			num_static_draws = 0;
+			num_skinned_draws = 0;
+		}
+		const RenderQueueData *sorted_data() const { return sorted_output.data(); }
+
+		Util::SmallVector<MeshAssetDrawTaskInfo> mesh_asset_static_info;
+		Util::SmallVector<MeshAssetDrawTaskInfo> mesh_asset_skinned_info;
+		const MeshAssetDrawTaskInfo *mesh_asset_static_data() const { return mesh_asset_static_info.data(); }
+		const MeshAssetDrawTaskInfo *mesh_asset_skinned_data() const { return mesh_asset_skinned_info.data(); }
+		size_t mesh_asset_static_size() const { return mesh_asset_static_info.size(); }
+		size_t mesh_asset_skinned_size() const { return mesh_asset_skinned_info.size(); }
+		size_t num_static_draws = 0;
+		size_t num_skinned_draws = 0;
 	};
 
 	const RenderQueueDataVector &get_queue_data(Queue queue) const
@@ -235,6 +267,8 @@ public:
 		return queues[Util::ecast(queue)];
 	}
 
+	// Only considers generic drawables. MeshAssetDrawTaskInfo is supposed to be handled specially by
+	// get_queue_data(q).mesh_asset_static_size(), etc.
 	void sort();
 	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state) const;
 	void dispatch_range(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state, size_t begin, size_t end) const;
@@ -266,6 +300,7 @@ public:
 private:
 	Vulkan::ResourceManager *resource_manager = nullptr;
 	void enqueue_queue_data(Queue queue, const RenderQueueData &data);
+	void push_mesh_asset_renderable(const MeshAssetRenderable &mesh, const RenderInfoComponent &transform);
 
 	struct Block : Util::IntrusivePtrEnabled<Block>
 	{

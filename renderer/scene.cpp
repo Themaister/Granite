@@ -1289,7 +1289,7 @@ void TransformBackingAllocatorAABB::prime(uint32_t count, const void *)
 
 OccluderStateAllocator::OccluderStateAllocator()
 {
-	constexpr unsigned SubBlockSizeLog2 = 4;
+	constexpr unsigned SubBlockSizeLog2 = 2;
 	init(1u << SubBlockSizeLog2, MaxOcclusionStatesLog2 - SubBlockSizeLog2, &allocator);
 }
 

@@ -84,6 +84,10 @@ protected:
 	DirectionalLightComponent *selected_directional = nullptr;
 	DirectionalLightComponent default_directional_light;
 
+	SceneTransformUpdatePass transform_update;
+	OcclusionUpdatePass occlusion_update;
+	SceneTransformParameters scene_transform;
+
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	void on_swapchain_changed(const Vulkan::SwapchainParameterEvent &e);

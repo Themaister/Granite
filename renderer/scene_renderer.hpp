@@ -106,4 +106,19 @@ protected:
 	void prepare_setup_queues();
 	void resolve_full_motion_vectors(Vulkan::CommandBuffer &cmd, const RenderContext &context) const;
 };
+
+struct SceneTransformUpdatePass
+{
+	RenderBufferResource *transforms;
+	RenderBufferResource *aabbs;
+	// TODO: Deal with prev transforms for motion vectors.
+};
+
+struct OcclusionUpdatePass
+{
+	RenderBufferResource *occlusions;
+};
+
+SceneTransformUpdatePass setup_scene_transforms_update_pass(RenderGraph &graph, const Scene &scene, const std::string &tag);
+OcclusionUpdatePass setup_occlusion_update_pass(RenderGraph &graph, const Scene &scene, const std::string &tag);
 }

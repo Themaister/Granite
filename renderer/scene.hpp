@@ -40,7 +40,7 @@ class Node;
 class Scene;
 
 static constexpr unsigned MaxNumNodesLog2 = 20;
-static constexpr unsigned MaxOcclusionStatesLog2 = 24;
+static constexpr unsigned MaxOcclusionStatesLog2 = 20;
 
 struct TransformBackingAllocator final : Util::SliceBackingAllocator
 {

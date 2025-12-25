@@ -504,4 +504,154 @@ bool RenderPassSceneRenderer::render_pass_is_separate_layered() const
 {
 	return (setup_data.flags & SCENE_RENDERER_SEPARATE_PER_LAYER_BIT) != 0;
 }
+
+SceneTransformUpdatePass setup_scene_transforms_update_pass(RenderGraph &graph, const Scene &scene, const std::string &tag)
+{
+	SceneTransformUpdatePass res = {};
+	auto &pass = graph.add_pass(tag + "-update", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
+
+	BufferInfo bufinfo = {};
+	bufinfo.flags = ATTACHMENT_INFO_PERSISTENT_BIT;
+	bufinfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	bufinfo.size = sizeof(mat_affine) * (1u << MaxNumNodesLog2);
+	res.transforms = &pass.add_transfer_output(tag + "-affine", bufinfo);
+	bufinfo.size = sizeof(AABB) * (1u << MaxNumNodesLog2);
+	res.aabbs = &pass.add_transfer_output(tag + "-aabb", bufinfo);
+
+	struct Pass final : RenderPassInterface
+	{
+		Pass(RenderGraph &graph_, const Scene &scene_) : graph(graph_), scene(scene_) {}
+
+		RenderGraph &graph;
+		const Scene &scene;
+		SceneTransformUpdatePass resources = {};
+
+		bool render_pass_is_conditional() const override
+		{
+			return true;
+		}
+
+		bool need_render_pass() const override
+		{
+			return scene.get_transform_update_span().count != 0;
+		}
+
+		void build_render_pass(Vulkan::CommandBuffer &cmd) override
+		{
+			// TODO: Copy over to prev transform buffer.
+
+			auto span = scene.get_transform_update_span();
+			uint32_t base = 0;
+			size_t count = 0;
+
+			const auto *transforms = scene.get_transforms().get_cached_transforms();
+			const auto *aabbs = scene.get_aabbs().get_aabbs();
+
+			auto &transform_buffer = graph.get_physical_buffer_resource(*resources.transforms);
+			auto &aabb_buffer = graph.get_physical_buffer_resource(*resources.aabbs);
+
+			const auto flush = [&]()
+			{
+				if (!count)
+					return;
+				memcpy(cmd.update_buffer(transform_buffer, base * sizeof(mat_affine), sizeof(mat_affine) * count),
+					   &transforms[base], sizeof(mat_affine) * count);
+				memcpy(cmd.update_buffer(aabb_buffer, base * sizeof(AABB), sizeof(AABB) * count),
+					   &aabbs[base], sizeof(AABB) * count);
+				count = 0;
+			};
+
+			assert(span.count != 0);
+			base = span.offsets[0];
+
+			for (size_t i = 0; i < span.count; i++)
+			{
+				if (base + i != span.offsets[i])
+				{
+					flush();
+					base = span.offsets[i];
+				}
+
+				count++;
+			}
+
+			flush();
+		}
+	};
+
+	auto handle = Util::make_handle<Pass>(graph, scene);
+	handle->resources = res;
+	pass.set_render_pass_interface(std::move(handle));
+	return res;
+}
+
+OcclusionUpdatePass setup_occlusion_update_pass(RenderGraph &graph, const Scene &scene, const std::string &tag)
+{
+	OcclusionUpdatePass res = {};
+	auto &pass = graph.add_pass(tag + "-occlusion", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
+
+	BufferInfo bufinfo = {};
+	bufinfo.flags = ATTACHMENT_INFO_PERSISTENT_BIT;
+	bufinfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	bufinfo.size = sizeof(uint32_t) * (1u << MaxOcclusionStatesLog2);
+	res.occlusions = &pass.add_transfer_output(tag + "-occlusion", bufinfo);
+
+	struct Pass : RenderPassInterface
+	{
+		Pass(RenderGraph &graph_, const Scene &scene_) : graph(graph_), scene(scene_) {}
+
+		RenderGraph &graph;
+		const Scene &scene;
+		OcclusionUpdatePass resources = {};
+
+		bool render_pass_is_conditional() const override
+		{
+			return true;
+		}
+
+		bool need_render_pass() const override
+		{
+			return scene.get_occluder_state_update_span().count != 0;
+		}
+
+		void build_render_pass(Vulkan::CommandBuffer &cmd) override
+		{
+			auto span = scene.get_occluder_state_update_span();
+			uint32_t base = 0;
+			size_t count = 0;
+
+			auto &occlusion_buffer = graph.get_physical_buffer_resource(*resources.occlusions);
+
+			const auto flush = [&]()
+			{
+				if (count)
+				{
+					cmd.fill_buffer(occlusion_buffer, 0, base * sizeof(uint32_t), count * sizeof(uint32_t));
+					count = 0;
+				}
+			};
+
+			assert(span.count != 0);
+			base = span.offsets[0];
+
+			for (size_t i = 0; i < span.count; i++)
+			{
+				if (base + i != span.offsets[i])
+				{
+					flush();
+					base = span.offsets[i];
+				}
+
+				count++;
+			}
+
+			flush();
+		}
+	};
+
+	auto handle = Util::make_handle<Pass>(graph, scene);
+	handle->resources = res;
+	pass.set_render_pass_interface(std::move(handle));
+	return res;
+}
 }

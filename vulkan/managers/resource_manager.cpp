@@ -794,7 +794,7 @@ const Buffer *MeshBufferAllocator::get_buffer(unsigned index, unsigned soa_index
 	index = index * global_allocator.soa_count + soa_index;
 
 	// Avoid any race condition.
-	if (index == 0 && global_allocator.preallocated_handles[soa_index])
+	if (index < soa_index && global_allocator.preallocated_handles[soa_index])
 		return global_allocator.preallocated_handles[soa_index];
 	else if (index < global_allocator.global_buffers.size())
 		return global_allocator.global_buffers[index].get();

@@ -104,7 +104,6 @@ public:
 	RenderableFlags flags = 0;
 };
 using AbstractRenderableHandle = Util::IntrusivePtr<AbstractRenderable>;
-
 using MeshAssetRenderFlags = uint32_t;
 
 // A specialized fixed function renderable that is intended to supplant StaticMesh and SkinnedMesh.

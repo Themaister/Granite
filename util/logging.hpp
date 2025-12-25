@@ -138,7 +138,6 @@ static inline bool is_debugged()
 
 static inline void debug_break()
 {
-#ifdef VULKAN_DEBUG
 #ifdef _MSC_VER
 	if (IsDebuggerPresent())
 		__debugbreak();
@@ -151,7 +150,6 @@ static inline void debug_break()
 #elif defined(__clang__)
 	if (Internal::is_debugged())
 		__builtin_debugtrap();
-#endif
 #endif
 #endif
 }

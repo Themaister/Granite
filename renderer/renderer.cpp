@@ -631,6 +631,9 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderQueue 
 	auto &data = queue.get_draw_pipeline_data(pipe);
 	auto &vec = skinned ? data.mesh_asset_skinned_info : data.mesh_asset_static_info;
 
+	if (vec.empty())
+		return;
+
 	if (encoding == ResourceManager::MeshEncoding::Classic || encoding == ResourceManager::MeshEncoding::VBOAndIBOMDI)
 	{
 		auto *ibo = manager.get_index_buffer();
@@ -670,15 +673,45 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderQueue 
 		break;
 	}
 
-		// TODO: Figure how we're going to do culling.
+		// TODO: Figure how we're going to do manual culling.
 	case ResourceManager::MeshEncoding::VBOAndIBOMDI:
 		break;
 
 	case ResourceManager::MeshEncoding::MeshletDecoded:
-		break;
-
 	case ResourceManager::MeshEncoding::MeshletEncoded:
+	{
+		uint32_t attribute_mask = 0;
+		uint32_t texture_mask = 0;
+
+		// Ubershader approach, assume everything can happen.
+		// We split skinned vs non-skinned since the complexity level is quite different.
+		attribute_mask |= MESH_ATTRIBUTE_POSITION_BIT | MESH_ATTRIBUTE_UV_BIT | MESH_ATTRIBUTE_NORMAL_BIT |
+		                  MESH_ATTRIBUTE_TANGENT_BIT;
+		if (skinned)
+			attribute_mask |= MESH_ATTRIBUTE_BONE_INDEX_BIT | MESH_ATTRIBUTE_BONE_WEIGHTS_BIT;
+
+		texture_mask |= MATERIAL_TEXTURE_BASE_COLOR_BIT | MATERIAL_TEXTURE_METALLIC_ROUGHNESS_BIT |
+		                MATERIAL_TEXTURE_NORMAL_BIT | MATERIAL_TEXTURE_OCCLUSION_BIT | MATERIAL_TEXTURE_EMISSIVE_BIT;
+
+		auto key = VariantSignatureKey::build(pipe, attribute_mask, texture_mask);
+		auto *prog = suite[ecast(RenderableType::Meshlet)].get_program(key);
+		cmd.set_program(prog);
+		GRANITE_MATERIAL_MANAGER()->set_bindless(cmd, 2);
+
+		BufferCreateInfo bufinfo = {};
+		bufinfo.size = vec.size() * sizeof(vec.front());
+		bufinfo.domain = BufferDomain::LinkedDeviceHostPreferDevice;
+		bufinfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		auto task_buffer = device->create_buffer(bufinfo, vec.data());
+
+		for (size_t i = 0, n = vec.size(); i < n; i += 32 * 1024)
+		{
+			auto to_draw = std::min<size_t>(n - i, 32 * 1024);
+			cmd.set_storage_buffer(3, 0, *task_buffer, i * sizeof(vec.front()), to_draw * sizeof(vec.front()));
+			cmd.draw_mesh_tasks(to_draw, 1, 1);
+		}
 		break;
+	}
 
 	default:
 		break;
@@ -724,14 +757,14 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	CommandBufferSavedState state = {};
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 
-	if (options & MESH_ASSET_STATIC_BIT)
+	if (!(options & MESH_ASSET_SKIP_STATIC_BIT))
 		render_mesh_assets(cmd, queue, DrawPipeline::Opaque, false);
-	if (options & MESH_ASSET_SKINNED_BIT)
+	if (!(options & MESH_ASSET_SKIP_SKINNED_BIT))
 		render_mesh_assets(cmd, queue, DrawPipeline::Opaque, true);
 
-	if (options & MESH_ASSET_STATIC_BIT)
+	if (!(options & MESH_ASSET_SKIP_STATIC_BIT))
 		render_mesh_assets(cmd, queue, DrawPipeline::AlphaTest, false);
-	if (options & MESH_ASSET_SKINNED_BIT)
+	if (!(options & MESH_ASSET_SKIP_SKINNED_BIT))
 		render_mesh_assets(cmd, queue, DrawPipeline::AlphaTest, true);
 
 	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);
@@ -746,9 +779,9 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 		cmd.set_depth_test(true, false);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 
-		if (options & MESH_ASSET_STATIC_BIT)
+		if (!(options & MESH_ASSET_SKIP_STATIC_BIT))
 			render_mesh_assets(cmd, queue, DrawPipeline::AlphaBlend, false);
-		if (options & MESH_ASSET_SKINNED_BIT)
+		if (!(options & MESH_ASSET_SKIP_SKINNED_BIT))
 			render_mesh_assets(cmd, queue, DrawPipeline::AlphaBlend, true);
 
 		queue.dispatch_subset(Queue::Transparent, cmd, &state, index, num_indices);

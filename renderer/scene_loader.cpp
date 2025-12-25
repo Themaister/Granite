@@ -274,45 +274,32 @@ NodeHandle SceneLoader::parse_gltf(const std::string &path)
 	std::vector<MaterialOffsets> material_offsets;
 	material_offsets.reserve(subscene.parser->get_materials().size());
 
-	const auto kind_to_asset = [](TextureKind kind)
-	{
-		switch (kind)
-		{
-		case TextureKind::BaseColor:
-		case TextureKind::Emissive:
-			return Granite::AssetClass::ImageColor;
-
-		case TextureKind::MetallicRoughness:
-			return Granite::AssetClass::ImageMetallicRoughness;
-
-		case TextureKind::Normal:
-			return Granite::AssetClass::ImageNormal;
-
-		default:
-			return Granite::AssetClass::ImageZeroable;
-		}
+	static const AssetClass image_classes[] = {
+		AssetClass::ImageColor,
+		AssetClass::ImageNormal,
+		AssetClass::ImageMetallicRoughness,
+		AssetClass::ImageColor,
+		AssetClass::ImageColor,
 	};
 
 	for (auto &material : subscene.parser->get_materials())
 	{
 		AssetID asset_ids[int(TextureKind::Count)];
+		int count = 0;
 
 		for (int i = 0; i < int(TextureKind::Count); i++)
 		{
 			if (!material.paths[i].empty())
 			{
-				asset_ids[i] = GRANITE_ASSET_MANAGER()->register_asset(
+				asset_ids[count++] = GRANITE_ASSET_MANAGER()->register_asset(
 					*GRANITE_FILESYSTEM(), material.paths[i],
-					kind_to_asset(TextureKind(i)));
+					image_classes[i]);
 			}
 		}
 
 		material_offsets.push_back(
-		    GRANITE_MATERIAL_MANAGER()->register_material(asset_ids, int(TextureKind::Count), nullptr, 0));
+		    GRANITE_MATERIAL_MANAGER()->register_material(asset_ids, count, nullptr, 0));
 	}
-
-	std::vector<AssetID> mesh_assets;
-	mesh_assets.reserve(subscene.parser->get_meshes().size());
 
 	unsigned count = 0;
 	for (auto &mesh : subscene.parser->get_meshes())
@@ -321,8 +308,29 @@ NodeHandle SceneLoader::parse_gltf(const std::string &path)
 		if (!::Granite::Meshlet::export_mesh_to_meshlet(internal_path, mesh, Vulkan::Meshlet::MeshStyle::Textured))
 			throw std::runtime_error("Failed to export meshlet.");
 
-		mesh_assets.push_back(GRANITE_ASSET_MANAGER()->register_asset(
-				*GRANITE_FILESYSTEM(), internal_path, Granite::AssetClass::Mesh));
+		auto asset_id =
+		    GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(), internal_path, Granite::AssetClass::Mesh);
+
+		constexpr MaterialOffsets default_offset = { UINT16_MAX, UINT16_MAX };
+		auto pipe = DrawPipeline::Opaque;
+		MeshAssetRenderFlags flags = 0;
+
+		if (mesh.has_material)
+		{
+			auto &mat = subscene.parser->get_materials()[mesh.material_index];
+			pipe = mat.pipeline;
+
+			for (int i = 0; i < int(TextureKind::Count); i++)
+				if (!mat.paths[i].empty())
+					flags |= 1 << i;
+		}
+
+		auto renderable = Util::make_handle<MeshAssetRenderable>(pipe, asset_id,
+			mesh.has_material ? material_offsets[mesh.material_index] : default_offset,
+			mesh.static_aabb, 0, flags);
+
+		renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT | RENDERABLE_MESH_ASSET_BIT;
+		subscene.meshes.push_back(std::move(renderable));
 	}
 #else
 	for (auto &mesh : subscene.parser->get_meshes())

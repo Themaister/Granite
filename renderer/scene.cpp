@@ -25,6 +25,7 @@
 #include "lights/lights.hpp"
 #include "simd.hpp"
 #include "task_composer.hpp"
+
 #include <limits>
 
 namespace Granite
@@ -52,6 +53,11 @@ Scene::Scene()
 	  render_pass_creators(pool.get_component_group<RenderPassComponent>())
 {
 	pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
+	updated_transforms_count.store(0, std::memory_order_relaxed);
+	cleared_occlusion_states_count.store(0, std::memory_order_relaxed);
+
+	updated_transforms.reserve(MaxNumNodesLog2);
+	cleared_occlusion_states.reserve(MaxOcclusionStatesLog2);
 }
 
 Scene::~Scene()
@@ -490,7 +496,7 @@ static void log_node_transforms(const Scene::Node &node)
 }
 #endif
 
-static void update_skinning(Node &node)
+void Scene::update_skinning(Node &node)
 {
 	auto &skin = *node.get_skin();
 	if (skin.transform.count)
@@ -501,6 +507,8 @@ static void update_skinning(Node &node)
 
 		auto *cached_skin = cached + skin.transform.offset;
 		auto *prev_cached_skin = prev_cached + skin.transform.offset;
+
+		notify_transform_updates(skin.transform.offset, skin.transform.count);
 
 		for (uint32_t i = 0; i < skin.transform.count; i++)
 			prev_cached_skin[i] = cached_skin[i];
@@ -532,7 +540,7 @@ void Scene::update_all_transforms()
 	update_cached_transforms_range(0, spatials.size());
 }
 
-static void perform_update_skinning(Node * const *updates, size_t count)
+void Scene::perform_update_skinning(Node * const *updates, size_t count)
 {
 	for (size_t i = 0; i < count; i++)
 	{
@@ -602,7 +610,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 	}
 	else
 	{
-		pending_node_updates_skin.for_each_ranged([](Node *const *updates, size_t count) {
+		pending_node_updates_skin.for_each_ranged([this](Node *const *updates, size_t count) {
 			perform_update_skinning(updates, count);
 		});
 	}
@@ -767,6 +775,38 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 	}
 }
 
+void Scene::notify_allocated_occlusion_state(uint32_t offset, uint32_t count)
+{
+	// Unordered is fine, we only need thread-safe writes to this array, but consumption happens
+	// in a well defined place where we ensure thread safety through external means.
+	size_t write_offset = cleared_occlusion_states_count.fetch_add(count, std::memory_order_relaxed);
+
+	if (write_offset + count > MaxOcclusionStatesLog2)
+	{
+		// Technically, this isn't a big problem, but may lead to weirdness down the line.
+		LOGE("Cleared occlusion state buffer is full.\n");
+		return;
+	}
+
+	for (uint32_t i = 0; i < count; i++)
+		cleared_occlusion_states[write_offset + i] = offset + i;
+}
+
+void Scene::notify_transform_updates(uint32_t offset, uint32_t count)
+{
+	size_t write_offset = updated_transforms_count.fetch_add(count, std::memory_order_relaxed);
+
+	if (write_offset + count > MaxNumNodesLog2)
+	{
+		// This shouldn't happen unless someone forgets to restart the list.
+		LOGE("Transform update state buffer is full.\n");
+		return;
+	}
+
+	for (uint32_t i = 0; i < count; i++)
+		updated_transforms[write_offset + i] = offset + i;
+}
+
 void Scene::push_pending_node_update(Node *node)
 {
 	pending_node_updates.push(node);
@@ -820,17 +860,19 @@ void Scene::distribute_per_level_updates(TaskGroup *group)
 	}
 }
 
-static void update_transform_tree_node(Node &node, const mat_affine &transform)
+void Scene::update_transform_tree_node(Node &node, const mat_affine &transform)
 {
 	node.get_cached_prev_transform() = node.get_cached_transform();
 	auto &t = node.get_transform();
 	compute_model_transform(node.get_cached_transform(), t.scale, t.rotation, t.translation, transform);
 
+	notify_transform_updates(node.transform.offset, 1);
+
 	node.update_timestamp();
 	node.clear_pending_update_no_atomic();
 }
 
-static void perform_updates(Node * const *updates, size_t count)
+void Scene::perform_updates(Node * const *updates, size_t count)
 {
 	for (size_t i = 0; i < count; i++)
 	{
@@ -845,15 +887,15 @@ void Scene::perform_per_level_updates(unsigned level, TaskGroup *group)
 {
 	if (group)
 	{
-		pending_node_update_per_level[level].for_each_ranged([group](Node *const *updates, size_t count) {
-			group->enqueue_task([=]() {
+		pending_node_update_per_level[level].for_each_ranged([this, group](Node *const *updates, size_t count) {
+			group->enqueue_task([this, updates, count]() {
 				perform_updates(updates, count);
 			});
 		});
 	}
 	else
 	{
-		pending_node_update_per_level[level].for_each_ranged([](Node *const *updates, size_t count) {
+		pending_node_update_per_level[level].for_each_ranged([this](Node *const *updates, size_t count) {
 			perform_updates(updates, count);
 		});
 	}
@@ -1085,6 +1127,8 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 			auto num_occluder_words = (num_occluder_states + 31) / 32;
 			if (!get_occluder_states().allocate(num_occluder_words, &transform->occluder_state))
 				LOGE("Exhausted occluder state pool.\n");
+
+			notify_allocated_occlusion_state(transform->occluder_state.offset, transform->occluder_state.count);
 		}
 	}
 	else
@@ -1169,7 +1213,7 @@ void Scene::queue_destroy_entity(Entity *entity)
 
 TransformAllocator::TransformAllocator()
 {
-	init(1, 20, &allocator);
+	init(1, MaxNumNodesLog2, &allocator);
 	prime(nullptr);
 }
 
@@ -1208,7 +1252,7 @@ void TransformBackingAllocator::prime(uint32_t count, const void *)
 
 TransformAllocatorAABB::TransformAllocatorAABB()
 {
-	init(1, 20, &allocator);
+	init(1, MaxNumNodesLog2, &allocator);
 	prime(nullptr);
 }
 
@@ -1245,7 +1289,8 @@ void TransformBackingAllocatorAABB::prime(uint32_t count, const void *)
 
 OccluderStateAllocator::OccluderStateAllocator()
 {
-	init(16, 20, &allocator);
+	constexpr unsigned SubBlockSizeLog2 = 4;
+	init(1u << SubBlockSizeLog2, MaxOcclusionStatesLog2 - SubBlockSizeLog2, &allocator);
 }
 
 bool OccluderStateAllocator::allocate(uint32_t count, Util::AllocatedSlice *slice)

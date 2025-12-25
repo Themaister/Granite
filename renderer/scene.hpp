@@ -39,6 +39,9 @@ struct EnvironmentComponent;
 class Node;
 class Scene;
 
+static constexpr unsigned MaxNumNodesLog2 = 20;
+static constexpr unsigned MaxOcclusionStatesLog2 = 24;
+
 struct TransformBackingAllocator final : Util::SliceBackingAllocator
 {
 	uint32_t allocate(uint32_t count) override;
@@ -207,12 +210,39 @@ public:
 
 	void remove_entities_with_component(ComponentType id);
 
-	inline TransformAllocator &get_transforms() { return transform_allocator; }
-	inline const TransformAllocator &get_transforms() const { return transform_allocator; }
-	inline TransformAllocatorAABB &get_aabbs() { return transform_allocator_aabb; }
-	inline const TransformAllocatorAABB &get_aabbs() const { return transform_allocator_aabb; }
-	inline OccluderStateAllocator &get_occluder_states() { return occluder_state_allocator; }
-	inline const OccluderStateAllocator &get_occluder_states() const { return occluder_state_allocator; }
+	TransformAllocator &get_transforms() { return transform_allocator; }
+	const TransformAllocator &get_transforms() const { return transform_allocator; }
+	TransformAllocatorAABB &get_aabbs() { return transform_allocator_aabb; }
+	const TransformAllocatorAABB &get_aabbs() const { return transform_allocator_aabb; }
+	OccluderStateAllocator &get_occluder_states() { return occluder_state_allocator; }
+	const OccluderStateAllocator &get_occluder_states() const { return occluder_state_allocator; }
+
+	struct UpdateSpan
+	{
+		const uint32_t *offsets;
+		size_t count;
+	};
+
+	// These are not thread-safe.
+	UpdateSpan get_transform_update_span() const
+	{
+		return { updated_transforms.data(), updated_transforms_count.load(std::memory_order_relaxed) };
+	}
+
+	UpdateSpan get_occluder_state_update_span() const
+	{
+		return { cleared_occlusion_states.data(), cleared_occlusion_states_count.load(std::memory_order_relaxed) };
+	}
+
+	void clear_transform_updates()
+	{
+		updated_transforms_count.store(0, std::memory_order_relaxed);
+	}
+
+	void clear_occluder_state_updates()
+	{
+		cleared_occlusion_states_count.store(0, std::memory_order_relaxed);
+	}
 
 private:
 	TransformAllocator transform_allocator;
@@ -222,6 +252,11 @@ private:
 	Util::ObjectPool<Node::Skinning> skinning_pool;
 	Util::ObjectPool<Node> node_pool;
 	NodeHandle root_node;
+
+	Util::DynamicArray<uint32_t> updated_transforms;
+	std::atomic_size_t updated_transforms_count;
+	Util::DynamicArray<uint32_t> cleared_occlusion_states;
+	std::atomic_size_t cleared_occlusion_states_count;
 
 	// Sets up the default useful component groups up front.
 	const ComponentGroupVector<
@@ -317,5 +352,12 @@ private:
 	std::atomic_uint32_t pending_hierarchy_level_mask;
 
 	void update_transform_tree(TaskComposer *composer);
+
+	void perform_updates(Node * const *updates, size_t count);
+	void update_transform_tree_node(Node &node, const mat_affine &transform);
+	void update_skinning(Node &node);
+	void perform_update_skinning(Node * const *updates, size_t count);
+	void notify_transform_updates(uint32_t offset, uint32_t count);
+	void notify_allocated_occlusion_state(uint32_t offset, uint32_t count);
 };
 }

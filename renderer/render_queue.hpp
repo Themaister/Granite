@@ -22,16 +22,18 @@
 
 #pragma once
 
-#include <vector>
-#include <list>
-#include <type_traits>
-#include <stdexcept>
+#include "abstract_renderable.hpp"
+
 #include "command_buffer.hpp"
-#include "hash.hpp"
 #include "enum_cast.hpp"
+#include "hash.hpp"
 #include "intrusive_hash_map.hpp"
 #include "math.hpp"
 #include "radix_sorter.hpp"
+#include <list>
+#include <stdexcept>
+#include <type_traits>
+#include <vector>
 
 namespace Vulkan
 {
@@ -245,12 +247,20 @@ public:
 		{
 			raw_input.clear();
 			sorter.resize(0);
+
+		}
+		const RenderQueueData *sorted_data() const { return sorted_output.data(); }
+	};
+
+	struct DrawPipelineData
+	{
+		void clear()
+		{
 			mesh_asset_static_info.clear();
 			mesh_asset_skinned_info.clear();
 			num_static_draws = 0;
 			num_skinned_draws = 0;
 		}
-		const RenderQueueData *sorted_data() const { return sorted_output.data(); }
 
 		Util::SmallVector<MeshAssetDrawTaskInfo> mesh_asset_static_info;
 		Util::SmallVector<MeshAssetDrawTaskInfo> mesh_asset_skinned_info;
@@ -265,6 +275,11 @@ public:
 	const RenderQueueDataVector &get_queue_data(Queue queue) const
 	{
 		return queues[Util::ecast(queue)];
+	}
+
+	const DrawPipelineData &get_draw_pipeline_data(DrawPipeline pipe) const
+	{
+		return draw_pipelines[Util::ecast(pipe)];
 	}
 
 	// Only considers generic drawables. MeshAssetDrawTaskInfo is supposed to be handled specially by
@@ -340,7 +355,8 @@ private:
 	Block *insert_block();
 	Block *insert_large_block(size_t size, size_t alignment);
 
-	RenderQueueDataVector queues[static_cast<unsigned>(Queue::Count)];
+	RenderQueueDataVector queues[Util::ecast(Queue::Count)];
+	DrawPipelineData draw_pipelines[Util::ecast(DrawPipeline::Count)];
 	Util::SmallVector<Block *, 64> blocks;
 	Block *current = nullptr;
 

@@ -65,12 +65,19 @@ void RenderQueue::combine_render_info(const RenderQueue &queue)
 		auto &other = queue.get_queue_data(Queue(i));
 
 		q.raw_input.insert(q.raw_input.end(), other.raw_input.begin(), other.raw_input.end());
-		q.mesh_asset_static_info.insert(q.mesh_asset_static_info.end(), other.mesh_asset_static_info.begin(),
-		                                other.mesh_asset_static_info.end());
-		q.mesh_asset_skinned_info.insert(q.mesh_asset_skinned_info.end(), other.mesh_asset_skinned_info.begin(),
-		                                 other.mesh_asset_skinned_info.end());
-		q.num_static_draws += other.num_static_draws;
-		q.num_skinned_draws += other.num_skinned_draws;
+
+	}
+
+	for (unsigned i = 0; i < ecast(DrawPipeline::Count); i++)
+	{
+		auto &pipe = draw_pipelines[i];
+		auto &other = queue.get_draw_pipeline_data(DrawPipeline(i));
+		pipe.mesh_asset_static_info.insert(pipe.mesh_asset_static_info.end(), other.mesh_asset_static_info.begin(),
+		                                   other.mesh_asset_static_info.end());
+		pipe.mesh_asset_skinned_info.insert(pipe.mesh_asset_skinned_info.end(), other.mesh_asset_skinned_info.begin(),
+		                                    other.mesh_asset_skinned_info.end());
+		pipe.num_static_draws += other.num_static_draws;
+		pipe.num_skinned_draws += other.num_skinned_draws;
 	}
 }
 
@@ -199,8 +206,7 @@ void *RenderQueue::allocate(size_t size, size_t alignment)
 void RenderQueue::push_mesh_asset_renderable(const MeshAssetRenderable &mesh, const RenderInfoComponent &transform)
 {
 	auto range = resource_manager->get_mesh_draw_range(mesh.get_asset_id());
-	auto pipe = mesh.get_mesh_draw_pipeline();
-	auto &q = queues[Util::ecast(pipe == DrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque)];
+	auto &pipe = draw_pipelines[ecast(mesh.get_mesh_draw_pipeline())];
 	MeshAssetDrawTaskInfo draw = {};
 
 	draw.aabb_instance = transform.aabb.offset;
@@ -214,16 +220,14 @@ void RenderQueue::push_mesh_asset_renderable(const MeshAssetRenderable &mesh, co
 	VK_ASSERT((range.meshlet.offset & 31) == 0);
 
 	bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;
-	auto &draw_counter = skinned ? q.num_skinned_draws : q.num_static_draws;
+	auto &draw_counter = skinned ? pipe.num_skinned_draws : pipe.num_static_draws;
 	draw_counter += range.meshlet.count;
+	auto &info_vec = skinned ? pipe.mesh_asset_skinned_info : pipe.mesh_asset_skinned_info;
 
 	for (uint32_t j = 0; j < range.meshlet.count; j += 32)
 	{
 		draw.mesh_index_count = range.meshlet.offset + j + (std::min(range.meshlet.count - j, 32u) - 1);
-		if (skinned)
-			q.mesh_asset_skinned_info.push_back(draw);
-		else
-			q.mesh_asset_static_info.push_back(draw);
+		info_vec.push_back(draw);
 		draw.occluder_state_offset++;
 	}
 }

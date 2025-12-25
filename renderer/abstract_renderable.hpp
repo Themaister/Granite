@@ -39,6 +39,7 @@ enum class DrawPipeline : unsigned char
 	Opaque,
 	AlphaTest,
 	AlphaBlend,
+	Count
 };
 
 enum class DrawPipelineCoverage : unsigned char

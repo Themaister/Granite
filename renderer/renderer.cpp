@@ -623,11 +623,12 @@ void Renderer::promote_read_write_cache_to_read_only()
 		s.promote_read_write_cache_to_read_only();
 }
 
-void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderQueue::RenderQueueDataVector &data,
+void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, DrawPipeline pipe,
                                   bool skinned) const
 {
 	auto &manager = device->get_resource_manager();
 	auto encoding = manager.get_mesh_encoding();
+	auto &data = queue.get_draw_pipeline_data(pipe);
 	auto &vec = skinned ? data.mesh_asset_skinned_info : data.mesh_asset_static_info;
 
 	if (encoding == ResourceManager::MeshEncoding::Classic || encoding == ResourceManager::MeshEncoding::VBOAndIBOMDI)
@@ -723,11 +724,15 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	CommandBufferSavedState state = {};
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 
-	auto &opaque = queue.get_queue_data(Queue::Opaque);
 	if (options & MESH_ASSET_STATIC_BIT)
-		render_mesh_assets(cmd, opaque, false);
+		render_mesh_assets(cmd, queue, DrawPipeline::Opaque, false);
 	if (options & MESH_ASSET_SKINNED_BIT)
-		render_mesh_assets(cmd, opaque, true);
+		render_mesh_assets(cmd, queue, DrawPipeline::Opaque, true);
+
+	if (options & MESH_ASSET_STATIC_BIT)
+		render_mesh_assets(cmd, queue, DrawPipeline::AlphaTest, false);
+	if (options & MESH_ASSET_SKINNED_BIT)
+		render_mesh_assets(cmd, queue, DrawPipeline::AlphaTest, true);
 
 	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);
 
@@ -741,11 +746,10 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 		cmd.set_depth_test(true, false);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 
-		auto &transparent = queue.get_queue_data(Queue::Transparent);
 		if (options & MESH_ASSET_STATIC_BIT)
-			render_mesh_assets(cmd, transparent, false);
+			render_mesh_assets(cmd, queue, DrawPipeline::AlphaBlend, false);
 		if (options & MESH_ASSET_SKINNED_BIT)
-			render_mesh_assets(cmd, transparent, true);
+			render_mesh_assets(cmd, queue, DrawPipeline::AlphaBlend, true);
 
 		queue.dispatch_subset(Queue::Transparent, cmd, &state, index, num_indices);
 	}

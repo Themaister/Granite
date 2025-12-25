@@ -1,39 +1,15 @@
 #ifndef MESHLET_RENDER_H_
 #define MESHLET_RENDER_H_
 
-#ifndef MESHLET_RENDER_DESCRIPTOR_SET
-#error "Must define MESHLET_RENDER_DESCRIPTOR_SET before including meshlet_render.h"
-#endif
-
-#ifndef MESHLET_RENDER_AABB_BINDING
-#error "Must define MESHLET_RENDER_AABB_BINDING before including meshlet_render.h"
-#endif
-
-#ifndef MESHLET_RENDER_TRANSFORM_BINDING
-#error "Must define MESHLET_RENDER_TRANSFORM_BINDING before including meshlet_render.h"
-#endif
-
-#ifndef MESHLET_RENDER_BOUND_BINDING
-#error "Must define MESHLET_RENDER_BOUND_BINDING before including meshlet_render.h"
-#endif
-
-#ifndef MESHLET_RENDER_FRUSTUM_BINDING
-#error "Must define MESHLET_RENDER_GROUP_BOUND_BINDING before including meshlet_render.h"
-#endif
-
-#ifndef MESHLET_RENDER_TASKS_BINDING
-#error "Must define MESHLET_RENDER_TASKS_BINDING before including meshlet_render.h"
-#endif
-
 #include "meshlet_render_types.h"
 #include "affine.h"
 
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_BOUND_BINDING, std430) readonly buffer Bounds
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_CLUSTER_BOUNDS, std430) readonly buffer Bounds
 {
 	Bound data[];
 } bounds;
 
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_AABB_BINDING, std430) readonly buffer AABBSSBO
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_AABBS, std430) readonly buffer AABBSSBO
 {
 #ifdef MESHLET_RENDER_AABB_VISIBILITY
 	uint data[];
@@ -42,7 +18,7 @@ layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_AABB_BINDIN
 #endif
 } aabb;
 
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_TRANSFORM_BINDING, std430) readonly buffer Transforms
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_TRANSFORMS, std430) readonly buffer Transforms
 {
 	mat_affine data[];
 } transforms;
@@ -52,7 +28,8 @@ layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_HIZ_BINDING
 uniform texture2D uHiZDepth;
 #endif
 
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_FRUSTUM_BINDING, std140) uniform Frustum
+#if 0
+layout(set = 0, binding = MESHLET_RENDER_FRUSTUM_BINDING, std140) uniform Frustum
 {
 	vec4 planes[6];
 	mat4 view;
@@ -61,19 +38,21 @@ layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_FRUSTUM_BIN
 	int hiz_min_lod;
 	int hiz_max_lod;
 } frustum;
+#endif
 
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_TASKS_BINDING, std430) readonly buffer Tasks
+layout(set = 3, binding = 0, std430) readonly buffer Tasks
 {
-	TaskInfo data[];
+	MeshAssetDrawTaskInfo data[];
 } task_info;
 
 #ifdef MESHLET_RENDER_OCCLUDER_BINDING
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_OCCLUDER_BINDING, std430) buffer OccluderState
+layout(set = 0, binding = MESHLET_RENDER_OCCLUDER_BINDING, std430) buffer OccluderState
 {
 	uint data[];
 } occluders;
 #endif
 
+#if 0
 bool frustum_cull(vec3 lo, vec3 hi)
 {
 	bool ret = true;
@@ -87,6 +66,7 @@ bool frustum_cull(vec3 lo, vec3 hi)
 	}
 	return ret;
 }
+#endif
 
 vec3 view_transform_yz_flip(vec3 pos)
 {
@@ -207,6 +187,7 @@ vec2 project_sphere_flat(float view_xy, float view_z, float radius)
 	return vec2(rot_lo.x / rot_lo.y, rot_hi.x / rot_hi.y);
 }
 
+#if 0
 bool cluster_cull(mat_affine M, Bound bound, vec3 camera_pos)
 {
 	vec3 bound_center = mul(M, bound.center_radius.xyz);
@@ -256,5 +237,6 @@ bool cluster_cull(mat_affine M, Bound bound, vec3 camera_pos)
 
 	return ret;
 }
+#endif
 
 #endif

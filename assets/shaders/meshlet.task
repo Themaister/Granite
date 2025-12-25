@@ -1,0 +1,183 @@
+#version 450
+#extension GL_EXT_mesh_shader : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+#extension GL_EXT_samplerless_texture_functions : require
+
+layout(local_size_x = 32) in;
+
+#include "../inc/global_bindings.h"
+#include "../inc/meshlet_render.h"
+#include "../inc/render_parameters.h"
+
+// TODO
+#define MESHLET_RENDER_TASK_HIERARCHICAL 0
+#define MESHLET_RENDER_PHASE 0
+
+#ifndef MESHLET_RENDER_TASK_HIERARCHICAL
+#error "Must define MESHLET_RENDER_TASK_HIERARCHICAL"
+#endif
+
+#define MESHLET_RENDER_NO_Z_PREPASS
+
+layout(push_constant, std430) uniform Registers
+{
+    vec3 camera_pos;
+    uint count;
+    uint offset;
+} registers;
+
+taskPayloadSharedEXT CompactedDrawInfoPayload mesh_payload;
+
+layout(constant_id = 1) const int NUM_CHUNK_WORKGROUPS = 0;
+
+shared uint ballot_value;
+uvec4 ballot(bool v)
+{
+    barrier();
+    if (gl_LocalInvocationIndex == 0)
+        ballot_value = 0;
+    barrier();
+    if (v)
+        atomicOr(ballot_value, 1u << gl_LocalInvocationIndex);
+    barrier();
+    return uvec4(ballot_value, 0, 0, 0);
+}
+
+uint ballotBitCount(uvec4 v)
+{
+    return bitCount(v.x);
+}
+
+uint ballotExclusiveBitCount(uvec4 v)
+{
+    return bitCount(bitfieldExtract(v.x, 0, int(gl_LocalInvocationIndex)));
+}
+
+uint payload_offset = 0;
+
+void process_task(TaskInfo task)
+{
+    uint node_instance = task.node_instance;
+    uint material_index = task.material_index;
+    uint mesh_index_count = task.mesh_index_count;
+
+    uint offset = mesh_index_count & ~31u;
+    uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
+    uint meshlet_index = offset + gl_LocalInvocationIndex;
+
+#if !MESHLET_RENDER_TASK_HIERARCHICAL
+    bool visible = bitfieldExtract(aabb.data[task.aabb_instance / 32], int(task.aabb_instance & 31), 1) != 0;
+#else
+    const bool visible = true;
+#endif
+
+#if MESHLET_RENDER_PHASE >= 1
+    uint visibility_state = occluders.data[task.occluder_state_offset];
+#endif
+
+    bool alloc_draw = false;
+    if (visible && gl_LocalInvocationIndex < count)
+    {
+        mat_affine M = transforms.data[node_instance];
+        Bound b = bounds.data[meshlet_index];
+
+#if MESHLET_RENDER_PHASE == 1
+        if (bitfieldExtract(visibility_state, int(gl_LocalInvocationIndex), 1) != 0)
+            alloc_draw = cluster_cull(M, b, global.camera_position);
+#else
+        alloc_draw = cluster_cull(M, b, global.camera_position);
+#endif
+    }
+
+    uvec4 draw_ballot = ballot(alloc_draw);
+
+#if MESHLET_RENDER_PHASE == 2
+    // Record all clusters that are considered visible in this frame.
+    if (gl_LocalInvocationIndex == 0)
+        occluders.data[task.occluder_state_offset] = draw_ballot.x;
+
+#ifdef MESHLET_RENDER_NO_Z_PREPASS
+    // If we already rendered in phase 1, skip the draw here.
+    // If we only did a Z-prepass, we still need to render.
+    if (bitfieldExtract(visibility_state, int(gl_LocalInvocationIndex), 1) != 0)
+        alloc_draw = false;
+
+    draw_ballot = ballot(alloc_draw);
+#endif
+#endif
+
+    uint draw_count = ballotBitCount(draw_ballot);
+    uint local_offset = ballotExclusiveBitCount(draw_ballot);
+
+#if MESHLET_RENDER_TASK_HIERARCHICAL
+    if (alloc_draw)
+    {
+        mesh_payload.infos[payload_offset + local_offset] =
+            CompactedDrawInfo(meshlet_index, node_instance, material_index);
+    }
+#else
+    if (gl_LocalInvocationIndex == 0)
+        mesh_payload.info = CompactedDrawInfo(offset, node_instance, material_index);
+    if (alloc_draw)
+        mesh_payload.offsets[local_offset] = uint8_t(gl_LocalInvocationIndex);
+#endif
+
+    payload_offset += draw_count;
+}
+
+void main()
+{
+#if MESHLET_RENDER_TASK_HIERARCHICAL
+    uint task_index = gl_GlobalInvocationID.x + registers.offset * gl_WorkGroupSize.x;
+    bool task_needs_work = false;
+    if (task_index < registers.count)
+    {
+        TaskInfo task = task_info.data[task_index];
+
+        // Precull the group.
+        bool visible = bitfieldExtract(aabb.data[task.aabb_instance / 32], int(task.aabb_instance & 31), 1) != 0;
+
+#if MESHLET_RENDER_PHASE == 1
+        task_needs_work = visible && occluders.data[task.occluder_state_offset] != 0;
+#else
+        task_needs_work = visible;
+#if MESHLET_RENDER_PHASE == 2
+        // Nothing is visible, clear out occluder state.
+        if (!task_needs_work)
+            occluders.data[task.occluder_state_offset] = 0;
+#endif
+#endif
+    }
+
+    uint b = ballot(task_needs_work).x;
+
+    while (b != 0)
+    {
+        int lane = findLSB(b);
+        b &= ~(1u << lane);
+        TaskInfo tmp_task = task_info.data[gl_WorkGroupID.x * gl_WorkGroupSize.x + lane];
+        process_task(tmp_task);
+    }
+#else
+    uint task_index = gl_WorkGroupID.x + registers.offset;
+    if (task_index < registers.count)
+    {
+        TaskInfo task = task_info.data[task_index];
+        process_task(task);
+    }
+#endif
+
+    uint wg_x, wg_y;
+    if (NUM_CHUNK_WORKGROUPS == 1)
+    {
+        wg_x = payload_offset;
+        wg_y = 1;
+    }
+    else
+    {
+        wg_x = NUM_CHUNK_WORKGROUPS;
+        wg_y = payload_offset;
+    }
+
+    EmitMeshTasksEXT(wg_x, wg_y, 1);
+}

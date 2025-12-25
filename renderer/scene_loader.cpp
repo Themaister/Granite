@@ -28,6 +28,7 @@
 #include "enum_cast.hpp"
 #include "ground.hpp"
 #include "path_utils.hpp"
+#include "meshlet_export.hpp"
 
 using namespace rapidjson;
 using namespace Util;
@@ -268,8 +269,65 @@ NodeHandle SceneLoader::parse_gltf(const std::string &path)
 	SubsceneData subscene;
 	subscene.parser = std::make_unique<GLTF::Parser>(path);
 
+#if 1
+	// TODO: Should be done offline.
+	std::vector<MaterialOffsets> material_offsets;
+	material_offsets.reserve(subscene.parser->get_materials().size());
+
+	const auto kind_to_asset = [](TextureKind kind)
+	{
+		switch (kind)
+		{
+		case TextureKind::BaseColor:
+		case TextureKind::Emissive:
+			return Granite::AssetClass::ImageColor;
+
+		case TextureKind::MetallicRoughness:
+			return Granite::AssetClass::ImageMetallicRoughness;
+
+		case TextureKind::Normal:
+			return Granite::AssetClass::ImageNormal;
+
+		default:
+			return Granite::AssetClass::ImageZeroable;
+		}
+	};
+
+	for (auto &material : subscene.parser->get_materials())
+	{
+		AssetID asset_ids[int(TextureKind::Count)];
+
+		for (int i = 0; i < int(TextureKind::Count); i++)
+		{
+			if (!material.paths[i].empty())
+			{
+				asset_ids[i] = GRANITE_ASSET_MANAGER()->register_asset(
+					*GRANITE_FILESYSTEM(), material.paths[i],
+					kind_to_asset(TextureKind(i)));
+			}
+		}
+
+		material_offsets.push_back(
+		    GRANITE_MATERIAL_MANAGER()->register_material(asset_ids, int(TextureKind::Count), nullptr, 0));
+	}
+
+	std::vector<AssetID> mesh_assets;
+	mesh_assets.reserve(subscene.parser->get_meshes().size());
+
+	unsigned count = 0;
+	for (auto &mesh : subscene.parser->get_meshes())
+	{
+		auto internal_path = std::string("memory://mesh") + std::to_string(count++);
+		if (!::Granite::Meshlet::export_mesh_to_meshlet(internal_path, mesh, Vulkan::Meshlet::MeshStyle::Textured))
+			throw std::runtime_error("Failed to export meshlet.");
+
+		mesh_assets.push_back(GRANITE_ASSET_MANAGER()->register_asset(
+				*GRANITE_FILESYSTEM(), internal_path, Granite::AssetClass::Mesh));
+	}
+#else
 	for (auto &mesh : subscene.parser->get_meshes())
 		subscene.meshes.push_back(create_imported_mesh(mesh, subscene.parser->get_materials().data()));
+#endif
 
 	if (!subscene.parser->get_environments().empty())
 	{

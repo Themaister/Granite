@@ -64,6 +64,9 @@ target_link_libraries(granite-renderer PUBLIC
         granite-threading
         PRIVATE granite-mikktspace meshoptimizer granite-rapidjson granite-stb granite-fsr2)
 
+# TODO: Temporary hack
+target_link_libraries(granite-renderer PRIVATE granite-scene-export)
+
 if (NOT ANDROID)
     set(GRANITE_FSR2_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/fsr2/src/ffx-fsr2-api/shaders)
     target_compile_definitions(granite-renderer PRIVATE GRANITE_FSR2_SHADER_DIR=\"${GRANITE_FSR2_SHADER_DIR}\")

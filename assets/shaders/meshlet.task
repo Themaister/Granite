@@ -9,6 +9,9 @@ layout(local_size_x = 32) in;
 #define MESHLET_RENDER_TASK_HIERARCHICAL 0
 #define MESHLET_RENDER_PHASE 0
 
+#define MESHLET_RENDER_TASK_BINDING 0
+#define MESHLET_RENDER_FRUSTUM_BINDING 5
+
 #include "inc/global_bindings.h"
 #include "inc/meshlet_render.h"
 #include "inc/render_parameters.h"
@@ -82,8 +85,7 @@ void process_task(MeshAssetDrawTaskInfo task)
         if (bitfieldExtract(visibility_state, int(gl_LocalInvocationIndex), 1) != 0)
             alloc_draw = cluster_cull(M, b, global.camera_position);
 #else
-        //alloc_draw = cluster_cull(M, b, global.camera_position);
-        alloc_draw = true;
+        alloc_draw = cluster_cull(M, b, global.camera_position);
 #endif
     }
 

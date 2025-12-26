@@ -28,8 +28,12 @@ layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_HIZ_BINDING
 uniform texture2D uHiZDepth;
 #endif
 
-#if 0
-layout(set = 0, binding = MESHLET_RENDER_FRUSTUM_BINDING, std140) uniform Frustum
+layout(set = 3, binding = MESHLET_RENDER_TASK_BINDING, std430) readonly buffer Tasks
+{
+	MeshAssetDrawTaskInfo data[];
+} task_info;
+
+layout(set = 3, binding = MESHLET_RENDER_FRUSTUM_BINDING, std140) uniform Frustum
 {
 	vec4 planes[6];
 	mat4 view;
@@ -38,12 +42,6 @@ layout(set = 0, binding = MESHLET_RENDER_FRUSTUM_BINDING, std140) uniform Frustu
 	int hiz_min_lod;
 	int hiz_max_lod;
 } frustum;
-#endif
-
-layout(set = 3, binding = 0, std430) readonly buffer Tasks
-{
-	MeshAssetDrawTaskInfo data[];
-} task_info;
 
 #ifdef MESHLET_RENDER_OCCLUDER_BINDING
 layout(set = 0, binding = MESHLET_RENDER_OCCLUDER_BINDING, std430) buffer OccluderState
@@ -52,7 +50,6 @@ layout(set = 0, binding = MESHLET_RENDER_OCCLUDER_BINDING, std430) buffer Occlud
 } occluders;
 #endif
 
-#if 0
 bool frustum_cull(vec3 lo, vec3 hi)
 {
 	bool ret = true;
@@ -66,9 +63,7 @@ bool frustum_cull(vec3 lo, vec3 hi)
 	}
 	return ret;
 }
-#endif
 
-#if 0
 vec3 view_transform_yz_flip(vec3 pos)
 {
 	vec3 view = (frustum.view * vec4(pos, 1.0)).xyz;
@@ -77,7 +72,6 @@ vec3 view_transform_yz_flip(vec3 pos)
 	view.yz = -view.yz;
 	return view;
 }
-#endif
 
 #ifdef MESHLET_RENDER_HIZ_BINDING
 bool hiz_cull(vec2 view_range_x, vec2 view_range_y, float closest_z)
@@ -189,7 +183,6 @@ vec2 project_sphere_flat(float view_xy, float view_z, float radius)
 	return vec2(rot_lo.x / rot_lo.y, rot_hi.x / rot_hi.y);
 }
 
-#if 0
 bool cluster_cull(mat_affine M, Bound bound, vec3 camera_pos)
 {
 	vec3 bound_center = mul(M, bound.center_radius.xyz);
@@ -239,6 +232,5 @@ bool cluster_cull(mat_affine M, Bound bound, vec3 camera_pos)
 
 	return ret;
 }
-#endif
 
 #endif

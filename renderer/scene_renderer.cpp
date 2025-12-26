@@ -526,21 +526,17 @@ SceneTransformUpdatePass setup_scene_transforms_update_pass(RenderGraph &graph, 
 		const Scene &scene;
 		SceneTransformUpdatePass resources = {};
 
-		bool render_pass_is_conditional() const override
-		{
-			return true;
-		}
-
-		bool need_render_pass() const override
-		{
-			return scene.get_transform_update_span().count != 0;
-		}
+		// TODO: Cannot use conditional render pass since
+		// it is queried before scene is updated.
 
 		void build_render_pass(Vulkan::CommandBuffer &cmd) override
 		{
 			// TODO: Copy over to prev transform buffer.
 
 			auto span = scene.get_transform_update_span();
+			if (span.count == 0)
+				return;
+
 			uint32_t base = 0;
 			size_t count = 0;
 
@@ -604,19 +600,12 @@ OcclusionUpdatePass setup_occlusion_update_pass(RenderGraph &graph, const Scene 
 		const Scene &scene;
 		OcclusionUpdatePass resources = {};
 
-		bool render_pass_is_conditional() const override
-		{
-			return true;
-		}
-
-		bool need_render_pass() const override
-		{
-			return scene.get_occluder_state_update_span().count != 0;
-		}
-
 		void build_render_pass(Vulkan::CommandBuffer &cmd) override
 		{
 			auto span = scene.get_occluder_state_update_span();
+			if (span.count == 0)
+				return;
+
 			uint32_t base = 0;
 			size_t count = 0;
 

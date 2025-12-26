@@ -740,13 +740,15 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		cmd.enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
 		cmd.set_subgroup_size_log2(true, 5, 5);
 
+		auto num_tasks_32 = (vec.size() + 31) / 32;
+
 		auto max_tasks = device->get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0];
-		for (size_t i = 0, n = vec.size(); i < n; i += max_tasks)
+		for (size_t i = 0; i < num_tasks_32; i += max_tasks)
 		{
-			auto to_draw = std::min<size_t>(n - i, max_tasks);
+			auto to_draw = std::min<size_t>(num_tasks_32 - i, max_tasks);
 
 			push.offset = uint32_t(i);
-			push.count = uint32_t(to_draw);
+			push.count = std::min<uint32_t>(vec.size() - i * 32, to_draw * 32);
 			cmd.push_constants(&push, 0, sizeof(push));
 			cmd.draw_mesh_tasks(to_draw, 1, 1);
 		}

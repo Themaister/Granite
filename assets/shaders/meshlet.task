@@ -6,7 +6,7 @@
 layout(local_size_x = 32) in;
 
 // TODO
-#define MESHLET_RENDER_TASK_HIERARCHICAL 0
+#define MESHLET_RENDER_TASK_HIERARCHICAL 1
 #define MESHLET_RENDER_PHASE 0
 
 #define MESHLET_RENDER_TASK_BINDING 0
@@ -135,7 +135,9 @@ void main()
         MeshAssetDrawTaskInfo task = task_info.data[task_index];
 
         // Precull the group.
-        bool visible = bitfieldExtract(aabb.data[task.aabb_instance / 32], int(task.aabb_instance & 31), 1) != 0;
+        AABB aabb = aabb.data[task.aabb_instance];
+        bool visible = frustum_cull(aabb.lo, aabb.hi);
+        //bool visible = true;
 
 #if MESHLET_RENDER_PHASE == 1
         task_needs_work = visible && occluders.data[task.occluder_state_offset] != 0;
@@ -155,7 +157,7 @@ void main()
     {
         int lane = findLSB(b);
         b &= ~(1u << lane);
-        TaskInfo tmp_task = task_info.data[gl_WorkGroupID.x * gl_WorkGroupSize.x + lane];
+        MeshAssetDrawTaskInfo tmp_task = task_info.data[(gl_WorkGroupID.x + registers.offset) * gl_WorkGroupSize.x + lane];
         process_task(tmp_task);
     }
 #else

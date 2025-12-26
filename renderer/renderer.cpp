@@ -704,12 +704,38 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderQueue 
 		bufinfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 		auto task_buffer = device->create_buffer(bufinfo, vec.data());
 
-		for (size_t i = 0, n = vec.size(); i < n; i += 32 * 1024)
+		cmd.set_storage_buffer(3, 0, *task_buffer);
+		cmd.set_storage_buffer(3, 1, *device->get_resource_manager().get_meshlet_header_buffer());
+		cmd.set_storage_buffer(3, 2, *device->get_resource_manager().get_meshlet_stream_header_buffer());
+		cmd.set_storage_buffer(3, 3, *device->get_resource_manager().get_meshlet_payload_buffer());
+
+		*cmd.allocate_typed_constant_data<vec4>(3, 4, 1) =
+		    vec4(cmd.get_viewport().x + 0.5f * cmd.get_viewport().width - 0.5f,
+		         cmd.get_viewport().y + 0.5f * cmd.get_viewport().height - 0.5f, 0.5f * cmd.get_viewport().width,
+		         0.5f * cmd.get_viewport().height);
+
+		struct
 		{
-			auto to_draw = std::min<size_t>(n - i, 32 * 1024);
-			cmd.set_storage_buffer(3, 0, *task_buffer, i * sizeof(vec.front()), to_draw * sizeof(vec.front()));
+			uint32_t offset;
+			uint32_t count;
+		} push = {};
+
+		// TODO: Enable misc paths.
+		cmd.enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
+		cmd.set_subgroup_size_log2(true, 5, 5);
+
+		auto max_tasks = device->get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0];
+		for (size_t i = 0, n = vec.size(); i < n; i += max_tasks)
+		{
+			auto to_draw = std::min<size_t>(n - i, max_tasks);
+
+			push.offset = uint32_t(i);
+			push.count = uint32_t(to_draw);
+			cmd.push_constants(&push, 0, sizeof(push));
 			cmd.draw_mesh_tasks(to_draw, 1, 1);
 		}
+
+		cmd.enable_subgroup_size_control(false, VK_SHADER_STAGE_MESH_BIT_EXT);
 		break;
 	}
 
@@ -1085,34 +1111,35 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
                                             RendererType renderer,
                                             RenderableType drawable) const
 {
+	if (drawable == RenderableType::Meshlet &&
+	    (renderer == RendererType::GeneralDeferred || renderer == RendererType::GeneralForward ||
+	     renderer == RendererType::DepthOnly))
+	{
+		switch (device.get_resource_manager().get_mesh_encoding())
+		{
+		case ResourceManager::MeshEncoding::Classic:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet_classic.vert",
+			                    "builtin://shaders/meshlet.frag");
+			break;
+		case ResourceManager::MeshEncoding::VBOAndIBOMDI:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet_mdi.vert",
+			                    "builtin://shaders/meshlet.frag");
+			break;
+		case ResourceManager::MeshEncoding::MeshletDecoded:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",
+			                    "builtin://shaders/meshlet_decoded.mesh", "builtin://shaders/meshlet.frag");
+			break;
+		case ResourceManager::MeshEncoding::MeshletEncoded:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",
+			                    "builtin://shaders/meshlet_encoded.mesh", "builtin://shaders/meshlet.frag");
+			break;
+		}
+	}
+
 	if (renderer == RendererType::GeneralDeferred || renderer == RendererType::GeneralForward)
 	{
 		switch (drawable)
 		{
-		case RenderableType::Meshlet:
-		{
-			switch (device.get_resource_manager().get_mesh_encoding())
-			{
-			case ResourceManager::MeshEncoding::Classic:
-				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet_classic.vert",
-				                    "builtin://shaders/meshlet.frag");
-				break;
-			case ResourceManager::MeshEncoding::VBOAndIBOMDI:
-				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet_mdi.vert",
-									"builtin://shaders/meshlet.frag");
-				break;
-			case ResourceManager::MeshEncoding::MeshletDecoded:
-				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",
-				                    "builtin://shaders/meshlet_decoded.mesh", "builtin://shaders/meshlet.frag");
-				break;
-			case ResourceManager::MeshEncoding::MeshletEncoded:
-				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",
-				                    "builtin://shaders/meshlet_encoded.mesh", "builtin://shaders/meshlet.frag");
-				break;
-			}
-			break;
-		}
-
 		case RenderableType::LegacyMesh:
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/static_mesh.vert", "builtin://shaders/static_mesh.frag");
 			break;

@@ -68,6 +68,7 @@ bool frustum_cull(vec3 lo, vec3 hi)
 }
 #endif
 
+#if 0
 vec3 view_transform_yz_flip(vec3 pos)
 {
 	vec3 view = (frustum.view * vec4(pos, 1.0)).xyz;
@@ -76,6 +77,7 @@ vec3 view_transform_yz_flip(vec3 pos)
 	view.yz = -view.yz;
 	return view;
 }
+#endif
 
 #ifdef MESHLET_RENDER_HIZ_BINDING
 bool hiz_cull(vec2 view_range_x, vec2 view_range_y, float closest_z)

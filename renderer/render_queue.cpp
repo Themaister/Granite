@@ -174,6 +174,8 @@ void RenderQueue::reset()
 	recycle_blocks();
 	for (auto &queue : queues)
 		queue.clear();
+	for (auto &pipe : draw_pipelines)
+		pipe.clear();
 	render_infos.clear();
 }
 
@@ -206,6 +208,10 @@ void *RenderQueue::allocate(size_t size, size_t alignment)
 void RenderQueue::push_mesh_asset_renderable(const MeshAssetRenderable &mesh, const RenderInfoComponent &transform)
 {
 	auto range = resource_manager->get_mesh_draw_range(mesh.get_asset_id());
+
+	if (range.meshlet.count == 0)
+		return;
+
 	auto &pipe = draw_pipelines[ecast(mesh.get_mesh_draw_pipeline())];
 	MeshAssetDrawTaskInfo draw = {};
 

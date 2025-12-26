@@ -7,6 +7,10 @@ out gl_MeshPerVertexEXT
     invariant vec4 gl_Position;
 } gl_MeshVerticesEXT[];
 
+#define MESHLET_PRIMITIVE_CULL_WAVE32 1
+#define MESHLET_RENDER_TASK_HIERARCHICAL 0
+#define MESHLET_LOCAL_INVOCATION_INDEXED 0
+
 #extension GL_KHR_shader_subgroup_basic : require
 #if defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
 #extension GL_KHR_shader_subgroup_shuffle : require
@@ -14,22 +18,23 @@ out gl_MeshPerVertexEXT
 #extension GL_KHR_shader_subgroup_arithmetic : require
 #endif
 
-#ifndef MESHLET_SIZE
-#error "Must define MESHLET_SIZE"
-#endif
+layout(max_primitives = 32, max_vertices = 32, triangles) out;
+layout(local_size_x = 32, local_size_y = 1) in;
 
-layout(max_primitives = MESHLET_SIZE, max_vertices = MESHLET_SIZE, triangles) out;
-layout(local_size_x = 32, local_size_y_id = 0) in;
+#define MESHLET_PAYLOAD_DESCRIPTOR_SET 3
+#define MESHLET_PAYLOAD_META_BINDING 1
+#define MESHLET_PAYLOAD_STREAM_BINDING 2
+#define MESHLET_PAYLOAD_PAYLOAD_BINDING 3
+#define MESHLET_VIEWPORT_BINDING 4
 
-#include "meshlet_payload_constants.h"
-
-#define MESHLET_PAYLOAD_DESCRIPTOR_SET 0
-#define MESHLET_PAYLOAD_META_BINDING 0
-#define MESHLET_PAYLOAD_STREAM_BINDING 1
-#define MESHLET_PAYLOAD_PAYLOAD_BINDING 2
-#include "meshlet_payload_decode.h"
-#include "meshlet_attribute_decode.h"
-#include "meshlet_render_types.h"
+#include "inc/meshlet_payload_constants.h"
+#include "inc/meshlet_payload_decode.h"
+#include "inc/meshlet_attribute_decode.h"
+#include "inc/meshlet_render_types.h"
+#include "inc/meshlet_primitive_cull.h"
+#include "inc/global_bindings.h"
+#include "inc/render_parameters.h"
+#include "inc/affine.h"
 
 #if MESHLET_LOCAL_INVOCATION_INDEXED
 #define MESHLET_PRIMITIVE_CULL_SHARED_INDEX shared_indices
@@ -41,55 +46,30 @@ shared i16vec2 shared_uv[MESHLET_SIZE];
 shared vec4 shared_clip_pos[MESHLET_SIZE];
 #endif
 
-#include "meshlet_primitive_cull.h"
-#include "affine.h"
-
 layout(location = 0) out vec3 vNormal[];
 layout(location = 1) out vec4 vTangent[];
 layout(location = 2) out vec2 vUV[];
 layout(location = 3) perprimitiveEXT out uint vDrawID[];
 
-layout(set = 1, binding = 0) uniform UBO
-{
-    mat4 VP;
-};
-
-layout(set = 1, binding = 2) uniform UBOViewport
+layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_VIEWPORT_BINDING) uniform UBOViewport
 {
     vec4 viewport;
 };
 
-#ifdef MESHLET_RENDER_TASK_HIERARCHICAL
-taskPayloadSharedEXT CompactedDrawInfoPayload mesh_payload;
-#else
-layout(set = 0, binding = 4, std430) readonly buffer CompactedDraws
-{
-    CompactedDrawInfo infos[];
-} mesh_payload;
-#endif
-
-layout(set = 0, binding = 5, std430) readonly buffer Transforms
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_TRANSFORMS) readonly buffer AffineTransforms
 {
     mat_affine data[];
 } transforms;
 
-layout(set = 0, binding = 10) buffer Stats
-{
-    uint invocations;
-    uint prim;
-    uint vert;
-} stats;
+taskPayloadSharedEXT CompactedDrawInfoPayload mesh_payload;
 
 const uint STRIDE = 4; // TODO: Spec constant or push constant
 
 void main()
 {
     uint compacted_meshlet_index = meshlet_get_meshlet_index();
-#ifndef MESHLET_RENDER_TASK_HIERARCHICAL
-    compacted_meshlet_index += 0x8000 * gl_DrawIDARB;
-#endif
 
-#if defined(MESHLET_RENDER_TASK_HIERARCHICAL) && !MESHLET_RENDER_TASK_HIERARCHICAL
+#if !MESHLET_RENDER_TASK_HIERARCHICAL
     CompactedDrawInfo task = mesh_payload.info;
     task.meshlet_index += uint(mesh_payload.offsets[compacted_meshlet_index]);
 #else
@@ -130,7 +110,7 @@ void main()
             linear_index, exponent);
         vec3 pos = ldexp(vec3(ipos), ivec3(exponent));
         world_pos = mul(M, pos);
-        clip_pos = VP * vec4(world_pos, 1.0);
+        clip_pos = global.view_projection * vec4(world_pos, 1.0);
     }
 
     meshlet_emit_primitive(decoded_index_buffer, clip_pos, viewport);
@@ -186,13 +166,4 @@ void main()
 #endif
         vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
     }
-
-#if 0
-    if (gl_LocalInvocationIndex == 0)
-    {
-        atomicAdd(stats.invocations, gl_WorkGroupSize.x * gl_WorkGroupSize.y);
-        atomicAdd(stats.prim, shared_active_prim_count_total);
-        atomicAdd(stats.vert, shared_active_vert_count_total);
-    }
-#endif
 }

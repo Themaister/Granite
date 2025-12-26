@@ -5,13 +5,13 @@
 
 layout(local_size_x = 32) in;
 
-#include "../inc/global_bindings.h"
-#include "../inc/meshlet_render.h"
-#include "../inc/render_parameters.h"
-
 // TODO
 #define MESHLET_RENDER_TASK_HIERARCHICAL 0
 #define MESHLET_RENDER_PHASE 0
+
+#include "inc/global_bindings.h"
+#include "inc/meshlet_render.h"
+#include "inc/render_parameters.h"
 
 #ifndef MESHLET_RENDER_TASK_HIERARCHICAL
 #error "Must define MESHLET_RENDER_TASK_HIERARCHICAL"
@@ -21,14 +21,11 @@ layout(local_size_x = 32) in;
 
 layout(push_constant, std430) uniform Registers
 {
-    vec3 camera_pos;
-    uint count;
     uint offset;
+    uint count;
 } registers;
 
 taskPayloadSharedEXT CompactedDrawInfoPayload mesh_payload;
-
-layout(constant_id = 1) const int NUM_CHUNK_WORKGROUPS = 0;
 
 shared uint ballot_value;
 uvec4 ballot(bool v)
@@ -55,17 +52,17 @@ uint ballotExclusiveBitCount(uvec4 v)
 
 uint payload_offset = 0;
 
-void process_task(TaskInfo task)
+void process_task(MeshAssetDrawTaskInfo task)
 {
     uint node_instance = task.node_instance;
-    uint material_index = task.material_index;
+    uint material_index = task.material_texture_index | (task.material_payload_offset << 16);
     uint mesh_index_count = task.mesh_index_count;
 
     uint offset = mesh_index_count & ~31u;
     uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
     uint meshlet_index = offset + gl_LocalInvocationIndex;
 
-#if !MESHLET_RENDER_TASK_HIERARCHICAL
+#if 0 && !MESHLET_RENDER_TASK_HIERARCHICAL
     bool visible = bitfieldExtract(aabb.data[task.aabb_instance / 32], int(task.aabb_instance & 31), 1) != 0;
 #else
     const bool visible = true;
@@ -85,7 +82,8 @@ void process_task(TaskInfo task)
         if (bitfieldExtract(visibility_state, int(gl_LocalInvocationIndex), 1) != 0)
             alloc_draw = cluster_cull(M, b, global.camera_position);
 #else
-        alloc_draw = cluster_cull(M, b, global.camera_position);
+        //alloc_draw = cluster_cull(M, b, global.camera_position);
+        alloc_draw = true;
 #endif
     }
 
@@ -132,7 +130,7 @@ void main()
     bool task_needs_work = false;
     if (task_index < registers.count)
     {
-        TaskInfo task = task_info.data[task_index];
+        MeshAssetDrawTaskInfo task = task_info.data[task_index];
 
         // Precull the group.
         bool visible = bitfieldExtract(aabb.data[task.aabb_instance / 32], int(task.aabb_instance & 31), 1) != 0;
@@ -162,22 +160,10 @@ void main()
     uint task_index = gl_WorkGroupID.x + registers.offset;
     if (task_index < registers.count)
     {
-        TaskInfo task = task_info.data[task_index];
+        MeshAssetDrawTaskInfo task = task_info.data[task_index];
         process_task(task);
     }
 #endif
 
-    uint wg_x, wg_y;
-    if (NUM_CHUNK_WORKGROUPS == 1)
-    {
-        wg_x = payload_offset;
-        wg_y = 1;
-    }
-    else
-    {
-        wg_x = NUM_CHUNK_WORKGROUPS;
-        wg_y = payload_offset;
-    }
-
-    EmitMeshTasksEXT(wg_x, wg_y, 1);
+    EmitMeshTasksEXT(8, payload_offset, 1);
 }

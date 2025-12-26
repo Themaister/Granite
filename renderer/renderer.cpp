@@ -566,7 +566,6 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 
 	cmd.set_sampler(0, BINDING_GLOBAL_LINEAR_SAMPLER, StockSampler::LinearClamp);
 	cmd.set_sampler(0, BINDING_GLOBAL_SHADOW_SAMPLER, StockSampler::LinearShadow);
-	cmd.set_sampler(0, BINDING_GLOBAL_GEOMETRY_SAMPLER, StockSampler::DefaultGeometryFilterClamp);
 
 	if (lighting->volumetric_fog)
 	{
@@ -610,6 +609,8 @@ void Renderer::bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderCo
 {
 	auto *global = cmd.allocate_typed_constant_data<RenderParameters>(0, BINDING_GLOBAL_TRANSFORM, 1);
 	*global = context.get_render_parameters();
+
+	cmd.set_sampler(0, BINDING_GLOBAL_GEOMETRY_SAMPLER, StockSampler::DefaultGeometryFilterWrap);
 }
 
 void Renderer::set_render_context_parameter_binder(RenderContextParameterBinder *binder)

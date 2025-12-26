@@ -7,7 +7,7 @@ out gl_MeshPerVertexEXT
     invariant vec4 gl_Position;
 } gl_MeshVerticesEXT[];
 
-#define MESHLET_PRIMITIVE_CULL_WAVE32 1
+//#define MESHLET_PRIMITIVE_CULL_WAVE32 1
 #define MESHLET_RENDER_TASK_HIERARCHICAL 0
 #define MESHLET_LOCAL_INVOCATION_INDEXED 0
 
@@ -38,18 +38,20 @@ layout(local_size_x = 32, local_size_y = 1) in;
 
 #if MESHLET_LOCAL_INVOCATION_INDEXED
 #define MESHLET_PRIMITIVE_CULL_SHARED_INDEX shared_indices
-shared uint shared_indices[MESHLET_SIZE];
-shared u8vec4 shared_nt[MESHLET_SIZE];
-shared bool shared_t_sign[MESHLET_SIZE];
-shared int shared_exponent[MESHLET_SIZE];
-shared i16vec2 shared_uv[MESHLET_SIZE];
-shared vec4 shared_clip_pos[MESHLET_SIZE];
+shared uint shared_indices[32];
+shared u8vec4 shared_nt[32];
+shared bool shared_t_sign[32];
+shared int shared_exponent[32];
+shared i16vec2 shared_uv[32];
+shared vec4 shared_clip_pos[32];
+shared vec3 shared_world_pos[32];
 #endif
 
-layout(location = 0) out vec3 vNormal[];
-layout(location = 1) out vec4 vTangent[];
+layout(location = 0) out mediump vec3 vNormal[];
+layout(location = 1) out mediump vec4 vTangent[];
 layout(location = 2) out vec2 vUV[];
-layout(location = 3) perprimitiveEXT out uint vDrawID[];
+layout(location = 3) out vec3 vPos[];
+layout(location = 4) perprimitiveEXT out uint vMaterialID[];
 
 layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_VIEWPORT_BINDING) uniform UBOViewport
 {
@@ -133,12 +135,14 @@ void main()
         shared_uv[out_vert_index] = uv;
         shared_nt[out_vert_index] = nt;
         shared_exponent[out_vert_index] = exponent;
+        shared_world_pos[out_vert_index] = world_pos;
 #else
         gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
         vUV[out_vert_index] = attribute_decode_snorm_exp_uv(uv, exponent);
         mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
         vNormal[out_vert_index] = mul_normal(M, NT[0].xyz);
         vTangent[out_vert_index] = vec4(mul_normal(M, NT[1].xyz), NT[1].w);
+        vPos[out_vert_index] = world_pos;
 #endif
     }
 
@@ -156,6 +160,7 @@ void main()
         mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
         vNormal[gl_LocalInvocationIndex] = mul_normal(M, NT[0].xyz);
         vTangent[gl_LocalInvocationIndex] = vec4(mul_normal(M, NT[1].xyz), NT[1].w);
+        vPos[gl_LocalInvocationIndex] = shared_world_pos[gl_LocalInvocationIndex];
     }
 #endif
 
@@ -164,6 +169,6 @@ void main()
 #ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
 	    gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(unpack8(shared_indices[gl_LocalInvocationIndex]).xyz);
 #endif
-        vDrawID[gl_LocalInvocationIndex] = task.meshlet_index;
+        vMaterialID[gl_LocalInvocationIndex] = task.material_offset;
     }
 }

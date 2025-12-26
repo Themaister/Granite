@@ -265,6 +265,11 @@ void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport)
     uint and_code = code_a & code_b & code_c;
 
     bool culled_planes = (and_code & CLIP_CODE_PLANES) != 0;
+
+    // Reject culling results if we have partial W clip.
+    if (((or_code ^ and_code) & CLIP_CODE_NEGATIVE_W) != 0)
+        culled_planes = false;
+
     bool is_active_prim = false;
 
     if (!culled_planes)

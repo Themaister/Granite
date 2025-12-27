@@ -625,7 +625,7 @@ void Renderer::promote_read_write_cache_to_read_only()
 }
 
 void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContext &context, const RenderQueue &queue,
-                                  DrawPipeline pipe, bool skinned) const
+                                  DrawPipeline pipe, RendererFlushFlags options, bool skinned) const
 {
 	auto &manager = device->get_resource_manager();
 	auto encoding = manager.get_mesh_encoding();
@@ -710,10 +710,17 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		cmd.set_storage_buffer(3, 2, *device->get_resource_manager().get_meshlet_stream_header_buffer());
 		cmd.set_storage_buffer(3, 3, *device->get_resource_manager().get_meshlet_payload_buffer());
 
-		*cmd.allocate_typed_constant_data<vec4>(3, 4, 1) =
-		    vec4(cmd.get_viewport().x + 0.5f * cmd.get_viewport().width - 0.5f,
-		         cmd.get_viewport().y + 0.5f * cmd.get_viewport().height - 0.5f, 0.5f * cmd.get_viewport().width,
-		         0.5f * cmd.get_viewport().height);
+		struct ViewportUBO
+		{
+			vec4 viewport;
+			float winding;
+		};
+
+		auto *vp_ubo = cmd.allocate_typed_constant_data<ViewportUBO>(3, 4, 1);
+		vp_ubo->viewport = vec4(cmd.get_viewport().x + 0.5f * cmd.get_viewport().width - 0.5f,
+		                        cmd.get_viewport().y + 0.5f * cmd.get_viewport().height - 0.5f,
+		                        0.5f * cmd.get_viewport().width, 0.5f * cmd.get_viewport().height);
+		vp_ubo->winding = (options & FRONT_FACE_CLOCKWISE_BIT) ? -1.0f : 1.0f;
 
 		struct UBO
 		{
@@ -802,14 +809,14 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 
 	if (!(options & MESH_ASSET_SKIP_STATIC_BIT))
-		render_mesh_assets(cmd, context, queue, DrawPipeline::Opaque, false);
+		render_mesh_assets(cmd, context, queue, DrawPipeline::Opaque, options, false);
 	if (!(options & MESH_ASSET_SKIP_SKINNED_BIT))
-		render_mesh_assets(cmd, context, queue, DrawPipeline::Opaque, true);
+		render_mesh_assets(cmd, context, queue, DrawPipeline::Opaque, options, true);
 
 	if (!(options & MESH_ASSET_SKIP_STATIC_BIT))
-		render_mesh_assets(cmd, context, queue, DrawPipeline::AlphaTest, false);
+		render_mesh_assets(cmd, context, queue, DrawPipeline::AlphaTest, options, false);
 	if (!(options & MESH_ASSET_SKIP_SKINNED_BIT))
-		render_mesh_assets(cmd, context, queue, DrawPipeline::AlphaTest, true);
+		render_mesh_assets(cmd, context, queue, DrawPipeline::AlphaTest, options, true);
 
 	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);
 
@@ -824,9 +831,9 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 
 		if (!(options & MESH_ASSET_SKIP_STATIC_BIT))
-			render_mesh_assets(cmd, context, queue, DrawPipeline::AlphaBlend, false);
+			render_mesh_assets(cmd, context, queue, DrawPipeline::AlphaBlend, options, false);
 		if (!(options & MESH_ASSET_SKIP_SKINNED_BIT))
-			render_mesh_assets(cmd, context, queue, DrawPipeline::AlphaBlend, true);
+			render_mesh_assets(cmd, context, queue, DrawPipeline::AlphaBlend, options, true);
 
 		queue.dispatch_subset(Queue::Transparent, cmd, &state, index, num_indices);
 	}

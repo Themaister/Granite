@@ -73,6 +73,7 @@ layout(location = 4) out vec3 vPos[];
 layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_VIEWPORT_BINDING) uniform UBOViewport
 {
     vec4 viewport;
+    float winding;
 };
 
 layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_TRANSFORMS) readonly buffer AffineTransforms
@@ -132,7 +133,7 @@ void main()
         clip_pos = global.view_projection * vec4(world_pos, 1.0);
     }
 
-    meshlet_emit_primitive(decoded_index_buffer, clip_pos, viewport);
+    meshlet_emit_primitive(decoded_index_buffer, clip_pos, viewport, winding);
 
     if (meshlet_lane_has_active_vert())
     {

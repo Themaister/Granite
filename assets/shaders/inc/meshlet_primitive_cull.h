@@ -125,7 +125,7 @@ float cross2d(vec2 a, vec2 b)
     return a.x * b.y - a.y * b.x;
 }
 
-bool cull_triangle(vec2 a, vec2 b, vec2 c)
+bool cull_triangle(vec2 a, vec2 b, vec2 c, float winding)
 {
     // To be completely accurate, this should be done in fixed point,
     // but we can YOLO a bit since glitches in extreme edge cases are considered okay.
@@ -134,8 +134,8 @@ bool cull_triangle(vec2 a, vec2 b, vec2 c)
 
     // This is 100% accurate as long as the primitive is no larger than ~4k subpixels, i.e. 16x16 pixels.
     // Normally, we'd be able to do GEQ test, but GE test is conservative, even with FP error in play.
-    precise float pos_area = ab.y * ac.x;
-    precise float neg_area = ab.x * ac.y;
+    precise float pos_area = ab.y * ac.x * winding;
+    precise float neg_area = ab.x * ac.y * winding;
 
     // This check should be done in snapped coordinate space (which we cannot realistically get),
     // but in practice this is fine.
@@ -224,7 +224,7 @@ uint meshlet_get_sublet_index(uint sublet_index)
 		return gl_WorkGroupSize.y * gl_WorkGroupID.x + sublet_index;
 }
 
-void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport)
+void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport, float winding)
 {
     vec2 c = clip_pos.xy / clip_pos.w;
 
@@ -283,7 +283,7 @@ void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport)
             vec2 window_b = shared_window_positions[LocalInvocationID.y][prim.y];
             vec2 window_c = shared_window_positions[LocalInvocationID.y][prim.z];
 #endif
-            is_active_prim = cull_triangle(window_a, window_b, window_c);
+            is_active_prim = cull_triangle(window_a, window_b, window_c, winding);
         }
     }
 

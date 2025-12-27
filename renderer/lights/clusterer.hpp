@@ -131,7 +131,8 @@ private:
 	const RendererSuite *renderer_suite = nullptr;
 
 	bool enable_shadows = true;
-	bool force_update_shadows = false;
+	//bool force_update_shadows = false;
+	bool force_update_shadows = true;
 	bool enable_volumetric_diffuse = false;
 	bool enable_volumetric_fog = false;
 	bool enable_volumetric_decals = false;

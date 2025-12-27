@@ -137,7 +137,6 @@ void main()
         // Precull the group.
         AABB aabb = aabb.data[task.aabb_instance];
         bool visible = frustum_cull(aabb.lo, aabb.hi);
-        //bool visible = true;
 
 #if MESHLET_RENDER_PHASE == 1
         task_needs_work = visible && occluders.data[task.occluder_state_offset] != 0;

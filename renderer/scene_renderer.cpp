@@ -529,10 +529,9 @@ SceneTransformUpdatePass setup_scene_transforms_update_pass(RenderGraph &graph, 
 		// TODO: Cannot use conditional render pass since
 		// it is queried before scene is updated.
 
-		void build_render_pass(Vulkan::CommandBuffer &cmd) override
+		void update_transforms(Vulkan::CommandBuffer &cmd)
 		{
 			// TODO: Copy over to prev transform buffer.
-
 			auto span = scene.get_transform_update_span();
 			if (span.count == 0)
 				return;
@@ -541,10 +540,7 @@ SceneTransformUpdatePass setup_scene_transforms_update_pass(RenderGraph &graph, 
 			size_t count = 0;
 
 			const auto *transforms = scene.get_transforms().get_cached_transforms();
-			const auto *aabbs = scene.get_aabbs().get_aabbs();
-
 			auto &transform_buffer = graph.get_physical_buffer_resource(*resources.transforms);
-			auto &aabb_buffer = graph.get_physical_buffer_resource(*resources.aabbs);
 
 			const auto flush = [&]()
 			{
@@ -552,6 +548,44 @@ SceneTransformUpdatePass setup_scene_transforms_update_pass(RenderGraph &graph, 
 					return;
 				memcpy(cmd.update_buffer(transform_buffer, base * sizeof(mat_affine), sizeof(mat_affine) * count),
 					   &transforms[base], sizeof(mat_affine) * count);
+				count = 0;
+			};
+
+			assert(span.count != 0);
+			base = span.offsets[0];
+
+			for (size_t i = 0; i < span.count; i++)
+			{
+				if (base + i != span.offsets[i])
+				{
+					flush();
+					base = span.offsets[i];
+				}
+
+				count++;
+			}
+
+			flush();
+		}
+
+		void update_aabbs(Vulkan::CommandBuffer &cmd)
+		{
+			// TODO: Copy over to prev transform buffer.
+
+			auto span = scene.get_aabb_update_span();
+			if (span.count == 0)
+				return;
+
+			uint32_t base = 0;
+			size_t count = 0;
+
+			const auto *aabbs = scene.get_aabbs().get_aabbs();
+			auto &aabb_buffer = graph.get_physical_buffer_resource(*resources.aabbs);
+
+			const auto flush = [&]()
+			{
+				if (!count)
+					return;
 				memcpy(cmd.update_buffer(aabb_buffer, base * sizeof(AABB), sizeof(AABB) * count),
 					   &aabbs[base], sizeof(AABB) * count);
 				count = 0;
@@ -572,6 +606,12 @@ SceneTransformUpdatePass setup_scene_transforms_update_pass(RenderGraph &graph, 
 			}
 
 			flush();
+		}
+
+		void build_render_pass(Vulkan::CommandBuffer &cmd) override
+		{
+			update_transforms(cmd);
+			update_aabbs(cmd);
 		}
 	};
 

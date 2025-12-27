@@ -229,20 +229,17 @@ public:
 		return { updated_transforms.data(), updated_transforms_count.load(std::memory_order_relaxed) };
 	}
 
+	UpdateSpan get_aabb_update_span() const
+	{
+		return { updated_aabbs.data(), updated_aabb_count.load(std::memory_order_relaxed) };
+	}
+
 	UpdateSpan get_occluder_state_update_span() const
 	{
 		return { cleared_occlusion_states.data(), cleared_occlusion_states_count.load(std::memory_order_relaxed) };
 	}
 
-	void clear_transform_updates()
-	{
-		updated_transforms_count.store(0, std::memory_order_relaxed);
-	}
-
-	void clear_occluder_state_updates()
-	{
-		cleared_occlusion_states_count.store(0, std::memory_order_relaxed);
-	}
+	void clear_updates();
 
 private:
 	TransformAllocator transform_allocator;
@@ -254,8 +251,10 @@ private:
 	NodeHandle root_node;
 
 	Util::DynamicArray<uint32_t> updated_transforms;
-	std::atomic_size_t updated_transforms_count;
+	Util::DynamicArray<uint32_t> updated_aabbs;
 	Util::DynamicArray<uint32_t> cleared_occlusion_states;
+	std::atomic_size_t updated_transforms_count;
+	std::atomic_size_t updated_aabb_count;
 	std::atomic_size_t cleared_occlusion_states_count;
 
 	// Sets up the default useful component groups up front.
@@ -358,6 +357,8 @@ private:
 	void update_skinning(Node &node);
 	void perform_update_skinning(Node * const *updates, size_t count);
 	void notify_transform_updates(uint32_t offset, uint32_t count);
+	void notify_aabb_updates(uint32_t offset, uint32_t count);
 	void notify_allocated_occlusion_state(uint32_t offset, uint32_t count);
+	void sort_updates();
 };
 }

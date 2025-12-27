@@ -54,10 +54,8 @@ Scene::Scene()
 {
 	pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
 	updated_transforms_count.store(0, std::memory_order_relaxed);
+	updated_aabb_count.store(0, std::memory_order_relaxed);
 	cleared_occlusion_states_count.store(0, std::memory_order_relaxed);
-
-	updated_transforms.reserve(MaxNumNodesLog2);
-	cleared_occlusion_states.reserve(MaxOcclusionStatesLog2);
 }
 
 Scene::~Scene()
@@ -551,6 +549,9 @@ void Scene::perform_update_skinning(Node * const *updates, size_t count)
 
 void Scene::update_transform_tree(TaskComposer *composer)
 {
+	updated_transforms.reserve(get_transforms().get_count());
+	updated_aabbs.reserve(get_aabbs().get_count());
+
 	if (composer)
 	{
 		auto &group = composer->begin_pipeline_stage();
@@ -624,6 +625,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 				l.clear();
 			pending_node_updates_skin.clear();
 			pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
+			sort_updates();
 		});
 	}
 	else
@@ -633,6 +635,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 			l.clear();
 		pending_node_updates_skin.clear();
 		pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
+		sort_updates();
 	}
 }
 
@@ -665,7 +668,7 @@ void Scene::update_transform_listener_components()
 		std::tie(l, transform) = light;
 
 		// v = [0, 0, 1, 0].
-		l->direction = normalize((*transform->transform)[2].xyz());
+		l->direction = normalize(-transform->transform->get_forward());
 	}
 
 	for (auto &light : volumetric_diffuse_lights)
@@ -765,6 +768,8 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 				{
 					SIMD::transform_aabb(bb, *aabb->aabb, cached_transform->get_world_transform());
 				}
+
+				notify_aabb_updates(cached_transform->aabb.offset, 1);
 			}
 
 			timestamp->last_timestamp = new_timestamp;
@@ -781,7 +786,7 @@ void Scene::notify_allocated_occlusion_state(uint32_t offset, uint32_t count)
 	// in a well defined place where we ensure thread safety through external means.
 	size_t write_offset = cleared_occlusion_states_count.fetch_add(count, std::memory_order_relaxed);
 
-	if (write_offset + count > MaxOcclusionStatesLog2)
+	if (write_offset + count > cleared_occlusion_states.get_capacity())
 	{
 		// Technically, this isn't a big problem, but may lead to weirdness down the line.
 		LOGE("Cleared occlusion state buffer is full.\n");
@@ -796,7 +801,7 @@ void Scene::notify_transform_updates(uint32_t offset, uint32_t count)
 {
 	size_t write_offset = updated_transforms_count.fetch_add(count, std::memory_order_relaxed);
 
-	if (write_offset + count > MaxNumNodesLog2)
+	if (write_offset + count > updated_transforms.get_capacity())
 	{
 		// This shouldn't happen unless someone forgets to restart the list.
 		LOGE("Transform update state buffer is full.\n");
@@ -807,9 +812,40 @@ void Scene::notify_transform_updates(uint32_t offset, uint32_t count)
 		updated_transforms[write_offset + i] = offset + i;
 }
 
+void Scene::notify_aabb_updates(uint32_t offset, uint32_t count)
+{
+	size_t write_offset = updated_aabb_count.fetch_add(count, std::memory_order_relaxed);
+
+	if (write_offset + count > updated_aabbs.get_capacity())
+	{
+		// This shouldn't happen unless someone forgets to restart the list.
+		LOGE("AABB update state buffer is full.\n");
+		return;
+	}
+
+	for (uint32_t i = 0; i < count; i++)
+		updated_aabbs[write_offset + i] = offset + i;
+}
+
 void Scene::push_pending_node_update(Node *node)
 {
 	pending_node_updates.push(node);
+}
+
+void Scene::sort_updates()
+{
+	std::sort(updated_transforms.data(),
+	          updated_transforms.data() + updated_transforms_count.load(std::memory_order_relaxed));
+	std::sort(updated_aabbs.data(), updated_aabbs.data() + updated_aabb_count.load(std::memory_order_relaxed));
+	std::sort(cleared_occlusion_states.data(),
+	          cleared_occlusion_states.data() + cleared_occlusion_states_count.load(std::memory_order_relaxed));
+}
+
+void Scene::clear_updates()
+{
+	updated_transforms_count.store(0, std::memory_order_relaxed);
+	updated_aabb_count.store(0, std::memory_order_relaxed);
+	cleared_occlusion_states_count.store(0, std::memory_order_relaxed);
 }
 
 void Scene::distribute_update_to_level(Node *update, unsigned level)
@@ -1128,6 +1164,7 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 			if (!get_occluder_states().allocate(num_occluder_words, &transform->occluder_state))
 				LOGE("Exhausted occluder state pool.\n");
 
+			cleared_occlusion_states.reserve(get_occluder_states().get_count());
 			notify_allocated_occlusion_state(transform->occluder_state.offset, transform->occluder_state.count);
 		}
 	}

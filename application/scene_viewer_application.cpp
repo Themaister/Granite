@@ -1487,8 +1487,7 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	auto final = composer.get_outgoing_task();
 	final->wait();
 
-	scene.clear_occluder_state_updates();
-	scene.clear_transform_updates();
+	scene.clear_updates();
 }
 
 std::string SceneViewerApplication::get_name()

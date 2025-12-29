@@ -114,16 +114,22 @@ class SceneTransformManager final : public EventHandler,
 {
 public:
 	SceneTransformManager();
-	// Every RenderContext that needs to render meshes should allocate once instance.
 	void init(Scene &scene);
-	void register_render_context(RenderContext *context);
+
+	// Every RenderContext that needs to render meshes in an occlusion cullable way
+	// should allocate once instance.
+	void register_persistent_render_context(RenderContext *context);
+
+	// For RenderContexts that just want to render stuff once and forget about it
+	// e.g. positional lights rendering and other misc stuff which allocates
+	// contexts on the fly.
+	void register_one_shot_render_context(RenderContext *context);
 
 	const Vulkan::Buffer *get_transforms() const { return transforms.get(); }
 	const Vulkan::Buffer *get_prev_transforms() const { return prev_transforms.get(); }
 	const Vulkan::Buffer *get_aabbs() const { return aabbs.get(); }
 	const Vulkan::Buffer *get_scene_task_buffer() const { return task_buffer.get(); }
 	const Vulkan::Buffer *get_occlusion_state(unsigned index) const { return per_context_data[index].occlusions.get(); }
-	const Vulkan::Buffer *get_culled_aabb_state(unsigned index) const { return per_context_data[index].culled_aabbs.get(); }
 
 private:
 	void add_render_passes(RenderGraph &graph) override;
@@ -140,21 +146,27 @@ private:
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 
+	void update_scene_transforms();
+
+	Vulkan::Device *device = nullptr;
 	Vulkan::BufferHandle transforms;
 	Vulkan::BufferHandle prev_transforms;
 	Vulkan::BufferHandle aabbs;
 	Vulkan::BufferHandle task_buffer;
+	Scene *scene = nullptr;
+	VisibilityList visible;
 
 	struct PerContext
 	{
 		Vulkan::BufferHandle occlusions;
-		Vulkan::BufferHandle culled_aabbs;
-		RenderContext *context = nullptr;
 	};
 
 	Util::SmallVector<PerContext> per_context_data;
 
 	std::mutex sem_lock;
 	Util::SmallVector<Vulkan::Semaphore> sems;
+	Vulkan::Semaphore acquire_sem;
+
+	void ensure_buffer(Vulkan::CommandBufferHandle &cmd, Vulkan::BufferHandle &buffer, VkDeviceSize size);
 };
 }

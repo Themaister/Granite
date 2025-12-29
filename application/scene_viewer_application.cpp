@@ -335,12 +335,12 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);
-	scene_transform_manager.register_render_context(&context);
+	scene_transform_manager.register_persistent_render_context(&context);
 	fallback_depth_context.set_lighting_parameters(&fallback_lighting);
 
-	scene_transform_manager.register_render_context(&fallback_depth_context);
+	scene_transform_manager.register_persistent_render_context(&fallback_depth_context);
 	for (auto &d : depth_contexts)
-		scene_transform_manager.register_render_context(&d);
+		scene_transform_manager.register_persistent_render_context(&d);
 	cam.set_depth_range_infinite(1.0f / 16.0f);
 
 	// Create a dummy background if there isn't any background.
@@ -1467,8 +1467,6 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	GRANITE_SCOPED_TIMELINE_EVENT("render-scene-wait");
 	auto final = composer.get_outgoing_task();
 	final->wait();
-
-	scene.clear_updates();
 }
 
 std::string SceneViewerApplication::get_name()

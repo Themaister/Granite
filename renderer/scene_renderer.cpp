@@ -510,38 +510,40 @@ SceneTransformManager::SceneTransformManager()
 	EVENT_MANAGER_REGISTER_LATCH(SceneTransformManager, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
 }
 
-void SceneTransformManager::on_device_created(const Vulkan::DeviceCreatedEvent &)
+void SceneTransformManager::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 {
+	device = &e.get_device();
 }
 
 void SceneTransformManager::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 {
+	device = nullptr;
 	transforms.reset();
 	prev_transforms.reset();
 	aabbs.reset();
 
 	for (auto &ctx : per_context_data)
-	{
 		ctx.occlusions.reset();
-		ctx.culled_aabbs.reset();
-	}
 }
 
-void SceneTransformManager::init(Scene &scene)
+void SceneTransformManager::init(Scene &scene_)
 {
-	auto *entity = scene.create_entity();
+	auto *entity = scene_.create_entity();
 	auto *rpass = entity->allocate_component<RenderPassComponent>();
 	rpass->creator = this;
 	auto *refresh = entity->allocate_component<PerFrameUpdateComponent>();
 	refresh->refresh = this;
 }
 
-void SceneTransformManager::register_render_context(RenderContext *context)
+void SceneTransformManager::register_persistent_render_context(RenderContext *context)
 {
-	PerContext ctx = {};
-	ctx.context = context;
 	context->set_scene_transform_parameters(this, per_context_data.size());
-	per_context_data.push_back(std::move(ctx));
+	per_context_data.emplace_back();
+}
+
+void SceneTransformManager::register_one_shot_render_context(RenderContext *context)
+{
+	context->set_scene_transform_parameters(this, UINT32_MAX);
 }
 
 void SceneTransformManager::add_render_passes(RenderGraph &graph)
@@ -551,7 +553,7 @@ void SceneTransformManager::add_render_passes(RenderGraph &graph)
 
 Vulkan::Semaphore SceneTransformManager::external_acquire()
 {
-	return {};
+	return acquire_sem;
 }
 
 void SceneTransformManager::external_release(Vulkan::Semaphore semaphore)
@@ -560,9 +562,155 @@ void SceneTransformManager::external_release(Vulkan::Semaphore semaphore)
 	sems.push_back(std::move(semaphore));
 }
 
-void SceneTransformManager::refresh(const RenderContext &context, TaskComposer &composer)
+void SceneTransformManager::refresh(const RenderContext &, TaskComposer &composer)
 {
 	// Do actual work.
+	auto &stage = composer.begin_pipeline_stage();
+	stage.enqueue_task([&]()
+	{
+		update_scene_transforms();
+	});
+}
+
+template <typename T>
+static void flush_update(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &buffer, VkDeviceSize offset, VkDeviceSize count,
+                         const T *data)
+{
+	memcpy(cmd.update_buffer(buffer, offset * sizeof(*data), count * sizeof(*data)), &data[offset],
+	       count * sizeof(*data));
+}
+
+static void flush_update(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &buffer, VkDeviceSize offset, VkDeviceSize count,
+                         const uint32_t *)
+{
+	cmd.fill_buffer(buffer, 0, offset * sizeof(uint32_t), count * sizeof(uint32_t));
+}
+
+template <typename T>
+static void update_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &buffer, const T *data,
+                        const Scene::UpdateSpan &span)
+{
+	uint32_t base = 0;
+	size_t count = 0;
+
+	const auto flush = [&]()
+	{
+		if (!count)
+			return;
+
+		flush_update(cmd, buffer, base, count, data);
+		memcpy(cmd.update_buffer(buffer, base * sizeof(mat_affine), sizeof(mat_affine) * count), &data[base],
+		       sizeof(mat_affine) * count);
+		count = 0;
+	};
+
+	assert(span.count != 0);
+	base = span.offsets[0];
+
+	for (size_t i = 0; i < span.count; i++)
+	{
+		if (base + i != span.offsets[i])
+		{
+			flush();
+			base = span.offsets[i];
+		}
+
+		count++;
+	}
+
+	flush();
+}
+
+void SceneTransformManager::update_scene_transforms()
+{
+	if (!scene)
+		return;
+
+	// Avoid WAR hazard from previous frame.
+	{
+		std::lock_guard<std::mutex> lock(sem_lock);
+		for (auto &sem : sems)
+		{
+			device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncTransfer, std::move(sem),
+				VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT, false);
+		}
+
+		sems.clear();
+	}
+
+	Vulkan::CommandBufferHandle cmd;
+
+	auto transform_span = scene->get_transform_update_span();
+	auto aabb_span = scene->get_aabb_update_span();
+	auto occlusion_span = scene->get_occluder_state_update_span();
+
+	ensure_buffer(cmd, transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine));
+	ensure_buffer(cmd, prev_transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine));
+	ensure_buffer(cmd, aabbs, VkDeviceSize(scene->get_aabbs().get_count()) * sizeof(AABB));
+
+	for (auto &ctx : per_context_data)
+		ensure_buffer(cmd, ctx.occlusions, VkDeviceSize(scene->get_occluder_states().get_count()) * sizeof(uint32_t));
+
+	if (transform_span.count != 0)
+	{
+		if (!cmd)
+			cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
+		update_span(*cmd, *transforms, scene->get_transforms().get_cached_transforms(), transform_span);
+	}
+
+	if (aabb_span.count != 0)
+	{
+		if (!cmd)
+			cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
+		update_span(*cmd, *aabbs, scene->get_aabbs().get_aabbs(), transform_span);
+	}
+
+	if (occlusion_span.count != 0)
+	{
+		for (auto &ctx : per_context_data)
+		{
+			if (!cmd)
+				cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
+			update_span(*cmd, *ctx.occlusions, static_cast<const uint32_t *>(nullptr), occlusion_span);
+		}
+	}
+
+	if (cmd)
+	{
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+		             VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
+		             VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
+		acquire_sem.reset();
+		device->submit(cmd, nullptr, 1, &acquire_sem);
+	}
+
+	scene->clear_updates();
+}
+
+void SceneTransformManager::ensure_buffer(Vulkan::CommandBufferHandle &cmd, Vulkan::BufferHandle &buffer,
+                                          VkDeviceSize size)
+{
+	if (buffer && buffer->get_create_info().size >= size)
+		return;
+
+	Vulkan::BufferCreateInfo bufinfo = {};
+	bufinfo.size = std::max<VkDeviceSize>(64, size);
+	if (buffer)
+		bufinfo.size = std::max<VkDeviceSize>(size, buffer->get_create_info().size * 3 / 2);
+	bufinfo.usage =
+	    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	bufinfo.domain = Vulkan::BufferDomain::Device;
+	auto new_buffer = device->create_buffer(bufinfo);
+
+	if (buffer)
+	{
+		if (!cmd)
+			cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
+
+		cmd->copy_buffer(*new_buffer,0, *buffer, 0, buffer->get_create_info().size);
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
+		             VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
+	}
 }
 
 void SceneTransformManager::set_base_render_context(const RenderContext *)
@@ -575,15 +723,15 @@ void SceneTransformManager::set_base_renderer(const RendererSuite *)
 
 }
 
-void SceneTransformManager::set_scene(Scene *)
+void SceneTransformManager::set_scene(Scene *scene_)
 {
-
+	scene = scene_;
 }
 
 void SceneTransformManager::setup_render_pass_dependencies(RenderGraph &graph)
 {
 	if (auto *pass = graph.find_pass("shadow-fallback"))
-		pass->add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+		pass->add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT);
 }
 
 void SceneTransformManager::setup_render_pass_dependencies(RenderGraph &, RenderPass &target,
@@ -595,187 +743,5 @@ void SceneTransformManager::setup_render_pass_dependencies(RenderGraph &, Render
 
 void SceneTransformManager::setup_render_pass_resources(RenderGraph &)
 {
-
 }
-
-#if 0
-SceneTransformUpdatePass setup_scene_transforms_update_pass(RenderGraph &graph, const Scene &scene, const std::string &tag)
-{
-	SceneTransformUpdatePass res = {};
-	auto &pass = graph.add_pass(tag + "-update", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
-
-	BufferInfo bufinfo = {};
-	bufinfo.flags = ATTACHMENT_INFO_PERSISTENT_BIT;
-	bufinfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	bufinfo.size = sizeof(mat_affine) * (1u << MaxNumNodesLog2);
-	res.transforms = &pass.add_transfer_output(tag + "-affine", bufinfo);
-	bufinfo.size = sizeof(AABB) * (1u << MaxNumNodesLog2);
-	res.aabbs = &pass.add_transfer_output(tag + "-aabb", bufinfo);
-
-	struct Pass final : RenderPassInterface
-	{
-		Pass(RenderGraph &graph_, const Scene &scene_) : graph(graph_), scene(scene_) {}
-
-		RenderGraph &graph;
-		const Scene &scene;
-		SceneTransformUpdatePass resources = {};
-
-		// TODO: Cannot use conditional render pass since
-		// it is queried before scene is updated.
-
-		void update_transforms(Vulkan::CommandBuffer &cmd)
-		{
-			// TODO: Copy over to prev transform buffer.
-			auto span = scene.get_transform_update_span();
-			if (span.count == 0)
-				return;
-
-			uint32_t base = 0;
-			size_t count = 0;
-
-			const auto *transforms = scene.get_transforms().get_cached_transforms();
-			auto &transform_buffer = graph.get_physical_buffer_resource(*resources.transforms);
-
-			const auto flush = [&]()
-			{
-				if (!count)
-					return;
-				memcpy(cmd.update_buffer(transform_buffer, base * sizeof(mat_affine), sizeof(mat_affine) * count),
-					   &transforms[base], sizeof(mat_affine) * count);
-				count = 0;
-			};
-
-			assert(span.count != 0);
-			base = span.offsets[0];
-
-			for (size_t i = 0; i < span.count; i++)
-			{
-				if (base + i != span.offsets[i])
-				{
-					flush();
-					base = span.offsets[i];
-				}
-
-				count++;
-			}
-
-			flush();
-		}
-
-		void update_aabbs(Vulkan::CommandBuffer &cmd)
-		{
-			// TODO: Copy over to prev transform buffer.
-
-			auto span = scene.get_aabb_update_span();
-			if (span.count == 0)
-				return;
-
-			uint32_t base = 0;
-			size_t count = 0;
-
-			const auto *aabbs = scene.get_aabbs().get_aabbs();
-			auto &aabb_buffer = graph.get_physical_buffer_resource(*resources.aabbs);
-
-			const auto flush = [&]()
-			{
-				if (!count)
-					return;
-				memcpy(cmd.update_buffer(aabb_buffer, base * sizeof(AABB), sizeof(AABB) * count),
-					   &aabbs[base], sizeof(AABB) * count);
-				count = 0;
-			};
-
-			assert(span.count != 0);
-			base = span.offsets[0];
-
-			for (size_t i = 0; i < span.count; i++)
-			{
-				if (base + i != span.offsets[i])
-				{
-					flush();
-					base = span.offsets[i];
-				}
-
-				count++;
-			}
-
-			flush();
-		}
-
-		void build_render_pass(Vulkan::CommandBuffer &cmd) override
-		{
-			update_transforms(cmd);
-			update_aabbs(cmd);
-		}
-	};
-
-	auto handle = Util::make_handle<Pass>(graph, scene);
-	handle->resources = res;
-	pass.set_render_pass_interface(std::move(handle));
-	return res;
-}
-
-OcclusionUpdatePass setup_occlusion_update_pass(RenderGraph &graph, const Scene &scene, const std::string &tag)
-{
-	OcclusionUpdatePass res = {};
-	auto &pass = graph.add_pass(tag + "-occlusion", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
-
-	BufferInfo bufinfo = {};
-	bufinfo.flags = ATTACHMENT_INFO_PERSISTENT_BIT;
-	bufinfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	bufinfo.size = sizeof(uint32_t) * (1u << MaxOcclusionStatesLog2);
-	res.occlusions = &pass.add_transfer_output(tag + "-occlusion", bufinfo);
-
-	struct Pass : RenderPassInterface
-	{
-		Pass(RenderGraph &graph_, const Scene &scene_) : graph(graph_), scene(scene_) {}
-
-		RenderGraph &graph;
-		const Scene &scene;
-		OcclusionUpdatePass resources = {};
-
-		void build_render_pass(Vulkan::CommandBuffer &cmd) override
-		{
-			auto span = scene.get_occluder_state_update_span();
-			if (span.count == 0)
-				return;
-
-			uint32_t base = 0;
-			size_t count = 0;
-
-			auto &occlusion_buffer = graph.get_physical_buffer_resource(*resources.occlusions);
-
-			const auto flush = [&]()
-			{
-				if (count)
-				{
-					cmd.fill_buffer(occlusion_buffer, 0, base * sizeof(uint32_t), count * sizeof(uint32_t));
-					count = 0;
-				}
-			};
-
-			assert(span.count != 0);
-			base = span.offsets[0];
-
-			for (size_t i = 0; i < span.count; i++)
-			{
-				if (base + i != span.offsets[i])
-				{
-					flush();
-					base = span.offsets[i];
-				}
-
-				count++;
-			}
-
-			flush();
-		}
-	};
-
-	auto handle = Util::make_handle<Pass>(graph, scene);
-	handle->resources = res;
-	pass.set_render_pass_interface(std::move(handle));
-	return res;
-}
-#endif
 }

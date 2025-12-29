@@ -335,11 +335,12 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);
-	context.set_scene_transform_parameters(&scene_transform);
+	scene_transform_manager.register_render_context(&context);
 	fallback_depth_context.set_lighting_parameters(&fallback_lighting);
-	fallback_depth_context.set_scene_transform_parameters(&scene_transform);
+
+	scene_transform_manager.register_render_context(&fallback_depth_context);
 	for (auto &d : depth_contexts)
-		d.set_scene_transform_parameters(&scene_transform);
+		scene_transform_manager.register_render_context(&d);
 	cam.set_depth_range_infinite(1.0f / 16.0f);
 
 	// Create a dummy background if there isn't any background.
@@ -767,10 +768,6 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 		prepass_depth.set_render_pass_interface(std::move(renderer));
 		scene_loader.get_scene().add_render_pass_dependencies(graph, prepass_depth, RenderPassCreator::GEOMETRY_BIT);
 		setup_ffx_cacao(graph, context, tagcat("ssao-output", tag), tagcat("depth-transient", tag), "");
-
-		prepass_depth.add_storage_read_only_input("scene-affine");
-		prepass_depth.add_storage_read_only_input("scene-aabb");
-		prepass_depth.add_storage_read_only_input("scene-occlusion");
 	}
 
 	bool supports_32bpp =
@@ -790,10 +787,6 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	resolved.samples = 1;
 
 	auto &lighting_pass = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-
-	lighting_pass.add_storage_read_only_input("scene-affine");
-	lighting_pass.add_storage_read_only_input("scene-aabb");
-	lighting_pass.add_storage_read_only_input("scene-occlusion");
 
 	if (color.samples > 1)
 	{
@@ -874,10 +867,6 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	gbuffer.add_color_output(tagcat("normal", tag), normal);
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
-
-	gbuffer.add_storage_read_only_input("scene-affine");
-	gbuffer.add_storage_read_only_input("scene-aabb");
-	gbuffer.add_storage_read_only_input("scene-occlusion");
 
 	{
 		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
@@ -1074,9 +1063,6 @@ void SceneViewerApplication::bake_render_graph(const SwapchainParameterEvent &sw
 	const bool hdr10 = swap.get_color_space() == VK_COLOR_SPACE_HDR10_ST2084_EXT;
 
 	graph.reset();
-
-	transform_update = setup_scene_transforms_update_pass(graph, scene_loader.get_scene(), "scene");
-	occlusion_update = setup_occlusion_update_pass(graph, scene_loader.get_scene(), "scene");
 
 	// Reclaims memory released by graph.reset(), before we bake and start allocating more.
 	//swap.get_device().wait_idle();
@@ -1467,11 +1453,6 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	fallback_lighting.directional = lighting.directional;
 	fallback_lighting.cluster = lighting.cluster;
 	fallback_lighting.volumetric_diffuse = lighting.volumetric_diffuse;
-
-	scene_transform.node_transforms = graph.maybe_get_physical_buffer_resource(transform_update.transforms);
-	scene_transform.node_aabb = graph.maybe_get_physical_buffer_resource(transform_update.aabbs);
-	scene_transform.aabb_visibility = graph.maybe_get_physical_buffer_resource(occlusion_update.occlusions);
-	scene_transform.cluster_bounds = device.get_resource_manager().get_cluster_bounds_buffer();
 
 	{
 		GRANITE_SCOPED_TIMELINE_EVENT("update-scene-enqueue");

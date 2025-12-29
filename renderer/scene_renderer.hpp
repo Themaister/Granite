@@ -107,18 +107,54 @@ protected:
 	void resolve_full_motion_vectors(Vulkan::CommandBuffer &cmd, const RenderContext &context) const;
 };
 
-struct SceneTransformUpdatePass
+class SceneTransformManager final : public EventHandler,
+                                    RenderPassCreator,
+                                    RenderPassExternalLockInterface,
+                                    PerFrameRefreshable
 {
-	RenderBufferResource *transforms;
-	RenderBufferResource *aabbs;
-	// TODO: Deal with prev transforms for motion vectors.
-};
+public:
+	SceneTransformManager();
+	// Every RenderContext that needs to render meshes should allocate once instance.
+	void init(Scene &scene);
+	void register_render_context(RenderContext *context);
 
-struct OcclusionUpdatePass
-{
-	RenderBufferResource *occlusions;
-};
+	const Vulkan::Buffer *get_transforms() const { return transforms.get(); }
+	const Vulkan::Buffer *get_prev_transforms() const { return prev_transforms.get(); }
+	const Vulkan::Buffer *get_aabbs() const { return aabbs.get(); }
+	const Vulkan::Buffer *get_scene_task_buffer() const { return task_buffer.get(); }
+	const Vulkan::Buffer *get_occlusion_state(unsigned index) const { return per_context_data[index].occlusions.get(); }
+	const Vulkan::Buffer *get_culled_aabb_state(unsigned index) const { return per_context_data[index].culled_aabbs.get(); }
 
-SceneTransformUpdatePass setup_scene_transforms_update_pass(RenderGraph &graph, const Scene &scene, const std::string &tag);
-OcclusionUpdatePass setup_occlusion_update_pass(RenderGraph &graph, const Scene &scene, const std::string &tag);
+private:
+	void add_render_passes(RenderGraph &graph) override;
+	void set_base_renderer(const RendererSuite *suite) override;
+	void set_base_render_context(const RenderContext *context) override;
+	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target, DependencyFlags dep_flags) override;
+	void setup_render_pass_dependencies(RenderGraph &graph) override;
+	void setup_render_pass_resources(RenderGraph &graph) override;
+	void set_scene(Scene *scene) override;
+	void refresh(const RenderContext &context, TaskComposer &composer) override;
+	Vulkan::Semaphore external_acquire() override;
+	void external_release(Vulkan::Semaphore semaphore) override;
+
+	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
+
+	Vulkan::BufferHandle transforms;
+	Vulkan::BufferHandle prev_transforms;
+	Vulkan::BufferHandle aabbs;
+	Vulkan::BufferHandle task_buffer;
+
+	struct PerContext
+	{
+		Vulkan::BufferHandle occlusions;
+		Vulkan::BufferHandle culled_aabbs;
+		RenderContext *context = nullptr;
+	};
+
+	Util::SmallVector<PerContext> per_context_data;
+
+	std::mutex sem_lock;
+	Util::SmallVector<Vulkan::Semaphore> sems;
+};
 }

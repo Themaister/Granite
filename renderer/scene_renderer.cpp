@@ -505,6 +505,100 @@ bool RenderPassSceneRenderer::render_pass_is_separate_layered() const
 	return (setup_data.flags & SCENE_RENDERER_SEPARATE_PER_LAYER_BIT) != 0;
 }
 
+SceneTransformManager::SceneTransformManager()
+{
+	EVENT_MANAGER_REGISTER_LATCH(SceneTransformManager, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
+}
+
+void SceneTransformManager::on_device_created(const Vulkan::DeviceCreatedEvent &)
+{
+}
+
+void SceneTransformManager::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
+{
+	transforms.reset();
+	prev_transforms.reset();
+	aabbs.reset();
+
+	for (auto &ctx : per_context_data)
+	{
+		ctx.occlusions.reset();
+		ctx.culled_aabbs.reset();
+	}
+}
+
+void SceneTransformManager::init(Scene &scene)
+{
+	auto *entity = scene.create_entity();
+	auto *rpass = entity->allocate_component<RenderPassComponent>();
+	rpass->creator = this;
+	auto *refresh = entity->allocate_component<PerFrameUpdateComponent>();
+	refresh->refresh = this;
+}
+
+void SceneTransformManager::register_render_context(RenderContext *context)
+{
+	PerContext ctx = {};
+	ctx.context = context;
+	context->set_scene_transform_parameters(this, per_context_data.size());
+	per_context_data.push_back(std::move(ctx));
+}
+
+void SceneTransformManager::add_render_passes(RenderGraph &graph)
+{
+	graph.add_external_lock_interface("scene-transforms", this);
+}
+
+Vulkan::Semaphore SceneTransformManager::external_acquire()
+{
+	return {};
+}
+
+void SceneTransformManager::external_release(Vulkan::Semaphore semaphore)
+{
+	std::lock_guard<std::mutex> lock(sem_lock);
+	sems.push_back(std::move(semaphore));
+}
+
+void SceneTransformManager::refresh(const RenderContext &context, TaskComposer &composer)
+{
+	// Do actual work.
+}
+
+void SceneTransformManager::set_base_render_context(const RenderContext *)
+{
+
+}
+
+void SceneTransformManager::set_base_renderer(const RendererSuite *)
+{
+
+}
+
+void SceneTransformManager::set_scene(Scene *)
+{
+
+}
+
+void SceneTransformManager::setup_render_pass_dependencies(RenderGraph &graph)
+{
+	if (auto *pass = graph.find_pass("shadow-fallback"))
+		pass->add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+}
+
+void SceneTransformManager::setup_render_pass_dependencies(RenderGraph &, RenderPass &target,
+                                                           DependencyFlags dep_flags)
+{
+	if ((dep_flags & RenderPassCreator::GEOMETRY_BIT) != 0)
+		target.add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT);
+}
+
+void SceneTransformManager::setup_render_pass_resources(RenderGraph &)
+{
+
+}
+
+#if 0
 SceneTransformUpdatePass setup_scene_transforms_update_pass(RenderGraph &graph, const Scene &scene, const std::string &tag)
 {
 	SceneTransformUpdatePass res = {};
@@ -683,4 +777,5 @@ OcclusionUpdatePass setup_occlusion_update_pass(RenderGraph &graph, const Scene 
 	pass.set_render_pass_interface(std::move(handle));
 	return res;
 }
+#endif
 }

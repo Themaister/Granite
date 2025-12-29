@@ -51,12 +51,6 @@ enum GlobalDescriptorSetBindings
 	BINDING_GLOBAL_VOLUMETRIC_FOG = 7,
 
 	BINDING_GLOBAL_CLUSTERER_PARAMETERS = 8,
-
-	BINDING_GLOBAL_CLUSTER_IMAGE_LEGACY = 9,
-	BINDING_GLOBAL_CLUSTER_SPOT_LEGACY = 10,
-	BINDING_GLOBAL_CLUSTER_POINT_LEGACY = 11,
-	BINDING_GLOBAL_CLUSTER_LIST_LEGACY = 12,
-
 	BINDING_GLOBAL_CLUSTER_TRANSFORM = 9,
 	BINDING_GLOBAL_CLUSTER_BITMASK = 10,
 	BINDING_GLOBAL_CLUSTER_RANGE = 11,
@@ -65,14 +59,19 @@ enum GlobalDescriptorSetBindings
 
 	BINDING_GLOBAL_LINEAR_SAMPLER = 14,
 	BINDING_GLOBAL_SHADOW_SAMPLER = 15,
-	BINDING_GLOBAL_GEOMETRY_SAMPLER = 16,
+	BINDING_GLOBAL_GEOMETRY_SAMPLER_WRAP = 16,
+	BINDING_GLOBAL_GEOMETRY_SAMPLER_CLAMP = 17,
 
-	BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_FALLBACK_VOLUME = 17,
+	BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_FALLBACK_VOLUME = 18,
 
-	BINDING_GLOBAL_SCENE_NODE_TRANSFORMS = 18,
-	BINDING_GLOBAL_SCENE_NODE_AABBS = 19,
-	BINDING_GLOBAL_SCENE_CLUSTER_BOUNDS = 20,
-	BINDING_GLOBAL_SCENE_AABB_VISIBILITY_CACHE = 21,
+	BINDING_GLOBAL_SCENE_NODE_TRANSFORMS = 19,
+	BINDING_GLOBAL_SCENE_NODE_AABBS = 20,
+	BINDING_GLOBAL_SCENE_OCCLUSION_STATE = 21,
+	BINDING_GLOBAL_SCENE_TASK_BUFFER = 22,
+	BINDING_GLOBAL_SCENE_MESHLET_HEADER_BUFFER = 23,
+	BINDING_GLOBAL_SCENE_MESHLET_STREAM_HEADER_BUFFER = 24,
+	BINDING_GLOBAL_SCENE_MESHLET_PAYLOAD_BUFFER = 25,
+	BINDING_GLOBAL_SCENE_MESHLET_CLUSTER_BOUNDS = 26,
 };
 
 namespace Granite
@@ -544,14 +543,26 @@ void Renderer::bind_scene_transform_parameters(Vulkan::CommandBuffer &cmd, const
 	if (!transforms)
 		return;
 
-	if (transforms->node_transforms)
-		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_NODE_TRANSFORMS, *transforms->node_transforms);
-	if (transforms->node_aabb)
-		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_NODE_AABBS, *transforms->node_aabb);
-	if (transforms->cluster_bounds)
-		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_CLUSTER_BOUNDS, *transforms->cluster_bounds);
-	if (transforms->aabb_visibility)
-		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_AABB_VISIBILITY_CACHE, *transforms->aabb_visibility);
+	auto transform_index = context.get_scene_transform_parameter_index();
+
+	if (auto *buf = transforms->get_transforms())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_NODE_TRANSFORMS, *buf);
+	if (auto *buf = transforms->get_aabbs())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_NODE_AABBS, *buf);
+	if (auto *buf = transforms->get_scene_task_buffer())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_TASK_BUFFER, *buf);
+	if (auto *buf = cmd.get_device().get_resource_manager().get_meshlet_header_buffer())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_MESHLET_HEADER_BUFFER, *buf);
+	if (auto *buf = cmd.get_device().get_resource_manager().get_meshlet_stream_header_buffer())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_MESHLET_STREAM_HEADER_BUFFER, *buf);
+	if (auto *buf = cmd.get_device().get_resource_manager().get_meshlet_payload_buffer())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_MESHLET_PAYLOAD_BUFFER, *buf);
+	if (auto *buf = cmd.get_device().get_resource_manager().get_cluster_bounds_buffer())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_MESHLET_CLUSTER_BOUNDS, *buf);
+
+	if (transform_index != UINT32_MAX)
+		if (auto *buf = transforms->get_occlusion_state(transform_index))
+			cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_OCCLUSION_STATE, *buf);
 }
 
 
@@ -610,7 +621,8 @@ void Renderer::bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderCo
 	auto *global = cmd.allocate_typed_constant_data<RenderParameters>(0, BINDING_GLOBAL_TRANSFORM, 1);
 	*global = context.get_render_parameters();
 
-	cmd.set_sampler(0, BINDING_GLOBAL_GEOMETRY_SAMPLER, StockSampler::DefaultGeometryFilterWrap);
+	cmd.set_sampler(0, BINDING_GLOBAL_GEOMETRY_SAMPLER_WRAP, StockSampler::DefaultGeometryFilterWrap);
+	cmd.set_sampler(0, BINDING_GLOBAL_GEOMETRY_SAMPLER_CLAMP, StockSampler::DefaultGeometryFilterClamp);
 }
 
 void Renderer::set_render_context_parameter_binder(RenderContextParameterBinder *binder)

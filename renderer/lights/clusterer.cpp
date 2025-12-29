@@ -560,8 +560,6 @@ void LightClusterer::render_bindless_spot(Vulkan::Device &device, unsigned index
 	auto data = bindless.shadow_task_handles[index];
 	auto &spot_data = static_cast<ShadowTaskContextSpot &>(*data);
 
-	spot_data.depth_context[0].set_scene_transform_parameters(context->get_scene_transform_parameters());
-
 	Threaded::compose_parallel_push_renderables(composer, &spot_data.depth_context[0],
 	                                            spot_data.queues[0], spot_data.visibility[0], MaxTasks,
 	                                            Threaded::PushType::Depth, false);
@@ -595,8 +593,6 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 	{
 		TaskComposer face_composer(composer.get_thread_group());
 		face_composer.set_incoming_task(composer.get_pipeline_stage_dependency());
-
-		point_data.depth_context[face].set_scene_transform_parameters(context->get_scene_transform_parameters());
 
 		Threaded::compose_parallel_push_renderables(face_composer, &point_data.depth_context[face],
 		                                            point_data.queues[face], point_data.visibility[face], MaxTasks,

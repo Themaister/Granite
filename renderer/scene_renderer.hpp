@@ -145,6 +145,7 @@ private:
 		RenderInfoComponent,
 		CachedSpatialTransformTimestampComponent> *meshlets = nullptr;
 
+	const char *get_ident() const override;
 	void add_render_passes(RenderGraph &graph) override;
 	void set_base_renderer(const RendererSuite *suite) override;
 	void set_base_render_context(const RenderContext *context) override;
@@ -179,7 +180,6 @@ private:
 
 	std::mutex sem_lock;
 	Util::SmallVector<Vulkan::Semaphore> sems;
-	Vulkan::Semaphore acquire_sem;
 
 	void ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::BufferHandle &buffer, VkDeviceSize size, const char *tag);
 	void update_task_buffer(Vulkan::CommandBuffer &cmd);

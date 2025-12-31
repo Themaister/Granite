@@ -94,6 +94,7 @@ public:
 	};
 
 private:
+	const char *get_ident() const override;
 	void add_render_passes(RenderGraph &graph) override;
 	void add_render_passes_bindless(RenderGraph &graph);
 

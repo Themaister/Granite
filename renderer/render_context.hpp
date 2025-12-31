@@ -66,7 +66,7 @@ public:
 		lighting = lighting_;
 	}
 
-	void set_scene_transform_parameters(const SceneTransformManager *transforms_, unsigned index)
+	void set_scene_transform_parameters(const SceneTransformManager *transforms_, unsigned index = UINT32_MAX)
 	{
 		transforms = transforms_;
 		transform_index = index;

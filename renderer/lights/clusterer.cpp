@@ -91,8 +91,10 @@ void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &t
 	}
 }
 
-void LightClusterer::setup_render_pass_dependencies(RenderGraph &)
+void LightClusterer::setup_render_pass_dependencies(RenderGraph &graph)
 {
+	graph.find_pass("clustering-bindless")->add_external_lock("scene-transforms",
+	                                                          VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT);
 }
 
 void LightClusterer::set_base_render_context(const RenderContext *context_)
@@ -567,8 +569,9 @@ void LightClusterer::render_bindless_spot(Vulkan::Device &device, unsigned index
 	{
 		auto &group = composer.begin_pipeline_stage();
 		group.set_desc("render-shadow-map-spot");
-		group.enqueue_task([&device, data, index, this]() {
-			auto &spot = static_cast<const ShadowTaskContextSpot &>(*data);
+		group.enqueue_task([&device, data, index, this]() mutable {
+			auto &spot = static_cast<ShadowTaskContextSpot &>(*data);
+			spot.depth_context[0].set_scene_transform_parameters(context->get_scene_transform_parameters());
 			LOGI("Rendering shadow for spot light %u (%p)\n", index,
 			     static_cast<const void *>(bindless.handles[index]));
 			auto cmd = device.request_command_buffer();
@@ -576,7 +579,8 @@ void LightClusterer::render_bindless_spot(Vulkan::Device &device, unsigned index
 			              0, 0,
 			              shadow_resolution, shadow_resolution,
 			              bindless.shadow_images[index]->get_view(), 0,
-			              Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
+			              Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT |
+			              Renderer::MESH_ASSET_OPAQUE_BIT);
 			device.submit(cmd);
 		});
 	}
@@ -600,15 +604,17 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 
 		auto &group = face_composer.begin_pipeline_stage();
 		group.set_desc("render-shadow-map-point-face");
-		group.enqueue_task([&device, data, index, face, this]() {
-			auto &point = static_cast<const ShadowTaskContextPoint &>(*data);
+		group.enqueue_task([&device, data, index, face, this]() mutable {
+			auto &point = static_cast<ShadowTaskContextPoint &>(*data);
+			point.depth_context[face].set_scene_transform_parameters(context->get_scene_transform_parameters());
 			LOGI("Rendering shadow for point light %u (%p)\n", index, static_cast<const void *>(bindless.handles[index]));
 			auto cmd = device.request_command_buffer();
 			render_shadow(*cmd, point.depth_context[face], point.queues[face][0],
 			              0, 0, shadow_resolution, shadow_resolution,
 			              bindless.shadow_images[index]->get_view(),
 			              face,
-			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
+			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT |
+			              Renderer::MESH_ASSET_OPAQUE_BIT);
 			device.submit(cmd);
 		});
 
@@ -1444,6 +1450,11 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 {
 	add_render_passes_bindless(graph);
 	graph.add_external_lock_interface("bindless-shadowmaps", this);
+}
+
+const char *LightClusterer::get_ident() const
+{
+	return "light-clusterer";
 }
 
 void LightClusterer::set_base_renderer(const RendererSuite *suite)

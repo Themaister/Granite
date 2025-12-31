@@ -557,14 +557,19 @@ void SceneTransformManager::register_one_shot_render_context(RenderContext *cont
 	context->set_scene_transform_parameters(this, UINT32_MAX);
 }
 
+const char *SceneTransformManager::get_ident() const
+{
+	return "scene-transforms";
+}
+
 void SceneTransformManager::add_render_passes(RenderGraph &graph)
 {
-	graph.add_external_lock_interface("scene-transforms", this);
+	graph.add_external_lock_interface(get_ident(), this);
 }
 
 Vulkan::Semaphore SceneTransformManager::external_acquire()
 {
-	return acquire_sem;
+	return {};
 }
 
 void SceneTransformManager::external_release(Vulkan::Semaphore semaphore)
@@ -758,8 +763,12 @@ void SceneTransformManager::update_scene_buffers()
 	cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
 	             VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
 	             VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
-	acquire_sem.reset();
+
+	// We want external_release() to deal with WaR, but the RaW part should affect everything.
+	Vulkan::Semaphore acquire_sem;
 	device->submit(cmd, nullptr, 1, &acquire_sem);
+	device->add_wait_semaphore(Vulkan::CommandBuffer::Type::Generic, std::move(acquire_sem),
+	                           VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT, false);
 
 	scene->clear_updates();
 }
@@ -805,10 +814,8 @@ void SceneTransformManager::set_scene(Scene *scene_)
 	scene = scene_;
 }
 
-void SceneTransformManager::setup_render_pass_dependencies(RenderGraph &graph)
+void SceneTransformManager::setup_render_pass_dependencies(RenderGraph &)
 {
-	if (auto *pass = graph.find_pass("shadow-fallback"))
-		pass->add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT);
 }
 
 void SceneTransformManager::setup_render_pass_dependencies(RenderGraph &, RenderPass &target,

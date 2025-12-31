@@ -965,6 +965,10 @@ void SceneViewerApplication::add_shadow_pass_fallback(Vulkan::Device &, const st
 	auto handle = Util::make_handle<RenderPassSceneRenderer>();
 	handle->init(setup);
 	shadowpass.set_render_pass_interface(std::move(handle));
+
+	scene_loader.get_scene().add_render_pass_dependencies(graph, shadowpass,
+	                                                      RenderPassCreator::GEOMETRY_BIT |
+	                                                      RenderPassCreator::MATERIAL_BIT);
 }
 
 void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
@@ -1054,6 +1058,10 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 	value.float32[1] = 1.0f;
 	handle->set_clear_color(value);
 	shadowpass.set_render_pass_interface(std::move(handle));
+
+	scene_loader.get_scene().add_render_pass_dependencies(graph, shadowpass,
+	                                                      RenderPassCreator::GEOMETRY_BIT |
+	                                                      RenderPassCreator::MATERIAL_BIT);
 }
 
 void SceneViewerApplication::bake_render_graph(const SwapchainParameterEvent &swap)

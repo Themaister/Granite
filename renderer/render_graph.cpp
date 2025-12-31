@@ -1497,6 +1497,10 @@ void RenderGraph::log()
 				}
 			}
 
+			auto &externals = pass.get_lock_interfaces();
+			for (auto &external : externals)
+				LOGI("        External lock: %s\n", external.iface->get_ident());
+
 			if (pass.get_depth_stencil_output())
 				LOGI("        DepthStencil RW: %u\n", pass.get_depth_stencil_output()->get_physical_index());
 			else if (pass.get_depth_stencil_input())
@@ -3728,4 +3732,8 @@ void RenderGraph::reset()
 	physical_history_image_attachments.clear();
 }
 
+const char *RenderPassExternalLockInterface::get_ident() const
+{
+	return "";
+}
 }

@@ -84,6 +84,7 @@ public:
 	virtual ~RenderPassExternalLockInterface() = default;
 	virtual Vulkan::Semaphore external_acquire() = 0;
 	virtual void external_release(Vulkan::Semaphore semaphore) = 0;
+	virtual const char *get_ident() const;
 };
 
 enum SizeClass

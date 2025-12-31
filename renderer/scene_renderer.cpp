@@ -640,8 +640,10 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 	{
 		auto &mesh = static_cast<MeshAssetRenderable &>(*get_component<RenderableComponent>(elem)->renderable);
 		auto range = manager.get_mesh_draw_range(mesh.get_asset_id());
+		if (range.meshlet.count == 0)
+			continue;
 		bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;
-		num_task_instances_per_kind[2 * int(mesh.get_mesh_draw_pipeline()) + skinned] = (range.meshlet.count + 31) / 32;
+		num_task_instances_per_kind[2 * int(mesh.get_mesh_draw_pipeline()) + skinned] += (range.meshlet.count + 31) / 32;
 	}
 
 	for (auto count : num_task_instances_per_kind)

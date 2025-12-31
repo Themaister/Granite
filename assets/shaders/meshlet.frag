@@ -33,14 +33,14 @@ layout(location = 4) in vec3 vPos;
 #endif
 
 layout(set = 2, binding = 0) uniform mediump texture2D uImages[];
-layout(set = 0, binding = BINDING_GLOBAL_GEOMETRY_SAMPLER) uniform mediump sampler uSamp;
+layout(set = 0, binding = BINDING_GLOBAL_GEOMETRY_SAMPLER_BASE) uniform mediump sampler uSamp[2];
 
 void main()
 {
 #if ATTR_LEVEL >= 1
     uint tex_index = vMaterialID & 0xffffu;
 
-    mediump vec4 base_color = texture(nonuniformEXT(sampler2D(uImages[tex_index], uSamp)), vUV);
+    mediump vec4 base_color = texture(nonuniformEXT(sampler2D(uImages[tex_index], uSamp[0])), vUV);
 #if defined(ALPHA_TEST)
     if (base_color.a < 0.5)
         demote;
@@ -51,15 +51,12 @@ void main()
     mediump vec3 normal = normalize(vNormal);
     mediump vec3 tangent = normalize(vTangent.xyz);
     mediump vec3 binormal = cross(normal, tangent) * vTangent.w;
-    mediump vec2 tangent_space = texture(nonuniformEXT(sampler2D(uImages[tex_index + 1], uSamp)), vUV).xy * 2.0 - 1.0;
+    mediump vec2 tangent_space = texture(nonuniformEXT(sampler2D(uImages[tex_index + 1], uSamp[0])), vUV).xy * 2.0 - 1.0;
 
     // For 2-component compressed textures.
     normal = normalize(mat3(tangent, binormal, normal) * two_component_normal(tangent_space));
 
-    if (!gl_FrontFacing)
-        normal = -normal;
-
-    mediump vec2 mr = texture(nonuniformEXT(sampler2D(uImages[tex_index + 2], uSamp)), vUV).bg;
+    mediump vec2 mr = texture(nonuniformEXT(sampler2D(uImages[tex_index + 2], uSamp[0])), vUV).bg;
     mediump float metallic = mr.x;
     mediump float roughness = mr.y;
 

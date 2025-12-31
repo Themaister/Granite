@@ -181,7 +181,7 @@ private:
 	Util::SmallVector<Vulkan::Semaphore> sems;
 	Vulkan::Semaphore acquire_sem;
 
-	void ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::BufferHandle &buffer, VkDeviceSize size);
+	void ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::BufferHandle &buffer, VkDeviceSize size, const char *tag);
 	void update_task_buffer(Vulkan::CommandBuffer &cmd);
 };
 }

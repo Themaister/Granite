@@ -403,14 +403,15 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
 		{
 			suite->get_renderer(RendererSuite::Type::PrepassDepth).flush(
-					cmd, queue_per_task_depth[bucket_index], setup_data.context[bucket_index],
-					Renderer::NO_COLOR_BIT | Renderer::SKIP_SORTING_BIT |
-					flush_flags, &flush_params);
+				cmd, queue_per_task_depth[bucket_index], setup_data.context[bucket_index],
+				Renderer::NO_COLOR_BIT | Renderer::SKIP_SORTING_BIT |
+				Renderer::MESH_ASSET_OPAQUE_BIT |
+				flush_flags, &flush_params);
 		}
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
 		{
-			Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT | flush_flags;
+			Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT | Renderer::MESH_ASSET_OPAQUE_BIT | flush_flags;
 			if (setup_data.flags & (SCENE_RENDERER_FORWARD_Z_PREPASS_BIT | SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT))
 				opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
 			suite->get_renderer(RendererSuite::Type::ForwardOpaque).flush(
@@ -433,6 +434,7 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 		Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT |
 		                                    Renderer::DEPTH_STENCIL_READ_ONLY_BIT |
 		                                    Renderer::DEPTH_TEST_EQUAL_BIT |
+		                                    Renderer::MESH_ASSET_OPAQUE_BIT |
 		                                    flush_flags;
 		suite->get_renderer(RendererSuite::Type::MotionVector).flush(cmd, queue_per_task_opaque[bucket_index],
 		                                                             setup_data.context[bucket_index], opt,
@@ -443,7 +445,8 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 	{
 		suite->get_renderer(RendererSuite::Type::Deferred).flush(cmd, queue_per_task_opaque[bucket_index],
 		                                                         setup_data.context[bucket_index],
-		                                                         Renderer::SKIP_SORTING_BIT | flush_flags,
+		                                                         Renderer::SKIP_SORTING_BIT |
+		                                                         Renderer::MESH_ASSET_OPAQUE_BIT | flush_flags,
 		                                                         &flush_params);
 
 		if (setup_data.flags & SCENE_RENDERER_DEBUG_PROBES_BIT)
@@ -459,17 +462,20 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 
 	if (setup_data.flags & SCENE_RENDERER_FORWARD_TRANSPARENT_BIT)
 	{
-		suite->get_renderer(RendererSuite::Type::ForwardTransparent).flush(cmd, queue_per_task_transparent[bucket_index], setup_data.context[bucket_index],
-		                                                                   Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::SKIP_SORTING_BIT |
-		                                                                   flush_flags, &flush_params);
+		suite->get_renderer(RendererSuite::Type::ForwardTransparent).flush(
+			cmd, queue_per_task_transparent[bucket_index], setup_data.context[bucket_index],
+			Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::SKIP_SORTING_BIT |
+			Renderer::MESH_ASSET_TRANSPARENT_BIT |
+			flush_flags, &flush_params);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
 	{
 		auto type = get_depth_renderer_type(setup_data.flags);
 		suite->get_renderer(type).flush(cmd, queue_per_task_depth[bucket_index], setup_data.context[bucket_index],
-		                                Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT | flush_flags,
-										&flush_params);
+		                                Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT |
+		                                Renderer::MESH_ASSET_OPAQUE_BIT | flush_flags,
+		                                &flush_params);
 	}
 }
 
@@ -534,6 +540,7 @@ void SceneTransformManager::init(Scene &scene_)
 	rpass->creator = this;
 	auto *refresh = entity->allocate_component<PerFrameUpdateComponent>();
 	refresh->refresh = this;
+	refresh->dependency_order = std::numeric_limits<int>::min() + 1;
 
 	meshlets = &scene_.get_entity_pool().get_component_group<
 		RenderableComponent, MeshletComponent, RenderInfoComponent, CachedSpatialTransformTimestampComponent>();
@@ -599,13 +606,11 @@ static void update_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &buffer, cons
 
 	const auto flush = [&]()
 	{
-		if (!count)
-			return;
-
-		flush_update(cmd, buffer, base, count, data);
-		memcpy(cmd.update_buffer(buffer, base * sizeof(mat_affine), sizeof(mat_affine) * count), &data[base],
-		       sizeof(mat_affine) * count);
-		count = 0;
+		if (count)
+		{
+			flush_update(cmd, buffer, base, count, data);
+			count = 0;
+		}
 	};
 
 	assert(span.count != 0);
@@ -652,11 +657,18 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 
 	auto required = VkDeviceSize(sizeof(MeshAssetDrawTaskInfo)) * num_task_instances;
 
+	if (!required)
+	{
+		task_buffer.reset();
+		return;
+	}
+
 	Vulkan::BufferCreateInfo bufinfo = {};
 	bufinfo.size = required;
 	bufinfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	bufinfo.domain = Vulkan::BufferDomain::UMACachedCoherentPreferDevice;
 	task_buffer = device->create_buffer(bufinfo);
+	device->set_name(*task_buffer, "task-buffer");
 
 	// Ideally just derp the data into a mapped buffer on iGPU, but fallback to transfer queue on dGPU.
 	auto *task_infos = static_cast<MeshAssetDrawTaskInfo *>(device->map_host_buffer(*task_buffer, Vulkan::MEMORY_ACCESS_WRITE_BIT));
@@ -666,8 +678,12 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 	for (auto &elem : *meshlets)
 	{
 		auto &mesh = static_cast<MeshAssetRenderable &>(*get_component<RenderableComponent>(elem)->renderable);
-		auto &transform = *get_component<RenderInfoComponent>(elem);
+
 		auto range = manager.get_mesh_draw_range(mesh.get_asset_id());
+		if (range.meshlet.count == 0)
+			continue;
+
+		auto &transform = *get_component<RenderInfoComponent>(elem);
 		bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;
 
 		MeshAssetDrawTaskInfo draw = {};
@@ -686,7 +702,7 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 		for (uint32_t j = 0; j < range.meshlet.count; j += 32)
 		{
 			draw.mesh_index_count = range.meshlet.offset + j + (std::min(range.meshlet.count - j, 32u) - 1);
-			task_infos[offset_count.first + offset_count.second] = draw;
+			task_infos[offset_count.first + offset_count.second++] = draw;
 			draw.occluder_state_offset++;
 		}
 	}
@@ -720,18 +736,18 @@ void SceneTransformManager::update_scene_buffers()
 	auto aabb_span = scene->get_aabb_update_span();
 	auto occlusion_span = scene->get_occluder_state_update_span();
 
-	ensure_buffer(*cmd, transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine));
-	ensure_buffer(*cmd, prev_transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine));
-	ensure_buffer(*cmd, aabbs, VkDeviceSize(scene->get_aabbs().get_count()) * sizeof(AABB));
+	ensure_buffer(*cmd, transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine), "transforms");
+	ensure_buffer(*cmd, prev_transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine), "prev-transforms");
+	ensure_buffer(*cmd, aabbs, VkDeviceSize(scene->get_aabbs().get_count()) * sizeof(AABB), "aabbs");
 
 	for (auto &ctx : per_context_data)
-		ensure_buffer(*cmd, ctx.occlusions, VkDeviceSize(scene->get_occluder_states().get_count()) * sizeof(uint32_t));
+		ensure_buffer(*cmd, ctx.occlusions, VkDeviceSize(scene->get_occluder_states().get_count()) * sizeof(uint32_t), "occlusion-state");
 
 	if (transform_span.count != 0)
 		update_span(*cmd, *transforms, scene->get_transforms().get_cached_transforms(), transform_span);
 
 	if (aabb_span.count != 0)
-		update_span(*cmd, *aabbs, scene->get_aabbs().get_aabbs(), transform_span);
+		update_span(*cmd, *aabbs, scene->get_aabbs().get_aabbs(), aabb_span);
 
 	if (occlusion_span.count != 0)
 		for (auto &ctx : per_context_data)
@@ -747,7 +763,7 @@ void SceneTransformManager::update_scene_buffers()
 }
 
 void SceneTransformManager::ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::BufferHandle &buffer,
-                                          VkDeviceSize size)
+                                          VkDeviceSize size, const char *name)
 {
 	if (buffer && buffer->get_create_info().size >= size)
 		return;
@@ -760,6 +776,7 @@ void SceneTransformManager::ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::Bu
 	    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	bufinfo.domain = Vulkan::BufferDomain::Device;
 	auto new_buffer = device->create_buffer(bufinfo);
+	device->set_name(*new_buffer, name);
 
 	if (buffer)
 	{
@@ -767,6 +784,8 @@ void SceneTransformManager::ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::Bu
 		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
 		            VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
 	}
+
+	buffer = std::move(new_buffer);
 }
 
 void SceneTransformManager::set_base_render_context(const RenderContext *)

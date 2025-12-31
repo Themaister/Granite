@@ -802,15 +802,13 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	CommandBufferSavedState state = {};
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 
-	if (!(options & MESH_ASSET_SKIP_STATIC_BIT))
+	if ((options & MESH_ASSET_OPAQUE_BIT) != 0)
+	{
 		render_mesh_assets(cmd, context, DrawPipeline::Opaque, options, false);
-	if (!(options & MESH_ASSET_SKIP_SKINNED_BIT))
 		render_mesh_assets(cmd, context, DrawPipeline::Opaque, options, true);
-
-	if (!(options & MESH_ASSET_SKIP_STATIC_BIT))
 		render_mesh_assets(cmd, context, DrawPipeline::AlphaTest, options, false);
-	if (!(options & MESH_ASSET_SKIP_SKINNED_BIT))
 		render_mesh_assets(cmd, context, DrawPipeline::AlphaTest, options, true);
+	}
 
 	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);
 
@@ -824,10 +822,11 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 		cmd.set_depth_test(true, false);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 
-		if (!(options & MESH_ASSET_SKIP_STATIC_BIT))
+		if ((options & MESH_ASSET_TRANSPARENT_BIT) != 0)
+		{
 			render_mesh_assets(cmd, context, DrawPipeline::AlphaBlend, options, false);
-		if (!(options & MESH_ASSET_SKIP_SKINNED_BIT))
 			render_mesh_assets(cmd, context, DrawPipeline::AlphaBlend, options, true);
+		}
 
 		queue.dispatch_subset(Queue::Transparent, cmd, &state, index, num_indices);
 	}

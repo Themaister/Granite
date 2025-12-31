@@ -277,6 +277,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	scene_loader.load_scene(path);
 	read_lights();
 
+	scene_transform_manager.init(scene_loader.get_scene());
+
 	if (cli_config.ocean)
 	{
 		OceanConfig ocean_config = {};

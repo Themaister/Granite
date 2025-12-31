@@ -5,7 +5,7 @@
 #include "meshlet_render_types.h"
 #include "affine.h"
 
-layout(set = 0, binding = BINDING_GLOBAL_SCENE_CLUSTER_BOUNDS, std430) readonly buffer Bounds
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_MESHLET_CLUSTER_BOUNDS, std430) readonly buffer Bounds
 {
 	Bound data[];
 } bounds;

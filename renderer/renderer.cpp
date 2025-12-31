@@ -743,7 +743,8 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		cmd.set_subgroup_size_log2(true, 5, 5);
 
 		// Prefer this on AMD, disable on NV.
-		constexpr uint32_t hierarchy_scale = 32;
+		constexpr uint32_t hierarchy_scale = 1;
+
 		auto max_tasks_per_dispatch = device->get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0] * hierarchy_scale;
 		for (size_t i = 0; i < range.second; i += max_tasks_per_dispatch)
 		{

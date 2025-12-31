@@ -242,9 +242,9 @@ void Scene::gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityL
 	}
 }
 
-static bool filter_true(const RenderInfoComponent *, RenderableFlags)
+static bool filter_true(const RenderInfoComponent *, RenderableFlags flags)
 {
-	return true;
+	return (flags & RENDERABLE_MESH_ASSET_BIT) == 0;
 }
 
 void Scene::gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list) const
@@ -255,8 +255,10 @@ void Scene::gather_visible_opaque_renderables(const Frustum &frustum, Visibility
 void Scene::gather_visible_motion_vector_renderables(const Frustum &frustum, VisibilityList &list) const
 {
 	gather_visible_renderables(frustum, list, opaque, 0, opaque.size(),
-	                           [](const RenderInfoComponent *info, RenderableFlags flags) {
+	                           [](const RenderInfoComponent *info, RenderableFlags flags)
+	                           {
 		                           return (flags & RENDERABLE_IMPLICIT_MOTION_BIT) == 0 &&
+		                                  (flags & RENDERABLE_MESH_ASSET_BIT) == 0 &&
 		                                  info->requires_motion_vectors;
 	                           });
 }
@@ -275,8 +277,10 @@ void Scene::gather_visible_motion_vector_renderables_subset(const Frustum &frust
 	size_t start_index = (index * opaque.size()) / num_indices;
 	size_t end_index = ((index + 1) * opaque.size()) / num_indices;
 	gather_visible_renderables(frustum, list, opaque, start_index, end_index,
-	                           [](const RenderInfoComponent *info, RenderableFlags flags) {
+	                           [](const RenderInfoComponent *info, RenderableFlags flags)
+	                           {
 		                           return (flags & RENDERABLE_IMPLICIT_MOTION_BIT) == 0 &&
+		                                  (flags & RENDERABLE_MESH_ASSET_BIT) == 0 &&
 		                                  info->requires_motion_vectors;
 	                           });
 }
@@ -1180,27 +1184,26 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 
 	auto *render = entity->allocate_component<RenderableComponent>();
 
-	if (!is_fixed_function_meshlet)
+	switch (renderable->get_mesh_draw_pipeline())
 	{
-		switch (renderable->get_mesh_draw_pipeline())
-		{
-		case DrawPipeline::AlphaBlend:
-			entity->allocate_component<TransparentComponent>();
-			break;
+	case DrawPipeline::AlphaBlend:
+		entity->allocate_component<TransparentComponent>();
+		break;
 
-		default:
-			entity->allocate_component<OpaqueComponent>();
-			if (renderable->has_static_aabb())
-			{
-				// TODO: Find a way to make this smarter.
-				entity->allocate_component<CastsStaticShadowComponent>();
-				entity->allocate_component<CastsDynamicShadowComponent>();
-			}
-			break;
-		}
+	default:
+		entity->allocate_component<OpaqueComponent>();
+		break;
 	}
 
-	render->renderable = renderable;
+	if (renderable->get_mesh_draw_pipeline() != DrawPipeline::AlphaBlend &&
+	    renderable->has_static_aabb())
+	{
+		// TODO: Find a way to make this smarter.
+		entity->allocate_component<CastsStaticShadowComponent>();
+		entity->allocate_component<CastsDynamicShadowComponent>();
+	}
+
+	render->renderable = std::move(renderable);
 	return entity;
 }
 

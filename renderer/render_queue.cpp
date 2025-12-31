@@ -196,8 +196,9 @@ void RenderQueue::push_renderables(const RenderContext &context, const Renderabl
 	for (size_t i = 0; i < count; i++)
 	{
 		auto &vis = visible[i];
-		// This path only applies to generic renderables.
-		VK_ASSERT((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) == 0);
+		// Common case, avoid eating noop virtual calls.
+		if ((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0)
+			continue;
 		vis.renderable->get_render_info(context, visible[i].transform, *this);
 	}
 }
@@ -207,7 +208,9 @@ void RenderQueue::push_depth_renderables(const RenderContext &context, const Ren
 	for (size_t i = 0; i < count; i++)
 	{
 		auto &vis = visible[i];
-		VK_ASSERT((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) == 0);
+		// Common case, avoid eating noop virtual calls.
+		if ((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0)
+			continue;
 		visible[i].renderable->get_depth_render_info(context, visible[i].transform, *this);
 	}
 }
@@ -218,7 +221,9 @@ void RenderQueue::push_motion_vector_renderables(const RenderContext &context, c
 	for (size_t i = 0; i < count; i++)
 	{
 		auto &vis = visible[i];
-		VK_ASSERT((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) == 0);
+		// Common case, avoid eating noop virtual calls.
+		if ((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0)
+			continue;
 		vis.renderable->get_motion_vector_render_info(context, visible[i].transform, *this);
 	}
 }

@@ -8,7 +8,7 @@ out gl_MeshPerVertexEXT
 
 // TODO: determine globally
 #define MESHLET_PRIMITIVE_CULL_WAVE32 1
-#define MESHLET_RENDER_TASK_HIERARCHICAL 1
+#define MESHLET_RENDER_TASK_HIERARCHICAL 0
 #define MESHLET_LOCAL_INVOCATION_INDEXED 0
 
 #extension GL_KHR_shader_subgroup_basic : require

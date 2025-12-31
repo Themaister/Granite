@@ -85,11 +85,7 @@ struct CombinedResourceLayout
 
 union ResourceBinding
 {
-	struct
-	{
-		VkDescriptorBufferInfo dynamic;
-		VkDescriptorBufferInfo push;
-	} buffer;
+	VkDescriptorBufferInfo buffer;
 
 	struct
 	{

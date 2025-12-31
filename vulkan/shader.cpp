@@ -137,15 +137,11 @@ void PipelineLayout::create_update_templates()
 			for (unsigned i = 0; i < array_size; i++)
 			{
 				auto &entry = update_entries[update_count++];
-				entry.descriptorType = desc_set == push_set_index ?
-				                       VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+				entry.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 				entry.dstBinding = binding;
 				entry.dstArrayElement = i;
 				entry.descriptorCount = 1;
-				if (desc_set == push_set_index)
-					entry.offset = offsetof(ResourceBinding, buffer.push) + sizeof(ResourceBinding) * (binding + i);
-				else
-					entry.offset = offsetof(ResourceBinding, buffer.dynamic) + sizeof(ResourceBinding) * (binding + i);
+				entry.offset = offsetof(ResourceBinding, buffer) + sizeof(ResourceBinding) * (binding + i);
 				entry.stride = sizeof(ResourceBinding);
 			}
 		});
@@ -160,7 +156,7 @@ void PipelineLayout::create_update_templates()
 				entry.dstBinding = binding;
 				entry.dstArrayElement = i;
 				entry.descriptorCount = 1;
-				entry.offset = offsetof(ResourceBinding, buffer.dynamic) + sizeof(ResourceBinding) * (binding + i);
+				entry.offset = offsetof(ResourceBinding, buffer) + sizeof(ResourceBinding) * (binding + i);
 				entry.stride = sizeof(ResourceBinding);
 			}
 		});

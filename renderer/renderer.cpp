@@ -636,17 +636,25 @@ void Renderer::promote_read_write_cache_to_read_only()
 		s.promote_read_write_cache_to_read_only();
 }
 
-void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContext &context, const RenderQueue &queue,
+void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContext &context,
                                   DrawPipeline pipe, RendererFlushFlags options, bool skinned) const
 {
 	auto &manager = device->get_resource_manager();
 	auto encoding = manager.get_mesh_encoding();
-	auto &data = queue.get_draw_pipeline_data(pipe);
-	auto &vec = skinned ? data.mesh_asset_skinned_info : data.mesh_asset_static_info;
 
-	if (vec.empty())
+	auto *transforms = context.get_scene_transform_parameters();
+	if (!transforms)
 		return;
 
+	auto *task_range_buffer = transforms->get_task_buffer();
+	if (!task_range_buffer)
+		return;
+
+	auto range = transforms->get_task_range(pipe, skinned);
+	if (range.second == 0)
+		return;
+
+#if 0
 	if (encoding == ResourceManager::MeshEncoding::Classic || encoding == ResourceManager::MeshEncoding::VBOAndIBOMDI)
 	{
 		auto *ibo = manager.get_index_buffer();
@@ -671,22 +679,13 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 
 		GRANITE_MATERIAL_MANAGER()->set_bindless(cmd, 2);
 	}
+#endif
 
 	switch (encoding)
 	{
-	case ResourceManager::MeshEncoding::Classic:
-	{
-		for (auto &draw : vec)
-		{
-			auto indexed = manager.get_mesh_draw_range(AssetID(draw.asset_id)).indexed;
-			cmd.push_constants(&draw, 0, sizeof(draw));
-			cmd.draw_indexed(indexed.indexCount, indexed.instanceCount, indexed.firstIndex, indexed.vertexOffset,
-			                 indexed.firstInstance);
-		}
-		break;
-	}
-
 		// TODO: Figure how we're going to do manual culling.
+	case ResourceManager::MeshEncoding::Classic:
+		break;
 	case ResourceManager::MeshEncoding::VBOAndIBOMDI:
 		break;
 
@@ -711,40 +710,24 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		cmd.set_program(prog);
 		GRANITE_MATERIAL_MANAGER()->set_bindless(cmd, 2);
 
-		BufferCreateInfo bufinfo = {};
-		bufinfo.size = vec.size() * sizeof(vec.front());
-		bufinfo.domain = BufferDomain::LinkedDeviceHostPreferDevice;
-		bufinfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-		auto task_buffer = device->create_buffer(bufinfo, vec.data());
-
-		cmd.set_storage_buffer(3, 0, *task_buffer);
-		cmd.set_storage_buffer(3, 1, *device->get_resource_manager().get_meshlet_header_buffer());
-		cmd.set_storage_buffer(3, 2, *device->get_resource_manager().get_meshlet_stream_header_buffer());
-		cmd.set_storage_buffer(3, 3, *device->get_resource_manager().get_meshlet_payload_buffer());
-
-		struct ViewportUBO
-		{
-			vec4 viewport;
-			float winding;
-		};
-
-		auto *vp_ubo = cmd.allocate_typed_constant_data<ViewportUBO>(3, 4, 1);
-		vp_ubo->viewport = vec4(cmd.get_viewport().x + 0.5f * cmd.get_viewport().width - 0.5f,
-		                        cmd.get_viewport().y + 0.5f * cmd.get_viewport().height - 0.5f,
-		                        0.5f * cmd.get_viewport().width, 0.5f * cmd.get_viewport().height);
-		vp_ubo->winding = (options & FRONT_FACE_CLOCKWISE_BIT) ? -1.0f : 1.0f;
-
 		struct UBO
 		{
+			vec4 viewport;
 			vec4 planes[6];
 			mat4 view;
 			vec4 viewport_scale_bias;
 			uvec2 hiz_resolution;
+			float winding;
 			uint hiz_min_lod;
 			uint hiz_max_lod;
 		};
 
-		auto *ubo = cmd.allocate_typed_constant_data<UBO>(3, 5, 1);
+		auto *ubo = cmd.allocate_typed_constant_data<UBO>(3, 0, 1);
+		ubo->viewport = vec4(cmd.get_viewport().x + 0.5f * cmd.get_viewport().width - 0.5f,
+						cmd.get_viewport().y + 0.5f * cmd.get_viewport().height - 0.5f,
+						0.5f * cmd.get_viewport().width, 0.5f * cmd.get_viewport().height);
+		ubo->winding = (options & FRONT_FACE_CLOCKWISE_BIT) ? -1.0f : 1.0f;
+
 		memcpy(ubo->planes, context.get_visibility_frustum().get_planes(), sizeof(ubo->planes));
 
 		// TODO: Parameters for HiZ.
@@ -759,17 +742,16 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		cmd.enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
 		cmd.set_subgroup_size_log2(true, 5, 5);
 
-		auto num_tasks_32 = (vec.size() + 31) / 32;
-
-		auto max_tasks = device->get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0];
-		for (size_t i = 0; i < num_tasks_32; i += max_tasks)
+		// Prefer this on AMD, disable on NV.
+		constexpr uint32_t hierarchy_scale = 32;
+		auto max_tasks_per_dispatch = device->get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0] * hierarchy_scale;
+		for (size_t i = 0; i < range.second; i += max_tasks_per_dispatch)
 		{
-			auto to_draw = std::min<size_t>(num_tasks_32 - i, max_tasks);
-
-			push.offset = uint32_t(i);
-			push.count = std::min<uint32_t>(vec.size() - i * 32, to_draw * 32);
+			auto to_draw = std::min<size_t>(range.second - i, max_tasks_per_dispatch);
+			push.offset = range.first + uint32_t(i);
+			push.count = to_draw;
 			cmd.push_constants(&push, 0, sizeof(push));
-			cmd.draw_mesh_tasks(to_draw, 1, 1);
+			cmd.draw_mesh_tasks((to_draw + hierarchy_scale - 1) / hierarchy_scale, 1, 1);
 		}
 
 		cmd.enable_subgroup_size_control(false, VK_SHADER_STAGE_MESH_BIT_EXT);
@@ -821,14 +803,14 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 
 	if (!(options & MESH_ASSET_SKIP_STATIC_BIT))
-		render_mesh_assets(cmd, context, queue, DrawPipeline::Opaque, options, false);
+		render_mesh_assets(cmd, context, DrawPipeline::Opaque, options, false);
 	if (!(options & MESH_ASSET_SKIP_SKINNED_BIT))
-		render_mesh_assets(cmd, context, queue, DrawPipeline::Opaque, options, true);
+		render_mesh_assets(cmd, context, DrawPipeline::Opaque, options, true);
 
 	if (!(options & MESH_ASSET_SKIP_STATIC_BIT))
-		render_mesh_assets(cmd, context, queue, DrawPipeline::AlphaTest, options, false);
+		render_mesh_assets(cmd, context, DrawPipeline::AlphaTest, options, false);
 	if (!(options & MESH_ASSET_SKIP_SKINNED_BIT))
-		render_mesh_assets(cmd, context, queue, DrawPipeline::AlphaTest, options, true);
+		render_mesh_assets(cmd, context, DrawPipeline::AlphaTest, options, true);
 
 	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);
 
@@ -843,9 +825,9 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 
 		if (!(options & MESH_ASSET_SKIP_STATIC_BIT))
-			render_mesh_assets(cmd, context, queue, DrawPipeline::AlphaBlend, options, false);
+			render_mesh_assets(cmd, context, DrawPipeline::AlphaBlend, options, false);
 		if (!(options & MESH_ASSET_SKIP_SKINNED_BIT))
-			render_mesh_assets(cmd, context, queue, DrawPipeline::AlphaBlend, options, true);
+			render_mesh_assets(cmd, context, DrawPipeline::AlphaBlend, options, true);
 
 		queue.dispatch_subset(Queue::Transparent, cmd, &state, index, num_indices);
 	}

@@ -152,7 +152,7 @@ private:
 
 	void set_mesh_renderer_options_internal(RendererOptionFlags flags);
 
-	void render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContext &context, const RenderQueue &queue,
+	void render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContext &context,
 	                        DrawPipeline pipe, RendererFlushFlags options, bool skinned) const;
 };
 using RendererHandle = Util::IntrusivePtr<Renderer>;

@@ -1,12 +1,12 @@
 #version 450
 #extension GL_EXT_mesh_shader : require
-#extension GL_ARB_shader_draw_parameters : require
 
 out gl_MeshPerVertexEXT
 {
     invariant vec4 gl_Position;
 } gl_MeshVerticesEXT[];
 
+// TODO: determine globally
 #define MESHLET_PRIMITIVE_CULL_WAVE32 1
 #define MESHLET_RENDER_TASK_HIERARCHICAL 1
 #define MESHLET_LOCAL_INVOCATION_INDEXED 0
@@ -20,12 +20,6 @@ out gl_MeshPerVertexEXT
 
 layout(max_primitives = 32, max_vertices = 32, triangles) out;
 layout(local_size_x = 32, local_size_y = 1) in;
-
-#define MESHLET_PAYLOAD_DESCRIPTOR_SET 3
-#define MESHLET_PAYLOAD_META_BINDING 1
-#define MESHLET_PAYLOAD_STREAM_BINDING 2
-#define MESHLET_PAYLOAD_PAYLOAD_BINDING 3
-#define MESHLET_VIEWPORT_BINDING 4
 
 #include "inc/meshlet_payload_constants.h"
 #include "inc/meshlet_payload_decode.h"
@@ -70,11 +64,17 @@ layout(location = 3) out mediump vec4 vTangent[];
 layout(location = 4) out vec3 vPos[];
 #endif
 
-layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_VIEWPORT_BINDING) uniform UBOViewport
+layout(set = 3, binding = 0, std140) uniform Frustum
 {
-    vec4 viewport;
-    float winding;
-};
+	vec4 viewport;
+	vec4 planes[6];
+	mat4 view;
+	vec4 viewport_scale_bias;
+	ivec2 hiz_resolution;
+	float winding;
+	int hiz_min_lod;
+	int hiz_max_lod;
+} frustum;
 
 layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_TRANSFORMS) readonly buffer AffineTransforms
 {
@@ -133,7 +133,7 @@ void main()
         clip_pos = global.view_projection * vec4(world_pos, 1.0);
     }
 
-    meshlet_emit_primitive(decoded_index_buffer, clip_pos, viewport, winding);
+    meshlet_emit_primitive(decoded_index_buffer, clip_pos, frustum.viewport, frustum.winding);
 
     if (meshlet_lane_has_active_vert())
     {

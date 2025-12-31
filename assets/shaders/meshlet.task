@@ -9,10 +9,6 @@ layout(local_size_x = 32) in;
 #define MESHLET_RENDER_TASK_HIERARCHICAL 1
 #define MESHLET_RENDER_PHASE 0
 
-#define MESHLET_RENDER_TASK_BINDING 0
-#define MESHLET_RENDER_FRUSTUM_BINDING 5
-
-#include "inc/global_bindings.h"
 #include "inc/meshlet_render.h"
 #include "inc/render_parameters.h"
 
@@ -65,18 +61,12 @@ void process_task(MeshAssetDrawTaskInfo task)
     uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
     uint meshlet_index = offset + gl_LocalInvocationIndex;
 
-#if 0 && !MESHLET_RENDER_TASK_HIERARCHICAL
-    bool visible = bitfieldExtract(aabb.data[task.aabb_instance / 32], int(task.aabb_instance & 31), 1) != 0;
-#else
-    const bool visible = true;
-#endif
-
 #if MESHLET_RENDER_PHASE >= 1
     uint visibility_state = occluders.data[task.occluder_state_offset];
 #endif
 
     bool alloc_draw = false;
-    if (visible && gl_LocalInvocationIndex < count)
+    if (gl_LocalInvocationIndex < count)
     {
         mat_affine M = transforms.data[node_instance];
         Bound b = bounds.data[meshlet_index];
@@ -128,13 +118,14 @@ void process_task(MeshAssetDrawTaskInfo task)
 void main()
 {
 #if MESHLET_RENDER_TASK_HIERARCHICAL
-    uint task_index = gl_GlobalInvocationID.x + registers.offset * gl_WorkGroupSize.x;
+    uint task_index = registers.offset + gl_GlobalInvocationID.x;
     bool task_needs_work = false;
-    if (task_index < registers.count)
+
+    if (gl_GlobalInvocationID.x < registers.count)
     {
         MeshAssetDrawTaskInfo task = task_info.data[task_index];
 
-        // Precull the group.
+        // Cull the group.
         AABB aabb = aabb.data[task.aabb_instance];
         bool visible = frustum_cull(aabb.lo, aabb.hi);
 
@@ -150,22 +141,21 @@ void main()
 #endif
     }
 
+    // If we're not doing hierarchical culling, go straight to cluster culling.
+
     uint b = ballot(task_needs_work).x;
 
     while (b != 0)
     {
         int lane = findLSB(b);
-        b &= ~(1u << lane);
-        MeshAssetDrawTaskInfo tmp_task = task_info.data[(gl_WorkGroupID.x + registers.offset) * gl_WorkGroupSize.x + lane];
+        b &= b - 1;
+        MeshAssetDrawTaskInfo tmp_task = task_info.data[gl_WorkGroupID.x * gl_WorkGroupSize.x + registers.offset + lane];
         process_task(tmp_task);
     }
 #else
     uint task_index = gl_WorkGroupID.x + registers.offset;
-    if (task_index < registers.count)
-    {
-        MeshAssetDrawTaskInfo task = task_info.data[task_index];
-        process_task(task);
-    }
+    MeshAssetDrawTaskInfo task = task_info.data[task_index];
+    process_task(task);
 #endif
 
     EmitMeshTasksEXT(8, payload_offset, 1);

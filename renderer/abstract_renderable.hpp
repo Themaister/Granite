@@ -157,7 +157,7 @@ public:
 		return num_occluder_states;
 	}
 
-	MeshAssetRenderFlags get_flags() const
+	MeshAssetRenderFlags get_asset_flags() const
 	{
 		return asset_flags;
 	}

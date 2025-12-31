@@ -67,18 +67,6 @@ void RenderQueue::combine_render_info(const RenderQueue &queue)
 		q.raw_input.insert(q.raw_input.end(), other.raw_input.begin(), other.raw_input.end());
 
 	}
-
-	for (unsigned i = 0; i < ecast(DrawPipeline::Count); i++)
-	{
-		auto &pipe = draw_pipelines[i];
-		auto &other = queue.get_draw_pipeline_data(DrawPipeline(i));
-		pipe.mesh_asset_static_info.insert(pipe.mesh_asset_static_info.end(), other.mesh_asset_static_info.begin(),
-		                                   other.mesh_asset_static_info.end());
-		pipe.mesh_asset_skinned_info.insert(pipe.mesh_asset_skinned_info.end(), other.mesh_asset_skinned_info.begin(),
-		                                    other.mesh_asset_skinned_info.end());
-		pipe.num_static_draws += other.num_static_draws;
-		pipe.num_skinned_draws += other.num_skinned_draws;
-	}
 }
 
 void RenderQueue::dispatch_range(Queue queue_type, CommandBuffer &cmd, const CommandBufferSavedState *state,
@@ -174,8 +162,6 @@ void RenderQueue::reset()
 	recycle_blocks();
 	for (auto &queue : queues)
 		queue.clear();
-	for (auto &pipe : draw_pipelines)
-		pipe.clear();
 	render_infos.clear();
 }
 
@@ -205,54 +191,14 @@ void *RenderQueue::allocate(size_t size, size_t alignment)
 	return data;
 }
 
-void RenderQueue::push_mesh_asset_renderable(const MeshAssetRenderable &mesh, const RenderInfoComponent &transform)
-{
-	auto range = resource_manager->get_mesh_draw_range(mesh.get_asset_id());
-
-	if (range.meshlet.count == 0)
-		return;
-
-	auto &pipe = draw_pipelines[ecast(mesh.get_mesh_draw_pipeline())];
-	MeshAssetDrawTaskInfo draw = {};
-
-	draw.aabb_instance = transform.aabb.offset;
-	draw.occluder_state_offset = transform.occluder_state.offset;
-	auto *node = transform.scene_node;
-	auto *skin = node->get_skin();
-	draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
-	draw.material_texture_index = mesh.get_material_offsets().texture_offset;
-	draw.material_payload_offset = mesh.get_material_offsets().uniform_offset;
-	draw.flags = mesh.get_flags();
-	VK_ASSERT((range.meshlet.offset & 31) == 0);
-
-	bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;
-	auto &draw_counter = skinned ? pipe.num_skinned_draws : pipe.num_static_draws;
-	draw_counter += range.meshlet.count;
-	auto &info_vec = skinned ? pipe.mesh_asset_skinned_info : pipe.mesh_asset_skinned_info;
-
-	for (uint32_t j = 0; j < range.meshlet.count; j += 32)
-	{
-		draw.mesh_index_count = range.meshlet.offset + j + (std::min(range.meshlet.count - j, 32u) - 1);
-		info_vec.push_back(draw);
-		draw.occluder_state_offset++;
-	}
-}
-
 void RenderQueue::push_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count)
 {
 	for (size_t i = 0; i < count; i++)
 	{
 		auto &vis = visible[i];
-		if ((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0)
-		{
-			auto &mesh = static_cast<const MeshAssetRenderable &>(*vis.renderable);
-			push_mesh_asset_renderable(mesh, *vis.transform);
-		}
-		else
-		{
-			// Generic renderables.
-			vis.renderable->get_render_info(context, visible[i].transform, *this);
-		}
+		// This path only applies to generic renderables.
+		VK_ASSERT((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) == 0);
+		vis.renderable->get_render_info(context, visible[i].transform, *this);
 	}
 }
 
@@ -261,15 +207,8 @@ void RenderQueue::push_depth_renderables(const RenderContext &context, const Ren
 	for (size_t i = 0; i < count; i++)
 	{
 		auto &vis = visible[i];
-		if ((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0)
-		{
-			auto &mesh = static_cast<const MeshAssetRenderable &>(*vis.renderable);
-			push_mesh_asset_renderable(mesh, *vis.transform);
-		}
-		else
-		{
-			visible[i].renderable->get_depth_render_info(context, visible[i].transform, *this);
-		}
+		VK_ASSERT((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) == 0);
+		visible[i].renderable->get_depth_render_info(context, visible[i].transform, *this);
 	}
 }
 
@@ -279,15 +218,8 @@ void RenderQueue::push_motion_vector_renderables(const RenderContext &context, c
 	for (size_t i = 0; i < count; i++)
 	{
 		auto &vis = visible[i];
-		if ((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0)
-		{
-			auto &mesh = static_cast<const MeshAssetRenderable &>(*vis.renderable);
-			push_mesh_asset_renderable(mesh, *vis.transform);
-		}
-		else
-		{
-			vis.renderable->get_motion_vector_render_info(context, visible[i].transform, *this);
-		}
+		VK_ASSERT((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) == 0);
+		vis.renderable->get_motion_vector_render_info(context, visible[i].transform, *this);
 	}
 }
 

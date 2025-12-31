@@ -131,7 +131,20 @@ public:
 	const Vulkan::Buffer *get_scene_task_buffer() const { return task_buffer.get(); }
 	const Vulkan::Buffer *get_occlusion_state(unsigned index) const { return per_context_data[index].occlusions.get(); }
 
+	std::pair<uint32_t, uint32_t> get_task_range(DrawPipeline pipe, bool skinned) const
+	{
+		return task_offset_counts[2 * int(pipe) + skinned];
+	}
+
+	const Vulkan::Buffer *get_task_buffer() const { return task_buffer.get(); }
+
 private:
+	const ComponentGroupVector<
+		RenderableComponent,
+		MeshletComponent,
+		RenderInfoComponent,
+		CachedSpatialTransformTimestampComponent> *meshlets = nullptr;
+
 	void add_render_passes(RenderGraph &graph) override;
 	void set_base_renderer(const RendererSuite *suite) override;
 	void set_base_render_context(const RenderContext *context) override;
@@ -146,15 +159,16 @@ private:
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 
-	void update_scene_transforms();
+	void update_scene_buffers();
 
 	Vulkan::Device *device = nullptr;
 	Vulkan::BufferHandle transforms;
 	Vulkan::BufferHandle prev_transforms;
 	Vulkan::BufferHandle aabbs;
-	Vulkan::BufferHandle task_buffer;
 	Scene *scene = nullptr;
-	VisibilityList visible;
+
+	Vulkan::BufferHandle task_buffer;
+	std::pair<uint32_t, uint32_t> task_offset_counts[2 * int(DrawPipeline::Count)] = {};
 
 	struct PerContext
 	{
@@ -167,6 +181,7 @@ private:
 	Util::SmallVector<Vulkan::Semaphore> sems;
 	Vulkan::Semaphore acquire_sem;
 
-	void ensure_buffer(Vulkan::CommandBufferHandle &cmd, Vulkan::BufferHandle &buffer, VkDeviceSize size);
+	void ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::BufferHandle &buffer, VkDeviceSize size);
+	void update_task_buffer(Vulkan::CommandBuffer &cmd);
 };
 }

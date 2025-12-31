@@ -521,6 +521,7 @@ void SceneTransformManager::on_device_destroyed(const Vulkan::DeviceCreatedEvent
 	transforms.reset();
 	prev_transforms.reset();
 	aabbs.reset();
+	task_buffer.reset();
 
 	for (auto &ctx : per_context_data)
 		ctx.occlusions.reset();
@@ -533,6 +534,9 @@ void SceneTransformManager::init(Scene &scene_)
 	rpass->creator = this;
 	auto *refresh = entity->allocate_component<PerFrameUpdateComponent>();
 	refresh->refresh = this;
+
+	meshlets = &scene_.get_entity_pool().get_component_group<
+		RenderableComponent, MeshletComponent, RenderInfoComponent, CachedSpatialTransformTimestampComponent>();
 }
 
 void SceneTransformManager::register_persistent_render_context(RenderContext *context)
@@ -568,7 +572,7 @@ void SceneTransformManager::refresh(const RenderContext &, TaskComposer &compose
 	auto &stage = composer.begin_pipeline_stage();
 	stage.enqueue_task([&]()
 	{
-		update_scene_transforms();
+		update_scene_buffers();
 	});
 }
 
@@ -621,7 +625,77 @@ static void update_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &buffer, cons
 	flush();
 }
 
-void SceneTransformManager::update_scene_transforms()
+void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
+{
+	unsigned num_task_instances_per_kind[2 * int(DrawPipeline::Count)] = {};
+	unsigned num_task_instances = 0;
+	auto &manager = device->get_resource_manager();
+
+	for (auto &elem : *meshlets)
+	{
+		auto &mesh = static_cast<MeshAssetRenderable &>(*get_component<RenderableComponent>(elem)->renderable);
+		auto range = manager.get_mesh_draw_range(mesh.get_asset_id());
+		bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;
+		num_task_instances_per_kind[2 * int(mesh.get_mesh_draw_pipeline()) + skinned] = (range.meshlet.count + 31) / 32;
+	}
+
+	for (auto count : num_task_instances_per_kind)
+		num_task_instances += count;
+
+	task_offset_counts[0] = {};
+
+	for (int i = 1; i < 2 * int(DrawPipeline::Count); i++)
+	{
+		task_offset_counts[i] = { num_task_instances_per_kind[i - 1], 0 };
+		num_task_instances_per_kind[i] += num_task_instances_per_kind[i - 1];
+	}
+
+	auto required = VkDeviceSize(sizeof(MeshAssetDrawTaskInfo)) * num_task_instances;
+
+	Vulkan::BufferCreateInfo bufinfo = {};
+	bufinfo.size = required;
+	bufinfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	bufinfo.domain = Vulkan::BufferDomain::UMACachedCoherentPreferDevice;
+	task_buffer = device->create_buffer(bufinfo);
+
+	// Ideally just derp the data into a mapped buffer on iGPU, but fallback to transfer queue on dGPU.
+	auto *task_infos = static_cast<MeshAssetDrawTaskInfo *>(device->map_host_buffer(*task_buffer, Vulkan::MEMORY_ACCESS_WRITE_BIT));
+	if (!task_infos)
+		task_infos = static_cast<MeshAssetDrawTaskInfo *>(cmd.update_buffer(*task_buffer, 0, required));
+
+	for (auto &elem : *meshlets)
+	{
+		auto &mesh = static_cast<MeshAssetRenderable &>(*get_component<RenderableComponent>(elem)->renderable);
+		auto &transform = *get_component<RenderInfoComponent>(elem);
+		auto range = manager.get_mesh_draw_range(mesh.get_asset_id());
+		bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;
+
+		MeshAssetDrawTaskInfo draw = {};
+		draw.aabb_instance = transform.aabb.offset;
+		draw.occluder_state_offset = transform.occluder_state.offset;
+		auto *node = transform.scene_node;
+		auto *skin = node->get_skin();
+		draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
+		draw.material_texture_index = mesh.get_material_offsets().texture_offset;
+		draw.material_payload_offset = mesh.get_material_offsets().uniform_offset;
+		draw.flags = mesh.get_asset_flags();
+		VK_ASSERT((range.meshlet.offset & 31) == 0);
+
+		auto &offset_count = task_offset_counts[2 * int(mesh.get_mesh_draw_pipeline()) + skinned];
+
+		for (uint32_t j = 0; j < range.meshlet.count; j += 32)
+		{
+			draw.mesh_index_count = range.meshlet.offset + j + (std::min(range.meshlet.count - j, 32u) - 1);
+			task_infos[offset_count.first + offset_count.second] = draw;
+			draw.occluder_state_offset++;
+		}
+	}
+
+	// Even if it's device local, it's okay to call this.
+	device->unmap_host_buffer(*task_buffer, Vulkan::MEMORY_ACCESS_WRITE_BIT);
+}
+
+void SceneTransformManager::update_scene_buffers()
 {
 	if (!scene)
 		return;
@@ -638,56 +712,41 @@ void SceneTransformManager::update_scene_transforms()
 		sems.clear();
 	}
 
-	Vulkan::CommandBufferHandle cmd;
+	auto cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
+
+	update_task_buffer(*cmd);
 
 	auto transform_span = scene->get_transform_update_span();
 	auto aabb_span = scene->get_aabb_update_span();
 	auto occlusion_span = scene->get_occluder_state_update_span();
 
-	ensure_buffer(cmd, transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine));
-	ensure_buffer(cmd, prev_transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine));
-	ensure_buffer(cmd, aabbs, VkDeviceSize(scene->get_aabbs().get_count()) * sizeof(AABB));
+	ensure_buffer(*cmd, transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine));
+	ensure_buffer(*cmd, prev_transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine));
+	ensure_buffer(*cmd, aabbs, VkDeviceSize(scene->get_aabbs().get_count()) * sizeof(AABB));
 
 	for (auto &ctx : per_context_data)
-		ensure_buffer(cmd, ctx.occlusions, VkDeviceSize(scene->get_occluder_states().get_count()) * sizeof(uint32_t));
+		ensure_buffer(*cmd, ctx.occlusions, VkDeviceSize(scene->get_occluder_states().get_count()) * sizeof(uint32_t));
 
 	if (transform_span.count != 0)
-	{
-		if (!cmd)
-			cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
 		update_span(*cmd, *transforms, scene->get_transforms().get_cached_transforms(), transform_span);
-	}
 
 	if (aabb_span.count != 0)
-	{
-		if (!cmd)
-			cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
 		update_span(*cmd, *aabbs, scene->get_aabbs().get_aabbs(), transform_span);
-	}
 
 	if (occlusion_span.count != 0)
-	{
 		for (auto &ctx : per_context_data)
-		{
-			if (!cmd)
-				cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
 			update_span(*cmd, *ctx.occlusions, static_cast<const uint32_t *>(nullptr), occlusion_span);
-		}
-	}
 
-	if (cmd)
-	{
-		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-		             VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
-		             VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
-		acquire_sem.reset();
-		device->submit(cmd, nullptr, 1, &acquire_sem);
-	}
+	cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+	             VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
+	             VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
+	acquire_sem.reset();
+	device->submit(cmd, nullptr, 1, &acquire_sem);
 
 	scene->clear_updates();
 }
 
-void SceneTransformManager::ensure_buffer(Vulkan::CommandBufferHandle &cmd, Vulkan::BufferHandle &buffer,
+void SceneTransformManager::ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::BufferHandle &buffer,
                                           VkDeviceSize size)
 {
 	if (buffer && buffer->get_create_info().size >= size)
@@ -704,12 +763,9 @@ void SceneTransformManager::ensure_buffer(Vulkan::CommandBufferHandle &cmd, Vulk
 
 	if (buffer)
 	{
-		if (!cmd)
-			cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
-
-		cmd->copy_buffer(*new_buffer,0, *buffer, 0, buffer->get_create_info().size);
-		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
-		             VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
+		cmd.copy_buffer(*new_buffer, 0, *buffer, 0, buffer->get_create_info().size);
+		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
+		            VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
 	}
 }
 

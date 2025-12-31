@@ -252,38 +252,13 @@ public:
 		const RenderQueueData *sorted_data() const { return sorted_output.data(); }
 	};
 
-	struct DrawPipelineData
-	{
-		void clear()
-		{
-			mesh_asset_static_info.clear();
-			mesh_asset_skinned_info.clear();
-			num_static_draws = 0;
-			num_skinned_draws = 0;
-		}
-
-		Util::SmallVector<MeshAssetDrawTaskInfo> mesh_asset_static_info;
-		Util::SmallVector<MeshAssetDrawTaskInfo> mesh_asset_skinned_info;
-		const MeshAssetDrawTaskInfo *mesh_asset_static_data() const { return mesh_asset_static_info.data(); }
-		const MeshAssetDrawTaskInfo *mesh_asset_skinned_data() const { return mesh_asset_skinned_info.data(); }
-		size_t mesh_asset_static_size() const { return mesh_asset_static_info.size(); }
-		size_t mesh_asset_skinned_size() const { return mesh_asset_skinned_info.size(); }
-		size_t num_static_draws = 0;
-		size_t num_skinned_draws = 0;
-	};
-
 	const RenderQueueDataVector &get_queue_data(Queue queue) const
 	{
 		return queues[Util::ecast(queue)];
 	}
 
-	const DrawPipelineData &get_draw_pipeline_data(DrawPipeline pipe) const
-	{
-		return draw_pipelines[Util::ecast(pipe)];
-	}
-
-	// Only considers generic drawables. MeshAssetDrawTaskInfo is supposed to be handled specially by
-	// get_queue_data(q).mesh_asset_static_size(), etc.
+	// Only considers generic drawables. MeshAssetDrawTaskInfo is supposed to be handled specially
+	// through SceneTransformManager.
 	void sort();
 	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state) const;
 	void dispatch_range(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state, size_t begin, size_t end) const;
@@ -315,7 +290,6 @@ public:
 private:
 	Vulkan::ResourceManager *resource_manager = nullptr;
 	void enqueue_queue_data(Queue queue, const RenderQueueData &data);
-	void push_mesh_asset_renderable(const MeshAssetRenderable &mesh, const RenderInfoComponent &transform);
 
 	struct Block : Util::IntrusivePtrEnabled<Block>
 	{
@@ -356,7 +330,6 @@ private:
 	Block *insert_large_block(size_t size, size_t alignment);
 
 	RenderQueueDataVector queues[Util::ecast(Queue::Count)];
-	DrawPipelineData draw_pipelines[Util::ecast(DrawPipeline::Count)];
 	Util::SmallVector<Block *, 64> blocks;
 	Block *current = nullptr;
 

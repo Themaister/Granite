@@ -1,6 +1,7 @@
 #ifndef MESHLET_RENDER_H_
 #define MESHLET_RENDER_H_
 
+#include "global_bindings.h"
 #include "meshlet_render_types.h"
 #include "affine.h"
 
@@ -11,11 +12,7 @@ layout(set = 0, binding = BINDING_GLOBAL_SCENE_CLUSTER_BOUNDS, std430) readonly 
 
 layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_AABBS, std430) readonly buffer AABBSSBO
 {
-#ifdef MESHLET_RENDER_AABB_VISIBILITY
-	uint data[];
-#else
 	AABB data[];
-#endif
 } aabb;
 
 layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_TRANSFORMS, std430) readonly buffer Transforms
@@ -28,23 +25,25 @@ layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_HIZ_BINDING
 uniform texture2D uHiZDepth;
 #endif
 
-layout(set = 3, binding = MESHLET_RENDER_TASK_BINDING, std430) readonly buffer Tasks
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_TASK_BUFFER, std430) readonly buffer Tasks
 {
 	MeshAssetDrawTaskInfo data[];
 } task_info;
 
-layout(set = 3, binding = MESHLET_RENDER_FRUSTUM_BINDING, std140) uniform Frustum
+layout(set = 3, binding = 0, std140) uniform Frustum
 {
+	vec4 viewport;
 	vec4 planes[6];
 	mat4 view;
 	vec4 viewport_scale_bias;
 	ivec2 hiz_resolution;
+	float winding;
 	int hiz_min_lod;
 	int hiz_max_lod;
 } frustum;
 
 #ifdef MESHLET_RENDER_OCCLUDER_BINDING
-layout(set = 0, binding = MESHLET_RENDER_OCCLUDER_BINDING, std430) buffer OccluderState
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_OCCLUSION_STATE, std430) buffer OccluderState
 {
 	uint data[];
 } occluders;
@@ -89,7 +88,7 @@ bool hiz_cull(vec2 view_range_x, vec2 view_range_y, float closest_z)
 	iy.x = clamp(iy.x, 0, frustum.hiz_resolution.y - 1);
 	iy.y = clamp(iy.y, iy.x, frustum.hiz_resolution.y - 1);
 
-	// We need to sample from a LOD where where there is at most one texel delta
+	// We need to sample from a LOD where there is at most one texel delta
 	// between lo/hi values.
 	int max_delta = max(ix.y - ix.x, iy.y - iy.x);
 	int lod = clamp(findMSB(max_delta - 1) + 1, frustum.hiz_min_lod, frustum.hiz_max_lod);
@@ -113,61 +112,6 @@ bool hiz_cull(vec2 view_range_x, vec2 view_range_y, float closest_z)
 		d = max(d, texelFetchOffset(uHiZDepth, hiz_coord, lod, ivec2(1, 1)).x);
 
 	return closest_z < d;
-}
-
-bool aabb_hiz_cull(vec3 lo, vec3 hi)
-{
-	// This is heavily amortized, so it's okay if it's inefficient.
-	vec3 lo_x = lo.x * frustum.view[0].xyz;
-	vec3 lo_y = lo.y * frustum.view[1].xyz;
-	vec3 lo_z = lo.z * frustum.view[2].xyz;
-
-	vec3 hi_x = hi.x * frustum.view[0].xyz;
-	vec3 hi_y = hi.y * frustum.view[1].xyz;
-	vec3 hi_z = hi.z * frustum.view[2].xyz;
-
-	vec3 t = frustum.view[3].xyz;
-
-	vec3 c0 = lo_x + lo_y + lo_z + t;
-	vec3 c1 = hi_x + lo_y + lo_z + t;
-	vec3 c2 = lo_x + hi_y + lo_z + t;
-	vec3 c3 = hi_x + hi_y + lo_z + t;
-	vec3 c4 = lo_x + lo_y + hi_z + t;
-	vec3 c5 = hi_x + lo_y + hi_z + t;
-	vec3 c6 = lo_x + hi_y + hi_z + t;
-	vec3 c7 = hi_x + hi_y + hi_z + t;
-
-#define FLIP_YZ(c) c.yz = -c.yz
-	FLIP_YZ(c0);
-	FLIP_YZ(c1);
-	FLIP_YZ(c2);
-	FLIP_YZ(c3);
-	FLIP_YZ(c4);
-	FLIP_YZ(c5);
-	FLIP_YZ(c6);
-	FLIP_YZ(c7);
-#undef FLIP_YZ
-
-	bool ret = true;
-	float closest_z = min(min(min(c0.z, c1.z), min(c2.z, c3.z)), min(min(c4.z, c5.z), min(c6.z, c7.z)));
-	if (closest_z > 0.0)
-	{
-		vec2 p0 = c0.xy / c0.z;
-		vec2 p1 = c1.xy / c1.z;
-		vec2 p2 = c2.xy / c2.z;
-		vec2 p3 = c3.xy / c3.z;
-		vec2 p4 = c4.xy / c4.z;
-		vec2 p5 = c5.xy / c5.z;
-		vec2 p6 = c6.xy / c6.z;
-		vec2 p7 = c7.xy / c7.z;
-
-		vec2 lo = min(min(min(p0, p1), min(p2, p3)), min(min(p4, p5), min(p6, p7)));
-		vec2 hi = max(max(max(p0, p1), max(p2, p3)), max(max(p4, p5), max(p6, p7)));
-
-		ret = hiz_cull(vec2(lo.x, hi.x), vec2(lo.y, hi.y), closest_z);
-	}
-
-	return ret;
 }
 #endif
 

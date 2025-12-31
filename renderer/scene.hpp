@@ -68,12 +68,12 @@ class TransformAllocator : public Util::SliceAllocator
 {
 public:
 	TransformAllocator();
-	inline Transform *get_transforms() { return allocator.transforms.data(); }
-	inline mat_affine *get_cached_transforms() { return allocator.cached_transforms.data(); }
-	inline mat_affine *get_cached_prev_transforms() { return allocator.cached_prev_transforms.data(); }
-	inline const Transform *get_transforms() const { return allocator.transforms.data(); }
-	inline const mat_affine *get_cached_transforms() const { return allocator.cached_transforms.data(); }
-	inline const mat_affine *get_cached_prev_transforms() const { return allocator.cached_prev_transforms.data(); }
+	Transform *get_transforms() { return allocator.transforms.data(); }
+	mat_affine *get_cached_transforms() { return allocator.cached_transforms.data(); }
+	mat_affine *get_cached_prev_transforms() { return allocator.cached_prev_transforms.data(); }
+	const Transform *get_transforms() const { return allocator.transforms.data(); }
+	const mat_affine *get_cached_transforms() const { return allocator.cached_transforms.data(); }
+	const mat_affine *get_cached_prev_transforms() const { return allocator.cached_prev_transforms.data(); }
 
 	uint32_t get_count() const { return high_water_mark; }
 	bool allocate(uint32_t count, Util::AllocatedSlice *slice);
@@ -87,8 +87,8 @@ class TransformAllocatorAABB : public Util::SliceAllocator
 {
 public:
 	TransformAllocatorAABB();
-	inline AABB *get_aabbs() { return allocator.aabb.data(); }
-	inline const AABB *get_aabbs() const { return allocator.aabb.data(); }
+	AABB *get_aabbs() { return allocator.aabb.data(); }
+	const AABB *get_aabbs() const { return allocator.aabb.data(); }
 
 	uint32_t get_count() const { return high_water_mark; }
 	bool allocate(uint32_t count, Util::AllocatedSlice *slice);

@@ -1139,6 +1139,10 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 	Entity *entity = pool.create_entity();
 	entities.insert_front(entity);
 
+	bool is_fixed_function_meshlet = (renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0;
+	if (is_fixed_function_meshlet)
+		entity->allocate_component<MeshletComponent>();
+
 	if (renderable->has_static_aabb())
 	{
 		auto *transform = entity->allocate_component<RenderInfoComponent>();
@@ -1156,16 +1160,19 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 		if (!get_aabbs().allocate(1, &transform->aabb))
 			LOGE("Exhausted AABB pool.\n");
 
-		auto num_occluder_states = renderable->get_num_occluder_states();
-
-		if (num_occluder_states)
+		if (is_fixed_function_meshlet)
 		{
-			auto num_occluder_words = (num_occluder_states + 31) / 32;
-			if (!get_occluder_states().allocate(num_occluder_words, &transform->occluder_state))
-				LOGE("Exhausted occluder state pool.\n");
+			auto num_occluder_states = renderable->get_num_occluder_states();
 
-			cleared_occlusion_states.reserve(get_occluder_states().get_count());
-			notify_allocated_occlusion_state(transform->occluder_state.offset, transform->occluder_state.count);
+			if (num_occluder_states)
+			{
+				auto num_occluder_words = (num_occluder_states + 31) / 32;
+				if (!get_occluder_states().allocate(num_occluder_words, &transform->occluder_state))
+					LOGE("Exhausted occluder state pool.\n");
+
+				cleared_occlusion_states.reserve(get_occluder_states().get_count());
+				notify_allocated_occlusion_state(transform->occluder_state.offset, transform->occluder_state.count);
+			}
 		}
 	}
 	else
@@ -1173,21 +1180,24 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 
 	auto *render = entity->allocate_component<RenderableComponent>();
 
-	switch (renderable->get_mesh_draw_pipeline())
+	if (!is_fixed_function_meshlet)
 	{
-	case DrawPipeline::AlphaBlend:
-		entity->allocate_component<TransparentComponent>();
-		break;
-
-	default:
-		entity->allocate_component<OpaqueComponent>();
-		if (renderable->has_static_aabb())
+		switch (renderable->get_mesh_draw_pipeline())
 		{
-			// TODO: Find a way to make this smarter.
-			entity->allocate_component<CastsStaticShadowComponent>();
-			entity->allocate_component<CastsDynamicShadowComponent>();
+		case DrawPipeline::AlphaBlend:
+			entity->allocate_component<TransparentComponent>();
+			break;
+
+		default:
+			entity->allocate_component<OpaqueComponent>();
+			if (renderable->has_static_aabb())
+			{
+				// TODO: Find a way to make this smarter.
+				entity->allocate_component<CastsStaticShadowComponent>();
+				entity->allocate_component<CastsDynamicShadowComponent>();
+			}
+			break;
 		}
-		break;
 	}
 
 	render->renderable = renderable;

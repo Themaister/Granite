@@ -79,17 +79,7 @@ layout(location = 3) out mediump vec4 vTangent[];
 layout(location = 4) out vec3 vPos[];
 #endif
 
-layout(set = 3, binding = 0, std140) uniform Frustum
-{
-	vec4 viewport;
-	vec4 planes[6];
-	mat4 view;
-	vec4 viewport_scale_bias;
-	ivec2 hiz_resolution;
-	float winding;
-	int hiz_min_lod;
-	int hiz_max_lod;
-} frustum;
+#include "inc/meshlet_ubos.h"
 
 layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_TRANSFORMS) readonly buffer AffineTransforms
 {

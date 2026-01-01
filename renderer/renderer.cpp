@@ -746,14 +746,11 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 			uint32_t count;
 		} push = {};
 
-		// TODO: Enable misc paths.
+		// Could do the same for task shader, but not as important.
+		cmd.enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
 		if (manager.mesh_rendering_is_wave_culled())
-		{
-			cmd.enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
 			cmd.set_subgroup_size_log2(true, 5, 5);
-		}
 
-		// Prefer this on AMD, disable on NV.
 		uint32_t hierarchy_scale_log2 = device->get_resource_manager().mesh_rendering_is_hierarchical_task() ? 5 : 0;
 		uint32_t hierarchy_scale = 1u << hierarchy_scale_log2;
 

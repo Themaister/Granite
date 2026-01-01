@@ -30,17 +30,7 @@ layout(set = 0, binding = BINDING_GLOBAL_SCENE_TASK_BUFFER, std430) readonly buf
 	MeshAssetDrawTaskInfo data[];
 } task_info;
 
-layout(set = 3, binding = 0, std140) uniform Frustum
-{
-	vec4 viewport;
-	vec4 planes[6];
-	mat4 view;
-	vec4 viewport_scale_bias;
-	ivec2 hiz_resolution;
-	float winding;
-	int hiz_min_lod;
-	int hiz_max_lod;
-} frustum;
+#include "meshlet_ubos.h"
 
 #ifdef MESHLET_RENDER_OCCLUDER_BINDING
 layout(set = 0, binding = BINDING_GLOBAL_SCENE_OCCLUSION_STATE, std430) buffer OccluderState

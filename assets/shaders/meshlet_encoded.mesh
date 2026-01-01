@@ -6,13 +6,28 @@ out gl_MeshPerVertexEXT
     invariant vec4 gl_Position;
 } gl_MeshVerticesEXT[];
 
-// TODO: determine globally
-#define MESHLET_PRIMITIVE_CULL_WAVE32 1
+#if defined(VARIANT_BIT_0) && VARIANT_BIT_0
+#define MESHLET_RENDER_TASK_HIERARCHICAL 1
+#else
 #define MESHLET_RENDER_TASK_HIERARCHICAL 0
+#endif
+
+#if defined(VARIANT_BIT_1) && VARIANT_BIT_1
+#define MESHLET_LOCAL_INVOCATION_INDEXED 1
+#else
 #define MESHLET_LOCAL_INVOCATION_INDEXED 0
+#endif
+
+#if defined(VARIANT_BIT_2) && VARIANT_BIT_2
+#define MESHLET_PRIMITIVE_CULL_WG32 1
+#define MESHLET_PRIMITIVE_CULL_WAVE32 1
+#else
+#define MESHLET_PRIMITIVE_CULL_WG32 0
+#define MESHLET_PRIMITIVE_CULL_WAVE32 0
+#endif
 
 #extension GL_KHR_shader_subgroup_basic : require
-#if defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
+#if MESHLET_PRIMITIVE_CULL_WAVE32
 #extension GL_KHR_shader_subgroup_shuffle : require
 #extension GL_KHR_shader_subgroup_ballot : require
 #extension GL_KHR_shader_subgroup_arithmetic : require

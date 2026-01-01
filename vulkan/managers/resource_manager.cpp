@@ -764,6 +764,34 @@ const Buffer *ResourceManager::get_cluster_bounds_buffer() const
 		return indirect_buffer_allocator.get_buffer(0, 1);
 }
 
+bool ResourceManager::mesh_rendering_is_hierarchical_task() const
+{
+	return device->get_gpu_properties().vendorID == VENDOR_ID_AMD;
+}
+
+bool ResourceManager::mesh_rendering_is_local_invocation_indexed() const
+{
+	bool local_invocation_indexed =
+		device->get_device_features().mesh_shader_properties.prefersLocalInvocationPrimitiveOutput ||
+		device->get_device_features().mesh_shader_properties.prefersLocalInvocationVertexOutput;
+
+	// RADV doesn't seem to like roundtripping through LDS to satisfy local invocation indexed.
+	// amdgpu-pro is bugged without it >_<
+	if (device->get_device_features().driver_id == VK_DRIVER_ID_MESA_RADV &&
+		get_mesh_encoding() == MeshEncoding::MeshletEncoded)
+	{
+		local_invocation_indexed = false;
+	}
+
+	return local_invocation_indexed;
+}
+
+bool ResourceManager::mesh_rendering_is_wave_culled() const
+{
+	return device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
+	       device->get_device_features().vk13_props.minSubgroupSize == 32;
+}
+
 MeshBufferAllocator::MeshBufferAllocator(Device &device, uint32_t sub_block_size, uint32_t num_sub_blocks_in_arena_log2)
 	: global_allocator(device)
 {

@@ -705,7 +705,15 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		texture_mask |= MATERIAL_TEXTURE_BASE_COLOR_BIT | MATERIAL_TEXTURE_METALLIC_ROUGHNESS_BIT |
 		                MATERIAL_TEXTURE_NORMAL_BIT | MATERIAL_TEXTURE_OCCLUSION_BIT | MATERIAL_TEXTURE_EMISSIVE_BIT;
 
-		auto key = VariantSignatureKey::build(pipe, attribute_mask, texture_mask);
+		uint32_t variant_id = 0;
+		if (manager.mesh_rendering_is_hierarchical_task())
+			variant_id |= 1u << 0;
+		if (manager.mesh_rendering_is_local_invocation_indexed())
+			variant_id |= 1u << 1;
+		if (manager.mesh_rendering_is_wave_culled())
+			variant_id |= 1u << 2;
+
+		auto key = VariantSignatureKey::build(pipe, attribute_mask, texture_mask, variant_id);
 		auto *prog = suite[ecast(RenderableType::Meshlet)].get_program(key);
 		cmd.set_program(prog);
 		GRANITE_MATERIAL_MANAGER()->set_bindless(cmd, 2);
@@ -739,11 +747,15 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		} push = {};
 
 		// TODO: Enable misc paths.
-		cmd.enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
-		cmd.set_subgroup_size_log2(true, 5, 5);
+		if (manager.mesh_rendering_is_wave_culled())
+		{
+			cmd.enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
+			cmd.set_subgroup_size_log2(true, 5, 5);
+		}
 
 		// Prefer this on AMD, disable on NV.
-		constexpr uint32_t hierarchy_scale = 1;
+		uint32_t hierarchy_scale_log2 = device->get_resource_manager().mesh_rendering_is_hierarchical_task() ? 5 : 0;
+		uint32_t hierarchy_scale = 1u << hierarchy_scale_log2;
 
 		auto max_tasks_per_dispatch = device->get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0] * hierarchy_scale;
 		for (size_t i = 0; i < range.second; i += max_tasks_per_dispatch)
@@ -752,7 +764,7 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 			push.offset = range.first + uint32_t(i);
 			push.count = to_draw;
 			cmd.push_constants(&push, 0, sizeof(push));
-			cmd.draw_mesh_tasks((to_draw + hierarchy_scale - 1) / hierarchy_scale, 1, 1);
+			cmd.draw_mesh_tasks((to_draw + hierarchy_scale - 1) >> hierarchy_scale_log2, 1, 1);
 		}
 
 		cmd.enable_subgroup_size_control(false, VK_SHADER_STAGE_MESH_BIT_EXT);

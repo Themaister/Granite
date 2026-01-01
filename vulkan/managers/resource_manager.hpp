@@ -90,7 +90,7 @@ public:
 		Classic
 	};
 
-	inline const Vulkan::ImageView *get_image_view(Granite::AssetID id) const
+	const Vulkan::ImageView *get_image_view(Granite::AssetID id) const
 	{
 		if (id.id < views.size())
 			return views[id.id];
@@ -113,7 +113,7 @@ public:
 		VkDrawIndexedIndirectCommand indexed;
 	};
 
-	inline DrawCall get_mesh_draw_range(Granite::AssetID id) const
+	DrawCall get_mesh_draw_range(Granite::AssetID id) const
 	{
 		if (id.id < draws.size())
 			return draws[id.id];
@@ -121,7 +121,7 @@ public:
 			return {};
 	}
 
-	inline MeshEncoding get_mesh_encoding() const
+	MeshEncoding get_mesh_encoding() const
 	{
 		return mesh_encoding;
 	}
@@ -137,6 +137,11 @@ public:
 	const Buffer *get_meshlet_stream_header_buffer() const;
 
 	const Buffer *get_cluster_bounds_buffer() const;
+
+	// Mesh shading requires some vendor specific tuning.
+	bool mesh_rendering_is_hierarchical_task() const;
+	bool mesh_rendering_is_local_invocation_indexed() const;
+	bool mesh_rendering_is_wave_culled() const;
 
 private:
 	Device *device;

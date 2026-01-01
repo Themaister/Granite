@@ -5,8 +5,13 @@
 
 layout(local_size_x = 32) in;
 
-// TODO
+#if defined(VARIANT_BIT_0) && VARIANT_BIT_0
+#define MESHLET_RENDER_TASK_HIERARCHICAL 1
+#else
 #define MESHLET_RENDER_TASK_HIERARCHICAL 0
+#endif
+
+// TODO
 #define MESHLET_RENDER_PHASE 0
 
 #include "inc/meshlet_render.h"

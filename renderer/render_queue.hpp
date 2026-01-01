@@ -169,6 +169,18 @@ enum
 	MESH_ASSET_MATERIAL_TEXTURE_MASK_OFFSET = 24,
 };
 
+struct MeshletViewportUBO
+{
+	vec4 viewport;
+	vec4 planes[6];
+	mat4 view;
+	vec4 viewport_scale_bias;
+	uvec2 hiz_resolution;
+	float winding;
+	uint32_t hiz_min_lod;
+	uint32_t hiz_max_lod;
+};
+
 static_assert(sizeof(MeshAssetDrawTaskInfo) == 20, "Expected MeshAssetDrawInfo to be 20 bytes.");
 
 class MeshAssetRenderable;

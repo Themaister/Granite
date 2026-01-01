@@ -19,10 +19,12 @@ layout(local_size_x = 32) in;
 #define MESHLET_RENDER_PHASE 0
 #endif
 
+#if defined(VARIANT_BIT_5) && VARIANT_BIT_5
+#define MESHLET_RENDER_NO_Z_PREPASS
+#endif
+
 #include "inc/meshlet_render.h"
 #include "inc/render_parameters.h"
-
-#define MESHLET_RENDER_NO_Z_PREPASS
 
 layout(push_constant, std430) uniform Registers
 {

@@ -642,6 +642,9 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 	auto &manager = device->get_resource_manager();
 	auto encoding = manager.get_mesh_encoding();
 
+	if (pipe == DrawPipeline::AlphaTest && (options & MESH_ASSET_IGNORE_ALPHA_TEST_BIT) != 0)
+		pipe = DrawPipeline::Opaque;
+
 	auto *transforms = context.get_scene_transform_parameters();
 	if (!transforms)
 		return;
@@ -713,24 +716,20 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		if (manager.mesh_rendering_is_wave_culled())
 			variant_id |= 1u << 2;
 
+		if ((options & MESH_ASSET_PHASE_1_BIT) != 0)
+			variant_id |= 1u << 3;
+		if ((options & MESH_ASSET_PHASE_2_BIT) != 0)
+			variant_id |= 1u << 4;
+		if ((options & MESH_ASSET_FORCE_ALL_VISIBLE_BIT) != 0)
+			variant_id |= 1u << 5;
+
 		auto key = VariantSignatureKey::build(pipe, attribute_mask, texture_mask, variant_id);
 		auto *prog = suite[ecast(RenderableType::Meshlet)].get_program(key);
 		cmd.set_program(prog);
 		GRANITE_MATERIAL_MANAGER()->set_bindless(cmd, 2);
+		GRANITE_MATERIAL_MANAGER()->set_material_payloads(cmd, 3, 1);
 
-		struct UBO
-		{
-			vec4 viewport;
-			vec4 planes[6];
-			mat4 view;
-			vec4 viewport_scale_bias;
-			uvec2 hiz_resolution;
-			float winding;
-			uint hiz_min_lod;
-			uint hiz_max_lod;
-		};
-
-		auto *ubo = cmd.allocate_typed_constant_data<UBO>(3, 0, 1);
+		auto *ubo = cmd.allocate_typed_constant_data<MeshletViewportUBO>(3, 0, 1);
 		ubo->viewport = vec4(cmd.get_viewport().x + 0.5f * cmd.get_viewport().width - 0.5f,
 						cmd.get_viewport().y + 0.5f * cmd.get_viewport().height - 0.5f,
 						0.5f * cmd.get_viewport().width, 0.5f * cmd.get_viewport().height);

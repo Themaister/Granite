@@ -1175,7 +1175,7 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 					LOGE("Exhausted occluder state pool.\n");
 
 				cleared_occlusion_states.reserve(get_occluder_states().get_count());
-				notify_allocated_occlusion_state(transform->occluder_state.offset, transform->occluder_state.count);
+				notify_allocated_occlusion_state(transform->occluder_state.offset, num_occluder_words);
 			}
 		}
 	}

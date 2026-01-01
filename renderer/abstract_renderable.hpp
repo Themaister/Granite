@@ -104,21 +104,20 @@ public:
 	RenderableFlags flags = 0;
 };
 using AbstractRenderableHandle = Util::IntrusivePtr<AbstractRenderable>;
-using MeshAssetRenderFlags = uint32_t;
+using MeshAssetMaterialFlags = uint32_t;
 
 // A specialized fixed function renderable that is intended to supplant StaticMesh and SkinnedMesh.
 // Compatible with two-phase cull and optimized mesh/task rendering.
 class MeshAssetRenderable final : public AbstractRenderable
 {
 public:
-	MeshAssetRenderable(DrawPipeline pipeline, AssetID asset_id, const MaterialOffsets &offsets, const AABB &aabb_,
-	                    size_t num_occluder_states_, MeshAssetRenderFlags flags_)
+	MeshAssetRenderable(DrawPipeline pipeline, AssetID asset_id, const AABB &aabb_,
+	                    size_t num_occluder_states_, MeshAssetMaterialFlags flags_)
 	    : mesh_asset(asset_id)
-	    , material_offsets(offsets)
 	    , aabb(aabb_)
 	    , draw_pipeline(pipeline)
 	    , num_occluder_states(num_occluder_states_)
-	    , asset_flags(flags_)
+	    , material_flags(flags_)
 	{
 	}
 
@@ -147,27 +146,21 @@ public:
 		return mesh_asset;
 	}
 
-	const MaterialOffsets &get_material_offsets() const
-	{
-		return material_offsets;
-	}
-
 	size_t get_num_occluder_states() const override
 	{
 		return num_occluder_states;
 	}
 
-	MeshAssetRenderFlags get_asset_flags() const
+	MeshAssetMaterialFlags get_material_flags() const
 	{
-		return asset_flags;
+		return material_flags;
 	}
 
 private:
 	AssetID mesh_asset;
-	MaterialOffsets material_offsets = {};
-	AABB aabb = {};
-	DrawPipeline draw_pipeline = DrawPipeline::Opaque;
-	size_t num_occluder_states = 0;
-	MeshAssetRenderFlags asset_flags;
+	AABB aabb;
+	DrawPipeline draw_pipeline;
+	size_t num_occluder_states;
+	MeshAssetMaterialFlags material_flags;
 };
 } // namespace Granite

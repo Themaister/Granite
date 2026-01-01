@@ -55,7 +55,7 @@ shared vec3 shared_world_pos[32];
 
 #if ATTR_LEVEL >= 1
 layout(location = 0) out vec2 vUV[];
-layout(location = 1) perprimitiveEXT out uint vMaterialID[];
+layout(location = 1) perprimitiveEXT out uint vMaterialFlags[];
 #endif
 
 #if ATTR_LEVEL >= 2
@@ -208,7 +208,7 @@ void main()
 #endif
 
 #if ATTR_LEVEL >= 2
-        vMaterialID[gl_LocalInvocationIndex] = task.material_offset;
+        vMaterialFlags[gl_LocalInvocationIndex] = task.material_flags;
 #endif
     }
 }

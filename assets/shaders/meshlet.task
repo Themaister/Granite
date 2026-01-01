@@ -54,7 +54,7 @@ uint payload_offset = 0;
 void process_task(MeshAssetDrawTaskInfo task)
 {
     uint node_instance = task.node_instance;
-    uint material_index = task.material_texture_index | (task.material_payload_offset << 16);
+    uint material_flags = task.material_flags;
     uint mesh_index_count = task.mesh_index_count;
 
     uint offset = mesh_index_count & ~31u;
@@ -103,11 +103,11 @@ void process_task(MeshAssetDrawTaskInfo task)
     if (alloc_draw)
     {
         mesh_payload.infos[payload_offset + local_offset] =
-            CompactedDrawInfo(meshlet_index, node_instance, material_index);
+            CompactedDrawInfo(meshlet_index, node_instance, material_flags);
     }
 #else
     if (gl_LocalInvocationIndex == 0)
-        mesh_payload.info = CompactedDrawInfo(offset, node_instance, material_index);
+        mesh_payload.info = CompactedDrawInfo(offset, node_instance, material_flags);
     if (alloc_draw)
         mesh_payload.offsets[local_offset] = uint8_t(gl_LocalInvocationIndex);
 #endif

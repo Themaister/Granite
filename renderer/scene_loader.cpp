@@ -311,23 +311,38 @@ NodeHandle SceneLoader::parse_gltf(const std::string &path)
 		auto asset_id =
 		    GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(), internal_path, Granite::AssetClass::Mesh);
 
-		constexpr MaterialOffsets default_offset = { UINT16_MAX, UINT16_MAX };
 		auto pipe = DrawPipeline::Opaque;
-		MeshAssetRenderFlags flags = 0;
+		MeshAssetMaterialFlags flags = 0;
 
 		if (mesh.has_material)
 		{
 			auto &mat = subscene.parser->get_materials()[mesh.material_index];
-			pipe = mat.pipeline;
 
+			// Vague approximation. We ignore the actual sampler.
+			if (mat.sampler == Vulkan::StockSampler::DefaultGeometryFilterClamp ||
+				mat.sampler == Vulkan::StockSampler::LinearClamp ||
+				mat.sampler == Vulkan::StockSampler::TrilinearClamp)
+			{
+				flags |= 1 << MESH_ASSET_MATERIAL_UV_CLAMP_OFFSET;
+			}
+
+			pipe = mat.pipeline;
 			for (int i = 0; i < int(TextureKind::Count); i++)
 				if (!mat.paths[i].empty())
-					flags |= 1 << i;
+					flags |= 1 << (i + MESH_ASSET_MATERIAL_TEXTURE_MASK_OFFSET);
+		}
+
+		if (mesh.has_material)
+		{
+			auto &off = material_offsets[mesh.material_index];
+			flags |= (off.texture_offset << MESH_ASSET_MATERIAL_TEXTURE_INDEX_OFFSET) & (
+				(1u << MESH_ASSET_MATERIAL_TEXTURE_INDEX_BITS) - 1u);
+			flags |= (off.uniform_offset << MESH_ASSET_MATERIAL_PAYLOAD_OFFSET) & (
+				(1u << MESH_ASSET_MATERIAL_PAYLOAD_BITS) - 1u);
 		}
 
 		auto renderable = Util::make_handle<MeshAssetRenderable>(pipe, asset_id,
-			mesh.has_material ? material_offsets[mesh.material_index] : default_offset,
-			mesh.static_aabb, 0, flags);
+		                                                         mesh.static_aabb, 0, flags);
 
 		renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT | RENDERABLE_MESH_ASSET_BIT;
 		subscene.meshes.push_back(std::move(renderable));

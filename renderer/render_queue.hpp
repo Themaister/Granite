@@ -152,17 +152,24 @@ struct QueueDataWrapped : QueueDataWrappedErased
 // The fixed function optimized path.
 struct MeshAssetDrawTaskInfo
 {
-	uint32_t asset_id; // Fallback for MDI or legacy draw calls path.
-	uint32_t aabb_instance;
-	uint32_t occluder_state_offset;
-	uint32_t node_instance; // Index to transform node.
-	uint32_t material_texture_index; // Material textures.
-	uint32_t material_payload_offset; // Material side-band information as needed.
+	uint32_t aabb_instance; // Index to AABB for culling.
+	uint32_t occluder_state_offset; // Base index to occlusion states.
+	uint32_t node_instance; // Base index to transform node.
 	uint32_t mesh_index_count; // Packed meshlet index (upper 27 bits), and count - 1 (lower 5 bits).
-	uint32_t flags;
+	uint32_t material_flags;
 };
 
-static_assert(sizeof(MeshAssetDrawTaskInfo) == 32, "Expected MeshAssetDrawInfo to be 32 bytes.");
+enum
+{
+	MESH_ASSET_MATERIAL_TEXTURE_INDEX_OFFSET = 0,
+	MESH_ASSET_MATERIAL_TEXTURE_INDEX_BITS = 12,
+	MESH_ASSET_MATERIAL_PAYLOAD_OFFSET = 12,
+	MESH_ASSET_MATERIAL_PAYLOAD_BITS = 11,
+	MESH_ASSET_MATERIAL_UV_CLAMP_OFFSET = 23,
+	MESH_ASSET_MATERIAL_TEXTURE_MASK_OFFSET = 24,
+};
+
+static_assert(sizeof(MeshAssetDrawTaskInfo) == 20, "Expected MeshAssetDrawInfo to be 20 bytes.");
 
 class MeshAssetRenderable;
 

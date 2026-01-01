@@ -699,9 +699,7 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 		auto *node = transform.scene_node;
 		auto *skin = node->get_skin();
 		draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
-		draw.material_texture_index = mesh.get_material_offsets().texture_offset;
-		draw.material_payload_offset = mesh.get_material_offsets().uniform_offset;
-		draw.flags = mesh.get_asset_flags();
+		draw.material_flags = mesh.get_material_flags();
 		VK_ASSERT((range.meshlet.offset & 31) == 0);
 
 		auto &offset_count = task_offset_counts[2 * int(mesh.get_mesh_draw_pipeline()) + skinned];

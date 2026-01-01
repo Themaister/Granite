@@ -243,7 +243,8 @@ void setup_ssr_pass(RenderGraph &graph, const RenderContext &context,
                     const std::string &input_pbr, const std::string &input_light,
                     const std::string &output)
 {
-	setup_depth_hierarchy_pass(graph, input_depth, input_depth + "-hier");
+	// TODO: Fixme.
+	setup_depth_hierarchy_pass(graph, input_depth, input_depth + "-hier", &context, false);
 
 	auto &pass = graph.add_pass(output + "-trace", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 

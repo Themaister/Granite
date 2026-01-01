@@ -25,6 +25,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "post/hdr.hpp"
 #include "post/ssao.hpp"
+#include "post/spd.hpp"
 #include "rapidjson_wrapper.hpp"
 #include "task_composer.hpp"
 #include "thread_group.hpp"
@@ -875,10 +876,13 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		setup.flags = SCENE_RENDERER_Z_PREPASS_BIT;
 		if (config.debug_probes)
 			setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
-		renderer->init(setup);
 		renderer->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_1_BIT);
+		renderer->init(setup);
 		phase1.set_render_pass_interface(std::move(renderer));
 	}
+
+	setup_depth_hierarchy_pass(graph, tagcat("depth-prepass", tag), tagcat("hiz", tag),
+	                           &context, true);
 
 	auto &gbuffer = graph.add_pass(tagcat("gbuffer", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	gbuffer.add_color_output(tagcat("emissive", tag), emissive);
@@ -887,6 +891,7 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
 	gbuffer.set_depth_stencil_input(tagcat("depth-prepass", tag));
+	gbuffer.add_texture_input(tagcat("hiz", tag), VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT);
 
 	{
 		auto renderer = Util::make_handle<RenderPassSceneRenderer>();

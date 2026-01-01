@@ -152,24 +152,89 @@ struct SPDPassState : RenderPassInterface
 	}
 };
 
-void setup_depth_hierarchy_pass(RenderGraph &graph, const std::string &input, const std::string &output)
+struct HiZPassState : SPDPassState
 {
-	AttachmentInfo att;
-	att.format = VK_FORMAT_R32_SFLOAT;
-	att.size_relative_name = input;
-	att.size_class = SizeClass::InputRelative;
+	bool output_downsample = false;
+	const RenderContext *context = nullptr;
+	const Vulkan::ImageView *output = nullptr;
 
+	void build_render_pass(Vulkan::CommandBuffer &cmd) override
+	{
+		cmd.set_program("builtin://shaders/post/hiz.comp", {{"WRITE_TOP_LEVEL", output_downsample ? 0 : 1}});
+
+		struct Push
+		{
+			mat2 z_transform;
+			uvec2 resolution;
+			vec2 inv_resolution;
+			uint mips;
+			uint target_counter;
+		} push = {};
+
+		push.z_transform = mat2(context->get_render_parameters().inv_projection[2].zw() * vec2(-1.0f, 1.0f),
+		                        context->get_render_parameters().inv_projection[3].zw() * vec2(-1.0f, 1.0f));
+		push.resolution = uvec2(output->get_view_width(), output->get_view_height());
+		if (output_downsample)
+			push.resolution *= 2u;
+		push.inv_resolution = vec2(1.0f / float(info.input->get_view_width()), 1.0f / float(info.input->get_view_height()));
+		push.mips = output->get_create_info().levels + output_downsample;
+
+		auto wg_x = push.resolution.x / 64;
+		auto wg_y = push.resolution.y / 64;
+		push.target_counter = wg_x * wg_y;
+
+		if (output_downsample)
+			cmd.set_storage_texture(0, 0, *output_mips[0]);
+
+		for (size_t i = 0; i < MaxSPDMips - output_downsample; i++)
+		{
+			if (i < views.size())
+				cmd.set_storage_texture(0, i + output_downsample, *views[i]);
+			else
+				cmd.set_storage_texture(0, i + output_downsample, *output_mips[0]);
+		}
+
+		cmd.set_texture(1, 0, *info.input, Vulkan::StockSampler::NearestClamp);
+		cmd.set_storage_buffer(1, 1, *info.counter_buffer);
+		cmd.push_constants(&push, 0, sizeof(push));
+		cmd.enable_subgroup_size_control(true);
+		cmd.set_subgroup_size_log2(true, 2, 7);
+		cmd.dispatch(wg_x, wg_y, info.input->get_create_info().layers);
+		cmd.enable_subgroup_size_control(false);
+	}
+
+	void enqueue_prepare_render_pass(RenderGraph &graph, TaskComposer &composer) override
+	{
+		SPDPassState::enqueue_prepare_render_pass(graph, composer);
+		output = &graph.get_physical_texture_resource(*otex_resource);
+	}
+};
+
+void setup_depth_hierarchy_pass(RenderGraph &graph, const std::string &input, const std::string &output,
+                                const RenderContext *context,
+                                bool output_downsample)
+{
 	auto &pass = graph.add_pass(output, RENDER_GRAPH_QUEUE_COMPUTE_BIT);
-	auto handle = Util::make_handle<SPDPassState>();
+	auto handle = Util::make_handle<HiZPassState>();
 	handle->itex_resource = &pass.add_texture_input(input);
+	handle->context = context;
 
 	// Stop if we reach 2x1 or 1x2 dimension.
+	// For Hi-Z culling we want to avoid folding as long as possible, align the size appropriately.
 	auto dim = graph.get_resource_dimensions(*handle->itex_resource);
-	att.levels = Util::floor_log2(std::min(dim.width, dim.height)) + 1;
+	AttachmentInfo att;
+	att.levels = std::max<int>(1, Util::floor_log2(std::max(dim.width, dim.height)) - int(output_downsample));
+	att.format = VK_FORMAT_R32_SFLOAT;
+	att.size_x = float(((dim.width + 63u) & ~63u) >> int(output_downsample));
+	att.size_y = float(((dim.height + 63u) & ~63u) >> int(output_downsample));
+	att.layers = dim.layers;
+	att.size_class = SizeClass::Absolute;
+
 	handle->otex_resource = &pass.add_storage_texture_output(output, att);
+	handle->output_downsample = output_downsample;
 
 	BufferInfo storage_info = {};
-	storage_info.size = 4;
+	storage_info.size = 4 * dim.layers;
 	storage_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	handle->counter_resource = &pass.add_storage_output(output + "-counter", storage_info);
 

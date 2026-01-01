@@ -30,7 +30,7 @@ ivec2 mip_resolution(int mip)
     return max(registers.resolution >> mip, ivec2(1));
 }
 
-#define REDUCE_OPERATOR min
+#define REDUCE_OPERATOR max
 float reduce(vec4 v)
 {
     vec2 v0 = REDUCE_OPERATOR(v.xy, v.zw);

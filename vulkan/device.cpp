@@ -1513,7 +1513,20 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 			info.semaphore = vk_semaphore;
 			info.stageMask = data.wait_stages[i];
 			info.value = semaphore->get_timeline_value();
-			sem.timeline_waits.push_back(info);
+
+			auto itr = std::find_if(
+			    sem.timeline_waits.begin(), sem.timeline_waits.end(), [&](const VkSemaphoreSubmitInfo &old_info)
+			    { return old_info.semaphore == info.semaphore && old_info.stageMask == info.stageMask; });
+
+			if (itr != sem.timeline_waits.end())
+			{
+				auto &old_info = *itr;
+				old_info.value = std::max<uint64_t>(old_info.value, info.value);
+			}
+			else
+			{
+				sem.timeline_waits.push_back(info);
+			}
 		}
 		else
 		{

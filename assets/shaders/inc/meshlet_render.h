@@ -32,7 +32,7 @@ layout(set = 0, binding = BINDING_GLOBAL_SCENE_TASK_BUFFER, std430) readonly buf
 
 #include "meshlet_ubos.h"
 
-#ifdef MESHLET_RENDER_OCCLUDER_BINDING
+#if MESHLET_RENDER_PHASE > 0
 layout(set = 0, binding = BINDING_GLOBAL_SCENE_OCCLUSION_STATE, std430) buffer OccluderState
 {
 	uint data[];

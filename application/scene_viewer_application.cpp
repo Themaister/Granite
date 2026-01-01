@@ -763,7 +763,7 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 		setup.scene = &scene_loader.get_scene();
 		setup.context = &context;
 		setup.suite = &renderer_suite;
-		setup.flags = SCENE_RENDERER_FORWARD_Z_PREPASS_BIT;
+		setup.flags = SCENE_RENDERER_Z_PREPASS_BIT;
 		renderer->init(setup);
 
 		// TODO: Find a good way to let the prepass renderer share renderer with opaque / transparent passes.
@@ -817,9 +817,9 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	setup.suite = &renderer_suite;
 	setup.flags = SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
 	if (config.forward_depth_prepass && !use_ssao)
-		setup.flags |= SCENE_RENDERER_FORWARD_Z_PREPASS_BIT;
+		setup.flags |= SCENE_RENDERER_Z_PREPASS_BIT;
 	else if (config.forward_depth_prepass)
-		setup.flags |= SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT;
+		setup.flags |= SCENE_RENDERER_Z_EXISTING_PREPASS_BIT;
 
 	if (config.debug_probes)
 		setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
@@ -863,12 +863,30 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	pbr.format = VK_FORMAT_R8G8_UNORM;
 	depth.format = device.get_default_depth_format();
 
+	auto &phase1 = graph.add_pass(tagcat("gbuffer-phase1", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	phase1.set_depth_stencil_output(tagcat("depth-prepass", tag), depth);
+
+	{
+		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
+		RenderPassSceneRenderer::Setup setup = {};
+		setup.scene = &scene_loader.get_scene();
+		setup.context = &context;
+		setup.suite = &renderer_suite;
+		setup.flags = SCENE_RENDERER_Z_PREPASS_BIT;
+		if (config.debug_probes)
+			setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
+		renderer->init(setup);
+		renderer->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_1_BIT);
+		phase1.set_render_pass_interface(std::move(renderer));
+	}
+
 	auto &gbuffer = graph.add_pass(tagcat("gbuffer", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	gbuffer.add_color_output(tagcat("emissive", tag), emissive);
 	gbuffer.add_color_output(tagcat("albedo", tag), albedo);
 	gbuffer.add_color_output(tagcat("normal", tag), normal);
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
+	gbuffer.set_depth_stencil_input(tagcat("depth-prepass", tag));
 
 	{
 		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
@@ -879,9 +897,8 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT;
 		if (config.debug_probes)
 			setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
-
+		renderer->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_2_BIT | Renderer::MESH_ASSET_FORCE_ALL_VISIBLE_BIT);
 		renderer->init(setup);
-
 		gbuffer.set_render_pass_interface(std::move(renderer));
 	}
 

@@ -154,14 +154,14 @@ void RenderPassSceneRenderer::prepare_render_pass()
 	auto &queue_opaque = queue_per_task_opaque[0];
 	auto &queue_depth = queue_per_task_depth[0];
 
-	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
+	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_Z_PREPASS_BIT))
 	{
 		scene->gather_visible_render_pass_sinks(context->get_render_parameters().camera_position, visible);
 		scene->gather_visible_opaque_renderables(frustum, visible);
 		if ((setup_data.flags & SCENE_RENDERER_SKIP_OPAQUE_FLOATING_BIT) == 0)
 			scene->gather_opaque_floating_renderables(visible);
 
-		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+		if (setup_data.flags & SCENE_RENDERER_Z_PREPASS_BIT)
 			queue_depth.push_depth_renderables(*context, visible.data(), visible.size());
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
@@ -211,7 +211,7 @@ void RenderPassSceneRenderer::prepare_setup_queues()
 		visible.clear();
 
 	// Setup renderer options in main thread.
-	if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+	if (setup_data.flags & SCENE_RENDERER_Z_PREPASS_BIT)
 	{
 		for (auto &queue : queue_per_task_depth)
 			suite->get_renderer(RendererSuite::Type::PrepassDepth).begin(queue);
@@ -260,7 +260,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 	unsigned tasks_per_gather = layered ? 1 : unsigned(MaxTasks);
 
 	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT |
-	                        SCENE_RENDERER_FORWARD_Z_PREPASS_BIT |
+	                        SCENE_RENDERER_Z_PREPASS_BIT |
 	                        SCENE_RENDERER_MOTION_VECTOR_BIT))
 	{
 		if (!layered)
@@ -277,7 +277,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 
 		for (unsigned gather_iter = 0; gather_iter < gather_iterations; gather_iter++)
 		{
-			if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
+			if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_Z_PREPASS_BIT))
 			{
 				Threaded::scene_gather_opaque_renderables(*setup_data.scene, composer,
 				                                          setup_data.context[gather_iter].get_visibility_frustum(),
@@ -291,7 +291,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 			}
 		}
 
-		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+		if (setup_data.flags & SCENE_RENDERER_Z_PREPASS_BIT)
 		{
 			Threaded::compose_parallel_push_renderables(composer, setup_data.context, queue_per_task_depth,
 			                                            visible_per_task, num_tasks,
@@ -398,9 +398,9 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 		bucket_index = layer;
 	}
 
-	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
+	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_Z_PREPASS_BIT))
 	{
-		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+		if (setup_data.flags & SCENE_RENDERER_Z_PREPASS_BIT)
 		{
 			suite->get_renderer(RendererSuite::Type::PrepassDepth).flush(
 				cmd, queue_per_task_depth[bucket_index], setup_data.context[bucket_index],
@@ -412,7 +412,7 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
 		{
 			Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT | Renderer::MESH_ASSET_OPAQUE_BIT | flush_flags;
-			if (setup_data.flags & (SCENE_RENDERER_FORWARD_Z_PREPASS_BIT | SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT))
+			if (setup_data.flags & (SCENE_RENDERER_Z_PREPASS_BIT | SCENE_RENDERER_Z_EXISTING_PREPASS_BIT))
 				opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
 			suite->get_renderer(RendererSuite::Type::ForwardOpaque).flush(
 					cmd, queue_per_task_opaque[bucket_index], setup_data.context[bucket_index], opt, &flush_params);
@@ -443,10 +443,14 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
 	{
+		Renderer::RendererOptionFlags opt =
+				Renderer::SKIP_SORTING_BIT | Renderer::MESH_ASSET_OPAQUE_BIT;
+		if (setup_data.flags & SCENE_RENDERER_Z_EXISTING_PREPASS_BIT)
+			opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
+
 		suite->get_renderer(RendererSuite::Type::Deferred).flush(cmd, queue_per_task_opaque[bucket_index],
 		                                                         setup_data.context[bucket_index],
-		                                                         Renderer::SKIP_SORTING_BIT |
-		                                                         Renderer::MESH_ASSET_OPAQUE_BIT | flush_flags,
+		                                                         opt | flush_flags,
 		                                                         &flush_params);
 
 		if (setup_data.flags & SCENE_RENDERER_DEBUG_PROBES_BIT)

@@ -212,7 +212,7 @@ void main()
 	    gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(unpack8(shared_indices[gl_LocalInvocationIndex]).xyz);
 #endif
 
-#if ATTR_LEVEL >= 2
+#if ATTR_LEVEL >= 1
         vMaterialFlags[gl_LocalInvocationIndex] = task.material_flags;
 #endif
     }

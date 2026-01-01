@@ -29,6 +29,7 @@
 #include "ground.hpp"
 #include "path_utils.hpp"
 #include "meshlet_export.hpp"
+#include "meshlet.hpp"
 
 using namespace rapidjson;
 using namespace Util;
@@ -311,6 +312,15 @@ NodeHandle SceneLoader::parse_gltf(const std::string &path)
 		auto asset_id =
 		    GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(), internal_path, Granite::AssetClass::Mesh);
 
+		auto mapping = GRANITE_FILESYSTEM()->open_readonly_mapping(internal_path);
+		if (!mapping)
+			throw std::runtime_error("Failed to read meshlet.");
+
+		auto view = Vulkan::Meshlet::create_mesh_view(*mapping);
+		if (!view.format_header)
+			throw std::runtime_error("Failed to parse meshlet.");
+		uint32_t num_occlusion_states = view.format_header->meshlet_count;
+
 		auto pipe = DrawPipeline::Opaque;
 		MeshAssetMaterialFlags flags = 0;
 
@@ -341,8 +351,8 @@ NodeHandle SceneLoader::parse_gltf(const std::string &path)
 				(1u << MESH_ASSET_MATERIAL_PAYLOAD_BITS) - 1u);
 		}
 
-		auto renderable = Util::make_handle<MeshAssetRenderable>(pipe, asset_id,
-		                                                         mesh.static_aabb, 0, flags);
+		auto renderable = Util::make_handle<MeshAssetRenderable>(
+			pipe, asset_id, mesh.static_aabb, num_occlusion_states, flags);
 
 		renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT | RENDERABLE_MESH_ASSET_BIT;
 		subscene.meshes.push_back(std::move(renderable));

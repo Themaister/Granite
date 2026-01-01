@@ -11,15 +11,16 @@ layout(local_size_x = 32) in;
 #define MESHLET_RENDER_TASK_HIERARCHICAL 0
 #endif
 
-// TODO
+#if defined(VARIANT_BIT_3) && VARIANT_BIT_3
+#define MESHLET_RENDER_PHASE 1
+#elif defined(VARIANT_BIT_4) && VARIANT_BIT_4
+#define MESHLET_RENDER_PHASE 2
+#else
 #define MESHLET_RENDER_PHASE 0
+#endif
 
 #include "inc/meshlet_render.h"
 #include "inc/render_parameters.h"
-
-#ifndef MESHLET_RENDER_TASK_HIERARCHICAL
-#error "Must define MESHLET_RENDER_TASK_HIERARCHICAL"
-#endif
 
 #define MESHLET_RENDER_NO_Z_PREPASS
 

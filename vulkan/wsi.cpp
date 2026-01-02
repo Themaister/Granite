@@ -421,6 +421,9 @@ VkResult WSI::wait_for_present(uint64_t id, uint64_t timeout)
 	if (!swapchain)
 		return VK_SUCCESS;
 
+	if (id > present_last_id)
+		return VK_NOT_READY;
+
 	if (supports_present_wait2 && device->get_device_features().present_wait2_features.presentWait2)
 	{
 		VkPresentWait2InfoKHR wait_info = { VK_STRUCTURE_TYPE_PRESENT_WAIT_2_INFO_KHR };

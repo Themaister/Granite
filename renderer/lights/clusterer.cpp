@@ -566,8 +566,8 @@ void LightClusterer::render_bindless_spot(Vulkan::Device &device, unsigned index
 		group.enqueue_task([&device, data, index, this]() mutable {
 			auto &spot = static_cast<ShadowTaskContextSpot &>(*data);
 			spot.depth_context[0].set_scene_transform_parameters(context->get_scene_transform_parameters());
-			LOGI("Rendering shadow for spot light %u (%p)\n", index,
-			     static_cast<const void *>(bindless.handles[index]));
+			//LOGI("Rendering shadow for spot light %u (%p)\n", index,
+			//     static_cast<const void *>(bindless.handles[index]));
 			auto cmd = device.request_command_buffer();
 			render_shadow(*cmd, spot.depth_context[0], spot.queues[0][0],
 			              0, 0,
@@ -601,7 +601,7 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 		group.enqueue_task([&device, data, index, face, this]() mutable {
 			auto &point = static_cast<ShadowTaskContextPoint &>(*data);
 			point.depth_context[face].set_scene_transform_parameters(context->get_scene_transform_parameters());
-			LOGI("Rendering shadow for point light %u (%p)\n", index, static_cast<const void *>(bindless.handles[index]));
+			//LOGI("Rendering shadow for point light %u (%p)\n", index, static_cast<const void *>(bindless.handles[index]));
 			auto cmd = device.request_command_buffer();
 			render_shadow(*cmd, point.depth_context[face], point.queues[face][0],
 			              0, 0, shadow_resolution, shadow_resolution,

@@ -274,8 +274,6 @@ void VolumetricDiffuseLightManager::light_probe_buffer(Vulkan::CommandBuffer &cm
 	           Renderer::SHADOW_CASCADE_ENABLE_BIT);
 	auto defines = Renderer::build_defines_from_renderer_options(RendererType::GeneralForward, flags);
 
-	Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
-
 	// Need at least SIMD16 to ensure that we can use ClusteredAdd without having to go through shared memory.
 	if (cmd.get_device().supports_subgroup_size_log2(true, 4, 6))
 	{

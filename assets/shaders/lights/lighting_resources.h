@@ -52,7 +52,6 @@ void compute_shadow_cascade(out vec3 clip_near, out vec3 clip_far,
 	else if (shadow_lerp == 0.0)
 		layer_far = layer_near;
 
-#if defined(SUBGROUP_OPS)
 	mediump int wave_minimum_layer = subgroupMin(layer_near);
 	mediump int wave_maximum_layer = subgroupMax(layer_far);
 	for (mediump int i = wave_minimum_layer; i <= wave_maximum_layer; i++)
@@ -64,11 +63,6 @@ void compute_shadow_cascade(out vec3 clip_near, out vec3 clip_far,
 		else if (i == layer_far)
 			clip_far = new_clip;
 	}
-#else
-	clip_near = (SHADOW_TRANSFORMS[layer_near] * vec4(light_world_pos, 1.0)).xyz;
-	if (shadow_lerp > 0.0)
-		clip_far = (SHADOW_TRANSFORMS[layer_far] * vec4(light_world_pos, 1.0)).xyz;
-#endif
 
 	// Out of range, blend to full illumination.
 	const float MAX_CASCADE = float(SHADOW_NUM_CASCADES);

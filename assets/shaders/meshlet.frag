@@ -2,6 +2,18 @@
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_mesh_shader : require
 
+#ifdef ALPHA_TEST_DISABLE
+#undef ALPHA_TEST
+#endif
+
+#ifdef RENDERER_FORWARD
+#include "inc/subgroup_extensions.h"
+#endif
+
+#if defined(ALPHA_TEST) || defined(RENDERER_FORWARD)
+#include "inc/helper_invocation.h"
+#endif
+
 #ifndef RENDERER_DEPTH
 #include "inc/render_target.h"
 #endif
@@ -16,10 +28,6 @@
 #define ATTR_LEVEL 1
 #else
 #define ATTR_LEVEL 0
-#endif
-
-#if defined(ALPHA_TEST)
-#include "inc/helper_invocation.h"
 #endif
 
 #if ATTR_LEVEL >= 1

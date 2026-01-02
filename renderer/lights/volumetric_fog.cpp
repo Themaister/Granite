@@ -192,7 +192,6 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 				context->get_render_parameters().inv_projection[3].zw());
 	}
 
-	Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
 	if (cmd.get_device().supports_subgroup_size_log2(true, 3, 6))
 	{
 		defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);

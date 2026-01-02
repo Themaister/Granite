@@ -299,40 +299,6 @@ static const char *renderer_to_define(RendererType type)
 	return "";
 }
 
-void Renderer::add_subgroup_defines(Vulkan::Device &device, std::vector<std::pair<std::string, int>> &defines,
-                                    VkShaderStageFlagBits stage)
-{
-	auto &vk11 = device.get_device_features().vk11_props;
-
-	if ((vk11.subgroupSupportedStages & stage) != 0 &&
-	    !ImplementationQuirks::get().force_no_subgroups &&
-	    vk11.subgroupSize >= 4)
-	{
-		const VkSubgroupFeatureFlags quad_required =
-				(stage & (VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT)) != 0 ?
-				VK_SUBGROUP_FEATURE_QUAD_BIT : 0;
-		const VkSubgroupFeatureFlags required =
-				VK_SUBGROUP_FEATURE_BASIC_BIT |
-				VK_SUBGROUP_FEATURE_CLUSTERED_BIT |
-				quad_required |
-				VK_SUBGROUP_FEATURE_BALLOT_BIT |
-				VK_SUBGROUP_FEATURE_VOTE_BIT |
-				VK_SUBGROUP_FEATURE_ARITHMETIC_BIT;
-
-		if ((vk11.subgroupSupportedOperations & required) == required)
-			defines.emplace_back("SUBGROUP_OPS", 1);
-
-		if (!ImplementationQuirks::get().force_no_subgroup_shuffle)
-			if ((vk11.subgroupSupportedOperations & VK_SUBGROUP_FEATURE_SHUFFLE_BIT) != 0)
-				defines.emplace_back("SUBGROUP_SHUFFLE", 1);
-
-		if (stage == VK_SHADER_STAGE_FRAGMENT_BIT)
-			defines.emplace_back("SUBGROUP_FRAGMENT", 1);
-		else if (stage == VK_SHADER_STAGE_COMPUTE_BIT)
-			defines.emplace_back("SUBGROUP_COMPUTE", 1);
-	}
-}
-
 void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 {
 	auto global_defines = build_defines_from_renderer_options(type, flags);
@@ -1107,8 +1073,6 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 			if (light.ambient_occlusion)
 				cluster_defines.emplace_back("AMBIENT_OCCLUSION", 1);
 		}
-
-		Renderer::add_subgroup_defines(device, cluster_defines, VK_SHADER_STAGE_FRAGMENT_BIT);
 
 		cmd.set_program("builtin://shaders/lights/clustering.vert",
 		                "builtin://shaders/lights/clustering.frag",

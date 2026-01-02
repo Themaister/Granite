@@ -134,7 +134,6 @@ struct SSRState : RenderPassInterface
 					LOGW("Cannot write without format.\n");
 
 				defines.clear();
-				Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
 				if (cmd.get_device().supports_subgroup_size_log2(true, 2, 6))
 				{
 					defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);

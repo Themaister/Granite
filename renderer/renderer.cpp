@@ -72,6 +72,7 @@ enum GlobalDescriptorSetBindings
 	BINDING_GLOBAL_SCENE_MESHLET_STREAM_HEADER_BUFFER = 24,
 	BINDING_GLOBAL_SCENE_MESHLET_PAYLOAD_BUFFER = 25,
 	BINDING_GLOBAL_SCENE_MESHLET_CLUSTER_BOUNDS = 26,
+	BINDING_GLOBAL_SCENE_MESHLET_HIZ = 27,
 };
 
 namespace Granite
@@ -559,6 +560,8 @@ void Renderer::bind_scene_transform_parameters(Vulkan::CommandBuffer &cmd, const
 		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_MESHLET_PAYLOAD_BUFFER, *buf);
 	if (auto *buf = cmd.get_device().get_resource_manager().get_cluster_bounds_buffer())
 		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_MESHLET_CLUSTER_BOUNDS, *buf);
+	if (auto *view = context.get_scene_hiz_view())
+		cmd.set_texture(0, BINDING_GLOBAL_SCENE_MESHLET_HIZ, *view);
 
 	if (transform_index != UINT32_MAX)
 		if (auto *buf = transforms->get_occlusion_state(transform_index))
@@ -736,8 +739,27 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		ubo->winding = (options & FRONT_FACE_CLOCKWISE_BIT) ? -1.0f : 1.0f;
 
 		memcpy(ubo->planes, context.get_visibility_frustum().get_planes(), sizeof(ubo->planes));
+		ubo->view = context.get_render_parameters().view;
 
-		// TODO: Parameters for HiZ.
+		vec2 viewport_half = 0.5f * vec2(cmd.get_viewport().width, cmd.get_viewport().height);
+		vec4 viewport_scale_bias = viewport_half.xyxy();
+
+		viewport_scale_bias.z +=
+				viewport_scale_bias.x * context.get_render_parameters().projection[3].x;
+		viewport_scale_bias.w +=
+				viewport_scale_bias.y * context.get_render_parameters().projection[3].y;
+
+		viewport_scale_bias.x *= context.get_render_parameters().projection[0].x;
+		viewport_scale_bias.y *= -context.get_render_parameters().projection[1].y;
+		ubo->viewport_scale_bias = viewport_scale_bias;
+
+		if (const auto *hiz = context.get_scene_hiz_view())
+		{
+			ubo->hiz_resolution.x = hiz->get_view_width() << context.get_scene_hiz_min_lod();
+			ubo->hiz_resolution.y = hiz->get_view_height() << context.get_scene_hiz_min_lod();
+			ubo->hiz_min_lod = context.get_scene_hiz_min_lod();
+			ubo->hiz_max_lod = (hiz->get_create_info().levels - 1) + context.get_scene_hiz_min_lod();
+		}
 
 		struct
 		{

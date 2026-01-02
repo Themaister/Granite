@@ -20,9 +20,8 @@ layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_TRANSFORMS, std430) readonly
 	mat_affine data[];
 } transforms;
 
-#ifdef MESHLET_RENDER_HIZ_BINDING
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_HIZ_BINDING)
-uniform texture2D uHiZDepth;
+#if MESHLET_RENDER_PHASE == 2
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_MESHLET_HIZ) uniform texture2D uHiZDepth;
 #endif
 
 layout(set = 0, binding = BINDING_GLOBAL_SCENE_TASK_BUFFER, std430) readonly buffer Tasks
@@ -62,7 +61,7 @@ vec3 view_transform_yz_flip(vec3 pos)
 	return view;
 }
 
-#ifdef MESHLET_RENDER_HIZ_BINDING
+#if MESHLET_RENDER_PHASE == 2
 bool hiz_cull(vec2 view_range_x, vec2 view_range_y, float closest_z)
 {
 	// Viewport scale first applies any projection scale in X/Y (without Y flip).
@@ -147,7 +146,7 @@ bool cluster_cull(mat_affine M, Bound bound, vec3 camera_pos)
 			ret = false;
 	}
 
-#ifdef MESHLET_RENDER_HIZ_BINDING
+#if MESHLET_RENDER_PHASE == 2
 	if (ret)
 	{
 		vec3 view = view_transform_yz_flip(bound_center);

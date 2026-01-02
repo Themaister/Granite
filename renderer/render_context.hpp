@@ -72,6 +72,22 @@ public:
 		transform_index = index;
 	}
 
+	void set_scene_hiz_view(const Vulkan::ImageView *hiz_, unsigned min_lod)
+	{
+		hiz = hiz_;
+		hiz_min_lod = min_lod;
+	}
+
+	const Vulkan::ImageView *get_scene_hiz_view() const
+	{
+		return hiz;
+	}
+
+	unsigned get_scene_hiz_min_lod() const
+	{
+		return hiz_min_lod;
+	}
+
 	const LightingParameters *get_lighting_parameters() const
 	{
 		return lighting;
@@ -110,6 +126,8 @@ private:
 	const LightingParameters *lighting = nullptr;
 	const SceneTransformManager *transforms = nullptr;
 	unsigned transform_index = UINT32_MAX;
+	const Vulkan::ImageView *hiz = nullptr;
+	unsigned hiz_min_lod = 0;
 	RenderParameters camera;
 	Frustum frustum;
 	FrameParameters frame;

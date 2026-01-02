@@ -171,5 +171,6 @@ private:
 	RenderTextureResource *ssao_output = nullptr;
 	RenderTextureResource *shadows = nullptr;
 	RenderTextureResource *fallback_shadows = nullptr;
+	RenderTextureResource *hiz_main = nullptr;
 };
 }

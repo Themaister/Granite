@@ -893,7 +893,7 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
 	gbuffer.set_depth_stencil_input(tagcat("depth-prepass", tag));
-	gbuffer.add_texture_input(tagcat("hiz", tag), VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT);
+	hiz_main = &gbuffer.add_texture_input(tagcat("hiz", tag), VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT);
 	gbuffer.add_proxy_output(tagcat("occlusion-state-phase2", tag), VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT,
 	                         VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 	                         tagcat("occlusion-state-phase1", tag));
@@ -1481,6 +1481,7 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	lighting.shadows = graph.maybe_get_physical_texture_resource(shadows);
 	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
+	context.set_scene_hiz_view(graph.maybe_get_physical_texture_resource(hiz_main), 1);
 
 	scene_loader.get_scene().set_render_pass_data(&renderer_suite, &context);
 	scene.bind_render_graph_resources(graph);

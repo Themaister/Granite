@@ -1786,6 +1786,13 @@ bool WSI::end_frame()
 		// The present semaphore is consumed even on OUT_OF_DATE, etc.
 		release->wait_external();
 
+		if (!device->get_workarounds().broken_present_fence &&
+		    device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
+		{
+			deferred_semaphore.push_back({ std::move(release), last_present_fence });
+			release = {};
+		}
+
 		if (overall < 0 || result < 0)
 		{
 			LOGE("vkQueuePresentKHR failed.\n");
@@ -1795,10 +1802,6 @@ bool WSI::end_frame()
 		}
 		else
 		{
-			if (!device->get_workarounds().broken_present_fence)
-				if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
-					deferred_semaphore.push_back({ std::move(release_semaphores[swapchain_index]), last_present_fence });
-
 			// Cannot release the WSI wait semaphore until we observe that the image has been
 			// waited on again.
 			// Could make this a bit tighter with swapchain_maintenance1, but not that important here.

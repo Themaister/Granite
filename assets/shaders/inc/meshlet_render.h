@@ -116,6 +116,8 @@ vec2 project_sphere_flat(float view_xy, float view_z, float radius)
 	return vec2(rot_lo.x / rot_lo.y, rot_hi.x / rot_hi.y);
 }
 
+layout(constant_id = 0) const bool ORTHO = false;
+
 bool cluster_cull(mat_affine M, Bound bound, vec3 camera_pos)
 {
 	vec3 bound_center = mul(M, bound.center_radius.xyz);
@@ -153,11 +155,22 @@ bool cluster_cull(mat_affine M, Bound bound, vec3 camera_pos)
 
 		// Ensure there is no clipping against near plane.
 		// If the sphere is close enough, we accept it.
-		if (view.z > effective_radius + 0.1)
+		// There is no effective near plane in ORTHO.
+		if (ORTHO || view.z > effective_radius + 0.1)
 		{
-			// Have to project in view space since the sphere is still a sphere.
-			vec2 range_x = project_sphere_flat(view.x, view.z, effective_radius);
-			vec2 range_y = project_sphere_flat(view.y, view.z, effective_radius);
+			vec2 range_x, range_y;
+
+			if (ORTHO)
+			{
+				range_x = view.x + vec2(-effective_radius, effective_radius);
+				range_y = view.y + vec2(-effective_radius, effective_radius);
+			}
+			else
+			{
+				// Have to project in view space since the sphere is still a sphere.
+				range_x = project_sphere_flat(view.x, view.z, effective_radius);
+				range_y = project_sphere_flat(view.y, view.z, effective_radius);
+			}
 			ret = hiz_cull(range_x, range_y, view.z - effective_radius);
 		}
 	}

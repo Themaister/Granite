@@ -1493,6 +1493,7 @@ bool WSI::begin_frame()
 		// TODO: Improve this with fancier approaches as needed.
 		if (low_latency_mode_enable_present &&
 		    !device->get_device_features().present_wait_features.presentWait &&
+		    !supports_present_wait2 &&
 		    current_present_mode == PresentMode::SyncToVBlank)
 		{
 			fence = device->request_legacy_fence();
@@ -2376,7 +2377,8 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 			// If image count changes, we should probably recreate the swapchain.
 			// If we have present wait we're at no risk of adding more latency, so just go ahead.
 			if (surface_capabilities2.surfaceCapabilities.minImageCount == info.surface_capabilities.minImageCount ||
-			    device.get_device_features().present_wait_features.presentWait)
+			    device.get_device_features().present_wait_features.presentWait ||
+			    info.present_wait2.presentWait2Supported)
 			{
 				info.present_mode_compat_group.push_back(mode);
 				info.surface_capabilities.minImageCount =
@@ -2632,9 +2634,12 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	uint32_t desired_swapchain_images =
 		low_latency_mode_enable_present && current_present_mode == PresentMode::SyncToVBlank ? 2 : 3;
 
+	supports_present_wait2 =
+	    surface_info.present_id2.presentId2Supported && surface_info.present_wait2.presentWait2Supported;
+
 	// Need a deeper swapchain to avoid potential stalls when duping frames.
 	// We only do this when present wait is supported, so latency should not be compromised.
-	if (current_frame_dupe_aware && device->get_device_features().present_wait_features.presentWait)
+	if (current_frame_dupe_aware && (device->get_device_features().present_wait_features.presentWait || supports_present_wait2))
 		desired_swapchain_images = 5;
 
 	desired_swapchain_images = Util::get_environment_uint("GRANITE_VULKAN_SWAPCHAIN_IMAGES", desired_swapchain_images);
@@ -2686,9 +2691,6 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	}
 
 	platform->event_swapchain_destroyed();
-
-	supports_present_wait2 = surface_info.present_id2.presentId2Supported &&
-	                         surface_info.present_wait2.presentWait2Supported;
 
 	supports_present_timing.feedback = surface_info.present_timing.presentTimingSupported ?
 			surface_info.present_timing.presentStageQueries : 0;

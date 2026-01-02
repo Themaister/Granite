@@ -866,6 +866,8 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 
 	auto &phase1 = graph.add_pass(tagcat("gbuffer-phase1", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	phase1.set_depth_stencil_output(tagcat("depth-prepass", tag), depth);
+	phase1.add_proxy_output(tagcat("occlusion-state-phase1", tag), VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT,
+	                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
 	{
 		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
@@ -892,6 +894,9 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
 	gbuffer.set_depth_stencil_input(tagcat("depth-prepass", tag));
 	gbuffer.add_texture_input(tagcat("hiz", tag), VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT);
+	gbuffer.add_proxy_output(tagcat("occlusion-state-phase2", tag), VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT,
+	                         VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	                         tagcat("occlusion-state-phase1", tag));
 
 	{
 		auto renderer = Util::make_handle<RenderPassSceneRenderer>();

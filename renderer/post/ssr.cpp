@@ -205,7 +205,7 @@ struct SSRState : RenderPassInterface
 	{
 		auto *pass = graph.find_pass("probe-light");
 		if (pass)
-			self.add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+			self.add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0);
 	}
 
 	Vulkan::ImageHandle dither_lut;

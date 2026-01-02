@@ -331,7 +331,7 @@ void VolumetricFog::setup_render_pass_dependencies(RenderGraph &graph)
 		floor.input_resource = nullptr;
 
 	if (graph.find_pass("probe-light"))
-		pass->add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+		pass->add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0);
 	pass->add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 }
 

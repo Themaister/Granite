@@ -188,9 +188,6 @@ struct ResourceDimensions
 
 	bool uses_semaphore() const
 	{
-		if ((flags & ATTACHMENT_INFO_INTERNAL_PROXY_BIT) != 0)
-			return true;
-
 		// If more than one queue is used for a resource, we need to use semaphores.
 		auto physical_queues = queues;
 
@@ -425,6 +422,7 @@ public:
 	struct AccessedProxyResource : AccessedResource
 	{
 		RenderResource *proxy = nullptr;
+		RenderResource *alias_input = nullptr;
 	};
 
 	struct AccessedExternalLockInterface
@@ -475,8 +473,8 @@ public:
 	RenderBufferResource &add_index_buffer_input(const std::string &name);
 	RenderBufferResource &add_indirect_buffer_input(const std::string &name);
 
-	void add_proxy_output(const std::string &name, VkPipelineStageFlags2 stages);
-	void add_proxy_input(const std::string &name, VkPipelineStageFlags2 stages);
+	void add_proxy_output(const std::string &name, VkPipelineStageFlags2 stages, VkAccessFlags2 access, const std::string &input = "");
+	void add_proxy_input(const std::string &name, VkPipelineStageFlags2 stages, VkAccessFlags2 access);
 
 	void add_fake_resource_write_alias(const std::string &from, const std::string &to);
 
@@ -1015,6 +1013,7 @@ private:
 
 	struct PassSubmissionState
 	{
+		Util::SmallVector<VkMemoryBarrier2> global_barriers;
 		Util::SmallVector<VkBufferMemoryBarrier2> buffer_barriers;
 		Util::SmallVector<VkImageMemoryBarrier2> image_barriers;
 

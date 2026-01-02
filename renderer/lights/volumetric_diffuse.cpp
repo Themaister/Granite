@@ -742,7 +742,7 @@ const Vulkan::BufferView &VolumetricDiffuseLightManager::get_fallback_volume_vie
 void VolumetricDiffuseLightManager::add_render_passes(RenderGraph &graph)
 {
 	auto &light_pass = graph.add_pass("probe-light", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
-	light_pass.add_proxy_output("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+	light_pass.add_proxy_output("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0);
 	light_pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		// Clear atomic counters to 0.
 		cmd.set_program("builtin://shaders/lights/volumetric_light_clear_atomic.comp");
@@ -833,7 +833,7 @@ void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &
                                                                    RenderPassCreator::DependencyFlags dep_flags)
 {
 	if ((dep_flags & RenderPassCreator::LIGHTING_BIT) != 0)
-		target.add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+		target.add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0);
 }
 
 void VolumetricDiffuseLightManager::setup_render_pass_dependencies(RenderGraph &graph)

@@ -574,20 +574,15 @@ const char *SceneTransformManager::get_ident() const
 	return "scene-transforms";
 }
 
+Vulkan::CommandBuffer::Type SceneTransformManager::owning_queue_type() const
+{
+	// The transfers are very small, and we don't want to incur cross-queue penalties.
+	return Vulkan::CommandBuffer::Type::Generic;
+}
+
 void SceneTransformManager::add_render_passes(RenderGraph &graph)
 {
 	graph.add_external_lock_interface(get_ident(), this);
-}
-
-Vulkan::Semaphore SceneTransformManager::external_acquire()
-{
-	return {};
-}
-
-void SceneTransformManager::external_release(Vulkan::Semaphore semaphore)
-{
-	std::lock_guard<std::mutex> lock(sem_lock);
-	sems.push_back(std::move(semaphore));
 }
 
 void SceneTransformManager::refresh(const RenderContext &, TaskComposer &composer)
@@ -733,19 +728,8 @@ void SceneTransformManager::update_scene_buffers()
 	if (!scene)
 		return;
 
-	// Avoid WAR hazard from previous frame.
-	{
-		std::lock_guard<std::mutex> lock(sem_lock);
-		for (auto &sem : sems)
-		{
-			device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncTransfer, std::move(sem),
-				VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT, false);
-		}
-
-		sems.clear();
-	}
-
-	auto cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
+	auto cmd = acquire_internal(*device, VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
+	                            VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT);
 
 	update_task_buffer(*cmd);
 
@@ -770,15 +754,8 @@ void SceneTransformManager::update_scene_buffers()
 		for (auto &ctx : per_context_data)
 			update_span(*cmd, *ctx.occlusions, static_cast<const uint32_t *>(nullptr), occlusion_span);
 
-	cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-	             VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
-	             VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
-
-	// We want external_release() to deal with WaR, but the RaW part should affect everything.
-	Vulkan::Semaphore acquire_sem;
-	device->submit(cmd, nullptr, 1, &acquire_sem);
-	device->add_wait_semaphore(Vulkan::CommandBuffer::Type::Generic, std::move(acquire_sem),
-	                           VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT, false);
+	release_internal(cmd, VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
+	                 VK_ACCESS_TRANSFER_WRITE_BIT);
 
 	scene->clear_updates();
 }
@@ -832,7 +809,10 @@ void SceneTransformManager::setup_render_pass_dependencies(RenderGraph &, Render
                                                            DependencyFlags dep_flags)
 {
 	if ((dep_flags & RenderPassCreator::GEOMETRY_BIT) != 0)
-		target.add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT);
+	{
+		target.add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT,
+		                         VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+	}
 }
 
 void SceneTransformManager::setup_render_pass_resources(RenderGraph &)

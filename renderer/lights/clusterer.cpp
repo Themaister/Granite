@@ -57,8 +57,7 @@ void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	scratch_vsm_rt.reset();
 	scratch_vsm_down.reset();
 	bindless.allocator.reset();
-	acquire_semaphore.reset();
-	release_semaphores.clear();
+	device_reset();
 }
 
 void LightClusterer::set_scene(Scene *scene_)
@@ -87,14 +86,15 @@ void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &t
 		target_.add_storage_read_only_input("cluster-bitmask");
 		target_.add_storage_read_only_input("cluster-range");
 		target_.add_storage_read_only_input("cluster-transforms");
-		target_.add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+		target_.add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 	}
 }
 
 void LightClusterer::setup_render_pass_dependencies(RenderGraph &graph)
 {
 	graph.find_pass("clustering-bindless")->add_external_lock("scene-transforms",
-	                                                          VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT);
+	                                                          VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT,
+	                                                          VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 }
 
 void LightClusterer::set_base_render_context(const RenderContext *context_)
@@ -328,16 +328,10 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
-
 	auto stage = vsm ?
 	             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT :
 	             (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
 
-	for (auto &sem : release_semaphores)
-		if (sem->get_semaphore() && !sem->is_pending_wait())
-			cmd.get_device().add_wait_semaphore(CommandBuffer::Type::Generic, std::move(sem), stage, false);
-
-	release_semaphores.clear();
 	bindless.shadow_barriers.clear();
 	bindless.shadow_barriers.reserve(bindless.parameters.num_lights + bindless.global_transforms.num_lights);
 
@@ -436,7 +430,7 @@ void LightClusterer::end_bindless_barriers(Vulkan::CommandBuffer &cmd)
 		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		barrier.dstAccessMask = 0;
 		barrier.srcStageMask = src_stage;
-		barrier.dstStageMask = VK_PIPELINE_STAGE_NONE;
+		barrier.dstStageMask = src_stage; // Transitive barrier, will do visibility op later.
 	}
 
 	if (!bindless.shadow_barriers.empty())
@@ -911,7 +905,12 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 		auto &group = composer.begin_pipeline_stage();
 
 		group.enqueue_task([this, &device, indirect_task = composer.get_deferred_enqueue_handle(), &thread_group]() mutable {
-			auto cmd = device.request_command_buffer();
+			bool vsm = shadow_type == ShadowType::VSM;
+			auto stage = vsm
+				             ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+				             : (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
+			auto cmd = acquire_internal(device, stage, 0);
+
 			cmd->begin_region("shadow-map-begin-barriers");
 			begin_bindless_barriers(*cmd);
 			cmd->end_region();
@@ -946,10 +945,12 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 				end_bindless_barriers(*cmd);
 				cmd->end_region();
 
-				device.submit(cmd, nullptr, 1, &acquire_semaphore);
+				bool vsm = shadow_type == ShadowType::VSM;
+				release_internal(cmd, vsm
+					                      ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+					                      : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, 0);
 			}
 
-			acquire_semaphore.reset();
 			update_bindless_descriptors(device);
 		});
 	}
@@ -1457,18 +1458,13 @@ const char *LightClusterer::get_ident() const
 	return "light-clusterer";
 }
 
+Vulkan::CommandBuffer::Type LightClusterer::owning_queue_type() const
+{
+	return Vulkan::CommandBuffer::Type::Generic;
+}
+
 void LightClusterer::set_base_renderer(const RendererSuite *suite)
 {
 	renderer_suite = suite;
-}
-
-Vulkan::Semaphore LightClusterer::external_acquire()
-{
-	return acquire_semaphore;
-}
-
-void LightClusterer::external_release(Vulkan::Semaphore sem)
-{
-	release_semaphores.push_back(std::move(sem));
 }
 }

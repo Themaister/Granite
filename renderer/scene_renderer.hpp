@@ -145,6 +145,7 @@ private:
 		RenderInfoComponent,
 		CachedSpatialTransformTimestampComponent> *meshlets = nullptr;
 
+	Vulkan::CommandBuffer::Type owning_queue_type() const override;
 	const char *get_ident() const override;
 	void add_render_passes(RenderGraph &graph) override;
 	void set_base_renderer(const RendererSuite *suite) override;
@@ -154,8 +155,6 @@ private:
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void set_scene(Scene *scene) override;
 	void refresh(const RenderContext &context, TaskComposer &composer) override;
-	Vulkan::Semaphore external_acquire() override;
-	void external_release(Vulkan::Semaphore semaphore) override;
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);

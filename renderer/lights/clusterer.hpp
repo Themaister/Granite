@@ -94,6 +94,7 @@ public:
 	};
 
 private:
+	Vulkan::CommandBuffer::Type owning_queue_type() const override;
 	const char *get_ident() const override;
 	void add_render_passes(RenderGraph &graph) override;
 	void add_render_passes_bindless(RenderGraph &graph);
@@ -243,11 +244,6 @@ private:
 	bool bindless_light_is_point(unsigned index) const;
 
 	const Renderer &get_shadow_renderer() const;
-
-	Vulkan::Semaphore external_acquire() override;
-	void external_release(Vulkan::Semaphore sem) override;
-	Vulkan::Semaphore acquire_semaphore;
-	Util::SmallVector<Vulkan::Semaphore> release_semaphores;
 
 	float get_z_slice_extent(const RenderContext &ctx) const;
 };

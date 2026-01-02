@@ -406,11 +406,38 @@ RenderTextureResource &RenderPass::set_depth_stencil_output(const std::string &n
 	return res;
 }
 
-void RenderPass::add_external_lock(const std::string &name, VkPipelineStageFlags2 stages)
+static void get_queue_type(Vulkan::CommandBuffer::Type &queue_type, bool &graphics, RenderGraphQueueFlagBits flag)
+{
+	switch (flag)
+	{
+	default:
+	case RENDER_GRAPH_QUEUE_GRAPHICS_BIT:
+		graphics = true;
+		queue_type = Vulkan::CommandBuffer::Type::Generic;
+		break;
+
+	case RENDER_GRAPH_QUEUE_COMPUTE_BIT:
+		graphics = false;
+		queue_type = Vulkan::CommandBuffer::Type::Generic;
+		break;
+
+	case RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT:
+		graphics = false;
+		queue_type = Vulkan::CommandBuffer::Type::AsyncCompute;
+		break;
+	}
+}
+
+void RenderPass::add_external_lock(const std::string &name, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
 {
 	auto *iface = graph.find_external_lock_interface(name);
 	if (iface)
 	{
+		Vulkan::CommandBuffer::Type queue_type = {};
+		bool graphics = false;
+		get_queue_type(queue_type, graphics, queue);
+		iface->mark_access_in_queue(queue_type, stages, access);
+
 		for (auto &lock : lock_interfaces)
 		{
 			if (lock.iface == iface)
@@ -1871,28 +1898,6 @@ void RenderGraph::physical_pass_transfer_ownership(const PhysicalPass &pass)
 	}
 }
 
-static void get_queue_type(Vulkan::CommandBuffer::Type &queue_type, bool &graphics, RenderGraphQueueFlagBits flag)
-{
-	switch (flag)
-	{
-	default:
-	case RENDER_GRAPH_QUEUE_GRAPHICS_BIT:
-		graphics = true;
-		queue_type = Vulkan::CommandBuffer::Type::Generic;
-		break;
-
-	case RENDER_GRAPH_QUEUE_COMPUTE_BIT:
-		graphics = false;
-		queue_type = Vulkan::CommandBuffer::Type::Generic;
-		break;
-
-	case RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT:
-		graphics = false;
-		queue_type = Vulkan::CommandBuffer::Type::AsyncCompute;
-		break;
-	}
-}
-
 void RenderGraph::PassSubmissionState::emit_pre_pass_barriers()
 {
 	cmd->begin_region("render-graph-sync-pre");
@@ -1926,14 +1931,19 @@ void RenderGraph::PassSubmissionState::submit()
 		return;
 
 	auto &device_ = cmd->get_device();
+	bool has_foreign_external_lock = false;
 
 	for (auto &lock : external_locks)
 	{
-		auto sem = lock.iface->external_acquire();
-		if (sem)
+		if (lock.iface->owning_queue_type() != queue_type)
 		{
-			wait_semaphores.push_back(std::move(sem));
-			wait_semaphore_stages.push_back(lock.stages);
+			has_foreign_external_lock = true;
+			auto sem = lock.iface->external_acquire_semaphore(queue_type);
+			if (sem)
+			{
+				wait_semaphores.push_back(std::move(sem));
+				wait_semaphore_stages.push_back(lock.stages);
+			}
 		}
 	}
 
@@ -1941,14 +1951,14 @@ void RenderGraph::PassSubmissionState::submit()
 	for (size_t i = 0; i < num_semaphores; i++)
 		wait_for_semaphore_in_queue(device_, wait_semaphores[i], queue_type, wait_semaphore_stages[i]);
 
-	if (need_submission_semaphore || !external_locks.empty())
+	if (need_submission_semaphore || has_foreign_external_lock)
 	{
 		Vulkan::Semaphore semaphores[3];
 
 		uint32_t sem_count = 0;
 		if (need_submission_semaphore)
 			sem_count += 2;
-		if (!external_locks.empty())
+		if (has_foreign_external_lock)
 			sem_count += 1;
 
 		device_.submit(cmd, nullptr, sem_count, semaphores);
@@ -1963,7 +1973,8 @@ void RenderGraph::PassSubmissionState::submit()
 		{
 			auto &release_semaphore = semaphores[need_submission_semaphore ? 2 : 0];
 			for (auto &lock : external_locks)
-				lock.iface->external_release(release_semaphore);
+				if (lock.iface->owning_queue_type() != queue_type)
+					lock.iface->external_release_semaphore(release_semaphore);
 		}
 	}
 	else
@@ -3815,5 +3826,75 @@ void RenderGraph::reset()
 const char *RenderPassExternalLockInterface::get_ident() const
 {
 	return "";
+}
+
+void RenderPassExternalLockInterface::mark_access_in_queue(Vulkan::CommandBuffer::Type type, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
+{
+	if (type != owning_queue_type())
+	{
+		required_foreign_queue_access = true;
+	}
+	else
+	{
+		inline_queue_invalidate.stages |= stages;
+		inline_queue_flush.stages |= stages;
+		inline_queue_flush.access |= access;
+	}
+}
+
+Vulkan::CommandBufferHandle RenderPassExternalLockInterface::acquire_internal(
+	Vulkan::Device &device, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
+{
+	auto queue_type = owning_queue_type();
+
+	if (required_foreign_queue_access)
+	{
+		for (auto &sem : release_semaphores)
+			device.add_wait_semaphore(queue_type, std::move(sem), stages, false);
+	}
+	release_semaphores.clear();
+
+	auto cmd = device.request_command_buffer(queue_type);
+	if (inline_queue_invalidate.stages)
+		cmd->barrier(inline_queue_invalidate.stages, inline_queue_invalidate.access, stages, access);
+
+	return cmd;
+}
+
+void RenderPassExternalLockInterface::release_internal(
+	Vulkan::CommandBufferHandle &cmd, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
+{
+	if (inline_queue_flush.stages)
+		cmd->barrier(stages, access, inline_queue_flush.stages, inline_queue_flush.access);
+
+	auto &device = cmd->get_device();
+
+	if (required_foreign_queue_access)
+	{
+		acquire_semaphore.reset();
+		device.submit(cmd, nullptr, 1, &acquire_semaphore);
+	}
+	else
+	{
+		device.submit(cmd);
+	}
+}
+
+Vulkan::Semaphore RenderPassExternalLockInterface::external_acquire_semaphore(Vulkan::CommandBuffer::Type)
+{
+	// TODO: Technically we'd need a separate semaphore per queue when timelines are not supported.
+	return acquire_semaphore;
+}
+
+void RenderPassExternalLockInterface::external_release_semaphore(Vulkan::Semaphore semaphore)
+{
+	std::lock_guard<std::mutex> holder{lock};
+	release_semaphores.push_back(std::move(semaphore));
+}
+
+void RenderPassExternalLockInterface::device_reset()
+{
+	acquire_semaphore.reset();
+	release_semaphores.clear();
 }
 }

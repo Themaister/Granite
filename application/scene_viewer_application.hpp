@@ -172,5 +172,7 @@ private:
 	RenderTextureResource *shadows = nullptr;
 	RenderTextureResource *fallback_shadows = nullptr;
 	RenderTextureResource *hiz_main = nullptr;
+	RenderTextureResource *hiz_depth = nullptr;
+	Util::SmallVector<Vulkan::ImageViewHandle> hiz_depth_peel;
 };
 }

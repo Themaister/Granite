@@ -132,9 +132,9 @@ struct SPDPassState : RenderPassInterface
 			Vulkan::ImageViewCreateInfo view_info = {};
 			view_info.image = &otex.get_image();
 			view_info.levels = 1;
-			view_info.layers = 1;
+			view_info.layers = otex.get_create_info().layers;
 			view_info.format = VK_FORMAT_R32_SFLOAT;
-			view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
+			view_info.view_type = view_info.layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
 
 			for (unsigned i = 0; i < info.num_mips; i++)
 			{
@@ -160,7 +160,11 @@ struct HiZPassState : SPDPassState
 
 	void build_render_pass(Vulkan::CommandBuffer &cmd) override
 	{
-		cmd.set_program("builtin://shaders/post/hiz.comp", {{"WRITE_TOP_LEVEL", output_downsample ? 0 : 1}});
+		cmd.set_program("builtin://shaders/post/hiz.comp",
+		                {
+			                {"WRITE_TOP_LEVEL", output_downsample ? 0 : 1},
+			                {"LAYERED", info.input->get_create_info().layers > 1 ? 1 : 0},
+		                });
 
 		struct Push
 		{
@@ -172,7 +176,7 @@ struct HiZPassState : SPDPassState
 		} push = {};
 
 		push.z_transform = mat2(context->get_render_parameters().inv_projection[2].zw() * vec2(-1.0f, 1.0f),
-		                        context->get_render_parameters().inv_projection[3].zw() * vec2(-1.0f, 1.0f));
+								context->get_render_parameters().inv_projection[3].zw() * vec2(-1.0f, 1.0f));
 		push.resolution = uvec2(output->get_view_width(), output->get_view_height());
 		if (output_downsample)
 			push.resolution *= 2u;
@@ -196,9 +200,9 @@ struct HiZPassState : SPDPassState
 
 		cmd.set_texture(1, 0, *info.input, Vulkan::StockSampler::NearestClamp);
 		cmd.set_storage_buffer(1, 1, *info.counter_buffer);
-		cmd.push_constants(&push, 0, sizeof(push));
 		cmd.enable_subgroup_size_control(true);
 		cmd.set_subgroup_size_log2(true, 2, 7);
+		cmd.push_constants(&push, 0, sizeof(push));
 		cmd.dispatch(wg_x, wg_y, info.input->get_create_info().layers);
 		cmd.enable_subgroup_size_control(false);
 	}

@@ -144,6 +144,10 @@ void RenderPassSceneRenderer::prepare_render_pass()
 {
 	prepare_setup_queues();
 
+	// Only fixed function meshlets should be renderered here.
+	if (flush_flags & Renderer::MESH_ASSET_PHASE_1_BIT)
+		return;
+
 	auto &visible = visible_per_task[0];
 	auto &visible_transparent = visible_per_task_transparent[0];
 	auto *context = setup_data.context;
@@ -252,6 +256,10 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 	setup_group.enqueue_task([this]() {
 		prepare_setup_queues();
 	});
+
+	// Only fixed function meshlets should be renderered here.
+	if (flush_flags & Renderer::MESH_ASSET_PHASE_1_BIT)
+		return;
 
 	bool layered = render_pass_is_separate_layered();
 	auto num_tasks = layered ? setup_data.layers : unsigned(MaxTasks);

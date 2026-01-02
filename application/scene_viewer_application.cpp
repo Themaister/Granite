@@ -866,8 +866,12 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 
 	auto &phase1 = graph.add_pass(tagcat("gbuffer-phase1", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	phase1.set_depth_stencil_output(tagcat("depth-prepass", tag), depth);
-	phase1.add_proxy_output(tagcat("occlusion-state-phase1", tag), VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT,
+	phase1.add_proxy_output(tagcat("occlusion-state-phase1", tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
 	                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+	scene_loader.get_scene().add_render_pass_dependencies(graph, phase1,
+	                                                      RenderPassCreator::GEOMETRY_BIT |
+	                                                      RenderPassCreator::MATERIAL_BIT);
 
 	{
 		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
@@ -893,8 +897,8 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
 	gbuffer.set_depth_stencil_input(tagcat("depth-prepass", tag));
-	hiz_main = &gbuffer.add_texture_input(tagcat("hiz", tag), VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT);
-	gbuffer.add_proxy_output(tagcat("occlusion-state-phase2", tag), VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT,
+	hiz_main = &gbuffer.add_texture_input(tagcat("hiz", tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT);
+	gbuffer.add_proxy_output(tagcat("occlusion-state-phase2", tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
 	                         VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 	                         tagcat("occlusion-state-phase1", tag));
 
@@ -1010,7 +1014,41 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 	if (config.directional_light_cascaded_shadows)
 		shadowmap.layers = NumShadowCascades;
 
+	auto &phase1 = graph.add_pass(tagcat("shadow-phase1", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	phase1.set_depth_stencil_output(tagcat("shadow-prepass", tag), shadowmap);
+	phase1.add_proxy_output(tagcat("shadow-occlusion-phase1", tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+	                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+	{
+		Util::IntrusivePtr<RenderPassSceneRenderer> handle;
+		RenderPassSceneRenderer::Setup setup = {};
+		setup.scene = &scene_loader.get_scene();
+		setup.suite = &renderer_suite;
+		setup.flags = SCENE_RENDERER_DEPTH_BIT;
+
+		setup.context = depth_contexts;
+		setup.flags |= SCENE_RENDERER_DEPTH_DYNAMIC_BIT;
+		setup.flags |= SCENE_RENDERER_SEPARATE_PER_LAYER_BIT;
+		setup.layers = NumShadowCascades;
+
+		handle = Util::make_handle<RenderPassSceneRenderer>();
+		handle->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_1_BIT);
+		handle->init(setup);
+		phase1.set_render_pass_interface(std::move(handle));
+	}
+
+	scene_loader.get_scene().add_render_pass_dependencies(graph, phase1,
+	                                                      RenderPassCreator::GEOMETRY_BIT |
+	                                                      RenderPassCreator::MATERIAL_BIT);
+
+	setup_depth_hierarchy_pass(graph, tagcat("shadow-prepass", tag), tagcat("shadow-hiz", tag),
+	                           depth_contexts, true);
+
 	auto &shadowpass = graph.add_pass(tagcat("shadow", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	hiz_depth = &shadowpass.add_texture_input(tagcat("shadow-hiz", tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT);
+	shadowpass.add_proxy_output(tagcat("shadow-occlusion-phase2", tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+	                            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+	                            tagcat("shadow-occlusion-phase1", tag));
 
 	if (config.directional_light_shadows_vsm)
 	{
@@ -1026,6 +1064,7 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 		shadowmap_vsm_half.size_y *= 0.5f;
 
 		shadowpass.set_depth_stencil_output(tagcat("shadow-depth", tag), shadowmap);
+		shadowpass.set_depth_stencil_input(tagcat("shadow-prepass", tag));
 		shadowpass.add_color_output(tagcat("shadow-msaa", tag), shadowmap_vsm_color);
 		shadowpass.add_resolve_output(tagcat("shadow-raw", tag), shadowmap_vsm_resolved_color);
 
@@ -1062,6 +1101,7 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 	else
 	{
 		shadowpass.set_depth_stencil_output(tagcat("shadow", tag), shadowmap);
+		shadowpass.set_depth_stencil_input(tagcat("shadow-prepass", tag));
 	}
 
 	Util::IntrusivePtr<RenderPassSceneRenderer> handle;
@@ -1078,6 +1118,7 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 	setup.layers = NumShadowCascades;
 
 	handle = Util::make_handle<RenderPassSceneRenderer>();
+	handle->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_2_BIT);
 	handle->init(setup);
 
 	VkClearColorValue value = {};
@@ -1482,6 +1523,21 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	lighting.shadows = graph.maybe_get_physical_texture_resource(shadows);
 	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
 	context.set_scene_hiz_view(graph.maybe_get_physical_texture_resource(hiz_main), 1);
+
+	// Somewhat crude.
+	if (auto *hiz = graph.maybe_get_physical_texture_resource(hiz_depth))
+	{
+		hiz_depth_peel.clear();
+		for (unsigned layer = 0; layer < hiz->get_create_info().layers; layer++)
+		{
+			auto info = hiz->get_create_info();
+			info.view_type = VK_IMAGE_VIEW_TYPE_2D;
+			info.layers = 1;
+			info.base_layer = layer;
+			hiz_depth_peel.emplace_back(device.create_image_view(info));
+			depth_contexts[layer].set_scene_hiz_view(hiz_depth_peel.back().get(), 1);
+		}
+	}
 
 	scene_loader.get_scene().set_render_pass_data(&renderer_suite, &context);
 	scene.bind_render_graph_resources(graph);

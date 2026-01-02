@@ -339,12 +339,10 @@ const char *Shader::stage_to_name(ShaderStage stage)
 		return "vertex";
 	case ShaderStage::Fragment:
 		return "fragment";
-	case ShaderStage::Geometry:
-		return "geometry";
-	case ShaderStage::TessControl:
-		return "tess_control";
-	case ShaderStage::TessEvaluation:
-		return "tess_evaluation";
+	case ShaderStage::Task:
+		return "task";
+	case ShaderStage::Mesh:
+		return "mesh";
 	default:
 		return "unknown";
 	}

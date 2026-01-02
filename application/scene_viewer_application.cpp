@@ -1305,7 +1305,7 @@ void SceneViewerApplication::bake_render_graph(const SwapchainParameterEvent &sw
 
 	scene_loader.get_scene().add_render_pass_dependencies(graph);
 	graph.bake();
-	graph.log();
+	//graph.log();
 	graph.install_physical_buffers(std::move(physical_buffers));
 
 	need_shadow_map_update = true;

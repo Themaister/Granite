@@ -753,7 +753,35 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	depth.size_x = config.resolution_scale;
 	depth.size_y = config.resolution_scale;
 
-	bool use_ssao = config.forward_depth_prepass && config.ssao && config.msaa == 1;
+	//bool use_ssao = config.forward_depth_prepass && config.ssao && config.msaa == 1;
+	const bool use_ssao = false;
+
+	auto &phase1 = graph.add_pass(tagcat("depth-phase1", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	phase1.set_depth_stencil_output(tagcat("depth-prepass", tag), depth);
+	phase1.add_proxy_output(tagcat("occlusion-state-phase1", tag),
+	                        VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+	                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+	scene_loader.get_scene().add_render_pass_dependencies(graph, phase1,
+														  RenderPassCreator::GEOMETRY_BIT |
+														  RenderPassCreator::MATERIAL_BIT);
+
+	{
+		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
+		RenderPassSceneRenderer::Setup setup = {};
+		setup.scene = &scene_loader.get_scene();
+		setup.context = &context;
+		setup.suite = &renderer_suite;
+		setup.flags = SCENE_RENDERER_Z_PREPASS_BIT;
+		if (config.debug_probes)
+			setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
+		renderer->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_1_BIT);
+		renderer->init(setup);
+		phase1.set_render_pass_interface(std::move(renderer));
+	}
+
+	setup_depth_hierarchy_pass(graph, tagcat("depth-prepass", tag), tagcat("hiz", tag),
+							   &context, true);
 
 	if (use_ssao)
 	{
@@ -791,6 +819,11 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 
 	auto &lighting_pass = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 
+	hiz_main = &lighting_pass.add_texture_input(tagcat("hiz", tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT);
+	lighting_pass.add_proxy_output(tagcat("occlusion-state-phase2", tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+	                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	                               tagcat("occlusion-state-phase1", tag));
+
 	if (color.samples > 1)
 	{
 		lighting_pass.add_color_output(tagcat("HDR-MS", tag), color);
@@ -825,6 +858,7 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	if (config.debug_probes)
 		setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
 
+	renderer->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_2_BIT | Renderer::MESH_ASSET_FORCE_ALL_VISIBLE_BIT);
 	renderer->init(setup);
 
 	lighting_pass.set_render_pass_interface(std::move(renderer));

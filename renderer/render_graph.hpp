@@ -888,17 +888,15 @@ public:
 	std::vector<Vulkan::BufferHandle> consume_physical_buffers() const;
 	void install_physical_buffers(std::vector<Vulkan::BufferHandle> buffers);
 
-	static inline RenderGraphQueueFlagBits get_default_post_graphics_queue()
+	static RenderGraphQueueFlagBits get_default_post_graphics_queue()
 	{
 		return RENDER_GRAPH_QUEUE_GRAPHICS_BIT;
 	}
 
-	static inline RenderGraphQueueFlagBits get_default_compute_queue()
+	static RenderGraphQueueFlagBits get_default_compute_queue()
 	{
-		if (Vulkan::ImplementationQuirks::get().render_graph_force_single_queue)
-			return RENDER_GRAPH_QUEUE_COMPUTE_BIT;
-		else
-			return RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT;
+		// Don't use async compute by default due to submit overhead.
+		return RENDER_GRAPH_QUEUE_COMPUTE_BIT;
 	}
 
 private:

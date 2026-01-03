@@ -173,4 +173,30 @@ u8vec4 meshlet_decode_normal_tangent_oct8(uint stream_index, uint lane_index, ou
 	return u8vec4(value);
 }
 
+uvec4 meshlet_decode_bone_indices(uint stream_index, uint lane_index)
+{
+	uint offset_in_words = meshlet_streams.data[stream_index].offset_in_words;
+	uint bits = meshlet_streams.data[stream_index].bits;
+
+	// Scalar math.
+	uvec4 base_value = uvec4(unpack8(meshlet_streams.data[stream_index].base_value_or_offsets[0]));
+	uvec4 value = meshlet_decode4(offset_in_words, lane_index, bits & 0xff);
+
+	value += base_value;
+	return value;
+}
+
+vec4 meshlet_decode_bone_weights(uint stream_index, uint lane_index)
+{
+	uint offset_in_words = meshlet_streams.data[stream_index].offset_in_words;
+	uint bits = meshlet_streams.data[stream_index].bits;
+
+	// Scalar math.
+	uvec4 base_value = uvec4(unpack8(meshlet_streams.data[stream_index].base_value_or_offsets[0]));
+	uvec4 value = meshlet_decode4(offset_in_words, lane_index, bits & 0xff);
+
+	value += base_value;
+	return unpackUnorm4x8(pack32(u8vec4(value)));
+}
+
 #endif

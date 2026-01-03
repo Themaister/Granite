@@ -88,7 +88,11 @@ layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_TRANSFORMS) readonly buffer 
 
 taskPayloadSharedEXT CompactedDrawInfoPayload mesh_payload;
 
-const uint STRIDE = 4; // TODO: Spec constant or push constant
+#if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
+const uint STRIDE = 6;
+#else
+const uint STRIDE = 4;
+#endif
 
 void main()
 {
@@ -100,8 +104,6 @@ void main()
 #else
     CompactedDrawInfo task = mesh_payload.infos[compacted_meshlet_index];
 #endif
-
-    mat_affine M = transforms.data[task.node_offset];
 
     uint linear_index, sublet_index;
     if (gl_SubgroupSize == 32)
@@ -127,8 +129,31 @@ void main()
     if (linear_index < info.primitive_count)
         decoded_index_buffer = meshlet_decode_index_buffer(meta.stream_offset, linear_index);
 
+    mat_affine M;
+#if !HAVE_BONE_INDEX || !HAVE_BONE_WEIGHT
+    M = transforms.data[task.node_offset];
+#endif
+
     if (linear_index < info.vertex_count)
     {
+#if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
+        uvec4 indices = meshlet_decode_bone_indices(meta.stream_offset + MESHLET_STREAM_TYPE_BONE_INDICES, linear_index);
+        vec4 weights = meshlet_decode_bone_weights(meta.stream_offset + MESHLET_STREAM_TYPE_BONE_WEIGHTS, linear_index);
+        indices += task.node_offset;
+
+        mat3x4 m = mat_affine_to_transposed(transforms.data[indices.x]) * weights.x;
+        if (weights.y != 0.0)
+            m += mat_affine_to_transposed(transforms.data[indices.y]) * weights.y;
+        if (weights.z != 0.0)
+            m += mat_affine_to_transposed(transforms.data[indices.z]) * weights.z;
+        if (weights.w != 0.0)
+            m += mat_affine_to_transposed(transforms.data[indices.w]) * weights.w;
+
+        M.rows[0] = m[0];
+        M.rows[1] = m[1];
+        M.rows[2] = m[2];
+#endif
+
         int exponent;
         i16vec3 ipos = meshlet_decode_snorm_scaled_i16x3(
             meta.stream_offset + MESHLET_STREAM_TYPE_POSITION,

@@ -306,7 +306,11 @@ NodeHandle SceneLoader::parse_gltf(const std::string &path)
 	for (auto &mesh : subscene.parser->get_meshes())
 	{
 		auto internal_path = std::string("memory://mesh") + std::to_string(count++);
-		if (!::Granite::Meshlet::export_mesh_to_meshlet(internal_path, mesh, Vulkan::Meshlet::MeshStyle::Textured))
+
+		bool skinned = mesh.attribute_layout[int(MeshAttribute::BoneIndex)].format != VK_FORMAT_UNDEFINED &&
+		               mesh.attribute_layout[int(MeshAttribute::BoneWeights)].format != VK_FORMAT_UNDEFINED;
+		auto mesh_style = skinned ? Vulkan::Meshlet::MeshStyle::Skinned : Vulkan::Meshlet::MeshStyle::Textured;
+		if (!::Granite::Meshlet::export_mesh_to_meshlet(internal_path, mesh, mesh_style))
 			throw std::runtime_error("Failed to export meshlet.");
 
 		auto asset_id =
@@ -355,6 +359,8 @@ NodeHandle SceneLoader::parse_gltf(const std::string &path)
 			pipe, asset_id, mesh.static_aabb, num_occlusion_states, flags);
 
 		renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT | RENDERABLE_MESH_ASSET_BIT;
+		if (skinned)
+			renderable->flags |= RENDERABLE_MESH_ASSET_SKINNED_BIT;
 		subscene.meshes.push_back(std::move(renderable));
 	}
 #else

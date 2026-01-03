@@ -613,6 +613,7 @@ template <typename T>
 static void update_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &buffer, const T *data,
                         const Scene::UpdateSpan &span)
 {
+	uint32_t base_i = 0;
 	uint32_t base = 0;
 	size_t count = 0;
 
@@ -630,10 +631,11 @@ static void update_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &buffer, cons
 
 	for (size_t i = 0; i < span.count; i++)
 	{
-		if (base + i != span.offsets[i])
+		if (base + (i - base_i) != span.offsets[i])
 		{
 			flush();
 			base = span.offsets[i];
+			base_i = i;
 		}
 
 		count++;

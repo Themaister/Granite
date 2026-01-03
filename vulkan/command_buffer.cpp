@@ -2577,11 +2577,9 @@ void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 		b.image.integer.imageLayout = ref.layout;
 		b.image.fp.imageView = view->get_float_view().view;
 		b.image.integer.imageView = view->get_integer_view().view;
-		if (desc_buffer_enable)
-		{
-			b.image.fp_ptr = view->get_float_view().sampled.ptr;
-			b.image.integer_ptr = view->get_integer_view().sampled.ptr;
-		}
+		// Workaround, doesn't need to be VK_NULL_HANDLE.
+		b.image.fp.sampler = VK_NULL_HANDLE;
+		b.image.integer.sampler = VK_NULL_HANDLE;
 		bindings.cookies[set][start_binding + i] = view->get_cookie();
 		dirty_sets_realloc |= 1u << set;
 	}

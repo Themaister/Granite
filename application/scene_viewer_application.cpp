@@ -1558,6 +1558,13 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	auto &device = get_wsi().get_device();
 	auto &scene = scene_loader.get_scene();
 
+#if 0
+	// Hack to test per-object motion easily.
+	auto &t = scene.get_root_node()->get_transform();
+	t.translation.x = std::sin(elapsed_time);
+	scene.get_root_node()->invalidate_cached_transform();
+#endif
+
 	last_frame_times[last_frame_index++ & FrameWindowSizeMask] = float(frame_time);
 
 	graph.setup_attachments(device, &device.get_swapchain_view());

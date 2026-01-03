@@ -136,6 +136,11 @@ public:
 		return task_offset_counts[2 * int(pipe) + skinned];
 	}
 
+	std::pair<uint32_t, uint32_t> get_task_range_motion_vector(bool skinned) const
+	{
+		return task_offset_counts[2 * int(DrawPipeline::Count) + skinned];
+	}
+
 	const Vulkan::Buffer *get_task_buffer() const { return task_buffer.get(); }
 
 private:
@@ -168,7 +173,7 @@ private:
 	Scene *scene = nullptr;
 
 	Vulkan::BufferHandle task_buffer;
-	std::pair<uint32_t, uint32_t> task_offset_counts[2 * int(DrawPipeline::Count)] = {};
+	std::pair<uint32_t, uint32_t> task_offset_counts[2 * (int(DrawPipeline::Count) + 1)] = {};
 
 	struct PerContext
 	{

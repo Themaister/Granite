@@ -145,7 +145,8 @@ void RenderPassSceneRenderer::prepare_render_pass()
 	prepare_setup_queues();
 
 	// Only fixed function meshlets should be renderered here.
-	if (flush_flags & Renderer::MESH_ASSET_PHASE_1_BIT)
+	if ((flush_flags & Renderer::MESH_ASSET_PHASE_1_BIT) &&
+	    !(setup_data.flags & SCENE_RENDERER_MOTION_VECTOR_BIT))
 		return;
 
 	auto &visible = visible_per_task[0];
@@ -258,7 +259,8 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 	});
 
 	// Only fixed function meshlets should be renderered here.
-	if (flush_flags & Renderer::MESH_ASSET_PHASE_1_BIT)
+	if ((flush_flags & Renderer::MESH_ASSET_PHASE_1_BIT) &&
+	    !(setup_data.flags & SCENE_RENDERER_MOTION_VECTOR_BIT))
 		return;
 
 	bool layered = render_pass_is_separate_layered();
@@ -442,7 +444,8 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 		Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT |
 		                                    Renderer::DEPTH_STENCIL_READ_ONLY_BIT |
 		                                    Renderer::DEPTH_TEST_EQUAL_BIT |
-		                                    Renderer::MESH_ASSET_OPAQUE_BIT |
+		                                    Renderer::MESH_ASSET_MOTION_VECTOR_BIT |
+		                                    Renderer::MESH_ASSET_IGNORE_ALPHA_TEST_BIT |
 		                                    flush_flags;
 		suite->get_renderer(RendererSuite::Type::MotionVector).flush(cmd, queue_per_task_opaque[bucket_index],
 		                                                             setup_data.context[bucket_index], opt,
@@ -644,20 +647,58 @@ static void update_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &buffer, cons
 	flush();
 }
 
+static void copy_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &dst, Vulkan::Buffer &src,
+                      const Scene::UpdateSpan &span, VkDeviceSize element_size)
+{
+	uint32_t base_i = 0;
+	uint32_t base = 0;
+	size_t count = 0;
+
+	const auto flush = [&]()
+	{
+		if (count)
+		{
+			cmd.copy_buffer(dst, base * element_size, src, base * element_size, count * element_size);
+			count = 0;
+		}
+	};
+
+	assert(span.count != 0);
+	base = span.offsets[0];
+
+	for (size_t i = 0; i < span.count; i++)
+	{
+		if (base + (i - base_i) != span.offsets[i])
+		{
+			flush();
+			base = span.offsets[i];
+			base_i = i;
+		}
+
+		count++;
+	}
+
+	flush();
+}
+
 void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 {
-	unsigned num_task_instances_per_kind[2 * int(DrawPipeline::Count)] = {};
+	unsigned num_task_instances_per_kind[2 * (int(DrawPipeline::Count) + 1)] = {};
 	unsigned num_task_instances = 0;
 	auto &manager = device->get_resource_manager();
 
 	for (auto &elem : *meshlets)
 	{
 		auto &mesh = static_cast<MeshAssetRenderable &>(*get_component<RenderableComponent>(elem)->renderable);
+		auto &transform = *get_component<RenderInfoComponent>(elem);
 		auto range = manager.get_mesh_draw_range(mesh.get_asset_id());
 		if (range.meshlet.count == 0)
 			continue;
 		bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;
 		num_task_instances_per_kind[2 * int(mesh.get_mesh_draw_pipeline()) + skinned] += (range.meshlet.count + 31) / 32;
+
+		if (transform.requires_motion_vectors && mesh.get_mesh_draw_pipeline() != DrawPipeline::AlphaBlend)
+			num_task_instances_per_kind[2 * int(DrawPipeline::Count) + skinned] += (range.meshlet.count + 31) / 32;
 	}
 
 	for (auto count : num_task_instances_per_kind)
@@ -665,7 +706,7 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 
 	task_offset_counts[0] = {};
 
-	for (int i = 1; i < 2 * int(DrawPipeline::Count); i++)
+	for (int i = 1; i < 2 * (int(DrawPipeline::Count) + 1); i++)
 	{
 		task_offset_counts[i] = { num_task_instances_per_kind[i - 1], 0 };
 		num_task_instances_per_kind[i] += num_task_instances_per_kind[i - 1];
@@ -704,20 +745,23 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 
 		MeshAssetDrawTaskInfo draw = {};
 		draw.aabb_instance = transform.aabb.offset;
-		draw.occluder_state_offset = transform.occluder_state.offset;
 		auto *node = transform.scene_node;
 		auto *skin = node->get_skin();
 		draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
 		draw.material_flags = mesh.get_material_flags();
 		VK_ASSERT((range.meshlet.offset & 31) == 0);
 
-		auto &offset_count = task_offset_counts[2 * int(mesh.get_mesh_draw_pipeline()) + skinned];
-
-		for (uint32_t j = 0; j < range.meshlet.count; j += 32)
+		for (int i = 0; i <= transform.requires_motion_vectors; i++)
 		{
-			draw.mesh_index_count = range.meshlet.offset + j + (std::min(range.meshlet.count - j, 32u) - 1);
-			task_infos[offset_count.first + offset_count.second++] = draw;
-			draw.occluder_state_offset++;
+			draw.occluder_state_offset = transform.occluder_state.offset;
+			auto &offset_count = task_offset_counts[2 * int(i ? DrawPipeline::Count : mesh.get_mesh_draw_pipeline()) + skinned];
+
+			for (uint32_t j = 0; j < range.meshlet.count; j += 32)
+			{
+				draw.mesh_index_count = range.meshlet.offset + j + (std::min(range.meshlet.count - j, 32u) - 1);
+				task_infos[offset_count.first + offset_count.second++] = draw;
+				draw.occluder_state_offset++;
+			}
 		}
 	}
 
@@ -747,7 +791,16 @@ void SceneTransformManager::update_scene_buffers()
 		ensure_buffer(*cmd, ctx.occlusions, VkDeviceSize(scene->get_occluder_states().get_count()) * sizeof(uint32_t), "occlusion-state");
 
 	if (transform_span.count != 0)
+	{
+		// If there is motion this frame, copy over old transform.
+		// We don't need to remember to keep copying over prev transforms when there is no motion since we only
+		// need to render motion vectors for objects that moved *this* frame,
+		// and we consider prev_transforms only valid for nodes which require special motion vectors.
+		copy_span(*cmd, *prev_transforms, *transforms, transform_span, sizeof(mat_affine));
+		// Add a pure execution barrier to ensure we don't clobber transforms before we have copied over to prev_transforms.
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, 0, VK_PIPELINE_STAGE_2_COPY_BIT, 0);
 		update_span(*cmd, *transforms, scene->get_transforms().get_cached_transforms(), transform_span);
+	}
 
 	if (aabb_span.count != 0)
 		update_span(*cmd, *aabbs, scene->get_aabbs().get_aabbs(), aabb_span);

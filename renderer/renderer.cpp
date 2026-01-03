@@ -73,6 +73,7 @@ enum GlobalDescriptorSetBindings
 	BINDING_GLOBAL_SCENE_MESHLET_PAYLOAD_BUFFER = 25,
 	BINDING_GLOBAL_SCENE_MESHLET_CLUSTER_BOUNDS = 26,
 	BINDING_GLOBAL_SCENE_MESHLET_HIZ = 27,
+	BINDING_GLOBAL_SCENE_NODE_PREV_TRANSFORMS = 28,
 };
 
 namespace Granite
@@ -514,6 +515,8 @@ void Renderer::bind_scene_transform_parameters(Vulkan::CommandBuffer &cmd, const
 
 	if (auto *buf = transforms->get_transforms())
 		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_NODE_TRANSFORMS, *buf);
+	if (auto *buf = transforms->get_prev_transforms())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_NODE_PREV_TRANSFORMS, *buf);
 	if (auto *buf = transforms->get_aabbs())
 		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_NODE_AABBS, *buf);
 	if (auto *buf = transforms->get_scene_task_buffer())
@@ -622,7 +625,9 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 	if (!task_range_buffer)
 		return;
 
-	auto range = transforms->get_task_range(pipe, skinned);
+	auto range = (options & MESH_ASSET_MOTION_VECTOR_BIT) != 0
+		             ? transforms->get_task_range_motion_vector(skinned)
+		             : transforms->get_task_range(pipe, skinned);
 	if (range.second == 0)
 		return;
 
@@ -803,10 +808,14 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	CommandBufferSavedState state = {};
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 
-	if ((options & MESH_ASSET_OPAQUE_BIT) != 0)
+	if ((options & (MESH_ASSET_OPAQUE_BIT | MESH_ASSET_MOTION_VECTOR_BIT)) != 0)
 	{
 		render_mesh_assets(cmd, context, DrawPipeline::Opaque, options, false);
 		render_mesh_assets(cmd, context, DrawPipeline::Opaque, options, true);
+	}
+
+	if ((options & MESH_ASSET_OPAQUE_BIT) != 0 && (options & MESH_ASSET_MOTION_VECTOR_BIT) == 0)
+	{
 		render_mesh_assets(cmd, context, DrawPipeline::AlphaTest, options, false);
 		render_mesh_assets(cmd, context, DrawPipeline::AlphaTest, options, true);
 	}
@@ -1130,7 +1139,7 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 {
 	if (drawable == RenderableType::Meshlet &&
 	    (renderer == RendererType::GeneralDeferred || renderer == RendererType::GeneralForward ||
-	     renderer == RendererType::DepthOnly))
+	     renderer == RendererType::DepthOnly || renderer == RendererType::MotionVector))
 	{
 		switch (device.get_resource_manager().get_mesh_encoding())
 		{
@@ -1147,8 +1156,16 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 			                    "builtin://shaders/meshlet_decoded.mesh", "builtin://shaders/meshlet.frag");
 			break;
 		case ResourceManager::MeshEncoding::MeshletEncoded:
-			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",
-			                    "builtin://shaders/meshlet_encoded.mesh", "builtin://shaders/meshlet.frag");
+			if (renderer == RendererType::MotionVector)
+			{
+				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",
+				                    "builtin://shaders/meshlet_encoded_mv.mesh", "builtin://shaders/static_mesh_mv.frag");
+			}
+			else
+			{
+				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",
+				                    "builtin://shaders/meshlet_encoded.mesh", "builtin://shaders/meshlet.frag");
+			}
 			break;
 		}
 	}

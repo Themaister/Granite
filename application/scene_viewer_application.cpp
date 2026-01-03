@@ -726,6 +726,8 @@ void SceneViewerApplication::add_mv_pass(const std::string &tag, const std::stri
 	auto &mv_pass = graph.add_pass(tagcat("mv", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	mv_pass.set_depth_stencil_input(depth);
 	mv_pass.add_color_output(tagcat("mv", tag), mv);
+	mv_pass.add_proxy_input(tagcat("occlusion-state-phase2", tag),
+	                        VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 	if (full_mv)
 		mv_pass.add_attachment_input(depth);
@@ -738,6 +740,11 @@ void SceneViewerApplication::add_mv_pass(const std::string &tag, const std::stri
 	setup.flags = SCENE_RENDERER_MOTION_VECTOR_BIT;
 	if (full_mv)
 		setup.flags |= SCENE_RENDERER_MOTION_VECTOR_FULL_BIT;
+
+	// After normal rendering, the occlusion state buffer is exactly what we want.
+	// Main downside is that we have to split render pass, but that's fairly minor.
+	renderer->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_1_BIT);
+
 	renderer->init(setup);
 
 	mv_pass.set_render_pass_interface(std::move(renderer));

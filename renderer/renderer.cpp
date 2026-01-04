@@ -631,14 +631,20 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 	if (range.second == 0)
 		return;
 
-#if 0
+	GRANITE_MATERIAL_MANAGER()->set_bindless(cmd, 2);
+	GRANITE_MATERIAL_MANAGER()->set_material_payloads(cmd, 3, 1);
+
 	if (encoding == ResourceManager::MeshEncoding::Classic || encoding == ResourceManager::MeshEncoding::VBOAndIBOMDI)
 	{
 		auto *ibo = manager.get_index_buffer();
 		auto *pos = manager.get_position_buffer();
 		auto *attr = manager.get_attribute_buffer();
 
-		cmd.set_index_buffer(*ibo, 0, VK_INDEX_TYPE_UINT32);
+		cmd.set_index_buffer(*ibo, 0,
+		                     encoding == ResourceManager::MeshEncoding::Classic
+			                     ? VK_INDEX_TYPE_UINT32
+			                     : VK_INDEX_TYPE_UINT8);
+
 		cmd.set_vertex_binding(0, *pos, 0, 12);
 		cmd.set_vertex_binding(1, *attr, 0, 16);
 		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
@@ -653,35 +659,48 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 			cmd.set_vertex_attrib(4, 2, VK_FORMAT_R8G8B8A8_UINT, 0);
 			cmd.set_vertex_attrib(5, 2, VK_FORMAT_R8G8B8A8_UNORM, 4);
 		}
-
-		GRANITE_MATERIAL_MANAGER()->set_bindless(cmd, 2);
 	}
-#endif
+
+	uint32_t attribute_mask = 0;
+	uint32_t texture_mask = 0;
+
+	// Ubershader approach, assume everything can happen.
+	// We split skinned vs non-skinned since the complexity level is quite different.
+	attribute_mask |= MESH_ATTRIBUTE_POSITION_BIT | MESH_ATTRIBUTE_UV_BIT | MESH_ATTRIBUTE_NORMAL_BIT |
+					  MESH_ATTRIBUTE_TANGENT_BIT;
+	if (skinned)
+		attribute_mask |= MESH_ATTRIBUTE_BONE_INDEX_BIT | MESH_ATTRIBUTE_BONE_WEIGHTS_BIT;
+
+	texture_mask |= MATERIAL_TEXTURE_BASE_COLOR_BIT | MATERIAL_TEXTURE_METALLIC_ROUGHNESS_BIT |
+					MATERIAL_TEXTURE_NORMAL_BIT | MATERIAL_TEXTURE_OCCLUSION_BIT | MATERIAL_TEXTURE_EMISSIVE_BIT;
 
 	switch (encoding)
 	{
 		// TODO: Figure how we're going to do manual culling.
 	case ResourceManager::MeshEncoding::Classic:
 		break;
+
 	case ResourceManager::MeshEncoding::VBOAndIBOMDI:
+	{
+		auto key = VariantSignatureKey::build(pipe, attribute_mask, texture_mask);
+		auto *prog = suite[ecast(RenderableType::Meshlet)].get_program(key);
+		cmd.set_program(prog);
+
+		auto mdi = (options & MESH_ASSET_MOTION_VECTOR_BIT) != 0
+			           ? transforms->get_mdi_call_parameters_motion_vector(skinned)
+			           : transforms->get_mdi_call_parameters(pipe, skinned);
+
+		cmd.draw_indexed_multi_indirect(*mdi.indirect_buffer, mdi.indirect_offset,
+		                                mdi.indirect_count_max,
+		                                sizeof(VkDrawIndexedIndirectCommand),
+		                                *mdi.indirect_count, mdi.indirect_count_offset);
+
 		break;
+	}
 
 	case ResourceManager::MeshEncoding::MeshletDecoded:
 	case ResourceManager::MeshEncoding::MeshletEncoded:
 	{
-		uint32_t attribute_mask = 0;
-		uint32_t texture_mask = 0;
-
-		// Ubershader approach, assume everything can happen.
-		// We split skinned vs non-skinned since the complexity level is quite different.
-		attribute_mask |= MESH_ATTRIBUTE_POSITION_BIT | MESH_ATTRIBUTE_UV_BIT | MESH_ATTRIBUTE_NORMAL_BIT |
-		                  MESH_ATTRIBUTE_TANGENT_BIT;
-		if (skinned)
-			attribute_mask |= MESH_ATTRIBUTE_BONE_INDEX_BIT | MESH_ATTRIBUTE_BONE_WEIGHTS_BIT;
-
-		texture_mask |= MATERIAL_TEXTURE_BASE_COLOR_BIT | MATERIAL_TEXTURE_METALLIC_ROUGHNESS_BIT |
-		                MATERIAL_TEXTURE_NORMAL_BIT | MATERIAL_TEXTURE_OCCLUSION_BIT | MATERIAL_TEXTURE_EMISSIVE_BIT;
-
 		uint32_t variant_id = 0;
 		if (manager.mesh_rendering_is_hierarchical_task())
 			variant_id |= 1u << 0;
@@ -700,8 +719,6 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		auto key = VariantSignatureKey::build(pipe, attribute_mask, texture_mask, variant_id);
 		auto *prog = suite[ecast(RenderableType::Meshlet)].get_program(key);
 		cmd.set_program(prog);
-		GRANITE_MATERIAL_MANAGER()->set_bindless(cmd, 2);
-		GRANITE_MATERIAL_MANAGER()->set_material_payloads(cmd, 3, 1);
 
 		auto *ubo = cmd.allocate_typed_constant_data<MeshletViewportUBO>(3, 0, 1);
 		ubo->viewport = vec4(cmd.get_viewport().x + 0.5f * cmd.get_viewport().width - 0.5f,

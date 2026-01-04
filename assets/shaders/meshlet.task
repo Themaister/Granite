@@ -155,7 +155,7 @@ void process_task(uint task_index)
             {
 #if !MESHLET_RENDER_TASK_HIERARCHICAL
                 // We already did the frustum cull at hierarchical level.
-                // It's not very efficient to it like this on non-AMD.
+                // It's not very efficient to do it like this on non-AMD.
                 // TODO: We'd need some way to make skinning + cluster bounds work.
                 AABB aabb = aabb.data[task.aabb_instance];
                 alloc_draw = frustum_cull(aabb.lo, aabb.hi);

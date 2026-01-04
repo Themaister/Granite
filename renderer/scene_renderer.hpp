@@ -143,6 +143,18 @@ public:
 
 	const Vulkan::Buffer *get_task_buffer() const { return task_buffer.get(); }
 
+	struct MDICall
+	{
+		const Vulkan::Buffer *indirect_buffer;
+		VkDeviceSize indirect_offset;
+		const Vulkan::Buffer *indirect_count;
+		VkDeviceSize indirect_count_offset;
+		uint32_t indirect_count_max;
+	};
+
+	MDICall get_mdi_call_parameters(DrawPipeline pipe, bool skinned) const;
+	MDICall get_mdi_call_parameters_motion_vector(bool skinned) const;
+
 private:
 	const ComponentGroupVector<
 		RenderableComponent,
@@ -174,6 +186,9 @@ private:
 
 	Vulkan::BufferHandle task_buffer;
 	std::pair<uint32_t, uint32_t> task_offset_counts[2 * (int(DrawPipeline::Count) + 1)] = {};
+
+	Vulkan::BufferHandle mdi;
+	MDICall mdi_calls[2 * (int(DrawPipeline::Count) + 1)] = {};
 
 	struct PerContext
 	{

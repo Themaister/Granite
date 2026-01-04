@@ -202,7 +202,6 @@ void main()
         shared_uv[out_vert_index] = uv;
 #endif
 #if ATTR_LEVEL >= 2
-
         shared_nt[out_vert_index] = nt;
         shared_exponent[out_vert_index] = exponent;
         shared_world_pos[out_vert_index] = world_pos;

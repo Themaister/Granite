@@ -136,6 +136,8 @@ void ResourceManager::init_mesh_assets()
 			LOGE("Unknown encoding: %s\n", encoding.c_str());
 	}
 
+	mesh_encoding = MeshEncoding::VBOAndIBOMDI;
+
 	if (mesh_encoding != MeshEncoding::MeshletEncoded)
 	{
 		unsigned index_size = mesh_encoding == MeshEncoding::Classic ? sizeof(uint32_t) : sizeof(uint8_t);

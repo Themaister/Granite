@@ -681,6 +681,16 @@ static void copy_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &dst, Vulkan::B
 	flush();
 }
 
+SceneTransformManager::MDICall SceneTransformManager::get_mdi_call_parameters(DrawPipeline pipe, bool skinned) const
+{
+	return mdi_calls[2 * int(pipe) + skinned];
+}
+
+SceneTransformManager::MDICall SceneTransformManager::get_mdi_call_parameters_motion_vector(bool skinned) const
+{
+	return mdi_calls[2 * int(DrawPipeline::Count) + skinned];
+}
+
 void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 {
 	unsigned num_task_instances_per_kind[2 * (int(DrawPipeline::Count) + 1)] = {};
@@ -726,6 +736,24 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 	bufinfo.domain = Vulkan::BufferDomain::UMACachedCoherentPreferDevice;
 	task_buffer = device->create_buffer(bufinfo);
 	device->set_name(*task_buffer, "task-buffer");
+
+	bool use_mdi =
+		device->get_resource_manager().get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Classic ||
+		device->get_resource_manager().get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::VBOAndIBOMDI;
+
+	VkDeviceSize required_mdi = 0;
+
+	if (use_mdi)
+	{
+		required_mdi = 2 * (int(DrawPipeline::Count) + 1) * sizeof(uint32_t) +
+					   num_task_instances * sizeof(VkDrawIndexedIndirectCommand);
+		bufinfo.size = required_mdi;
+		bufinfo.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+		                VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		bufinfo.domain = Vulkan::BufferDomain::Device;
+		mdi = device->create_buffer(bufinfo);
+		device->set_name(*mdi, "mdi-buffer");
+	}
 
 	// Ideally just derp the data into a mapped buffer on iGPU, but fallback to transfer queue on dGPU.
 	auto *task_infos = static_cast<MeshAssetDrawTaskInfo *>(device->map_host_buffer(*task_buffer, Vulkan::MEMORY_ACCESS_WRITE_BIT));

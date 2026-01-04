@@ -184,11 +184,16 @@ private:
 	Vulkan::BufferHandle aabbs;
 	Scene *scene = nullptr;
 
+	// Skinning and not skinned. One extra pipeline to deal with motion vectors.
+	// Those are always rendered with EQUAL depth after prepass, so alpha testing is not needed.
+	// Alpha blending cannot write motion vectors either.
+	enum { NumDrawTypes = 2 * (int(DrawPipeline::Count) + 1) };
+
 	Vulkan::BufferHandle task_buffer;
-	std::pair<uint32_t, uint32_t> task_offset_counts[2 * (int(DrawPipeline::Count) + 1)] = {};
+	std::pair<uint32_t, uint32_t> task_offset_counts[NumDrawTypes] = {};
 
 	Vulkan::BufferHandle mdi;
-	MDICall mdi_calls[2 * (int(DrawPipeline::Count) + 1)] = {};
+	MDICall mdi_calls[NumDrawTypes] = {};
 
 	struct PerContext
 	{

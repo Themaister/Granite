@@ -690,10 +690,13 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 			           ? transforms->get_mdi_call_parameters_motion_vector(skinned)
 			           : transforms->get_mdi_call_parameters(pipe, skinned);
 
-		cmd.draw_indexed_multi_indirect(*mdi.indirect_buffer, mdi.indirect_offset,
-		                                mdi.indirect_count_max,
-		                                sizeof(VkDrawIndexedIndirectCommand),
-		                                *mdi.indirect_count, mdi.indirect_count_offset);
+		if (mdi.indirect_count_max)
+		{
+			cmd.draw_indexed_multi_indirect(*mdi.indirect_buffer, mdi.indirect_offset,
+											mdi.indirect_count_max,
+											sizeof(VkDrawIndexedIndirectCommand),
+											*mdi.indirect_count, mdi.indirect_count_offset);
+		}
 
 		break;
 	}

@@ -693,8 +693,12 @@ SceneTransformManager::MDICall SceneTransformManager::get_mdi_call_parameters_mo
 
 void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 {
-	unsigned num_task_instances_per_kind[2 * (int(DrawPipeline::Count) + 1)] = {};
+	unsigned num_task_instances_per_kind[NumDrawTypes] = {};
 	unsigned num_task_instances = 0;
+
+	unsigned num_mdi_instances_per_kind[NumDrawTypes] = {};
+	unsigned num_mdi_instances = 0;
+
 	auto &manager = device->get_resource_manager();
 
 	for (auto &elem : *meshlets)
@@ -705,21 +709,60 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 		if (range.meshlet.count == 0)
 			continue;
 		bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;
+
 		num_task_instances_per_kind[2 * int(mesh.get_mesh_draw_pipeline()) + skinned] += (range.meshlet.count + 31) / 32;
+		num_mdi_instances_per_kind[2 * int(mesh.get_mesh_draw_pipeline()) + skinned] += range.meshlet.count;
 
 		if (transform.requires_motion_vectors && mesh.get_mesh_draw_pipeline() != DrawPipeline::AlphaBlend)
+		{
 			num_task_instances_per_kind[2 * int(DrawPipeline::Count) + skinned] += (range.meshlet.count + 31) / 32;
+			num_mdi_instances_per_kind[2 * int(DrawPipeline::Count) + skinned] += range.meshlet.count;
+		}
 	}
 
 	for (auto count : num_task_instances_per_kind)
 		num_task_instances += count;
+	for (auto count : num_mdi_instances_per_kind)
+		num_mdi_instances += count;
+
+	bool use_mdi =
+		device->get_resource_manager().get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Classic ||
+		device->get_resource_manager().get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::VBOAndIBOMDI;
 
 	task_offset_counts[0] = {};
 
-	for (int i = 1; i < 2 * (int(DrawPipeline::Count) + 1); i++)
+	// The first u32s are reserved for the MDI counters.
+	constexpr VkDeviceSize indirect_draw_offset = NumDrawTypes * sizeof(uint32_t);
+
+	VkDeviceSize required_mdi = 0;
+	if (use_mdi)
+	{
+		Vulkan::BufferCreateInfo bufinfo = {};
+		required_mdi = num_mdi_instances * sizeof(VkDrawIndexedIndirectCommand) + indirect_draw_offset;
+		bufinfo.size = required_mdi;
+		bufinfo.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+						VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		bufinfo.domain = Vulkan::BufferDomain::Device;
+		mdi = device->create_buffer(bufinfo);
+		device->set_name(*mdi, "mdi-buffer");
+	}
+
+	for (auto &call : mdi_calls)
+	{
+		call = {};
+		call.indirect_buffer = mdi.get();
+		call.indirect_count = mdi.get();
+	}
+	mdi_calls[0].indirect_offset = indirect_draw_offset;
+
+	for (int i = 1; i < NumDrawTypes; i++)
 	{
 		task_offset_counts[i] = { num_task_instances_per_kind[i - 1], 0 };
 		num_task_instances_per_kind[i] += num_task_instances_per_kind[i - 1];
+		num_mdi_instances_per_kind[i] += num_mdi_instances_per_kind[i - 1];
+		mdi_calls[i].indirect_count_offset = i * sizeof(uint32_t);
+		mdi_calls[i].indirect_offset = num_mdi_instances_per_kind[i - 1] * sizeof(VkDrawIndexedIndirectCommand) +
+		                               mdi_calls[0].indirect_offset;
 	}
 
 	auto required = VkDeviceSize(sizeof(MeshAssetDrawTaskInfo)) * num_task_instances;
@@ -736,24 +779,6 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 	bufinfo.domain = Vulkan::BufferDomain::UMACachedCoherentPreferDevice;
 	task_buffer = device->create_buffer(bufinfo);
 	device->set_name(*task_buffer, "task-buffer");
-
-	bool use_mdi =
-		device->get_resource_manager().get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Classic ||
-		device->get_resource_manager().get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::VBOAndIBOMDI;
-
-	VkDeviceSize required_mdi = 0;
-
-	if (use_mdi)
-	{
-		required_mdi = 2 * (int(DrawPipeline::Count) + 1) * sizeof(uint32_t) +
-					   num_task_instances * sizeof(VkDrawIndexedIndirectCommand);
-		bufinfo.size = required_mdi;
-		bufinfo.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-		                VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-		bufinfo.domain = Vulkan::BufferDomain::Device;
-		mdi = device->create_buffer(bufinfo);
-		device->set_name(*mdi, "mdi-buffer");
-	}
 
 	// Ideally just derp the data into a mapped buffer on iGPU, but fallback to transfer queue on dGPU.
 	auto *task_infos = static_cast<MeshAssetDrawTaskInfo *>(device->map_host_buffer(*task_buffer, Vulkan::MEMORY_ACCESS_WRITE_BIT));
@@ -784,6 +809,29 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 			draw.occluder_state_offset = transform.occluder_state.offset;
 			auto &offset_count = task_offset_counts[2 * int(i ? DrawPipeline::Count : mesh.get_mesh_draw_pipeline()) + skinned];
 
+			if (use_mdi)
+			{
+				auto &mdi_call = mdi_calls[2 * int(i ? DrawPipeline::Count : mesh.get_mesh_draw_pipeline()) + skinned];
+
+				// TODO: Move this to compute culling. For now, pretend everything is visible.
+				for (uint32_t j = 0; j < range.meshlet.count; j++)
+				{
+					cmd.copy_buffer(*mdi,
+					                mdi_call.indirect_offset + mdi_call.indirect_count_max * sizeof(
+						                VkDrawIndexedIndirectCommand),
+					                *device->get_resource_manager().get_indirect_buffer(),
+					                (range.meshlet.offset + j) * sizeof(VkDrawIndexedIndirectCommand),
+					                offsetof(VkDrawIndexedIndirectCommand, firstInstance));
+
+					cmd.fill_buffer(*mdi, offset_count.first + offset_count.second,
+					                mdi_call.indirect_offset + mdi_call.indirect_count_max * sizeof(
+						                VkDrawIndexedIndirectCommand) + offsetof(
+						                VkDrawIndexedIndirectCommand, firstInstance), sizeof(uint32_t));
+				}
+
+				mdi_call.indirect_count_max += range.meshlet.count;
+			}
+
 			for (uint32_t j = 0; j < range.meshlet.count; j += 32)
 			{
 				draw.mesh_index_count = range.meshlet.offset + j + (std::min(range.meshlet.count - j, 32u) - 1);
@@ -791,6 +839,20 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 				draw.occluder_state_offset++;
 			}
 		}
+	}
+
+	if (use_mdi)
+	{
+		// TODO: Move this to compute culling. For now, pretend everything is visible.
+		for (size_t i = 0; i < NumDrawTypes; i++)
+		{
+			cmd.update_buffer_inline(*mdi, i * sizeof(uint32_t), sizeof(uint32_t),
+			                         &mdi_calls[i].indirect_count_max);
+		}
+
+		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
+		            VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+		            VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
 	}
 
 	// Even if it's device local, it's okay to call this.

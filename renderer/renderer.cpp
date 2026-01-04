@@ -746,9 +746,10 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		if (device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT))
 			cmd.set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
 
-		cmd.set_specialization_constant_mask(1);
+		cmd.set_specialization_constant_mask(3);
 		const bool is_ortho = context.get_render_parameters().projection[3].w == 1.0f;
 		cmd.set_specialization_constant(0, is_ortho);
+		cmd.set_specialization_constant(1, skinned);
 
 		uint32_t hierarchy_scale_log2 = device->get_resource_manager().mesh_rendering_is_hierarchical_task() ? 7 : 0;
 		uint32_t hierarchy_scale = 1u << hierarchy_scale_log2;

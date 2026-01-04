@@ -41,6 +41,8 @@ layout(local_size_x = 32, local_size_y = WG_Y) in;
 #include "inc/meshlet_render.h"
 #include "inc/render_parameters.h"
 
+layout(constant_id = 1) const bool SKINNED = false;
+
 layout(push_constant, std430) uniform Registers
 {
     uint offset;
@@ -142,11 +144,28 @@ void process_task(uint task_index)
         Bound b = bounds.data[meshlet_index];
 
 #if MESHLET_RENDER_PHASE == 1
-        if (bitfieldExtract(visibility_state, int(local_index), 1) != 0)
-            alloc_draw = cluster_cull(M, b, global.camera_position);
+        alloc_draw = bitfieldExtract(visibility_state, int(local_index), 1) != 0;
 #else
-        alloc_draw = cluster_cull(M, b, global.camera_position);
+        alloc_draw = true;
 #endif
+
+        if (alloc_draw)
+        {
+            if (SKINNED)
+            {
+#if !MESHLET_RENDER_TASK_HIERARCHICAL
+                // We already did the frustum cull at hierarchical level.
+                // It's not very efficient to it like this on non-AMD.
+                // TODO: We'd need some way to make skinning + cluster bounds work.
+                AABB aabb = aabb.data[task.aabb_instance];
+                alloc_draw = frustum_cull(aabb.lo, aabb.hi);
+#endif
+            }
+            else
+            {
+                alloc_draw = cluster_cull(M, b, global.camera_position);
+            }
+        }
     }
 
     uvec4 draw_ballot = ballot(alloc_draw);

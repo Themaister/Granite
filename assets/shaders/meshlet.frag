@@ -1,6 +1,5 @@
 #version 460
 #extension GL_EXT_nonuniform_qualifier : require
-#extension GL_EXT_mesh_shader : require
 
 #ifdef ALPHA_TEST_DISABLE
 #undef ALPHA_TEST
@@ -32,7 +31,7 @@
 
 #if ATTR_LEVEL >= 1
 layout(location = 0) in vec2 vUV;
-layout(location = 1) perprimitiveEXT flat in uint vMaterialFlags;
+layout(location = 1) flat in uint vMaterialFlags;
 #endif
 
 #if ATTR_LEVEL >= 2

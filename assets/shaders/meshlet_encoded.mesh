@@ -70,7 +70,7 @@ shared vec3 shared_world_pos[32];
 
 #if ATTR_LEVEL >= 1
 layout(location = 0) out vec2 vUV[];
-layout(location = 1) perprimitiveEXT out uint vMaterialFlags[];
+layout(location = 1) out uint vMaterialFlags[];
 #endif
 
 #if ATTR_LEVEL >= 2
@@ -211,6 +211,7 @@ void main()
         gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
 #if ATTR_LEVEL >= 1
         vUV[out_vert_index] = attribute_decode_snorm_exp_uv(uv, exponent);
+        vMaterialFlags[out_vert_index] = task.material_flags;
 #endif
 #if ATTR_LEVEL >= 2
         mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
@@ -231,6 +232,7 @@ void main()
         i16vec2 uv = shared_uv[gl_LocalInvocationIndex];
         int exponent = shared_exponent[gl_LocalInvocationIndex];
         vUV[gl_LocalInvocationIndex] = attribute_decode_snorm_exp_uv(uv, exponent);
+        vMaterialFlags[gl_LocalInvocationIndex] = task.material_flags;
 #endif
 
 #if ATTR_LEVEL >= 2
@@ -248,10 +250,6 @@ void main()
     {
 #ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
 	    gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(unpack8(shared_indices[gl_LocalInvocationIndex]).xyz);
-#endif
-
-#if ATTR_LEVEL >= 1
-        vMaterialFlags[gl_LocalInvocationIndex] = task.material_flags;
 #endif
     }
 }

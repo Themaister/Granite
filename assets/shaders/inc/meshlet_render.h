@@ -38,20 +38,6 @@ layout(set = 0, binding = BINDING_GLOBAL_SCENE_OCCLUSION_STATE, std430) buffer O
 } occluders;
 #endif
 
-bool frustum_cull(vec3 lo, vec3 hi)
-{
-	bool ret = true;
-	for (int i = 0; i < 6 && ret; i++)
-	{
-		vec4 p = frustum.planes[i];
-		bvec3 high_mask = greaterThan(p.xyz, vec3(0.0));
-		vec3 max_coord = mix(lo, hi, high_mask);
-		if (dot(vec4(max_coord, 1.0), p) < 0.0)
-			ret = false;
-	}
-	return ret;
-}
-
 vec3 view_transform_yz_flip(vec3 pos)
 {
 	vec3 view = (frustum.view * vec4(pos, 1.0)).xyz;
@@ -118,6 +104,37 @@ vec2 project_sphere_flat(float view_xy, float view_z, float radius)
 
 layout(constant_id = 0) const bool ORTHO = false;
 
+#if MESHLET_RENDER_PHASE == 2
+bool cluster_cull_hiz(vec3 bound_center, float effective_radius)
+{
+	vec3 view = view_transform_yz_flip(bound_center);
+	bool ret = true;
+
+	// Ensure there is no clipping against near plane.
+	// If the sphere is close enough, we accept it.
+	// There is no effective near plane in ORTHO.
+	if (ORTHO || view.z > effective_radius + 0.1)
+	{
+		vec2 range_x, range_y;
+
+		if (ORTHO)
+		{
+			range_x = view.x + vec2(-effective_radius, effective_radius);
+			range_y = view.y + vec2(-effective_radius, effective_radius);
+		}
+		else
+		{
+			// Have to project in view space since the sphere is still a sphere.
+			range_x = project_sphere_flat(view.x, view.z, effective_radius);
+			range_y = project_sphere_flat(view.y, view.z, effective_radius);
+		}
+		ret = hiz_cull(range_x, range_y, view.z - effective_radius);
+	}
+
+	return ret;
+}
+#endif
+
 bool cluster_cull(mat_affine M, Bound bound, vec3 camera_pos)
 {
 	vec3 bound_center = mul(M, bound.center_radius.xyz);
@@ -150,30 +167,28 @@ bool cluster_cull(mat_affine M, Bound bound, vec3 camera_pos)
 
 #if MESHLET_RENDER_PHASE == 2
 	if (ret)
+		ret = cluster_cull_hiz(bound_center, effective_radius);
+#endif
+
+	return ret;
+}
+
+bool frustum_cull(vec3 lo, vec3 hi)
+{
+	bool ret = true;
+	for (int i = 0; i < 6 && ret; i++)
 	{
-		vec3 view = view_transform_yz_flip(bound_center);
-
-		// Ensure there is no clipping against near plane.
-		// If the sphere is close enough, we accept it.
-		// There is no effective near plane in ORTHO.
-		if (ORTHO || view.z > effective_radius + 0.1)
-		{
-			vec2 range_x, range_y;
-
-			if (ORTHO)
-			{
-				range_x = view.x + vec2(-effective_radius, effective_radius);
-				range_y = view.y + vec2(-effective_radius, effective_radius);
-			}
-			else
-			{
-				// Have to project in view space since the sphere is still a sphere.
-				range_x = project_sphere_flat(view.x, view.z, effective_radius);
-				range_y = project_sphere_flat(view.y, view.z, effective_radius);
-			}
-			ret = hiz_cull(range_x, range_y, view.z - effective_radius);
-		}
+		vec4 p = frustum.planes[i];
+		bvec3 high_mask = greaterThan(p.xyz, vec3(0.0));
+		vec3 max_coord = mix(lo, hi, high_mask);
+		if (dot(vec4(max_coord, 1.0), p) < 0.0)
+			ret = false;
 	}
+
+#if MESHLET_RENDER_PHASE == 2
+	// Very crude cull, but only way to get anything resembling culling of skinned meshes.
+	if (ret)
+		ret = cluster_cull_hiz(0.5 * (lo + hi), 0.5 * length(hi - lo));
 #endif
 
 	return ret;

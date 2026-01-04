@@ -3,7 +3,11 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_EXT_samplerless_texture_functions : require
 
-layout(local_size_x = 32) in;
+#if defined(VARIANT_BIT_2) && VARIANT_BIT_2
+#define MESHLET_PRIMITIVE_CULL_WAVE32 1
+#else
+#define MESHLET_PRIMITIVE_CULL_WAVE32 0
+#endif
 
 #if defined(VARIANT_BIT_0) && VARIANT_BIT_0
 #define MESHLET_RENDER_TASK_HIERARCHICAL 1
@@ -19,9 +23,19 @@ layout(local_size_x = 32) in;
 #define MESHLET_RENDER_PHASE 0
 #endif
 
+layout(local_size_x = 32) in;
+
 #if defined(VARIANT_BIT_5) && VARIANT_BIT_5
 #define MESHLET_RENDER_FORCE_VISIBLE
 #endif
+
+#if MESHLET_PRIMITIVE_CULL_WAVE32
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#endif
+
 
 #include "inc/meshlet_render.h"
 #include "inc/render_parameters.h"
@@ -37,6 +51,11 @@ taskPayloadSharedEXT CompactedDrawInfoPayload mesh_payload;
 shared uint ballot_value;
 uvec4 ballot(bool v)
 {
+#if MESHLET_PRIMITIVE_CULL_WAVE32
+    if (gl_SubgroupSize == 32)
+        return subgroupBallot(v);
+#endif
+
     barrier();
     if (gl_LocalInvocationIndex == 0)
         ballot_value = 0;
@@ -49,11 +68,21 @@ uvec4 ballot(bool v)
 
 uint ballotBitCount(uvec4 v)
 {
+#if MESHLET_PRIMITIVE_CULL_WAVE32
+    if (gl_SubgroupSize == 32)
+        return subgroupBallotBitCount(v);
+#endif
+
     return bitCount(v.x);
 }
 
 uint ballotExclusiveBitCount(uvec4 v)
 {
+#if MESHLET_PRIMITIVE_CULL_WAVE32
+    if (gl_SubgroupSize == 32)
+        return subgroupBallotExclusiveBitCount(v);
+#endif
+
     return bitCount(bitfieldExtract(v.x, 0, int(gl_LocalInvocationIndex)));
 }
 

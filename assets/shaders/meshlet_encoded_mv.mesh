@@ -1,0 +1,204 @@
+#version 450
+#extension GL_EXT_mesh_shader : require
+
+out gl_MeshPerVertexEXT
+{
+    invariant vec4 gl_Position;
+} gl_MeshVerticesEXT[];
+
+#if defined(VARIANT_BIT_0) && VARIANT_BIT_0
+#define MESHLET_RENDER_TASK_HIERARCHICAL 1
+#else
+#define MESHLET_RENDER_TASK_HIERARCHICAL 0
+#endif
+
+#if defined(VARIANT_BIT_1) && VARIANT_BIT_1
+#define MESHLET_LOCAL_INVOCATION_INDEXED 1
+#else
+#define MESHLET_LOCAL_INVOCATION_INDEXED 0
+#endif
+
+#if defined(VARIANT_BIT_2) && VARIANT_BIT_2
+#define MESHLET_PRIMITIVE_CULL_WG32 1
+#define MESHLET_PRIMITIVE_CULL_WAVE32 1
+#else
+#define MESHLET_PRIMITIVE_CULL_WG32 0
+#define MESHLET_PRIMITIVE_CULL_WAVE32 0
+#endif
+
+#extension GL_KHR_shader_subgroup_basic : require
+#if MESHLET_PRIMITIVE_CULL_WAVE32
+#extension GL_KHR_shader_subgroup_shuffle : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#endif
+
+layout(max_primitives = 32, max_vertices = 32, triangles) out;
+layout(local_size_x = 32, local_size_y = 1) in;
+
+#include "inc/meshlet_payload_constants.h"
+#include "inc/meshlet_payload_decode.h"
+#include "inc/meshlet_attribute_decode.h"
+#include "inc/meshlet_render_types.h"
+#include "inc/meshlet_primitive_cull.h"
+#include "inc/global_bindings.h"
+#include "inc/render_parameters.h"
+#include "inc/affine.h"
+
+#if MESHLET_LOCAL_INVOCATION_INDEXED
+#define MESHLET_PRIMITIVE_CULL_SHARED_INDEX shared_indices
+shared uint shared_indices[32];
+shared vec4 shared_clip_pos[32];
+shared vec3 shared_old_clip[32];
+shared vec3 shared_new_clip[32];
+#endif
+
+layout(location = 0) out vec3 vOldClip[];
+layout(location = 1) out vec3 vNewClip[];
+
+#include "inc/meshlet_ubos.h"
+
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_TRANSFORMS) readonly buffer AffineTransforms
+{
+    mat_affine data[];
+} transforms;
+
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_PREV_TRANSFORMS) readonly buffer AffinePrevTransforms
+{
+    mat_affine data[];
+} prev_transforms;
+
+taskPayloadSharedEXT CompactedDrawInfoPayload mesh_payload;
+
+#if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
+const uint STRIDE = 6;
+#else
+const uint STRIDE = 4;
+#endif
+
+void main()
+{
+    uint compacted_meshlet_index = meshlet_get_meshlet_index();
+
+#if !MESHLET_RENDER_TASK_HIERARCHICAL
+    CompactedDrawInfo task = mesh_payload.info;
+    task.meshlet_index += uint(mesh_payload.offsets[compacted_meshlet_index]);
+#else
+    CompactedDrawInfo task = mesh_payload.infos[compacted_meshlet_index];
+#endif
+
+    uint linear_index, sublet_index;
+    if (gl_SubgroupSize == 32)
+    {
+        linear_index = gl_SubgroupInvocationID;
+        sublet_index = gl_SubgroupID;
+    }
+    else
+    {
+        linear_index = gl_LocalInvocationID.x;
+        sublet_index = gl_LocalInvocationID.y;
+    }
+
+    meshlet_setup_local_invocation(uvec2(linear_index, sublet_index));
+    MeshletMetaRuntime meta = meshlet_metas_runtime.data[task.meshlet_index];
+    meta.stream_offset += STRIDE * meshlet_get_sublet_index(sublet_index);
+
+    MeshletInfo info = meshlet_get_meshlet_info(meta.stream_offset);
+    uvec3 decoded_index_buffer = uvec3(0);
+    vec3 old_world_pos;
+    vec3 world_pos;
+    vec4 clip_pos = vec4(-1.0);
+    vec3 old_clip_pos;
+    vec3 new_clip_pos;
+
+    if (linear_index < info.primitive_count)
+        decoded_index_buffer = meshlet_decode_index_buffer(meta.stream_offset, linear_index);
+
+    mat_affine M_new, M_old;
+#if !HAVE_BONE_INDEX || !HAVE_BONE_WEIGHT
+    M_new = transforms.data[task.node_offset];
+    M_old = prev_transforms.data[task.node_offset];
+#endif
+
+    if (linear_index < info.vertex_count)
+    {
+#if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
+        uvec4 indices = meshlet_decode_bone_indices(meta.stream_offset + MESHLET_STREAM_TYPE_BONE_INDICES, linear_index);
+        vec4 weights = meshlet_decode_bone_weights(meta.stream_offset + MESHLET_STREAM_TYPE_BONE_WEIGHTS, linear_index);
+        indices += task.node_offset;
+
+        mat3x4 m_new = mat_affine_to_transposed(transforms.data[indices.x]) * weights.x;
+        mat3x4 m_old = mat_affine_to_transposed(prev_transforms.data[indices.x]) * weights.x;
+
+        if (weights.y != 0.0)
+        {
+            m_new += mat_affine_to_transposed(transforms.data[indices.y]) * weights.y;
+            m_old += mat_affine_to_transposed(prev_transforms.data[indices.y]) * weights.y;
+        }
+
+        if (weights.z != 0.0)
+        {
+            m_new += mat_affine_to_transposed(transforms.data[indices.z]) * weights.z;
+            m_old += mat_affine_to_transposed(prev_transforms.data[indices.z]) * weights.z;
+        }
+
+        if (weights.w != 0.0)
+        {
+            m_new += mat_affine_to_transposed(transforms.data[indices.w]) * weights.w;
+            m_old += mat_affine_to_transposed(prev_transforms.data[indices.w]) * weights.w;
+        }
+
+        M_new.rows[0] = m_new[0];
+        M_new.rows[1] = m_new[1];
+        M_new.rows[2] = m_new[2];
+        M_old.rows[0] = m_old[0];
+        M_old.rows[1] = m_old[1];
+        M_old.rows[2] = m_old[2];
+#endif
+
+        int exponent;
+        i16vec3 ipos = meshlet_decode_snorm_scaled_i16x3(
+            meta.stream_offset + MESHLET_STREAM_TYPE_POSITION,
+            linear_index, exponent);
+        vec3 pos = ldexp(vec3(ipos), ivec3(exponent));
+        world_pos = mul(M_new, pos);
+        old_world_pos = mul(M_old, pos);
+        clip_pos = global.view_projection * vec4(world_pos, 1.0);
+        old_clip_pos = (global.unjittered_prev_view_projection * vec4(old_world_pos, 1.0)).xyw;
+        new_clip_pos = (global.unjittered_view_projection * vec4(world_pos, 1.0)).xyw;
+    }
+
+    meshlet_emit_primitive(decoded_index_buffer, clip_pos, frustum.viewport, frustum.winding);
+
+    if (meshlet_lane_has_active_vert())
+    {
+        uint out_vert_index = meshlet_compacted_vertex_output();
+
+#ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
+        shared_clip_pos[out_vert_index] = clip_pos;
+        shared_old_clip[out_vert_index] = old_clip_pos;
+        shared_new_clip[out_vert_index] = new_clip_pos;
+#else
+        gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
+        vOldClip[out_vert_index] = old_clip_pos;
+        vNewClip[out_vert_index] = new_clip_pos;
+#endif
+    }
+
+#ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
+    barrier();
+    if (gl_LocalInvocationIndex < shared_active_vert_count_total)
+    {
+        gl_MeshVerticesEXT[gl_LocalInvocationIndex].gl_Position = shared_clip_pos[gl_LocalInvocationIndex];
+        vOldClip[gl_LocalInvocationIndex] = shared_old_clip[gl_LocalInvocationIndex];
+        vNewClip[gl_LocalInvocationIndex] = shared_new_clip[gl_LocalInvocationIndex];
+    }
+#endif
+
+    if (gl_LocalInvocationIndex < shared_active_prim_count_total)
+    {
+#ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
+	    gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(unpack8(shared_indices[gl_LocalInvocationIndex]).xyz);
+#endif
+    }
+}

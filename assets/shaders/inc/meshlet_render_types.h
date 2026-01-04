@@ -45,7 +45,7 @@ struct CompactedDrawInfo
 #if MESHLET_RENDER_TASK_HIERARCHICAL
 struct CompactedDrawInfoPayload
 {
-    uint task_offset_mesh_offsets[32 * 32];
+    uint task_offset_mesh_offsets[128 * 32];
 };
 #else
 struct CompactedDrawInfoPayload

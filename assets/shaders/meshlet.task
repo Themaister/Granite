@@ -11,8 +11,10 @@
 
 #if defined(VARIANT_BIT_0) && VARIANT_BIT_0
 #define MESHLET_RENDER_TASK_HIERARCHICAL 1
+#define WG_Y 4
 #else
 #define MESHLET_RENDER_TASK_HIERARCHICAL 0
+#define WG_Y 1
 #endif
 
 #if defined(VARIANT_BIT_3) && VARIANT_BIT_3
@@ -23,7 +25,7 @@
 #define MESHLET_RENDER_PHASE 0
 #endif
 
-layout(local_size_x = 32) in;
+layout(local_size_x = 32, local_size_y = WG_Y) in;
 
 #if defined(VARIANT_BIT_5) && VARIANT_BIT_5
 #define MESHLET_RENDER_FORCE_VISIBLE
@@ -47,7 +49,16 @@ layout(push_constant, std430) uniform Registers
 
 taskPayloadSharedEXT CompactedDrawInfoPayload mesh_payload;
 
-shared uint ballot_value;
+#if MESHLET_RENDER_TASK_HIERARCHICAL
+shared uint payload_offset;
+shared uint precull_offset;
+shared uint preculled_offsets[128];
+#else
+uint payload_offset = 0;
+#endif
+
+shared uint ballot_value[4];
+
 uvec4 ballot(bool v)
 {
 #if MESHLET_PRIMITIVE_CULL_WAVE32
@@ -56,13 +67,13 @@ uvec4 ballot(bool v)
 #endif
 
     barrier();
-    if (gl_LocalInvocationIndex == 0)
-        ballot_value = 0;
+    if (gl_LocalInvocationID.x == 0)
+        ballot_value[gl_LocalInvocationID.y] = 0;
     barrier();
     if (v)
-        atomicOr(ballot_value, 1u << gl_LocalInvocationIndex);
+        atomicOr(ballot_value[gl_LocalInvocationID.y], 1u << gl_LocalInvocationID.x);
     barrier();
-    return uvec4(ballot_value, 0, 0, 0);
+    return uvec4(ballot_value[gl_LocalInvocationID.y], 0, 0, 0);
 }
 
 uint ballotBitCount(uvec4 v)
@@ -82,10 +93,30 @@ uint ballotExclusiveBitCount(uvec4 v)
         return subgroupBallotExclusiveBitCount(v);
 #endif
 
-    return bitCount(bitfieldExtract(v.x, 0, int(gl_LocalInvocationIndex)));
+    return bitCount(bitfieldExtract(v.x, 0, int(gl_LocalInvocationID.x)));
 }
 
-uint payload_offset = 0;
+uint get_local_index()
+{
+    uint local_index = gl_LocalInvocationID.x;
+#if MESHLET_PRIMITIVE_CULL_WAVE32
+    if (gl_SubgroupSize == 32)
+        local_index = gl_SubgroupInvocationID;
+#endif
+
+    return local_index;
+}
+
+uint get_subgroup_index()
+{
+    uint local_index = gl_LocalInvocationID.y;
+#if MESHLET_PRIMITIVE_CULL_WAVE32
+    if (gl_SubgroupSize == 32)
+        local_index = gl_SubgroupID;
+#endif
+
+    return local_index;
+}
 
 void process_task(uint task_index)
 {
@@ -97,13 +128,7 @@ void process_task(uint task_index)
 
     uint offset = mesh_index_count & ~31u;
     uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
-
-    uint local_index = gl_LocalInvocationID.x;
-#if MESHLET_PRIMITIVE_CULL_WAVE32
-    if (gl_SubgroupSize == 32)
-        local_index = gl_SubgroupInvocationID;
-#endif
-
+    uint local_index = get_local_index();
     uint meshlet_index = offset + local_index;
 
 #if MESHLET_RENDER_PHASE >= 1
@@ -137,34 +162,40 @@ void process_task(uint task_index)
     // Doing Z-prepass helps mask bad task shader behavior on at least AMD.
     if (bitfieldExtract(visibility_state, int(local_index), 1) != 0)
         alloc_draw = false;
-
-    draw_ballot = ballot(alloc_draw);
 #endif
 #endif
-
-    uint draw_count = ballotBitCount(draw_ballot);
-    uint local_offset = ballotExclusiveBitCount(draw_ballot);
 
 #if MESHLET_RENDER_TASK_HIERARCHICAL
     if (alloc_draw)
-        mesh_payload.task_offset_mesh_offsets[payload_offset + local_offset] = (task_index << 5) | local_index;
+        mesh_payload.task_offset_mesh_offsets[atomicAdd(payload_offset, 1u)] = (task_index << 5) | local_index;
 #else
+#ifndef MESHLET_RENDER_FORCE_VISIBLE
+    draw_ballot = ballot(alloc_draw);
+#endif
+    uint draw_count = ballotBitCount(draw_ballot);
+    uint local_offset = ballotExclusiveBitCount(draw_ballot);
     if (local_index == 0)
         mesh_payload.info = CompactedDrawInfo(offset, node_instance, material_flags);
     if (alloc_draw)
         mesh_payload.offsets[local_offset] = uint8_t(local_index);
-#endif
-
     payload_offset += draw_count;
+#endif
 }
 
 void main()
 {
 #if MESHLET_RENDER_TASK_HIERARCHICAL
-    uint task_index = registers.offset + gl_GlobalInvocationID.x;
+    if (gl_LocalInvocationIndex == 0)
+    {
+        payload_offset = 0;
+        precull_offset = 0;
+    }
+
+    uint global_flat_index = gl_WorkGroupID.x * gl_WorkGroupSize.x * gl_WorkGroupSize.y + gl_LocalInvocationIndex;
+    uint task_index = registers.offset + global_flat_index;
     bool task_needs_work = false;
 
-    if (gl_GlobalInvocationID.x < registers.count)
+    if (global_flat_index < registers.count)
     {
         MeshAssetDrawTaskInfo task = task_info.data[task_index];
 
@@ -184,20 +215,23 @@ void main()
 #endif
     }
 
-    // If we're not doing hierarchical culling, go straight to cluster culling.
+    barrier();
 
-    uint b = ballot(task_needs_work).x;
+    if (task_needs_work)
+        preculled_offsets[atomicAdd(precull_offset, 1u)] = global_flat_index;
 
-    while (b != 0)
-    {
-        int lane = findLSB(b);
-        b &= b - 1;
-        process_task(gl_WorkGroupID.x * gl_WorkGroupSize.x + registers.offset + lane);
-    }
+    barrier();
+
+    uint count = precull_offset;
+    for (uint index = get_subgroup_index(); index < count; index += gl_WorkGroupSize.y)
+        process_task(preculled_offsets[index]);
 #else
     uint task_index = gl_WorkGroupID.x + registers.offset;
     process_task(task_index);
 #endif
 
+#if MESHLET_RENDER_TASK_HIERARCHICAL
+    barrier();
+#endif
     EmitMeshTasksEXT(8, payload_offset, 1);
 }

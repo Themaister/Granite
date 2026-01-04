@@ -750,7 +750,7 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		const bool is_ortho = context.get_render_parameters().projection[3].w == 1.0f;
 		cmd.set_specialization_constant(0, is_ortho);
 
-		uint32_t hierarchy_scale_log2 = device->get_resource_manager().mesh_rendering_is_hierarchical_task() ? 5 : 0;
+		uint32_t hierarchy_scale_log2 = device->get_resource_manager().mesh_rendering_is_hierarchical_task() ? 7 : 0;
 		uint32_t hierarchy_scale = 1u << hierarchy_scale_log2;
 
 		auto max_tasks_per_dispatch = device->get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0] * hierarchy_scale;

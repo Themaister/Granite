@@ -36,7 +36,6 @@ layout(local_size_x = 32) in;
 #extension GL_KHR_shader_subgroup_arithmetic : require
 #endif
 
-
 #include "inc/meshlet_render.h"
 #include "inc/render_parameters.h"
 
@@ -88,28 +87,37 @@ uint ballotExclusiveBitCount(uvec4 v)
 
 uint payload_offset = 0;
 
-void process_task(MeshAssetDrawTaskInfo task)
+void process_task(uint task_index)
 {
+    MeshAssetDrawTaskInfo task = task_info.data[task_index];
+
     uint node_instance = task.node_instance;
     uint material_flags = task.material_flags;
     uint mesh_index_count = task.mesh_index_count;
 
     uint offset = mesh_index_count & ~31u;
     uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
-    uint meshlet_index = offset + gl_LocalInvocationIndex;
+
+    uint local_index = gl_LocalInvocationID.x;
+#if MESHLET_PRIMITIVE_CULL_WAVE32
+    if (gl_SubgroupSize == 32)
+        local_index = gl_SubgroupInvocationID;
+#endif
+
+    uint meshlet_index = offset + local_index;
 
 #if MESHLET_RENDER_PHASE >= 1
     uint visibility_state = occluders.data[task.occluder_state_offset];
 #endif
 
     bool alloc_draw = false;
-    if (gl_LocalInvocationIndex < count)
+    if (local_index < count)
     {
         mat_affine M = transforms.data[node_instance];
         Bound b = bounds.data[meshlet_index];
 
 #if MESHLET_RENDER_PHASE == 1
-        if (bitfieldExtract(visibility_state, int(gl_LocalInvocationIndex), 1) != 0)
+        if (bitfieldExtract(visibility_state, int(local_index), 1) != 0)
             alloc_draw = cluster_cull(M, b, global.camera_position);
 #else
         alloc_draw = cluster_cull(M, b, global.camera_position);
@@ -120,14 +128,14 @@ void process_task(MeshAssetDrawTaskInfo task)
 
 #if MESHLET_RENDER_PHASE == 2
     // Record all clusters that are considered visible in this frame.
-    if (gl_LocalInvocationIndex == 0)
+    if (local_index == 0)
         occluders.data[task.occluder_state_offset] = draw_ballot.x;
 
 #ifndef MESHLET_RENDER_FORCE_VISIBLE
     // If we already rendered in phase 1, skip the draw here.
     // If we only did a Z-prepass, we may still need to render to fill in the attachments properly.
     // Doing Z-prepass helps mask bad task shader behavior on at least AMD.
-    if (bitfieldExtract(visibility_state, int(gl_LocalInvocationIndex), 1) != 0)
+    if (bitfieldExtract(visibility_state, int(local_index), 1) != 0)
         alloc_draw = false;
 
     draw_ballot = ballot(alloc_draw);
@@ -139,15 +147,12 @@ void process_task(MeshAssetDrawTaskInfo task)
 
 #if MESHLET_RENDER_TASK_HIERARCHICAL
     if (alloc_draw)
-    {
-        mesh_payload.infos[payload_offset + local_offset] =
-            CompactedDrawInfo(meshlet_index, node_instance, material_flags);
-    }
+        mesh_payload.task_offset_mesh_offsets[payload_offset + local_offset] = (task_index << 5) | local_index;
 #else
-    if (gl_LocalInvocationIndex == 0)
+    if (local_index == 0)
         mesh_payload.info = CompactedDrawInfo(offset, node_instance, material_flags);
     if (alloc_draw)
-        mesh_payload.offsets[local_offset] = uint8_t(gl_LocalInvocationIndex);
+        mesh_payload.offsets[local_offset] = uint8_t(local_index);
 #endif
 
     payload_offset += draw_count;
@@ -187,13 +192,11 @@ void main()
     {
         int lane = findLSB(b);
         b &= b - 1;
-        MeshAssetDrawTaskInfo tmp_task = task_info.data[gl_WorkGroupID.x * gl_WorkGroupSize.x + registers.offset + lane];
-        process_task(tmp_task);
+        process_task(gl_WorkGroupID.x * gl_WorkGroupSize.x + registers.offset + lane);
     }
 #else
     uint task_index = gl_WorkGroupID.x + registers.offset;
-    MeshAssetDrawTaskInfo task = task_info.data[task_index];
-    process_task(task);
+    process_task(task_index);
 #endif
 
     EmitMeshTasksEXT(8, payload_offset, 1);

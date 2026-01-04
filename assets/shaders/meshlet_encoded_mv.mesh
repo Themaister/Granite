@@ -68,6 +68,13 @@ layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_PREV_TRANSFORMS) readonly bu
     mat_affine data[];
 } prev_transforms;
 
+#if MESHLET_RENDER_TASK_HIERARCHICAL
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_TASK_BUFFER, std430) readonly buffer Tasks
+{
+	MeshAssetDrawTaskInfo data[];
+} task_info;
+#endif
+
 taskPayloadSharedEXT CompactedDrawInfoPayload mesh_payload;
 
 #if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
@@ -84,7 +91,13 @@ void main()
     CompactedDrawInfo task = mesh_payload.info;
     task.meshlet_index += uint(mesh_payload.offsets[compacted_meshlet_index]);
 #else
-    CompactedDrawInfo task = mesh_payload.infos[compacted_meshlet_index];
+    uint task_offset_mesh_offset = mesh_payload.task_offset_mesh_offsets[compacted_meshlet_index];
+    uint task_offset = bitfieldExtract(task_offset_mesh_offset, 5, 32 - 5);
+    uint mesh_offset = bitfieldExtract(task_offset_mesh_offset, 0, 5);
+    CompactedDrawInfo task = CompactedDrawInfo(
+        (task_info.data[task_offset].mesh_index_count & ~31u) + mesh_offset,
+        task_info.data[task_offset].node_instance,
+        task_info.data[task_offset].material_flags);
 #endif
 
     uint linear_index, sublet_index;

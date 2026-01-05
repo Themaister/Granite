@@ -1279,10 +1279,12 @@ bool CommandBuffer::setup_subgroup_size_control(
 	if (full_group)
 		stage_info.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT;
 
+	// If subgroup size control is only enabled, we want varying subgroup size, whatever it is.
 	uint32_t min_subgroups = 1u << min_size_log2;
 	uint32_t max_subgroups = 1u << max_size_log2;
-	if (min_subgroups <= features.vk13_props.minSubgroupSize &&
-	    max_subgroups >= features.vk13_props.maxSubgroupSize)
+	if ((min_size_log2 == 0 && max_size_log2 == 0) ||
+	    ((min_subgroups <= features.vk13_props.minSubgroupSize &&
+	      max_subgroups >= features.vk13_props.maxSubgroupSize)))
 	{
 		stage_info.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT;
 	}

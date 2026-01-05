@@ -5835,6 +5835,11 @@ bool Device::supports_subgroup_size_log2(bool subgroup_full_group, uint8_t subgr
 	if (subgroup_full_group && !ext.vk13_features.computeFullSubgroups)
 		return false;
 
+	// VARIABLE_SIZE is always supported.
+	// 0/0 is degenerate case.
+	if (subgroup_minimum_size_log2 == 0 && subgroup_maximum_size_log2 == 0)
+		return true;
+
 	uint32_t min_subgroups = 1u << subgroup_minimum_size_log2;
 	uint32_t max_subgroups = 1u << subgroup_maximum_size_log2;
 

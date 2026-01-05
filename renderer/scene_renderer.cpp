@@ -827,9 +827,9 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 					                mdi_call.indirect_offset + mdi_call.indirect_count_max * sizeof(
 						                VkDrawIndexedIndirectCommand) + offsetof(
 						                VkDrawIndexedIndirectCommand, firstInstance), sizeof(uint32_t));
-				}
 
-				mdi_call.indirect_count_max += range.meshlet.count;
+					mdi_call.indirect_count_max++;
+				}
 			}
 
 			for (uint32_t j = 0; j < range.meshlet.count; j += 32)

@@ -2,13 +2,10 @@
 #define MESHLET_PRIMITIVE_CULL_H_
 
 #define CULL_MODE_WG32 0
-#define CULL_MODE_WAVE32 1
-#define CULL_MODE_GENERIC 2
+#define CULL_MODE_GENERIC 1
 
-#if defined(MESHLET_PRIMITIVE_CULL_WG32) && MESHLET_PRIMITIVE_CULL_WG32
+#if MESHLET_PRIMITIVE_CULL_WAVE32
 #define CULL_MODE CULL_MODE_WG32
-#elif defined(MESHLET_PRIMITIVE_CULL_WAVE32) && MESHLET_PRIMITIVE_CULL_WAVE32
-#define CULL_MODE CULL_MODE_WAVE32
 #else
 #define CULL_MODE CULL_MODE_GENERIC
 #endif
@@ -16,31 +13,15 @@
 #if CULL_MODE == CULL_MODE_WG32
 uint shared_active_vert_count_total;
 uint shared_active_prim_count_total;
-#else
-shared uint shared_active_vert_count[gl_WorkGroupSize.y];
-shared uint shared_active_prim_count[gl_WorkGroupSize.y];
-shared uint shared_active_vert_count_total;
-shared uint shared_active_prim_count_total;
-#endif
-
-#if CULL_MODE != CULL_MODE_GENERIC
 uint shared_active_vert_mask;
 uint shared_active_prim_offset;
-#endif
-
-#if CULL_MODE == CULL_MODE_GENERIC
-shared uint shared_active_vert_mask[gl_WorkGroupSize.y];
-shared uint shared_active_prim_mask[gl_WorkGroupSize.y];
-shared vec2 shared_window_positions[gl_WorkGroupSize.y][gl_WorkGroupSize.x];
-shared uint8_t shared_clip_code[gl_WorkGroupSize.y][gl_WorkGroupSize.x];
-uvec2 LocalInvocationID;
-
-void meshlet_setup_local_invocation(uvec2 local_id)
-{
-    LocalInvocationID = local_id;
-}
 #else
-#define meshlet_setup_local_invocation(id)
+shared uint shared_active_vert_count_total;
+shared uint shared_active_prim_count_total;
+shared uint shared_active_vert_mask;
+shared uint shared_active_prim_mask;
+shared vec2 shared_window_positions[gl_WorkGroupSize.x];
+shared uint8_t shared_clip_code[gl_WorkGroupSize.x];
 #endif
 
 const uint CLIP_CODE_INACCURATE = 1 << 0;
@@ -71,47 +52,25 @@ bool meshlet_lane_has_active_vert()
 {
     return (shared_active_vert_mask & (1u << gl_SubgroupInvocationID)) != 0u;
 }
-#elif CULL_MODE == CULL_MODE_WAVE32
-uint compacted_vertex_output(uint index)
-{
-    return shared_active_vert_count[gl_SubgroupID] + bitCount(bitfieldExtract(shared_active_vert_mask, 0, int(index)));
-}
-
-uint meshlet_compacted_vertex_output()
-{
-    return compacted_vertex_output(gl_SubgroupInvocationID);
-}
-
-uint compacted_index_output()
-{
-    return shared_active_prim_count[gl_SubgroupID] + shared_active_prim_offset;
-}
-
-bool meshlet_lane_has_active_vert()
-{
-    return (shared_active_vert_mask & (1u << gl_SubgroupInvocationID)) != 0u;
-}
 #else
 uint compacted_vertex_output(uint index)
 {
-    return shared_active_vert_count[LocalInvocationID.y] +
-        bitCount(bitfieldExtract(shared_active_vert_mask[LocalInvocationID.y], 0, int(index)));
+    return bitCount(bitfieldExtract(shared_active_vert_mask, 0, int(index)));
 }
 
 uint meshlet_compacted_vertex_output()
 {
-    return compacted_vertex_output(LocalInvocationID.x);
+    return compacted_vertex_output(gl_LocalInvocationIndex);
 }
 
 uint compacted_index_output()
 {
-    return shared_active_prim_count[LocalInvocationID.y] +
-        bitCount(bitfieldExtract(shared_active_prim_mask[LocalInvocationID.y], 0, int(LocalInvocationID.x)));
+    return bitCount(bitfieldExtract(shared_active_prim_mask, 0, int(gl_LocalInvocationIndex)));
 }
 
 bool meshlet_lane_has_active_vert()
 {
-    return (shared_active_vert_mask[LocalInvocationID.y] & (1u << LocalInvocationID.x)) != 0u;
+    return bitfieldExtract(shared_active_vert_mask, int(gl_LocalInvocationIndex), 1) != 0;
 }
 #endif
 
@@ -203,25 +162,22 @@ bool cull_triangle(vec2 a, vec2 b, vec2 c, float winding)
 #if CULL_MODE == CULL_MODE_GENERIC
 void meshlet_init_shared()
 {
-    if (gl_LocalInvocationIndex < gl_WorkGroupSize.y)
+    if (gl_LocalInvocationIndex == 0)
     {
-        shared_active_vert_mask[gl_LocalInvocationIndex] = 0;
-        shared_active_prim_mask[gl_LocalInvocationIndex] = 0;
+        shared_active_vert_mask = 0;
+        shared_active_prim_mask = 0;
     }
 }
 #endif
 
 uint meshlet_get_meshlet_index()
 {
-	return gl_WorkGroupSize.y == 8 ? gl_WorkGroupID.x : gl_WorkGroupID.y;
+	return gl_WorkGroupID.y;
 }
 
-uint meshlet_get_sublet_index(uint sublet_index)
+uint meshlet_get_sublet_index()
 {
-	if (gl_WorkGroupSize.y == 8)
-		return sublet_index;
-	else
-		return gl_WorkGroupSize.y * gl_WorkGroupID.x + sublet_index;
+    return gl_WorkGroupID.x;
 }
 
 void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport, float winding)
@@ -251,14 +207,14 @@ void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport, float wind
     uint code_c = subgroupShuffle(clip_code, prim.z);
 #else
     meshlet_init_shared();
-    shared_window_positions[LocalInvocationID.y][LocalInvocationID.x] = window;
-    shared_clip_code[LocalInvocationID.y][LocalInvocationID.x] = uint8_t(clip_code);
+    shared_window_positions[gl_LocalInvocationIndex] = window;
+    shared_clip_code[gl_LocalInvocationIndex] = uint8_t(clip_code);
 
     barrier();
 
-    uint code_a = shared_clip_code[LocalInvocationID.y][prim.x];
-    uint code_b = shared_clip_code[LocalInvocationID.y][prim.y];
-    uint code_c = shared_clip_code[LocalInvocationID.y][prim.z];
+    uint code_a = shared_clip_code[prim.x];
+    uint code_b = shared_clip_code[prim.y];
+    uint code_c = shared_clip_code[prim.z];
 #endif
 
     uint or_code = code_a | code_b | code_c;
@@ -279,9 +235,9 @@ void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport, float wind
         if (!is_active_prim)
         {
 #if CULL_MODE == CULL_MODE_GENERIC
-            vec2 window_a = shared_window_positions[LocalInvocationID.y][prim.x];
-            vec2 window_b = shared_window_positions[LocalInvocationID.y][prim.y];
-            vec2 window_c = shared_window_positions[LocalInvocationID.y][prim.z];
+            vec2 window_a = shared_window_positions[prim.x];
+            vec2 window_b = shared_window_positions[prim.y];
+            vec2 window_c = shared_window_positions[prim.z];
 #endif
             is_active_prim = cull_triangle(window_a, window_b, window_c, winding);
         }
@@ -291,54 +247,25 @@ void meshlet_emit_primitive(uvec3 prim, vec4 clip_pos, vec4 viewport, float wind
 	if (is_active_prim)
 		vert_mask = (1u << prim.x) | (1u << prim.y) | (1u << prim.z);
 
-#if CULL_MODE != CULL_MODE_GENERIC
-	uvec4 prim_ballot = subgroupBallot(is_active_prim);
-	shared_active_prim_offset = subgroupBallotExclusiveBitCount(prim_ballot);
-	shared_active_vert_mask = subgroupOr(vert_mask);
-#endif
-
 #if CULL_MODE == CULL_MODE_WG32
-	shared_active_prim_count_total = subgroupBallotBitCount(prim_ballot);
+    uvec4 prim_ballot = subgroupBallot(is_active_prim);
+    shared_active_prim_offset = subgroupBallotExclusiveBitCount(prim_ballot);
+    shared_active_vert_mask = subgroupOr(vert_mask);
+    shared_active_prim_count_total = subgroupBallotBitCount(prim_ballot);
 	shared_active_vert_count_total = bitCount(shared_active_vert_mask);
-#elif CULL_MODE == CULL_MODE_WAVE32
-	if (subgroupElect())
-	{
-		shared_active_prim_count[gl_SubgroupID] = subgroupBallotBitCount(prim_ballot);
-		shared_active_vert_count[gl_SubgroupID] = bitCount(shared_active_vert_mask);
-	}
 #else
 	if (is_active_prim)
 	{
-		atomicOr(shared_active_prim_mask[LocalInvocationID.y], 1u << LocalInvocationID.x);
-		atomicOr(shared_active_vert_mask[LocalInvocationID.y], vert_mask);
+		atomicOr(shared_active_prim_mask, 1u << gl_LocalInvocationIndex);
+		atomicOr(shared_active_vert_mask, vert_mask);
 	}
-#endif
 
-#if CULL_MODE != CULL_MODE_WG32
     barrier();
 
     if (gl_LocalInvocationIndex == 0)
     {
-        uint active_prim = 0;
-        uint active_vert = 0;
-
-        for (uint i = 0; i < gl_WorkGroupSize.y; i++)
-        {
-#if CULL_MODE == CULL_MODE_WAVE32
-            uint prim_count = shared_active_prim_count[i];
-            uint vert_count = shared_active_vert_count[i];
-#else
-            uint prim_count = bitCount(shared_active_prim_mask[i]);
-            uint vert_count = bitCount(shared_active_vert_mask[i]);
-#endif
-            shared_active_prim_count[i] = active_prim;
-            shared_active_vert_count[i] = active_vert;
-            active_prim += prim_count;
-            active_vert += vert_count;
-        }
-
-        shared_active_prim_count_total = active_prim;
-        shared_active_vert_count_total = active_vert;
+        shared_active_prim_count_total = bitCount(shared_active_prim_mask);
+        shared_active_vert_count_total = bitCount(shared_active_vert_mask);
     }
 
     barrier();

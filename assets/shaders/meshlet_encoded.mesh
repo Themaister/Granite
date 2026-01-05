@@ -19,10 +19,8 @@ out gl_MeshPerVertexEXT
 #endif
 
 #if defined(VARIANT_BIT_2) && VARIANT_BIT_2
-#define MESHLET_PRIMITIVE_CULL_WG32 1
 #define MESHLET_PRIMITIVE_CULL_WAVE32 1
 #else
-#define MESHLET_PRIMITIVE_CULL_WG32 0
 #define MESHLET_PRIMITIVE_CULL_WAVE32 0
 #endif
 
@@ -34,16 +32,7 @@ out gl_MeshPerVertexEXT
 #endif
 
 layout(max_primitives = 32, max_vertices = 32, triangles) out;
-layout(local_size_x = 32, local_size_y = 1) in;
-
-#include "inc/meshlet_payload_constants.h"
-#include "inc/meshlet_payload_decode.h"
-#include "inc/meshlet_attribute_decode.h"
-#include "inc/meshlet_render_types.h"
-#include "inc/meshlet_primitive_cull.h"
-#include "inc/global_bindings.h"
-#include "inc/render_parameters.h"
-#include "inc/affine.h"
+layout(local_size_x = 32) in;
 
 #if !defined(RENDERER_DEPTH)
 #define ATTR_LEVEL 2
@@ -53,20 +42,30 @@ layout(local_size_x = 32, local_size_y = 1) in;
 #define ATTR_LEVEL 0
 #endif
 
+#include "inc/meshlet_payload_constants.h"
+#include "inc/meshlet_payload_decode.h"
+#include "inc/meshlet_attribute_decode.h"
+#include "inc/meshlet_render_types.h"
+
 #if MESHLET_LOCAL_INVOCATION_INDEXED
 #define MESHLET_PRIMITIVE_CULL_SHARED_INDEX shared_indices
 shared uint shared_indices[32];
 shared vec4 shared_clip_pos[32];
 #if ATTR_LEVEL >= 1
 shared i16vec2 shared_uv[32];
+shared int shared_exponent[32];
 #endif
 #if ATTR_LEVEL >= 2
 shared u8vec4 shared_nt[32];
 shared bool shared_t_sign[32];
-shared int shared_exponent[32];
 shared vec3 shared_world_pos[32];
 #endif
 #endif
+
+#include "inc/meshlet_primitive_cull.h"
+#include "inc/global_bindings.h"
+#include "inc/render_parameters.h"
+#include "inc/affine.h"
 
 #if ATTR_LEVEL >= 1
 layout(location = 0) out vec2 vUV[];
@@ -118,21 +117,14 @@ void main()
         task_info.data[task_offset].material_flags);
 #endif
 
-    uint linear_index, sublet_index;
-    if (gl_SubgroupSize == 32)
-    {
-        linear_index = gl_SubgroupInvocationID;
-        sublet_index = gl_SubgroupID;
-    }
-    else
-    {
-        linear_index = gl_LocalInvocationID.x;
-        sublet_index = gl_LocalInvocationID.y;
-    }
+#if MESHLET_PRIMITIVE_CULL_WAVE32
+    uint linear_index = gl_SubgroupInvocationID;
+#else
+    uint linear_index = gl_LocalInvocationIndex;
+#endif
 
-    meshlet_setup_local_invocation(uvec2(linear_index, sublet_index));
     MeshletMetaRuntime meta = meshlet_metas_runtime.data[task.meshlet_index];
-    meta.stream_offset += STRIDE * meshlet_get_sublet_index(sublet_index);
+    meta.stream_offset += STRIDE * meshlet_get_sublet_index();
 
     MeshletInfo info = meshlet_get_meshlet_info(meta.stream_offset);
     uvec3 decoded_index_buffer = uvec3(0);
@@ -197,16 +189,21 @@ void main()
 #endif
 
 #ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
+        // Roundtrip via LDS.
         shared_clip_pos[out_vert_index] = clip_pos;
+
+        // Defer the decoding to save LDS space.
 #if ATTR_LEVEL >= 1
         shared_uv[out_vert_index] = uv;
+        shared_exponent[out_vert_index] = exponent;
 #endif
 #if ATTR_LEVEL >= 2
         shared_nt[out_vert_index] = nt;
-        shared_exponent[out_vert_index] = exponent;
+        shared_t_sign[out_vert_index] = t_sign;
         shared_world_pos[out_vert_index] = world_pos;
 #endif
 #else
+        // Immediate path where we skip LDS roundtrip.
         gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
 #if ATTR_LEVEL >= 1
         vUV[out_vert_index] = attribute_decode_snorm_exp_uv(uv, exponent);
@@ -223,6 +220,8 @@ void main()
 
 #ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
     barrier();
+
+    // Emit vertices
     if (gl_LocalInvocationIndex < shared_active_vert_count_total)
     {
         gl_MeshVerticesEXT[gl_LocalInvocationIndex].gl_Position = shared_clip_pos[gl_LocalInvocationIndex];
@@ -243,12 +242,8 @@ void main()
         vPos[gl_LocalInvocationIndex] = shared_world_pos[gl_LocalInvocationIndex];
 #endif
     }
-#endif
 
     if (gl_LocalInvocationIndex < shared_active_prim_count_total)
-    {
-#ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
 	    gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(unpack8(shared_indices[gl_LocalInvocationIndex]).xyz);
 #endif
-    }
 }

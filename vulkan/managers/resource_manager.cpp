@@ -777,6 +777,7 @@ bool ResourceManager::mesh_rendering_is_local_invocation_indexed() const
 		device->get_device_features().mesh_shader_properties.prefersLocalInvocationPrimitiveOutput ||
 		device->get_device_features().mesh_shader_properties.prefersLocalInvocationVertexOutput;
 
+#if 0
 	// RADV doesn't seem to like roundtripping through LDS to satisfy local invocation indexed.
 	// amdgpu-pro is bugged without it >_<
 	if (device->get_device_features().driver_id == VK_DRIVER_ID_MESA_RADV &&
@@ -784,6 +785,7 @@ bool ResourceManager::mesh_rendering_is_local_invocation_indexed() const
 	{
 		local_invocation_indexed = false;
 	}
+#endif
 
 	return local_invocation_indexed;
 }

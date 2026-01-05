@@ -237,7 +237,7 @@ void main()
     barrier();
 
     if (task_needs_work)
-        preculled_offsets[atomicAdd(precull_offset, 1u)] = global_flat_index;
+        preculled_offsets[atomicAdd(precull_offset, 1u)] = task_index;
 
     barrier();
 

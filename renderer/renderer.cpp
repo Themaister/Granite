@@ -686,9 +686,14 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		auto *prog = suite[ecast(RenderableType::Meshlet)].get_program(key);
 		cmd.set_program(prog);
 
-		auto mdi = (options & MESH_ASSET_MOTION_VECTOR_BIT) != 0
-			           ? transforms->get_mdi_call_parameters_motion_vector(skinned)
-			           : transforms->get_mdi_call_parameters(pipe, skinned);
+		SceneTransformManager::CullingPhase phase;
+		if (options & MESH_ASSET_MOTION_VECTOR_BIT)
+			phase = SceneTransformManager::CullingPhase::MotionVector;
+		else if (options & MESH_ASSET_PHASE_2_BIT)
+			phase = SceneTransformManager::CullingPhase::Second;
+		else
+			phase = SceneTransformManager::CullingPhase::First;
+		auto mdi = transforms->get_mdi_call_parameters(phase, pipe, skinned);
 
 		if (mdi.indirect_count_max)
 		{

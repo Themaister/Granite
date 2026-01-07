@@ -681,14 +681,15 @@ static void copy_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &dst, Vulkan::B
 	flush();
 }
 
-SceneTransformManager::MDICall SceneTransformManager::get_mdi_call_parameters(DrawPipeline pipe, bool skinned) const
+SceneTransformManager::MDICall SceneTransformManager::get_mdi_call_parameters(CullingPhase phase, DrawPipeline pipe, bool skinned) const
 {
-	return mdi_calls[2 * int(pipe) + skinned];
-}
+	// tmp hack
+	if (phase == CullingPhase::Second)
+		phase = CullingPhase::First;
+	///
 
-SceneTransformManager::MDICall SceneTransformManager::get_mdi_call_parameters_motion_vector(bool skinned) const
-{
-	return mdi_calls[2 * int(DrawPipeline::Count) + skinned];
+	assert(!(phase == CullingPhase::MotionVector && pipe != DrawPipeline::Opaque));
+	return mdi_calls[NumMDIDrawTypesPerPhase * int(phase) + NumDrawTypesPerPipe * int(pipe) + skinned];
 }
 
 void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
@@ -696,7 +697,7 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 	unsigned num_task_instances_per_kind[NumDrawTypes] = {};
 	unsigned num_task_instances = 0;
 
-	unsigned num_mdi_instances_per_kind[NumDrawTypes] = {};
+	unsigned num_mdi_instances_per_kind[NumMDIDrawTypes] = {};
 	unsigned num_mdi_instances = 0;
 
 	auto &manager = device->get_resource_manager();
@@ -710,13 +711,15 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 			continue;
 		bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;
 
-		num_task_instances_per_kind[2 * int(mesh.get_mesh_draw_pipeline()) + skinned] += (range.meshlet.count + 31) / 32;
-		num_mdi_instances_per_kind[2 * int(mesh.get_mesh_draw_pipeline()) + skinned] += range.meshlet.count;
+		auto draw_index = NumDrawTypesPerPipe * int(mesh.get_mesh_draw_pipeline()) + skinned;
+		num_task_instances_per_kind[draw_index] += (range.meshlet.count + 31) / 32;
+		num_mdi_instances_per_kind[draw_index] += range.meshlet.count;
+		num_mdi_instances_per_kind[draw_index + NumMDIDrawTypesPerPhase] += range.meshlet.count;
 
 		if (transform.requires_motion_vectors && mesh.get_mesh_draw_pipeline() != DrawPipeline::AlphaBlend)
 		{
-			num_task_instances_per_kind[2 * int(DrawPipeline::Count) + skinned] += (range.meshlet.count + 31) / 32;
-			num_mdi_instances_per_kind[2 * int(DrawPipeline::Count) + skinned] += range.meshlet.count;
+			num_task_instances_per_kind[NumDrawTypes - 2 + skinned] += (range.meshlet.count + 31) / 32;
+			num_mdi_instances_per_kind[NumMDIDrawTypes - 2 + skinned] += range.meshlet.count;
 		}
 	}
 
@@ -732,7 +735,7 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 	task_offset_counts[0] = {};
 
 	// The first u32s are reserved for the MDI counters.
-	constexpr VkDeviceSize indirect_draw_offset = NumDrawTypes * sizeof(uint32_t);
+	constexpr VkDeviceSize indirect_draw_offset = NumMDIDrawTypes * sizeof(uint32_t);
 
 	VkDeviceSize required_mdi = 0;
 	if (use_mdi)
@@ -759,10 +762,14 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 	{
 		task_offset_counts[i] = { num_task_instances_per_kind[i - 1], 0 };
 		num_task_instances_per_kind[i] += num_task_instances_per_kind[i - 1];
+	}
+
+	for (int i = 1; i < NumMDIDrawTypes; i++)
+	{
 		num_mdi_instances_per_kind[i] += num_mdi_instances_per_kind[i - 1];
 		mdi_calls[i].indirect_count_offset = i * sizeof(uint32_t);
 		mdi_calls[i].indirect_offset = num_mdi_instances_per_kind[i - 1] * sizeof(VkDrawIndexedIndirectCommand) +
-		                               mdi_calls[0].indirect_offset;
+									   mdi_calls[0].indirect_offset;
 	}
 
 	auto required = VkDeviceSize(sizeof(MeshAssetDrawTaskInfo)) * num_task_instances;
@@ -807,11 +814,15 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 		for (int i = 0; i <= transform.requires_motion_vectors; i++)
 		{
 			draw.occluder_state_offset = transform.occluder_state.offset;
-			auto &offset_count = task_offset_counts[2 * int(i ? DrawPipeline::Count : mesh.get_mesh_draw_pipeline()) + skinned];
+			uint32_t draw_index = NumDrawTypesPerPipe * int(i ? DrawPipeline::Count : mesh.get_mesh_draw_pipeline());
+			draw_index += skinned;
+			auto &offset_count = task_offset_counts[draw_index];
 
 			if (use_mdi)
 			{
-				auto &mdi_call = mdi_calls[2 * int(i ? DrawPipeline::Count : mesh.get_mesh_draw_pipeline()) + skinned];
+				uint32_t mdi_draw_index = i ? (NumMDIDrawTypes - 2) : (NumDrawTypesPerPipe * int(mesh.get_mesh_draw_pipeline()));
+				mdi_draw_index += skinned;
+				auto &mdi_call = mdi_calls[mdi_draw_index];
 
 				// TODO: Move this to compute culling. For now, pretend everything is visible.
 				for (uint32_t j = 0; j < range.meshlet.count; j++)
@@ -844,7 +855,7 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 	if (use_mdi)
 	{
 		// TODO: Move this to compute culling. For now, pretend everything is visible.
-		for (size_t i = 0; i < NumDrawTypes; i++)
+		for (size_t i = 0; i < NumMDIDrawTypes; i++)
 		{
 			cmd.update_buffer_inline(*mdi, i * sizeof(uint32_t), sizeof(uint32_t),
 			                         &mdi_calls[i].indirect_count_max);

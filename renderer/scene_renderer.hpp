@@ -131,16 +131,6 @@ public:
 	const Vulkan::Buffer *get_scene_task_buffer() const { return task_buffer.get(); }
 	const Vulkan::Buffer *get_occlusion_state(unsigned index) const { return per_context_data[index].occlusions.get(); }
 
-	std::pair<uint32_t, uint32_t> get_task_range(DrawPipeline pipe, bool skinned) const
-	{
-		return task_offset_counts[2 * int(pipe) + skinned];
-	}
-
-	std::pair<uint32_t, uint32_t> get_task_range_motion_vector(bool skinned) const
-	{
-		return task_offset_counts[2 * int(DrawPipeline::Count) + skinned];
-	}
-
 	const Vulkan::Buffer *get_task_buffer() const { return task_buffer.get(); }
 
 	struct MDICall
@@ -152,8 +142,15 @@ public:
 		uint32_t indirect_count_max;
 	};
 
-	MDICall get_mdi_call_parameters(DrawPipeline pipe, bool skinned) const;
-	MDICall get_mdi_call_parameters_motion_vector(bool skinned) const;
+	enum class CullingPhase
+	{
+		First = 0, // Everything visible last frame.
+		Second, // Everything visible this frame (minus visible in first in most cases)
+		MotionVector, // Everything visible this frame which needs MV rendering. Used by motion vector rendering, etc.
+		Count,
+	};
+
+	MDICall get_mdi_call_parameters(CullingPhase phase, DrawPipeline pipe, bool skinned) const;
 
 private:
 	const ComponentGroupVector<
@@ -187,13 +184,28 @@ private:
 	// Skinning and not skinned. One extra pipeline to deal with motion vectors.
 	// Those are always rendered with EQUAL depth after prepass, so alpha testing is not needed.
 	// Alpha blending cannot write motion vectors either.
-	enum { NumDrawTypes = 2 * (int(DrawPipeline::Count) + 1) };
+	enum
+	{
+		// Skinned and non-skinned
+		NumDrawTypesPerPipe = 2,
+
+		// Reserve one extra for motion vectors (which is really just opaque).
+		NumPipelines = int(DrawPipeline::Count) + 1,
+
+		// For task + mesh path.
+		NumDrawTypes = NumDrawTypesPerPipe * NumPipelines,
+
+		// For MDI path.
+		// First and Second phases support everything, but the MotionVector pass only does opaque (skinned, non-skinned).
+		NumMDIDrawTypesPerPhase = NumDrawTypesPerPipe * int(DrawPipeline::Count),
+		NumMDIDrawTypes = int(CullingPhase::MotionVector) * NumMDIDrawTypesPerPhase + NumDrawTypesPerPipe,
+	};
 
 	Vulkan::BufferHandle task_buffer;
 	std::pair<uint32_t, uint32_t> task_offset_counts[NumDrawTypes] = {};
 
 	Vulkan::BufferHandle mdi;
-	MDICall mdi_calls[NumDrawTypes] = {};
+	MDICall mdi_calls[NumMDIDrawTypes] = {};
 
 	struct PerContext
 	{
@@ -207,5 +219,16 @@ private:
 
 	void ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::BufferHandle &buffer, VkDeviceSize size, const char *tag);
 	void update_task_buffer(Vulkan::CommandBuffer &cmd);
+
+public:
+	std::pair<uint32_t, uint32_t> get_task_range(DrawPipeline pipe, bool skinned) const
+	{
+		return task_offset_counts[NumDrawTypesPerPipe * int(pipe) + skinned];
+	}
+
+	std::pair<uint32_t, uint32_t> get_task_range_motion_vector(bool skinned) const
+	{
+		return task_offset_counts[NumDrawTypes - 2 + skinned];
+	}
 };
 }

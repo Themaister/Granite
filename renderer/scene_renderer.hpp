@@ -217,7 +217,8 @@ private:
 	std::mutex sem_lock;
 	Util::SmallVector<Vulkan::Semaphore> sems;
 
-	void ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::BufferHandle &buffer, VkDeviceSize size, const char *tag);
+	void ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::BufferHandle &buffer, VkDeviceSize size,
+	                   const char *tag, bool preserve);
 	void update_task_buffer(Vulkan::CommandBuffer &cmd);
 
 public:

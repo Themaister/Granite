@@ -740,14 +740,8 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 	VkDeviceSize required_mdi = 0;
 	if (use_mdi)
 	{
-		Vulkan::BufferCreateInfo bufinfo = {};
 		required_mdi = num_mdi_instances * sizeof(VkDrawIndexedIndirectCommand) + indirect_draw_offset;
-		bufinfo.size = required_mdi;
-		bufinfo.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-						VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-		bufinfo.domain = Vulkan::BufferDomain::Device;
-		mdi = device->create_buffer(bufinfo);
-		device->set_name(*mdi, "mdi-buffer");
+		ensure_buffer(cmd, mdi, required_mdi, "mdi-buffer", false);
 	}
 
 	for (auto &call : mdi_calls)
@@ -787,7 +781,8 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 	task_buffer = device->create_buffer(bufinfo);
 	device->set_name(*task_buffer, "task-buffer");
 
-	// Ideally just derp the data into a mapped buffer on iGPU, but fallback to transfer queue on dGPU.
+	// Ideally just derp the data into a mapped buffer on iGPU, but fallback to copy on dGPU.
+	// Keep it on DIRECT queue since the copy is expected to be tiny anyway.
 	auto *task_infos = static_cast<MeshAssetDrawTaskInfo *>(device->map_host_buffer(*task_buffer, Vulkan::MEMORY_ACCESS_WRITE_BIT));
 	if (!task_infos)
 		task_infos = static_cast<MeshAssetDrawTaskInfo *>(cmd.update_buffer(*task_buffer, 0, required));
@@ -884,12 +879,12 @@ void SceneTransformManager::update_scene_buffers()
 	auto aabb_span = scene->get_aabb_update_span();
 	auto occlusion_span = scene->get_occluder_state_update_span();
 
-	ensure_buffer(*cmd, transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine), "transforms");
-	ensure_buffer(*cmd, prev_transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine), "prev-transforms");
-	ensure_buffer(*cmd, aabbs, VkDeviceSize(scene->get_aabbs().get_count()) * sizeof(AABB), "aabbs");
+	ensure_buffer(*cmd, transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine), "transforms", true);
+	ensure_buffer(*cmd, prev_transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine), "prev-transforms", true);
+	ensure_buffer(*cmd, aabbs, VkDeviceSize(scene->get_aabbs().get_count()) * sizeof(AABB), "aabbs", true);
 
 	for (auto &ctx : per_context_data)
-		ensure_buffer(*cmd, ctx.occlusions, VkDeviceSize(scene->get_occluder_states().get_count()) * sizeof(uint32_t), "occlusion-state");
+		ensure_buffer(*cmd, ctx.occlusions, VkDeviceSize(scene->get_occluder_states().get_count()) * sizeof(uint32_t), "occlusion-state", true);
 
 	if (transform_span.count != 0)
 	{
@@ -917,7 +912,7 @@ void SceneTransformManager::update_scene_buffers()
 }
 
 void SceneTransformManager::ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::BufferHandle &buffer,
-                                          VkDeviceSize size, const char *name)
+                                          VkDeviceSize size, const char *name, bool preserve)
 {
 	if (buffer && buffer->get_create_info().size >= size)
 		return;
@@ -926,13 +921,14 @@ void SceneTransformManager::ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::Bu
 	bufinfo.size = std::max<VkDeviceSize>(64, size);
 	if (buffer)
 		bufinfo.size = std::max<VkDeviceSize>(size, buffer->get_create_info().size * 3 / 2);
-	bufinfo.usage =
-	    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	bufinfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+	                VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+	                VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 	bufinfo.domain = Vulkan::BufferDomain::Device;
 	auto new_buffer = device->create_buffer(bufinfo);
 	device->set_name(*new_buffer, name);
 
-	if (buffer)
+	if (buffer && preserve)
 	{
 		cmd.copy_buffer(*new_buffer, 0, *buffer, 0, buffer->get_create_info().size);
 		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,

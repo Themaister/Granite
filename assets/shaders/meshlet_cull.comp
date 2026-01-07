@@ -1,0 +1,183 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+
+layout(local_size_x = 32) in;
+
+#ifndef MESHLET_RENDER_PHASE
+#error "Need to define render phase"
+#endif
+
+#include "inc/meshlet_render.h"
+#include "inc/render_parameters.h"
+
+layout(constant_id = 1) const bool SKINNED = false;
+layout(constant_id = 2) const bool FORCE_VISIBLE = false;
+
+// FIXME: We only have to transmit 12 bytes here, not 20.
+struct Draw
+{
+	uint index_count;
+	uint instance_count;
+	uint first_index;
+	int vertex_offset;
+	uint first_instance;
+};
+
+layout(push_constant, std430) uniform Registers
+{
+    uint offset;
+    uint count;
+	uint mdi_count_offset;
+	uint draw_indirect_offset;
+} registers;
+
+layout(set = 1, binding = 0, std430) readonly buffer InputDraws
+{
+    Draw draws[];
+} input_draws;
+
+layout(set = 1, binding = 1, std430) buffer OutputDraws
+{
+    uint data[];
+} output_draws;
+
+shared uint ballot_value;
+shared uint global_offset;
+uvec4 ballot(bool v)
+{
+    barrier();
+    if (gl_LocalInvocationIndex == 0)
+        ballot_value = 0;
+    barrier();
+    if (v)
+        atomicOr(ballot_value, 1u << gl_LocalInvocationIndex);
+    barrier();
+    return uvec4(ballot_value, 0, 0, 0);
+}
+
+uint ballotBitCount(uvec4 v)
+{
+    return bitCount(v.x);
+}
+
+uint ballotExclusiveBitCount(uvec4 v)
+{
+    uint mask = (1u << gl_LocalInvocationIndex) - 1u;
+    return bitCount(v.x & mask);
+}
+#define local_invocation_id gl_LocalInvocationIndex
+
+void process_task(uint task_index)
+{
+    MeshAssetDrawTaskInfo task = task_info.data[task_index];
+
+    uint node_instance = task.node_instance;
+    uint material_flags = task.material_flags;
+    uint mesh_index_count = task.mesh_index_count;
+
+    uint offset = mesh_index_count & ~31u;
+    uint count = bitfieldExtract(mesh_index_count, 0, 5) + 1;
+    uint local_index = local_invocation_id;
+    uint meshlet_index = offset + local_index;
+
+#if MESHLET_RENDER_PHASE >= 1
+	uint visibility_state = occluders.data[task.occluder_state_offset];
+#endif
+
+    bool alloc_draw = false;
+    if (local_index < count)
+    {
+        mat_affine M = transforms.data[node_instance];
+        Bound b = bounds.data[meshlet_index];
+
+#if MESHLET_RENDER_PHASE == 1
+		alloc_draw = bitfieldExtract(visibility_state, int(local_index), 1) != 0;
+#else
+		alloc_draw = true;
+#endif
+
+        if (alloc_draw && !SKINNED)
+			alloc_draw = cluster_cull(M, b, global.camera_position);
+    }
+
+    uvec4 draw_ballot = ballot(alloc_draw);
+
+#if MESHLET_RENDER_PHASE == 2
+	// Record all clusters that are considered visible in this frame.
+	if (local_index == 0)
+		occluders.data[task.occluder_state_offset] = draw_ballot.x;
+
+	if (!FORCE_VISIBLE)
+	{
+		// If we already rendered in phase 1, skip the draw here.
+		// If we only did a Z-prepass, we may still need to render to fill in the attachments properly.
+		// Doing Z-prepass helps mask bad task shader behavior on at least AMD.
+		if (bitfieldExtract(visibility_state, int(local_index), 1) != 0)
+			alloc_draw = false;
+	}
+#endif
+
+	if (draw_ballot.x == 0)
+		return;
+
+	// Don't need WAR hazard, since LDS ballot() above takes care of that.
+
+	if (local_invocation_id == 0)
+		global_offset = atomicAdd(output_draws.data[registers.mdi_count_offset], bitCount(draw_ballot.x));
+
+	barrier();
+
+	if (alloc_draw)
+	{
+		Draw input_draw = input_draws.draws[meshlet_index];
+		input_draw.first_instance = task_index;
+		uint draw_offset = global_offset + local_index;
+		uint buffer_offset = registers.draw_indirect_offset + draw_offset * 5;
+
+		output_draws.data[buffer_offset + 0] = input_draw.index_count;
+		output_draws.data[buffer_offset + 1] = 1;
+		output_draws.data[buffer_offset + 2] = input_draw.first_index;
+		output_draws.data[buffer_offset + 3] = input_draw.vertex_offset;
+		// Use gl_BaseInstanceARB to grab the offset to lookup in task_data.
+		// Very nice indeed, since this is also easily to prove wave uniform in compiler :3
+		output_draws.data[buffer_offset + 4] = task_index;
+	}
+}
+
+void main()
+{
+    uint global_flat_index = gl_WorkGroupID.x * gl_WorkGroupSize.x * gl_WorkGroupSize.y + gl_LocalInvocationIndex;
+    uint task_index = registers.offset + global_flat_index;
+
+	MeshAssetDrawTaskInfo task;
+    bool task_needs_work = false;
+
+    if (global_flat_index < registers.count)
+    {
+        task = task_info.data[task_index];
+
+        // Cull the group.
+        AABB aabb = aabb.data[task.aabb_instance];
+        bool visible = frustum_cull(aabb.lo, aabb.hi);
+
+#if MESHLET_RENDER_PHASE == 1
+		task_needs_work = visible && occluders.data[task.occluder_state_offset] != 0;
+#else
+		task_needs_work = visible;
+#if MESHLET_RENDER_PHASE == 2
+		// Nothing is visible, clear out occluder state.
+		if (!task_needs_work)
+			occluders.data[task.occluder_state_offset] = 0;
+#endif
+#endif
+    }
+
+    uint b = ballot(task_needs_work).x;
+
+    while (b != 0)
+    {
+        int lane = findLSB(b);
+        b &= ~(1u << lane);
+		process_task(registers.offset + gl_WorkGroupID.x * gl_WorkGroupSize.x * gl_WorkGroupSize.y + lane);
+    }
+}

@@ -133,7 +133,7 @@ void process_task(uint task_index)
 	{
 		Draw input_draw = input_draws.draws[meshlet_index];
 		input_draw.first_instance = task_index;
-		uint draw_offset = global_offset + local_index;
+		uint draw_offset = global_offset + bitCount(bitfieldExtract(draw_ballot.x, 0, int(local_index)));
 		uint buffer_offset = registers.draw_indirect_offset + draw_offset * 5;
 
 		output_draws.data[buffer_offset + 0] = input_draw.index_count;
@@ -148,7 +148,7 @@ void process_task(uint task_index)
 
 void main()
 {
-    uint global_flat_index = gl_WorkGroupID.x * gl_WorkGroupSize.x * gl_WorkGroupSize.y + gl_LocalInvocationIndex;
+    uint global_flat_index = gl_WorkGroupID.x * gl_WorkGroupSize.x + gl_LocalInvocationIndex;
     uint task_index = registers.offset + global_flat_index;
 
 	MeshAssetDrawTaskInfo task;
@@ -180,6 +180,6 @@ void main()
     {
         int lane = findLSB(b);
         b &= ~(1u << lane);
-		process_task(registers.offset + gl_WorkGroupID.x * gl_WorkGroupSize.x * gl_WorkGroupSize.y + lane);
+		process_task(registers.offset + gl_WorkGroupID.x * gl_WorkGroupSize.x + lane);
     }
 }

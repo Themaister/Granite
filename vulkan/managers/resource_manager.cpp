@@ -120,6 +120,11 @@ void ResourceManager::init_mesh_assets()
 		mesh_encoding = MeshEncoding::MeshletEncoded;
 		LOGI("Opting in to meshlet path.\n");
 	}
+	else
+	{
+		mesh_encoding = MeshEncoding::VBOAndIBOMDI;
+		LOGI("Falling back to multi-draw-indirect path.\n");
+	}
 
 	std::string encoding;
 	if (Util::get_environment("GRANITE_MESH_ENCODING", encoding))
@@ -135,8 +140,6 @@ void ResourceManager::init_mesh_assets()
 		else
 			LOGE("Unknown encoding: %s\n", encoding.c_str());
 	}
-
-	mesh_encoding = MeshEncoding::VBOAndIBOMDI;
 
 	if (mesh_encoding != MeshEncoding::MeshletEncoded)
 	{

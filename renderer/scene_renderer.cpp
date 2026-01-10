@@ -1047,9 +1047,8 @@ static RenderTextureResource &setup_mdi_culling_phase2(
 									  VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
 									  VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
 
-	// Culling is modifying the occlusion state.
 	cull_phase2.add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-								  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+								  VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
 	auto &hiz = cull_phase2.add_texture_input(hiz_name, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
 
@@ -1080,7 +1079,6 @@ static void setup_mdi_culling_phase_mv(RenderGraph &graph, SceneTransformManager
 	info.motion_vector_pass->add_proxy_input(tagcat("phase-mv", info.tag), VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
 											 VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
 
-	// Read-only.
 	cull_phase_mv.add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
 	                                VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
@@ -1095,8 +1093,41 @@ static void setup_mdi_culling_phase_mv(RenderGraph &graph, SceneTransformManager
 		});
 }
 
-RenderTextureResource &setup_culling_passes(RenderGraph &graph, SceneTransformManager &transforms,
-                                            const CullingPassesInfo &info)
+RenderTextureResource &setup_culling_passes_mesh(RenderGraph &graph, SceneTransformManager &,
+                                                 const CullingPassesInfo &info)
+{
+	auto hiz_name = tagcat("hiz", info.tag);
+	setup_depth_hierarchy_pass(graph, info.phase1_depth_output, hiz_name, info.contexts, true);
+
+	info.phase1_pass->add_proxy_output(tagcat("phase1", info.tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+	                                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+	info.phase2_pass->add_proxy_output(tagcat("phase2", info.tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+	                                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	                                   tagcat("phase1", info.tag));
+
+	info.phase1_pass->add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+										VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+	info.phase2_pass->add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+	                                    VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+	auto &hiz = info.phase2_pass->add_texture_input(hiz_name, VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT);
+
+	if (info.motion_vector_pass)
+	{
+		info.motion_vector_pass->add_proxy_input(
+			tagcat("phase2", info.tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+			VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+		info.motion_vector_pass->add_external_lock(
+			"scene-transforms", VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+			VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+	}
+
+	return hiz;
+}
+
+RenderTextureResource &setup_culling_passes_mdi(RenderGraph &graph, SceneTransformManager &transforms,
+											const CullingPassesInfo &info)
 {
 	auto dim = graph.get_resource_dimensions(graph.get_texture_resource(info.phase1_depth_output));
 
@@ -1105,5 +1136,20 @@ RenderTextureResource &setup_culling_passes(RenderGraph &graph, SceneTransformMa
 	if (info.motion_vector_pass)
 		setup_mdi_culling_phase_mv(graph, transforms, info, dim.width, dim.height);
 	return hiz;
+}
+
+RenderTextureResource &setup_culling_passes(RenderGraph &graph, SceneTransformManager &transforms,
+                                            const CullingPassesInfo &info)
+{
+	auto encoding = graph.get_device().get_resource_manager().get_mesh_encoding();
+	if (encoding == Vulkan::ResourceManager::MeshEncoding::VBOAndIBOMDI ||
+	    encoding == Vulkan::ResourceManager::MeshEncoding::Classic)
+	{
+		return setup_culling_passes_mdi(graph, transforms, info);
+	}
+	else
+	{
+		return setup_culling_passes_mesh(graph, transforms, info);
+	}
 }
 }

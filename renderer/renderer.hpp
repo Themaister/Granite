@@ -108,6 +108,13 @@ public:
 	static void bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
 	static void bind_scene_transform_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
 
+	static void bind_meshlet_culling_ubo(
+		Vulkan::CommandBuffer &cmd,
+		unsigned desc_set, unsigned binding,
+		const RenderContext &context,
+		const VkViewport &viewport,
+		bool cw);
+
 	RendererOptionFlags get_mesh_renderer_options() const;
 
 	void render_debug_aabb(RenderQueue &queue, const RenderContext &context, const AABB &aabb, const vec4 &color);

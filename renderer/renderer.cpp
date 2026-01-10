@@ -537,6 +537,39 @@ void Renderer::bind_scene_transform_parameters(Vulkan::CommandBuffer &cmd, const
 			cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_OCCLUSION_STATE, *buf);
 }
 
+void Renderer::bind_meshlet_culling_ubo(
+	Vulkan::CommandBuffer &cmd, unsigned desc_set, unsigned binding, const RenderContext &context,
+	const VkViewport &viewport, bool cw)
+{
+	auto *ubo = cmd.allocate_typed_constant_data<MeshletViewportUBO>(desc_set, binding, 1);
+	ubo->viewport = vec4(viewport.x + 0.5f * viewport.width - 0.5f,
+					viewport.y + 0.5f * viewport.height - 0.5f,
+					0.5f * viewport.width, 0.5f * viewport.height);
+	ubo->winding = cw ? -1.0f : 1.0f;
+
+	memcpy(ubo->planes, context.get_visibility_frustum().get_planes(), sizeof(ubo->planes));
+	ubo->view = context.get_render_parameters().view;
+
+	vec2 viewport_half = 0.5f * vec2(viewport.width, viewport.height);
+	vec4 viewport_scale_bias = viewport_half.xyxy();
+
+	viewport_scale_bias.z +=
+			viewport_scale_bias.x * context.get_render_parameters().projection[3].x;
+	viewport_scale_bias.w +=
+			viewport_scale_bias.y * context.get_render_parameters().projection[3].y;
+
+	viewport_scale_bias.x *= context.get_render_parameters().projection[0].x;
+	viewport_scale_bias.y *= -context.get_render_parameters().projection[1].y;
+	ubo->viewport_scale_bias = viewport_scale_bias;
+
+	if (const auto *hiz = context.get_scene_hiz_view())
+	{
+		ubo->hiz_resolution.x = hiz->get_view_width() << context.get_scene_hiz_min_lod();
+		ubo->hiz_resolution.y = hiz->get_view_height() << context.get_scene_hiz_min_lod();
+		ubo->hiz_min_lod = context.get_scene_hiz_min_lod();
+		ubo->hiz_max_lod = (hiz->get_create_info().levels - 1) + context.get_scene_hiz_min_lod();
+	}
+}
 
 void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
 {
@@ -693,14 +726,14 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 			phase = SceneTransformManager::CullingPhase::Second;
 		else
 			phase = SceneTransformManager::CullingPhase::First;
-		auto mdi = transforms->get_mdi_call_parameters(phase, pipe, skinned);
+		auto mdi = transforms->get_mdi_call_parameters(context.get_scene_transform_parameter_index(), phase, pipe, skinned);
 
 		if (mdi.indirect_count_max)
 		{
 			cmd.draw_indexed_multi_indirect(*mdi.indirect_buffer, mdi.indirect_offset,
 											mdi.indirect_count_max,
 											sizeof(VkDrawIndexedIndirectCommand),
-											*mdi.indirect_count, mdi.indirect_count_offset);
+											*mdi.indirect_buffer, mdi.indirect_count_offset);
 		}
 
 		break;
@@ -728,34 +761,8 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		auto *prog = suite[ecast(RenderableType::Meshlet)].get_program(key);
 		cmd.set_program(prog);
 
-		auto *ubo = cmd.allocate_typed_constant_data<MeshletViewportUBO>(3, 0, 1);
-		ubo->viewport = vec4(cmd.get_viewport().x + 0.5f * cmd.get_viewport().width - 0.5f,
-						cmd.get_viewport().y + 0.5f * cmd.get_viewport().height - 0.5f,
-						0.5f * cmd.get_viewport().width, 0.5f * cmd.get_viewport().height);
-		ubo->winding = (options & FRONT_FACE_CLOCKWISE_BIT) ? -1.0f : 1.0f;
-
-		memcpy(ubo->planes, context.get_visibility_frustum().get_planes(), sizeof(ubo->planes));
-		ubo->view = context.get_render_parameters().view;
-
-		vec2 viewport_half = 0.5f * vec2(cmd.get_viewport().width, cmd.get_viewport().height);
-		vec4 viewport_scale_bias = viewport_half.xyxy();
-
-		viewport_scale_bias.z +=
-				viewport_scale_bias.x * context.get_render_parameters().projection[3].x;
-		viewport_scale_bias.w +=
-				viewport_scale_bias.y * context.get_render_parameters().projection[3].y;
-
-		viewport_scale_bias.x *= context.get_render_parameters().projection[0].x;
-		viewport_scale_bias.y *= -context.get_render_parameters().projection[1].y;
-		ubo->viewport_scale_bias = viewport_scale_bias;
-
-		if (const auto *hiz = context.get_scene_hiz_view())
-		{
-			ubo->hiz_resolution.x = hiz->get_view_width() << context.get_scene_hiz_min_lod();
-			ubo->hiz_resolution.y = hiz->get_view_height() << context.get_scene_hiz_min_lod();
-			ubo->hiz_min_lod = context.get_scene_hiz_min_lod();
-			ubo->hiz_max_lod = (hiz->get_create_info().levels - 1) + context.get_scene_hiz_min_lod();
-		}
+		bind_meshlet_culling_ubo(cmd, 3, 0, context, cmd.get_viewport(),
+		                         (options & FRONT_FACE_CLOCKWISE_BIT) != 0);
 
 		struct
 		{

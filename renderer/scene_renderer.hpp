@@ -137,7 +137,6 @@ public:
 	{
 		const Vulkan::Buffer *indirect_buffer;
 		VkDeviceSize indirect_offset;
-		const Vulkan::Buffer *indirect_count;
 		VkDeviceSize indirect_count_offset;
 		uint32_t indirect_count_max;
 	};
@@ -150,7 +149,7 @@ public:
 		Count,
 	};
 
-	MDICall get_mdi_call_parameters(CullingPhase phase, DrawPipeline pipe, bool skinned) const;
+	MDICall get_mdi_call_parameters(uint32_t context_index, CullingPhase phase, DrawPipeline pipe, bool skinned) const;
 
 private:
 	const ComponentGroupVector<
@@ -204,12 +203,12 @@ private:
 	Vulkan::BufferHandle task_buffer;
 	std::pair<uint32_t, uint32_t> task_offset_counts[NumDrawTypes] = {};
 
-	Vulkan::BufferHandle mdi;
 	MDICall mdi_calls[NumMDIDrawTypes] = {};
 
 	struct PerContext
 	{
 		Vulkan::BufferHandle occlusions;
+		Vulkan::BufferHandle mdi;
 	};
 
 	Util::SmallVector<PerContext> per_context_data;
@@ -232,4 +231,22 @@ public:
 		return task_offset_counts[NumDrawTypes - 2 + skinned];
 	}
 };
+
+struct CullingPassesInfo
+{
+	std::string tag; // Unique tag.
+	std::string phase1_depth_output;
+	RenderPass *phase1_pass;
+	RenderPass *phase2_pass;
+	RenderPass *motion_vector_pass; // Can be nullptr.
+	const RenderContext *contexts;
+	unsigned num_contexts;
+	bool force_visible_phase2; // If phase1 is just a prepass, this should be true.
+};
+
+// Returns HiZ resource. Application is responsible for forwarding the physical view
+// to render contexts.
+RenderTextureResource &setup_culling_passes(
+	RenderGraph &graph, SceneTransformManager &transforms,
+	const CullingPassesInfo &info);
 }

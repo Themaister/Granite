@@ -174,5 +174,7 @@ private:
 	RenderTextureResource *hiz_main = nullptr;
 	RenderTextureResource *hiz_depth = nullptr;
 	Util::SmallVector<Vulkan::ImageViewHandle> hiz_depth_peel;
+
+	CullingPassesInfo culling_passes_info = {};
 };
 }

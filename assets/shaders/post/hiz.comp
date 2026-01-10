@@ -66,7 +66,7 @@ vec4 transform_z(vec4 zs)
     vec2 z1 = registers.z_transform * vec2(zs.y, 1.0);
     vec2 z2 = registers.z_transform * vec2(zs.z, 1.0);
     vec2 z3 = registers.z_transform * vec2(zs.w, 1.0);
-    return vec4(z0.x, z1.x, z2.x, z3.x) / vec4(z0.y, z1.y, z2.y, z3.y);
+    return min(vec4(z0.x, z1.x, z2.x, z3.x) / vec4(z0.y, z1.y, z2.y, z3.y), vec4(1e30));
 }
 
 #if defined(LAYERED) && LAYERED

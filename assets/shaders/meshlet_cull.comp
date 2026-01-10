@@ -114,6 +114,8 @@ void process_task(uint task_index)
 		// Doing Z-prepass helps mask bad task shader behavior on at least AMD.
 		if (bitfieldExtract(visibility_state, int(local_index), 1) != 0)
 			alloc_draw = false;
+
+        draw_ballot = ballot(alloc_draw);
 	}
 #endif
 

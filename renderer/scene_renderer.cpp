@@ -24,6 +24,7 @@
 #include "threaded_scene.hpp"
 #include "mesh_util.hpp"
 #include "muglm/matrix_helper.hpp"
+#include "post/spd.hpp"
 
 namespace Granite
 {
@@ -681,15 +682,14 @@ static void copy_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &dst, Vulkan::B
 	flush();
 }
 
-SceneTransformManager::MDICall SceneTransformManager::get_mdi_call_parameters(CullingPhase phase, DrawPipeline pipe, bool skinned) const
+SceneTransformManager::MDICall SceneTransformManager::get_mdi_call_parameters(
+	uint32_t context_index, CullingPhase phase, DrawPipeline pipe, bool skinned) const
 {
-	// tmp hack
-	if (phase == CullingPhase::Second)
-		phase = CullingPhase::First;
-	///
-
+	assert(context_index != UINT32_MAX);
 	assert(!(phase == CullingPhase::MotionVector && pipe != DrawPipeline::Opaque));
-	return mdi_calls[NumMDIDrawTypesPerPhase * int(phase) + NumDrawTypesPerPipe * int(pipe) + skinned];
+	auto call = mdi_calls[NumMDIDrawTypesPerPhase * int(phase) + NumDrawTypesPerPipe * int(pipe) + skinned];
+	call.indirect_buffer = per_context_data[context_index].mdi.get();
+	return call;
 }
 
 void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
@@ -741,16 +741,14 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 	if (use_mdi)
 	{
 		required_mdi = num_mdi_instances * sizeof(VkDrawIndexedIndirectCommand) + indirect_draw_offset;
-		ensure_buffer(cmd, mdi, required_mdi, "mdi-buffer", false);
+		for (auto &ctx : per_context_data)
+			ensure_buffer(cmd, ctx.mdi, required_mdi, "mdi-buffer", false);
 	}
 
 	for (auto &call : mdi_calls)
-	{
 		call = {};
-		call.indirect_buffer = mdi.get();
-		call.indirect_count = mdi.get();
-	}
 	mdi_calls[0].indirect_offset = indirect_draw_offset;
+	mdi_calls[0].indirect_count_max = num_mdi_instances_per_kind[0];
 
 	for (int i = 1; i < NumDrawTypes; i++)
 	{
@@ -760,6 +758,7 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 
 	for (int i = 1; i < NumMDIDrawTypes; i++)
 	{
+		mdi_calls[i].indirect_count_max = num_mdi_instances_per_kind[i];
 		num_mdi_instances_per_kind[i] += num_mdi_instances_per_kind[i - 1];
 		mdi_calls[i].indirect_count_offset = i * sizeof(uint32_t);
 		mdi_calls[i].indirect_offset = num_mdi_instances_per_kind[i - 1] * sizeof(VkDrawIndexedIndirectCommand) +
@@ -813,31 +812,6 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 			draw_index += skinned;
 			auto &offset_count = task_offset_counts[draw_index];
 
-			if (use_mdi)
-			{
-				uint32_t mdi_draw_index = i ? (NumMDIDrawTypes - 2) : (NumDrawTypesPerPipe * int(mesh.get_mesh_draw_pipeline()));
-				mdi_draw_index += skinned;
-				auto &mdi_call = mdi_calls[mdi_draw_index];
-
-				// TODO: Move this to compute culling. For now, pretend everything is visible.
-				for (uint32_t j = 0; j < range.meshlet.count; j++)
-				{
-					cmd.copy_buffer(*mdi,
-					                mdi_call.indirect_offset + mdi_call.indirect_count_max * sizeof(
-						                VkDrawIndexedIndirectCommand),
-					                *device->get_resource_manager().get_indirect_buffer(),
-					                (range.meshlet.offset + j) * sizeof(VkDrawIndexedIndirectCommand),
-					                offsetof(VkDrawIndexedIndirectCommand, firstInstance));
-
-					cmd.fill_buffer(*mdi, offset_count.first + offset_count.second,
-					                mdi_call.indirect_offset + mdi_call.indirect_count_max * sizeof(
-						                VkDrawIndexedIndirectCommand) + offsetof(
-						                VkDrawIndexedIndirectCommand, firstInstance), sizeof(uint32_t));
-
-					mdi_call.indirect_count_max++;
-				}
-			}
-
 			for (uint32_t j = 0; j < range.meshlet.count; j += 32)
 			{
 				draw.mesh_index_count = range.meshlet.offset + j + (std::min(range.meshlet.count - j, 32u) - 1);
@@ -848,18 +822,8 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 	}
 
 	if (use_mdi)
-	{
-		// TODO: Move this to compute culling. For now, pretend everything is visible.
-		for (size_t i = 0; i < NumMDIDrawTypes; i++)
-		{
-			cmd.update_buffer_inline(*mdi, i * sizeof(uint32_t), sizeof(uint32_t),
-			                         &mdi_calls[i].indirect_count_max);
-		}
-
-		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
-		            VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-		            VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
-	}
+		for (auto &ctx : per_context_data)
+			cmd.fill_buffer(*ctx.mdi, 0, 0, NumMDIDrawTypes * sizeof(uint32_t));
 
 	// Even if it's device local, it's okay to call this.
 	device->unmap_host_buffer(*task_buffer, Vulkan::MEMORY_ACCESS_WRITE_BIT);
@@ -969,5 +933,177 @@ void SceneTransformManager::setup_render_pass_dependencies(RenderGraph &, Render
 
 void SceneTransformManager::setup_render_pass_resources(RenderGraph &)
 {
+}
+
+static inline std::string tagcat(const std::string &a, const std::string &b)
+{
+	return a + "-" + b;
+}
+
+static void build_mdi_culling_pass(Vulkan::CommandBuffer &cmd, SceneTransformManager &transforms,
+                                   const RenderContext *context, unsigned num_contexts,
+                                   SceneTransformManager::CullingPhase phase, bool force_visible,
+                                   uint32_t width, uint32_t height)
+{
+	cmd.set_program("builtin://shaders/meshlet_cull.comp",
+		{{ "MESHLET_RENDER_PHASE", phase == SceneTransformManager::CullingPhase::Second ? 2 : 1 }});
+	cmd.set_specialization_constant_mask(0x7);
+	cmd.set_specialization_constant(2, force_visible);
+
+	struct Push
+	{
+		uint32_t offset;
+		uint32_t count;
+		uint32_t mdi_count_offset;
+		uint32_t draw_indirect_offset;
+	} push;
+
+	for (unsigned i = 0; i < num_contexts; i++)
+	{
+		auto &ctx = context[i];
+		Renderer::bind_global_parameters(cmd, ctx);
+		Renderer::bind_scene_transform_parameters(cmd, ctx);
+		VkViewport vp = {};
+		vp.width = float(width);
+		vp.height = float(height);
+		vp.maxDepth = 1.0f;
+		Renderer::bind_meshlet_culling_ubo(cmd, 3, 0, ctx, vp, false);
+
+		for (int pipe = 0; pipe < int(DrawPipeline::Count); pipe++)
+		{
+			auto draw_pipe = DrawPipeline(pipe);
+			if (phase == SceneTransformManager::CullingPhase::MotionVector && draw_pipe != DrawPipeline::Opaque)
+				continue;
+
+			for (int skinned = 0; skinned < 2; skinned++)
+			{
+				auto call = transforms.get_mdi_call_parameters(
+					ctx.get_scene_transform_parameter_index(), phase, draw_pipe, skinned != 0);
+				auto task_range = transforms.get_task_range(draw_pipe, skinned != 0);
+
+				if (call.indirect_count_max == 0)
+					continue;
+
+				push.offset = task_range.first;
+				push.count = task_range.second;
+				push.mdi_count_offset = call.indirect_count_offset / sizeof(uint32_t);
+				push.draw_indirect_offset = call.indirect_offset / sizeof(uint32_t);
+
+				bool ortho = ctx.get_render_parameters().projection[3].w == 1.0f;
+				cmd.set_specialization_constant(0, ortho);
+				cmd.set_specialization_constant(1, skinned != 0);
+				cmd.push_constants(&push, 0, sizeof(push));
+				cmd.set_storage_buffer(1, 0, *cmd.get_device().get_resource_manager().get_indirect_buffer());
+				cmd.set_storage_buffer(1, 1, *call.indirect_buffer);
+
+				// TODO: Unroll massive dispatches, but most (all?) GPUs support larger X dimensions for compute.
+				cmd.dispatch((task_range.second + 31) / 32, 1, 1);
+			}
+		}
+	}
+}
+
+static void setup_mdi_culling_phase1(RenderGraph &graph, SceneTransformManager &transforms,
+                                     const CullingPassesInfo &info,
+                                     uint32_t width, uint32_t height)
+{
+	auto &cull_phase1 = graph.add_pass(tagcat("culling-phase1", info.tag), RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+
+	// We write the indirect buffer here. We don't read it as a SSBO, everything useful is fed through BaseInstance.
+	cull_phase1.add_proxy_output(tagcat("phase1", info.tag), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+								 VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+	info.phase1_pass->add_proxy_input(tagcat("phase1", info.tag), VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+									  VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+
+	// Culling needs to read transforms.
+	cull_phase1.add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+								  VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+	cull_phase1.set_build_render_pass(
+		[&transforms, ctx = info.contexts,
+			width, height,
+			num_contexts = info.num_contexts](Vulkan::CommandBuffer &cmd)
+		{
+			build_mdi_culling_pass(cmd, transforms,
+			                       ctx, num_contexts, SceneTransformManager::CullingPhase::First, false,
+			                       width, height);
+		});
+}
+
+static RenderTextureResource &setup_mdi_culling_phase2(
+	RenderGraph &graph, SceneTransformManager &transforms, const CullingPassesInfo &info,
+	uint32_t width, uint32_t height)
+{
+	auto hiz_name = tagcat("hiz", info.tag);
+	setup_depth_hierarchy_pass(graph, info.phase1_depth_output, hiz_name, info.contexts, true);
+
+	auto &cull_phase2 = graph.add_pass(tagcat("culling-phase2", info.tag), RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+
+	// We're overwriting the occlusion state.
+	cull_phase2.add_proxy_output(tagcat("phase2", info.tag), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+	                             VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	                             tagcat("phase1", info.tag));
+	info.phase2_pass->add_proxy_input(tagcat("phase2", info.tag),
+									  VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+									  VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+
+	// Culling is modifying the occlusion state.
+	cull_phase2.add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+								  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+	auto &hiz = cull_phase2.add_texture_input(hiz_name, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+
+	cull_phase2.set_build_render_pass(
+		[&transforms, ctx = info.contexts,
+			num_contexts = info.num_contexts,
+			width, height,
+			force_visible = info.force_visible_phase2](Vulkan::CommandBuffer &cmd)
+		{
+			build_mdi_culling_pass(cmd, transforms,
+								   ctx, num_contexts, SceneTransformManager::CullingPhase::Second, force_visible,
+								   width, height);
+		});
+
+	return hiz;
+}
+
+static void setup_mdi_culling_phase_mv(RenderGraph &graph, SceneTransformManager &transforms,
+                                       const CullingPassesInfo &info,
+                                       uint32_t width, uint32_t height)
+{
+	auto &cull_phase_mv = graph.add_pass(tagcat("culling-mv", info.tag), RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+
+	// The output is somewhat fake but ensures we carry forward the dependencies properly.
+	cull_phase_mv.add_proxy_output(tagcat("phase-mv", info.tag), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+	                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+	                               tagcat("phase2", info.tag));
+	info.motion_vector_pass->add_proxy_input(tagcat("phase-mv", info.tag), VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+											 VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+
+	// Read-only.
+	cull_phase_mv.add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+	                                VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+	cull_phase_mv.set_build_render_pass(
+		[&transforms, ctx = info.contexts,
+			num_contexts = info.num_contexts,
+			width, height](Vulkan::CommandBuffer &cmd)
+		{
+			build_mdi_culling_pass(cmd, transforms,
+			                       ctx, num_contexts, SceneTransformManager::CullingPhase::MotionVector, false,
+			                       width, height);
+		});
+}
+
+RenderTextureResource &setup_culling_passes(RenderGraph &graph, SceneTransformManager &transforms,
+                                            const CullingPassesInfo &info)
+{
+	auto dim = graph.get_resource_dimensions(graph.get_texture_resource(info.phase1_depth_output));
+
+	setup_mdi_culling_phase1(graph, transforms, info, dim.width, dim.height);
+	auto &hiz = setup_mdi_culling_phase2(graph, transforms, info, dim.width, dim.height);
+	if (info.motion_vector_pass)
+		setup_mdi_culling_phase_mv(graph, transforms, info, dim.width, dim.height);
+	return hiz;
 }
 }

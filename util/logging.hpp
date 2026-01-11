@@ -133,6 +133,8 @@ static inline bool is_debugged()
 }
 }
 #else
+#define NOMINMAX
+#include <windows.h>
 #include <debugapi.h>
 #endif
 

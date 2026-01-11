@@ -95,7 +95,7 @@ static void upload_indirect_buffer(CommandBuffer &cmd, const Vulkan::Buffer &ind
                                    const MeshView &view, RuntimeStyle runtime_style,
                                    uint32_t global_prim_offset, uint32_t global_vert_offset)
 {
-	size_t total_padded_meshlets = view.num_bounds_256 * Meshlet::ChunkFactor;
+	size_t total_padded_meshlets = view.num_bounds_256 * ChunkFactor;
 	size_t total_meshlets = view.format_header->meshlet_count;
 
 	uint32_t prim_offset = global_prim_offset;
@@ -103,8 +103,8 @@ static void upload_indirect_buffer(CommandBuffer &cmd, const Vulkan::Buffer &ind
 
 	if (runtime_style == RuntimeStyle::Meshlet)
 	{
-		constexpr size_t Stride = sizeof(Meshlet::RuntimeHeaderDecoded) * Meshlet::ChunkFactor;
-		auto *indirect = static_cast<Meshlet::RuntimeHeaderDecoded *>(
+		constexpr size_t Stride = sizeof(RuntimeHeaderDecoded) * ChunkFactor;
+		auto *indirect = static_cast<RuntimeHeaderDecoded *>(
 				cmd.update_buffer(indirect_buffer, alloc_offset * Stride,
 				                   view.num_bounds_256 * Stride));
 
@@ -124,27 +124,26 @@ static void upload_indirect_buffer(CommandBuffer &cmd, const Vulkan::Buffer &ind
 		}
 
 		memset(indirect + total_meshlets, 0,
-		       (total_padded_meshlets - total_meshlets) * sizeof(Meshlet::RuntimeHeaderDecoded));
+		       (total_padded_meshlets - total_meshlets) * sizeof(RuntimeHeaderDecoded));
 	}
 	else
 	{
-		constexpr size_t Stride = sizeof(VkDrawIndexedIndirectCommand);
-		auto *indirect = static_cast<VkDrawIndexedIndirectCommand *>(
+		constexpr size_t Stride = sizeof(RuntimeHeaderDecodedMDI);
+		auto *indirect = static_cast<RuntimeHeaderDecodedMDI *>(
 				cmd.update_buffer(indirect_buffer, alloc_offset * Stride,
 				                  view.num_bounds_256 * Stride));
 
 		for (uint32_t i = 0; i < view.num_bounds_256; i++)
 		{
-			uint32_t chunks = std::min<uint32_t>(total_meshlets - i * Meshlet::ChunkFactor, Meshlet::ChunkFactor);
+			uint32_t chunks = std::min<uint32_t>(total_meshlets - i * ChunkFactor, ChunkFactor);
 
-			VkDrawIndexedIndirectCommand draw = {};
+			RuntimeHeaderDecodedMDI draw = {};
 			draw.firstIndex = 3 * prim_offset;
 			draw.vertexOffset = int32_t(vert_offset);
-			draw.instanceCount = 1;
 
 			for (uint32_t chunk = 0; chunk < chunks; chunk++)
 			{
-				auto &counts = view.streams[(i * Meshlet::ChunkFactor + chunk) *
+				auto &counts = view.streams[(i * ChunkFactor + chunk) *
 				                            view.format_header->stream_count].u.counts;
 				draw.indexCount += counts.prim_count;
 				vert_offset += counts.vert_count;

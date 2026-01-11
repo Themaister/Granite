@@ -142,6 +142,7 @@ public:
 	};
 
 	MDICall get_mdi_call_parameters(uint32_t context_index, CullingPhase phase, DrawPipeline pipe, bool skinned) const;
+	MDICall get_template_mdi_call_parameters(CullingPhase phase, DrawPipeline pipe, bool skinned) const;
 
 private:
 	const ComponentGroupVector<

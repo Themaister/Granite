@@ -682,12 +682,19 @@ static void copy_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &dst, Vulkan::B
 	flush();
 }
 
+MDICall SceneTransformManager::get_template_mdi_call_parameters(
+	CullingPhase phase, DrawPipeline pipe, bool skinned) const
+{
+	assert(!(phase == CullingPhase::MotionVector && pipe != DrawPipeline::Opaque));
+	auto call = mdi_calls[NumMDIDrawTypesPerPhase * int(phase) + NumDrawTypesPerPipe * int(pipe) + skinned];
+	return call;
+}
+
 MDICall SceneTransformManager::get_mdi_call_parameters(
 	uint32_t context_index, CullingPhase phase, DrawPipeline pipe, bool skinned) const
 {
 	assert(context_index != UINT32_MAX);
-	assert(!(phase == CullingPhase::MotionVector && pipe != DrawPipeline::Opaque));
-	auto call = mdi_calls[NumMDIDrawTypesPerPhase * int(phase) + NumDrawTypesPerPipe * int(pipe) + skinned];
+	auto call = get_template_mdi_call_parameters(phase, pipe, skinned);
 	call.indirect_buffer = per_context_data[context_index].mdi.get();
 	return call;
 }

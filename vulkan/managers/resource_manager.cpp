@@ -158,7 +158,7 @@ void ResourceManager::init_mesh_assets()
 		if (mesh_encoding != MeshEncoding::Classic)
 		{
 			auto element_size = mesh_encoding == MeshEncoding::MeshletDecoded ?
-			                    sizeof(Meshlet::RuntimeHeaderDecoded) : sizeof(VkDrawIndexedIndirectCommand);
+			                    sizeof(Meshlet::RuntimeHeaderDecoded) : sizeof(Meshlet::RuntimeHeaderDecodedMDI);
 
 			indirect_buffer_allocator.set_soa_count(2);
 			indirect_buffer_allocator.set_element_size(0, Meshlet::ChunkFactor * element_size);

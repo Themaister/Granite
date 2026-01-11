@@ -13,14 +13,11 @@ layout(local_size_x = 32) in;
 layout(constant_id = 1) const bool SKINNED = false;
 layout(constant_id = 2) const bool FORCE_VISIBLE = false;
 
-// FIXME: We only have to transmit 12 bytes here, not 20.
 struct Draw
 {
 	uint index_count;
-	uint instance_count;
 	uint first_index;
 	int vertex_offset;
-	uint first_instance;
 };
 
 layout(push_constant, std430) uniform Registers
@@ -132,7 +129,6 @@ void process_task(uint task_index)
 	if (alloc_draw)
 	{
 		Draw input_draw = input_draws.draws[meshlet_index];
-		input_draw.first_instance = task_index;
 		uint draw_offset = global_offset + bitCount(bitfieldExtract(draw_ballot.x, 0, int(local_index)));
 		uint buffer_offset = registers.draw_indirect_offset + draw_offset * 5;
 

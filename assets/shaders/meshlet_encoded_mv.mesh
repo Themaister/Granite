@@ -111,8 +111,10 @@ void main()
     MeshletInfo info = meshlet_get_meshlet_info(meta.stream_offset);
     uvec3 decoded_index_buffer = uvec3(0);
     vec3 old_world_pos;
-    vec3 world_pos;
-    vec4 clip_pos = vec4(-1.0);
+
+    // AMD Windows bug. It doesn't understand invariance deps through shared memory.
+    precise vec3 world_pos;
+    precise vec4 clip_pos = vec4(-1.0);
     vec3 old_clip_pos;
     vec3 new_clip_pos;
 

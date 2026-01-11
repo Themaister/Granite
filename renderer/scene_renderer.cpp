@@ -682,7 +682,7 @@ static void copy_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &dst, Vulkan::B
 	flush();
 }
 
-SceneTransformManager::MDICall SceneTransformManager::get_mdi_call_parameters(
+MDICall SceneTransformManager::get_mdi_call_parameters(
 	uint32_t context_index, CullingPhase phase, DrawPipeline pipe, bool skinned) const
 {
 	assert(context_index != UINT32_MAX);

@@ -133,14 +133,6 @@ public:
 
 	const Vulkan::Buffer *get_task_buffer() const { return task_buffer.get(); }
 
-	struct MDICall
-	{
-		const Vulkan::Buffer *indirect_buffer;
-		VkDeviceSize indirect_offset;
-		VkDeviceSize indirect_count_offset;
-		uint32_t indirect_count_max;
-	};
-
 	enum class CullingPhase
 	{
 		First = 0, // Everything visible last frame.

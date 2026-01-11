@@ -66,7 +66,9 @@ public:
 		lighting = lighting_;
 	}
 
-	void set_scene_transform_parameters(const SceneTransformManager *transforms_, unsigned index = UINT32_MAX)
+	enum : uint32_t { InvalidSceneTransformIndex = UINT32_MAX };
+
+	void set_scene_transform_parameters(const SceneTransformManager *transforms_, unsigned index = InvalidSceneTransformIndex)
 	{
 		transforms = transforms_;
 		transform_index = index;
@@ -125,7 +127,7 @@ private:
 	const Scene *scene = nullptr;
 	const LightingParameters *lighting = nullptr;
 	const SceneTransformManager *transforms = nullptr;
-	unsigned transform_index = UINT32_MAX;
+	unsigned transform_index = InvalidSceneTransformIndex;
 	const Vulkan::ImageView *hiz = nullptr;
 	unsigned hiz_min_lod = 0;
 	RenderParameters camera;

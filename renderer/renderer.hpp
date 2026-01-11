@@ -34,6 +34,14 @@ class RenderQueue;
 struct LightingParameters;
 class Frustum;
 
+struct MDICall
+{
+	const Vulkan::Buffer *indirect_buffer;
+	VkDeviceSize indirect_offset;
+	VkDeviceSize indirect_count_offset;
+	uint32_t indirect_count_max;
+};
+
 class ShaderSuiteResolver
 {
 public:
@@ -46,6 +54,10 @@ struct FlushParameters
 {
 	uint32_t layer;
 	bool layered;
+
+	// For immediate rendering style like positional lights where we don't maintain
+	// two-phase culling.
+	MDICall mdi;
 };
 
 class RenderContextParameterBinder
@@ -163,7 +175,8 @@ private:
 	void set_mesh_renderer_options_internal(RendererOptionFlags flags);
 
 	void render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContext &context,
-	                        DrawPipeline pipe, RendererFlushFlags options, bool skinned) const;
+	                        DrawPipeline pipe, const FlushParameters *params,
+	                        RendererFlushFlags options, bool skinned) const;
 };
 using RendererHandle = Util::IntrusivePtr<Renderer>;
 

@@ -642,7 +642,8 @@ void Renderer::promote_read_write_cache_to_read_only()
 }
 
 void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContext &context,
-                                  DrawPipeline pipe, RendererFlushFlags options, bool skinned) const
+                                  DrawPipeline pipe, const FlushParameters *params,
+                                  RendererFlushFlags options, bool skinned) const
 {
 	auto &manager = device->get_resource_manager();
 	auto encoding = manager.get_mesh_encoding();
@@ -719,16 +720,28 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		auto *prog = suite[ecast(RenderableType::Meshlet)].get_program(key);
 		cmd.set_program(prog);
 
-		SceneTransformManager::CullingPhase phase;
-		if (options & MESH_ASSET_MOTION_VECTOR_BIT)
-			phase = SceneTransformManager::CullingPhase::MotionVector;
-		else if (options & MESH_ASSET_PHASE_2_BIT)
-			phase = SceneTransformManager::CullingPhase::Second;
-		else
-			phase = SceneTransformManager::CullingPhase::First;
-		auto mdi = transforms->get_mdi_call_parameters(context.get_scene_transform_parameter_index(), phase, pipe, skinned);
+		MDICall mdi;
 
-		if (mdi.indirect_count_max)
+		uint32_t transform_index = context.get_scene_transform_parameter_index();
+		if (transform_index != RenderContext::InvalidSceneTransformIndex)
+		{
+			// For persistently registered render contexts, MDI space is allocated persistently.
+			SceneTransformManager::CullingPhase phase;
+			if (options & MESH_ASSET_MOTION_VECTOR_BIT)
+				phase = SceneTransformManager::CullingPhase::MotionVector;
+			else if (options & MESH_ASSET_PHASE_2_BIT)
+				phase = SceneTransformManager::CullingPhase::Second;
+			else
+				phase = SceneTransformManager::CullingPhase::First;
+
+			mdi = transforms->get_mdi_call_parameters(transform_index, phase, pipe, skinned);
+		}
+		else if (params)
+			mdi = params->mdi;
+		else
+			mdi = {};
+
+		if (mdi.indirect_buffer && mdi.indirect_count_max)
 		{
 			cmd.draw_indexed_multi_indirect(*mdi.indirect_buffer, mdi.indirect_offset,
 											mdi.indirect_count_max,
@@ -847,14 +860,14 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 
 	if ((options & (MESH_ASSET_OPAQUE_BIT | MESH_ASSET_MOTION_VECTOR_BIT)) != 0)
 	{
-		render_mesh_assets(cmd, context, DrawPipeline::Opaque, options, false);
-		render_mesh_assets(cmd, context, DrawPipeline::Opaque, options, true);
+		render_mesh_assets(cmd, context, DrawPipeline::Opaque, parameters, options, false);
+		render_mesh_assets(cmd, context, DrawPipeline::Opaque, parameters, options, true);
 	}
 
 	if ((options & MESH_ASSET_OPAQUE_BIT) != 0 && (options & MESH_ASSET_MOTION_VECTOR_BIT) == 0)
 	{
-		render_mesh_assets(cmd, context, DrawPipeline::AlphaTest, options, false);
-		render_mesh_assets(cmd, context, DrawPipeline::AlphaTest, options, true);
+		render_mesh_assets(cmd, context, DrawPipeline::AlphaTest, parameters, options, false);
+		render_mesh_assets(cmd, context, DrawPipeline::AlphaTest, parameters, options, true);
 	}
 
 	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);
@@ -871,8 +884,8 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 
 		if ((options & MESH_ASSET_TRANSPARENT_BIT) != 0)
 		{
-			render_mesh_assets(cmd, context, DrawPipeline::AlphaBlend, options, false);
-			render_mesh_assets(cmd, context, DrawPipeline::AlphaBlend, options, true);
+			render_mesh_assets(cmd, context, DrawPipeline::AlphaBlend, parameters, options, false);
+			render_mesh_assets(cmd, context, DrawPipeline::AlphaBlend, parameters, options, true);
 		}
 
 		queue.dispatch_subset(Queue::Transparent, cmd, &state, index, num_indices);

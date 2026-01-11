@@ -27,6 +27,7 @@
 #include "render_queue.hpp"
 #include "render_context.hpp"
 #include "render_graph.hpp"
+#include <functional>
 
 namespace Granite
 {
@@ -120,11 +121,6 @@ public:
 	// should allocate once instance.
 	void register_persistent_render_context(RenderContext *context);
 
-	// For RenderContexts that just want to render stuff once and forget about it
-	// e.g. positional lights rendering and other misc stuff which allocates
-	// contexts on the fly.
-	void register_one_shot_render_context(RenderContext *context);
-
 	const Vulkan::Buffer *get_transforms() const { return transforms.get(); }
 	const Vulkan::Buffer *get_prev_transforms() const { return prev_transforms.get(); }
 	const Vulkan::Buffer *get_aabbs() const { return aabbs.get(); }
@@ -139,6 +135,7 @@ public:
 		Second, // Everything visible this frame (minus visible in first in most cases)
 		MotionVector, // Everything visible this frame which needs MV rendering. Used by motion vector rendering, etc.
 		Count,
+		OneShot // For positional lights or other passes which don't retain occlusion state.
 	};
 
 	MDICall get_mdi_call_parameters(uint32_t context_index, CullingPhase phase, DrawPipeline pipe, bool skinned) const;
@@ -225,6 +222,13 @@ public:
 	}
 };
 
+// Standalone helper which builds MDI draw calls.
+void build_mdi_culling_pass(Vulkan::CommandBuffer &cmd,
+							const RenderContext *context, unsigned num_contexts,
+							SceneTransformManager::CullingPhase phase, bool force_visible,
+							uint32_t width, uint32_t height,
+							const std::function<MDICall (const RenderContext &, DrawPipeline, bool skinned)> &cb);
+
 struct CullingPassesInfo
 {
 	std::string tag; // Unique tag.
@@ -239,7 +243,5 @@ struct CullingPassesInfo
 
 // Returns HiZ resource. Application is responsible for forwarding the physical view
 // to render contexts.
-RenderTextureResource &setup_culling_passes(
-	RenderGraph &graph, SceneTransformManager &transforms,
-	const CullingPassesInfo &info);
+RenderTextureResource &setup_culling_passes(RenderGraph &graph, const CullingPassesInfo &info);
 }

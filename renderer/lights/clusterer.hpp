@@ -146,6 +146,7 @@ private:
 	                   unsigned off_x, unsigned off_y,
 	                   unsigned res_x, unsigned res_y,
 	                   const Vulkan::ImageView &rt, unsigned layer,
+	                   const FlushParameters *params,
 	                   Renderer::RendererFlushFlags flags) const;
 
 	void setup_scratch_buffers_vsm(Vulkan::Device &device);
@@ -192,6 +193,26 @@ private:
 		std::vector<ShadowTaskHandle> shadow_task_handles;
 		std::vector<Util::Hash> light_transform_hashes;
 	} bindless;
+
+	void setup_mdi_calls(const RenderContext &context);
+
+	struct MDICallParam : FlushParameters
+	{
+		MDICall get_mdi_call(DrawPipeline pipe, bool skinned) const override
+		{
+			return calls[int(pipe)][skinned];
+		}
+
+		MDICall calls[2][2];
+	};
+
+	struct PerLightMDICalls
+	{
+		enum { NumFaces = 6 };
+		MDICallParam faces[NumFaces];
+	};
+	std::vector<PerLightMDICalls> mdi_calls;
+	Vulkan::BufferHandle mdi_buffer;
 
 	void update_bindless_descriptors(Vulkan::Device &device);
 	void update_bindless_data(Vulkan::CommandBuffer &cmd);

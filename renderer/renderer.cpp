@@ -737,7 +737,7 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 			mdi = transforms->get_mdi_call_parameters(transform_index, phase, pipe, skinned);
 		}
 		else if (params)
-			mdi = params->mdi;
+			mdi = params->get_mdi_call(pipe, skinned);
 		else
 			mdi = {};
 
@@ -1296,4 +1296,18 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 	}
 }
 
+bool FlushParameters::get_is_layered() const
+{
+	return false;
+}
+
+uint32_t FlushParameters::get_layer() const
+{
+	return 0;
+}
+
+MDICall FlushParameters::get_mdi_call(DrawPipeline, bool) const
+{
+	return {};
+}
 }

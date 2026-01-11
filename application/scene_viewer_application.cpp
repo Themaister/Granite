@@ -1087,7 +1087,7 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 	culling.phase2_pass = &shadowpass;
 	culling.contexts = depth_contexts;
 	culling.num_contexts = NumShadowCascades;
-	hiz_depth = &setup_culling_passes(graph, scene_transform_manager, culling);
+	hiz_depth = &setup_culling_passes(graph, culling);
 
 	if (config.directional_light_shadows_vsm)
 	{
@@ -1230,7 +1230,7 @@ void SceneViewerApplication::bake_render_graph(const SwapchainParameterEvent &sw
 	culling_passes_info.num_contexts = 1;
 	culling_passes_info.tag = "main";
 	culling_passes_info.force_visible_phase2 = true;
-	hiz_main = &setup_culling_passes(graph, scene_transform_manager, culling_passes_info);
+	hiz_main = &setup_culling_passes(graph, culling_passes_info);
 
 	if (config.hdr_bloom || hdr10)
 	{

@@ -31,6 +31,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "thread_group.hpp"
 #include "simd.hpp"
+#include "scene_renderer.hpp"
 #include <string.h>
 
 using namespace Vulkan;
@@ -57,6 +58,7 @@ void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	scratch_vsm_rt.reset();
 	scratch_vsm_down.reset();
 	bindless.allocator.reset();
+	mdi_buffer.reset();
 	device_reset();
 }
 
@@ -201,9 +203,11 @@ const Renderer &LightClusterer::get_shadow_renderer() const
 	return depth_renderer;
 }
 
-void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderContext &depth_context, const RenderQueue &queue,
+void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderContext &depth_context,
+                                   const RenderQueue &queue,
                                    unsigned off_x, unsigned off_y, unsigned res_x, unsigned res_y,
-                                   const Vulkan::ImageView &rt, unsigned layer, Renderer::RendererFlushFlags flags) const
+                                   const Vulkan::ImageView &rt, unsigned layer, const FlushParameters *params,
+                                   Renderer::RendererFlushFlags flags) const
 {
 	bool vsm = shadow_type == ShadowType::VSM;
 	auto &depth_renderer = get_shadow_renderer();
@@ -248,7 +252,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 
 		cmd.begin_region("shadow-map-vsm");
 		cmd.begin_render_pass(rp);
-		depth_renderer.flush_subset(cmd, queue, depth_context, flags, nullptr, 0, 1);
+		depth_renderer.flush_subset(cmd, queue, depth_context, flags, params, 0, 1);
 		cmd.end_render_pass();
 
 		cmd.image_barrier(*scratch_vsm_rt, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -319,7 +323,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 		cmd.begin_render_pass(rp);
 		cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
 		cmd.set_scissor({{ int(off_x), int(off_y) }, { res_x, res_y }});
-		depth_renderer.flush_subset(cmd, queue, depth_context, flags, nullptr, 0, 1);
+		depth_renderer.flush_subset(cmd, queue, depth_context, flags, params, 0, 1);
 		cmd.end_render_pass();
 		cmd.end_region();
 	}
@@ -569,10 +573,16 @@ void LightClusterer::render_bindless_spot(Vulkan::Device &device, unsigned index
 			//LOGI("Rendering shadow for spot light %u (%p)\n", index,
 			//     static_cast<const void *>(bindless.handles[index]));
 			auto cmd = device.request_command_buffer();
+
+			const FlushParameters *params = nullptr;
+			if (index < mdi_calls.size())
+				params = &mdi_calls[index].faces[0];
+
 			render_shadow(*cmd, spot.depth_context[0], spot.queues[0][0],
 			              0, 0,
 			              shadow_resolution, shadow_resolution,
 			              bindless.shadow_images[index]->get_view(), 0,
+			              params,
 			              Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT |
 			              Renderer::MESH_ASSET_OPAQUE_BIT);
 			device.submit(cmd);
@@ -603,10 +613,16 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 			point.depth_context[face].set_scene_transform_parameters(context->get_scene_transform_parameters());
 			//LOGI("Rendering shadow for point light %u (%p)\n", index, static_cast<const void *>(bindless.handles[index]));
 			auto cmd = device.request_command_buffer();
+
+			const FlushParameters *params = nullptr;
+			if (index < mdi_calls.size())
+				params = &mdi_calls[index].faces[face];
+
 			render_shadow(*cmd, point.depth_context[face], point.queues[face][0],
 			              0, 0, shadow_resolution, shadow_resolution,
 			              bindless.shadow_images[index]->get_view(),
 			              face,
+			              params,
 			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT |
 			              Renderer::MESH_ASSET_OPAQUE_BIT);
 			device.submit(cmd);
@@ -684,6 +700,79 @@ float LightClusterer::get_z_slice_extent(const RenderContext &ctx) const
 	return muglm::min(0.5f, ctx.get_render_parameters().z_far / float(resolution_z));
 }
 
+void LightClusterer::setup_mdi_calls(const RenderContext &context_)
+{
+	size_t count = light_sort_caches[0].size();
+	mdi_calls.resize(count);
+
+	// TODO: This can get out of hand if we have huge scenes and tons of light.
+	// May need to stall and reclaim memory, but deal with that later.
+
+	if (!count)
+		return;
+
+	// Ignore alpha blended stuff.
+	MDICall mdi_templates[2][2];
+	constexpr int NumDrawsPerLight = 2 * 2;
+
+	for (int pipe = 0; pipe < 2; pipe++)
+	{
+		for (int skinned = 0; skinned < 2; skinned++)
+		{
+			mdi_templates[pipe][skinned] = context_.get_scene_transform_parameters()->get_template_mdi_call_parameters(
+				SceneTransformManager::CullingPhase::OneShot,
+				DrawPipeline(pipe), skinned != 0);
+		}
+	}
+
+	VkDeviceSize indirect_count_offset = 0;
+	VkDeviceSize indirect_offset = 0;
+
+	for (size_t i = 0; i < count; i++)
+	{
+		unsigned num_contexts = light_sort_caches[0][i].light->get_type() == PositionalLight::Type::Point ? 6 : 1;
+		indirect_offset += NumDrawsPerLight * num_contexts * sizeof(uint32_t);
+	}
+
+	for (size_t i = 0; i < count; i++)
+	{
+		unsigned num_contexts = light_sort_caches[0][i].light->get_type() == PositionalLight::Type::Point ? 6 : 1;
+
+		for (unsigned ctx = 0; ctx < num_contexts; ctx++)
+		{
+			for (int pipe = 0; pipe < 2; pipe++)
+			{
+				for (int skinned = 0; skinned < 2; skinned++)
+				{
+					auto &call = mdi_calls[i].faces[ctx].calls[pipe][skinned];
+					call.indirect_count_max = mdi_templates[pipe][skinned].indirect_count_max;
+					call.indirect_count_offset = indirect_count_offset;
+					call.indirect_offset = indirect_offset;
+
+					indirect_offset += call.indirect_count_max * sizeof(VkDrawIndexedIndirectCommand);
+					indirect_count_offset += sizeof(uint32_t);
+				}
+			}
+		}
+	}
+
+	if (!mdi_buffer || indirect_offset > mdi_buffer->get_create_info().size)
+	{
+		BufferCreateInfo bufinfo = {};
+		bufinfo.domain = BufferDomain::Device;
+		bufinfo.size = indirect_offset;
+		bufinfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+		mdi_buffer = context_.get_device().create_buffer(bufinfo);
+		context_.get_device().set_name(*mdi_buffer, "mdi-clusterer");
+	}
+
+	for (auto &call : mdi_calls)
+		for (auto &face : call.faces)
+			for (auto &pipe : face.calls)
+				for (auto &skin : pipe)
+					skin.indirect_buffer = mdi_buffer.get();
+}
+
 void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 {
 	bindless.parameters.num_lights = 0;
@@ -694,6 +783,10 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 
 	bindless.light_transform_hashes.clear();
 	bindless.light_transform_hashes.reserve(light_sort_caches[0].size() + existing_global_lights.size());
+
+	if (enable_shadows &&
+	    context_.get_device().get_resource_manager().get_mesh_encoding() == ResourceManager::MeshEncoding::VBOAndIBOMDI)
+		setup_mdi_calls(context_);
 
 	unsigned local_count = scan_visible_positional_lights(light_sort_caches[0],
 	                                                      bindless.transforms,
@@ -896,6 +989,60 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 				}
 				per_light_composer.add_outgoing_dependency(*gather_indirect_task);
 			}
+		});
+	}
+
+	if (enable_shadows && device.get_resource_manager().get_mesh_encoding() == ResourceManager::MeshEncoding::VBOAndIBOMDI)
+	{
+		// Dispatch culling.
+		auto &group = composer.begin_pipeline_stage();
+
+		group.enqueue_task([this, &device, &context_]() mutable
+		{
+			auto cmd = device.request_command_buffer();
+			cmd->barrier(VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0,
+			             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0);
+
+			cmd->begin_region("shadow-map-mdi-culling");
+			for (size_t i = 0, n = mdi_calls.size(); i < n; i++)
+			{
+				auto &calls = mdi_calls[i];
+
+				auto width = shadow_resolution;
+				auto height = shadow_resolution;
+
+				if (bindless_light_is_point(i))
+				{
+					auto &point_data = static_cast<ShadowTaskContextPoint &>(*bindless.shadow_task_handles[i]);
+					for (auto &ctx : point_data.depth_context)
+						ctx.set_scene_transform_parameters(context_.get_scene_transform_parameters());
+					build_mdi_culling_pass(*cmd,
+					                       point_data.depth_context, 6, SceneTransformManager::CullingPhase::OneShot,
+					                       false, width, height,
+					                       [&](const RenderContext &ctx, DrawPipeline pipe, bool skinned)
+					                       {
+						                       auto ctx_index = &ctx - point_data.depth_context;
+						                       return calls.faces[ctx_index].calls[int(pipe)][skinned];
+					                       });
+				}
+				else
+				{
+					auto &spot_data = static_cast<ShadowTaskContextSpot &>(*bindless.shadow_task_handles[i]);
+					spot_data.depth_context[0].set_scene_transform_parameters(context_.get_scene_transform_parameters());
+					build_mdi_culling_pass(*cmd,
+					                       spot_data.depth_context, 1, SceneTransformManager::CullingPhase::OneShot,
+					                       false, width, height,
+					                       [&](const RenderContext &, DrawPipeline pipe, bool skinned)
+					                       {
+						                       return calls.faces[0].calls[int(pipe)][skinned];
+					                       });
+				}
+			}
+			cmd->end_region();
+
+			cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+						 VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+			device.submit(cmd);
 		});
 	}
 

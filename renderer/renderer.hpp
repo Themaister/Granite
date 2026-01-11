@@ -52,12 +52,10 @@ public:
 
 struct FlushParameters
 {
-	uint32_t layer;
-	bool layered;
-
-	// For immediate rendering style like positional lights where we don't maintain
-	// two-phase culling.
-	MDICall mdi;
+	virtual ~FlushParameters() = default;
+	virtual uint32_t get_layer() const;
+	virtual bool get_is_layered() const;
+	virtual MDICall get_mdi_call(DrawPipeline pipe, bool skinned) const;
 };
 
 class RenderContextParameterBinder

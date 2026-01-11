@@ -213,6 +213,7 @@ private:
 	};
 	std::vector<PerLightMDICalls> mdi_calls;
 	Vulkan::BufferHandle mdi_buffer;
+	VkDeviceSize mdi_buffer_clear_offset = 0;
 
 	void update_bindless_descriptors(Vulkan::Device &device);
 	void update_bindless_data(Vulkan::CommandBuffer &cmd);

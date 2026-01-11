@@ -761,10 +761,13 @@ void LightClusterer::setup_mdi_calls(const RenderContext &context_)
 		BufferCreateInfo bufinfo = {};
 		bufinfo.domain = BufferDomain::Device;
 		bufinfo.size = indirect_offset;
-		bufinfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+		bufinfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+		                VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 		mdi_buffer = context_.get_device().create_buffer(bufinfo);
 		context_.get_device().set_name(*mdi_buffer, "mdi-clusterer");
 	}
+
+	mdi_buffer_clear_offset = indirect_count_offset;
 
 	for (auto &call : mdi_calls)
 		for (auto &face : call.faces)
@@ -1001,9 +1004,18 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 		{
 			auto cmd = device.request_command_buffer();
 			cmd->barrier(VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0,
-			             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0);
+			             VK_PIPELINE_STAGE_2_CLEAR_BIT, 0);
 
 			cmd->begin_region("shadow-map-mdi-culling");
+
+			// Clear MDI counts to 0.
+			if (mdi_buffer)
+				cmd->fill_buffer(*mdi_buffer, 0, 0, mdi_buffer_clear_offset);
+
+			cmd->barrier(VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT |
+			                                                     VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
 			for (size_t i = 0, n = mdi_calls.size(); i < n; i++)
 			{
 				auto &calls = mdi_calls[i];
@@ -1021,6 +1033,8 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 					                       false, width, height,
 					                       [&](const RenderContext &ctx, DrawPipeline pipe, bool skinned)
 					                       {
+						                       if (pipe == DrawPipeline::AlphaBlend)
+							                       return MDICall{};
 						                       auto ctx_index = &ctx - point_data.depth_context;
 						                       return calls.faces[ctx_index].calls[int(pipe)][skinned];
 					                       });
@@ -1034,6 +1048,8 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 					                       false, width, height,
 					                       [&](const RenderContext &, DrawPipeline pipe, bool skinned)
 					                       {
+						                       if (pipe == DrawPipeline::AlphaBlend)
+							                       return MDICall{};
 						                       return calls.faces[0].calls[int(pipe)][skinned];
 					                       });
 				}

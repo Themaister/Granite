@@ -105,6 +105,7 @@ public:
 		MESH_ASSET_FORCE_ALL_VISIBLE_BIT = 1 << 10,
 		MESH_ASSET_IGNORE_ALPHA_TEST_BIT = 1 << 11,
 		MESH_ASSET_MOTION_VECTOR_BIT = 1 << 12,
+		DEPTH_BIAS_MINIMAL_BIT = 1 << 13,
 	};
 	using RendererFlushFlags = uint32_t;
 

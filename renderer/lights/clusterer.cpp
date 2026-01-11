@@ -618,12 +618,14 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 			if (index < mdi_calls.size())
 				params = &mdi_calls[index].faces[face];
 
+			// Minimal depth bias since we cannot PCF filter point lights properly.
 			render_shadow(*cmd, point.depth_context[face], point.queues[face][0],
 			              0, 0, shadow_resolution, shadow_resolution,
 			              bindless.shadow_images[index]->get_view(),
 			              face,
 			              params,
 			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT |
+			              Renderer::DEPTH_BIAS_MINIMAL_BIT |
 			              Renderer::MESH_ASSET_OPAQUE_BIT);
 			device.submit(cmd);
 		});

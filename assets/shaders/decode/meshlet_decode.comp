@@ -148,5 +148,15 @@ void main()
             output_stream_textured_attr.data[offsets.vertex_output_offset + lane_index] =
                 TexturedAttr(pack_a2bgr10(NT[0]), pack_a2bgr10(NT[1]), fp_uv);
         }
+
+        if (TARGET_MESH_STYLE >= MESH_STYLE_SKINNED)
+        {
+            uvec4 indices = meshlet_decode_bone_indices(
+                    meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_BONE_INDICES, lane_index);
+            uint packed_indices = pack32(u8vec4(indices));
+            uint packed_weights = packUnorm4x8(meshlet_decode_bone_weights(
+                    meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_BONE_WEIGHTS, lane_index));
+            output_stream_skin.data[offsets.vertex_output_offset + lane_index] = uvec2(packed_indices, packed_weights);
+        }
     }
 }

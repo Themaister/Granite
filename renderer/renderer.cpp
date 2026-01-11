@@ -1185,8 +1185,16 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 			                    "builtin://shaders/meshlet.frag");
 			break;
 		case ResourceManager::MeshEncoding::VBOAndIBOMDI:
-			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet_mdi.vert",
-			                    "builtin://shaders/meshlet.frag");
+			if (renderer == RendererType::MotionVector)
+			{
+				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet_mdi_mv.vert",
+				                    "builtin://shaders/static_mesh_mv.frag");
+			}
+			else
+			{
+				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet_mdi.vert",
+				                    "builtin://shaders/meshlet.frag");
+			}
 			break;
 		case ResourceManager::MeshEncoding::MeshletDecoded:
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",

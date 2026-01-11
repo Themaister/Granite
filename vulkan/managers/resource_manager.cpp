@@ -544,7 +544,7 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			auto payload = device->create_buffer(buf, view.payload);
 
 			Meshlet::DecodeInfo info = {};
-			info.target_style = Meshlet::MeshStyle::Textured;
+			info.target_style = view.format_header->style;
 			if (mesh_encoding == MeshEncoding::Classic)
 				info.flags |= Meshlet::DECODE_MODE_UNROLLED_MESH;
 			info.ibo = index_buffer_allocator.get_buffer(0, 0);

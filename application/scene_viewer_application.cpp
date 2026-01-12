@@ -828,10 +828,6 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	culling_passes_info.phase2_pass = &lighting_pass;
 	culling_passes_info.force_visible_phase2 = true;
 
-	lighting_pass.add_proxy_output(tagcat("occlusion-state-phase2", tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
-	                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-	                               tagcat("occlusion-state-phase1", tag));
-
 	if (color.samples > 1)
 	{
 		lighting_pass.add_color_output(tagcat("HDR-MS", tag), color);

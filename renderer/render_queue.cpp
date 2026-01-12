@@ -65,7 +65,6 @@ void RenderQueue::combine_render_info(const RenderQueue &queue)
 		auto &other = queue.get_queue_data(Queue(i));
 
 		q.raw_input.insert(q.raw_input.end(), other.raw_input.begin(), other.raw_input.end());
-
 	}
 }
 

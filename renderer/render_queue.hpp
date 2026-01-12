@@ -266,7 +266,6 @@ public:
 		{
 			raw_input.clear();
 			sorter.resize(0);
-
 		}
 		const RenderQueueData *sorted_data() const { return sorted_output.data(); }
 	};

@@ -63,7 +63,6 @@ mediump float compute_fog_density(vec3 world_pos)
 {
     mediump float density = 0.0;
 
-#if defined(SUBGROUP_OPS) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
     vec3 aabb_lo = subgroupMin(world_pos);
     vec3 aabb_hi = subgroupMax(world_pos);
 
@@ -103,24 +102,15 @@ mediump float compute_fog_density(vec3 world_pos)
             int index = subgroupShuffle(current_index, bit_index);
 #endif
 
-#if defined(SUBGROUP_SHUFFLE)
             // Wave uniform lane index.
             FogRegionParameters scalar_region;
             scalar_region.world_to_texture[0] = subgroupShuffle(region.world_to_texture[0], bit_index);
             scalar_region.world_to_texture[1] = subgroupShuffle(region.world_to_texture[1], bit_index);
             scalar_region.world_to_texture[2] = subgroupShuffle(region.world_to_texture[2], bit_index);
-#elif defined(SUBGROUP_COMPUTE_FULL)
-            FogRegionParameters scalar_region = fog_regions.regions[index];
-#endif
 
             density += compute_fog_density(index, scalar_region, world_pos);
         }
     }
-#else
-    // Naive path.
-    for (int i = 0; i < fog_regions.num_regions; i++)
-        density += compute_fog_density(i, fog_regions.regions[i], world_pos);
-#endif
     return density;
 }
 #else
@@ -276,7 +266,7 @@ void main()
     // Extract a value range.
 
 #if TEMPORAL_REPROJECTION
-#if defined(SUBGROUP_COMPUTE_FULL) && defined(SUBGROUP_OPS)
+#ifdef SUBGROUP_COMPUTE_FULL
     float l = dot(in_scatter_light, vec3(0.3, 0.6, 0.1));
     float m2 = subgroupClusteredAdd(l * l, 8) / 8.0;
     float m1 = subgroupClusteredAdd(l, 8) / 8.0;

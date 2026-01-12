@@ -120,6 +120,11 @@ void ResourceManager::init_mesh_assets()
 		mesh_encoding = MeshEncoding::MeshletEncoded;
 		LOGI("Opting in to meshlet path.\n");
 	}
+	else
+	{
+		mesh_encoding = MeshEncoding::VBOAndIBOMDI;
+		LOGI("Falling back to multi-draw-indirect path.\n");
+	}
 
 	std::string encoding;
 	if (Util::get_environment("GRANITE_MESH_ENCODING", encoding))
@@ -153,7 +158,7 @@ void ResourceManager::init_mesh_assets()
 		if (mesh_encoding != MeshEncoding::Classic)
 		{
 			auto element_size = mesh_encoding == MeshEncoding::MeshletDecoded ?
-			                    sizeof(Meshlet::RuntimeHeaderDecoded) : sizeof(VkDrawIndexedIndirectCommand);
+			                    sizeof(Meshlet::RuntimeHeaderDecoded) : sizeof(Meshlet::RuntimeHeaderDecodedMDI);
 
 			indirect_buffer_allocator.set_soa_count(2);
 			indirect_buffer_allocator.set_element_size(0, Meshlet::ChunkFactor * element_size);
@@ -539,7 +544,7 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			auto payload = device->create_buffer(buf, view.payload);
 
 			Meshlet::DecodeInfo info = {};
-			info.target_style = Meshlet::MeshStyle::Textured;
+			info.target_style = view.format_header->style;
 			if (mesh_encoding == MeshEncoding::Classic)
 				info.flags |= Meshlet::DECODE_MODE_UNROLLED_MESH;
 			info.ibo = index_buffer_allocator.get_buffer(0, 0);
@@ -764,6 +769,36 @@ const Buffer *ResourceManager::get_cluster_bounds_buffer() const
 		return indirect_buffer_allocator.get_buffer(0, 1);
 }
 
+bool ResourceManager::mesh_rendering_is_hierarchical_task() const
+{
+	return device->get_gpu_properties().vendorID == VENDOR_ID_AMD;
+}
+
+bool ResourceManager::mesh_rendering_is_local_invocation_indexed() const
+{
+	bool local_invocation_indexed =
+		device->get_device_features().mesh_shader_properties.prefersLocalInvocationPrimitiveOutput ||
+		device->get_device_features().mesh_shader_properties.prefersLocalInvocationVertexOutput;
+
+#if 0
+	// RADV doesn't seem to like roundtripping through LDS to satisfy local invocation indexed.
+	// amdgpu-pro is bugged without it >_<
+	if (device->get_device_features().driver_id == VK_DRIVER_ID_MESA_RADV &&
+		get_mesh_encoding() == MeshEncoding::MeshletEncoded)
+	{
+		local_invocation_indexed = false;
+	}
+#endif
+
+	return local_invocation_indexed;
+}
+
+bool ResourceManager::mesh_rendering_is_wave_culled() const
+{
+	return device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT) &&
+	       device->get_device_features().vk13_props.minSubgroupSize == 32;
+}
+
 MeshBufferAllocator::MeshBufferAllocator(Device &device, uint32_t sub_block_size, uint32_t num_sub_blocks_in_arena_log2)
 	: global_allocator(device)
 {
@@ -794,7 +829,7 @@ const Buffer *MeshBufferAllocator::get_buffer(unsigned index, unsigned soa_index
 	index = index * global_allocator.soa_count + soa_index;
 
 	// Avoid any race condition.
-	if (index == 0 && global_allocator.preallocated_handles[soa_index])
+	if (index < soa_index && global_allocator.preallocated_handles[soa_index])
 		return global_allocator.preallocated_handles[soa_index];
 	else if (index < global_allocator.global_buffers.size())
 		return global_allocator.global_buffers[index].get();

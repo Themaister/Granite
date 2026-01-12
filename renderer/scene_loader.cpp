@@ -28,6 +28,8 @@
 #include "enum_cast.hpp"
 #include "ground.hpp"
 #include "path_utils.hpp"
+#include "meshlet_export.hpp"
+#include "meshlet.hpp"
 
 using namespace rapidjson;
 using namespace Util;
@@ -268,8 +270,103 @@ NodeHandle SceneLoader::parse_gltf(const std::string &path)
 	SubsceneData subscene;
 	subscene.parser = std::make_unique<GLTF::Parser>(path);
 
+#if 1
+	// TODO: Should be done offline.
+	std::vector<MaterialOffsets> material_offsets;
+	material_offsets.reserve(subscene.parser->get_materials().size());
+
+	static const AssetClass image_classes[] = {
+		AssetClass::ImageColor,
+		AssetClass::ImageNormal,
+		AssetClass::ImageMetallicRoughness,
+		AssetClass::ImageColor,
+		AssetClass::ImageColor,
+	};
+
+	for (auto &material : subscene.parser->get_materials())
+	{
+		AssetID asset_ids[int(TextureKind::Count)];
+		int count = 0;
+
+		for (int i = 0; i < int(TextureKind::Count); i++)
+		{
+			if (!material.paths[i].empty())
+			{
+				asset_ids[count++] = GRANITE_ASSET_MANAGER()->register_asset(
+					*GRANITE_FILESYSTEM(), material.paths[i],
+					image_classes[i]);
+			}
+		}
+
+		material_offsets.push_back(
+		    GRANITE_MATERIAL_MANAGER()->register_material(asset_ids, count, nullptr, 0));
+	}
+
+	unsigned count = 0;
+	for (auto &mesh : subscene.parser->get_meshes())
+	{
+		auto internal_path = std::string("memory://mesh") + std::to_string(count++);
+
+		bool skinned = mesh.attribute_layout[int(MeshAttribute::BoneIndex)].format != VK_FORMAT_UNDEFINED &&
+		               mesh.attribute_layout[int(MeshAttribute::BoneWeights)].format != VK_FORMAT_UNDEFINED;
+		auto mesh_style = skinned ? Vulkan::Meshlet::MeshStyle::Skinned : Vulkan::Meshlet::MeshStyle::Textured;
+		if (!::Granite::Meshlet::export_mesh_to_meshlet(internal_path, mesh, mesh_style))
+			throw std::runtime_error("Failed to export meshlet.");
+
+		auto asset_id =
+		    GRANITE_ASSET_MANAGER()->register_asset(*GRANITE_FILESYSTEM(), internal_path, Granite::AssetClass::Mesh);
+
+		auto mapping = GRANITE_FILESYSTEM()->open_readonly_mapping(internal_path);
+		if (!mapping)
+			throw std::runtime_error("Failed to read meshlet.");
+
+		auto view = Vulkan::Meshlet::create_mesh_view(*mapping);
+		if (!view.format_header)
+			throw std::runtime_error("Failed to parse meshlet.");
+		uint32_t num_occlusion_states = view.format_header->meshlet_count;
+
+		auto pipe = DrawPipeline::Opaque;
+		MeshAssetMaterialFlags flags = 0;
+
+		if (mesh.has_material)
+		{
+			auto &mat = subscene.parser->get_materials()[mesh.material_index];
+
+			// Vague approximation. We ignore the actual sampler.
+			if (mat.sampler == Vulkan::StockSampler::DefaultGeometryFilterClamp ||
+				mat.sampler == Vulkan::StockSampler::LinearClamp ||
+				mat.sampler == Vulkan::StockSampler::TrilinearClamp)
+			{
+				flags |= 1 << MESH_ASSET_MATERIAL_UV_CLAMP_OFFSET;
+			}
+
+			pipe = mat.pipeline;
+			for (int i = 0; i < int(TextureKind::Count); i++)
+				if (!mat.paths[i].empty())
+					flags |= 1 << (i + MESH_ASSET_MATERIAL_TEXTURE_MASK_OFFSET);
+		}
+
+		if (mesh.has_material)
+		{
+			auto &off = material_offsets[mesh.material_index];
+			flags |= (off.texture_offset << MESH_ASSET_MATERIAL_TEXTURE_INDEX_OFFSET) & (
+				(1u << MESH_ASSET_MATERIAL_TEXTURE_INDEX_BITS) - 1u);
+			flags |= (off.uniform_offset << MESH_ASSET_MATERIAL_PAYLOAD_OFFSET) & (
+				(1u << MESH_ASSET_MATERIAL_PAYLOAD_BITS) - 1u);
+		}
+
+		auto renderable = Util::make_handle<MeshAssetRenderable>(
+			pipe, asset_id, mesh.static_aabb, num_occlusion_states, flags);
+
+		renderable->flags |= RENDERABLE_FORCE_VISIBLE_BIT | RENDERABLE_MESH_ASSET_BIT;
+		if (skinned)
+			renderable->flags |= RENDERABLE_MESH_ASSET_SKINNED_BIT;
+		subscene.meshes.push_back(std::move(renderable));
+	}
+#else
 	for (auto &mesh : subscene.parser->get_meshes())
 		subscene.meshes.push_back(create_imported_mesh(mesh, subscene.parser->get_materials().data()));
+#endif
 
 	if (!subscene.parser->get_environments().empty())
 	{

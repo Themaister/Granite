@@ -46,12 +46,12 @@ public:
 	~BufferBlock();
 
 	BufferBlockAllocation allocate(VkDeviceSize allocate_size);
-	inline bool is_mapped() const { return mapped != nullptr; }
+	bool is_mapped() const { return mapped != nullptr; }
 	const Buffer &get_buffer() const { return *buffer; }
 	void unmap(Device &device);
 
-	inline VkDeviceSize get_offset() const { return offset; }
-	inline VkDeviceSize get_size() const { return size; }
+	VkDeviceSize get_offset() const { return offset; }
+	VkDeviceSize get_size() const { return size; }
 
 private:
 	friend class BufferPool;
@@ -59,7 +59,6 @@ private:
 	VkDeviceSize offset = 0;
 	VkDeviceSize alignment = 0;
 	VkDeviceSize size = 0;
-	VkDeviceSize spill_size = 0;
 	uint8_t *mapped = nullptr;
 };
 
@@ -70,9 +69,6 @@ public:
 	void init(Device *device, VkDeviceSize block_size, VkDeviceSize alignment, VkBufferUsageFlags usage);
 	void reset();
 
-	// Used for allocating UBOs, where we want to specify a fixed size for range,
-	// and we need to make sure we don't allocate beyond the block.
-	void set_spill_region_size(VkDeviceSize spill_size);
 	void set_max_retained_blocks(size_t max_blocks);
 
 	VkDeviceSize get_block_size() const
@@ -87,7 +83,6 @@ private:
 	Device *device = nullptr;
 	VkDeviceSize block_size = 0;
 	VkDeviceSize alignment = 0;
-	VkDeviceSize spill_size = 0;
 	VkBufferUsageFlags usage = 0;
 	size_t max_retained_blocks = 0;
 	std::vector<BufferBlock> blocks;

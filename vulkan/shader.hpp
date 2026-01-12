@@ -42,13 +42,10 @@ class Device;
 enum class ShaderStage
 {
 	Vertex = 0,
-	TessControl = 1,
-	TessEvaluation = 2,
-	Geometry = 3,
-	Fragment = 4,
-	Compute = 5,
-	Task = 6,
-	Mesh = 7,
+	Fragment = 4, // Skip over tess/geom to match Vulkan ordering.
+	Compute,
+	Task,
+	Mesh,
 	Count
 };
 
@@ -85,11 +82,7 @@ struct CombinedResourceLayout
 
 union ResourceBinding
 {
-	struct
-	{
-		VkDescriptorBufferInfo dynamic;
-		VkDescriptorBufferInfo push;
-	} buffer;
+	VkDescriptorBufferInfo buffer;
 
 	struct
 	{

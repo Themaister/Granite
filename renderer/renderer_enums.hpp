@@ -26,7 +26,8 @@ namespace Granite
 {
 enum class RenderableType
 {
-	Mesh,
+	Meshlet,
+	LegacyMesh,
 	DebugMesh,
 	DebugProbe,
 	Skybox,

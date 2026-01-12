@@ -25,6 +25,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "post/hdr.hpp"
 #include "post/ssao.hpp"
+#include "post/spd.hpp"
 #include "rapidjson_wrapper.hpp"
 #include "task_composer.hpp"
 #include "thread_group.hpp"
@@ -261,6 +262,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
                                                const std::string &quirks_path, const CLIConfig &cli_config_)
 	: cli_config(cli_config_)
 {
+	GRANITE_ASSET_MANAGER()->enable_mesh_assets();
+
 	renderer_suite.set_default_renderers();
 	if (!renderer_suite.load_variant_cache("assets://renderer_suite_variants.json"))
 		renderer_suite.load_variant_cache("cache://renderer_suite_variants.json");
@@ -274,6 +277,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	scene_loader.load_scene(path);
 	read_lights();
+
+	scene_transform_manager.init(scene_loader.get_scene());
 
 	if (cli_config.ocean)
 	{
@@ -333,8 +338,13 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);
+	scene_transform_manager.register_persistent_render_context(&context);
 	fallback_depth_context.set_lighting_parameters(&fallback_lighting);
-	cam.set_depth_range_infinite(0.1f);
+
+	scene_transform_manager.register_persistent_render_context(&fallback_depth_context);
+	for (auto &d : depth_contexts)
+		scene_transform_manager.register_persistent_render_context(&d);
+	cam.set_depth_range_infinite(1.0f / 16.0f);
 
 	// Create a dummy background if there isn't any background.
 	if (scene_loader.get_scene().get_entity_pool().get_component_group<BackgroundComponent>().empty())
@@ -716,6 +726,7 @@ void SceneViewerApplication::add_mv_pass(const std::string &tag, const std::stri
 	auto &mv_pass = graph.add_pass(tagcat("mv", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	mv_pass.set_depth_stencil_input(depth);
 	mv_pass.add_color_output(tagcat("mv", tag), mv);
+	culling_passes_info.motion_vector_pass = &mv_pass;
 
 	if (full_mv)
 		mv_pass.add_attachment_input(depth);
@@ -728,6 +739,12 @@ void SceneViewerApplication::add_mv_pass(const std::string &tag, const std::stri
 	setup.flags = SCENE_RENDERER_MOTION_VECTOR_BIT;
 	if (full_mv)
 		setup.flags |= SCENE_RENDERER_MOTION_VECTOR_FULL_BIT;
+
+	// After normal rendering, the occlusion state buffer is exactly what we want.
+	// Main downside is that we have to split render pass if we're doing forward rendering with task,
+	// but that's fairly minor.
+	renderer->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_1_BIT);
+
 	renderer->init(setup);
 
 	mv_pass.set_render_pass_interface(std::move(renderer));
@@ -743,7 +760,33 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	depth.size_x = config.resolution_scale;
 	depth.size_y = config.resolution_scale;
 
-	bool use_ssao = config.forward_depth_prepass && config.ssao && config.msaa == 1;
+	//bool use_ssao = config.forward_depth_prepass && config.ssao && config.msaa == 1;
+	const bool use_ssao = false;
+
+	auto &phase1 = graph.add_pass(tagcat("depth-phase1", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	phase1.set_depth_stencil_output(tagcat("depth-prepass", tag), depth);
+	culling_passes_info.phase1_depth_output = tagcat("depth-prepass", tag);
+
+	scene_loader.get_scene().add_render_pass_dependencies(graph, phase1,
+														  RenderPassCreator::GEOMETRY_BIT |
+														  RenderPassCreator::MATERIAL_BIT);
+
+	{
+		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
+		RenderPassSceneRenderer::Setup setup = {};
+		setup.scene = &scene_loader.get_scene();
+		setup.context = &context;
+		setup.suite = &renderer_suite;
+		setup.flags = SCENE_RENDERER_Z_PREPASS_BIT;
+		if (config.debug_probes)
+			setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
+		renderer->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_1_BIT);
+		renderer->init(setup);
+		phase1.set_render_pass_interface(std::move(renderer));
+	}
+
+	setup_depth_hierarchy_pass(graph, tagcat("depth-prepass", tag), tagcat("hiz", tag),
+							   &context, true);
 
 	if (use_ssao)
 	{
@@ -754,7 +797,7 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 		setup.scene = &scene_loader.get_scene();
 		setup.context = &context;
 		setup.suite = &renderer_suite;
-		setup.flags = SCENE_RENDERER_FORWARD_Z_PREPASS_BIT;
+		setup.flags = SCENE_RENDERER_Z_PREPASS_BIT;
 		renderer->init(setup);
 
 		// TODO: Find a good way to let the prepass renderer share renderer with opaque / transparent passes.
@@ -780,6 +823,10 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	resolved.samples = 1;
 
 	auto &lighting_pass = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+
+	culling_passes_info.phase1_pass = &phase1;
+	culling_passes_info.phase2_pass = &lighting_pass;
+	culling_passes_info.force_visible_phase2 = true;
 
 	if (color.samples > 1)
 	{
@@ -808,13 +855,14 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	setup.suite = &renderer_suite;
 	setup.flags = SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
 	if (config.forward_depth_prepass && !use_ssao)
-		setup.flags |= SCENE_RENDERER_FORWARD_Z_PREPASS_BIT;
+		setup.flags |= SCENE_RENDERER_Z_PREPASS_BIT;
 	else if (config.forward_depth_prepass)
-		setup.flags |= SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT;
+		setup.flags |= SCENE_RENDERER_Z_EXISTING_PREPASS_BIT;
 
 	if (config.debug_probes)
 		setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
 
+	renderer->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_2_BIT | Renderer::MESH_ASSET_FORCE_ALL_VISIBLE_BIT);
 	renderer->init(setup);
 
 	lighting_pass.set_render_pass_interface(std::move(renderer));
@@ -854,12 +902,39 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	pbr.format = VK_FORMAT_R8G8_UNORM;
 	depth.format = device.get_default_depth_format();
 
+	culling_passes_info.phase1_depth_output = tagcat("depth-prepass", tag);
+
+	auto &phase1 = graph.add_pass(tagcat("gbuffer-phase1", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	phase1.set_depth_stencil_output(culling_passes_info.phase1_depth_output, depth);
+
+	scene_loader.get_scene().add_render_pass_dependencies(graph, phase1,
+	                                                      RenderPassCreator::GEOMETRY_BIT |
+	                                                      RenderPassCreator::MATERIAL_BIT);
+
+	{
+		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
+		RenderPassSceneRenderer::Setup setup = {};
+		setup.scene = &scene_loader.get_scene();
+		setup.context = &context;
+		setup.suite = &renderer_suite;
+		setup.flags = SCENE_RENDERER_Z_PREPASS_BIT;
+		if (config.debug_probes)
+			setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
+		renderer->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_1_BIT);
+		renderer->init(setup);
+		phase1.set_render_pass_interface(std::move(renderer));
+	}
+
 	auto &gbuffer = graph.add_pass(tagcat("gbuffer", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	gbuffer.add_color_output(tagcat("emissive", tag), emissive);
 	gbuffer.add_color_output(tagcat("albedo", tag), albedo);
 	gbuffer.add_color_output(tagcat("normal", tag), normal);
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
+	gbuffer.set_depth_stencil_input(tagcat("depth-prepass", tag));
+
+	culling_passes_info.phase1_pass = &phase1;
+	culling_passes_info.phase2_pass = &gbuffer;
 
 	{
 		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
@@ -870,9 +945,8 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT;
 		if (config.debug_probes)
 			setup.flags |= SCENE_RENDERER_DEBUG_PROBES_BIT;
-
+		renderer->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_2_BIT | Renderer::MESH_ASSET_FORCE_ALL_VISIBLE_BIT);
 		renderer->init(setup);
-
 		gbuffer.set_render_pass_interface(std::move(renderer));
 	}
 
@@ -956,6 +1030,10 @@ void SceneViewerApplication::add_shadow_pass_fallback(Vulkan::Device &, const st
 	auto handle = Util::make_handle<RenderPassSceneRenderer>();
 	handle->init(setup);
 	shadowpass.set_render_pass_interface(std::move(handle));
+
+	scene_loader.get_scene().add_render_pass_dependencies(graph, shadowpass,
+	                                                      RenderPassCreator::GEOMETRY_BIT |
+	                                                      RenderPassCreator::MATERIAL_BIT);
 }
 
 void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
@@ -970,7 +1048,42 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 	if (config.directional_light_cascaded_shadows)
 		shadowmap.layers = NumShadowCascades;
 
+	CullingPassesInfo culling = {};
+	culling.phase1_depth_output = tagcat("shadow-prepass", tag);
+	culling.tag = "depth";
+
+	auto &phase1 = graph.add_pass(tagcat("shadow-phase1", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	phase1.set_depth_stencil_output(culling.phase1_depth_output, shadowmap);
+
+	{
+		Util::IntrusivePtr<RenderPassSceneRenderer> handle;
+		RenderPassSceneRenderer::Setup setup = {};
+		setup.scene = &scene_loader.get_scene();
+		setup.suite = &renderer_suite;
+		setup.flags = SCENE_RENDERER_DEPTH_BIT;
+
+		setup.context = depth_contexts;
+		setup.flags |= SCENE_RENDERER_DEPTH_DYNAMIC_BIT;
+		setup.flags |= SCENE_RENDERER_SEPARATE_PER_LAYER_BIT;
+		setup.layers = NumShadowCascades;
+
+		handle = Util::make_handle<RenderPassSceneRenderer>();
+		handle->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_1_BIT);
+		handle->init(setup);
+		phase1.set_render_pass_interface(std::move(handle));
+	}
+
+	scene_loader.get_scene().add_render_pass_dependencies(graph, phase1,
+	                                                      RenderPassCreator::GEOMETRY_BIT |
+	                                                      RenderPassCreator::MATERIAL_BIT);
+
 	auto &shadowpass = graph.add_pass(tagcat("shadow", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+
+	culling.phase1_pass = &phase1;
+	culling.phase2_pass = &shadowpass;
+	culling.contexts = depth_contexts;
+	culling.num_contexts = NumShadowCascades;
+	hiz_depth = &setup_culling_passes(graph, culling);
 
 	if (config.directional_light_shadows_vsm)
 	{
@@ -986,6 +1099,7 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 		shadowmap_vsm_half.size_y *= 0.5f;
 
 		shadowpass.set_depth_stencil_output(tagcat("shadow-depth", tag), shadowmap);
+		shadowpass.set_depth_stencil_input(tagcat("shadow-prepass", tag));
 		shadowpass.add_color_output(tagcat("shadow-msaa", tag), shadowmap_vsm_color);
 		shadowpass.add_resolve_output(tagcat("shadow-raw", tag), shadowmap_vsm_resolved_color);
 
@@ -1022,6 +1136,7 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 	else
 	{
 		shadowpass.set_depth_stencil_output(tagcat("shadow", tag), shadowmap);
+		shadowpass.set_depth_stencil_input(tagcat("shadow-prepass", tag));
 	}
 
 	Util::IntrusivePtr<RenderPassSceneRenderer> handle;
@@ -1038,6 +1153,7 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 	setup.layers = NumShadowCascades;
 
 	handle = Util::make_handle<RenderPassSceneRenderer>();
+	handle->set_extra_flush_flags(Renderer::MESH_ASSET_PHASE_2_BIT);
 	handle->init(setup);
 
 	VkClearColorValue value = {};
@@ -1045,6 +1161,10 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 	value.float32[1] = 1.0f;
 	handle->set_clear_color(value);
 	shadowpass.set_render_pass_interface(std::move(handle));
+
+	scene_loader.get_scene().add_render_pass_dependencies(graph, shadowpass,
+	                                                      RenderPassCreator::GEOMETRY_BIT |
+	                                                      RenderPassCreator::MATERIAL_BIT);
 }
 
 void SceneViewerApplication::bake_render_graph(const SwapchainParameterEvent &swap)
@@ -1101,6 +1221,12 @@ void SceneViewerApplication::bake_render_graph(const SwapchainParameterEvent &sw
 	{
 		add_mv_pass("main", "depth-main", config.postaa_type == PostAAType::TAA_FSR2);
 	}
+
+	culling_passes_info.contexts = &context;
+	culling_passes_info.num_contexts = 1;
+	culling_passes_info.tag = "main";
+	culling_passes_info.force_visible_phase2 = true;
+	hiz_main = &setup_culling_passes(graph, culling_passes_info);
 
 	if (config.hdr_bloom || hdr10)
 	{
@@ -1432,11 +1558,34 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	auto &device = get_wsi().get_device();
 	auto &scene = scene_loader.get_scene();
 
+#if 0
+	// Hack to test per-object motion easily.
+	auto &t = scene.get_root_node()->get_transform();
+	t.translation.x = std::sin(elapsed_time);
+	scene.get_root_node()->invalidate_cached_transform();
+#endif
+
 	last_frame_times[last_frame_index++ & FrameWindowSizeMask] = float(frame_time);
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	lighting.shadows = graph.maybe_get_physical_texture_resource(shadows);
 	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
+	context.set_scene_hiz_view(graph.maybe_get_physical_texture_resource(hiz_main), 1);
+
+	// Somewhat crude.
+	if (auto *hiz = graph.maybe_get_physical_texture_resource(hiz_depth))
+	{
+		hiz_depth_peel.clear();
+		for (unsigned layer = 0; layer < hiz->get_create_info().layers; layer++)
+		{
+			auto info = hiz->get_create_info();
+			info.view_type = VK_IMAGE_VIEW_TYPE_2D;
+			info.layers = 1;
+			info.base_layer = layer;
+			hiz_depth_peel.emplace_back(device.create_image_view(info));
+			depth_contexts[layer].set_scene_hiz_view(hiz_depth_peel.back().get(), 1);
+		}
+	}
 
 	scene_loader.get_scene().set_render_pass_data(&renderer_suite, &context);
 	scene.bind_render_graph_resources(graph);

@@ -426,6 +426,9 @@ VkResult WSI::wait_for_present(uint64_t id, uint64_t timeout)
 	if (!swapchain)
 		return VK_SUCCESS;
 
+	if (id > present_last_id)
+		return VK_NOT_READY;
+
 	if (supports_present_wait2 && device->get_device_features().present_wait2_features.presentWait2)
 	{
 		VkPresentWait2InfoKHR wait_info = { VK_STRUCTURE_TYPE_PRESENT_WAIT_2_INFO_KHR };
@@ -1495,6 +1498,7 @@ bool WSI::begin_frame()
 		// TODO: Improve this with fancier approaches as needed.
 		if (low_latency_mode_enable_present &&
 		    !device->get_device_features().present_wait_features.presentWait &&
+		    !supports_present_wait2 &&
 		    current_present_mode == PresentMode::SyncToVBlank)
 		{
 			fence = device->request_legacy_fence();
@@ -1787,6 +1791,13 @@ bool WSI::end_frame()
 		// The present semaphore is consumed even on OUT_OF_DATE, etc.
 		release->wait_external();
 
+		if (!device->get_workarounds().broken_present_fence &&
+		    device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
+		{
+			deferred_semaphore.push_back({ std::move(release), last_present_fence });
+			release = {};
+		}
+
 		if (overall < 0 || result < 0)
 		{
 			LOGE("vkQueuePresentKHR failed.\n");
@@ -1796,10 +1807,6 @@ bool WSI::end_frame()
 		}
 		else
 		{
-			if (!device->get_workarounds().broken_present_fence)
-				if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
-					deferred_semaphore.push_back({ std::move(release_semaphores[swapchain_index]), last_present_fence });
-
 			// Cannot release the WSI wait semaphore until we observe that the image has been
 			// waited on again.
 			// Could make this a bit tighter with swapchain_maintenance1, but not that important here.
@@ -2378,7 +2385,8 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 			// If image count changes, we should probably recreate the swapchain.
 			// If we have present wait we're at no risk of adding more latency, so just go ahead.
 			if (surface_capabilities2.surfaceCapabilities.minImageCount == info.surface_capabilities.minImageCount ||
-			    device.get_device_features().present_wait_features.presentWait)
+			    device.get_device_features().present_wait_features.presentWait ||
+			    info.present_wait2.presentWait2Supported)
 			{
 				info.present_mode_compat_group.push_back(mode);
 				info.surface_capabilities.minImageCount =
@@ -2634,9 +2642,12 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	uint32_t desired_swapchain_images =
 		low_latency_mode_enable_present && current_present_mode == PresentMode::SyncToVBlank ? 2 : 3;
 
+	supports_present_wait2 =
+	    surface_info.present_id2.presentId2Supported && surface_info.present_wait2.presentWait2Supported;
+
 	// Need a deeper swapchain to avoid potential stalls when duping frames.
 	// We only do this when present wait is supported, so latency should not be compromised.
-	if (current_frame_dupe_aware && device->get_device_features().present_wait_features.presentWait)
+	if (current_frame_dupe_aware && (device->get_device_features().present_wait_features.presentWait || supports_present_wait2))
 		desired_swapchain_images = 5;
 
 	desired_swapchain_images = Util::get_environment_uint("GRANITE_VULKAN_SWAPCHAIN_IMAGES", desired_swapchain_images);
@@ -2688,9 +2699,6 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	}
 
 	platform->event_swapchain_destroyed();
-
-	supports_present_wait2 = surface_info.present_id2.presentId2Supported &&
-	                         surface_info.present_wait2.presentWait2Supported;
 
 	supports_present_timing.feedback = surface_info.present_timing.presentTimingSupported ?
 			surface_info.present_timing.presentStageQueries : 0;

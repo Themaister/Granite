@@ -73,6 +73,7 @@ class ShaderSuite
 {
 public:
 	void init_graphics(Vulkan::ShaderManager *manager, const std::string &vertex, const std::string &fragment);
+	void init_graphics(Vulkan::ShaderManager *manager, const std::string &task, const std::string &mesh, const std::string &fragment);
 	void init_compute(Vulkan::ShaderManager *manager, const std::string &compute);
 
 	Vulkan::Program *get_program(VariantSignatureKey signature);

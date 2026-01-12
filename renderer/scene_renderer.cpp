@@ -24,6 +24,7 @@
 #include "threaded_scene.hpp"
 #include "mesh_util.hpp"
 #include "muglm/matrix_helper.hpp"
+#include "post/spd.hpp"
 
 namespace Granite
 {
@@ -144,6 +145,11 @@ void RenderPassSceneRenderer::prepare_render_pass()
 {
 	prepare_setup_queues();
 
+	// Only fixed function meshlets should be renderered here.
+	if ((flush_flags & Renderer::MESH_ASSET_PHASE_1_BIT) &&
+	    !(setup_data.flags & SCENE_RENDERER_MOTION_VECTOR_BIT))
+		return;
+
 	auto &visible = visible_per_task[0];
 	auto &visible_transparent = visible_per_task_transparent[0];
 	auto *context = setup_data.context;
@@ -154,14 +160,14 @@ void RenderPassSceneRenderer::prepare_render_pass()
 	auto &queue_opaque = queue_per_task_opaque[0];
 	auto &queue_depth = queue_per_task_depth[0];
 
-	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
+	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_Z_PREPASS_BIT))
 	{
 		scene->gather_visible_render_pass_sinks(context->get_render_parameters().camera_position, visible);
 		scene->gather_visible_opaque_renderables(frustum, visible);
 		if ((setup_data.flags & SCENE_RENDERER_SKIP_OPAQUE_FLOATING_BIT) == 0)
 			scene->gather_opaque_floating_renderables(visible);
 
-		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+		if (setup_data.flags & SCENE_RENDERER_Z_PREPASS_BIT)
 			queue_depth.push_depth_renderables(*context, visible.data(), visible.size());
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
@@ -211,7 +217,7 @@ void RenderPassSceneRenderer::prepare_setup_queues()
 		visible.clear();
 
 	// Setup renderer options in main thread.
-	if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+	if (setup_data.flags & SCENE_RENDERER_Z_PREPASS_BIT)
 	{
 		for (auto &queue : queue_per_task_depth)
 			suite->get_renderer(RendererSuite::Type::PrepassDepth).begin(queue);
@@ -253,6 +259,11 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 		prepare_setup_queues();
 	});
 
+	// Only fixed function meshlets should be renderered here.
+	if ((flush_flags & Renderer::MESH_ASSET_PHASE_1_BIT) &&
+	    !(setup_data.flags & SCENE_RENDERER_MOTION_VECTOR_BIT))
+		return;
+
 	bool layered = render_pass_is_separate_layered();
 	auto num_tasks = layered ? setup_data.layers : unsigned(MaxTasks);
 
@@ -260,7 +271,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 	unsigned tasks_per_gather = layered ? 1 : unsigned(MaxTasks);
 
 	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT |
-	                        SCENE_RENDERER_FORWARD_Z_PREPASS_BIT |
+	                        SCENE_RENDERER_Z_PREPASS_BIT |
 	                        SCENE_RENDERER_MOTION_VECTOR_BIT))
 	{
 		if (!layered)
@@ -277,7 +288,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 
 		for (unsigned gather_iter = 0; gather_iter < gather_iterations; gather_iter++)
 		{
-			if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
+			if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_Z_PREPASS_BIT))
 			{
 				Threaded::scene_gather_opaque_renderables(*setup_data.scene, composer,
 				                                          setup_data.context[gather_iter].get_visibility_frustum(),
@@ -291,7 +302,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(RenderGraph &, TaskCom
 			}
 		}
 
-		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+		if (setup_data.flags & SCENE_RENDERER_Z_PREPASS_BIT)
 		{
 			Threaded::compose_parallel_push_renderables(composer, setup_data.context, queue_per_task_depth,
 			                                            visible_per_task, num_tasks,
@@ -388,7 +399,14 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 {
 	auto *suite = setup_data.suite;
 
-	FlushParameters flush_params = {};
+	struct LayerFlushParameters : FlushParameters
+	{
+		uint32_t get_layer() const override { return layer; }
+		bool get_is_layered() const override { return layered; }
+		bool layered = false;
+		uint32_t layer = 0;
+	};
+	LayerFlushParameters flush_params = {};
 	unsigned bucket_index = 0;
 
 	if (render_pass_is_separate_layered())
@@ -398,20 +416,21 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 		bucket_index = layer;
 	}
 
-	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
+	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_Z_PREPASS_BIT))
 	{
-		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+		if (setup_data.flags & SCENE_RENDERER_Z_PREPASS_BIT)
 		{
 			suite->get_renderer(RendererSuite::Type::PrepassDepth).flush(
-					cmd, queue_per_task_depth[bucket_index], setup_data.context[bucket_index],
-					Renderer::NO_COLOR_BIT | Renderer::SKIP_SORTING_BIT |
-					flush_flags, &flush_params);
+				cmd, queue_per_task_depth[bucket_index], setup_data.context[bucket_index],
+				Renderer::NO_COLOR_BIT | Renderer::SKIP_SORTING_BIT |
+				Renderer::MESH_ASSET_OPAQUE_BIT |
+				flush_flags, &flush_params);
 		}
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
 		{
-			Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT | flush_flags;
-			if (setup_data.flags & (SCENE_RENDERER_FORWARD_Z_PREPASS_BIT | SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT))
+			Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT | Renderer::MESH_ASSET_OPAQUE_BIT | flush_flags;
+			if (setup_data.flags & (SCENE_RENDERER_Z_PREPASS_BIT | SCENE_RENDERER_Z_EXISTING_PREPASS_BIT))
 				opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
 			suite->get_renderer(RendererSuite::Type::ForwardOpaque).flush(
 					cmd, queue_per_task_opaque[bucket_index], setup_data.context[bucket_index], opt, &flush_params);
@@ -433,6 +452,8 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 		Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT |
 		                                    Renderer::DEPTH_STENCIL_READ_ONLY_BIT |
 		                                    Renderer::DEPTH_TEST_EQUAL_BIT |
+		                                    Renderer::MESH_ASSET_MOTION_VECTOR_BIT |
+		                                    Renderer::MESH_ASSET_IGNORE_ALPHA_TEST_BIT |
 		                                    flush_flags;
 		suite->get_renderer(RendererSuite::Type::MotionVector).flush(cmd, queue_per_task_opaque[bucket_index],
 		                                                             setup_data.context[bucket_index], opt,
@@ -441,9 +462,14 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
 	{
+		Renderer::RendererOptionFlags opt =
+				Renderer::SKIP_SORTING_BIT | Renderer::MESH_ASSET_OPAQUE_BIT;
+		if (setup_data.flags & SCENE_RENDERER_Z_EXISTING_PREPASS_BIT)
+			opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
+
 		suite->get_renderer(RendererSuite::Type::Deferred).flush(cmd, queue_per_task_opaque[bucket_index],
 		                                                         setup_data.context[bucket_index],
-		                                                         Renderer::SKIP_SORTING_BIT | flush_flags,
+		                                                         opt | flush_flags,
 		                                                         &flush_params);
 
 		if (setup_data.flags & SCENE_RENDERER_DEBUG_PROBES_BIT)
@@ -459,17 +485,20 @@ void RenderPassSceneRenderer::build_render_pass_inner(Vulkan::CommandBuffer &cmd
 
 	if (setup_data.flags & SCENE_RENDERER_FORWARD_TRANSPARENT_BIT)
 	{
-		suite->get_renderer(RendererSuite::Type::ForwardTransparent).flush(cmd, queue_per_task_transparent[bucket_index], setup_data.context[bucket_index],
-		                                                                   Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::SKIP_SORTING_BIT |
-		                                                                   flush_flags, &flush_params);
+		suite->get_renderer(RendererSuite::Type::ForwardTransparent).flush(
+			cmd, queue_per_task_transparent[bucket_index], setup_data.context[bucket_index],
+			Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::SKIP_SORTING_BIT |
+			Renderer::MESH_ASSET_TRANSPARENT_BIT |
+			flush_flags, &flush_params);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
 	{
 		auto type = get_depth_renderer_type(setup_data.flags);
 		suite->get_renderer(type).flush(cmd, queue_per_task_depth[bucket_index], setup_data.context[bucket_index],
-		                                Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT | flush_flags,
-										&flush_params);
+		                                Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT |
+		                                Renderer::MESH_ASSET_OPAQUE_BIT | flush_flags,
+		                                &flush_params);
 	}
 }
 
@@ -503,5 +532,668 @@ bool RenderPassSceneRenderer::get_clear_color(unsigned, VkClearColorValue *value
 bool RenderPassSceneRenderer::render_pass_is_separate_layered() const
 {
 	return (setup_data.flags & SCENE_RENDERER_SEPARATE_PER_LAYER_BIT) != 0;
+}
+
+SceneTransformManager::SceneTransformManager()
+{
+	EVENT_MANAGER_REGISTER_LATCH(SceneTransformManager, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
+}
+
+void SceneTransformManager::on_device_created(const Vulkan::DeviceCreatedEvent &e)
+{
+	device = &e.get_device();
+}
+
+void SceneTransformManager::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
+{
+	device = nullptr;
+	transforms.reset();
+	prev_transforms.reset();
+	aabbs.reset();
+	task_buffer.reset();
+
+	for (auto &ctx : per_context_data)
+		ctx.occlusions.reset();
+}
+
+void SceneTransformManager::init(Scene &scene_)
+{
+	auto *entity = scene_.create_entity();
+	auto *rpass = entity->allocate_component<RenderPassComponent>();
+	rpass->creator = this;
+	auto *refresh = entity->allocate_component<PerFrameUpdateComponent>();
+	refresh->refresh = this;
+	refresh->dependency_order = std::numeric_limits<int>::min() + 1;
+
+	meshlets = &scene_.get_entity_pool().get_component_group<
+		RenderableComponent, MeshletComponent, RenderInfoComponent, CachedSpatialTransformTimestampComponent>();
+}
+
+void SceneTransformManager::register_persistent_render_context(RenderContext *context)
+{
+	context->set_scene_transform_parameters(this, per_context_data.size());
+	per_context_data.emplace_back();
+}
+
+const char *SceneTransformManager::get_ident() const
+{
+	return "scene-transforms";
+}
+
+Vulkan::CommandBuffer::Type SceneTransformManager::owning_queue_type() const
+{
+	// The transfers are very small, and we don't want to incur cross-queue penalties.
+	return Vulkan::CommandBuffer::Type::Generic;
+}
+
+void SceneTransformManager::add_render_passes(RenderGraph &graph)
+{
+	graph.add_external_lock_interface(get_ident(), this);
+}
+
+void SceneTransformManager::refresh(const RenderContext &, TaskComposer &composer)
+{
+	// Do actual work.
+	auto &stage = composer.begin_pipeline_stage();
+	stage.enqueue_task([&]()
+	{
+		update_scene_buffers();
+	});
+}
+
+template <typename T>
+static void flush_update(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &buffer, VkDeviceSize offset, VkDeviceSize count,
+                         const T *data)
+{
+	memcpy(cmd.update_buffer(buffer, offset * sizeof(*data), count * sizeof(*data)), &data[offset],
+	       count * sizeof(*data));
+}
+
+static void flush_update(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &buffer, VkDeviceSize offset, VkDeviceSize count,
+                         const uint32_t *)
+{
+	cmd.fill_buffer(buffer, 0, offset * sizeof(uint32_t), count * sizeof(uint32_t));
+}
+
+template <typename T>
+static void update_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &buffer, const T *data,
+                        const Scene::UpdateSpan &span)
+{
+	uint32_t base_i = 0;
+	uint32_t base = 0;
+	size_t count = 0;
+
+	const auto flush = [&]()
+	{
+		if (count)
+		{
+			flush_update(cmd, buffer, base, count, data);
+			count = 0;
+		}
+	};
+
+	assert(span.count != 0);
+	base = span.offsets[0];
+
+	for (size_t i = 0; i < span.count; i++)
+	{
+		if (base + (i - base_i) != span.offsets[i])
+		{
+			flush();
+			base = span.offsets[i];
+			base_i = i;
+		}
+
+		count++;
+	}
+
+	flush();
+}
+
+static void copy_span(Vulkan::CommandBuffer &cmd, Vulkan::Buffer &dst, Vulkan::Buffer &src,
+                      const Scene::UpdateSpan &span, VkDeviceSize element_size)
+{
+	uint32_t base_i = 0;
+	uint32_t base = 0;
+	size_t count = 0;
+
+	const auto flush = [&]()
+	{
+		if (count)
+		{
+			cmd.copy_buffer(dst, base * element_size, src, base * element_size, count * element_size);
+			count = 0;
+		}
+	};
+
+	assert(span.count != 0);
+	base = span.offsets[0];
+
+	for (size_t i = 0; i < span.count; i++)
+	{
+		if (base + (i - base_i) != span.offsets[i])
+		{
+			flush();
+			base = span.offsets[i];
+			base_i = i;
+		}
+
+		count++;
+	}
+
+	flush();
+}
+
+MDICall SceneTransformManager::get_template_mdi_call_parameters(
+	CullingPhase phase, DrawPipeline pipe, bool skinned) const
+{
+	if (phase == CullingPhase::OneShot)
+		phase = CullingPhase::First;
+	assert(!(phase == CullingPhase::MotionVector && pipe != DrawPipeline::Opaque));
+	auto call = mdi_calls[NumMDIDrawTypesPerPhase * int(phase) + NumDrawTypesPerPipe * int(pipe) + skinned];
+	return call;
+}
+
+MDICall SceneTransformManager::get_mdi_call_parameters(
+	uint32_t context_index, CullingPhase phase, DrawPipeline pipe, bool skinned) const
+{
+	assert(context_index != RenderContext::InvalidSceneTransformIndex);
+	auto call = get_template_mdi_call_parameters(phase, pipe, skinned);
+	call.indirect_buffer = per_context_data[context_index].mdi.get();
+	return call;
+}
+
+void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
+{
+	unsigned num_task_instances_per_kind[NumDrawTypes] = {};
+	unsigned num_task_instances = 0;
+
+	unsigned num_mdi_instances_per_kind[NumMDIDrawTypes] = {};
+	unsigned num_mdi_instances = 0;
+
+	auto &manager = device->get_resource_manager();
+
+	for (auto &elem : *meshlets)
+	{
+		auto &mesh = static_cast<MeshAssetRenderable &>(*get_component<RenderableComponent>(elem)->renderable);
+		auto &transform = *get_component<RenderInfoComponent>(elem);
+		auto range = manager.get_mesh_draw_range(mesh.get_asset_id());
+		if (range.meshlet.count == 0)
+			continue;
+		bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;
+
+		auto draw_index = NumDrawTypesPerPipe * int(mesh.get_mesh_draw_pipeline()) + skinned;
+		num_task_instances_per_kind[draw_index] += (range.meshlet.count + 31) / 32;
+		num_mdi_instances_per_kind[draw_index] += range.meshlet.count;
+		num_mdi_instances_per_kind[draw_index + NumMDIDrawTypesPerPhase] += range.meshlet.count;
+
+		if (transform.requires_motion_vectors && mesh.get_mesh_draw_pipeline() != DrawPipeline::AlphaBlend)
+		{
+			num_task_instances_per_kind[NumDrawTypes - 2 + skinned] += (range.meshlet.count + 31) / 32;
+			num_mdi_instances_per_kind[NumMDIDrawTypes - 2 + skinned] += range.meshlet.count;
+		}
+	}
+
+	for (auto count : num_task_instances_per_kind)
+		num_task_instances += count;
+	for (auto count : num_mdi_instances_per_kind)
+		num_mdi_instances += count;
+
+	bool use_mdi =
+		device->get_resource_manager().get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::Classic ||
+		device->get_resource_manager().get_mesh_encoding() == Vulkan::ResourceManager::MeshEncoding::VBOAndIBOMDI;
+
+	task_offset_counts[0] = {};
+
+	// The first u32s are reserved for the MDI counters.
+	constexpr VkDeviceSize indirect_draw_offset = NumMDIDrawTypes * sizeof(uint32_t);
+
+	VkDeviceSize required_mdi = 0;
+	if (use_mdi)
+	{
+		required_mdi = num_mdi_instances * sizeof(VkDrawIndexedIndirectCommand) + indirect_draw_offset;
+		for (auto &ctx : per_context_data)
+			ensure_buffer(cmd, ctx.mdi, required_mdi, "mdi-buffer", false);
+	}
+
+	for (auto &call : mdi_calls)
+		call = {};
+	mdi_calls[0].indirect_offset = indirect_draw_offset;
+	mdi_calls[0].indirect_count_max = num_mdi_instances_per_kind[0];
+
+	for (int i = 1; i < NumDrawTypes; i++)
+	{
+		task_offset_counts[i] = { num_task_instances_per_kind[i - 1], 0 };
+		num_task_instances_per_kind[i] += num_task_instances_per_kind[i - 1];
+	}
+
+	for (int i = 1; i < NumMDIDrawTypes; i++)
+	{
+		mdi_calls[i].indirect_count_max = num_mdi_instances_per_kind[i];
+		num_mdi_instances_per_kind[i] += num_mdi_instances_per_kind[i - 1];
+		mdi_calls[i].indirect_count_offset = i * sizeof(uint32_t);
+		mdi_calls[i].indirect_offset = num_mdi_instances_per_kind[i - 1] * sizeof(VkDrawIndexedIndirectCommand) +
+									   mdi_calls[0].indirect_offset;
+	}
+
+	auto required = VkDeviceSize(sizeof(MeshAssetDrawTaskInfo)) * num_task_instances;
+
+	if (!required)
+	{
+		task_buffer.reset();
+		return;
+	}
+
+	Vulkan::BufferCreateInfo bufinfo = {};
+	bufinfo.size = required;
+	bufinfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	bufinfo.domain = Vulkan::BufferDomain::UMACachedCoherentPreferDevice;
+	task_buffer = device->create_buffer(bufinfo);
+	device->set_name(*task_buffer, "task-buffer");
+
+	// Ideally just derp the data into a mapped buffer on iGPU, but fallback to copy on dGPU.
+	// Keep it on DIRECT queue since the copy is expected to be tiny anyway.
+	auto *task_infos = static_cast<MeshAssetDrawTaskInfo *>(device->map_host_buffer(*task_buffer, Vulkan::MEMORY_ACCESS_WRITE_BIT));
+	if (!task_infos)
+		task_infos = static_cast<MeshAssetDrawTaskInfo *>(cmd.update_buffer(*task_buffer, 0, required));
+
+	for (auto &elem : *meshlets)
+	{
+		auto &mesh = static_cast<MeshAssetRenderable &>(*get_component<RenderableComponent>(elem)->renderable);
+
+		auto range = manager.get_mesh_draw_range(mesh.get_asset_id());
+		if (range.meshlet.count == 0)
+			continue;
+
+		auto &transform = *get_component<RenderInfoComponent>(elem);
+		bool skinned = (mesh.flags & RENDERABLE_MESH_ASSET_SKINNED_BIT) != 0;
+
+		MeshAssetDrawTaskInfo draw = {};
+		draw.aabb_instance = transform.aabb.offset;
+		auto *node = transform.scene_node;
+		auto *skin = node->get_skin();
+		draw.node_instance = skin ? skin->transform.offset : node->transform.offset;
+		draw.material_flags = mesh.get_material_flags();
+		VK_ASSERT((range.meshlet.offset & 31) == 0);
+
+		for (int i = 0; i <= transform.requires_motion_vectors; i++)
+		{
+			draw.occluder_state_offset = transform.occluder_state.offset;
+			uint32_t draw_index = NumDrawTypesPerPipe * int(i ? DrawPipeline::Count : mesh.get_mesh_draw_pipeline());
+			draw_index += skinned;
+			auto &offset_count = task_offset_counts[draw_index];
+
+			for (uint32_t j = 0; j < range.meshlet.count; j += 32)
+			{
+				draw.mesh_index_count = range.meshlet.offset + j + (std::min(range.meshlet.count - j, 32u) - 1);
+				task_infos[offset_count.first + offset_count.second++] = draw;
+				draw.occluder_state_offset++;
+			}
+		}
+	}
+
+	if (use_mdi)
+		for (auto &ctx : per_context_data)
+			cmd.fill_buffer(*ctx.mdi, 0, 0, NumMDIDrawTypes * sizeof(uint32_t));
+
+	// Even if it's device local, it's okay to call this.
+	device->unmap_host_buffer(*task_buffer, Vulkan::MEMORY_ACCESS_WRITE_BIT);
+}
+
+void SceneTransformManager::update_scene_buffers()
+{
+	if (!scene)
+		return;
+
+	auto cmd = acquire_internal(*device, VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
+	                            VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT);
+
+	update_task_buffer(*cmd);
+
+	auto transform_span = scene->get_transform_update_span();
+	auto aabb_span = scene->get_aabb_update_span();
+	auto occlusion_span = scene->get_occluder_state_update_span();
+
+	ensure_buffer(*cmd, transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine), "transforms", true);
+	ensure_buffer(*cmd, prev_transforms, VkDeviceSize(scene->get_transforms().get_count()) * sizeof(mat_affine), "prev-transforms", true);
+	ensure_buffer(*cmd, aabbs, VkDeviceSize(scene->get_aabbs().get_count()) * sizeof(AABB), "aabbs", true);
+
+	for (auto &ctx : per_context_data)
+		ensure_buffer(*cmd, ctx.occlusions, VkDeviceSize(scene->get_occluder_states().get_count()) * sizeof(uint32_t), "occlusion-state", true);
+
+	if (transform_span.count != 0)
+	{
+		// If there is motion this frame, copy over old transform.
+		// We don't need to remember to keep copying over prev transforms when there is no motion since we only
+		// need to render motion vectors for objects that moved *this* frame,
+		// and we consider prev_transforms only valid for nodes which require special motion vectors.
+		copy_span(*cmd, *prev_transforms, *transforms, transform_span, sizeof(mat_affine));
+		// Add a pure execution barrier to ensure we don't clobber transforms before we have copied over to prev_transforms.
+		cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, 0, VK_PIPELINE_STAGE_2_COPY_BIT, 0);
+		update_span(*cmd, *transforms, scene->get_transforms().get_cached_transforms(), transform_span);
+	}
+
+	if (aabb_span.count != 0)
+		update_span(*cmd, *aabbs, scene->get_aabbs().get_aabbs(), aabb_span);
+
+	if (occlusion_span.count != 0)
+		for (auto &ctx : per_context_data)
+			update_span(*cmd, *ctx.occlusions, static_cast<const uint32_t *>(nullptr), occlusion_span);
+
+	release_internal(cmd, VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
+	                 VK_ACCESS_TRANSFER_WRITE_BIT);
+
+	scene->clear_updates();
+}
+
+void SceneTransformManager::ensure_buffer(Vulkan::CommandBuffer &cmd, Vulkan::BufferHandle &buffer,
+                                          VkDeviceSize size, const char *name, bool preserve)
+{
+	if (buffer && buffer->get_create_info().size >= size)
+		return;
+
+	Vulkan::BufferCreateInfo bufinfo = {};
+	bufinfo.size = std::max<VkDeviceSize>(64, size);
+	if (buffer)
+		bufinfo.size = std::max<VkDeviceSize>(size, buffer->get_create_info().size * 3 / 2);
+	bufinfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+	                VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+	                VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+	bufinfo.domain = Vulkan::BufferDomain::Device;
+	auto new_buffer = device->create_buffer(bufinfo);
+	device->set_name(*new_buffer, name);
+
+	if (buffer && preserve)
+	{
+		cmd.copy_buffer(*new_buffer, 0, *buffer, 0, buffer->get_create_info().size);
+		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
+		            VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
+	}
+
+	buffer = std::move(new_buffer);
+}
+
+void SceneTransformManager::set_base_render_context(const RenderContext *)
+{
+
+}
+
+void SceneTransformManager::set_base_renderer(const RendererSuite *)
+{
+
+}
+
+void SceneTransformManager::set_scene(Scene *scene_)
+{
+	scene = scene_;
+}
+
+void SceneTransformManager::setup_render_pass_dependencies(RenderGraph &)
+{
+}
+
+void SceneTransformManager::setup_render_pass_dependencies(RenderGraph &, RenderPass &target,
+                                                           DependencyFlags dep_flags)
+{
+	if ((dep_flags & RenderPassCreator::GEOMETRY_BIT) != 0)
+	{
+		target.add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT,
+		                         VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+	}
+}
+
+void SceneTransformManager::setup_render_pass_resources(RenderGraph &)
+{
+}
+
+static inline std::string tagcat(const std::string &a, const std::string &b)
+{
+	return a + "-" + b;
+}
+
+void build_mdi_culling_pass(Vulkan::CommandBuffer &cmd,
+                            const RenderContext *context, unsigned num_contexts,
+                            SceneTransformManager::CullingPhase phase, bool force_visible,
+                            uint32_t width, uint32_t height,
+                            const std::function<MDICall (const RenderContext &, DrawPipeline, bool skinned)> &cb)
+{
+	int phase_int;
+
+	switch (phase)
+	{
+	case SceneTransformManager::CullingPhase::OneShot:
+		phase_int = 0;
+		break;
+
+	case SceneTransformManager::CullingPhase::First:
+	case SceneTransformManager::CullingPhase::MotionVector:
+		phase_int = 1;
+		break;
+
+	default:
+		phase_int = 2;
+		break;
+	}
+
+	cmd.set_program("builtin://shaders/meshlet_cull.comp",
+	                {{"MESHLET_RENDER_PHASE", phase_int}});
+	cmd.set_specialization_constant_mask(0x7);
+	cmd.set_specialization_constant(2, force_visible);
+
+	struct Push
+	{
+		uint32_t offset;
+		uint32_t count;
+		uint32_t mdi_count_offset;
+		uint32_t draw_indirect_offset;
+	} push;
+
+	for (unsigned i = 0; i < num_contexts; i++)
+	{
+		auto &ctx = context[i];
+		Renderer::bind_global_parameters(cmd, ctx);
+		Renderer::bind_scene_transform_parameters(cmd, ctx);
+		VkViewport vp = {};
+		vp.width = float(width);
+		vp.height = float(height);
+		vp.maxDepth = 1.0f;
+		Renderer::bind_meshlet_culling_ubo(cmd, 3, 0, ctx, vp, false);
+
+		for (int pipe = 0; pipe < int(DrawPipeline::Count); pipe++)
+		{
+			auto draw_pipe = DrawPipeline(pipe);
+			if (phase == SceneTransformManager::CullingPhase::MotionVector && draw_pipe != DrawPipeline::Opaque)
+				continue;
+
+			for (int skinned = 0; skinned < 2; skinned++)
+			{
+				auto call = cb(ctx, draw_pipe, skinned != 0);
+				auto task_range = ctx.get_scene_transform_parameters()->get_task_range(draw_pipe, skinned != 0);
+
+				if (call.indirect_count_max == 0)
+					continue;
+
+				push.offset = task_range.first;
+				push.count = task_range.second;
+				push.mdi_count_offset = call.indirect_count_offset / sizeof(uint32_t);
+				push.draw_indirect_offset = call.indirect_offset / sizeof(uint32_t);
+
+				bool ortho = ctx.get_render_parameters().projection[3].w == 1.0f;
+				cmd.set_specialization_constant(0, ortho);
+				cmd.set_specialization_constant(1, skinned != 0);
+				cmd.push_constants(&push, 0, sizeof(push));
+				cmd.set_storage_buffer(1, 0, *cmd.get_device().get_resource_manager().get_indirect_buffer());
+				cmd.set_storage_buffer(1, 1, *call.indirect_buffer);
+
+				// TODO: Unroll massive dispatches, but most (all?) GPUs support larger X dimensions for compute.
+				cmd.dispatch((task_range.second + 31) / 32, 1, 1);
+			}
+		}
+	}
+
+	cmd.set_specialization_constant_mask(0);
+}
+
+static void build_mdi_culling_pass(Vulkan::CommandBuffer &cmd,
+                                   const RenderContext *context, unsigned num_contexts,
+                                   SceneTransformManager::CullingPhase phase, bool force_visible,
+                                   uint32_t width, uint32_t height)
+{
+	build_mdi_culling_pass(cmd, context, num_contexts, phase, force_visible, width, height,
+	                       [&](const RenderContext &ctx, DrawPipeline pipe, bool skinned)
+	                       {
+		                       auto call = ctx.get_scene_transform_parameters()->get_mdi_call_parameters(
+			                       ctx.get_scene_transform_parameter_index(), phase, pipe, skinned);
+		                       return call;
+	                       });
+}
+
+static void setup_mdi_culling_phase1(RenderGraph &graph,
+                                     const CullingPassesInfo &info,
+                                     uint32_t width, uint32_t height)
+{
+	auto &cull_phase1 = graph.add_pass(tagcat("culling-phase1", info.tag), RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+
+	// We write the indirect buffer here. We don't read it as a SSBO, everything useful is fed through BaseInstance.
+	cull_phase1.add_proxy_output(tagcat("phase1", info.tag), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+								 VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+	info.phase1_pass->add_proxy_input(tagcat("phase1", info.tag), VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+									  VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+
+	// Culling needs to read transforms.
+	cull_phase1.add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+								  VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+	cull_phase1.set_build_render_pass(
+		[ctx = info.contexts,
+			width, height,
+			num_contexts = info.num_contexts](Vulkan::CommandBuffer &cmd)
+		{
+			build_mdi_culling_pass(cmd,
+			                       ctx, num_contexts, SceneTransformManager::CullingPhase::First, false,
+			                       width, height);
+		});
+}
+
+static RenderTextureResource &setup_mdi_culling_phase2(
+	RenderGraph &graph, const CullingPassesInfo &info,
+	uint32_t width, uint32_t height)
+{
+	auto hiz_name = tagcat("hiz", info.tag);
+	setup_depth_hierarchy_pass(graph, info.phase1_depth_output, hiz_name, info.contexts, true);
+
+	auto &cull_phase2 = graph.add_pass(tagcat("culling-phase2", info.tag), RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+
+	// We're overwriting the occlusion state.
+	cull_phase2.add_proxy_output(tagcat("phase2", info.tag), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+	                             VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	                             tagcat("phase1", info.tag));
+	info.phase2_pass->add_proxy_input(tagcat("phase2", info.tag),
+									  VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+									  VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+
+	cull_phase2.add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+								  VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+	auto &hiz = cull_phase2.add_texture_input(hiz_name, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+
+	cull_phase2.set_build_render_pass(
+		[ctx = info.contexts,
+			num_contexts = info.num_contexts,
+			width, height,
+			force_visible = info.force_visible_phase2](Vulkan::CommandBuffer &cmd)
+		{
+			build_mdi_culling_pass(cmd,
+			                       ctx, num_contexts, SceneTransformManager::CullingPhase::Second, force_visible,
+			                       width, height);
+		});
+
+	return hiz;
+}
+
+static void setup_mdi_culling_phase_mv(RenderGraph &graph,
+                                       const CullingPassesInfo &info,
+                                       uint32_t width, uint32_t height)
+{
+	auto &cull_phase_mv = graph.add_pass(tagcat("culling-mv", info.tag), RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+
+	// The output is somewhat fake but ensures we carry forward the dependencies properly.
+	cull_phase_mv.add_proxy_output(tagcat("phase-mv", info.tag), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+	                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+	                               tagcat("phase2", info.tag));
+	info.motion_vector_pass->add_proxy_input(tagcat("phase-mv", info.tag), VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+											 VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+
+	cull_phase_mv.add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+	                                VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+	cull_phase_mv.set_build_render_pass(
+		[ctx = info.contexts,
+			num_contexts = info.num_contexts,
+			width, height](Vulkan::CommandBuffer &cmd)
+		{
+			build_mdi_culling_pass(cmd,
+			                       ctx, num_contexts, SceneTransformManager::CullingPhase::MotionVector, false,
+			                       width, height);
+		});
+}
+
+RenderTextureResource &setup_culling_passes_mesh(RenderGraph &graph,
+                                                 const CullingPassesInfo &info)
+{
+	auto hiz_name = tagcat("hiz", info.tag);
+	setup_depth_hierarchy_pass(graph, info.phase1_depth_output, hiz_name, info.contexts, true);
+
+	info.phase1_pass->add_proxy_output(tagcat("phase1", info.tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+	                                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+	info.phase2_pass->add_proxy_output(tagcat("phase2", info.tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+	                                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	                                   tagcat("phase1", info.tag));
+
+	info.phase1_pass->add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+										VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+	info.phase2_pass->add_external_lock("scene-transforms", VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+	                                    VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+	auto &hiz = info.phase2_pass->add_texture_input(hiz_name, VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT);
+
+	if (info.motion_vector_pass)
+	{
+		info.motion_vector_pass->add_proxy_input(
+			tagcat("phase2", info.tag), VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+			VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+		info.motion_vector_pass->add_external_lock(
+			"scene-transforms", VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+			VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+	}
+
+	return hiz;
+}
+
+RenderTextureResource &setup_culling_passes_mdi(RenderGraph &graph,
+											const CullingPassesInfo &info)
+{
+	auto dim = graph.get_resource_dimensions(graph.get_texture_resource(info.phase1_depth_output));
+
+	setup_mdi_culling_phase1(graph, info, dim.width, dim.height);
+	auto &hiz = setup_mdi_culling_phase2(graph, info, dim.width, dim.height);
+	if (info.motion_vector_pass)
+		setup_mdi_culling_phase_mv(graph, info, dim.width, dim.height);
+	return hiz;
+}
+
+RenderTextureResource &setup_culling_passes(RenderGraph &graph, const CullingPassesInfo &info)
+{
+	auto encoding = graph.get_device().get_resource_manager().get_mesh_encoding();
+	if (encoding == Vulkan::ResourceManager::MeshEncoding::VBOAndIBOMDI ||
+	    encoding == Vulkan::ResourceManager::MeshEncoding::Classic)
+	{
+		return setup_culling_passes_mdi(graph, info);
+	}
+	else
+	{
+		return setup_culling_passes_mesh(graph, info);
+	}
 }
 }

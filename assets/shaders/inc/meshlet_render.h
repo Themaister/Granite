@@ -1,92 +1,42 @@
 #ifndef MESHLET_RENDER_H_
 #define MESHLET_RENDER_H_
 
-#ifndef MESHLET_RENDER_DESCRIPTOR_SET
-#error "Must define MESHLET_RENDER_DESCRIPTOR_SET before including meshlet_render.h"
-#endif
-
-#ifndef MESHLET_RENDER_AABB_BINDING
-#error "Must define MESHLET_RENDER_AABB_BINDING before including meshlet_render.h"
-#endif
-
-#ifndef MESHLET_RENDER_TRANSFORM_BINDING
-#error "Must define MESHLET_RENDER_TRANSFORM_BINDING before including meshlet_render.h"
-#endif
-
-#ifndef MESHLET_RENDER_BOUND_BINDING
-#error "Must define MESHLET_RENDER_BOUND_BINDING before including meshlet_render.h"
-#endif
-
-#ifndef MESHLET_RENDER_FRUSTUM_BINDING
-#error "Must define MESHLET_RENDER_GROUP_BOUND_BINDING before including meshlet_render.h"
-#endif
-
-#ifndef MESHLET_RENDER_TASKS_BINDING
-#error "Must define MESHLET_RENDER_TASKS_BINDING before including meshlet_render.h"
-#endif
-
+#include "global_bindings.h"
 #include "meshlet_render_types.h"
 #include "affine.h"
 
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_BOUND_BINDING, std430) readonly buffer Bounds
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_MESHLET_CLUSTER_BOUNDS, std430) readonly buffer Bounds
 {
 	Bound data[];
 } bounds;
 
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_AABB_BINDING, std430) readonly buffer AABBSSBO
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_AABBS, std430) readonly buffer AABBSSBO
 {
-#ifdef MESHLET_RENDER_AABB_VISIBILITY
-	uint data[];
-#else
 	AABB data[];
-#endif
 } aabb;
 
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_TRANSFORM_BINDING, std430) readonly buffer Transforms
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_TRANSFORMS, std430) readonly buffer Transforms
 {
 	mat_affine data[];
 } transforms;
 
-#ifdef MESHLET_RENDER_HIZ_BINDING
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_HIZ_BINDING)
-uniform texture2D uHiZDepth;
+#if MESHLET_RENDER_PHASE == 2
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_MESHLET_HIZ) uniform texture2D uHiZDepth;
 #endif
 
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_FRUSTUM_BINDING, std140) uniform Frustum
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_TASK_BUFFER, std430) readonly buffer Tasks
 {
-	vec4 planes[6];
-	mat4 view;
-	vec4 viewport_scale_bias;
-	ivec2 hiz_resolution;
-	int hiz_min_lod;
-	int hiz_max_lod;
-} frustum;
-
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_TASKS_BINDING, std430) readonly buffer Tasks
-{
-	TaskInfo data[];
+	MeshAssetDrawTaskInfo data[];
 } task_info;
 
-#ifdef MESHLET_RENDER_OCCLUDER_BINDING
-layout(set = MESHLET_RENDER_DESCRIPTOR_SET, binding = MESHLET_RENDER_OCCLUDER_BINDING, std430) buffer OccluderState
+#include "meshlet_ubos.h"
+
+#if MESHLET_RENDER_PHASE > 0
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_OCCLUSION_STATE, std430) buffer OccluderState
 {
 	uint data[];
 } occluders;
 #endif
-
-bool frustum_cull(vec3 lo, vec3 hi)
-{
-	bool ret = true;
-	for (int i = 0; i < 6 && ret; i++)
-	{
-		vec4 p = frustum.planes[i];
-		bvec3 high_mask = greaterThan(p.xyz, vec3(0.0));
-		vec3 max_coord = mix(lo, hi, high_mask);
-		if (dot(vec4(max_coord, 1.0), p) < 0.0)
-			ret = false;
-	}
-	return ret;
-}
 
 vec3 view_transform_yz_flip(vec3 pos)
 {
@@ -97,7 +47,7 @@ vec3 view_transform_yz_flip(vec3 pos)
 	return view;
 }
 
-#ifdef MESHLET_RENDER_HIZ_BINDING
+#if MESHLET_RENDER_PHASE == 2
 bool hiz_cull(vec2 view_range_x, vec2 view_range_y, float closest_z)
 {
 	// Viewport scale first applies any projection scale in X/Y (without Y flip).
@@ -113,7 +63,7 @@ bool hiz_cull(vec2 view_range_x, vec2 view_range_y, float closest_z)
 	iy.x = clamp(iy.x, 0, frustum.hiz_resolution.y - 1);
 	iy.y = clamp(iy.y, iy.x, frustum.hiz_resolution.y - 1);
 
-	// We need to sample from a LOD where where there is at most one texel delta
+	// We need to sample from a LOD where there is at most one texel delta
 	// between lo/hi values.
 	int max_delta = max(ix.y - ix.x, iy.y - iy.x);
 	int lod = clamp(findMSB(max_delta - 1) + 1, frustum.hiz_min_lod, frustum.hiz_max_lod);
@@ -138,61 +88,6 @@ bool hiz_cull(vec2 view_range_x, vec2 view_range_y, float closest_z)
 
 	return closest_z < d;
 }
-
-bool aabb_hiz_cull(vec3 lo, vec3 hi)
-{
-	// This is heavily amortized, so it's okay if it's inefficient.
-	vec3 lo_x = lo.x * frustum.view[0].xyz;
-	vec3 lo_y = lo.y * frustum.view[1].xyz;
-	vec3 lo_z = lo.z * frustum.view[2].xyz;
-
-	vec3 hi_x = hi.x * frustum.view[0].xyz;
-	vec3 hi_y = hi.y * frustum.view[1].xyz;
-	vec3 hi_z = hi.z * frustum.view[2].xyz;
-
-	vec3 t = frustum.view[3].xyz;
-
-	vec3 c0 = lo_x + lo_y + lo_z + t;
-	vec3 c1 = hi_x + lo_y + lo_z + t;
-	vec3 c2 = lo_x + hi_y + lo_z + t;
-	vec3 c3 = hi_x + hi_y + lo_z + t;
-	vec3 c4 = lo_x + lo_y + hi_z + t;
-	vec3 c5 = hi_x + lo_y + hi_z + t;
-	vec3 c6 = lo_x + hi_y + hi_z + t;
-	vec3 c7 = hi_x + hi_y + hi_z + t;
-
-#define FLIP_YZ(c) c.yz = -c.yz
-	FLIP_YZ(c0);
-	FLIP_YZ(c1);
-	FLIP_YZ(c2);
-	FLIP_YZ(c3);
-	FLIP_YZ(c4);
-	FLIP_YZ(c5);
-	FLIP_YZ(c6);
-	FLIP_YZ(c7);
-#undef FLIP_YZ
-
-	bool ret = true;
-	float closest_z = min(min(min(c0.z, c1.z), min(c2.z, c3.z)), min(min(c4.z, c5.z), min(c6.z, c7.z)));
-	if (closest_z > 0.0)
-	{
-		vec2 p0 = c0.xy / c0.z;
-		vec2 p1 = c1.xy / c1.z;
-		vec2 p2 = c2.xy / c2.z;
-		vec2 p3 = c3.xy / c3.z;
-		vec2 p4 = c4.xy / c4.z;
-		vec2 p5 = c5.xy / c5.z;
-		vec2 p6 = c6.xy / c6.z;
-		vec2 p7 = c7.xy / c7.z;
-
-		vec2 lo = min(min(min(p0, p1), min(p2, p3)), min(min(p4, p5), min(p6, p7)));
-		vec2 hi = max(max(max(p0, p1), max(p2, p3)), max(max(p4, p5), max(p6, p7)));
-
-		ret = hiz_cull(vec2(lo.x, hi.x), vec2(lo.y, hi.y), closest_z);
-	}
-
-	return ret;
-}
 #endif
 
 vec2 project_sphere_flat(float view_xy, float view_z, float radius)
@@ -206,6 +101,39 @@ vec2 project_sphere_flat(float view_xy, float view_z, float radius)
 
 	return vec2(rot_lo.x / rot_lo.y, rot_hi.x / rot_hi.y);
 }
+
+layout(constant_id = 0) const bool ORTHO = false;
+
+#if MESHLET_RENDER_PHASE == 2
+bool cluster_cull_hiz(vec3 bound_center, float effective_radius)
+{
+	vec3 view = view_transform_yz_flip(bound_center);
+	bool ret = true;
+
+	// Ensure there is no clipping against near plane.
+	// If the sphere is close enough, we accept it.
+	// There is no effective near plane in ORTHO.
+	if (ORTHO || view.z > effective_radius + 0.1)
+	{
+		vec2 range_x, range_y;
+
+		if (ORTHO)
+		{
+			range_x = view.x + vec2(-effective_radius, effective_radius);
+			range_y = view.y + vec2(-effective_radius, effective_radius);
+		}
+		else
+		{
+			// Have to project in view space since the sphere is still a sphere.
+			range_x = project_sphere_flat(view.x, view.z, effective_radius);
+			range_y = project_sphere_flat(view.y, view.z, effective_radius);
+		}
+		ret = hiz_cull(range_x, range_y, view.z - effective_radius);
+	}
+
+	return ret;
+}
+#endif
 
 bool cluster_cull(mat_affine M, Bound bound, vec3 camera_pos)
 {
@@ -237,21 +165,30 @@ bool cluster_cull(mat_affine M, Bound bound, vec3 camera_pos)
 			ret = false;
 	}
 
-#ifdef MESHLET_RENDER_HIZ_BINDING
+#if MESHLET_RENDER_PHASE == 2
 	if (ret)
-	{
-		vec3 view = view_transform_yz_flip(bound_center);
+		ret = cluster_cull_hiz(bound_center, effective_radius);
+#endif
 
-		// Ensure there is no clipping against near plane.
-		// If the sphere is close enough, we accept it.
-		if (view.z > effective_radius + 0.1)
-		{
-			// Have to project in view space since the sphere is still a sphere.
-			vec2 range_x = project_sphere_flat(view.x, view.z, effective_radius);
-			vec2 range_y = project_sphere_flat(view.y, view.z, effective_radius);
-			ret = hiz_cull(range_x, range_y, view.z - effective_radius);
-		}
+	return ret;
+}
+
+bool frustum_cull(vec3 lo, vec3 hi)
+{
+	bool ret = true;
+	for (int i = 0; i < 6 && ret; i++)
+	{
+		vec4 p = frustum.planes[i];
+		bvec3 high_mask = greaterThan(p.xyz, vec3(0.0));
+		vec3 max_coord = mix(lo, hi, high_mask);
+		if (dot(vec4(max_coord, 1.0), p) < 0.0)
+			ret = false;
 	}
+
+#if MESHLET_RENDER_PHASE == 2
+	// Very crude cull, but only way to get anything resembling culling of skinned meshes.
+	if (ret)
+		ret = cluster_cull_hiz(0.5 * (lo + hi), 0.5 * length(hi - lo));
 #endif
 
 	return ret;

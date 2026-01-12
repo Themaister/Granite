@@ -34,6 +34,14 @@ class RenderQueue;
 struct LightingParameters;
 class Frustum;
 
+struct MDICall
+{
+	const Vulkan::Buffer *indirect_buffer;
+	VkDeviceSize indirect_offset;
+	VkDeviceSize indirect_count_offset;
+	uint32_t indirect_count_max;
+};
+
 class ShaderSuiteResolver
 {
 public:
@@ -44,8 +52,10 @@ public:
 
 struct FlushParameters
 {
-	uint32_t layer;
-	bool layered;
+	virtual ~FlushParameters() = default;
+	virtual uint32_t get_layer() const;
+	virtual bool get_is_layered() const;
+	virtual MDICall get_mdi_call(DrawPipeline pipe, bool skinned) const;
 };
 
 class RenderContextParameterBinder
@@ -86,8 +96,16 @@ public:
 		DEPTH_BIAS_BIT = 1 << 1,
 		DEPTH_STENCIL_READ_ONLY_BIT = 1 << 2,
 		NO_COLOR_BIT = 1 << 3,
-		SKIP_SORTING_BIT = 1 << 7,
-		DEPTH_TEST_EQUAL_BIT = 1 << 9
+		MESH_ASSET_OPAQUE_BIT = 1 << 4,
+		MESH_ASSET_TRANSPARENT_BIT = 1 << 5,
+		SKIP_SORTING_BIT = 1 << 6,
+		DEPTH_TEST_EQUAL_BIT = 1 << 7,
+		MESH_ASSET_PHASE_1_BIT = 1 << 8,
+		MESH_ASSET_PHASE_2_BIT = 1 << 9,
+		MESH_ASSET_FORCE_ALL_VISIBLE_BIT = 1 << 10,
+		MESH_ASSET_IGNORE_ALPHA_TEST_BIT = 1 << 11,
+		MESH_ASSET_MOTION_VECTOR_BIT = 1 << 12,
+		DEPTH_BIAS_MINIMAL_BIT = 1 << 13,
 	};
 	using RendererFlushFlags = uint32_t;
 
@@ -99,8 +117,14 @@ public:
 			RendererType type, RendererOptionFlags flags);
 	static void bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
 	static void bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
-	static void add_subgroup_defines(Vulkan::Device &device, std::vector<std::pair<std::string, int>> &defines,
-	                                 VkShaderStageFlagBits stage);
+	static void bind_scene_transform_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
+
+	static void bind_meshlet_culling_ubo(
+		Vulkan::CommandBuffer &cmd,
+		unsigned desc_set, unsigned binding,
+		const RenderContext &context,
+		const VkViewport &viewport,
+		bool cw);
 
 	RendererOptionFlags get_mesh_renderer_options() const;
 
@@ -148,6 +172,10 @@ private:
 	uint32_t renderer_options = ~0u;
 
 	void set_mesh_renderer_options_internal(RendererOptionFlags flags);
+
+	void render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContext &context,
+	                        DrawPipeline pipe, const FlushParameters *params,
+	                        RendererFlushFlags options, bool skinned) const;
 };
 using RendererHandle = Util::IntrusivePtr<Renderer>;
 
@@ -169,7 +197,7 @@ public:
 		Count
 	};
 
-	enum { CacheVersion = 2 };
+	enum { CacheVersion = 3 };
 
 	void set_renderer(Type type, RendererHandle handle);
 	void set_default_renderers();

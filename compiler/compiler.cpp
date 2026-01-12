@@ -40,12 +40,6 @@ static Stage stage_from_path(const std::string &path)
 	auto ext = Path::ext(path);
 	if (ext == "vert")
 		return Stage::Vertex;
-	else if (ext == "tesc")
-		return Stage::TessControl;
-	else if (ext == "tese")
-		return Stage::TessEvaluation;
-	else if (ext == "geom")
-		return Stage::Geometry;
 	else if (ext == "frag")
 		return Stage::Fragment;
 	else if (ext == "comp")
@@ -62,12 +56,6 @@ static Stage convert_stage(const std::string &stage)
 {
 	if (stage == "vertex")
 		return Stage::Vertex;
-	else if (stage == "tess_control")
-		return Stage::TessControl;
-	else if (stage == "tess_evaluation")
-		return Stage::TessEvaluation;
-	else if (stage == "geometry")
-		return Stage::Geometry;
 	else if (stage == "compute")
 		return Stage::Compute;
 	else if (stage == "fragment")
@@ -293,34 +281,27 @@ std::vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const st
 	{
 	case Stage::Vertex:
 		kind = shaderc_glsl_vertex_shader;
-		break;
-
-	case Stage::TessControl:
-		kind = shaderc_glsl_tess_control_shader;
-		break;
-
-	case Stage::TessEvaluation:
-		kind = shaderc_glsl_tess_evaluation_shader;
-		break;
-
-	case Stage::Geometry:
-		kind = shaderc_glsl_geometry_shader;
+		options.AddMacroDefinition("STAGE_VERTEX", "1");
 		break;
 
 	case Stage::Fragment:
 		kind = shaderc_glsl_fragment_shader;
+		options.AddMacroDefinition("STAGE_FRAGMENT", "1");
 		break;
 
 	case Stage::Compute:
 		kind = shaderc_glsl_compute_shader;
+		options.AddMacroDefinition("STAGE_COMPUTE", "1");
 		break;
 
 	case Stage::Task:
 		kind = shaderc_glsl_task_shader;
+		options.AddMacroDefinition("STAGE_TASK", "1");
 		break;
 
 	case Stage::Mesh:
 		kind = shaderc_glsl_mesh_shader;
+		options.AddMacroDefinition("STAGE_MESH", "1");
 		break;
 
 	default:

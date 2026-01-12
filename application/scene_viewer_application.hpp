@@ -84,6 +84,8 @@ protected:
 	DirectionalLightComponent *selected_directional = nullptr;
 	DirectionalLightComponent default_directional_light;
 
+	SceneTransformManager scene_transform_manager;
+
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	void on_swapchain_changed(const Vulkan::SwapchainParameterEvent &e);
@@ -169,5 +171,10 @@ private:
 	RenderTextureResource *ssao_output = nullptr;
 	RenderTextureResource *shadows = nullptr;
 	RenderTextureResource *fallback_shadows = nullptr;
+	RenderTextureResource *hiz_main = nullptr;
+	RenderTextureResource *hiz_depth = nullptr;
+	Util::SmallVector<Vulkan::ImageViewHandle> hiz_depth_peel;
+
+	CullingPassesInfo culling_passes_info = {};
 };
 }

@@ -31,6 +31,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "thread_group.hpp"
 #include "simd.hpp"
+#include "scene_renderer.hpp"
 #include <string.h>
 
 using namespace Vulkan;
@@ -57,8 +58,8 @@ void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	scratch_vsm_rt.reset();
 	scratch_vsm_down.reset();
 	bindless.allocator.reset();
-	acquire_semaphore.reset();
-	release_semaphores.clear();
+	mdi_buffer.reset();
+	device_reset();
 }
 
 void LightClusterer::set_scene(Scene *scene_)
@@ -87,12 +88,15 @@ void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &t
 		target_.add_storage_read_only_input("cluster-bitmask");
 		target_.add_storage_read_only_input("cluster-range");
 		target_.add_storage_read_only_input("cluster-transforms");
-		target_.add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+		target_.add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 	}
 }
 
-void LightClusterer::setup_render_pass_dependencies(RenderGraph &)
+void LightClusterer::setup_render_pass_dependencies(RenderGraph &graph)
 {
+	graph.find_pass("clustering-bindless")->add_external_lock("scene-transforms",
+	                                                          VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT,
+	                                                          VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 }
 
 void LightClusterer::set_base_render_context(const RenderContext *context_)
@@ -199,9 +203,11 @@ const Renderer &LightClusterer::get_shadow_renderer() const
 	return depth_renderer;
 }
 
-void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderContext &depth_context, const RenderQueue &queue,
+void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderContext &depth_context,
+                                   const RenderQueue &queue,
                                    unsigned off_x, unsigned off_y, unsigned res_x, unsigned res_y,
-                                   const Vulkan::ImageView &rt, unsigned layer, Renderer::RendererFlushFlags flags) const
+                                   const Vulkan::ImageView &rt, unsigned layer, const FlushParameters *params,
+                                   Renderer::RendererFlushFlags flags) const
 {
 	bool vsm = shadow_type == ShadowType::VSM;
 	auto &depth_renderer = get_shadow_renderer();
@@ -246,7 +252,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 
 		cmd.begin_region("shadow-map-vsm");
 		cmd.begin_render_pass(rp);
-		depth_renderer.flush_subset(cmd, queue, depth_context, flags, nullptr, 0, 1);
+		depth_renderer.flush_subset(cmd, queue, depth_context, flags, params, 0, 1);
 		cmd.end_render_pass();
 
 		cmd.image_barrier(*scratch_vsm_rt, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -317,7 +323,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 		cmd.begin_render_pass(rp);
 		cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
 		cmd.set_scissor({{ int(off_x), int(off_y) }, { res_x, res_y }});
-		depth_renderer.flush_subset(cmd, queue, depth_context, flags, nullptr, 0, 1);
+		depth_renderer.flush_subset(cmd, queue, depth_context, flags, params, 0, 1);
 		cmd.end_render_pass();
 		cmd.end_region();
 	}
@@ -326,16 +332,10 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
-
 	auto stage = vsm ?
 	             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT :
 	             (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
 
-	for (auto &sem : release_semaphores)
-		if (sem->get_semaphore() && !sem->is_pending_wait())
-			cmd.get_device().add_wait_semaphore(CommandBuffer::Type::Generic, std::move(sem), stage, false);
-
-	release_semaphores.clear();
 	bindless.shadow_barriers.clear();
 	bindless.shadow_barriers.reserve(bindless.parameters.num_lights + bindless.global_transforms.num_lights);
 
@@ -434,7 +434,7 @@ void LightClusterer::end_bindless_barriers(Vulkan::CommandBuffer &cmd)
 		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		barrier.dstAccessMask = 0;
 		barrier.srcStageMask = src_stage;
-		barrier.dstStageMask = VK_PIPELINE_STAGE_NONE;
+		barrier.dstStageMask = src_stage; // Transitive barrier, will do visibility op later.
 	}
 
 	if (!bindless.shadow_barriers.empty())
@@ -567,16 +567,24 @@ void LightClusterer::render_bindless_spot(Vulkan::Device &device, unsigned index
 	{
 		auto &group = composer.begin_pipeline_stage();
 		group.set_desc("render-shadow-map-spot");
-		group.enqueue_task([&device, data, index, this]() {
-			auto &spot = static_cast<const ShadowTaskContextSpot &>(*data);
-			LOGI("Rendering shadow for spot light %u (%p)\n", index,
-			     static_cast<const void *>(bindless.handles[index]));
+		group.enqueue_task([&device, data, index, this]() mutable {
+			auto &spot = static_cast<ShadowTaskContextSpot &>(*data);
+			spot.depth_context[0].set_scene_transform_parameters(context->get_scene_transform_parameters());
+			//LOGI("Rendering shadow for spot light %u (%p)\n", index,
+			//     static_cast<const void *>(bindless.handles[index]));
 			auto cmd = device.request_command_buffer();
+
+			const FlushParameters *params = nullptr;
+			if (index < mdi_calls.size())
+				params = &mdi_calls[index].faces[0];
+
 			render_shadow(*cmd, spot.depth_context[0], spot.queues[0][0],
 			              0, 0,
 			              shadow_resolution, shadow_resolution,
 			              bindless.shadow_images[index]->get_view(), 0,
-			              Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
+			              params,
+			              Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT |
+			              Renderer::MESH_ASSET_OPAQUE_BIT);
 			device.submit(cmd);
 		});
 	}
@@ -600,15 +608,25 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 
 		auto &group = face_composer.begin_pipeline_stage();
 		group.set_desc("render-shadow-map-point-face");
-		group.enqueue_task([&device, data, index, face, this]() {
-			auto &point = static_cast<const ShadowTaskContextPoint &>(*data);
-			LOGI("Rendering shadow for point light %u (%p)\n", index, static_cast<const void *>(bindless.handles[index]));
+		group.enqueue_task([&device, data, index, face, this]() mutable {
+			auto &point = static_cast<ShadowTaskContextPoint &>(*data);
+			point.depth_context[face].set_scene_transform_parameters(context->get_scene_transform_parameters());
+			//LOGI("Rendering shadow for point light %u (%p)\n", index, static_cast<const void *>(bindless.handles[index]));
 			auto cmd = device.request_command_buffer();
+
+			const FlushParameters *params = nullptr;
+			if (index < mdi_calls.size())
+				params = &mdi_calls[index].faces[face];
+
+			// Minimal depth bias since we cannot PCF filter point lights properly.
 			render_shadow(*cmd, point.depth_context[face], point.queues[face][0],
 			              0, 0, shadow_resolution, shadow_resolution,
 			              bindless.shadow_images[index]->get_view(),
 			              face,
-			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
+			              params,
+			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT |
+			              Renderer::DEPTH_BIAS_MINIMAL_BIT |
+			              Renderer::MESH_ASSET_OPAQUE_BIT);
 			device.submit(cmd);
 		});
 
@@ -684,6 +702,82 @@ float LightClusterer::get_z_slice_extent(const RenderContext &ctx) const
 	return muglm::min(0.5f, ctx.get_render_parameters().z_far / float(resolution_z));
 }
 
+void LightClusterer::setup_mdi_calls(const RenderContext &context_)
+{
+	size_t count = light_sort_caches[0].size();
+	mdi_calls.resize(count);
+
+	// TODO: This can get out of hand if we have huge scenes and tons of light.
+	// May need to stall and reclaim memory, but deal with that later.
+
+	if (!count)
+		return;
+
+	// Ignore alpha blended stuff.
+	MDICall mdi_templates[2][2];
+	constexpr int NumDrawsPerLight = 2 * 2;
+
+	for (int pipe = 0; pipe < 2; pipe++)
+	{
+		for (int skinned = 0; skinned < 2; skinned++)
+		{
+			mdi_templates[pipe][skinned] = context_.get_scene_transform_parameters()->get_template_mdi_call_parameters(
+				SceneTransformManager::CullingPhase::OneShot,
+				DrawPipeline(pipe), skinned != 0);
+		}
+	}
+
+	VkDeviceSize indirect_count_offset = 0;
+	VkDeviceSize indirect_offset = 0;
+
+	for (size_t i = 0; i < count; i++)
+	{
+		unsigned num_contexts = light_sort_caches[0][i].light->get_type() == PositionalLight::Type::Point ? 6 : 1;
+		indirect_offset += NumDrawsPerLight * num_contexts * sizeof(uint32_t);
+	}
+
+	for (size_t i = 0; i < count; i++)
+	{
+		unsigned num_contexts = light_sort_caches[0][i].light->get_type() == PositionalLight::Type::Point ? 6 : 1;
+
+		for (unsigned ctx = 0; ctx < num_contexts; ctx++)
+		{
+			for (int pipe = 0; pipe < 2; pipe++)
+			{
+				for (int skinned = 0; skinned < 2; skinned++)
+				{
+					auto &call = mdi_calls[i].faces[ctx].calls[pipe][skinned];
+					call.indirect_count_max = mdi_templates[pipe][skinned].indirect_count_max;
+					call.indirect_count_offset = indirect_count_offset;
+					call.indirect_offset = indirect_offset;
+
+					indirect_offset += call.indirect_count_max * sizeof(VkDrawIndexedIndirectCommand);
+					indirect_count_offset += sizeof(uint32_t);
+				}
+			}
+		}
+	}
+
+	if (!mdi_buffer || indirect_offset > mdi_buffer->get_create_info().size)
+	{
+		BufferCreateInfo bufinfo = {};
+		bufinfo.domain = BufferDomain::Device;
+		bufinfo.size = indirect_offset;
+		bufinfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+		                VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		mdi_buffer = context_.get_device().create_buffer(bufinfo);
+		context_.get_device().set_name(*mdi_buffer, "mdi-clusterer");
+	}
+
+	mdi_buffer_clear_offset = indirect_count_offset;
+
+	for (auto &call : mdi_calls)
+		for (auto &face : call.faces)
+			for (auto &pipe : face.calls)
+				for (auto &skin : pipe)
+					skin.indirect_buffer = mdi_buffer.get();
+}
+
 void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 {
 	bindless.parameters.num_lights = 0;
@@ -694,6 +788,10 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 
 	bindless.light_transform_hashes.clear();
 	bindless.light_transform_hashes.reserve(light_sort_caches[0].size() + existing_global_lights.size());
+
+	if (enable_shadows &&
+	    context_.get_device().get_resource_manager().get_mesh_encoding() == ResourceManager::MeshEncoding::VBOAndIBOMDI)
+		setup_mdi_calls(context_);
 
 	unsigned local_count = scan_visible_positional_lights(light_sort_caches[0],
 	                                                      bindless.transforms,
@@ -899,13 +997,85 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 		});
 	}
 
+	if (enable_shadows && device.get_resource_manager().get_mesh_encoding() == ResourceManager::MeshEncoding::VBOAndIBOMDI)
+	{
+		// Dispatch culling.
+		auto &group = composer.begin_pipeline_stage();
+
+		group.enqueue_task([this, &device, &context_]() mutable
+		{
+			auto cmd = device.request_command_buffer();
+			cmd->barrier(VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0,
+			             VK_PIPELINE_STAGE_2_CLEAR_BIT, 0);
+
+			cmd->begin_region("shadow-map-mdi-culling");
+
+			// Clear MDI counts to 0.
+			if (mdi_buffer)
+				cmd->fill_buffer(*mdi_buffer, 0, 0, mdi_buffer_clear_offset);
+
+			cmd->barrier(VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT |
+			                                                     VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+			for (size_t i = 0, n = mdi_calls.size(); i < n; i++)
+			{
+				auto &calls = mdi_calls[i];
+
+				auto width = shadow_resolution;
+				auto height = shadow_resolution;
+
+				if (bindless_light_is_point(i))
+				{
+					auto &point_data = static_cast<ShadowTaskContextPoint &>(*bindless.shadow_task_handles[i]);
+					for (auto &ctx : point_data.depth_context)
+						ctx.set_scene_transform_parameters(context_.get_scene_transform_parameters());
+					build_mdi_culling_pass(*cmd,
+					                       point_data.depth_context, 6, SceneTransformManager::CullingPhase::OneShot,
+					                       false, width, height,
+					                       [&](const RenderContext &ctx, DrawPipeline pipe, bool skinned)
+					                       {
+						                       if (pipe == DrawPipeline::AlphaBlend)
+							                       return MDICall{};
+						                       auto ctx_index = &ctx - point_data.depth_context;
+						                       return calls.faces[ctx_index].calls[int(pipe)][skinned];
+					                       });
+				}
+				else
+				{
+					auto &spot_data = static_cast<ShadowTaskContextSpot &>(*bindless.shadow_task_handles[i]);
+					spot_data.depth_context[0].set_scene_transform_parameters(context_.get_scene_transform_parameters());
+					build_mdi_culling_pass(*cmd,
+					                       spot_data.depth_context, 1, SceneTransformManager::CullingPhase::OneShot,
+					                       false, width, height,
+					                       [&](const RenderContext &, DrawPipeline pipe, bool skinned)
+					                       {
+						                       if (pipe == DrawPipeline::AlphaBlend)
+							                       return MDICall{};
+						                       return calls.faces[0].calls[int(pipe)][skinned];
+					                       });
+				}
+			}
+			cmd->end_region();
+
+			cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+						 VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+			device.submit(cmd);
+		});
+	}
+
 	// Submit barriers from UNDEFINED -> COLOR/DEPTH.
 	if (enable_shadows)
 	{
 		auto &group = composer.begin_pipeline_stage();
 
 		group.enqueue_task([this, &device, indirect_task = composer.get_deferred_enqueue_handle(), &thread_group]() mutable {
-			auto cmd = device.request_command_buffer();
+			bool vsm = shadow_type == ShadowType::VSM;
+			auto stage = vsm
+				             ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+				             : (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
+			auto cmd = acquire_internal(device, stage, 0);
+
 			cmd->begin_region("shadow-map-begin-barriers");
 			begin_bindless_barriers(*cmd);
 			cmd->end_region();
@@ -940,10 +1110,12 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 				end_bindless_barriers(*cmd);
 				cmd->end_region();
 
-				device.submit(cmd, nullptr, 1, &acquire_semaphore);
+				bool vsm = shadow_type == ShadowType::VSM;
+				release_internal(cmd, vsm
+					                      ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+					                      : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, 0);
 			}
 
-			acquire_semaphore.reset();
 			update_bindless_descriptors(device);
 		});
 	}
@@ -1446,18 +1618,18 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	graph.add_external_lock_interface("bindless-shadowmaps", this);
 }
 
+const char *LightClusterer::get_ident() const
+{
+	return "light-clusterer";
+}
+
+Vulkan::CommandBuffer::Type LightClusterer::owning_queue_type() const
+{
+	return Vulkan::CommandBuffer::Type::Generic;
+}
+
 void LightClusterer::set_base_renderer(const RendererSuite *suite)
 {
 	renderer_suite = suite;
-}
-
-Vulkan::Semaphore LightClusterer::external_acquire()
-{
-	return acquire_semaphore;
-}
-
-void LightClusterer::external_release(Vulkan::Semaphore sem)
-{
-	release_semaphores.push_back(std::move(sem));
 }
 }

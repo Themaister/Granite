@@ -25,7 +25,7 @@ layout(std430, set = 0, binding = BINDING_GLOBAL_CLUSTER_RANGE) readonly buffer 
 #include "point.h"
 //#define CLUSTERING_DEBUG
 
-#if defined(SUBGROUP_FRAGMENT)
+#if defined(STAGE_FRAGMENT)
 mediump vec3 compute_cluster_light(
 		mediump vec3 material_base_color,
 		mediump vec3 material_normal,
@@ -46,21 +46,14 @@ mediump vec3 compute_cluster_light(
 	z_index = clamp(z_index, 0, cluster.z_max_index);
 	uvec2 z_range = cluster_range[z_index];
 
-#ifdef SUBGROUP_OPS
 	int z_start = int(subgroupMin(z_range.x) >> 5u);
 	int z_end = int(subgroupMax(z_range.y) >> 5u);
-#else
-	int z_start = int(z_range.x >> 5u);
-	int z_end = int(z_range.y >> 5u);
-#endif
 
 	for (int i = z_start; i <= z_end; i++)
 	{
 		uint mask = cluster_bitmask[cluster_base + i];
 		mask = cluster_mask_range(mask, z_range, 32u * i);
-#ifdef SUBGROUP_OPS
 		mask = subgroupOr(mask);
-#endif
 
 		int type_mask = int(cluster_transforms.type_mask[i]);
 		while (mask != 0u)
@@ -90,7 +83,7 @@ mediump vec3 compute_cluster_light(
 	return result;
 }
 
-#elif defined(SUBGROUP_COMPUTE)
+#elif defined(STAGE_COMPUTE)
 
 #ifdef CLUSTERER_GLOBAL
 mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 normal)
@@ -99,7 +92,6 @@ mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 norma
 	int count = cluster_global_transforms.num_lights;
 	uint type_mask = cluster_global_transforms.type_mask;
 
-#if defined(SUBGROUP_OPS) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
 	vec3 aabb_lo = subgroupMin(world_pos);
 	vec3 aabb_hi = subgroupMax(world_pos);
 	vec3 aabb_radius3 = 0.5 * (aabb_hi - aabb_lo);
@@ -146,16 +138,12 @@ mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 norma
 			int index = subgroupShuffle(current_index, bit_index);
 #endif
 
-#if defined(SUBGROUP_SHUFFLE)
 			PositionalLightInfo scalar_light;
 			scalar_light.color = subgroupShuffle(light_info.color, bit_index);
 			scalar_light.spot_scale_bias = subgroupShuffle(light_info.spot_scale_bias, bit_index);
 			scalar_light.position = subgroupShuffle(light_info.position, bit_index);
 			scalar_light.direction = subgroupShuffle(light_info.direction, bit_index);
 			scalar_light.inv_radius = subgroupShuffle(light_info.inv_radius, bit_index);
-#elif defined(SUBGROUP_COMPUTE_FULL)
-			PositionalLightInfo scalar_light = SPOT_DATA(index);
-#endif
 
 			if ((type_mask & (1u << index)) != 0u)
 				result += compute_irradiance_point_light(index, scalar_light, normal, world_pos);
@@ -163,15 +151,6 @@ mediump vec3 compute_cluster_irradiance_light(vec3 world_pos, mediump vec3 norma
 				result += compute_irradiance_spot_light(index, scalar_light, normal, world_pos);
 		}
 	}
-#else
-	for (int i = 0; i < count; i++)
-	{
-		if ((type_mask & (1u << i)) != 0u)
-			result += compute_irradiance_point_light(i, POINT_DATA(i), normal, world_pos);
-		else
-			result += compute_irradiance_spot_light(i, SPOT_DATA(i), normal, world_pos);
-	}
-#endif
 	return result;
 }
 #endif
@@ -194,21 +173,14 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 	z_index = clamp(z_index, 0, cluster.z_max_index);
 	uvec2 z_range = cluster_range[z_index];
 
-#ifdef SUBGROUP_OPS
 	int z_start = int(subgroupMin(z_range.x) >> 5u);
 	int z_end = int(subgroupMax(z_range.y) >> 5u);
-#else
-	int z_start = int(z_range.x >> 5u);
-	int z_end = int(z_range.y >> 5u);
-#endif
 
 	for (int i = z_start; i <= z_end; i++)
 	{
 		uint mask = cluster_bitmask[cluster_base + i];
 		mask = cluster_mask_range(mask, z_range, 32u * i);
-#ifdef SUBGROUP_OPS
 		mask = subgroupOr(mask);
-#endif
 
 		int type_mask = int(cluster_transforms.type_mask[i]);
 		while (mask != 0u)

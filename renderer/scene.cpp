@@ -25,6 +25,7 @@
 #include "lights/lights.hpp"
 #include "simd.hpp"
 #include "task_composer.hpp"
+
 #include <limits>
 
 namespace Granite
@@ -52,6 +53,9 @@ Scene::Scene()
 	  render_pass_creators(pool.get_component_group<RenderPassComponent>())
 {
 	pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
+	updated_transforms_count.store(0, std::memory_order_relaxed);
+	updated_aabb_count.store(0, std::memory_order_relaxed);
+	cleared_occlusion_states_count.store(0, std::memory_order_relaxed);
 }
 
 Scene::~Scene()
@@ -238,9 +242,9 @@ void Scene::gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityL
 	}
 }
 
-static bool filter_true(const RenderInfoComponent *, RenderableFlags)
+static bool filter_true(const RenderInfoComponent *, RenderableFlags flags)
 {
-	return true;
+	return (flags & RENDERABLE_MESH_ASSET_BIT) == 0;
 }
 
 void Scene::gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list) const
@@ -251,8 +255,10 @@ void Scene::gather_visible_opaque_renderables(const Frustum &frustum, Visibility
 void Scene::gather_visible_motion_vector_renderables(const Frustum &frustum, VisibilityList &list) const
 {
 	gather_visible_renderables(frustum, list, opaque, 0, opaque.size(),
-	                           [](const RenderInfoComponent *info, RenderableFlags flags) {
+	                           [](const RenderInfoComponent *info, RenderableFlags flags)
+	                           {
 		                           return (flags & RENDERABLE_IMPLICIT_MOTION_BIT) == 0 &&
+		                                  (flags & RENDERABLE_MESH_ASSET_BIT) == 0 &&
 		                                  info->requires_motion_vectors;
 	                           });
 }
@@ -271,8 +277,10 @@ void Scene::gather_visible_motion_vector_renderables_subset(const Frustum &frust
 	size_t start_index = (index * opaque.size()) / num_indices;
 	size_t end_index = ((index + 1) * opaque.size()) / num_indices;
 	gather_visible_renderables(frustum, list, opaque, start_index, end_index,
-	                           [](const RenderInfoComponent *info, RenderableFlags flags) {
+	                           [](const RenderInfoComponent *info, RenderableFlags flags)
+	                           {
 		                           return (flags & RENDERABLE_IMPLICIT_MOTION_BIT) == 0 &&
+		                                  (flags & RENDERABLE_MESH_ASSET_BIT) == 0 &&
 		                                  info->requires_motion_vectors;
 	                           });
 }
@@ -490,7 +498,7 @@ static void log_node_transforms(const Scene::Node &node)
 }
 #endif
 
-static void update_skinning(Node &node)
+void Scene::update_skinning(Node &node)
 {
 	auto &skin = *node.get_skin();
 	if (skin.transform.count)
@@ -501,6 +509,8 @@ static void update_skinning(Node &node)
 
 		auto *cached_skin = cached + skin.transform.offset;
 		auto *prev_cached_skin = prev_cached + skin.transform.offset;
+
+		notify_transform_updates(skin.transform.offset, skin.transform.count);
 
 		for (uint32_t i = 0; i < skin.transform.count; i++)
 			prev_cached_skin[i] = cached_skin[i];
@@ -532,7 +542,7 @@ void Scene::update_all_transforms()
 	update_cached_transforms_range(0, spatials.size());
 }
 
-static void perform_update_skinning(Node * const *updates, size_t count)
+void Scene::perform_update_skinning(Node * const *updates, size_t count)
 {
 	for (size_t i = 0; i < count; i++)
 	{
@@ -543,6 +553,9 @@ static void perform_update_skinning(Node * const *updates, size_t count)
 
 void Scene::update_transform_tree(TaskComposer *composer)
 {
+	updated_transforms.reserve(get_transforms().get_count());
+	updated_aabbs.reserve(get_aabbs().get_count());
+
 	if (composer)
 	{
 		auto &group = composer->begin_pipeline_stage();
@@ -602,7 +615,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 	}
 	else
 	{
-		pending_node_updates_skin.for_each_ranged([](Node *const *updates, size_t count) {
+		pending_node_updates_skin.for_each_ranged([this](Node *const *updates, size_t count) {
 			perform_update_skinning(updates, count);
 		});
 	}
@@ -616,6 +629,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 				l.clear();
 			pending_node_updates_skin.clear();
 			pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
+			sort_updates();
 		});
 	}
 	else
@@ -625,6 +639,7 @@ void Scene::update_transform_tree(TaskComposer *composer)
 			l.clear();
 		pending_node_updates_skin.clear();
 		pending_hierarchy_level_mask.store(0, std::memory_order_relaxed);
+		sort_updates();
 	}
 }
 
@@ -657,7 +672,7 @@ void Scene::update_transform_listener_components()
 		std::tie(l, transform) = light;
 
 		// v = [0, 0, 1, 0].
-		l->direction = normalize((*transform->transform)[2].xyz());
+		l->direction = normalize(-transform->transform->get_forward());
 	}
 
 	for (auto &light : volumetric_diffuse_lights)
@@ -757,6 +772,8 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 				{
 					SIMD::transform_aabb(bb, *aabb->aabb, cached_transform->get_world_transform());
 				}
+
+				notify_aabb_updates(cached_transform->aabb.offset, 1);
 			}
 
 			timestamp->last_timestamp = new_timestamp;
@@ -767,9 +784,72 @@ void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
 	}
 }
 
+void Scene::notify_allocated_occlusion_state(uint32_t offset, uint32_t count)
+{
+	// Unordered is fine, we only need thread-safe writes to this array, but consumption happens
+	// in a well defined place where we ensure thread safety through external means.
+	size_t write_offset = cleared_occlusion_states_count.fetch_add(count, std::memory_order_relaxed);
+
+	if (write_offset + count > cleared_occlusion_states.get_capacity())
+	{
+		// Technically, this isn't a big problem, but may lead to weirdness down the line.
+		LOGE("Cleared occlusion state buffer is full.\n");
+		return;
+	}
+
+	for (uint32_t i = 0; i < count; i++)
+		cleared_occlusion_states[write_offset + i] = offset + i;
+}
+
+void Scene::notify_transform_updates(uint32_t offset, uint32_t count)
+{
+	size_t write_offset = updated_transforms_count.fetch_add(count, std::memory_order_relaxed);
+
+	if (write_offset + count > updated_transforms.get_capacity())
+	{
+		// This shouldn't happen unless someone forgets to restart the list.
+		LOGE("Transform update state buffer is full.\n");
+		return;
+	}
+
+	for (uint32_t i = 0; i < count; i++)
+		updated_transforms[write_offset + i] = offset + i;
+}
+
+void Scene::notify_aabb_updates(uint32_t offset, uint32_t count)
+{
+	size_t write_offset = updated_aabb_count.fetch_add(count, std::memory_order_relaxed);
+
+	if (write_offset + count > updated_aabbs.get_capacity())
+	{
+		// This shouldn't happen unless someone forgets to restart the list.
+		LOGE("AABB update state buffer is full.\n");
+		return;
+	}
+
+	for (uint32_t i = 0; i < count; i++)
+		updated_aabbs[write_offset + i] = offset + i;
+}
+
 void Scene::push_pending_node_update(Node *node)
 {
 	pending_node_updates.push(node);
+}
+
+void Scene::sort_updates()
+{
+	std::sort(updated_transforms.data(),
+	          updated_transforms.data() + updated_transforms_count.load(std::memory_order_relaxed));
+	std::sort(updated_aabbs.data(), updated_aabbs.data() + updated_aabb_count.load(std::memory_order_relaxed));
+	std::sort(cleared_occlusion_states.data(),
+	          cleared_occlusion_states.data() + cleared_occlusion_states_count.load(std::memory_order_relaxed));
+}
+
+void Scene::clear_updates()
+{
+	updated_transforms_count.store(0, std::memory_order_relaxed);
+	updated_aabb_count.store(0, std::memory_order_relaxed);
+	cleared_occlusion_states_count.store(0, std::memory_order_relaxed);
 }
 
 void Scene::distribute_update_to_level(Node *update, unsigned level)
@@ -820,17 +900,19 @@ void Scene::distribute_per_level_updates(TaskGroup *group)
 	}
 }
 
-static void update_transform_tree_node(Node &node, const mat_affine &transform)
+void Scene::update_transform_tree_node(Node &node, const mat_affine &transform)
 {
 	node.get_cached_prev_transform() = node.get_cached_transform();
 	auto &t = node.get_transform();
 	compute_model_transform(node.get_cached_transform(), t.scale, t.rotation, t.translation, transform);
 
+	notify_transform_updates(node.transform.offset, 1);
+
 	node.update_timestamp();
 	node.clear_pending_update_no_atomic();
 }
 
-static void perform_updates(Node * const *updates, size_t count)
+void Scene::perform_updates(Node * const *updates, size_t count)
 {
 	for (size_t i = 0; i < count; i++)
 	{
@@ -845,15 +927,15 @@ void Scene::perform_per_level_updates(unsigned level, TaskGroup *group)
 {
 	if (group)
 	{
-		pending_node_update_per_level[level].for_each_ranged([group](Node *const *updates, size_t count) {
-			group->enqueue_task([=]() {
+		pending_node_update_per_level[level].for_each_ranged([this, group](Node *const *updates, size_t count) {
+			group->enqueue_task([this, updates, count]() {
 				perform_updates(updates, count);
 			});
 		});
 	}
 	else
 	{
-		pending_node_update_per_level[level].for_each_ranged([](Node *const *updates, size_t count) {
+		pending_node_update_per_level[level].for_each_ranged([this](Node *const *updates, size_t count) {
 			perform_updates(updates, count);
 		});
 	}
@@ -1061,6 +1143,10 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 	Entity *entity = pool.create_entity();
 	entities.insert_front(entity);
 
+	bool is_fixed_function_meshlet = (renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0;
+	if (is_fixed_function_meshlet)
+		entity->allocate_component<MeshletComponent>();
+
 	if (renderable->has_static_aabb())
 	{
 		auto *transform = entity->allocate_component<RenderInfoComponent>();
@@ -1078,15 +1164,20 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 		if (!get_aabbs().allocate(1, &transform->aabb))
 			LOGE("Exhausted AABB pool.\n");
 
-		// FIXME: This is guess-work.
-		// Ideally, we'll know number of meshlets in advance.
-		// We can also allocate this slice later if need be ...
-		// 256 words is enough for 256 * 32 meshlets, which is ~2M primitive objects.
-		// It's possible to never allocate occluder state.
-		// In that case, we can just assume occluder state is all 0,
-		// so it will never be rendered in phase 1 cull.
-		if (!get_occluder_states().allocate(256, &transform->occluder_state))
-			LOGE("Exhausted occluder state pool.\n");
+		if (is_fixed_function_meshlet)
+		{
+			auto num_occluder_states = renderable->get_num_occluder_states();
+
+			if (num_occluder_states)
+			{
+				auto num_occluder_words = (num_occluder_states + 31) / 32;
+				if (!get_occluder_states().allocate(num_occluder_words, &transform->occluder_state))
+					LOGE("Exhausted occluder state pool.\n");
+
+				cleared_occlusion_states.reserve(get_occluder_states().get_count());
+				notify_allocated_occlusion_state(transform->occluder_state.offset, num_occluder_words);
+			}
+		}
 	}
 	else
 		entity->allocate_component<UnboundedComponent>();
@@ -1101,16 +1192,18 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 
 	default:
 		entity->allocate_component<OpaqueComponent>();
-		if (renderable->has_static_aabb())
-		{
-			// TODO: Find a way to make this smarter.
-			entity->allocate_component<CastsStaticShadowComponent>();
-			entity->allocate_component<CastsDynamicShadowComponent>();
-		}
 		break;
 	}
 
-	render->renderable = renderable;
+	if (renderable->get_mesh_draw_pipeline() != DrawPipeline::AlphaBlend &&
+	    renderable->has_static_aabb())
+	{
+		// TODO: Find a way to make this smarter.
+		entity->allocate_component<CastsStaticShadowComponent>();
+		entity->allocate_component<CastsDynamicShadowComponent>();
+	}
+
+	render->renderable = std::move(renderable);
 	return entity;
 }
 
@@ -1170,7 +1263,7 @@ void Scene::queue_destroy_entity(Entity *entity)
 
 TransformAllocator::TransformAllocator()
 {
-	init(1, 20, &allocator);
+	init(1, MaxNumNodesLog2, &allocator);
 	prime(nullptr);
 }
 
@@ -1209,7 +1302,7 @@ void TransformBackingAllocator::prime(uint32_t count, const void *)
 
 TransformAllocatorAABB::TransformAllocatorAABB()
 {
-	init(1, 20, &allocator);
+	init(1, MaxNumNodesLog2, &allocator);
 	prime(nullptr);
 }
 
@@ -1246,7 +1339,8 @@ void TransformBackingAllocatorAABB::prime(uint32_t count, const void *)
 
 OccluderStateAllocator::OccluderStateAllocator()
 {
-	init(16, 20, &allocator);
+	constexpr unsigned SubBlockSizeLog2 = 2;
+	init(1u << SubBlockSizeLog2, MaxOcclusionStatesLog2 - SubBlockSizeLog2, &allocator);
 }
 
 bool OccluderStateAllocator::allocate(uint32_t count, Util::AllocatedSlice *slice)

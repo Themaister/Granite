@@ -1005,7 +1005,7 @@ void Device::set_context(const Context &context)
 	managers.ibo.init(this, 4 * 1024, 16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 	managers.ubo.init(this, 256 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.minUniformBufferOffsetAlignment),
 	                  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-	managers.ubo.set_spill_region_size(VULKAN_MAX_UBO_SIZE);
+
 	managers.staging.init(this, 64 * 1024,
 	                      std::max<VkDeviceSize>(gpu_props.limits.minStorageBufferOffsetAlignment,
 	                                             std::max<VkDeviceSize>(16u, gpu_props.limits.optimalBufferCopyOffsetAlignment)),
@@ -1513,7 +1513,20 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 			info.semaphore = vk_semaphore;
 			info.stageMask = data.wait_stages[i];
 			info.value = semaphore->get_timeline_value();
-			sem.timeline_waits.push_back(info);
+
+			auto itr = std::find_if(
+			    sem.timeline_waits.begin(), sem.timeline_waits.end(), [&](const VkSemaphoreSubmitInfo &old_info)
+			    { return old_info.semaphore == info.semaphore && old_info.stageMask == info.stageMask; });
+
+			if (itr != sem.timeline_waits.end())
+			{
+				auto &old_info = *itr;
+				old_info.value = std::max<uint64_t>(old_info.value, info.value);
+			}
+			else
+			{
+				sem.timeline_waits.push_back(info);
+			}
 		}
 		else
 		{
@@ -5821,6 +5834,11 @@ bool Device::supports_subgroup_size_log2(bool subgroup_full_group, uint8_t subgr
 		return false;
 	if (subgroup_full_group && !ext.vk13_features.computeFullSubgroups)
 		return false;
+
+	// VARIABLE_SIZE is always supported.
+	// 0/0 is degenerate case.
+	if (subgroup_minimum_size_log2 == 0 && subgroup_maximum_size_log2 == 0)
+		return true;
 
 	uint32_t min_subgroups = 1u << subgroup_minimum_size_log2;
 	uint32_t max_subgroups = 1u << subgroup_maximum_size_log2;

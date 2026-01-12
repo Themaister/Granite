@@ -69,6 +69,13 @@ struct RuntimeHeaderDecoded
 	uint32_t vertex_count;
 };
 
+struct RuntimeHeaderDecodedMDI
+{
+	uint32_t indexCount;
+	uint32_t firstIndex;
+	int32_t vertexOffset;
+};
+
 struct Bound
 {
 	float center[3];

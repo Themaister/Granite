@@ -59,6 +59,11 @@ struct UnboundedComponent : ComponentBase
 	GRANITE_COMPONENT_TYPE_DECL(UnboundedComponent)
 };
 
+struct MeshletComponent : ComponentBase
+{
+	GRANITE_COMPONENT_TYPE_DECL(MeshletStaticComponent)
+};
+
 struct BackgroundComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(BackgroundComponent)

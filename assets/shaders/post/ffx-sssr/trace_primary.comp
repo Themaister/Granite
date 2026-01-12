@@ -2,7 +2,6 @@
 #extension GL_EXT_samplerless_texture_functions : require
 layout(local_size_x = 64) in;
 
-#define SUBGROUP_OPS
 #include "../../inc/subgroup_extensions.h"
 #include "../../inc/project_direction.h"
 #include "sssr_util.h"

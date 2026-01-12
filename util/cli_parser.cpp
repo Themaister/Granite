@@ -36,7 +36,7 @@ CLIParser::CLIParser(CLICallbacks cbs_, int argc_, char *argv_[])
 
 bool CLIParser::parse()
 {
-#ifdef __EXCEPTIONS
+#if defined(__EXCEPTIONS) || defined(__HAS_EXCEPTIONS)
 	try
 #endif
 	{
@@ -56,11 +56,12 @@ bool CLIParser::parse()
 				{
 					if (unknown_argument_is_default)
 						cbs.default_handler(next);
-#ifdef __EXCEPTIONS
+#if defined(__EXCEPTIONS) || defined(__HAS_EXCEPTIONS)
 					else
 						throw std::invalid_argument("Invalid argument");
 #else
-					return false;
+					else
+						return false;
 #endif
 				}
 				else
@@ -70,7 +71,7 @@ bool CLIParser::parse()
 
 		return true;
 	}
-#ifdef __EXCEPTIONS
+#if defined(__EXCEPTIONS) || defined(__HAS_EXCEPTIONS)
 	catch (const std::exception &e)
 	{
 		LOGE("Failed to parse arguments: %s\n", e.what());

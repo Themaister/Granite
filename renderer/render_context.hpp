@@ -34,6 +34,7 @@
 namespace Granite
 {
 class TemporalJitter;
+class SceneTransformManager;
 
 struct FrameParameters
 {
@@ -65,9 +66,43 @@ public:
 		lighting = lighting_;
 	}
 
+	enum : uint32_t { InvalidSceneTransformIndex = UINT32_MAX };
+
+	void set_scene_transform_parameters(const SceneTransformManager *transforms_, unsigned index = InvalidSceneTransformIndex)
+	{
+		transforms = transforms_;
+		transform_index = index;
+	}
+
+	void set_scene_hiz_view(const Vulkan::ImageView *hiz_, unsigned min_lod)
+	{
+		hiz = hiz_;
+		hiz_min_lod = min_lod;
+	}
+
+	const Vulkan::ImageView *get_scene_hiz_view() const
+	{
+		return hiz;
+	}
+
+	unsigned get_scene_hiz_min_lod() const
+	{
+		return hiz_min_lod;
+	}
+
 	const LightingParameters *get_lighting_parameters() const
 	{
 		return lighting;
+	}
+
+	const SceneTransformManager *get_scene_transform_parameters() const
+	{
+		return transforms;
+	}
+
+	uint32_t get_scene_transform_parameter_index() const
+	{
+		return transform_index;
 	}
 
 	const Frustum &get_visibility_frustum() const
@@ -91,6 +126,10 @@ private:
 	Vulkan::Device *device = nullptr;
 	const Scene *scene = nullptr;
 	const LightingParameters *lighting = nullptr;
+	const SceneTransformManager *transforms = nullptr;
+	unsigned transform_index = InvalidSceneTransformIndex;
+	const Vulkan::ImageView *hiz = nullptr;
+	unsigned hiz_min_lod = 0;
 	RenderParameters camera;
 	Frustum frustum;
 	FrameParameters frame;

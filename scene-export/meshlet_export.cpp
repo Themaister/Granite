@@ -238,6 +238,99 @@ static std::vector<NormalTangent> mesh_extract_normal_tangent_oct8(const SceneFo
 	return encoded_attributes;
 }
 
+static std::vector<u8vec4> mesh_extract_bone_attribs(const SceneFormats::Mesh &mesh, MeshAttribute attrib)
+{
+	std::vector<u8vec4> encoded_data;
+	size_t num_attribs = mesh.attributes.size() / mesh.attribute_stride;
+	encoded_data.resize(num_attribs);
+
+	auto &layout = mesh.attribute_layout[int(attrib)];
+	auto fmt = layout.format;
+
+	static const VkFormat uint_formats[] = { VK_FORMAT_R8G8B8A8_UINT, VK_FORMAT_R16G16B16A16_UINT, VK_FORMAT_R32G32B32A32_UINT };
+	static const VkFormat unorm_formats[] = { VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R16G16B16A16_UNORM };
+	bool is_uint = attrib == MeshAttribute::BoneIndex;
+	const auto *formats = is_uint ? uint_formats : unorm_formats;
+
+	if (fmt == formats[0])
+	{
+		for (size_t i = 0; i < num_attribs; i++)
+		{
+			memcpy(encoded_data[i].data,
+			       mesh.attributes.data() + i * mesh.attribute_stride + layout.offset,
+			       sizeof(u8vec4));
+		}
+	}
+	else if (fmt == formats[1])
+	{
+		for (size_t i = 0; i < num_attribs; i++)
+		{
+			u16vec4 indices;
+			memcpy(indices.data,
+			       mesh.attributes.data() + i * mesh.attribute_stride + layout.offset,
+			       sizeof(u16vec4));
+
+			if (is_uint)
+			{
+				if (any(greaterThan(indices, u16vec4(0xff))))
+				{
+					LOGE("Bone index is greater than 0xff. This cannot work.\n");
+					return {};
+				}
+				encoded_data[i] = u8vec4(indices);
+			}
+			else
+			{
+				encoded_data[i] = u8vec4(vec4(indices) * (255.0f / 0xffff) + 0.5f);
+			}
+		}
+	}
+	else if (is_uint && fmt == formats[2])
+	{
+		for (size_t i = 0; i < num_attribs; i++)
+		{
+			uvec4 indices;
+			memcpy(indices.data,
+				   mesh.attributes.data() + i * mesh.attribute_stride + layout.offset,
+				   sizeof(uvec4));
+
+			if (any(greaterThan(indices, uvec4(0xff))))
+			{
+				LOGE("Bone index is greater than 0xff. This cannot work.\n");
+				return {};
+			}
+
+			encoded_data[i] = u8vec4(indices);
+		}
+	}
+	else
+	{
+		LOGE("Unsupported format for bone indices.\n");
+		return {};
+	}
+
+	if (!is_uint)
+	{
+		for (auto &d : encoded_data)
+		{
+			// Redistribute rounding error.
+			int sum = d.x + d.y + d.z + d.w;
+
+			int max_index = 0;
+			for (int i = 1; i < 4; i++)
+				if (d[i] > d[max_index])
+					max_index = i;
+
+			if (sum != 255)
+				d[max_index] += 255 - sum;
+
+			assert(d.x + d.y + d.z + d.w == 255);
+		}
+	}
+
+	return encoded_data;
+}
+
 static std::vector<i16vec2> mesh_extract_uv_snorm_scale(const SceneFormats::Mesh &mesh, int &exp)
 {
 	std::vector<i16vec2> encoded_uvs;
@@ -516,6 +609,13 @@ static void encode_mesh(Encoded &encoded,
 				stream.bits |= uint32_t(p_aux[stream_index] << 16);
 				break;
 
+			case StreamType::BoneIndices:
+			case StreamType::BoneWeights:
+				encode_attribute_stream(encoded.payload, stream,
+						static_cast<const u8vec4 *>(pp_data[stream_index]),
+						meshlet.attribute_remap, meshlet.vertex_count);
+				break;
+
 			case StreamType::NormalTangentOct8:
 			{
 				u8vec4 nts[MaxElements]{};
@@ -738,6 +838,8 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	std::vector<i16vec3> positions;
 	std::vector<i16vec2> uv;
 	std::vector<NormalTangent> normal_tangent;
+	std::vector<u8vec4> bone_indices;
+	std::vector<u8vec4> bone_weights;
 
 	unsigned num_attribute_streams = 0;
 	int aux[MaxStreams] = {};
@@ -746,8 +848,17 @@ bool export_mesh_to_meshlet(const std::string &path, SceneFormats::Mesh mesh, Me
 	switch (style)
 	{
 	case MeshStyle::Skinned:
-		LOGE("Unimplemented.\n");
-		return false;
+		num_attribute_streams += 2;
+		bone_indices = mesh_extract_bone_attribs(mesh, MeshAttribute::BoneIndex);
+		bone_weights = mesh_extract_bone_attribs(mesh, MeshAttribute::BoneWeights);
+		if (bone_indices.empty() || bone_weights.empty())
+		{
+			LOGE("Missing bone indices.\n");
+			return false;
+		}
+		p_data[int(StreamType::BoneIndices)] = bone_indices.data();
+		p_data[int(StreamType::BoneWeights)] = bone_weights.data();
+		// Fallthrough
 	case MeshStyle::Textured:
 		uv = mesh_extract_uv_snorm_scale(mesh, aux[int(StreamType::UV)]);
 		num_attribute_streams += 2;

@@ -51,7 +51,10 @@ struct SPDInfo
 	ReductionMode mode;
 };
 
-static constexpr unsigned MaxSPDMips = 12;
+static constexpr unsigned MaxSPDMips = 13;
 void emit_single_pass_downsample(Vulkan::CommandBuffer &cmd, const SPDInfo &info);
-void setup_depth_hierarchy_pass(RenderGraph &graph, const std::string &input, const std::string &output);
+
+void setup_depth_hierarchy_pass(RenderGraph &graph, const std::string &input, const std::string &output,
+                                const RenderContext *context,
+                                bool output_downsample);
 }

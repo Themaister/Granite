@@ -8,18 +8,7 @@
 #extension GL_ARB_gpu_shader_int64 : require
 
 #include "meshlet_payload_constants.h"
-
-#ifndef MESHLET_PAYLOAD_DESCRIPTOR_SET
-#error "Must define MESHLET_PAYLOAD_DESCRIPTOR_SET"
-#endif
-
-#ifndef MESHLET_PAYLOAD_STREAM_BINDING
-#error "Must define MESHLET_PAYLOAD_STREAM_BINDING"
-#endif
-
-#ifndef MESHLET_PAYLOAD_PAYLOAD_BINDING
-#error "Must define MESHLET_PAYLOAD_PAYLOAD_BINDING"
-#endif
+#include "global_bindings.h"
 
 struct MeshletStream
 {
@@ -39,19 +28,17 @@ struct MeshletInfo
 	uint vertex_count;
 };
 
-#ifdef MESHLET_PAYLOAD_META_BINDING
-layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_META_BINDING, std430) readonly buffer MeshletMetasRuntime
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_MESHLET_HEADER_BUFFER, std430) readonly buffer MeshletMetasRuntime
 {
 	MeshletMetaRuntime data[];
 } meshlet_metas_runtime;
-#endif
 
-layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_STREAM_BINDING, std430) readonly buffer MeshletStreams
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_MESHLET_STREAM_HEADER_BUFFER, std430) readonly buffer MeshletStreams
 {
 	MeshletStream data[];
 } meshlet_streams;
 
-layout(set = MESHLET_PAYLOAD_DESCRIPTOR_SET, binding = MESHLET_PAYLOAD_PAYLOAD_BINDING, std430) readonly buffer Payload
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_MESHLET_PAYLOAD_BUFFER, std430) readonly buffer Payload
 {
 	uint data[];
 } payload;
@@ -184,6 +171,32 @@ u8vec4 meshlet_decode_normal_tangent_oct8(uint stream_index, uint lane_index, ou
 		t_sign = aux == 2;
 
 	return u8vec4(value);
+}
+
+uvec4 meshlet_decode_bone_indices(uint stream_index, uint lane_index)
+{
+	uint offset_in_words = meshlet_streams.data[stream_index].offset_in_words;
+	uint bits = meshlet_streams.data[stream_index].bits;
+
+	// Scalar math.
+	uvec4 base_value = uvec4(unpack8(meshlet_streams.data[stream_index].base_value_or_offsets[0]));
+	uvec4 value = meshlet_decode4(offset_in_words, lane_index, bits & 0xff);
+
+	value += base_value;
+	return value;
+}
+
+vec4 meshlet_decode_bone_weights(uint stream_index, uint lane_index)
+{
+	uint offset_in_words = meshlet_streams.data[stream_index].offset_in_words;
+	uint bits = meshlet_streams.data[stream_index].bits;
+
+	// Scalar math.
+	uvec4 base_value = uvec4(unpack8(meshlet_streams.data[stream_index].base_value_or_offsets[0]));
+	uvec4 value = meshlet_decode4(offset_in_words, lane_index, bits & 0xff);
+
+	value += base_value;
+	return unpackUnorm4x8(pack32(u8vec4(value)));
 }
 
 #endif

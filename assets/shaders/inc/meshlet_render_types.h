@@ -12,27 +12,40 @@ struct Bound
 	vec4 cone;
 };
 
-struct TaskInfo
+struct MeshAssetDrawTaskInfo
 {
 	uint aabb_instance;
-	uint node_instance;
-	uint material_index;
-	uint mesh_index_count;
 	uint occluder_state_offset;
+	uint node_instance;
+	uint mesh_index_count;
+	uint material_flags;
 };
+
+const int MESH_ASSET_MATERIAL_TEXTURE_INDEX_OFFSET = 0;
+const int MESH_ASSET_MATERIAL_TEXTURE_INDEX_BITS = 12;
+const int MESH_ASSET_MATERIAL_PAYLOAD_OFFSET = 12;
+const int MESH_ASSET_MATERIAL_PAYLOAD_BITS = 11;
+const int MESH_ASSET_MATERIAL_UV_CLAMP_OFFSET = 23;
+const int MESH_ASSET_MATERIAL_TEXTURE_MASK_OFFSET = 24;
+
+const int MESH_ASSET_MATERIAL_BASE_COLOR_BIT = 1 << (MESH_ASSET_MATERIAL_TEXTURE_MASK_OFFSET + 0);
+const int MESH_ASSET_MATERIAL_NORMAL_BIT = 1 << (MESH_ASSET_MATERIAL_TEXTURE_MASK_OFFSET + 1);
+const int MESH_ASSET_MATERIAL_METALLIC_ROUGHNESS_BIT = 1 << (MESH_ASSET_MATERIAL_TEXTURE_MASK_OFFSET + 2);
+const int MESH_ASSET_MATERIAL_OCCLUSION_BIT = 1 << (MESH_ASSET_MATERIAL_TEXTURE_MASK_OFFSET + 3);
+const int MESH_ASSET_MATERIAL_EMISSIVE_BIT = 1 << (MESH_ASSET_MATERIAL_TEXTURE_MASK_OFFSET + 4);
 
 struct CompactedDrawInfo
 {
 	uint meshlet_index;
 	uint node_offset;
-	uint material_offset;
+	uint material_flags;
 };
 
 #ifdef MESHLET_RENDER_TASK_HIERARCHICAL
 #if MESHLET_RENDER_TASK_HIERARCHICAL
 struct CompactedDrawInfoPayload
 {
-    CompactedDrawInfo infos[32 * 32];
+    uint task_offset_mesh_offsets[128 * 32];
 };
 #else
 struct CompactedDrawInfoPayload
@@ -42,13 +55,5 @@ struct CompactedDrawInfoPayload
 };
 #endif
 #endif
-
-struct IndirectDrawMesh
-{
-	uint primitive_offset;
-	uint vertex_offset;
-	uint primitive_count;
-	uint vertex_count;
-};
 
 #endif

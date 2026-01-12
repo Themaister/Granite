@@ -36,11 +36,6 @@ void BufferPool::init(Device *device_, VkDeviceSize block_size_,
 	usage = usage_;
 }
 
-void BufferPool::set_spill_region_size(VkDeviceSize spill_size_)
-{
-	spill_size = spill_size_;
-}
-
 void BufferPool::set_max_retained_blocks(size_t max_blocks)
 {
 	max_retained_blocks = max_blocks;
@@ -77,7 +72,6 @@ BufferBlock BufferPool::allocate_block(VkDeviceSize size)
 	block.offset = 0;
 	block.alignment = alignment;
 	block.size = size;
-	block.spill_size = spill_size;
 	return block;
 }
 
@@ -120,11 +114,7 @@ BufferBlockAllocation BufferBlock::allocate(VkDeviceSize allocate_size)
 	{
 		auto *ret = mapped + aligned_offset;
 		offset = aligned_offset + allocate_size;
-
-		VkDeviceSize padded_size = std::max<VkDeviceSize>(allocate_size, spill_size);
-		padded_size = std::min<VkDeviceSize>(padded_size, size - aligned_offset);
-
-		return { ret, buffer, aligned_offset, padded_size };
+		return { ret, buffer, aligned_offset, allocate_size };
 	}
 	else
 		return { nullptr, {}, 0, 0 };

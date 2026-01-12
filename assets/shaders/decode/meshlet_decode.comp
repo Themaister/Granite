@@ -11,9 +11,11 @@ layout(constant_id = 1) const bool UNROLLED_MESH = false;
 layout(constant_id = 2) const uint TARGET_MESH_STYLE = 0;
 layout(constant_id = 3) const bool RUNTIME_MESH = false;
 
-#define MESHLET_PAYLOAD_DESCRIPTOR_SET 0
-#define MESHLET_PAYLOAD_STREAM_BINDING 0
-#define MESHLET_PAYLOAD_PAYLOAD_BINDING 1
+#include "../inc/global_bindings.h"
+#undef BINDING_GLOBAL_SCENE_MESHLET_STREAM_HEADER_BUFFER
+#undef BINDING_GLOBAL_SCENE_MESHLET_PAYLOAD_BUFFER
+#define BINDING_GLOBAL_SCENE_MESHLET_STREAM_HEADER_BUFFER 0
+#define BINDING_GLOBAL_SCENE_MESHLET_PAYLOAD_BUFFER 1
 #include "../inc/meshlet_payload_decode.h"
 #include "../inc/meshlet_attribute_decode.h"
 #include "../inc/meshlet_payload_constants.h"
@@ -145,6 +147,16 @@ void main()
             mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
             output_stream_textured_attr.data[offsets.vertex_output_offset + lane_index] =
                 TexturedAttr(pack_a2bgr10(NT[0]), pack_a2bgr10(NT[1]), fp_uv);
+        }
+
+        if (TARGET_MESH_STYLE >= MESH_STYLE_SKINNED)
+        {
+            uvec4 indices = meshlet_decode_bone_indices(
+                    meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_BONE_INDICES, lane_index);
+            uint packed_indices = pack32(u8vec4(indices));
+            uint packed_weights = packUnorm4x8(meshlet_decode_bone_weights(
+                    meshlet_index * NUM_U32_STREAMS + MESHLET_STREAM_TYPE_BONE_WEIGHTS, lane_index));
+            output_stream_skin.data[offsets.vertex_output_offset + lane_index] = uvec2(packed_indices, packed_weights);
         }
     }
 }

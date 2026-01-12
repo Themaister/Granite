@@ -1,0 +1,251 @@
+#version 450
+#extension GL_EXT_mesh_shader : require
+
+out gl_MeshPerVertexEXT
+{
+    invariant vec4 gl_Position;
+} gl_MeshVerticesEXT[];
+
+#if defined(VARIANT_BIT_0) && VARIANT_BIT_0
+#define MESHLET_RENDER_TASK_HIERARCHICAL 1
+#else
+#define MESHLET_RENDER_TASK_HIERARCHICAL 0
+#endif
+
+#if defined(VARIANT_BIT_1) && VARIANT_BIT_1
+#define MESHLET_LOCAL_INVOCATION_INDEXED 1
+#else
+#define MESHLET_LOCAL_INVOCATION_INDEXED 0
+#endif
+
+#if defined(VARIANT_BIT_2) && VARIANT_BIT_2
+#define MESHLET_PRIMITIVE_CULL_WAVE32 1
+#else
+#define MESHLET_PRIMITIVE_CULL_WAVE32 0
+#endif
+
+#extension GL_KHR_shader_subgroup_basic : require
+#if MESHLET_PRIMITIVE_CULL_WAVE32
+#extension GL_KHR_shader_subgroup_shuffle : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#endif
+
+layout(max_primitives = 32, max_vertices = 32, triangles) out;
+layout(local_size_x = 32) in;
+
+#if !defined(RENDERER_DEPTH)
+#define ATTR_LEVEL 2
+#elif defined(ALPHA_TEST)
+#define ATTR_LEVEL 1
+#else
+#define ATTR_LEVEL 0
+#endif
+
+#include "inc/meshlet_payload_constants.h"
+#include "inc/meshlet_payload_decode.h"
+#include "inc/meshlet_attribute_decode.h"
+#include "inc/meshlet_render_types.h"
+
+#if MESHLET_LOCAL_INVOCATION_INDEXED
+#define MESHLET_PRIMITIVE_CULL_SHARED_INDEX shared_indices
+shared uint shared_indices[32];
+shared vec4 shared_clip_pos[32];
+#if ATTR_LEVEL >= 1
+shared i16vec2 shared_uv[32];
+shared int shared_exponent[32];
+#endif
+#if ATTR_LEVEL >= 2
+shared u8vec4 shared_nt[32];
+shared bool shared_t_sign[32];
+shared vec3 shared_world_pos[32];
+#endif
+#endif
+
+#include "inc/meshlet_primitive_cull.h"
+#include "inc/global_bindings.h"
+#include "inc/render_parameters.h"
+#include "inc/affine.h"
+
+#if ATTR_LEVEL >= 1
+layout(location = 0) out vec2 vUV[];
+layout(location = 1) out uint vMaterialFlags[];
+#endif
+
+#if ATTR_LEVEL >= 2
+layout(location = 2) out mediump vec3 vNormal[];
+layout(location = 3) out mediump vec4 vTangent[];
+layout(location = 4) out vec3 vPos[];
+#endif
+
+#include "inc/meshlet_ubos.h"
+
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_NODE_TRANSFORMS) readonly buffer AffineTransforms
+{
+    mat_affine data[];
+} transforms;
+
+#if MESHLET_RENDER_TASK_HIERARCHICAL
+layout(set = 0, binding = BINDING_GLOBAL_SCENE_TASK_BUFFER, std430) readonly buffer Tasks
+{
+	MeshAssetDrawTaskInfo data[];
+} task_info;
+#endif
+
+taskPayloadSharedEXT CompactedDrawInfoPayload mesh_payload;
+
+#if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
+const uint STRIDE = 6;
+#else
+const uint STRIDE = 4;
+#endif
+
+void main()
+{
+    uint compacted_meshlet_index = meshlet_get_meshlet_index();
+
+#if !MESHLET_RENDER_TASK_HIERARCHICAL
+    CompactedDrawInfo task = mesh_payload.info;
+    task.meshlet_index += uint(mesh_payload.offsets[compacted_meshlet_index]);
+#else
+    uint task_offset_mesh_offset = mesh_payload.task_offset_mesh_offsets[compacted_meshlet_index];
+    uint task_offset = bitfieldExtract(task_offset_mesh_offset, 5, 32 - 5);
+    uint mesh_offset = bitfieldExtract(task_offset_mesh_offset, 0, 5);
+    CompactedDrawInfo task = CompactedDrawInfo(
+        (task_info.data[task_offset].mesh_index_count & ~31u) + mesh_offset,
+        task_info.data[task_offset].node_instance,
+        task_info.data[task_offset].material_flags);
+#endif
+
+#if MESHLET_PRIMITIVE_CULL_WAVE32
+    uint linear_index = gl_SubgroupInvocationID;
+#else
+    uint linear_index = gl_LocalInvocationIndex;
+#endif
+
+    MeshletMetaRuntime meta = meshlet_metas_runtime.data[task.meshlet_index];
+    meta.stream_offset += STRIDE * meshlet_get_sublet_index();
+
+    MeshletInfo info = meshlet_get_meshlet_info(meta.stream_offset);
+    uvec3 decoded_index_buffer = uvec3(0);
+
+    // AMD Windows bug. It doesn't understand invariance deps through shared memory.
+    precise vec3 world_pos;
+    precise vec4 clip_pos = vec4(-1.0);
+
+    if (linear_index < info.primitive_count)
+        decoded_index_buffer = meshlet_decode_index_buffer(meta.stream_offset, linear_index);
+
+    mat_affine M;
+#if !HAVE_BONE_INDEX || !HAVE_BONE_WEIGHT
+    M = transforms.data[task.node_offset];
+#endif
+
+    if (linear_index < info.vertex_count)
+    {
+#if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
+        uvec4 indices = meshlet_decode_bone_indices(meta.stream_offset + MESHLET_STREAM_TYPE_BONE_INDICES, linear_index);
+        vec4 weights = meshlet_decode_bone_weights(meta.stream_offset + MESHLET_STREAM_TYPE_BONE_WEIGHTS, linear_index);
+        indices += task.node_offset;
+
+        mat3x4 m = mat_affine_to_transposed(transforms.data[indices.x]) * weights.x;
+        if (weights.y != 0.0)
+            m += mat_affine_to_transposed(transforms.data[indices.y]) * weights.y;
+        if (weights.z != 0.0)
+            m += mat_affine_to_transposed(transforms.data[indices.z]) * weights.z;
+        if (weights.w != 0.0)
+            m += mat_affine_to_transposed(transforms.data[indices.w]) * weights.w;
+
+        M.rows[0] = m[0];
+        M.rows[1] = m[1];
+        M.rows[2] = m[2];
+#endif
+
+        int exponent;
+        i16vec3 ipos = meshlet_decode_snorm_scaled_i16x3(
+            meta.stream_offset + MESHLET_STREAM_TYPE_POSITION,
+            linear_index, exponent);
+        vec3 pos = ldexp(vec3(ipos), ivec3(exponent));
+        world_pos = mul(M, pos);
+        clip_pos = global.view_projection * vec4(world_pos, 1.0);
+    }
+
+    meshlet_emit_primitive(decoded_index_buffer, clip_pos, frustum.viewport, frustum.winding);
+
+    if (meshlet_lane_has_active_vert())
+    {
+        uint out_vert_index = meshlet_compacted_vertex_output();
+
+#if ATTR_LEVEL >= 1
+        int exponent;
+        i16vec2 uv = meshlet_decode_snorm_scaled_i16x2(
+                meta.stream_offset + MESHLET_STREAM_TYPE_UV,
+                linear_index, exponent);
+#endif
+
+#if ATTR_LEVEL >= 2
+        bool t_sign;
+        u8vec4 nt = meshlet_decode_normal_tangent_oct8(
+                meta.stream_offset + MESHLET_STREAM_TYPE_NORMAL_TANGENT_OCT8,
+                linear_index, t_sign);
+#endif
+
+#ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
+        // Roundtrip via LDS.
+        shared_clip_pos[out_vert_index] = clip_pos;
+
+        // Defer the decoding to save LDS space.
+#if ATTR_LEVEL >= 1
+        shared_uv[out_vert_index] = uv;
+        shared_exponent[out_vert_index] = exponent;
+#endif
+#if ATTR_LEVEL >= 2
+        shared_nt[out_vert_index] = nt;
+        shared_t_sign[out_vert_index] = t_sign;
+        shared_world_pos[out_vert_index] = world_pos;
+#endif
+#else
+        // Immediate path where we skip LDS roundtrip.
+        gl_MeshVerticesEXT[out_vert_index].gl_Position = clip_pos;
+#if ATTR_LEVEL >= 1
+        vUV[out_vert_index] = attribute_decode_snorm_exp_uv(uv, exponent);
+        vMaterialFlags[out_vert_index] = task.material_flags;
+#endif
+#if ATTR_LEVEL >= 2
+        mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
+        vNormal[out_vert_index] = mul_normal(M, NT[0].xyz);
+        vTangent[out_vert_index] = vec4(mul_normal(M, NT[1].xyz), NT[1].w);
+        vPos[out_vert_index] = world_pos;
+#endif
+#endif
+    }
+
+#ifdef MESHLET_PRIMITIVE_CULL_SHARED_INDEX
+    barrier();
+
+    // Emit vertices
+    if (gl_LocalInvocationIndex < shared_active_vert_count_total)
+    {
+        gl_MeshVerticesEXT[gl_LocalInvocationIndex].gl_Position = shared_clip_pos[gl_LocalInvocationIndex];
+
+#if ATTR_LEVEL >= 1
+        i16vec2 uv = shared_uv[gl_LocalInvocationIndex];
+        int exponent = shared_exponent[gl_LocalInvocationIndex];
+        vUV[gl_LocalInvocationIndex] = attribute_decode_snorm_exp_uv(uv, exponent);
+        vMaterialFlags[gl_LocalInvocationIndex] = task.material_flags;
+#endif
+
+#if ATTR_LEVEL >= 2
+        u8vec4 nt = shared_nt[gl_LocalInvocationIndex];
+        bool t_sign = shared_t_sign[gl_LocalInvocationIndex];
+        mediump mat2x4 NT = attribute_decode_oct8_normal_tangent(nt, t_sign);
+        vNormal[gl_LocalInvocationIndex] = mul_normal(M, NT[0].xyz);
+        vTangent[gl_LocalInvocationIndex] = vec4(mul_normal(M, NT[1].xyz), NT[1].w);
+        vPos[gl_LocalInvocationIndex] = shared_world_pos[gl_LocalInvocationIndex];
+#endif
+    }
+
+    if (gl_LocalInvocationIndex < shared_active_prim_count_total)
+	    gl_PrimitiveTriangleIndicesEXT[gl_LocalInvocationIndex] = uvec3(unpack8(shared_indices[gl_LocalInvocationIndex]).xyz);
+#endif
+}

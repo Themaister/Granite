@@ -94,7 +94,6 @@ mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal, boo
 			normal2.z * texelFetch(uVolumetricDiffuseFallback, coords.z).rgb;
 	mediump vec4 diffuse_weight = vec4(result * 0.01, 0.01);
 
-#if defined(SUBGROUP_OPS) && (defined(SUBGROUP_COMPUTE_FULL) || defined(SUBGROUP_SHUFFLE))
 	const float FLT_BIG = 1e38;
 	vec3 aabb_lo = subgroupMin(active_lane ? world_pos : vec3(FLT_BIG));
 	vec3 aabb_hi = subgroupMax(active_lane ? world_pos : vec3(-FLT_BIG));
@@ -136,7 +135,6 @@ mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal, boo
 #endif
 
 			// Wave uniform lane index.
-#if defined(SUBGROUP_SHUFFLE)
 			DiffuseVolumeParameters scalar_volume;
 			scalar_volume.world_to_texture[0] = subgroupShuffle(volume.world_to_texture[0], bit_index);
 			scalar_volume.world_to_texture[1] = subgroupShuffle(volume.world_to_texture[1], bit_index);
@@ -145,19 +143,10 @@ mediump vec3 compute_volumetric_diffuse(vec3 world_pos, mediump vec3 normal, boo
 			scalar_volume.hi_tex_coord_x = subgroupShuffle(volume.hi_tex_coord_x, bit_index);
 			scalar_volume.guard_band_factor = subgroupShuffle(volume.guard_band_factor, bit_index);
 			scalar_volume.guard_band_sharpen = subgroupShuffle(volume.guard_band_sharpen, bit_index);
-#elif defined(SUBGROUP_COMPUTE_FULL)
-			DiffuseVolumeParameters scalar_volume = volumetric.volumes[i + bit_index];
-#endif
 
 			diffuse_weight += compute_volumetric_diffuse(index, scalar_volume, world_pos, normal);
 		}
 	}
-#else
-	// Naive path.
-	if (active)
-		for (int i = 0; i < volumetric.num_volumes; i++)
-			diffuse_weight += compute_volumetric_diffuse(i, volumetric.volumes[i], world_pos, normal);
-#endif
 
 	// Already accounted for lambertian 1.0 / PI when creating the probe.
 	return diffuse_weight.rgb / max(diffuse_weight.a, 0.0001);

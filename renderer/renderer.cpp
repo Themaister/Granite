@@ -51,12 +51,6 @@ enum GlobalDescriptorSetBindings
 	BINDING_GLOBAL_VOLUMETRIC_FOG = 7,
 
 	BINDING_GLOBAL_CLUSTERER_PARAMETERS = 8,
-
-	BINDING_GLOBAL_CLUSTER_IMAGE_LEGACY = 9,
-	BINDING_GLOBAL_CLUSTER_SPOT_LEGACY = 10,
-	BINDING_GLOBAL_CLUSTER_POINT_LEGACY = 11,
-	BINDING_GLOBAL_CLUSTER_LIST_LEGACY = 12,
-
 	BINDING_GLOBAL_CLUSTER_TRANSFORM = 9,
 	BINDING_GLOBAL_CLUSTER_BITMASK = 10,
 	BINDING_GLOBAL_CLUSTER_RANGE = 11,
@@ -65,9 +59,21 @@ enum GlobalDescriptorSetBindings
 
 	BINDING_GLOBAL_LINEAR_SAMPLER = 14,
 	BINDING_GLOBAL_SHADOW_SAMPLER = 15,
-	BINDING_GLOBAL_GEOMETRY_SAMPLER = 16,
+	BINDING_GLOBAL_GEOMETRY_SAMPLER_WRAP = 16,
+	BINDING_GLOBAL_GEOMETRY_SAMPLER_CLAMP = 17,
 
-	BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_FALLBACK_VOLUME = 17
+	BINDING_GLOBAL_VOLUMETRIC_DIFFUSE_FALLBACK_VOLUME = 18,
+
+	BINDING_GLOBAL_SCENE_NODE_TRANSFORMS = 19,
+	BINDING_GLOBAL_SCENE_NODE_AABBS = 20,
+	BINDING_GLOBAL_SCENE_OCCLUSION_STATE = 21,
+	BINDING_GLOBAL_SCENE_TASK_BUFFER = 22,
+	BINDING_GLOBAL_SCENE_MESHLET_HEADER_BUFFER = 23,
+	BINDING_GLOBAL_SCENE_MESHLET_STREAM_HEADER_BUFFER = 24,
+	BINDING_GLOBAL_SCENE_MESHLET_PAYLOAD_BUFFER = 25,
+	BINDING_GLOBAL_SCENE_MESHLET_CLUSTER_BOUNDS = 26,
+	BINDING_GLOBAL_SCENE_MESHLET_HIZ = 27,
+	BINDING_GLOBAL_SCENE_NODE_PREV_TRANSFORMS = 28,
 };
 
 namespace Granite
@@ -172,7 +178,7 @@ bool RendererSuite::load_variant_cache(const std::string &path)
 	unsigned version = doc["rendererSuiteCacheVersion"].GetUint();
 	if (version != CacheVersion)
 	{
-		LOGE("Mismatch in renderer suite cache version, %u != %u.\n", version, CacheVersion);
+		LOGW("Mismatch in renderer suite cache version, %u != %u.\n", version, CacheVersion);
 		return false;
 	}
 
@@ -294,53 +300,14 @@ static const char *renderer_to_define(RendererType type)
 	return "";
 }
 
-void Renderer::add_subgroup_defines(Vulkan::Device &device, std::vector<std::pair<std::string, int>> &defines,
-                                    VkShaderStageFlagBits stage)
-{
-	auto &vk11 = device.get_device_features().vk11_props;
-
-	if ((vk11.subgroupSupportedStages & stage) != 0 &&
-	    !ImplementationQuirks::get().force_no_subgroups &&
-	    vk11.subgroupSize >= 4)
-	{
-		const VkSubgroupFeatureFlags quad_required =
-				(stage & (VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT)) != 0 ?
-				VK_SUBGROUP_FEATURE_QUAD_BIT : 0;
-		const VkSubgroupFeatureFlags required =
-				VK_SUBGROUP_FEATURE_BASIC_BIT |
-				VK_SUBGROUP_FEATURE_CLUSTERED_BIT |
-				quad_required |
-				VK_SUBGROUP_FEATURE_BALLOT_BIT |
-				VK_SUBGROUP_FEATURE_VOTE_BIT |
-				VK_SUBGROUP_FEATURE_ARITHMETIC_BIT;
-
-		if ((vk11.subgroupSupportedOperations & required) == required)
-			defines.emplace_back("SUBGROUP_OPS", 1);
-
-		if (!ImplementationQuirks::get().force_no_subgroup_shuffle)
-			if ((vk11.subgroupSupportedOperations & VK_SUBGROUP_FEATURE_SHUFFLE_BIT) != 0)
-				defines.emplace_back("SUBGROUP_SHUFFLE", 1);
-
-		if (stage == VK_SHADER_STAGE_FRAGMENT_BIT)
-			defines.emplace_back("SUBGROUP_FRAGMENT", 1);
-		else if (stage == VK_SHADER_STAGE_COMPUTE_BIT)
-			defines.emplace_back("SUBGROUP_COMPUTE", 1);
-	}
-}
-
 void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 {
 	auto global_defines = build_defines_from_renderer_options(type, flags);
 
-	if (device)
-	{
-		// Safe early-discard.
-		if (device->get_device_features().vk13_features.shaderDemoteToHelperInvocation)
-			global_defines.emplace_back("DEMOTE", 1);
-		add_subgroup_defines(*device, global_defines, VK_SHADER_STAGE_FRAGMENT_BIT);
-	}
-
-	auto &meshes = suite[ecast(RenderableType::Mesh)];
+	auto &meshlet = suite[ecast(RenderableType::Meshlet)];
+	meshlet.get_base_defines() = global_defines;
+	meshlet.bake_base_defines();
+	auto &meshes = suite[ecast(RenderableType::LegacyMesh)];
 	meshes.get_base_defines() = global_defines;
 	meshes.bake_base_defines();
 	auto &probes = suite[ecast(RenderableType::DebugProbe)];
@@ -538,6 +505,72 @@ static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const Li
 	}
 }
 
+void Renderer::bind_scene_transform_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
+{
+	auto *transforms = context.get_scene_transform_parameters();
+	if (!transforms)
+		return;
+
+	auto transform_index = context.get_scene_transform_parameter_index();
+
+	if (auto *buf = transforms->get_transforms())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_NODE_TRANSFORMS, *buf);
+	if (auto *buf = transforms->get_prev_transforms())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_NODE_PREV_TRANSFORMS, *buf);
+	if (auto *buf = transforms->get_aabbs())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_NODE_AABBS, *buf);
+	if (auto *buf = transforms->get_scene_task_buffer())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_TASK_BUFFER, *buf);
+	if (auto *buf = cmd.get_device().get_resource_manager().get_meshlet_header_buffer())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_MESHLET_HEADER_BUFFER, *buf);
+	if (auto *buf = cmd.get_device().get_resource_manager().get_meshlet_stream_header_buffer())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_MESHLET_STREAM_HEADER_BUFFER, *buf);
+	if (auto *buf = cmd.get_device().get_resource_manager().get_meshlet_payload_buffer())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_MESHLET_PAYLOAD_BUFFER, *buf);
+	if (auto *buf = cmd.get_device().get_resource_manager().get_cluster_bounds_buffer())
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_MESHLET_CLUSTER_BOUNDS, *buf);
+	if (auto *view = context.get_scene_hiz_view())
+		cmd.set_texture(0, BINDING_GLOBAL_SCENE_MESHLET_HIZ, *view);
+
+	if (transform_index != UINT32_MAX)
+		if (auto *buf = transforms->get_occlusion_state(transform_index))
+			cmd.set_storage_buffer(0, BINDING_GLOBAL_SCENE_OCCLUSION_STATE, *buf);
+}
+
+void Renderer::bind_meshlet_culling_ubo(
+	Vulkan::CommandBuffer &cmd, unsigned desc_set, unsigned binding, const RenderContext &context,
+	const VkViewport &viewport, bool cw)
+{
+	auto *ubo = cmd.allocate_typed_constant_data<MeshletViewportUBO>(desc_set, binding, 1);
+	ubo->viewport = vec4(viewport.x + 0.5f * viewport.width - 0.5f,
+					viewport.y + 0.5f * viewport.height - 0.5f,
+					0.5f * viewport.width, 0.5f * viewport.height);
+	ubo->winding = cw ? -1.0f : 1.0f;
+
+	memcpy(ubo->planes, context.get_visibility_frustum().get_planes(), sizeof(ubo->planes));
+	ubo->view = context.get_render_parameters().view;
+
+	vec2 viewport_half = 0.5f * vec2(viewport.width, viewport.height);
+	vec4 viewport_scale_bias = viewport_half.xyxy();
+
+	viewport_scale_bias.z +=
+			viewport_scale_bias.x * context.get_render_parameters().projection[3].x;
+	viewport_scale_bias.w +=
+			viewport_scale_bias.y * context.get_render_parameters().projection[3].y;
+
+	viewport_scale_bias.x *= context.get_render_parameters().projection[0].x;
+	viewport_scale_bias.y *= -context.get_render_parameters().projection[1].y;
+	ubo->viewport_scale_bias = viewport_scale_bias;
+
+	if (const auto *hiz = context.get_scene_hiz_view())
+	{
+		ubo->hiz_resolution.x = hiz->get_view_width() << context.get_scene_hiz_min_lod();
+		ubo->hiz_resolution.y = hiz->get_view_height() << context.get_scene_hiz_min_lod();
+		ubo->hiz_min_lod = context.get_scene_hiz_min_lod();
+		ubo->hiz_max_lod = (hiz->get_create_info().levels - 1) + context.get_scene_hiz_min_lod();
+	}
+}
+
 void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
 {
 	auto *lighting = context.get_lighting_parameters();
@@ -549,7 +582,6 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 
 	cmd.set_sampler(0, BINDING_GLOBAL_LINEAR_SAMPLER, StockSampler::LinearClamp);
 	cmd.set_sampler(0, BINDING_GLOBAL_SHADOW_SAMPLER, StockSampler::LinearShadow);
-	cmd.set_sampler(0, BINDING_GLOBAL_GEOMETRY_SAMPLER, StockSampler::DefaultGeometryFilterClamp);
 
 	if (lighting->volumetric_fog)
 	{
@@ -593,6 +625,9 @@ void Renderer::bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderCo
 {
 	auto *global = cmd.allocate_typed_constant_data<RenderParameters>(0, BINDING_GLOBAL_TRANSFORM, 1);
 	*global = context.get_render_parameters();
+
+	cmd.set_sampler(0, BINDING_GLOBAL_GEOMETRY_SAMPLER_WRAP, StockSampler::DefaultGeometryFilterWrap);
+	cmd.set_sampler(0, BINDING_GLOBAL_GEOMETRY_SAMPLER_CLAMP, StockSampler::DefaultGeometryFilterClamp);
 }
 
 void Renderer::set_render_context_parameter_binder(RenderContextParameterBinder *binder)
@@ -604,6 +639,184 @@ void Renderer::promote_read_write_cache_to_read_only()
 {
 	for (auto &s : suite)
 		s.promote_read_write_cache_to_read_only();
+}
+
+void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContext &context,
+                                  DrawPipeline pipe, const FlushParameters *params,
+                                  RendererFlushFlags options, bool skinned) const
+{
+	auto &manager = device->get_resource_manager();
+	auto encoding = manager.get_mesh_encoding();
+
+	if (pipe == DrawPipeline::AlphaTest && (options & MESH_ASSET_IGNORE_ALPHA_TEST_BIT) != 0)
+		pipe = DrawPipeline::Opaque;
+
+	auto *transforms = context.get_scene_transform_parameters();
+	if (!transforms)
+		return;
+
+	auto *task_range_buffer = transforms->get_task_buffer();
+	if (!task_range_buffer)
+		return;
+
+	auto range = (options & MESH_ASSET_MOTION_VECTOR_BIT) != 0
+		             ? transforms->get_task_range_motion_vector(skinned)
+		             : transforms->get_task_range(pipe, skinned);
+	if (range.second == 0)
+		return;
+
+	GRANITE_MATERIAL_MANAGER()->set_bindless(cmd, 2);
+	GRANITE_MATERIAL_MANAGER()->set_material_payloads(cmd, 3, 1);
+
+	if (encoding == ResourceManager::MeshEncoding::Classic || encoding == ResourceManager::MeshEncoding::VBOAndIBOMDI)
+	{
+		auto *ibo = manager.get_index_buffer();
+		auto *pos = manager.get_position_buffer();
+		auto *attr = manager.get_attribute_buffer();
+
+		cmd.set_index_buffer(*ibo, 0,
+		                     encoding == ResourceManager::MeshEncoding::Classic
+			                     ? VK_INDEX_TYPE_UINT32
+			                     : VK_INDEX_TYPE_UINT8);
+
+		cmd.set_vertex_binding(0, *pos, 0, 12);
+		cmd.set_vertex_binding(1, *attr, 0, 16);
+		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
+		cmd.set_vertex_attrib(1, 1, VK_FORMAT_A2B10G10R10_SNORM_PACK32, 0);
+		cmd.set_vertex_attrib(2, 1, VK_FORMAT_A2B10G10R10_SNORM_PACK32, 4);
+		cmd.set_vertex_attrib(3, 1, VK_FORMAT_R32G32_SFLOAT, 8);
+
+		if (skinned)
+		{
+			auto *skin = manager.get_skinning_buffer();
+			cmd.set_vertex_binding(2, *skin, 0, 8);
+			cmd.set_vertex_attrib(4, 2, VK_FORMAT_R8G8B8A8_UINT, 0);
+			cmd.set_vertex_attrib(5, 2, VK_FORMAT_R8G8B8A8_UNORM, 4);
+		}
+	}
+
+	uint32_t attribute_mask = 0;
+	uint32_t texture_mask = 0;
+
+	// Ubershader approach, assume everything can happen.
+	// We split skinned vs non-skinned since the complexity level is quite different.
+	attribute_mask |= MESH_ATTRIBUTE_POSITION_BIT | MESH_ATTRIBUTE_UV_BIT | MESH_ATTRIBUTE_NORMAL_BIT |
+					  MESH_ATTRIBUTE_TANGENT_BIT;
+	if (skinned)
+		attribute_mask |= MESH_ATTRIBUTE_BONE_INDEX_BIT | MESH_ATTRIBUTE_BONE_WEIGHTS_BIT;
+
+	texture_mask |= MATERIAL_TEXTURE_BASE_COLOR_BIT | MATERIAL_TEXTURE_METALLIC_ROUGHNESS_BIT |
+					MATERIAL_TEXTURE_NORMAL_BIT | MATERIAL_TEXTURE_OCCLUSION_BIT | MATERIAL_TEXTURE_EMISSIVE_BIT;
+
+	switch (encoding)
+	{
+		// TODO: Figure how we're going to do manual culling.
+	case ResourceManager::MeshEncoding::Classic:
+		break;
+
+	case ResourceManager::MeshEncoding::VBOAndIBOMDI:
+	{
+		auto key = VariantSignatureKey::build(pipe, attribute_mask, texture_mask);
+		auto *prog = suite[ecast(RenderableType::Meshlet)].get_program(key);
+		cmd.set_program(prog);
+
+		MDICall mdi;
+
+		uint32_t transform_index = context.get_scene_transform_parameter_index();
+		if (transform_index != RenderContext::InvalidSceneTransformIndex)
+		{
+			// For persistently registered render contexts, MDI space is allocated persistently.
+			SceneTransformManager::CullingPhase phase;
+			if (options & MESH_ASSET_MOTION_VECTOR_BIT)
+				phase = SceneTransformManager::CullingPhase::MotionVector;
+			else if (options & MESH_ASSET_PHASE_2_BIT)
+				phase = SceneTransformManager::CullingPhase::Second;
+			else
+				phase = SceneTransformManager::CullingPhase::First;
+
+			mdi = transforms->get_mdi_call_parameters(transform_index, phase, pipe, skinned);
+		}
+		else if (params)
+			mdi = params->get_mdi_call(pipe, skinned);
+		else
+			mdi = {};
+
+		if (mdi.indirect_buffer && mdi.indirect_count_max)
+		{
+			cmd.draw_indexed_multi_indirect(*mdi.indirect_buffer, mdi.indirect_offset,
+											mdi.indirect_count_max,
+											sizeof(VkDrawIndexedIndirectCommand),
+											*mdi.indirect_buffer, mdi.indirect_count_offset);
+		}
+
+		break;
+	}
+
+	case ResourceManager::MeshEncoding::MeshletDecoded:
+	case ResourceManager::MeshEncoding::MeshletEncoded:
+	{
+		uint32_t variant_id = 0;
+		if (manager.mesh_rendering_is_hierarchical_task())
+			variant_id |= 1u << 0;
+		if (manager.mesh_rendering_is_local_invocation_indexed())
+			variant_id |= 1u << 1;
+		if (manager.mesh_rendering_is_wave_culled())
+			variant_id |= 1u << 2;
+
+		if ((options & MESH_ASSET_PHASE_1_BIT) != 0)
+			variant_id |= 1u << 3;
+		if ((options & MESH_ASSET_PHASE_2_BIT) != 0)
+			variant_id |= 1u << 4;
+		if ((options & MESH_ASSET_FORCE_ALL_VISIBLE_BIT) != 0)
+			variant_id |= 1u << 5;
+
+		auto key = VariantSignatureKey::build(pipe, attribute_mask, texture_mask, variant_id);
+		auto *prog = suite[ecast(RenderableType::Meshlet)].get_program(key);
+		cmd.set_program(prog);
+
+		bind_meshlet_culling_ubo(cmd, 3, 0, context, cmd.get_viewport(),
+		                         (options & FRONT_FACE_CLOCKWISE_BIT) != 0);
+
+		struct
+		{
+			uint32_t offset;
+			uint32_t count;
+		} push = {};
+
+		cmd.enable_subgroup_size_control(true, VK_SHADER_STAGE_MESH_BIT_EXT);
+		cmd.enable_subgroup_size_control(true, VK_SHADER_STAGE_TASK_BIT_EXT);
+
+		if (manager.mesh_rendering_is_wave_culled())
+			cmd.set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_MESH_BIT_EXT);
+		if (device->supports_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT))
+			cmd.set_subgroup_size_log2(true, 5, 5, VK_SHADER_STAGE_TASK_BIT_EXT);
+
+		cmd.set_specialization_constant_mask(3);
+		const bool is_ortho = context.get_render_parameters().projection[3].w == 1.0f;
+		cmd.set_specialization_constant(0, is_ortho);
+		cmd.set_specialization_constant(1, skinned);
+
+		uint32_t hierarchy_scale_log2 = device->get_resource_manager().mesh_rendering_is_hierarchical_task() ? 7 : 0;
+		uint32_t hierarchy_scale = 1u << hierarchy_scale_log2;
+
+		auto max_tasks_per_dispatch = device->get_device_features().mesh_shader_properties.maxTaskWorkGroupCount[0] * hierarchy_scale;
+		for (size_t i = 0; i < range.second; i += max_tasks_per_dispatch)
+		{
+			auto to_draw = std::min<size_t>(range.second - i, max_tasks_per_dispatch);
+			push.offset = range.first + uint32_t(i);
+			push.count = to_draw;
+			cmd.push_constants(&push, 0, sizeof(push));
+			cmd.draw_mesh_tasks((to_draw + hierarchy_scale - 1) >> hierarchy_scale_log2, 1, 1);
+		}
+
+		cmd.enable_subgroup_size_control(false, VK_SHADER_STAGE_MESH_BIT_EXT);
+		cmd.enable_subgroup_size_control(false, VK_SHADER_STAGE_TASK_BIT_EXT);
+		break;
+	}
+
+	default:
+		break;
+	}
 }
 
 void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,
@@ -619,6 +832,7 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	{
 		bind_global_parameters(cmd, context);
 		bind_lighting_parameters(cmd, context);
+		bind_scene_transform_parameters(cmd, context);
 	}
 
 	cmd.set_opaque_state();
@@ -635,7 +849,10 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	if (options & DEPTH_BIAS_BIT)
 	{
 		cmd.set_depth_bias(true);
-		cmd.set_depth_bias(-4.0f, -3.0f);
+		if (options & DEPTH_BIAS_MINIMAL_BIT)
+			cmd.set_depth_bias(-1.0f, -1.0f);
+		else
+			cmd.set_depth_bias(-4.0f, -3.0f);
 	}
 
 	if (options & DEPTH_TEST_EQUAL_BIT)
@@ -643,24 +860,22 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 
 	CommandBufferSavedState state = {};
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
-	// No need to spend write bandwidth on writing 0 to light buffer, render opaque emissive on top.
-	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);
-	queue.dispatch_subset(Queue::OpaqueEmissive, cmd, &state, index, num_indices);
 
-	if (type == RendererType::GeneralDeferred)
+	if ((options & (MESH_ASSET_OPAQUE_BIT | MESH_ASSET_MOTION_VECTOR_BIT)) != 0)
 	{
-		// General deferred renderers can render light volumes.
-		cmd.restore_state(state);
-		cmd.set_input_attachments(3, 0);
-		cmd.set_depth_test(true, false);
-		cmd.set_blend_enable(true);
-		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
-		cmd.set_blend_op(VK_BLEND_OP_ADD);
-
-		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
-		queue.dispatch_subset(Queue::Light, cmd, &state, index, num_indices);
+		render_mesh_assets(cmd, context, DrawPipeline::Opaque, parameters, options, false);
+		render_mesh_assets(cmd, context, DrawPipeline::Opaque, parameters, options, true);
 	}
-	else if (type == RendererType::GeneralForward)
+
+	if ((options & MESH_ASSET_OPAQUE_BIT) != 0 && (options & MESH_ASSET_MOTION_VECTOR_BIT) == 0)
+	{
+		render_mesh_assets(cmd, context, DrawPipeline::AlphaTest, parameters, options, false);
+		render_mesh_assets(cmd, context, DrawPipeline::AlphaTest, parameters, options, true);
+	}
+
+	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);
+
+	if (type == RendererType::GeneralForward)
 	{
 		// Forward renderers can also render transparent objects.
 		cmd.restore_state(state);
@@ -669,6 +884,13 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 		cmd.set_blend_op(VK_BLEND_OP_ADD);
 		cmd.set_depth_test(true, false);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
+
+		if ((options & MESH_ASSET_TRANSPARENT_BIT) != 0)
+		{
+			render_mesh_assets(cmd, context, DrawPipeline::AlphaBlend, parameters, options, false);
+			render_mesh_assets(cmd, context, DrawPipeline::AlphaBlend, parameters, options, true);
+		}
+
 		queue.dispatch_subset(Queue::Transparent, cmd, &state, index, num_indices);
 	}
 }
@@ -914,8 +1136,6 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 				cluster_defines.emplace_back("AMBIENT_OCCLUSION", 1);
 		}
 
-		Renderer::add_subgroup_defines(device, cluster_defines, VK_SHADER_STAGE_FRAGMENT_BIT);
-
 		cmd.set_program("builtin://shaders/lights/clustering.vert",
 		                "builtin://shaders/lights/clustering.frag",
 		                cluster_defines);
@@ -970,11 +1190,52 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
                                             RendererType renderer,
                                             RenderableType drawable) const
 {
+	if (drawable == RenderableType::Meshlet &&
+	    (renderer == RendererType::GeneralDeferred || renderer == RendererType::GeneralForward ||
+	     renderer == RendererType::DepthOnly || renderer == RendererType::MotionVector))
+	{
+		switch (device.get_resource_manager().get_mesh_encoding())
+		{
+		case ResourceManager::MeshEncoding::Classic:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet_classic.vert",
+			                    "builtin://shaders/meshlet.frag");
+			break;
+		case ResourceManager::MeshEncoding::VBOAndIBOMDI:
+			if (renderer == RendererType::MotionVector)
+			{
+				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet_mdi_mv.vert",
+				                    "builtin://shaders/static_mesh_mv.frag");
+			}
+			else
+			{
+				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet_mdi.vert",
+				                    "builtin://shaders/meshlet.frag");
+			}
+			break;
+		case ResourceManager::MeshEncoding::MeshletDecoded:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",
+			                    "builtin://shaders/meshlet_decoded.mesh", "builtin://shaders/meshlet.frag");
+			break;
+		case ResourceManager::MeshEncoding::MeshletEncoded:
+			if (renderer == RendererType::MotionVector)
+			{
+				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",
+				                    "builtin://shaders/meshlet_encoded_mv.mesh", "builtin://shaders/static_mesh_mv.frag");
+			}
+			else
+			{
+				suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/meshlet.task",
+				                    "builtin://shaders/meshlet_encoded.mesh", "builtin://shaders/meshlet.frag");
+			}
+			break;
+		}
+	}
+
 	if (renderer == RendererType::GeneralDeferred || renderer == RendererType::GeneralForward)
 	{
 		switch (drawable)
 		{
-		case RenderableType::Mesh:
+		case RenderableType::LegacyMesh:
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/static_mesh.vert", "builtin://shaders/static_mesh.frag");
 			break;
 
@@ -1010,7 +1271,7 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 	{
 		switch (drawable)
 		{
-		case RenderableType::Mesh:
+		case RenderableType::LegacyMesh:
 			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/static_mesh.vert",
 			                    renderer == RendererType::DepthOnly ?
 			                    "builtin://shaders/static_mesh_depth.frag" :
@@ -1038,4 +1299,18 @@ void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
 	}
 }
 
+bool FlushParameters::get_is_layered() const
+{
+	return false;
+}
+
+uint32_t FlushParameters::get_layer() const
+{
+	return 0;
+}
+
+MDICall FlushParameters::get_mdi_call(DrawPipeline, bool) const
+{
+	return {};
+}
 }

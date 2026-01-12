@@ -35,10 +35,7 @@ namespace Granite
 enum class Stage
 {
 	Vertex,
-	TessControl,
-	TessEvaluation,
-	Geometry,
-	Fragment,
+	Fragment = 4, // Skip over tess/geom to match Vulkan ordering
 	Compute,
 	Task,
 	Mesh,

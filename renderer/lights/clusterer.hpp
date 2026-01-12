@@ -86,27 +86,16 @@ public:
 
 	enum
 	{
-		MaxLights = CLUSTERER_MAX_LIGHTS,
 		MaxLightsBindless = CLUSTERER_MAX_LIGHTS_BINDLESS,
 		MaxLightsGlobal = CLUSTERER_MAX_LIGHTS_GLOBAL,
 		MaxLightsVolume = CLUSTERER_MAX_VOLUMES,
 		MaxFogRegions = CLUSTERER_MAX_FOG_REGIONS,
 		MaxDecalsBindless = CLUSTERER_MAX_DECALS_BINDLESS,
-		ClusterHierarchies = 8,
-		ClusterPrepassDownsample = 4
 	};
 
-	void set_max_spot_lights(unsigned count)
-	{
-		max_spot_lights = count;
-	}
-
-	void set_max_point_lights(unsigned count)
-	{
-		max_point_lights = count;
-	}
-
 private:
+	Vulkan::CommandBuffer::Type owning_queue_type() const override;
+	const char *get_ident() const override;
 	void add_render_passes(RenderGraph &graph) override;
 	void add_render_passes_bindless(RenderGraph &graph);
 
@@ -137,8 +126,6 @@ private:
 
 	unsigned resolution_x = 64, resolution_y = 32, resolution_z = 16;
 	unsigned shadow_resolution = 512;
-	unsigned max_spot_lights = MaxLights;
-	unsigned max_point_lights = MaxLights;
 	void build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
@@ -146,7 +133,8 @@ private:
 	const RendererSuite *renderer_suite = nullptr;
 
 	bool enable_shadows = true;
-	bool force_update_shadows = false;
+	//bool force_update_shadows = false;
+	bool force_update_shadows = true;
 	bool enable_volumetric_diffuse = false;
 	bool enable_volumetric_fog = false;
 	bool enable_volumetric_decals = false;
@@ -158,6 +146,7 @@ private:
 	                   unsigned off_x, unsigned off_y,
 	                   unsigned res_x, unsigned res_y,
 	                   const Vulkan::ImageView &rt, unsigned layer,
+	                   const FlushParameters *params,
 	                   Renderer::RendererFlushFlags flags) const;
 
 	void setup_scratch_buffers_vsm(Vulkan::Device &device);
@@ -204,6 +193,27 @@ private:
 		std::vector<ShadowTaskHandle> shadow_task_handles;
 		std::vector<Util::Hash> light_transform_hashes;
 	} bindless;
+
+	void setup_mdi_calls(const RenderContext &context);
+
+	struct MDICallParam : FlushParameters
+	{
+		MDICall get_mdi_call(DrawPipeline pipe, bool skinned) const override
+		{
+			return calls[int(pipe)][skinned];
+		}
+
+		MDICall calls[2][2];
+	};
+
+	struct PerLightMDICalls
+	{
+		enum { NumFaces = 6 };
+		MDICallParam faces[NumFaces];
+	};
+	std::vector<PerLightMDICalls> mdi_calls;
+	Vulkan::BufferHandle mdi_buffer;
+	VkDeviceSize mdi_buffer_clear_offset = 0;
 
 	void update_bindless_descriptors(Vulkan::Device &device);
 	void update_bindless_data(Vulkan::CommandBuffer &cmd);
@@ -256,11 +266,6 @@ private:
 	bool bindless_light_is_point(unsigned index) const;
 
 	const Renderer &get_shadow_renderer() const;
-
-	Vulkan::Semaphore external_acquire() override;
-	void external_release(Vulkan::Semaphore sem) override;
-	Vulkan::Semaphore acquire_semaphore;
-	Util::SmallVector<Vulkan::Semaphore> release_semaphores;
 
 	float get_z_slice_extent(const RenderContext &ctx) const;
 };

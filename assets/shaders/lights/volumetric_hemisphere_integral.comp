@@ -121,7 +121,7 @@ mat3 sample_patch(ivec3 coord, vec3 pos, vec3 world_pos, bool do_lighting)
 
 shared vec3 shared_patch_contributions[6 * 2 * 2][3];
 
-#if defined(SUBGROUP_COMPUTE_FULL) && defined(SUBGROUP_OPS)
+#if defined(SUBGROUP_COMPUTE_FULL)
 #define CLUSTER_ADD
 #endif
 

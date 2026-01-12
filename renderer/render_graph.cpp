@@ -184,6 +184,7 @@ RenderBufferResource &RenderPass::add_storage_output(const std::string &name, co
 	{
 		auto &input_res = graph.get_buffer_resource(input);
 		input_res.read_in_pass(index);
+		input_res.add_queue(queue);
 		input_res.add_buffer_usage(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 		storage_inputs.push_back(&input_res);
 	}
@@ -263,6 +264,7 @@ RenderTextureResource &RenderPass::add_color_output(const std::string &name, con
 	{
 		auto &input_res = graph.get_texture_resource(input);
 		input_res.read_in_pass(index);
+		input_res.add_queue(queue);
 		input_res.add_image_usage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 		color_inputs.push_back(&input_res);
 		color_scale_inputs.push_back(nullptr);
@@ -290,6 +292,7 @@ RenderTextureResource &RenderPass::add_storage_texture_output(const std::string 
 	{
 		auto &input_res = graph.get_texture_resource(input);
 		input_res.read_in_pass(index);
+		input_res.add_queue(queue);
 		input_res.add_image_usage(VK_IMAGE_USAGE_STORAGE_BIT);
 		storage_texture_inputs.push_back(&input_res);
 	}
@@ -299,7 +302,8 @@ RenderTextureResource &RenderPass::add_storage_texture_output(const std::string 
 	return res;
 }
 
-void RenderPass::add_proxy_output(const std::string &name, VkPipelineStageFlags2 stages)
+void RenderPass::add_proxy_output(const std::string &name, VkPipelineStageFlags2 stages, VkAccessFlags2 access,
+                                  const std::string &input)
 {
 	auto &res = graph.get_proxy_resource(name);
 	res.add_queue(queue);
@@ -310,10 +314,20 @@ void RenderPass::add_proxy_output(const std::string &name, VkPipelineStageFlags2
 	proxy.proxy = &res;
 	proxy.layout = VK_IMAGE_LAYOUT_GENERAL;
 	proxy.stages = stages;
+	proxy.access = access;
+
+	if (!input.empty())
+	{
+		auto &input_res = graph.get_proxy_resource(input);
+		input_res.read_in_pass(index);
+		input_res.add_queue(queue);
+		proxy.alias_input = &input_res;
+	}
+
 	proxy_outputs.push_back(proxy);
 }
 
-void RenderPass::add_proxy_input(const std::string &name, VkPipelineStageFlags2 stages)
+void RenderPass::add_proxy_input(const std::string &name, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
 {
 	auto &res = graph.get_proxy_resource(name);
 	res.add_queue(queue);
@@ -324,6 +338,7 @@ void RenderPass::add_proxy_input(const std::string &name, VkPipelineStageFlags2 
 	proxy.proxy = &res;
 	proxy.layout = VK_IMAGE_LAYOUT_GENERAL;
 	proxy.stages = stages;
+	proxy.access = access;
 	proxy_inputs.push_back(proxy);
 }
 
@@ -370,6 +385,7 @@ RenderTextureResource &RenderPass::add_blit_texture_output(const std::string &na
 	{
 		auto &input_res = graph.get_texture_resource(input);
 		input_res.read_in_pass(index);
+		input_res.add_queue(queue);
 		input_res.add_image_usage(VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 		blit_texture_inputs.push_back(&input_res);
 	}
@@ -390,11 +406,38 @@ RenderTextureResource &RenderPass::set_depth_stencil_output(const std::string &n
 	return res;
 }
 
-void RenderPass::add_external_lock(const std::string &name, VkPipelineStageFlags2 stages)
+static void get_queue_type(Vulkan::CommandBuffer::Type &queue_type, bool &graphics, RenderGraphQueueFlagBits flag)
+{
+	switch (flag)
+	{
+	default:
+	case RENDER_GRAPH_QUEUE_GRAPHICS_BIT:
+		graphics = true;
+		queue_type = Vulkan::CommandBuffer::Type::Generic;
+		break;
+
+	case RENDER_GRAPH_QUEUE_COMPUTE_BIT:
+		graphics = false;
+		queue_type = Vulkan::CommandBuffer::Type::Generic;
+		break;
+
+	case RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT:
+		graphics = false;
+		queue_type = Vulkan::CommandBuffer::Type::AsyncCompute;
+		break;
+	}
+}
+
+void RenderPass::add_external_lock(const std::string &name, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
 {
 	auto *iface = graph.find_external_lock_interface(name);
 	if (iface)
 	{
+		Vulkan::CommandBuffer::Type queue_type = {};
+		bool graphics = false;
+		get_queue_type(queue_type, graphics, queue);
+		iface->mark_access_in_queue(queue_type, stages, access);
+
 		for (auto &lock : lock_interfaces)
 		{
 			if (lock.iface == iface)
@@ -802,11 +845,34 @@ void RenderGraph::build_physical_resources()
 			{
 				ResourceDimensions dim = {};
 				dim.flags |= ATTACHMENT_INFO_INTERNAL_PROXY_BIT;
+				dim.queues |= input.proxy->get_used_queues();
 				physical_dimensions.push_back(dim);
 				input.proxy->set_physical_index(phys_index++);
 			}
 			else
 				physical_dimensions[input.proxy->get_physical_index()].queues |= input.proxy->get_used_queues();
+		}
+
+		for (auto &input : pass.get_proxy_outputs())
+		{
+			if (!input.alias_input)
+				continue;
+
+			if (input.alias_input->get_physical_index() == RenderResource::Unused)
+			{
+				ResourceDimensions dim = {};
+				dim.flags |= ATTACHMENT_INFO_INTERNAL_PROXY_BIT;
+				dim.queues |= input.alias_input->get_used_queues();
+				physical_dimensions.push_back(dim);
+				input.alias_input->set_physical_index(phys_index++);
+			}
+			else
+				physical_dimensions[input.alias_input->get_physical_index()].queues |= input.alias_input->get_used_queues();
+
+			if (input.proxy->get_physical_index() == RenderResource::Unused)
+				input.proxy->set_physical_index(input.alias_input->get_physical_index());
+			else if (input.proxy->get_physical_index() != input.alias_input->get_physical_index())
+				throw std::logic_error("Cannot alias resources. Index already claimed.");
 		}
 
 		for (auto *output : pass.get_color_outputs())
@@ -1497,6 +1563,10 @@ void RenderGraph::log()
 				}
 			}
 
+			auto &externals = pass.get_lock_interfaces();
+			for (auto &external : externals)
+				LOGI("        External lock: %s\n", external.iface->get_ident());
+
 			if (pass.get_depth_stencil_output())
 				LOGI("        DepthStencil RW: %u\n", pass.get_depth_stencil_output()->get_physical_index());
 			else if (pass.get_depth_stencil_input())
@@ -1828,36 +1898,16 @@ void RenderGraph::physical_pass_transfer_ownership(const PhysicalPass &pass)
 	}
 }
 
-static void get_queue_type(Vulkan::CommandBuffer::Type &queue_type, bool &graphics, RenderGraphQueueFlagBits flag)
-{
-	switch (flag)
-	{
-	default:
-	case RENDER_GRAPH_QUEUE_GRAPHICS_BIT:
-		graphics = true;
-		queue_type = Vulkan::CommandBuffer::Type::Generic;
-		break;
-
-	case RENDER_GRAPH_QUEUE_COMPUTE_BIT:
-		graphics = false;
-		queue_type = Vulkan::CommandBuffer::Type::Generic;
-		break;
-
-	case RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT:
-		graphics = false;
-		queue_type = Vulkan::CommandBuffer::Type::AsyncCompute;
-		break;
-	}
-}
-
 void RenderGraph::PassSubmissionState::emit_pre_pass_barriers()
 {
 	cmd->begin_region("render-graph-sync-pre");
 
 	// Submit barriers.
-	if (!image_barriers.empty() || !buffer_barriers.empty())
+	if (!image_barriers.empty() || !buffer_barriers.empty() || !global_barriers.empty())
 	{
 		VkDependencyInfo dep = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+		dep.memoryBarrierCount = uint32_t(global_barriers.size());
+		dep.pMemoryBarriers = global_barriers.data();
 		dep.bufferMemoryBarrierCount = uint32_t(buffer_barriers.size());
 		dep.pBufferMemoryBarriers = buffer_barriers.data();
 		dep.imageMemoryBarrierCount = uint32_t(image_barriers.size());
@@ -1881,14 +1931,19 @@ void RenderGraph::PassSubmissionState::submit()
 		return;
 
 	auto &device_ = cmd->get_device();
+	bool has_foreign_external_lock = false;
 
 	for (auto &lock : external_locks)
 	{
-		auto sem = lock.iface->external_acquire();
-		if (sem)
+		if (lock.iface->owning_queue_type() != queue_type)
 		{
-			wait_semaphores.push_back(std::move(sem));
-			wait_semaphore_stages.push_back(lock.stages);
+			has_foreign_external_lock = true;
+			auto sem = lock.iface->external_acquire_semaphore(queue_type);
+			if (sem)
+			{
+				wait_semaphores.push_back(std::move(sem));
+				wait_semaphore_stages.push_back(lock.stages);
+			}
 		}
 	}
 
@@ -1896,14 +1951,14 @@ void RenderGraph::PassSubmissionState::submit()
 	for (size_t i = 0; i < num_semaphores; i++)
 		wait_for_semaphore_in_queue(device_, wait_semaphores[i], queue_type, wait_semaphore_stages[i]);
 
-	if (need_submission_semaphore || !external_locks.empty())
+	if (need_submission_semaphore || has_foreign_external_lock)
 	{
 		Vulkan::Semaphore semaphores[3];
 
 		uint32_t sem_count = 0;
 		if (need_submission_semaphore)
 			sem_count += 2;
-		if (!external_locks.empty())
+		if (has_foreign_external_lock)
 			sem_count += 1;
 
 		device_.submit(cmd, nullptr, sem_count, semaphores);
@@ -1918,7 +1973,8 @@ void RenderGraph::PassSubmissionState::submit()
 		{
 			auto &release_semaphore = semaphores[need_submission_semaphore ? 2 : 0];
 			for (auto &lock : external_locks)
-				lock.iface->external_release(release_semaphore);
+				if (lock.iface->owning_queue_type() != queue_type)
+					lock.iface->external_release_semaphore(release_semaphore);
 		}
 	}
 	else
@@ -1964,20 +2020,33 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 
 		if (need_pipeline_barrier)
 		{
-			VK_ASSERT(physical_buffers[barrier.resource_index]);
-			auto &buffer = *physical_buffers[barrier.resource_index];
-			VkBufferMemoryBarrier2 b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+			if ((phys.flags & ATTACHMENT_INFO_INTERNAL_PROXY_BIT) != 0)
+			{
+				VkMemoryBarrier2 b = { VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
+				b.srcAccessMask = event.to_flush_access;
+				b.dstAccessMask = barrier.access;
+				b.srcStageMask = event.pipeline_barrier_src_stages;
+				b.dstStageMask = barrier.stages;
+				state.global_barriers.push_back(b);
+			}
+			else
+			{
+				// TODO: We might want to drop buffer barriers outright.
+				VK_ASSERT(physical_buffers[barrier.resource_index]);
+				auto &buffer = *physical_buffers[barrier.resource_index];
+				VkBufferMemoryBarrier2 b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
 
-			b.srcAccessMask = event.to_flush_access;
-			b.dstAccessMask = barrier.access;
-			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			b.buffer = buffer.get_buffer();
-			b.offset = 0;
-			b.size = VK_WHOLE_SIZE;
-			b.srcStageMask = event.pipeline_barrier_src_stages;
-			b.dstStageMask = barrier.stages;
-			state.buffer_barriers.push_back(b);
+				b.srcAccessMask = event.to_flush_access;
+				b.dstAccessMask = barrier.access;
+				b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+				b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+				b.buffer = buffer.get_buffer();
+				b.offset = 0;
+				b.size = VK_WHOLE_SIZE;
+				b.srcStageMask = event.pipeline_barrier_src_stages;
+				b.dstStageMask = barrier.stages;
+				state.buffer_barriers.push_back(b);
+			}
 		}
 	}
 	else
@@ -2106,8 +2175,10 @@ void RenderGraph::physical_pass_handle_flush_barrier(const Barrier &barrier, Pas
 	              physical_history_events[barrier.resource_index] :
 	              physical_events[barrier.resource_index];
 
+	auto &phys = physical_dimensions[barrier.resource_index];
+
 	// A render pass might have changed the final layout.
-	if (!physical_dimensions[barrier.resource_index].buffer_info.size)
+	if (!phys.is_buffer_like())
 	{
 		auto *image = barrier.history ?
 		              physical_history_image_attachments[barrier.resource_index].get() :
@@ -2122,7 +2193,7 @@ void RenderGraph::physical_pass_handle_flush_barrier(const Barrier &barrier, Pas
 	// Mark if there are pending writes from this pass.
 	event.to_flush_access = barrier.access;
 
-	if (physical_dimensions[barrier.resource_index].uses_semaphore())
+	if (phys.uses_semaphore())
 	{
 		assert(state.proxy_semaphores[0]);
 		assert(state.proxy_semaphores[1]);
@@ -2708,7 +2779,7 @@ void RenderGraph::traverse_dependencies(const RenderPass &pass, unsigned stack_c
 	for (auto *input : pass.get_attachment_inputs())
 	{
 		bool self_dependency = pass.get_depth_stencil_output() == input;
-		if (find(begin(pass.get_color_outputs()), end(pass.get_color_outputs()), input) != end(pass.get_color_outputs()))
+		if (std::find(pass.get_color_outputs().begin(), pass.get_color_outputs().end(), input) != pass.get_color_outputs().end())
 			self_dependency = true;
 
 		if (!self_dependency)
@@ -2738,6 +2809,15 @@ void RenderGraph::traverse_dependencies(const RenderPass &pass, unsigned stack_c
 
 	for (auto &input : pass.get_proxy_inputs())
 		depend_passes_recursive(pass, input.proxy->get_write_passes(), stack_count, false, false, false);
+
+	for (auto &input : pass.get_proxy_outputs())
+	{
+		if (input.alias_input)
+		{
+			depend_passes_recursive(pass, input.alias_input->get_write_passes(), stack_count, true, false, false);
+			depend_passes_recursive(pass, input.alias_input->get_read_passes(), stack_count, true, true, false);
+		}
+	}
 
 	for (auto *input : pass.get_storage_inputs())
 	{
@@ -3430,8 +3510,23 @@ void RenderGraph::build_barriers()
 		{
 			auto &barrier = get_invalidate_access(input.proxy->get_physical_index(), false);
 
-			// We will use semaphores to deal with proxies, skip access.
 			barrier.stages |= input.stages;
+			barrier.access |= input.access;
+
+			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+				throw std::logic_error("Layout mismatch.");
+			barrier.layout = input.layout;
+		}
+
+		for (auto &input : pass.get_proxy_outputs())
+		{
+			if (!input.alias_input)
+				continue;
+
+			auto &barrier = get_invalidate_access(input.alias_input->get_physical_index(), false);
+
+			barrier.stages |= input.stages;
+			barrier.access |= input.access;
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
@@ -3584,8 +3679,8 @@ void RenderGraph::build_barriers()
 		{
 			auto &barrier = get_flush_access(output.proxy->get_physical_index());
 
-			// We will use semaphores to deal with proxies, skip access.
 			barrier.stages |= output.stages;
+			barrier.access |= output.access;
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
@@ -3728,4 +3823,78 @@ void RenderGraph::reset()
 	physical_history_image_attachments.clear();
 }
 
+const char *RenderPassExternalLockInterface::get_ident() const
+{
+	return "";
+}
+
+void RenderPassExternalLockInterface::mark_access_in_queue(Vulkan::CommandBuffer::Type type, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
+{
+	if (type != owning_queue_type())
+	{
+		required_foreign_queue_access = true;
+	}
+	else
+	{
+		inline_queue_invalidate.stages |= stages;
+		inline_queue_flush.stages |= stages;
+		inline_queue_flush.access |= access;
+	}
+}
+
+Vulkan::CommandBufferHandle RenderPassExternalLockInterface::acquire_internal(
+	Vulkan::Device &device, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
+{
+	auto queue_type = owning_queue_type();
+
+	if (required_foreign_queue_access)
+	{
+		for (auto &sem : release_semaphores)
+			device.add_wait_semaphore(queue_type, std::move(sem), stages, false);
+	}
+	release_semaphores.clear();
+
+	auto cmd = device.request_command_buffer(queue_type);
+	if (inline_queue_invalidate.stages)
+		cmd->barrier(inline_queue_invalidate.stages, inline_queue_invalidate.access, stages, access);
+
+	return cmd;
+}
+
+void RenderPassExternalLockInterface::release_internal(
+	Vulkan::CommandBufferHandle &cmd, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
+{
+	if (inline_queue_flush.stages)
+		cmd->barrier(stages, access, inline_queue_flush.stages, inline_queue_flush.access);
+
+	auto &device = cmd->get_device();
+
+	if (required_foreign_queue_access)
+	{
+		acquire_semaphore.reset();
+		device.submit(cmd, nullptr, 1, &acquire_semaphore);
+	}
+	else
+	{
+		device.submit(cmd);
+	}
+}
+
+Vulkan::Semaphore RenderPassExternalLockInterface::external_acquire_semaphore(Vulkan::CommandBuffer::Type)
+{
+	// TODO: Technically we'd need a separate semaphore per queue when timelines are not supported.
+	return acquire_semaphore;
+}
+
+void RenderPassExternalLockInterface::external_release_semaphore(Vulkan::Semaphore semaphore)
+{
+	std::lock_guard<std::mutex> holder{lock};
+	release_semaphores.push_back(std::move(semaphore));
+}
+
+void RenderPassExternalLockInterface::device_reset()
+{
+	acquire_semaphore.reset();
+	release_semaphores.clear();
+}
 }

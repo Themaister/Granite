@@ -22,10 +22,11 @@
 
 #define NOMINMAX
 #include "render_queue.hpp"
+#include "abstract_renderable.hpp"
 #include "render_context.hpp"
+#include <assert.h>
 #include <cstring>
 #include <iterator>
-#include <assert.h>
 
 using namespace Vulkan;
 using namespace Util;
@@ -60,13 +61,15 @@ void RenderQueue::combine_render_info(const RenderQueue &queue)
 {
 	for (unsigned i = 0; i < ecast(Queue::Count); i++)
 	{
-		auto e = static_cast<Queue>(i);
-		auto &q = queue.get_queue_data(e).raw_input;
-		queues[i].raw_input.insert(std::end(queues[i].raw_input), std::begin(q), std::end(q));
+		auto &q = queues[i];
+		auto &other = queue.get_queue_data(Queue(i));
+
+		q.raw_input.insert(q.raw_input.end(), other.raw_input.begin(), other.raw_input.end());
 	}
 }
 
-void RenderQueue::dispatch_range(Queue queue_type, CommandBuffer &cmd, const CommandBufferSavedState *state, size_t begin, size_t end) const
+void RenderQueue::dispatch_range(Queue queue_type, CommandBuffer &cmd, const CommandBufferSavedState *state,
+                                 size_t begin, size_t end) const
 {
 	auto *queue = queues[ecast(queue_type)].sorted_data();
 
@@ -190,19 +193,38 @@ void *RenderQueue::allocate(size_t size, size_t alignment)
 void RenderQueue::push_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count)
 {
 	for (size_t i = 0; i < count; i++)
-		visible[i].renderable->get_render_info(context, visible[i].transform, *this);
+	{
+		auto &vis = visible[i];
+		// Common case, avoid eating noop virtual calls.
+		if ((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0)
+			continue;
+		vis.renderable->get_render_info(context, visible[i].transform, *this);
+	}
 }
 
 void RenderQueue::push_depth_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count)
 {
 	for (size_t i = 0; i < count; i++)
+	{
+		auto &vis = visible[i];
+		// Common case, avoid eating noop virtual calls.
+		if ((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0)
+			continue;
 		visible[i].renderable->get_depth_render_info(context, visible[i].transform, *this);
+	}
 }
 
-void RenderQueue::push_motion_vector_renderables(const RenderContext &context, const RenderableInfo *visible, size_t count)
+void RenderQueue::push_motion_vector_renderables(const RenderContext &context, const RenderableInfo *visible,
+                                                 size_t count)
 {
 	for (size_t i = 0; i < count; i++)
-		visible[i].renderable->get_motion_vector_render_info(context, visible[i].transform, *this);
+	{
+		auto &vis = visible[i];
+		// Common case, avoid eating noop virtual calls.
+		if ((vis.renderable->flags & RENDERABLE_MESH_ASSET_BIT) != 0)
+			continue;
+		vis.renderable->get_motion_vector_render_info(context, visible[i].transform, *this);
+	}
 }
 
 uint64_t RenderInfo::get_background_sort_key(Queue queue_type, Util::Hash pipeline_hash, Util::Hash draw_hash)
@@ -216,8 +238,8 @@ uint64_t RenderInfo::get_background_sort_key(Queue queue_type, Util::Hash pipeli
 		return (UINT64_MAX << 32) | (pipeline_hash & 0xffffffffu);
 }
 
-uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_hash, Util::Hash draw_hash,
-                                         float z, StaticLayer layer)
+uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_hash, Util::Hash draw_hash, float z,
+                                         StaticLayer layer)
 {
 	static_assert(ecast(StaticLayer::Count) == 4, "Number of static layers is not 4.");
 
@@ -249,10 +271,10 @@ uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_h
 }
 
 uint64_t RenderInfo::get_sort_key(const RenderContext &context, Queue queue_type, Util::Hash pipeline_hash,
-                                  Util::Hash draw_hash,
-                                  const vec3 &center, StaticLayer layer)
+                                  Util::Hash draw_hash, const vec3 &center, StaticLayer layer)
 {
-	float z = dot(context.get_render_parameters().camera_front, center - context.get_render_parameters().camera_position);
+	float z =
+	    dot(context.get_render_parameters().camera_front, center - context.get_render_parameters().camera_position);
 	return get_sprite_sort_key(queue_type, pipeline_hash, draw_hash, z, layer);
 }
-}
+} // namespace Granite

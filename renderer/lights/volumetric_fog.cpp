@@ -192,7 +192,6 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 				context->get_render_parameters().inv_projection[3].zw());
 	}
 
-	Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
 	if (cmd.get_device().supports_subgroup_size_log2(true, 3, 6))
 	{
 		defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);
@@ -331,8 +330,8 @@ void VolumetricFog::setup_render_pass_dependencies(RenderGraph &graph)
 		floor.input_resource = nullptr;
 
 	if (graph.find_pass("probe-light"))
-		pass->add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-	pass->add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+		pass->add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0);
+	pass->add_external_lock("bindless-shadowmaps", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 }
 
 void VolumetricFog::setup_render_pass_resources(RenderGraph &graph)

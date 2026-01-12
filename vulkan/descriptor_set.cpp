@@ -128,8 +128,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 
 		if (layout.uniform_buffer_mask & (1u << i))
 		{
-			auto type = device->get_device_features().supports_descriptor_buffer ?
-			            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+			auto type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 			bindings.push_back({ i, type, array_size, stages, nullptr });
 			pool_size.push_back({ type, pool_array_size });
 			types++;
@@ -250,9 +249,6 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 	    !device->get_device_features().descriptor_buffer_features.descriptorBuffer)
 	{
 		info.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT;
-		for (auto &b : bindings)
-			if (b.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
-				b.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout_push) != VK_SUCCESS)
 			LOGE("Failed to create descriptor set layout.");
 #ifdef GRANITE_VULKAN_FOSSILIZE

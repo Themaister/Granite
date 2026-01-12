@@ -1,7 +1,6 @@
 #version 450
 layout(local_size_x = 64) in;
 
-#define SUBGROUP_OPS
 #include "../../inc/subgroup_extensions.h"
 #include "sssr_util.h"
 

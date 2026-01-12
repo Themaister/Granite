@@ -74,16 +74,51 @@ public:
 using RenderPassInterfaceHandle = Util::IntrusivePtr<RenderPassInterface>;
 
 // An interface which manages external synchronization.
-// Used primarily by cluster shadow map rendering,
-// since its resource management is highly specific
-// and it makes more sense to use semaphores here,
-// rather than try to hack it to fit it into a render graph node.
+// Used primarily by cluster shadow map rendering and scene transform manager,
+// since their resource management is highly specific.
+// It's not practical to shoehorn this into a render graph node design due to its highly volatile nature.
 class RenderPassExternalLockInterface
 {
 public:
 	virtual ~RenderPassExternalLockInterface() = default;
-	virtual Vulkan::Semaphore external_acquire() = 0;
-	virtual void external_release(Vulkan::Semaphore semaphore) = 0;
+
+	virtual const char *get_ident() const;
+	virtual Vulkan::CommandBuffer::Type owning_queue_type() const = 0;
+
+	// If consume queue is different from producer.
+	Vulkan::Semaphore external_acquire_semaphore(Vulkan::CommandBuffer::Type type);
+	void external_release_semaphore(Vulkan::Semaphore semaphore);
+
+	// If there is a dependency that wants to access the resource on foreign queue, we need.
+	// External accesses must be read-only.
+	void mark_access_in_queue(Vulkan::CommandBuffer::Type type, VkPipelineStageFlags2 stages,
+	                          VkAccessFlags2 access);
+
+protected:
+	// Derived class needs to call these.
+	// Allocate command buffer and applies sync as necessary.
+	Vulkan::CommandBufferHandle acquire_internal(Vulkan::Device &device, VkPipelineStageFlags2 stages,
+	                                             VkAccessFlags2 access);
+
+	// Submits work to GPU, adds barriers and/or signals semaphores as necessary.
+	void release_internal(Vulkan::CommandBufferHandle &cmd, VkPipelineStageFlags2 stages, VkAccessFlags2 access);
+
+	void device_reset();
+
+private:
+	struct StageAccessPair
+	{
+		VkPipelineStageFlags2 stages;
+		VkAccessFlags2 access;
+	};
+
+	StageAccessPair inline_queue_invalidate = {};
+	StageAccessPair inline_queue_flush = {};
+
+	bool required_foreign_queue_access = false;
+	Vulkan::Semaphore acquire_semaphore;
+	std::mutex lock;
+	Util::SmallVector<Vulkan::Semaphore> release_semaphores;
 };
 
 enum SizeClass
@@ -187,9 +222,6 @@ struct ResourceDimensions
 
 	bool uses_semaphore() const
 	{
-		if ((flags & ATTACHMENT_INFO_INTERNAL_PROXY_BIT) != 0)
-			return true;
-
 		// If more than one queue is used for a resource, we need to use semaphores.
 		auto physical_queues = queues;
 
@@ -424,6 +456,7 @@ public:
 	struct AccessedProxyResource : AccessedResource
 	{
 		RenderResource *proxy = nullptr;
+		RenderResource *alias_input = nullptr;
 	};
 
 	struct AccessedExternalLockInterface
@@ -447,7 +480,7 @@ public:
 		return index;
 	}
 
-	void add_external_lock(const std::string &name, VkPipelineStageFlags2 stages);
+	void add_external_lock(const std::string &name, VkPipelineStageFlags2 stages, VkAccessFlags2 access);
 
 	RenderTextureResource &set_depth_stencil_input(const std::string &name);
 	RenderTextureResource &set_depth_stencil_output(const std::string &name, const AttachmentInfo &info);
@@ -474,8 +507,8 @@ public:
 	RenderBufferResource &add_index_buffer_input(const std::string &name);
 	RenderBufferResource &add_indirect_buffer_input(const std::string &name);
 
-	void add_proxy_output(const std::string &name, VkPipelineStageFlags2 stages);
-	void add_proxy_input(const std::string &name, VkPipelineStageFlags2 stages);
+	void add_proxy_output(const std::string &name, VkPipelineStageFlags2 stages, VkAccessFlags2 access, const std::string &input = "");
+	void add_proxy_input(const std::string &name, VkPipelineStageFlags2 stages, VkAccessFlags2 access);
 
 	void add_fake_resource_write_alias(const std::string &from, const std::string &to);
 
@@ -855,17 +888,15 @@ public:
 	std::vector<Vulkan::BufferHandle> consume_physical_buffers() const;
 	void install_physical_buffers(std::vector<Vulkan::BufferHandle> buffers);
 
-	static inline RenderGraphQueueFlagBits get_default_post_graphics_queue()
+	static RenderGraphQueueFlagBits get_default_post_graphics_queue()
 	{
 		return RENDER_GRAPH_QUEUE_GRAPHICS_BIT;
 	}
 
-	static inline RenderGraphQueueFlagBits get_default_compute_queue()
+	static RenderGraphQueueFlagBits get_default_compute_queue()
 	{
-		if (Vulkan::ImplementationQuirks::get().render_graph_force_single_queue)
-			return RENDER_GRAPH_QUEUE_COMPUTE_BIT;
-		else
-			return RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT;
+		// Don't use async compute by default due to submit overhead.
+		return RENDER_GRAPH_QUEUE_COMPUTE_BIT;
 	}
 
 private:
@@ -1014,6 +1045,7 @@ private:
 
 	struct PassSubmissionState
 	{
+		Util::SmallVector<VkMemoryBarrier2> global_barriers;
 		Util::SmallVector<VkBufferMemoryBarrier2> buffer_barriers;
 		Util::SmallVector<VkImageMemoryBarrier2> image_barriers;
 

@@ -134,7 +134,6 @@ struct SSRState : RenderPassInterface
 					LOGW("Cannot write without format.\n");
 
 				defines.clear();
-				Renderer::add_subgroup_defines(cmd.get_device(), defines, VK_SHADER_STAGE_COMPUTE_BIT);
 				if (cmd.get_device().supports_subgroup_size_log2(true, 2, 6))
 				{
 					defines.emplace_back("SUBGROUP_COMPUTE_FULL", 1);
@@ -205,7 +204,7 @@ struct SSRState : RenderPassInterface
 	{
 		auto *pass = graph.find_pass("probe-light");
 		if (pass)
-			self.add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+			self.add_proxy_input("probe-light-proxy", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0);
 	}
 
 	Vulkan::ImageHandle dither_lut;
@@ -243,7 +242,8 @@ void setup_ssr_pass(RenderGraph &graph, const RenderContext &context,
                     const std::string &input_pbr, const std::string &input_light,
                     const std::string &output)
 {
-	setup_depth_hierarchy_pass(graph, input_depth, input_depth + "-hier");
+	// TODO: Fixme.
+	setup_depth_hierarchy_pass(graph, input_depth, input_depth + "-hier", &context, false);
 
 	auto &pass = graph.add_pass(output + "-trace", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 

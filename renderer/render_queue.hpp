@@ -22,16 +22,18 @@
 
 #pragma once
 
-#include <vector>
-#include <list>
-#include <type_traits>
-#include <stdexcept>
+#include "abstract_renderable.hpp"
+
 #include "command_buffer.hpp"
-#include "hash.hpp"
 #include "enum_cast.hpp"
+#include "hash.hpp"
 #include "intrusive_hash_map.hpp"
 #include "math.hpp"
 #include "radix_sorter.hpp"
+#include <list>
+#include <stdexcept>
+#include <type_traits>
+#include <vector>
 
 namespace Vulkan
 {
@@ -90,8 +92,6 @@ using VolumetricDecalList = std::vector<VolumetricDecalInfo>;
 enum class Queue : unsigned
 {
 	Opaque = 0,
-	OpaqueEmissive,
-	Light, // Relevant only for classic deferred rendering
 	Transparent,
 	Count
 };
@@ -148,6 +148,42 @@ struct QueueDataWrapped : QueueDataWrappedErased
 {
 	T data;
 };
+
+// The fixed function optimized path.
+struct MeshAssetDrawTaskInfo
+{
+	uint32_t aabb_instance; // Index to AABB for culling.
+	uint32_t occluder_state_offset; // Base index to occlusion states.
+	uint32_t node_instance; // Base index to transform node.
+	uint32_t mesh_index_count; // Packed meshlet index (upper 27 bits), and count - 1 (lower 5 bits).
+	uint32_t material_flags;
+};
+
+enum
+{
+	MESH_ASSET_MATERIAL_TEXTURE_INDEX_OFFSET = 0,
+	MESH_ASSET_MATERIAL_TEXTURE_INDEX_BITS = 12,
+	MESH_ASSET_MATERIAL_PAYLOAD_OFFSET = 12,
+	MESH_ASSET_MATERIAL_PAYLOAD_BITS = 11,
+	MESH_ASSET_MATERIAL_UV_CLAMP_OFFSET = 23,
+	MESH_ASSET_MATERIAL_TEXTURE_MASK_OFFSET = 24,
+};
+
+struct MeshletViewportUBO
+{
+	vec4 viewport;
+	vec4 planes[6];
+	mat4 view;
+	vec4 viewport_scale_bias;
+	uvec2 hiz_resolution;
+	float winding;
+	uint32_t hiz_min_lod;
+	uint32_t hiz_max_lod;
+};
+
+static_assert(sizeof(MeshAssetDrawTaskInfo) == 20, "Expected MeshAssetDrawInfo to be 20 bytes.");
+
+class MeshAssetRenderable;
 
 class RenderQueue
 {
@@ -225,9 +261,13 @@ public:
 		Util::SmallVector<RenderQueueData, 64> raw_input;
 		Util::DynamicArray<RenderQueueData> sorted_output;
 		Util::RadixSorter<uint64_t, 8, 8, 8, 8, 8, 8, 8, 8> sorter;
-		inline size_t size() const { return raw_input.size(); }
-		inline void clear() { raw_input.clear(); sorter.resize(0); }
-		inline const RenderQueueData *sorted_data() const { return sorted_output.data(); }
+		size_t size() const { return raw_input.size(); }
+		void clear()
+		{
+			raw_input.clear();
+			sorter.resize(0);
+		}
+		const RenderQueueData *sorted_data() const { return sorted_output.data(); }
 	};
 
 	const RenderQueueDataVector &get_queue_data(Queue queue) const
@@ -235,6 +275,8 @@ public:
 		return queues[Util::ecast(queue)];
 	}
 
+	// Only considers generic drawables. MeshAssetDrawTaskInfo is supposed to be handled specially
+	// through SceneTransformManager.
 	void sort();
 	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state) const;
 	void dispatch_range(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state, size_t begin, size_t end) const;
@@ -305,7 +347,7 @@ private:
 	Block *insert_block();
 	Block *insert_large_block(size_t size, size_t alignment);
 
-	RenderQueueDataVector queues[static_cast<unsigned>(Queue::Count)];
+	RenderQueueDataVector queues[Util::ecast(Queue::Count)];
 	Util::SmallVector<Block *, 64> blocks;
 	Block *current = nullptr;
 

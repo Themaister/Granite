@@ -143,7 +143,15 @@ void ResourceManager::init_mesh_assets()
 
 	if (mesh_encoding != MeshEncoding::MeshletEncoded)
 	{
-		unsigned index_size = mesh_encoding == MeshEncoding::Classic ? sizeof(uint32_t) : sizeof(uint8_t);
+		unsigned index_size;
+
+		if (mesh_encoding == MeshEncoding::Classic)
+			index_size = sizeof(uint32_t);
+		else if (device->get_device_features().vk14_features.indexTypeUint8)
+			index_size = sizeof(uint8_t);
+		else
+			index_size = sizeof(uint16_t);
+
 		index_buffer_allocator.set_element_size(0, 3 * index_size); // 8-bit or 32-bit indices.
 		attribute_buffer_allocator.set_soa_count(3);
 		attribute_buffer_allocator.set_element_size(0, sizeof(float) * 3);
@@ -547,6 +555,8 @@ void ResourceManager::instantiate_asset_mesh(Granite::AssetManager &manager_,
 			info.target_style = view.format_header->style;
 			if (mesh_encoding == MeshEncoding::Classic)
 				info.flags |= Meshlet::DECODE_MODE_UNROLLED_MESH;
+			else if (!device->get_device_features().vk14_features.indexTypeUint8)
+				info.flags |= Meshlet::DECODE_MODE_INDEX_16;
 			info.ibo = index_buffer_allocator.get_buffer(0, 0);
 
 			for (unsigned i = 0; i < 3; i++)

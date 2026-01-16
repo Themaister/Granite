@@ -130,6 +130,7 @@ MeshView create_mesh_view(const Granite::FileMapping &mapping);
 enum DecodeModeFlagBits : uint32_t
 {
 	DECODE_MODE_UNROLLED_MESH = 1 << 0,
+	DECODE_MODE_INDEX_16 = 1 << 1,
 };
 using DecodeModeFlags = uint32_t;
 

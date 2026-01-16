@@ -10,6 +10,7 @@ layout(constant_id = 0) const uint NUM_U32_STREAMS = MESHLET_PAYLOAD_MAX_STREAMS
 layout(constant_id = 1) const bool UNROLLED_MESH = false;
 layout(constant_id = 2) const uint TARGET_MESH_STYLE = 0;
 layout(constant_id = 3) const bool RUNTIME_MESH = false;
+layout(constant_id = 4) const bool INDEX16 = false;
 
 #include "../inc/global_bindings.h"
 #undef BINDING_GLOBAL_SCENE_MESHLET_STREAM_HEADER_BUFFER
@@ -28,6 +29,11 @@ layout(set = 0, binding = 2, scalar) writeonly buffer OutputIndices
 {
     uvec3 data[];
 } output_indices32;
+
+layout(set = 0, binding = 2, scalar) writeonly buffer OutputIndices16
+{
+    u16vec3 data[];
+} output_indices16;
 
 layout(set = 0, binding = 2, scalar) writeonly buffer OutputIndices8
 {
@@ -117,6 +123,8 @@ void main()
 
         if (UNROLLED_MESH)
             output_indices32.data[offsets.primitive_output_offset + lane_index] = indices;
+        else if (INDEX16)
+            output_indices16.data[offsets.primitive_output_offset + lane_index] = u16vec3(indices);
         else
             output_indices8.data[offsets.primitive_output_offset + lane_index] = u8vec3(indices);
     }

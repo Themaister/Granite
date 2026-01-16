@@ -196,11 +196,12 @@ bool decode_mesh(CommandBuffer &cmd, const DecodeInfo &info, const MeshView &vie
 	cmd.set_storage_buffer(0, 1, *info.payload);
 	cmd.set_storage_buffer(0, 2, *info.ibo);
 
-	cmd.set_specialization_constant_mask(0xf);
+	cmd.set_specialization_constant_mask(0x1f);
 	cmd.set_specialization_constant(0, view.format_header->stream_count);
 	cmd.set_specialization_constant(1, (info.flags & DECODE_MODE_UNROLLED_MESH) != 0);
 	cmd.set_specialization_constant(2, uint32_t(info.target_style));
 	cmd.set_specialization_constant(3, uint32_t(meshlet_runtime));
+	cmd.set_specialization_constant(4, (info.flags & DECODE_MODE_INDEX_16) != 0);
 
 	for (unsigned i = 0; i < 3; i++)
 		cmd.set_storage_buffer(0, 3 + i, info.streams[i] ? *info.streams[i] : *info.streams[0]);

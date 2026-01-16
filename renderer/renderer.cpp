@@ -674,10 +674,15 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 		auto *pos = manager.get_position_buffer();
 		auto *attr = manager.get_attribute_buffer();
 
-		cmd.set_index_buffer(*ibo, 0,
-		                     encoding == ResourceManager::MeshEncoding::Classic
-			                     ? VK_INDEX_TYPE_UINT32
-			                     : VK_INDEX_TYPE_UINT8);
+		VkIndexType index_type;
+		if (encoding == ResourceManager::MeshEncoding::Classic)
+			index_type = VK_INDEX_TYPE_UINT32;
+		else if (device->get_device_features().vk14_features.indexTypeUint8)
+			index_type = VK_INDEX_TYPE_UINT8;
+		else
+			index_type = VK_INDEX_TYPE_UINT16;
+
+		cmd.set_index_buffer(*ibo, 0, index_type);
 
 		cmd.set_vertex_binding(0, *pos, 0, 12);
 		cmd.set_vertex_binding(1, *attr, 0, 16);

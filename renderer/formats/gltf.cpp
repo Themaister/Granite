@@ -30,6 +30,7 @@
 #include "rapidjson_wrapper.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "path_utils.hpp"
+#include <stdexcept>
 
 using namespace rapidjson;
 using namespace Granite;

@@ -255,11 +255,10 @@ int main(int argc, char **argv)
 	                     scale * (vec3(rect_width, 0.5f, rect_height) - center_of_mass));
 
 	MaterialInfo mat;
-	mat.shader_variant = MATERIAL_SHADER_VARIANT_BANDLIMITED_PIXEL_BIT;
 	mat.paths[Util::ecast(TextureKind::BaseColor)] = input;
 	mat.uniform_metallic = 0.0f;
 	mat.uniform_roughness = 1.0f;
-	mat.sampler = Vulkan::StockSampler::TrilinearClamp;
+	mat.sampler = SamplerFamily::Clamp;
 	mat.pipeline = DrawPipeline::Opaque;
 
 	SceneFormats::SceneInformation scene;

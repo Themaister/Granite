@@ -24,6 +24,7 @@
 #include "meshoptimizer.h"
 #include "enum_cast.hpp"
 #include "math.hpp"
+#include "bitops.hpp"
 #include "filesystem.hpp"
 #include "meshlet.hpp"
 #include <type_traits>

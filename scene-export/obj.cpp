@@ -21,12 +21,14 @@
  */
 
 #define NOMINMAX
+#include "vulkan_headers.hpp"
 #include "obj.hpp"
 #include "filesystem.hpp"
 #include "memory_mapped_texture.hpp"
 #include "texture_files.hpp"
 #include "string_helpers.hpp"
 #include "path_utils.hpp"
+#include <limits>
 
 using namespace Util;
 

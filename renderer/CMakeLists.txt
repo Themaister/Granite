@@ -37,22 +37,36 @@ add_granite_internal_lib(granite-renderer
         lights/light_info.hpp
         lights/volumetric_diffuse.hpp lights/volumetric_diffuse.cpp
         lights/decal_volume.hpp lights/decal_volume.cpp
-        formats/scene_formats.hpp formats/scene_formats.cpp
-        formats/gltf.hpp formats/gltf.cpp
-        scene_loader.cpp scene_loader.hpp
+        light_export.cpp light_export.hpp
         ocean.hpp ocean.cpp
+        scene_loader.cpp scene_loader.hpp
         fft/fft.cpp fft/fft.hpp
         sprite.cpp sprite.hpp
         common_renderer_data.cpp common_renderer_data.hpp
         font.cpp font.hpp
         threaded_scene.cpp threaded_scene.hpp)
+
 target_include_directories(granite-renderer
         PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/fft
-        ${CMAKE_CURRENT_SOURCE_DIR}/formats
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/post/ffx-cacao/inc)
+
+add_granite_internal_lib(granite-renderer-formats
+        formats/scene_formats.hpp formats/scene_formats.cpp
+        formats/gltf.hpp formats/gltf.cpp
+        formats/mesh_definitions.hpp
+        formats/material_definitions.hpp)
+
+target_include_directories(granite-renderer-formats PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/formats)
+
+target_link_libraries(granite-renderer-formats PUBLIC
+        granite-math granite-util granite-volk-headers
+        granite-path granite-filesystem granite-application-global
+        granite-mikktspace granite-rapidjson meshoptimizer)
+
 target_link_libraries(granite-renderer PUBLIC
         granite-ecs
         granite-vulkan
@@ -62,10 +76,9 @@ target_link_libraries(granite-renderer PUBLIC
         granite-application-events
         granite-application-global
         granite-threading
-        PRIVATE granite-mikktspace meshoptimizer granite-rapidjson granite-stb granite-fsr2)
-
-# TODO: Temporary hack
-target_link_libraries(granite-renderer PRIVATE granite-scene-export)
+        granite-renderer-formats
+        granite-meshlet-export
+        PRIVATE granite-stb granite-fsr2)
 
 if (NOT ANDROID)
     set(GRANITE_FSR2_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/fsr2/src/ffx-fsr2-api/shaders)

@@ -24,12 +24,18 @@
 
 #include <vector>
 #include <unordered_set>
-#include <stdint.h>
-#include "mesh.hpp"
-#include "material.hpp"
+#include <string>
+
+#include "mesh_definitions.hpp"
+#include "material_definitions.hpp"
 #include "enum_cast.hpp"
 #include "transforms.hpp"
 #include "array_view.hpp"
+#include "hash.hpp"
+#include "aabb.hpp"
+
+#include <stdint.h>
+#include <assert.h>
 
 namespace Granite
 {

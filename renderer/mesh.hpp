@@ -29,40 +29,11 @@
 #include "aabb.hpp"
 #include "render_queue.hpp"
 #include "limits.hpp"
+#include "mesh_definitions.hpp"
 
 namespace Granite
 {
 struct RenderQueueData;
-
-enum class MeshAttribute : unsigned
-{
-	Position = 0,
-	UV = 1,
-	Normal = 2,
-	Tangent = 3,
-	BoneIndex = 4,
-	BoneWeights = 5,
-	VertexColor = 6,
-	Count,
-	None
-};
-
-enum MeshAttributeFlagBits
-{
-	MESH_ATTRIBUTE_POSITION_BIT = 1u << Util::ecast(MeshAttribute::Position),
-	MESH_ATTRIBUTE_UV_BIT = 1u << Util::ecast(MeshAttribute::UV),
-	MESH_ATTRIBUTE_NORMAL_BIT = 1u << Util::ecast(MeshAttribute::Normal),
-	MESH_ATTRIBUTE_TANGENT_BIT = 1u << Util::ecast(MeshAttribute::Tangent),
-	MESH_ATTRIBUTE_BONE_INDEX_BIT = 1u << Util::ecast(MeshAttribute::BoneIndex),
-	MESH_ATTRIBUTE_BONE_WEIGHTS_BIT = 1u << Util::ecast(MeshAttribute::BoneWeights),
-	MESH_ATTRIBUTE_VERTEX_COLOR_BIT = 1u << Util::ecast(MeshAttribute::VertexColor)
-};
-
-struct MeshAttributeLayout
-{
-	VkFormat format = VK_FORMAT_UNDEFINED;
-	uint32_t offset = 0;
-};
 
 struct StaticMeshVertex
 {

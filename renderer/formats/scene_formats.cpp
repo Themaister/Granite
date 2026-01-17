@@ -22,12 +22,14 @@
 
 #define NOMINMAX
 #include "scene_formats.hpp"
+#include "logging.hpp"
+#include "mikktspace.h"
+#include "meshoptimizer.h"
+
 #include <string.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include "mikktspace.h"
-#include "meshoptimizer.h"
 
 using namespace Util;
 

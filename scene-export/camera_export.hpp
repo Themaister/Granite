@@ -22,7 +22,9 @@
 
 #pragma once
 
-#include "scene_formats.hpp"
+#include "math.hpp"
+#include <vector>
+#include <string>
 
 namespace Granite
 {

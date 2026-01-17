@@ -204,7 +204,9 @@ void StaticMesh::fill_render_info(Vulkan::ResourceManager &resource_manager, Sta
 	info.count = count;
 
 	auto &minfo = material.get_info();
-	info.sampler = minfo.sampler;
+	info.sampler = minfo.sampler == SamplerFamily::Wrap
+		               ? Vulkan::StockSampler::DefaultGeometryFilterWrap
+		               : Vulkan::StockSampler::DefaultGeometryFilterClamp;
 
 	info.fragment.roughness = minfo.uniform_roughness;
 	info.fragment.metallic = minfo.uniform_metallic;

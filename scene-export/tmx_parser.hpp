@@ -26,7 +26,7 @@
 #include <vector>
 #include <stdexcept>
 #include "memory_mapped_texture.hpp"
-#include "abstract_renderable.hpp"
+#include "material_definitions.hpp"
 #include "math.hpp"
 
 class TMXParser

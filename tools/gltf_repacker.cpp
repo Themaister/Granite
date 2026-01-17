@@ -21,6 +21,7 @@
  */
 
 #define NOMINMAX
+#include "vulkan_headers.hpp"
 #include "gltf.hpp"
 #include "gltf_export.hpp"
 #include "logging.hpp"

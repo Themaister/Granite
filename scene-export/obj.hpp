@@ -24,6 +24,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include "math.hpp"
 #include "scene_formats.hpp"
 

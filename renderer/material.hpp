@@ -29,48 +29,10 @@
 #include "sampler.hpp"
 #include "abstract_renderable.hpp"
 #include "hash.hpp"
+#include "material_definitions.hpp"
 
 namespace Granite
 {
-enum class TextureKind : unsigned
-{
-	BaseColor = 0,
-	Normal = 1,
-	MetallicRoughness = 2,
-	Occlusion = 3,
-	Emissive = 4,
-	Count
-};
-
-struct MaterialInfo
-{
-	std::string paths[Util::ecast(TextureKind::Count)];
-	vec4 uniform_base_color = vec4(1.0f);
-	vec3 uniform_emissive_color = vec3(0.0f);
-	float uniform_metallic = 1.0f;
-	float uniform_roughness = 1.0f;
-	float normal_scale = 1.0f;
-	DrawPipeline pipeline = DrawPipeline::Opaque;
-	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
-	uint32_t shader_variant = 0;
-	bool two_sided = false;
-};
-
-enum MaterialTextureFlagBits
-{
-	MATERIAL_TEXTURE_BASE_COLOR_BIT = 1u << Util::ecast(TextureKind::BaseColor),
-	MATERIAL_TEXTURE_NORMAL_BIT = 1u << Util::ecast(TextureKind::Normal),
-	MATERIAL_TEXTURE_METALLIC_ROUGHNESS_BIT = 1u << Util::ecast(TextureKind::MetallicRoughness),
-	MATERIAL_TEXTURE_OCCLUSION_BIT = 1u << Util::ecast(TextureKind::Occlusion),
-	MATERIAL_TEXTURE_EMISSIVE_BIT = 1u << Util::ecast(TextureKind::Emissive),
-	MATERIAL_EMISSIVE_BIT = 1u << 5,
-};
-
-enum MaterialShaderVariantFlagBits
-{
-	MATERIAL_SHADER_VARIANT_BANDLIMITED_PIXEL_BIT = 1 << 0
-};
-
 struct Material
 {
 	Material() = default;

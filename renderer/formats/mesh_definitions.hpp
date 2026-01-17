@@ -22,63 +22,39 @@
 
 #pragma once
 
-#include "texture_compression.hpp"
-#include "scene_formats.hpp"
-#include "math.hpp"
+#include "enum_cast.hpp"
+#include "volk.h"
 
 namespace Granite
 {
-namespace SceneFormats
+enum class MeshAttribute : unsigned
 {
-enum class TextureCompression
-{
-	BC7,
-	BC3,
-	BC4,
-	BC5,
-	BC1,
-	BC6H,
-	ASTC4x4,
-	ASTC5x5,
-	ASTC6x6,
-	ASTC8x8,
-	PNG,
-	Uncompressed
+	Position = 0,
+	UV = 1,
+	Normal = 2,
+	Tangent = 3,
+	BoneIndex = 4,
+	BoneWeights = 5,
+	VertexColor = 6,
+	Count,
+	None
 };
 
-enum class TextureCompressionFamily
+enum MeshAttributeFlagBits
 {
-	BC,
-	ASTC,
-	PNG,
-	Uncompressed
+	MESH_ATTRIBUTE_POSITION_BIT = 1u << Util::ecast(MeshAttribute::Position),
+	MESH_ATTRIBUTE_UV_BIT = 1u << Util::ecast(MeshAttribute::UV),
+	MESH_ATTRIBUTE_NORMAL_BIT = 1u << Util::ecast(MeshAttribute::Normal),
+	MESH_ATTRIBUTE_TANGENT_BIT = 1u << Util::ecast(MeshAttribute::Tangent),
+	MESH_ATTRIBUTE_BONE_INDEX_BIT = 1u << Util::ecast(MeshAttribute::BoneIndex),
+	MESH_ATTRIBUTE_BONE_WEIGHTS_BIT = 1u << Util::ecast(MeshAttribute::BoneWeights),
+	MESH_ATTRIBUTE_VERTEX_COLOR_BIT = 1u << Util::ecast(MeshAttribute::VertexColor)
 };
 
-struct ExportOptions
+struct MeshAttributeLayout
 {
-	TextureCompressionFamily compression = TextureCompressionFamily::Uncompressed;
-	unsigned texcomp_quality = 3;
-	unsigned threads = 0;
-
-	struct
-	{
-		std::string cube;
-		std::string reflection;
-		std::string irradiance;
-		vec3 fog_color = vec3(0.0f);
-		float fog_falloff = 0.0f;
-
-		TextureCompressionFamily compression = TextureCompressionFamily::Uncompressed;
-		unsigned texcomp_quality = 3;
-		float intensity = 1.0f;
-	} environment;
-
-	bool quantize_attributes = false;
-	bool optimize_meshes = false;
-	bool stripify_meshes = false;
-	bool gltf = false;
+	VkFormat format = VK_FORMAT_UNDEFINED;
+	uint32_t offset = 0;
 };
 
-bool export_scene_to_glb(const SceneInformation &scene, const std::string &path, const ExportOptions &options);
-}
 }

@@ -22,9 +22,9 @@
 
 #define NOMINMAX
 #include "gltf.hpp"
-#include "vulkan_headers.hpp"
+#include "vulkan/vulkan_core.h"
 #include "filesystem.hpp"
-#include "mesh.hpp"
+#include "mesh_definitions.hpp"
 #include <unordered_map>
 #include <algorithm>
 #include "rapidjson_wrapper.hpp"
@@ -845,20 +845,20 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 		if (value.HasMember("wrapT"))
 			wrap_t = value["wrapT"].GetUint();
 
-		Vulkan::StockSampler sampler = Vulkan::StockSampler::DefaultGeometryFilterWrap;
+		auto sampler = SamplerFamily::Wrap;
 
 		struct Entry
 		{
 			unsigned wrap_s, wrap_t, mag_filter, min_filter;
-			Vulkan::StockSampler sampler;
+			SamplerFamily sampler;
 		};
 		static const Entry entries[] = {
-			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, Vulkan::StockSampler::DefaultGeometryFilterWrap },
-			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, Vulkan::StockSampler::DefaultGeometryFilterClamp },
-			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, Vulkan::StockSampler::DefaultGeometryFilterWrap },
-			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, Vulkan::StockSampler::DefaultGeometryFilterClamp },
-			{ GL_REPEAT, GL_REPEAT, GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, Vulkan::StockSampler::NearestWrap },
-			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, Vulkan::StockSampler::NearestClamp },
+			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, SamplerFamily::Wrap },
+			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, SamplerFamily::Clamp },
+			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, SamplerFamily::Wrap },
+			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, SamplerFamily::Clamp },
+			{ GL_REPEAT, GL_REPEAT, GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, SamplerFamily::Wrap },
+			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, SamplerFamily::Clamp },
 		};
 
 		auto itr = std::find_if(std::begin(entries), std::end(entries), [&](const Entry &e) {
@@ -876,7 +876,7 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 	const auto add_texture = [&](const Value &value) {
 		auto &source = value["source"];
 
-		Vulkan::StockSampler stock_sampler = Vulkan::StockSampler::DefaultGeometryFilterWrap;
+		auto stock_sampler = SamplerFamily::Wrap;
 		if (value.HasMember("sampler"))
 		{
 			auto &sampler = value["sampler"];
@@ -905,13 +905,6 @@ void Parser::parse(const std::string &original_path, const std::string &json)
 				info.pipeline = DrawPipeline::AlphaTest;
 			else if (mode == "BLEND")
 				info.pipeline = DrawPipeline::AlphaBlend;
-		}
-
-		if (value.HasMember("extras"))
-		{
-			auto &extras = value["extras"];
-			if (extras.HasMember("bandlimitedPixel"))
-				info.shader_variant |= extras["bandlimitedPixel"].GetBool() ? MATERIAL_SHADER_VARIANT_BANDLIMITED_PIXEL_BIT : 0;
 		}
 
 		if (value.HasMember("emissiveFactor"))

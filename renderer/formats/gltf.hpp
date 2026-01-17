@@ -24,6 +24,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include "math.hpp"
 #include "scene_formats.hpp"
 
@@ -157,7 +158,7 @@ private:
 	struct Texture
 	{
 		uint32_t image_index;
-		Vulkan::StockSampler sampler;
+		SamplerFamily sampler;
 		VkComponentMapping swizzle;
 	};
 
@@ -177,7 +178,7 @@ private:
 	std::vector<MeshData> json_meshes;
 	std::vector<std::string> json_images;
 	std::vector<Texture> json_textures;
-	std::vector<Vulkan::StockSampler> json_stock_samplers;
+	std::vector<SamplerFamily> json_stock_samplers;
 	std::vector<SceneFormats::Skin> json_skins;
 	std::vector<SceneFormats::CameraInfo> json_cameras;
 	std::vector<SceneFormats::LightInfo> json_lights;

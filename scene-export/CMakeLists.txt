@@ -1,18 +1,24 @@
 add_granite_internal_lib(granite-scene-export
         texture_compression.hpp texture_compression.cpp
         obj.cpp obj.hpp
-        light_export.cpp light_export.hpp
         camera_export.cpp camera_export.hpp
         gltf_export.cpp gltf_export.hpp
         rgtc_compressor.cpp rgtc_compressor.hpp
         tmx_parser.cpp tmx_parser.hpp
-        meshlet_export.cpp meshlet_export.hpp
         texture_utils.cpp texture_utils.hpp)
 
+add_granite_internal_lib(granite-meshlet-export
+        meshlet_export.cpp meshlet_export.hpp)
+
 target_include_directories(granite-scene-export PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(granite-meshlet-export PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
 target_link_libraries(granite-scene-export
-        PUBLIC granite-vulkan granite-threading granite-math granite-renderer
+        PUBLIC granite-vulkan granite-threading granite-math granite-renderer-formats
         PRIVATE granite-rapidjson granite-mikktspace meshoptimizer granite-stb)
+
+target_link_libraries(granite-meshlet-export
+        PUBLIC granite-math granite-renderer-formats granite-vulkan)
 
 if (GRANITE_ISPC_TEXTURE_COMPRESSION)
     set(GRANITE_ISPC_LIBRARY_DIR "" CACHE STRING "ISPC library directory.")

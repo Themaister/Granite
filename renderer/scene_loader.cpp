@@ -332,13 +332,8 @@ NodeHandle SceneLoader::parse_gltf(const std::string &path)
 		{
 			auto &mat = subscene.parser->get_materials()[mesh.material_index];
 
-			// Vague approximation. We ignore the actual sampler.
-			if (mat.sampler == Vulkan::StockSampler::DefaultGeometryFilterClamp ||
-				mat.sampler == Vulkan::StockSampler::LinearClamp ||
-				mat.sampler == Vulkan::StockSampler::TrilinearClamp)
-			{
+			if (mat.sampler == SamplerFamily::Clamp)
 				flags |= 1 << MESH_ASSET_MATERIAL_UV_CLAMP_OFFSET;
-			}
 
 			pipe = mat.pipeline;
 			for (int i = 0; i < int(TextureKind::Count); i++)

@@ -33,6 +33,7 @@
 #include "texture_format.hpp"
 #include "stb_image_write.h"
 #include "path_utils.hpp"
+#include "bitops.hpp"
 
 using namespace rapidjson;
 using namespace Util;
@@ -107,7 +108,6 @@ struct EmittedMaterial
 	float normal_scale = 1.0f;
 	DrawPipeline pipeline = DrawPipeline::Opaque;
 	bool two_sided = false;
-	bool bandlimited_pixel = false;
 };
 
 struct EmittedTexture
@@ -196,10 +196,10 @@ struct RemapState
 	unsigned emit_accessor(unsigned view_index, VkFormat format, unsigned offset, unsigned count);
 
 	unsigned emit_texture(const std::string &texture,
-	                      Vulkan::StockSampler sampler, TextureKind type,
+	                      SamplerFamily sampler, TextureKind type,
 	                      TextureCompressionFamily compression, unsigned quality, TextureMode mode);
 
-	unsigned emit_sampler(Vulkan::StockSampler sampler);
+	unsigned emit_sampler(SamplerFamily sampler);
 	unsigned emit_image(const std::string &texture, TextureKind type,
 	                    TextureCompressionFamily compression, unsigned quality, TextureMode mode);
 
@@ -569,7 +569,7 @@ unsigned RemapState::emit_accessor(unsigned view_index, VkFormat format, unsigne
 		return itr->second;
 }
 
-unsigned RemapState::emit_sampler(Vulkan::StockSampler sampler)
+unsigned RemapState::emit_sampler(SamplerFamily sampler)
 {
 	Hasher h;
 	h.u32(ecast(sampler));
@@ -584,46 +584,20 @@ unsigned RemapState::emit_sampler(Vulkan::StockSampler sampler)
 
 		switch (sampler)
 		{
-		case Vulkan::StockSampler::TrilinearWrap:
+		case SamplerFamily::Wrap:
+			// We interpret this as anisotropic as needed on parse.
 			mag_filter = GL_LINEAR;
 			min_filter = GL_LINEAR_MIPMAP_LINEAR;
 			wrap_s = GL_REPEAT;
 			wrap_t = GL_REPEAT;
 			break;
 
-		case Vulkan::StockSampler::TrilinearClamp:
+		case SamplerFamily::Clamp:
+			// We interpret this as anisotropic as needed on parse.
 			mag_filter = GL_LINEAR;
 			min_filter = GL_LINEAR_MIPMAP_LINEAR;
 			wrap_s = GL_CLAMP_TO_EDGE;
 			wrap_t = GL_CLAMP_TO_EDGE;
-			break;
-
-		case Vulkan::StockSampler::LinearWrap:
-			mag_filter = GL_LINEAR;
-			min_filter = GL_LINEAR_MIPMAP_NEAREST;
-			wrap_s = GL_REPEAT;
-			wrap_t = GL_REPEAT;
-			break;
-
-		case Vulkan::StockSampler::LinearClamp:
-			mag_filter = GL_LINEAR;
-			min_filter = GL_LINEAR_MIPMAP_NEAREST;
-			wrap_s = GL_CLAMP_TO_EDGE;
-			wrap_t = GL_CLAMP_TO_EDGE;
-			break;
-
-		case Vulkan::StockSampler::NearestClamp:
-			mag_filter = GL_NEAREST;
-			min_filter = GL_NEAREST_MIPMAP_NEAREST;
-			wrap_s = GL_CLAMP_TO_EDGE;
-			wrap_t = GL_CLAMP_TO_EDGE;
-			break;
-
-		case Vulkan::StockSampler::NearestWrap:
-			mag_filter = GL_NEAREST;
-			min_filter = GL_NEAREST_MIPMAP_NEAREST;
-			wrap_s = GL_REPEAT;
-			wrap_t = GL_REPEAT;
 			break;
 
 		default:
@@ -665,7 +639,7 @@ unsigned RemapState::emit_image(const std::string &texture, TextureKind type,
 }
 
 unsigned RemapState::emit_texture(const std::string &texture,
-                                  Vulkan::StockSampler sampler, TextureKind type,
+                                  SamplerFamily sampler, TextureKind type,
                                   TextureCompressionFamily compression, unsigned quality, TextureMode mode)
 {
 	unsigned image_index = emit_image(texture, type, compression, quality, mode);
@@ -694,19 +668,19 @@ void RemapState::emit_environment(const std::string &cube, const std::string &re
 	EmittedEnvironment env;
 	if (!cube.empty())
 	{
-		env.cube = emit_texture(cube, Vulkan::StockSampler::LinearClamp,
+		env.cube = emit_texture(cube, SamplerFamily::Clamp,
 		                        TextureKind::Emissive, compression, quality, TextureMode::HDR);
 	}
 
 	if (!reflection.empty())
 	{
-		env.reflection = emit_texture(reflection, Vulkan::StockSampler::LinearClamp,
+		env.reflection = emit_texture(reflection, SamplerFamily::Clamp,
 		                              TextureKind::Emissive, compression, quality, TextureMode::HDR);
 	}
 
 	if (!irradiance.empty())
 	{
-		env.irradiance = emit_texture(irradiance, Vulkan::StockSampler::LinearClamp,
+		env.irradiance = emit_texture(irradiance, SamplerFamily::Clamp,
 		                              TextureKind::Emissive, compression, quality, TextureMode::HDR);
 	}
 
@@ -768,7 +742,6 @@ void RemapState::emit_material(unsigned remapped_material)
 	output.normal_scale = mat.normal_scale;
 	output.pipeline = mat.pipeline;
 	output.two_sided = mat.two_sided;
-	output.bandlimited_pixel = (mat.shader_variant & MATERIAL_SHADER_VARIANT_BANDLIMITED_PIXEL_BIT) != 0;
 }
 
 static void quantize_attribute_fp32_fp16(uint8_t *output,
@@ -1942,13 +1915,6 @@ bool export_scene_to_glb(const SceneInformation &scene, const std::string &path,
 
 			if (material.two_sided)
 				m.AddMember("doubleSided", true, allocator);
-
-			if (material.bandlimited_pixel)
-			{
-				Value extras(kObjectType);
-				extras.AddMember("bandlimitedPixel", true, allocator);
-				m.AddMember("extras", extras, allocator);
-			}
 
 			if (any(notEqual(material.uniform_emissive_color, vec3(0.0f))))
 			{

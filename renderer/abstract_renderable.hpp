@@ -25,6 +25,7 @@
 #include "aabb.hpp"
 #include "intrusive.hpp"
 #include "material_manager.hpp"
+#include "material_definitions.hpp"
 
 namespace Granite
 {
@@ -33,20 +34,6 @@ class RenderContext;
 class ShaderSuite;
 struct RenderInfoComponent;
 struct SpriteTransformInfo;
-
-enum class DrawPipeline : unsigned char
-{
-	Opaque,
-	AlphaTest,
-	AlphaBlend,
-	Count
-};
-
-enum class DrawPipelineCoverage : unsigned char
-{
-	Full,
-	Modifies
-};
 
 enum RenderableFlagBits
 {

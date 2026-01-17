@@ -19,7 +19,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Granite implementation:
-// Copyright (c) 2022-2024 Hans-Kristian Arntzen
+// Copyright (c) 2022-2026 Hans-Kristian Arntzen
 
 #include "ffx_cacao_impl.h"
 #include "ffx_cacao_defines.h"

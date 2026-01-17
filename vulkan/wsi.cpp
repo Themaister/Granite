@@ -989,6 +989,7 @@ void WSI::recalibrate_present_timing_domains()
 void WSI::update_time_domain_properties()
 {
 	VkSwapchainTimeDomainPropertiesEXT time_domain_properties = { VK_STRUCTURE_TYPE_SWAPCHAIN_TIME_DOMAIN_PROPERTIES_EXT };
+	time_domain_properties.timeDomainCount = 1; // Workaround VVL.
 	if (table->vkGetSwapchainTimeDomainPropertiesEXT(context->get_device(), swapchain, &time_domain_properties, nullptr) != VK_SUCCESS)
 	{
 		LOGE("Failed to query time domain properties.\n");
@@ -1032,6 +1033,10 @@ void WSI::poll_present_timing_feedback()
 		t.sType = VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_EXT;
 		t.pPresentStages = stage_time[i];
 		t.presentStageCount = 4;
+
+		// VVL workaround
+		for (auto &s : stage_time[i])
+			s.stage = VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT;
 	}
 
 	VkPastPresentationTimingInfoEXT info = { VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_INFO_EXT };

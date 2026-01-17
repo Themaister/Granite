@@ -314,7 +314,7 @@ bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Granite::A
 		return false;
 
 	// Setup the swapchain image info for the frontend.
-	swapchain_image_info.image_view = swapchain_unorm_view->get_view();
+	swapchain_image_info.image_view = swapchain_unorm_view->get_view().view;
 	swapchain_image_info.image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	swapchain_image_info.create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	swapchain_image_info.create_info.image = swapchain_unorm_view->get_image().get_image();

@@ -242,6 +242,11 @@ struct ResourceDimensions
 		return is_storage_image() || (buffer_info.size != 0) || (flags & ATTACHMENT_INFO_INTERNAL_PROXY_BIT) != 0;
 	}
 
+	bool is_layout_sensitive() const
+	{
+		return !is_buffer_like();
+	}
+
 	std::string name;
 };
 
@@ -970,6 +975,7 @@ private:
 		unsigned layers = 1;
 	};
 	std::vector<PhysicalPass> physical_passes;
+	std::vector<unsigned> early_discards;
 	void build_physical_passes();
 	void build_transients();
 	void build_physical_resources();
@@ -998,6 +1004,8 @@ private:
 		VkAccessFlags2 to_flush_access = 0;
 		VkAccessFlags2 invalidated_in_stage[64] = {};
 		VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+		bool locked_invalidation = false;
 	};
 
 	std::vector<PipelineEvent> physical_events;
@@ -1060,20 +1068,26 @@ private:
 	};
 	std::vector<PassSubmissionState> pass_submission_state;
 
-	void enqueue_render_pass(Vulkan::Device &device, PhysicalPass &physical_pass, PassSubmissionState &state, TaskComposer &composer);
+	void enqueue_render_pass(Vulkan::Device &device, unsigned physical_pass_index, TaskComposer &composer);
 	void enqueue_swapchain_scale_pass(Vulkan::Device &device);
 	bool physical_pass_requires_work(const PhysicalPass &pass) const;
 	void physical_pass_transfer_ownership(const PhysicalPass &pass);
 	void physical_pass_invalidate_attachments(const PhysicalPass &pass);
+	void physical_pass_invalidate_attachments_early();
+
 	void physical_pass_enqueue_graphics_commands(const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_enqueue_compute_commands(const PhysicalPass &pass, PassSubmissionState &state);
 
 	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state, bool physical_graphics_queue);
+
+	void physical_pass_handle_invalidate_barrier_lookahead(PassSubmissionState &state,
+	                                                       bool physical_graphics,
+	                                                       const PhysicalPass &future);
+
 	void physical_pass_handle_external_acquire(const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_handle_signal(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassSubmissionState &state);
-	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state,
-	                                       TaskComposer &composer);
+	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, unsigned physical_pass_index, TaskComposer &composer);
 	void physical_pass_handle_gpu_timeline(ThreadGroup &group, Vulkan::Device &device,
 	                                       const PhysicalPass &pass, PassSubmissionState &state);
 };

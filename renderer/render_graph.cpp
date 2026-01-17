@@ -1880,11 +1880,96 @@ void RenderGraph::physical_pass_invalidate_attachments(const PhysicalPass &physi
 			physical_events[discard].layout = VK_IMAGE_LAYOUT_UNDEFINED;
 }
 
+void RenderGraph::physical_pass_invalidate_attachments_early()
+{
+	for (auto &discard : early_discards)
+		if (!physical_dimensions[discard].is_buffer_like())
+			physical_events[discard].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+}
+
+void RenderGraph::physical_pass_handle_invalidate_barrier_lookahead(
+	PassSubmissionState &state, bool physical_graphics, const PhysicalPass &future)
+{
+	VkPipelineStageFlags2 src_stage = 0;
+	VkAccessFlags2 src_access = 0;
+	VkPipelineStageFlags2 dst_stage = 0;
+	VkAccessFlags2 dst_access = 0;
+
+	const auto add_stages = [&](const auto &b)
+	{
+		src_stage |= b.srcStageMask;
+		src_access |= b.srcAccessMask;
+		dst_stage |= b.dstStageMask;
+		dst_access |= b.dstAccessMask;
+	};
+
+	// If a dependency is fragment stage, allow everything.
+	const auto expand_stages = [](VkPipelineStageFlags2 &stages)
+	{
+		constexpr VkPipelineStageFlags2 fragment_stage =
+				VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+				VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+
+		if ((stages & fragment_stage) != 0)
+			stages |= fragment_stage;
+	};
+
+	const auto expand_access = [](VkAccessFlags2 &access)
+	{
+		constexpr VkAccessFlags2 fragment_access =
+				VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+				VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+				VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+
+		if ((access & fragment_access) != 0)
+			access |= fragment_access;
+	};
+
+	for (auto &b : state.global_barriers)
+		add_stages(b);
+	for (auto &b : state.buffer_barriers)
+		add_stages(b);
+	for (auto &b : state.image_barriers)
+		add_stages(b);
+
+	expand_stages(src_stage);
+	expand_stages(dst_stage);
+	expand_access(src_access);
+	expand_access(dst_access);
+
+	for (auto &barrier : future.invalidate)
+	{
+		auto &event = barrier.history ? physical_history_events[barrier.resource_index] :
+					  physical_events[barrier.resource_index];
+
+		// We've already looked at this resource for this pass. Only consider immediate use of a resource.
+		if (event.locked_invalidation || event.pipeline_barrier_src_stages == 0)
+			continue;
+
+		// Make sure we don't poison the barrier with unrelated stages.
+		bool src_stage_allowed = (event.pipeline_barrier_src_stages & src_stage) == event.pipeline_barrier_src_stages;
+		bool src_access_allowed = (event.to_flush_access & src_access) == event.to_flush_access;
+		bool dst_stage_allowed = (barrier.stages & dst_stage) == barrier.stages;
+		bool dst_access_allowed = (barrier.access & dst_access) == barrier.access;
+
+		if (src_stage_allowed && src_access_allowed && dst_stage_allowed && dst_access_allowed)
+			physical_pass_handle_invalidate_barrier(barrier, state, physical_graphics);
+
+		// Don't try to scan beyond the first physical pass.
+		event.locked_invalidation = true;
+
+		// We shouldn't try to hoist up semaphore waits since we may break cross-queue parallelization.
+	}
+}
+
 void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state,
                                                           bool physical_graphics_queue)
 {
 	auto &event = barrier.history ? physical_history_events[barrier.resource_index] :
 	              physical_events[barrier.resource_index];
+	VK_ASSERT(!event.locked_invalidation);
+	event.locked_invalidation = true;
 
 	bool need_pipeline_barrier = false;
 	bool layout_change = false;
@@ -1892,6 +1977,8 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 	auto &wait_semaphore = physical_graphics_queue ? event.wait_graphics_semaphore : event.wait_compute_semaphore;
 
 	auto &phys = physical_dimensions[barrier.resource_index];
+	bool init_barrier = false;
+
 	if (phys.buffer_info.size || (phys.flags & ATTACHMENT_INFO_INTERNAL_PROXY_BIT) != 0)
 	{
 		// Buffers.
@@ -2003,6 +2090,8 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 				state.image_barriers.push_back(b);
 				if (b.oldLayout != VK_IMAGE_LAYOUT_UNDEFINED)
 					throw std::logic_error("Cannot do immediate image barriers from a layout other than UNDEFINED.");
+
+				init_barrier = true;
 			}
 		}
 	}
@@ -2013,9 +2102,9 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 			e = 0;
 	event.to_flush_access = 0;
 
-	if (need_pipeline_barrier)
+	if (need_pipeline_barrier || init_barrier)
 	{
-		assert(event.pipeline_barrier_src_stages != 0);
+		assert(event.pipeline_barrier_src_stages != 0 || init_barrier);
 
 		// Mark appropriate caches as invalidated now.
 		Util::for_each_bit64(barrier.stages, [&](uint32_t bit) {
@@ -2232,20 +2321,32 @@ void RenderGraph::physical_pass_handle_external_acquire(const PhysicalPass &phys
 	}
 }
 
-void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
-                                                    const PhysicalPass &physical_pass,
-                                                    PassSubmissionState &state,
+void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_, unsigned physical_pass_index,
                                                     TaskComposer &incoming_composer)
 {
+	auto &physical_pass = physical_passes[physical_pass_index];
+	auto &state = pass_submission_state[physical_pass_index];
+
 	get_queue_type(state.queue_type, state.graphics, passes[physical_pass.passes.front()]->get_queue());
 
 	physical_pass_invalidate_attachments(physical_pass);
 
 	// Queue up invalidates and change layouts.
 	for (auto &barrier : physical_pass.invalidate)
+		physical_pass_handle_invalidate_barrier(barrier, state, state.graphics);
+
+	// If future passes need barriers that look basically the same as the barriers we're already queueing up.
+	for (size_t i = physical_pass_index + 1, n = physical_passes.size(); i < n; i++)
 	{
-		bool physical_graphics = device->get_physical_queue_type(state.queue_type) == Vulkan::QUEUE_INDEX_GRAPHICS;
-		physical_pass_handle_invalidate_barrier(barrier, state, physical_graphics);
+		// Consider consider passes in the same queue.
+		Vulkan::CommandBuffer::Type queue_type;
+		bool graphics;
+		get_queue_type(queue_type, graphics, passes[physical_passes[i].passes.front()]->get_queue());
+
+		if (state.queue_type != queue_type)
+			continue;
+
+		physical_pass_handle_invalidate_barrier_lookahead(state, graphics, physical_passes[i]);
 	}
 
 	physical_pass_handle_external_acquire(physical_pass, state);
@@ -2301,9 +2402,17 @@ void RenderGraph::physical_pass_handle_gpu_timeline(ThreadGroup &group, Vulkan::
 	state.rendering_dependency = task;
 }
 
-void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &physical_pass, PassSubmissionState &state,
+void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, unsigned physical_pass_index,
                                       TaskComposer &composer)
 {
+	auto &physical_pass = physical_passes[physical_pass_index];
+	auto &state = pass_submission_state[physical_pass_index];
+
+	for (auto &res : physical_events)
+		res.locked_invalidation = false;
+	for (auto &res : physical_history_events)
+		res.locked_invalidation = false;
+
 	if (!physical_pass_requires_work(physical_pass))
 	{
 		physical_pass_transfer_ownership(physical_pass);
@@ -2313,7 +2422,7 @@ void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &phy
 	state.active = true;
 
 	// Runs serially on CPU resolve barrier states.
-	physical_pass_handle_cpu_timeline(device_, physical_pass, state, composer);
+	physical_pass_handle_cpu_timeline(device_, physical_pass_index, composer);
 }
 
 void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
@@ -2417,8 +2526,11 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device_, TaskComposer &c
 	pass_submission_state.resize(count);
 	auto &thread_group = composer.get_thread_group();
 
+	// Batch up discards.
+	physical_pass_invalidate_attachments_early();
+
 	for (size_t i = 0; i < count; i++)
-		enqueue_render_pass(device_, physical_passes[i], pass_submission_state[i], composer);
+		enqueue_render_pass(device_, i, composer);
 
 	for (size_t i = 0; i < count; i++)
 	{
@@ -3231,7 +3343,13 @@ void RenderGraph::build_physical_barriers()
 					}
 
 					// We're not reading the resource in this pass, so we might as well transition from UNDEFINED to discard the resource.
-					physical_pass.discards.push_back(flush.resource_index);
+					// Try to batch up discards to start of frame if possible.
+					// For any given resource, this really should only happen once per frame,
+					// unless there is resource aliasing going on.
+					if (std::find(early_discards.begin(), early_discards.end(), flush.resource_index) == early_discards.end())
+						early_discards.push_back(flush.resource_index);
+					else
+						physical_pass.discards.push_back(flush.resource_index);
 				}
 			}
 		}

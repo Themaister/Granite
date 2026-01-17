@@ -354,47 +354,6 @@ void RenderPass::add_fake_resource_write_alias(const std::string &from, const st
 	fake_resource_alias.emplace_back(&from_res, &to_res);
 }
 
-RenderTextureResource &RenderPass::add_blit_texture_read_only_input(const std::string &name)
-{
-	auto &res = graph.get_texture_resource(name);
-	res.add_queue(queue);
-	res.read_in_pass(index);
-	res.add_image_usage(VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-
-	AccessedTextureResource acc;
-	acc.texture = &res;
-	acc.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-	acc.access = VK_ACCESS_TRANSFER_READ_BIT;
-	acc.stages = VK_PIPELINE_STAGE_2_BLIT_BIT;
-
-	generic_texture.push_back(acc);
-	return res;
-}
-
-RenderTextureResource &RenderPass::add_blit_texture_output(const std::string &name, const AttachmentInfo &info,
-                                                           const std::string &input)
-{
-	auto &res = graph.get_texture_resource(name);
-	res.add_queue(queue);
-	res.written_in_pass(index);
-	res.set_attachment_info(info);
-	res.add_image_usage(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-	blit_texture_outputs.push_back(&res);
-
-	if (!input.empty())
-	{
-		auto &input_res = graph.get_texture_resource(input);
-		input_res.read_in_pass(index);
-		input_res.add_queue(queue);
-		input_res.add_image_usage(VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-		blit_texture_inputs.push_back(&input_res);
-	}
-	else
-		blit_texture_inputs.push_back(nullptr);
-
-	return res;
-}
-
 RenderTextureResource &RenderPass::set_depth_stencil_output(const std::string &name, const AttachmentInfo &info)
 {
 	auto &res = graph.get_texture_resource(name);
@@ -612,9 +571,6 @@ void RenderGraph::validate_passes()
 		if (pass.get_storage_inputs().size() != pass.get_storage_outputs().size())
 			throw std::logic_error("Size of storage inputs must match storage outputs.");
 
-		if (pass.get_blit_texture_inputs().size() != pass.get_blit_texture_outputs().size())
-			throw std::logic_error("Size of blit inputs must match blit outputs.");
-
 		if (pass.get_storage_texture_inputs().size() != pass.get_storage_texture_outputs().size())
 			throw std::logic_error("Size of storage texture inputs must match storage texture outputs.");
 
@@ -641,19 +597,6 @@ void RenderGraph::validate_passes()
 
 				if (pass.get_storage_outputs()[i]->get_buffer_info() != pass.get_storage_inputs()[i]->get_buffer_info())
 					throw std::logic_error("Doing RMW on a storage buffer, but usage and sizes do not match.");
-			}
-		}
-
-		if (!pass.get_blit_texture_outputs().empty())
-		{
-			unsigned num_outputs = pass.get_blit_texture_outputs().size();
-			for (unsigned i = 0; i < num_outputs; i++)
-			{
-				if (!pass.get_blit_texture_inputs()[i])
-					continue;
-
-				if (get_resource_dimensions(*pass.get_blit_texture_inputs()[i]) != get_resource_dimensions(*pass.get_blit_texture_outputs()[i]))
-					throw std::logic_error("Doing RMW on a blit image, but usage and sizes do not match.");
 			}
 		}
 
@@ -780,33 +723,6 @@ void RenderGraph::build_physical_resources()
 					if (pass.get_storage_outputs()[i]->get_physical_index() == RenderResource::Unused)
 						pass.get_storage_outputs()[i]->set_physical_index(input->get_physical_index());
 					else if (pass.get_storage_outputs()[i]->get_physical_index() != input->get_physical_index())
-						throw std::logic_error("Cannot alias resources. Index already claimed.");
-				}
-			}
-		}
-
-		if (!pass.get_blit_texture_inputs().empty())
-		{
-			unsigned size = pass.get_blit_texture_inputs().size();
-			for (unsigned i = 0; i < size; i++)
-			{
-				auto *input = pass.get_blit_texture_inputs()[i];
-				if (input)
-				{
-					if (input->get_physical_index() == RenderResource::Unused)
-					{
-						physical_dimensions.push_back(get_resource_dimensions(*input));
-						input->set_physical_index(phys_index++);
-					}
-					else
-					{
-						physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
-						physical_dimensions[input->get_physical_index()].image_usage |= input->get_image_usage();
-					}
-
-					if (pass.get_blit_texture_outputs()[i]->get_physical_index() == RenderResource::Unused)
-						pass.get_blit_texture_outputs()[i]->set_physical_index(input->get_physical_index());
-					else if (pass.get_blit_texture_outputs()[i]->get_physical_index() != input->get_physical_index())
 						throw std::logic_error("Cannot alias resources. Index already claimed.");
 				}
 			}
@@ -941,20 +857,6 @@ void RenderGraph::build_physical_resources()
 			{
 				physical_dimensions[output->get_physical_index()].queues |= output->get_used_queues();
 				physical_dimensions[output->get_physical_index()].buffer_info.usage |= output->get_buffer_usage();
-			}
-		}
-
-		for (auto *output : pass.get_blit_texture_outputs())
-		{
-			if (output->get_physical_index() == RenderResource::Unused)
-			{
-				physical_dimensions.push_back(get_resource_dimensions(*output));
-				output->set_physical_index(phys_index++);
-			}
-			else
-			{
-				physical_dimensions[output->get_physical_index()].queues |= output->get_used_queues();
-				physical_dimensions[output->get_physical_index()].image_usage |= output->get_image_usage();
 			}
 		}
 
@@ -1366,8 +1268,6 @@ void RenderGraph::build_physical_passes()
 				return false;
 			if (find_attachment(prev.get_storage_texture_outputs(), input.texture))
 				return false;
-			if (find_attachment(prev.get_blit_texture_outputs(), input.texture))
-				return false;
 			if (input.texture && prev.get_depth_stencil_output() == input.texture)
 				return false;
 		}
@@ -1375,11 +1275,6 @@ void RenderGraph::build_physical_passes()
 		// Need non-local dependency, cannot merge.
 		for (auto &input : next.get_generic_buffer_inputs())
 			if (find_buffer(prev.get_storage_outputs(), input.buffer))
-				return false;
-
-		// Need non-local dependency, cannot merge.
-		for (auto *input : next.get_blit_texture_inputs())
-			if (find_attachment(prev.get_blit_texture_inputs(), input))
 				return false;
 
 		// Need non-local dependency, cannot merge.
@@ -1397,14 +1292,11 @@ void RenderGraph::build_physical_passes()
 		{
 			if (find_attachment(prev.get_storage_texture_outputs(), input))
 				return false;
-			if (find_attachment(prev.get_blit_texture_outputs(), input))
-				return false;
 			if (find_attachment(prev.get_color_outputs(), input))
 				return false;
 			if (find_attachment(prev.get_resolve_outputs(), input))
 				return false;
 		}
-
 
 		const auto different_attachment = [](const RenderResource *a, const RenderResource *b) {
 			return a && b && a->get_physical_index() != b->get_physical_index();
@@ -1429,8 +1321,6 @@ void RenderGraph::build_physical_passes()
 			if (!input)
 				continue;
 			if (find_attachment(prev.get_storage_texture_outputs(), input))
-				return false;
-			if (find_attachment(prev.get_blit_texture_outputs(), input))
 				return false;
 		}
 
@@ -1765,8 +1655,6 @@ void RenderGraph::build_aliases()
 			register_reader(input, subpass.get_physical_pass_index());
 		for (auto &input : subpass.get_generic_texture_inputs())
 			register_reader(input.texture, subpass.get_physical_pass_index());
-		for (auto *input : subpass.get_blit_texture_inputs())
-			register_reader(input, subpass.get_physical_pass_index());
 		for (auto *input : subpass.get_storage_texture_inputs())
 			register_reader(input, subpass.get_physical_pass_index());
 		if (subpass.get_depth_stencil_input())
@@ -1780,8 +1668,6 @@ void RenderGraph::build_aliases()
 		for (auto *output : subpass.get_color_outputs())
 			register_writer(output, subpass.get_physical_pass_index(), block_alias);
 		for (auto *output : subpass.get_resolve_outputs())
-			register_writer(output, subpass.get_physical_pass_index(), block_alias);
-		for (auto *output : subpass.get_blit_texture_outputs())
 			register_writer(output, subpass.get_physical_pass_index(), block_alias);
 
 		// Storage textures are not aliased, because they are implicitly preserved.
@@ -2798,12 +2684,6 @@ void RenderGraph::traverse_dependencies(const RenderPass &pass, unsigned stack_c
 			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, false);
 	}
 
-	for (auto *input : pass.get_blit_texture_inputs())
-	{
-		if (input)
-			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, false);
-	}
-
 	for (auto &input : pass.get_generic_texture_inputs())
 		depend_passes_recursive(pass, input.texture->get_write_passes(), stack_count, false, false, false);
 
@@ -3550,19 +3430,6 @@ void RenderGraph::build_barriers()
 			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 		}
 
-		for (auto *input : pass.get_blit_texture_inputs())
-		{
-			if (!input)
-				continue;
-
-			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
-			barrier.access |= VK_ACCESS_TRANSFER_WRITE_BIT;
-			barrier.stages |= VK_PIPELINE_STAGE_2_BLIT_BIT;
-			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw std::logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		}
-
 		for (auto *input : pass.get_color_inputs())
 		{
 			if (!input)
@@ -3648,16 +3515,6 @@ void RenderGraph::build_barriers()
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		}
-
-		for (auto *output : pass.get_blit_texture_outputs())
-		{
-			auto &barrier = get_invalidate_access(output->get_physical_index(), false);
-			barrier.access |= VK_ACCESS_TRANSFER_WRITE_BIT;
-			barrier.stages |= VK_PIPELINE_STAGE_2_BLIT_BIT;
-			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw std::logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 		}
 
 		for (auto *output : pass.get_storage_outputs())

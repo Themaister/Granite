@@ -491,7 +491,6 @@ public:
 
 	RenderTextureResource &add_texture_input(const std::string &name,
 	                                         VkPipelineStageFlags2 stages = 0);
-	RenderTextureResource &add_blit_texture_read_only_input(const std::string &name);
 	RenderBufferResource &add_uniform_input(const std::string &name,
 	                                        VkPipelineStageFlags2 stages = 0);
 	RenderBufferResource &add_storage_read_only_input(const std::string &name,
@@ -501,7 +500,6 @@ public:
 	RenderBufferResource &add_transfer_output(const std::string &name, const BufferInfo &info);
 
 	RenderTextureResource &add_storage_texture_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
-	RenderTextureResource &add_blit_texture_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
 
 	RenderBufferResource &add_vertex_buffer_input(const std::string &name);
 	RenderBufferResource &add_index_buffer_input(const std::string &name);
@@ -545,16 +543,6 @@ public:
 	const std::vector<RenderTextureResource *> &get_storage_texture_inputs() const
 	{
 		return storage_texture_inputs;
-	}
-
-	const std::vector<RenderTextureResource *> &get_blit_texture_inputs() const
-	{
-		return blit_texture_inputs;
-	}
-
-	const std::vector<RenderTextureResource *> &get_blit_texture_outputs() const
-	{
-		return blit_texture_outputs;
 	}
 
 	const std::vector<RenderTextureResource *> &get_attachment_inputs() const

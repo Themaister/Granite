@@ -816,7 +816,7 @@ void SceneTransformManager::update_task_buffer(Vulkan::CommandBuffer &cmd)
 		draw.material_flags = mesh.get_material_flags();
 		VK_ASSERT((range.meshlet.offset & 31) == 0);
 
-		for (int i = 0; i <= transform.requires_motion_vectors; i++)
+		for (int i = 0; i <= int(transform.requires_motion_vectors); i++)
 		{
 			draw.occluder_state_offset = transform.occluder_state.offset;
 			uint32_t draw_index = NumDrawTypesPerPipe * int(i ? DrawPipeline::Count : mesh.get_mesh_draw_pipeline());

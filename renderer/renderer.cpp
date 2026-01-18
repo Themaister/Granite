@@ -228,7 +228,7 @@ bool RendererSuite::save_variant_cache(const std::string &path)
 	doc.AddMember("variants", variants_array, allocator);
 
 	StringBuffer buffer;
-	PrettyWriter<StringBuffer> writer(buffer);
+	Writer<StringBuffer> writer(buffer);
 	doc.Accept(writer);
 
 	auto file = GRANITE_FILESYSTEM()->open_transactional_mapping(path, buffer.GetSize());

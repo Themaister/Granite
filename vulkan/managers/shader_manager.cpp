@@ -922,7 +922,7 @@ bool ShaderManager::save_shader_cache(const std::string &path)
 	doc.AddMember("maps", maps, allocator);
 
 	StringBuffer buffer;
-	PrettyWriter<StringBuffer> writer(buffer);
+	Writer<StringBuffer> writer(buffer);
 	doc.Accept(writer);
 
 	if (!device->get_system_handles().filesystem->write_buffer_to_file(path, buffer.GetString(), buffer.GetSize()))

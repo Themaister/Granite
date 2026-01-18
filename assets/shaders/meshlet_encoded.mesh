@@ -100,6 +100,12 @@ const uint STRIDE = 6;
 const uint STRIDE = 4;
 #endif
 
+#if MESHLET_LOCAL_INVOCATION_INDEXED
+#define INVARIANT_PRECISE precise
+#else
+#define INVARIANT_PRECISE
+#endif
+
 void main()
 {
     uint compacted_meshlet_index = meshlet_get_meshlet_index();
@@ -129,9 +135,10 @@ void main()
     MeshletInfo info = meshlet_get_meshlet_info(meta.stream_offset);
     uvec3 decoded_index_buffer = uvec3(0);
 
-    // AMD Windows bug. It doesn't understand invariance deps through shared memory.
-    precise vec3 world_pos;
-    precise vec4 clip_pos = vec4(-1.0);
+    // Invariance through shared variables does not work on AMD Windows drivers.
+    // Unclear if this is a bug or not.
+    INVARIANT_PRECISE vec3 world_pos;
+    INVARIANT_PRECISE vec4 clip_pos = vec4(-1.0);
 
     if (linear_index < info.primitive_count)
         decoded_index_buffer = meshlet_decode_index_buffer(meta.stream_offset, linear_index);
@@ -148,7 +155,7 @@ void main()
         vec4 weights = meshlet_decode_bone_weights(meta.stream_offset + MESHLET_STREAM_TYPE_BONE_WEIGHTS, linear_index);
         indices += task.node_offset;
 
-        mat3x4 m = mat_affine_to_transposed(transforms.data[indices.x]) * weights.x;
+        INVARIANT_PRECISE mat3x4 m = mat_affine_to_transposed(transforms.data[indices.x]) * weights.x;
         if (weights.y != 0.0)
             m += mat_affine_to_transposed(transforms.data[indices.y]) * weights.y;
         if (weights.z != 0.0)

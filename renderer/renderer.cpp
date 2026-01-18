@@ -765,8 +765,13 @@ void Renderer::render_mesh_assets(Vulkan::CommandBuffer &cmd, const RenderContex
 			variant_id |= 1u << 0;
 		if (manager.mesh_rendering_is_local_invocation_indexed())
 			variant_id |= 1u << 1;
-		if (manager.mesh_rendering_is_wave_culled())
+		if (manager.mesh_rendering_is_wave_culled() ||
+		    cmd.get_device().get_device_features().driver_id == VK_DRIVER_ID_AMD_PROPRIETARY ||
+		    cmd.get_device().get_device_features().driver_id == VK_DRIVER_ID_AMD_OPEN_SOURCE)
+		{
+			// AMD prop drivers don't expose task/mesh control even though it will work just fine as-is.
 			variant_id |= 1u << 2;
+		}
 
 		if ((options & MESH_ASSET_PHASE_1_BIT) != 0)
 			variant_id |= 1u << 3;

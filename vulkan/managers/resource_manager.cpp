@@ -786,21 +786,15 @@ bool ResourceManager::mesh_rendering_is_hierarchical_task() const
 
 bool ResourceManager::mesh_rendering_is_local_invocation_indexed() const
 {
+#if 0
 	bool local_invocation_indexed =
 		device->get_device_features().mesh_shader_properties.prefersLocalInvocationPrimitiveOutput ||
 		device->get_device_features().mesh_shader_properties.prefersLocalInvocationVertexOutput;
 
-#if 0
-	// RADV doesn't seem to like roundtripping through LDS to satisfy local invocation indexed.
-	// amdgpu-pro is bugged without it >_<
-	if (device->get_device_features().driver_id == VK_DRIVER_ID_MESA_RADV &&
-		get_mesh_encoding() == MeshEncoding::MeshletEncoded)
-	{
-		local_invocation_indexed = false;
-	}
-#endif
-
 	return local_invocation_indexed;
+#else
+	return false;
+#endif
 }
 
 bool ResourceManager::mesh_rendering_is_wave_culled() const

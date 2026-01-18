@@ -921,6 +921,36 @@ bool ShaderManager::save_shader_cache(const std::string &path)
 
 	doc.AddMember("maps", maps, allocator);
 
+	Value compiled_shaders(kArrayType);
+
+	shaders.move_to_read_only();
+	for (auto &entry : shaders.get_read_only())
+	{
+		Value shader(kObjectType);
+		Value variants(kArrayType);
+		shader.AddMember("path", entry.get_path(), allocator);
+
+		entry.get_variants().move_to_read_only();
+		for (auto &var : entry.get_variants().get_read_only())
+		{
+			Value defines(kArrayType);
+			for (auto &def : var.defines)
+			{
+				Value define_value_pair(kObjectType);
+				define_value_pair.AddMember("define", def.first, allocator);
+				define_value_pair.AddMember("value", def.second, allocator);
+				defines.PushBack(define_value_pair, allocator);
+			}
+
+			variants.PushBack(defines, allocator);
+		}
+
+		shader.AddMember("variants", variants, allocator);
+		compiled_shaders.PushBack(shader, allocator);
+	}
+
+	doc.AddMember("shaders", compiled_shaders, allocator);
+
 	StringBuffer buffer;
 	Writer<StringBuffer> writer(buffer);
 	doc.Accept(writer);

@@ -665,6 +665,11 @@ public:
 		return read_only;
 	}
 
+	const IntrusiveHashMapHolder<T> &get_read_only() const
+	{
+		return read_only;
+	}
+
 	IntrusiveHashMapHolder<T> &get_read_write()
 	{
 		return read_write;

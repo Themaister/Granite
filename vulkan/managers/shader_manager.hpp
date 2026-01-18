@@ -94,6 +94,16 @@ public:
 		return path_hash;
 	}
 
+	const std::string &get_path() const
+	{
+		return path;
+	}
+
+	VulkanCache<ShaderTemplateVariant> &get_variants()
+	{
+		return variants;
+	}
+
 #ifndef GRANITE_SHIPPING
 	// We'll never want to recompile shaders in runtime outside a dev environment.
 	void recompile();

@@ -139,7 +139,8 @@ const ShaderTemplateVariant *ShaderTemplate::register_variant(
 			{
 				if (!device->request_shader_by_hash(precompiled_spirv->shader_hash))
 				{
-					LOGW("Got precompiled SPIR-V hash for variant, but it does not exist, is Fossilize archive incomplete?\n");
+					LOGW("Got precompiled SPIR-V hash for variant (%016llx), but it does not exist, is Fossilize archive incomplete?\n",
+						static_cast<unsigned long long>(precompiled_spirv->shader_hash));
 					precompiled_spirv = nullptr;
 				}
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
@@ -889,6 +890,9 @@ bool ShaderManager::load_shader_cache(const std::string &path, Granite::TaskGrou
 			auto &shader = *itr;
 
 			std::string shader_path = shader["path"].GetString();
+			if (Granite::Path::ext(shader_path) == "spv")
+				continue;
+
 			auto shader_stage = ShaderStage(shader["stage"].GetUint());
 
 			auto *thread_group = shader_compilation_group->get_thread_group();

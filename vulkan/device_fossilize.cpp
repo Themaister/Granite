@@ -745,9 +745,12 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 	replayer_state->feature_filter = const_cast<Fossilize::FeatureFilter *>(&filter);
 
 	auto *group = get_system_handles().thread_group;
+	auto shader_compilation = group->create_task();
 
-	auto shader_manager_task = group->create_task([this]() {
-		init_shader_manager_cache();
+	shader_compilation->set_desc("shaderc-compilation");
+
+	auto shader_manager_task = group->create_task([this, task = shader_compilation]() mutable {
+		init_shader_manager_cache(task.get());
 	});
 	shader_manager_task->set_desc("shader-manager-init");
 
@@ -874,6 +877,8 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 		});
 	}
 
+	group->add_dependency(*shader_compilation, *parse_modules_task);
+
 	auto parse_graphics_task = group->create_task([this]() {
 		if (!replayer_state->db)
 			return;
@@ -988,6 +993,7 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 	replayer_state->complete->set_desc("foz-replay-complete");
 	group->add_dependency(*replayer_state->complete, *compile_graphics_task);
 	group->add_dependency(*replayer_state->complete, *compile_compute_task);
+	group->add_dependency(*replayer_state->complete, *shader_compilation);
 	replayer_state->complete->flush();
 
 	replayer_state->module_ready = std::move(parse_modules_task);

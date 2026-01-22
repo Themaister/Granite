@@ -36,6 +36,7 @@
 namespace Granite
 {
 class GLSLCompiler;
+struct TaskGroup;
 enum class Stage;
 }
 
@@ -97,6 +98,11 @@ public:
 	const std::string &get_path() const
 	{
 		return path;
+	}
+
+	ShaderStage get_stage() const
+	{
+		return force_stage;
 	}
 
 	VulkanCache<ShaderTemplateVariant> &get_variants()
@@ -214,7 +220,7 @@ public:
 	{
 	}
 
-	bool load_shader_cache(const std::string &path);
+	bool load_shader_cache(const std::string &path, Granite::TaskGroup *shader_compilation_group);
 	bool save_shader_cache(const std::string &path);
 
 	void add_include_directory(const std::string &path);

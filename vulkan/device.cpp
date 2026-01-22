@@ -5784,10 +5784,10 @@ ShaderManager &Device::get_shader_manager()
 #endif
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
-void Device::init_shader_manager_cache()
+void Device::init_shader_manager_cache(Granite::TaskGroup *shader_compilation_group)
 {
-	if (!shader_manager.load_shader_cache("assets://shader_cache.json"))
-		shader_manager.load_shader_cache("cache://shader_cache.json");
+	if (!shader_manager.load_shader_cache("assets://shader_cache.json", shader_compilation_group))
+		shader_manager.load_shader_cache("cache://shader_cache.json", shader_compilation_group);
 }
 
 void Device::flush_shader_manager_cache()

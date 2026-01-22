@@ -881,7 +881,7 @@ private:
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 	ShaderManager shader_manager;
 	ResourceManager resource_manager;
-	void init_shader_manager_cache();
+	void init_shader_manager_cache(Granite::TaskGroup *shader_compilation_group);
 	void flush_shader_manager_cache();
 #endif
 

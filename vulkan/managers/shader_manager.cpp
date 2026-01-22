@@ -29,6 +29,7 @@
 #include "device.hpp"
 #include "rapidjson_wrapper.hpp"
 #include "timeline_trace_file.hpp"
+#include "thread_group.hpp"
 #include <algorithm>
 #include <cstring>
 
@@ -836,7 +837,7 @@ static rapidjson::Value serialize_resource_layout(const ResourceLayout &layout, 
 	return layout_obj;
 }
 
-bool ShaderManager::load_shader_cache(const std::string &path)
+bool ShaderManager::load_shader_cache(const std::string &path, Granite::TaskGroup *shader_compilation_group)
 {
 	if (!device->get_system_handles().filesystem)
 		return false;
@@ -878,6 +879,59 @@ bool ShaderManager::load_shader_cache(const std::string &path)
 		ResourceLayout layout = parse_resource_layout(value["layout"]);
 		meta_cache.variant_to_shader.emplace_yield(variant_hash, source_hash, spirv_hash);
 		meta_cache.shader_to_layout.emplace_yield(spirv_hash, layout);
+	}
+
+	if (shader_compilation_group && doc.HasMember("shaders"))
+	{
+		auto &parsed_shaders = doc["shaders"];
+		for (auto itr = parsed_shaders.Begin(); itr != parsed_shaders.End(); ++itr)
+		{
+			auto &shader = *itr;
+
+			std::string shader_path = shader["path"].GetString();
+			auto shader_stage = ShaderStage(shader["stage"].GetUint());
+
+			auto *thread_group = shader_compilation_group->get_thread_group();
+
+			// Prime it alone to avoid racing hashmap inserts.
+			auto glsl_parse_task = thread_group->create_task([this, shader_path, shader_stage]() -> void
+			{
+				get_template(shader_path, shader_stage);
+			});
+			glsl_parse_task->set_desc("glsl-parse-task");
+
+			LOGI("Queueing shader variants for: %s\n", shader_path.c_str());
+
+			auto &variants = shader["variants"];
+			for (auto variant_itr = variants.Begin(); variant_itr != variants.End(); ++variant_itr)
+			{
+				auto &variant = *variant_itr;
+				std::vector<std::pair<std::string, int>> defines;
+				for (auto define_itr = variant.Begin(); define_itr != variant.End(); ++define_itr)
+					defines.emplace_back((*define_itr)["define"].GetString(), (*define_itr)["value"].GetInt());
+
+				struct TaskPayload
+				{
+					std::string path;
+					ShaderStage stage;
+					std::vector<std::pair<std::string, int>> defines;
+				};
+
+				auto payload = std::make_unique<TaskPayload>();
+				payload->path = shader_path;
+				payload->stage = shader_stage;
+				payload->defines = std::move(defines);
+
+				shader_compilation_group->enqueue_task([this, payload = std::move(payload)]()
+				{
+					// This is fairly efficient on its own, no need to go wide, since it's mostly just IO.
+					auto *templ = get_template(payload->path, payload->stage);
+					templ->register_variant(&payload->defines, nullptr);
+				});
+
+				thread_group->add_dependency(*shader_compilation_group, *glsl_parse_task);
+			}
+		}
 	}
 
 	LOGI("Loaded shader manager cache from %s.\n", path.c_str());
@@ -929,6 +983,7 @@ bool ShaderManager::save_shader_cache(const std::string &path)
 		Value shader(kObjectType);
 		Value variants(kArrayType);
 		shader.AddMember("path", entry.get_path(), allocator);
+		shader.AddMember("stage", int(entry.get_stage()), allocator);
 
 		entry.get_variants().move_to_read_only();
 		for (auto &var : entry.get_variants().get_read_only())

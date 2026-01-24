@@ -3525,10 +3525,10 @@ public:
 		if (!setup_astc_decode_mode_info(default_view_info, astc_decode_mode_info))
 			return false;
 
-		if (!create_alt_views(create_info, *view_info))
+		if (!create_alt_views(*view_info, view_usage_info))
 			return false;
 
-		if (!create_render_target_views(create_info, *view_info))
+		if (!create_render_target_views(*view_info, view_usage_info))
 			return false;
 
 		if (!create_default_view(*view_info))
@@ -3537,6 +3537,7 @@ public:
 		if (create_unorm_srgb_views)
 		{
 			auto info = *view_info;
+			auto old_usage = view_usage_info.usage;
 
 			if (create_info.usage & VK_IMAGE_USAGE_STORAGE_BIT)
 				view_usage_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
@@ -3550,27 +3551,36 @@ public:
 			info.format = view_formats[1];
 			if (table.vkCreateImageView(vkdevice, &info, nullptr, &srgb_view) != VK_SUCCESS)
 				return false;
+
+			view_usage_info.usage = old_usage;
 		}
 
-		if (create_mip_level_views && !create_mip_views(*view_info))
+		if (create_mip_level_views && !create_mip_views(*view_info, view_usage_info))
 			return false;
 
 		return true;
 	}
 
 private:
-	bool create_render_target_views(const ImageCreateInfo &image_create_info, const VkImageViewCreateInfo &info)
+	bool create_render_target_views(const VkImageViewCreateInfo &info, VkImageViewUsageCreateInfo &view_usage_info)
 	{
 		if (info.viewType == VK_IMAGE_VIEW_TYPE_3D)
 			return true;
 
-		rt_views.reserve(info.subresourceRange.layerCount);
+		constexpr VkImageUsageFlags render_target_usage =
+				VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+				VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
 		// If we have a render target, and non-trivial case (layers = 1, levels = 1),
 		// create an array of render targets which correspond to each layer (mip 0).
-		if ((image_create_info.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) != 0 &&
+		if ((view_usage_info.usage & render_target_usage) != 0 &&
 		    ((info.subresourceRange.levelCount > 1) || (info.subresourceRange.layerCount > 1)))
 		{
+			rt_views.reserve(info.subresourceRange.layerCount);
+			auto old_usage = view_usage_info.usage;
+
+			view_usage_info.usage &= render_target_usage;
+
 			auto view_info = info;
 			view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
 			view_info.subresourceRange.baseMipLevel = info.subresourceRange.baseMipLevel;
@@ -3586,17 +3596,22 @@ private:
 
 				rt_views.push_back(rt_view);
 			}
+
+			view_usage_info.usage = old_usage;
 		}
 
 		return true;
 	}
 
-	bool create_mip_views(const VkImageViewCreateInfo &info)
+	bool create_mip_views(const VkImageViewCreateInfo &info, VkImageViewUsageCreateInfo &view_create_info)
 	{
 		VK_ASSERT(info.subresourceRange.levelCount != VK_REMAINING_MIP_LEVELS);
 		if (info.subresourceRange.levelCount <= 1)
 			return true;
 		mip_views.reserve(info.subresourceRange.levelCount);
+
+		auto old_usage = view_create_info.usage;
+		view_create_info.usage &= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
 
 		auto view_info = info;
 
@@ -3612,10 +3627,11 @@ private:
 			mip_views.push_back(mip_view);
 		}
 
+		view_create_info.usage = old_usage;
 		return true;
 	}
 
-	bool create_alt_views(const ImageCreateInfo &image_create_info, const VkImageViewCreateInfo &info)
+	bool create_alt_views(const VkImageViewCreateInfo &info, VkImageViewUsageCreateInfo &view_usage_info)
 	{
 		if (info.viewType == VK_IMAGE_VIEW_TYPE_CUBE ||
 		    info.viewType == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY ||
@@ -3624,23 +3640,29 @@ private:
 			return true;
 		}
 
+		constexpr VkImageUsageFlags sampled_usage =
+			VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+
 		VkDevice vkdevice = device->get_device();
 
-		if (info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
+		if (info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT) &&
+		    (view_usage_info.usage & sampled_usage) != 0)
 		{
-			if ((image_create_info.usage & ~VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0)
-			{
-				auto view_info = info;
+			auto view_info = info;
 
-				// We need this to be able to sample the texture, or otherwise use it as a non-pure DS attachment.
-				view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-				if (table.vkCreateImageView(vkdevice, &view_info, nullptr, &depth_view) != VK_SUCCESS)
-					return false;
+			auto old_usage = view_usage_info.usage;
+			view_usage_info.usage &= sampled_usage;
 
-				view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
-				if (table.vkCreateImageView(vkdevice, &view_info, nullptr, &stencil_view) != VK_SUCCESS)
-					return false;
-			}
+			// We need this to be able to sample the texture, or otherwise use it as a non-pure DS attachment.
+			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+			if (table.vkCreateImageView(vkdevice, &view_info, nullptr, &depth_view) != VK_SUCCESS)
+				return false;
+
+			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+			if (table.vkCreateImageView(vkdevice, &view_info, nullptr, &stencil_view) != VK_SUCCESS)
+				return false;
+
+			view_usage_info.usage = old_usage;
 		}
 
 		return true;

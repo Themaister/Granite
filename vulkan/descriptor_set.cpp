@@ -557,10 +557,10 @@ void BindlessDescriptorPool::push_texture(const uint8_t *ptr)
 
 void BindlessDescriptorPool::update()
 {
-	if (device->get_device_features().supports_descriptor_buffer)
+	if (device->get_device_features().supports_descriptor_buffer_or_heap)
 	{
 		device->managers.descriptor_buffer.copy_sampled_image_n(
-				device->managers.descriptor_buffer.get_mapped_heap() +
+				device->managers.descriptor_buffer.get_resource_heap().mapped +
 				desc_set.handle.offset + allocator->get_variable_offset(),
 				info_ptrs.data(), write_count);
 	}

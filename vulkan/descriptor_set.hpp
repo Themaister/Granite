@@ -166,7 +166,7 @@ public:
 	// Descriptor buffer integration.
 	DescriptorBufferAllocation allocate_bindless_buffer(unsigned num_sets, unsigned num_descriptors);
 
-	VkDeviceSize get_size() const
+	VkDeviceSize get_resource_heap_size() const
 	{
 		return desc_set_size;
 	}

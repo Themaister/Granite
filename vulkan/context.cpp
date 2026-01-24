@@ -1671,14 +1671,20 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.robustness2_features, ROBUSTNESS_2_FEATURES_EXT);
 	}
 
-#ifndef VULKAN_DEBUG
-	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
-	    has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
+//#ifndef VULKAN_DEBUG
+	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT) != 0 &&
+	    has_extension(VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME))
+	{
+		ADD_CHAIN(ext.descriptor_heap_features, DESCRIPTOR_HEAP_FEATURES_EXT);
+		enabled_extensions.push_back(VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME);
+	}
+	else if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
+	         has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
 	{
 		ADD_CHAIN(ext.descriptor_buffer_features, DESCRIPTOR_BUFFER_FEATURES_EXT);
 		enabled_extensions.push_back(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME);
 	}
-#endif
+//#endif
 
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{
@@ -1834,6 +1840,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.descriptor_buffer_features.descriptorBufferImageLayoutIgnored = VK_FALSE;
 	ext.descriptor_buffer_features.descriptorBufferPushDescriptors = VK_FALSE;
 
+	ext.descriptor_heap_features.descriptorHeapCaptureReplay = VK_FALSE;
+
 	// Enable device features we might care about.
 	{
 		VkPhysicalDeviceFeatures enabled_features = *required_features;
@@ -1961,8 +1969,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	if (has_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
 		ADD_CHAIN(ext.mesh_shader_properties, MESH_SHADER_PROPERTIES_EXT);
 
-	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
-	    has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
+	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT) != 0 &&
+	    has_extension(VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME))
+	{
+		ADD_CHAIN(ext.descriptor_heap_properties, DESCRIPTOR_HEAP_PROPERTIES_EXT);
+	}
+	else if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
+	         has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
 	{
 		ADD_CHAIN(ext.descriptor_buffer_properties, DESCRIPTOR_BUFFER_PROPERTIES_EXT);
 	}
@@ -2137,6 +2150,18 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 				ext.descriptor_buffer_properties.samplerDescriptorSize * 512ull * 1024ull <= max_heap_size &&
 				ext.descriptor_buffer_properties.sampledImageDescriptorSize * 512ull * 1024ull <= max_heap_size &&
 				ext.descriptor_buffer_properties.combinedImageSamplerDescriptorSingleArray;
+	}
+
+	ext.supports_descriptor_buffer_or_heap = ext.supports_descriptor_buffer || ext.descriptor_heap_features.descriptorHeap;
+
+	if (ext.supports_descriptor_buffer)
+	{
+		ext.resource_heap_alignment = ext.descriptor_buffer_properties.descriptorBufferOffsetAlignment;
+	}
+	else
+	{
+		ext.resource_heap_alignment = std::max<uint32_t>(ext.descriptor_heap_properties.bufferDescriptorAlignment,
+														 ext.descriptor_heap_properties.imageDescriptorAlignment);
 	}
 
 	return true;

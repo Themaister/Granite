@@ -61,18 +61,38 @@ CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCa
 
 	device->lock.read_only_cache.lock_read();
 
-	if (device->get_device_features().supports_descriptor_buffer &&
-	    (type == Type::Generic || type == Type::AsyncCompute))
+	if (type == Type::Generic || type == Type::AsyncCompute)
 	{
-		VkDescriptorBufferBindingInfoEXT buf_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT };
-		buf_info.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
-		                 VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT |
-		                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-		                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-		                 VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-		buf_info.address = device->managers.descriptor_buffer.get_heap_address();
-		table.vkCmdBindDescriptorBuffersEXT(cmd, 1, &buf_info);
-		desc_buffer_enable = true;
+		if (device->get_device_features().descriptor_heap_features.descriptorHeap)
+		{
+			VkBindHeapInfoEXT bind_heap = { VK_STRUCTURE_TYPE_BIND_HEAP_INFO_EXT };
+
+			auto heap = device->managers.descriptor_buffer.get_resource_heap();
+			bind_heap.heapRange.address = heap.va;
+			bind_heap.heapRange.size = heap.size;
+			bind_heap.reservedRangeOffset = heap.reserved_offset;
+			bind_heap.reservedRangeSize = heap.size - heap.reserved_offset;
+			table.vkCmdBindResourceHeapEXT(cmd, &bind_heap);
+
+			heap = device->managers.descriptor_buffer.get_sampler_heap();
+			bind_heap.heapRange.address = heap.va;
+			bind_heap.heapRange.size = heap.size;
+			bind_heap.reservedRangeOffset = heap.reserved_offset;
+			bind_heap.reservedRangeSize = heap.size - heap.reserved_offset;
+			table.vkCmdBindSamplerHeapEXT(cmd, &bind_heap);
+		}
+		else if (device->get_device_features().supports_descriptor_buffer)
+		{
+			VkDescriptorBufferBindingInfoEXT buf_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT };
+			buf_info.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
+							 VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT |
+							 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+							 VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+							 VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+			buf_info.address = device->managers.descriptor_buffer.get_resource_heap().va;
+			table.vkCmdBindDescriptorBuffersEXT(cmd, 1, &buf_info);
+			desc_buffer_enable = true;
+		}
 	}
 }
 
@@ -2906,9 +2926,9 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 
 	auto &set_layout = layout.sets[set];
 	auto *set_allocator = pipeline_state.layout->get_allocator(set);
-	auto size = set_allocator->get_size();
+	auto size = set_allocator->get_resource_heap_size();
 
-	auto align = device->get_device_features().descriptor_buffer_properties.descriptorBufferOffsetAlignment;
+	auto align = device->get_device_features().resource_heap_alignment;
 	desc_buffer_alloc_offset = (desc_buffer_alloc_offset + align - 1) & ~(align - 1);
 
 	if (desc_buffer_alloc_offset + size > desc_buffer.get_size())
@@ -2924,7 +2944,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	}
 
 	desc_buffer_offsets[set] = desc_buffer.get_offset() + desc_buffer_alloc_offset;
-	auto *mapped = device->managers.descriptor_buffer.get_mapped_heap() +
+	auto *mapped = device->managers.descriptor_buffer.get_resource_heap().mapped +
 	               desc_buffer.get_offset() + desc_buffer_alloc_offset;
 
 	VkDescriptorGetInfoEXT info = { VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT };

@@ -1016,7 +1016,7 @@ void Device::set_context(const Context &context)
 	managers.ubo.set_max_retained_blocks(64);
 	managers.staging.set_max_retained_blocks(32);
 
-	if (ext.supports_descriptor_buffer)
+	if (ext.supports_descriptor_buffer || ext.descriptor_heap_features.descriptorHeap)
 		managers.descriptor_buffer.init(this);
 
 	init_stock_samplers();
@@ -2981,7 +2981,7 @@ void Device::PerFrame::begin()
 	for (auto &framebuffer : destroyed_framebuffers)
 		table.vkDestroyFramebuffer(vkdevice, framebuffer, nullptr);
 	for (auto &sampler : destroyed_samplers)
-		table.vkDestroySampler(vkdevice, sampler, nullptr);
+		managers.descriptor_buffer.destroy_sampler(sampler);
 	for (auto &view : destroyed_image_views)
 		table.vkDestroyImageView(vkdevice, view, nullptr);
 	for (auto &view : destroyed_buffer_views)
@@ -4676,8 +4676,9 @@ const ImmutableYcbcrConversion *Device::request_immutable_ycbcr_conversion(
 SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)
 {
 	auto info = Sampler::fill_vk_sampler_info(sampler_info);
-	VkSampler sampler;
-	if (table->vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
+
+	VkSampler sampler = managers.descriptor_buffer.create_sampler(&info);
+	if (sampler == VK_NULL_HANDLE)
 		return SamplerHandle(nullptr);
 	return SamplerHandle(handle_pool.samplers.allocate(this, sampler, sampler_info, false));
 }

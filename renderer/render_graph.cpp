@@ -222,7 +222,7 @@ RenderTextureResource &RenderPass::add_texture_input(const std::string &name, Vk
 
 	AccessedTextureResource acc;
 	acc.texture = &res;
-	acc.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	acc.layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 	acc.access = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
 	if (stages != 0)
@@ -2440,7 +2440,7 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 
 	auto &wait_semaphore = physical_events[index].wait_graphics_semaphore;
 
-	auto target_layout = physical_dimensions[index].is_storage_image() ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	auto target_layout = physical_dimensions[index].is_storage_image() ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 
 	if (physical_events[index].pipeline_barrier_src_stages != 0)
 	{
@@ -2666,6 +2666,8 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device_, unsigned attachm
 			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
 		if (att.queues & RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
 			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
+		if (att.is_storage_image())
+			info.layout = Vulkan::ImageLayout::General;
 
 		physical_image_attachments[attachment] = device_.create_image(info, nullptr);
 		physical_image_attachments[attachment]->set_surface_transform(att.transform);
@@ -2674,8 +2676,6 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device_, unsigned attachm
 		// There is no reason to try enabling compression.
 		if (!physical_image_attachments[attachment])
 			LOGE("Failed to create render graph image!\n");
-		if (att.is_storage_image())
-			physical_image_attachments[attachment]->set_layout(Vulkan::Layout::General);
 		device_.set_name(*physical_image_attachments[attachment], att.name.c_str());
 		physical_events[attachment] = {};
 	}
@@ -3261,7 +3261,7 @@ void RenderGraph::build_physical_barriers()
 
 					if (itr == end(physical_pass.invalidate))
 					{
-						// Storage images should just be in GENERAL all the time instead of SHADER_READ_ONLY_OPTIMAL.
+						// Storage images should just be in GENERAL all the time instead of READ_ONLY_OPTIMAL.
 						auto layout = physical_dimensions[invalidate.resource_index].is_storage_image() ?
 						              VK_IMAGE_LAYOUT_GENERAL :
 						              invalidate.layout;
@@ -3284,7 +3284,7 @@ void RenderGraph::build_physical_barriers()
 					res.invalidated_types |= invalidate.access;
 					res.invalidated_stages |= invalidate.stages;
 
-					// Storage images should just be in GENERAL all the time instead of SHADER_READ_ONLY_OPTIMAL.
+					// Storage images should just be in GENERAL all the time instead of READ_ONLY_OPTIMAL.
 					if (physical_dimensions[invalidate.resource_index].is_storage_image())
 						res.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
 					else
@@ -3318,7 +3318,7 @@ void RenderGraph::build_physical_barriers()
 				res.flushed_types |= flush.access;
 				res.flushed_stages |= flush.stages;
 
-				// Storage images should just be in GENERAL all the time instead of SHADER_READ_ONLY_OPTIMAL.
+				// Storage images should just be in GENERAL all the time instead of READ_ONLY_OPTIMAL.
 				if (physical_dimensions[flush.resource_index].is_storage_image())
 					res.final_layout = VK_IMAGE_LAYOUT_GENERAL;
 				else
@@ -3328,10 +3328,10 @@ void RenderGraph::build_physical_barriers()
 				// Only first flush in a render pass needs a matching invalidation.
 				if (res.initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 				{
-					// If we end in TRANSFER_SRC_OPTIMAL, we actually start in COLOR_ATTACHMENT_OPTIMAL.
+					// If we end in TRANSFER_SRC_OPTIMAL, we actually start in ATTACHMENT_OPTIMAL.
 					if (flush.layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
 					{
-						res.initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+						res.initial_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 						res.invalidated_stages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 						res.invalidated_types = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 					}
@@ -3388,7 +3388,7 @@ void RenderGraph::build_physical_barriers()
 			if (resource.final_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
 			{
 				physical_pass.mipmap_requests.push_back({ index, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-				                                          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL });
+				                                          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL });
 			}
 		}
 	}
@@ -3457,7 +3457,7 @@ void RenderGraph::build_barriers()
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			barrier.layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 		}
 
 		for (auto *input : pass.get_attachment_inputs())
@@ -3484,7 +3484,7 @@ void RenderGraph::build_barriers()
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			barrier.layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 		}
 
 		for (auto *input : pass.get_storage_inputs())
@@ -3562,12 +3562,12 @@ void RenderGraph::build_barriers()
 
 			// If the attachment is also bound as an input attachment (programmable blending)
 			// we need VK_IMAGE_LAYOUT_GENERAL.
-			if (barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+			if (barrier.layout == VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL)
 				barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 			else if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
 			else
-				barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				barrier.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 		}
 
 		for (auto *input : pass.get_color_scale_inputs())
@@ -3583,7 +3583,7 @@ void RenderGraph::build_barriers()
 			barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			barrier.layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 		}
 
 		for (auto *output : pass.get_color_outputs())
@@ -3610,7 +3610,7 @@ void RenderGraph::build_barriers()
 
 				// If the attachment is also bound as an input attachment (programmable blending)
 				// we need VK_IMAGE_LAYOUT_GENERAL.
-				if (barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ||
+				if (barrier.layout == VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL ||
 				    barrier.layout == VK_IMAGE_LAYOUT_GENERAL)
 				{
 					barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
@@ -3618,7 +3618,7 @@ void RenderGraph::build_barriers()
 				else if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 					throw std::logic_error("Layout mismatch.");
 				else
-					barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+					barrier.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 			}
 		}
 
@@ -3632,7 +3632,7 @@ void RenderGraph::build_barriers()
 			barrier.stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			barrier.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 		}
 
 		for (auto *output : pass.get_storage_outputs())
@@ -3698,17 +3698,17 @@ void RenderGraph::build_barriers()
 			auto &dst_barrier = get_invalidate_access(input->get_physical_index(), false);
 			auto &src_barrier = get_flush_access(output->get_physical_index());
 
-			if (dst_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+			if (dst_barrier.layout == VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL)
 				dst_barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 			else if (dst_barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
 			else
-				dst_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+				dst_barrier.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
 			dst_barrier.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 			dst_barrier.stages |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 
-			src_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			src_barrier.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 			src_barrier.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 			src_barrier.stages |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 		}
@@ -3716,12 +3716,13 @@ void RenderGraph::build_barriers()
 		{
 			auto &dst_barrier = get_invalidate_access(input->get_physical_index(), false);
 
-			if (dst_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-				dst_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-			else if (dst_barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw std::logic_error("Layout mismatch.");
-			else
-				dst_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+			if (dst_barrier.layout != VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL)
+			{
+				if (dst_barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+					throw std::logic_error("Layout mismatch.");
+				else
+					dst_barrier.layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+			}
 
 			dst_barrier.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 			dst_barrier.stages |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
@@ -3730,12 +3731,12 @@ void RenderGraph::build_barriers()
 		{
 			auto &src_barrier = get_flush_access(output->get_physical_index());
 
-			if (src_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+			if (src_barrier.layout == VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL)
 				src_barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 			else if (src_barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw std::logic_error("Layout mismatch.");
 			else
-				src_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+				src_barrier.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
 			src_barrier.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 			src_barrier.stages |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;

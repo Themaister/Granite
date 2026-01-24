@@ -333,7 +333,7 @@ static BufferHandle decode_compute(CommandBuffer &cmd, const TextureFormatLayout
 	auto compressed = decode_compressed_image(cmd, layout, preferred_readback_format);
 	if (!compressed)
 		return {};
-	cmd.image_barrier(*compressed, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+	cmd.image_barrier(*compressed, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 	                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 	                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 	return readback_image(cmd, *compressed);

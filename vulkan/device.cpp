@@ -272,6 +272,7 @@ LinearHostImageHandle Device::create_linear_host_image(const LinearHostImageCrea
 	create_info.samples = VK_SAMPLE_COUNT_1_BIT;
 	create_info.usage = info.usage;
 	create_info.type = VK_IMAGE_TYPE_2D;
+	create_info.layout = ImageLayout::General;
 
 	if ((info.flags & LINEAR_HOST_IMAGE_REQUIRE_LINEAR_FILTER_BIT) != 0)
 		create_info.misc |= IMAGE_MISC_VERIFY_FORMAT_FEATURE_SAMPLED_LINEAR_FILTER_BIT;
@@ -302,8 +303,6 @@ LinearHostImageHandle Device::create_linear_host_image(const LinearHostImageCrea
 		if (!cpu_image)
 			return LinearHostImageHandle(nullptr);
 	}
-	else
-		gpu_image->set_layout(Layout::General);
 
 	return LinearHostImageHandle(handle_pool.linear_images.allocate(this, std::move(gpu_image), std::move(cpu_image), info.stages));
 }
@@ -332,7 +331,7 @@ void Device::unmap_linear_host_image_and_sync(const LinearHostImage &image, Memo
 		                          0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
 
 		// Don't care about dstAccessMask, semaphore takes care of everything.
-		cmd->image_barrier(image.get_image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		cmd->image_barrier(image.get_image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		                   VK_PIPELINE_STAGE_NONE, 0);
 
@@ -624,12 +623,14 @@ void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, cons
 			for_each_bit(active_binds, [&](uint32_t bit) {
 				layout.stages_for_bindings[set][bit] |= stage_mask;
 
-				auto &combined_size = layout.sets[set].array_size[bit];
-				auto &shader_size = shader_layout.sets[set].array_size[bit];
-				if (combined_size && combined_size != shader_size)
+				auto &combined_meta = layout.sets[set].meta[bit];
+				auto &shader_meta = shader_layout.sets[set].meta[bit];
+				if (combined_meta.array_size && combined_meta.array_size != shader_meta.array_size)
 					LOGE("Mismatch between array sizes in different shaders.\n");
 				else
-					combined_size = shader_size;
+					combined_meta.array_size = shader_meta.array_size;
+
+				combined_meta.requires_descriptor_size |= shader_meta.requires_descriptor_size;
 			});
 		}
 
@@ -656,8 +657,8 @@ void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, cons
 
 		for (unsigned binding = 0; binding < VULKAN_NUM_BINDINGS; binding++)
 		{
-			auto &array_size = layout.sets[set].array_size[binding];
-			if (array_size == DescriptorSetLayout::UNSIZED_ARRAY)
+			auto &meta = layout.sets[set].meta[binding];
+			if (meta.array_size == DescriptorSetLayout::UNSIZED_ARRAY)
 			{
 				for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
 				{
@@ -668,18 +669,18 @@ void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, cons
 				// Allows us to have one unified descriptor set layout for bindless.
 				layout.stages_for_bindings[set][binding] = VK_SHADER_STAGE_ALL;
 			}
-			else if (array_size == 0)
+			else if (meta.array_size == 0)
 			{
-				array_size = 1;
+				meta.array_size = 1;
 			}
 			else
 			{
-				for (unsigned i = 1; i < array_size; i++)
+				for (unsigned i = 1; i < meta.array_size; i++)
 				{
 					if (layout.stages_for_bindings[set][binding + i] != 0)
 					{
 						LOGE("Detected binding aliasing for (%u, %u). Binding array with %u elements starting at (%u, %u) overlaps.\n",
-							 set, binding + i, array_size, set, binding);
+							 set, binding + i, meta.array_size, set, binding);
 					}
 				}
 			}
@@ -884,19 +885,6 @@ void Device::init_workarounds()
 	LOGW("Emulating events as pipeline barriers on Metal emulation.\n");
 	LOGW("Disabling push descriptors on Metal emulation.\n");
 #else
-	bool sync2_workarounds = false;
-	const bool mesa_driver = ext.driver_id == VK_DRIVER_ID_MESA_RADV ||
-	                         ext.driver_id == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA ||
-	                         ext.driver_id == VK_DRIVER_ID_MESA_TURNIP;
-	const bool amd_driver = ext.driver_id == VK_DRIVER_ID_AMD_OPEN_SOURCE ||
-	                        ext.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY;
-
-	// AMD_PROPRIETARY was likely fixed before this, but fix was observed in this version (23.10.2).
-	if (mesa_driver && gpu_props.driverVersion < VK_MAKE_VERSION(23, 1, 0))
-		sync2_workarounds = true;
-	else if (amd_driver && gpu_props.driverVersion < VK_MAKE_VERSION(2, 0, 283))
-		sync2_workarounds = true;
-
 	if (gpu_props.vendorID == VENDOR_ID_ARM)
 	{
 		LOGW("Workaround applied: Emulating events as pipeline barriers.\n");
@@ -917,17 +905,6 @@ void Device::init_workarounds()
 		// Seems broken on this driver too. Compilation stutter galore ...
 		LOGW("Disabling pipeline cache control.\n");
 		workarounds.broken_pipeline_cache_control = true;
-	}
-
-	if (sync2_workarounds)
-	{
-		LOGW("Enabling workaround for sync2 access mask bugs.\n");
-		// https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/21271
-		// Found bug around 23.0. Should be fixed by 23.1.
-		// Also observed on AMD windows. Probably fails on open source too given it shares PAL ...
-		workarounds.force_sync1_access = true;
-		// Avoids having to add workaround path to events as well, just fallback to plain barriers.
-		workarounds.emulate_event_as_pipeline_barrier = true;
 	}
 
 	if (ext.driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
@@ -1015,9 +992,7 @@ void Device::set_context(const Context &context)
 	managers.ibo.set_max_retained_blocks(256);
 	managers.ubo.set_max_retained_blocks(64);
 	managers.staging.set_max_retained_blocks(32);
-
-	if (ext.supports_descriptor_buffer)
-		managers.descriptor_buffer.init(this);
+	managers.descriptor_buffer.init(this);
 
 	init_stock_samplers();
 
@@ -1769,80 +1744,7 @@ void Device::emit_queue_signals(Helper::BatchComposer &composer,
 
 VkResult Device::queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo2 *submits, VkFence fence)
 {
-	if (ext.vk13_features.synchronization2)
-	{
-		return table->vkQueueSubmit2(queue, count, submits, fence);
-	}
-	else
-	{
-		for (uint32_t submit_index = 0; submit_index < count; submit_index++)
-		{
-			VkTimelineSemaphoreSubmitInfo timeline = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO };
-			const auto &submit = submits[submit_index];
-			VkSubmitInfo sub = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-			bool need_timeline = false;
-
-			Util::SmallVector<VkPipelineStageFlags> wait_stages;
-			Util::SmallVector<uint64_t> signal_values;
-			Util::SmallVector<uint64_t> wait_values;
-			Util::SmallVector<VkSemaphore> signals;
-			Util::SmallVector<VkCommandBuffer> cmd;
-			Util::SmallVector<VkSemaphore> waits;
-
-			for (uint32_t i = 0; i < submit.commandBufferInfoCount; i++)
-				cmd.push_back(submit.pCommandBufferInfos[i].commandBuffer);
-
-			for (uint32_t i = 0; i < submit.waitSemaphoreInfoCount; i++)
-			{
-				waits.push_back(submit.pWaitSemaphoreInfos[i].semaphore);
-				wait_stages.push_back(convert_vk_dst_stage2(submit.pWaitSemaphoreInfos[i].stageMask));
-				wait_values.push_back(submit.pWaitSemaphoreInfos[i].value);
-				if (wait_values.back() != 0)
-					need_timeline = true;
-			}
-
-			for (uint32_t i = 0; i < submit.signalSemaphoreInfoCount; i++)
-			{
-				signals.push_back(submit.pSignalSemaphoreInfos[i].semaphore);
-				signal_values.push_back(submit.pSignalSemaphoreInfos[i].value);
-				if (signal_values.back() != 0)
-					need_timeline = true;
-			}
-
-			sub.commandBufferCount = uint32_t(cmd.size());
-			sub.pCommandBuffers = cmd.data();
-			sub.signalSemaphoreCount = uint32_t(signals.size());
-			sub.pSignalSemaphores = signals.data();
-			sub.waitSemaphoreCount = uint32_t(waits.size());
-			sub.pWaitSemaphores = waits.data();
-			sub.pWaitDstStageMask = wait_stages.data();
-
-			sub.pNext = submit.pNext;
-			if (need_timeline)
-			{
-				timeline.pNext = sub.pNext;
-				sub.pNext = &timeline;
-
-				timeline.signalSemaphoreValueCount = uint32_t(signal_values.size());
-				timeline.pSignalSemaphoreValues = signal_values.data();
-				timeline.waitSemaphoreValueCount = uint32_t(wait_values.size());
-				timeline.pWaitSemaphoreValues = wait_values.data();
-			}
-
-			auto result = table->vkQueueSubmit(queue, 1, &sub, submit_index + 1 == count ? fence : VK_NULL_HANDLE);
-			if (result != VK_SUCCESS)
-				return result;
-		}
-
-		if (count == 0 && fence)
-		{
-			auto result = table->vkQueueSubmit(queue, 0, nullptr, fence);
-			if (result != VK_SUCCESS)
-				return result;
-		}
-
-		return VK_SUCCESS;
-	}
+	return table->vkQueueSubmit2(queue, count, submits, fence);
 }
 
 VkResult Device::submit_batches(Helper::BatchComposer &composer, VkQueue queue, VkFence fence, int profiling_iteration)
@@ -2291,7 +2193,7 @@ void Device::set_swapchain_queue_family_support(uint32_t queue_family_support)
 ImageHandle Device::wrap_image(const ImageCreateInfo &info, VkImage image)
 {
 	auto img = ImageHandle(handle_pool.images.allocate(
-			this, image, VK_NULL_HANDLE,
+			this, image, CachedImageView{},
 			DeviceAllocation{}, info, VK_IMAGE_VIEW_TYPE_MAX_ENUM));
 	img->disown_image();
 	return img;
@@ -2324,11 +2226,11 @@ void Device::init_swapchain(const std::vector<VkImage> &swapchain_images, unsign
 		view_info.subresourceRange.layerCount = 1;
 		view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
 
-		VkImageView image_view;
-		if (table->vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
+		CachedImageView view = {};
+		if (!managers.descriptor_buffer.create_image_view(view_info, usage, ImageLayout::Optimal, view))
 			LOGE("Failed to create view for backbuffer.");
 
-		auto backbuffer = ImageHandle(handle_pool.images.allocate(this, image, image_view, DeviceAllocation{}, info, VK_IMAGE_VIEW_TYPE_2D));
+		auto backbuffer = ImageHandle(handle_pool.images.allocate(this, image, view, DeviceAllocation{}, info, VK_IMAGE_VIEW_TYPE_2D));
 		backbuffer->set_internal_sync_object();
 		backbuffer->disown_image();
 		backbuffer->get_view().set_internal_sync_object();
@@ -2402,7 +2304,7 @@ void Device::destroy_descriptor_pool(VkDescriptorPool desc_pool)
 	destroy_descriptor_pool_nolock(desc_pool);
 }
 
-void Device::destroy_buffer_view(VkBufferView view)
+void Device::destroy_buffer_view(const CachedBufferView &view)
 {
 	LOCK();
 	destroy_buffer_view_nolock(view);
@@ -2456,7 +2358,7 @@ void Device::destroy_sampler(VkSampler sampler)
 	destroy_sampler_nolock(sampler);
 }
 
-void Device::destroy_image_view(VkImageView view)
+void Device::destroy_image_view(const CachedImageView &view)
 {
 	LOCK();
 	destroy_image_view_nolock(view);
@@ -2474,15 +2376,13 @@ void Device::free_cached_descriptor_payload(const CachedDescriptorPayload &paylo
 	free_cached_descriptor_payload_nolock(payload);
 }
 
-void Device::destroy_image_view_nolock(VkImageView view)
+void Device::destroy_image_view_nolock(const CachedImageView &view)
 {
-	VK_ASSERT(!exists(frame().destroyed_image_views, view));
 	frame().destroyed_image_views.push_back(view);
 }
 
-void Device::destroy_buffer_view_nolock(VkBufferView view)
+void Device::destroy_buffer_view_nolock(const CachedBufferView &view)
 {
-	VK_ASSERT(!exists(frame().destroyed_buffer_views, view));
 	frame().destroyed_buffer_views.push_back(view);
 }
 
@@ -2616,7 +2516,7 @@ void Device::wait_idle_nolock()
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
 
-	if (!ext.supports_descriptor_buffer)
+	if (!ext.supports_descriptor_buffer_or_heap)
 	{
 		for (auto &allocator: descriptor_set_allocators.get_read_only())
 			allocator.clear();
@@ -2705,7 +2605,7 @@ void Device::next_frame_context()
 	framebuffer_allocator.begin_frame();
 	transient_allocator.begin_frame();
 
-	if (!ext.supports_descriptor_buffer)
+	if (!ext.supports_descriptor_buffer_or_heap)
 	{
 		for (auto &allocator: descriptor_set_allocators.get_read_only())
 			allocator.begin_frame();
@@ -2981,11 +2881,11 @@ void Device::PerFrame::begin()
 	for (auto &framebuffer : destroyed_framebuffers)
 		table.vkDestroyFramebuffer(vkdevice, framebuffer, nullptr);
 	for (auto &sampler : destroyed_samplers)
-		table.vkDestroySampler(vkdevice, sampler, nullptr);
+		managers.descriptor_buffer.destroy_sampler(sampler);
 	for (auto &view : destroyed_image_views)
-		table.vkDestroyImageView(vkdevice, view, nullptr);
+		managers.descriptor_buffer.free_image_view(view);
 	for (auto &view : destroyed_buffer_views)
-		table.vkDestroyBufferView(vkdevice, view, nullptr);
+		managers.descriptor_buffer.free_buffer_view(view);
 	for (auto &image : destroyed_images)
 		table.vkDestroyImage(vkdevice, image, nullptr);
 	for (auto &rtas : destroyed_rtas)
@@ -3320,60 +3220,10 @@ static inline VkImageViewType get_image_view_type(const ImageCreateInfo &create_
 
 BufferViewHandle Device::create_buffer_view(const BufferViewCreateInfo &view_info)
 {
-	if (ext.supports_descriptor_buffer)
-	{
-		VkDescriptorAddressInfoEXT addr = { VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT };
-		VkDescriptorGetInfoEXT info = { VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT };
-		CachedDescriptorPayload ro = {};
-		CachedDescriptorPayload rw = {};
-
-		addr.address = view_info.buffer->get_device_address() + view_info.offset;
-		if (view_info.range == VK_WHOLE_SIZE)
-			addr.range = view_info.buffer->get_create_info().size - view_info.offset;
-		else
-			addr.range = view_info.range;
-		addr.format = view_info.format;
-
-		VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
-		get_format_properties(view_info.format, &props3);
-
-		if ((view_info.buffer->get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) != 0 &&
-		    (props3.bufferFeatures & VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) != 0)
-		{
-			ro = managers.descriptor_buffer.alloc_uniform_texel();
-			info.type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
-			info.data.pUniformTexelBuffer = &addr;
-			table->vkGetDescriptorEXT(
-					device, &info, managers.descriptor_buffer.get_descriptor_size_for_type(info.type), ro.ptr);
-		}
-
-		if ((view_info.buffer->get_create_info().usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) != 0 &&
-		    (props3.bufferFeatures & VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) != 0)
-		{
-			rw = managers.descriptor_buffer.alloc_storage_texel();
-			info.type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-			info.data.pStorageTexelBuffer = &addr;
-			table->vkGetDescriptorEXT(
-					device, &info, managers.descriptor_buffer.get_descriptor_size_for_type(info.type), rw.ptr);
-		}
-
-		return BufferViewHandle(handle_pool.buffer_views.allocate(this, ro, rw, view_info));
-	}
-	else
-	{
-		VkBufferViewCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO };
-		info.buffer = view_info.buffer->get_buffer();
-		info.format = view_info.format;
-		info.offset = view_info.offset;
-		info.range = view_info.range;
-
-		VkBufferView view;
-		auto res = table->vkCreateBufferView(device, &info, nullptr, &view);
-		if (res != VK_SUCCESS)
-			return BufferViewHandle(nullptr);
-
-		return BufferViewHandle(handle_pool.buffer_views.allocate(this, view, view_info));
-	}
+	CachedBufferView view;
+	if (!managers.descriptor_buffer.create_buffer_view(view_info, view))
+		return BufferViewHandle(nullptr);
+	return BufferViewHandle(handle_pool.buffer_views.allocate(this, view, view_info));
 }
 
 class ImageResourceHolder
@@ -3396,14 +3246,14 @@ public:
 
 	VkImage image = VK_NULL_HANDLE;
 	VkDeviceMemory memory = VK_NULL_HANDLE;
-	VkImageView image_view = VK_NULL_HANDLE;
-	VkImageView depth_view = VK_NULL_HANDLE;
-	VkImageView stencil_view = VK_NULL_HANDLE;
-	VkImageView unorm_view = VK_NULL_HANDLE;
-	VkImageView srgb_view = VK_NULL_HANDLE;
+	CachedImageView image_view = {};
+	CachedImageView depth_view = {};
+	CachedImageView stencil_view = {};
+	CachedImageView unorm_view = {};
+	CachedImageView srgb_view = {};
 	VkImageViewType default_view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
-	std::vector<VkImageView> rt_views;
-	std::vector<VkImageView> mip_views;
+	std::vector<CachedImageView> rt_views;
+	std::vector<CachedImageView> mip_views;
 	DeviceAllocation allocation;
 	DeviceAllocator *allocator = nullptr;
 	bool owned = true;
@@ -3431,20 +3281,17 @@ public:
 	}
 
 	bool setup_view_usage_info(VkImageViewCreateInfo &create_info, VkImageUsageFlags usage,
-	                           VkImageViewUsageCreateInfo &usage_info) const
+	                           VkImageUsageFlags &view_usage) const
 	{
-		usage_info.usage = usage;
-		usage_info.usage &= VK_IMAGE_USAGE_SAMPLED_BIT |
-		                    VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
-		                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-		                    VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
-		                    image_usage_video_flags;
+		view_usage = usage;
+		view_usage &= VK_IMAGE_USAGE_SAMPLED_BIT |
+				VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+				VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+				VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
+				image_usage_video_flags;
 
 		if (format_is_srgb(create_info.format))
-			usage_info.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
-
-		usage_info.pNext = create_info.pNext;
-		create_info.pNext = &usage_info;
+			view_usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
 
 		return true;
 	}
@@ -3483,8 +3330,6 @@ public:
 	                          bool create_unorm_srgb_views = false, bool create_mip_level_views = false,
 	                          const VkFormat *view_formats = nullptr)
 	{
-		VkDevice vkdevice = device->get_device();
-
 		if ((create_info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 		                          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
 		                          image_usage_video_flags)) == 0)
@@ -3495,8 +3340,8 @@ public:
 
 		VkImageViewCreateInfo default_view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 		VkSamplerYcbcrConversionInfo conversion_info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
-		VkImageViewUsageCreateInfo view_usage_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO };
 		VkImageViewASTCDecodeModeEXT astc_decode_mode_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_ASTC_DECODE_MODE_EXT };
+		VkImageUsageFlags view_usage = 0;
 
 		if (!view_info)
 		{
@@ -3519,58 +3364,62 @@ public:
 		if (!setup_conversion_info(default_view_info, conversion_info, ycbcr_conversion))
 			return false;
 
-		if (!setup_view_usage_info(default_view_info, create_info.usage, view_usage_info))
+		if (!setup_view_usage_info(default_view_info, create_info.usage, view_usage))
 			return false;
 
 		if (!setup_astc_decode_mode_info(default_view_info, astc_decode_mode_info))
 			return false;
 
-		if (!create_alt_views(create_info, *view_info))
+		if (!create_alt_views(*view_info, create_info.layout, view_usage))
 			return false;
 
-		if (!create_render_target_views(create_info, *view_info))
+		if (!create_render_target_views(*view_info, create_info.layout, view_usage))
 			return false;
 
-		if (!create_default_view(*view_info))
+		if (!create_default_view(*view_info, create_info.layout, view_usage))
 			return false;
 
 		if (create_unorm_srgb_views)
 		{
 			auto info = *view_info;
+			auto srgb_unorm_usage = view_usage;
 
 			if (create_info.usage & VK_IMAGE_USAGE_STORAGE_BIT)
-				view_usage_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
-
+				srgb_unorm_usage |= VK_IMAGE_USAGE_STORAGE_BIT;
 			info.format = view_formats[0];
-			if (table.vkCreateImageView(vkdevice, &info, nullptr, &unorm_view) != VK_SUCCESS)
+			if (!device->managers.descriptor_buffer.create_image_view(info, srgb_unorm_usage, create_info.layout, unorm_view))
 				return false;
 
-			view_usage_info.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
-
+			srgb_unorm_usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
 			info.format = view_formats[1];
-			if (table.vkCreateImageView(vkdevice, &info, nullptr, &srgb_view) != VK_SUCCESS)
+			if (!device->managers.descriptor_buffer.create_image_view(info, srgb_unorm_usage, create_info.layout, srgb_view))
 				return false;
 		}
 
-		if (create_mip_level_views && !create_mip_views(*view_info))
+		if (create_mip_level_views && !create_mip_views(*view_info, create_info.layout, view_usage))
 			return false;
 
 		return true;
 	}
 
 private:
-	bool create_render_target_views(const ImageCreateInfo &image_create_info, const VkImageViewCreateInfo &info)
+	bool create_render_target_views(const VkImageViewCreateInfo &info, ImageLayout layout, VkImageUsageFlags view_usage)
 	{
 		if (info.viewType == VK_IMAGE_VIEW_TYPE_3D)
 			return true;
 
-		rt_views.reserve(info.subresourceRange.layerCount);
+		constexpr VkImageUsageFlags render_target_usage =
+				VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+				VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
 		// If we have a render target, and non-trivial case (layers = 1, levels = 1),
 		// create an array of render targets which correspond to each layer (mip 0).
-		if ((image_create_info.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) != 0 &&
+		if ((view_usage & render_target_usage) != 0 &&
 		    ((info.subresourceRange.levelCount > 1) || (info.subresourceRange.layerCount > 1)))
 		{
+			rt_views.reserve(info.subresourceRange.layerCount);
+			view_usage &= render_target_usage;
+
 			auto view_info = info;
 			view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
 			view_info.subresourceRange.baseMipLevel = info.subresourceRange.baseMipLevel;
@@ -3580,10 +3429,9 @@ private:
 				view_info.subresourceRange.layerCount = 1;
 				view_info.subresourceRange.baseArrayLayer = layer + info.subresourceRange.baseArrayLayer;
 
-				VkImageView rt_view;
-				if (table.vkCreateImageView(device->get_device(), &view_info, nullptr, &rt_view) != VK_SUCCESS)
+				CachedImageView rt_view = {};
+				if (!device->managers.descriptor_buffer.create_image_view(view_info, view_usage, layout, rt_view))
 					return false;
-
 				rt_views.push_back(rt_view);
 			}
 		}
@@ -3591,31 +3439,31 @@ private:
 		return true;
 	}
 
-	bool create_mip_views(const VkImageViewCreateInfo &info)
+	bool create_mip_views(const VkImageViewCreateInfo &info, ImageLayout layout, VkImageUsageFlags view_usage)
 	{
 		VK_ASSERT(info.subresourceRange.levelCount != VK_REMAINING_MIP_LEVELS);
 		if (info.subresourceRange.levelCount <= 1)
 			return true;
 		mip_views.reserve(info.subresourceRange.levelCount);
 
+		view_usage &= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
 		auto view_info = info;
 
 		for (unsigned level = 0; level < info.subresourceRange.levelCount; level++)
 		{
 			view_info.subresourceRange.baseMipLevel = level;
 			view_info.subresourceRange.levelCount = 1;
-			VkImageView mip_view;
 
-			if (table.vkCreateImageView(device->get_device(), &view_info, nullptr, &mip_view) != VK_SUCCESS)
+			CachedImageView mip_view = {};
+			if (!device->managers.descriptor_buffer.create_image_view(view_info, view_usage, layout, mip_view))
 				return false;
-
 			mip_views.push_back(mip_view);
 		}
 
 		return true;
 	}
 
-	bool create_alt_views(const ImageCreateInfo &image_create_info, const VkImageViewCreateInfo &info)
+	bool create_alt_views(const VkImageViewCreateInfo &info, ImageLayout layout, VkImageUsageFlags view_usage)
 	{
 		if (info.viewType == VK_IMAGE_VIEW_TYPE_CUBE ||
 		    info.viewType == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY ||
@@ -3624,57 +3472,48 @@ private:
 			return true;
 		}
 
-		VkDevice vkdevice = device->get_device();
+		constexpr VkImageUsageFlags sampled_usage =
+			VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
 
-		if (info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
+		if (info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT) &&
+		    (view_usage & sampled_usage) != 0)
 		{
-			if ((image_create_info.usage & ~VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0)
-			{
-				auto view_info = info;
+			auto view_info = info;
+			view_usage &= sampled_usage;
 
-				// We need this to be able to sample the texture, or otherwise use it as a non-pure DS attachment.
-				view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-				if (table.vkCreateImageView(vkdevice, &view_info, nullptr, &depth_view) != VK_SUCCESS)
-					return false;
+			// We need this to be able to sample the texture, or otherwise use it as a non-pure DS attachment.
+			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+			if (!device->managers.descriptor_buffer.create_image_view(view_info, view_usage, layout, depth_view))
+				return false;
 
-				view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
-				if (table.vkCreateImageView(vkdevice, &view_info, nullptr, &stencil_view) != VK_SUCCESS)
-					return false;
-			}
+			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+			if (!device->managers.descriptor_buffer.create_image_view(view_info, view_usage, layout, stencil_view))
+				return false;
 		}
 
 		return true;
 	}
 
-	bool create_default_view(const VkImageViewCreateInfo &info)
+	bool create_default_view(const VkImageViewCreateInfo &info, ImageLayout layout, VkImageUsageFlags usage)
 	{
-		VkDevice vkdevice = device->get_device();
-
 		// Create the normal image view. This one contains every subresource.
-		if (table.vkCreateImageView(vkdevice, &info, nullptr, &image_view) != VK_SUCCESS)
-			return false;
-
-		return true;
+		return device->managers.descriptor_buffer.create_image_view(info, usage, layout, image_view);
 	}
 
 	void cleanup()
 	{
-		VkDevice vkdevice = device->get_device();
-
-		if (image_view)
-			table.vkDestroyImageView(vkdevice, image_view, nullptr);
-		if (depth_view)
-			table.vkDestroyImageView(vkdevice, depth_view, nullptr);
-		if (stencil_view)
-			table.vkDestroyImageView(vkdevice, stencil_view, nullptr);
-		if (unorm_view)
-			table.vkDestroyImageView(vkdevice, unorm_view, nullptr);
-		if (srgb_view)
-			table.vkDestroyImageView(vkdevice, srgb_view, nullptr);
+		auto &m = device->managers.descriptor_buffer;
+		m.free_image_view(image_view);
+		m.free_image_view(depth_view);
+		m.free_image_view(stencil_view);
+		m.free_image_view(unorm_view);
+		m.free_image_view(srgb_view);
 		for (auto &view : rt_views)
-			table.vkDestroyImageView(vkdevice, view, nullptr);
+			m.free_image_view(view);
 		for (auto &view : mip_views)
-			table.vkDestroyImageView(vkdevice, view, nullptr);
+			m.free_image_view(view);
+
+		VkDevice vkdevice = device->get_device();
 
 		if (image)
 			table.vkDestroyImage(vkdevice, image, nullptr);
@@ -3743,10 +3582,9 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 	if (ret)
 	{
 		holder.owned = false;
-		ret->set_alt_views(holder.depth_view, holder.stencil_view);
+		ret->set_separate_depth_stencil_views(holder.depth_view, holder.stencil_view);
 		ret->set_render_target_views(std::move(holder.rt_views));
 		ret->set_mip_views(std::move(holder.mip_views));
-		ret->rebuild_cached_descriptor_payloads(create_info.image->get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 		return ret;
 	}
 	else
@@ -4392,6 +4230,13 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	tmpinfo.flags = info.flags;
 	tmpinfo.levels = info.mipLevels;
 
+	if ((info.usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT) != 0)
+	{
+		tmpinfo.layout = ImageLayout::General;
+		if (tmpinfo.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
+			tmpinfo.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+	}
+
 	bool has_view = (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
 	                               image_usage_video_flags)) != 0 &&
@@ -4404,8 +4249,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (!holder.create_default_views(tmpinfo, nullptr, create_info.ycbcr_conversion,
 		                                 create_unorm_srgb_views, create_mip_views, view_formats))
 		{
+			LOCK_MEMORY();
+			holder.allocation.free_immediate(managers.memory);
 			return ImageHandle(nullptr);
 		}
+
 		view_type = holder.get_default_view_type();
 	}
 
@@ -4415,12 +4263,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		holder.owned = false;
 		if (has_view)
 		{
-			handle->get_view().set_alt_views(holder.depth_view, holder.stencil_view);
+			handle->get_view().set_separate_depth_stencil_views(holder.depth_view, holder.stencil_view);
 			handle->get_view().set_render_target_views(holder.rt_views);
 			handle->get_view().set_mip_views(holder.mip_views);
 			handle->get_view().set_unorm_view(holder.unorm_view);
 			handle->get_view().set_srgb_view(holder.srgb_view);
-			handle->get_view().rebuild_cached_descriptor_payloads(handle->get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 		}
 	}
 
@@ -4530,7 +4377,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 			graphics_cmd->image_barrier(
 					*handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-					create_info.initial_layout,
+					tmpinfo.initial_layout,
 					VK_PIPELINE_STAGE_2_BLIT_BIT, 0,
 					sync_with_graphics ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_NONE,
 					sync_with_graphics ? VK_ACCESS_MEMORY_READ_BIT : VK_ACCESS_NONE);
@@ -4543,17 +4390,12 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 			transfer_cmd->image_barrier(
 					*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					create_info.initial_layout,
+					tmpinfo.initial_layout,
 					VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 					sync_with_transfer ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_NONE,
 					sync_with_transfer ? VK_ACCESS_MEMORY_READ_BIT : VK_ACCESS_NONE);
 
 			transition_cmd = std::move(transfer_cmd);
-		}
-		else
-		{
-			// With host copies, we should just stay in general layout.
-			handle->set_layout(Layout::General);
 		}
 	}
 	else if (create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
@@ -4676,8 +4518,9 @@ const ImmutableYcbcrConversion *Device::request_immutable_ycbcr_conversion(
 SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)
 {
 	auto info = Sampler::fill_vk_sampler_info(sampler_info);
-	VkSampler sampler;
-	if (table->vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
+
+	VkSampler sampler = managers.descriptor_buffer.create_sampler(&info);
+	if (sampler == VK_NULL_HANDLE)
 		return SamplerHandle(nullptr);
 	return SamplerHandle(handle_pool.samplers.allocate(this, sampler, sampler_info, false));
 }
@@ -4690,9 +4533,9 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 
 	DescriptorSetLayout layout;
 	const uint32_t stages_for_sets[VULKAN_NUM_BINDINGS] = { VK_SHADER_STAGE_ALL };
-	layout.array_size[0] = DescriptorSetLayout::UNSIZED_ARRAY;
+	layout.meta[0].array_size = DescriptorSetLayout::UNSIZED_ARRAY;
 	for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
-		layout.array_size[i] = 1;
+		layout.meta[i].array_size = 1;
 
 	switch (type)
 	{
@@ -4708,7 +4551,7 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 
 	VkDescriptorPool pool = VK_NULL_HANDLE;
 
-	if (!ext.supports_descriptor_buffer)
+	if (!ext.supports_descriptor_buffer_or_heap)
 	{
 		if (allocator)
 			pool = allocator->allocate_bindless_pool(num_sets, num_descriptors);
@@ -5432,7 +5275,7 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info, bool c
 		formats[i] = info.color_attachments[i]->get_format();
 		if (info.color_attachments[i]->get_image().get_create_info().domain == ImageDomain::Transient)
 			lazy |= 1u << i;
-		if (info.color_attachments[i]->get_image().get_layout_type() == Layout::Optimal)
+		if (info.color_attachments[i]->get_image().get_create_info().layout == ImageLayout::Optimal)
 			optimal |= 1u << i;
 
 		// This can change external subpass dependencies, so it must always be hashed.
@@ -5443,7 +5286,7 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info, bool c
 	{
 		if (info.depth_stencil->get_image().get_create_info().domain == ImageDomain::Transient)
 			lazy |= 1u << info.num_color_attachments;
-		if (info.depth_stencil->get_image().get_layout_type() == Layout::Optimal)
+		if (info.depth_stencil->get_image().get_create_info().layout == ImageLayout::Optimal)
 			optimal |= 1u << info.num_color_attachments;
 	}
 

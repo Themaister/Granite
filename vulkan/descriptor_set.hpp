@@ -37,6 +37,13 @@
 namespace Vulkan
 {
 class Device;
+struct ArraySizeAccessMeta
+{
+	uint8_t array_size : 7;
+	uint8_t requires_descriptor_size : 1;
+};
+static_assert(sizeof(ArraySizeAccessMeta) == sizeof(uint8_t), "Unexpected bitfield padding.");
+
 struct DescriptorSetLayout
 {
 	uint32_t sampled_image_mask = 0;
@@ -51,8 +58,8 @@ struct DescriptorSetLayout
 	uint32_t separate_image_mask = 0;
 	uint32_t fp_mask = 0;
 	uint32_t immutable_sampler_mask = 0;
-	uint8_t array_size[VULKAN_NUM_BINDINGS] = {};
-	enum { UNSIZED_ARRAY = 0xff };
+	ArraySizeAccessMeta meta[VULKAN_NUM_BINDINGS] = {};
+	enum { UNSIZED_ARRAY = 0x7f };
 };
 
 // Avoid -Wclass-memaccess warnings since we hash DescriptorSetLayout.
@@ -166,7 +173,7 @@ public:
 	// Descriptor buffer integration.
 	DescriptorBufferAllocation allocate_bindless_buffer(unsigned num_sets, unsigned num_descriptors);
 
-	VkDeviceSize get_size() const
+	VkDeviceSize get_resource_heap_size() const
 	{
 		return desc_set_size;
 	}

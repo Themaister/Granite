@@ -249,7 +249,7 @@ void libretro_end_frame(retro_video_refresh_t video_cb, Vulkan::WSI &wsi)
 			                   VK_ACCESS_TRANSFER_WRITE_BIT);
 			cmd->clear_image(*swapchain_image, {});
 			cmd->image_barrier(*swapchain_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                   VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 			                   VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 			device.submit(cmd);
@@ -297,7 +297,7 @@ bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Granite::A
 	info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	swapchain_image = device.create_image(info, nullptr);
-	swapchain_image->set_swapchain_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	swapchain_image->set_swapchain_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
 	can_dupe = false;
 
 	Vulkan::ImageViewCreateInfo view_info;
@@ -315,7 +315,7 @@ bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Granite::A
 
 	// Setup the swapchain image info for the frontend.
 	swapchain_image_info.image_view = swapchain_unorm_view->get_view().view;
-	swapchain_image_info.image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	swapchain_image_info.image_layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 	swapchain_image_info.create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	swapchain_image_info.create_info.image = swapchain_unorm_view->get_image().get_image();
 	swapchain_image_info.create_info.format = VK_FORMAT_R8G8B8A8_UNORM;

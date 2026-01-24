@@ -645,7 +645,7 @@ void SceneViewerApplication::capture_environment_probe()
 	info.layers = 6;
 	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-	info.initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	info.initial_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 	auto &device = get_wsi().get_device();
 
 	auto handle = device.create_image(info, nullptr);
@@ -703,7 +703,7 @@ void SceneViewerApplication::capture_environment_probe()
 		cmd->end_render_pass();
 	}
 
-	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 	                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 	                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 	device.submit(cmd);
@@ -784,9 +784,6 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 		renderer->init(setup);
 		phase1.set_render_pass_interface(std::move(renderer));
 	}
-
-	setup_depth_hierarchy_pass(graph, tagcat("depth-prepass", tag), tagcat("hiz", tag),
-							   &context, true);
 
 	if (use_ssao)
 	{

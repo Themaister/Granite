@@ -368,15 +368,19 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 	new_context->set_num_thread_indices(num_thread_indices);
 	new_context->set_system_handles(system_handles);
 
-	if (!new_context->init_instance(
-			instance_ext.data(), instance_ext.size(),
+	constexpr ContextCreationFlags context_flags =
 			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT |
 			CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT |
 			CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT |
+			CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT |
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES
 			CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT |
 #endif
-			video_context_flags))
+			video_context_flags;
+
+	if (!new_context->init_instance(
+			instance_ext.data(), instance_ext.size(),
+			context_flags))
 	{
 		LOGE("Failed to create Vulkan instance.\n");
 		return false;
@@ -387,13 +391,7 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 	bool ret = new_context->init_device(
 			VK_NULL_HANDLE, tmp_surface,
 			device_ext.data(), device_ext.size(),
-			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT |
-			CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT |
-			CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT |
-#ifdef GRANITE_VULKAN_SYSTEM_HANDLES
-			CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT |
-#endif
-			video_context_flags);
+			context_flags);
 
 	if (tmp_surface)
 		platform->destroy_surface(new_context->get_instance(), tmp_surface);

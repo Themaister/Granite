@@ -25,6 +25,7 @@
 #include "limits.hpp"
 #include "small_vector.hpp"
 #include "environment.hpp"
+#include "bitops.hpp"
 #include <vector>
 #include <mutex>
 #include <algorithm>
@@ -1501,6 +1502,17 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			ADD_CHAIN(ext.subgroup_size_control_features, SUBGROUP_SIZE_CONTROL_FEATURES_EXT);
 			enabled_extensions.push_back(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
 		}
+
+		if (has_extension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME))
+		{
+			ADD_CHAIN(ext.sync2_features, SYNCHRONIZATION_2_FEATURES_KHR);
+			enabled_extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+		}
+		else
+		{
+			LOGE("KHR_synchronization2 is not supported. This is a hard requirement for Granite.\n");
+			return false;
+		}
 	}
 
 	bool supports_khr_push_descriptor = false;
@@ -1671,9 +1683,17 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.robustness2_features, ROBUSTNESS_2_FEATURES_EXT);
 	}
 
-#ifndef VULKAN_DEBUG
-	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
-	    has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
+#if !defined(VULKAN_DEBUG) || 1
+	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT) != 0 &&
+	    has_extension(VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME))
+	{
+		ADD_CHAIN(ext.descriptor_heap_features, DESCRIPTOR_HEAP_FEATURES_EXT);
+		enabled_extensions.push_back(VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME);
+		ADD_CHAIN(ext.untyped_pointers_features, SHADER_UNTYPED_POINTERS_FEATURES_KHR);
+		enabled_extensions.push_back(VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME);
+	}
+	else if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
+	         has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
 	{
 		ADD_CHAIN(ext.descriptor_buffer_features, DESCRIPTOR_BUFFER_FEATURES_EXT);
 		enabled_extensions.push_back(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME);
@@ -1788,6 +1808,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	if (ext.subgroup_size_control_features.subgroupSizeControl)
 		ext.vk13_features.subgroupSizeControl = VK_TRUE;
 
+	if (ext.sync2_features.synchronization2)
+		ext.vk13_features.synchronization2 = VK_TRUE;
+
 	if (ext.maintenance5_features.maintenance5)
 		ext.vk14_features.maintenance5 = VK_TRUE;
 	if (supports_khr_push_descriptor)
@@ -1833,6 +1856,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.descriptor_buffer_features.descriptorBufferCaptureReplay = VK_FALSE;
 	ext.descriptor_buffer_features.descriptorBufferImageLayoutIgnored = VK_FALSE;
 	ext.descriptor_buffer_features.descriptorBufferPushDescriptors = VK_FALSE;
+
+	ext.descriptor_heap_features.descriptorHeapCaptureReplay = VK_FALSE;
 
 	// Enable device features we might care about.
 	{
@@ -1961,8 +1986,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	if (has_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
 		ADD_CHAIN(ext.mesh_shader_properties, MESH_SHADER_PROPERTIES_EXT);
 
-	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
-	    has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
+	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT) != 0 &&
+	    has_extension(VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME))
+	{
+		ADD_CHAIN(ext.descriptor_heap_properties, DESCRIPTOR_HEAP_PROPERTIES_EXT);
+	}
+	else if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
+	         has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
 	{
 		ADD_CHAIN(ext.descriptor_buffer_properties, DESCRIPTOR_BUFFER_PROPERTIES_EXT);
 	}
@@ -2092,12 +2122,17 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	volkLoadDeviceTable(&device_table, device);
 
-	if (!device_table.vkCreateRenderPass2)
-		device_table.vkCreateRenderPass2 = device_table.vkCreateRenderPass2KHR;
-	if (!device_table.vkResetQueryPool)
-		device_table.vkResetQueryPool = device_table.vkResetQueryPoolEXT;
-	if (!device_table.vkCmdPushDescriptorSetWithTemplate)
-		device_table.vkCmdPushDescriptorSetWithTemplate = device_table.vkCmdPushDescriptorSetWithTemplateKHR;
+#define PROMOTE_CALL(n, e) if (!device_table.vk##n) device_table.vk##n = device_table.vk##n##e
+	PROMOTE_CALL(CreateRenderPass2, KHR);
+	PROMOTE_CALL(QueueSubmit2, KHR);
+	PROMOTE_CALL(CmdPipelineBarrier2, KHR);
+	PROMOTE_CALL(CmdWriteTimestamp2, KHR);
+	PROMOTE_CALL(CmdSetEvent2, KHR);
+	PROMOTE_CALL(CmdResetEvent2, KHR);
+	PROMOTE_CALL(CmdWaitEvents2, KHR);
+	PROMOTE_CALL(ResetQueryPool, EXT);
+	PROMOTE_CALL(CmdPushDescriptorSetWithTemplate, KHR);
+#undef PROMOTE_CALL
 
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
 	{
@@ -2137,6 +2172,31 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 				ext.descriptor_buffer_properties.samplerDescriptorSize * 512ull * 1024ull <= max_heap_size &&
 				ext.descriptor_buffer_properties.sampledImageDescriptorSize * 512ull * 1024ull <= max_heap_size &&
 				ext.descriptor_buffer_properties.combinedImageSamplerDescriptorSingleArray;
+	}
+
+	ext.supports_descriptor_buffer_or_heap =
+		ext.supports_descriptor_buffer || ext.descriptor_heap_features.descriptorHeap;
+
+	if (ext.descriptor_heap_features.descriptorHeap)
+	{
+		ext.resource_heap_offset_alignment = std::max<uint32_t>(
+			ext.descriptor_heap_properties.bufferDescriptorAlignment,
+			ext.descriptor_heap_properties.imageDescriptorAlignment);
+
+		ext.resource_heap_resource_desc_size = std::max<uint32_t>(
+			ext.descriptor_heap_properties.bufferDescriptorSize,
+			ext.resource_heap_resource_desc_size);
+
+		ext.resource_heap_resource_desc_size = std::max<uint32_t>(
+			ext.descriptor_heap_properties.imageDescriptorSize,
+			ext.resource_heap_resource_desc_size);
+
+		ext.resource_heap_resource_desc_size = Util::next_pow2(ext.resource_heap_resource_desc_size);
+		ext.resource_heap_resource_desc_size_log2 = Util::floor_log2(ext.resource_heap_resource_desc_size);
+	}
+	else
+	{
+		ext.resource_heap_offset_alignment = ext.descriptor_buffer_properties.descriptorBufferOffsetAlignment;
 	}
 
 	return true;

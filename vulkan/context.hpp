@@ -78,6 +78,11 @@ struct DeviceFeatures
 	bool supports_drm_modifiers = false;
 	bool supports_descriptor_buffer = false;
 
+	bool supports_descriptor_buffer_or_heap = false;
+	uint32_t resource_heap_offset_alignment = 0;
+	uint32_t resource_heap_resource_desc_size = 0;
+	uint32_t resource_heap_resource_desc_size_log2 = 0;
+
 	VkPhysicalDeviceFeatures enabled_features = {};
 
 	VkPhysicalDeviceVulkan11Features vk11_features = {};
@@ -126,6 +131,9 @@ struct DeviceFeatures
 	VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptor_buffer_features = {};
 	VkPhysicalDeviceDescriptorBufferPropertiesEXT descriptor_buffer_properties = {};
 	VkPhysicalDevicePresentTimingFeaturesEXT present_timing_features = {};
+	VkPhysicalDeviceDescriptorHeapFeaturesEXT descriptor_heap_features = {};
+	VkPhysicalDeviceDescriptorHeapPropertiesEXT descriptor_heap_properties = {};
+	VkPhysicalDeviceShaderUntypedPointersFeaturesKHR untyped_pointers_features = {};
 
 	// Vendor
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};
@@ -139,6 +147,7 @@ struct DeviceFeatures
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
 	// Fallback feature structs (Vulkan 1.3)
 	VkPhysicalDeviceSubgroupSizeControlFeatures subgroup_size_control_features = {};
+	VkPhysicalDeviceSynchronization2Features sync2_features = {};
 
 	VkDriverId driver_id = {};
 
@@ -173,7 +182,8 @@ enum ContextCreationFlagBits
 	CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT = 1 << 6,
 	CONTEXT_CREATION_ENABLE_ROBUSTNESS_2_BIT = 1 << 7,
 	CONTEXT_CREATION_ENABLE_VIDEO_AV1_BIT = 1 << 8,
-	CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT = 1 << 9
+	CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT = 1 << 9,
+	CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT = 1 << 10
 };
 using ContextCreationFlags = uint32_t;
 

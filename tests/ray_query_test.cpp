@@ -49,7 +49,7 @@ struct RayQueryApplication : Application, EventHandler
 
 		auto info = ImageCreateInfo::immutable_2d_image(512, 512, VK_FORMAT_R8G8B8A8_UNORM);
 		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-		info.initial_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		info.initial_layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 		img = e.get_device().create_image(info);
 
 		vec3 vbo_data[3] = {
@@ -300,7 +300,7 @@ struct RayQueryApplication : Application, EventHandler
 		cmd->set_storage_texture(0, 1, img->get_view());
 		cmd->dispatch(img->get_width() / 8, img->get_height() / 8, 1);
 
-		cmd->image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		cmd->image_barrier(*img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 						   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 						   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 

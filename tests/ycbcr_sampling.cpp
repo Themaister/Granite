@@ -142,7 +142,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		file_offset += (width / DOWNSAMPLE_WIDTH) * (height / DOWNSAMPLE_HEIGHT);
 
 		cmd->image_barrier(*ycbcr_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                   VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 

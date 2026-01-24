@@ -66,8 +66,8 @@ void VolumetricDiffuseLightManager::on_device_created(const Vulkan::DeviceCreate
 	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
 	info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+	info.layout = Vulkan::ImageLayout::General;
 	sky_light = device.create_image(info);
-	sky_light->set_layout(Vulkan::Layout::General);
 	device.set_name(*sky_light, "sky-light");
 
 	Vulkan::ImageViewCreateInfo view = {};
@@ -124,7 +124,7 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 
 	VkPipelineStageFlags2 src_color, src_depth, dst_color, dst_depth;
 	VkAccessFlags2 src_access_color, src_access_depth, dst_access_color, dst_access_depth;
-	VkImageLayout old_color, new_color, old_depth, new_depth;
+	VkImageLayout old_layout, new_layout;
 
 	bool compute = (gbuffer.emissive->get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0;
 
@@ -169,19 +169,11 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 			                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 		}
 
-		old_color = VK_IMAGE_LAYOUT_UNDEFINED;
-		old_depth = VK_IMAGE_LAYOUT_UNDEFINED;
-
+		old_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		if (compute)
-		{
-			new_color = VK_IMAGE_LAYOUT_GENERAL;
-			new_depth = VK_IMAGE_LAYOUT_GENERAL;
-		}
+			new_layout = VK_IMAGE_LAYOUT_GENERAL;
 		else
-		{
-			new_color = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			new_depth = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		}
+			new_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 	}
 	else
 	{
@@ -195,20 +187,18 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 		dst_access_color = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 		dst_access_depth = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
-		old_color = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		old_depth = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		new_color = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		new_depth = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		old_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+		new_layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 	}
 
 	for (auto *image : colors)
 	{
-		cmd.image_barrier(*image, old_color, new_color,
+		cmd.image_barrier(*image, old_layout, new_layout,
 		                  src_color, src_access_color,
 		                  dst_color, dst_access_color);
 	}
 
-	cmd.image_barrier(*gbuffer.depth, old_depth, new_depth,
+	cmd.image_barrier(*gbuffer.depth, old_layout, new_layout,
 	                  src_depth, src_access_depth,
 	                  dst_depth, dst_access_depth);
 }
@@ -314,6 +304,9 @@ static VolumetricDiffuseLight::GBuffer allocate_gbuffer(Vulkan::Device &device, 
 	gbuffer_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	gbuffer_info.flags = compute ? VK_IMAGE_CREATE_EXTENDED_USAGE_BIT : 0;
 	gbuffer_info.misc = Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
+	if (compute)
+		gbuffer_info.layout = Vulkan::ImageLayout::General;
+
 	allocated_gbuffer.albedo = device.create_image(gbuffer_info);
 	gbuffer_info.flags = 0;
 	gbuffer_info.misc = 0;
@@ -337,15 +330,6 @@ static VolumetricDiffuseLight::GBuffer allocate_gbuffer(Vulkan::Device &device, 
 	device.set_name(*allocated_gbuffer.normal, "probe-normal");
 	device.set_name(*allocated_gbuffer.pbr, "probe-pbr");
 	device.set_name(*allocated_gbuffer.depth, "probe-depth");
-
-	if (compute)
-	{
-		allocated_gbuffer.emissive->set_layout(Vulkan::Layout::General);
-		allocated_gbuffer.depth->set_layout(Vulkan::Layout::General);
-		allocated_gbuffer.albedo->set_layout(Vulkan::Layout::General);
-		allocated_gbuffer.normal->set_layout(Vulkan::Layout::General);
-		allocated_gbuffer.pbr->set_layout(Vulkan::Layout::General);
-	}
 
 	return allocated_gbuffer;
 }
@@ -573,13 +557,12 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 			auto info = Vulkan::ImageCreateInfo::immutable_3d_image(6 * res.x, res.y, res.z, VK_FORMAT_R16G16B16A16_SFLOAT);
 			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 			info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+			info.layout = Vulkan::ImageLayout::General;
 
 			auto image = device.create_image(info);
 			auto prev_image = device.create_image(info);
 			device.set_name(*image, "probe-light-1");
 			device.set_name(*prev_image, "probe-light-2");
-			image->set_layout(Vulkan::Layout::General);
-			prev_image->set_layout(Vulkan::Layout::General);
 
 			Util::SmallVector<Vulkan::ImageHandle> layer_accums(NumProbeLayers);
 			{
@@ -588,7 +571,6 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 				{
 					layer = device.create_image(info);
 					device.set_name(*layer, (std::string("probe-accum-") + std::to_string(counter++)).c_str());
-					layer->set_layout(Vulkan::Layout::General);
 				}
 			}
 

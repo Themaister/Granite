@@ -138,20 +138,20 @@ public:
 
 	VkBufferView get_view() const
 	{
-		VK_ASSERT(view);
-		return view;
+		VK_ASSERT(view.view);
+		return view.view;
 	}
 
 	const CachedDescriptorPayload &get_uniform_payload() const
 	{
-		VK_ASSERT(desc_uniform && desc_uniform.type == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER);
-		return desc_uniform;
+		VK_ASSERT(view.uniform.ptr && view.uniform.type == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER);
+		return view.uniform;
 	}
 
 	const CachedDescriptorPayload &get_storage_payload() const
 	{
-		VK_ASSERT(desc_storage && desc_storage.type == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER);
-		return desc_storage;
+		VK_ASSERT(view.storage.ptr && view.storage.type == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER);
+		return view.storage;
 	}
 
 	const BufferViewCreateInfo &get_create_info()
@@ -166,16 +166,10 @@ public:
 
 private:
 	friend class Util::ObjectPool<BufferView>;
-	BufferView(Device *device, VkBufferView view, const BufferViewCreateInfo &info);
-	BufferView(Device *device,
-	           CachedDescriptorPayload desc_uniform,
-	           CachedDescriptorPayload desc_storage,
-	           const BufferViewCreateInfo &info);
+	BufferView(Device *device, const CachedBufferView &view, const BufferViewCreateInfo &info);
 
 	Device *device;
-	VkBufferView view = VK_NULL_HANDLE;
-	CachedDescriptorPayload desc_uniform = {};
-	CachedDescriptorPayload desc_storage = {};
+	CachedBufferView view;
 	BufferViewCreateInfo info;
 };
 using BufferViewHandle = Util::IntrusivePtr<BufferView>;

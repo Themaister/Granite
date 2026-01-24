@@ -584,8 +584,8 @@ FFX_CACAO_Status FFX_CACAO_GraniteAllocContext(FFX_CACAO_GraniteContext** contex
 		image_info.samples = VK_SAMPLE_COUNT_1_BIT;
 		image_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 		image_info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+		image_info.layout = Vulkan::ImageLayout::General;
 		ctx->loadCounter = ctx->device->create_image(image_info);
-		ctx->loadCounter->set_layout(Vulkan::Layout::General);
 	}
 
 	*context = ctx.release();
@@ -628,8 +628,8 @@ FFX_CACAO_Status FFX_CACAO_GraniteInitScreenSizeDependentResources(FFX_CACAO_Gra
 		image_info.samples = VK_SAMPLE_COUNT_1_BIT;
 		image_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 		image_info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+		image_info.layout = Vulkan::ImageLayout::General;
 		context->textures[numTextureImagesInited] = context->device->create_image(image_info);
-		context->textures[numTextureImagesInited]->set_layout(Vulkan::Layout::General);
 	}
 
 	for (uint32_t numSrvsInited = 0; numSrvsInited < NUM_SHADER_RESOURCE_VIEWS; numSrvsInited++)

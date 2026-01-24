@@ -49,8 +49,8 @@ struct ScalerApplication : Granite::Application, Granite::EventHandler
 		info.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
 		info.misc = IMAGE_MISC_MUTABLE_SRGB_BIT;
+		info.layout = ImageLayout::General;
 		render_target = e.get_device().create_image(info);
-		render_target->set_layout(Layout::General);
 
 		auto *shader = e.get_device().get_shader_manager().register_compute("builtin://shaders/util/scaler.comp");
 		scaler.set_program(shader->register_variant({})->get_program());

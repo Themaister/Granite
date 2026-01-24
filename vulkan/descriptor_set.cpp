@@ -36,7 +36,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 	, device(device_)
 	, table(device_->get_device_table())
 {
-	bindless = layout.array_size[0] == DescriptorSetLayout::UNSIZED_ARRAY;
+	bindless = layout.meta[0].array_size == DescriptorSetLayout::UNSIZED_ARRAY;
 
 	if (!bindless)
 	{
@@ -83,7 +83,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 		if (stages == 0)
 			continue;
 
-		unsigned array_size = layout.array_size[i];
+		unsigned array_size = layout.meta[i].array_size;
 		unsigned pool_array_size;
 		if (array_size == DescriptorSetLayout::UNSIZED_ARRAY)
 		{
@@ -194,13 +194,18 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 		}
 	}
 
-#ifdef VULKAN_DEBUG
-	LOGI("Creating descriptor set layout.\n");
-#endif
-	if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout_pool) != VK_SUCCESS)
-		LOGE("Failed to create descriptor set layout.");
+	bool heap = device->get_device_features().descriptor_heap_features.descriptorHeap == VK_TRUE;
 
-	if (device->ext.supports_descriptor_buffer)
+	if (!heap)
+	{
+#ifdef VULKAN_DEBUG
+		LOGI("Creating descriptor set layout.\n");
+#endif
+		if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout_pool) != VK_SUCCESS)
+			LOGE("Failed to create descriptor set layout.");
+	}
+
+	if (device->ext.supports_descriptor_buffer && !heap)
 	{
 		// Query the memory layout.
 		table.vkGetDescriptorSetLayoutSizeEXT(device->get_device(), set_layout_pool, &desc_set_size);
@@ -227,7 +232,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 	}
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	if (device->ext.supports_descriptor_buffer)
+	if (device->ext.supports_descriptor_buffer && !heap)
 	{
 		// Normalize the recorded flags.
 		if (bindless)
@@ -246,7 +251,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 
 	// Push descriptors is not used with descriptor buffer.
 	if (!bindless && device->get_device_features().vk14_features.pushDescriptor &&
-	    !device->get_device_features().descriptor_buffer_features.descriptorBuffer)
+	    !heap && !device->get_device_features().descriptor_buffer_features.descriptorBuffer)
 	{
 		info.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT;
 		if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout_push) != VK_SUCCESS)
@@ -299,7 +304,9 @@ DescriptorBufferAllocation DescriptorSetAllocator::allocate_bindless_buffer(unsi
 	                    num_descriptors;
 
 	size += (std::max<uint32_t>(num_sets, 1u) - 1u) *
-			device->get_device_features().descriptor_buffer_properties.descriptorBufferOffsetAlignment;
+			std::max<VkDeviceSize>(
+				device->get_device_features().resource_heap_offset_alignment,
+				device->get_device_features().resource_heap_resource_desc_size);
 
 	return device->managers.descriptor_buffer.allocate(size);
 }
@@ -478,9 +485,12 @@ void BindlessDescriptorPool::reset()
 
 bool BindlessDescriptorPool::allocate_descriptors(unsigned count)
 {
-	if (device->get_device_features().supports_descriptor_buffer)
+	if (device->get_device_features().supports_descriptor_buffer_or_heap)
 	{
-		VkDeviceSize alignment = device->get_device_features().descriptor_buffer_properties.descriptorBufferOffsetAlignment;
+		auto alignment = std::max<VkDeviceSize>(
+				device->get_device_features().resource_heap_offset_alignment,
+				device->get_device_features().resource_heap_resource_desc_size);
+
 		bindless_buffer_offset = (bindless_buffer_offset + alignment - 1) & ~(alignment - 1);
 		VkDeviceSize size = allocator->get_variable_size(count);
 
@@ -522,7 +532,7 @@ void BindlessDescriptorPool::push_texture(const ImageView &view)
 	if (!desc_pool)
 		push_texture(view.get_float_view().sampled.ptr);
 	else
-		push_texture(view.get_float_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+		push_texture(view.get_float_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL));
 }
 
 void BindlessDescriptorPool::push_texture_unorm(const ImageView &view)
@@ -530,7 +540,7 @@ void BindlessDescriptorPool::push_texture_unorm(const ImageView &view)
 	if (!desc_pool)
 		push_texture(view.get_unorm_view().sampled.ptr);
 	else
-		push_texture(view.get_unorm_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+		push_texture(view.get_unorm_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL));
 }
 
 void BindlessDescriptorPool::push_texture_srgb(const ImageView &view)
@@ -538,7 +548,7 @@ void BindlessDescriptorPool::push_texture_srgb(const ImageView &view)
 	if (!desc_pool)
 		push_texture(view.get_srgb_view().sampled.ptr);
 	else
-		push_texture(view.get_srgb_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+		push_texture(view.get_srgb_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL));
 }
 
 void BindlessDescriptorPool::push_texture(VkImageView view, VkImageLayout layout)
@@ -557,10 +567,10 @@ void BindlessDescriptorPool::push_texture(const uint8_t *ptr)
 
 void BindlessDescriptorPool::update()
 {
-	if (device->get_device_features().supports_descriptor_buffer)
+	if (device->get_device_features().supports_descriptor_buffer_or_heap)
 	{
 		device->managers.descriptor_buffer.copy_sampled_image_n(
-				device->managers.descriptor_buffer.get_mapped_heap() +
+				device->managers.descriptor_buffer.get_resource_heap().mapped +
 				desc_set.handle.offset + allocator->get_variable_offset(),
 				info_ptrs.data(), write_count);
 	}

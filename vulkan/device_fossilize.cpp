@@ -143,7 +143,8 @@ void Device::register_compute_pipeline(Fossilize::Hash hash, const VkComputePipe
 	if (const auto *flags = find_pnext<VkPipelineCreateFlags2CreateInfo>(
 			info.pNext, VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO))
 	{
-		const_cast<VkPipelineCreateFlags2CreateInfo *>(flags)->flags &= ~VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT;
+		const_cast<VkPipelineCreateFlags2CreateInfo *>(flags)->flags &=
+			~(VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT | VK_PIPELINE_CREATE_2_DESCRIPTOR_HEAP_BIT_EXT);
 	}
 	else
 	{
@@ -171,7 +172,8 @@ void Device::register_graphics_pipeline(Fossilize::Hash hash, const VkGraphicsPi
 	if (const auto *flags = find_pnext<VkPipelineCreateFlags2CreateInfo>(
 			info.pNext, VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO))
 	{
-		const_cast<VkPipelineCreateFlags2CreateInfo *>(flags)->flags &= ~VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT;
+		const_cast<VkPipelineCreateFlags2CreateInfo *>(flags)->flags &=
+			~(VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT | VK_PIPELINE_CREATE_2_DESCRIPTOR_HEAP_BIT_EXT);
 	}
 	else
 	{
@@ -219,6 +221,22 @@ bool Device::enqueue_create_shader_module(Fossilize::Hash hash, const VkShaderMo
 	*module = (VkShaderModule)hash;
 	replayer_state->progress.modules.fetch_add(1, std::memory_order_release);
 	return true;
+}
+
+static void remove_pnext(void *chain_, VkStructureType sType)
+{
+	auto *chain = static_cast<VkBaseOutStructure *>(chain_);
+	while (chain && chain->pNext)
+	{
+		auto *next = chain->pNext;
+		if (next->sType == sType)
+		{
+			chain->pNext = next->pNext;
+			return;
+		}
+
+		chain = next;
+	}
 }
 
 bool Device::fossilize_replay_graphics_pipeline(Fossilize::Hash hash, VkGraphicsPipelineCreateInfo &info)
@@ -299,6 +317,35 @@ bool Device::fossilize_replay_graphics_pipeline(Fossilize::Hash hash, VkGraphics
 		const_cast<VkPipelineShaderStageCreateInfo *>(info.pStages)[frag_index].module = frag_shader->get_module();
 	}
 
+	// Patch in heap information late.
+	VkPipelineCreateFlags2CreateInfo flags2 = { VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO };
+	VkShaderDescriptorSetAndBindingMappingInfoEXT mapping_info[3];
+
+	if (ret && ext.descriptor_heap_features.descriptorHeap)
+	{
+		if (!find_pnext<VkPipelineCreateFlags2CreateInfo>(info.pNext, flags2.sType))
+		{
+			flags2.flags = info.flags | VK_PIPELINE_CREATE_2_DESCRIPTOR_HEAP_BIT_EXT;
+			flags2.pNext = info.pNext;
+			info.pNext = &flags2;
+		}
+
+		auto &mappings = ret->get_pipeline_layout()->get_heap_mappings();
+		for (uint32_t i = 0; i < info.stageCount; i++)
+		{
+			mapping_info[i] = { VK_STRUCTURE_TYPE_SHADER_DESCRIPTOR_SET_AND_BINDING_MAPPING_INFO_EXT };
+			mapping_info[i].pNext = info.pStages[i].pNext;
+			mapping_info[i].mappingCount = uint32_t(mappings.size());
+			mapping_info[i].pMappings = mappings.data();
+			const_cast<VkPipelineShaderStageCreateInfo &>(info.pStages[i]).pNext = &mapping_info[i];
+		}
+	}
+
+	auto *f2 = find_pnext<VkPipelineCreateFlags2CreateInfo>(info.pNext, flags2.sType);
+	// No need to use flags2, demote to stay more compatible with legacy drivers.
+	if (f2 && (f2->flags >> 32) == 0)
+		remove_pnext(&info, VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO);
+
 	if (!ret || !replayer_state->feature_filter->graphics_pipeline_is_supported(&info))
 	{
 		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
@@ -378,6 +425,33 @@ bool Device::fossilize_replay_compute_pipeline(Fossilize::Hash hash, VkComputePi
 		info.stage.module = shader->get_module();
 	}
 
+	// Patch in heap information late.
+	VkPipelineCreateFlags2CreateInfo flags2 = { VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO };
+	VkShaderDescriptorSetAndBindingMappingInfoEXT mapping_info =
+		{ VK_STRUCTURE_TYPE_SHADER_DESCRIPTOR_SET_AND_BINDING_MAPPING_INFO_EXT };
+
+	if (ret && ext.descriptor_heap_features.descriptorHeap)
+	{
+		if (!find_pnext<VkPipelineCreateFlags2CreateInfo>(info.pNext, flags2.sType))
+		{
+			flags2.flags = info.flags | VK_PIPELINE_CREATE_2_DESCRIPTOR_HEAP_BIT_EXT;
+			flags2.pNext = info.pNext;
+			info.pNext = &flags2;
+		}
+
+		auto &mappings = ret->get_pipeline_layout()->get_heap_mappings();
+		mapping_info = { VK_STRUCTURE_TYPE_SHADER_DESCRIPTOR_SET_AND_BINDING_MAPPING_INFO_EXT };
+		mapping_info.pNext = info.stage.pNext;
+		mapping_info.mappingCount = uint32_t(mappings.size());
+		mapping_info.pMappings = mappings.data();
+		info.stage.pNext = &mapping_info;
+	}
+
+	auto *f2 = find_pnext<VkPipelineCreateFlags2CreateInfo>(info.pNext, flags2.sType);
+	// No need to use flags2, demote to stay more compatible with legacy drivers.
+	if (f2 && (f2->flags >> 32) == 0)
+		remove_pnext(&info, VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO);
+
 	if (!ret || !replayer_state->feature_filter->compute_pipeline_is_supported(&info))
 	{
 		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
@@ -418,16 +492,30 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash,
 		}
 	}
 
-	if (create_info->renderPass == VK_NULL_HANDLE || create_info->layout == VK_NULL_HANDLE)
+	if (create_info->renderPass == VK_NULL_HANDLE)
 	{
 		*pipeline = VK_NULL_HANDLE;
 		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return true;
 	}
 
+	auto *flags2 = find_pnext<VkPipelineCreateFlags2CreateInfo>(
+		create_info->pNext, VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO);
+
 	// Re-introduce descriptor buffer flag if needed.
 	if (ext.supports_descriptor_buffer)
+	{
 		const_cast<VkGraphicsPipelineCreateInfo *>(create_info)->flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+		if (flags2)
+			const_cast<VkPipelineCreateFlags2CreateInfo *>(flags2)->flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+	}
+
+	if (ext.descriptor_heap_features.descriptorHeap)
+	{
+		// Fix up missing flags2 later.
+		if (flags2)
+			const_cast<VkPipelineCreateFlags2CreateInfo *>(flags2)->flags |= VK_PIPELINE_CREATE_2_DESCRIPTOR_HEAP_BIT_EXT;
+	}
 
 	// The lifetime of create_info is tied to the replayer itself.
 	replayer_state->graphics_pipelines.emplace_back(hash, const_cast<VkGraphicsPipelineCreateInfo *>(create_info));
@@ -438,16 +526,30 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash,
                                              const VkComputePipelineCreateInfo *create_info,
                                              VkPipeline *pipeline)
 {
-	if (create_info->stage.module == VK_NULL_HANDLE || create_info->layout == VK_NULL_HANDLE)
+	if (create_info->stage.module == VK_NULL_HANDLE)
 	{
 		*pipeline = VK_NULL_HANDLE;
 		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
 		return true;
 	}
 
+	auto *flags2 = find_pnext<VkPipelineCreateFlags2CreateInfo>(
+		create_info->pNext, VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO);
+
 	// Re-introduce descriptor buffer flag if needed.
 	if (ext.supports_descriptor_buffer)
+	{
 		const_cast<VkComputePipelineCreateInfo *>(create_info)->flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+		if (flags2)
+			const_cast<VkPipelineCreateFlags2CreateInfo *>(flags2)->flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+	}
+
+	if (ext.descriptor_heap_features.descriptorHeap)
+	{
+		// Fix up missing flags2 later.
+		if (flags2)
+			const_cast<VkPipelineCreateFlags2CreateInfo *>(flags2)->flags |= VK_PIPELINE_CREATE_2_DESCRIPTOR_HEAP_BIT_EXT;
+	}
 
 	// The lifetime of create_info is tied to the replayer itself.
 	replayer_state->compute_pipelines.emplace_back(hash, const_cast<VkComputePipelineCreateInfo *>(create_info));

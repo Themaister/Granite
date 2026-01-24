@@ -45,7 +45,7 @@ ImageHandle convert_cube_to_ibl_specular(Device &device, const ImageView &view)
 	info.layers = 6;
 	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	info.initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	info.initial_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
 	auto handle = device.create_image(info, nullptr);
 	auto cmd = device.request_command_buffer();
@@ -95,7 +95,7 @@ ImageHandle convert_cube_to_ibl_specular(Device &device, const ImageView &view)
 		}
 	}
 
-	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 	                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 	                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
@@ -115,7 +115,7 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, const ImageView &view)
 	info.layers = 6;
 	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	info.initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	info.initial_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
 	auto handle = device.create_image(info, nullptr);
 	auto cmd = device.request_command_buffer();
@@ -153,7 +153,7 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, const ImageView &view)
 		cmd->end_render_pass();
 	}
 
-	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 	                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 	                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
@@ -172,7 +172,7 @@ ImageHandle convert_equirect_to_cube(Device &device, const ImageView &view, floa
 	info.layers = 6;
 	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	info.initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	info.initial_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
 	auto handle = device.create_image(info, nullptr);
 	auto cmd = device.request_command_buffer();
@@ -210,10 +210,10 @@ ImageHandle convert_equirect_to_cube(Device &device, const ImageView &view, floa
 		cmd->end_render_pass();
 	}
 
-	cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
 	                                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, true);
 	cmd->generate_mipmap(*handle);
-	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 	                   VK_PIPELINE_STAGE_2_BLIT_BIT, 0,
 	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 	                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);

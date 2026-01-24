@@ -195,8 +195,8 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	{
 		depth_stencil_layout = info.depth_stencil->get_image().get_layout(
 				ds_read_only ?
-				VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL :
-				VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+				VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL :
+				VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
 	}
 
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
@@ -221,7 +221,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 			if (enable_transient_load)
 			{
 				// The transient will behave like a normal image.
-				att.initialLayout = info.color_attachments[i]->get_image().get_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+				att.initialLayout = info.color_attachments[i]->get_image().get_layout(VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
 			}
 			else
 			{
@@ -252,7 +252,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 			implicit_transitions |= 1u << i;
 		}
 		else
-			att.initialLayout = info.color_attachments[i]->get_image().get_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+			att.initialLayout = info.color_attachments[i]->get_image().get_layout(VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
 	}
 
 	depth_stencil = info.depth_stencil ? info.depth_stencil->get_format() : VK_FORMAT_UNDEFINED;
@@ -523,7 +523,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 			else if (resolve)
 			{
 				if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
-					current_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+					current_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
 				if (!used && attachments[attachment].initialLayout != current_layout)
@@ -561,7 +561,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 			else if (color) // No particular preference
 			{
 				if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
-					current_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+					current_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 				color->layout = current_layout;
 
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
@@ -588,7 +588,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 				else
 				{
 					if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
-						current_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+						current_layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 				}
 
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
@@ -611,12 +611,12 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 				{
 					depth_stencil_attachment_write |= 1u << subpass;
 					if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
-						current_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+						current_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 				}
 				else
 				{
 					if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
-						current_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+						current_layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 				}
 
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
@@ -631,11 +631,11 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 			else if (input)
 			{
 				if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
-					current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+					current_layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 
 				// If the attachment is first used as an input attachment, the initial layout should actually be
-				// SHADER_READ_ONLY_OPTIMAL.
-				if (!used && attachments[attachment].initialLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+				// READ_ONLY_OPTIMAL.
+				if (!used && attachments[attachment].initialLayout == VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL)
 					attachments[attachment].initialLayout = current_layout;
 
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.

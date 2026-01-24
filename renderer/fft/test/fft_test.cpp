@@ -229,7 +229,7 @@ static bool test_fft_2d(Device &device, unsigned Nx, unsigned Ny,
 		cmd->copy_buffer_to_image(*input_texture, *input_buffer,
 		                          0, {}, { Nx, Ny, 1 },
 		                          0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
-		cmd->image_barrier(*input_texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		cmd->image_barrier(*input_texture, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 

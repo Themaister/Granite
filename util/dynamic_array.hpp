@@ -23,6 +23,7 @@
 #pragma once
 
 #include "aligned_alloc.hpp"
+#include <string.h>
 #include <memory>
 #include <algorithm>
 #include <type_traits>

@@ -83,6 +83,10 @@ if (GRANITE_VULKAN_FOSSILIZE)
             fossilize/cli/fossilize_feature_filter.hpp fossilize/cli/fossilize_feature_filter.cpp)
     granite_setup_default_link_libraries(fossilize)
 
+    if (NOT TARGET SPIRV-Headers)
+        add_subdirectory(spirv-headers EXCLUDE_FROM_ALL)
+    endif()
+
     get_target_property(SPIRV_HEADERS_PATH SPIRV-Headers INTERFACE_INCLUDE_DIRECTORIES)
 
     target_include_directories(fossilize

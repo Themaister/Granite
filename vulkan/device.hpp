@@ -665,7 +665,7 @@ private:
 		std::vector<DeviceAllocation> allocations;
 		std::vector<VkFramebuffer> destroyed_framebuffers;
 		std::vector<VkSampler> destroyed_samplers;
-		std::vector<VkImageView> destroyed_image_views;
+		std::vector<CachedImageView> destroyed_image_views;
 		std::vector<VkBufferView> destroyed_buffer_views;
 		std::vector<VkImage> destroyed_images;
 		std::vector<VkBuffer> destroyed_buffers;
@@ -814,7 +814,7 @@ private:
 	void destroy_buffer(VkBuffer buffer);
 	void destroy_rtas(VkAccelerationStructureKHR rtas);
 	void destroy_image(VkImage image);
-	void destroy_image_view(VkImageView view);
+	void destroy_image_view(const CachedImageView &view);
 	void destroy_buffer_view(VkBufferView view);
 	void destroy_sampler(VkSampler sampler);
 	void destroy_framebuffer(VkFramebuffer framebuffer);
@@ -832,7 +832,7 @@ private:
 	void destroy_buffer_nolock(VkBuffer buffer);
 	void destroy_rtas_nolock(VkAccelerationStructureKHR rtas);
 	void destroy_image_nolock(VkImage image);
-	void destroy_image_view_nolock(VkImageView view);
+	void destroy_image_view_nolock(const CachedImageView &view);
 	void destroy_buffer_view_nolock(VkBufferView view);
 	void destroy_sampler_nolock(VkSampler sampler);
 	void destroy_framebuffer_nolock(VkFramebuffer framebuffer);

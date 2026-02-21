@@ -26,16 +26,16 @@
 
 namespace Vulkan
 {
-ImageView::ImageView(Device *device_, VkImageView view_, const ImageViewCreateInfo &info_, VkImageUsageFlags usage_)
+ImageView::ImageView(Device *device_, const CachedImageView &view_, const ImageViewCreateInfo &info_, VkImageUsageFlags usage_)
 	: Cookie(device_)
 	, device(device_)
 	, usage(usage_)
-	, view({ view_ })
+	, view(view_)
 	, info(info_)
 {
 }
 
-const ImageView::CachedView &ImageView::get_render_target_view(unsigned layer) const
+const CachedImageView &ImageView::get_render_target_view(unsigned layer) const
 {
 	// Transient images just have one layer.
 	if (info.image->get_create_info().domain == ImageDomain::Transient)
@@ -52,7 +52,7 @@ const ImageView::CachedView &ImageView::get_render_target_view(unsigned layer) c
 	}
 }
 
-const ImageView::CachedView &ImageView::get_mip_view(unsigned level) const
+const CachedImageView &ImageView::get_mip_view(unsigned level) const
 {
 	VK_ASSERT(level < get_create_info().levels);
 
@@ -65,41 +65,12 @@ const ImageView::CachedView &ImageView::get_mip_view(unsigned level) const
 	}
 }
 
-void ImageView::free_cached_view_payloads(CachedView &cached)
+void ImageView::free_cached_view(CachedImageView &cached)
 {
 	if (internal_sync)
-	{
-		if (cached.sampled)
-			device->free_cached_descriptor_payload_nolock(cached.sampled);
-		if (cached.storage)
-			device->free_cached_descriptor_payload_nolock(cached.storage);
-	}
+		device->destroy_image_view_nolock(cached);
 	else
-	{
-		if (cached.sampled)
-			device->free_cached_descriptor_payload(cached.sampled);
-		if (cached.storage)
-			device->free_cached_descriptor_payload(cached.storage);
-	}
-
-	cached.sampled = {};
-	cached.storage = {};
-}
-
-void ImageView::free_cached_view(CachedView &cached)
-{
-	if (internal_sync)
-	{
-		if (cached.view != VK_NULL_HANDLE)
-			device->destroy_image_view_nolock(cached.view);
-	}
-	else
-	{
-		if (cached.view != VK_NULL_HANDLE)
-			device->destroy_image_view(cached.view);
-	}
-
-	free_cached_view_payloads(cached);
+		device->destroy_image_view(cached);
 }
 
 ImageView::~ImageView()
@@ -146,61 +117,7 @@ unsigned ImageView::get_view_depth() const
 	return info.image->get_depth(info.base_level);
 }
 
-void ImageView::rebuild_cached_descriptor_payloads(CachedView &v, VkImageLayout sampled_layout,
-                                                   VkImageUsageFlags specific_usage)
-{
-	VkDescriptorGetInfoEXT get_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT };
-	VkDescriptorImageInfo image_info = {};
-	image_info.imageView = v.view;
-	free_cached_view_payloads(v);
-
-	if (v.view == VK_NULL_HANDLE)
-		return;
-
-	if (specific_usage & VK_IMAGE_USAGE_SAMPLED_BIT)
-	{
-		image_info.imageLayout = sampled_layout;
-
-		get_info.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-		get_info.data.pSampledImage = &image_info;
-
-		v.sampled = device->managers.descriptor_buffer.alloc_sampled_image();
-		device->get_device_table().vkGetDescriptorEXT(
-				device->get_device(), &get_info,
-				device->get_device_features().descriptor_buffer_properties.sampledImageDescriptorSize,
-				v.sampled.ptr);
-	}
-
-	if (specific_usage & VK_IMAGE_USAGE_STORAGE_BIT)
-	{
-		image_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-
-		get_info.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		get_info.data.pStorageImage = &image_info;
-
-		v.storage = device->managers.descriptor_buffer.alloc_storage_image();
-		device->get_device_table().vkGetDescriptorEXT(
-				device->get_device(), &get_info,
-				device->get_device_features().descriptor_buffer_properties.storageImageDescriptorSize,
-				v.storage.ptr);
-	}
-}
-
-void ImageView::rebuild_cached_descriptor_payloads(VkImageLayout sampled_layout)
-{
-	if (!device->get_device_features().supports_descriptor_buffer)
-		return;
-
-	rebuild_cached_descriptor_payloads(view, sampled_layout, usage);
-	rebuild_cached_descriptor_payloads(depth_view, sampled_layout, usage);
-	rebuild_cached_descriptor_payloads(stencil_view, sampled_layout, usage);
-	rebuild_cached_descriptor_payloads(unorm_view, sampled_layout, info.image->get_create_info().usage);
-	rebuild_cached_descriptor_payloads(srgb_view, sampled_layout, usage & ~VK_IMAGE_USAGE_STORAGE_BIT);
-	for (auto &l : mip_views)
-		rebuild_cached_descriptor_payloads(l, sampled_layout, usage & ~VK_IMAGE_USAGE_SAMPLED_BIT);
-}
-
-Image::Image(Device *device_, VkImage image_, VkImageView default_view, const DeviceAllocation &alloc_,
+Image::Image(Device *device_, VkImage image_, const CachedImageView &default_view, const DeviceAllocation &alloc_,
              const ImageCreateInfo &create_info_, VkImageViewType view_type)
     : Cookie(device_)
     , device(device_)
@@ -208,7 +125,7 @@ Image::Image(Device *device_, VkImage image_, VkImageView default_view, const De
     , alloc(alloc_)
     , create_info(create_info_)
 {
-	if (default_view != VK_NULL_HANDLE)
+	if (view_type != VK_IMAGE_VIEW_TYPE_MAX_ENUM)
 	{
 		ImageViewCreateInfo info;
 		info.image = this;
@@ -218,16 +135,7 @@ Image::Image(Device *device_, VkImage image_, VkImageView default_view, const De
 		info.levels = create_info.levels;
 		info.base_layer = 0;
 		info.layers = create_info.layers;
-
-		VkImageUsageFlags usage = create_info.usage;
-		VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
-		device->get_format_properties(create_info.format, &props3);
-		if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) == 0)
-			usage &= ~VK_IMAGE_USAGE_SAMPLED_BIT;
-		if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) == 0)
-			usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
-
-		view = ImageViewHandle(device->handle_pool.image_views.allocate(device, default_view, info, usage));
+		view = ImageViewHandle(device->handle_pool.image_views.allocate(device, default_view, info, create_info.usage));
 	}
 }
 

@@ -66,8 +66,8 @@ void VolumetricDiffuseLightManager::on_device_created(const Vulkan::DeviceCreate
 	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
 	info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+	info.layout = Vulkan::ImageLayout::General;
 	sky_light = device.create_image(info);
-	sky_light->set_layout(Vulkan::Layout::General);
 	device.set_name(*sky_light, "sky-light");
 
 	Vulkan::ImageViewCreateInfo view = {};
@@ -314,6 +314,9 @@ static VolumetricDiffuseLight::GBuffer allocate_gbuffer(Vulkan::Device &device, 
 	gbuffer_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	gbuffer_info.flags = compute ? VK_IMAGE_CREATE_EXTENDED_USAGE_BIT : 0;
 	gbuffer_info.misc = Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
+	if (compute)
+		gbuffer_info.layout = Vulkan::ImageLayout::General;
+
 	allocated_gbuffer.albedo = device.create_image(gbuffer_info);
 	gbuffer_info.flags = 0;
 	gbuffer_info.misc = 0;
@@ -337,15 +340,6 @@ static VolumetricDiffuseLight::GBuffer allocate_gbuffer(Vulkan::Device &device, 
 	device.set_name(*allocated_gbuffer.normal, "probe-normal");
 	device.set_name(*allocated_gbuffer.pbr, "probe-pbr");
 	device.set_name(*allocated_gbuffer.depth, "probe-depth");
-
-	if (compute)
-	{
-		allocated_gbuffer.emissive->set_layout(Vulkan::Layout::General);
-		allocated_gbuffer.depth->set_layout(Vulkan::Layout::General);
-		allocated_gbuffer.albedo->set_layout(Vulkan::Layout::General);
-		allocated_gbuffer.normal->set_layout(Vulkan::Layout::General);
-		allocated_gbuffer.pbr->set_layout(Vulkan::Layout::General);
-	}
 
 	return allocated_gbuffer;
 }
@@ -573,13 +567,12 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 			auto info = Vulkan::ImageCreateInfo::immutable_3d_image(6 * res.x, res.y, res.z, VK_FORMAT_R16G16B16A16_SFLOAT);
 			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 			info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+			info.layout = Vulkan::ImageLayout::General;
 
 			auto image = device.create_image(info);
 			auto prev_image = device.create_image(info);
 			device.set_name(*image, "probe-light-1");
 			device.set_name(*prev_image, "probe-light-2");
-			image->set_layout(Vulkan::Layout::General);
-			prev_image->set_layout(Vulkan::Layout::General);
 
 			Util::SmallVector<Vulkan::ImageHandle> layer_accums(NumProbeLayers);
 			{
@@ -588,7 +581,6 @@ TaskGroupHandle VolumetricDiffuseLightManager::create_probe_gbuffer(TaskComposer
 				{
 					layer = device.create_image(info);
 					device.set_name(*layer, (std::string("probe-accum-") + std::to_string(counter++)).c_str());
-					layer->set_layout(Vulkan::Layout::General);
 				}
 			}
 

@@ -2666,6 +2666,8 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device_, unsigned attachm
 			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
 		if (att.queues & RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
 			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
+		if (att.is_storage_image())
+			info.layout = Vulkan::ImageLayout::General;
 
 		physical_image_attachments[attachment] = device_.create_image(info, nullptr);
 		physical_image_attachments[attachment]->set_surface_transform(att.transform);
@@ -2674,8 +2676,6 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device_, unsigned attachm
 		// There is no reason to try enabling compression.
 		if (!physical_image_attachments[attachment])
 			LOGE("Failed to create render graph image!\n");
-		if (att.is_storage_image())
-			physical_image_attachments[attachment]->set_layout(Vulkan::Layout::General);
 		device_.set_name(*physical_image_attachments[attachment], att.name.c_str());
 		physical_events[attachment] = {};
 	}

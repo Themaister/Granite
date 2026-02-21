@@ -318,8 +318,20 @@ struct CachedDescriptorPayload
 {
 	uint8_t *ptr;
 	VkDescriptorType type;
-
+	uint32_t heap_index;
 	explicit operator bool() const { return ptr != nullptr; }
+};
+
+struct CachedImageView
+{
+	VkImageView view; // For legacy and descriptor buffer.
+
+	// For DB, this is used all the time. For heap, only occasionally as needed,
+	// usually for bindless.
+	CachedDescriptorPayload sampled; // SHADER_READ_ONLY
+	CachedDescriptorPayload input_attachment; // INPUT_ATTACHMENT + read only (if applicable)
+	CachedDescriptorPayload input_attachment_feedback; // INPUT_ATTACHMENT + GENERAL (if applicable)
+	CachedDescriptorPayload storage; // For storage image, always GENERAL layout.
 };
 
 class DescriptorBufferAllocator : private Util::SliceAllocator
@@ -347,6 +359,9 @@ public:
 	void free(const DescriptorBufferAllocation *alloc, size_t count);
 
 	uint32_t get_descriptor_size_for_type(VkDescriptorType type) const;
+
+	bool create_image_view(const VkImageViewCreateInfo &info, VkImageUsageFlags usage, CachedImageView &view);
+	void free_image_view(const CachedImageView &view);
 
 #define IMPL_TYPE(type, desc_type) \
 	inline void copy_##type(uint8_t *dst, const uint8_t *src) const { type##_copy.func(dst, src, type##_copy.size); } \

@@ -124,7 +124,7 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 
 	VkPipelineStageFlags2 src_color, src_depth, dst_color, dst_depth;
 	VkAccessFlags2 src_access_color, src_access_depth, dst_access_color, dst_access_depth;
-	VkImageLayout old_color, new_color, old_depth, new_depth;
+	VkImageLayout old_layout, new_layout;
 
 	bool compute = (gbuffer.emissive->get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0;
 
@@ -169,19 +169,11 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 			                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 		}
 
-		old_color = VK_IMAGE_LAYOUT_UNDEFINED;
-		old_depth = VK_IMAGE_LAYOUT_UNDEFINED;
-
+		old_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		if (compute)
-		{
-			new_color = VK_IMAGE_LAYOUT_GENERAL;
-			new_depth = VK_IMAGE_LAYOUT_GENERAL;
-		}
+			new_layout = VK_IMAGE_LAYOUT_GENERAL;
 		else
-		{
-			new_color = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			new_depth = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		}
+			new_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 	}
 	else
 	{
@@ -195,20 +187,18 @@ static void transition_gbuffer(Vulkan::CommandBuffer &cmd,
 		dst_access_color = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 		dst_access_depth = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
-		old_color = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		old_depth = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		new_color = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		new_depth = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		old_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+		new_layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 	}
 
 	for (auto *image : colors)
 	{
-		cmd.image_barrier(*image, old_color, new_color,
+		cmd.image_barrier(*image, old_layout, new_layout,
 		                  src_color, src_access_color,
 		                  dst_color, dst_access_color);
 	}
 
-	cmd.image_barrier(*gbuffer.depth, old_depth, new_depth,
+	cmd.image_barrier(*gbuffer.depth, old_layout, new_layout,
 	                  src_depth, src_access_depth,
 	                  dst_depth, dst_access_depth);
 }

@@ -522,7 +522,7 @@ void BindlessDescriptorPool::push_texture(const ImageView &view)
 	if (!desc_pool)
 		push_texture(view.get_float_view().sampled.ptr);
 	else
-		push_texture(view.get_float_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+		push_texture(view.get_float_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL));
 }
 
 void BindlessDescriptorPool::push_texture_unorm(const ImageView &view)
@@ -530,7 +530,7 @@ void BindlessDescriptorPool::push_texture_unorm(const ImageView &view)
 	if (!desc_pool)
 		push_texture(view.get_unorm_view().sampled.ptr);
 	else
-		push_texture(view.get_unorm_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+		push_texture(view.get_unorm_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL));
 }
 
 void BindlessDescriptorPool::push_texture_srgb(const ImageView &view)
@@ -538,7 +538,7 @@ void BindlessDescriptorPool::push_texture_srgb(const ImageView &view)
 	if (!desc_pool)
 		push_texture(view.get_srgb_view().sampled.ptr);
 	else
-		push_texture(view.get_srgb_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+		push_texture(view.get_srgb_view().view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL));
 }
 
 void BindlessDescriptorPool::push_texture(VkImageView view, VkImageLayout layout)

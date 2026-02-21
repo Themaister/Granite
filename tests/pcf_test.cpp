@@ -59,7 +59,7 @@ struct PCFTest : Granite::Application, Granite::EventHandler
 		RenderPassInfo depth_rp;
 		depth_rp.depth_stencil = &depth_buffer->get_view();
 		depth_rp.op_flags = RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
-		cmd->image_barrier(*depth_buffer, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		cmd->image_barrier(*depth_buffer, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
 		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
@@ -68,8 +68,8 @@ struct PCFTest : Granite::Application, Granite::EventHandler
 		                                              "assets://shaders/fill_depth_checkerboard.frag",
 		                                              true, true, VK_COMPARE_OP_ALWAYS);
 		cmd->end_render_pass();
-		cmd->image_barrier(*depth_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		cmd->image_barrier(*depth_buffer, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+		                   VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 

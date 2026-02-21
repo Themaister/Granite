@@ -1532,10 +1532,10 @@ void VideoDecoder::Impl::process_video_frame_in_task_vulkan(DecodedImage &img, A
 	auto cmd = device->request_command_buffer(conversion_queue);
 
 	cmd->image_barrier(*wrapped_image,
-	                   vk_frame->layout[0], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	                   vk_frame->layout[0], VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
 	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-	vk_frame->layout[0] = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	vk_frame->layout[0] = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 
 	const Vulkan::ImageView *views[] = { planes[0].get(), planes[1].get(), planes[2].get() };
 	dispatch_conversion(*cmd, img, views);
@@ -1585,13 +1585,13 @@ void VideoDecoder::Impl::dispatch_conversion(Vulkan::CommandBuffer &cmd, Decoded
 			cmd.barrier_prepare_generate_mipmap(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 			                                    VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, true);
 			cmd.generate_mipmap(*img.rgb_image);
-			cmd.image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			cmd.image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 			                  VK_PIPELINE_STAGE_2_BLIT_BIT, 0,
 			                  VK_PIPELINE_STAGE_NONE, 0);
 		}
 		else
 		{
-			cmd.image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			cmd.image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 			                  VK_PIPELINE_STAGE_NONE, 0);
 		}
@@ -1611,7 +1611,7 @@ void VideoDecoder::Impl::dispatch_conversion(Vulkan::CommandBuffer &cmd, Decoded
 		cmd.clear_image(*img.rgb_image, color);
 		cmd.image_barrier(*img.rgb_image,
 		                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                  VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 		                  VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		                  VK_PIPELINE_STAGE_NONE, 0);
 	}
@@ -1675,7 +1675,7 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 		for (unsigned i = 0; i < num_planes; i++)
 		{
 			cmd->image_barrier(*img.planes[i],
-			                   VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                   VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 			                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 			                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 		}
@@ -1707,7 +1707,7 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 		for (unsigned i = 0; i < num_planes; i++)
 		{
 			cmd->image_barrier(*img.planes[i],
-			                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 			                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			                   VK_PIPELINE_STAGE_NONE, 0);
 		}

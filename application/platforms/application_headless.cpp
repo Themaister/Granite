@@ -355,7 +355,7 @@ public:
 				transfer_info.old_queue = wsi.get_current_present_queue_type();
 				transfer_info.new_queue = CommandBuffer::Type::AsyncCompute;
 				transfer_info.old_image_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-				transfer_info.new_image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				transfer_info.new_image_layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 				transfer_info.dst_pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 				transfer_info.dst_access = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 				auto cmd = request_command_buffer_with_ownership_transfer(device, *swapchain_images[frame_index],

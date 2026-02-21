@@ -339,6 +339,21 @@ void CommandBuffer::barrier(VkPipelineStageFlags2 src_stages, VkAccessFlags2 src
 	barrier(dep);
 }
 
+static inline bool is_legacy_layout(VkImageLayout layout)
+{
+	switch (layout)
+	{
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+		return true;
+
+	default:
+		return false;
+	}
+}
+
 void CommandBuffer::barrier(const VkDependencyInfo &dep)
 {
 	VK_ASSERT(!actual_render_pass);
@@ -410,11 +425,10 @@ void CommandBuffer::barrier(const VkDependencyInfo &dep)
 	if (stages & VK_ACCESS_SHADER_WRITE_BIT)
 		LOGW("Using deprecated SHADER_WRITE access.\n");
 
-	// We cannot convert these automatically so easily to sync1 without more context.
 	for (uint32_t i = 0; i < dep.imageMemoryBarrierCount; i++)
 	{
-		VK_ASSERT(dep.pImageMemoryBarriers[i].oldLayout != VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL &&
-		          dep.pImageMemoryBarriers[i].newLayout != VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+		VK_ASSERT(!is_legacy_layout(dep.pImageMemoryBarriers[i].oldLayout) &&
+		          !is_legacy_layout(dep.pImageMemoryBarriers[i].newLayout));
 	}
 #endif
 
@@ -576,6 +590,7 @@ void CommandBuffer::image_barrier(const Image &image,
 	VK_ASSERT(!actual_render_pass);
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(image.get_create_info().domain != ImageDomain::Transient);
+	VK_ASSERT(!is_legacy_layout(old_layout) && !is_legacy_layout(new_layout));
 
 	VkImageMemoryBarrier2 b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 	b.srcAccessMask = src_access;
@@ -2486,7 +2501,7 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView 
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_SAMPLED_BIT);
 	auto &fp = view.get_float_view();
 	auto &integer = view.get_integer_view();
-	set_texture(set, binding, fp.view, integer.view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+	set_texture(set, binding, fp.view, integer.view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL),
 	            fp.sampled.ptr, integer.sampled.ptr,
 	            view.get_cookie());
 }
@@ -2504,7 +2519,7 @@ void CommandBuffer::set_unorm_texture(unsigned set, unsigned binding, const Imag
 	auto &unorm_view = view.get_unorm_view();
 	VK_ASSERT(unorm_view.view != VK_NULL_HANDLE);
 	set_texture(set, binding,
-				unorm_view.view, unorm_view.view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+				unorm_view.view, unorm_view.view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL),
 				unorm_view.sampled.ptr, unorm_view.sampled.ptr,
 				view.get_cookie() | COOKIE_BIT_UNORM);
 }
@@ -2515,7 +2530,7 @@ void CommandBuffer::set_srgb_texture(unsigned set, unsigned binding, const Image
 	auto &srgb_view = view.get_srgb_view();
 	VK_ASSERT(srgb_view.view != VK_NULL_HANDLE);
 	set_texture(set, binding,
-	            srgb_view.view, srgb_view.view, view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+	            srgb_view.view, srgb_view.view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL),
 	            srgb_view.sampled.ptr, srgb_view.sampled.ptr,
 	            view.get_cookie() | COOKIE_BIT_SRGB);
 }

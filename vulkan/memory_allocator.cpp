@@ -861,18 +861,24 @@ bool DescriptorBufferAllocator::init(Vulkan::Device *device_)
 				device->get_device_features().descriptor_buffer_properties.robustStorageBufferDescriptorSize);
 	}
 
+	// Allocate this early so we're guaranteed to fit in smol BAR as well.
+	BufferCreateInfo info = {};
+
 	// Aim for a global heap of about 1M descriptors. Should be enough to avoid exhaustion.
 	max_range = std::min<VkDeviceSize>(max_range, 1024ull * 1024ull * max_descriptor_size);
 
 	auto max_sub_blocks = max_range / sub_block_size;
 	auto max_sub_blocks_log2 = Util::floor_log2(max_sub_blocks);
-
+	info.size = VkDeviceSize(sub_block_size) << max_sub_blocks_log2;
 	Util::SliceAllocator::init(sub_block_size, max_sub_blocks_log2, &backing_va);
 
-	// Allocate this early so we're guaranteed to fit in smol BAR as well.
-	BufferCreateInfo info = {};
+	if (heap)
+	{
+		// Only allow dynamic allocation from lower half of the heap. Upper range is slab allocated.
+		max_sub_blocks /= 2;
+		max_sub_blocks_log2--;
+	}
 
-	info.size = VkDeviceSize(sub_block_size) << max_sub_blocks_log2;
 	info.domain = BufferDomain::LinkedDeviceHost;
 
 	if (heap)
@@ -884,8 +890,6 @@ bool DescriptorBufferAllocator::init(Vulkan::Device *device_)
 		info.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
 					 VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
 	}
-
-	max_size_resource = info.size;
 
 	auto buf = device->create_buffer(info);
 	if (!buf)
@@ -917,6 +921,21 @@ bool DescriptorBufferAllocator::init(Vulkan::Device *device_)
 		// Ensure reserved offset is valid.
 		resource_heap.reserved_offset &= ~VkDeviceSize(alignment - 1);
 
+		// Split the resource heap in two.
+		// Lower half is POT sized and allows for dynamic allocation.
+		// This is used to spill out UBOs and SSBOs which must live as descriptors.
+		// Also used to allocate bindless images for GPU perf.
+		heap_resource_index_stride = align(heap_props.imageDescriptorSize, heap_props.imageDescriptorAlignment);
+		auto heap_dynamic_allocator_size = VkDeviceSize(sub_block_size) << max_sub_blocks_log2;
+		auto num_application_resources =
+			(resource_heap.reserved_offset - heap_dynamic_allocator_size) / heap_resource_index_stride;
+		auto resource_slab_offset = heap_dynamic_allocator_size / heap_resource_index_stride;
+
+		heap_resource_indices.reserve(num_application_resources);
+		for (uint32_t i = num_application_resources; i; i--)
+			heap_resource_indices.push_back(resource_slab_offset + i - 1);
+
+		// Allocate the sampler heap. We only slab allocate out of this since it's so small.
 		auto sampler_size = align(heap_props.samplerDescriptorSize, heap_props.samplerDescriptorAlignment);
 		info.size = std::min<VkDeviceSize>(heap_props.maxSamplerHeapSize, 4096 * sampler_size);
 
@@ -1132,6 +1151,23 @@ void DescriptorBufferAllocator::destroy_sampler(VkSampler sampler)
 	}
 }
 
+uint32_t DescriptorBufferAllocator::allocate_single_resource_heap_entry()
+{
+	std::lock_guard<std::mutex> holder{lock};
+	if (heap_resource_indices.empty())
+		return UINT32_MAX;
+
+	auto ret = heap_resource_indices.back();
+	heap_resource_indices.pop_back();
+	return ret;
+}
+
+void DescriptorBufferAllocator::free_single_resource_heap_entry(uint32_t index)
+{
+	std::lock_guard<std::mutex> holder{lock};
+	heap_resource_indices.push_back(index);
+}
+
 DescriptorBufferAllocator::~DescriptorBufferAllocator()
 {
 	// Call teardown before destroying device.
@@ -1207,8 +1243,13 @@ uint32_t DescriptorBufferAllocator::get_descriptor_size_for_type(VkDescriptorTyp
 
 void DescriptorBufferAllocator::free_cached_descriptors(const CachedDescriptorPayload *payloads, size_t count)
 {
+	bool heap = device->get_device_features().descriptor_heap_features.descriptorHeap == VK_TRUE;
+
 	for (size_t i = 0; i < count; i++)
 	{
+		if (!payloads[i].ptr)
+			continue;
+
 		switch (payloads[i].type)
 		{
 		case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
@@ -1241,6 +1282,99 @@ void DescriptorBufferAllocator::free_cached_descriptors(const CachedDescriptorPa
 		default:
 			break;
 		}
+
+		if (heap)
+			free_single_resource_heap_entry(payloads[i].heap_index);
 	}
+}
+
+bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &info, VkImageUsageFlags usage,
+                                                  ImageLayout layout, CachedImageView &view)
+{
+	bool heap = device->get_device_features().descriptor_heap_features.descriptorHeap == VK_TRUE;
+
+	static constexpr VkImageUsageFlags force_view_flags =
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+			VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR |
+			VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR |
+			VK_IMAGE_USAGE_VIDEO_ENCODE_DST_BIT_KHR |
+			VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
+			VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
+			VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR;
+
+	VkImageViewUsageCreateInfo view_usage_create_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO };
+	auto tmpinfo = info;
+	view_usage_create_info.usage = usage;
+	view_usage_create_info.pNext = tmpinfo.pNext;
+	tmpinfo.pNext = &view_usage_create_info;
+	if (heap)
+		view_usage_create_info.usage &= force_view_flags;
+
+	bool need_image_view_object = !heap || (usage & force_view_flags) != 0;
+	auto &table = device->get_device_table();
+
+	if (need_image_view_object &&
+	    table.vkCreateImageView(device->get_device(), &tmpinfo, nullptr, &view.view) != VK_SUCCESS)
+		return false;
+
+	if (heap)
+	{
+		return false;
+	}
+	else if (need_image_view_object)
+	{
+		VkDescriptorImageInfo image_info = {};
+		image_info.imageView = view.view;
+
+		VkDescriptorGetInfoEXT get_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT };
+		get_info.data.pSampledImage = &image_info;
+
+		auto &props = device->get_device_features().descriptor_buffer_properties;
+
+		if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+		{
+			get_info.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+			image_info.imageLayout = layout == ImageLayout::Optimal ? VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
+			view.sampled.ptr = sampled_image_copy.slab.allocate();
+			table.vkGetDescriptorEXT(device->get_device(), &get_info, props.sampledImageDescriptorSize, view.sampled.ptr);
+		}
+
+		if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
+		{
+			get_info.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+			image_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+			view.storage.ptr = storage_image_copy.slab.allocate();
+			table.vkGetDescriptorEXT(device->get_device(), &get_info, props.storageImageDescriptorSize, view.storage.ptr);
+		}
+
+		if (usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)
+		{
+			get_info.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+
+			image_info.imageLayout = layout == ImageLayout::Optimal ? VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
+			view.input_attachment.ptr = input_attachment_copy.slab.allocate();
+			table.vkGetDescriptorEXT(device->get_device(), &get_info,
+			                         props.inputAttachmentDescriptorSize, view.input_attachment.ptr);
+
+			image_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+			view.input_attachment_feedback.ptr = input_attachment_copy.slab.allocate();
+			table.vkGetDescriptorEXT(device->get_device(), &get_info,
+			                         props.inputAttachmentDescriptorSize, view.input_attachment_feedback.ptr);
+		}
+	}
+
+	return true;
+}
+
+void DescriptorBufferAllocator::free_image_view(const CachedImageView &view)
+{
+	if (view.view)
+		device->get_device_table().vkDestroyImageView(device->get_device(), view.view, nullptr);
+
+	free_cached_descriptors(&view.sampled, 1);
+	free_cached_descriptors(&view.storage, 1);
+	free_cached_descriptors(&view.input_attachment, 1);
+	free_cached_descriptors(&view.input_attachment_feedback, 1);
 }
 }

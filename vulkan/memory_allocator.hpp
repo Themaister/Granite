@@ -42,6 +42,8 @@ namespace Vulkan
 {
 class Device;
 
+enum class ImageLayout;
+
 enum class MemoryClass : uint8_t
 {
 	Small = 0,
@@ -360,7 +362,8 @@ public:
 
 	uint32_t get_descriptor_size_for_type(VkDescriptorType type) const;
 
-	bool create_image_view(const VkImageViewCreateInfo &info, VkImageUsageFlags usage, CachedImageView &view);
+	bool create_image_view(const VkImageViewCreateInfo &info, VkImageUsageFlags usage,
+	                       ImageLayout layout, CachedImageView &view);
 	void free_image_view(const CachedImageView &view);
 
 #define IMPL_TYPE(type, desc_type) \
@@ -409,7 +412,12 @@ private:
 
 	VkDeviceSize total_size = 0;
 	VkDeviceSize high_water_mark = 0;
-	VkDeviceSize max_size_resource = 0;
+	std::vector<uint32_t> heap_resource_indices;
 	std::vector<uint32_t> heap_sampler_indices;
+
+	uint32_t heap_resource_index_stride = 0;
+	// For descriptor heap.
+	uint32_t allocate_single_resource_heap_entry();
+	void free_single_resource_heap_entry(uint32_t index);
 };
 }

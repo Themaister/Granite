@@ -2324,7 +2324,7 @@ void Device::init_swapchain(const std::vector<VkImage> &swapchain_images, unsign
 		view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
 
 		CachedImageView view = {};
-		if (table->vkCreateImageView(device, &view_info, nullptr, &view.view) != VK_SUCCESS)
+		if (!managers.descriptor_buffer.create_image_view(view_info, usage, ImageLayout::Optimal, view))
 			LOGE("Failed to create view for backbuffer.");
 
 		auto backbuffer = ImageHandle(handle_pool.images.allocate(this, image, view, DeviceAllocation{}, info, VK_IMAGE_VIEW_TYPE_2D));
@@ -3518,13 +3518,13 @@ public:
 		if (!setup_astc_decode_mode_info(default_view_info, astc_decode_mode_info))
 			return false;
 
-		if (!create_alt_views(*view_info, view_usage))
+		if (!create_alt_views(*view_info, create_info.layout, view_usage))
 			return false;
 
-		if (!create_render_target_views(*view_info, view_usage))
+		if (!create_render_target_views(*view_info, create_info.layout, view_usage))
 			return false;
 
-		if (!create_default_view(*view_info, view_usage))
+		if (!create_default_view(*view_info, create_info.layout, view_usage))
 			return false;
 
 		if (create_unorm_srgb_views)
@@ -3536,26 +3536,26 @@ public:
 				view_usage |= VK_IMAGE_USAGE_STORAGE_BIT;
 
 			info.format = view_formats[0];
-			if (!device->managers.descriptor_buffer.create_image_view(info, view_usage, unorm_view))
+			if (!device->managers.descriptor_buffer.create_image_view(info, view_usage, create_info.layout, unorm_view))
 				return false;
 
 			view_usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
 
 			info.format = view_formats[1];
-			if (!device->managers.descriptor_buffer.create_image_view(info, view_usage, srgb_view))
+			if (!device->managers.descriptor_buffer.create_image_view(info, view_usage, create_info.layout, srgb_view))
 				return false;
 
 			view_usage = old_usage;
 		}
 
-		if (create_mip_level_views && !create_mip_views(*view_info, view_usage))
+		if (create_mip_level_views && !create_mip_views(*view_info, create_info.layout, view_usage))
 			return false;
 
 		return true;
 	}
 
 private:
-	bool create_render_target_views(const VkImageViewCreateInfo &info, VkImageUsageFlags view_usage)
+	bool create_render_target_views(const VkImageViewCreateInfo &info, ImageLayout layout, VkImageUsageFlags view_usage)
 	{
 		if (info.viewType == VK_IMAGE_VIEW_TYPE_3D)
 			return true;
@@ -3582,7 +3582,7 @@ private:
 				view_info.subresourceRange.baseArrayLayer = layer + info.subresourceRange.baseArrayLayer;
 
 				CachedImageView rt_view = {};
-				if (!device->managers.descriptor_buffer.create_image_view(view_info, view_usage, rt_view))
+				if (!device->managers.descriptor_buffer.create_image_view(view_info, view_usage, layout, rt_view))
 					return false;
 				rt_views.push_back(rt_view);
 			}
@@ -3591,7 +3591,7 @@ private:
 		return true;
 	}
 
-	bool create_mip_views(const VkImageViewCreateInfo &info, VkImageUsageFlags view_usage)
+	bool create_mip_views(const VkImageViewCreateInfo &info, ImageLayout layout, VkImageUsageFlags view_usage)
 	{
 		VK_ASSERT(info.subresourceRange.levelCount != VK_REMAINING_MIP_LEVELS);
 		if (info.subresourceRange.levelCount <= 1)
@@ -3607,7 +3607,7 @@ private:
 			view_info.subresourceRange.levelCount = 1;
 
 			CachedImageView mip_view = {};
-			if (!device->managers.descriptor_buffer.create_image_view(view_info, view_usage, mip_view))
+			if (!device->managers.descriptor_buffer.create_image_view(view_info, view_usage, layout, mip_view))
 				return false;
 			mip_views.push_back(mip_view);
 		}
@@ -3615,7 +3615,7 @@ private:
 		return true;
 	}
 
-	bool create_alt_views(const VkImageViewCreateInfo &info, VkImageUsageFlags view_usage)
+	bool create_alt_views(const VkImageViewCreateInfo &info, ImageLayout layout, VkImageUsageFlags view_usage)
 	{
 		if (info.viewType == VK_IMAGE_VIEW_TYPE_CUBE ||
 		    info.viewType == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY ||
@@ -3635,21 +3635,21 @@ private:
 
 			// We need this to be able to sample the texture, or otherwise use it as a non-pure DS attachment.
 			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-			if (!device->managers.descriptor_buffer.create_image_view(view_info, view_usage, depth_view))
+			if (!device->managers.descriptor_buffer.create_image_view(view_info, view_usage, layout, depth_view))
 				return false;
 
 			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
-			if (!device->managers.descriptor_buffer.create_image_view(view_info, view_usage, stencil_view))
+			if (!device->managers.descriptor_buffer.create_image_view(view_info, view_usage, layout, stencil_view))
 				return false;
 		}
 
 		return true;
 	}
 
-	bool create_default_view(const VkImageViewCreateInfo &info, VkImageUsageFlags usage)
+	bool create_default_view(const VkImageViewCreateInfo &info, ImageLayout layout, VkImageUsageFlags usage)
 	{
 		// Create the normal image view. This one contains every subresource.
-		return device->managers.descriptor_buffer.create_image_view(info, usage, image_view);
+		return device->managers.descriptor_buffer.create_image_view(info, usage, layout, image_view);
 	}
 
 	void cleanup()

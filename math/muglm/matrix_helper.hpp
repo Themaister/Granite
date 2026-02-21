@@ -38,6 +38,9 @@ mat2 inverse(const mat2 &m);
 mat3 inverse(const mat3 &m);
 mat4 inverse(const mat4 &m);
 
+float determinant(const mat2 &m);
+float determinant(const mat3 &m);
+
 constexpr float InfiniteFarPlane = std::numeric_limits<float>::max();
 mat4 perspective(float fovy, float aspect, float near, float far);
 mat4 frustum(float left, float right, float bottom, float top, float near, float far);

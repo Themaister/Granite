@@ -100,9 +100,14 @@ mat_affine scale_affine(const vec3 &v)
 			vec4(0.0f, 0.0f, v.z, 0.0f));
 }
 
+float determinant(const mat2 &m)
+{
+	return m[0][0] * m[1][1] - m[1][0] * m[0][1];
+}
+
 mat2 inverse(const mat2 &m)
 {
-	float OneOverDeterminant = 1.0f / (m[0][0] * m[1][1] - m[1][0] * m[0][1]);
+	float OneOverDeterminant = 1.0f / determinant(m);
 
 	mat2 Inverse(
 			vec2(m[1][1] * OneOverDeterminant,
@@ -113,12 +118,16 @@ mat2 inverse(const mat2 &m)
 	return Inverse;
 }
 
+float determinant(const mat3 &m)
+{
+	return m[0][0] * (m[1][1] * m[2][2] - m[2][1] * m[1][2])
+	       - m[1][0] * (m[0][1] * m[2][2] - m[2][1] * m[0][2])
+	       + m[2][0] * (m[0][1] * m[1][2] - m[1][1] * m[0][2]);
+}
+
 mat3 inverse(const mat3 &m)
 {
-	float OneOverDeterminant = 1.0f / (
-			m[0][0] * (m[1][1] * m[2][2] - m[2][1] * m[1][2])
-			- m[1][0] * (m[0][1] * m[2][2] - m[2][1] * m[0][2])
-			+ m[2][0] * (m[0][1] * m[1][2] - m[1][1] * m[0][2]));
+	float OneOverDeterminant = 1.0f / determinant(m);
 
 	mat3 Inverse;
 	Inverse[0][0] = +(m[1][1] * m[2][2] - m[2][1] * m[1][2]) * OneOverDeterminant;

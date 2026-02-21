@@ -144,6 +144,7 @@ struct DeviceFeatures
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
 	// Fallback feature structs (Vulkan 1.3)
 	VkPhysicalDeviceSubgroupSizeControlFeatures subgroup_size_control_features = {};
+	VkPhysicalDeviceSynchronization2Features sync2_features = {};
 
 	VkDriverId driver_id = {};
 

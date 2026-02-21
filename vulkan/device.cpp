@@ -883,19 +883,6 @@ void Device::init_workarounds()
 	LOGW("Emulating events as pipeline barriers on Metal emulation.\n");
 	LOGW("Disabling push descriptors on Metal emulation.\n");
 #else
-	bool sync2_workarounds = false;
-	const bool mesa_driver = ext.driver_id == VK_DRIVER_ID_MESA_RADV ||
-	                         ext.driver_id == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA ||
-	                         ext.driver_id == VK_DRIVER_ID_MESA_TURNIP;
-	const bool amd_driver = ext.driver_id == VK_DRIVER_ID_AMD_OPEN_SOURCE ||
-	                        ext.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY;
-
-	// AMD_PROPRIETARY was likely fixed before this, but fix was observed in this version (23.10.2).
-	if (mesa_driver && gpu_props.driverVersion < VK_MAKE_VERSION(23, 1, 0))
-		sync2_workarounds = true;
-	else if (amd_driver && gpu_props.driverVersion < VK_MAKE_VERSION(2, 0, 283))
-		sync2_workarounds = true;
-
 	if (gpu_props.vendorID == VENDOR_ID_ARM)
 	{
 		LOGW("Workaround applied: Emulating events as pipeline barriers.\n");
@@ -916,17 +903,6 @@ void Device::init_workarounds()
 		// Seems broken on this driver too. Compilation stutter galore ...
 		LOGW("Disabling pipeline cache control.\n");
 		workarounds.broken_pipeline_cache_control = true;
-	}
-
-	if (sync2_workarounds)
-	{
-		LOGW("Enabling workaround for sync2 access mask bugs.\n");
-		// https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/21271
-		// Found bug around 23.0. Should be fixed by 23.1.
-		// Also observed on AMD windows. Probably fails on open source too given it shares PAL ...
-		workarounds.force_sync1_access = true;
-		// Avoids having to add workaround path to events as well, just fallback to plain barriers.
-		workarounds.emulate_event_as_pipeline_barrier = true;
 	}
 
 	if (ext.driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
@@ -1768,80 +1744,7 @@ void Device::emit_queue_signals(Helper::BatchComposer &composer,
 
 VkResult Device::queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo2 *submits, VkFence fence)
 {
-	if (ext.vk13_features.synchronization2)
-	{
-		return table->vkQueueSubmit2(queue, count, submits, fence);
-	}
-	else
-	{
-		for (uint32_t submit_index = 0; submit_index < count; submit_index++)
-		{
-			VkTimelineSemaphoreSubmitInfo timeline = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO };
-			const auto &submit = submits[submit_index];
-			VkSubmitInfo sub = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-			bool need_timeline = false;
-
-			Util::SmallVector<VkPipelineStageFlags> wait_stages;
-			Util::SmallVector<uint64_t> signal_values;
-			Util::SmallVector<uint64_t> wait_values;
-			Util::SmallVector<VkSemaphore> signals;
-			Util::SmallVector<VkCommandBuffer> cmd;
-			Util::SmallVector<VkSemaphore> waits;
-
-			for (uint32_t i = 0; i < submit.commandBufferInfoCount; i++)
-				cmd.push_back(submit.pCommandBufferInfos[i].commandBuffer);
-
-			for (uint32_t i = 0; i < submit.waitSemaphoreInfoCount; i++)
-			{
-				waits.push_back(submit.pWaitSemaphoreInfos[i].semaphore);
-				wait_stages.push_back(convert_vk_dst_stage2(submit.pWaitSemaphoreInfos[i].stageMask));
-				wait_values.push_back(submit.pWaitSemaphoreInfos[i].value);
-				if (wait_values.back() != 0)
-					need_timeline = true;
-			}
-
-			for (uint32_t i = 0; i < submit.signalSemaphoreInfoCount; i++)
-			{
-				signals.push_back(submit.pSignalSemaphoreInfos[i].semaphore);
-				signal_values.push_back(submit.pSignalSemaphoreInfos[i].value);
-				if (signal_values.back() != 0)
-					need_timeline = true;
-			}
-
-			sub.commandBufferCount = uint32_t(cmd.size());
-			sub.pCommandBuffers = cmd.data();
-			sub.signalSemaphoreCount = uint32_t(signals.size());
-			sub.pSignalSemaphores = signals.data();
-			sub.waitSemaphoreCount = uint32_t(waits.size());
-			sub.pWaitSemaphores = waits.data();
-			sub.pWaitDstStageMask = wait_stages.data();
-
-			sub.pNext = submit.pNext;
-			if (need_timeline)
-			{
-				timeline.pNext = sub.pNext;
-				sub.pNext = &timeline;
-
-				timeline.signalSemaphoreValueCount = uint32_t(signal_values.size());
-				timeline.pSignalSemaphoreValues = signal_values.data();
-				timeline.waitSemaphoreValueCount = uint32_t(wait_values.size());
-				timeline.pWaitSemaphoreValues = wait_values.data();
-			}
-
-			auto result = table->vkQueueSubmit(queue, 1, &sub, submit_index + 1 == count ? fence : VK_NULL_HANDLE);
-			if (result != VK_SUCCESS)
-				return result;
-		}
-
-		if (count == 0 && fence)
-		{
-			auto result = table->vkQueueSubmit(queue, 0, nullptr, fence);
-			if (result != VK_SUCCESS)
-				return result;
-		}
-
-		return VK_SUCCESS;
-	}
+	return table->vkQueueSubmit2(queue, count, submits, fence);
 }
 
 VkResult Device::submit_batches(Helper::BatchComposer &composer, VkQueue queue, VkFence fence, int profiling_iteration)

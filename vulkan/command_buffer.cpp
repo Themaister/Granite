@@ -339,71 +339,6 @@ void CommandBuffer::barrier(VkPipelineStageFlags2 src_stages, VkAccessFlags2 src
 	barrier(dep);
 }
 
-struct Sync1CompatData
-{
-	Util::SmallVector<VkMemoryBarrier> mem_barriers;
-	Util::SmallVector<VkBufferMemoryBarrier> buf_barriers;
-	Util::SmallVector<VkImageMemoryBarrier> img_barriers;
-	VkPipelineStageFlags src_stages = 0;
-	VkPipelineStageFlags dst_stages = 0;
-};
-
-static void convert_vk_dependency_info(const VkDependencyInfo &dep, Sync1CompatData &sync1)
-{
-	VkPipelineStageFlags2 src_stages = 0;
-	VkPipelineStageFlags2 dst_stages = 0;
-
-	for (uint32_t i = 0; i < dep.memoryBarrierCount; i++)
-	{
-		auto &mem = dep.pMemoryBarriers[i];
-		src_stages |= mem.srcStageMask;
-		dst_stages |= mem.dstStageMask;
-		VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
-		barrier.srcAccessMask = convert_vk_access_flags2(mem.srcAccessMask);
-		barrier.dstAccessMask = convert_vk_access_flags2(mem.dstAccessMask);
-		sync1.mem_barriers.push_back(barrier);
-	}
-
-	for (uint32_t i = 0; i < dep.bufferMemoryBarrierCount; i++)
-	{
-		auto &buf = dep.pBufferMemoryBarriers[i];
-		src_stages |= buf.srcStageMask;
-		dst_stages |= buf.dstStageMask;
-
-		VkBufferMemoryBarrier barrier = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
-		barrier.srcAccessMask = convert_vk_access_flags2(buf.srcAccessMask);
-		barrier.dstAccessMask = convert_vk_access_flags2(buf.dstAccessMask);
-		barrier.buffer = buf.buffer;
-		barrier.offset = buf.offset;
-		barrier.size = buf.size;
-		barrier.srcQueueFamilyIndex = buf.srcQueueFamilyIndex;
-		barrier.dstQueueFamilyIndex = buf.dstQueueFamilyIndex;
-		sync1.buf_barriers.push_back(barrier);
-	}
-
-	for (uint32_t i = 0; i < dep.imageMemoryBarrierCount; i++)
-	{
-		auto &img = dep.pImageMemoryBarriers[i];
-		VK_ASSERT(img.newLayout != VK_IMAGE_LAYOUT_UNDEFINED);
-		src_stages |= img.srcStageMask;
-		dst_stages |= img.dstStageMask;
-
-		VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-		barrier.srcAccessMask = convert_vk_access_flags2(img.srcAccessMask);
-		barrier.dstAccessMask = convert_vk_access_flags2(img.dstAccessMask);
-		barrier.image = img.image;
-		barrier.subresourceRange = img.subresourceRange;
-		barrier.oldLayout = img.oldLayout;
-		barrier.newLayout = img.newLayout;
-		barrier.srcQueueFamilyIndex = img.srcQueueFamilyIndex;
-		barrier.dstQueueFamilyIndex = img.dstQueueFamilyIndex;
-		sync1.img_barriers.push_back(barrier);
-	}
-
-	sync1.src_stages |= convert_vk_src_stage2(src_stages);
-	sync1.dst_stages |= convert_vk_dst_stage2(dst_stages);
-}
-
 void CommandBuffer::barrier(const VkDependencyInfo &dep)
 {
 	VK_ASSERT(!actual_render_pass);
@@ -483,82 +418,7 @@ void CommandBuffer::barrier(const VkDependencyInfo &dep)
 	}
 #endif
 
-	if (device->get_device_features().vk13_features.synchronization2)
-	{
-		Util::SmallVector<VkBufferMemoryBarrier2> tmp_buffer;
-		Util::SmallVector<VkImageMemoryBarrier2> tmp_image;
-		Util::SmallVector<VkMemoryBarrier2> tmp_memory;
-		const VkDependencyInfo *final_dep = &dep;
-		VkDependencyInfo tmp_dep;
-
-		if (device->get_workarounds().force_sync1_access)
-		{
-			VkAccessFlags2 merged_access = 0;
-			for (uint32_t i = 0; i < dep.memoryBarrierCount; i++)
-				merged_access |= dep.pMemoryBarriers[i].srcAccessMask | dep.pMemoryBarriers[i].dstAccessMask;
-			for (uint32_t i = 0; i < dep.bufferMemoryBarrierCount; i++)
-				merged_access |= dep.pBufferMemoryBarriers[i].srcAccessMask | dep.pBufferMemoryBarriers[i].dstAccessMask;
-			for (uint32_t i = 0; i < dep.imageMemoryBarrierCount; i++)
-				merged_access |= dep.pImageMemoryBarriers[i].srcAccessMask | dep.pImageMemoryBarriers[i].dstAccessMask;
-
-			if ((merged_access & (VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT |
-			                      VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
-			                      VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-			                      VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR)) != 0)
-			{
-				final_dep = &tmp_dep;
-				tmp_dep = dep;
-
-				if (dep.memoryBarrierCount != 0)
-				{
-					tmp_memory.insert(tmp_memory.end(), dep.pMemoryBarriers,
-					                  dep.pMemoryBarriers + dep.memoryBarrierCount);
-					for (auto &b : tmp_memory)
-					{
-						b.srcAccessMask = convert_vk_access_flags2(b.srcAccessMask);
-						b.dstAccessMask = convert_vk_access_flags2(b.dstAccessMask);
-					}
-					tmp_dep.pMemoryBarriers = tmp_memory.data();
-				}
-
-				if (dep.bufferMemoryBarrierCount != 0)
-				{
-					tmp_buffer.insert(tmp_buffer.end(), dep.pBufferMemoryBarriers,
-					                  dep.pBufferMemoryBarriers + dep.bufferMemoryBarrierCount);
-					for (auto &b : tmp_buffer)
-					{
-						b.srcAccessMask = convert_vk_access_flags2(b.srcAccessMask);
-						b.dstAccessMask = convert_vk_access_flags2(b.dstAccessMask);
-					}
-					tmp_dep.pBufferMemoryBarriers = tmp_buffer.data();
-				}
-
-				if (dep.imageMemoryBarrierCount != 0)
-				{
-					tmp_image.insert(tmp_image.end(), dep.pImageMemoryBarriers,
-					                 dep.pImageMemoryBarriers + dep.imageMemoryBarrierCount);
-					for (auto &b : tmp_image)
-					{
-						b.srcAccessMask = convert_vk_access_flags2(b.srcAccessMask);
-						b.dstAccessMask = convert_vk_access_flags2(b.dstAccessMask);
-					}
-					tmp_dep.pImageMemoryBarriers = tmp_image.data();
-				}
-			}
-		}
-
-		table.vkCmdPipelineBarrier2(cmd, final_dep);
-	}
-	else
-	{
-		Sync1CompatData sync1;
-		convert_vk_dependency_info(dep, sync1);
-		table.vkCmdPipelineBarrier(cmd, sync1.src_stages, sync1.dst_stages,
-		                           dep.dependencyFlags,
-		                           uint32_t(sync1.mem_barriers.size()), sync1.mem_barriers.data(),
-		                           uint32_t(sync1.buf_barriers.size()), sync1.buf_barriers.data(),
-		                           uint32_t(sync1.img_barriers.size()), sync1.img_barriers.data());
-	}
+	table.vkCmdPipelineBarrier2(cmd, &dep);
 }
 
 void CommandBuffer::buffer_barrier(const Buffer &buffer,
@@ -1959,20 +1819,9 @@ void CommandBuffer::wait_events(uint32_t count, const PipelineEvent *events, con
 		for (uint32_t i = 0; i < count; i++)
 			barrier(deps[i]);
 	}
-	else if (device->get_device_features().vk13_features.synchronization2)
-	{
-		table.vkCmdWaitEvents2(cmd, count, vk_events.data(), deps);
-	}
 	else
 	{
-		Sync1CompatData sync1;
-		for (uint32_t i = 0; i < count; i++)
-			convert_vk_dependency_info(deps[i], sync1);
-		table.vkCmdWaitEvents(cmd, count, vk_events.data(),
-		                      sync1.src_stages, sync1.dst_stages,
-		                      uint32_t(sync1.mem_barriers.size()), sync1.mem_barriers.data(),
-		                      uint32_t(sync1.buf_barriers.size()), sync1.buf_barriers.data(),
-		                      uint32_t(sync1.img_barriers.size()), sync1.img_barriers.data());
+		table.vkCmdWaitEvents2(cmd, count, vk_events.data(), deps);
 	}
 }
 
@@ -1983,18 +1832,7 @@ PipelineEvent CommandBuffer::signal_event(const VkDependencyInfo &dep)
 	auto event = device->begin_signal_event();
 
 	if (!device->get_workarounds().emulate_event_as_pipeline_barrier)
-	{
-		if (device->get_device_features().vk13_features.synchronization2)
-		{
-			table.vkCmdSetEvent2(cmd, event->get_event(), &dep);
-		}
-		else
-		{
-			Sync1CompatData sync1;
-			convert_vk_dependency_info(dep, sync1);
-			table.vkCmdSetEvent(cmd, event->get_event(), sync1.src_stages);
-		}
-	}
+		table.vkCmdSetEvent2(cmd, event->get_event(), &dep);
 	return event;
 }
 

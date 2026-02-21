@@ -1501,6 +1501,17 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			ADD_CHAIN(ext.subgroup_size_control_features, SUBGROUP_SIZE_CONTROL_FEATURES_EXT);
 			enabled_extensions.push_back(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
 		}
+
+		if (has_extension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME))
+		{
+			ADD_CHAIN(ext.sync2_features, SYNCHRONIZATION_2_FEATURES_KHR);
+			enabled_extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+		}
+		else
+		{
+			LOGE("KHR_synchronization2 is not supported. This is a hard requirement for Granite.\n");
+			return false;
+		}
 	}
 
 	bool supports_khr_push_descriptor = false;
@@ -1793,6 +1804,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ext.vk13_features.computeFullSubgroups = VK_TRUE;
 	if (ext.subgroup_size_control_features.subgroupSizeControl)
 		ext.vk13_features.subgroupSizeControl = VK_TRUE;
+
+	if (ext.sync2_features.synchronization2)
+		ext.vk13_features.synchronization2 = VK_TRUE;
 
 	if (ext.maintenance5_features.maintenance5)
 		ext.vk14_features.maintenance5 = VK_TRUE;
@@ -2105,12 +2119,17 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	volkLoadDeviceTable(&device_table, device);
 
-	if (!device_table.vkCreateRenderPass2)
-		device_table.vkCreateRenderPass2 = device_table.vkCreateRenderPass2KHR;
-	if (!device_table.vkResetQueryPool)
-		device_table.vkResetQueryPool = device_table.vkResetQueryPoolEXT;
-	if (!device_table.vkCmdPushDescriptorSetWithTemplate)
-		device_table.vkCmdPushDescriptorSetWithTemplate = device_table.vkCmdPushDescriptorSetWithTemplateKHR;
+#define PROMOTE_CALL(n, e) if (!device_table.vk##n) device_table.vk##n = device_table.vk##n##e
+	PROMOTE_CALL(CreateRenderPass2, KHR);
+	PROMOTE_CALL(QueueSubmit2, KHR);
+	PROMOTE_CALL(CmdPipelineBarrier2, KHR);
+	PROMOTE_CALL(CmdWriteTimestamp2, KHR);
+	PROMOTE_CALL(CmdSetEvent2, KHR);
+	PROMOTE_CALL(CmdResetEvent2, KHR);
+	PROMOTE_CALL(CmdWaitEvents2, KHR);
+	PROMOTE_CALL(ResetQueryPool, EXT);
+	PROMOTE_CALL(CmdPushDescriptorSetWithTemplate, KHR);
+#undef PROMOTE_CALL
 
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)
 	{

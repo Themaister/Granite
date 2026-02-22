@@ -1341,7 +1341,7 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 		{
 			get_info.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
 			image_info.imageLayout = layout == ImageLayout::Optimal ? VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
-			view.sampled.ptr = sampled_image_copy.slab.allocate();
+			view.sampled = alloc_sampled_image();
 			table.vkGetDescriptorEXT(device->get_device(), &get_info, props.sampledImageDescriptorSize, view.sampled.ptr);
 		}
 
@@ -1349,7 +1349,7 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 		{
 			get_info.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 			image_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-			view.storage.ptr = storage_image_copy.slab.allocate();
+			view.storage = alloc_storage_image();
 			table.vkGetDescriptorEXT(device->get_device(), &get_info, props.storageImageDescriptorSize, view.storage.ptr);
 		}
 
@@ -1358,12 +1358,12 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 			get_info.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
 
 			image_info.imageLayout = layout == ImageLayout::Optimal ? VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
-			view.input_attachment.ptr = input_attachment_copy.slab.allocate();
+			view.input_attachment = alloc_input_attachment();
 			table.vkGetDescriptorEXT(device->get_device(), &get_info,
 			                         props.inputAttachmentDescriptorSize, view.input_attachment.ptr);
 
 			image_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-			view.input_attachment_feedback.ptr = input_attachment_copy.slab.allocate();
+			view.input_attachment_feedback = alloc_input_attachment();
 			table.vkGetDescriptorEXT(device->get_device(), &get_info,
 			                         props.inputAttachmentDescriptorSize, view.input_attachment_feedback.ptr);
 		}
@@ -1381,5 +1381,74 @@ void DescriptorBufferAllocator::free_image_view(const CachedImageView &view)
 	free_cached_descriptors(&view.storage, 1);
 	free_cached_descriptors(&view.input_attachment, 1);
 	free_cached_descriptors(&view.input_attachment_feedback, 1);
+}
+
+bool DescriptorBufferAllocator::create_buffer_view(
+	const BufferViewCreateInfo &info, CachedBufferView &view)
+{
+	bool heap = device->get_device_features().descriptor_heap_features.descriptorHeap == VK_TRUE;
+	auto &table = device->get_device_table();
+
+	if (!device->get_device_features().supports_descriptor_buffer_or_heap)
+	{
+		VkBufferViewCreateInfo vk_info = { VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO };
+		vk_info.buffer = info.buffer->get_buffer();
+		vk_info.format = info.format;
+		vk_info.offset = info.offset;
+		vk_info.range = info.range;
+
+		if (table.vkCreateBufferView(device->get_device(), &vk_info, nullptr, &view.view) != VK_SUCCESS)
+			return false;
+	}
+	else if (heap)
+	{
+		return false;
+	}
+	else
+	{
+		VkDescriptorAddressInfoEXT addr = { VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT };
+		VkDescriptorGetInfoEXT get_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT };
+
+		addr.address = info.buffer->get_device_address() + info.offset;
+		if (info.range == VK_WHOLE_SIZE)
+			addr.range = info.buffer->get_create_info().size - info.offset;
+		else
+			addr.range = info.range;
+		addr.format = info.format;
+
+		VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
+		device->get_format_properties(info.format, &props3);
+
+		if ((info.buffer->get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) != 0 &&
+			(props3.bufferFeatures & VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) != 0)
+		{
+			view.uniform = alloc_uniform_texel();
+			get_info.type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+			get_info.data.pUniformTexelBuffer = &addr;
+			table.vkGetDescriptorEXT(device->get_device(), &get_info,
+			                         get_descriptor_size_for_type(get_info.type), view.uniform.ptr);
+		}
+
+		if ((info.buffer->get_create_info().usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) != 0 &&
+			(props3.bufferFeatures & VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) != 0)
+		{
+			view.storage = alloc_storage_texel();
+			get_info.type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+			get_info.data.pStorageTexelBuffer = &addr;
+			table.vkGetDescriptorEXT(
+					device->get_device(), &get_info, get_descriptor_size_for_type(get_info.type), view.storage.ptr);
+		}
+	}
+
+	return true;
+}
+
+void DescriptorBufferAllocator::free_buffer_view(const CachedBufferView &view)
+{
+	if (view.view)
+		device->get_device_table().vkDestroyBufferView(device->get_device(), view.view, nullptr);
+
+	free_cached_descriptors(&view.uniform, 1);
+	free_cached_descriptors(&view.storage, 1);
 }
 }

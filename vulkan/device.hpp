@@ -666,7 +666,7 @@ private:
 		std::vector<VkFramebuffer> destroyed_framebuffers;
 		std::vector<VkSampler> destroyed_samplers;
 		std::vector<CachedImageView> destroyed_image_views;
-		std::vector<VkBufferView> destroyed_buffer_views;
+		std::vector<CachedBufferView> destroyed_buffer_views;
 		std::vector<VkImage> destroyed_images;
 		std::vector<VkBuffer> destroyed_buffers;
 		std::vector<VkAccelerationStructureKHR> destroyed_rtas;
@@ -815,7 +815,7 @@ private:
 	void destroy_rtas(VkAccelerationStructureKHR rtas);
 	void destroy_image(VkImage image);
 	void destroy_image_view(const CachedImageView &view);
-	void destroy_buffer_view(VkBufferView view);
+	void destroy_buffer_view(const CachedBufferView &view);
 	void destroy_sampler(VkSampler sampler);
 	void destroy_framebuffer(VkFramebuffer framebuffer);
 	void destroy_semaphore(VkSemaphore semaphore);
@@ -833,7 +833,7 @@ private:
 	void destroy_rtas_nolock(VkAccelerationStructureKHR rtas);
 	void destroy_image_nolock(VkImage image);
 	void destroy_image_view_nolock(const CachedImageView &view);
-	void destroy_buffer_view_nolock(VkBufferView view);
+	void destroy_buffer_view_nolock(const CachedBufferView &view);
 	void destroy_sampler_nolock(VkSampler sampler);
 	void destroy_framebuffer_nolock(VkFramebuffer framebuffer);
 	void destroy_semaphore_nolock(VkSemaphore semaphore);

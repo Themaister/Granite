@@ -2302,7 +2302,7 @@ void Device::destroy_descriptor_pool(VkDescriptorPool desc_pool)
 	destroy_descriptor_pool_nolock(desc_pool);
 }
 
-void Device::destroy_buffer_view(VkBufferView view)
+void Device::destroy_buffer_view(const CachedBufferView &view)
 {
 	LOCK();
 	destroy_buffer_view_nolock(view);
@@ -2379,9 +2379,8 @@ void Device::destroy_image_view_nolock(const CachedImageView &view)
 	frame().destroyed_image_views.push_back(view);
 }
 
-void Device::destroy_buffer_view_nolock(VkBufferView view)
+void Device::destroy_buffer_view_nolock(const CachedBufferView &view)
 {
-	VK_ASSERT(!exists(frame().destroyed_buffer_views, view));
 	frame().destroyed_buffer_views.push_back(view);
 }
 
@@ -2884,7 +2883,7 @@ void Device::PerFrame::begin()
 	for (auto &view : destroyed_image_views)
 		managers.descriptor_buffer.free_image_view(view);
 	for (auto &view : destroyed_buffer_views)
-		table.vkDestroyBufferView(vkdevice, view, nullptr);
+		managers.descriptor_buffer.free_buffer_view(view);
 	for (auto &image : destroyed_images)
 		table.vkDestroyImage(vkdevice, image, nullptr);
 	for (auto &rtas : destroyed_rtas)
@@ -3219,60 +3218,10 @@ static inline VkImageViewType get_image_view_type(const ImageCreateInfo &create_
 
 BufferViewHandle Device::create_buffer_view(const BufferViewCreateInfo &view_info)
 {
-	if (ext.supports_descriptor_buffer)
-	{
-		VkDescriptorAddressInfoEXT addr = { VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT };
-		VkDescriptorGetInfoEXT info = { VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT };
-		CachedDescriptorPayload ro = {};
-		CachedDescriptorPayload rw = {};
-
-		addr.address = view_info.buffer->get_device_address() + view_info.offset;
-		if (view_info.range == VK_WHOLE_SIZE)
-			addr.range = view_info.buffer->get_create_info().size - view_info.offset;
-		else
-			addr.range = view_info.range;
-		addr.format = view_info.format;
-
-		VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
-		get_format_properties(view_info.format, &props3);
-
-		if ((view_info.buffer->get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) != 0 &&
-		    (props3.bufferFeatures & VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) != 0)
-		{
-			ro = managers.descriptor_buffer.alloc_uniform_texel();
-			info.type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
-			info.data.pUniformTexelBuffer = &addr;
-			table->vkGetDescriptorEXT(
-					device, &info, managers.descriptor_buffer.get_descriptor_size_for_type(info.type), ro.ptr);
-		}
-
-		if ((view_info.buffer->get_create_info().usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) != 0 &&
-		    (props3.bufferFeatures & VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) != 0)
-		{
-			rw = managers.descriptor_buffer.alloc_storage_texel();
-			info.type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-			info.data.pStorageTexelBuffer = &addr;
-			table->vkGetDescriptorEXT(
-					device, &info, managers.descriptor_buffer.get_descriptor_size_for_type(info.type), rw.ptr);
-		}
-
-		return BufferViewHandle(handle_pool.buffer_views.allocate(this, ro, rw, view_info));
-	}
-	else
-	{
-		VkBufferViewCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO };
-		info.buffer = view_info.buffer->get_buffer();
-		info.format = view_info.format;
-		info.offset = view_info.offset;
-		info.range = view_info.range;
-
-		VkBufferView view;
-		auto res = table->vkCreateBufferView(device, &info, nullptr, &view);
-		if (res != VK_SUCCESS)
-			return BufferViewHandle(nullptr);
-
-		return BufferViewHandle(handle_pool.buffer_views.allocate(this, view, view_info));
-	}
+	CachedBufferView view;
+	if (!managers.descriptor_buffer.create_buffer_view(view_info, view))
+		return BufferViewHandle(nullptr);
+	return BufferViewHandle(handle_pool.buffer_views.allocate(this, view, view_info));
 }
 
 class ImageResourceHolder

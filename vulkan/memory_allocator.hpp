@@ -336,6 +336,15 @@ struct CachedImageView
 	CachedDescriptorPayload storage; // For storage image, always GENERAL layout.
 };
 
+struct CachedBufferView
+{
+	VkBufferView view;
+	CachedDescriptorPayload uniform;
+	CachedDescriptorPayload storage;
+};
+
+struct BufferViewCreateInfo;
+
 class DescriptorBufferAllocator : private Util::SliceAllocator
 {
 public:
@@ -365,6 +374,9 @@ public:
 	bool create_image_view(const VkImageViewCreateInfo &info, VkImageUsageFlags usage,
 	                       ImageLayout layout, CachedImageView &view);
 	void free_image_view(const CachedImageView &view);
+
+	bool create_buffer_view(const BufferViewCreateInfo &info, CachedBufferView &view);
+	void free_buffer_view(const CachedBufferView &view);
 
 #define IMPL_TYPE(type, desc_type) \
 	inline void copy_##type(uint8_t *dst, const uint8_t *src) const { type##_copy.func(dst, src, type##_copy.size); } \

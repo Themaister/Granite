@@ -131,7 +131,7 @@ void PipelineLayout::create_update_templates()
 		auto &set_layout = layout.sets[desc_set];
 
 		for_each_bit(set_layout.uniform_buffer_mask, [&](uint32_t binding) {
-			unsigned array_size = set_layout.array_size[binding];
+			unsigned array_size = set_layout.meta[binding].array_size;
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
 			// Work around a RenderDoc capture bug where descriptorCount > 1 is not handled correctly.
 			for (unsigned i = 0; i < array_size; i++)
@@ -147,7 +147,7 @@ void PipelineLayout::create_update_templates()
 		});
 
 		for_each_bit(set_layout.storage_buffer_mask, [&](uint32_t binding) {
-			unsigned array_size = set_layout.array_size[binding];
+			unsigned array_size = set_layout.meta[binding].array_size;
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
 			for (unsigned i = 0; i < array_size; i++)
 			{
@@ -162,7 +162,7 @@ void PipelineLayout::create_update_templates()
 		});
 
 		for_each_bit(set_layout.rtas_mask, [&](uint32_t binding) {
-			unsigned array_size = set_layout.array_size[binding];
+			unsigned array_size = set_layout.meta[binding].array_size;
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
 			for (unsigned i = 0; i < array_size; i++)
 			{
@@ -177,7 +177,7 @@ void PipelineLayout::create_update_templates()
 		});
 
 		for_each_bit(set_layout.sampled_texel_buffer_mask, [&](uint32_t binding) {
-			unsigned array_size = set_layout.array_size[binding];
+			unsigned array_size = set_layout.meta[binding].array_size;
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
 			for (unsigned i = 0; i < array_size; i++)
 			{
@@ -192,7 +192,7 @@ void PipelineLayout::create_update_templates()
 		});
 
 		for_each_bit(set_layout.storage_texel_buffer_mask, [&](uint32_t binding) {
-			unsigned array_size = set_layout.array_size[binding];
+			unsigned array_size = set_layout.meta[binding].array_size;
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
 			for (unsigned i = 0; i < array_size; i++)
 			{
@@ -207,7 +207,7 @@ void PipelineLayout::create_update_templates()
 		});
 
 		for_each_bit(set_layout.sampled_image_mask, [&](uint32_t binding) {
-			unsigned array_size = set_layout.array_size[binding];
+			unsigned array_size = set_layout.meta[binding].array_size;
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
 			for (unsigned i = 0; i < array_size; i++)
 			{
@@ -225,7 +225,7 @@ void PipelineLayout::create_update_templates()
 		});
 
 		for_each_bit(set_layout.separate_image_mask, [&](uint32_t binding) {
-			unsigned array_size = set_layout.array_size[binding];
+			unsigned array_size = set_layout.meta[binding].array_size;
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
 			for (unsigned i = 0; i < array_size; i++)
 			{
@@ -243,7 +243,7 @@ void PipelineLayout::create_update_templates()
 		});
 
 		for_each_bit(set_layout.sampler_mask & ~set_layout.immutable_sampler_mask, [&](uint32_t binding) {
-			unsigned array_size = set_layout.array_size[binding];
+			unsigned array_size = set_layout.meta[binding].array_size;
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
 			for (unsigned i = 0; i < array_size; i++)
 			{
@@ -258,7 +258,7 @@ void PipelineLayout::create_update_templates()
 		});
 
 		for_each_bit(set_layout.storage_image_mask, [&](uint32_t binding) {
-			unsigned array_size = set_layout.array_size[binding];
+			unsigned array_size = set_layout.meta[binding].array_size;
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
 			for (unsigned i = 0; i < array_size; i++)
 			{
@@ -273,7 +273,7 @@ void PipelineLayout::create_update_templates()
 		});
 
 		for_each_bit(set_layout.input_attachment_mask, [&](uint32_t binding) {
-			unsigned array_size = set_layout.array_size[binding];
+			unsigned array_size = set_layout.meta[binding].array_size;
 			VK_ASSERT(update_count < VULKAN_NUM_BINDINGS);
 			for (unsigned i = 0; i < array_size; i++)
 			{
@@ -399,7 +399,8 @@ Util::Hash Shader::hash(const uint32_t *data, size_t size)
 #ifdef GRANITE_VULKAN_SPIRV_CROSS
 static void update_array_info(ResourceLayout &layout, const SPIRType &type, unsigned set, unsigned binding)
 {
-	auto &size = layout.sets[set].array_size[binding];
+	auto &meta = layout.sets[set].meta[binding];
+
 	if (!type.array.empty())
 	{
 		if (type.array.size() != 1)
@@ -424,21 +425,21 @@ static void update_array_info(ResourceLayout &layout, const SPIRType &type, unsi
 					layout.sets[set].fp_mask = 0;
 				}
 
-				size = DescriptorSetLayout::UNSIZED_ARRAY;
+				meta.array_size = DescriptorSetLayout::UNSIZED_ARRAY;
 			}
-			else if (size && size != type.array.front())
+			else if (meta.array_size && meta.array_size != type.array.front())
 				LOGE("Array dimension for (%u, %u) is inconsistent.\n", set, binding);
 			else if (type.array.front() + binding > VULKAN_NUM_BINDINGS)
 				LOGE("Binding array will go out of bounds.\n");
 			else
-				size = uint8_t(type.array.front());
+				meta.array_size = uint8_t(type.array.front());
 		}
 	}
 	else
 	{
-		if (size && size != 1)
+		if (meta.array_size && meta.array_size != 1)
 			LOGE("Array dimension for (%u, %u) is inconsistent.\n", set, binding);
-		size = 1;
+		meta.array_size = 1;
 	}
 }
 

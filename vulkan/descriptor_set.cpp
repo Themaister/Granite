@@ -36,7 +36,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 	, device(device_)
 	, table(device_->get_device_table())
 {
-	bindless = layout.array_size[0] == DescriptorSetLayout::UNSIZED_ARRAY;
+	bindless = layout.meta[0].array_size == DescriptorSetLayout::UNSIZED_ARRAY;
 
 	if (!bindless)
 	{
@@ -83,7 +83,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 		if (stages == 0)
 			continue;
 
-		unsigned array_size = layout.array_size[i];
+		unsigned array_size = layout.meta[i].array_size;
 		unsigned pool_array_size;
 		if (array_size == DescriptorSetLayout::UNSIZED_ARRAY)
 		{

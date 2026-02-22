@@ -2667,7 +2667,7 @@ void CommandBuffer::validate_descriptor_binds(uint32_t set)
 	for_each_bit(set_layout.uniform_buffer_mask,
 	             [&](uint32_t binding)
 	             {
-		             unsigned array_size = set_layout.array_size[binding];
+		             unsigned array_size = set_layout.meta[binding].array_size;
 		             for (unsigned i = 0; i < array_size; i++)
 			             VK_ASSERT(bindings.bindings[set][binding + i].buffer.buffer != VK_NULL_HANDLE);
 	             });
@@ -2676,7 +2676,7 @@ void CommandBuffer::validate_descriptor_binds(uint32_t set)
 	for_each_bit(set_layout.storage_buffer_mask,
 	             [&](uint32_t binding)
 	             {
-		             unsigned array_size = set_layout.array_size[binding];
+		             unsigned array_size = set_layout.meta[binding].array_size;
 		             for (unsigned i = 0; i < array_size; i++)
 			             VK_ASSERT(bindings.bindings[set][binding + i].buffer.buffer != VK_NULL_HANDLE);
 	             });
@@ -2685,7 +2685,7 @@ void CommandBuffer::validate_descriptor_binds(uint32_t set)
 	for_each_bit(set_layout.rtas_mask,
 	             [&](uint32_t binding)
 	             {
-		             unsigned array_size = set_layout.array_size[binding];
+		             unsigned array_size = set_layout.meta[binding].array_size;
 		             for (unsigned i = 0; i < array_size; i++)
 			             VK_ASSERT(bindings.bindings[set][binding + i].rtas != VK_NULL_HANDLE);
 	             });
@@ -2694,7 +2694,7 @@ void CommandBuffer::validate_descriptor_binds(uint32_t set)
 	for_each_bit(set_layout.sampled_texel_buffer_mask | set_layout.storage_texel_buffer_mask,
 	             [&](uint32_t binding)
 	             {
-		             unsigned array_size = set_layout.array_size[binding];
+		             unsigned array_size = set_layout.meta[binding].array_size;
 		             for (unsigned i = 0; i < array_size; i++)
 			             VK_ASSERT(bindings.bindings[set][binding + i].buffer_view.handle != VK_NULL_HANDLE);
 	             });
@@ -2703,7 +2703,7 @@ void CommandBuffer::validate_descriptor_binds(uint32_t set)
 	for_each_bit(set_layout.sampled_image_mask,
 	             [&](uint32_t binding)
 	             {
-		             unsigned array_size = set_layout.array_size[binding];
+		             unsigned array_size = set_layout.meta[binding].array_size;
 		             for (unsigned i = 0; i < array_size; i++)
 		             {
 			             if ((set_layout.immutable_sampler_mask & (1u << (binding + i))) == 0)
@@ -2716,7 +2716,7 @@ void CommandBuffer::validate_descriptor_binds(uint32_t set)
 	for_each_bit(set_layout.separate_image_mask,
 	             [&](uint32_t binding)
 	             {
-		             unsigned array_size = set_layout.array_size[binding];
+		             unsigned array_size = set_layout.meta[binding].array_size;
 		             for (unsigned i = 0; i < array_size; i++)
 			             VK_ASSERT(bindings.bindings[set][binding + i].image.fp.imageView != VK_NULL_HANDLE);
 	             });
@@ -2725,7 +2725,7 @@ void CommandBuffer::validate_descriptor_binds(uint32_t set)
 	for_each_bit(set_layout.sampler_mask & ~set_layout.immutable_sampler_mask,
 	             [&](uint32_t binding)
 	             {
-		             unsigned array_size = set_layout.array_size[binding];
+		             unsigned array_size = set_layout.meta[binding].array_size;
 		             for (unsigned i = 0; i < array_size; i++)
 			             VK_ASSERT(bindings.bindings[set][binding + i].image.fp.sampler != VK_NULL_HANDLE);
 	             });
@@ -2734,7 +2734,7 @@ void CommandBuffer::validate_descriptor_binds(uint32_t set)
 	for_each_bit(set_layout.storage_image_mask,
 	             [&](uint32_t binding)
 	             {
-		             unsigned array_size = set_layout.array_size[binding];
+		             unsigned array_size = set_layout.meta[binding].array_size;
 		             for (unsigned i = 0; i < array_size; i++)
 			             VK_ASSERT(bindings.bindings[set][binding + i].image.fp.imageView != VK_NULL_HANDLE);
 	             });
@@ -2743,7 +2743,7 @@ void CommandBuffer::validate_descriptor_binds(uint32_t set)
 	for_each_bit(set_layout.input_attachment_mask,
 	             [&](uint32_t binding)
 	             {
-		             unsigned array_size = set_layout.array_size[binding];
+		             unsigned array_size = set_layout.meta[binding].array_size;
 		             for (unsigned i = 0; i < array_size; i++)
 			             VK_ASSERT(bindings.bindings[set][binding + i].image.fp.imageView != VK_NULL_HANDLE);
 	             });
@@ -2814,7 +2814,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 		// Most likely we can cache the combined variant for normal stock samplers.
 		info.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 
-		for (unsigned i = 0; i < set_layout.array_size[binding]; i++)
+		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
 			if (set_layout.fp_mask & (1u << binding))
 				info.data.pSampledImage = &bindings.bindings[set][binding + i].image.fp;
@@ -2831,7 +2831,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	});
 
 	Util::for_each_bit(set_layout.separate_image_mask, [&](unsigned binding) {
-		for (unsigned i = 0; i < set_layout.array_size[binding]; i++)
+		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
 			auto *ptr = (set_layout.fp_mask & (1u << binding)) != 0 ?
 			            bindings.bindings[set][binding + i].image.fp_ptr :
@@ -2843,7 +2843,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	});
 
 	Util::for_each_bit(set_layout.input_attachment_mask, [&](unsigned binding) {
-		for (unsigned i = 0; i < set_layout.array_size[binding]; i++)
+		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
 			auto *ptr = (set_layout.fp_mask & (1u << binding)) != 0 ?
 					bindings.bindings[set][binding + i].image.fp_ptr :
@@ -2855,7 +2855,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	});
 
 	Util::for_each_bit(set_layout.storage_image_mask, [&](unsigned binding) {
-		for (unsigned i = 0; i < set_layout.array_size[binding]; i++)
+		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
 			auto *ptr = bindings.bindings[set][binding + i].image.fp_ptr;
 			VK_ASSERT(ptr);
@@ -2865,7 +2865,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	});
 
 	Util::for_each_bit(set_layout.sampler_mask, [&](unsigned binding) {
-		for (unsigned i = 0; i < set_layout.array_size[binding]; i++)
+		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
 			auto *ptr = bindings.bindings[set][binding + i].image.sampler_ptr;
 			VK_ASSERT(ptr);
@@ -2880,7 +2880,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	// UBOs and SSBOs cannot really be cached since there is no view and they are expected to get suballocated anyway.
 	Util::for_each_bit(set_layout.uniform_buffer_mask, [&](unsigned binding) {
 		info.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		for (unsigned i = 0; i < set_layout.array_size[binding]; i++)
+		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
 			info.data.pUniformBuffer = &bindings.bindings[set][binding + i].buffer_addr;
 			VK_ASSERT(info.data.pUniformBuffer->sType == VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT &&
@@ -2893,7 +2893,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 
 	Util::for_each_bit(set_layout.storage_buffer_mask, [&](unsigned binding) {
 		info.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		for (unsigned i = 0; i < set_layout.array_size[binding]; i++)
+		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
 			info.data.pStorageBuffer = &bindings.bindings[set][binding + i].buffer_addr;
 			VK_ASSERT(info.data.pStorageBuffer->sType == VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT &&
@@ -2906,7 +2906,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 
 	Util::for_each_bit(set_layout.rtas_mask, [&](unsigned binding) {
 		info.type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-		for (unsigned i = 0; i < set_layout.array_size[binding]; i++)
+		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
 			info.data.accelerationStructure = bindings.bindings[set][binding + i].buffer_addr.address;
 			VK_ASSERT(info.data.accelerationStructure != 0);
@@ -2917,7 +2917,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	});
 
 	Util::for_each_bit(set_layout.sampled_texel_buffer_mask, [&](unsigned binding) {
-		for (unsigned i = 0; i < set_layout.array_size[binding]; i++)
+		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
 			VK_ASSERT(bindings.bindings[set][binding + i].buffer_view.ptr);
 			device->managers.descriptor_buffer.copy_uniform_texel(
@@ -2927,7 +2927,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	});
 
 	Util::for_each_bit(set_layout.storage_texel_buffer_mask, [&](unsigned binding) {
-		for (unsigned i = 0; i < set_layout.array_size[binding]; i++)
+		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
 			VK_ASSERT(bindings.bindings[set][binding + i].buffer_view.ptr);
 			device->managers.descriptor_buffer.copy_storage_texel(

@@ -795,8 +795,11 @@ static ResourceLayout parse_resource_layout(const rapidjson::Value &layout_obj)
 		set.input_attachment_mask = set_obj["inputAttachmentMask"].GetUint();
 		set.fp_mask = set_obj["fpMask"].GetUint();
 		auto &array_size = set_obj["arraySize"];
+		auto &req_desc_size = set_obj["requiresDescriptorSize"];
 		for (unsigned j = 0; j < VULKAN_NUM_BINDINGS; j++)
-			set.array_size[j] = array_size[j].GetUint();
+			set.meta[j].array_size = array_size[j].GetUint();
+		for (unsigned j = 0; j < VULKAN_NUM_BINDINGS; j++)
+			set.meta[j].requires_descriptor_size = req_desc_size[j].GetUint();
 	}
 
 	return layout;
@@ -829,9 +832,14 @@ static rapidjson::Value serialize_resource_layout(const ResourceLayout &layout, 
 		set_obj.AddMember("inputAttachmentMask", set.input_attachment_mask, allocator);
 		set_obj.AddMember("fpMask", set.fp_mask, allocator);
 		Value array_size(kArrayType);
-		for (auto &arr_size : set.array_size)
-			array_size.PushBack(uint32_t(arr_size), allocator);
+		Value req_desc_size(kArrayType);
+		for (auto &meta : set.meta)
+		{
+			array_size.PushBack(uint32_t(meta.array_size), allocator);
+			req_desc_size.PushBack(uint32_t(meta.requires_descriptor_size), allocator);
+		}
 		set_obj.AddMember("arraySize", array_size, allocator);
+		set_obj.AddMember("requiresDescriptorSize", req_desc_size, allocator);
 		desc_sets.PushBack(set_obj, allocator);
 	}
 	layout_obj.AddMember("sets", desc_sets, allocator);

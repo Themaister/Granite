@@ -623,12 +623,14 @@ void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, cons
 			for_each_bit(active_binds, [&](uint32_t bit) {
 				layout.stages_for_bindings[set][bit] |= stage_mask;
 
-				auto &combined_size = layout.sets[set].array_size[bit];
-				auto &shader_size = shader_layout.sets[set].array_size[bit];
-				if (combined_size && combined_size != shader_size)
+				auto &combined_meta = layout.sets[set].meta[bit];
+				auto &shader_meta = shader_layout.sets[set].meta[bit];
+				if (combined_meta.array_size && combined_meta.array_size != shader_meta.array_size)
 					LOGE("Mismatch between array sizes in different shaders.\n");
 				else
-					combined_size = shader_size;
+					combined_meta.array_size = shader_meta.array_size;
+
+				combined_meta.requires_descriptor_size |= shader_meta.requires_descriptor_size;
 			});
 		}
 
@@ -655,8 +657,8 @@ void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, cons
 
 		for (unsigned binding = 0; binding < VULKAN_NUM_BINDINGS; binding++)
 		{
-			auto &array_size = layout.sets[set].array_size[binding];
-			if (array_size == DescriptorSetLayout::UNSIZED_ARRAY)
+			auto &meta = layout.sets[set].meta[binding];
+			if (meta.array_size == DescriptorSetLayout::UNSIZED_ARRAY)
 			{
 				for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
 				{
@@ -667,18 +669,18 @@ void Device::merge_combined_resource_layout(CombinedResourceLayout &layout, cons
 				// Allows us to have one unified descriptor set layout for bindless.
 				layout.stages_for_bindings[set][binding] = VK_SHADER_STAGE_ALL;
 			}
-			else if (array_size == 0)
+			else if (meta.array_size == 0)
 			{
-				array_size = 1;
+				meta.array_size = 1;
 			}
 			else
 			{
-				for (unsigned i = 1; i < array_size; i++)
+				for (unsigned i = 1; i < meta.array_size; i++)
 				{
 					if (layout.stages_for_bindings[set][binding + i] != 0)
 					{
 						LOGE("Detected binding aliasing for (%u, %u). Binding array with %u elements starting at (%u, %u) overlaps.\n",
-							 set, binding + i, array_size, set, binding);
+							 set, binding + i, meta.array_size, set, binding);
 					}
 				}
 			}
@@ -4529,9 +4531,9 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 
 	DescriptorSetLayout layout;
 	const uint32_t stages_for_sets[VULKAN_NUM_BINDINGS] = { VK_SHADER_STAGE_ALL };
-	layout.array_size[0] = DescriptorSetLayout::UNSIZED_ARRAY;
+	layout.meta[0].array_size = DescriptorSetLayout::UNSIZED_ARRAY;
 	for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
-		layout.array_size[i] = 1;
+		layout.meta[i].array_size = 1;
 
 	switch (type)
 	{

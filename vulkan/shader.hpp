@@ -80,6 +80,17 @@ struct CombinedResourceLayout
 	Util::Hash push_constant_layout_hash = 0;
 };
 
+union CombinedImageSamplerIndex
+{
+	struct
+	{
+		uint32_t image_heap_index : 20;
+		uint32_t sampler_heap_index : 12;
+	};
+	uint32_t word;
+};
+static_assert(sizeof(CombinedImageSamplerIndex) == sizeof(uint32_t), "Unexpected size of CombinedImageSamplerIndex.");
+
 union ResourceBinding
 {
 	VkDescriptorBufferInfo buffer;
@@ -91,15 +102,19 @@ union ResourceBinding
 		const uint8_t *fp_ptr;
 		const uint8_t *integer_ptr;
 		const uint8_t *sampler_ptr;
+		CombinedImageSamplerIndex fp_heap_index;
+		CombinedImageSamplerIndex integer_heap_index;
 	} image;
 
-	VkDescriptorAddressInfoEXT buffer_addr;
+	VkDescriptorAddressInfoEXT buffer_addr_buffer;
+	VkDeviceAddressRangeEXT buffer_addr_heap;
 	VkAccelerationStructureKHR rtas;
 
 	union
 	{
 		VkBufferView handle;
 		const uint8_t *ptr;
+		uint32_t heap_index;
 	} buffer_view;
 };
 

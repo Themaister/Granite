@@ -80,6 +80,7 @@ CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCa
 			bind_heap.reservedRangeOffset = heap.reserved_offset;
 			bind_heap.reservedRangeSize = heap.size - heap.reserved_offset;
 			table.vkCmdBindSamplerHeapEXT(cmd, &bind_heap);
+			desc_heap_enable = true;
 		}
 		else if (device->get_device_features().supports_descriptor_buffer)
 		{
@@ -2278,36 +2279,48 @@ void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buf
 	VK_ASSERT(buffer.get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	auto &b = bindings.bindings[set][binding];
 
-	if (desc_buffer_enable)
+	if (desc_heap_enable)
 	{
 		if (range == VK_WHOLE_SIZE)
 			range = buffer.get_create_info().size - offset;
 
 		if (buffer.get_cookie() == bindings.cookies[set][binding] &&
-		    b.buffer_addr.address == buffer.get_device_address() + offset &&
-		    b.buffer_addr.range == range)
+			b.buffer_addr_heap.address == buffer.get_device_address() + offset &&
+			b.buffer_addr_heap.size == range)
 		{
 			return;
 		}
 
-		b.buffer_addr.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT;
-		b.buffer_addr.pNext = nullptr;
-		b.buffer_addr.address = buffer.get_device_address() + offset;
-		b.buffer_addr.range = range;
-		b.buffer_addr.format = VK_FORMAT_UNDEFINED;
+		b.buffer_addr_heap.address = buffer.get_device_address() + offset;
+		b.buffer_addr_heap.size = range;
+	}
+	else if (desc_buffer_enable)
+	{
+		if (range == VK_WHOLE_SIZE)
+			range = buffer.get_create_info().size - offset;
 
-		bindings.cookies[set][binding] = buffer.get_cookie();
-		bindings.secondary_cookies[set][binding] = 0;
-		dirty_sets_realloc |= 1u << set;
+		if (buffer.get_cookie() == bindings.cookies[set][binding] &&
+		    b.buffer_addr_buffer.address == buffer.get_device_address() + offset &&
+		    b.buffer_addr_buffer.range == range)
+		{
+			return;
+		}
+
+		b.buffer_addr_buffer.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT;
+		b.buffer_addr_buffer.pNext = nullptr;
+		b.buffer_addr_buffer.address = buffer.get_device_address() + offset;
+		b.buffer_addr_buffer.range = range;
+		b.buffer_addr_buffer.format = VK_FORMAT_UNDEFINED;
 	}
 	else if (buffer.get_cookie() != bindings.cookies[set][binding] ||
 	         b.buffer.range != range || b.buffer.offset != offset)
 	{
 		b.buffer = { buffer.get_buffer(), offset, range };
-		bindings.cookies[set][binding] = buffer.get_cookie();
-		bindings.secondary_cookies[set][binding] = 0;
-		dirty_sets_realloc |= 1u << set;
 	}
+
+	bindings.cookies[set][binding] = buffer.get_cookie();
+	bindings.secondary_cookies[set][binding] = 0;
+	dirty_sets_realloc |= 1u << set;
 }
 
 void CommandBuffer::set_storage_buffer(unsigned set, unsigned binding, const Buffer &buffer, VkDeviceSize offset,
@@ -2318,23 +2331,38 @@ void CommandBuffer::set_storage_buffer(unsigned set, unsigned binding, const Buf
 	VK_ASSERT(buffer.get_create_info().usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 	auto &b = bindings.bindings[set][binding];
 
-	if (desc_buffer_enable)
+	if (desc_heap_enable)
 	{
 		if (range == VK_WHOLE_SIZE)
 			range = buffer.get_create_info().size - offset;
 
 		if (buffer.get_cookie() == bindings.cookies[set][binding] &&
-		    b.buffer_addr.address == buffer.get_device_address() + offset &&
-		    b.buffer_addr.range == range)
+		    b.buffer_addr_heap.address == buffer.get_device_address() + offset &&
+		    b.buffer_addr_heap.size == range)
 		{
 			return;
 		}
 
-		b.buffer_addr.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT;
-		b.buffer_addr.pNext = nullptr;
-		b.buffer_addr.address = buffer.get_device_address() + offset;
-		b.buffer_addr.range = range;
-		b.buffer_addr.format = VK_FORMAT_UNDEFINED;
+		b.buffer_addr_heap.address = buffer.get_device_address() + offset;
+		b.buffer_addr_heap.size = range;
+	}
+	else if (desc_buffer_enable)
+	{
+		if (range == VK_WHOLE_SIZE)
+			range = buffer.get_create_info().size - offset;
+
+		if (buffer.get_cookie() == bindings.cookies[set][binding] &&
+		    b.buffer_addr_buffer.address == buffer.get_device_address() + offset &&
+		    b.buffer_addr_buffer.range == range)
+		{
+			return;
+		}
+
+		b.buffer_addr_buffer.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT;
+		b.buffer_addr_buffer.pNext = nullptr;
+		b.buffer_addr_buffer.address = buffer.get_device_address() + offset;
+		b.buffer_addr_buffer.range = range;
+		b.buffer_addr_buffer.format = VK_FORMAT_UNDEFINED;
 	}
 	else if (buffer.get_cookie() != bindings.cookies[set][binding] ||
 	         b.buffer.offset != offset || b.buffer.range != range)
@@ -2368,8 +2396,13 @@ void CommandBuffer::set_rtas(unsigned set, unsigned binding, const RTAS &rtas)
 		return;
 	bindings.cookies[set][binding] = rtas.get_cookie();
 
-	if (desc_buffer_enable)
-		b.buffer_addr.address = rtas.get_device_address();
+	if (desc_heap_enable)
+	{
+		b.buffer_addr_heap.address = rtas.get_device_address();
+		b.buffer_addr_heap.size = 0;
+	}
+	else if (desc_buffer_enable)
+		b.buffer_addr_buffer.address = rtas.get_device_address();
 	else
 		b.rtas = rtas.get_rtas();
 }
@@ -2384,8 +2417,13 @@ void CommandBuffer::set_sampler(unsigned set, unsigned binding, const Sampler &s
 	auto &b = bindings.bindings[set][binding];
 	b.image.fp.sampler = sampler.get_sampler();
 	b.image.integer.sampler = sampler.get_sampler();
-	if (desc_buffer_enable)
-		b.image.sampler_ptr = sampler.get_descriptor_payload().ptr;
+	if (desc_buffer_enable || desc_heap_enable)
+	{
+		auto &p = sampler.get_descriptor_payload();
+		b.image.sampler_ptr = p.ptr;
+		b.image.fp_heap_index.sampler_heap_index = p.heap_index;
+		b.image.integer_heap_index.sampler_heap_index = p.heap_index;
+	}
 	dirty_sets_realloc |= 1u << set;
 	bindings.secondary_cookies[set][binding] = sampler.get_cookie();
 }
@@ -2401,7 +2439,7 @@ void CommandBuffer::set_buffer_view_common(unsigned set, unsigned binding, const
 		return;
 	auto &b = bindings.bindings[set][binding];
 
-	if (desc_buffer_enable)
+	if (desc_buffer_enable || desc_heap_enable)
 	{
 		b.buffer_view.ptr = desc_type == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER ?
 		                    view.get_uniform_payload().ptr : view.get_storage_payload().ptr;
@@ -2452,7 +2490,7 @@ void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 		b.image.integer.imageLayout = ref.layout;
 		b.image.fp.imageView = view->get_float_view().view;
 		b.image.integer.imageView = view->get_integer_view().view;
-		if (desc_buffer_enable)
+		if (desc_buffer_enable || desc_heap_enable)
 		{
 			b.image.fp_ptr = ref.layout == VK_IMAGE_LAYOUT_GENERAL ?
 				view->get_float_view().input_attachment_feedback.ptr :
@@ -2469,7 +2507,8 @@ void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 
 void CommandBuffer::set_texture(unsigned set, unsigned binding,
                                 VkImageView float_view, VkImageView integer_view, VkImageLayout layout,
-                                const uint8_t *float_ptr, const uint8_t *integer_ptr,
+                                const CachedDescriptorPayload &float_payload,
+                                const CachedDescriptorPayload &integer_payload,
                                 uint64_t cookie)
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
@@ -2483,10 +2522,12 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding,
 	b.image.fp.imageView = float_view;
 	b.image.integer.imageLayout = layout;
 	b.image.integer.imageView = integer_view;
-	if (desc_buffer_enable)
+	if (desc_buffer_enable || desc_heap_enable)
 	{
-		b.image.fp_ptr = float_ptr;
-		b.image.integer_ptr = integer_ptr;
+		b.image.fp_ptr = float_payload.ptr;
+		b.image.integer_ptr = integer_payload.ptr;
+		b.image.fp_heap_index.image_heap_index = float_payload.heap_index;
+		b.image.integer_heap_index.image_heap_index = integer_payload.heap_index;
 	}
 	bindings.cookies[set][binding] = cookie;
 	dirty_sets_realloc |= 1u << set;
@@ -2496,7 +2537,7 @@ void CommandBuffer::set_bindless(unsigned set, const BindlessDescriptorSet &hand
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
 	VK_ASSERT(handle.valid);
-	if (desc_buffer_enable)
+	if (desc_buffer_enable || desc_heap_enable)
 		desc_buffer_offsets[set] = handle.handle.offset;
 	else
 		bindless_sets[set] = handle.handle.set;
@@ -2509,7 +2550,7 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView 
 	auto &fp = view.get_float_view();
 	auto &integer = view.get_integer_view();
 	set_texture(set, binding, fp.view, integer.view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL),
-	            fp.sampled.ptr, integer.sampled.ptr,
+	            fp.sampled, integer.sampled,
 	            view.get_cookie());
 }
 
@@ -2527,7 +2568,7 @@ void CommandBuffer::set_unorm_texture(unsigned set, unsigned binding, const Imag
 	VK_ASSERT(unorm_view.view != VK_NULL_HANDLE);
 	set_texture(set, binding,
 				unorm_view.view, unorm_view.view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL),
-				unorm_view.sampled.ptr, unorm_view.sampled.ptr,
+				unorm_view.sampled, unorm_view.sampled,
 				view.get_cookie() | COOKIE_BIT_UNORM);
 }
 
@@ -2538,7 +2579,7 @@ void CommandBuffer::set_srgb_texture(unsigned set, unsigned binding, const Image
 	VK_ASSERT(srgb_view.view != VK_NULL_HANDLE);
 	set_texture(set, binding,
 	            srgb_view.view, srgb_view.view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL),
-	            srgb_view.sampled.ptr, srgb_view.sampled.ptr,
+	            srgb_view.sampled, srgb_view.sampled,
 	            view.get_cookie() | COOKIE_BIT_SRGB);
 }
 
@@ -2568,7 +2609,7 @@ void CommandBuffer::set_storage_texture(unsigned set, unsigned binding, const Im
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT);
 	auto &fp = view.get_float_view();
 	set_texture(set, binding, fp.view, fp.view, view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL),
-	            fp.storage.ptr, fp.storage.ptr,
+	            fp.storage, fp.storage,
 	            view.get_cookie());
 }
 
@@ -2579,7 +2620,7 @@ void CommandBuffer::set_storage_texture_level(unsigned set, unsigned binding,
 	auto &mip_view = view.get_mip_view(level);
 	set_texture(set, binding, mip_view.view, mip_view.view,
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL),
-	            mip_view.storage.ptr, mip_view.storage.ptr,
+	            mip_view.storage, mip_view.storage,
 	            view.get_cookie() | COOKIE_BIT_PER_MIP | level);
 }
 
@@ -2589,7 +2630,7 @@ void CommandBuffer::set_unorm_storage_texture(unsigned set, unsigned binding, co
 	auto &unorm_view = view.get_unorm_view();
 	VK_ASSERT(unorm_view.view != VK_NULL_HANDLE);
 	set_texture(set, binding, unorm_view.view, unorm_view.view, view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL),
-				unorm_view.storage.ptr, unorm_view.storage.ptr,
+				unorm_view.storage, unorm_view.storage,
 				view.get_cookie() | COOKIE_BIT_UNORM);
 }
 
@@ -2882,7 +2923,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 		info.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
-			info.data.pUniformBuffer = &bindings.bindings[set][binding + i].buffer_addr;
+			info.data.pUniformBuffer = &bindings.bindings[set][binding + i].buffer_addr_buffer;
 			VK_ASSERT(info.data.pUniformBuffer->sType == VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT &&
 			          info.data.pUniformBuffer->address);
 			table.vkGetDescriptorEXT(
@@ -2895,7 +2936,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 		info.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
-			info.data.pStorageBuffer = &bindings.bindings[set][binding + i].buffer_addr;
+			info.data.pStorageBuffer = &bindings.bindings[set][binding + i].buffer_addr_buffer;
 			VK_ASSERT(info.data.pStorageBuffer->sType == VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT &&
 			          info.data.pStorageBuffer->address);
 			table.vkGetDescriptorEXT(
@@ -2908,7 +2949,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 		info.type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
-			info.data.accelerationStructure = bindings.bindings[set][binding + i].buffer_addr.address;
+			info.data.accelerationStructure = bindings.bindings[set][binding + i].buffer_addr_buffer.address;
 			VK_ASSERT(info.data.accelerationStructure != 0);
 			table.vkGetDescriptorEXT(
 					device->get_device(), &info,

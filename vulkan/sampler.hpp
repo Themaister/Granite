@@ -82,7 +82,7 @@ public:
 		return sampler;
 	}
 
-	CachedDescriptorPayload get_descriptor_payload() const
+	const CachedDescriptorPayload &get_descriptor_payload() const
 	{
 		VK_ASSERT(payload && payload.type == VK_DESCRIPTOR_TYPE_SAMPLER);
 		return payload;

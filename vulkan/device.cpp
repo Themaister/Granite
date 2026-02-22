@@ -3380,22 +3380,18 @@ public:
 		if (create_unorm_srgb_views)
 		{
 			auto info = *view_info;
-			auto old_usage = view_usage;
+			auto srgb_unorm_usage = view_usage;
 
 			if (create_info.usage & VK_IMAGE_USAGE_STORAGE_BIT)
-				view_usage |= VK_IMAGE_USAGE_STORAGE_BIT;
-
+				srgb_unorm_usage |= VK_IMAGE_USAGE_STORAGE_BIT;
 			info.format = view_formats[0];
-			if (!device->managers.descriptor_buffer.create_image_view(info, view_usage, create_info.layout, unorm_view))
+			if (!device->managers.descriptor_buffer.create_image_view(info, srgb_unorm_usage, create_info.layout, unorm_view))
 				return false;
 
-			view_usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
-
+			srgb_unorm_usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
 			info.format = view_formats[1];
-			if (!device->managers.descriptor_buffer.create_image_view(info, view_usage, create_info.layout, srgb_view))
+			if (!device->managers.descriptor_buffer.create_image_view(info, srgb_unorm_usage, create_info.layout, srgb_view))
 				return false;
-
-			view_usage = old_usage;
 		}
 
 		if (create_mip_level_views && !create_mip_views(*view_info, create_info.layout, view_usage))

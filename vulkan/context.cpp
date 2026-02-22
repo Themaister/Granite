@@ -1682,7 +1682,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.robustness2_features, ROBUSTNESS_2_FEATURES_EXT);
 	}
 
-#ifndef VULKAN_DEBUG
+#if !defined(VULKAN_DEBUG) || 1
 	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT) != 0 &&
 	    has_extension(VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME))
 	{

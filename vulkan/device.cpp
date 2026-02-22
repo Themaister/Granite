@@ -990,9 +990,7 @@ void Device::set_context(const Context &context)
 	managers.ibo.set_max_retained_blocks(256);
 	managers.ubo.set_max_retained_blocks(64);
 	managers.staging.set_max_retained_blocks(32);
-
-	if (ext.supports_descriptor_buffer || ext.descriptor_heap_features.descriptorHeap)
-		managers.descriptor_buffer.init(this);
+	managers.descriptor_buffer.init(this);
 
 	init_stock_samplers();
 

@@ -831,6 +831,10 @@ static VkDeviceSize align(VkDeviceSize value, uint32_t alignment)
 bool DescriptorBufferAllocator::init(Vulkan::Device *device_)
 {
 	device = device_;
+
+	if (!device->get_device_features().supports_descriptor_buffer_or_heap)
+		return true;
+
 	alignment = device->get_device_features().resource_heap_alignment;
 	sub_block_size = std::max<uint32_t>(device->get_gpu_properties().limits.nonCoherentAtomSize, alignment);
 
@@ -1322,7 +1326,8 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 	{
 		return false;
 	}
-	else if (need_image_view_object)
+	else if (device->get_device_features().descriptor_buffer_features.descriptorBuffer &&
+	         need_image_view_object)
 	{
 		VkDescriptorImageInfo image_info = {};
 		image_info.imageView = view.view;

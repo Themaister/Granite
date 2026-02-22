@@ -2452,9 +2452,16 @@ void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 		b.image.integer.imageLayout = ref.layout;
 		b.image.fp.imageView = view->get_float_view().view;
 		b.image.integer.imageView = view->get_integer_view().view;
-		// Workaround, doesn't need to be VK_NULL_HANDLE.
-		b.image.fp.sampler = VK_NULL_HANDLE;
-		b.image.integer.sampler = VK_NULL_HANDLE;
+		if (desc_buffer_enable)
+		{
+			b.image.fp_ptr = ref.layout == VK_IMAGE_LAYOUT_GENERAL ?
+				view->get_float_view().input_attachment_feedback.ptr :
+				view->get_float_view().input_attachment.ptr;
+
+			b.image.integer_ptr = ref.layout == VK_IMAGE_LAYOUT_GENERAL ?
+				view->get_integer_view().input_attachment_feedback.ptr :
+				view->get_integer_view().input_attachment.ptr;
+		}
 		bindings.cookies[set][start_binding + i] = view->get_cookie();
 		dirty_sets_realloc |= 1u << set;
 	}
@@ -2836,24 +2843,14 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	});
 
 	Util::for_each_bit(set_layout.input_attachment_mask, [&](unsigned binding) {
-		// The layout of input attachments is somewhat volatile depending on the subpass,
-		// and I can't be arsed to plumb all that through.
-		// Could take advantage of descriptorBufferIgnoreLayouts, but, eh ...
-		info.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-
 		for (unsigned i = 0; i < set_layout.array_size[binding]; i++)
 		{
-			if (set_layout.fp_mask & (1u << binding))
-				info.data.pInputAttachmentImage = &bindings.bindings[set][binding + i].image.fp;
-			else
-				info.data.pInputAttachmentImage = &bindings.bindings[set][binding + i].image.integer;
-
-			VK_ASSERT(info.data.pSampledImage->imageView);
-
-			table.vkGetDescriptorEXT(
-					device->get_device(), &info,
-					device->get_device_features().descriptor_buffer_properties.inputAttachmentDescriptorSize,
-					mapped + set_allocator->get_binding_offset(binding + i));
+			auto *ptr = (set_layout.fp_mask & (1u << binding)) != 0 ?
+					bindings.bindings[set][binding + i].image.fp_ptr :
+					bindings.bindings[set][binding + i].image.integer_ptr;
+			VK_ASSERT(ptr);
+			device->managers.descriptor_buffer.copy_input_attachment(
+				mapped + set_allocator->get_binding_offset(binding + i), ptr);
 		}
 	});
 

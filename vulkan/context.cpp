@@ -1682,7 +1682,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.robustness2_features, ROBUSTNESS_2_FEATURES_EXT);
 	}
 
-//#ifndef VULKAN_DEBUG
+#ifndef VULKAN_DEBUG
 	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT) != 0 &&
 	    has_extension(VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME))
 	{
@@ -1695,7 +1695,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.descriptor_buffer_features, DESCRIPTOR_BUFFER_FEATURES_EXT);
 		enabled_extensions.push_back(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME);
 	}
-//#endif
+#endif
 
 	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain)
 	{

@@ -136,7 +136,7 @@ class PipelineLayout : public HashedObject<PipelineLayout>
 {
 public:
 	PipelineLayout(Util::Hash hash, Device *device, const CombinedResourceLayout &layout,
-	               const ImmutableSamplerBank *sampler_bank);
+				   const ImmutableSamplerBank *sampler_bank);
 	~PipelineLayout();
 
 	const CombinedResourceLayout &get_resource_layout() const
@@ -144,6 +144,7 @@ public:
 		return layout;
 	}
 
+	// Legacy
 	VkPipelineLayout get_layout() const
 	{
 		return pipe_layout;
@@ -164,6 +165,73 @@ public:
 		return push_set_index;
 	}
 
+	// Heap
+	enum class DescriptorStrategy
+	{
+		// For images: a u32 index. For buffers: PUSH_ADDRESS.
+		Inline,
+		// Not compatible with array of samplers or combined image samplers.
+		// Not compatible with SSBO that need ArrayLength.
+		HeapSlice,
+		// Indirect version of inline, for larger sets.
+		IndirectTable,
+	};
+
+	uint32_t get_push_data_size() const
+	{
+		return heap.push_data_size;
+	}
+
+	// Allocation size from indirection table UBO.
+	uint32_t get_heap_table_size(uint32_t desc_set) const
+	{
+		return heap.heap_table_size[desc_set];
+	}
+
+	// Allocation size from descriptor heap.
+	// Used when we want to copy descriptors straight into the heap.
+	uint32_t get_heap_slice_size(uint32_t desc_set) const
+	{
+		return heap.heap_slice_size[desc_set];
+	}
+
+	uint32_t get_descriptor_set_push_buffer_offset(uint32_t desc_set) const
+	{
+		VK_ASSERT(desc_set < VULKAN_NUM_DESCRIPTOR_SETS);
+		return heap.push_buffer_offsets[desc_set];
+	}
+
+	uint32_t get_descriptor_set_push_image_offset(uint32_t desc_set) const
+	{
+		VK_ASSERT(desc_set < VULKAN_NUM_DESCRIPTOR_SETS);
+		return heap.push_image_offsets[desc_set];
+	}
+
+	DescriptorStrategy get_heap_buffer_descriptor_strategy(uint32_t desc_set) const
+	{
+		VK_ASSERT(desc_set < VULKAN_NUM_DESCRIPTOR_SETS);
+		return heap.buffer_strategies[desc_set];
+	}
+
+	DescriptorStrategy get_heap_image_descriptor_strategy(uint32_t desc_set) const
+	{
+		VK_ASSERT(desc_set < VULKAN_NUM_DESCRIPTOR_SETS);
+		return heap.image_strategies[desc_set];
+	}
+
+	uint32_t get_descriptor_offset(uint32_t desc_set, uint32_t binding) const
+	{
+		VK_ASSERT(desc_set < VULKAN_NUM_DESCRIPTOR_SETS);
+		VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
+		return heap.desc_offsets[desc_set][binding];
+	}
+
+	// Passed directly to CreatePipeline.
+	const std::vector<VkDescriptorSetAndBindingMappingEXT> &get_heap_mappings() const
+	{
+		return heap.mappings;
+	}
+
 private:
 	Device *device;
 	VkPipelineLayout pipe_layout = VK_NULL_HANDLE;
@@ -172,6 +240,22 @@ private:
 	VkDescriptorUpdateTemplate update_template[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 	uint32_t push_set_index = UINT32_MAX;
 	void create_update_templates();
+
+	void init_heap();
+	void init_legacy(const ImmutableSamplerBank *immutable_samplers);
+
+	struct
+	{
+		std::vector<VkDescriptorSetAndBindingMappingEXT> mappings;
+		uint32_t push_buffer_offsets[VULKAN_NUM_DESCRIPTOR_SETS];
+		uint32_t push_image_offsets[VULKAN_NUM_DESCRIPTOR_SETS];
+		uint32_t heap_table_size[VULKAN_NUM_DESCRIPTOR_SETS];
+		uint32_t heap_slice_size[VULKAN_NUM_DESCRIPTOR_SETS];
+		DescriptorStrategy buffer_strategies[VULKAN_NUM_DESCRIPTOR_SETS];
+		DescriptorStrategy image_strategies[VULKAN_NUM_DESCRIPTOR_SETS];
+		uint32_t desc_offsets[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
+		uint32_t push_data_size;
+	} heap = {};
 };
 
 class Shader : public HashedObject<Shader>

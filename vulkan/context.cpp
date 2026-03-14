@@ -2171,16 +2171,17 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 				ext.descriptor_buffer_properties.combinedImageSamplerDescriptorSingleArray;
 	}
 
-	ext.supports_descriptor_buffer_or_heap = ext.supports_descriptor_buffer || ext.descriptor_heap_features.descriptorHeap;
+	ext.supports_descriptor_buffer_or_heap =
+		ext.supports_descriptor_buffer || ext.descriptor_heap_features.descriptorHeap;
 
-	if (ext.supports_descriptor_buffer)
-	{
-		ext.resource_heap_alignment = ext.descriptor_buffer_properties.descriptorBufferOffsetAlignment;
-	}
-	else
+	if (ext.descriptor_heap_features.descriptorHeap)
 	{
 		ext.resource_heap_alignment = std::max<uint32_t>(ext.descriptor_heap_properties.bufferDescriptorAlignment,
 														 ext.descriptor_heap_properties.imageDescriptorAlignment);
+	}
+	else
+	{
+		ext.resource_heap_alignment = ext.descriptor_buffer_properties.descriptorBufferOffsetAlignment;
 	}
 
 	return true;

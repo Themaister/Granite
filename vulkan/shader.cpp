@@ -57,18 +57,152 @@ void ImmutableSamplerBank::hash(Util::Hasher &h, const ImmutableSamplerBank *sam
 	}
 }
 
-PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourceLayout &layout_,
-                               const ImmutableSamplerBank *immutable_samplers)
-	: IntrusiveHashMapEnabled<PipelineLayout>(hash)
-	, device(device_)
-	, layout(layout_)
+// 32 bytes is a decent amount in most cases. For cases with lots of resources, just fallback to heap slice.
+static constexpr uint32_t MaxInlineSizePerSet = (256 - VULKAN_PUSH_CONSTANT_SIZE) / VULKAN_NUM_DESCRIPTOR_SETS;
+// Worst case we can always fall back to heap slice or indirect table for images. This requires at most one BDA.
+static constexpr uint32_t MaxBufferInlineSizePerSet = MaxInlineSizePerSet - sizeof(VkDeviceAddress);
+
+static uint32_t align(uint32_t size, uint32_t alignment)
+{
+	return (size + alignment - 1) & ~(alignment - 1);
+}
+
+void PipelineLayout::init_heap()
+{
+	uint32_t push_data_offset = layout.push_constant_range.offset + layout.push_constant_range.size;
+
+	auto buffer_desc_size =
+			align(device->get_device_features().descriptor_heap_properties.bufferDescriptorSize,
+			      device->get_device_features().descriptor_heap_properties.bufferDescriptorAlignment);
+
+	auto image_desc_size =
+			align(device->get_device_features().descriptor_heap_properties.imageDescriptorSize,
+				  device->get_device_features().descriptor_heap_properties.imageDescriptorAlignment);
+
+	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
+	{
+		if ((layout.descriptor_set_mask & (1u << i)) == 0)
+			continue;
+
+		auto &desc_set = layout.sets[i];
+		uint32_t base_push_data_offset = push_data_offset;
+
+		auto raw_buffer_mask = desc_set.uniform_buffer_mask | desc_set.storage_buffer_mask | desc_set.rtas_mask;
+		auto num_buffer_descriptors = Util::popcount32(raw_buffer_mask);
+		auto required_inline_size = num_buffer_descriptors * sizeof(VkDeviceAddress);
+
+		bool requires_array_length = false;
+		Util::for_each_bit(raw_buffer_mask, [&](unsigned bit)
+		{
+			if (desc_set.meta[bit].requires_descriptor_size)
+				requires_array_length = true;
+		});
+
+		// Raw PUSH_ADDRESS is always preferred.
+		if (required_inline_size <= MaxBufferInlineSizePerSet && !requires_array_length)
+		{
+			heap.buffer_strategies[i] = DescriptorStrategy::Inline;
+			push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
+			heap.push_buffer_offsets[i] = push_data_offset;
+			push_data_offset += required_inline_size;
+		}
+		else if (requires_array_length)
+		{
+			heap.buffer_strategies[i] = DescriptorStrategy::HeapSlice;
+			heap.push_buffer_offsets[i] = push_data_offset;
+			// A single u32 will do.
+			push_data_offset += sizeof(uint32_t);
+
+			// Allocate N descriptors from the heap and write them directly.
+			heap.heap_slice_size[i] = align(heap.heap_slice_size[i], buffer_desc_size);
+			heap.heap_slice_size[i] = num_buffer_descriptors * buffer_desc_size;
+		}
+		else
+		{
+			// Small buffer of BDAs. Don't want to allocate from the precious heap if possible.
+			heap.buffer_strategies[i] = DescriptorStrategy::IndirectTable;
+			push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
+			heap.push_buffer_offsets[i] = push_data_offset;
+			push_data_offset += sizeof(VkDeviceAddress);
+
+			heap.heap_table_size[i] += required_inline_size;
+		}
+
+		auto image_sampler_mask =
+			desc_set.sampled_image_mask |
+			desc_set.separate_image_mask | desc_set.storage_image_mask |
+			desc_set.sampled_texel_buffer_mask | desc_set.storage_texel_buffer_mask |
+			desc_set.sampler_mask;
+
+		auto sampler_mask = desc_set.sampled_image_mask | desc_set.sampler_mask;
+		uint32_t num_image_descriptors = Util::popcount32(image_sampler_mask);
+		bool requires_array_of_image = false;
+
+		Util::for_each_bit(image_sampler_mask, [&](unsigned bit)
+		{
+			if (desc_set.meta[bit].array_size > 1)
+				requires_array_of_image = true;
+		});
+
+		uint32_t available_inline_indices =
+			(MaxInlineSizePerSet - (push_data_offset - base_push_data_offset)) / sizeof(uint32_t);
+
+		// Array of resources would need either heap slice or indirection table.
+		if (num_image_descriptors <= available_inline_indices && !requires_array_of_image)
+		{
+			heap.push_image_offsets[i] = push_data_offset;
+			push_data_offset += num_image_descriptors * sizeof(uint32_t);
+			heap.image_strategies[i] = DescriptorStrategy::Inline;
+		}
+		else if (sampler_mask != 0)
+		{
+			// We cannot lower sampler to heap slice since sampler heap is so tiny.
+			// Force indirection table.
+			// TODO: It's in theory possible to split this up
+			// so that samplers are push index inlined while everything else is heap sliced.
+
+			// This isn't ideal, but what can you do.
+			heap.image_strategies[i] = DescriptorStrategy::IndirectTable;
+
+			// Buffers and images can share the same indirection table.
+			if (heap.buffer_strategies[i] == DescriptorStrategy::IndirectTable)
+			{
+				heap.push_image_offsets[i] = heap.push_buffer_offsets[i];
+			}
+			else
+			{
+				push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
+				heap.push_image_offsets[i] = push_data_offset;
+				push_data_offset += sizeof(VkDeviceAddress);
+			}
+
+			// Buffers go first, for alignment purposes.
+			heap.heap_table_size[i] += num_image_descriptors * sizeof(uint32_t);
+		}
+		else
+		{
+			heap.image_strategies[i] = DescriptorStrategy::HeapSlice;
+			heap.push_image_offsets[i] = push_data_offset;
+			push_data_offset += sizeof(uint32_t);
+
+			// Allocate N descriptors from the heap and write them directly.
+			heap.heap_slice_size[i] = align(heap.heap_slice_size[i], image_desc_size);
+			heap.heap_slice_size[i] = num_image_descriptors * image_desc_size;
+		}
+	}
+
+	heap.push_data_size = push_data_offset;
+	VK_ASSERT(heap.push_data_size <= VULKAN_PUSH_DATA_SIZE);
+}
+
+void PipelineLayout::init_legacy(const ImmutableSamplerBank *immutable_samplers)
 {
 	VkDescriptorSetLayout layouts[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 	unsigned num_sets = 0;
 	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
 	{
 		set_allocators[i] = device->request_descriptor_set_allocator(layout.sets[i], layout.stages_for_bindings[i],
-		                                                             immutable_samplers ? immutable_samplers->samplers[i] : nullptr);
+																	 immutable_samplers ? immutable_samplers->samplers[i] : nullptr);
 		layouts[i] = set_allocators[i]->get_layout_for_pool();
 		if (layout.descriptor_set_mask & (1u << i))
 		{
@@ -113,6 +247,23 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourc
 
 	if (!device->get_device_features().descriptor_buffer_features.descriptorBuffer)
 		create_update_templates();
+}
+
+PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourceLayout &layout_,
+                               const ImmutableSamplerBank *immutable_samplers)
+	: IntrusiveHashMapEnabled<PipelineLayout>(hash)
+	, device(device_)
+	, layout(layout_)
+{
+	if (device->get_device_features().descriptor_heap_features.descriptorHeap)
+	{
+		VK_ASSERT(!immutable_samplers);
+		init_heap();
+	}
+	else
+	{
+		init_legacy(immutable_samplers);
+	}
 }
 
 void PipelineLayout::create_update_templates()

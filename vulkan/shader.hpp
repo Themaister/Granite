@@ -219,6 +219,9 @@ public:
 		return heap.image_strategies[desc_set];
 	}
 
+	// Inline: offset into push data
+	// HeapSlice: offset into allocated heap slice
+	// IndirectTable: offset into indirect table
 	uint32_t get_descriptor_offset(uint32_t desc_set, uint32_t binding) const
 	{
 		VK_ASSERT(desc_set < VULKAN_NUM_DESCRIPTOR_SETS);
@@ -242,6 +245,10 @@ private:
 	void create_update_templates();
 
 	void init_heap();
+	void init_heap(uint32_t set_index);
+	void init_heap_buffers(uint32_t set_index);
+	void init_heap_image(uint32_t set_index, uint32_t base_push_data_offset);
+	void init_heap_offsets(uint32_t set_index);
 	void init_legacy(const ImmutableSamplerBank *immutable_samplers);
 
 	struct

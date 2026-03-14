@@ -67,131 +67,359 @@ static uint32_t align(uint32_t size, uint32_t alignment)
 	return (size + alignment - 1) & ~(alignment - 1);
 }
 
-void PipelineLayout::init_heap()
+void PipelineLayout::init_heap_buffers(uint32_t set_index)
 {
-	uint32_t push_data_offset = layout.push_constant_range.offset + layout.push_constant_range.size;
+	auto buffer_desc_size =
+			align(device->get_device_features().descriptor_heap_properties.bufferDescriptorSize,
+			      device->get_device_features().descriptor_heap_properties.bufferDescriptorAlignment);
+	auto &push_data_offset = heap.push_data_size;
 
+	auto &desc_set = layout.sets[set_index];
+
+	auto raw_buffer_mask = desc_set.uniform_buffer_mask | desc_set.storage_buffer_mask | desc_set.rtas_mask;
+	auto num_buffer_descriptors = Util::popcount32(raw_buffer_mask);
+	auto required_inline_size = num_buffer_descriptors * sizeof(VkDeviceAddress);
+
+	bool requires_array_length = false;
+	Util::for_each_bit(raw_buffer_mask, [&](unsigned bit)
+	{
+		if (desc_set.meta[bit].requires_descriptor_size)
+			requires_array_length = true;
+	});
+
+	// Raw PUSH_ADDRESS is always preferred.
+	if (required_inline_size <= MaxBufferInlineSizePerSet && !requires_array_length)
+	{
+		heap.buffer_strategies[set_index] = DescriptorStrategy::Inline;
+		push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
+		heap.push_buffer_offsets[set_index] = push_data_offset;
+		push_data_offset += required_inline_size;
+	}
+	else if (requires_array_length)
+	{
+		heap.buffer_strategies[set_index] = DescriptorStrategy::HeapSlice;
+		heap.push_buffer_offsets[set_index] = push_data_offset;
+		// A single u32 will do.
+		push_data_offset += sizeof(uint32_t);
+
+		// Allocate N descriptors from the heap and write them directly.
+		heap.heap_slice_size[set_index] = align(heap.heap_slice_size[set_index], buffer_desc_size);
+		heap.heap_slice_size[set_index] += num_buffer_descriptors * buffer_desc_size;
+	}
+	else
+	{
+		// Small buffer of BDAs. Don't want to allocate from the precious heap if possible.
+		heap.buffer_strategies[set_index] = DescriptorStrategy::IndirectTable;
+		push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
+		heap.push_buffer_offsets[set_index] = push_data_offset;
+		push_data_offset += sizeof(VkDeviceAddress);
+
+		heap.heap_table_size[set_index] += required_inline_size;
+	}
+}
+
+void PipelineLayout::init_heap_image(uint32_t set_index, uint32_t base_push_data_offset)
+{
+	auto image_desc_size =
+			align(device->get_device_features().descriptor_heap_properties.imageDescriptorSize,
+				  device->get_device_features().descriptor_heap_properties.imageDescriptorAlignment);
+
+	auto &push_data_offset = heap.push_data_size;
+	auto &desc_set = layout.sets[set_index];
+
+	auto image_sampler_mask =
+		desc_set.sampled_image_mask |
+		desc_set.separate_image_mask | desc_set.storage_image_mask |
+		desc_set.sampled_texel_buffer_mask | desc_set.storage_texel_buffer_mask |
+		desc_set.sampler_mask;
+
+	auto sampler_mask = desc_set.sampled_image_mask | desc_set.sampler_mask;
+	uint32_t num_image_descriptors = Util::popcount32(image_sampler_mask);
+	bool requires_array_of_image = false;
+
+	Util::for_each_bit(image_sampler_mask, [&](unsigned bit)
+	{
+		if (desc_set.meta[bit].array_size > 1)
+			requires_array_of_image = true;
+	});
+
+	uint32_t available_inline_indices =
+		(MaxInlineSizePerSet - (heap.push_data_size - base_push_data_offset)) / sizeof(uint32_t);
+
+	// Array of resources would need either heap slice or indirection table.
+	if (num_image_descriptors <= available_inline_indices && !requires_array_of_image)
+	{
+		heap.push_image_offsets[set_index] = push_data_offset;
+		push_data_offset += num_image_descriptors * sizeof(uint32_t);
+		heap.image_strategies[set_index] = DescriptorStrategy::Inline;
+	}
+	else if (sampler_mask != 0)
+	{
+		// We cannot lower sampler to heap slice since sampler heap is so tiny.
+		// Force indirection table.
+		// TODO: It's in theory possible to split this up
+		// so that samplers are push index inlined while everything else is heap sliced.
+
+		// This isn't ideal, but what can you do.
+		heap.image_strategies[set_index] = DescriptorStrategy::IndirectTable;
+
+		// Buffers and images can share the same indirection table.
+		if (heap.buffer_strategies[set_index] == DescriptorStrategy::IndirectTable)
+		{
+			heap.push_image_offsets[set_index] = heap.push_buffer_offsets[set_index];
+		}
+		else
+		{
+			push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
+			heap.push_image_offsets[set_index] = push_data_offset;
+			push_data_offset += sizeof(VkDeviceAddress);
+		}
+
+		// Buffers go first, for alignment purposes.
+		heap.heap_table_size[set_index] += num_image_descriptors * sizeof(uint32_t);
+	}
+	else
+	{
+		heap.image_strategies[set_index] = DescriptorStrategy::HeapSlice;
+
+		if (heap.buffer_strategies[set_index] == DescriptorStrategy::HeapSlice)
+		{
+			heap.push_image_offsets[set_index] = heap.push_buffer_offsets[set_index];
+		}
+		else
+		{
+			heap.push_image_offsets[set_index] = push_data_offset;
+			push_data_offset += sizeof(uint32_t);
+		}
+
+		// Allocate N descriptors from the heap and write them directly.
+		heap.heap_slice_size[set_index] = align(heap.heap_slice_size[set_index], image_desc_size);
+		heap.heap_slice_size[set_index] += num_image_descriptors * image_desc_size;
+	}
+}
+
+void PipelineLayout::init_heap_offsets(uint32_t set_index)
+{
 	auto buffer_desc_size =
 			align(device->get_device_features().descriptor_heap_properties.bufferDescriptorSize,
 			      device->get_device_features().descriptor_heap_properties.bufferDescriptorAlignment);
 
 	auto image_desc_size =
 			align(device->get_device_features().descriptor_heap_properties.imageDescriptorSize,
-				  device->get_device_features().descriptor_heap_properties.imageDescriptorAlignment);
+			      device->get_device_features().descriptor_heap_properties.imageDescriptorAlignment);
 
-	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
+	auto sampler_desc_size =
+			align(device->get_device_features().descriptor_heap_properties.samplerDescriptorSize,
+				  device->get_device_features().descriptor_heap_properties.samplerDescriptorAlignment);
+
+	auto &desc_set = layout.sets[set_index];
+
+	auto image_sampler_mask =
+		desc_set.sampled_image_mask |
+		desc_set.separate_image_mask | desc_set.storage_image_mask |
+		desc_set.sampled_texel_buffer_mask | desc_set.storage_texel_buffer_mask |
+		desc_set.sampler_mask;
+
+	auto buffer_mask = desc_set.uniform_buffer_mask | desc_set.storage_image_mask | desc_set.rtas_mask;
+
+	uint32_t push_offset = heap.push_buffer_offsets[set_index];
+	uint32_t table_offset = 0;
+	uint32_t slice_offset = 0;
+
+	VkDescriptorSetAndBindingMappingEXT buffer_template = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_AND_BINDING_MAPPING_EXT };
+	buffer_template.resourceMask = VK_SPIRV_RESOURCE_TYPE_UNIFORM_BUFFER_BIT_EXT |
+	                               VK_SPIRV_RESOURCE_TYPE_READ_WRITE_STORAGE_BUFFER_BIT_EXT |
+	                               VK_SPIRV_RESOURCE_TYPE_READ_ONLY_STORAGE_BUFFER_BIT_EXT;
+	if (device->get_device_features().rtas_features.accelerationStructure)
+		buffer_template.resourceMask |= VK_SPIRV_RESOURCE_TYPE_ACCELERATION_STRUCTURE_BIT_EXT;
+
+	VkDescriptorSetAndBindingMappingEXT image_template = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_AND_BINDING_MAPPING_EXT };
+	image_template.resourceMask = VK_SPIRV_RESOURCE_TYPE_SAMPLED_IMAGE_BIT_EXT |
+	                              VK_SPIRV_RESOURCE_TYPE_READ_WRITE_STORAGE_BUFFER_BIT_EXT |
+	                              VK_SPIRV_RESOURCE_TYPE_READ_ONLY_STORAGE_BUFFER_BIT_EXT |
+	                              VK_SPIRV_RESOURCE_TYPE_READ_ONLY_IMAGE_BIT_EXT |
+	                              VK_SPIRV_RESOURCE_TYPE_READ_WRITE_IMAGE_BIT_EXT;
+
+	switch (heap.buffer_strategies[set_index])
 	{
-		if ((layout.descriptor_set_mask & (1u << i)) == 0)
-			continue;
-
-		auto &desc_set = layout.sets[i];
-		uint32_t base_push_data_offset = push_data_offset;
-
-		auto raw_buffer_mask = desc_set.uniform_buffer_mask | desc_set.storage_buffer_mask | desc_set.rtas_mask;
-		auto num_buffer_descriptors = Util::popcount32(raw_buffer_mask);
-		auto required_inline_size = num_buffer_descriptors * sizeof(VkDeviceAddress);
-
-		bool requires_array_length = false;
-		Util::for_each_bit(raw_buffer_mask, [&](unsigned bit)
+	case DescriptorStrategy::Inline:
+		Util::for_each_bit(buffer_mask, [&](unsigned bit)
 		{
-			if (desc_set.meta[bit].requires_descriptor_size)
-				requires_array_length = true;
+			heap.desc_offsets[set_index][bit] = push_offset;
+			auto mapping = buffer_template;
+			mapping.descriptorSet = set_index;
+			mapping.firstBinding = bit;
+			VK_ASSERT(desc_set.meta[bit].array_size == 1);
+			mapping.bindingCount = 1;
+			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_ADDRESS_EXT;
+			mapping.sourceData.pushAddressOffset = push_offset;
+			push_offset += sizeof(VkDeviceAddress);
+			heap.mappings.push_back(mapping);
 		});
+		break;
 
-		// Raw PUSH_ADDRESS is always preferred.
-		if (required_inline_size <= MaxBufferInlineSizePerSet && !requires_array_length)
+	case DescriptorStrategy::HeapSlice:
+		Util::for_each_bit(buffer_mask, [&](unsigned bit)
 		{
-			heap.buffer_strategies[i] = DescriptorStrategy::Inline;
-			push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
-			heap.push_buffer_offsets[i] = push_data_offset;
-			push_data_offset += required_inline_size;
-		}
-		else if (requires_array_length)
-		{
-			heap.buffer_strategies[i] = DescriptorStrategy::HeapSlice;
-			heap.push_buffer_offsets[i] = push_data_offset;
-			// A single u32 will do.
-			push_data_offset += sizeof(uint32_t);
-
-			// Allocate N descriptors from the heap and write them directly.
-			heap.heap_slice_size[i] = align(heap.heap_slice_size[i], buffer_desc_size);
-			heap.heap_slice_size[i] = num_buffer_descriptors * buffer_desc_size;
-		}
-		else
-		{
-			// Small buffer of BDAs. Don't want to allocate from the precious heap if possible.
-			heap.buffer_strategies[i] = DescriptorStrategy::IndirectTable;
-			push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
-			heap.push_buffer_offsets[i] = push_data_offset;
-			push_data_offset += sizeof(VkDeviceAddress);
-
-			heap.heap_table_size[i] += required_inline_size;
-		}
-
-		auto image_sampler_mask =
-			desc_set.sampled_image_mask |
-			desc_set.separate_image_mask | desc_set.storage_image_mask |
-			desc_set.sampled_texel_buffer_mask | desc_set.storage_texel_buffer_mask |
-			desc_set.sampler_mask;
-
-		auto sampler_mask = desc_set.sampled_image_mask | desc_set.sampler_mask;
-		uint32_t num_image_descriptors = Util::popcount32(image_sampler_mask);
-		bool requires_array_of_image = false;
-
-		Util::for_each_bit(image_sampler_mask, [&](unsigned bit)
-		{
-			if (desc_set.meta[bit].array_size > 1)
-				requires_array_of_image = true;
+			slice_offset = align(slice_offset, buffer_desc_size);
+			auto mapping = buffer_template;
+			mapping.descriptorSet = set_index;
+			mapping.firstBinding = bit;
+			mapping.bindingCount = desc_set.meta[bit].array_size;
+			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT;
+			mapping.sourceData.pushIndex.pushOffset = heap.push_buffer_offsets[set_index];
+			mapping.sourceData.pushIndex.heapArrayStride = buffer_desc_size;
+			mapping.sourceData.pushIndex.heapIndexStride = device->get_device_features().resource_heap_alignment;
+			mapping.sourceData.pushIndex.heapOffset = slice_offset;
+			for (unsigned i = 0; i < mapping.bindingCount; i++)
+			{
+				heap.desc_offsets[set_index][bit + i] = slice_offset;
+				slice_offset += buffer_desc_size;
+			}
+			heap.mappings.push_back(mapping);
 		});
+		break;
 
-		uint32_t available_inline_indices =
-			(MaxInlineSizePerSet - (push_data_offset - base_push_data_offset)) / sizeof(uint32_t);
-
-		// Array of resources would need either heap slice or indirection table.
-		if (num_image_descriptors <= available_inline_indices && !requires_array_of_image)
+	case DescriptorStrategy::IndirectTable:
+		Util::for_each_bit(buffer_mask, [&](unsigned bit)
 		{
-			heap.push_image_offsets[i] = push_data_offset;
-			push_data_offset += num_image_descriptors * sizeof(uint32_t);
-			heap.image_strategies[i] = DescriptorStrategy::Inline;
-		}
-		else if (sampler_mask != 0)
-		{
-			// We cannot lower sampler to heap slice since sampler heap is so tiny.
-			// Force indirection table.
-			// TODO: It's in theory possible to split this up
-			// so that samplers are push index inlined while everything else is heap sliced.
+			table_offset = align(table_offset, sizeof(VkDeviceAddress));
+			heap.desc_offsets[set_index][bit] = table_offset;
+			auto mapping = buffer_template;
+			mapping.descriptorSet = set_index;
+			mapping.firstBinding = bit;
+			VK_ASSERT(desc_set.meta[bit].array_size == 1);
+			mapping.bindingCount = 1;
+			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_INDIRECT_ADDRESS_EXT;
+			mapping.sourceData.indirectAddress.pushOffset = heap.push_buffer_offsets[set_index];
+			mapping.sourceData.indirectAddress.addressOffset = table_offset;
+			table_offset += buffer_desc_size;
+			heap.mappings.push_back(mapping);
+		});
+		break;
 
-			// This isn't ideal, but what can you do.
-			heap.image_strategies[i] = DescriptorStrategy::IndirectTable;
-
-			// Buffers and images can share the same indirection table.
-			if (heap.buffer_strategies[i] == DescriptorStrategy::IndirectTable)
-			{
-				heap.push_image_offsets[i] = heap.push_buffer_offsets[i];
-			}
-			else
-			{
-				push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
-				heap.push_image_offsets[i] = push_data_offset;
-				push_data_offset += sizeof(VkDeviceAddress);
-			}
-
-			// Buffers go first, for alignment purposes.
-			heap.heap_table_size[i] += num_image_descriptors * sizeof(uint32_t);
-		}
-		else
-		{
-			heap.image_strategies[i] = DescriptorStrategy::HeapSlice;
-			heap.push_image_offsets[i] = push_data_offset;
-			push_data_offset += sizeof(uint32_t);
-
-			// Allocate N descriptors from the heap and write them directly.
-			heap.heap_slice_size[i] = align(heap.heap_slice_size[i], image_desc_size);
-			heap.heap_slice_size[i] = num_image_descriptors * image_desc_size;
-		}
+	default:
+		break;
 	}
 
+	push_offset = heap.push_image_offsets[set_index];
+
+	switch (heap.image_strategies[set_index])
+	{
+	case DescriptorStrategy::Inline:
+		Util::for_each_bit(image_sampler_mask, [&](unsigned bit)
+		{
+			heap.desc_offsets[set_index][bit] = push_offset;
+			auto mapping = buffer_template;
+			mapping.descriptorSet = set_index;
+			mapping.firstBinding = bit;
+			VK_ASSERT(desc_set.meta[bit].array_size == 1);
+			mapping.bindingCount = 1;
+			mapping.resourceMask |= VK_SPIRV_RESOURCE_TYPE_COMBINED_SAMPLED_IMAGE_BIT_EXT;
+			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT;
+			mapping.sourceData.pushIndex.pushOffset = push_offset;
+			mapping.sourceData.pushIndex.heapOffset = 0;
+			mapping.sourceData.pushIndex.heapArrayStride = image_desc_size;
+			mapping.sourceData.pushIndex.heapIndexStride = image_desc_size;
+			mapping.sourceData.pushIndex.useCombinedImageSamplerIndex = VK_TRUE;
+			mapping.sourceData.pushIndex.samplerHeapArrayStride = sampler_desc_size;
+			mapping.sourceData.pushIndex.samplerHeapIndexStride = sampler_desc_size;
+			heap.mappings.push_back(mapping);
+
+			mapping.resourceMask = VK_SPIRV_RESOURCE_TYPE_SAMPLER_BIT_EXT;
+			mapping.sourceData.pushIndex = {};
+			mapping.sourceData.pushIndex.pushOffset = push_offset;
+			mapping.sourceData.pushIndex.heapArrayStride = sampler_desc_size;
+			mapping.sourceData.pushIndex.heapIndexStride = sampler_desc_size;
+			heap.mappings.push_back(mapping);
+
+			push_offset += sizeof(VkDeviceAddress);
+		});
+		break;
+
+	case DescriptorStrategy::HeapSlice:
+		Util::for_each_bit(image_sampler_mask, [&](unsigned bit)
+		{
+			slice_offset = align(slice_offset, image_desc_size);
+			auto mapping = buffer_template;
+			mapping.descriptorSet = set_index;
+			mapping.firstBinding = bit;
+			mapping.bindingCount = desc_set.meta[bit].array_size;
+			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT;
+			// HeapSlice is not compatible with sampler and combined image sampler.
+			mapping.sourceData.pushIndex.pushOffset = heap.push_buffer_offsets[set_index];
+			mapping.sourceData.pushIndex.heapArrayStride = image_desc_size;
+			mapping.sourceData.pushIndex.heapIndexStride = device->get_device_features().resource_heap_alignment;
+			mapping.sourceData.pushIndex.heapOffset = slice_offset;
+			for (unsigned i = 0; i < mapping.bindingCount; i++)
+			{
+				heap.desc_offsets[set_index][bit + i] = slice_offset;
+				slice_offset += image_desc_size;
+			}
+			heap.mappings.push_back(mapping);
+		});
+		break;
+
+	case DescriptorStrategy::IndirectTable:
+		Util::for_each_bit(image_sampler_mask, [&](unsigned bit)
+		{
+			table_offset = align(table_offset, sizeof(VkDeviceAddress));
+			heap.desc_offsets[set_index][bit] = table_offset;
+			auto mapping = image_template;
+			mapping.descriptorSet = set_index;
+			mapping.firstBinding = bit;
+			mapping.bindingCount = desc_set.meta[bit].array_size;
+			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_ARRAY_EXT;
+			mapping.resourceMask |= VK_SPIRV_RESOURCE_TYPE_COMBINED_SAMPLED_IMAGE_BIT_EXT;
+			mapping.sourceData.indirectIndexArray.pushOffset = heap.push_buffer_offsets[set_index];
+			mapping.sourceData.indirectIndexArray.heapOffset = 0;
+			mapping.sourceData.indirectIndexArray.samplerHeapOffset = 0;
+			mapping.sourceData.indirectIndexArray.addressOffset = table_offset;
+			mapping.sourceData.indirectIndexArray.useCombinedImageSamplerIndex = VK_TRUE;
+			mapping.sourceData.indirectIndexArray.heapIndexStride = image_desc_size;
+			mapping.sourceData.indirectIndexArray.samplerHeapIndexStride = sampler_desc_size;
+			heap.mappings.push_back(mapping);
+
+			mapping.resourceMask = VK_SPIRV_RESOURCE_TYPE_SAMPLER_BIT_EXT;
+			mapping.sourceData.indirectIndexArray = {};
+			mapping.sourceData.indirectIndexArray.pushOffset = heap.push_buffer_offsets[set_index];
+			mapping.sourceData.indirectIndexArray.heapOffset = 0;
+			mapping.sourceData.indirectIndexArray.addressOffset = table_offset;
+			mapping.sourceData.indirectIndexArray.heapIndexStride = sampler_desc_size;
+
+			for (unsigned i = 0; i < mapping.bindingCount; i++)
+			{
+				heap.desc_offsets[set_index][bit + i] = table_offset;
+				table_offset += image_desc_size;
+			}
+		});
+		break;
+
+	default:
+		break;
+	}
+
+	VK_ASSERT(table_offset == heap.heap_table_size[set_index]);
+	VK_ASSERT(slice_offset == heap.heap_slice_size[set_index]);
+}
+
+void PipelineLayout::init_heap(uint32_t set_index)
+{
+	uint32_t base_push_data_offset = heap.push_data_size;
+	init_heap_buffers(set_index);
+	init_heap_image(set_index, base_push_data_offset);
+	init_heap_offsets(set_index);
+}
+
+void PipelineLayout::init_heap()
+{
+	uint32_t push_data_offset = layout.push_constant_range.offset + layout.push_constant_range.size;
 	heap.push_data_size = push_data_offset;
+
+	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
+		if ((layout.descriptor_set_mask & (1u << i)) != 0)
+			init_heap(i);
+
 	VK_ASSERT(heap.push_data_size <= VULKAN_PUSH_DATA_SIZE);
 }
 

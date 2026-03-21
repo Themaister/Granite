@@ -1746,13 +1746,23 @@ VkPipeline CommandBuffer::flush_compute_state(bool synchronous)
 
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT))
 	{
-		auto &range = pipeline_state.layout->get_resource_layout().push_constant_range;
-		if (range.stageFlags != 0)
+		if (desc_heap_enable)
 		{
-			VK_ASSERT(range.offset == 0);
-			table.vkCmdPushConstants(cmd, current_pipeline_layout, range.stageFlags,
-			                         0, range.size,
-			                         bindings.push_constant_data);
+			VkPushDataInfoEXT info = { VK_STRUCTURE_TYPE_PUSH_DATA_INFO_EXT };
+			info.data.size = pipeline_state.layout->get_push_data_size();
+			info.data.address = bindings.u.push_constant_data;
+			table.vkCmdPushDataEXT(cmd, &info);
+		}
+		else
+		{
+			auto &range = pipeline_state.layout->get_resource_layout().push_constant_range;
+			if (range.stageFlags != 0)
+			{
+				VK_ASSERT(range.offset == 0);
+				table.vkCmdPushConstants(cmd, current_pipeline_layout, range.stageFlags,
+										 0, range.size,
+										 bindings.u.push_constant_data);
+			}
 		}
 	}
 
@@ -1798,13 +1808,23 @@ VkPipeline CommandBuffer::flush_render_state(bool synchronous)
 
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT))
 	{
-		auto &range = pipeline_state.layout->get_resource_layout().push_constant_range;
-		if (range.stageFlags != 0)
+		if (desc_heap_enable)
 		{
-			VK_ASSERT(range.offset == 0);
-			table.vkCmdPushConstants(cmd, current_pipeline_layout, range.stageFlags,
-			                         0, range.size,
-			                         bindings.push_constant_data);
+			VkPushDataInfoEXT info = { VK_STRUCTURE_TYPE_PUSH_DATA_INFO_EXT };
+			info.data.size = pipeline_state.layout->get_push_data_size();
+			info.data.address = bindings.u.push_constant_data;
+			table.vkCmdPushDataEXT(cmd, &info);
+		}
+		else
+		{
+			auto &range = pipeline_state.layout->get_resource_layout().push_constant_range;
+			if (range.stageFlags != 0)
+			{
+				VK_ASSERT(range.offset == 0);
+				table.vkCmdPushConstants(cmd, current_pipeline_layout, range.stageFlags,
+										 0, range.size,
+										 bindings.u.push_constant_data);
+			}
 		}
 	}
 
@@ -1979,7 +1999,7 @@ void CommandBuffer::set_scissor(const VkRect2D &rect)
 void CommandBuffer::push_constants(const void *data, VkDeviceSize offset, VkDeviceSize range)
 {
 	VK_ASSERT(offset + range <= VULKAN_PUSH_CONSTANT_SIZE);
-	memcpy(bindings.push_constant_data + offset, data, range);
+	memcpy(bindings.u.push_constant_data + offset, data, range);
 	set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
 }
 
@@ -2859,6 +2879,165 @@ void CommandBuffer::push_descriptor_set(uint32_t set)
 		pipeline_state.layout->get_layout(), set, bindings.bindings[set]);
 }
 
+void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
+{
+	auto &layout = *pipeline_state.layout;
+	auto *push_words = bindings.u.push_data_words;
+	auto *push_ptrs = bindings.u.push_data_addr;
+
+	auto heap_slice_size = layout.get_heap_slice_size(set);
+	auto heap_table_size = layout.get_heap_table_size(set);
+	uint8_t *mapped_table = nullptr;
+	uint8_t *mapped_heap = nullptr;
+
+	auto &ext = device->get_device_features();
+
+	if (heap_slice_size)
+	{
+		auto align = ext.resource_heap_alignment;
+		desc_buffer_alloc_offset = (desc_buffer_alloc_offset + align - 1) & ~(align - 1);
+
+		if (desc_buffer_alloc_offset + heap_slice_size > desc_buffer.get_size())
+		{
+			// Page in a new block.
+			if (desc_buffer.get_size())
+				device->free_descriptor_buffer_allocation(desc_buffer);
+
+			// The descriptor heap is precious, don't be too wasteful.
+			VkDeviceSize padded_size = std::max<VkDeviceSize>(heap_slice_size, 16 * 1024);
+			desc_buffer = device->managers.descriptor_buffer.allocate(padded_size);
+			desc_buffer_alloc_offset = 0;
+		}
+
+		auto offset = desc_buffer.get_offset() + desc_buffer_alloc_offset;
+
+		uint32_t push_offset;
+		if (layout.get_heap_buffer_descriptor_strategy(set) == PipelineLayout::DescriptorStrategy::HeapSlice)
+			push_offset = layout.get_descriptor_set_push_buffer_offset(set);
+		else if (layout.get_heap_image_descriptor_strategy(set) == PipelineLayout::DescriptorStrategy::HeapSlice)
+			push_offset = layout.get_descriptor_set_push_image_offset(set);
+		else
+		{
+			VK_ASSERT(0 && "Need heap slice in at least one path.\n");
+			return;
+		}
+
+		push_words[push_offset / sizeof(uint32_t)] = offset >> ext.resource_heap_alignment_log2;
+		mapped_heap = device->managers.descriptor_buffer.get_resource_heap().mapped +
+		              desc_buffer.get_offset() + desc_buffer_alloc_offset;
+	}
+
+	if (heap_table_size)
+	{
+		// INDIRECT tables are effectively UBOs.
+		auto data = ubo_block.allocate(heap_table_size);
+		if (!data.host)
+		{
+			device->request_uniform_block(ubo_block, heap_table_size);
+			data = ubo_block.allocate(heap_table_size);
+		}
+
+		auto va = data.buffer->get_device_address() + data.offset;
+
+		uint32_t push_offset;
+		if (layout.get_heap_buffer_descriptor_strategy(set) == PipelineLayout::DescriptorStrategy::IndirectTable)
+			push_offset = layout.get_descriptor_set_push_buffer_offset(set);
+		else if (layout.get_heap_image_descriptor_strategy(set) == PipelineLayout::DescriptorStrategy::IndirectTable)
+			push_offset = layout.get_descriptor_set_push_image_offset(set);
+		else
+		{
+			VK_ASSERT(0 && "Need heap table in at least one path.\n");
+			return;
+		}
+
+		push_ptrs[push_offset / sizeof(VkDeviceAddress)] = va;
+		mapped_table = data.host;
+	}
+
+	auto &set_layout = layout.get_resource_layout().sets[set];
+	auto &binds = bindings.bindings[set];
+
+	VkResourceDescriptorInfoEXT resource_desc[VULKAN_NUM_BINDINGS];
+	VkHostAddressRangeEXT host_ranges[VULKAN_NUM_BINDINGS];
+	uint32_t resource_desc_count = 0;
+
+	switch (layout.get_heap_buffer_descriptor_strategy(set))
+	{
+	case PipelineLayout::DescriptorStrategy::Inline:
+	{
+		Util::for_each_bit(set_layout.uniform_buffer_mask |
+		                   set_layout.storage_buffer_mask |
+		                   set_layout.rtas_mask, [&](unsigned bit)
+		{
+			push_ptrs[layout.get_descriptor_offset(set, bit) / sizeof(VkDeviceAddress)] =
+					binds[bit].buffer_addr_heap.address;
+		});
+		break;
+	}
+
+	case PipelineLayout::DescriptorStrategy::HeapSlice:
+	{
+		Util::for_each_bit(set_layout.uniform_buffer_mask, [&](unsigned bit)
+		{
+			for (uint32_t i = 0; i < set_layout.meta[bit].array_size; i++)
+			{
+				VK_ASSERT(resource_desc_count < VULKAN_NUM_BINDINGS);
+				host_ranges[resource_desc_count].address = mapped_heap + layout.get_descriptor_offset(set, bit + i);
+				host_ranges[resource_desc_count].size = ext.descriptor_heap_properties.bufferDescriptorSize;
+				resource_desc[resource_desc_count] = { VK_STRUCTURE_TYPE_RESOURCE_DESCRIPTOR_INFO_EXT };
+				resource_desc[resource_desc_count].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+				resource_desc[resource_desc_count].data.pAddressRange = &binds[bit + i].buffer_addr_heap;
+				resource_desc_count++;
+			}
+		});
+
+		Util::for_each_bit(set_layout.storage_buffer_mask, [&](unsigned bit)
+		{
+			for (uint32_t i = 0; i < set_layout.meta[bit].array_size; i++)
+			{
+				VK_ASSERT(resource_desc_count < VULKAN_NUM_BINDINGS);
+				host_ranges[resource_desc_count].address = mapped_heap + layout.get_descriptor_offset(set, bit + i);
+				host_ranges[resource_desc_count].size = ext.descriptor_heap_properties.bufferDescriptorSize;
+				resource_desc[resource_desc_count] = { VK_STRUCTURE_TYPE_RESOURCE_DESCRIPTOR_INFO_EXT };
+				resource_desc[resource_desc_count].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+				resource_desc[resource_desc_count].data.pAddressRange = &binds[bit + i].buffer_addr_heap;
+				resource_desc_count++;
+			}
+		});
+
+		Util::for_each_bit(set_layout.rtas_mask, [&](unsigned bit)
+		{
+			for (uint32_t i = 0; i < set_layout.meta[bit].array_size; i++)
+			{
+				VK_ASSERT(resource_desc_count < VULKAN_NUM_BINDINGS);
+				host_ranges[resource_desc_count].address = mapped_heap + layout.get_descriptor_offset(set, bit + i);
+				host_ranges[resource_desc_count].size = ext.descriptor_heap_properties.bufferDescriptorSize;
+				resource_desc[resource_desc_count] = { VK_STRUCTURE_TYPE_RESOURCE_DESCRIPTOR_INFO_EXT };
+				resource_desc[resource_desc_count].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+				resource_desc[resource_desc_count].data.pAddressRange = &binds[bit + i].buffer_addr_heap;
+				resource_desc_count++;
+			}
+		});
+		break;
+	}
+
+	case PipelineLayout::DescriptorStrategy::IndirectTable:
+	{
+		Util::for_each_bit(set_layout.uniform_buffer_mask |
+		                   set_layout.storage_buffer_mask |
+		                   set_layout.rtas_mask, [&](unsigned bit)
+		{
+			memcpy(mapped_table + layout.get_descriptor_offset(set, bit),
+			       &binds[bit].buffer_addr_heap.address, sizeof(VkDeviceAddress));
+		});
+		break;
+	}
+	}
+
+	if (resource_desc_count)
+		table.vkWriteResourceDescriptorsEXT(device->get_device(), resource_desc_count, resource_desc, host_ranges);
+}
+
 void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set, uint32_t &set_count)
 {
 	if (set_count == 0)
@@ -3078,7 +3257,18 @@ void CommandBuffer::flush_descriptor_sets()
 	dirty_sets_rebind |= dirty_sets_realloc;
 	uint32_t set_update_mask = layout.descriptor_set_mask & dirty_sets_rebind;
 
-	if (desc_buffer_enable)
+	if (desc_heap_enable)
+	{
+		// Rebinding sets just means calling push data again.
+		if (set_update_mask)
+			set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
+
+		for_each_bit(set_update_mask & dirty_sets_realloc, [&](uint32_t set)
+		{
+			allocate_descriptor_heap_set(set);
+		});
+	}
+	else if (desc_buffer_enable)
 	{
 		for_each_bit(set_update_mask, [&](uint32_t set)
 		{
@@ -3782,9 +3972,9 @@ void CommandBuffer::restore_state(const CommandBufferSavedState &state)
 
 	if (state.flags & COMMAND_BUFFER_SAVED_PUSH_CONSTANT_BIT)
 	{
-		if (memcmp(state.bindings.push_constant_data, bindings.push_constant_data, sizeof(bindings.push_constant_data)) != 0)
+		if (memcmp(state.bindings.u.push_constant_data, bindings.u.push_constant_data, sizeof(bindings.u.push_constant_data)) != 0)
 		{
-			memcpy(bindings.push_constant_data, state.bindings.push_constant_data, sizeof(bindings.push_constant_data));
+			memcpy(bindings.u.push_constant_data, state.bindings.u.push_constant_data, sizeof(bindings.u.push_constant_data));
 			set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
 		}
 	}
@@ -3840,6 +4030,7 @@ void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferS
 		state.viewport = viewport;
 	if (flags & COMMAND_BUFFER_SAVED_SCISSOR_BIT)
 		state.scissor = scissor;
+
 	if (flags & COMMAND_BUFFER_SAVED_RENDER_STATE_BIT)
 	{
 		memcpy(&state.static_state, &pipeline_state.static_state, sizeof(pipeline_state.static_state));
@@ -3848,7 +4039,7 @@ void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferS
 	}
 
 	if (flags & COMMAND_BUFFER_SAVED_PUSH_CONSTANT_BIT)
-		memcpy(state.bindings.push_constant_data, bindings.push_constant_data, sizeof(bindings.push_constant_data));
+		memcpy(state.bindings.u.push_constant_data, bindings.u.push_constant_data, sizeof(bindings.u.push_constant_data));
 
 	state.flags = flags;
 }

@@ -25,6 +25,7 @@
 #include "limits.hpp"
 #include "small_vector.hpp"
 #include "environment.hpp"
+#include "bitops.hpp"
 #include <vector>
 #include <mutex>
 #include <algorithm>
@@ -2183,6 +2184,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		ext.resource_heap_alignment = ext.descriptor_buffer_properties.descriptorBufferOffsetAlignment;
 	}
+
+	ext.resource_heap_alignment_log2 = Util::floor_log2(ext.resource_heap_alignment);
 
 	return true;
 }

@@ -926,6 +926,7 @@ private:
 	void allocate_descriptor_offset(uint32_t set, uint32_t &first_set, uint32_t &set_count);
 	void flush_descriptor_offsets(uint32_t &first_set, uint32_t &set_count);
 	void validate_descriptor_binds(uint32_t set);
+	void allocate_descriptor_heap_set(uint32_t set);
 
 	void begin_compute();
 	void begin_context();

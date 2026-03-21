@@ -123,7 +123,12 @@ struct ResourceBindings
 	ResourceBinding bindings[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
 	uint64_t cookies[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
 	uint64_t secondary_cookies[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
-	uint8_t push_constant_data[VULKAN_PUSH_CONSTANT_SIZE];
+	union
+	{
+		uint32_t push_data_words[VULKAN_PUSH_DATA_SIZE / sizeof(uint32_t)];
+		VkDeviceAddress push_data_addr[VULKAN_PUSH_DATA_SIZE / sizeof(VkDeviceAddress)];
+		unsigned char push_constant_data[VULKAN_PUSH_DATA_SIZE];
+	} u;
 };
 
 struct ImmutableSamplerBank

@@ -215,10 +215,11 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 	auto &desc_set = layout.sets[set_index];
 
 	auto image_sampler_mask =
-		desc_set.sampled_image_mask |
-		desc_set.separate_image_mask | desc_set.storage_image_mask |
-		desc_set.sampled_texel_buffer_mask | desc_set.storage_texel_buffer_mask |
-		desc_set.sampler_mask;
+			desc_set.sampled_image_mask |
+			desc_set.separate_image_mask | desc_set.storage_image_mask |
+			desc_set.sampled_texel_buffer_mask | desc_set.storage_texel_buffer_mask |
+			desc_set.input_attachment_mask |
+			desc_set.sampler_mask;
 
 	auto buffer_mask = desc_set.uniform_buffer_mask | desc_set.storage_image_mask | desc_set.rtas_mask;
 

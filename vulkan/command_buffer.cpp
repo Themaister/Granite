@@ -2964,7 +2964,6 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 	switch (layout.get_heap_buffer_descriptor_strategy(set))
 	{
 	case PipelineLayout::DescriptorStrategy::Inline:
-	{
 		Util::for_each_bit(set_layout.uniform_buffer_mask |
 		                   set_layout.storage_buffer_mask |
 		                   set_layout.rtas_mask, [&](unsigned bit)
@@ -2973,10 +2972,8 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 					binds[bit].buffer_addr_heap.address;
 		});
 		break;
-	}
 
 	case PipelineLayout::DescriptorStrategy::HeapSlice:
-	{
 		Util::for_each_bit(set_layout.uniform_buffer_mask, [&](unsigned bit)
 		{
 			for (uint32_t i = 0; i < set_layout.meta[bit].array_size; i++)
@@ -3019,10 +3016,8 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 			}
 		});
 		break;
-	}
 
 	case PipelineLayout::DescriptorStrategy::IndirectTable:
-	{
 		Util::for_each_bit(set_layout.uniform_buffer_mask |
 		                   set_layout.storage_buffer_mask |
 		                   set_layout.rtas_mask, [&](unsigned bit)
@@ -3032,10 +3027,134 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 		});
 		break;
 	}
-	}
 
 	if (resource_desc_count)
 		table.vkWriteResourceDescriptorsEXT(device->get_device(), resource_desc_count, resource_desc, host_ranges);
+
+	auto simple_image_mask = set_layout.separate_image_mask | set_layout.sampled_texel_buffer_mask |
+	                         set_layout.storage_texel_buffer_mask | set_layout.storage_image_mask |
+	                         set_layout.input_attachment_mask;
+
+	switch (layout.get_heap_image_descriptor_strategy(set))
+	{
+	case PipelineLayout::DescriptorStrategy::Inline:
+		Util::for_each_bit(simple_image_mask, [&](unsigned bit)
+		{
+			push_words[layout.get_descriptor_offset(set, bit) / sizeof(uint32_t)] =
+				binds[bit].image.integer_heap_index.image_heap_index;
+		});
+
+		Util::for_each_bit(set_layout.sampler_mask, [&](unsigned bit)
+		{
+			push_words[layout.get_descriptor_offset(set, bit) / sizeof(uint32_t)] =
+					binds[bit].image.integer_heap_index.sampler_heap_index;
+		});
+
+		Util::for_each_bit(set_layout.sampled_image_mask, [&](unsigned bit)
+		{
+			push_words[layout.get_descriptor_offset(set, bit) / sizeof(uint32_t)] =
+					binds[bit].image.integer_heap_index.word;
+		});
+		break;
+
+	case PipelineLayout::DescriptorStrategy::HeapSlice:
+		Util::for_each_bit(set_layout.separate_image_mask, [&](unsigned bit)
+		{
+			for (unsigned i = 0; i < set_layout.meta[bit].array_size; i++)
+			{
+				auto *ptr = (set_layout.fp_mask & (1u << bit)) != 0
+					            ? binds[bit + i].image.fp_ptr
+					            : binds[bit + i].image.integer_ptr;
+
+				VK_ASSERT(ptr);
+				device->managers.descriptor_buffer.copy_sampled_image(
+					mapped_heap + layout.get_descriptor_offset(set, bit + i), ptr);
+			}
+		});
+
+		Util::for_each_bit(set_layout.storage_image_mask, [&](unsigned bit)
+		{
+			for (unsigned i = 0; i < set_layout.meta[bit].array_size; i++)
+			{
+				auto *ptr = (set_layout.fp_mask & (1u << bit)) != 0
+					            ? binds[bit + i].image.fp_ptr
+					            : binds[bit + i].image.integer_ptr;
+
+				VK_ASSERT(ptr);
+				device->managers.descriptor_buffer.copy_storage_image(
+					mapped_heap + layout.get_descriptor_offset(set, bit + i), ptr);
+			}
+		});
+
+		Util::for_each_bit(set_layout.input_attachment_mask, [&](unsigned bit)
+		{
+			for (unsigned i = 0; i < set_layout.meta[bit].array_size; i++)
+			{
+				auto *ptr = (set_layout.fp_mask & (1u << bit)) != 0
+					            ? binds[bit + i].image.fp_ptr
+					            : binds[bit + i].image.integer_ptr;
+
+				VK_ASSERT(ptr);
+				device->managers.descriptor_buffer.copy_input_attachment(
+					mapped_heap + layout.get_descriptor_offset(set, bit + i), ptr);
+			}
+		});
+
+		Util::for_each_bit(set_layout.sampled_texel_buffer_mask, [&](unsigned bit)
+		{
+			for (unsigned i = 0; i < set_layout.meta[bit].array_size; i++)
+			{
+				auto *ptr = binds[bit + i].buffer_view.ptr;
+				VK_ASSERT(ptr);
+				device->managers.descriptor_buffer.copy_uniform_texel(
+					mapped_heap + layout.get_descriptor_offset(set, bit + i), ptr);
+			}
+		});
+
+		Util::for_each_bit(set_layout.storage_texel_buffer_mask, [&](unsigned bit)
+		{
+			for (unsigned i = 0; i < set_layout.meta[bit].array_size; i++)
+			{
+				auto *ptr = binds[bit + i].buffer_view.ptr;
+				VK_ASSERT(ptr);
+				device->managers.descriptor_buffer.copy_storage_texel(
+					mapped_heap + layout.get_descriptor_offset(set, bit + i), ptr);
+			}
+		});
+		break;
+
+	case PipelineLayout::DescriptorStrategy::IndirectTable:
+		Util::for_each_bit(simple_image_mask, [&](unsigned bit)
+		{
+			for (unsigned i = 0; i < set_layout.meta[bit].array_size; i++)
+			{
+				auto *ptr = mapped_table + layout.get_descriptor_offset(set, bit + i);
+				uint32_t index = binds[bit + i].image.integer_heap_index.image_heap_index;
+				memcpy(ptr, &index, sizeof(uint32_t));
+			}
+		});
+
+		Util::for_each_bit(set_layout.sampler_mask, [&](unsigned bit)
+		{
+			for (unsigned i = 0; i < set_layout.meta[bit].array_size; i++)
+			{
+				auto *ptr = mapped_table + layout.get_descriptor_offset(set, bit + i);
+				uint32_t index = binds[bit + i].image.integer_heap_index.sampler_heap_index;
+				memcpy(ptr, &index, sizeof(uint32_t));
+			}
+		});
+
+		Util::for_each_bit(set_layout.sampled_image_mask, [&](unsigned bit)
+		{
+			for (unsigned i = 0; i < set_layout.meta[bit].array_size; i++)
+			{
+				auto *ptr = mapped_table + layout.get_descriptor_offset(set, bit + i);
+				uint32_t index = binds[bit + i].image.integer_heap_index.word;
+				memcpy(ptr, &index, sizeof(uint32_t));
+			}
+		});
+		break;
+	}
 }
 
 void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set, uint32_t &set_count)

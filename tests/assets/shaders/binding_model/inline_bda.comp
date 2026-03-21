@@ -1,0 +1,85 @@
+#version 450
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer SSBO00
+{
+    uint value;
+} ssbo00;
+
+layout(set = 0, binding = 2) buffer SSBO02
+{
+    uint value;
+} ssbo02;
+
+layout(set = 0, binding = 1) uniform UBO0
+{
+    uint value;
+} ubo0;
+
+layout(set = 1, binding = 0) buffer SSBO10
+{
+    uint value;
+} ssbo10;
+
+layout(set = 1, binding = 2) buffer SSBO12
+{
+    uint value;
+} ssbo12;
+
+layout(set = 1, binding = 1) uniform UBO1
+{
+    uint value;
+} ubo1;
+
+layout(set = 2, binding = 0) buffer SSBO20
+{
+    uint value;
+} ssbo20;
+
+layout(set = 2, binding = 2) buffer SSBO22
+{
+    uint value;
+} ssbo22;
+
+layout(set = 2, binding = 1) uniform UBO2
+{
+    uint value;
+} ubo2;
+
+layout(set = 3, binding = 0) buffer SSBO30
+{
+    uint value;
+} ssbo30;
+
+layout(set = 3, binding = 2) buffer SSBO32
+{
+    uint value;
+} ssbo32;
+
+layout(set = 3, binding = 1) uniform UBO3
+{
+    uint value;
+} ubo3;
+
+#if MANY
+layout(set = 0, binding = 3) uniform UBOAlt0 { uint value; } ubo0_alt;
+layout(set = 1, binding = 3) uniform UBOAlt1 { uint value; } ubo1_alt;
+layout(set = 2, binding = 3) uniform UBOAlt2 { uint value; } ubo2_alt;
+layout(set = 3, binding = 3) uniform UBOAlt3 { uint value; } ubo3_alt;
+#endif
+
+void main()
+{
+    ssbo00.value = ssbo02.value + ubo0.value;
+    ssbo10.value = ssbo12.value + ubo1.value;
+    ssbo20.value = ssbo22.value + ubo2.value;
+    ssbo30.value = ssbo32.value + ubo3.value;
+
+#if MANY
+    ssbo00.value += ubo0_alt.value;
+    ssbo10.value += ubo1_alt.value;
+    ssbo20.value += ubo2_alt.value;
+    ssbo30.value += ubo3_alt.value;
+#endif
+}

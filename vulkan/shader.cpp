@@ -153,7 +153,7 @@ void PipelineLayout::init_heap_image(uint32_t set_index, uint32_t base_push_data
 		push_data_offset += num_image_descriptors * sizeof(uint32_t);
 		heap.image_strategies[set_index] = DescriptorStrategy::Inline;
 	}
-	else if (sampler_mask != 0)
+	else if (sampler_mask != 0 && (layout.bindless_descriptor_set_mask & (1u << set_index)) == 0)
 	{
 		// We cannot lower sampler to heap slice since sampler heap is so tiny.
 		// Force indirection table.

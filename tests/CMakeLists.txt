@@ -132,6 +132,9 @@ endif()
 add_granite_offline_tool(sampler-precision sampler_precision.cpp)
 target_compile_definitions(sampler-precision PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 
+add_granite_offline_tool(binding-model binding_model.cpp)
+target_compile_definitions(binding-model PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+
 add_granite_offline_tool(robustness2-test robustness2.cpp)
 target_compile_definitions(robustness2-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 

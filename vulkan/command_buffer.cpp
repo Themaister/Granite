@@ -1098,19 +1098,18 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 		}
 	}
 
-	VkPipeline compute_pipeline = VK_NULL_HANDLE;
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	device->register_compute_pipeline(compile.hash, info);
-#endif
-
-	auto &table = device->get_device_table();
-
 	VkPipelineCreateFlags2CreateInfoKHR flags2 = { VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR };
+	auto heap = device->get_device_features().descriptor_heap_features.descriptorHeap;
+
+	if (compile.static_state.state.indirect_bindable || heap)
+	{
+		flags2.pNext = info.pNext;
+		info.pNext = &flags2;
+	}
+
 	if (compile.static_state.state.indirect_bindable)
 	{
 		flags2.flags |= VK_PIPELINE_CREATE_2_INDIRECT_BINDABLE_BIT_EXT;
-		flags2.pNext = info.pNext;
-		info.pNext = &flags2;
 
 		auto supported_stages = device->get_device_features().
 				device_generated_commands_properties.supportedIndirectCommandsShaderStagesPipelineBinding;
@@ -1118,14 +1117,39 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 		VK_ASSERT((supported_stages & VK_SHADER_STAGE_COMPUTE_BIT) != 0);
 	}
 
+	VkPipeline compute_pipeline = VK_NULL_HANDLE;
+#ifdef GRANITE_VULKAN_FOSSILIZE
+	device->register_compute_pipeline(compile.hash, info);
+#endif
+
+	auto &table = device->get_device_table();
+
 	if (mode == CompileMode::FailOnCompileRequired)
 	{
 		info.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
-		flags2.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
+		flags2.flags |= VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
 	}
 
 	if (device->get_device_features().supports_descriptor_buffer)
+	{
 		info.flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+		flags2.flags |= VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT;
+	}
+
+	// Setup mapping structures after Fossilize capture since we want a normalized capture.
+	VkShaderDescriptorSetAndBindingMappingInfoEXT mapping_info =
+		{ VK_STRUCTURE_TYPE_SHADER_DESCRIPTOR_SET_AND_BINDING_MAPPING_INFO_EXT };
+
+	if (heap)
+	{
+		flags2.flags |= VK_PIPELINE_CREATE_2_DESCRIPTOR_HEAP_BIT_EXT;
+
+		auto &mappings = compile.layout->get_heap_mappings();
+		mapping_info.mappingCount = uint32_t(mappings.size());
+		mapping_info.pMappings = mappings.data();
+		mapping_info.pNext = info.stage.pNext;
+		info.stage.pNext = &mapping_info;
+	}
 
 	auto start_ts = Util::get_current_time_nsecs();
 	VkResult vr = device->pipeline_binary_cache.create_pipeline(&info, compile.cache, &compute_pipeline);
@@ -1468,11 +1492,17 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	pipe.stageCount = num_stages;
 
 	VkPipelineCreateFlags2CreateInfoKHR flags2 = { VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR };
+	auto heap = device->get_device_features().descriptor_heap_features.descriptorHeap;
+
+	if (compile.static_state.state.indirect_bindable || heap)
+	{
+		flags2.pNext = pipe.pNext;
+		pipe.pNext = &flags2;
+	}
+
 	if (compile.static_state.state.indirect_bindable)
 	{
 		flags2.flags |= VK_PIPELINE_CREATE_2_INDIRECT_BINDABLE_BIT_EXT;
-		flags2.pNext = pipe.pNext;
-		pipe.pNext = &flags2;
 
 		auto supported_stages = device->get_device_features().
 				device_generated_commands_properties.supportedIndirectCommandsShaderStagesPipelineBinding;
@@ -1489,16 +1519,39 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 	device->register_graphics_pipeline(compile.hash, pipe);
 #endif
 
+	// Patch in mapping structs late since we don't want to capture it in Fossilize.
+	// It is somewhat device dependent.
+	VkShaderDescriptorSetAndBindingMappingInfoEXT mapping_info[3];
+
+	if (heap)
+	{
+		flags2.flags |= VK_PIPELINE_CREATE_2_DESCRIPTOR_HEAP_BIT_EXT;
+		auto &mappings = compile.layout->get_heap_mappings();
+		VK_ASSERT(pipe.stageCount <= 3);
+
+		for (uint32_t i = 0; i < pipe.stageCount; i++)
+		{
+			mapping_info[i] = { VK_STRUCTURE_TYPE_SHADER_DESCRIPTOR_SET_AND_BINDING_MAPPING_INFO_EXT };
+			mapping_info[i].mappingCount = uint32_t(mappings.size());
+			mapping_info[i].pMappings = mappings.data();
+			mapping_info[i].pNext = stages[i].pNext;
+			stages[i].pNext = &mapping_info[i];
+		}
+	}
+
 	auto &table = device->get_device_table();
 
 	if (mode == CompileMode::FailOnCompileRequired)
 	{
 		pipe.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
-		flags2.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
+		flags2.flags |= VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
 	}
 
 	if (device->get_device_features().supports_descriptor_buffer)
+	{
 		pipe.flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+		flags2.flags |= VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT;
+	}
 
 	auto start_ts = Util::get_current_time_nsecs();
 	VkResult res = device->pipeline_binary_cache.create_pipeline(&pipe, compile.cache, &pipeline);

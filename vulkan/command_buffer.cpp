@@ -3259,6 +3259,8 @@ void CommandBuffer::flush_descriptor_sets()
 
 	if (desc_heap_enable)
 	{
+		auto &ext = device->get_device_features();
+
 		// Rebinding sets just means calling push data again.
 		if (set_update_mask)
 			set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
@@ -3266,6 +3268,13 @@ void CommandBuffer::flush_descriptor_sets()
 		for_each_bit(set_update_mask & dirty_sets_realloc, [&](uint32_t set)
 		{
 			allocate_descriptor_heap_set(set);
+		});
+
+		for_each_bit(set_update_mask & layout.bindless_descriptor_set_mask, [&](uint32_t set)
+		{
+			auto push_offset = pipeline_state.layout->get_descriptor_set_push_image_offset(set);
+			bindings.u.push_data_addr[push_offset / sizeof(VkDeviceAddress)] =
+					uint32_t(desc_buffer_offsets[set]) >> ext.resource_heap_alignment_log2;
 		});
 	}
 	else if (desc_buffer_enable)

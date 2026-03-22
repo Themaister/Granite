@@ -4249,6 +4249,8 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (!holder.create_default_views(tmpinfo, nullptr, create_info.ycbcr_conversion,
 		                                 create_unorm_srgb_views, create_mip_views, view_formats))
 		{
+			LOCK_MEMORY();
+			holder.allocation.free_immediate(managers.memory);
 			return ImageHandle(nullptr);
 		}
 

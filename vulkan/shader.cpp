@@ -221,7 +221,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			desc_set.input_attachment_mask |
 			desc_set.sampler_mask;
 
-	auto buffer_mask = desc_set.uniform_buffer_mask | desc_set.storage_image_mask | desc_set.rtas_mask;
+	auto buffer_mask = desc_set.uniform_buffer_mask | desc_set.storage_buffer_mask | desc_set.rtas_mask;
 
 	uint32_t push_offset = heap.push_buffer_offsets[set_index];
 	uint32_t table_offset = 0;
@@ -485,14 +485,9 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourc
 	, layout(layout_)
 {
 	if (device->get_device_features().descriptor_heap_features.descriptorHeap)
-	{
-		VK_ASSERT(!immutable_samplers);
 		init_heap();
-	}
 	else
-	{
 		init_legacy(immutable_samplers);
-	}
 }
 
 void PipelineLayout::create_update_templates()

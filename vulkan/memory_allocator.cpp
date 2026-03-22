@@ -1159,7 +1159,10 @@ uint32_t DescriptorBufferAllocator::allocate_single_resource_heap_entry()
 {
 	std::lock_guard<std::mutex> holder{lock};
 	if (heap_resource_indices.empty())
+	{
+		LOGE("Resource heap is empty.\n");
 		return UINT32_MAX;
+	}
 
 	auto ret = heap_resource_indices.back();
 	heap_resource_indices.pop_back();
@@ -1186,6 +1189,10 @@ uint32_t DescriptorBufferAllocator::get_descriptor_size_for_type(VkDescriptorTyp
 
 	if (ext.descriptor_heap_features.descriptorHeap)
 	{
+		// This does not exist.
+		if (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+			return 0;
+
 		auto size = vkGetPhysicalDeviceDescriptorSizeEXT(device->get_physical_device(), type);
 		switch (type)
 		{
@@ -1324,6 +1331,98 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 
 	if (heap)
 	{
+		VkResourceDescriptorInfoEXT infos[4];
+		VkImageDescriptorInfoEXT images[4];
+		VkHostAddressRangeEXT addrs[4];
+		uint32_t count = 0;
+
+		if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+		{
+			view.sampled = alloc_sampled_image();
+			view.sampled.heap_index = allocate_single_resource_heap_entry();
+			if (view.sampled.heap_index == UINT32_MAX)
+				return false;
+
+			infos[count] = { VK_STRUCTURE_TYPE_RESOURCE_DESCRIPTOR_INFO_EXT };
+			infos[count].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+			infos[count].data.pImage = &images[count];
+
+			images[count] = { VK_STRUCTURE_TYPE_IMAGE_DESCRIPTOR_INFO_EXT };
+			images[count].pView = &info;
+			images[count].layout = layout == ImageLayout::Optimal ? VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
+
+			addrs[count].address = view.sampled.ptr;
+			addrs[count].size = get_descriptor_size_for_type(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
+			count++;
+		}
+
+		if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
+		{
+			view.storage = alloc_storage_image();
+			view.storage.heap_index = allocate_single_resource_heap_entry();
+			if (view.storage.heap_index == UINT32_MAX)
+				return false;
+
+			infos[count] = { VK_STRUCTURE_TYPE_RESOURCE_DESCRIPTOR_INFO_EXT };
+			infos[count].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+			infos[count].data.pImage = &images[count];
+
+			images[count] = { VK_STRUCTURE_TYPE_IMAGE_DESCRIPTOR_INFO_EXT };
+			images[count].pView = &info;
+			images[count].layout = VK_IMAGE_LAYOUT_GENERAL;
+
+			addrs[count].address = view.storage.ptr;
+			addrs[count].size = get_descriptor_size_for_type(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+			count++;
+		}
+
+		if (usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)
+		{
+			view.input_attachment = alloc_input_attachment();
+			view.input_attachment.heap_index = allocate_single_resource_heap_entry();
+			if (view.input_attachment.heap_index == UINT32_MAX)
+				return false;
+
+			view.input_attachment_feedback = alloc_input_attachment();
+			view.input_attachment_feedback.heap_index = allocate_single_resource_heap_entry();
+			if (view.input_attachment_feedback.heap_index == UINT32_MAX)
+				return false;
+
+			for (int i = 0; i < 2; i++)
+			{
+				infos[count] = { VK_STRUCTURE_TYPE_RESOURCE_DESCRIPTOR_INFO_EXT };
+				infos[count].type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+				infos[count].data.pImage = &images[count];
+
+				images[count] = { VK_STRUCTURE_TYPE_IMAGE_DESCRIPTOR_INFO_EXT };
+				images[count].pView = &info;
+				images[count].layout = i == 0 && layout == ImageLayout::Optimal
+					                       ? VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL
+					                       : VK_IMAGE_LAYOUT_GENERAL;
+
+				addrs[count].address = i ? view.input_attachment_feedback.ptr : view.input_attachment.ptr;
+				addrs[count].size = get_descriptor_size_for_type(VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT);
+				count++;
+			}
+		}
+
+		table.vkWriteResourceDescriptorsEXT(device->get_device(), count, infos, addrs);
+
+		auto &heap_props = device->get_device_features().descriptor_heap_properties;
+		auto image_size = align(heap_props.imageDescriptorSize, heap_props.imageDescriptorAlignment);
+
+		if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+			copy_sampled_image(resource_heap.mapped + view.sampled.heap_index * image_size, view.sampled.ptr);
+
+		if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
+			copy_storage_image(resource_heap.mapped + view.storage.heap_index * image_size, view.storage.ptr);
+
+		if (usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)
+		{
+			copy_storage_image(resource_heap.mapped + view.input_attachment.heap_index * image_size, view.input_attachment.ptr);
+			copy_storage_image(resource_heap.mapped + view.input_attachment_feedback.heap_index * image_size, view.input_attachment_feedback.ptr);
+		}
+
 		return false;
 	}
 	else if (device->get_device_features().descriptor_buffer_features.descriptorBuffer &&

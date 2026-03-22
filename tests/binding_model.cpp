@@ -298,7 +298,8 @@ static int main_inner()
 	handles.thread_group = GRANITE_THREAD_GROUP();
 	ctx.set_system_handles(handles);
 
-	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0))
+	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0,
+		CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT))
 		return 1;
 
 	Device dev;

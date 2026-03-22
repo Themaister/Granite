@@ -77,7 +77,13 @@ void PipelineLayout::init_heap_buffers(uint32_t set_index)
 	auto &desc_set = layout.sets[set_index];
 
 	auto raw_buffer_mask = desc_set.uniform_buffer_mask | desc_set.storage_buffer_mask | desc_set.rtas_mask;
-	auto num_buffer_descriptors = Util::popcount32(raw_buffer_mask);
+
+	uint32_t num_buffer_descriptors = 0;
+	Util::for_each_bit(raw_buffer_mask, [&](unsigned bit)
+	{
+		num_buffer_descriptors += desc_set.meta[bit].array_size;
+	});
+
 	auto required_inline_size = num_buffer_descriptors * sizeof(VkDeviceAddress);
 
 	// If we enable robustness, we cannot use PUSH_ADDRESS.

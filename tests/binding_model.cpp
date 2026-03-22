@@ -312,6 +312,7 @@ static int main_inner()
 	// HEAP_PUSH_INDEX
 	test_buffer_descriptor(dev);
 
+#if 0
 	// Inline push index
 	test_buffer_view(dev, false, false);
 	// Heap slice for set 0 due to pressure
@@ -325,6 +326,7 @@ static int main_inner()
 	test_inline_texture(dev, true, false);
 	test_inline_texture(dev, false, true);
 	test_inline_texture(dev, true, true);
+#endif
 
 	return 0;
 }

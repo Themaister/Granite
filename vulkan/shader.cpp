@@ -294,7 +294,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_INDIRECT_ADDRESS_EXT;
 			mapping.sourceData.indirectAddress.pushOffset = heap.push_buffer_offsets[set_index];
 			mapping.sourceData.indirectAddress.addressOffset = table_offset;
-			table_offset += buffer_desc_size;
+			table_offset += sizeof(VkDeviceAddress);
 			heap.mappings.push_back(mapping);
 		});
 		break;

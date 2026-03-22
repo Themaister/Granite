@@ -826,6 +826,25 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 	LOGI("Reflecting shader layout.\n");
 #endif
 
+	bool has_array_length = false;
+	auto &ir = compiler.get_ir();
+
+	ir.for_each_typed_id<SPIRBlock>([&](uint32_t, const SPIRBlock &block)
+	{
+		if (has_array_length)
+			return;
+
+		for (auto &op : block.ops)
+		{
+			auto spvop = spv::Op(op.op);
+			if (spvop == spv::OpArrayLength)
+			{
+				has_array_length = true;
+				return;
+			}
+		}
+	});
+
 	auto resources = compiler.get_shader_resources();
 	for (auto &image : resources.sampled_images)
 	{
@@ -930,6 +949,9 @@ bool Shader::reflect_resource_layout(ResourceLayout &layout, const uint32_t *dat
 
 		layout.sets[set].storage_buffer_mask |= 1u << binding;
 		update_array_info(layout, compiler.get_type(buffer.type_id), set, binding);
+
+		if (has_array_length)
+			layout.sets[set].meta[binding].requires_descriptor_size = 1;
 	}
 
 	for (auto &buffer : resources.acceleration_structures)

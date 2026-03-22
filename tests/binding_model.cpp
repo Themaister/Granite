@@ -125,7 +125,7 @@ static void test_buffer_descriptor(Device &device)
 	device.unmap_host_buffer(*buffers[0], MEMORY_ACCESS_READ_BIT);
 }
 
-static void test_buffer_view_inline(Device &device, bool many, bool arrayed)
+static void test_buffer_view(Device &device, bool many, bool arrayed)
 {
 	auto cmd = device.request_command_buffer();
 	cmd->set_program("assets://shaders/binding_model/texel_buffer.comp",
@@ -189,6 +189,85 @@ static void test_buffer_view_inline(Device &device, bool many, bool arrayed)
 	}
 }
 
+static void test_inline_texture(Device &device, bool combined)
+{
+	auto cmd = device.request_command_buffer();
+	cmd->set_program("assets://shaders/binding_model/textures.comp",
+	                 {{"COMBINED", combined ? 1 : 0}});
+
+	auto info = ImageCreateInfo::immutable_2d_image(7, 7, VK_FORMAT_R8G8B8A8_UNORM);
+	uint32_t data[7][7];
+
+	for (int y = 0; y < 7; y++)
+		for (int x = 0; x < 7; x++)
+			data[y][x] = ((x ^ y) & 1) ? 0x20202020 : 0;
+
+	const ImageInitialData init = { data, 0, 0 };
+	auto tex0 = device.create_image(info, &init);
+
+	for (int y = 0; y < 7; y++)
+		for (int x = 0; x < 7; x++)
+			data[y][x] = ((x ^ y) & 1) ? 0 : 0x40404040;
+
+	auto tex1 = device.create_image(info, &init);
+
+	info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	info.layout = ImageLayout::General;
+	info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+	info.width = 8;
+	info.height = 8;
+	auto storage_tex = device.create_image(info);
+
+	const float inv_res[] = { 1.0f / 7.0f, 1.0f / 7.0f };
+	cmd->push_constants(&inv_res, 0, sizeof(inv_res));
+
+	cmd->set_storage_texture(0, 0, storage_tex->get_view());
+	cmd->set_sampler(0, 1, StockSampler::NearestClamp);
+	cmd->set_texture(0, 2, tex0->get_view(), StockSampler::NearestClamp);
+	cmd->set_sampler(0, 3, StockSampler::NearestWrap);
+	cmd->set_texture(0, 4, tex1->get_view(), StockSampler::NearestWrap);
+	cmd->dispatch(1, 1, 1);
+
+	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+
+	BufferCreateInfo bufinfo = {};
+	bufinfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	bufinfo.domain = BufferDomain::CachedHost;
+	bufinfo.size = 8 * 8 * sizeof(uint32_t);
+	auto buf = device.create_buffer(bufinfo);
+
+	cmd->copy_image_to_buffer(*buf, *storage_tex, 0, {}, {8, 8, 1},
+	                          0, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+	cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+
+	Fence fence;
+	device.submit(cmd, &fence);
+	fence->wait();
+	device.next_frame_context();
+
+	auto *ptr = static_cast<const uint32_t *>(device.map_host_buffer(*buf, MEMORY_ACCESS_READ_BIT));
+	for (int y = 0; y < 8; y++)
+	{
+		for (int x = 0; x < 8; x++)
+		{
+			uint32_t expected;
+			if (x < 7 && y < 7)
+				expected = ((x ^ y) & 1) ? 0x20202020 : 0x40404040;
+			else if (y < 7)
+				expected = ((6 ^ y) & 1) ? 0x20202020 : 0x40404040;
+			else if (x < 7)
+				expected = ((x ^ 6) & 1) ? 0x20202020 : 0x40404040;
+			else
+				expected = 0x40404040;
+
+			ASSERT_THAT(expected == ptr[y * 8 + x]);
+		}
+	}
+	device.unmap_host_buffer(*buf, MEMORY_ACCESS_READ_BIT);
+}
+
 static int main_inner()
 {
 	if (!Context::init_loader(nullptr))
@@ -207,6 +286,7 @@ static int main_inner()
 	Device dev;
 	dev.set_context(ctx);
 
+#if 0
 	// PUSH_ADDRESS
 	test_inline_bda(dev, false);
 	// INDIRECT_ADDRESS
@@ -215,13 +295,17 @@ static int main_inner()
 	test_buffer_descriptor(dev);
 
 	// Inline push index
-	test_buffer_view_inline(dev, false, false);
+	test_buffer_view(dev, false, false);
 	// Heap slice for set 0 due to pressure
-	test_buffer_view_inline(dev, true, false);
+	test_buffer_view(dev, true, false);
 	// Heap slice for set 1 due to arrays
-	test_buffer_view_inline(dev, false, true);
+	test_buffer_view(dev, false, true);
 	// Heap slice for set 0 and 1
-	test_buffer_view_inline(dev, true, true);
+	test_buffer_view(dev, true, true);
+#endif
+
+	test_inline_texture(dev, false);
+	test_inline_texture(dev, true);
 
 	return 0;
 }

@@ -1,0 +1,33 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(push_constant) uniform Constants
+{
+    vec2 inv_res;
+};
+
+layout(set = 0, binding = 0) writeonly uniform image2D StorageImage;
+
+#if COMBINED
+layout(set = 0, binding = 2) uniform sampler2D Tex0;
+layout(set = 0, binding = 4) uniform sampler2D Tex1;
+#else
+layout(set = 0, binding = 1) uniform sampler Samp0;
+layout(set = 0, binding = 2) uniform texture2D Tex0;
+layout(set = 0, binding = 3) uniform sampler Samp1;
+layout(set = 0, binding = 4) uniform texture2D Tex1;
+#endif
+
+void main()
+{
+    vec2 uv = (vec2(gl_GlobalInvocationID.xy) + 0.5) * inv_res;
+#if COMBINED
+    vec4 value = textureLod(Tex0, uv, 0.0);
+    value += textureLod(Tex1, uv, 0.0);
+#else
+    vec4 value = textureLod(sampler2D(Tex0, Samp0), uv, 0.0);
+    value += textureLod(sampler2D(Tex1, Samp1), uv, 0.0);
+#endif
+    imageStore(StorageImage, ivec2(gl_GlobalInvocationID.xy), value);
+}

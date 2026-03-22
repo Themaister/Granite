@@ -135,7 +135,11 @@ void PipelineLayout::init_heap_image(uint32_t set_index, uint32_t base_push_data
 		desc_set.sampler_mask;
 
 	auto sampler_mask = desc_set.sampled_image_mask | desc_set.sampler_mask;
-	uint32_t num_image_descriptors = Util::popcount32(image_sampler_mask);
+	uint32_t num_image_descriptors = 0;
+	Util::for_each_bit(image_sampler_mask, [&](unsigned bit)
+	{
+		num_image_descriptors += desc_set.meta[bit].array_size;
+	});
 	bool requires_array_of_image = false;
 
 	Util::for_each_bit(image_sampler_mask, [&](unsigned bit)

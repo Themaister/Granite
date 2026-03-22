@@ -2516,13 +2516,13 @@ void CommandBuffer::set_buffer_view_common(unsigned set, unsigned binding, const
 	{
 		if (desc_type == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER)
 		{
-			b.buffer_view.ptr = view.get_uniform_payload().ptr;
-			b.buffer_view.heap_index = view.get_uniform_payload().heap_index;
+			b.buffer_view.buffer.ptr = view.get_uniform_payload().ptr;
+			b.buffer_view.buffer.heap_index = view.get_uniform_payload().heap_index;
 		}
 		else
 		{
-			b.buffer_view.ptr = view.get_storage_payload().ptr;
-			b.buffer_view.heap_index = view.get_storage_payload().heap_index;
+			b.buffer_view.buffer.ptr = view.get_storage_payload().ptr;
+			b.buffer_view.buffer.heap_index = view.get_storage_payload().heap_index;
 		}
 	}
 	else
@@ -2933,6 +2933,8 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 		push_words[push_offset / sizeof(uint32_t)] = offset >> ext.resource_heap_alignment_log2;
 		mapped_heap = device->managers.descriptor_buffer.get_resource_heap().mapped +
 		              desc_buffer.get_offset() + desc_buffer_alloc_offset;
+
+		desc_buffer_alloc_offset += heap_slice_size;
 	}
 
 	if (heap_table_size)
@@ -3055,7 +3057,7 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 		Util::for_each_bit(texel_buffer_mask, [&](unsigned bit)
 		{
 			push_words[layout.get_descriptor_offset(set, bit) / sizeof(uint32_t)] =
-				binds[bit].buffer_view.heap_index;
+				binds[bit].buffer_view.buffer.heap_index;
 		});
 
 		Util::for_each_bit(set_layout.sampler_mask, [&](unsigned bit)
@@ -3118,7 +3120,7 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 		{
 			for (unsigned i = 0; i < set_layout.meta[bit].array_size; i++)
 			{
-				auto *ptr = binds[bit + i].buffer_view.ptr;
+				auto *ptr = binds[bit + i].buffer_view.buffer.ptr;
 				VK_ASSERT(ptr);
 				device->managers.descriptor_buffer.copy_uniform_texel(
 					mapped_heap + layout.get_descriptor_offset(set, bit + i), ptr);
@@ -3129,7 +3131,7 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 		{
 			for (unsigned i = 0; i < set_layout.meta[bit].array_size; i++)
 			{
-				auto *ptr = binds[bit + i].buffer_view.ptr;
+				auto *ptr = binds[bit + i].buffer_view.buffer.ptr;
 				VK_ASSERT(ptr);
 				device->managers.descriptor_buffer.copy_storage_texel(
 					mapped_heap + layout.get_descriptor_offset(set, bit + i), ptr);
@@ -3153,7 +3155,7 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 			for (unsigned i = 0; i < set_layout.meta[bit].array_size; i++)
 			{
 				auto *ptr = mapped_table + layout.get_descriptor_offset(set, bit + i);
-				const uint32_t &index = binds[bit + i].buffer_view.heap_index;
+				const uint32_t &index = binds[bit + i].buffer_view.buffer.heap_index;
 				memcpy(ptr, &index, sizeof(uint32_t));
 			}
 		});
@@ -3335,20 +3337,20 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	Util::for_each_bit(set_layout.sampled_texel_buffer_mask, [&](unsigned binding) {
 		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
-			VK_ASSERT(bindings.bindings[set][binding + i].buffer_view.ptr);
+			VK_ASSERT(bindings.bindings[set][binding + i].buffer_view.buffer.ptr);
 			device->managers.descriptor_buffer.copy_uniform_texel(
 					mapped + set_allocator->get_binding_offset(binding + i),
-					bindings.bindings[set][binding + i].buffer_view.ptr);
+					bindings.bindings[set][binding + i].buffer_view.buffer.ptr);
 		}
 	});
 
 	Util::for_each_bit(set_layout.storage_texel_buffer_mask, [&](unsigned binding) {
 		for (unsigned i = 0; i < set_layout.meta[binding].array_size; i++)
 		{
-			VK_ASSERT(bindings.bindings[set][binding + i].buffer_view.ptr);
+			VK_ASSERT(bindings.bindings[set][binding + i].buffer_view.buffer.ptr);
 			device->managers.descriptor_buffer.copy_storage_texel(
 					mapped + set_allocator->get_binding_offset(binding + i),
-					bindings.bindings[set][binding + i].buffer_view.ptr);
+					bindings.bindings[set][binding + i].buffer_view.buffer.ptr);
 		}
 	});
 

@@ -113,8 +113,11 @@ union ResourceBinding
 	union
 	{
 		VkBufferView handle;
-		const uint8_t *ptr;
-		uint32_t heap_index;
+		struct
+		{
+			const uint8_t *ptr;
+			uint32_t heap_index;
+		} buffer;
 	} buffer_view;
 };
 

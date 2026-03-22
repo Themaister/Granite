@@ -80,7 +80,8 @@ void PipelineLayout::init_heap_buffers(uint32_t set_index)
 	auto num_buffer_descriptors = Util::popcount32(raw_buffer_mask);
 	auto required_inline_size = num_buffer_descriptors * sizeof(VkDeviceAddress);
 
-	bool requires_array_length = false;
+	// If we enable robustness, we cannot use PUSH_ADDRESS.
+	bool requires_array_length = device->get_device_features().enabled_features.robustBufferAccess == VK_TRUE;
 	Util::for_each_bit(raw_buffer_mask, [&](unsigned bit)
 	{
 		if (desc_set.meta[bit].requires_descriptor_size)

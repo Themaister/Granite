@@ -427,7 +427,6 @@ private:
 	std::vector<uint32_t> heap_resource_indices;
 	std::vector<uint32_t> heap_sampler_indices;
 
-	uint32_t heap_resource_index_stride = 0;
 	// For descriptor heap.
 	uint32_t allocate_single_resource_heap_entry();
 	void free_single_resource_heap_entry(uint32_t index);

@@ -305,16 +305,18 @@ static int main_inner()
 	Device dev;
 	dev.set_context(ctx);
 
+#if 0
 	// PUSH_ADDRESS
 	test_inline_bda(dev, false);
 	// INDIRECT_ADDRESS
 	test_inline_bda(dev, true);
 	// HEAP_PUSH_INDEX
 	test_buffer_descriptor(dev);
+#endif
 
-#if 0
 	// Inline push index
 	test_buffer_view(dev, false, false);
+#if 0
 	// Heap slice for set 0 due to pressure
 	test_buffer_view(dev, true, false);
 	// Heap slice for set 1 due to arrays

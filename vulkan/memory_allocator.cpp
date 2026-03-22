@@ -929,11 +929,10 @@ bool DescriptorBufferAllocator::init(Vulkan::Device *device_)
 		// Lower half is POT sized and allows for dynamic allocation.
 		// This is used to spill out UBOs and SSBOs which must live as descriptors.
 		// Also used to allocate bindless images for GPU perf.
-		heap_resource_index_stride = align(heap_props.imageDescriptorSize, heap_props.imageDescriptorAlignment);
 		auto heap_dynamic_allocator_size = VkDeviceSize(sub_block_size) << max_sub_blocks_log2;
 		auto num_application_resources =
-			(resource_heap.reserved_offset - heap_dynamic_allocator_size) / heap_resource_index_stride;
-		auto resource_slab_offset = heap_dynamic_allocator_size / heap_resource_index_stride;
+			(resource_heap.reserved_offset - heap_dynamic_allocator_size) >> device->get_device_features().resource_heap_alignment_log2;
+		auto resource_slab_offset = heap_dynamic_allocator_size >> device->get_device_features().resource_heap_alignment_log2;
 
 		heap_resource_indices.reserve(num_application_resources);
 		for (uint32_t i = num_application_resources; i; i--)
@@ -1408,19 +1407,18 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 
 		table.vkWriteResourceDescriptorsEXT(device->get_device(), count, infos, addrs);
 
-		auto &heap_props = device->get_device_features().descriptor_heap_properties;
-		auto image_size = align(heap_props.imageDescriptorSize, heap_props.imageDescriptorAlignment);
+		auto desc_size = device->get_device_features().resource_heap_alignment;
 
 		if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
-			copy_sampled_image(resource_heap.mapped + view.sampled.heap_index * image_size, view.sampled.ptr);
+			copy_sampled_image(resource_heap.mapped + view.sampled.heap_index * desc_size, view.sampled.ptr);
 
 		if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
-			copy_storage_image(resource_heap.mapped + view.storage.heap_index * image_size, view.storage.ptr);
+			copy_storage_image(resource_heap.mapped + view.storage.heap_index * desc_size, view.storage.ptr);
 
 		if (usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)
 		{
-			copy_storage_image(resource_heap.mapped + view.input_attachment.heap_index * image_size, view.input_attachment.ptr);
-			copy_storage_image(resource_heap.mapped + view.input_attachment_feedback.heap_index * image_size, view.input_attachment_feedback.ptr);
+			copy_storage_image(resource_heap.mapped + view.input_attachment.heap_index * desc_size, view.input_attachment.ptr);
+			copy_storage_image(resource_heap.mapped + view.input_attachment_feedback.heap_index * desc_size, view.input_attachment_feedback.ptr);
 		}
 
 		return false;
@@ -1501,7 +1499,62 @@ bool DescriptorBufferAllocator::create_buffer_view(
 	}
 	else if (heap)
 	{
-		return false;
+		VkTexelBufferDescriptorInfoEXT texel = { VK_STRUCTURE_TYPE_TEXEL_BUFFER_DESCRIPTOR_INFO_EXT };
+		VkResourceDescriptorInfoEXT infos[2];
+		VkHostAddressRangeEXT addrs[2];
+		uint32_t count = 0;
+
+		VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
+		device->get_format_properties(info.format, &props3);
+
+		texel.addressRange.address = info.buffer->get_device_address() + info.offset;
+		if (info.range == VK_WHOLE_SIZE)
+			texel.addressRange.size = info.buffer->get_create_info().size - info.offset;
+		else
+			texel.addressRange.size = info.range;
+		texel.format = info.format;
+
+		bool uniform =
+				(info.buffer->get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) != 0 &&
+				(props3.bufferFeatures & VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) != 0;
+
+		bool storage =
+				(info.buffer->get_create_info().usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) != 0 &&
+				(props3.bufferFeatures & VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) != 0;
+
+		if (uniform)
+		{
+			view.uniform = alloc_uniform_texel();
+			view.uniform.heap_index = allocate_single_resource_heap_entry();
+
+			infos[count] = { VK_STRUCTURE_TYPE_RESOURCE_DESCRIPTOR_INFO_EXT };
+			infos[count].type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+			infos[count].data.pTexelBuffer = &texel;
+			addrs[count].address = view.uniform.ptr;
+			addrs[count].size = get_descriptor_size_for_type(VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER);
+			count++;
+		}
+
+		if (storage)
+		{
+			view.storage = alloc_storage_texel();
+			view.storage.heap_index = allocate_single_resource_heap_entry();
+
+			infos[count] = { VK_STRUCTURE_TYPE_RESOURCE_DESCRIPTOR_INFO_EXT };
+			infos[count].type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+			infos[count].data.pTexelBuffer = &texel;
+			addrs[count].address = view.storage.ptr;
+			addrs[count].size = get_descriptor_size_for_type(VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER);
+			count++;
+		}
+
+		auto desc_size = device->get_device_features().resource_heap_alignment;
+		table.vkWriteResourceDescriptorsEXT(device->get_device(), count, infos, addrs);
+
+		if (uniform)
+			copy_uniform_texel(resource_heap.mapped + view.uniform.heap_index * desc_size, view.uniform.ptr);
+		if (storage)
+			copy_storage_texel(resource_heap.mapped + view.storage.heap_index * desc_size, view.storage.ptr);
 	}
 	else
 	{

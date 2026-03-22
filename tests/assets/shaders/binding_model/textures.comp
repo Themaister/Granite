@@ -9,14 +9,25 @@ layout(push_constant) uniform Constants
 
 layout(set = 0, binding = 0) writeonly uniform image2D StorageImage;
 
-#if COMBINED
-layout(set = 0, binding = 2) uniform sampler2D Tex0;
-layout(set = 0, binding = 4) uniform sampler2D Tex1;
+#if ARRAYED
+    #if COMBINED
+        layout(set = 0, binding = 1) uniform sampler2D Tex[2];
+    #else
+        layout(set = 0, binding = 1) uniform sampler Samp[2];
+        layout(set = 0, binding = 3) uniform texture2D Tex[2];
+    #endif
+    #define Tex0 Tex[0]
+    #define Tex1 Tex[1]
+    #define Samp0 Samp[0]
+    #define Samp1 Samp[1]
+#elif COMBINED
+    layout(set = 0, binding = 2) uniform sampler2D Tex0;
+    layout(set = 0, binding = 4) uniform sampler2D Tex1;
 #else
-layout(set = 0, binding = 1) uniform sampler Samp0;
-layout(set = 0, binding = 2) uniform texture2D Tex0;
-layout(set = 0, binding = 3) uniform sampler Samp1;
-layout(set = 0, binding = 4) uniform texture2D Tex1;
+    layout(set = 0, binding = 1) uniform sampler Samp0;
+    layout(set = 0, binding = 2) uniform texture2D Tex0;
+    layout(set = 0, binding = 3) uniform sampler Samp1;
+    layout(set = 0, binding = 4) uniform texture2D Tex1;
 #endif
 
 void main()

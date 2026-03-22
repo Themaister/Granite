@@ -189,11 +189,11 @@ static void test_buffer_view(Device &device, bool many, bool arrayed)
 	}
 }
 
-static void test_inline_texture(Device &device, bool combined)
+static void test_inline_texture(Device &device, bool combined, bool arrayed)
 {
 	auto cmd = device.request_command_buffer();
 	cmd->set_program("assets://shaders/binding_model/textures.comp",
-	                 {{"COMBINED", combined ? 1 : 0}});
+	                 {{"COMBINED", combined ? 1 : 0}, {"ARRAYED", arrayed ? 1 : 0}});
 
 	auto info = ImageCreateInfo::immutable_2d_image(7, 7, VK_FORMAT_R8G8B8A8_UNORM);
 	uint32_t data[7][7];
@@ -222,10 +222,28 @@ static void test_inline_texture(Device &device, bool combined)
 	cmd->push_constants(&inv_res, 0, sizeof(inv_res));
 
 	cmd->set_storage_texture(0, 0, storage_tex->get_view());
-	cmd->set_sampler(0, 1, StockSampler::NearestClamp);
-	cmd->set_texture(0, 2, tex0->get_view(), StockSampler::NearestClamp);
-	cmd->set_sampler(0, 3, StockSampler::NearestWrap);
-	cmd->set_texture(0, 4, tex1->get_view(), StockSampler::NearestWrap);
+	if (arrayed)
+	{
+		if (combined)
+		{
+			cmd->set_texture(0, 1, tex0->get_view(), StockSampler::NearestClamp);
+			cmd->set_texture(0, 2, tex1->get_view(), StockSampler::NearestWrap);
+		}
+		else
+		{
+			cmd->set_sampler(0, 1, StockSampler::NearestClamp);
+			cmd->set_sampler(0, 2, StockSampler::NearestWrap);
+			cmd->set_texture(0, 3, tex0->get_view());
+			cmd->set_texture(0, 4, tex1->get_view());
+		}
+	}
+	else
+	{
+		cmd->set_sampler(0, 1, StockSampler::NearestClamp);
+		cmd->set_texture(0, 2, tex0->get_view(), StockSampler::NearestClamp);
+		cmd->set_sampler(0, 3, StockSampler::NearestWrap);
+		cmd->set_texture(0, 4, tex1->get_view(), StockSampler::NearestWrap);
+	}
 	cmd->dispatch(1, 1, 1);
 
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
@@ -286,7 +304,6 @@ static int main_inner()
 	Device dev;
 	dev.set_context(ctx);
 
-#if 0
 	// PUSH_ADDRESS
 	test_inline_bda(dev, false);
 	// INDIRECT_ADDRESS
@@ -302,10 +319,11 @@ static int main_inner()
 	test_buffer_view(dev, false, true);
 	// Heap slice for set 0 and 1
 	test_buffer_view(dev, true, true);
-#endif
 
-	test_inline_texture(dev, false);
-	test_inline_texture(dev, true);
+	test_inline_texture(dev, false, false);
+	test_inline_texture(dev, true, false);
+	test_inline_texture(dev, false, true);
+	test_inline_texture(dev, true, true);
 
 	return 0;
 }

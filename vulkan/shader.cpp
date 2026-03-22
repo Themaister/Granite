@@ -312,7 +312,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 		Util::for_each_bit(image_sampler_mask, [&](unsigned bit)
 		{
 			heap.desc_offsets[set_index][bit] = push_offset;
-			auto mapping = buffer_template;
+			auto mapping = image_template;
 			mapping.descriptorSet = set_index;
 			mapping.firstBinding = bit;
 			VK_ASSERT(desc_set.meta[bit].array_size == 1);
@@ -321,8 +321,8 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT;
 			mapping.sourceData.pushIndex.pushOffset = push_offset;
 			mapping.sourceData.pushIndex.heapOffset = 0;
-			mapping.sourceData.pushIndex.heapArrayStride = image_desc_size;
-			mapping.sourceData.pushIndex.heapIndexStride = image_desc_size;
+			mapping.sourceData.pushIndex.heapArrayStride = device->get_device_features().resource_heap_alignment;
+			mapping.sourceData.pushIndex.heapIndexStride = device->get_device_features().resource_heap_alignment;
 			mapping.sourceData.pushIndex.useCombinedImageSamplerIndex = VK_TRUE;
 			mapping.sourceData.pushIndex.samplerHeapArrayStride = sampler_desc_size;
 			mapping.sourceData.pushIndex.samplerHeapIndexStride = sampler_desc_size;
@@ -335,7 +335,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.sourceData.pushIndex.heapIndexStride = sampler_desc_size;
 			heap.mappings.push_back(mapping);
 
-			push_offset += sizeof(VkDeviceAddress);
+			push_offset += sizeof(uint32_t);
 		});
 		break;
 
@@ -343,7 +343,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 		Util::for_each_bit(image_sampler_mask, [&](unsigned bit)
 		{
 			slice_offset = align(slice_offset, image_desc_size);
-			auto mapping = buffer_template;
+			auto mapping = image_template;
 			mapping.descriptorSet = set_index;
 			mapping.firstBinding = bit;
 			mapping.bindingCount = desc_set.meta[bit].array_size;
@@ -378,7 +378,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.sourceData.indirectIndexArray.samplerHeapOffset = 0;
 			mapping.sourceData.indirectIndexArray.addressOffset = table_offset;
 			mapping.sourceData.indirectIndexArray.useCombinedImageSamplerIndex = VK_TRUE;
-			mapping.sourceData.indirectIndexArray.heapIndexStride = image_desc_size;
+			mapping.sourceData.indirectIndexArray.heapIndexStride = device->get_device_features().resource_heap_alignment;
 			mapping.sourceData.indirectIndexArray.samplerHeapIndexStride = sampler_desc_size;
 			heap.mappings.push_back(mapping);
 
@@ -388,6 +388,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.sourceData.indirectIndexArray.heapOffset = 0;
 			mapping.sourceData.indirectIndexArray.addressOffset = table_offset;
 			mapping.sourceData.indirectIndexArray.heapIndexStride = sampler_desc_size;
+			heap.mappings.push_back(mapping);
 
 			for (unsigned i = 0; i < mapping.bindingCount; i++)
 			{

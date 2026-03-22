@@ -2514,8 +2514,16 @@ void CommandBuffer::set_buffer_view_common(unsigned set, unsigned binding, const
 
 	if (desc_buffer_enable || desc_heap_enable)
 	{
-		b.buffer_view.ptr = desc_type == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER ?
-		                    view.get_uniform_payload().ptr : view.get_storage_payload().ptr;
+		if (desc_type == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER)
+		{
+			b.buffer_view.ptr = view.get_uniform_payload().ptr;
+			b.buffer_view.heap_index = view.get_uniform_payload().heap_index;
+		}
+		else
+		{
+			b.buffer_view.ptr = view.get_storage_payload().ptr;
+			b.buffer_view.heap_index = view.get_storage_payload().heap_index;
+		}
 	}
 	else
 		b.buffer_view.handle = view.get_view();
@@ -3031,9 +3039,9 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 	if (resource_desc_count)
 		table.vkWriteResourceDescriptorsEXT(device->get_device(), resource_desc_count, resource_desc, host_ranges);
 
-	auto simple_image_mask = set_layout.separate_image_mask | set_layout.sampled_texel_buffer_mask |
-	                         set_layout.storage_texel_buffer_mask | set_layout.storage_image_mask |
+	auto simple_image_mask = set_layout.separate_image_mask | set_layout.storage_image_mask |
 	                         set_layout.input_attachment_mask;
+	auto texel_buffer_mask = set_layout.storage_texel_buffer_mask | set_layout.sampled_texel_buffer_mask;
 
 	switch (layout.get_heap_image_descriptor_strategy(set))
 	{
@@ -3042,6 +3050,12 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 		{
 			push_words[layout.get_descriptor_offset(set, bit) / sizeof(uint32_t)] =
 				binds[bit].image.integer_heap_index.image_heap_index;
+		});
+
+		Util::for_each_bit(texel_buffer_mask, [&](unsigned bit)
+		{
+			push_words[layout.get_descriptor_offset(set, bit) / sizeof(uint32_t)] =
+				binds[bit].buffer_view.heap_index;
 		});
 
 		Util::for_each_bit(set_layout.sampler_mask, [&](unsigned bit)
@@ -3130,6 +3144,16 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 			{
 				auto *ptr = mapped_table + layout.get_descriptor_offset(set, bit + i);
 				uint32_t index = binds[bit + i].image.integer_heap_index.image_heap_index;
+				memcpy(ptr, &index, sizeof(uint32_t));
+			}
+		});
+
+		Util::for_each_bit(texel_buffer_mask, [&](unsigned bit)
+		{
+			for (unsigned i = 0; i < set_layout.meta[bit].array_size; i++)
+			{
+				auto *ptr = mapped_table + layout.get_descriptor_offset(set, bit + i);
+				const uint32_t &index = binds[bit + i].buffer_view.heap_index;
 				memcpy(ptr, &index, sizeof(uint32_t));
 			}
 		});

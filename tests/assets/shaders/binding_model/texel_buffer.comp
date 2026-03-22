@@ -1,0 +1,63 @@
+#version 450
+
+layout(local_size_x = 1) in;
+
+layout(rg32ui, set = 0, binding = 0) writeonly uniform uimageBuffer Storage0;
+layout(rg32ui, set = 1, binding = 0) writeonly uniform uimageBuffer Storage1;
+layout(rg32ui, set = 2, binding = 0) writeonly uniform uimageBuffer Storage2;
+layout(rg32ui, set = 3, binding = 0) writeonly uniform uimageBuffer Storage3;
+
+#define DECL_SET(s) \
+layout(set = s, binding = 1) uniform usamplerBuffer Sampler##s##1; \
+layout(set = s, binding = 2) uniform usamplerBuffer Sampler##s##2; \
+layout(set = s, binding = 3) uniform usamplerBuffer Sampler##s##3; \
+layout(set = s, binding = 4) uniform usamplerBuffer Sampler##s##4; \
+layout(set = s, binding = 5) uniform usamplerBuffer Sampler##s##5; \
+layout(set = s, binding = 6) uniform usamplerBuffer Sampler##s##6; \
+layout(set = s, binding = 7) uniform usamplerBuffer Sampler##s##7
+
+DECL_SET(0);
+DECL_SET(1);
+DECL_SET(2);
+DECL_SET(3);
+
+#if MANY
+layout(set = 0, binding = 8) uniform usamplerBuffer Sampler08;
+#endif
+
+#if ARRAYED
+layout(set = 1, binding = 8) uniform usamplerBuffer SamplerArray[8];
+#endif
+
+void main()
+{
+    uvec2 result = uvec2(0);
+
+#define ACCUM(s) \
+    result += texelFetch(Sampler##s##1, 0).xy; \
+    result += texelFetch(Sampler##s##2, 1).xy; \
+    result += texelFetch(Sampler##s##3, 2).xy; \
+    result += texelFetch(Sampler##s##4, 3).xy; \
+    result += texelFetch(Sampler##s##5, 0).xy; \
+    result += texelFetch(Sampler##s##6, 1).xy; \
+    result += texelFetch(Sampler##s##7, 2).xy
+
+    ACCUM(0);
+    ACCUM(1);
+    ACCUM(2);
+    ACCUM(3);
+
+#if MANY
+    result += texelFetch(Sampler08, 0).xy;
+#endif
+
+#if ARRAYED
+    for (int i = 0; i < 8; i++)
+        result += texelFetch(SamplerArray[i], i % 4).xy;
+#endif
+
+    imageStore(Storage0, 0, result.xyxy + 0);
+    imageStore(Storage1, 1, result.xyxy + 1);
+    imageStore(Storage2, 2, result.xyxy + 2);
+    imageStore(Storage3, 3, result.xyxy + 3);
+}

@@ -1305,6 +1305,7 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 
 	static constexpr VkImageUsageFlags force_view_flags =
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+			VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
 			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
 			VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR |
 			VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR |
@@ -1405,7 +1406,8 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 			}
 		}
 
-		table.vkWriteResourceDescriptorsEXT(device->get_device(), count, infos, addrs);
+		if (count)
+			table.vkWriteResourceDescriptorsEXT(device->get_device(), count, infos, addrs);
 
 		auto desc_size = device->get_device_features().resource_heap_resource_desc_size;
 

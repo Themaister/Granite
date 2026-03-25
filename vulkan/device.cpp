@@ -2516,7 +2516,7 @@ void Device::wait_idle_nolock()
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
 
-	if (!ext.supports_descriptor_buffer)
+	if (!ext.supports_descriptor_buffer_or_heap)
 	{
 		for (auto &allocator: descriptor_set_allocators.get_read_only())
 			allocator.clear();
@@ -2605,7 +2605,7 @@ void Device::next_frame_context()
 	framebuffer_allocator.begin_frame();
 	transient_allocator.begin_frame();
 
-	if (!ext.supports_descriptor_buffer)
+	if (!ext.supports_descriptor_buffer_or_heap)
 	{
 		for (auto &allocator: descriptor_set_allocators.get_read_only())
 			allocator.begin_frame();

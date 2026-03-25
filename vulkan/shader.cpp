@@ -442,8 +442,16 @@ void PipelineLayout::init_heap()
 	heap.push_data_size = push_data_offset;
 
 	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
+	{
 		if ((layout.descriptor_set_mask & (1u << i)) != 0)
+		{
 			init_heap(i);
+
+			// Only used to track when we need to invalidate sets.
+			set_allocators[i] = device->request_descriptor_set_allocator(
+				layout.sets[i], layout.stages_for_bindings[i], nullptr);
+		}
+	}
 
 	VK_ASSERT(heap.push_data_size <= VULKAN_PUSH_DATA_SIZE);
 }

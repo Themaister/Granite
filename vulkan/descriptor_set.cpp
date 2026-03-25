@@ -194,13 +194,18 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 		}
 	}
 
-#ifdef VULKAN_DEBUG
-	LOGI("Creating descriptor set layout.\n");
-#endif
-	if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout_pool) != VK_SUCCESS)
-		LOGE("Failed to create descriptor set layout.");
+	bool heap = device->get_device_features().descriptor_heap_features.descriptorHeap == VK_TRUE;
 
-	if (device->ext.supports_descriptor_buffer)
+	if (!heap)
+	{
+#ifdef VULKAN_DEBUG
+		LOGI("Creating descriptor set layout.\n");
+#endif
+		if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout_pool) != VK_SUCCESS)
+			LOGE("Failed to create descriptor set layout.");
+	}
+
+	if (device->ext.supports_descriptor_buffer && !heap)
 	{
 		// Query the memory layout.
 		table.vkGetDescriptorSetLayoutSizeEXT(device->get_device(), set_layout_pool, &desc_set_size);
@@ -227,7 +232,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 	}
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	if (device->ext.supports_descriptor_buffer)
+	if (device->ext.supports_descriptor_buffer && !heap)
 	{
 		// Normalize the recorded flags.
 		if (bindless)
@@ -246,7 +251,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 
 	// Push descriptors is not used with descriptor buffer.
 	if (!bindless && device->get_device_features().vk14_features.pushDescriptor &&
-	    !device->get_device_features().descriptor_buffer_features.descriptorBuffer)
+	    !heap && !device->get_device_features().descriptor_buffer_features.descriptorBuffer)
 	{
 		info.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT;
 		if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout_push) != VK_SUCCESS)

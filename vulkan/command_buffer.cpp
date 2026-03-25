@@ -3417,7 +3417,7 @@ void CommandBuffer::flush_descriptor_sets()
 		if (set_update_mask)
 			set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
 
-		for_each_bit(set_update_mask & dirty_sets_realloc, [&](uint32_t set)
+		for_each_bit(set_update_mask & dirty_sets_realloc & ~layout.bindless_descriptor_set_mask, [&](uint32_t set)
 		{
 			allocate_descriptor_heap_set(set);
 		});

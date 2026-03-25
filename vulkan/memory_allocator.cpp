@@ -1188,25 +1188,25 @@ uint32_t DescriptorBufferAllocator::get_descriptor_size_for_type(VkDescriptorTyp
 
 	if (ext.descriptor_heap_features.descriptorHeap)
 	{
-		// This does not exist.
-		if (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
-			return 0;
+		// We could query the types individually but lots of other code relies
+		// on these being normalized around a common value.
 
-		auto size = vkGetPhysicalDeviceDescriptorSizeEXT(device->get_physical_device(), type);
 		switch (type)
 		{
+		case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+			// Is never used directly.
+			return 0;
+
 		case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
 		case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
 		case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
-			size = align(size, ext.descriptor_heap_properties.bufferDescriptorAlignment);
-			break;
+			return align(ext.descriptor_heap_properties.bufferDescriptorSize,
+			             ext.descriptor_heap_properties.bufferDescriptorAlignment);
 
 		default:
-			size = align(size, ext.descriptor_heap_properties.imageDescriptorAlignment);
-			break;
+			return align(ext.descriptor_heap_properties.imageDescriptorSize,
+			             ext.descriptor_heap_properties.imageDescriptorAlignment);
 		}
-
-		return size;
 	}
 	else
 	{

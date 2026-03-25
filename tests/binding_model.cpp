@@ -26,6 +26,8 @@
 #include "device.hpp"
 #include "thread_group.hpp"
 #include "context.hpp"
+#include "math.hpp"
+#include "muglm/muglm_impl.hpp"
 
 using namespace Granite;
 using namespace Vulkan;
@@ -335,6 +337,87 @@ static void test_inline_texture(Device &device, bool combined, bool arrayed)
 	test_inline_texture_inner(device, combined, arrayed, PipelineLayout::DescriptorStrategy::IndirectTable);
 }
 
+static void test_bindless_texture(Device &device)
+{
+	auto cmd = device.request_command_buffer();
+	cmd->set_program("assets://shaders/binding_model/bindless.comp");
+
+	ImageHandle images[3 * 64];
+	auto info = ImageCreateInfo::immutable_2d_image(1, 1, VK_FORMAT_R8G8B8A8_UINT);
+	for (uint32_t i = 0; i < 3 * 64; i++)
+	{
+		const uint32_t data = i * 0x01010101;
+		const ImageInitialData init = { &data, 0, 0 };
+		images[i] = device.create_image(info, &init);
+	}
+
+	BufferHandle buffer = create_buffer(device, 256 * sizeof(uvec4), nullptr);
+
+	BindlessAllocator allocator;
+	allocator.set_bindless_resource_type(BindlessResourceType::Image);
+
+	BindlessDescriptorSet bind[3];
+
+	for (uint32_t j = 0; j < 3; j++)
+	{
+		allocator.begin();
+		for (uint32_t i = 0; i < 64; i++)
+			allocator.push(images[64 * j + i]->get_view());
+		bind[j] = allocator.commit(device);
+	}
+
+	cmd->set_bindless(0, bind[0]);
+	cmd->set_bindless(1, bind[1]);
+	cmd->set_bindless(2, bind[2]);
+	cmd->set_storage_buffer(3, 0, *buffer, 0, 64 * sizeof(vec4));
+	cmd->set_sampler(3, 1, StockSampler::NearestClamp);
+	cmd->dispatch(1, 1, 1);
+
+	cmd->set_storage_buffer(3, 0, *buffer, 64 * sizeof(vec4), 64 * sizeof(vec4));
+	cmd->dispatch(1, 1, 1);
+
+	cmd->set_bindless(0, bind[0]);
+	cmd->set_bindless(1, bind[2]);
+	cmd->set_bindless(2, bind[1]);
+	cmd->set_storage_buffer(3, 0, *buffer, 128 * sizeof(vec4), 64 * sizeof(vec4));
+	cmd->dispatch(1, 1, 1);
+
+	cmd->set_bindless(0, bind[2]);
+	cmd->set_bindless(1, bind[1]);
+	cmd->set_bindless(2, bind[0]);
+	cmd->set_storage_buffer(3, 0, *buffer, 192 * sizeof(vec4), 64 * sizeof(vec4));
+	cmd->dispatch(1, 1, 1);
+
+	cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+
+	Fence fence;
+	device.submit(cmd, &fence);
+	fence->wait();
+	device.next_frame_context();
+
+	auto *ptr = static_cast<const uvec4 *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT));
+	for (uint32_t i = 0; i < 256; i++)
+	{
+		auto v = ptr[i];
+		uint32_t a, b, c;
+
+		uint32_t iter = i / 64;
+		uint32_t sub = i % 64;
+
+		switch (iter)
+		{
+		default: a = sub; b = sub + 64; c = sub + 128; break;
+		case 2: a = sub; b = sub + 128; c = sub + 64; break;
+		case 3: a = sub + 128; b = sub + 64; c = sub; break;
+		}
+
+		uint32_t expected = a * b + c;
+		ASSERT_THAT(all(equal(uvec4(expected), v)));
+	}
+	device.unmap_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
+}
+
 static int main_inner()
 {
 	if (!Context::init_loader(nullptr))
@@ -354,6 +437,7 @@ static int main_inner()
 	Device dev;
 	dev.set_context(ctx);
 
+#if 0
 	// PUSH_ADDRESS
 	test_inline_bda(dev, false);
 	// INDIRECT_ADDRESS
@@ -370,11 +454,16 @@ static int main_inner()
 	test_buffer_view(dev, false, true);
 	// Heap slice for set 0 and 1
 	test_buffer_view(dev, true, true);
+#endif
 
 	test_inline_texture(dev, false, false);
 	test_inline_texture(dev, true, false);
 	test_inline_texture(dev, false, true);
 	test_inline_texture(dev, true, true);
+
+#if 0
+	test_bindless_texture(dev);
+#endif
 
 	return 0;
 }

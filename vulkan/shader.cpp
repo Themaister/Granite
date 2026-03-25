@@ -205,9 +205,12 @@ void PipelineLayout::init_heap_image(uint32_t set_index, uint32_t base_push_data
 			push_data_offset += sizeof(uint32_t);
 		}
 
-		// Allocate N descriptors from the heap and write them directly.
-		heap.heap_slice_size[set_index] = align(heap.heap_slice_size[set_index], image_desc_size);
-		heap.heap_slice_size[set_index] += num_image_descriptors * image_desc_size;
+		if ((layout.bindless_descriptor_set_mask & (1u << set_index)) == 0)
+		{
+			// Allocate N descriptors from the heap and write them directly.
+			heap.heap_slice_size[set_index] = align(heap.heap_slice_size[set_index], image_desc_size);
+			heap.heap_slice_size[set_index] += num_image_descriptors * image_desc_size;
+		}
 	}
 }
 
@@ -317,6 +320,8 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 	}
 
 	push_offset = heap.push_image_offsets[set_index];
+	bool bindless = (layout.bindless_descriptor_set_mask & (1u << set_index)) != 0;
+	VK_ASSERT(!bindless || slice_offset == 0);
 
 	switch (heap.image_strategies[set_index])
 	{
@@ -358,18 +363,23 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			auto mapping = image_template;
 			mapping.descriptorSet = set_index;
 			mapping.firstBinding = bit;
-			mapping.bindingCount = desc_set.meta[bit].array_size;
+			mapping.bindingCount = bindless ? 1 : desc_set.meta[bit].array_size;
 			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT;
 			// HeapSlice is not compatible with sampler and combined image sampler.
 			mapping.sourceData.pushIndex.pushOffset = heap.push_buffer_offsets[set_index];
 			mapping.sourceData.pushIndex.heapArrayStride = image_desc_size;
 			mapping.sourceData.pushIndex.heapIndexStride = device->get_device_features().resource_heap_resource_desc_size;
 			mapping.sourceData.pushIndex.heapOffset = slice_offset;
-			for (unsigned i = 0; i < mapping.bindingCount; i++)
+
+			if (!bindless)
 			{
-				heap.desc_offsets[set_index][bit + i] = slice_offset;
-				slice_offset += image_desc_size;
+				for (unsigned i = 0; i < mapping.bindingCount; i++)
+				{
+					heap.desc_offsets[set_index][bit + i] = slice_offset;
+					slice_offset += image_desc_size;
+				}
 			}
+
 			heap.mappings.push_back(mapping);
 		});
 		break;

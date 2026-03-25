@@ -4551,7 +4551,7 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 
 	VkDescriptorPool pool = VK_NULL_HANDLE;
 
-	if (!ext.supports_descriptor_buffer)
+	if (!ext.supports_descriptor_buffer_or_heap)
 	{
 		if (allocator)
 			pool = allocator->allocate_bindless_pool(num_sets, num_descriptors);

@@ -1,0 +1,19 @@
+#version 450
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout(local_size_x = 64) in;
+
+layout(set = 0, binding = 0) uniform utexture2D Tex0[];
+layout(set = 1, binding = 0) uniform utexture2D Tex1[];
+layout(set = 2, binding = 0) uniform utexture2D Tex2[];
+layout(set = 3, binding = 0) writeonly buffer SSBO { uvec4 data[]; };
+layout(set = 3, binding = 1) uniform sampler Samp;
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    uvec4 a = textureLod(nonuniformEXT(usampler2D(Tex0[index], Samp)), vec2(0.5), 0.0);
+    uvec4 b = textureLod(nonuniformEXT(usampler2D(Tex1[index], Samp)), vec2(0.5), 0.0);
+    uvec4 c = textureLod(nonuniformEXT(usampler2D(Tex2[index], Samp)), vec2(0.5), 0.0);
+    data[index] = a * b + c;
+}

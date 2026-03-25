@@ -299,7 +299,9 @@ DescriptorBufferAllocation DescriptorSetAllocator::allocate_bindless_buffer(unsi
 	                    num_descriptors;
 
 	size += (std::max<uint32_t>(num_sets, 1u) - 1u) *
-			device->get_device_features().descriptor_buffer_properties.descriptorBufferOffsetAlignment;
+			std::max<VkDeviceSize>(
+				device->get_device_features().resource_heap_offset_alignment,
+				device->get_device_features().resource_heap_resource_desc_size);
 
 	return device->managers.descriptor_buffer.allocate(size);
 }
@@ -478,9 +480,12 @@ void BindlessDescriptorPool::reset()
 
 bool BindlessDescriptorPool::allocate_descriptors(unsigned count)
 {
-	if (device->get_device_features().supports_descriptor_buffer)
+	if (device->get_device_features().supports_descriptor_buffer_or_heap)
 	{
-		VkDeviceSize alignment = device->get_device_features().descriptor_buffer_properties.descriptorBufferOffsetAlignment;
+		auto alignment = std::max<VkDeviceSize>(
+				device->get_device_features().resource_heap_offset_alignment,
+				device->get_device_features().resource_heap_resource_desc_size);
+
 		bindless_buffer_offset = (bindless_buffer_offset + alignment - 1) & ~(alignment - 1);
 		VkDeviceSize size = allocator->get_variable_size(count);
 

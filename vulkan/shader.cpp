@@ -283,7 +283,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT;
 			mapping.sourceData.pushIndex.pushOffset = heap.push_buffer_offsets[set_index];
 			mapping.sourceData.pushIndex.heapArrayStride = buffer_desc_size;
-			mapping.sourceData.pushIndex.heapIndexStride = device->get_device_features().resource_heap_alignment;
+			mapping.sourceData.pushIndex.heapIndexStride = device->get_device_features().resource_heap_resource_desc_size;
 			mapping.sourceData.pushIndex.heapOffset = slice_offset;
 			for (unsigned i = 0; i < mapping.bindingCount; i++)
 			{
@@ -333,8 +333,8 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT;
 			mapping.sourceData.pushIndex.pushOffset = push_offset;
 			mapping.sourceData.pushIndex.heapOffset = 0;
-			mapping.sourceData.pushIndex.heapArrayStride = device->get_device_features().resource_heap_alignment;
-			mapping.sourceData.pushIndex.heapIndexStride = device->get_device_features().resource_heap_alignment;
+			mapping.sourceData.pushIndex.heapArrayStride = device->get_device_features().resource_heap_resource_desc_size;
+			mapping.sourceData.pushIndex.heapIndexStride = device->get_device_features().resource_heap_resource_desc_size;
 			mapping.sourceData.pushIndex.useCombinedImageSamplerIndex = VK_TRUE;
 			mapping.sourceData.pushIndex.samplerHeapArrayStride = sampler_desc_size;
 			mapping.sourceData.pushIndex.samplerHeapIndexStride = sampler_desc_size;
@@ -363,7 +363,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			// HeapSlice is not compatible with sampler and combined image sampler.
 			mapping.sourceData.pushIndex.pushOffset = heap.push_buffer_offsets[set_index];
 			mapping.sourceData.pushIndex.heapArrayStride = image_desc_size;
-			mapping.sourceData.pushIndex.heapIndexStride = device->get_device_features().resource_heap_alignment;
+			mapping.sourceData.pushIndex.heapIndexStride = device->get_device_features().resource_heap_resource_desc_size;
 			mapping.sourceData.pushIndex.heapOffset = slice_offset;
 			for (unsigned i = 0; i < mapping.bindingCount; i++)
 			{
@@ -390,7 +390,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.sourceData.indirectIndexArray.samplerHeapOffset = 0;
 			mapping.sourceData.indirectIndexArray.addressOffset = table_offset;
 			mapping.sourceData.indirectIndexArray.useCombinedImageSamplerIndex = VK_TRUE;
-			mapping.sourceData.indirectIndexArray.heapIndexStride = device->get_device_features().resource_heap_alignment;
+			mapping.sourceData.indirectIndexArray.heapIndexStride = device->get_device_features().resource_heap_resource_desc_size;
 			mapping.sourceData.indirectIndexArray.samplerHeapIndexStride = sampler_desc_size;
 			heap.mappings.push_back(mapping);
 

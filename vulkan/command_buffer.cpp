@@ -2909,7 +2909,7 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 
 	if (heap_slice_size)
 	{
-		auto align = ext.resource_heap_alignment;
+		auto align = ext.resource_heap_resource_desc_size;
 		desc_buffer_alloc_offset = (desc_buffer_alloc_offset + align - 1) & ~(align - 1);
 
 		if (desc_buffer_alloc_offset + heap_slice_size > desc_buffer.get_size())
@@ -2937,7 +2937,7 @@ void CommandBuffer::allocate_descriptor_heap_set(uint32_t set)
 			return;
 		}
 
-		push_words[push_offset / sizeof(uint32_t)] = offset >> ext.resource_heap_alignment_log2;
+		push_words[push_offset / sizeof(uint32_t)] = offset >> ext.resource_heap_resource_desc_size_log2;
 		mapped_heap = device->managers.descriptor_buffer.get_resource_heap().mapped +
 		              desc_buffer.get_offset() + desc_buffer_alloc_offset;
 
@@ -3213,7 +3213,7 @@ void CommandBuffer::allocate_descriptor_offset(uint32_t set, uint32_t &first_set
 	auto *set_allocator = pipeline_state.layout->get_allocator(set);
 	auto size = set_allocator->get_resource_heap_size();
 
-	auto align = device->get_device_features().resource_heap_alignment;
+	auto align = device->get_device_features().resource_heap_offset_alignment;
 	desc_buffer_alloc_offset = (desc_buffer_alloc_offset + align - 1) & ~(align - 1);
 
 	if (desc_buffer_alloc_offset + size > desc_buffer.get_size())
@@ -3426,7 +3426,7 @@ void CommandBuffer::flush_descriptor_sets()
 		{
 			auto push_offset = pipeline_state.layout->get_descriptor_set_push_image_offset(set);
 			bindings.u.push_data_addr[push_offset / sizeof(VkDeviceAddress)] =
-					uint32_t(desc_buffer_offsets[set]) >> ext.resource_heap_alignment_log2;
+					uint32_t(desc_buffer_offsets[set]) >> ext.resource_heap_resource_desc_size_log2;
 		});
 	}
 	else if (desc_buffer_enable)

@@ -2177,15 +2177,26 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	if (ext.descriptor_heap_features.descriptorHeap)
 	{
-		ext.resource_heap_alignment = std::max<uint32_t>(ext.descriptor_heap_properties.bufferDescriptorAlignment,
-														 ext.descriptor_heap_properties.imageDescriptorAlignment);
+		ext.resource_heap_offset_alignment = std::max<uint32_t>(
+			ext.descriptor_heap_properties.bufferDescriptorAlignment,
+			ext.descriptor_heap_properties.imageDescriptorAlignment);
+
+		ext.resource_heap_resource_desc_size = std::max<uint32_t>(
+			ext.descriptor_heap_properties.bufferDescriptorSize,
+			ext.resource_heap_resource_desc_size);
+
+		ext.resource_heap_resource_desc_size = std::max<uint32_t>(
+			ext.descriptor_heap_properties.imageDescriptorSize,
+			ext.resource_heap_resource_desc_size);
+
+		ext.resource_heap_resource_desc_size = Util::next_pow2(ext.resource_heap_resource_desc_size);
 	}
 	else
 	{
-		ext.resource_heap_alignment = ext.descriptor_buffer_properties.descriptorBufferOffsetAlignment;
+		ext.resource_heap_offset_alignment = ext.descriptor_buffer_properties.descriptorBufferOffsetAlignment;
 	}
 
-	ext.resource_heap_alignment_log2 = Util::floor_log2(ext.resource_heap_alignment);
+	ext.resource_heap_resource_desc_size_log2 = Util::floor_log2(ext.resource_heap_resource_desc_size);
 
 	return true;
 }

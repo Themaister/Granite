@@ -835,7 +835,7 @@ bool DescriptorBufferAllocator::init(Vulkan::Device *device_)
 	if (!device->get_device_features().supports_descriptor_buffer_or_heap)
 		return true;
 
-	alignment = device->get_device_features().resource_heap_alignment;
+	alignment = device->get_device_features().resource_heap_offset_alignment;
 	sub_block_size = std::max<uint32_t>(device->get_gpu_properties().limits.nonCoherentAtomSize, alignment);
 
 	VkDeviceSize max_range, max_descriptor_size;
@@ -931,8 +931,8 @@ bool DescriptorBufferAllocator::init(Vulkan::Device *device_)
 		// Also used to allocate bindless images for GPU perf.
 		auto heap_dynamic_allocator_size = VkDeviceSize(sub_block_size) << max_sub_blocks_log2;
 		auto num_application_resources =
-			(resource_heap.reserved_offset - heap_dynamic_allocator_size) >> device->get_device_features().resource_heap_alignment_log2;
-		auto resource_slab_offset = heap_dynamic_allocator_size >> device->get_device_features().resource_heap_alignment_log2;
+			(resource_heap.reserved_offset - heap_dynamic_allocator_size) >> device->get_device_features().resource_heap_resource_desc_size_log2;
+		auto resource_slab_offset = heap_dynamic_allocator_size >> device->get_device_features().resource_heap_resource_desc_size_log2;
 
 		heap_resource_indices.reserve(num_application_resources);
 		for (uint32_t i = num_application_resources; i; i--)
@@ -1407,7 +1407,7 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 
 		table.vkWriteResourceDescriptorsEXT(device->get_device(), count, infos, addrs);
 
-		auto desc_size = device->get_device_features().resource_heap_alignment;
+		auto desc_size = device->get_device_features().resource_heap_resource_desc_size;
 
 		if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
 			copy_sampled_image(resource_heap.mapped + view.sampled.heap_index * desc_size, view.sampled.ptr);
@@ -1546,7 +1546,7 @@ bool DescriptorBufferAllocator::create_buffer_view(
 			count++;
 		}
 
-		auto desc_size = device->get_device_features().resource_heap_alignment;
+		auto desc_size = device->get_device_features().resource_heap_resource_desc_size;
 		table.vkWriteResourceDescriptorsEXT(device->get_device(), count, infos, addrs);
 
 		if (uniform)

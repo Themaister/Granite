@@ -79,8 +79,9 @@ struct DeviceFeatures
 	bool supports_descriptor_buffer = false;
 
 	bool supports_descriptor_buffer_or_heap = false;
-	uint32_t resource_heap_alignment = 0;
-	uint32_t resource_heap_alignment_log2 = 0;
+	uint32_t resource_heap_offset_alignment = 0;
+	uint32_t resource_heap_resource_desc_size = 0;
+	uint32_t resource_heap_resource_desc_size_log2 = 0;
 
 	VkPhysicalDeviceFeatures enabled_features = {};
 

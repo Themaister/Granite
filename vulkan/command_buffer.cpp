@@ -2212,12 +2212,21 @@ void CommandBuffer::set_program_layout(const PipelineLayout *layout)
 		{
 			dirty_sets_rebind |= ~((1u << first_invalidated_set_index) - 1u);
 
-			for (unsigned set = first_invalidated_set_index; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
+			if (desc_heap_enable)
 			{
-				if (layout->get_allocator(set) != pipeline_state.layout->get_allocator(set) ||
-				    set == new_push_set || set == old_push_set)
+				// We allocate sets directly in push data potentially.
+				// Need to assume full realloc if we invalidate the set.
+				dirty_sets_realloc |= dirty_sets_rebind;
+			}
+			else
+			{
+				for (unsigned set = first_invalidated_set_index; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
 				{
-					dirty_sets_realloc |= 1u << set;
+					if (layout->get_allocator(set) != pipeline_state.layout->get_allocator(set) ||
+						set == new_push_set || set == old_push_set)
+					{
+						dirty_sets_realloc |= 1u << set;
+					}
 				}
 			}
 		}

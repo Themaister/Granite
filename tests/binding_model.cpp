@@ -213,11 +213,12 @@ static void test_buffer_view(Device &device, bool many, bool arrayed)
 	}
 }
 
-static void test_inline_texture(Device &device, bool combined, bool arrayed)
+static void test_inline_texture_inner(Device &device, bool combined, bool arrayed,
+                                      PipelineLayout::DescriptorStrategy buffer_strategy)
 {
 	auto cmd = device.request_command_buffer();
 	cmd->set_program("assets://shaders/binding_model/textures.comp",
-	                 {{"COMBINED", combined ? 1 : 0}, {"ARRAYED", arrayed ? 1 : 0}});
+					 {{"COMBINED", combined ? 1 : 0}, {"ARRAYED", arrayed ? 1 : 0}, {"BUFFERS", int(buffer_strategy)}});
 
 	auto info = ImageCreateInfo::immutable_2d_image(7, 7, VK_FORMAT_R8G8B8A8_UNORM);
 	uint32_t data[7][7];
@@ -241,6 +242,11 @@ static void test_inline_texture(Device &device, bool combined, bool arrayed)
 	info.width = 8;
 	info.height = 8;
 	auto storage_tex = device.create_image(info);
+
+	const uint32_t buffer_data[] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+	BufferHandle buffers[4];
+	for (int i = 0; i < 4; i++)
+		buffers[i] = create_buffer(device, 2 * sizeof(uint32_t), &buffer_data[2 * i]);
 
 	const float inv_res[] = { 1.0f / 7.0f, 1.0f / 7.0f };
 	cmd->push_constants(&inv_res, 0, sizeof(inv_res));
@@ -268,6 +274,10 @@ static void test_inline_texture(Device &device, bool combined, bool arrayed)
 		cmd->set_sampler(0, 3, StockSampler::NearestWrap);
 		cmd->set_texture(0, 4, tex1->get_view(), StockSampler::NearestWrap);
 	}
+
+	for (int i = 0; i < 4; i++)
+		cmd->set_storage_buffer(0, 8 + i, *buffers[i]);
+
 	cmd->dispatch(1, 1, 1);
 
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
@@ -304,10 +314,25 @@ static void test_inline_texture(Device &device, bool combined, bool arrayed)
 			else
 				expected = 0x40404040;
 
+			expected += 0x0201;
+			if (buffer_strategy != PipelineLayout::DescriptorStrategy::Inline)
+			{
+				expected += 0x0403;
+				expected += 0x0605;
+				expected += 0x0807;
+			}
+
 			ASSERT_THAT(expected == ptr[y * 8 + x]);
 		}
 	}
 	device.unmap_host_buffer(*buf, MEMORY_ACCESS_READ_BIT);
+}
+
+static void test_inline_texture(Device &device, bool combined, bool arrayed)
+{
+	test_inline_texture_inner(device, combined, arrayed, PipelineLayout::DescriptorStrategy::Inline);
+	test_inline_texture_inner(device, combined, arrayed, PipelineLayout::DescriptorStrategy::HeapSlice);
+	test_inline_texture_inner(device, combined, arrayed, PipelineLayout::DescriptorStrategy::IndirectTable);
 }
 
 static int main_inner()

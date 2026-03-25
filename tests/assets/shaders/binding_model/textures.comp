@@ -30,6 +30,21 @@ layout(set = 0, binding = 0) writeonly uniform image2D StorageImage;
     layout(set = 0, binding = 4) uniform texture2D Tex1;
 #endif
 
+#if BUFFERS == 2
+    layout(set = 0, binding = 8) readonly buffer SSBO0 { uvec2 v; } ssbo0;
+    layout(set = 0, binding = 9) readonly buffer SSBO1 { uvec2 v; } ssbo1;
+    layout(set = 0, binding = 10) readonly buffer SSBO2 { uvec2 v; } ssbo2;
+    layout(set = 0, binding = 11) readonly buffer SSBO3 { uvec2 v; } ssbo3;
+#elif BUFFERS == 1
+    layout(set = 0, binding = 8) readonly buffer SSBO0 { uvec2 v; } ssbo[4];
+    #define ssbo0 ssbo[0]
+    #define ssbo1 ssbo[1]
+    #define ssbo2 ssbo[2]
+    #define ssbo3 ssbo[3]
+#elif BUFFERS == 0
+    layout(set = 0, binding = 8) readonly buffer SSBO0 { uvec2 v; } ssbo0;
+#endif
+
 void main()
 {
     vec2 uv = (vec2(gl_GlobalInvocationID.xy) + 0.5) * inv_res;
@@ -40,5 +55,13 @@ void main()
     vec4 value = textureLod(sampler2D(Tex0, Samp0), uv, 0.0);
     value += textureLod(sampler2D(Tex1, Samp1), uv, 0.0);
 #endif
+
+    value.xy += vec2(ssbo0.v) / 255.0;
+#if BUFFERS != 0
+    value.xy += vec2(ssbo1.v) / 255.0;
+    value.xy += vec2(ssbo2.v) / 255.0;
+    value.xy += vec2(ssbo3.v) / 255.0;
+#endif
+
     imageStore(StorageImage, ivec2(gl_GlobalInvocationID.xy), value);
 }

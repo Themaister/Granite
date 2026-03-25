@@ -437,7 +437,6 @@ static int main_inner()
 	Device dev;
 	dev.set_context(ctx);
 
-#if 0
 	// PUSH_ADDRESS
 	test_inline_bda(dev, false);
 	// INDIRECT_ADDRESS
@@ -454,16 +453,13 @@ static int main_inner()
 	test_buffer_view(dev, false, true);
 	// Heap slice for set 0 and 1
 	test_buffer_view(dev, true, true);
-#endif
 
 	test_inline_texture(dev, false, false);
 	test_inline_texture(dev, true, false);
 	test_inline_texture(dev, false, true);
 	test_inline_texture(dev, true, true);
 
-#if 0
 	test_bindless_texture(dev);
-#endif
 
 	return 0;
 }

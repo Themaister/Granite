@@ -366,7 +366,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.bindingCount = bindless ? 1 : desc_set.meta[bit].array_size;
 			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT;
 			// HeapSlice is not compatible with sampler and combined image sampler.
-			mapping.sourceData.pushIndex.pushOffset = heap.push_buffer_offsets[set_index];
+			mapping.sourceData.pushIndex.pushOffset = heap.push_image_offsets[set_index];
 			mapping.sourceData.pushIndex.heapArrayStride = image_desc_size;
 			mapping.sourceData.pushIndex.heapIndexStride = device->get_device_features().resource_heap_resource_desc_size;
 			mapping.sourceData.pushIndex.heapOffset = slice_offset;
@@ -395,7 +395,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.bindingCount = desc_set.meta[bit].array_size;
 			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_ARRAY_EXT;
 			mapping.resourceMask |= VK_SPIRV_RESOURCE_TYPE_COMBINED_SAMPLED_IMAGE_BIT_EXT;
-			mapping.sourceData.indirectIndexArray.pushOffset = heap.push_buffer_offsets[set_index];
+			mapping.sourceData.indirectIndexArray.pushOffset = heap.push_image_offsets[set_index];
 			mapping.sourceData.indirectIndexArray.heapOffset = 0;
 			mapping.sourceData.indirectIndexArray.samplerHeapOffset = 0;
 			mapping.sourceData.indirectIndexArray.addressOffset = table_offset;
@@ -406,7 +406,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 
 			mapping.resourceMask = VK_SPIRV_RESOURCE_TYPE_SAMPLER_BIT_EXT;
 			mapping.sourceData.indirectIndexArray = {};
-			mapping.sourceData.indirectIndexArray.pushOffset = heap.push_buffer_offsets[set_index];
+			mapping.sourceData.indirectIndexArray.pushOffset = heap.push_image_offsets[set_index];
 			mapping.sourceData.indirectIndexArray.heapOffset = 0;
 			mapping.sourceData.indirectIndexArray.addressOffset = table_offset;
 			mapping.sourceData.indirectIndexArray.heapIndexStride = sampler_desc_size;

@@ -2587,16 +2587,29 @@ void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 		b.image.integer.imageLayout = ref.layout;
 		b.image.fp.imageView = view->get_float_view().view;
 		b.image.integer.imageView = view->get_integer_view().view;
+
 		if (desc_buffer_enable || desc_heap_enable)
 		{
-			b.image.fp_ptr = ref.layout == VK_IMAGE_LAYOUT_GENERAL ?
-				view->get_float_view().input_attachment_feedback.ptr :
-				view->get_float_view().input_attachment.ptr;
-
-			b.image.integer_ptr = ref.layout == VK_IMAGE_LAYOUT_GENERAL ?
-				view->get_integer_view().input_attachment_feedback.ptr :
-				view->get_integer_view().input_attachment.ptr;
+			if (ref.layout == VK_IMAGE_LAYOUT_GENERAL)
+			{
+				b.image.fp_ptr = view->get_float_view().input_attachment_feedback.ptr;
+				b.image.integer_ptr = view->get_integer_view().input_attachment_feedback.ptr;
+				b.image.fp_heap_index.image_heap_index =
+					view->get_float_view().input_attachment_feedback.heap_index;
+				b.image.integer_heap_index.image_heap_index =
+					view->get_integer_view().input_attachment_feedback.heap_index;
+			}
+			else
+			{
+				b.image.fp_ptr = view->get_float_view().input_attachment.ptr;
+				b.image.integer_ptr = view->get_integer_view().input_attachment.ptr;
+				b.image.fp_heap_index.image_heap_index =
+					view->get_float_view().input_attachment.heap_index;
+				b.image.integer_heap_index.image_heap_index =
+					view->get_integer_view().input_attachment.heap_index;
+			}
 		}
+
 		bindings.cookies[set][start_binding + i] = view->get_cookie();
 		dirty_sets_realloc |= 1u << set;
 	}

@@ -100,7 +100,9 @@ void PipelineLayout::init_heap_buffers(uint32_t set_index)
 	if (required_inline_size <= MaxBufferInlineSizePerSet && !requires_array_length_or_array)
 	{
 		heap.buffer_strategies[set_index] = DescriptorStrategy::Inline;
-		push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
+
+		if (required_inline_size)
+			push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
 		heap.push_buffer_offsets[set_index] = push_data_offset;
 		push_data_offset += required_inline_size;
 	}
@@ -140,6 +142,7 @@ void PipelineLayout::init_heap_image(uint32_t set_index, uint32_t base_push_data
 		desc_set.sampled_image_mask |
 		desc_set.separate_image_mask | desc_set.storage_image_mask |
 		desc_set.sampled_texel_buffer_mask | desc_set.storage_texel_buffer_mask |
+		desc_set.input_attachment_mask |
 		desc_set.sampler_mask;
 
 	auto sampler_mask = desc_set.sampled_image_mask | desc_set.sampler_mask;

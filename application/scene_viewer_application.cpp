@@ -785,9 +785,6 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 		phase1.set_render_pass_interface(std::move(renderer));
 	}
 
-	setup_depth_hierarchy_pass(graph, tagcat("depth-prepass", tag), tagcat("hiz", tag),
-							   &context, true);
-
 	if (use_ssao)
 	{
 		auto &prepass_depth = graph.add_pass(tagcat("depth-transient", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);

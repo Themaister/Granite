@@ -2490,7 +2490,14 @@ void CommandBuffer::set_sampler(unsigned set, unsigned binding, const Sampler &s
 	auto &b = bindings.bindings[set][binding];
 	b.image.fp.sampler = sampler.get_sampler();
 	b.image.integer.sampler = sampler.get_sampler();
-	if (desc_buffer_enable || desc_heap_enable)
+	if (desc_heap_enable)
+	{
+		VK_ASSERT(((uint64_t)sampler.get_sampler()) >> 63);
+		b.image.sampler_ptr = nullptr;
+		b.image.fp_heap_index.sampler_heap_index = uint32_t((uint64_t)sampler.get_sampler());
+		b.image.integer_heap_index.sampler_heap_index = uint32_t((uint64_t)sampler.get_sampler());
+	}
+	else if (desc_buffer_enable)
 	{
 		auto &p = sampler.get_descriptor_payload();
 		b.image.sampler_ptr = p.ptr;

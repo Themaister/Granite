@@ -94,11 +94,13 @@ static void test_inline_bda(Device &device, bool many)
 	}
 }
 
-static void test_buffer_descriptor(Device &device)
+static void test_buffer_descriptor(Device &device, bool array)
 {
 	// One SSBO uses OpArrayLength, which requires actual descriptors.
 	auto cmd = device.request_command_buffer();
-	cmd->set_program("assets://shaders/binding_model/buffer_descriptor.comp");
+	cmd->set_program(array
+		                 ? "assets://shaders/binding_model/buffer_descriptor_array.comp"
+		                 : "assets://shaders/binding_model/buffer_descriptor.comp");
 
 	const uint32_t data[] = { 1, 2, 3, 4, 5, 6, 7, 8 };
 	BufferHandle buffers[4];
@@ -106,10 +108,20 @@ static void test_buffer_descriptor(Device &device)
 	for (int i = 0; i < 4; i++)
 		buffers[i] = create_buffer(device, 2 * sizeof(uint32_t), &data[2 * i]);
 
-	cmd->set_storage_buffer(0, 0, *buffers[0]);
-	cmd->set_storage_buffer(0, 1, *buffers[1]);
-	cmd->set_uniform_buffer(0, 2, *buffers[2]);
-	cmd->set_uniform_buffer(1, 0, *buffers[3]);
+	if (array)
+	{
+		cmd->set_storage_buffer(0, 0, *buffers[0]);
+		cmd->set_storage_buffer(0, 1, *buffers[1]);
+		cmd->set_uniform_buffer(0, 2, *buffers[2]);
+		cmd->set_uniform_buffer(0, 3, *buffers[3]);
+	}
+	else
+	{
+		cmd->set_storage_buffer(0, 0, *buffers[0]);
+		cmd->set_storage_buffer(0, 1, *buffers[1]);
+		cmd->set_uniform_buffer(0, 2, *buffers[2]);
+		cmd->set_uniform_buffer(1, 0, *buffers[3]);
+	}
 
 	cmd->dispatch(1, 1, 1);
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
@@ -120,9 +132,21 @@ static void test_buffer_descriptor(Device &device)
 	fence->wait();
 	device.next_frame_context();
 
-	auto *ptr = static_cast<uint32_t *>(device.map_host_buffer(*buffers[0], MEMORY_ACCESS_READ_BIT));
-	ASSERT_THAT(ptr[0] == data[0] + data[2] + data[3] + 2 + data[4] + data[6]);
-	device.unmap_host_buffer(*buffers[0], MEMORY_ACCESS_READ_BIT);
+	if (array)
+	{
+		auto *ptr0 = static_cast<uint32_t *>(device.map_host_buffer(*buffers[0], MEMORY_ACCESS_READ_BIT));
+		auto *ptr1 = static_cast<uint32_t *>(device.map_host_buffer(*buffers[1], MEMORY_ACCESS_READ_BIT));
+		ASSERT_THAT(ptr0[0] == data[0] + data[4]);
+		ASSERT_THAT(ptr1[0] == data[2] + data[6]);
+		device.unmap_host_buffer(*buffers[0], MEMORY_ACCESS_READ_BIT);
+		device.unmap_host_buffer(*buffers[1], MEMORY_ACCESS_READ_BIT);
+	}
+	else
+	{
+		auto *ptr = static_cast<uint32_t *>(device.map_host_buffer(*buffers[0], MEMORY_ACCESS_READ_BIT));
+		ASSERT_THAT(ptr[0] == data[0] + data[2] + data[3] + 2 + data[4] + data[6]);
+		device.unmap_host_buffer(*buffers[0], MEMORY_ACCESS_READ_BIT);
+	}
 }
 
 static void test_buffer_view(Device &device, bool many, bool arrayed)
@@ -305,14 +329,13 @@ static int main_inner()
 	Device dev;
 	dev.set_context(ctx);
 
-#if 0
 	// PUSH_ADDRESS
 	test_inline_bda(dev, false);
 	// INDIRECT_ADDRESS
 	test_inline_bda(dev, true);
 	// HEAP_PUSH_INDEX
-	test_buffer_descriptor(dev);
-#endif
+	test_buffer_descriptor(dev, false);
+	test_buffer_descriptor(dev, true);
 
 	// Inline push index
 	test_buffer_view(dev, false, false);
@@ -323,12 +346,10 @@ static int main_inner()
 	// Heap slice for set 0 and 1
 	test_buffer_view(dev, true, true);
 
-#if 0
 	test_inline_texture(dev, false, false);
 	test_inline_texture(dev, true, false);
 	test_inline_texture(dev, false, true);
 	test_inline_texture(dev, true, true);
-#endif
 
 	return 0;
 }

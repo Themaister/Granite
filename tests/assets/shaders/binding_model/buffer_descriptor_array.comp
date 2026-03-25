@@ -1,0 +1,19 @@
+#version 450
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer SSBO
+{
+    uint v;
+} ssbos[2];
+
+layout(set = 0, binding = 2) uniform UBOs
+{
+    uint v;
+} ubos[2];
+
+void main()
+{
+    ssbos[0].v += ubos[0].v;
+    ssbos[1].v += ubos[1].v;
+}

@@ -79,30 +79,32 @@ void PipelineLayout::init_heap_buffers(uint32_t set_index)
 	auto raw_buffer_mask = desc_set.uniform_buffer_mask | desc_set.storage_buffer_mask | desc_set.rtas_mask;
 
 	uint32_t num_buffer_descriptors = 0;
+	bool requires_array_length_or_array = device->get_device_features().enabled_features.robustBufferAccess == VK_TRUE;
 	Util::for_each_bit(raw_buffer_mask, [&](unsigned bit)
 	{
 		num_buffer_descriptors += desc_set.meta[bit].array_size;
+		if (desc_set.meta[bit].array_size > 1)
+			requires_array_length_or_array = true;
 	});
 
 	auto required_inline_size = num_buffer_descriptors * sizeof(VkDeviceAddress);
 
 	// If we enable robustness, we cannot use PUSH_ADDRESS.
-	bool requires_array_length = device->get_device_features().enabled_features.robustBufferAccess == VK_TRUE;
 	Util::for_each_bit(raw_buffer_mask, [&](unsigned bit)
 	{
 		if (desc_set.meta[bit].requires_descriptor_size)
-			requires_array_length = true;
+			requires_array_length_or_array = true;
 	});
 
 	// Raw PUSH_ADDRESS is always preferred.
-	if (required_inline_size <= MaxBufferInlineSizePerSet && !requires_array_length)
+	if (required_inline_size <= MaxBufferInlineSizePerSet && !requires_array_length_or_array)
 	{
 		heap.buffer_strategies[set_index] = DescriptorStrategy::Inline;
 		push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
 		heap.push_buffer_offsets[set_index] = push_data_offset;
 		push_data_offset += required_inline_size;
 	}
-	else if (requires_array_length)
+	else if (requires_array_length_or_array)
 	{
 		heap.buffer_strategies[set_index] = DescriptorStrategy::HeapSlice;
 		heap.push_buffer_offsets[set_index] = push_data_offset;
@@ -375,7 +377,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 	case DescriptorStrategy::IndirectTable:
 		Util::for_each_bit(image_sampler_mask, [&](unsigned bit)
 		{
-			table_offset = align(table_offset, sizeof(VkDeviceAddress));
+			table_offset = align(table_offset, sizeof(uint32_t));
 			heap.desc_offsets[set_index][bit] = table_offset;
 			auto mapping = image_template;
 			mapping.descriptorSet = set_index;
@@ -403,7 +405,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			for (unsigned i = 0; i < mapping.bindingCount; i++)
 			{
 				heap.desc_offsets[set_index][bit + i] = table_offset;
-				table_offset += image_desc_size;
+				table_offset += sizeof(uint32_t);
 			}
 		});
 		break;

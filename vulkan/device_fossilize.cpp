@@ -492,8 +492,7 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash,
 		}
 	}
 
-	if (create_info->renderPass == VK_NULL_HANDLE ||
-	    (create_info->layout == VK_NULL_HANDLE && ext.descriptor_heap_features.descriptorHeap == VK_FALSE))
+	if (create_info->renderPass == VK_NULL_HANDLE)
 	{
 		*pipeline = VK_NULL_HANDLE;
 		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);
@@ -527,8 +526,7 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash,
                                              const VkComputePipelineCreateInfo *create_info,
                                              VkPipeline *pipeline)
 {
-	if (create_info->stage.module == VK_NULL_HANDLE ||
-		(create_info->layout == VK_NULL_HANDLE && ext.descriptor_heap_features.descriptorHeap == VK_FALSE))
+	if (create_info->stage.module == VK_NULL_HANDLE)
 	{
 		*pipeline = VK_NULL_HANDLE;
 		replayer_state->progress.pipelines.fetch_add(1, std::memory_order_release);

@@ -3447,7 +3447,7 @@ void CommandBuffer::flush_descriptor_sets()
 		for_each_bit(set_update_mask & layout.bindless_descriptor_set_mask, [&](uint32_t set)
 		{
 			auto push_offset = pipeline_state.layout->get_descriptor_set_push_image_offset(set);
-			bindings.u.push_data_addr[push_offset / sizeof(VkDeviceAddress)] =
+			bindings.u.push_data_words[push_offset / sizeof(uint32_t)] =
 					uint32_t(desc_buffer_offsets[set]) >> ext.resource_heap_resource_desc_size_log2;
 		});
 	}

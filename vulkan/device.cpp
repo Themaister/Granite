@@ -1035,7 +1035,7 @@ void Device::begin_shader_caches()
 	                    ctx->get_application_info());
 #elif defined(GRANITE_VULKAN_SYSTEM_HANDLES)
 	// Fossilize init will deal with init_shader_manager_cache()
-	init_shader_manager_cache();
+	init_shader_manager_cache(nullptr);
 #endif
 }
 

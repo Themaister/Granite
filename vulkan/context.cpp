@@ -2192,13 +2192,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			ext.resource_heap_resource_desc_size);
 
 		ext.resource_heap_resource_desc_size = Util::next_pow2(ext.resource_heap_resource_desc_size);
+		ext.resource_heap_resource_desc_size_log2 = Util::floor_log2(ext.resource_heap_resource_desc_size);
 	}
 	else
 	{
 		ext.resource_heap_offset_alignment = ext.descriptor_buffer_properties.descriptorBufferOffsetAlignment;
 	}
-
-	ext.resource_heap_resource_desc_size_log2 = Util::floor_log2(ext.resource_heap_resource_desc_size);
 
 	return true;
 }

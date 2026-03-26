@@ -1295,6 +1295,7 @@ void DescriptorBufferAllocator::free_cached_descriptors(const CachedDescriptorPa
 bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &info, VkImageUsageFlags usage,
                                                   ImageLayout layout, CachedImageView &view)
 {
+	view = {};
 	bool heap = device->get_device_features().descriptor_heap_features.descriptorHeap == VK_TRUE;
 
 	static constexpr VkImageUsageFlags force_view_flags =
@@ -1479,6 +1480,7 @@ bool DescriptorBufferAllocator::create_buffer_view(
 {
 	bool heap = device->get_device_features().descriptor_heap_features.descriptorHeap == VK_TRUE;
 	auto &table = device->get_device_table();
+	view = {};
 
 	if (!device->get_device_features().supports_descriptor_buffer_or_heap)
 	{

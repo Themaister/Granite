@@ -938,7 +938,8 @@ bool ShaderManager::load_shader_cache(const std::string &path, Granite::TaskGrou
 				{
 					// This is fairly efficient on its own, no need to go wide, since it's mostly just IO.
 					auto *templ = get_template(payload->path, payload->stage);
-					templ->register_variant(&payload->defines, nullptr);
+					if (templ)
+						templ->register_variant(&payload->defines, nullptr);
 				});
 
 				thread_group->add_dependency(*shader_compilation_group, *glsl_parse_task);

@@ -349,6 +349,10 @@ static void test_bindless_texture(Device &device)
 		const uint32_t data = i * 0x01010101;
 		const ImageInitialData init = { &data, 0, 0 };
 		images[i] = device.create_image(info, &init);
+
+		std::string name = "buffer-";
+		name += std::to_string(i);
+		device.set_name(*images[i], name.c_str());
 	}
 
 	BufferHandle buffer = create_buffer(device, 256 * sizeof(uvec4), nullptr);
@@ -480,7 +484,11 @@ static int main_inner()
 	Device dev;
 	dev.set_context(ctx);
 
-#if 0
+	test_bindless_texture(dev);
+
+	if (dev.get_device_features().descriptor_heap_features.descriptorHeap)
+		test_bindless_texture_heap(dev);
+
 	// PUSH_ADDRESS
 	test_inline_bda(dev, false);
 	// INDIRECT_ADDRESS
@@ -502,12 +510,6 @@ static int main_inner()
 	test_inline_texture(dev, true, false);
 	test_inline_texture(dev, false, true);
 	test_inline_texture(dev, true, true);
-
-	test_bindless_texture(dev);
-#endif
-
-	if (dev.get_device_features().descriptor_heap_features.descriptorHeap)
-		test_bindless_texture_heap(dev);
 
 	return 0;
 }

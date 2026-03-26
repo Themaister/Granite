@@ -1689,6 +1689,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		ADD_CHAIN(ext.descriptor_heap_features, DESCRIPTOR_HEAP_FEATURES_EXT);
 		enabled_extensions.push_back(VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME);
+		ADD_CHAIN(ext.untyped_pointers_features, SHADER_UNTYPED_POINTERS_FEATURES_KHR);
+		enabled_extensions.push_back(VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME);
 	}
 	else if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
 	         has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))

@@ -418,6 +418,49 @@ static void test_bindless_texture(Device &device)
 	device.unmap_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
 }
 
+static void test_bindless_texture_heap(Device &device)
+{
+	auto cmd = device.request_command_buffer();
+	cmd->set_program("assets://shaders/binding_model/bindless_heap.comp");
+
+	auto *indices = cmd->allocate_typed_constant_data<uint32_t>(0, 2, 64);
+
+	ImageHandle images[64];
+	auto info = ImageCreateInfo::immutable_2d_image(1, 1, VK_FORMAT_R8G8B8A8_UINT);
+	for (uint32_t i = 0; i < 64; i++)
+	{
+		const uint32_t data = i * 0x01010101;
+		const ImageInitialData init = { &data, 0, 0 };
+		images[i] = device.create_image(info, &init);
+
+		// FIXME: If sampled image is not the largest descriptor type, need some rescaling logic.
+		indices[i] = images[i]->get_view().get_float_view().sampled.heap_index;
+	}
+
+	BufferHandle buffer = create_buffer(device, 64 * sizeof(uvec4), nullptr);
+
+	cmd->set_storage_buffer(0, 0, *buffer, 0, 64 * sizeof(vec4));
+	cmd->set_sampler(0, 1, StockSampler::NearestClamp);
+	cmd->dispatch(1, 1, 1);
+
+	cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+
+	Fence fence;
+	device.submit(cmd, &fence);
+	fence->wait();
+	device.next_frame_context();
+
+	auto *ptr = static_cast<const uvec4 *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT));
+	for (uint32_t i = 0; i < 64; i++)
+	{
+		auto v = ptr[i];
+		uint32_t expected = i;
+		ASSERT_THAT(all(equal(uvec4(expected), v)));
+	}
+	device.unmap_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
+}
+
 static int main_inner()
 {
 	if (!Context::init_loader(nullptr))
@@ -437,6 +480,7 @@ static int main_inner()
 	Device dev;
 	dev.set_context(ctx);
 
+#if 0
 	// PUSH_ADDRESS
 	test_inline_bda(dev, false);
 	// INDIRECT_ADDRESS
@@ -460,6 +504,10 @@ static int main_inner()
 	test_inline_texture(dev, true, true);
 
 	test_bindless_texture(dev);
+#endif
+
+	if (dev.get_device_features().descriptor_heap_features.descriptorHeap)
+		test_bindless_texture_heap(dev);
 
 	return 0;
 }

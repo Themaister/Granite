@@ -133,6 +133,7 @@ struct DeviceFeatures
 	VkPhysicalDevicePresentTimingFeaturesEXT present_timing_features = {};
 	VkPhysicalDeviceDescriptorHeapFeaturesEXT descriptor_heap_features = {};
 	VkPhysicalDeviceDescriptorHeapPropertiesEXT descriptor_heap_properties = {};
+	VkPhysicalDeviceShaderUntypedPointersFeaturesKHR untyped_pointers_features = {};
 
 	// Vendor
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};

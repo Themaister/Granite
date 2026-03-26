@@ -927,6 +927,14 @@ private:
 	void flush_descriptor_offsets(uint32_t &first_set, uint32_t &set_count);
 	void validate_descriptor_binds(uint32_t set);
 	void allocate_descriptor_heap_set(uint32_t set);
+	void rebind_descriptor_heap_set(uint32_t set);
+
+	struct DescriptorSlice
+	{
+		uint8_t *mapped;
+		VkDeviceSize offset;
+	};
+	DescriptorSlice allocate_descriptor_slice(VkDeviceSize size, VkDeviceSize alignment);
 
 	void begin_compute();
 	void begin_context();
@@ -938,7 +946,8 @@ private:
 
 	DescriptorBufferAllocation desc_buffer = {};
 	VkDeviceSize desc_buffer_alloc_offset = 0;
-	VkDeviceSize desc_buffer_offsets[VULKAN_NUM_DESCRIPTOR_SETS];
+	VkDeviceSize desc_buffer_heap_cached_offsets[VULKAN_NUM_DESCRIPTOR_SETS];
+	VkDeviceAddress desc_heap_cached_table[VULKAN_NUM_DESCRIPTOR_SETS];
 	bool desc_buffer_enable = false;
 	bool desc_heap_enable = false;
 

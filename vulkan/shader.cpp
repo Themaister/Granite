@@ -103,7 +103,9 @@ void PipelineLayout::init_heap_buffers(uint32_t set_index)
 
 		if (required_inline_size)
 			push_data_offset = align(push_data_offset, sizeof(VkDeviceAddress));
-		heap.push_buffer_offsets[set_index] = push_data_offset;
+
+		heap.push_inline_offsets[set_index] = push_data_offset;
+		heap.push_inline_size[set_index] += required_inline_size;
 		push_data_offset += required_inline_size;
 	}
 	else if (requires_array_length_or_array)
@@ -129,7 +131,7 @@ void PipelineLayout::init_heap_buffers(uint32_t set_index)
 	}
 }
 
-void PipelineLayout::init_heap_image(uint32_t set_index, uint32_t base_push_data_offset)
+void PipelineLayout::init_heap_image(uint32_t set_index)
 {
 	auto image_desc_size =
 			align(device->get_device_features().descriptor_heap_properties.imageDescriptorSize,
@@ -159,15 +161,18 @@ void PipelineLayout::init_heap_image(uint32_t set_index, uint32_t base_push_data
 			requires_array_of_image = true;
 	});
 
-	uint32_t available_inline_indices =
-		(MaxInlineSizePerSet - (heap.push_data_size - base_push_data_offset)) / sizeof(uint32_t);
+	uint32_t available_inline_indices = (MaxInlineSizePerSet - heap.push_inline_size[set_index]) / sizeof(uint32_t);
 
 	// Array of resources would need either heap slice or indirection table.
 	if (num_image_descriptors <= available_inline_indices && !requires_array_of_image)
 	{
-		heap.push_image_offsets[set_index] = push_data_offset;
-		push_data_offset += num_image_descriptors * sizeof(uint32_t);
 		heap.image_strategies[set_index] = DescriptorStrategy::Inline;
+
+		if (heap.buffer_strategies[set_index] != DescriptorStrategy::Inline)
+			heap.push_inline_offsets[set_index] = push_data_offset;
+
+		heap.push_inline_size[set_index] += num_image_descriptors * sizeof(uint32_t);
+		push_data_offset += num_image_descriptors * sizeof(uint32_t);
 	}
 	else if (sampler_mask != 0 && (layout.bindless_descriptor_set_mask & (1u << set_index)) == 0)
 	{
@@ -242,7 +247,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 
 	auto buffer_mask = desc_set.uniform_buffer_mask | desc_set.storage_buffer_mask | desc_set.rtas_mask;
 
-	uint32_t push_offset = heap.push_buffer_offsets[set_index];
+	uint32_t push_offset = 0;
 	uint32_t table_offset = 0;
 	uint32_t slice_offset = 0;
 
@@ -272,7 +277,7 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			VK_ASSERT(desc_set.meta[bit].array_size == 1);
 			mapping.bindingCount = 1;
 			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_ADDRESS_EXT;
-			mapping.sourceData.pushAddressOffset = push_offset;
+			mapping.sourceData.pushAddressOffset = push_offset + heap.push_inline_offsets[set_index];
 			push_offset += sizeof(VkDeviceAddress);
 			heap.mappings.push_back(mapping);
 		});
@@ -322,7 +327,6 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 		break;
 	}
 
-	push_offset = heap.push_image_offsets[set_index];
 	bool bindless = (layout.bindless_descriptor_set_mask & (1u << set_index)) != 0;
 	VK_ASSERT(!bindless || slice_offset == 0);
 
@@ -339,21 +343,28 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.bindingCount = 1;
 			mapping.resourceMask |= VK_SPIRV_RESOURCE_TYPE_COMBINED_SAMPLED_IMAGE_BIT_EXT;
 			mapping.source = VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT;
-			mapping.sourceData.pushIndex.pushOffset = push_offset;
+			mapping.sourceData.pushIndex.pushOffset = push_offset + heap.push_inline_offsets[set_index];
 			mapping.sourceData.pushIndex.heapOffset = 0;
 			mapping.sourceData.pushIndex.heapArrayStride = device->get_device_features().resource_heap_resource_desc_size;
 			mapping.sourceData.pushIndex.heapIndexStride = device->get_device_features().resource_heap_resource_desc_size;
-			mapping.sourceData.pushIndex.useCombinedImageSamplerIndex = VK_TRUE;
-			mapping.sourceData.pushIndex.samplerHeapArrayStride = sampler_desc_size;
-			mapping.sourceData.pushIndex.samplerHeapIndexStride = sampler_desc_size;
-			heap.mappings.push_back(mapping);
+
+			if ((desc_set.sampled_image_mask & (1u << bit)) != 0)
+			{
+				mapping.sourceData.pushIndex.useCombinedImageSamplerIndex = VK_TRUE;
+				mapping.sourceData.pushIndex.samplerHeapArrayStride = sampler_desc_size;
+				mapping.sourceData.pushIndex.samplerHeapIndexStride = sampler_desc_size;
+			}
+
+			if ((desc_set.sampler_mask & (1u << bit)) == 0)
+				heap.mappings.push_back(mapping);
 
 			mapping.resourceMask = VK_SPIRV_RESOURCE_TYPE_SAMPLER_BIT_EXT;
 			mapping.sourceData.pushIndex = {};
-			mapping.sourceData.pushIndex.pushOffset = push_offset;
+			mapping.sourceData.pushIndex.pushOffset = push_offset + heap.push_inline_offsets[set_index];
 			mapping.sourceData.pushIndex.heapArrayStride = sampler_desc_size;
 			mapping.sourceData.pushIndex.heapIndexStride = sampler_desc_size;
-			heap.mappings.push_back(mapping);
+			if ((desc_set.sampler_mask & (1u << bit)) != 0)
+				heap.mappings.push_back(mapping);
 
 			push_offset += sizeof(uint32_t);
 		});
@@ -402,10 +413,16 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.sourceData.indirectIndexArray.heapOffset = 0;
 			mapping.sourceData.indirectIndexArray.samplerHeapOffset = 0;
 			mapping.sourceData.indirectIndexArray.addressOffset = table_offset;
-			mapping.sourceData.indirectIndexArray.useCombinedImageSamplerIndex = VK_TRUE;
 			mapping.sourceData.indirectIndexArray.heapIndexStride = device->get_device_features().resource_heap_resource_desc_size;
-			mapping.sourceData.indirectIndexArray.samplerHeapIndexStride = sampler_desc_size;
-			heap.mappings.push_back(mapping);
+
+			if ((desc_set.sampled_image_mask & (1u << bit)) != 0)
+			{
+				mapping.sourceData.indirectIndexArray.useCombinedImageSamplerIndex = VK_TRUE;
+				mapping.sourceData.indirectIndexArray.samplerHeapIndexStride = sampler_desc_size;
+			}
+
+			if ((desc_set.sampler_mask & (1u << bit)) == 0)
+				heap.mappings.push_back(mapping);
 
 			mapping.resourceMask = VK_SPIRV_RESOURCE_TYPE_SAMPLER_BIT_EXT;
 			mapping.sourceData.indirectIndexArray = {};
@@ -413,7 +430,8 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 			mapping.sourceData.indirectIndexArray.heapOffset = 0;
 			mapping.sourceData.indirectIndexArray.addressOffset = table_offset;
 			mapping.sourceData.indirectIndexArray.heapIndexStride = sampler_desc_size;
-			heap.mappings.push_back(mapping);
+			if ((desc_set.sampler_mask & (1u << bit)) != 0)
+				heap.mappings.push_back(mapping);
 
 			for (unsigned i = 0; i < mapping.bindingCount; i++)
 			{
@@ -427,15 +445,16 @@ void PipelineLayout::init_heap_offsets(uint32_t set_index)
 		break;
 	}
 
+	VK_ASSERT(push_offset <= MaxInlineSizePerSet);
+	VK_ASSERT(push_offset == heap.push_inline_size[set_index]);
 	VK_ASSERT(table_offset == heap.heap_table_size[set_index]);
 	VK_ASSERT(slice_offset == heap.heap_slice_size[set_index]);
 }
 
 void PipelineLayout::init_heap(uint32_t set_index)
 {
-	uint32_t base_push_data_offset = heap.push_data_size;
 	init_heap_buffers(set_index);
-	init_heap_image(set_index, base_push_data_offset);
+	init_heap_image(set_index);
 	init_heap_offsets(set_index);
 }
 

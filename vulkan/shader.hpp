@@ -126,12 +126,13 @@ struct ResourceBindings
 	ResourceBinding bindings[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
 	uint64_t cookies[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
 	uint64_t secondary_cookies[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
+	uint8_t push_constant_data[VULKAN_PUSH_CONSTANT_SIZE];
+
 	union
 	{
-		uint32_t push_data_words[VULKAN_PUSH_DATA_SIZE / sizeof(uint32_t)];
-		VkDeviceAddress push_data_addr[VULKAN_PUSH_DATA_SIZE / sizeof(VkDeviceAddress)];
-		unsigned char push_constant_data[VULKAN_PUSH_DATA_SIZE];
-	} u;
+		uint32_t push_data_words[(VULKAN_PUSH_DATA_SIZE - VULKAN_PUSH_CONSTANT_SIZE) / (VULKAN_NUM_DESCRIPTOR_SETS * sizeof(uint32_t))];
+		VkDeviceAddress push_data_addr[(VULKAN_PUSH_DATA_SIZE - VULKAN_PUSH_CONSTANT_SIZE) / (VULKAN_NUM_DESCRIPTOR_SETS * sizeof(VkDeviceAddress))];
+	} inline_descriptors[VULKAN_NUM_DESCRIPTOR_SETS];
 };
 
 struct ImmutableSamplerBank
@@ -185,11 +186,6 @@ public:
 		IndirectTable,
 	};
 
-	uint32_t get_push_data_size() const
-	{
-		return heap.push_data_size;
-	}
-
 	// Allocation size from indirection table UBO.
 	uint32_t get_heap_table_size(uint32_t desc_set) const
 	{
@@ -215,6 +211,18 @@ public:
 		return heap.push_image_offsets[desc_set];
 	}
 
+	uint32_t get_descriptor_set_inline_offsets(uint32_t desc_set) const
+	{
+		VK_ASSERT(desc_set < VULKAN_NUM_DESCRIPTOR_SETS);
+		return heap.push_inline_offsets[desc_set];
+	}
+
+	uint32_t get_descriptor_set_inline_size(uint32_t desc_set) const
+	{
+		VK_ASSERT(desc_set < VULKAN_NUM_DESCRIPTOR_SETS);
+		return heap.push_inline_size[desc_set];
+	}
+
 	DescriptorStrategy get_heap_buffer_descriptor_strategy(uint32_t desc_set) const
 	{
 		VK_ASSERT(desc_set < VULKAN_NUM_DESCRIPTOR_SETS);
@@ -227,7 +235,7 @@ public:
 		return heap.image_strategies[desc_set];
 	}
 
-	// Inline: offset into push data
+	// Inline: local offset into inline push data
 	// HeapSlice: offset into allocated heap slice
 	// IndirectTable: offset into indirect table
 	uint32_t get_descriptor_offset(uint32_t desc_set, uint32_t binding) const
@@ -255,13 +263,17 @@ private:
 	void init_heap();
 	void init_heap(uint32_t set_index);
 	void init_heap_buffers(uint32_t set_index);
-	void init_heap_image(uint32_t set_index, uint32_t base_push_data_offset);
+	void init_heap_image(uint32_t set_index);
 	void init_heap_offsets(uint32_t set_index);
 	void init_legacy(const ImmutableSamplerBank *immutable_samplers);
 
 	struct
 	{
 		std::vector<VkDescriptorSetAndBindingMappingEXT> mappings;
+		// Inline descriptors are packed together.
+		uint32_t push_inline_offsets[VULKAN_NUM_DESCRIPTOR_SETS];
+		uint32_t push_inline_size[VULKAN_NUM_DESCRIPTOR_SETS];
+		// For tables and slices.
 		uint32_t push_buffer_offsets[VULKAN_NUM_DESCRIPTOR_SETS];
 		uint32_t push_image_offsets[VULKAN_NUM_DESCRIPTOR_SETS];
 		uint32_t heap_table_size[VULKAN_NUM_DESCRIPTOR_SETS];

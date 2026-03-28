@@ -40,11 +40,12 @@ static inline uint32_t get_combined_spec_constant_mask(const DeferredPipelineCom
 	       (compile.potential_static_state.internal_spec_constant_mask << VULKAN_NUM_USER_SPEC_CONSTANTS);
 }
 
-CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCache cache, Type type_)
+CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCache cache, Type type_, bool secondary)
     : device(device_)
     , table(device_->get_device_table())
     , cmd(cmd_)
     , type(type_)
+	, is_secondary(secondary)
 {
 	pipeline_state.cache = cache;
 	begin_compute();
@@ -65,21 +66,25 @@ CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCa
 	{
 		if (device->get_device_features().descriptor_heap_features.descriptorHeap)
 		{
-			VkBindHeapInfoEXT bind_heap = { VK_STRUCTURE_TYPE_BIND_HEAP_INFO_EXT };
+			if (!secondary)
+			{
+				VkBindHeapInfoEXT bind_heap = { VK_STRUCTURE_TYPE_BIND_HEAP_INFO_EXT };
 
-			auto heap = device->managers.descriptor_buffer.get_resource_heap();
-			bind_heap.heapRange.address = heap.va;
-			bind_heap.heapRange.size = heap.size;
-			bind_heap.reservedRangeOffset = heap.reserved_offset;
-			bind_heap.reservedRangeSize = heap.size - heap.reserved_offset;
-			table.vkCmdBindResourceHeapEXT(cmd, &bind_heap);
+				auto heap = device->managers.descriptor_buffer.get_resource_heap();
+				bind_heap.heapRange.address = heap.va;
+				bind_heap.heapRange.size = heap.size;
+				bind_heap.reservedRangeOffset = heap.reserved_offset;
+				bind_heap.reservedRangeSize = heap.size - heap.reserved_offset;
+				table.vkCmdBindResourceHeapEXT(cmd, &bind_heap);
 
-			heap = device->managers.descriptor_buffer.get_sampler_heap();
-			bind_heap.heapRange.address = heap.va;
-			bind_heap.heapRange.size = heap.size;
-			bind_heap.reservedRangeOffset = heap.reserved_offset;
-			bind_heap.reservedRangeSize = heap.size - heap.reserved_offset;
-			table.vkCmdBindSamplerHeapEXT(cmd, &bind_heap);
+				heap = device->managers.descriptor_buffer.get_sampler_heap();
+				bind_heap.heapRange.address = heap.va;
+				bind_heap.heapRange.size = heap.size;
+				bind_heap.reservedRangeOffset = heap.reserved_offset;
+				bind_heap.reservedRangeSize = heap.size - heap.reserved_offset;
+				table.vkCmdBindSamplerHeapEXT(cmd, &bind_heap);
+			}
+
 			desc_heap_enable = true;
 		}
 		else if (device->get_device_features().supports_descriptor_buffer)

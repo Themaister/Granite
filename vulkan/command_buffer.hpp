@@ -331,11 +331,6 @@ public:
 		return thread_index;
 	}
 
-	void set_is_secondary()
-	{
-		is_secondary = true;
-	}
-
 	bool get_is_secondary() const
 	{
 		return is_secondary;
@@ -850,7 +845,7 @@ public:
 
 private:
 	friend class Util::ObjectPool<CommandBuffer>;
-	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type);
+	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type, bool secondary);
 
 	Device *device;
 	const VolkDeviceTable &table;

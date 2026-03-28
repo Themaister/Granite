@@ -1978,7 +1978,7 @@ CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index,
 	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	table->vkBeginCommandBuffer(cmd, &info);
 	add_frame_counter_nolock();
-	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, legacy_pipeline_cache, type));
+	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, legacy_pipeline_cache, type, false));
 	handle->set_thread_index(thread_index);
 
 	if (profiled)
@@ -2026,11 +2026,34 @@ CommandBufferHandle Device::request_secondary_command_buffer_for_thread(unsigned
 	info.pInheritanceInfo = &inherit;
 	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
 
+	VkBindHeapInfoEXT resource_heap = { VK_STRUCTURE_TYPE_BIND_HEAP_INFO_EXT };
+	VkBindHeapInfoEXT sampler_heap = { VK_STRUCTURE_TYPE_BIND_HEAP_INFO_EXT };
+	VkCommandBufferInheritanceDescriptorHeapInfoEXT inheritance_heap =
+		{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_DESCRIPTOR_HEAP_INFO_EXT };
+	inheritance_heap.pResourceHeapBindInfo = &resource_heap;
+	inheritance_heap.pSamplerHeapBindInfo = &sampler_heap;
+
+	if (ext.descriptor_heap_features.descriptorHeap)
+	{
+		auto heap = managers.descriptor_buffer.get_resource_heap();
+		resource_heap.heapRange.address = heap.va;
+		resource_heap.heapRange.size = heap.size;
+		resource_heap.reservedRangeOffset = heap.reserved_offset;
+		resource_heap.reservedRangeSize = heap.size - heap.reserved_offset;
+
+		heap = managers.descriptor_buffer.get_sampler_heap();
+		sampler_heap.heapRange.address = heap.va;
+		sampler_heap.heapRange.size = heap.size;
+		sampler_heap.reservedRangeOffset = heap.reserved_offset;
+		sampler_heap.reservedRangeSize = heap.size - heap.reserved_offset;
+
+		inherit.pNext = &inheritance_heap;
+	}
+
 	table->vkBeginCommandBuffer(cmd, &info);
 	add_frame_counter_nolock();
-	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, legacy_pipeline_cache, type));
+	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, legacy_pipeline_cache, type, true));
 	handle->set_thread_index(thread_index);
-	handle->set_is_secondary();
 	return handle;
 }
 

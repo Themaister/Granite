@@ -1,0 +1,32 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0) writeonly uniform image2D Write;
+layout(set = 0, binding = 1) uniform texture2D A;
+layout(set = 0, binding = 2) uniform texture2D B;
+layout(set = 0, binding = 3) uniform texture2D C;
+layout(set = 0, binding = 4) uniform texture2D D;
+layout(set = 0, binding = 5) uniform texture2D E;
+layout(set = 0, binding = 6) uniform texture2D F;
+layout(set = 0, binding = 7) uniform texture2D G;
+#if MANY
+layout(set = 0, binding = 8) uniform texture2D H;
+#endif
+
+void main()
+{
+    vec4 v = vec4(0.0);
+    v += texelFetch(A, ivec2(gl_GlobalInvocationID.xy), 0);
+    v += texelFetch(B, ivec2(gl_GlobalInvocationID.xy), 0);
+    v += texelFetch(C, ivec2(gl_GlobalInvocationID.xy), 0);
+    v += texelFetch(D, ivec2(gl_GlobalInvocationID.xy), 0);
+    v += texelFetch(E, ivec2(gl_GlobalInvocationID.xy), 0);
+    v += texelFetch(F, ivec2(gl_GlobalInvocationID.xy), 0);
+    v += texelFetch(G, ivec2(gl_GlobalInvocationID.xy), 0);
+#if MANY
+    v += texelFetch(H, ivec2(gl_GlobalInvocationID.xy), 0);
+#endif
+    imageStore(Write, ivec2(gl_GlobalInvocationID.xy), v);
+}

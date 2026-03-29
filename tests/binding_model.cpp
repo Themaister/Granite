@@ -28,6 +28,7 @@
 #include "context.hpp"
 #include "math.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "timer.hpp"
 
 using namespace Granite;
 using namespace Vulkan;
@@ -465,6 +466,99 @@ static void test_bindless_texture_heap(Device &device)
 	device.unmap_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
 }
 
+static constexpr int NumIterations = 4096;
+static constexpr int NumDispatches = 4096;
+
+template <bool Many>
+static void test_bench_buffer_update(Device &device)
+{
+	BufferHandle buffer = create_buffer(device, 256 * 1024 * sizeof(uvec4), nullptr);
+
+	Util::Timer timer;
+
+	double iter_times[NumIterations];
+
+	for (unsigned i = 0; i < NumIterations; i++)
+	{
+		auto cmd = device.request_command_buffer();
+
+		cmd->set_program("assets://shaders/binding_model/inline_bda.comp", {{ "MANY", Many ? 1 : 0 }});
+
+		timer.start();
+		for (unsigned j = 0; j < NumDispatches; j++)
+		{
+			for (unsigned set = 0; set < 4; set++)
+			{
+				cmd->set_storage_buffer(set, 0, *buffer, 256 * j, 256);
+				cmd->set_uniform_buffer(set, 1, *buffer, 256 * j, 256);
+				cmd->set_storage_buffer(set, 2, *buffer, 256 * j, 256);
+				if (Many)
+					cmd->set_uniform_buffer(set, 3, *buffer, 256 * j, 256);
+			}
+
+			cmd->dispatch(1, 1, 1);
+		}
+		iter_times[i] = timer.end();
+
+		device.submit_discard(cmd);
+		device.next_frame_context();
+	}
+
+	// Ignore first iteration due to shader compilation.
+	double total_time = 0.0;
+	for (unsigned i = 1; i < NumIterations; i++)
+		total_time += iter_times[i];
+
+	LOGI("Buffer time per CmdDispatch (many %u): %.3f nsec\n", Many, (total_time / (float(NumDispatches) * float(NumIterations - 1))) * 1e9);
+}
+
+template <bool Many>
+static void test_bench_image_update(Device &device)
+{
+	auto info = ImageCreateInfo::immutable_2d_image(1, 1, VK_FORMAT_R8G8B8A8_UNORM);
+	info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+	info.layout = ImageLayout::General;
+	info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+	const uint32_t data = 0x01010101;
+	const ImageInitialData init = {&data, 0, 0};
+	auto image0 = device.create_image(info, &init);
+	auto image1 = device.create_image(info, &init);
+
+	Util::Timer timer;
+	double iter_times[NumIterations];
+
+	for (unsigned i = 0; i < NumIterations; i++)
+	{
+		auto cmd = device.request_command_buffer();
+
+		cmd->set_program("assets://shaders/binding_model/textures_bench.comp", {{ "MANY", Many ? 1 : 0 }});
+
+		timer.start();
+		for (unsigned j = 0; j < NumDispatches; j++)
+		{
+			auto *view = j & 1 ? &image1->get_view() : &image0->get_view();
+			cmd->set_storage_texture(0, 0, *view);
+			for (unsigned bind = 1; bind < 8; bind++)
+				cmd->set_texture(0, bind, *view);
+			if (Many)
+				cmd->set_texture(0, 8, *view);
+
+			cmd->dispatch(1, 1, 1);
+		}
+		iter_times[i] = timer.end();
+
+		device.submit_discard(cmd);
+		device.next_frame_context();
+	}
+
+	// Ignore first iteration due to shader compilation.
+	double total_time = 0.0;
+	for (unsigned i = 1; i < NumIterations; i++)
+		total_time += iter_times[i];
+
+	LOGI("Image time per CmdDispatch (many %u): %.3f nsec\n", Many, (total_time / (float(NumDispatches) * float(NumIterations - 1))) * 1e9);
+}
+
 static int main_inner()
 {
 	if (!Context::init_loader(nullptr))
@@ -483,6 +577,11 @@ static int main_inner()
 
 	Device dev;
 	dev.set_context(ctx);
+
+	test_bench_buffer_update<false>(dev);
+	test_bench_buffer_update<true>(dev);
+	test_bench_image_update<false>(dev);
+	test_bench_image_update<true>(dev);
 
 	test_bindless_texture(dev);
 

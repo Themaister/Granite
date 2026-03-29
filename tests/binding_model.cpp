@@ -559,6 +559,45 @@ static void test_bench_image_update(Device &device)
 	LOGI("Image time per CmdDispatch (many %u): %.3f nsec\n", Many, (total_time / (float(NumDispatches) * float(NumIterations - 1))) * 1e9);
 }
 
+static void test_bench_bindless_image_update(Device &device)
+{
+	auto info = ImageCreateInfo::immutable_2d_image(1, 1, VK_FORMAT_R8G8B8A8_UNORM);
+	info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+	info.layout = ImageLayout::General;
+	info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+	const uint32_t data = 0x01010101;
+	const ImageInitialData init = {&data, 0, 0};
+	auto image0 = device.create_image(info, &init);
+	auto image1 = device.create_image(info, &init);
+
+	constexpr int NumPoolIterations = NumIterations * 16;
+	Util::Timer timer;
+	double iter_times[NumPoolIterations];
+
+	auto pool = device.create_bindless_descriptor_pool(BindlessResourceType::Image, 1, 4096);
+
+	for (unsigned i = 0; i < NumPoolIterations; i++)
+	{
+		timer.start();
+		pool->reset();
+		pool->allocate_descriptors(4096);
+		for (unsigned j = 0; j < 4096 / 2; j++)
+		{
+			pool->push_texture(image0->get_view());
+			pool->push_texture(image1->get_view());
+		}
+		pool->update();
+		iter_times[i] = timer.end();
+	}
+
+	// Ignore first iteration due to shader compilation.
+	double total_time = 0.0;
+	for (unsigned i = 1; i < NumPoolIterations; i++)
+		total_time += iter_times[i];
+
+	LOGI("Time per pool update: %.3f usec\n", (total_time / float(NumPoolIterations - 1)) * 1e6);
+}
+
 static int main_inner()
 {
 	if (!Context::init_loader(nullptr))
@@ -578,6 +617,7 @@ static int main_inner()
 	Device dev;
 	dev.set_context(ctx);
 
+	test_bench_bindless_image_update(dev);
 	test_bench_buffer_update<false>(dev);
 	test_bench_buffer_update<true>(dev);
 	test_bench_image_update<false>(dev);

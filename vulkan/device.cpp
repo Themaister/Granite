@@ -4330,7 +4330,8 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		{
 			transfer_cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 
-			transfer_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			transfer_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED,
+			                            handle->get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
 			                            VK_PIPELINE_STAGE_NONE, 0, VK_PIPELINE_STAGE_2_COPY_BIT,
 			                            VK_ACCESS_TRANSFER_WRITE_BIT);
 
@@ -4386,7 +4387,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 			auto src_layout =
 					(info.usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT) != 0 ?
-					VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+					VK_IMAGE_LAYOUT_GENERAL : handle->get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 			graphics_cmd->begin_region("mipgen");
 			graphics_cmd->barrier_prepare_generate_mipmap(*handle, src_layout, VK_PIPELINE_STAGE_NONE, 0, true);
@@ -4396,7 +4397,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			bool sync_with_graphics = (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT) != 0;
 
 			graphics_cmd->image_barrier(
-					*handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+					*handle, handle->get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
 					tmpinfo.initial_layout,
 					VK_PIPELINE_STAGE_2_BLIT_BIT, 0,
 					sync_with_graphics ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_NONE,
@@ -4409,7 +4410,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			bool sync_with_transfer = (create_info.misc & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT) != 0;
 
 			transfer_cmd->image_barrier(
-					*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+					*handle, handle->get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
 					tmpinfo.initial_layout,
 					VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 					sync_with_transfer ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_NONE,

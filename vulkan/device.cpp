@@ -3556,14 +3556,6 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 
 	VkFormat format = create_info.format != VK_FORMAT_UNDEFINED ? create_info.format : image_create_info.format;
 
-	VkImageUsageFlags usage = create_info.image->get_create_info().usage;
-	VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
-	get_format_properties(format, &props3);
-	if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) == 0)
-		usage &= ~VK_IMAGE_USAGE_SAMPLED_BIT;
-	if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) == 0)
-		usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
-
 	VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 	view_info.image = create_info.image->get_image();
 	view_info.format = format;
@@ -3603,7 +3595,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 
 	ImageViewCreateInfo tmp = create_info;
 	tmp.format = format;
-	ImageViewHandle ret(handle_pool.image_views.allocate(this, holder.image_view, tmp, usage));
+	ImageViewHandle ret(handle_pool.image_views.allocate(this, holder.image_view, tmp));
 	if (ret)
 	{
 		holder.owned = false;

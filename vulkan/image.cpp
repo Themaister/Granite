@@ -26,10 +26,9 @@
 
 namespace Vulkan
 {
-ImageView::ImageView(Device *device_, const CachedImageView &view_, const ImageViewCreateInfo &info_, VkImageUsageFlags usage_)
+ImageView::ImageView(Device *device_, const CachedImageView &view_, const ImageViewCreateInfo &info_)
 	: Cookie(device_)
 	, device(device_)
-	, usage(usage_)
 	, view(view_)
 	, info(info_)
 {
@@ -135,7 +134,7 @@ Image::Image(Device *device_, VkImage image_, const CachedImageView &default_vie
 		info.levels = create_info.levels;
 		info.base_layer = 0;
 		info.layers = create_info.layers;
-		view = ImageViewHandle(device->handle_pool.image_views.allocate(device, default_view, info, create_info.usage));
+		view = ImageViewHandle(device->handle_pool.image_views.allocate(device, default_view, info));
 	}
 }
 

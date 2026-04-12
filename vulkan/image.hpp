@@ -122,7 +122,7 @@ class ImageView : public Util::IntrusivePtrEnabled<ImageView, ImageViewDeleter, 
 public:
 	friend struct ImageViewDeleter;
 
-	ImageView(Device *device, const CachedImageView &view, const ImageViewCreateInfo &info, VkImageUsageFlags usage);
+	ImageView(Device *device, const CachedImageView &view, const ImageViewCreateInfo &info);
 
 	~ImageView();
 
@@ -215,7 +215,6 @@ public:
 
 private:
 	Device *device;
-	VkImageUsageFlags usage;
 	CachedImageView view = {};
 	std::vector<CachedImageView> render_target_views;
 	std::vector<CachedImageView> mip_views;

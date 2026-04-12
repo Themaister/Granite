@@ -41,6 +41,7 @@ IndirectLayout::IndirectLayout(Device *device_,
 	Util::SmallVector<VkIndirectCommandsPushConstantTokenEXT, 8> push_tokens;
 	VkIndirectCommandsIndexBufferTokenEXT ibo_token;
 	VkIndirectCommandsExecutionSetTokenEXT exec_token;
+
 	ext_tokens.reserve(num_tokens);
 	vbo_tokens.reserve(num_tokens);
 	push_tokens.reserve(num_tokens);
@@ -65,9 +66,14 @@ IndirectLayout::IndirectLayout(Device *device_,
 
 		case IndirectLayoutToken::Type::PushConstant:
 		case IndirectLayoutToken::Type::SequenceCount:
+		{
+			bool heap = device->get_device_features().descriptor_heap_features.descriptorHeap == VK_TRUE;
+			auto token_type = heap ?
+					VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_EXT :
+					VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT;
+
 			token.type = tokens[i].type == IndirectLayoutToken::Type::PushConstant ?
-			             VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT :
-			             VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT;
+			             token_type : VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT;
 
 			push_tokens.emplace_back();
 			token.data.pPushConstant = &push_tokens.back();
@@ -75,17 +81,19 @@ IndirectLayout::IndirectLayout(Device *device_,
 			push_tokens.back().updateRange.size = tokens[i].data.push.range;
 			push_tokens.back().updateRange.offset = tokens[i].data.push.offset;
 			push_tokens.back().updateRange.stageFlags =
+					heap ? VkShaderStageFlags(VK_SHADER_STAGE_ALL) :
 					pipeline_layout->get_resource_layout().push_constant_range.stageFlags;
 			break;
+		}
 
 		case IndirectLayoutToken::Type::Draw:
-			info.shaderStages |= VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+			info.shaderStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_EXT;
 			break;
 
 		case IndirectLayoutToken::Type::DrawIndexed:
 			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_EXT;
-			info.shaderStages |= VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+			info.shaderStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 			break;
 
 		case IndirectLayoutToken::Type::Shader:
@@ -95,7 +103,8 @@ IndirectLayout::IndirectLayout(Device *device_,
 
 		case IndirectLayoutToken::Type::MeshTasks:
 			token.type = VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_EXT;
-			info.shaderStages |= VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+			info.shaderStages |= VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_TASK_BIT_EXT |
+					VK_SHADER_STAGE_FRAGMENT_BIT;
 			break;
 
 		case IndirectLayoutToken::Type::Dispatch:
@@ -115,6 +124,7 @@ IndirectLayout::IndirectLayout(Device *device_,
 
 	info.pTokens = ext_tokens.data();
 	info.tokenCount = num_tokens;
+	exec_token.type = VK_INDIRECT_EXECUTION_SET_INFO_TYPE_PIPELINES_EXT;
 	exec_token.shaderStages = info.shaderStages;
 	stages = info.shaderStages;
 

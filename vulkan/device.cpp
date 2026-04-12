@@ -3310,8 +3310,13 @@ public:
 				VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
 				image_usage_video_flags;
 
-		if (format_is_srgb(create_info.format))
-			view_usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+		if (view_usage & VK_IMAGE_USAGE_STORAGE_BIT)
+		{
+			VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
+			device->get_format_properties(create_info.format, &props3);
+			if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT) == 0)
+				view_usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+		}
 
 		return true;
 	}

@@ -45,6 +45,7 @@ IndirectLayout::IndirectLayout(Device *device_,
 	ext_tokens.reserve(num_tokens);
 	vbo_tokens.reserve(num_tokens);
 	push_tokens.reserve(num_tokens);
+	bool heap = device->get_device_features().descriptor_heap_features.descriptorHeap == VK_TRUE;
 
 	for (uint32_t i = 0; i < num_tokens; i++)
 	{
@@ -67,13 +68,16 @@ IndirectLayout::IndirectLayout(Device *device_,
 		case IndirectLayoutToken::Type::PushConstant:
 		case IndirectLayoutToken::Type::SequenceCount:
 		{
-			bool heap = device->get_device_features().descriptor_heap_features.descriptorHeap == VK_TRUE;
-			auto token_type = heap ?
+			auto push_token_type = heap ?
 					VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_EXT :
 					VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT;
 
+			auto sequence_token_type = heap ?
+					VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_SEQUENCE_INDEX_EXT :
+					VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT;
+
 			token.type = tokens[i].type == IndirectLayoutToken::Type::PushConstant ?
-			             token_type : VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT;
+			             push_token_type : sequence_token_type;
 
 			push_tokens.emplace_back();
 			token.data.pPushConstant = &push_tokens.back();

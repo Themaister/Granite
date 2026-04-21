@@ -1950,6 +1950,16 @@ CommandBufferHandle Device::request_command_buffer_for_thread(unsigned thread_in
 	return request_command_buffer_nolock(thread_index, type, false);
 }
 
+CommandBufferHandle Device::request_borrowed_command_buffer(VkCommandBuffer cmd)
+{
+	LOCK();
+	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, legacy_pipeline_cache,
+		Vulkan::CommandBuffer::Type::Generic /* somewhat irrelevant */, false));
+	handle->set_thread_index(get_thread_index());
+	handle->set_borrowed();
+	return handle;
+}
+
 CommandBufferHandle Device::request_profiled_command_buffer(CommandBuffer::Type type)
 {
 	return request_profiled_command_buffer_for_thread(get_thread_index(), type);
@@ -2208,6 +2218,22 @@ bool Device::can_touch_swapchain_in_command_buffer(CommandBuffer::Type type) con
 void Device::set_swapchain_queue_family_support(uint32_t queue_family_support)
 {
 	wsi.queue_family_support_mask = queue_family_support;
+}
+
+BufferHandle Device::wrap_buffer(const BufferCreateInfo &info, VkBuffer buffer, bool supports_bda)
+{
+	VkDeviceAddress bda = 0;
+
+	if (supports_bda && get_device_features().vk12_features.bufferDeviceAddress)
+	{
+		VkBufferDeviceAddressInfo bda_info = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO };
+		bda_info.buffer = buffer;
+		bda = table->vkGetBufferDeviceAddress(device, &bda_info);
+	}
+
+	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, DeviceAllocation{}, info, bda));
+	handle->disown_buffer();
+	return handle;
 }
 
 ImageHandle Device::wrap_image(const ImageCreateInfo &info, VkImage image)

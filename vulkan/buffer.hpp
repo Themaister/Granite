@@ -108,6 +108,11 @@ public:
 		return bda;
 	}
 
+	void disown_buffer()
+	{
+		owns_buffer = false;
+	}
+
 private:
 	friend class Util::ObjectPool<Buffer>;
 	Buffer(Device *device, VkBuffer buffer, const DeviceAllocation &alloc, const BufferCreateInfo &info,
@@ -118,6 +123,7 @@ private:
 	DeviceAllocation alloc;
 	BufferCreateInfo info;
 	VkDeviceAddress bda;
+	bool owns_buffer = true;
 };
 using BufferHandle = Util::IntrusivePtr<Buffer>;
 

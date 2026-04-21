@@ -326,6 +326,11 @@ public:
 		thread_index = index_;
 	}
 
+	void set_borrowed()
+	{
+		borrowed = true;
+	}
+
 	unsigned get_thread_index() const
 	{
 		return thread_index;
@@ -866,6 +871,7 @@ private:
 	VkPipelineLayout current_pipeline_layout = VK_NULL_HANDLE;
 	VkSubpassContents current_contents = VK_SUBPASS_CONTENTS_INLINE;
 	unsigned thread_index = 0;
+	bool borrowed = false;
 
 	VkViewport viewport = {};
 	VkRect2D scissor = {};

@@ -215,6 +215,7 @@ struct DeviceFactory
 	// If pNext is not NULL, the first link in the pNext chain must be VkPhysicalDeviceFeatures2.
 	virtual const VkDeviceCreateInfo *get_existing_create_info();
 	virtual bool factory_owns_created_device();
+	virtual VkQueue get_queue(uint32_t family_index, uint32_t index);
 };
 
 class CopiedApplicationInfo

@@ -43,15 +43,18 @@ ExternalHandle Buffer::export_handle()
 
 Buffer::~Buffer()
 {
-	if (internal_sync)
+	if (owns_buffer)
 	{
-		device->destroy_buffer_nolock(buffer);
-		device->free_memory_nolock(alloc);
-	}
-	else
-	{
-		device->destroy_buffer(buffer);
-		device->free_memory(alloc);
+		if (internal_sync)
+		{
+			device->destroy_buffer_nolock(buffer);
+			device->free_memory_nolock(alloc);
+		}
+		else
+		{
+			device->destroy_buffer(buffer);
+			device->free_memory(alloc);
+		}
 	}
 }
 

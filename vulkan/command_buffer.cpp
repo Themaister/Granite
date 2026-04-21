@@ -4315,7 +4315,7 @@ void CommandBuffer::end_threaded_recording()
 {
 	VK_ASSERT(!debug_channel_buffer);
 
-	if (is_ended)
+	if (is_ended || borrowed)
 		return;
 
 	is_ended = true;

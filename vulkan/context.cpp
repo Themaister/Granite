@@ -2138,8 +2138,14 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	{
 		if (queue_info.family_indices[i] != VK_QUEUE_FAMILY_IGNORED)
 		{
-			device_table.vkGetDeviceQueue(device, queue_info.family_indices[i], queue_indices[i],
-			                              &queue_info.queues[i]);
+			queue_info.queues[i] = device_factory ?
+				device_factory->get_queue(queue_info.family_indices[i], queue_indices[i]) : VK_NULL_HANDLE;
+
+			if (!queue_info.queues[i])
+			{
+				device_table.vkGetDeviceQueue(device, queue_info.family_indices[i], queue_indices[i],
+											  &queue_info.queues[i]);
+			}
 
 			queue_info.counts[i] = queue_offsets[queue_info.family_indices[i]];
 
@@ -2210,6 +2216,11 @@ const VkDeviceCreateInfo *DeviceFactory::get_existing_create_info()
 bool DeviceFactory::factory_owns_created_device()
 {
 	return false;
+}
+
+VkQueue DeviceFactory::get_queue(uint32_t, uint32_t)
+{
+	return VK_NULL_HANDLE;
 }
 
 const VkInstanceCreateInfo *InstanceFactory::get_existing_create_info()

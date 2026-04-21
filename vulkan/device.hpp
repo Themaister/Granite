@@ -291,6 +291,8 @@ public:
 	void flush_frame();
 	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Generic);
 	CommandBufferHandle request_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Generic);
+	// Must be given back with submit_discard().
+	CommandBufferHandle request_borrowed_command_buffer(VkCommandBuffer cmd);
 
 	CommandBufferHandle request_profiled_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Generic);
 	CommandBufferHandle request_profiled_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Generic);
@@ -348,6 +350,7 @@ public:
 	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial = nullptr);
 	ImageHandle create_image_from_staging_buffer(const ImageCreateInfo &info, const InitialImageBuffer *buffer);
 	LinearHostImageHandle create_linear_host_image(const LinearHostImageCreateInfo &info);
+	BufferHandle wrap_buffer(const BufferCreateInfo &info, VkBuffer buffer, bool supports_bda = true);
 	// Does not create any default image views. Only wraps the VkImage
 	// as a non-owned handle for purposes of API interop.
 	ImageHandle wrap_image(const ImageCreateInfo &info, VkImage img);

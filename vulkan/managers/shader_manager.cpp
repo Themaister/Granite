@@ -905,10 +905,13 @@ bool ShaderManager::load_shader_cache(const std::string &path, Granite::TaskGrou
 
 			auto *thread_group = shader_compilation_group->get_thread_group();
 
+			// Workaround capture size.
+			auto shader_path_ptr = std::make_shared<std::string>(shader_path);
+
 			// Prime it alone to avoid racing hashmap inserts.
-			auto glsl_parse_task = thread_group->create_task([this, shader_path, shader_stage]() -> void
+			auto glsl_parse_task = thread_group->create_task([this, shader_path_ptr, shader_stage]() -> void
 			{
-				get_template(shader_path, shader_stage);
+				get_template(*shader_path_ptr, shader_stage);
 			});
 			glsl_parse_task->set_desc("glsl-parse-task");
 

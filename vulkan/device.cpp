@@ -1306,16 +1306,23 @@ void Device::submit_and_sync_to_queues(CommandBufferHandle &cmd, uint32_t sync_t
 
 void Device::submit_discard_nolock(CommandBufferHandle &cmd)
 {
+	bool borrowed = cmd->is_borrowed();
+
 #ifdef VULKAN_DEBUG
-	auto type = cmd->get_command_buffer_type();
-	auto &pool = frame().cmd_pools[get_physical_queue_type(type)][cmd->get_thread_index()];
-	pool.signal_submitted(cmd->get_command_buffer());
+	if (!borrowed)
+	{
+		auto type = cmd->get_command_buffer_type();
+		auto &pool = frame().cmd_pools[get_physical_queue_type(type)][cmd->get_thread_index()];
+		pool.signal_submitted(cmd->get_command_buffer());
+	}
 #endif
 
 	cmd->end();
 
 	cmd.reset();
-	decrement_frame_counter_nolock();
+
+	if (!borrowed)
+		decrement_frame_counter_nolock();
 }
 
 void Device::submit_discard(CommandBufferHandle &cmd)

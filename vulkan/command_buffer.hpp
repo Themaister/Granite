@@ -331,6 +331,11 @@ public:
 		borrowed = true;
 	}
 
+	bool is_borrowed() const
+	{
+		return borrowed;
+	}
+
 	unsigned get_thread_index() const
 	{
 		return thread_index;

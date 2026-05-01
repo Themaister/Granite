@@ -295,7 +295,7 @@ public:
 	// The normal app loop is something like begin_frame() -> submit work -> end_frame().
 	bool end_frame();
 
-	// Signals that the next present is merely a dupe of a previous one,
+	// Signals that the next present is merely a dupe (or generated) of a previous one,
 	// and that frame should not participate in present wait.
 	void set_next_present_is_duplicated();
 
@@ -303,7 +303,16 @@ public:
 	// and make it feasible to render duplicate frames without needlessly draining the GPU of work.
 	// This is mostly just a thing for an emulator which may be outputting at 30 unique FPS, but at 60 VI/s,
 	// meaning the same frames is duplicated.
-	void set_frame_duplication_aware(bool enable);
+	// With a large enough image count, can feasibly be used for multi-frame-gen or similar shenanigans.
+	void set_frame_duplication_aware(bool enable, uint32_t target_swapchain_images = 5);
+
+	// Overrides the present wait latency.
+	// 0 -> waits until last frame was presented before polling input. Hardest low-latency situation.
+	// Forced when low-latency present is enabled.
+	// 1 -> Normal ideal situation where we wait for previous frame's present to complete.
+	// Allows 1 frame worth of work for CPU to keep GPU fed properly.
+	// 2 -> Conservative, but useful when GPU bound to avoid pumping. Forced when using low gpu submit latency path.
+	void set_present_wait_latency(uint32_t latency);
 
 	// For external swapchains we don't have a normal acquire -> present cycle.
 	// - set_external_frame()
@@ -518,6 +527,7 @@ private:
 	bool next_present_is_dupe = false;
 	bool frame_dupe_aware = false;
 	bool current_frame_dupe_aware = false;
+	unsigned frame_dupe_target_images = 5;
 	unsigned duplicated_frames = 0;
 	unsigned last_duplicated_frames = 0;
 

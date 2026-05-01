@@ -70,6 +70,11 @@ WSI::WSI()
 	hdr_metadata.maxFrameAverageLightLevel = 200.0f;
 }
 
+void WSI::set_present_wait_latency(uint32_t latency)
+{
+	present_frame_latency = latency;
+}
+
 void WSI::set_hdr_metadata(const VkHdrMetadataEXT &hdr)
 {
 	hdr_metadata = hdr;
@@ -1609,12 +1614,15 @@ bool WSI::end_frame_dxgi()
 }
 #endif
 
-void WSI::set_frame_duplication_aware(bool enable)
+void WSI::set_frame_duplication_aware(bool enable, uint32_t target_image_count)
 {
 	frame_dupe_aware = enable;
-	if (!has_acquired_swapchain_index && current_frame_dupe_aware != frame_dupe_aware)
+
+	if (!has_acquired_swapchain_index && (current_frame_dupe_aware != frame_dupe_aware ||
+	                                      frame_dupe_target_images != target_image_count))
 	{
 		current_frame_dupe_aware = frame_dupe_aware;
+		frame_dupe_target_images = target_image_count;
 		update_framebuffer(swapchain_width, swapchain_height);
 	}
 }
@@ -2651,7 +2659,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	// Need a deeper swapchain to avoid potential stalls when duping frames.
 	// We only do this when present wait is supported, so latency should not be compromised.
 	if (current_frame_dupe_aware && (device->get_device_features().present_wait_features.presentWait || supports_present_wait2))
-		desired_swapchain_images = 5;
+		desired_swapchain_images = frame_dupe_target_images;
 
 	desired_swapchain_images = Util::get_environment_uint("GRANITE_VULKAN_SWAPCHAIN_IMAGES", desired_swapchain_images);
 	LOGI("Targeting %u swapchain images.\n", desired_swapchain_images);

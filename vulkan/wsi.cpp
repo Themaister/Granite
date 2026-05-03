@@ -1617,12 +1617,13 @@ bool WSI::end_frame_dxgi()
 void WSI::set_frame_duplication_aware(bool enable, uint32_t target_image_count)
 {
 	frame_dupe_aware = enable;
+	frame_dupe_target_images = target_image_count;
 
 	if (!has_acquired_swapchain_index && (current_frame_dupe_aware != frame_dupe_aware ||
-	                                      frame_dupe_target_images != target_image_count))
+	                                      current_frame_dupe_target_images != frame_dupe_target_images))
 	{
 		current_frame_dupe_aware = frame_dupe_aware;
-		frame_dupe_target_images = target_image_count;
+		current_frame_dupe_target_images = frame_dupe_target_images;
 		update_framebuffer(swapchain_width, swapchain_height);
 	}
 }
@@ -1830,7 +1831,8 @@ bool WSI::end_frame()
 		    extra_usage != current_extra_usage ||
 		    compression.type != current_compression.type ||
 		    compression.fixed_rates != current_compression.fixed_rates ||
-		    frame_dupe_aware != current_frame_dupe_aware)
+		    frame_dupe_aware != current_frame_dupe_aware ||
+		    frame_dupe_target_images != current_frame_dupe_target_images)
 		{
 			current_present_mode = present_mode;
 			current_backbuffer_format = backbuffer_format;
@@ -1838,6 +1840,7 @@ bool WSI::end_frame()
 			current_compression = compression;
 			current_custom_backbuffer_format = custom_backbuffer_format;
 			current_frame_dupe_aware = frame_dupe_aware;
+			current_frame_dupe_target_images = frame_dupe_target_images;
 			update_framebuffer(swapchain_width, swapchain_height);
 		}
 	}
@@ -2659,7 +2662,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	// Need a deeper swapchain to avoid potential stalls when duping frames.
 	// We only do this when present wait is supported, so latency should not be compromised.
 	if (current_frame_dupe_aware && (device->get_device_features().present_wait_features.presentWait || supports_present_wait2))
-		desired_swapchain_images = frame_dupe_target_images;
+		desired_swapchain_images = current_frame_dupe_target_images;
 
 	desired_swapchain_images = Util::get_environment_uint("GRANITE_VULKAN_SWAPCHAIN_IMAGES", desired_swapchain_images);
 	LOGI("Targeting %u swapchain images.\n", desired_swapchain_images);

@@ -528,6 +528,7 @@ private:
 	bool frame_dupe_aware = false;
 	bool current_frame_dupe_aware = false;
 	unsigned frame_dupe_target_images = 5;
+	unsigned current_frame_dupe_target_images = 5;
 	unsigned duplicated_frames = 0;
 	unsigned last_duplicated_frames = 0;
 

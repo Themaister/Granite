@@ -42,12 +42,12 @@ public:
 
 	AtomicAppendBuffer()
 	{
-		assert(count.is_lock_free());
-		assert(lists[0].is_lock_free());
-
 		count.store(0, std::memory_order_relaxed);
 		for (auto &l : lists)
 			l.store(nullptr, std::memory_order_relaxed);
+
+		assert(count.is_lock_free());
+		assert(lists[0].is_lock_free());
 	}
 
 	~AtomicAppendBuffer()

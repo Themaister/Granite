@@ -435,7 +435,7 @@ VkResult WSI::wait_for_present(uint64_t id, uint64_t timeout)
 	bool timeout_is_fault = false;
 	if (device->get_device_features().supports_post_mortem && timeout == UINT64_MAX)
 	{
-		timeout = 2000000000ull;
+		timeout = PostMortemTimeout;
 		timeout_is_fault = true;
 	}
 

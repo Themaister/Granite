@@ -2899,7 +2899,7 @@ bool Device::PerFrame::wait(uint64_t timeout)
 			if (device.ext.supports_post_mortem && timeout == UINT64_MAX)
 			{
 				// Some GPUs just timeout here rather than return device lost in finite time.
-				VkResult vr = table.vkWaitSemaphores(vkdevice, &info, 2000000000ull);
+				VkResult vr = table.vkWaitSemaphores(vkdevice, &info, PostMortemTimeout);
 
 				// Maybe we can read the latched device lost state now.
 				if (vr == VK_TIMEOUT)
@@ -2926,7 +2926,7 @@ bool Device::PerFrame::wait(uint64_t timeout)
 		if (device.ext.supports_post_mortem && timeout == UINT64_MAX)
 		{
 			// Some GPUs just timeout here rather than return device lost in finite time.
-			VkResult vr = table.vkWaitForFences(vkdevice, wait_and_recycle_fences.size(), wait_and_recycle_fences.data(), VK_TRUE, 2000000000ull);
+			VkResult vr = table.vkWaitForFences(vkdevice, wait_and_recycle_fences.size(), wait_and_recycle_fences.data(), VK_TRUE, PostMortemTimeout);
 
 			// Maybe we can read the latched device lost state now.
 			if (vr == VK_TIMEOUT)

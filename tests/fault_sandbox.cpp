@@ -70,12 +70,15 @@ static int main_inner()
 	auto ptr = buf->get_device_address();
 
 	cmd->push_constants(&ptr, 0, sizeof(ptr));
+
 	cmd->dispatch(1, 1, 1);
 	cmd->dispatch(1, 1, 1);
 
 	ptr = 0x40000000;
 	cmd->push_constants(&ptr, 0, sizeof(ptr));
+	cmd->checkpoint("before should fault");
 	cmd->dispatch(1, 1, 1);
+	cmd->checkpoint("after should fault");
 
 	cmd->barrier(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 				 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);

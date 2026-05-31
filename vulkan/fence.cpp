@@ -62,7 +62,7 @@ void FenceHolder::wait()
 
 		if (device->get_device_features().supports_post_mortem)
 		{
-			VkResult vr = table.vkWaitSemaphores(device->get_device(), &info, 2000000000ull);
+			VkResult vr = table.vkWaitSemaphores(device->get_device(), &info, PostMortemTimeout);
 			if (vr == VK_TIMEOUT)
 				vr = table.vkWaitSemaphores(device->get_device(), &info, 0);
 			if (vr != VK_SUCCESS)
@@ -81,7 +81,7 @@ void FenceHolder::wait()
 	{
 		if (device->get_device_features().supports_post_mortem)
 		{
-			VkResult vr = table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, 2000000000ull);
+			VkResult vr = table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, PostMortemTimeout);
 			if (vr == VK_TIMEOUT)
 				vr = table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, 0);
 			if (vr != VK_SUCCESS)

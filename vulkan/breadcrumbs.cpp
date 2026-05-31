@@ -385,5 +385,84 @@ void BreadcrumbsTracker::notify_device_hung()
 		for (uint32_t i = 0; i < MaxCommandBuffers; i++)
 			report_command_list_amd(i);
 	}
+
+	// Need to observe the device lost properly first before we can query fault information.
+	auto &table = device->get_device_table();
+	VkResult vr = VK_SUCCESS;
+	if (device->get_device_features().fault_features.deviceFault)
+		vr = table.vkDeviceWaitIdle(device->get_device());
+
+	if (vr == VK_ERROR_DEVICE_LOST)
+	{
+		uint32_t count;
+		if (table.vkGetDeviceFaultReportsKHR(device->get_device(), UINT64_MAX, &count, nullptr) != VK_SUCCESS)
+		{
+			LOGE("Failed to get fault reports.\n");
+			return;
+		}
+		std::vector<VkDeviceFaultInfoKHR> faults(count);
+		for (auto &fault : faults)
+			fault.sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_KHR;
+
+		if (table.vkGetDeviceFaultReportsKHR(device->get_device(), UINT64_MAX, &count, faults.data()) != VK_SUCCESS)
+		{
+			LOGE("Failed to get fault reports.\n");
+			return;
+		}
+
+		for (auto &fault : faults)
+		{
+			LOGE("=== Fault ===\n");
+			LOGE("  Desc: %s\n", fault.description);
+			LOGE("  groupID: %llu\n", static_cast<unsigned long long>(fault.groupId));
+
+			if (fault.flags & VK_DEVICE_FAULT_FLAG_DEVICE_LOST_KHR)
+				LOGE("  Fault caused DEVICE_LOST\n");
+			if (fault.flags & VK_DEVICE_FAULT_FLAG_WATCHDOG_TIMEOUT_KHR)
+				LOGE("  GPU Timeout\n");
+			if (fault.flags & VK_DEVICE_FAULT_FLAG_OVERFLOW_KHR)
+				LOGE("  Fault buffer overflowed\n");
+
+			if (fault.flags & VK_DEVICE_FAULT_FLAG_VENDOR_KHR)
+			{
+				LOGE("  Vendor desc: %s\n", fault.vendorInfo.description);
+				LOGE("  Vendor fault code: %llu\n", static_cast<unsigned long long>(fault.vendorInfo.vendorFaultCode));
+				LOGE("  Vendor fault data: %llu\n", static_cast<unsigned long long>(fault.vendorInfo.vendorFaultData));
+			}
+
+			const auto addr_type_to_str = [](VkDeviceFaultAddressTypeKHR type)
+			{
+				switch (type)
+				{
+				case VK_DEVICE_FAULT_ADDRESS_TYPE_NONE_KHR: return "None";
+				case VK_DEVICE_FAULT_ADDRESS_TYPE_READ_INVALID_KHR: return "ReadInvalid";
+				case VK_DEVICE_FAULT_ADDRESS_TYPE_WRITE_INVALID_KHR: return "WriteInvalid";
+				case VK_DEVICE_FAULT_ADDRESS_TYPE_EXECUTE_INVALID_KHR: return "ExecuteInvalid";
+				case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_UNKNOWN_KHR: return "IPUnknown";
+				case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_INVALID_KHR: return "IPInvalid";
+				case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_FAULT_KHR: return "IPFault";
+				default: return "???";
+				}
+			};
+
+			if (fault.flags & VK_DEVICE_FAULT_FLAG_MEMORY_ADDRESS_KHR)
+			{
+				LOGE("  Memory fault: %s\n", addr_type_to_str(fault.faultAddressInfo.addressType));
+				LOGE("  Memory address: #%016llx\n",
+					static_cast<unsigned long long>(fault.faultAddressInfo.reportedAddress));
+				LOGE("  Memory precision: #%016llx\n",
+					static_cast<unsigned long long>(fault.faultAddressInfo.addressPrecision));
+			}
+
+			if (fault.flags & VK_DEVICE_FAULT_FLAG_INSTRUCTION_ADDRESS_KHR)
+			{
+				LOGE("  Instruction fault: %s\n", addr_type_to_str(fault.instructionAddressInfo.addressType));
+				LOGE("  Instruction address: #%016llx\n",
+					static_cast<unsigned long long>(fault.instructionAddressInfo.reportedAddress));
+				LOGE("  Instruction precision: #%016llx\n",
+					static_cast<unsigned long long>(fault.instructionAddressInfo.addressPrecision));
+			}
+		}
+	}
 }
 }

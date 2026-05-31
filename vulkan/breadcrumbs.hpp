@@ -147,6 +147,9 @@ struct CheckpointShader : CheckpointReportInterface
 	const Shader *shader;
 };
 
+// 5 seconds.
+static constexpr uint64_t PostMortemTimeout = 5000000000ull;
+
 class BreadcrumbsTracker
 {
 public:

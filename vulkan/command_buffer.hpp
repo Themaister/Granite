@@ -346,6 +346,11 @@ public:
 		return is_secondary;
 	}
 
+	void set_breadcrumbs_handle(BufferMarkerHandle handle)
+	{
+		breadcrumbs = handle;
+	}
+
 	void clear_image(const Image &image, const VkClearValue &value);
 	void clear_image(const Image &image, const VkClearValue &value, VkImageAspectFlags aspect);
 	void clear_quad(unsigned attachment, const VkClearRect &rect, const VkClearValue &value,
@@ -861,6 +866,7 @@ private:
 	const VolkDeviceTable &table;
 	VkCommandBuffer cmd;
 	Type type;
+	BufferMarkerHandle breadcrumbs;
 
 	const Framebuffer *framebuffer = nullptr;
 	const RenderPass *actual_render_pass = nullptr;

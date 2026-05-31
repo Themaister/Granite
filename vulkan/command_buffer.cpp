@@ -28,6 +28,7 @@
 #include "vulkan_prerotate.hpp"
 #include "indirect_layout.hpp"
 #include "timer.hpp"
+#include "breadcrumbs.hpp"
 #include <string.h>
 
 using namespace Util;
@@ -439,6 +440,8 @@ void CommandBuffer::barrier(const VkDependencyInfo &dep)
 #endif
 
 	table.vkCmdPipelineBarrier2(cmd, &dep);
+
+	device->managers.breadcrumbs.signal(breadcrumbs);
 }
 
 void CommandBuffer::buffer_barrier(const Buffer &buffer,
@@ -4337,6 +4340,8 @@ void CommandBuffer::end()
 {
 	VK_ASSERT(!barrier_batch.active);
 	VK_ASSERT(!rtas_batch.in_batch);
+
+	device->managers.breadcrumbs.end(breadcrumbs);
 
 	// When called, we're holding a device submission lock.
 	end_threaded_recording();

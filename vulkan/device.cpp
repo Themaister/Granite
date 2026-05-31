@@ -993,6 +993,7 @@ void Device::set_context(const Context &context)
 	managers.ubo.set_max_retained_blocks(64);
 	managers.staging.set_max_retained_blocks(32);
 	managers.descriptor_buffer.init(this);
+	managers.breadcrumbs.init(this);
 
 	init_stock_samplers();
 
@@ -1469,6 +1470,9 @@ void Device::submit_empty_inner(QueueIndices physical_type, InternalFence *fence
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit2 failed (code: %d).\n", int(result));
 
+	if (result == VK_ERROR_DEVICE_LOST)
+		managers.breadcrumbs.notify_device_hung();
+
 	if (!ext.vk12_features.timelineSemaphore)
 		data.need_fence = true;
 }
@@ -1881,6 +1885,10 @@ void Device::submit_queue(QueueIndices physical_type, InternalFence *fence,
 
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit2 failed (code: %d).\n", int(result));
+
+	if (result == VK_ERROR_DEVICE_LOST)
+		managers.breadcrumbs.notify_device_hung();
+
 	submissions.clear();
 
 	emit_implicit_sync_to_queues(physical_type);
@@ -1998,6 +2006,14 @@ CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index,
 	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, legacy_pipeline_cache, type, false));
 	handle->set_thread_index(thread_index);
 
+	auto breadcrumbs = managers.breadcrumbs.allocate_command_buffer(cmd);
+	if (breadcrumbs.index != BufferMarkerHandle::Invalid)
+	{
+		handle->set_breadcrumbs_handle(breadcrumbs);
+		managers.breadcrumbs.begin(breadcrumbs);
+		frame().breadcrumbs.push_back(breadcrumbs);
+	}
+
 	if (profiled)
 	{
 		auto &query_pool = get_performance_query_pool(physical_type);
@@ -2066,6 +2082,8 @@ CommandBufferHandle Device::request_secondary_command_buffer_for_thread(unsigned
 
 		inherit.pNext = &inheritance_heap;
 	}
+
+	// Don't add breadcrumb stuff to secondaries for now. Need some extra thought on how that is supposed to work.
 
 	table->vkBeginCommandBuffer(cmd, &info);
 	add_frame_counter_nolock();
@@ -2876,14 +2894,51 @@ bool Device::PerFrame::wait(uint64_t timeout)
 		{
 			info.pSemaphores = sems;
 			info.pValues = values;
-			if (table.vkWaitSemaphores(vkdevice, &info, timeout) != VK_SUCCESS)
-				return false;
+
+			if (device.ext.supports_post_mortem && timeout == UINT64_MAX)
+			{
+				// Some GPUs just timeout here rather than return device lost in finite time.
+				VkResult vr = table.vkWaitSemaphores(vkdevice, &info, 2000000000ull);
+
+				// Maybe we can read the latched device lost state now.
+				if (vr == VK_TIMEOUT)
+					vr = table.vkWaitSemaphores(vkdevice, &info, 0);
+
+				// If GPU doesn't complete in 2 seconds, something has gone very wrong.
+				if (vr != VK_SUCCESS)
+				{
+					managers.breadcrumbs.notify_device_hung();
+					return false;
+				}
+			}
+			else
+			{
+				if (table.vkWaitSemaphores(vkdevice, &info, timeout) != VK_SUCCESS)
+					return false;
+			}
 		}
 	}
 
 	// If we're using timeline semaphores, these paths should never be hit (or only for swapchain maintenance1).
 	if (!wait_and_recycle_fences.empty())
 	{
+		if (device.ext.supports_post_mortem && timeout == UINT64_MAX)
+		{
+			// Some GPUs just timeout here rather than return device lost in finite time.
+			VkResult vr = table.vkWaitForFences(vkdevice, wait_and_recycle_fences.size(), wait_and_recycle_fences.data(), VK_TRUE, 2000000000ull);
+
+			// Maybe we can read the latched device lost state now.
+			if (vr == VK_TIMEOUT)
+				vr = table.vkWaitForFences(vkdevice, wait_and_recycle_fences.size(), wait_and_recycle_fences.data(), VK_TRUE, 0);
+
+			// If GPU doesn't complete in 2 seconds, something has gone very wrong.
+			if (vr != VK_SUCCESS)
+			{
+				managers.breadcrumbs.notify_device_hung();
+				return false;
+			}
+		}
+
 		if (table.vkWaitForFences(vkdevice, wait_and_recycle_fences.size(), wait_and_recycle_fences.data(), VK_TRUE, timeout) != VK_SUCCESS)
 			return false;
 		table.vkResetFences(vkdevice, wait_and_recycle_fences.size(), wait_and_recycle_fences.data());
@@ -2958,6 +3013,8 @@ void Device::PerFrame::begin()
 	managers.descriptor_buffer.free(descriptor_buffer_allocs.data(), descriptor_buffer_allocs.size());
 	managers.descriptor_buffer.free_cached_descriptors(
 			cached_descriptor_payloads.data(), cached_descriptor_payloads.size());
+	for (auto &crumb : breadcrumbs)
+		managers.breadcrumbs.free_command_buffer(crumb);
 	VK_ASSERT(consumed_semaphores.empty());
 
 	if (!allocations.empty())
@@ -2982,6 +3039,7 @@ void Device::PerFrame::begin()
 	allocations.clear();
 	descriptor_buffer_allocs.clear();
 	cached_descriptor_payloads.clear();
+	breadcrumbs.clear();
 
 	if (!in_destructor)
 		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence + recycle");
@@ -3153,6 +3211,16 @@ uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask) const
 		else
 			prio[2] = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
+		break;
+
+	case BufferDomain::DebugReadback:
+		if (!ext.supports_amd_buffer_marker)
+			return UINT32_MAX;
+
+		prio[1] = VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD | VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD |
+				  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		prio[0] = prio[0] | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+		prio[2] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 		break;
 	}
 

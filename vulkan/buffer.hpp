@@ -40,6 +40,7 @@ enum class BufferDomain
 	CachedCoherentHostPreferCoherent, // Aim for both cached and coherent, but prefer COHERENT
 	CachedCoherentHostPreferCached, // Aim for both cached and coherent, but prefer CACHED
 	UMACachedCoherentPreferDevice, // Aim for DEVICE | CACHED | COHERENT, but fallback to plain DEVICE if not supported.
+	DebugReadback // DEVICE_COHERENT + HOST_COHERENT. For AMD_buffer_marker and other breadcrumbs.
 };
 
 enum BufferMiscFlagBits

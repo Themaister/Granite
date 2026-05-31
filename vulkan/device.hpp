@@ -40,6 +40,7 @@
 #include "buffer_pool.hpp"
 #include "indirect_layout.hpp"
 #include "pipeline_cache.hpp"
+#include "breadcrumbs.hpp"
 #include <memory>
 #include <vector>
 #include <functional>
@@ -623,6 +624,7 @@ private:
 		BufferPool vbo, ibo, ubo, staging;
 		TimestampIntervalManager timestamps;
 		DescriptorBufferAllocator descriptor_buffer;
+		BreadcrumbsTracker breadcrumbs;
 	};
 	Managers managers;
 
@@ -682,6 +684,7 @@ private:
 		std::vector<VkIndirectExecutionSetEXT> destroyed_execution_sets;
 		std::vector<DescriptorBufferAllocation> descriptor_buffer_allocs;
 		std::vector<CachedDescriptorPayload> cached_descriptor_payloads;
+		std::vector<BufferMarkerHandle> breadcrumbs;
 
 		struct DebugChannel
 		{

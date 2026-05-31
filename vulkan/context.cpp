@@ -1941,6 +1941,36 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	}
 #endif
 
+	if ((flags & CONTEXT_CREATION_ENABLE_POST_MORTEM_BIT) ||
+		Util::get_environment_bool("GRANITE_VULKAN_POST_MORTEM", false))
+	{
+		if (has_extension(VK_AMD_DEVICE_COHERENT_MEMORY_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_AMD_DEVICE_COHERENT_MEMORY_EXTENSION_NAME);
+			ADD_CHAIN(ext.coherent_memory_features, COHERENT_MEMORY_FEATURES_AMD);
+		}
+
+		if (has_extension(VK_AMD_BUFFER_MARKER_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_AMD_BUFFER_MARKER_EXTENSION_NAME);
+			ext.supports_amd_buffer_marker = true;
+		}
+
+		if (has_extension(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME);
+			ext.supports_nv_checkpoints = true;
+		}
+
+		if (has_extension(VK_KHR_DEVICE_FAULT_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_DEVICE_FAULT_EXTENSION_NAME);
+			ADD_CHAIN(ext.fault_features, FAULT_FEATURES_KHR);
+		}
+
+		ext.supports_post_mortem = true;
+	}
+
 	// Only need GetPhysicalDeviceProperties2 for Vulkan 1.1-only code, so don't bother getting KHR variant.
 	VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
 	// Fallback, query some important Vulkan 1.1 structs if we cannot use core 1.2 method.

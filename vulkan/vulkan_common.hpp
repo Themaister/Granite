@@ -125,4 +125,10 @@ static inline const T *find_pnext(const void *pnext, VkStructureType sType)
 	}
 	return reinterpret_cast<const T *>(chain);
 }
+
+struct BufferMarkerHandle
+{
+	enum : uint32_t { Invalid = UINT32_MAX };
+	uint32_t index = Invalid;
+};
 }

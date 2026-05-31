@@ -77,6 +77,9 @@ struct DeviceFeatures
 	bool supports_low_latency2_nv = false;
 	bool supports_drm_modifiers = false;
 	bool supports_descriptor_buffer = false;
+	bool supports_amd_buffer_marker = false;
+	bool supports_nv_checkpoints = false;
+	bool supports_post_mortem = false;
 
 	bool supports_descriptor_buffer_or_heap = false;
 	uint32_t resource_heap_offset_alignment = 0;
@@ -111,6 +114,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceAccelerationStructureFeaturesKHR rtas_features = {};
 	VkPhysicalDeviceAccelerationStructurePropertiesKHR rtas_properties = {};
 	VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features = {};
+	VkPhysicalDeviceFaultFeaturesKHR fault_features = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};
@@ -138,6 +142,7 @@ struct DeviceFeatures
 	// Vendor
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};
 	VkPhysicalDeviceAntiLagFeaturesAMD anti_lag_features = {};
+	VkPhysicalDeviceCoherentMemoryFeaturesAMD coherent_memory_features = {};
 
 	// Fallback feature structs (Vulkan 1.1)
 	VkPhysicalDeviceHostQueryResetFeatures host_query_reset_features = {};
@@ -183,7 +188,8 @@ enum ContextCreationFlagBits
 	CONTEXT_CREATION_ENABLE_ROBUSTNESS_2_BIT = 1 << 7,
 	CONTEXT_CREATION_ENABLE_VIDEO_AV1_BIT = 1 << 8,
 	CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT = 1 << 9,
-	CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT = 1 << 10
+	CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT = 1 << 10,
+	CONTEXT_CREATION_ENABLE_POST_MORTEM_BIT = 1 << 11
 };
 using ContextCreationFlags = uint32_t;
 

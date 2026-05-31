@@ -28,12 +28,30 @@
 #include "vulkan_prerotate.hpp"
 #include "indirect_layout.hpp"
 #include "timer.hpp"
+#include "breadcrumbs.hpp"
 #include <string.h>
 
 using namespace Util;
 
 namespace Vulkan
 {
+template <typename T, typename... Ts>
+void CommandBuffer::checkpoint(Ts &&... ts)
+{
+	device->managers.breadcrumbs.checkpoint<T>(breadcrumbs, std::forward<Ts>(ts)...);
+}
+
+template <typename T, typename... Ts>
+void CommandBuffer::checkpoint_with_signal(Ts &&... ts)
+{
+	device->managers.breadcrumbs.checkpoint_with_signal<T>(breadcrumbs, std::forward<Ts>(ts)...);
+}
+
+void CommandBuffer::checkpoint(const char *tag)
+{
+	checkpoint<CheckpointString>(tag);
+}
+
 static inline uint32_t get_combined_spec_constant_mask(const DeferredPipelineCompile &compile)
 {
 	return compile.potential_static_state.spec_constant_mask |
@@ -128,6 +146,7 @@ void CommandBuffer::copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, cons
 		src_offset, dst_offset, size,
 	};
 	table.vkCmdCopyBuffer(cmd, src.get_buffer(), dst.get_buffer(), 1, &region);
+	checkpoint_with_signal<CheckpointString>("copy-buffer");
 }
 
 void CommandBuffer::copy_buffer(const Buffer &dst, const Buffer &src)
@@ -139,6 +158,7 @@ void CommandBuffer::copy_buffer(const Buffer &dst, const Buffer &src)
 void CommandBuffer::copy_buffer(const Buffer &dst, const Buffer &src, const VkBufferCopy *copies, size_t count)
 {
 	table.vkCmdCopyBuffer(cmd, src.get_buffer(), dst.get_buffer(), count, copies);
+	checkpoint_with_signal<CheckpointString>("copy-buffer");
 }
 
 void CommandBuffer::copy_image(const Vulkan::Image &dst, const Vulkan::Image &src, const VkOffset3D &dst_offset,
@@ -156,6 +176,7 @@ void CommandBuffer::copy_image(const Vulkan::Image &dst, const Vulkan::Image &sr
 	table.vkCmdCopyImage(cmd, src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
 	               dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
 	               1, &region);
+	checkpoint_with_signal<CheckpointString>("copy-image");
 }
 
 void CommandBuffer::copy_image(const Image &dst, const Image &src)
@@ -189,6 +210,7 @@ void CommandBuffer::copy_image(const Image &dst, const Image &src)
 	table.vkCmdCopyImage(cmd, src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
 	                     dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
 	                     levels, regions);
+	checkpoint_with_signal<CheckpointString>("copy-image");
 }
 
 void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &buffer, unsigned num_blits,
@@ -196,6 +218,7 @@ void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &buffe
 {
 	table.vkCmdCopyBufferToImage(cmd, buffer.get_buffer(),
 	                             image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL), num_blits, blits);
+	checkpoint_with_signal<CheckpointString>("copy-buffer-to-image");
 }
 
 void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &image, unsigned num_blits,
@@ -203,6 +226,7 @@ void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &imag
 {
 	table.vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
 	                             buffer.get_buffer(), num_blits, blits);
+	checkpoint_with_signal<CheckpointString>("copy-image-to-buffer");
 }
 
 void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &src, VkDeviceSize buffer_offset,
@@ -216,6 +240,7 @@ void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &src, 
 	};
 	table.vkCmdCopyBufferToImage(cmd, src.get_buffer(), image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
 	                             1, &region);
+	checkpoint_with_signal<CheckpointString>("copy-buffer-to-image");
 }
 
 void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &image, VkDeviceSize buffer_offset,
@@ -229,6 +254,7 @@ void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &imag
 	};
 	table.vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
 	                             buffer.get_buffer(), 1, &region);
+	checkpoint_with_signal<CheckpointString>("copy-image-to-buffer");
 }
 
 void CommandBuffer::clear_image(const Image &image, const VkClearValue &value)
@@ -439,6 +465,7 @@ void CommandBuffer::barrier(const VkDependencyInfo &dep)
 #endif
 
 	table.vkCmdPipelineBarrier2(cmd, &dep);
+	checkpoint_with_signal<CheckpointString>("barrier");
 }
 
 void CommandBuffer::buffer_barrier(const Buffer &buffer,
@@ -2176,6 +2203,21 @@ void CommandBuffer::set_program(Program *program)
 	          (!framebuffer && pipeline_state.program->get_shader(ShaderStage::Compute)));
 
 	set_program_layout(program->get_pipeline_layout());
+
+	if (program && device->get_device_features().supports_post_mortem)
+	{
+		static const ShaderStage stages[] = {
+			ShaderStage::Vertex,
+			ShaderStage::Fragment,
+			ShaderStage::Compute,
+			ShaderStage::Task,
+			ShaderStage::Mesh,
+		};
+
+		for (auto stage: stages)
+			if (auto *shader = program->get_shader(stage))
+				checkpoint<CheckpointShader>(shader);
+	}
 }
 
 void CommandBuffer::set_program_layout(const PipelineLayout *layout)
@@ -3575,6 +3617,7 @@ void CommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
 		table.vkCmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
+		checkpoint_with_signal<CheckpointDraw>(vertex_count, instance_count, first_vertex, first_instance);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -3589,6 +3632,7 @@ void CommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_count, 
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
 		table.vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
+		checkpoint_with_signal<CheckpointDrawIndexed>(index_count, instance_count, first_index, vertex_offset, first_instance);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -3608,6 +3652,7 @@ void CommandBuffer::draw_mesh_tasks(uint32_t tasks_x, uint32_t tasks_y, uint32_t
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Mesh) != nullptr);
 		table.vkCmdDrawMeshTasksEXT(cmd, tasks_x, tasks_y, tasks_z);
+		checkpoint_with_signal<CheckpointMeshDispatch>(tasks_x, tasks_y, tasks_z);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -3628,6 +3673,7 @@ void CommandBuffer::draw_mesh_tasks_indirect(const Buffer &buffer, VkDeviceSize 
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Mesh) != nullptr);
 		table.vkCmdDrawMeshTasksIndirectEXT(cmd, buffer.get_buffer(), offset, draw_count, stride);
+		checkpoint_with_signal<CheckpointMultiIndirectBase>("MeshMDI", buffer.get_device_address() + offset, draw_count, stride);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -3651,6 +3697,10 @@ void CommandBuffer::draw_mesh_tasks_multi_indirect(const Buffer &buffer, VkDevic
 		table.vkCmdDrawMeshTasksIndirectCountEXT(cmd, buffer.get_buffer(), offset,
 		                                         count.get_buffer(), count_offset,
 		                                         draw_count, stride);
+
+		checkpoint_with_signal<CheckpointMultiIndirectCountBase>("MeshMDI", buffer.get_device_address() + offset,
+		                                                         count.get_device_address() + count_offset,
+		                                                         draw_count, stride);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -3664,6 +3714,7 @@ void CommandBuffer::draw_indirect(const Vulkan::Buffer &buffer,
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
 		table.vkCmdDrawIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
+		checkpoint_with_signal<CheckpointMultiIndirectBase>("DrawMDI", buffer.get_device_address() + offset, draw_count, stride);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -3685,6 +3736,9 @@ void CommandBuffer::draw_multi_indirect(const Buffer &buffer, VkDeviceSize offse
 		table.vkCmdDrawIndirectCount(cmd, buffer.get_buffer(), offset,
 		                             count.get_buffer(), count_offset,
 		                             draw_count, stride);
+		checkpoint_with_signal<CheckpointMultiIndirectCountBase>("DrawMDI", buffer.get_device_address() + offset,
+		                                                         count.get_device_address() + count_offset,
+		                                                         draw_count, stride);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -3706,6 +3760,9 @@ void CommandBuffer::draw_indexed_multi_indirect(const Buffer &buffer, VkDeviceSi
 		table.vkCmdDrawIndexedIndirectCount(cmd, buffer.get_buffer(), offset,
 		                                    count.get_buffer(), count_offset,
 		                                    draw_count, stride);
+		checkpoint_with_signal<CheckpointMultiIndirectCountBase>("DrawIndexedMDI", buffer.get_device_address() + offset,
+		                                                         count.get_device_address() + count_offset,
+		                                                         draw_count, stride);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -3719,6 +3776,7 @@ void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
 	{
 		VK_ASSERT(pipeline_state.program->get_shader(ShaderStage::Vertex) != nullptr);
 		table.vkCmdDrawIndexedIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
+		checkpoint_with_signal<CheckpointMultiIndirectBase>("DrawIndexedIndirect", buffer.get_device_address() + offset, draw_count, stride);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -3730,6 +3788,7 @@ void CommandBuffer::dispatch_indirect(const Buffer &buffer, VkDeviceSize offset)
 	if (flush_compute_state(true) != VK_NULL_HANDLE)
 	{
 		table.vkCmdDispatchIndirect(cmd, buffer.get_buffer(), offset);
+		checkpoint_with_signal<CheckpointIndirectBase>("DispatchIndirect", buffer.get_device_address() + offset);
 	}
 	else
 		LOGE("Failed to flush render state, dispatch will be dropped.\n");
@@ -3813,19 +3872,25 @@ void CommandBuffer::execute_indirect_commands(
 
 	VK_ASSERT(preprocess.cmd != cmd);
 	table.vkCmdPreprocessGeneratedCommandsEXT(preprocess.cmd, &exec_info, cmd);
+	preprocess.checkpoint_with_signal<CheckpointString>("preprocess-dgc");
 	table.vkCmdExecuteGeneratedCommandsEXT(cmd, VK_TRUE, &exec_info);
+	checkpoint_with_signal<CheckpointString>("execute-dgc");
 
 	// Everything is nuked after execute generated commands.
 	set_dirty(COMMAND_BUFFER_DYNAMIC_BITS |
 	          COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT |
 	          COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
+
 }
 
 void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z)
 {
 	VK_ASSERT(is_compute);
 	if (flush_compute_state(true) != VK_NULL_HANDLE)
+	{
 		table.vkCmdDispatch(cmd, groups_x, groups_y, groups_z);
+		checkpoint_with_signal<CheckpointDispatch>(groups_x, groups_y, groups_z);
+	}
 	else
 		LOGE("Failed to flush render state, dispatch will be dropped.\n");
 }
@@ -3978,6 +4043,8 @@ void CommandBuffer::build_blas_batch()
 
 	table.vkCmdBuildAccelerationStructuresKHR(
 			cmd, rtas_batch.ranges.size(), rtas_batch.geom_info.data(), rtas_batch.range_info_ptrs.data());
+
+	checkpoint_with_signal<CheckpointString>("build-blas");
 }
 
 void CommandBuffer::build_tlas_batch()
@@ -4047,6 +4114,8 @@ void CommandBuffer::build_tlas_batch()
 
 	table.vkCmdBuildAccelerationStructuresKHR(
 			cmd, rtas_batch.ranges.size(), rtas_batch.geom_info.data(), rtas_batch.range_info_ptrs.data());
+
+	checkpoint_with_signal<CheckpointString>("build-tlas");
 }
 
 void CommandBuffer::end_rtas_batch()
@@ -4078,6 +4147,8 @@ void CommandBuffer::end_rtas_batch()
 		table.vkCmdWriteAccelerationStructuresPropertiesKHR(
 				cmd, 1, &query.rtas, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
 				query.pool, query.index);
+
+		checkpoint_with_signal<CheckpointString>("write-rtas-properties");
 	}
 
 	rtas_batch.geometries.clear();
@@ -4098,6 +4169,7 @@ void CommandBuffer::compact_rtas(const Vulkan::RTAS &dst, const Vulkan::RTAS &sr
 	info.dst = dst.get_rtas();
 	info.mode = VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR;
 	table.vkCmdCopyAccelerationStructureKHR(cmd, &info);
+	checkpoint_with_signal<CheckpointString>("compact-rtas");
 }
 
 void CommandBuffer::write_compacted_rtas_size(const RTAS &rtas, const QueryPoolResult &query)
@@ -4328,6 +4400,8 @@ void CommandBuffer::end_threaded_recording()
 		auto &query_pool = device->get_performance_query_pool(device->get_physical_queue_type(type));
 		query_pool.end_command_buffer(cmd);
 	}
+
+	device->managers.breadcrumbs.end(breadcrumbs);
 
 	if (table.vkEndCommandBuffer(cmd) != VK_SUCCESS)
 		LOGE("Failed to end command buffer.\n");

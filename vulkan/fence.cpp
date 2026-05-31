@@ -59,6 +59,19 @@ void FenceHolder::wait()
 		info.semaphoreCount = 1;
 		info.pSemaphores = &timeline_semaphore;
 		info.pValues = &timeline_value;
+
+		if (device->get_device_features().supports_post_mortem)
+		{
+			VkResult vr = table.vkWaitSemaphores(device->get_device(), &info, PostMortemTimeout);
+			if (vr == VK_TIMEOUT)
+				vr = table.vkWaitSemaphores(device->get_device(), &info, 0);
+			if (vr != VK_SUCCESS)
+			{
+				device->managers.breadcrumbs.notify_device_hung();
+				return;
+			}
+		}
+
 		if (table.vkWaitSemaphores(device->get_device(), &info, UINT64_MAX) != VK_SUCCESS)
 			LOGE("Failed to wait for timeline semaphore!\n");
 		else
@@ -66,6 +79,18 @@ void FenceHolder::wait()
 	}
 	else
 	{
+		if (device->get_device_features().supports_post_mortem)
+		{
+			VkResult vr = table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, PostMortemTimeout);
+			if (vr == VK_TIMEOUT)
+				vr = table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, 0);
+			if (vr != VK_SUCCESS)
+			{
+				device->managers.breadcrumbs.notify_device_hung();
+				return;
+			}
+		}
+
 		if (table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
 			LOGE("Failed to wait for fence!\n");
 		else

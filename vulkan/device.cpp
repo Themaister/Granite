@@ -2148,6 +2148,7 @@ Device::~Device()
 	wsi.release.reset();
 	wsi.swapchain.clear();
 	managers.descriptor_buffer.teardown();
+	managers.breadcrumbs.deinit();
 
 	wait_idle();
 

@@ -28,23 +28,123 @@
 #include "vulkan_common.hpp"
 #include <mutex>
 #include <assert.h>
+#include <stdio.h>
+
+#include "shader.hpp"
 
 namespace Vulkan
 {
 class Device;
 class Buffer;
+class Shader;
 
 struct CheckpointReportInterface
 {
-	virtual void report() = 0;
+	virtual void report(FILE *file) = 0;
 	virtual ~CheckpointReportInterface() = default;
 };
 
 struct CheckpointString : CheckpointReportInterface
 {
 	CheckpointString(std::string str_) : str(std::move(str_)) {}
-	void report() override { LOGE("%s\n", str.c_str()); }
+	void report(FILE *file) override;
 	std::string str;
+};
+
+struct CheckpointDispatch : CheckpointReportInterface
+{
+	CheckpointDispatch(uint32_t x_, uint32_t y_, uint32_t z_)
+		: x(x_), y(y_), z(z_) {}
+	void report(FILE *file) override;
+	uint32_t x, y, z;
+};
+
+struct CheckpointDraw : CheckpointReportInterface
+{
+	CheckpointDraw(uint32_t vertex_count_, uint32_t instance_count_, int32_t vertex_offset_, uint32_t instance_offset_)
+		: vertex_count(vertex_count_), instance_count(instance_count_)
+		, vertex_offset(vertex_offset_), instance_offset(instance_offset_) {}
+
+	void report(FILE *file) override;
+	uint32_t vertex_count;
+	uint32_t instance_count;
+	int32_t vertex_offset;
+	uint32_t instance_offset;
+};
+
+struct CheckpointDrawIndexed : CheckpointReportInterface
+{
+	CheckpointDrawIndexed(uint32_t index_count_, uint32_t instance_count_, uint32_t first_index_, int32_t vertex_offset_, uint32_t instance_offset_)
+		: index_count(index_count_), instance_count(instance_count_), first_index(first_index_)
+		, vertex_offset(vertex_offset_), instance_offset(instance_offset_) {}
+
+	void report(FILE *file) override;
+	uint32_t index_count;
+	uint32_t instance_count;
+	uint32_t first_index;
+	int32_t vertex_offset;
+	uint32_t instance_offset;
+};
+
+struct CheckpointMeshDispatch : CheckpointReportInterface
+{
+	CheckpointMeshDispatch(uint32_t x_, uint32_t y_, uint32_t z_)
+		: x(x_), y(y_), z(z_) {}
+	void report(FILE *file) override;
+	uint32_t x, y, z;
+};
+
+struct CheckpointIndirectBase : CheckpointReportInterface
+{
+	CheckpointIndirectBase(const char *tag_, VkDeviceAddress va_) : tag(tag_), va(va_) {}
+
+	void report(FILE *file) override;
+
+	const char *tag;
+	VkDeviceAddress va;
+};
+
+struct CheckpointMultiIndirectBase : CheckpointReportInterface
+{
+	CheckpointMultiIndirectBase(const char *tag_, VkDeviceAddress va_,
+		uint32_t count_, uint32_t stride_)
+		: tag(tag_), va(va_), count(count_), stride(stride_) {}
+
+	void report(FILE *file) override;
+
+	const char *tag;
+	VkDeviceAddress va;
+	uint32_t count;
+	uint32_t stride;
+};
+
+struct CheckpointMultiIndirectCountBase : CheckpointReportInterface
+{
+	CheckpointMultiIndirectCountBase(const char *tag_, VkDeviceAddress va_, VkDeviceAddress count_va_,
+		uint32_t count_, uint32_t stride_)
+		: tag(tag_), va(va_), count_va(count_va_), count(count_), stride(stride_) {}
+
+	void report(FILE *file) override
+	{
+		fprintf(file, "%s (#%016llx), countVA (#%016llx), count %u, stride %u\n",
+				tag,
+				static_cast<unsigned long long>(va),
+				static_cast<unsigned long long>(count_va),
+				count, stride);
+	}
+
+	const char *tag;
+	VkDeviceAddress va;
+	VkDeviceAddress count_va;
+	uint32_t count;
+	uint32_t stride;
+};
+
+struct CheckpointShader : CheckpointReportInterface
+{
+	CheckpointShader(const Shader *shader_) : shader(shader_) {}
+	void report(FILE *file) override;
+	const Shader *shader;
 };
 
 class BreadcrumbsTracker
@@ -52,7 +152,7 @@ class BreadcrumbsTracker
 public:
 	enum { CheckpointObjectSize = 64, MaxCommandBuffers = 8 * 1024 };
 	void init(Device *device);
-	~BreadcrumbsTracker();
+	void deinit();
 	BufferMarkerHandle allocate_command_buffer(VkCommandBuffer cmd);
 	void free_command_buffer(BufferMarkerHandle handle);
 
@@ -65,14 +165,19 @@ public:
 			return;
 
 		static_assert(sizeof(T) <= CheckpointObjectSize, "Object size is too large.");
-		auto *raw = static_cast<T *>(blocks.allocate());
+		auto *raw = reinterpret_cast<T *>(blocks.allocate());
 		new (raw) T(std::forward<Ts>(ts)...);
 
 		Checkpoint checkpoint = {};
 		checkpoint.iface = raw;
 		assert(handle.index < command_buffers.size());
 		command_buffers[handle.index].checkpoints.push_back(checkpoint);
+	}
 
+	template <typename T, typename... Ts>
+	void checkpoint_with_signal(BufferMarkerHandle handle, Ts &&... ts)
+	{
+		checkpoint<T>(handle, std::forward<Ts>(ts)...);
 		signal(handle);
 	}
 

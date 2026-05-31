@@ -432,17 +432,30 @@ VkResult WSI::wait_for_present(uint64_t id, uint64_t timeout)
 	if (id > present_last_id)
 		return VK_NOT_READY;
 
+	bool timeout_is_fault = false;
+	if (device->get_device_features().supports_post_mortem && timeout == UINT64_MAX)
+	{
+		timeout = 2000000000ull;
+		timeout_is_fault = true;
+	}
+
+	VkResult vr;
+
 	if (supports_present_wait2 && device->get_device_features().present_wait2_features.presentWait2)
 	{
 		VkPresentWait2InfoKHR wait_info = { VK_STRUCTURE_TYPE_PRESENT_WAIT_2_INFO_KHR };
 		wait_info.presentId = id;
 		wait_info.timeout = timeout;
-		return table->vkWaitForPresent2KHR(context->get_device(), swapchain, &wait_info);
+		vr = table->vkWaitForPresent2KHR(context->get_device(), swapchain, &wait_info);
 	}
 	else if (device->get_device_features().present_wait_features.presentWait)
-		return table->vkWaitForPresentKHR(context->get_device(), swapchain, id, timeout);
+		vr = table->vkWaitForPresentKHR(context->get_device(), swapchain, id, timeout);
 	else
 		return VK_NOT_READY;
+
+	if (timeout_is_fault && (vr == VK_TIMEOUT || vr == VK_ERROR_DEVICE_LOST))
+		device->managers.breadcrumbs.notify_device_hung();
+	return vr;
 }
 
 void WSI::nonblock_delete_swapchain_resources()

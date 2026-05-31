@@ -21,11 +21,56 @@
  */
 
 #include "breadcrumbs.hpp"
-
+#include "shader.hpp"
 #include "device.hpp"
 
 namespace Vulkan
 {
+void CheckpointString::report(FILE *file)
+{
+	fprintf(file, "%s\n", str.c_str());
+}
+
+void CheckpointDispatch::report(FILE *file)
+{
+	fprintf(file, "Dispatch (%u, %u, %u)\n", x, y, z);
+}
+
+void CheckpointDraw::report(FILE *file)
+{
+	fprintf(file, "Draw (%u, %u, %d, %u)\n",
+	        vertex_count, instance_count, vertex_offset, instance_offset);
+}
+
+void CheckpointDrawIndexed::report(FILE *file)
+{
+	fprintf(file, "DrawIndexed (%u, %u, %u, %d, %u)\n",
+	        index_count, instance_count, first_index, vertex_offset, instance_offset);
+}
+
+void CheckpointMeshDispatch::report(FILE *file)
+{
+	fprintf(file, "MeshTasks (%u, %u, %u)\n", x, y, z);
+}
+
+void CheckpointIndirectBase::report(FILE *file)
+{
+	fprintf(file, "%s (#%016llx)\n", tag, static_cast<unsigned long long>(va));
+}
+
+void CheckpointMultiIndirectBase::report(FILE *file)
+{
+	fprintf(file, "%s (#%016llx), count %u, stride %u\n",
+			tag,
+			static_cast<unsigned long long>(va),
+			count, stride);
+}
+
+void CheckpointShader::report(FILE *file)
+{
+	fprintf(file, "Shader (#%016llx)\n", static_cast<unsigned long long>(shader->get_hash()));
+}
+
 static void *nv_encode_checkpoint(uint32_t index, uint32_t counter)
 {
 	return reinterpret_cast<void *>(uintptr_t(index) + uintptr_t(counter) * BreadcrumbsTracker::MaxCommandBuffers);
@@ -67,7 +112,7 @@ void BreadcrumbsTracker::init(Device *device_)
 	blocks.init(CheckpointObjectSize);
 }
 
-BreadcrumbsTracker::~BreadcrumbsTracker()
+void BreadcrumbsTracker::deinit()
 {
 	for (auto &cmd : command_buffers)
 		reset_command_buffer(cmd);
@@ -129,7 +174,6 @@ void BreadcrumbsTracker::begin(BufferMarkerHandle handle)
 
 	if (device->get_device_features().supports_nv_checkpoints)
 	{
-		cmd.counter++;
 		cmd.checkpoints.push_back({ nullptr, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, cmd.counter });
 		// A checkpoint is implicitly a top and a bottom marker.
 		device->get_device_table().vkCmdSetCheckpointNV(cmd.cmd, nv_encode_checkpoint(handle.index, cmd.counter));
@@ -187,6 +231,10 @@ void BreadcrumbsTracker::end(BufferMarkerHandle handle)
 	{
 		device->get_device_table().vkCmdWriteBufferMarkerAMD(cmd.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
 		                                                     amd_marker_buffer->get_buffer(),
+		                                                     (2 * handle.index + 0) * sizeof(uint32_t), cmd.counter);
+
+		device->get_device_table().vkCmdWriteBufferMarkerAMD(cmd.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+		                                                     amd_marker_buffer->get_buffer(),
 		                                                     (2 * handle.index + 1) * sizeof(uint32_t), cmd.counter);
 	}
 
@@ -226,7 +274,7 @@ void BreadcrumbsTracker::report_command_list(CommandBuffer &cmd, uint32_t top_ma
 		}
 
 		if (check.iface)
-			check.iface->report();
+			check.iface->report(stderr);
 
 		if (!observed_begin_cmd && check.stages == VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT && check.counter == bottom_marker)
 		{
@@ -236,6 +284,9 @@ void BreadcrumbsTracker::report_command_list(CommandBuffer &cmd, uint32_t top_ma
 			observed_begin_cmd = true;
 		}
 	}
+
+	if (top_marker == UINT32_MAX)
+		LOGE("=== Crash region END ===\n");
 }
 
 void BreadcrumbsTracker::report_command_list_amd(uint32_t index)
@@ -254,10 +305,15 @@ void BreadcrumbsTracker::report_command_list_amd(uint32_t index)
 	if (top_marker == UINT32_MAX && bottom_marker == UINT32_MAX)
 		return;
 
+	// Never started executing properly. Cannot be a culprit.
+	if (top_marker == 0 && bottom_marker == 0)
+		return;
+
 	// Edge case where we crashed before the first command of a recycled command buffer completed.
 	if (top_marker > 0 && bottom_marker == UINT32_MAX)
 		bottom_marker = 0;
 
+	LOGE("Reporting for command index %u, top marker %u, bottom marker %u\n", index, top_marker, bottom_marker);
 	report_command_list(cmd, top_marker, bottom_marker);
 	reported = true;
 }
@@ -282,6 +338,10 @@ void BreadcrumbsTracker::notify_device_hung()
 			auto &table = device->get_device_table();
 			uint32_t count;
 			table.vkGetQueueCheckpointDataNV(queues[i], &count, nullptr);
+
+			if (count == 0)
+				continue;
+
 			std::vector<VkCheckpointDataNV> checkpoints(count);
 			for (auto &check : checkpoints)
 				check.sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV;
@@ -314,7 +374,10 @@ void BreadcrumbsTracker::notify_device_hung()
 			else if (top_context != bottom_context || top_context == BufferMarkerHandle::Invalid)
 				LOGE("Mismatching contexts, this should not happen.\n");
 			else
+			{
 				report_command_list(command_buffers[top_context], top_marker, bottom_marker);
+				reported = true;
+			}
 		}
 	}
 	else if (device->get_device_features().supports_amd_buffer_marker)

@@ -304,6 +304,7 @@ public:
 	void begin_region(const char *name, const float *color = nullptr);
 	void insert_label(const char *name, const float *color = nullptr);
 	void end_region();
+	void checkpoint(const char *tag);
 
 	Device &get_device()
 	{
@@ -1024,6 +1025,9 @@ private:
 	void build_tlas_batch();
 	void setup_batch(VkAccelerationStructureTypeKHR rtas_type);
 	void emit_scratch_barrier();
+
+	template <typename T, typename... Ts> void checkpoint(Ts &&... ts);
+	template <typename T, typename... Ts> void checkpoint_with_signal(Ts &&... ts);
 };
 
 #ifdef GRANITE_VULKAN_SYSTEM_HANDLES

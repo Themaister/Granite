@@ -2215,7 +2215,7 @@ void CommandBuffer::set_program(Program *program)
 			ShaderStage::Mesh,
 		};
 
-		for (auto stage: stages)
+		for (auto stage : stages)
 			if (auto *shader = program->get_shader(stage))
 				checkpoint<CheckpointShader>(shader);
 	}

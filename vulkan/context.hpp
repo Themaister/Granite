@@ -114,7 +114,8 @@ struct DeviceFeatures
 	VkPhysicalDeviceAccelerationStructureFeaturesKHR rtas_features = {};
 	VkPhysicalDeviceAccelerationStructurePropertiesKHR rtas_properties = {};
 	VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features = {};
-	VkPhysicalDeviceFaultFeaturesKHR fault_features = {};
+	VkPhysicalDeviceShaderUntypedPointersFeaturesKHR untyped_pointers_features = {};
+	VkPhysicalDeviceFaultFeaturesKHR fault_features_khr = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};
@@ -137,7 +138,7 @@ struct DeviceFeatures
 	VkPhysicalDevicePresentTimingFeaturesEXT present_timing_features = {};
 	VkPhysicalDeviceDescriptorHeapFeaturesEXT descriptor_heap_features = {};
 	VkPhysicalDeviceDescriptorHeapPropertiesEXT descriptor_heap_properties = {};
-	VkPhysicalDeviceShaderUntypedPointersFeaturesKHR untyped_pointers_features = {};
+	VkPhysicalDeviceFaultFeaturesEXT fault_features_ext = {};
 
 	// Vendor
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};

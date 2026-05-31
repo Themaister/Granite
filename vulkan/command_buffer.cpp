@@ -137,6 +137,7 @@ void CommandBuffer::fill_buffer(const Buffer &dst, uint32_t value)
 void CommandBuffer::fill_buffer(const Buffer &dst, uint32_t value, VkDeviceSize offset, VkDeviceSize size)
 {
 	table.vkCmdFillBuffer(cmd, dst.get_buffer(), offset, size, value);
+	checkpoint<CheckpointString>("fill-buffer");
 }
 
 void CommandBuffer::copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, const Buffer &src, VkDeviceSize src_offset,

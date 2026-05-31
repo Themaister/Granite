@@ -64,37 +64,41 @@ static int main_inner()
 
 	auto buf = create_buffer(dev, 16, nullptr);
 
-	auto cmd = dev.request_command_buffer();
+	for (int iter = 0; iter < 100; iter++)
+	{
+		auto cmd = dev.request_command_buffer();
 
-	cmd->set_program("assets://shaders/fault.comp");
-	auto ptr = buf->get_device_address();
+		cmd->set_program("assets://shaders/fault.comp");
+		auto ptr = buf->get_device_address();
 
-	cmd->push_constants(&ptr, 0, sizeof(ptr));
+		cmd->push_constants(&ptr, 0, sizeof(ptr));
 
-	cmd->dispatch(1, 1, 1);
-	cmd->dispatch(1, 1, 1);
+		cmd->dispatch(1, 1, 1);
+		cmd->dispatch(1, 1, 1);
 
-	ptr = 0x40000000;
-	cmd->push_constants(&ptr, 0, sizeof(ptr));
-	cmd->checkpoint("before should fault");
-	cmd->dispatch(1, 1, 1);
-	cmd->checkpoint("after should fault");
+		if (iter == 90)
+			ptr = 0x40000000;
 
-	cmd->barrier(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-				 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+		cmd->push_constants(&ptr, 0, sizeof(ptr));
+		cmd->checkpoint("before should fault");
+		cmd->dispatch(1, 1, 1);
+		cmd->checkpoint("after should fault");
 
-	ptr = buf->get_device_address();
-	cmd->push_constants(&ptr, 0, sizeof(ptr));
-	cmd->dispatch(1, 1, 1);
-	cmd->dispatch(1, 1, 1);
-	cmd->dispatch(1, 1, 1);
-	cmd->dispatch(1, 1, 1);
-	cmd->dispatch(1, 1, 1);
-	cmd->dispatch(1, 1, 1);
+		cmd->barrier(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+					 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
-	Fence fence;
-	dev.submit(cmd, &fence);
-	fence->wait();
+		ptr = buf->get_device_address();
+		cmd->push_constants(&ptr, 0, sizeof(ptr));
+		cmd->dispatch(1, 1, 1);
+		cmd->dispatch(1, 1, 1);
+		cmd->dispatch(1, 1, 1);
+		cmd->dispatch(1, 1, 1);
+		cmd->dispatch(1, 1, 1);
+		cmd->dispatch(1, 1, 1);
+
+		dev.submit(cmd);
+		dev.next_frame_context();
+	}
 
 	return 0;
 }

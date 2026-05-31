@@ -23,14 +23,11 @@
 #pragma once
 
 #include "slab_allocator.hpp"
-#include "logging.hpp"
 #include "vulkan_headers.hpp"
 #include "vulkan_common.hpp"
 #include <mutex>
 #include <assert.h>
 #include <stdio.h>
-
-#include "shader.hpp"
 
 namespace Vulkan
 {

@@ -23,6 +23,7 @@
 #include "breadcrumbs.hpp"
 #include "shader.hpp"
 #include "device.hpp"
+#include <time.h>
 
 namespace Vulkan
 {
@@ -253,14 +254,16 @@ void BreadcrumbsTracker::end(BufferMarkerHandle handle)
 	device->get_device_table().vkCmdPipelineBarrier2(cmd.cmd, &dep);
 }
 
-void BreadcrumbsTracker::report_command_list(CommandBuffer &cmd, uint32_t top_marker, uint32_t bottom_marker)
+void BreadcrumbsTracker::report_command_list(FILE *file, CommandBuffer &cmd, uint32_t top_marker, uint32_t bottom_marker)
 {
 	bool observed_begin_cmd = false;
 	bool observed_end_cmd = false;
 
+	fprintf(file, "\n=== Command Buffer ===\n");
+
 	if (bottom_marker == 0)
 	{
-		LOGE("=== Crash region BEGIN ===\n");
+		fprintf(file, "=== Crash region BEGIN ===\n");
 		observed_begin_cmd = true;
 	}
 
@@ -269,27 +272,29 @@ void BreadcrumbsTracker::report_command_list(CommandBuffer &cmd, uint32_t top_ma
 		if (!observed_end_cmd && check.stages == VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT && check.counter > top_marker)
 		{
 			// The command processor did not reach this checkpoint. Any command after this point cannot be the culprit.
-			LOGE("=== Crash region END ===\n");
+			fprintf(file, "=== Crash region END ===\n");
 			observed_end_cmd = true;
 		}
 
 		if (check.iface)
-			check.iface->report(stderr);
+			check.iface->report(file);
 
 		if (!observed_begin_cmd && check.stages == VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT && check.counter == bottom_marker)
 		{
 			// The GPU completed all commands up to this point and is the last counter that was completed.
 			// Crash must be after this point.
-			LOGE("=== Crash region BEGIN ===\n");
+			fprintf(file, "=== Crash region BEGIN ===\n");
 			observed_begin_cmd = true;
 		}
 	}
 
 	if (top_marker == UINT32_MAX)
-		LOGE("=== Crash region END ===\n");
+		fprintf(file, "=== Crash region END ===\n");
+
+	fprintf(file, "====================\n");
 }
 
-void BreadcrumbsTracker::report_command_list_amd(uint32_t index)
+void BreadcrumbsTracker::report_command_list_amd(FILE *file, uint32_t index)
 {
 	auto &cmd = command_buffers[index];
 
@@ -313,8 +318,8 @@ void BreadcrumbsTracker::report_command_list_amd(uint32_t index)
 	if (top_marker > 0 && bottom_marker == UINT32_MAX)
 		bottom_marker = 0;
 
-	LOGE("Reporting for command index %u, top marker %u, bottom marker %u\n", index, top_marker, bottom_marker);
-	report_command_list(cmd, top_marker, bottom_marker);
+	fprintf(file, "Reporting for command index %u, top marker %u, bottom marker %u\n", index, top_marker, bottom_marker);
+	report_command_list(file, cmd, top_marker, bottom_marker);
 	reported = true;
 }
 
@@ -326,6 +331,30 @@ void BreadcrumbsTracker::notify_device_hung()
 	std::lock_guard<std::mutex> holder{lock};
 	if (reported)
 		return;
+
+	char path[256];
+	std::time_t t = std::time(nullptr);
+	std::tm gmt;
+
+	// Date-time in C was always a great time :')
+#ifdef _MSC_VER
+	gmtime_s(&gmt, &t);
+#else
+	gmtime_r(&t, &gmt);
+#endif
+
+	strftime(path, sizeof(path), "granite-post-mortem-%F-%T.txt", &gmt);
+
+	LOGE("Device hung ... Attempting to grab post-mortem data to: %s\n", path);
+
+	FILE *file = fopen(path, "w");
+	if (!file)
+	{
+		LOGE("Failed to open \"%s\", dumping to stderr instead.\n", path);
+		file = stderr;
+	}
+
+	fprintf(file, "Post-mortem analysis ...\n");
 
 	if (device->get_device_features().supports_nv_checkpoints)
 	{
@@ -370,12 +399,12 @@ void BreadcrumbsTracker::notify_device_hung()
 			}
 
 			if (top_context == BufferMarkerHandle::Invalid)
-				LOGE("Missing context, this should not happen.\n");
+				fprintf(file, "Missing context, this should not happen.\n");
 			else if (top_context != bottom_context || top_context == BufferMarkerHandle::Invalid)
-				LOGE("Mismatching contexts, this should not happen.\n");
+				fprintf(file, "Mismatching contexts, this should not happen.\n");
 			else
 			{
-				report_command_list(command_buffers[top_context], top_marker, bottom_marker);
+				report_command_list(file, command_buffers[top_context], top_marker, bottom_marker);
 				reported = true;
 			}
 		}
@@ -383,7 +412,7 @@ void BreadcrumbsTracker::notify_device_hung()
 	else if (device->get_device_features().supports_amd_buffer_marker)
 	{
 		for (uint32_t i = 0; i < MaxCommandBuffers; i++)
-			report_command_list_amd(i);
+			report_command_list_amd(file, i);
 	}
 
 	// Need to observe the device lost properly first before we can query fault information.
@@ -397,37 +426,39 @@ void BreadcrumbsTracker::notify_device_hung()
 		uint32_t count;
 		if (table.vkGetDeviceFaultReportsKHR(device->get_device(), UINT64_MAX, &count, nullptr) != VK_SUCCESS)
 		{
-			LOGE("Failed to get fault reports.\n");
+			fprintf(file, "Failed to get fault reports.\n");
 			return;
 		}
 		std::vector<VkDeviceFaultInfoKHR> faults(count);
-		for (auto &fault : faults)
+		for (auto &fault: faults)
 			fault.sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_KHR;
 
 		if (table.vkGetDeviceFaultReportsKHR(device->get_device(), UINT64_MAX, &count, faults.data()) != VK_SUCCESS)
 		{
-			LOGE("Failed to get fault reports.\n");
+			fprintf(file, "Failed to get fault reports.\n");
 			return;
 		}
 
-		for (auto &fault : faults)
+		for (auto &fault: faults)
 		{
-			LOGE("=== Fault ===\n");
-			LOGE("  Desc: %s\n", fault.description);
-			LOGE("  groupID: %llu\n", static_cast<unsigned long long>(fault.groupId));
+			fprintf(file, "=== Fault ===\n");
+			fprintf(file, "  Desc: %s\n", fault.description);
+			fprintf(file, "  groupID: %llu\n", static_cast<unsigned long long>(fault.groupId));
 
 			if (fault.flags & VK_DEVICE_FAULT_FLAG_DEVICE_LOST_KHR)
-				LOGE("  Fault caused DEVICE_LOST\n");
+				fprintf(file, "  Fault caused DEVICE_LOST\n");
 			if (fault.flags & VK_DEVICE_FAULT_FLAG_WATCHDOG_TIMEOUT_KHR)
-				LOGE("  GPU Timeout\n");
+				fprintf(file, "  GPU Timeout\n");
 			if (fault.flags & VK_DEVICE_FAULT_FLAG_OVERFLOW_KHR)
-				LOGE("  Fault buffer overflowed\n");
+				fprintf(file, "  Fault buffer overflowed\n");
 
 			if (fault.flags & VK_DEVICE_FAULT_FLAG_VENDOR_KHR)
 			{
-				LOGE("  Vendor desc: %s\n", fault.vendorInfo.description);
-				LOGE("  Vendor fault code: %llu\n", static_cast<unsigned long long>(fault.vendorInfo.vendorFaultCode));
-				LOGE("  Vendor fault data: %llu\n", static_cast<unsigned long long>(fault.vendorInfo.vendorFaultData));
+				fprintf(file, "  Vendor desc: %s\n", fault.vendorInfo.description);
+				fprintf(file, "  Vendor fault code: %llu\n",
+				        static_cast<unsigned long long>(fault.vendorInfo.vendorFaultCode));
+				fprintf(file, "  Vendor fault data: %llu\n",
+				        static_cast<unsigned long long>(fault.vendorInfo.vendorFaultData));
 			}
 
 			const auto addr_type_to_str = [](VkDeviceFaultAddressTypeKHR type)
@@ -447,22 +478,31 @@ void BreadcrumbsTracker::notify_device_hung()
 
 			if (fault.flags & VK_DEVICE_FAULT_FLAG_MEMORY_ADDRESS_KHR)
 			{
-				LOGE("  Memory fault: %s\n", addr_type_to_str(fault.faultAddressInfo.addressType));
-				LOGE("  Memory address: #%016llx\n",
-					static_cast<unsigned long long>(fault.faultAddressInfo.reportedAddress));
-				LOGE("  Memory precision: #%016llx\n",
-					static_cast<unsigned long long>(fault.faultAddressInfo.addressPrecision));
+				fprintf(file, "  Memory fault: %s\n", addr_type_to_str(fault.faultAddressInfo.addressType));
+				fprintf(file, "  Memory address: #%016llx\n",
+				        static_cast<unsigned long long>(fault.faultAddressInfo.reportedAddress));
+				fprintf(file, "  Memory precision: #%016llx\n",
+				        static_cast<unsigned long long>(fault.faultAddressInfo.addressPrecision));
 			}
 
 			if (fault.flags & VK_DEVICE_FAULT_FLAG_INSTRUCTION_ADDRESS_KHR)
 			{
-				LOGE("  Instruction fault: %s\n", addr_type_to_str(fault.instructionAddressInfo.addressType));
-				LOGE("  Instruction address: #%016llx\n",
-					static_cast<unsigned long long>(fault.instructionAddressInfo.reportedAddress));
-				LOGE("  Instruction precision: #%016llx\n",
-					static_cast<unsigned long long>(fault.instructionAddressInfo.addressPrecision));
+				fprintf(file, "  Instruction fault: %s\n",
+				        addr_type_to_str(fault.instructionAddressInfo.addressType));
+				fprintf(file, "  Instruction address: #%016llx\n",
+				        static_cast<unsigned long long>(fault.instructionAddressInfo.reportedAddress));
+				fprintf(file, "  Instruction precision: #%016llx\n",
+				        static_cast<unsigned long long>(fault.instructionAddressInfo.addressPrecision));
 			}
 		}
 	}
+
+	fprintf(file, "... DONE\n");
+
+	if (file != stderr)
+		fclose(file);
+
+	LOGE("Completed post-mortem analysis, will crash now.\n");
+	std::terminate();
 }
 }

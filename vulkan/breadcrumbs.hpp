@@ -215,7 +215,7 @@ private:
 	Util::ThreadSafeSlabAllocator blocks;
 
 	void reset_command_buffer(CommandBuffer &cmd);
-	void report_command_list_amd(uint32_t index);
-	void report_command_list(CommandBuffer &cmd, uint32_t top_marker, uint32_t bottom_marker);
+	void report_command_list_amd(FILE *file, uint32_t index);
+	void report_command_list(FILE *file, CommandBuffer &cmd, uint32_t top_marker, uint32_t bottom_marker);
 };
 }

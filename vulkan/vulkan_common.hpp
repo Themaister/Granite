@@ -128,7 +128,7 @@ static inline const T *find_pnext(const void *pnext, VkStructureType sType)
 
 struct BufferMarkerHandle
 {
-	enum { Invalid = UINT32_MAX };
+	enum : uint32_t { Invalid = UINT32_MAX };
 	uint32_t index = Invalid;
 };
 }

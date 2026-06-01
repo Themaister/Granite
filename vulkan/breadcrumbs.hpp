@@ -144,8 +144,12 @@ struct CheckpointShader : CheckpointReportInterface
 	const Shader *shader;
 };
 
-// 5 seconds.
-static constexpr uint64_t PostMortemTimeout = 5000000000ull;
+// 1 second.
+// It seems like if we have too long timeout, NV driver on Windows is broken
+// and loses checkpoint information (?!?!).
+// It seems like we have to call it before we start getting vkQueueSubmit() device losts,
+// then it's too late.
+static constexpr uint64_t PostMortemTimeout = 1ull * 1000 * 1000 * 1000;
 
 class BreadcrumbsTracker
 {

@@ -73,7 +73,10 @@ void FenceHolder::wait()
 		}
 
 		if (table.vkWaitSemaphores(device->get_device(), &info, UINT64_MAX) != VK_SUCCESS)
+		{
 			LOGE("Failed to wait for timeline semaphore!\n");
+			device->managers.breadcrumbs.notify_device_hung();
+		}
 		else
 			observed_wait = true;
 	}
@@ -92,7 +95,10 @@ void FenceHolder::wait()
 		}
 
 		if (table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+		{
 			LOGE("Failed to wait for fence!\n");
+			device->managers.breadcrumbs.notify_device_hung();
+		}
 		else
 			observed_wait = true;
 	}

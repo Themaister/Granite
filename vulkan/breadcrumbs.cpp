@@ -343,9 +343,13 @@ void BreadcrumbsTracker::notify_device_hung()
 	gmtime_r(&t, &gmt);
 #endif
 
-	strftime(path, sizeof(path), "granite-post-mortem-%F-%T.txt", &gmt);
+	// Windows does not like colons in path names, so %T breaks.
+	strftime(path, sizeof(path), "granite-post-mortem-%F-%H-%M-%S.txt", &gmt);
 
 	LOGE("Device hung ... Attempting to grab post-mortem data to: %s\n", path);
+
+	if (device->get_device_table().vkDeviceWaitIdle(device->get_device()) != VK_ERROR_DEVICE_LOST)
+		LOGE("Cannot observe device lost state ...\n");
 
 	FILE *file = fopen(path, "w");
 	if (!file)
@@ -539,6 +543,12 @@ void BreadcrumbsTracker::notify_device_hung()
 		fclose(file);
 
 	LOGE("Completed post-mortem analysis, will crash now.\n");
+#ifdef _WIN32
+	char msg[512];
+	snprintf(msg, sizeof(msg), "GPU crashed, see post-mortem log in %s. Application will now terminate.", path);
+	MessageBoxA(nullptr, msg, "Granite Post Mortem", MB_OK);
+	TerminateProcess(GetCurrentProcess(), 1);
+#endif
 	std::terminate();
 }
 }

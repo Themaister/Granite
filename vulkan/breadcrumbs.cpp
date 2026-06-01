@@ -337,7 +337,7 @@ void BreadcrumbsTracker::notify_device_hung()
 	std::tm gmt;
 
 	// Date-time in C was always a great time :')
-#ifdef _MSC_VER
+#ifdef _WIN32
 	gmtime_s(&gmt, &t);
 #else
 	gmtime_r(&t, &gmt);

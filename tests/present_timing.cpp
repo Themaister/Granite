@@ -498,6 +498,8 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 		cmd->end_render_pass();
 		auto end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
+		device.register_time_interval("GPU", start_ts, end_ts, "burn");
+
 		PendingQueryResult pending = {};
 		pending.start = std::move(start_ts);
 		pending.end = std::move(end_ts);

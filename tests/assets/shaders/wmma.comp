@@ -5,6 +5,7 @@
 #extension GL_EXT_control_flow_attributes : require
 #extension GL_EXT_spirv_intrinsics : require
 #extension GL_EXT_debug_printf : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
 
 layout(local_size_x_id = 0) in;
 layout(set = 0, binding = 0) mediump uniform sampler2D uInput;
@@ -169,9 +170,10 @@ void main()
         // Seems to be detrimental in the end, but provided here for experimentation.
         barrier();
 
+        // packHalf2x16 is vectorized on AMD (RTZ), RTE convs are not.
         [[unroll]]
         for (int y = 0; y < 2; y++)
-            shared_block[2 * local_offset.y + y][local_offset.x] = f16vec2(sum[y][0], sum[y][1]);
+            shared_block[2 * local_offset.y + y][local_offset.x] = uint16BitsToFloat16(unpack16(packHalf2x16((vec2(sum[y][0], sum[y][1])))));
 
         barrier();
 

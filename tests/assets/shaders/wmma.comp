@@ -1,0 +1,254 @@
+#version 450
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_EXT_samplerless_texture_functions : require
+#extension GL_EXT_samplerless_texture_functions : require
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_EXT_spirv_intrinsics : require
+#extension GL_EXT_debug_printf : require
+
+layout(local_size_x_id = 0) in;
+layout(set = 0, binding = 0) mediump uniform sampler2D uInput;
+layout(set = 0, binding = 1) mediump writeonly uniform image2D uOutput;
+
+layout(push_constant) uniform Registers
+{
+    vec2 inv_resolution;
+};
+
+layout(set = 0, binding = 2) uniform Weights
+{
+    // Supports 3x3, 5x5 and 7x7 kernel.
+    // Each row of the kernel is packed in a different uvec4 element to make the implementation more practical.
+    // E.g. for a 3x3 kernel (FP16):
+    // kernel[0] = [ k00, k01, k02, .... ]
+    // kernel[1] = [ k10, k11, k12, .... ]
+    // kernel[2] = [ k20, k21, k22, .... ]
+    uvec4 kernel[8];
+
+    // Each row is shifted over by one element to the right.
+    // kernel_odd[0] = [ 0, k00, k01, k02, .... ]
+    // kernel_odd[1] = [ 0, k10, k11, k12, .... ]
+    // kernel_odd[2] = [ 0, k20, k21, k22, .... ]
+    uvec4 kernel_odd[8];
+};
+
+// Each workgroup outputs 16x16 elements.
+const uint BLOCK_WIDTH = 16;
+const uint BLOCK_HEIGHT = 16;
+
+const int METHOD_NAIVE_DIRECT = 0;
+const int METHOD_NAIVE_DIRECT_DOT2C = 1;
+const int METHOD_NAIVE_SHARED = 2;
+const int METHOD_NAIVE_SHARED_DOT2C = 3;
+
+// Either WG size is 256 or 64. In shared mode, each pixel works on 2x2 pixel region.
+const int GROUP_WIDTH = gl_WorkGroupSize.x == 256 ? 16 : 8;
+const int GROUP_HEIGHT = gl_WorkGroupSize.x == 256 ? 16 : 8;
+
+layout(constant_id = 1) const uint METHOD = 0;
+layout(constant_id = 2) const uint KERNEL_SIZE = 5;
+
+// Common AMD thing, some arbitrary U-ordering pattern that makes memory controller a bit more happy.
+ivec2 unswizzle_linear(uint linear)
+{
+    uint y = bitfieldExtract(linear, 0, 1);
+    uint x = bitfieldExtract(linear, 1, 2);
+    y |= bitfieldExtract(linear, 3, 2) << 1;
+    x |= bitfieldExtract(linear, 5, 2) << 2;
+    if (gl_WorkGroupSize.x >= 128)
+        y |= bitfieldExtract(linear, 7, 1) << 1;
+    return ivec2(x, y);
+}
+
+// Unclear if the multiply should happen in FP32 or not.
+float fma_mix(float16_t a, float16_t b, float c)
+{
+    return c + float(a * b);
+}
+
+// Unclear if the multiply should happen in FP32 or not, I think the native instruction outputs FP32 from the multiply.
+float dot2c_plain(f16vec2 a, f16vec2 b, float c)
+{
+    f16vec2 m = a * b;
+    return c + (float(m.x) + float(m.y));
+}
+
+#if MIXED_FLOAT_DOT_PRODUCT
+spirv_instruction(extensions = ["SPV_VALVE_mixed_float_dot_product"], capabilities = [6912], id = 6916)
+float dot2c(f16vec2 a, f16vec2 b, float c);
+#else
+#define dot2c dot2c_plain
+#endif
+
+// Add +1 to make the load path more happy since it processes 2x2 pixels at once.
+const uint SHARED_HEIGHT = BLOCK_HEIGHT + (KERNEL_SIZE - 1) + 1;
+const uint SHARED_WIDTH_PACKED = (BLOCK_WIDTH + (KERNEL_SIZE - 1) + 1) / 2;
+// Ensure odd stride to improve bank conflict behavior.
+// +3 seems to yield better results than +1 on RDNA3 for whatever reason.
+// Possibly we get a prime stride which is nice for avoid bank conflict
+// when x/y are swizzled.
+shared f16vec2 shared_block[SHARED_HEIGHT][SHARED_WIDTH_PACKED + 3 - (SHARED_WIDTH_PACKED & 1)];
+
+void main()
+{
+    ivec2 group_offset = ivec2(gl_WorkGroupID.xy) * ivec2(GROUP_WIDTH, GROUP_HEIGHT);
+    uint linear = gl_LocalInvocationIndex;
+    ivec2 local_offset = unswizzle_linear(linear);
+    ivec2 coord = group_offset + local_offset;
+
+    if (METHOD == METHOD_NAIVE_SHARED || METHOD == METHOD_NAIVE_SHARED_DOT2C)
+    {
+        for (int y = local_offset.y; y < SHARED_HEIGHT / 2; y += GROUP_HEIGHT)
+        {
+            for (int x = local_offset.x; x < SHARED_WIDTH_PACKED; x += GROUP_WIDTH)
+            {
+                ivec2 thread_coord = group_offset + ivec2(x, y);
+                thread_coord *= 2;
+
+                // Gather is convenient here. Could do 4x fetch too, which would likely be faster if we needed more components.
+                vec2 uv = vec2(thread_coord) * inv_resolution;
+                f16vec4 g = f16vec4(textureGatherOffset(uInput, uv, ivec2(1), 0));
+
+                shared_block[2 * y + 0][x] = g.wz;
+                shared_block[2 * y + 1][x] = g.xy;
+            }
+        }
+
+        barrier();
+
+        // Process 2x2 output pixels. For e.g. a 3x3 kernel:
+        // To process this, we need to load 4x4 pixels from shared block.
+        // This amortizes groupshared loads from (3 + 1) / 2 * 3 = 12 FP16 loads per pixel down to 16 / 4 FP16 loads per pixel.
+        float sum[2][2] = float[2][2](float[2](0.0, 0.0), float[2](0.0, 0.0));
+
+        f16vec2 inputs[KERNEL_SIZE + 1][(KERNEL_SIZE + 1) / 2];
+
+        [[unroll]]
+        for (int y = 0; y < KERNEL_SIZE + 1; y++)
+        {
+            [[unroll]]
+            for (int x = 0; x < (KERNEL_SIZE + 1) / 2; x++)
+                inputs[y][x] = shared_block[2 * local_offset.y + y][local_offset.x + x];
+        }
+
+        [[unroll]]
+        for (int y = 0; y < KERNEL_SIZE; y++)
+        {
+            // The same 4 pixel row can be interpreted at different shifts. For even pixels we dot together:
+            // [ v0, v1, v2, v3 ] * [ k0, k1, k2, 0 ]^T.
+            // For odd pixels we dot together:
+            // [ v0, v1, v2, v3 ] * [ 0, k0, k1, k2 ]^T.
+            uvec4 weights_even = kernel[y];
+            uvec4 weights_odd = kernel_odd[y];
+
+            [[unroll]]
+            for (int x = 0; x < (KERNEL_SIZE + 1) / 2; x++)
+            {
+                f16vec2 w_even = unpackFloat2x16(weights_even[x]);
+                f16vec2 w_odd = unpackFloat2x16(weights_odd[x]);
+
+                if (METHOD == METHOD_NAIVE_SHARED_DOT2C)
+                {
+                    sum[0][0] = dot2c(inputs[y + 0][x], w_even, sum[0][0]);
+                    sum[0][1] = dot2c(inputs[y + 0][x], w_odd, sum[0][1]);
+                    sum[1][0] = dot2c(inputs[y + 1][x], w_even, sum[1][0]);
+                    sum[1][1] = dot2c(inputs[y + 1][x], w_odd, sum[1][1]);
+                }
+                else
+                {
+                    sum[0][0] = dot2c_plain(inputs[y + 0][x], w_even, sum[0][0]);
+                    sum[0][1] = dot2c_plain(inputs[y + 0][x], w_odd, sum[0][1]);
+                    sum[1][0] = dot2c_plain(inputs[y + 1][x], w_even, sum[1][0]);
+                    sum[1][1] = dot2c_plain(inputs[y + 1][x], w_odd, sum[1][1]);
+                }
+            }
+        }
+
+#if 0
+        // Reshuffle the data so we get perfect memory access pattern for the writeback.
+        // Seems to be detrimental in the end, but provided here for experimentation.
+        barrier();
+
+        [[unroll]]
+        for (int y = 0; y < 2; y++)
+            shared_block[2 * local_offset.y + y][local_offset.x] = f16vec2(sum[y][0], sum[y][1]);
+
+        barrier();
+
+        [[unroll]]
+        for (int y = 0; y < 2; y++)
+        {
+            [[unroll]]
+            for (int x = 0; x < 2; x++)
+            {
+                ivec2 write_offset = local_offset + ivec2(x, y) * ivec2(GROUP_WIDTH, GROUP_HEIGHT);
+                // Somewhat awkward, but compiler should be able to translate this reasonably well.
+                imageStore(uOutput, 2 * group_offset + write_offset, vec4(shared_block[write_offset.y][write_offset.x / 2][write_offset.x % 2]));
+            }
+        }
+#else
+        // Strided writebacks, but with clauses on RDNA, it seems to be fine?
+        [[unroll]]
+        for (int y = 0; y < 2; y++)
+        {
+            [[unroll]]
+            for (int x = 0; x < 2; x++)
+                imageStore(uOutput, 2 * coord + ivec2(x, y), vec4(sum[y][x]));
+        }
+#endif
+    }
+    else if (METHOD == METHOD_NAIVE_DIRECT_DOT2C)
+    {
+        // Direct naive implementation which is heavily VMEM fetch bound, but use fast dot2c for the kernel.
+        float sum = 0.0;
+
+        [[unroll]]
+        for (int y = 0; y < KERNEL_SIZE; y++)
+        {
+            uvec4 weights = kernel[y];
+
+            [[unroll]]
+            for (int x = 0; x < KERNEL_SIZE - 1; x += 2)
+            {
+                float16_t i0 = float16_t(texelFetch(uInput, coord + ivec2(x, y), 0).x);
+                float16_t i1 = float16_t(texelFetchOffset(uInput, coord + ivec2(x, y), 0, ivec2(1, 0)).x);
+                f16vec2 w = unpackFloat2x16(weights[x / 2]);
+                sum = dot2c(f16vec2(i0, i1), w, sum);
+            }
+
+            float16_t i0 = float16_t(texelFetch(uInput, coord + ivec2(KERNEL_SIZE - 1, y), 0).x);
+            sum = dot2c(f16vec2(i0), unpackFloat2x16(weights[KERNEL_SIZE / 2]), sum);
+        }
+
+        imageStore(uOutput, coord, vec4(sum));
+    }
+    else if (METHOD == METHOD_NAIVE_DIRECT)
+    {
+        // Direct naive implementation which is heavily VMEM fetch bound.
+        float sum = 0.0;
+
+        [[unroll]]
+        for (int y = 0; y < KERNEL_SIZE; y++)
+        {
+            uvec4 weights = kernel[y];
+            float16_t weights_fp16[8];
+
+            [[unroll]]
+            for (int i = 0; i < (KERNEL_SIZE + 1) / 2; i++)
+            {
+                f16vec2 w = unpackFloat2x16(weights[i]);
+                weights_fp16[2 * i + 0] = w.x;
+                weights_fp16[2 * i + 1] = w.y;
+            }
+
+            [[unroll]]
+            for (int x = 0; x < KERNEL_SIZE; x++)
+            {
+                float16_t i = float16_t(texelFetch(uInput, coord + ivec2(x, y), 0).x);
+                sum = fma_mix(i, weights_fp16[x], sum);
+            }
+        }
+
+        imageStore(uOutput, coord, vec4(sum));
+    }
+}

@@ -96,6 +96,9 @@ target_compile_definitions(fragment-output-components PRIVATE ASSET_DIRECTORY=\"
 add_granite_application(basic-compute basic_compute.cpp)
 target_compile_definitions(basic-compute PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 
+add_granite_application(wmma-test wmma.cpp)
+target_compile_definitions(wmma-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+
 add_granite_application(ray-query ray_query_test.cpp)
 target_compile_definitions(ray-query PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 

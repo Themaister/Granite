@@ -116,6 +116,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features = {};
 	VkPhysicalDeviceShaderUntypedPointersFeaturesKHR untyped_pointers_features = {};
 	VkPhysicalDeviceFaultFeaturesKHR fault_features_khr = {};
+	VkPhysicalDeviceCooperativeMatrixFeaturesKHR cooperative_matrix_features = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};
@@ -144,6 +145,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};
 	VkPhysicalDeviceAntiLagFeaturesAMD anti_lag_features = {};
 	VkPhysicalDeviceCoherentMemoryFeaturesAMD coherent_memory_features = {};
+	VkPhysicalDeviceShaderMixedFloatDotProductFeaturesVALVE shader_mixed_float_dot_product_features = {};
 
 	// Fallback feature structs (Vulkan 1.1)
 	VkPhysicalDeviceHostQueryResetFeatures host_query_reset_features = {};

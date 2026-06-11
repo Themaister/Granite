@@ -1790,6 +1790,18 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ext.supports_post_mortem = true;
 	}
 
+	if (has_extension(VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME);
+		ADD_CHAIN(ext.cooperative_matrix_features, COOPERATIVE_MATRIX_FEATURES_KHR);
+	}
+
+	if (has_extension(VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME);
+		ADD_CHAIN(ext.shader_mixed_float_dot_product_features, SHADER_MIXED_FLOAT_DOT_PRODUCT_FEATURES_VALVE);
+	}
+
 #ifdef GRANITE_VULKAN_PROFILES
 	// Override any features in the profile in strict mode.
 	if (profile.profile && required_profile_strict)

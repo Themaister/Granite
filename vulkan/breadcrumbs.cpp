@@ -350,7 +350,7 @@ void BreadcrumbsTracker::notify_device_hung()
 #endif
 
 	// Windows does not like colons in path names, so %T breaks.
-	strftime(path, sizeof(path), "granite-post-mortem-%F-%H-%M-%S.txt", &gmt);
+	strftime(path, sizeof(path), "granite-post-mortem-%Y-%m-%d-%H-%M-%S.txt", &gmt);
 
 	LOGE("Device hung ... Attempting to grab post-mortem data to: %s\n", path);
 

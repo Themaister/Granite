@@ -61,6 +61,11 @@ public:
 		return timeline;
 	}
 
+	bool is_owned() const
+	{
+		return owned;
+	}
+
 	VkSemaphore consume()
 	{
 		auto ret = semaphore;

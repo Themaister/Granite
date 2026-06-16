@@ -1490,6 +1490,7 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 	for (size_t i = 0, n = data.wait_semaphores.size(); i < n; i++)
 	{
 		auto &semaphore = data.wait_semaphores[i];
+		bool is_owned = semaphore->is_owned();
 		auto vk_semaphore = semaphore->consume();
 		if (semaphore->get_semaphore_type() == VK_SEMAPHORE_TYPE_TIMELINE)
 		{
@@ -1513,10 +1514,13 @@ void Device::collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &se
 		}
 		else
 		{
-			if (semaphore->is_external_object_compatible())
-				frame().destroyed_semaphores.push_back(vk_semaphore);
-			else
-				frame().recycled_semaphores.push_back(vk_semaphore);
+			if (is_owned)
+			{
+				if (semaphore->is_external_object_compatible())
+					frame().destroyed_semaphores.push_back(vk_semaphore);
+				else
+					frame().recycled_semaphores.push_back(vk_semaphore);
+			}
 
 			info.semaphore = vk_semaphore;
 			info.stageMask = data.wait_stages[i];

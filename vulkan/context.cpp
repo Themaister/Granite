@@ -90,7 +90,8 @@ namespace Vulkan
 {
 static constexpr ContextCreationFlags video_context_flags =
 	CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT |
-	CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT;
+	CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT |
+	CONTEXT_CREATION_ENABLE_VIDEO_FEATURE_ONLY_BIT;
 
 void Context::set_instance_factory(InstanceFactory *factory)
 {

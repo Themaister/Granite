@@ -4264,16 +4264,24 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			modifier_info.pNext = external_format_info.pNext;
 			external_format_info.pNext = &modifier_info;
 
-			auto *drm_info = find_pnext<VkImageDrmFormatModifierExplicitCreateInfoEXT>(
-					info.pNext, VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT);
-			if (!drm_info)
+			// If we're exporting, we have a list of formats instead.
+			if (auto *list_info = find_pnext<VkImageDrmFormatModifierListCreateInfoEXT>(
+					info.pNext, VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT))
 			{
-				// There's also the modifier list for export purposes, but we don't care about that yet.
+				VK_ASSERT(list_info->drmFormatModifierCount != 0);
+				modifier_info.drmFormatModifier = list_info->pDrmFormatModifiers[0];
+			}
+			else if (auto *drm_info = find_pnext<VkImageDrmFormatModifierExplicitCreateInfoEXT>(
+					info.pNext, VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT))
+			{
+				modifier_info.drmFormatModifier = drm_info->drmFormatModifier;
+			}
+			else
+			{
 				LOGE("Trying to create DRM modifier image without explicit info.\n");
 				return ImageHandle(nullptr);
 			}
 
-			modifier_info.drmFormatModifier = drm_info->drmFormatModifier;
 			modifier_info.sharingMode = info.sharingMode;
 			modifier_info.queueFamilyIndexCount = info.queueFamilyIndexCount;
 			modifier_info.pQueueFamilyIndices = info.pQueueFamilyIndices;

@@ -57,7 +57,11 @@ static inline uint32_t popcount32(uint32_t x)
 
 static inline uint32_t popcount64(uint64_t x)
 {
+#ifdef _WIN64
 	return __popcnt64(x);
+#else
+	return popcount32(uint32_t(x)) + popcount32(uint32_t(x >> 32));
+#endif
 }
 
 static inline uint32_t clz(uint32_t x)
@@ -80,20 +84,34 @@ static inline uint32_t ctz(uint32_t x)
 
 static inline uint32_t clz64(uint64_t x)
 {
+#ifdef _WIN64
 	unsigned long result;
 	if (_BitScanReverse64(&result, x))
 		return 63 - result;
 	else
 		return 64;
+#else
+	if (x > UINT32_MAX)
+		return clz(uint32_t(x >> 32));
+	else
+		return clz(uint32_t(x)) + 32;
+#endif
 }
 
 static inline uint32_t ctz64(uint64_t x)
 {
+#ifdef _WIN64
 	unsigned long result;
 	if (_BitScanForward64(&result, x))
 		return result;
 	else
 		return 64;
+#else
+	if ((x & UINT32_MAX) != 0)
+		return ctz(uint32_t(x));
+	else
+		return ctz(uint32_t(x >> 32)) + 32;
+#endif
 }
 }
 

@@ -1387,6 +1387,11 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 				}
 			}
 		}
+		else if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_FEATURE_ONLY_BIT) != 0 &&
+		         has_extension(VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME);
+		}
 
 		if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT) != 0 &&
 		    has_extension(VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME))
@@ -1432,6 +1437,11 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 							 VK_VIDEO_CODEC_OPERATION_ENCODE_AV1_BIT_KHR) != 0;
 				}
 			}
+		}
+		else if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_FEATURE_ONLY_BIT) != 0 &&
+		         has_extension(VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME);
 		}
 	}
 

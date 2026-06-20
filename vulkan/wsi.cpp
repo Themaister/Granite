@@ -874,10 +874,8 @@ void WSI::recalibrate_present_timing_domains()
 
 #ifdef _WIN32
 	constexpr auto host_domain = VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR;
-#elif defined(ANDROID)
-	constexpr auto host_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR;
 #else
-	constexpr auto host_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR;
+	constexpr auto host_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR;
 #endif
 
 	if (std::find(domains.begin(), domains.end(), host_domain) == domains.end())
@@ -1206,6 +1204,14 @@ void WSI::poll_present_timing_feedback()
 
 			present_timing.error_stats.erase(itr);
 		}
+
+		frr_pacer.set_frame_time_ns(present_timing.refresh_duration);
+
+		if (present_timing.present_done_host_time && present_timing.gpu_done_host_time)
+		{
+			frr_pacer.update_feedback(present_timing.present_id, present_timing.gpu_done_host_time,
+			                          present_timing.present_done_host_time);
+		}
 	}
 }
 
@@ -1463,6 +1469,18 @@ void WSI::set_enable_timing_feedback(bool enable)
 	present_feedback_enable = enable;
 }
 
+void WSI::set_fixed_rate_low_latency_pacer(bool enable)
+{
+	frr_pacer_enable = enable;
+	if (!frr_pacer_enable)
+		frr_pacer.reset();
+}
+
+FixedRefreshRatePacer &WSI::get_fixed_rate_pacer()
+{
+	return frr_pacer;
+}
+
 bool WSI::begin_frame()
 {
 	if (frame_is_external)
@@ -1573,6 +1591,15 @@ bool WSI::begin_frame()
 			{
 				update_present_timing_properties();
 				poll_present_timing_feedback();
+			}
+
+			if (frr_pacer_enable)
+			{
+				auto pace_start_ts = device->write_calibrated_timestamp();
+				frr_pacer.begin_frame_submission(next_present_id);
+				device->register_time_interval(
+					"WSI", std::move(pace_start_ts), device->write_calibrated_timestamp(),
+					"pacer-wait");
 			}
 
 			auto frame_time = platform->get_frame_timer().frame();
@@ -2065,6 +2092,7 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 		}
 	} while (err != SwapchainError::None);
 
+	frr_pacer.reset();
 	return swapchain != VK_NULL_HANDLE;
 }
 

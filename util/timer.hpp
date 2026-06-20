@@ -60,4 +60,5 @@ private:
 };
 
 int64_t get_current_time_nsecs();
+void sleep_until_nsecs(int64_t timepoint);
 }

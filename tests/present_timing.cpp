@@ -143,6 +143,11 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 			get_wsi().set_gpu_submit_low_latency_mode(gpu_submit_low_latency);
 			break;
 
+		case Key::F:
+			frr_pacer_low_latency = !frr_pacer_low_latency;
+			get_wsi().enable_fixed_rate_low_latency_pacer(frr_pacer_low_latency);
+			break;
+
 		case Key::R:
 			relative_timing = !relative_timing;
 			break;
@@ -186,6 +191,7 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 	bool force_vrr_timing = false;
 	bool present_wait_low_latency = false;
 	bool gpu_submit_low_latency = false;
+	bool frr_pacer_low_latency = false;
 	unsigned cycles_num = 8;
 	unsigned cycles_den = 8;
 	bool relative_timing = true;
@@ -197,6 +203,7 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 			query.queue_done = device.convert_timestamp_to_absolute_nsec(*query.end);
 		query.burn_time = device.convert_device_timestamp_delta(query.start->get_timestamp_ticks(),
 																query.end->get_timestamp_ticks());
+
 		if (retired_results.size() >= 100)
 			retired_results.erase(retired_results.begin());
 		retired_results.push_back(query);
@@ -408,9 +415,26 @@ struct PresentTiming : Granite::Application, Granite::EventHandler
 		print_line("Timing request (T to toggle): %s", timing_request ? "yes" : "no");
 		print_line("PresentWait low latency (P to toggle): %s", present_wait_low_latency ? "yes" : "no");
 		print_line("GPU submit low latency (L to toggle): %s", gpu_submit_low_latency ? "yes" : "no");
+		print_line("FRR pacer low latency (F to toggle): %s", frr_pacer_low_latency ? "yes" : "no");
 		print_line("Relative timing (R to toggle): %s", relative_timing ? "yes" : "no");
 		print_line("Present mode (Space to toggle): %s",
 		           get_wsi().get_present_mode() == PresentMode::SyncToVBlank ? "vsync" : "unlocked (no timing target)");
+
+		if (frr_pacer_low_latency)
+		{
+			auto &pacer = wsi.get_fixed_rate_pacer();
+
+			print_line("Overall histogram: (%.5f, last %llu, count %llu)",
+					   pacer.get_overall_histogram_stats().confidence,
+					   static_cast<unsigned long long>(pacer.get_overall_histogram_stats().last_failure_present_id),
+					   static_cast<unsigned long long>(pacer.get_overall_histogram_stats().num_relevant_present_failures));
+
+			print_line("Overall histogram target %.3f ms: (%.5f, last %llu, count %llu)",
+					   double(pacer.get_estimated_present_gap_ns()) * 1e-6,
+					   pacer.get_current_histogram_stats().confidence,
+					   static_cast<unsigned long long>(pacer.get_current_histogram_stats().last_failure_present_id),
+					   static_cast<unsigned long long>(pacer.get_current_histogram_stats().num_relevant_present_failures));
+		}
 
 		if (refresh_info.refresh_duration)
 		{

@@ -21,12 +21,18 @@
  */
 
 #include "timer.hpp"
+#include "logging.hpp"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
 #include <time.h>
+#include <errno.h>
+#endif
+
+#ifdef __SSE2__
+#include <emmintrin.h>
 #endif
 
 namespace Util
@@ -107,14 +113,39 @@ int64_t get_current_time_nsecs()
 	return int64_t(double(li.QuadPart) * static_qpc_freq.inv_freq);
 #else
 	struct timespec ts = {};
-#if defined(ANDROID) || defined(__FreeBSD__)
 	constexpr auto timebase = CLOCK_MONOTONIC;
-#else
-	constexpr auto timebase = CLOCK_MONOTONIC_RAW;
-#endif
 	if (clock_gettime(timebase, &ts) < 0)
 		return 0;
 	return ts.tv_sec * 1000000000ll + ts.tv_nsec;
+#endif
+}
+
+void sleep_until_nsecs(int64_t timepoint)
+{
+#ifdef _WIN32
+	// Somewhat naive path. Improve this later.
+	int64_t d = get_current_time_nsecs() - timepoint;
+	if (d <= 0)
+		return;
+
+	// Assumes timer resolution has been set.
+	Sleep(d / 1000000);
+
+	// Spin the rest of the way.
+	while (get_current_time_nsecs() < timepoint)
+	{
+#ifdef __SSE2__
+		_mm_pause();
+#endif
+	}
+#else
+	constexpr auto timebase = CLOCK_MONOTONIC;
+	struct timespec ts = {};
+	ts.tv_sec = timepoint / 1000000000ll;
+	ts.tv_nsec = timepoint % 1000000000ll;
+	// Linux does not support clock_nanosleep with MONOTONIC_RAW :(
+	int ret;
+	while ((ret = clock_nanosleep(timebase, TIMER_ABSTIME, &ts, nullptr)) == EINTR) {}
 #endif
 }
 

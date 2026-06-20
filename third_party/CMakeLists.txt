@@ -152,6 +152,5 @@ endif()
 
 if (GRANITE_FFMPEG)
     add_subdirectory(pyroenc EXCLUDE_FROM_ALL)
-    set(PYROWAVE_STANDALONE OFF CACHE BOOL "" FORCE)
     add_subdirectory(pyrowave EXCLUDE_FROM_ALL)
 endif()

@@ -142,7 +142,6 @@ struct VideoEncoder::Impl final
 	{
 		int64_t next_lower_bound_pts = 0;
 		int64_t next_upper_bound_pts = 0;
-		int64_t base_pts = 0;
 	} realtime_pts;
 	int64_t encode_video_pts = 0;
 	int64_t encode_audio_pts = 0;
@@ -292,7 +291,7 @@ static bool format_needs_downsample(VideoEncoder::Format fmt)
 
 int64_t VideoEncoder::Impl::sample_realtime_pts() const
 {
-	return int64_t(Util::get_current_time_nsecs() / 1000) - realtime_pts.base_pts;
+	return Util::get_current_time_nsecs() / 1000;
 }
 
 #ifdef HAVE_GRANITE_AUDIO
@@ -1630,8 +1629,6 @@ bool VideoEncoder::Impl::init(Vulkan::Device *device_, const char *path, const O
 	}
 
 	av_dict_free(&muxer_opts);
-
-	realtime_pts.base_pts = int64_t(Util::get_current_time_nsecs() / 1000);
 
 	return true;
 }

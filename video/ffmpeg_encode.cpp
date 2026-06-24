@@ -477,6 +477,8 @@ bool VideoEncoder::Impl::encode_frame(const PyroWave::ViewBuffers &views, int64_
 	device->submit(cmd, &fence);
 	fence->wait();
 
+	auto start_ts = device->write_calibrated_timestamp();
+
 	const auto *mapped_meta = device->map_host_buffer(*pyrowave.meta_cpu, Vulkan::MEMORY_ACCESS_READ_BIT);
 	const auto *mapped_bits = device->map_host_buffer(*pyrowave.bitstream_cpu, Vulkan::MEMORY_ACCESS_READ_BIT);
 
@@ -487,14 +489,22 @@ bool VideoEncoder::Impl::encode_frame(const PyroWave::ViewBuffers &views, int64_
 	                                                pyrowave.bitstream.size(),
 	                                                mapped_meta, mapped_bits);
 
+	auto end_ts = device->write_calibrated_timestamp();
+	device->register_time_interval("Encode", std::move(start_ts), std::move(end_ts), "pyrowave-packetize");
+
 	(void)out_packets;
 	assert(num_packets == out_packets);
+
+	start_ts = device->write_calibrated_timestamp();
 
 	for (auto &packet : pyrowave.packets)
 	{
 		mux_stream_callback->write_video_packet(
 				pts, pts, pyrowave.bitstream.data() + packet.offset, packet.size, true);
 	}
+
+	end_ts = device->write_calibrated_timestamp();
+	device->register_time_interval("Encode", std::move(start_ts), std::move(end_ts), "network");
 
 	audio_compensate_us.store(compensate_audio_us, std::memory_order_relaxed);
 
@@ -526,6 +536,8 @@ bool VideoEncoder::Impl::encode_frame(const Vulkan::ImageView &view, int64_t pts
 	if (send_result != PyroEnc::Result::Success)
 		return false;
 
+	auto start_ts = device->write_calibrated_timestamp();
+
 	PyroEnc::EncodedFrame encoded_frame;
 	while (pyro_encoder.receive_encoded_frame(encoded_frame) == PyroEnc::Result::Success)
 	{
@@ -535,6 +547,15 @@ bool VideoEncoder::Impl::encode_frame(const Vulkan::ImageView &view, int64_t pts
 			LOGE("Failed to wait for packet.\n");
 			return false;
 		}
+
+		if (start_ts)
+		{
+			auto end_ts = device->write_calibrated_timestamp();
+			device->register_time_interval("Encode", std::move(start_ts), std::move(end_ts), "pyroenc-encode");
+			start_ts = {};
+		}
+
+		auto packet_start_ts = device->write_calibrated_timestamp();
 
 		if (encoded_frame.is_idr())
 		{
@@ -556,6 +577,9 @@ bool VideoEncoder::Impl::encode_frame(const Vulkan::ImageView &view, int64_t pts
 					encoded_frame.get_payload(), encoded_frame.get_size(),
 					false);
 		}
+
+		auto packet_end_ts = device->write_calibrated_timestamp();
+		device->register_time_interval("Encode", std::move(packet_start_ts), std::move(packet_end_ts), "network");
 	}
 
 	audio_compensate_us.store(compensate_audio_us, std::memory_order_relaxed);
@@ -573,6 +597,8 @@ bool VideoEncoder::Impl::encode_frame(const Vulkan::ImageView &view, int64_t pts
 
 bool VideoEncoder::Impl::encode_frame(AVFrame *hw_frame, int64_t pts, int compensate_audio_us)
 {
+	auto start_ts = device->write_calibrated_timestamp();
+
 	if (options.walltime_to_pts)
 		hw_frame->pts = pts;
 	else
@@ -590,6 +616,9 @@ bool VideoEncoder::Impl::encode_frame(AVFrame *hw_frame, int64_t pts, int compen
 		LOGE("Failed to drain video packets.\n");
 		return false;
 	}
+
+	auto end_ts = device->write_calibrated_timestamp();
+	device->register_time_interval("Encode", std::move(start_ts), std::move(end_ts), "avcodec-encode");
 
 	audio_compensate_us.store(compensate_audio_us, std::memory_order_relaxed);
 
@@ -612,6 +641,8 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 		LOGE("Invalid number of planes.\n");
 		return false;
 	}
+
+	auto start_ts = device->write_calibrated_timestamp();
 
 	int ret;
 
@@ -742,6 +773,9 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 		return false;
 	}
 
+	auto end_ts = device->write_calibrated_timestamp();
+	device->register_time_interval("Encode", std::move(start_ts), std::move(end_ts), "avcodec-encode");
+
 	audio_compensate_us.store(compensate_audio_us, std::memory_order_relaxed);
 
 #ifdef HAVE_GRANITE_AUDIO
@@ -812,11 +846,14 @@ bool VideoEncoder::Impl::drain_packets(CodecStream &stream)
 		{
 			if (&stream == &video)
 			{
+				auto start_ts = device->write_calibrated_timestamp();
 				mux_stream_callback->write_video_packet(
 						stream.av_pkt->pts,
 						stream.av_pkt->dts,
 						stream.av_pkt->data, stream.av_pkt->size,
 						(stream.av_pkt->flags & AV_PKT_FLAG_KEY) != 0);
+				auto end_ts = device->write_calibrated_timestamp();
+				device->register_time_interval("Encode", std::move(start_ts), std::move(end_ts), "network");
 			}
 			else if (&stream == &audio)
 			{

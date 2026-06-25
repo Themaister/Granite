@@ -2410,6 +2410,12 @@ void Device::destroy_semaphore(VkSemaphore semaphore)
 	destroy_semaphore_nolock(semaphore);
 }
 
+void Device::destroy_external_handle(ExternalHandle handle)
+{
+	LOCK();
+	destroy_external_handle_nolock(handle);
+}
+
 void Device::consume_semaphore(VkSemaphore semaphore)
 {
 	LOCK();
@@ -2466,6 +2472,12 @@ void Device::destroy_semaphore_nolock(VkSemaphore semaphore)
 {
 	VK_ASSERT(!exists(frame().destroyed_semaphores, semaphore));
 	frame().destroyed_semaphores.push_back(semaphore);
+}
+
+void Device::destroy_external_handle_nolock(ExternalHandle handle)
+{
+	VK_ASSERT(!exists(frame().destroyed_handles, handle));
+	frame().destroyed_handles.push_back(handle);
 }
 
 void Device::consume_semaphore_nolock(VkSemaphore semaphore)
@@ -3020,6 +3032,9 @@ void Device::PerFrame::begin()
 		managers.breadcrumbs.free_command_buffer(crumb);
 	VK_ASSERT(consumed_semaphores.empty());
 
+	for (auto &handle : destroyed_handles)
+		ExternalHandle::close_external_handle(handle);
+
 	if (!allocations.empty())
 	{
 		std::lock_guard<std::mutex> holder{device.lock.memory_lock};
@@ -3036,6 +3051,7 @@ void Device::PerFrame::begin()
 	destroyed_rtas.clear();
 	destroyed_execution_sets.clear();
 	destroyed_semaphores.clear();
+	destroyed_handles.clear();
 	destroyed_descriptor_pools.clear();
 	recycled_semaphores.clear();
 	recycled_events.clear();

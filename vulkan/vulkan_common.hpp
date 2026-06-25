@@ -61,6 +61,8 @@ struct ExternalHandle
 	VkExternalMemoryHandleTypeFlagBits memory_handle_type = get_opaque_memory_handle_type();
 	VkExternalSemaphoreHandleTypeFlagBits semaphore_handle_type = get_opaque_semaphore_handle_type();
 
+	static void close_external_handle(ExternalHandle &handle);
+
 	constexpr static VkExternalMemoryHandleTypeFlagBits get_opaque_memory_handle_type()
 	{
 #ifdef _WIN32

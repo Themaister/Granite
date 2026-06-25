@@ -680,6 +680,7 @@ private:
 		std::vector<VkSemaphore> recycled_semaphores;
 		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
+		std::vector<ExternalHandle> destroyed_handles;
 		std::vector<VkSemaphore> consumed_semaphores;
 		std::vector<VkIndirectExecutionSetEXT> destroyed_execution_sets;
 		std::vector<DescriptorBufferAllocation> descriptor_buffer_allocs;
@@ -825,6 +826,7 @@ private:
 	void destroy_sampler(VkSampler sampler);
 	void destroy_framebuffer(VkFramebuffer framebuffer);
 	void destroy_semaphore(VkSemaphore semaphore);
+	void destroy_external_handle(ExternalHandle handle);
 	void consume_semaphore(VkSemaphore semaphore);
 	void recycle_semaphore(VkSemaphore semaphore);
 	void destroy_event(VkEvent event);
@@ -843,6 +845,7 @@ private:
 	void destroy_sampler_nolock(VkSampler sampler);
 	void destroy_framebuffer_nolock(VkFramebuffer framebuffer);
 	void destroy_semaphore_nolock(VkSemaphore semaphore);
+	void destroy_external_handle_nolock(ExternalHandle handle);
 	void consume_semaphore_nolock(VkSemaphore semaphore);
 	void recycle_semaphore_nolock(VkSemaphore semaphore);
 	void destroy_event_nolock(VkEvent event);

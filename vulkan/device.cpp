@@ -2476,6 +2476,7 @@ void Device::destroy_semaphore_nolock(VkSemaphore semaphore)
 
 void Device::destroy_external_handle_nolock(ExternalHandle handle)
 {
+	VK_ASSERT(!exists(frame().destroyed_handles, handle));
 	frame().destroyed_handles.push_back(handle);
 }
 

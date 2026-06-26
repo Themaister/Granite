@@ -135,7 +135,6 @@ private:
 	uint32_t mask = 0;
 	uint32_t size = 0;
 	VkExternalMemoryHandleTypeFlags exportable_types = 0;
-	ExternalHandle held_external_handle;
 
 	AllocationMode mode = AllocationMode::Count;
 	uint8_t memory_type = 0;
@@ -143,7 +142,6 @@ private:
 	void free_global(DeviceAllocator &allocator, uint32_t size, uint32_t memory_type);
 	void free_immediate();
 	void free_immediate(DeviceAllocator &allocator);
-	void free_external_handle();
 };
 
 class DeviceAllocationOwner;

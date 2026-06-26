@@ -52,8 +52,6 @@ static bool allocation_mode_supports_bda(AllocationMode mode)
 
 void DeviceAllocation::free_immediate()
 {
-	free_external_handle();
-
 	if (!alloc)
 		return;
 
@@ -103,25 +101,6 @@ ExternalHandle DeviceAllocation::export_handle(Device &device)
 	return h;
 }
 
-void ExternalHandle::close_external_handle(ExternalHandle &handle)
-{
-	if (handle)
-	{
-#ifdef _WIN32
-		::CloseHandle(handle.handle);
-#else
-		::close(handle.handle);
-#endif
-
-		handle = {};
-	}
-}
-
-void DeviceAllocation::free_external_handle()
-{
-	ExternalHandle::close_external_handle(held_external_handle);
-}
-
 void DeviceAllocation::free_immediate(DeviceAllocator &allocator)
 {
 	if (alloc)
@@ -131,8 +110,6 @@ void DeviceAllocation::free_immediate(DeviceAllocator &allocator)
 		allocator.internal_free_no_recycle(size, memory_type, base);
 		base = VK_NULL_HANDLE;
 	}
-
-	free_external_handle();
 }
 
 void DeviceAllocation::free_global(DeviceAllocator &allocator, uint32_t size_, uint32_t memory_type_)
@@ -144,8 +121,6 @@ void DeviceAllocation::free_global(DeviceAllocator &allocator, uint32_t size_, u
 		mask = 0;
 		offset = 0;
 	}
-
-	free_external_handle();
 }
 
 void ClassAllocator::prepare_allocation(DeviceAllocation *alloc, Util::IntrusiveList<MiniHeap>::Iterator heap_itr,
@@ -247,15 +222,6 @@ bool Allocator::allocate_dedicated(uint32_t size, AllocationMode mode, DeviceAll
 	alloc->alloc = nullptr;
 	alloc->memory_type = memory_type;
 	alloc->size = size;
-
-	// If we're importing, make sure we consume the native handle.
-	// Defer closing the handle though. Real world experience on Windows
-	// suggests we need to keep the HANDLE alive as long as the resource is in use.
-	if (external && bool(*external) &&
-		ExternalHandle::memory_handle_type_imports_by_reference(external->memory_handle_type))
-	{
-		alloc->held_external_handle = *external;
-	}
 
 	// If we imported memory instead, do not allow handle export.
 	if (external && !(*external))
@@ -764,6 +730,17 @@ bool DeviceAllocator::internal_allocate(
 	{
 		GRANITE_SCOPED_TIMELINE_EVENT_FILE(device->get_system_handles().timeline_trace_file, "vkAllocateMemory");
 		res = table->vkAllocateMemory(device->get_device(), &info, nullptr, &device_memory);
+	}
+
+	// If we're importing, make sure we consume the native handle.
+	if (external && bool(*external) &&
+	    ExternalHandle::memory_handle_type_imports_by_reference(external->memory_handle_type))
+	{
+#ifdef _WIN32
+		::CloseHandle(external->handle);
+#else
+		::close(external->handle);
+#endif
 	}
 
 	if (res == VK_SUCCESS)

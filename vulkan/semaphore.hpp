@@ -205,7 +205,6 @@ private:
 	bool signal_is_foreign_queue = false;
 	VkExternalSemaphoreHandleTypeFlagBits external_compatible_handle_type = {};
 	VkExternalSemaphoreFeatureFlags external_compatible_features = 0;
-	ExternalHandle held_external_handle;
 };
 
 using Semaphore = Util::IntrusivePtr<SemaphoreHolder>;

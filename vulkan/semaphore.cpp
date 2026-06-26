@@ -61,9 +61,6 @@ void SemaphoreHolder::recycle_semaphore()
 		}
 		else
 			device->recycle_semaphore_nolock(semaphore);
-
-		if (held_external_handle)
-			device->destroy_external_handle_nolock(held_external_handle);
 	}
 	else
 	{
@@ -82,9 +79,6 @@ void SemaphoreHolder::recycle_semaphore()
 		}
 		else
 			device->recycle_semaphore(semaphore);
-
-		if (held_external_handle)
-			device->destroy_external_handle(held_external_handle);
 	}
 }
 
@@ -231,8 +225,12 @@ bool SemaphoreHolder::import_from_handle(ExternalHandle handle)
 
 	if (ExternalHandle::semaphore_handle_type_imports_by_reference(import.handleType))
 	{
-		ExternalHandle::close_external_handle(held_external_handle);
-		held_external_handle = handle;
+#ifdef _WIN32
+		// Consume the handle, since the VkSemaphore holds a reference on Win32.
+		::CloseHandle(handle.handle);
+#else
+		::close(handle.handle);
+#endif
 	}
 
 	signal_external();

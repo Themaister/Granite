@@ -226,6 +226,19 @@ struct FFmpegHWDevice::Impl
 				init_hw_device_ctx(config);
 		}
 
+		// Didn't find a match, just pick the first and best.
+		for (int i = 0; !hw_device; i++)
+		{
+			const AVCodecHWConfig *config = avcodec_get_hw_config(av_codec, i);
+			if (!config)
+				break;
+			if (config->device_type == AV_HWDEVICE_TYPE_NONE)
+				continue;
+
+			if ((config->methods & (AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX | AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX)) != 0)
+				init_hw_device_ctx(config);
+		}
+
 		return hw_device != nullptr;
 	}
 

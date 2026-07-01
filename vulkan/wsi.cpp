@@ -652,8 +652,11 @@ void WSI::wait_swapchain_latency()
 		device->register_time_interval("WSI", std::move(wait_ts), device->write_calibrated_timestamp(),
 		                               "low_latency_sleep");
 
-		// Avoid conflicting wait cycles when doing reflex style latency limiting.
-		effective_latency = std::max<uint32_t>(effective_latency, 2);
+		if (low_latency_mode_enable_gpu_submit)
+		{
+			// Avoid conflicting wait cycles when doing reflex style latency limiting.
+			effective_latency = std::max<uint32_t>(effective_latency, 2);
+		}
 	}
 
 	// If we're using duped frames, make sure we're waiting for the previous "real" frame,

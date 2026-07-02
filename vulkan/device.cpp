@@ -2168,7 +2168,9 @@ Device::~Device()
 
 	if (legacy_pipeline_cache != VK_NULL_HANDLE || ext.pipeline_binary_features.pipelineBinaries)
 		flush_pipeline_cache();
-	table->vkDestroyPipelineCache(device, legacy_pipeline_cache, nullptr);
+
+	if (table)
+		table->vkDestroyPipelineCache(device, legacy_pipeline_cache, nullptr);
 
 	framebuffer_allocator.clear();
 	transient_allocator.clear();

@@ -3716,7 +3716,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 
 InitialImageBuffer Device::create_image_staging_buffer(const TextureFormatLayout &layout)
 {
-	InitialImageBuffer result;
+	InitialImageBuffer result = {};
 	result.host = { layout.data(), layout.get_required_size() };
 	layout.build_buffer_image_copies(result.blits);
 	return result;
@@ -3727,7 +3727,7 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 	// This method is very annoying to deal with and requires shuffling a lot of data around.
 	// Plumbing this through to host image copy is a hot mess and is avoided.
 
-	InitialImageBuffer result;
+	InitialImageBuffer result = {};
 
 	bool generate_mips = (info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
 	TextureFormatLayout layout;

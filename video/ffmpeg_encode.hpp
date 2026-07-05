@@ -125,6 +125,9 @@ public:
 
 	bool encode_frame(YCbCrPipeline &pipeline, int64_t pts, int compensate_audio_us = 0);
 
+	// Only implemented for pyrowave atm, updates bitrate on the fly.
+	void update_bitrate_kbits(unsigned bitrate_kbits);
+
 private:
 	struct Impl;
 	std::unique_ptr<Impl> impl;

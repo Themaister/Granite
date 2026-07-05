@@ -133,8 +133,12 @@ struct VideoEncoder::Impl final
 	bool init_video_codec_av(const AVCodec *codec);
 	bool init_video_codec_pyro(PyroEnc::Profile profile);
 	bool init_video_codec_pyrowave();
+	bool init_video_codec_pyrowave_buffers(unsigned bitrate_kbits);
 	bool init_video_codec();
 	bool init_audio_codec();
+
+	bool update_bitrate_async();
+	std::atomic<unsigned> update_bitrate_kbits = {};
 
 	std::vector<int16_t> audio_buffer_s16;
 
@@ -460,9 +464,20 @@ void VideoEncoder::Impl::write_frames_interleaved_f32(const float *data, size_t 
 }
 #endif
 
+bool VideoEncoder::Impl::update_bitrate_async()
+{
+	auto new_value = update_bitrate_kbits.exchange(0, std::memory_order_acq_rel);
+	if (new_value)
+		options.bitrate_kbits = new_value;
+	return new_value != 0;
+}
+
 bool VideoEncoder::Impl::encode_frame(const PyroWave::ViewBuffers &views, int64_t pts, int compensate_audio_us)
 {
 	assert(mux_stream_callback);
+
+	if (update_bitrate_async() && !init_video_codec_pyrowave_buffers(options.bitrate_kbits))
+		return false;
 
 	auto cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncCompute);
 	pyrowave_encoder.encode(*cmd, views, pyrowave.buffers);
@@ -1335,6 +1350,43 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 	return true;
 }
 
+bool VideoEncoder::Impl::init_video_codec_pyrowave_buffers(unsigned bitrate_kbits)
+{
+	pyrowave.payload_size = (1000ull * bitrate_kbits * options.frame_timebase.num) /
+	                        (options.frame_timebase.den * 8);
+
+	pyrowave.payload_size &= ~3;
+
+	Vulkan::BufferCreateInfo bufinfo = {};
+	bufinfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+					VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+					VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+	bufinfo.size = pyrowave.payload_size + pyrowave_encoder.get_meta_required_size();
+	bufinfo.domain = Vulkan::BufferDomain::Device;
+	pyrowave.bitstream_gpu = device->create_buffer(bufinfo);
+	bufinfo.domain = Vulkan::BufferDomain::CachedHost;
+	pyrowave.bitstream_cpu = device->create_buffer(bufinfo);
+
+	bufinfo.size = pyrowave_encoder.get_meta_required_size();
+	bufinfo.domain = Vulkan::BufferDomain::Device;
+	pyrowave.meta_gpu = device->create_buffer(bufinfo);
+	bufinfo.domain = Vulkan::BufferDomain::CachedHost;
+	pyrowave.meta_cpu = device->create_buffer(bufinfo);
+
+	pyrowave.buffers.target_size = pyrowave.payload_size;
+	pyrowave.buffers.bitstream.buffer = pyrowave.bitstream_gpu.get();
+	pyrowave.buffers.bitstream.offset = 0;
+	pyrowave.buffers.bitstream.size = pyrowave.bitstream_gpu->get_create_info().size;
+	pyrowave.buffers.meta.buffer = pyrowave.meta_gpu.get();
+	pyrowave.buffers.meta.offset = 0;
+	pyrowave.buffers.meta.size = pyrowave.meta_gpu->get_create_info().size;
+
+	pyrowave.bitstream.resize(pyrowave.payload_size);
+
+	return pyrowave.bitstream_gpu && pyrowave.bitstream_cpu && pyrowave.meta_gpu && pyrowave.meta_cpu;
+}
+
 bool VideoEncoder::Impl::init_video_codec_pyrowave()
 {
 	if (!pyrowave_encoder.init(device, int(options.width), int(options.height),
@@ -1362,39 +1414,7 @@ bool VideoEncoder::Impl::init_video_codec_pyrowave()
 		                                 PYRO_VIDEO_COLOR_BT709_FULL_CHROMA_444;
 	}
 
-	pyrowave.payload_size = (1000ull * options.bitrate_kbits * options.frame_timebase.num) /
-	                        (options.frame_timebase.den * 8);
-
-	pyrowave.payload_size &= ~3;
-
-	Vulkan::BufferCreateInfo bufinfo = {};
-	bufinfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-	                VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-	                VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-
-	bufinfo.size = pyrowave.payload_size + pyrowave_encoder.get_meta_required_size();
-	bufinfo.domain = Vulkan::BufferDomain::Device;
-	pyrowave.bitstream_gpu = device->create_buffer(bufinfo);
-	bufinfo.domain = Vulkan::BufferDomain::CachedHost;
-	pyrowave.bitstream_cpu = device->create_buffer(bufinfo);
-
-	bufinfo.size = pyrowave_encoder.get_meta_required_size();
-	bufinfo.domain = Vulkan::BufferDomain::Device;
-	pyrowave.meta_gpu = device->create_buffer(bufinfo);
-	bufinfo.domain = Vulkan::BufferDomain::CachedHost;
-	pyrowave.meta_cpu = device->create_buffer(bufinfo);
-
-	pyrowave.buffers.target_size = pyrowave.payload_size;
-	pyrowave.buffers.bitstream.buffer = pyrowave.bitstream_gpu.get();
-	pyrowave.buffers.bitstream.offset = 0;
-	pyrowave.buffers.bitstream.size = pyrowave.bitstream_gpu->get_create_info().size;
-	pyrowave.buffers.meta.buffer = pyrowave.meta_gpu.get();
-	pyrowave.buffers.meta.offset = 0;
-	pyrowave.buffers.meta.size = pyrowave.meta_gpu->get_create_info().size;
-
-	pyrowave.bitstream.resize(pyrowave.payload_size);
-
-	return true;
+	return init_video_codec_pyrowave_buffers(options.bitrate_kbits);
 }
 
 bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
@@ -1938,6 +1958,11 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 		cmd.barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	}
+}
+
+void VideoEncoder::update_bitrate_kbits(unsigned bitrate_kbits)
+{
+	impl->update_bitrate_kbits.exchange(bitrate_kbits, std::memory_order_acq_rel);
 }
 
 bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int compensate_audio_us)

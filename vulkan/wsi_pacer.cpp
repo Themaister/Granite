@@ -270,7 +270,7 @@ bool FixedRefreshRatePacer::safe_to_lower_gap_to(uint64_t present_id, uint64_t o
 	// Don't lower until overall success probability is solid.
 	uint64_t frames_since_last_observed_failure = present_id - overall.last_failure_present_id;
 	auto num_failures = std::min<unsigned>(16, overall.num_relevant_present_failures);
-	if (frames_since_last_observed_failure < (1u << num_failures))
+	if (frames_since_last_observed_failure < (1ull << num_failures))
 		return false;
 
 	// We're confident the update will work well.

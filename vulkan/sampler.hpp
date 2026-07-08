@@ -102,7 +102,7 @@ private:
 
 	Device *device;
 	VkSampler sampler;
-	CachedDescriptorPayload payload;
+	CachedDescriptorPayload payload = {};
 	SamplerCreateInfo create_info;
 	bool immutable;
 };

@@ -197,6 +197,9 @@ endif()
 
 add_granite_offline_tool(linkage-test linkage_test.cpp)
 add_granite_offline_tool(external-objects external_objects.cpp)
+if ((NOT WIN32) AND (NOT ANDROID))
+    add_granite_offline_tool(external-object-overlap external_object_overlap.cpp)
+endif()
 add_granite_offline_tool(performance-query performance_query.cpp)
 add_granite_offline_tool(asset-manager-test asset_manager_test.cpp)
 

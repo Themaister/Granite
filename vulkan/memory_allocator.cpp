@@ -1332,7 +1332,7 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 		uint32_t count = 0;
 
 		// Shouldn't be needed, but VVL seems to complain if it's not there.
-		view_usage_create_info.usage = usage;
+		view_usage_create_info.usage = usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
 
 		if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
 		{

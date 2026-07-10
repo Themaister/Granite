@@ -129,6 +129,15 @@ struct FFmpegHWDevice::Impl
 					qf.video_caps = VkVideoCodecOperationFlagBitsKHR(qf.video_caps | VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR);
 			}
 
+#if defined(_MSC_VER)
+#define DISABLE_DEPRECATION_WARNINGS __pragma(warning(push)) __pragma(warning(disable:4996))
+#define ENABLE_DEPRECATION_WARNINGS  __pragma(warning(pop))
+#else
+#define DISABLE_DEPRECATION_WARNINGS _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"")
+#define ENABLE_DEPRECATION_WARNINGS  _Pragma("GCC diagnostic pop")
+#endif
+
+DISABLE_DEPRECATION_WARNINGS
 			vk->lock_queue = [](AVHWDeviceContext *ctx, uint32_t, uint32_t) {
 				auto *self = static_cast<Impl *>(ctx->user_opaque);
 				self->device->external_queue_lock();
@@ -138,6 +147,7 @@ struct FFmpegHWDevice::Impl
 				auto *self = static_cast<Impl *>(ctx->user_opaque);
 				self->device->external_queue_unlock();
 			};
+ENABLE_DEPRECATION_WARNINGS
 
 			if (av_hwdevice_ctx_init(hw_dev) >= 0)
 			{

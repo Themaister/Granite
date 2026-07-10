@@ -114,6 +114,8 @@ struct FFmpegHWDevice::Impl
 					qf.video_caps = VkVideoCodecOperationFlagBitsKHR(qf.video_caps | VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR);
 				if (device->get_device_features().supports_video_encode_h265)
 					qf.video_caps = VkVideoCodecOperationFlagBitsKHR(qf.video_caps | VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR);
+				if (device->get_device_features().supports_video_encode_av1)
+					qf.video_caps = VkVideoCodecOperationFlagBitsKHR(qf.video_caps | VK_VIDEO_CODEC_OPERATION_ENCODE_AV1_BIT_KHR);
 			}
 
 			if (q.family_indices[Vulkan::QUEUE_INDEX_VIDEO_DECODE] != UINT32_MAX)
@@ -123,6 +125,8 @@ struct FFmpegHWDevice::Impl
 					qf.video_caps = VkVideoCodecOperationFlagBitsKHR(qf.video_caps | VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR);
 				if (device->get_device_features().supports_video_decode_h265)
 					qf.video_caps = VkVideoCodecOperationFlagBitsKHR(qf.video_caps | VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR);
+				if (device->get_device_features().supports_video_decode_av1)
+					qf.video_caps = VkVideoCodecOperationFlagBitsKHR(qf.video_caps | VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR);
 			}
 
 			vk->lock_queue = [](AVHWDeviceContext *ctx, uint32_t, uint32_t) {

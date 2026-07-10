@@ -3416,6 +3416,10 @@ public:
 				VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
 				image_usage_video_flags;
 
+		// Don't include video usage for views that aren't planar.
+		if (format_ycbcr_num_planes(create_info.format) == 1)
+			view_usage &= ~image_usage_video_flags;
+
 		if (view_usage & VK_IMAGE_USAGE_STORAGE_BIT)
 		{
 			VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };

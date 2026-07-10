@@ -341,7 +341,7 @@ static AVPixelFormat get_pixel_format(AVCodecContext *ctx, const enum AVPixelFor
 				auto *frames = reinterpret_cast<AVHWFramesContext *>(ctx->hw_frames_ctx->data);
 				auto *vk = static_cast<AVVulkanFramesContext *>(frames->hwctx);
 				// We take views of individual planes if we don't get a clean YCbCr sampler, need this.
-				vk->img_flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+				vk->img_flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
 
 				if (av_hwframe_ctx_init(ctx->hw_frames_ctx) < 0)
 				{

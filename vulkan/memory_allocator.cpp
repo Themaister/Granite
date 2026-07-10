@@ -1331,6 +1331,9 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 		VkHostAddressRangeEXT addrs[4];
 		uint32_t count = 0;
 
+		// Shouldn't be needed, but VVL seems to complain if it's not there.
+		view_usage_create_info.usage = usage;
+
 		if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
 		{
 			view.sampled = alloc_sampled_image();
@@ -1343,7 +1346,7 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 			infos[count].data.pImage = &images[count];
 
 			images[count] = { VK_STRUCTURE_TYPE_IMAGE_DESCRIPTOR_INFO_EXT };
-			images[count].pView = &info;
+			images[count].pView = &tmpinfo;
 			images[count].layout = layout == ImageLayout::Optimal ? VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
 
 			addrs[count].address = view.sampled.ptr;
@@ -1363,7 +1366,7 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 			infos[count].data.pImage = &images[count];
 
 			images[count] = { VK_STRUCTURE_TYPE_IMAGE_DESCRIPTOR_INFO_EXT };
-			images[count].pView = &info;
+			images[count].pView = &tmpinfo;
 			images[count].layout = VK_IMAGE_LAYOUT_GENERAL;
 
 			addrs[count].address = view.storage.ptr;
@@ -1390,7 +1393,7 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 				infos[count].data.pImage = &images[count];
 
 				images[count] = { VK_STRUCTURE_TYPE_IMAGE_DESCRIPTOR_INFO_EXT };
-				images[count].pView = &info;
+				images[count].pView = &tmpinfo;
 				images[count].layout = i == 0 && layout == ImageLayout::Optimal
 					                       ? VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL
 					                       : VK_IMAGE_LAYOUT_GENERAL;

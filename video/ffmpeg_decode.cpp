@@ -578,7 +578,8 @@ struct VideoDecoder::Impl
 	void process_video_frame_in_task(unsigned frame, AVFrame *av_frame, int64_t pts);
 
 	void dispatch_conversion(Vulkan::CommandBuffer &cmd, DecodedImage &img, const Vulkan::ImageView * const *views);
-	void process_video_frame_in_task_upload(DecodedImage &img, AVFrame *av_frame, Vulkan::Semaphore &compute_to_user);
+	void update_plane_resources(DecodedImage &img, bool need_per_plane);
+	void process_video_frame_in_task_default(DecodedImage &img, AVFrame *av_frame, Vulkan::Semaphore &compute_to_user);
 #ifdef HAVE_FFMPEG_VULKAN
 	void process_video_frame_in_task_vulkan(DecodedImage &img, AVFrame *av_frame, Vulkan::Semaphore &compute_to_user);
 #endif
@@ -725,8 +726,6 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 		}
 	} while (best_index < 0);
 
-	auto &img = video_queue[best_index];
-
 	if (active_transfer_function == AVCOL_TRC_UNSPECIFIED)
 	{
 		active_transfer_function =
@@ -735,145 +734,6 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 				  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_LIMITED_LEFT_CHROMA_420 ||
 				  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CHROMA_444) ?
 				 AVCOL_TRC_SMPTEST2084 : AVCOL_TRC_BT709);
-	}
-
-	// Defer allocating the planar images until we know for sure what kind of
-	// format we're dealing with.
-	if (!img.output_image)
-	{
-		VkFormat ycbcr_format = ycbcr_from_from_avformat(active_upload_pix_fmt);
-		bool supports_chroma_filter = false;
-
-		// If buffer or heap is enabled, we don't support immutable samplers in Granite currently.
-		// Video player applications don't need these fancy descriptor models anyway.
-		if (device->get_device_features().supports_descriptor_buffer_or_heap)
-			ycbcr_format = VK_FORMAT_UNDEFINED;
-
-		if (opts.mipgen)
-			ycbcr_format = VK_FORMAT_UNDEFINED;
-
-		// Verify that client is able to understand the transfer function.
-		if (ycbcr_format != VK_FORMAT_UNDEFINED)
-		{
-			if (active_transfer_function == AVCOL_TRC_SMPTEST2084)
-			{
-				img.color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;
-			}
-			else if (active_transfer_function == AVCOL_TRC_BT709)
-			{
-				// The "default". Technically I don't think BT709 TRC == sRGB TRC.
-				// SRGB_NONLINEAR_KHR is the "vague" gamma 2.2 thing.
-				img.color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-			}
-			else
-			{
-				ycbcr_format = VK_FORMAT_UNDEFINED;
-				// Default sentinel.
-				img.color_space = VK_COLOR_SPACE_PASS_THROUGH_EXT;
-			}
-		}
-
-		if (ycbcr_format != VK_FORMAT_UNDEFINED)
-		{
-			VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
-			device->get_format_properties(ycbcr_format, &props3);
-
-			if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT) == 0 ||
-				(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT) == 0 ||
-				(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_MIDPOINT_CHROMA_SAMPLES_BIT_KHR) == 0 ||
-				(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_COSITED_CHROMA_SAMPLES_BIT_KHR) == 0)
-			{
-				LOGW("VkFormat %u not supported for linear sampling, falling back to RGB decode.\n", ycbcr_format);
-				ycbcr_format = VK_FORMAT_UNDEFINED;
-			}
-
-			supports_chroma_filter =
-				(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT) != 0;
-		}
-
-		const Vulkan::ImmutableYcbcrConversion *ycbcr_conv = nullptr;
-
-		if (ycbcr_format)
-		{
-			VkSamplerYcbcrConversionCreateInfo conv_info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO };
-			conv_info.chromaFilter = supports_chroma_filter ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
-			conv_info.format = ycbcr_format;
-			conv_info.xChromaOffset = get_chroma_location() == AVCHROMA_LOC_CENTER ?
-				VK_CHROMA_LOCATION_MIDPOINT : VK_CHROMA_LOCATION_COSITED_EVEN;
-			conv_info.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
-			conv_info.ycbcrRange = get_full_range() ? VK_SAMPLER_YCBCR_RANGE_ITU_FULL : VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
-
-			switch (active_color_space)
-			{
-			case AVCOL_SPC_BT709:
-				conv_info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
-				break;
-
-			case AVCOL_SPC_BT2020_NCL:
-				conv_info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
-				break;
-
-			case AVCOL_SPC_BT470BG:
-			case AVCOL_SPC_SMPTE170M:
-				conv_info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
-				break;
-
-			default:
-				conv_info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY;
-				break;
-			}
-
-			if (conv_info.ycbcrModel != VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY)
-				ycbcr_conv = device->request_immutable_ycbcr_conversion(conv_info);
-		}
-
-		auto info = Vulkan::ImageCreateInfo::immutable_2d_image(
-				get_width(), get_height(),
-				active_transfer_function == AVCOL_TRC_SMPTEST2084 ?
-				(opts.mipgen ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_A2B10G10R10_UNORM_PACK32) :
-				VK_FORMAT_R8G8B8A8_SRGB);
-
-		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-		             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		info.flags = VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
-		info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
-		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
-		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
-
-		if (ycbcr_conv)
-		{
-			info.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
-			info.format = ycbcr_format;
-			info.ycbcr_conversion = ycbcr_conv;
-		}
-		else if (info.format == VK_FORMAT_R8G8B8A8_SRGB)
-			info.misc |= Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
-
-		if (opts.mipgen)
-			info.levels = 0;
-		img.output_image = device->create_image(info);
-
-		if (!ycbcr_conv)
-		{
-			Vulkan::ImageViewCreateInfo view = {};
-			view.image = img.output_image.get();
-			view.format = info.format == VK_FORMAT_R8G8B8A8_SRGB ? VK_FORMAT_R8G8B8A8_UNORM : info.format;
-			view.layers = 1;
-			view.levels = 1;
-			view.view_type = VK_IMAGE_VIEW_TYPE_2D;
-			img.rgb_storage_view = device->create_image_view(view);
-		}
-		else
-		{
-			Vulkan::SamplerCreateInfo sampler_info = {};
-			sampler_info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-			sampler_info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-			sampler_info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-			sampler_info.mag_filter = VK_FILTER_LINEAR;
-			sampler_info.min_filter = VK_FILTER_LINEAR;
-			img.immutable_sampler = device->request_immutable_sampler(sampler_info, ycbcr_conv);
-		}
 	}
 
 	return best_index;
@@ -1587,6 +1447,8 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 void VideoDecoder::Impl::process_video_frame_in_task_vulkan(DecodedImage &img, AVFrame *av_frame,
                                                             Vulkan::Semaphore &compute_to_user)
 {
+	update_plane_resources(img, false);
+
 	auto *frames = reinterpret_cast<AVHWFramesContext *>(video.av_ctx->hw_frames_ctx->data);
 	auto *vk = static_cast<AVVulkanFramesContext *>(frames->hwctx);
 	auto *vk_frame = reinterpret_cast<AVVkFrame *>(av_frame->data[0]);
@@ -1755,55 +1617,193 @@ void VideoDecoder::Impl::dispatch_conversion(Vulkan::CommandBuffer &cmd, Decoded
 	}
 }
 
-void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, AVFrame *av_frame,
-                                                            Vulkan::Semaphore &compute_to_user)
+void VideoDecoder::Impl::update_plane_resources(DecodedImage &img, bool need_per_plane)
 {
-	for (unsigned i = 0; i < num_planes; i++)
+	// Defer allocating the planar images until we know for sure what kind of
+	// format we're dealing with.
+	if (!img.output_image)
 	{
-		if (img.immutable_sampler)
+		VkFormat ycbcr_format = ycbcr_from_from_avformat(active_upload_pix_fmt);
+		bool supports_chroma_filter = false;
+
+		// If buffer or heap is enabled, we don't support immutable samplers in Granite currently.
+		// Video player applications don't need these fancy descriptor models anyway.
+		if (device->get_device_features().supports_descriptor_buffer_or_heap)
+			ycbcr_format = VK_FORMAT_UNDEFINED;
+
+		if (opts.mipgen)
+			ycbcr_format = VK_FORMAT_UNDEFINED;
+
+		// Verify that client is able to understand the transfer function.
+		if (ycbcr_format != VK_FORMAT_UNDEFINED)
 		{
-			auto &view = img.plane_views[i];
-			if (!view)
+			if (active_transfer_function == AVCOL_TRC_SMPTEST2084)
 			{
-				Vulkan::ImageViewCreateInfo view_info = {};
-				view_info.image = img.output_image.get();
-				view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
-				view_info.format = plane_formats[i];
-				view_info.aspect = VK_IMAGE_ASPECT_PLANE_0_BIT << i;
-				view_info.levels = 1;
-				view_info.layers = 1;
-				view = device->create_image_view(view_info);
+				img.color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;
 			}
+			else if (active_transfer_function == AVCOL_TRC_BT709)
+			{
+				// The "default". Technically I don't think BT709 TRC == sRGB TRC.
+				// SRGB_NONLINEAR_KHR is the "vague" gamma 2.2 thing.
+				img.color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+			}
+			else
+			{
+				ycbcr_format = VK_FORMAT_UNDEFINED;
+				// Default sentinel.
+				img.color_space = VK_COLOR_SPACE_PASS_THROUGH_EXT;
+			}
+		}
+
+		if (ycbcr_format != VK_FORMAT_UNDEFINED)
+		{
+			VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
+			device->get_format_properties(ycbcr_format, &props3);
+
+			if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT) == 0 ||
+				(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT) == 0 ||
+				(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_MIDPOINT_CHROMA_SAMPLES_BIT_KHR) == 0 ||
+				(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_COSITED_CHROMA_SAMPLES_BIT_KHR) == 0)
+			{
+				LOGW("VkFormat %u not supported for linear sampling, falling back to RGB decode.\n", ycbcr_format);
+				ycbcr_format = VK_FORMAT_UNDEFINED;
+			}
+
+			supports_chroma_filter =
+				(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT) != 0;
+		}
+
+		const Vulkan::ImmutableYcbcrConversion *ycbcr_conv = nullptr;
+
+		if (ycbcr_format)
+		{
+			VkSamplerYcbcrConversionCreateInfo conv_info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO };
+			conv_info.chromaFilter = supports_chroma_filter ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+			conv_info.format = ycbcr_format;
+			conv_info.xChromaOffset = get_chroma_location() == AVCHROMA_LOC_CENTER ?
+				VK_CHROMA_LOCATION_MIDPOINT : VK_CHROMA_LOCATION_COSITED_EVEN;
+			conv_info.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+			conv_info.ycbcrRange = get_full_range() ? VK_SAMPLER_YCBCR_RANGE_ITU_FULL : VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
+
+			switch (active_color_space)
+			{
+			case AVCOL_SPC_BT709:
+				conv_info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+				break;
+
+			case AVCOL_SPC_BT2020_NCL:
+				conv_info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
+				break;
+
+			case AVCOL_SPC_BT470BG:
+			case AVCOL_SPC_SMPTE170M:
+				conv_info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
+				break;
+
+			default:
+				conv_info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY;
+				break;
+			}
+
+			if (conv_info.ycbcrModel != VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY)
+				ycbcr_conv = device->request_immutable_ycbcr_conversion(conv_info);
+		}
+
+		auto info = Vulkan::ImageCreateInfo::immutable_2d_image(
+				get_width(), get_height(),
+				active_transfer_function == AVCOL_TRC_SMPTEST2084 ?
+				(opts.mipgen ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_A2B10G10R10_UNORM_PACK32) :
+				VK_FORMAT_R8G8B8A8_SRGB);
+
+		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+		             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		info.flags = VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
+		info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
+		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
+		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
+
+		if (ycbcr_conv)
+		{
+			info.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+			info.format = ycbcr_format;
+			info.ycbcr_conversion = ycbcr_conv;
+		}
+		else if (info.format == VK_FORMAT_R8G8B8A8_SRGB)
+			info.misc |= Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
+
+		if (opts.mipgen)
+			info.levels = 0;
+		img.output_image = device->create_image(info);
+
+		if (!ycbcr_conv)
+		{
+			Vulkan::ImageViewCreateInfo view = {};
+			view.image = img.output_image.get();
+			view.format = info.format == VK_FORMAT_R8G8B8A8_SRGB ? VK_FORMAT_R8G8B8A8_UNORM : info.format;
+			view.layers = 1;
+			view.levels = 1;
+			view.view_type = VK_IMAGE_VIEW_TYPE_2D;
+			img.rgb_storage_view = device->create_image_view(view);
 		}
 		else
 		{
-			auto &plane = img.planes[i];
-			if (!plane)
-			{
-				auto info = Vulkan::ImageCreateInfo::immutable_2d_image(
-						get_width() >> plane_subsample_log2[i],
-						get_height() >> plane_subsample_log2[i],
-						plane_formats[i]);
-				info.usage = (using_pyrowave ? VK_IMAGE_USAGE_STORAGE_BIT : VK_IMAGE_USAGE_TRANSFER_DST_BIT) |
-							 VK_IMAGE_USAGE_SAMPLED_BIT;
-				info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-				info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
-							Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
-				plane = device->create_image(info);
-			}
+			Vulkan::SamplerCreateInfo sampler_info = {};
+			sampler_info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			sampler_info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			sampler_info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			sampler_info.mag_filter = VK_FILTER_LINEAR;
+			sampler_info.min_filter = VK_FILTER_LINEAR;
+			img.immutable_sampler = device->request_immutable_sampler(sampler_info, ycbcr_conv);
 		}
 	}
 
-	Vulkan::Semaphore transfer_to_compute;
-
-	if (img.sem_from_client)
+	if (need_per_plane)
 	{
-		device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncTransfer,
-		                           std::move(img.sem_from_client),
-		                           VK_PIPELINE_STAGE_2_COPY_BIT,
-		                           true);
-		img.sem_from_client = {};
+		for (unsigned i = 0; i < num_planes; i++)
+		{
+			if (img.immutable_sampler)
+			{
+				auto &view = img.plane_views[i];
+				if (!view)
+				{
+					Vulkan::ImageViewCreateInfo view_info = {};
+					view_info.image = img.output_image.get();
+					view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
+					view_info.format = plane_formats[i];
+					view_info.aspect = VK_IMAGE_ASPECT_PLANE_0_BIT << i;
+					view_info.levels = 1;
+					view_info.layers = 1;
+					view = device->create_image_view(view_info);
+				}
+			}
+			else
+			{
+				auto &plane = img.planes[i];
+				if (!plane)
+				{
+					auto info = Vulkan::ImageCreateInfo::immutable_2d_image(
+							get_width() >> plane_subsample_log2[i],
+							get_height() >> plane_subsample_log2[i],
+							plane_formats[i]);
+					info.usage = (using_pyrowave ? VK_IMAGE_USAGE_STORAGE_BIT : VK_IMAGE_USAGE_TRANSFER_DST_BIT) |
+								 VK_IMAGE_USAGE_SAMPLED_BIT;
+					info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+					info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
+								Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
+					plane = device->create_image(info);
+				}
+			}
+		}
 	}
+}
+
+void VideoDecoder::Impl::process_video_frame_in_task_default(DecodedImage &img, AVFrame *av_frame,
+                                                             Vulkan::Semaphore &compute_to_user)
+{
+	update_plane_resources(img, true);
+
+	Vulkan::Semaphore transfer_to_compute;
 
 	auto conversion_queue = opts.mipgen ?
 	                        Vulkan::CommandBuffer::Type::Generic :
@@ -1813,6 +1813,15 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 
 	if (using_pyrowave)
 	{
+		if (img.sem_from_client)
+		{
+			device->add_wait_semaphore(conversion_queue,
+									   std::move(img.sem_from_client),
+									   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+									   true);
+			img.sem_from_client = {};
+		}
+
 		cmd = device->request_command_buffer(conversion_queue);
 		PyroWave::ViewBuffers views = {};
 
@@ -1849,6 +1858,15 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 	}
 	else
 	{
+		if (img.sem_from_client)
+		{
+			device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncTransfer,
+									   std::move(img.sem_from_client),
+									   VK_PIPELINE_STAGE_2_COPY_BIT,
+									   true);
+			img.sem_from_client = {};
+		}
+
 		cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
 
 		if (img.immutable_sampler)
@@ -1873,11 +1891,12 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 		{
 			void *buf;
 			int byte_width;
+			uint32_t plane_height;
 
 			if (img.immutable_sampler)
 			{
 				uint32_t plane_width = img.output_image->get_width() >> plane_subsample_log2[i];
-				uint32_t plane_height = img.output_image->get_height() >> plane_subsample_log2[i];
+				plane_height = img.output_image->get_height() >> plane_subsample_log2[i];
 				buf = cmd->update_image(*img.output_image, {}, { plane_width, plane_height, 1 },
 					plane_width, plane_height, { VkImageAspectFlags(VK_IMAGE_ASPECT_PLANE_0_BIT << i), 0, 0, 1 });
 				byte_width = plane_width;
@@ -1886,6 +1905,7 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 			{
 				buf = cmd->update_image(*img.planes[i]);
 				byte_width = int(img.planes[i]->get_width());
+				plane_height = int(img.planes[i]->get_height());
 			}
 
 			byte_width *= int(
@@ -1893,7 +1913,7 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 
 			av_image_copy_plane(static_cast<uint8_t *>(buf), byte_width,
 			                    av_frame->data[i], av_frame->linesize[i],
-			                    byte_width, int(img.planes[i]->get_height()));
+			                    byte_width, int(plane_height));
 		}
 
 		if (img.immutable_sampler)
@@ -2043,8 +2063,15 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 		num_planes = 0;
 		// Reset the planar images.
 		for (auto &i: video_queue)
+		{
 			for (auto &plane : i.planes)
 				plane.reset();
+			for (auto &view : i.plane_views)
+				view.reset();
+			i.output_image.reset();
+			i.immutable_sampler = nullptr;
+			i.color_space = VK_COLOR_SPACE_PASS_THROUGH_EXT;
+		}
 
 		// We might not know our target decoding format until this point due to HW decode.
 		// Select an appropriate decoding setup.
@@ -2060,7 +2087,7 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	else
 #endif
 	{
-		process_video_frame_in_task_upload(img, av_frame, img.sem_to_client);
+		process_video_frame_in_task_default(img, av_frame, img.sem_to_client);
 	}
 
 	if (av_frame)
@@ -2531,6 +2558,8 @@ int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 		frame.index = index;
 		frame.pts = video_queue[index].pts;
 		frame.done_ts = video_queue[index].done_ts;
+		frame.color_space = video_queue[index].color_space;
+		frame.immutable_sampler = video_queue[index].immutable_sampler;
 
 		// Progress.
 		cond.notify_one();

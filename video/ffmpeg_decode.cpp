@@ -1485,16 +1485,19 @@ void VideoDecoder::Impl::process_video_frame_in_task_vulkan(DecodedImage &img, A
 	// Apparently, we are guaranteed a single multi-plane image here.
 	auto wrapped_image = device->wrap_image(info, vk_frame->img[0]);
 
-	Vulkan::ImageViewCreateInfo view_info = {};
-	view_info.image = wrapped_image.get();
-	view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
 	Vulkan::ImageViewHandle planes[3];
-
-	for (unsigned i = 0; i < num_planes; i++)
+	if (!img.immutable_sampler)
 	{
-		view_info.format = plane_formats[i];
-		view_info.aspect = VK_IMAGE_ASPECT_PLANE_0_BIT << i;
-		planes[i] = device->create_image_view(view_info);
+		Vulkan::ImageViewCreateInfo view_info = {};
+		view_info.image = wrapped_image.get();
+		view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
+
+		for (unsigned i = 0; i < num_planes; i++)
+		{
+			view_info.format = plane_formats[i];
+			view_info.aspect = VK_IMAGE_ASPECT_PLANE_0_BIT << i;
+			planes[i] = device->create_image_view(view_info);
+		}
 	}
 
 	auto conversion_queue = opts.mipgen ?
@@ -1531,14 +1534,47 @@ void VideoDecoder::Impl::process_video_frame_in_task_vulkan(DecodedImage &img, A
 
 	auto cmd = device->request_command_buffer(conversion_queue);
 
-	cmd->image_barrier(*wrapped_image,
-	                   vk_frame->layout[0], VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
-	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-	                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-	vk_frame->layout[0] = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+	if (img.immutable_sampler)
+	{
+		cmd->image_barrier(*img.output_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, 0,
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
 
-	const Vulkan::ImageView *views[] = { planes[0].get(), planes[1].get(), planes[2].get() };
-	dispatch_conversion(*cmd, img, views);
+		cmd->image_barrier(*wrapped_image,
+		                   vk_frame->layout[0], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+
+		vk_frame->layout[0] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+		// The size of the decoded frames are going to be goofy, and we have no good mechanism to keep the
+		// AVFrames locked indefinitely. We need to copy them over to our own images.
+		// For 4:2:0 reasons, we should copy in YCbCr domain at least.
+		for (uint32_t i = 0; i < num_planes; i++)
+		{
+			uint32_t plane_width = img.output_image->get_width() >> plane_subsample_log2[i];
+			uint32_t plane_height = img.output_image->get_height() >> plane_subsample_log2[i];
+			cmd->copy_image(*img.output_image, *wrapped_image, {}, {},
+			                {plane_width, plane_height, 1},
+			                { VkImageAspectFlags(VK_IMAGE_ASPECT_PLANE_0_BIT << i), 0, 0, 1 },
+			                { VkImageAspectFlags(VK_IMAGE_ASPECT_PLANE_0_BIT << i), 0, 0, 1 });
+		}
+
+		cmd->image_barrier(*img.output_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+		                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_NONE, VK_ACCESS_NONE);
+	}
+	else
+	{
+		cmd->image_barrier(*wrapped_image,
+						   vk_frame->layout[0], VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+						   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+						   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+		vk_frame->layout[0] = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+
+		const Vulkan::ImageView *views[] = { planes[0].get(), planes[1].get(), planes[2].get() };
+		dispatch_conversion(*cmd, img, views);
+	}
 
 	device->submit(cmd, nullptr, 1, &compute_to_user);
 
@@ -1848,12 +1884,22 @@ void VideoDecoder::Impl::process_video_frame_in_task_default(DecodedImage &img, 
 		if (!pyrowave_decoder.decode(*cmd, views))
 			LOGE("Failed to decode.\n");
 
-		for (unsigned i = 0; i < num_planes; i++)
+		if (img.immutable_sampler)
 		{
-			cmd->image_barrier(*img.planes[i],
+			cmd->image_barrier(*img.output_image,
 			                   VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 			                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-			                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+			                   VK_PIPELINE_STAGE_NONE, VK_ACCESS_NONE);
+		}
+		else
+		{
+			for (unsigned i = 0; i < num_planes; i++)
+			{
+				cmd->image_barrier(*img.planes[i],
+				                   VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+				                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+				                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+			}
 		}
 	}
 	else
@@ -2656,6 +2702,8 @@ bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame, int timeout_ms)
 	frame.index = index;
 	frame.pts = video_queue[index].pts;
 	frame.done_ts = video_queue[index].done_ts;
+	frame.color_space = video_queue[index].color_space;
+	frame.immutable_sampler = video_queue[index].immutable_sampler;
 
 	// Progress.
 	acquire_blocking = false;

@@ -90,6 +90,7 @@ public:
 	{
 		unsigned override_width = 0;
 		unsigned override_height = 0;
+		unsigned override_display = UINT32_MAX;
 		bool fullscreen = false;
 #ifdef _WIN32
 		bool threaded = true;
@@ -209,6 +210,36 @@ public:
 		{
 			LOGE("Failed to create SDL window.\n");
 			return false;
+		}
+
+		if (options.override_display != UINT32_MAX)
+		{
+			int count = 0;
+			auto *display_ids = SDL_GetDisplays(&count);
+
+			if (options.override_display >= unsigned(count))
+			{
+				LOGE("--display %u is out of bounds (got %d displays).\n", options.override_display, count);
+				return false;
+			}
+
+			SDL_DisplayID display_id = display_ids[options.override_display];
+
+			SDL_DisplayMode closest = {};
+			if (!SDL_GetClosestFullscreenDisplayMode(display_id, width, height, 0.0f, true, &closest))
+			{
+				LOGE("Failed to query closest display mode.\n");
+				return false;
+			}
+
+			LOGI("Got mode %u x %u (%.3f Hz)\n", closest.w, closest.h,
+			     double(closest.refresh_rate_numerator) / double(closest.refresh_rate_denominator));
+
+			if (!SDL_SetWindowFullscreenMode(window, &closest))
+			{
+				LOGE("Failed to set window fullscreen mode.\n");
+				return false;
+			}
 		}
 
 		if (options.fullscreen)
@@ -820,6 +851,7 @@ int application_main(
 	cbs.add("--fullscreen", [&](Util::CLIParser &) { options.fullscreen = true; });
 	cbs.add("--width", [&](Util::CLIParser &parser) { options.override_width = parser.next_uint(); });
 	cbs.add("--height", [&](Util::CLIParser &parser) { options.override_height = parser.next_uint(); });
+	cbs.add("--display", [&](Util::CLIParser &parser) { options.override_display = parser.next_uint(); });
 	cbs.add("--thread-main-loop", [&](Util::CLIParser &) { options.threaded = true; });
 	cbs.add("--no-thread-main-loop", [&](Util::CLIParser &) { options.threaded = false; });
 	cbs.error_handler = [&]() { LOGE("Failed to parse CLI arguments for SDL.\n"); };

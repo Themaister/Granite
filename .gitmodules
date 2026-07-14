@@ -45,7 +45,7 @@
 	url = https://github.com/Themaister/FidelityFX-FSR2
 [submodule "third_party/sdl3"]
 	path = third_party/sdl3
-	url = https://github.com/libsdl-org/SDL
+	url = https://github.com/Themaister/SDL
 [submodule "third_party/pyroenc"]
 	path = third_party/pyroenc
 	url = https://github.com/HansKristian-Work/pyroenc

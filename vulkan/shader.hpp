@@ -326,7 +326,7 @@ public:
 	Program(Device *device, Shader *compute, const ImmutableSamplerBank *sampler_bank);
 	~Program();
 
-	inline const Shader *get_shader(ShaderStage stage) const
+	inline Shader *get_shader(ShaderStage stage) const
 	{
 		return shaders[Util::ecast(stage)];
 	}

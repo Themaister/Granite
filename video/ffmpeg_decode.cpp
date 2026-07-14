@@ -40,6 +40,7 @@
 #include <mutex>
 #include <thread>
 #include <chrono>
+#include <libavutil/pixfmt.h>
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_mixer.hpp"
 #include "dsp/dsp.hpp"
@@ -503,14 +504,18 @@ struct VideoDecoder::Impl
 
 	struct DecodedImage
 	{
-		Vulkan::ImageHandle rgb_image;
+		Vulkan::ImageHandle output_image;
 		Vulkan::ImageViewHandle rgb_storage_view;
 		Vulkan::ImageHandle planes[3];
+		Vulkan::ImageViewHandle plane_views[3];
 
 		Vulkan::Semaphore sem_to_client;
 		Vulkan::Semaphore sem_from_client;
 		uint64_t idle_order = 0;
 		uint64_t lock_order = 0;
+
+		VkColorSpaceKHR color_space = VK_COLOR_SPACE_PASS_THROUGH_EXT;
+		const Vulkan::ImmutableSampler *immutable_sampler = nullptr;
 
 		double pts = 0.0;
 		uint64_t done_ts = 0;
@@ -608,6 +613,9 @@ struct VideoDecoder::Impl
 	bool iterate();
 	bool should_iterate_locked();
 
+	AVChromaLocation get_chroma_location();
+	bool get_full_range();
+
 	void init_yuv_to_rgb();
 	void setup_yuv_format_planes();
 	void begin_audio_stream();
@@ -651,6 +659,26 @@ int VideoDecoder::Impl::find_idle_decode_video_frame_locked() const
 	}
 
 	return best_index;
+}
+
+static VkFormat ycbcr_from_from_avformat(AVPixelFormat fmt)
+{
+	// yuv420p10le does not have a direct Vulkan equivalent. It's only used by software codecs.
+	switch (fmt)
+	{
+	case AV_PIX_FMT_YUV420P: return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
+	case AV_PIX_FMT_YUV444P: return VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
+	case AV_PIX_FMT_YUV420P16: return VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM;
+	case AV_PIX_FMT_YUV444P16: return VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM;
+	case AV_PIX_FMT_NV12: return VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+	case AV_PIX_FMT_P010: return VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16;
+	case AV_PIX_FMT_P016: return VK_FORMAT_G16_B16R16_2PLANE_420_UNORM;
+	case AV_PIX_FMT_P410: return VK_FORMAT_G10X6_B10X6R10X6_2PLANE_444_UNORM_3PACK16;
+	case AV_PIX_FMT_P416: return VK_FORMAT_G16_B16R16_2PLANE_444_UNORM;
+	default: break;
+	}
+
+	return VK_FORMAT_UNDEFINED;
 }
 
 unsigned VideoDecoder::Impl::acquire_decode_video_frame()
@@ -711,8 +739,94 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 
 	// Defer allocating the planar images until we know for sure what kind of
 	// format we're dealing with.
-	if (!img.rgb_image)
+	if (!img.output_image)
 	{
+		VkFormat ycbcr_format = ycbcr_from_from_avformat(active_upload_pix_fmt);
+		bool supports_chroma_filter = false;
+
+		// If buffer or heap is enabled, we don't support immutable samplers in Granite currently.
+		// Video player applications don't need these fancy descriptor models anyway.
+		if (device->get_device_features().supports_descriptor_buffer_or_heap)
+			ycbcr_format = VK_FORMAT_UNDEFINED;
+
+		if (opts.mipgen)
+			ycbcr_format = VK_FORMAT_UNDEFINED;
+
+		// Verify that client is able to understand the transfer function.
+		if (ycbcr_format != VK_FORMAT_UNDEFINED)
+		{
+			if (active_transfer_function == AVCOL_TRC_SMPTEST2084)
+			{
+				img.color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;
+			}
+			else if (active_transfer_function == AVCOL_TRC_BT709)
+			{
+				// The "default". Technically I don't think BT709 TRC == sRGB TRC.
+				// SRGB_NONLINEAR_KHR is the "vague" gamma 2.2 thing.
+				img.color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+			}
+			else
+			{
+				ycbcr_format = VK_FORMAT_UNDEFINED;
+				// Default sentinel.
+				img.color_space = VK_COLOR_SPACE_PASS_THROUGH_EXT;
+			}
+		}
+
+		if (ycbcr_format != VK_FORMAT_UNDEFINED)
+		{
+			VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
+			device->get_format_properties(ycbcr_format, &props3);
+
+			if ((props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT) == 0 ||
+				(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT) == 0 ||
+				(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_MIDPOINT_CHROMA_SAMPLES_BIT_KHR) == 0 ||
+				(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_COSITED_CHROMA_SAMPLES_BIT_KHR) == 0)
+			{
+				LOGW("VkFormat %u not supported for linear sampling, falling back to RGB decode.\n", ycbcr_format);
+				ycbcr_format = VK_FORMAT_UNDEFINED;
+			}
+
+			supports_chroma_filter =
+				(props3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT) != 0;
+		}
+
+		const Vulkan::ImmutableYcbcrConversion *ycbcr_conv = nullptr;
+
+		if (ycbcr_format)
+		{
+			VkSamplerYcbcrConversionCreateInfo conv_info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO };
+			conv_info.chromaFilter = supports_chroma_filter ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+			conv_info.format = ycbcr_format;
+			conv_info.xChromaOffset = get_chroma_location() == AVCHROMA_LOC_CENTER ?
+				VK_CHROMA_LOCATION_MIDPOINT : VK_CHROMA_LOCATION_COSITED_EVEN;
+			conv_info.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+			conv_info.ycbcrRange = get_full_range() ? VK_SAMPLER_YCBCR_RANGE_ITU_FULL : VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
+
+			switch (active_color_space)
+			{
+			case AVCOL_SPC_BT709:
+				conv_info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+				break;
+
+			case AVCOL_SPC_BT2020_NCL:
+				conv_info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
+				break;
+
+			case AVCOL_SPC_BT470BG:
+			case AVCOL_SPC_SMPTE170M:
+				conv_info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
+				break;
+
+			default:
+				conv_info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY;
+				break;
+			}
+
+			if (conv_info.ycbcrModel != VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY)
+				ycbcr_conv = device->request_immutable_ycbcr_conversion(conv_info);
+		}
+
 		auto info = Vulkan::ImageCreateInfo::immutable_2d_image(
 				get_width(), get_height(),
 				active_transfer_function == AVCOL_TRC_SMPTEST2084 ?
@@ -727,23 +841,61 @@ unsigned VideoDecoder::Impl::acquire_decode_video_frame()
 		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
 		            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
 
-		if (info.format == VK_FORMAT_R8G8B8A8_SRGB)
+		if (ycbcr_conv)
+		{
+			info.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+			info.format = ycbcr_format;
+			info.ycbcr_conversion = ycbcr_conv;
+		}
+		else if (info.format == VK_FORMAT_R8G8B8A8_SRGB)
 			info.misc |= Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
 
 		if (opts.mipgen)
 			info.levels = 0;
-		img.rgb_image = device->create_image(info);
+		img.output_image = device->create_image(info);
 
-		Vulkan::ImageViewCreateInfo view = {};
-		view.image = img.rgb_image.get();
-		view.format = info.format == VK_FORMAT_R8G8B8A8_SRGB ? VK_FORMAT_R8G8B8A8_UNORM : info.format;
-		view.layers = 1;
-		view.levels = 1;
-		view.view_type = VK_IMAGE_VIEW_TYPE_2D;
-		img.rgb_storage_view = device->create_image_view(view);
+		if (!ycbcr_conv)
+		{
+			Vulkan::ImageViewCreateInfo view = {};
+			view.image = img.output_image.get();
+			view.format = info.format == VK_FORMAT_R8G8B8A8_SRGB ? VK_FORMAT_R8G8B8A8_UNORM : info.format;
+			view.layers = 1;
+			view.levels = 1;
+			view.view_type = VK_IMAGE_VIEW_TYPE_2D;
+			img.rgb_storage_view = device->create_image_view(view);
+		}
+		else
+		{
+			Vulkan::SamplerCreateInfo sampler_info = {};
+			sampler_info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			sampler_info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			sampler_info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			sampler_info.mag_filter = VK_FILTER_LINEAR;
+			sampler_info.min_filter = VK_FILTER_LINEAR;
+			img.immutable_sampler = device->request_immutable_sampler(sampler_info, ycbcr_conv);
+		}
 	}
 
 	return best_index;
+}
+
+AVChromaLocation VideoDecoder::Impl::get_chroma_location()
+{
+	return video.av_ctx ? video.av_ctx->chroma_sample_location :
+			((pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420 ||
+			  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 ||
+			  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CHROMA_444 ||
+			  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CHROMA_444) ?
+			 AVCHROMA_LOC_CENTER : AVCHROMA_LOC_LEFT);
+}
+
+bool VideoDecoder::Impl::get_full_range()
+{
+	return video.av_ctx ? video.av_ctx->color_range == AVCOL_RANGE_JPEG
+		       : (pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420 ||
+		          pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 ||
+		          pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CHROMA_444 ||
+		          pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CHROMA_444);
 }
 
 void VideoDecoder::Impl::init_yuv_to_rgb()
@@ -764,13 +916,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 	ubo.chroma_clamp = (vec2(ubo.resolution) - 0.5f * float(1u << plane_subsample_log2[1])) * ubo.inv_resolution;
 	const char *siting;
 
-	auto chroma_sample_location =
-			video.av_ctx ? video.av_ctx->chroma_sample_location :
-			((pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420 ||
-			  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 ||
-			  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CHROMA_444 ||
-			  pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CHROMA_444) ?
-			 AVCHROMA_LOC_CENTER : AVCHROMA_LOC_LEFT);
+	auto chroma_sample_location = get_chroma_location();
 
 	switch (chroma_sample_location)
 	{
@@ -806,11 +952,7 @@ void VideoDecoder::Impl::init_yuv_to_rgb()
 		break;
 	}
 
-	bool full_range = video.av_ctx ? video.av_ctx->color_range == AVCOL_RANGE_JPEG :
-	                  (pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420 ||
-	                   pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 ||
-	                   pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT709_FULL_CHROMA_444 ||
-	                   pyro_codec.video_color_profile == PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CHROMA_444);
+	bool full_range = get_full_range();
 
 	LOGI("Range: %s\n", full_range ? "full" : "limited");
 	LOGI("Chroma: %s\n", siting);
@@ -1373,9 +1515,7 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		break;
 
 	case AV_PIX_FMT_P010:
-#ifdef AV_PIX_FMT_P410
 	case AV_PIX_FMT_P410:
-#endif
 		plane_formats[0] = VK_FORMAT_R16_UNORM;
 		plane_formats[1] = VK_FORMAT_R16G16_UNORM;
 		num_planes = 2;
@@ -1423,9 +1563,7 @@ void VideoDecoder::Impl::setup_yuv_format_planes()
 		break;
 
 	case AV_PIX_FMT_P016:
-#ifdef AV_PIX_FMT_P416
 	case AV_PIX_FMT_P416:
-#endif
 		plane_formats[0] = VK_FORMAT_R16_UNORM;
 		plane_formats[1] = VK_FORMAT_R16G16_UNORM;
 		num_planes = 2;
@@ -1575,23 +1713,23 @@ void VideoDecoder::Impl::dispatch_conversion(Vulkan::CommandBuffer &cmd, Decoded
 
 		memcpy(cmd.allocate_typed_constant_data<UBO>(1, 0, 1), &ubo, sizeof(ubo));
 
-		cmd.image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+		cmd.image_barrier(*img.output_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
 		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
 		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 		cmd.dispatch((ubo.resolution.x + 7) / 8, (ubo.resolution.y + 7) / 8, 1);
 
 		if (opts.mipgen)
 		{
-			cmd.barrier_prepare_generate_mipmap(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			cmd.barrier_prepare_generate_mipmap(*img.output_image, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 			                                    VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, true);
-			cmd.generate_mipmap(*img.rgb_image);
-			cmd.image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+			cmd.generate_mipmap(*img.output_image);
+			cmd.image_barrier(*img.output_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 			                  VK_PIPELINE_STAGE_2_BLIT_BIT, 0,
 			                  VK_PIPELINE_STAGE_NONE, 0);
 		}
 		else
 		{
-			cmd.image_barrier(*img.rgb_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+			cmd.image_barrier(*img.output_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 			                  VK_PIPELINE_STAGE_NONE, 0);
 		}
@@ -1599,7 +1737,7 @@ void VideoDecoder::Impl::dispatch_conversion(Vulkan::CommandBuffer &cmd, Decoded
 	else
 	{
 		// Fallback, just clear to magenta to make it obvious what went wrong.
-		cmd.image_barrier(*img.rgb_image,
+		cmd.image_barrier(*img.output_image,
 		                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
 		                  VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
@@ -1608,8 +1746,8 @@ void VideoDecoder::Impl::dispatch_conversion(Vulkan::CommandBuffer &cmd, Decoded
 		color.color.float32[0] = 1.0f;
 		color.color.float32[2] = 1.0f;
 		color.color.float32[3] = 1.0f;
-		cmd.clear_image(*img.rgb_image, color);
-		cmd.image_barrier(*img.rgb_image,
+		cmd.clear_image(*img.output_image, color);
+		cmd.image_barrier(*img.output_image,
 		                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                  VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 		                  VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -1622,19 +1760,37 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 {
 	for (unsigned i = 0; i < num_planes; i++)
 	{
-		auto &plane = img.planes[i];
-		if (!plane)
+		if (img.immutable_sampler)
 		{
-			auto info = Vulkan::ImageCreateInfo::immutable_2d_image(
-					get_width() >> plane_subsample_log2[i],
-					get_height() >> plane_subsample_log2[i],
-					plane_formats[i]);
-			info.usage = (using_pyrowave ? VK_IMAGE_USAGE_STORAGE_BIT : VK_IMAGE_USAGE_TRANSFER_DST_BIT) |
-			             VK_IMAGE_USAGE_SAMPLED_BIT;
-			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-			info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
-			            Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
-			plane = device->create_image(info);
+			auto &view = img.plane_views[i];
+			if (!view)
+			{
+				Vulkan::ImageViewCreateInfo view_info = {};
+				view_info.image = img.output_image.get();
+				view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
+				view_info.format = plane_formats[i];
+				view_info.aspect = VK_IMAGE_ASPECT_PLANE_0_BIT << i;
+				view_info.levels = 1;
+				view_info.layers = 1;
+				view = device->create_image_view(view_info);
+			}
+		}
+		else
+		{
+			auto &plane = img.planes[i];
+			if (!plane)
+			{
+				auto info = Vulkan::ImageCreateInfo::immutable_2d_image(
+						get_width() >> plane_subsample_log2[i],
+						get_height() >> plane_subsample_log2[i],
+						plane_formats[i]);
+				info.usage = (using_pyrowave ? VK_IMAGE_USAGE_STORAGE_BIT : VK_IMAGE_USAGE_TRANSFER_DST_BIT) |
+							 VK_IMAGE_USAGE_SAMPLED_BIT;
+				info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+				info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
+							Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
+				plane = device->create_image(info);
+			}
 		}
 	}
 
@@ -1662,11 +1818,22 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 
 		for (unsigned i = 0; i < num_planes; i++)
 		{
-			cmd->image_barrier(*img.planes[i],
-			                   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-			                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, 0,
-			                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-			views.planes[i] = &img.planes[i]->get_view();
+			if (img.immutable_sampler)
+			{
+				cmd->image_barrier(*img.output_image,
+							   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+							   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, 0,
+							   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+			}
+			else
+			{
+				cmd->image_barrier(*img.planes[i],
+								   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+								   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, 0,
+								   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+			}
+
+			views.planes[i] = img.plane_views[i] ? img.plane_views[i].get() : &img.planes[i]->get_view();
 		}
 
 		if (!pyrowave_decoder.decode(*cmd, views))
@@ -1684,53 +1851,96 @@ void VideoDecoder::Impl::process_video_frame_in_task_upload(DecodedImage &img, A
 	{
 		cmd = device->request_command_buffer(Vulkan::CommandBuffer::Type::AsyncTransfer);
 
-		for (unsigned i = 0; i < num_planes; i++)
+		if (img.immutable_sampler)
 		{
-			cmd->image_barrier(*img.planes[i],
-			                   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			                   VK_PIPELINE_STAGE_2_COPY_BIT, 0,
-			                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+			cmd->image_barrier(*img.output_image,
+						   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+						   VK_PIPELINE_STAGE_2_COPY_BIT, 0,
+						   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		}
+		else
+		{
+			for (unsigned i = 0; i < num_planes; i++)
+			{
+				cmd->image_barrier(*img.planes[i],
+								   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								   VK_PIPELINE_STAGE_2_COPY_BIT, 0,
+								   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+			}
 		}
 
 		for (unsigned i = 0; i < num_planes; i++)
 		{
-			auto *buf = static_cast<uint8_t *>(cmd->update_image(*img.planes[i]));
-			int byte_width = int(img.planes[i]->get_width());
+			void *buf;
+			int byte_width;
+
+			if (img.immutable_sampler)
+			{
+				uint32_t plane_width = img.output_image->get_width() >> plane_subsample_log2[i];
+				uint32_t plane_height = img.output_image->get_height() >> plane_subsample_log2[i];
+				buf = cmd->update_image(*img.output_image, {}, { plane_width, plane_height, 1 },
+					plane_width, plane_height, { VkImageAspectFlags(VK_IMAGE_ASPECT_PLANE_0_BIT << i), 0, 0, 1 });
+				byte_width = plane_width;
+			}
+			else
+			{
+				buf = cmd->update_image(*img.planes[i]);
+				byte_width = int(img.planes[i]->get_width());
+			}
+
 			byte_width *= int(
 					Vulkan::TextureFormatLayout::format_block_size(plane_formats[i], VK_IMAGE_ASPECT_COLOR_BIT));
 
-			av_image_copy_plane(buf, byte_width,
+			av_image_copy_plane(static_cast<uint8_t *>(buf), byte_width,
 			                    av_frame->data[i], av_frame->linesize[i],
 			                    byte_width, int(img.planes[i]->get_height()));
 		}
 
-		for (unsigned i = 0; i < num_planes; i++)
+		if (img.immutable_sampler)
 		{
-			cmd->image_barrier(*img.planes[i],
+			cmd->image_barrier(*img.output_image,
 			                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
 			                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			                   VK_PIPELINE_STAGE_NONE, 0);
+		}
+		else
+		{
+			for (unsigned i = 0; i < num_planes; i++)
+			{
+				cmd->image_barrier(*img.planes[i],
+								   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+								   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+								   VK_PIPELINE_STAGE_NONE, 0);
+			}
 		}
 
 		device->submit(cmd, nullptr, 1, &transfer_to_compute);
 		cmd.reset();
 
-		device->add_wait_semaphore(conversion_queue,
-		                           std::move(transfer_to_compute),
-		                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		                           true);
+		if (!img.immutable_sampler)
+		{
+			device->add_wait_semaphore(conversion_queue,
+									   std::move(transfer_to_compute),
+									   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+									   true);
+		}
 	}
 
-	if (!cmd)
+	if (!cmd && !img.immutable_sampler)
 		cmd = device->request_command_buffer(conversion_queue);
 
-	const Vulkan::ImageView *views[3] = {};
-	for (unsigned i = 0; i < num_planes; i++)
-		views[i] = &img.planes[i]->get_view();
+	if (!img.immutable_sampler)
+	{
+		const Vulkan::ImageView *views[3] = {};
+		for (unsigned i = 0; i < num_planes; i++)
+			views[i] = &img.planes[i]->get_view();
+		dispatch_conversion(*cmd, img, views);
+	}
 
-	dispatch_conversion(*cmd, img, views);
-
-	device->submit(cmd, nullptr, 1, &compute_to_user);
+	if (cmd)
+		device->submit(cmd, nullptr, 1, &compute_to_user);
+	else
+		compute_to_user = std::move(transfer_to_compute);
 
 	// When running in realtime mode we will run
 	// completely unlocked from the main loop, so make sure
@@ -2317,7 +2527,7 @@ int VideoDecoder::Impl::try_acquire_video_frame(VideoFrame &frame)
 		frame.sem.reset();
 		std::swap(frame.sem, video_queue[index].sem_to_client);
 		video_queue[index].state = ImageState::Acquired;
-		frame.view = &video_queue[index].rgb_image->get_view();
+		frame.view = &video_queue[index].output_image->get_view();
 		frame.index = index;
 		frame.pts = video_queue[index].pts;
 		frame.done_ts = video_queue[index].done_ts;
@@ -2361,10 +2571,12 @@ void VideoDecoder::Impl::acquire_damaged_video_frame(VideoFrame &frame)
 		frame.sem.reset();
 		std::swap(frame.sem, video_queue[index].sem_to_client);
 		video_queue[index].state = ImageState::Acquired;
-		frame.view = &video_queue[index].rgb_image->get_view();
+		frame.view = &video_queue[index].output_image->get_view();
 		frame.index = index;
 		frame.pts = video_queue[index].pts;
 		frame.done_ts = video_queue[index].done_ts;
+		frame.color_space = video_queue[index].color_space;
+		frame.immutable_sampler = video_queue[index].immutable_sampler;
 	}
 
 	// Progress.
@@ -2411,7 +2623,7 @@ bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame, int timeout_ms)
 	frame.sem.reset();
 	std::swap(frame.sem, video_queue[index].sem_to_client);
 	video_queue[index].state = ImageState::Acquired;
-	frame.view = &video_queue[index].rgb_image->get_view();
+	frame.view = &video_queue[index].output_image->get_view();
 	frame.index = index;
 	frame.pts = video_queue[index].pts;
 	frame.done_ts = video_queue[index].done_ts;
@@ -2647,7 +2859,7 @@ void VideoDecoder::Impl::flush_codecs()
 {
 	for (auto &img : video_queue)
 	{
-		img.rgb_image.reset();
+		img.output_image.reset();
 		img.rgb_storage_view.reset();
 		for (auto &plane : img.planes)
 			plane.reset();

@@ -20,7 +20,11 @@ struct VideoFrame
 	Vulkan::Semaphore sem;
 	unsigned index = 0;
 	double pts = 0.0;
-	double done_ts = 0.0;
+	uint64_t done_ts = 0;
+
+	// If not null, image must be sampled with this immutable YCbCr sampler.
+	const Vulkan::ImmutableSampler *immutable_sampler = nullptr;
+	VkColorSpaceKHR color_space = VK_COLOR_SPACE_PASS_THROUGH_EXT;
 };
 
 class DemuxerIOInterface

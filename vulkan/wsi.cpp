@@ -352,7 +352,8 @@ bool WSI::init_simple(unsigned num_thread_indices, const Context::SystemHandles 
 	return true;
 }
 
-bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context::SystemHandles &system_handles)
+bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context::SystemHandles &system_handles,
+                                     ContextCreationFlags enable_flags, ContextCreationFlags disable_flags)
 {
 	VK_ASSERT(platform);
 	auto instance_ext = platform->get_instance_extensions();
@@ -364,7 +365,8 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 			CONTEXT_CREATION_ENABLE_VIDEO_DECODE_BIT |
 			CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT |
 			CONTEXT_CREATION_ENABLE_VIDEO_H264_BIT |
-			CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT;
+			CONTEXT_CREATION_ENABLE_VIDEO_H265_BIT |
+			CONTEXT_CREATION_ENABLE_VIDEO_AV1_BIT;
 #else
 	constexpr ContextCreationFlags video_context_flags = 0;
 #endif
@@ -373,7 +375,7 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 	new_context->set_num_thread_indices(num_thread_indices);
 	new_context->set_system_handles(system_handles);
 
-	constexpr ContextCreationFlags context_flags =
+	ContextCreationFlags context_flags =
 			CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT |
 			CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT |
 			CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT |
@@ -382,6 +384,9 @@ bool WSI::init_context_from_platform(unsigned num_thread_indices, const Context:
 			//CONTEXT_CREATION_ENABLE_PIPELINE_BINARY_BIT |
 #endif
 			video_context_flags;
+
+	context_flags |= enable_flags;
+	context_flags &= ~disable_flags;
 
 	if (!new_context->init_instance(
 			instance_ext.data(), instance_ext.size(),

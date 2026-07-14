@@ -253,7 +253,8 @@ public:
 
 	// The simple approach. WSI internally creates the context with instance + device.
 	// Required information about extensions etc, is pulled from the platform.
-	bool init_context_from_platform(unsigned num_thread_indices, const Context::SystemHandles &system_handles);
+	bool init_context_from_platform(unsigned num_thread_indices, const Context::SystemHandles &system_handles,
+	                                ContextCreationFlags enable_flags = 0, ContextCreationFlags disable_flags = 0);
 
 	// If you have your own VkInstance and/or VkDevice, you must create your own Vulkan::Context with
 	// the appropriate init() call. Based on the platform you use, you must make sure to enable the

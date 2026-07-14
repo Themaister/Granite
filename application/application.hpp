@@ -81,6 +81,16 @@ public:
 		return 720;
 	}
 
+	virtual Vulkan::ContextCreationFlags get_enable_context_creation_flags()
+	{
+		return 0;
+	}
+
+	virtual Vulkan::ContextCreationFlags get_disable_context_creation_flags()
+	{
+		return 0;
+	}
+
 	bool poll();
 	void run_frame();
 	void show_message_box(const std::string &str, Vulkan::WSIPlatform::MessageType type);

@@ -89,8 +89,9 @@ bool Application::init_wsi(Vulkan::ContextHandle context)
 		system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
 
 		if (!application_wsi.init_context_from_platform(
-				system_handles.thread_group->get_num_threads() + 1,
-				system_handles))
+			system_handles.thread_group->get_num_threads() + 1,
+			system_handles, get_enable_context_creation_flags(),
+			get_disable_context_creation_flags()))
 		{
 			return false;
 		}

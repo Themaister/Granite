@@ -232,7 +232,7 @@ public:
 				return false;
 			}
 
-			LOGI("Got mode %u x %u (%.3f Hz)\n", closest.w, closest.h,
+			LOGI("DisplayID %u: Got mode %u x %u (%.3f Hz)\n", display_id, closest.w, closest.h,
 			     double(closest.refresh_rate_numerator) / double(closest.refresh_rate_denominator));
 
 			if (!SDL_SetWindowFullscreenMode(window, &closest))
@@ -242,7 +242,7 @@ public:
 			}
 		}
 
-		if (options.fullscreen)
+		if (options.fullscreen || options.override_display != UINT32_MAX)
 			toggle_fullscreen();
 
 		application.info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;

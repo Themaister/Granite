@@ -1470,6 +1470,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	if (ext.supports_video_encode_av1)
 		ADD_CHAIN(ext.av1_features, VIDEO_ENCODE_AV1_FEATURES_KHR);
 
+	if ((flags & CONTEXT_CREATION_ENABLE_VIDEO_ENCODE_BIT) != 0 &&
+	    has_extension(VK_KHR_VIDEO_ENCODE_INTRA_REFRESH_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_VIDEO_ENCODE_INTRA_REFRESH_EXTENSION_NAME);
+		ADD_CHAIN(ext.intra_refresh_features, VIDEO_ENCODE_INTRA_REFRESH_FEATURES_KHR);
+	}
+
 	if (ext.device_api_core_version >= VK_API_VERSION_1_2)
 	{
 		ADD_CHAIN(ext.vk11_features, VULKAN_1_1_FEATURES);

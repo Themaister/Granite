@@ -117,6 +117,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceShaderUntypedPointersFeaturesKHR untyped_pointers_features = {};
 	VkPhysicalDeviceFaultFeaturesKHR fault_features_khr = {};
 	VkPhysicalDeviceCooperativeMatrixFeaturesKHR cooperative_matrix_features = {};
+	VkPhysicalDeviceVideoEncodeIntraRefreshFeaturesKHR intra_refresh_features = {};
 
 	// EXT
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};

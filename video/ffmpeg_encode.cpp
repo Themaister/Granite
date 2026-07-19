@@ -1440,6 +1440,9 @@ bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
 	pyro_info.conversion_queue.queue = device->get_queue_info().queues[Vulkan::QUEUE_INDEX_COMPUTE];
 	pyro_info.conversion_queue.family_index = device->get_queue_info().family_indices[Vulkan::QUEUE_INDEX_COMPUTE];
 
+	if (options.gop_seconds >= 0.0f && device->get_device_features().intra_refresh_features.videoEncodeIntraRefresh)
+		pyro_info.intra_refresh_period = 32;
+
 	if (pyro_encoder.init_encoder(pyro_info) != PyroEnc::Result::Success)
 	{
 		LOGE("Failed to initialize pyro encoder.\n");
@@ -1450,6 +1453,12 @@ bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
 	rate_info.mode = options.low_latency ? PyroEnc::RateControlMode::CBR : PyroEnc::RateControlMode::VBR;
 	rate_info.bitrate_kbits = options.bitrate_kbits;
 	rate_info.max_bitrate_kbits = options.max_bitrate_kbits;
+
+	if (pyro_info.intra_refresh_period && !pyro_encoder.intra_refresh_enabled())
+	{
+		LOGE("Attempted to enable intra refresh, but it was not supported after all.\n");
+		return false;
+	}
 
 	if (options.gop_seconds < 0.0f)
 	{

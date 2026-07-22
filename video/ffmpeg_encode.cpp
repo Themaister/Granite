@@ -1334,8 +1334,8 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 	if (format_needs_downsample(options.format))
 	{
 		pyro_codec.video_color_profile = options.hdr10 ?
-		                                 PYRO_VIDEO_COLOR_BT2020NCL_PQ_LIMITED_LEFT_CHROMA_420 :
-		                                 PYRO_VIDEO_COLOR_BT709_LIMITED_LEFT_CHROMA_420;
+		                                 PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 :
+		                                 PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420;
 	}
 	else
 	{

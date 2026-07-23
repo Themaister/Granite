@@ -1422,7 +1422,7 @@ bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
 	PyroEnc::EncoderCreateInfo pyro_info = {};
 	pyro_info.profile = profile;
 	pyro_info.hints.tuning = options.low_latency ?
-			VK_VIDEO_ENCODE_TUNING_MODE_LOW_LATENCY_KHR : VK_VIDEO_ENCODE_TUNING_MODE_HIGH_QUALITY_KHR;
+			VK_VIDEO_ENCODE_TUNING_MODE_ULTRA_LOW_LATENCY_KHR : VK_VIDEO_ENCODE_TUNING_MODE_HIGH_QUALITY_KHR;
 	pyro_info.hints.usage = options.low_latency ?
 			VK_VIDEO_ENCODE_USAGE_STREAMING_BIT_KHR : VK_VIDEO_ENCODE_USAGE_RECORDING_BIT_KHR;
 	pyro_info.hints.content = VK_VIDEO_ENCODE_CONTENT_RENDERED_BIT_KHR;

@@ -84,6 +84,8 @@ struct VideoEncoder::YCbCrPipelineData
 	PlaneLayout planes[3] = {};
 	unsigned num_planes = 0;
 
+	PyroEnc::EncoderDirectYCbCrImageInfo pyro_image = {};
+
 	VideoScaler scaler;
 
 	AVFrame *hw_frame = nullptr;
@@ -110,7 +112,7 @@ struct VideoEncoder::Impl final
 	bool encode_frame(const uint8_t *buffer, const PlaneLayout *planes, unsigned num_planes,
 	                  int64_t pts, int compensate_audio_us);
 	bool encode_frame(AVFrame *hw_frame, int64_t pts, int compensate_audio_us);
-	bool encode_frame(const Vulkan::ImageView &view, int64_t pts, int compensate_audio_us);
+	bool encode_frame(const PyroEnc::EncoderDirectYCbCrImageInfo &image, int64_t pts, int compensate_audio_us);
 	bool encode_frame(const PyroWave::ViewBuffers &views, int64_t pts, int compensate_audio_us);
 	~Impl();
 
@@ -534,16 +536,16 @@ bool VideoEncoder::Impl::encode_frame(const PyroWave::ViewBuffers &views, int64_
 	return true;
 }
 
-bool VideoEncoder::Impl::encode_frame(const Vulkan::ImageView &view, int64_t pts, int compensate_audio_us)
+bool VideoEncoder::Impl::encode_frame(const PyroEnc::EncoderDirectYCbCrImageInfo &image, int64_t pts, int compensate_audio_us)
 {
 	assert(mux_stream_callback);
 
 	PyroEnc::FrameInfo frame = {};
 	frame.pts = pts;
 	frame.force_idr = mux_stream_callback->should_force_idr();
-	frame.width = view.get_view_width();
-	frame.height = view.get_view_height();
-	frame.view = view.get_view().view;
+	frame.width = image.active_width;
+	frame.height = image.active_height;
+	frame.view = image.proxy_image_view;
 
 	device->external_queue_lock();
 	auto send_result = pyro_encoder.send_frame(frame);
@@ -1440,6 +1442,16 @@ bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
 	pyro_info.conversion_queue.queue = device->get_queue_info().queues[Vulkan::QUEUE_INDEX_COMPUTE];
 	pyro_info.conversion_queue.family_index = device->get_queue_info().family_indices[Vulkan::QUEUE_INDEX_COMPUTE];
 
+	PyroEnc::EncoderDirectYCbCrInfo direct_info = {};
+	direct_info.chroma_location_x = VK_CHROMA_LOCATION_MIDPOINT;
+	direct_info.chroma_location_y = VK_CHROMA_LOCATION_MIDPOINT;
+	direct_info.color_space =
+		options.hdr10 ? VK_COLOR_SPACE_HDR10_ST2084_EXT : VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+	direct_info.ycbcr_range = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
+	direct_info.ycbcr_conversion =
+		options.hdr10 ? VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020 : VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+	pyro_info.direct_ycbcr_info = &direct_info;
+
 	if (options.gop_seconds >= 0.0f && device->get_device_features().intra_refresh_features.videoEncodeIntraRefresh)
 		pyro_info.intra_refresh_period = 32;
 
@@ -1496,7 +1508,8 @@ bool VideoEncoder::Impl::init_video_codec_pyro(PyroEnc::Profile profile)
 	pyro_codec.height = pyro_info.height;
 	pyro_codec.frame_rate_num = pyro_info.frame_rate_num;
 	pyro_codec.frame_rate_den = pyro_info.frame_rate_den;
-	pyro_codec.video_color_profile = PYRO_VIDEO_COLOR_BT709_LIMITED_LEFT_CHROMA_420;
+	pyro_codec.video_color_profile =
+		options.hdr10 ? PYRO_VIDEO_COLOR_BT2020NCL_PQ_FULL_CENTER_CHROMA_420 : PYRO_VIDEO_COLOR_BT709_FULL_CENTER_CHROMA_420;
 
 	LOGI("Initialized PyroEnc encoder.\n");
 
@@ -1784,14 +1797,19 @@ void VideoEncoder::Impl::submit_process_rgb_pyro(Vulkan::CommandBufferHandle &cm
 {
 	if (cmd->get_command_buffer_type() == Vulkan::CommandBuffer::Type::AsyncCompute)
 	{
-		device->submit(cmd, &pipeline.fence);
+		Vulkan::Semaphore sem;
+		device->submit(cmd, &pipeline.fence, 1, &sem);
+		device->add_wait_semaphore(Vulkan::CommandBuffer::Type::VideoEncode, std::move(sem),
+		                           VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
 	}
 	else
 	{
-		Vulkan::Semaphore sem;
-		device->submit(cmd, &pipeline.fence, 1, &sem);
-		device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncCompute, std::move(sem),
+		Vulkan::Semaphore sems[2];
+		device->submit(cmd, &pipeline.fence, 2, sems);
+		device->add_wait_semaphore(Vulkan::CommandBuffer::Type::AsyncCompute, std::move(sems[0]),
 		                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, true);
+		device->add_wait_semaphore(Vulkan::CommandBuffer::Type::VideoEncode, std::move(sems[1]),
+		                           VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
 	}
 }
 
@@ -1930,13 +1948,58 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 	}
 #endif
 
+	if (impl->using_pyro_encoder)
+	{
+		if (impl->pyro_encoder.allocate_direct_ycbcr_image_info(pipeline.pyro_image) != PyroEnc::Result::Success)
+		{
+			LOGE("Failed to acquire pyroenc image? This should never happen ...\n");
+			return;
+		}
+
+		Vulkan::ImageCreateInfo info = {};
+		info.type = VK_IMAGE_TYPE_2D;
+		info.width = pipeline.pyro_image.active_width;
+		info.height = pipeline.pyro_image.active_height;
+		info.depth = 1;
+		info.format = pipeline.pyro_image.image_format;
+		info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR;
+		info.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
+		info.layers = 1;
+		info.levels = 1;
+		info.domain = Vulkan::ImageDomain::Physical;
+		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		info.misc = Vulkan::IMAGE_MISC_NO_DEFAULT_VIEWS_BIT;
+		wrapped_image = device.wrap_image(info, pipeline.pyro_image.image);
+
+		Vulkan::ImageViewCreateInfo view_info = {};
+		view_info.image = wrapped_image.get();
+		view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
+
+		view_info.aspect = VK_IMAGE_ASPECT_PLANE_0_BIT;
+		view_info.format = pipeline.pyro_image.plane_formats[0];
+		wrapped_planes[0] = device.create_image_view(view_info);
+
+		view_info.aspect = VK_IMAGE_ASPECT_PLANE_1_BIT;
+		view_info.format = pipeline.pyro_image.plane_formats[1];
+		wrapped_planes[1] = device.create_image_view(view_info);
+
+		rescale_info.output_planes[0] = wrapped_planes[0].get();
+		rescale_info.output_planes[1] = wrapped_planes[1].get();
+		rescale_info.num_output_planes = 2;
+
+		cmd.image_barrier(*wrapped_image,
+		                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+		                  VK_PIPELINE_STAGE_NONE, VK_ACCESS_NONE,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+	}
+
 	pipeline.scaler.rescale(cmd, rescale_info);
 
 	for (unsigned plane = 0; plane < pipeline.num_planes; plane++)
 	{
 		if (pipeline.output_planes[plane])
 		{
-			if (impl->using_pyrowave_encoder || impl->using_pyro_encoder)
+			if (impl->using_pyrowave_encoder)
 			{
 				cmd.image_barrier(*pipeline.output_planes[plane],
 								  VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
@@ -1951,6 +2014,14 @@ void VideoEncoder::process_rgb(Vulkan::CommandBuffer &cmd, YCbCrPipeline &pipeli
 				                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 			}
 		}
+	}
+
+	if (impl->using_pyro_encoder)
+	{
+		cmd.image_barrier(*wrapped_image,
+		                  VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_VIDEO_ENCODE_SRC_KHR,
+		                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		                  VK_PIPELINE_STAGE_NONE, VK_ACCESS_NONE);
 	}
 
 	if (pipeline.buffer)
@@ -1993,7 +2064,7 @@ bool VideoEncoder::encode_frame(YCbCrPipeline &pipeline_ptr, int64_t pts, int co
 
 	if (impl->using_pyro_encoder)
 	{
-		ret = impl->encode_frame(pipeline.output_planes[0]->get_view(), pts, compensate_audio_us);
+		ret = impl->encode_frame(pipeline.pyro_image, pts, compensate_audio_us);
 	}
 	else if (pipeline.hw_frame)
 	{
@@ -2052,50 +2123,43 @@ VideoEncoder::YCbCrPipeline VideoEncoder::create_ycbcr_pipeline(const FFmpegEnco
 	unsigned pixel_size;
 
 	if (impl->using_pyro_encoder)
+		return pipeline_ptr;
+
+	switch (impl->options.format)
 	{
-		pipeline.num_planes = 1;
-		luma_format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-		chroma_format = VK_FORMAT_UNDEFINED;
-		pixel_size = 4;
-	}
-	else
-	{
-		switch (impl->options.format)
-		{
-		case Format::NV12:
-			pixel_size = 1;
-			luma_format = VK_FORMAT_R8_UNORM;
-			chroma_format = VK_FORMAT_R8G8_UNORM;
-			pipeline.num_planes = 2;
-			break;
+	case Format::NV12:
+		pixel_size = 1;
+		luma_format = VK_FORMAT_R8_UNORM;
+		chroma_format = VK_FORMAT_R8G8_UNORM;
+		pipeline.num_planes = 2;
+		break;
 
-		case Format::P010:
-		case Format::P016:
-			pixel_size = 2;
-			luma_format = VK_FORMAT_R16_UNORM;
-			chroma_format = VK_FORMAT_R16G16_UNORM;
-			pipeline.num_planes = 2;
-			break;
+	case Format::P010:
+	case Format::P016:
+		pixel_size = 2;
+		luma_format = VK_FORMAT_R16_UNORM;
+		chroma_format = VK_FORMAT_R16G16_UNORM;
+		pipeline.num_planes = 2;
+		break;
 
-		case Format::YUV420P:
-		case Format::YUV444P:
-			pixel_size = 1;
-			luma_format = VK_FORMAT_R8_UNORM;
-			chroma_format = VK_FORMAT_R8_UNORM;
-			pipeline.num_planes = 3;
-			break;
+	case Format::YUV420P:
+	case Format::YUV444P:
+		pixel_size = 1;
+		luma_format = VK_FORMAT_R8_UNORM;
+		chroma_format = VK_FORMAT_R8_UNORM;
+		pipeline.num_planes = 3;
+		break;
 
-		case Format::YUV420P16:
-		case Format::YUV444P16:
-			pixel_size = 2;
-			luma_format = VK_FORMAT_R16_UNORM;
-			chroma_format = VK_FORMAT_R16_UNORM;
-			pipeline.num_planes = 3;
-			break;
+	case Format::YUV420P16:
+	case Format::YUV444P16:
+		pixel_size = 2;
+		luma_format = VK_FORMAT_R16_UNORM;
+		chroma_format = VK_FORMAT_R16_UNORM;
+		pipeline.num_planes = 3;
+		break;
 
-		default:
-			return {};
-		}
+	default:
+		return {};
 	}
 
 	auto image_info = Vulkan::ImageCreateInfo::immutable_2d_image(

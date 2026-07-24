@@ -1651,7 +1651,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.image_compression_control_swapchain_features, IMAGE_COMPRESSION_CONTROL_SWAPCHAIN_FEATURES_EXT);
 	}
 
-	if (has_extension(VK_NV_LOW_LATENCY_2_EXTENSION_NAME))
+	if ((flags & CONTEXT_CREATION_ENABLE_ADVANCED_WSI_BIT) != 0 && requires_swapchain &&
+	    has_extension(VK_NV_LOW_LATENCY_2_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_NV_LOW_LATENCY_2_EXTENSION_NAME);
 		ext.supports_low_latency2_nv = true;

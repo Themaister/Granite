@@ -370,6 +370,20 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
 		if (messageType == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
 		{
+			// FFmpeg triggers this when decoding. Nothing we can do about it for now.
+			static const char *known_failures[] = {
+				"VUID-VkVideoBeginCodingInfoKHR-slotIndex-07245",
+			};
+
+			if (pCallbackData->pMessageIdName)
+			{
+				for (auto *failure : known_failures)
+				{
+					if (strcmp(failure, pCallbackData->pMessageIdName) == 0)
+						return VK_FALSE;
+				}
+			}
+
 			LOGE("[Vulkan]: Validation Error: %s - %s\n", pCallbackData->pMessageIdName, pCallbackData->pMessage);
 			context->notify_validation_error(pCallbackData->pMessage);
 		}

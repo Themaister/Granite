@@ -3083,14 +3083,26 @@ bool VideoDecoder::Impl::seek(double ts)
 		return false;
 	}
 
+	acquire_is_eof = false;
+	is_video_eof = false;
+	is_audio_eof = false;
+	is_flushing = false;
+
+	// If the decode thread has flagged teardown, we need to restart it with a proper play().
+	if (teardown && decode_thread.joinable())
+		decode_thread.join();
+
+	flush_codecs();
+
 	if (decode_thread.joinable())
 	{
-		flush_codecs();
 		begin_audio_stream();
 		return true;
 	}
 	else
+	{
 		return play();
+	}
 }
 
 VideoDecoder::Impl::~Impl()

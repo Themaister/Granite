@@ -22,7 +22,7 @@
 
 #pragma once
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
 
 #include <intrin.h>
 #if defined(_INCLUDED_PMM) && !defined(__SSE3__)

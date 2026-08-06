@@ -4000,14 +4000,14 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 		{
 			mode = AllocationMode::External;
 		}
-		else if (tiling == VK_IMAGE_TILING_OPTIMAL &&
+		else if ((tiling == VK_IMAGE_TILING_OPTIMAL || tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) &&
 		         (info.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT)) != 0)
 		{
 			mode = AllocationMode::OptimalRenderTarget;
 		}
 		else
 		{
-			mode = tiling == VK_IMAGE_TILING_OPTIMAL || info.domain == ImageDomain::LinearDevice ?
+			mode = tiling == VK_IMAGE_TILING_OPTIMAL || tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT || info.domain == ImageDomain::LinearDevice ?
 			       AllocationMode::OptimalResource : AllocationMode::LinearHostMappable;
 		}
 
@@ -5365,7 +5365,8 @@ bool Device::image_format_is_supported(VkFormat format, VkFormatFeatureFlags2 re
 {
 	VkFormatProperties3 props3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
 	get_format_properties(format, &props3);
-	auto flags = tiling == VK_IMAGE_TILING_OPTIMAL ? props3.optimalTilingFeatures : props3.linearTilingFeatures;
+	auto flags = tiling == VK_IMAGE_TILING_OPTIMAL || tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT ?
+		props3.optimalTilingFeatures : props3.linearTilingFeatures;
 	return (flags & required) == required;
 }
 

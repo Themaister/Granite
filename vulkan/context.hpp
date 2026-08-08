@@ -141,6 +141,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceDescriptorHeapFeaturesEXT descriptor_heap_features = {};
 	VkPhysicalDeviceDescriptorHeapPropertiesEXT descriptor_heap_properties = {};
 	VkPhysicalDeviceFaultFeaturesEXT fault_features_ext = {};
+	VkPhysicalDeviceShaderImageAtomicInt64FeaturesEXT image_atomic_int64_features = {};
 
 	// Vendor
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};

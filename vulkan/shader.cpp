@@ -1091,6 +1091,9 @@ Shader::Shader(Hash hash, Device *device_, const uint32_t *data, size_t size,
 #ifdef GRANITE_VULKAN_SPIRV_CROSS
 	else if (!reflect_resource_layout(layout, data, size))
 		LOGE("Failed to reflect resource layout.\n");
+#else
+	else
+		LOGE("Attempted to reflect resource layout, but SPIRV-Cross is not enabled in build.\n");
 #endif
 
 	if (layout.bindless_set_mask != 0 && !device->get_device_features().vk12_features.descriptorIndexing)

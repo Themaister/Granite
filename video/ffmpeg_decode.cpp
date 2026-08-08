@@ -2144,6 +2144,9 @@ void VideoDecoder::Impl::process_video_frame_in_task(unsigned frame, AVFrame *av
 	img.state = ImageState::Ready;
 	img.done_ts = Util::get_current_time_nsecs();
 	cond.notify_all();
+
+	// Stop forcing forward progress when we've decoded a frame.
+	acquire_blocking = false;
 }
 
 void VideoDecoder::Impl::process_video_frame(AVFrame *av_frame, int64_t pts)
@@ -2667,10 +2670,23 @@ bool VideoDecoder::Impl::acquire_video_frame(VideoFrame &frame, int timeout_ms)
 
 	std::unique_lock<std::mutex> holder{lock};
 
-	// Wake up decode thread to make sure it knows acquire thread
-	// is blocking and awaits forward progress.
-	acquire_blocking = true;
-	cond.notify_one();
+	bool has_forward_progress = false;
+	for (auto &queue : video_queue)
+	{
+		if (queue.state == ImageState::Locked || queue.state == ImageState::Ready)
+		{
+			has_forward_progress = true;
+			break;
+		}
+	}
+
+	if (!has_forward_progress)
+	{
+		// Wake up decode thread to make sure it knows acquire thread
+		// is blocking and awaits forward progress.
+		acquire_blocking = true;
+		cond.notify_one();
+	}
 
 	int index = -1;
 

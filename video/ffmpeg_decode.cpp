@@ -1677,7 +1677,7 @@ void VideoDecoder::Impl::update_plane_resources(DecodedImage &img, bool need_per
 			{
 				img.color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;
 			}
-			else if (active_transfer_function == AVCOL_TRC_BT709)
+			else if (active_transfer_function == AVCOL_TRC_BT709 || active_transfer_function == AVCOL_TRC_UNSPECIFIED)
 			{
 				// The "default". Technically I don't think BT709 TRC == sRGB TRC.
 				// SRGB_NONLINEAR_KHR is the "vague" gamma 2.2 thing.

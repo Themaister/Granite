@@ -1107,11 +1107,17 @@ bool VideoDecoder::Impl::init_video_decoder_post_device()
 		if (!hw.init_codec_context(video.av_codec, device, video.av_ctx, opts.hwdevice, false))
 			LOGW("Failed to init hardware decode context. Falling back to software.\n");
 
-		if (avcodec_open2(video.av_ctx, video.av_codec, nullptr) < 0)
+		AVDictionary *av_opts = nullptr;
+		if (opts.threads)
+			av_dict_set_int(&av_opts, "threads", opts.threads, 0);
+
+		if (avcodec_open2(video.av_ctx, video.av_codec, &av_opts) < 0)
 		{
 			LOGE("Failed to open codec.\n");
 			return false;
 		}
+
+		av_dict_free(&av_opts);
 	}
 	else if (using_pyrowave)
 	{

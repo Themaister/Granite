@@ -1226,6 +1226,17 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 			av_dict_set_int(&opts, "async_depth", 1, 0);
 	}
 
+	bool is_ffv1 = strcmp(options.encoder, "ffv1") == 0;
+	if (is_ffv1)
+	{
+		av_dict_set_int(&opts, "level", 3, 0);
+		if (options.threads)
+		{
+			av_dict_set_int(&opts, "slices", std::min<uint32_t>(16u, options.threads), 0);
+			av_dict_set_int(&opts, "threads", std::min<uint32_t>(16u, options.threads), 0);
+		}
+	}
+
 	video.av_ctx->bit_rate = options.bitrate_kbits * 1000;
 	video.av_ctx->rc_buffer_size = options.vbv_size_kbits * 1000;
 	video.av_ctx->rc_max_rate = options.max_bitrate_kbits * 1000;

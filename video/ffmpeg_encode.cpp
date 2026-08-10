@@ -1333,7 +1333,6 @@ bool VideoEncoder::Impl::init_video_codec_av(const AVCodec *codec)
 		case AV_CODEC_ID_AV1:
 			return PYRO_VIDEO_CODEC_AV1;
 		default:
-			LOGW("Unknown video codec %d.\n", id);
 			return PYRO_VIDEO_CODEC_NONE;
 		}
 	};

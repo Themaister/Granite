@@ -673,6 +673,7 @@ bool VideoEncoder::Impl::encode_frame(const uint8_t *buffer, const PlaneLayout *
 	// Ideally we'd be able to set the data pointers directly in AVFrame,
 	// but encoder reference buffers probably require a copy anyways ...
 	unsigned pix_size = options.format != VideoEncoder::Format::NV12 &&
+	                    options.format != VideoEncoder::Format::YUV444P &&
 	                    options.format != VideoEncoder::Format::YUV420P ? 2 : 1;
 	const auto *src_luma = buffer + planes[0].offset;
 	const auto *src_chroma = buffer + planes[1].offset;

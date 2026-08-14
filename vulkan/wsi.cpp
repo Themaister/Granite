@@ -2459,6 +2459,10 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		}
 	}
 
+	// We want IMMEDIATE to come before MAILBOX if both are supported.
+	std::sort(info.present_mode_compat_group.begin(), info.present_mode_compat_group.end(),
+	          [](VkPresentModeKHR a, VkPresentModeKHR b) { return a < b; });
+
 	uint32_t format_count = 0;
 	if (ext.supports_surface_capabilities2)
 	{

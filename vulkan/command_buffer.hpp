@@ -182,7 +182,8 @@ union PipelineState {
 		uint32_t subgroup_maximum_size_log2_task : 3;
 		uint32_t conservative_raster : 1;
 		uint32_t indirect_bindable : 1;
-		uint32_t padding : 8;
+		uint32_t robustness : 1;
+		uint32_t padding : 7;
 
 		// Word 3
 		uint32_t write_mask;
@@ -717,6 +718,11 @@ public:
 	{
 		VK_ASSERT((spec_constant_mask & ~((1u << VULKAN_NUM_USER_SPEC_CONSTANTS) - 1u)) == 0u);
 		SET_POTENTIALLY_STATIC_STATE(spec_constant_mask);
+	}
+
+	inline void set_robustness(bool robustness)
+	{
+		SET_STATIC_STATE(robustness);
 	}
 
 	template <typename T>

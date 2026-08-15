@@ -1937,9 +1937,11 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	ext.vk14_features.dynamicRenderingLocalRead = VK_FALSE;
 	ext.vk14_features.globalPriorityQuery = VK_FALSE;
 	ext.vk14_features.pipelineProtectedAccess = VK_FALSE;
-	ext.vk14_features.pipelineRobustness = VK_FALSE;
 	ext.vk14_features.vertexAttributeInstanceRateDivisor = VK_FALSE;
 	ext.vk14_features.vertexAttributeInstanceRateZeroDivisor = VK_FALSE;
+	// Enabling state-based robustness uses robustness2.
+	if (!has_extension(VK_EXT_ROBUSTNESS_2_EXTENSION_NAME) && !has_extension(VK_KHR_ROBUSTNESS_2_EXTENSION_NAME))
+		ext.vk14_features.pipelineRobustness = VK_FALSE;
 	ext.vk14_features.stippledBresenhamLines = VK_FALSE;
 	ext.vk14_features.stippledRectangularLines = VK_FALSE;
 	ext.vk14_features.stippledSmoothLines = VK_FALSE;

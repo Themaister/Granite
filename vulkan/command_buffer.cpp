@@ -1184,6 +1184,17 @@ Pipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPip
 		info.stage.pNext = &mapping_info;
 	}
 
+	VkPipelineRobustnessCreateInfo robustness = { VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO };
+	if (compile.static_state.state.robustness && device->get_device_features().vk14_features.pipelineRobustness)
+	{
+		robustness.images = VK_PIPELINE_ROBUSTNESS_IMAGE_BEHAVIOR_ROBUST_IMAGE_ACCESS_2;
+		robustness.storageBuffers = VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2;
+		robustness.uniformBuffers = VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2;
+		robustness.vertexInputs = VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2;
+		robustness.pNext = info.pNext;
+		info.pNext = &robustness;
+	}
+
 	auto start_ts = Util::get_current_time_nsecs();
 	VkResult vr = device->pipeline_binary_cache.create_pipeline(&info, compile.cache, &compute_pipeline);
 	auto end_ts = Util::get_current_time_nsecs();
@@ -1586,6 +1597,17 @@ Pipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPi
 		flags2.flags |= VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT;
 	}
 
+	VkPipelineRobustnessCreateInfo robustness = { VK_STRUCTURE_TYPE_PIPELINE_ROBUSTNESS_CREATE_INFO };
+	if (compile.static_state.state.robustness && device->get_device_features().vk14_features.pipelineRobustness)
+	{
+		robustness.images = VK_PIPELINE_ROBUSTNESS_IMAGE_BEHAVIOR_ROBUST_IMAGE_ACCESS_2;
+		robustness.storageBuffers = VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2;
+		robustness.uniformBuffers = VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2;
+		robustness.vertexInputs = VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2;
+		robustness.pNext = pipe.pNext;
+		pipe.pNext = &robustness;
+	}
+
 	auto start_ts = Util::get_current_time_nsecs();
 	VkResult res = device->pipeline_binary_cache.create_pipeline(&pipe, compile.cache, &pipeline);
 	auto end_ts = Util::get_current_time_nsecs();
@@ -1631,6 +1653,8 @@ void CommandBuffer::update_hash_compute_pipeline(DeferredPipelineCompile &compil
 	for_each_bit(combined_spec_constant, [&](uint32_t bit) {
 		h.u32(compile.potential_static_state.spec_constants[bit]);
 	});
+
+	h.u32(compile.static_state.state.robustness);
 
 	if (compile.static_state.state.subgroup_control_size)
 	{

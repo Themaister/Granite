@@ -398,15 +398,10 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 			LOGW("[Vulkan]: Other Warning: %s\n", pCallbackData->pMessage);
 		break;
 
-#if 0
-	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
 		if (messageType == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
 			LOGI("[Vulkan]: Validation Info: %s\n", pCallbackData->pMessage);
-		else
-			LOGI("[Vulkan]: Other Info: %s\n", pCallbackData->pMessage);
 		break;
-#endif
 
 	default:
 		return VK_FALSE;
@@ -687,6 +682,7 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 
 	force_no_validation = Util::get_environment_bool("GRANITE_VULKAN_NO_VALIDATION", false);
 	VkValidationFeaturesEXT validation_features = { VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT };
+	VkValidationFeatureEnableEXT validate_features_enable[4];
 
 	if (!force_no_validation && has_layer("VK_LAYER_KHRONOS_validation"))
 	{
@@ -698,22 +694,39 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		std::vector<VkExtensionProperties> layer_exts(layer_ext_count);
 		vkEnumerateInstanceExtensionProperties("VK_LAYER_KHRONOS_validation", &layer_ext_count, layer_exts.data());
 
-		if (Util::get_environment_bool("GRANITE_VULKAN_SYNC_VALIDATION", false))
+		bool has_validation_features = find_if(begin(layer_exts), end(layer_exts), [](const VkExtensionProperties &e)
 		{
-			// Tons of false positives around timeline semaphores atm, so don't bother.
-			if (find_if(begin(layer_exts), end(layer_exts), [](const VkExtensionProperties &e)
+			return strcmp(e.extensionName, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) == 0;
+		}) != end(layer_exts);
+
+		if (has_validation_features)
+		{
+			instance_exts.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
+			validation_features.pEnabledValidationFeatures = validate_features_enable;
+			validation_features.pNext = info.pNext;
+			info.pNext = &validation_features;
+
+			if (Util::get_environment_bool("GRANITE_VULKAN_PRINTF", false))
 			{
-				return strcmp(e.extensionName, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) == 0;
-			}) != end(layer_exts))
+				LOGI("Enabling VK_EXT_validation_features for printf.\n");
+				validate_features_enable[validation_features.enabledValidationFeatureCount++] =
+					VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT;
+			}
+
+			if (Util::get_environment_bool("GRANITE_VULKAN_SYNC_VALIDATION", false))
 			{
-				instance_exts.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
-				static const VkValidationFeatureEnableEXT validation_sync_features[1] = {
-					VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT,
-				};
 				LOGI("Enabling VK_EXT_validation_features for synchronization validation.\n");
-				validation_features.enabledValidationFeatureCount = 1;
-				validation_features.pEnabledValidationFeatures = validation_sync_features;
-				info.pNext = &validation_features;
+				validate_features_enable[validation_features.enabledValidationFeatureCount++] =
+					VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
+			}
+
+			if (Util::get_environment_bool("GRANITE_VULKAN_GPU_VALIDATION", false))
+			{
+				LOGI("Enabling VK_EXT_validation_features for GPU validation.\n");
+				validate_features_enable[validation_features.enabledValidationFeatureCount++] =
+					VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT;
+				validate_features_enable[validation_features.enabledValidationFeatureCount++] =
+					VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT;
 			}
 		}
 

@@ -123,14 +123,6 @@ private:
         PFN_GFSDK_Aftermath_AddGpuCrashDumpDescription addDescription,
         void* pUserData);
 
-    // App-managed marker resolve callback
-    static void ResolveMarkerCallback(
-        const void* pMarkerData,
-        const uint32_t markerDataSize,
-        void* pUserData,
-        void** ppResolvedMarkerData,
-        uint32_t* pResolvedMarkerDataSize);
-
     // Shader debug information lookup callback.
     static void ShaderDebugInfoLookupCallback(
         const GFSDK_Aftermath_ShaderDebugInfoIdentifier* pIdentifier,

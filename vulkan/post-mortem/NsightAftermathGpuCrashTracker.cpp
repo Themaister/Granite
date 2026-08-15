@@ -76,8 +76,8 @@ void GpuCrashTracker::Initialize()
 		GpuCrashDumpCallback,                                             // Register callback for GPU crash dumps.
 		ShaderDebugInfoCallback,                                          // Register callback for shader debug information.
 		CrashDumpDescriptionCallback,                                     // Register callback for GPU crash dump description.
-		ResolveMarkerCallback,                                            // Register callback for resolving application-managed markers.
-		this));                                                           // Set the GpuCrashTracker object as user data for the above callbacks.
+		nullptr,                                            // Register callback for resolving application-managed markers.
+		this));                                                  // Set the GpuCrashTracker object as user data for the above callbacks.
 
 	m_initialized = true;
 }
@@ -377,18 +377,6 @@ void GpuCrashTracker::CrashDumpDescriptionCallback(
 {
 	auto* pGpuCrashTracker = static_cast<GpuCrashTracker*>(pUserData);
 	pGpuCrashTracker->OnDescription(addDescription);
-}
-
-// Static callback wrapper for OnResolveMarker
-void GpuCrashTracker::ResolveMarkerCallback(
-		const void* pMarkerData,
-		const uint32_t markerDataSize,
-		void* pUserData,
-		void** ppResolvedMarkerData,
-		uint32_t* pResolvedMarkerDataSize)
-{
-	auto* pGpuCrashTracker = static_cast<GpuCrashTracker*>(pUserData);
-	pGpuCrashTracker->OnResolveMarker(pMarkerData, markerDataSize, ppResolvedMarkerData, pResolvedMarkerDataSize);
 }
 
 // Static callback wrapper for OnShaderDebugInfoLookup

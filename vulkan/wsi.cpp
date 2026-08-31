@@ -1225,9 +1225,10 @@ void WSI::poll_present_timing_feedback()
 			{
 				auto wrapped_id = present_timing.present_id % (present_frame_latency + 1);
 				auto *e = timeline->allocate_event();
-				e->set_desc(("flip-gap " + std::to_string(present_timing.present_id)).c_str());
+				e->set_desc("flip-gap");
 				e->set_tid(("WSI flipgap" + std::to_string(wrapped_id)).c_str());
 				e->pid = 0;
+				e->counter = present_timing.present_id;
 				e->start_ns = present_timing.gpu_done_host_time;
 				e->end_ns = present_timing.present_done_host_time;
 				timeline->submit_event(e);
@@ -1807,7 +1808,7 @@ bool WSI::end_frame()
 		device->external_queue_unlock();
 
 		device->register_time_interval("WSI", std::move(present_ts), device->write_calibrated_timestamp(),
-			"present " + std::to_string(next_present_id));
+			"present", next_present_id);
 
 #if defined(ANDROID)
 		// Android 10 can return suboptimal here, only because of pre-transform.

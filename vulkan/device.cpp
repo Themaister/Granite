@@ -2827,14 +2827,14 @@ void Device::recalibrate_timestamps()
 }
 
 void Device::register_time_interval(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,
-                                    const std::string &tag)
+                                    const std::string &tag, uint64_t counter)
 {
 	LOCK();
-	register_time_interval_nolock(std::move(tid), std::move(start_ts), std::move(end_ts), tag);
+	register_time_interval_nolock(std::move(tid), std::move(start_ts), std::move(end_ts), tag, counter);
 }
 
 void Device::register_time_interval_nolock(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,
-                                           const std::string &tag)
+                                           const std::string &tag, uint64_t counter)
 {
 	if (start_ts && end_ts)
 	{
@@ -2843,7 +2843,7 @@ void Device::register_time_interval_nolock(std::string tid, QueryPoolHandle star
 		if (start_ts->is_signalled() && end_ts->is_signalled())
 			VK_ASSERT(end_ts->get_timestamp_ticks() >= start_ts->get_timestamp_ticks());
 #endif
-		frame().timestamp_intervals.push_back({ std::move(tid), std::move(start_ts), std::move(end_ts), timestamp_tag });
+		frame().timestamp_intervals.push_back({ std::move(tid), std::move(start_ts), std::move(end_ts), timestamp_tag, counter });
 	}
 }
 
@@ -3075,6 +3075,7 @@ void Device::PerFrame::begin()
 				auto *e = device.system_handles.timeline_trace_file->allocate_event();
 				e->set_desc(ts.timestamp_tag->get_tag().c_str());
 				e->set_tid(ts.tid.c_str());
+				e->counter = ts.counter;
 				e->pid = frame_index + 1;
 				e->start_ns = start_ts;
 				e->end_ns = end_ts;

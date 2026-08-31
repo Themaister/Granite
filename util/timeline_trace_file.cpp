@@ -61,6 +61,7 @@ TimelineTraceFile::Event *TimelineTraceFile::begin_event(const char *desc, uint3
 {
 	auto *e = event_pool.allocate();
 	e->pid = pid;
+	e->counter = 0;
 	e->set_tid(trace_tid);
 	e->set_desc(desc);
 	e->start_ns = get_current_time_nsecs();
@@ -73,6 +74,7 @@ TimelineTraceFile::Event *TimelineTraceFile::allocate_event()
 	e->desc[0] = '\0';
 	e->tid[0] = '\0';
 	e->pid = 0;
+	e->counter = 0;
 	e->start_ns = 0;
 	e->end_ns = 0;
 	return e;
@@ -129,10 +131,13 @@ void TimelineTraceFile::looper(std::string path)
 
 		if (file && start_us <= end_us)
 		{
-			fprintf(file, "{ \"name\": \"%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %f },\n",
-			        e->desc, e->tid, e->pid, start_us);
-			fprintf(file, "{ \"name\": \"%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %f },\n",
-			        e->desc, e->tid, e->pid, end_us);
+			std::string counter;
+			if (e->counter)
+				counter = " " + std::to_string(e->counter);
+			fprintf(file, "{ \"name\": \"%s%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %f },\n",
+			        e->desc, counter.c_str(), e->tid, e->pid, start_us);
+			fprintf(file, "{ \"name\": \"%s%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %f },\n",
+			        e->desc, counter.c_str(), e->tid, e->pid, end_us);
 		}
 
 		event_pool.free(e);

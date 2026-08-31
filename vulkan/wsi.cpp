@@ -24,6 +24,7 @@
 #include "wsi.hpp"
 #include "environment.hpp"
 #include <algorithm>
+#include "timeline_trace_file.hpp"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -1219,6 +1220,18 @@ void WSI::poll_present_timing_feedback()
 		{
 			frr_pacer.update_feedback(present_timing.present_id, present_timing.gpu_done_host_time,
 			                          present_timing.present_done_host_time);
+
+			if (auto *timeline = device->get_system_handles().timeline_trace_file)
+			{
+				auto wrapped_id = present_timing.present_id % (present_frame_latency + 1);
+				auto *e = timeline->allocate_event();
+				e->set_desc(("flip-gap " + std::to_string(present_timing.present_id)).c_str());
+				e->set_tid(("WSI flipgap" + std::to_string(wrapped_id)).c_str());
+				e->pid = 0;
+				e->start_ns = present_timing.gpu_done_host_time;
+				e->end_ns = present_timing.present_done_host_time;
+				timeline->submit_event(e);
+			}
 		}
 	}
 }
@@ -1793,7 +1806,8 @@ bool WSI::end_frame()
 		emit_marker_post_present();
 		device->external_queue_unlock();
 
-		device->register_time_interval("WSI", std::move(present_ts), device->write_calibrated_timestamp(), "present");
+		device->register_time_interval("WSI", std::move(present_ts), device->write_calibrated_timestamp(),
+			"present " + std::to_string(next_present_id));
 
 #if defined(ANDROID)
 		// Android 10 can return suboptimal here, only because of pre-transform.

@@ -2965,6 +2965,13 @@ void Device::PerFrame::begin()
 
 	wait(UINT64_MAX);
 
+	if (!in_destructor)
+	{
+		auto end_ts = device.write_calibrated_timestamp_nolock();
+		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), end_ts, "fence");
+		wait_fence_ts = std::move(end_ts);
+	}
+
 	for (auto &cmd_pool : cmd_pools)
 		for (auto &pool : cmd_pool)
 			pool.begin();
@@ -3047,7 +3054,7 @@ void Device::PerFrame::begin()
 	breadcrumbs.clear();
 
 	if (!in_destructor)
-		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence + recycle");
+		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "recycle");
 
 	int64_t min_timestamp_us = std::numeric_limits<int64_t>::max();
 	int64_t max_timestamp_us = 0;

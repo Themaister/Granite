@@ -1790,6 +1790,12 @@ bool WSI::end_frame()
 			timings_info.pNext = info.pNext;
 			info.pNext = &timings_info;
 		}
+		else
+		{
+			// Clear out state so that we don't risk a massive stall after timing re-enabled.
+			present_timing.present_done_host_time = 0;
+			present_timing.present_id = 0;
+		}
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto present_start = Util::get_current_time_nsecs();

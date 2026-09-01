@@ -316,7 +316,7 @@ struct WMMATest : Granite::Application, Granite::EventHandler
 		if (!buffer)
 			return;
 
-		assert(buffer.get_create_info().size == Width * Height * sizeof(uint16_t));
+		assert(buffer->get_create_info().size == Width * Height * sizeof(uint16_t));
 		auto *out_data = static_cast<uint16_t *>(get_wsi().get_device().map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT));
 		printf("\n====== %s ======\n", tag);
 		for (uint32_t y = 0; y < 8; y++)

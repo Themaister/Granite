@@ -50,3 +50,8 @@ if (GRANITE_SHIPPING)
     target_compile_definitions(granite-util PUBLIC GRANITE_SHIPPING)
 endif()
 
+if (ANDROID)
+    # For logging
+    target_link_libraries(granite-util PRIVATE log)
+endif()
+

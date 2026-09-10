@@ -41,7 +41,7 @@ if (NOT TARGET granite-application-interface-query)
     target_compile_options(granite-application-interface-query PRIVATE ${GRANITE_CXX_FLAGS})
 endif()
 
-if (NOT ANDROID)
+if ((NOT ANDROID) OR (${GRANITE_PLATFORM} MATCHES "headless"))
     add_granite_internal_lib(granite-application-entry STATIC application_entry.cpp)
     target_compile_options(granite-application-entry PRIVATE ${GRANITE_CXX_FLAGS})
     target_link_libraries(granite-application-entry

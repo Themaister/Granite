@@ -101,7 +101,11 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 
 			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, array_size, stages,
 			                     vk_immutable_samplers[i] != VK_NULL_HANDLE ? &vk_immutable_samplers[i] : nullptr });
-			pool_size.push_back({ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, pool_array_size });
+
+			// Don't bother querying. The value must be between 1 and number of planes.
+			// Immutable samplers are almost always YCbCr.
+			uint32_t ycbcr_multiplier = vk_immutable_samplers[i] ? 3 : 1;
+			pool_size.push_back({ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, pool_array_size * ycbcr_multiplier });
 			types++;
 		}
 

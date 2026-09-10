@@ -612,12 +612,14 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 	if (layer_count && !inherit_info)
 		vkEnumerateInstanceLayerProperties(&layer_count, queried_layers.data());
 
+#if defined(VULKAN_DEBUG)
 	if (!inherit_info)
 	{
 		LOGI("Layer count: %u\n", layer_count);
 		for (auto &layer: queried_layers)
 			LOGI("Found layer: %s.\n", layer.layerName);
 	}
+#endif
 
 	const auto has_extension = [&](const char *name) -> bool {
 		if (inherit_info)
@@ -781,8 +783,10 @@ bool Context::create_instance(const char * const *instance_ext, uint32_t instanc
 		info.ppEnabledLayerNames = instance_layers.empty() ? nullptr : instance_layers.data();
 	}
 
+#if defined(VULKAN_DEBUG)
 	for (uint32_t i = 0; i < info.enabledExtensionCount; i++)
 		LOGI("Enabling instance extension: %s.\n", info.ppEnabledExtensionNames[i]);
+#endif
 
 #ifdef GRANITE_VULKAN_PROFILES
 	if (!init_profile())
@@ -1060,7 +1064,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	// We can use core device functionality if enabled VkInstance apiVersion and physical device supports it.
 	ext.device_api_core_version = std::min(ext.instance_api_core_version, gpu_props.apiVersion);
 
+#if defined(VULKAN_DEBUG)
 	LOGI("Using Vulkan GPU: %s\n", gpu_props.deviceName);
+#endif
 
 	// FFmpeg integration requires Vulkan 1.3 core for physical device.
 	uint32_t minimum_api_version = (flags & video_context_flags) ? VK_API_VERSION_1_3 : VK_API_VERSION_1_1;
@@ -2169,8 +2175,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		device_info.ppEnabledExtensionNames = enabled_extensions.empty() ? nullptr : enabled_extensions.data();
 	}
 
+#if defined(VULKAN_DEBUG)
 	for (uint32_t i = 0; i < device_info.enabledExtensionCount; i++)
 		LOGI("Enabling device extension: %s.\n", device_info.ppEnabledExtensionNames[i]);
+#endif
 
 #ifdef GRANITE_VULKAN_PROFILES
 	if (!required_profile.empty())

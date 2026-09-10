@@ -644,9 +644,9 @@ bool DeviceAllocator::internal_allocate(
 		HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
 		get_memory_budget_nolock(budgets);
 
-#ifdef VULKAN_DEBUG
-		LOGI("Allocating %.1f MiB on heap #%u (mode #%u), before allocating budget: (%.1f MiB / %.1f MiB) [%.1f / %.1f].\n",
-		     double(size) / double(1024 * 1024), heap_index, unsigned(mode),
+#if defined(VULKAN_DEBUG)
+		LOGI("Allocating %.1f MiB on heap #%u (mode #%u) (type %u), before allocating budget: (%.1f MiB / %.1f MiB) [%.1f / %.1f].\n",
+		     double(size) / double(1024 * 1024), heap_index, unsigned(mode), memory_type,
 		     double(budgets[heap_index].device_usage) / double(1024 * 1024),
 		     double(budgets[heap_index].budget_size) / double(1024 * 1024),
 		     double(budgets[heap_index].tracked_usage) / double(1024 * 1024),

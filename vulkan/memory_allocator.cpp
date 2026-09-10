@@ -282,9 +282,15 @@ bool Allocator::allocate(uint32_t size, uint32_t alignment, AllocationMode mode,
 	return true;
 }
 
-Allocator::Allocator(Util::ObjectPool<MiniHeap> &object_pool)
+Allocator::Allocator(Util::ObjectPool<MiniHeap> &object_pool, bool lean_memory_config)
 {
-	for (int i = 0; i < Util::ecast(MemoryClass::Count) - 1; i++)
+	int num_memory_classes = Util::ecast(MemoryClass::Count);
+
+	// Skip the largest chunk, and limit chunk allocator to 4 MiB.
+	if (lean_memory_config)
+		num_memory_classes--;
+
+	for (int i = 0; i < num_memory_classes - 1; i++)
 		for (int j = 0; j < Util::ecast(AllocationMode::Count); j++)
 			classes[i][j].set_parent(&classes[i + 1][j]);
 
@@ -305,10 +311,14 @@ Allocator::Allocator(Util::ObjectPool<MiniHeap> &object_pool)
 		get_class_allocator(MemoryClass::Large, mode).set_sub_block_size(
 			128 * Util::LegionAllocator::NumSubBlocks *
 			Util::LegionAllocator::NumSubBlocks);
-		// 2M chunk
-		get_class_allocator(MemoryClass::Huge, mode).set_sub_block_size(
-			64 * Util::LegionAllocator::NumSubBlocks * Util::LegionAllocator::NumSubBlocks *
-			Util::LegionAllocator::NumSubBlocks);
+
+		if (!lean_memory_config)
+		{
+			// 2M chunk
+			get_class_allocator(MemoryClass::Huge, mode).set_sub_block_size(
+				64 * Util::LegionAllocator::NumSubBlocks * Util::LegionAllocator::NumSubBlocks *
+				Util::LegionAllocator::NumSubBlocks);
+		}
 	}
 }
 
@@ -327,7 +337,7 @@ void DeviceAllocator::init(Device *device_)
 	allocators.reserve(mem_props.memoryTypeCount);
 	for (unsigned i = 0; i < mem_props.memoryTypeCount; i++)
 	{
-		allocators.emplace_back(new Allocator(object_pool));
+		allocators.emplace_back(new Allocator(object_pool, device->get_context_options().lean_memory_mode));
 		allocators.back()->set_global_allocator(this, i);
 	}
 
@@ -402,6 +412,23 @@ bool DeviceAllocator::allocate_buffer_memory(uint32_t size, uint32_t alignment, 
 	}
 }
 
+AllocationMode DeviceAllocator::normalize_allocation_mode(AllocationMode mode)
+{
+	switch (mode)
+	{
+	case AllocationMode::LinearDevice:
+	case AllocationMode::LinearDeviceHighPriority:
+		return AllocationMode::LinearDevice;
+
+	case AllocationMode::OptimalRenderTarget:
+	case AllocationMode::OptimalResource:
+		return AllocationMode::OptimalResource;
+
+	default:
+		return mode;
+	}
+}
+
 bool DeviceAllocator::allocate_image_memory(uint32_t size, uint32_t alignment, AllocationMode mode, uint32_t memory_type,
                                             VkImage image, bool force_no_dedicated, DeviceAllocation *alloc,
                                             ExternalHandle *external)
@@ -419,6 +446,10 @@ bool DeviceAllocator::allocate_image_memory(uint32_t size, uint32_t alignment, A
 	VkMemoryRequirements2 mem_req = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
 	mem_req.pNext = &dedicated_req;
 	table->vkGetImageMemoryRequirements2(device->get_device(), &info, &mem_req);
+
+	// Don't try to suballocate for large images in lean mode.
+	if (mem_req.memoryRequirements.size >= 2 * 1024 * 1024 && device->get_context_options().lean_memory_mode)
+		dedicated_req.prefersDedicatedAllocation = VK_TRUE;
 
 	if (dedicated_req.prefersDedicatedAllocation ||
 	    dedicated_req.requiresDedicatedAllocation ||
@@ -694,7 +725,8 @@ bool DeviceAllocator::internal_allocate(
 	}
 
 	// Don't bother with memory priority on external objects.
-	if (device->get_device_features().memory_priority_features.memoryPriority && !external)
+	if (device->get_device_features().memory_priority_features.memoryPriority &&
+	    device->get_context_options().memory_priorities && !external)
 	{
 		switch (mode)
 		{

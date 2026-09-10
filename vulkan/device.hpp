@@ -164,6 +164,19 @@ private:
 };
 }
 
+struct ContextOptions
+{
+	// Enabled by default.
+	// Disabling may improve memory usage a bit since more allocations get to share the same
+	// VkDeviceMemory.
+	bool memory_priorities = true;
+
+	// In this mode, expect smaller and fewer allocations.
+	// Avoid allocating large blocks in the memory allocator.
+	// Used to save memory.
+	bool lean_memory_mode = false;
+};
+
 class Device
 	: public Util::IntrusivePtrEnabled<Device, std::default_delete<Device>, HandleCounter>
 #ifdef GRANITE_VULKAN_FOSSILIZE
@@ -223,6 +236,8 @@ public:
 
 	// Only called by main thread, during setup phase.
 	void set_context(const Context &context);
+	void set_context(const Context &context, const ContextOptions &options);
+	const ContextOptions &get_context_options() const { return context_options; }
 
 	// This is asynchronous in nature. See query_initialization_progress().
 	// Kicks off Fossilize and shader manager caching.
@@ -553,6 +568,7 @@ private:
 	VkDevice device = VK_NULL_HANDLE;
 	const VolkDeviceTable *table = nullptr;
 	const Context *ctx = nullptr;
+	ContextOptions context_options = {};
 	QueueInfo queue_info;
 	unsigned num_thread_indices = 1;
 

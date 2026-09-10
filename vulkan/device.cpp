@@ -953,7 +953,13 @@ void Device::init_workarounds()
 
 void Device::set_context(const Context &context)
 {
+	set_context(context, {});
+}
+
+void Device::set_context(const Context &context, const ContextOptions &context_options_)
+{
 	ctx = &context;
+	context_options = context_options_;
 	table = &context.get_device_table();
 
 	register_thread_index(0);
@@ -3856,10 +3862,14 @@ DeviceAllocationOwnerHandle Device::allocate_memory(const MemoryAllocateInfo &in
 	if (index == UINT32_MAX)
 		return {};
 
+	auto mode = info.mode;
+	if (!context_options.memory_priorities || !ext.supports_memory_budget)
+		mode = DeviceAllocator::normalize_allocation_mode(mode);
+
 	DeviceAllocation alloc = {};
 	{
 		LOCK_MEMORY();
-		if (!managers.memory.allocate_generic_memory(info.requirements.size, info.requirements.alignment, info.mode,
+		if (!managers.memory.allocate_generic_memory(info.requirements.size, info.requirements.alignment, mode,
 		                                             index, &alloc))
 		{
 			return {};
@@ -4018,6 +4028,9 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 			mode = tiling == VK_IMAGE_TILING_OPTIMAL || tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT || info.domain == ImageDomain::LinearDevice ?
 			       AllocationMode::OptimalResource : AllocationMode::LinearHostMappable;
 		}
+
+		if (!context_options.memory_priorities || !ext.supports_memory_budget)
+			mode = DeviceAllocator::normalize_allocation_mode(mode);
 
 		{
 			LOCK_MEMORY();
@@ -5187,6 +5200,9 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 		mode = AllocationMode::LinearDevice;
 	else
 		mode = AllocationMode::LinearHostMappable;
+
+	if (!context_options.memory_priorities || !ext.supports_memory_budget)
+		mode = DeviceAllocator::normalize_allocation_mode(mode);
 
 	auto external = create_info.external;
 

@@ -198,6 +198,7 @@ void ResourceManager::init()
 	manager = device->get_system_handles().asset_manager;
 
 	// Need to initialize these before setting the interface.
+	if (manager)
 	{
 		uint8_t buffer[4] = {0xff, 0x00, 0xff, 0xff};
 		auto info = ImageCreateInfo::immutable_2d_image(1, 1, VK_FORMAT_R8G8B8A8_UNORM);

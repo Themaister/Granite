@@ -189,6 +189,7 @@ public:
 	void end(BufferMarkerHandle handle);
 
 	void notify_device_hung();
+	void poll_device_faults(FILE *file, uint64_t timeout);
 
 private:
 	Device *device = nullptr;

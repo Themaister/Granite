@@ -2618,6 +2618,9 @@ void Device::wait_idle_nolock()
 		LOCK_MEMORY();
 		managers.memory.garbage_collect();
 	}
+
+	if (ext.fault_features.deviceFaultReportMasked)
+		managers.breadcrumbs.poll_device_faults(stderr, 0);
 }
 
 void Device::promote_read_write_caches_to_read_only()
@@ -2707,6 +2710,9 @@ void Device::next_frame_context()
 	frame().begin();
 	recalibrate_timestamps();
 	frame_context_begin_ts = write_calibrated_timestamp_nolock();
+
+	if (ext.fault_features.deviceFaultReportMasked)
+		managers.breadcrumbs.poll_device_faults(stderr, 0);
 }
 
 QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlags2 stage)

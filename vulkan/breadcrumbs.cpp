@@ -25,6 +25,8 @@
 #include "device.hpp"
 #include "timer.hpp"
 #include <time.h>
+#include <sstream>
+#include <iomanip>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -421,6 +423,102 @@ void BreadcrumbsTracker::poll_device_faults(FILE *file, uint64_t timeout)
 	}
 }
 
+// Reused from my vkd3d-proton impl.
+static uint64_t align(uint64_t value, uint64_t alignment)
+{
+	return (value + alignment - 1) & ~(alignment - 1);
+}
+
+template <typename T, bool Hex = false>
+static void check_format_string(std::string &formatted_str,
+                                const char *shader_fmt_str, const char *msg,
+                                size_t &format_offset, size_t format_length,
+                                size_t &argument_offset, size_t argument_length)
+{
+	if (format_offset + strlen(shader_fmt_str) <= format_length &&
+	    strncmp(msg + format_offset, shader_fmt_str, strlen(shader_fmt_str)) == 0)
+	{
+		T arg = 0;
+		argument_offset = align(argument_offset, sizeof(T));
+		if (argument_offset + sizeof(T) <= argument_length)
+			memcpy(&arg, msg + argument_offset, sizeof(T));
+		argument_offset += sizeof(T);
+		std::stringstream ss;
+		if (Hex)
+			ss << std::hex;
+		ss << arg;
+		formatted_str += ss.str();
+		format_offset += strlen(shader_fmt_str);
+	}
+}
+
+static void shader_abort_print_message(FILE *file, const char *msg, size_t length)
+{
+    const char *term = static_cast<const char *>(memchr(msg, '\0', length));
+
+    if (term && term != msg)
+    {
+		size_t argument_offset = align(term + 1 - msg, sizeof(uint32_t));
+		size_t format_length = term - msg;
+		size_t format_offset = 0;
+		std::string buf;
+
+		// Very basic formatting support. Enough to report what we care about.
+		while (format_offset < format_length)
+		{
+			if (format_offset + 2 <= format_length && strncmp(msg + format_offset, "%%", 2) == 0)
+			{
+				buf.push_back('%');
+				format_offset += 2;
+			}
+
+			check_format_string<uint32_t>(buf, "%u", msg, format_offset, format_length, argument_offset, length);
+			check_format_string<uint32_t, true>(buf, "%x", msg, format_offset, format_length, argument_offset, length);
+			check_format_string<int32_t>(buf, "%x", msg, format_offset, format_length, argument_offset, length);
+			check_format_string<uint64_t>(buf, "%lu", msg, format_offset, format_length, argument_offset, length);
+			check_format_string<uint64_t, true>(buf, "%lx", msg, format_offset, format_length, argument_offset, length);
+			check_format_string<int64_t>(buf, "%ld", msg, format_offset, format_length, argument_offset, length);
+			check_format_string<float>(buf, "%f", msg, format_offset, format_length, argument_offset, length);
+			check_format_string<float>(buf, "%g", msg, format_offset, format_length, argument_offset, length);
+
+			if (format_offset < format_length)
+				buf.push_back(msg[format_offset++]);
+		}
+
+		fprintf(file, "ShaderAbort payload: %s\n", buf.c_str());
+    }
+    else
+    {
+        fprintf(file, "Message does not look like a printf.\n");
+    }
+}
+
+static void shader_abort_print_message_sequence(FILE *file, const uint64_t *tokens, size_t length)
+{
+    // The buffer is laid out as raw length + payload pairs. Pairs are aligned to 64-bit.
+    while (length >= sizeof(uint64_t))
+    {
+        uint64_t msg_length = tokens[0];
+        uint64_t aligned_msg_length;
+        length -= sizeof(uint64_t);
+        tokens++;
+
+        if (msg_length > length)
+        {
+            LOGE("Invalid message length.\n");
+            return;
+        }
+
+        aligned_msg_length = align(msg_length, sizeof(*tokens));
+
+        shader_abort_print_message(file, reinterpret_cast<const char *>(tokens), msg_length);
+        tokens += aligned_msg_length / sizeof(*tokens);
+
+        // The total length of buffer doesn't have to be aligned to 8 bytes.
+        length -= std::min<uint64_t>(aligned_msg_length, length);
+    }
+}
+
 void BreadcrumbsTracker::notify_device_hung()
 {
 	if (!active)
@@ -533,6 +631,20 @@ void BreadcrumbsTracker::notify_device_hung()
 	}
 
 	poll_device_faults(file, UINT64_MAX);
+
+	if (device->get_device_features().shader_abort_features.shaderAbort)
+	{
+		VkDeviceFaultShaderAbortMessageInfoKHR message_info = { VK_STRUCTURE_TYPE_DEVICE_FAULT_SHADER_ABORT_MESSAGE_INFO_KHR };
+		VkDeviceFaultDebugInfoKHR vendor_info = { VK_STRUCTURE_TYPE_DEVICE_FAULT_DEBUG_INFO_KHR, &message_info };
+		if (device->get_device_table().vkGetDeviceFaultDebugInfoKHR(device->get_device(), &vendor_info) == VK_SUCCESS &&
+			message_info.messageDataSize)
+		{
+			std::unique_ptr<uint64_t []> message_data(new uint64_t[align(message_info.messageDataSize, 8) / 8]);
+			message_info.pMessageData = message_data.get();
+			if (device->get_device_table().vkGetDeviceFaultDebugInfoKHR(device->get_device(), &vendor_info) == VK_SUCCESS)
+				shader_abort_print_message_sequence(file, message_data.get(), message_info.messageDataSize);
+		}
+	}
 
 	if (device->get_device_features().fault_features.deviceFaultVendorBinary)
 	{

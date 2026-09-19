@@ -3,6 +3,8 @@
 #pragma optimize off
 
 #extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_EXT_abort : require
+#extension GL_ARB_gpu_shader_int64 : require
 layout(local_size_x = 64) in;
 
 layout(std430, set = 0, binding = 0) readonly buffer VariantBuffer
@@ -46,6 +48,7 @@ uint allocate_work_offset(uint variant_index)
 
 void main()
 {
+   abortEXT("meow %u 0x%x %f %g %lu %ld %lx", 10, 20, 5.0 + 0.0001 * float(gl_GlobalInvocationID.x), 6000000.0 + 0.01 * float(gl_GlobalInvocationID.x), 50ul, 60l, 70l);
    uint variant_index = variants[gl_GlobalInvocationID.x];
    uint work_offset = allocate_work_offset(variant_index);
    work_list[work_offset + 64u * variant_index] = gl_GlobalInvocationID.x;

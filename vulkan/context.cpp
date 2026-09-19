@@ -1827,16 +1827,18 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			ext.supports_nv_checkpoints = true;
 		}
 
-		// The KHR is quite new and not all relevant drivers support the KHR yet.
 		if (has_extension(VK_KHR_DEVICE_FAULT_EXTENSION_NAME))
 		{
 			enabled_extensions.push_back(VK_KHR_DEVICE_FAULT_EXTENSION_NAME);
-			ADD_CHAIN(ext.fault_features_khr, FAULT_FEATURES_KHR);
+			ADD_CHAIN(ext.fault_features, FAULT_FEATURES_KHR);
 		}
-		else if (has_extension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME))
+
+		if (has_extension(VK_KHR_SHADER_ABORT_EXTENSION_NAME))
 		{
-			enabled_extensions.push_back(VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
-			ADD_CHAIN(ext.fault_features_ext, FAULT_FEATURES_EXT);
+			enabled_extensions.push_back(VK_KHR_SHADER_ABORT_EXTENSION_NAME);
+			ADD_CHAIN(ext.shader_abort_features, SHADER_ABORT_FEATURES_KHR);
+			enabled_extensions.push_back(VK_KHR_SHADER_CONSTANT_DATA_EXTENSION_NAME);
+			ADD_CHAIN(ext.shader_constant_data_features, SHADER_CONSTANT_DATA_FEATURES_KHR);
 		}
 
 		ext.supports_post_mortem = true;

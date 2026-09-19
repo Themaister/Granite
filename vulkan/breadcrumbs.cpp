@@ -476,7 +476,7 @@ void BreadcrumbsTracker::notify_device_hung()
 				static_cast<unsigned long long>(info.vendorFaultData));
 	};
 
-	if (device->get_device_features().fault_features_khr.deviceFault)
+	if (device->get_device_features().fault_features.deviceFault)
 	{
 		std::vector<VkDeviceFaultInfoKHR> faults;
 		uint32_t count;
@@ -517,38 +517,6 @@ void BreadcrumbsTracker::notify_device_hung()
 			if (fault.flags & VK_DEVICE_FAULT_FLAG_INSTRUCTION_ADDRESS_KHR)
 				report_address("Instruction ", fault.instructionAddressInfo);
 		}
-	}
-	else
-	{
-		VkDeviceFaultCountsEXT counts = { VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT };
-		VkDeviceFaultInfoEXT fault = { VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT };
-
-		if (table.vkGetDeviceFaultInfoEXT(device->get_device(), &counts, nullptr) != VK_SUCCESS)
-		{
-			fprintf(file, "Failed to get fault reports.\n");
-			return;
-		}
-
-		std::vector<VkDeviceFaultAddressInfoEXT> addresses(counts.addressInfoCount);
-		std::vector<VkDeviceFaultVendorInfoEXT> vendor_infos(counts.vendorInfoCount);
-		uint8_t *vendor_data = counts.vendorBinarySize ? new uint8_t[counts.vendorBinarySize] : nullptr;
-
-		fault.pAddressInfos = addresses.data();
-		fault.pVendorInfos = vendor_infos.data();
-		fault.pVendorBinaryData = vendor_data;
-
-		if (table.vkGetDeviceFaultInfoEXT(device->get_device(), &counts, &fault) != VK_SUCCESS)
-		{
-			fprintf(file, "Failed to get fault reports.\n");
-			return;
-		}
-
-		for (uint32_t i = 0; i < counts.addressInfoCount; i++)
-			report_address("Memory", addresses[i]);
-		for (uint32_t i = 0; i < counts.vendorInfoCount; i++)
-			report_vendor(vendor_infos[i]);
-
-		delete[] vendor_data;
 	}
 
 	fprintf(file, "... DONE\n");

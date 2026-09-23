@@ -161,6 +161,11 @@ static bool recognized_color_space(VkColorSpaceKHR space)
 	}
 }
 
+void VideoScaler::set_ycbcr_chroma_midpoint(float midpoint)
+{
+	ycbcr_chroma_midpoint = midpoint;
+}
+
 void VideoScaler::rescale(CommandBuffer &cmd, const RescaleInfo &info)
 {
 	if (!recognized_color_space(info.input_color_space) || !recognized_color_space(info.output_color_space))
@@ -303,16 +308,16 @@ void VideoScaler::rescale(CommandBuffer &cmd, const RescaleInfo &info)
 
 	if (info.output_color_space == VK_COLOR_SPACE_HDR10_ST2084_EXT)
 	{
-		ubo->gamma_space_transform[0] = vec4(0.5f, -0.459786f, -0.0402143f, 0.5f);
+		ubo->gamma_space_transform[0] = vec4(0.5f, -0.459786f, -0.0402143f, ycbcr_chroma_midpoint);
 		ubo->gamma_space_transform[1] = vec4(0.2627f, 0.678f, 0.0593f, 0.0f);
-		ubo->gamma_space_transform[2] = vec4(-0.13963f, -0.36037f, 0.5f, 0.5f);
+		ubo->gamma_space_transform[2] = vec4(-0.13963f, -0.36037f, 0.5f, ycbcr_chroma_midpoint);
 	}
 	else
 	{
 		// Everything else is standard BT.709.
-		ubo->gamma_space_transform[0] = vec4(0.5f, -0.454153f, -0.0458471f, 0.5f);
+		ubo->gamma_space_transform[0] = vec4(0.5f, -0.454153f, -0.0458471f, ycbcr_chroma_midpoint);
 		ubo->gamma_space_transform[1] = vec4(0.2126f, 0.7152f, 0.0722f, 0.0f);
-		ubo->gamma_space_transform[2] = vec4(-0.114572f, -0.385428f, 0.5f, 0.5f);
+		ubo->gamma_space_transform[2] = vec4(-0.114572f, -0.385428f, 0.5f, ycbcr_chroma_midpoint);
 	}
 
 	const Primaries bt709 = {

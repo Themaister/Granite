@@ -44,6 +44,7 @@ public:
 		VkColorSpaceKHR output_color_space;
 	};
 
+	void set_ycbcr_chroma_midpoint(float midpoint);
 	void rescale(Vulkan::CommandBuffer &cmd, const RescaleInfo &info);
 
 private:
@@ -51,6 +52,7 @@ private:
 	Vulkan::BufferHandle weights;
 	uint32_t last_input_width = 0, last_input_height = 0;
 	uint32_t last_output_width = 0, last_output_height = 0;
+	float ycbcr_chroma_midpoint = 0.5f;
 
 	void update_weights(Vulkan::CommandBuffer &cmd, const RescaleInfo &info);
 };

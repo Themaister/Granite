@@ -265,6 +265,7 @@ void VideoScaler::rescale(CommandBuffer &cmd, const RescaleInfo &info)
 	case VK_FORMAT_R8G8B8A8_SRGB:
 	case VK_FORMAT_B8G8R8A8_UNORM:
 	case VK_FORMAT_B8G8R8A8_SRGB:
+	case VK_FORMAT_R8_UNORM:
 		flags |= CONTROL_DITHER_BIT;
 		push.dither_strength = 1.0f / 255.0f;
 		break;

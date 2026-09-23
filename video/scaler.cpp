@@ -62,7 +62,7 @@ enum
 {
 	CONTROL_SKIP_RESCALE_BIT = 1 << 0,
 	CONTROL_DOWNSCALING_BIT = 1 << 1,
-	CONTROL_SAMPLED_DOWNSCALING_BIT = 1 << 2,
+	CONTROL_SAMPLED_SCALING_BIT = 1 << 2,
 	CONTROL_CLAMP_COORD_BIT = 1 << 3,
 	CONTROL_CHROMA_SUBSAMPLE_BIT = 1 << 4,
 	CONTROL_PRIMARY_CONVERSION_BIT = 1 << 5,
@@ -191,6 +191,10 @@ void VideoScaler::rescale(CommandBuffer &cmd, const RescaleInfo &info)
 		ivec2 resolution;
 		vec2 scaling_to_input;
 		vec2 inv_input_resolution;
+		vec2 inv_output_resolution;
+		ivec2 crop_offset;
+		vec2 crop_bias;
+		vec2 crop_scale;
 		float dither_strength;
 	};
 
@@ -198,16 +202,44 @@ void VideoScaler::rescale(CommandBuffer &cmd, const RescaleInfo &info)
 	push.resolution.x = int(info.input->get_view_width());
 	push.resolution.y = int(info.input->get_view_height());
 
-	push.scaling_to_input.x = float(push.resolution.x) / float(info.output_planes[0]->get_view_width());
-	push.scaling_to_input.y = float(push.resolution.y) / float(info.output_planes[0]->get_view_height());
+	uint32_t input_width, input_height;
+
+	if (info.crop_rect)
+	{
+		input_width = info.crop_rect->extent.width;
+		input_height = info.crop_rect->extent.height;
+	}
+	else
+	{
+		input_width = info.input->get_view_width();
+		input_height = info.input->get_view_height();
+	}
+
+	push.scaling_to_input.x = float(input_width) / float(info.output_planes[0]->get_view_width());
+	push.scaling_to_input.y = float(input_height) / float(info.output_planes[0]->get_view_height());
 	bool sampled_downscaling = push.scaling_to_input.x > 2.0f || push.scaling_to_input.y > 2.0f;
 	// The filter doesn't have shared memory or kernel support to deal with ridiculous downsampling ratios,
 	// do it in multiple stages if need be.
 	push.scaling_to_input = muglm::min(vec2(2.0f), push.scaling_to_input);
 	push.inv_input_resolution.x = 1.0f / (float(info.output_planes[0]->get_view_width()) * push.scaling_to_input.x);
 	push.inv_input_resolution.y = 1.0f / (float(info.output_planes[0]->get_view_height()) * push.scaling_to_input.y);
+	push.inv_output_resolution.x = 1.0f / float(info.output_planes[0]->get_view_width());
+	push.inv_output_resolution.y = 1.0f / float(info.output_planes[0]->get_view_height());
 
-	update_weights(cmd, info);
+	if (info.crop_rect)
+	{
+		push.crop_offset.x = info.crop_rect->offset.x;
+		push.crop_offset.y = info.crop_rect->offset.y;
+		push.crop_bias.x = float(info.crop_rect->offset.x) / float(info.input->get_view_width());
+		push.crop_bias.y = float(info.crop_rect->offset.y) / float(info.input->get_view_height());
+		push.crop_scale.x = float(info.crop_rect->extent.width) / float(info.input->get_view_width());
+		push.crop_scale.y = float(info.crop_rect->extent.height) / float(info.input->get_view_height());
+	}
+	else
+	{
+		push.crop_scale.x = 1.0f;
+		push.crop_scale.y = 1.0f;
+	}
 
 	uint32_t flags = 0;
 	uint32_t eotf = TRANSFER_IDENTITY;
@@ -242,16 +274,23 @@ void VideoScaler::rescale(CommandBuffer &cmd, const RescaleInfo &info)
 		break;
 	}
 
-	if (info.input->get_view_width() == info.output_planes[0]->get_view_width() &&
-	    info.input->get_view_height() == info.output_planes[0]->get_view_height())
-	{
+	bool identity_scaling =
+			input_width == info.output_planes[0]->get_view_width() &&
+			input_height == info.output_planes[0]->get_view_height();
+
+	if (identity_scaling || info.force_linear_filtering)
 		flags |= CONTROL_SKIP_RESCALE_BIT;
-	}
+
+	if ((flags & CONTROL_SKIP_RESCALE_BIT) == 0 || !weights)
+		update_weights(cmd, info);
 
 	if (push.scaling_to_input.x > 1.0f || push.scaling_to_input.y > 1.0f)
 		flags |= CONTROL_DOWNSCALING_BIT;
 	if (sampled_downscaling)
-		flags |= CONTROL_SAMPLED_DOWNSCALING_BIT;
+		flags |= CONTROL_SAMPLED_SCALING_BIT;
+
+	if (info.force_linear_filtering && !identity_scaling)
+		flags |= CONTROL_SAMPLED_SCALING_BIT;
 
 	if (info.input_color_space != info.output_color_space)
 		flags |= CONTROL_PRIMARY_CONVERSION_BIT;
@@ -264,19 +303,23 @@ void VideoScaler::rescale(CommandBuffer &cmd, const RescaleInfo &info)
 		flags |= CONTROL_CHROMA_SUBSAMPLE_BIT;
 	}
 
-	switch (info.output_planes[0]->get_format())
+	if (!info.skip_dither)
 	{
-	case VK_FORMAT_R8G8B8A8_UNORM:
-	case VK_FORMAT_R8G8B8A8_SRGB:
-	case VK_FORMAT_B8G8R8A8_UNORM:
-	case VK_FORMAT_B8G8R8A8_SRGB:
-	case VK_FORMAT_R8_UNORM:
-		flags |= CONTROL_DITHER_BIT;
-		push.dither_strength = 1.0f / 255.0f;
-		break;
+		switch (info.output_planes[0]->get_format())
+		{
+		case VK_FORMAT_R8G8B8A8_UNORM:
+		case VK_FORMAT_R8G8B8A8_SRGB:
+		case VK_FORMAT_B8G8R8A8_UNORM:
+		case VK_FORMAT_B8G8R8A8_SRGB:
+		case VK_FORMAT_R8_UNORM:
+		case VK_FORMAT_R8G8_UNORM:
+			flags |= CONTROL_DITHER_BIT;
+			push.dither_strength = 1.0f / 255.0f;
+			break;
 
-	default:
-		break;
+		default:
+			break;
+		}
 	}
 
 	if (oetf == eotf && (flags & CONTROL_SKIP_RESCALE_BIT) != 0)

@@ -42,6 +42,11 @@ public:
 
 		VkColorSpaceKHR input_color_space;
 		VkColorSpaceKHR output_color_space;
+
+		const VkRect2D *crop_rect;
+
+		bool skip_dither;
+		bool force_linear_filtering;
 	};
 
 	void set_ycbcr_chroma_midpoint(float midpoint);

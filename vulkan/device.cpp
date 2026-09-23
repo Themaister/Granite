@@ -4617,6 +4617,10 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		submit_and_sync_to_queues(transition_cmd, sync_queues);
 	}
 
+	// If we're importing, make sure we consume the native handle.
+	if (use_external)
+		take_ownership_imported_external_memory_handle(create_info.external);
+
 	return handle;
 }
 

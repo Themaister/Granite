@@ -433,4 +433,7 @@ private:
 	uint32_t allocate_single_resource_heap_entry();
 	void free_single_resource_heap_entry(uint32_t index);
 };
+
+void take_ownership_imported_external_memory_handle(const ExternalHandle &handle);
+void take_ownership_imported_external_semaphore_handle(const ExternalHandle &handle);
 }

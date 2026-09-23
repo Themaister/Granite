@@ -22,13 +22,7 @@
 
 #include "semaphore.hpp"
 #include "device.hpp"
-
-#ifndef _WIN32
-#include <unistd.h>
-#else
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
+#include "memory_allocator.hpp"
 
 namespace Vulkan
 {
@@ -223,15 +217,7 @@ bool SemaphoreHolder::import_from_handle(ExternalHandle handle)
 	}
 #endif
 
-	if (ExternalHandle::semaphore_handle_type_imports_by_reference(import.handleType))
-	{
-#ifdef _WIN32
-		// Consume the handle, since the VkSemaphore holds a reference on Win32.
-		::CloseHandle(handle.handle);
-#else
-		::close(handle.handle);
-#endif
-	}
+	take_ownership_imported_external_semaphore_handle(handle);
 
 	signal_external();
 	return true;

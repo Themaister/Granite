@@ -764,17 +764,6 @@ bool DeviceAllocator::internal_allocate(
 		res = table->vkAllocateMemory(device->get_device(), &info, nullptr, &device_memory);
 	}
 
-	// If we're importing, make sure we consume the native handle.
-	if (external && bool(*external) &&
-	    ExternalHandle::memory_handle_type_imports_by_reference(external->memory_handle_type))
-	{
-#ifdef _WIN32
-		::CloseHandle(external->handle);
-#else
-		::close(external->handle);
-#endif
-	}
-
 	if (res == VK_SUCCESS)
 	{
 		heap.size += size;
@@ -1633,5 +1622,29 @@ void DescriptorBufferAllocator::free_buffer_view(const CachedBufferView &view)
 
 	free_cached_descriptors(&view.uniform, 1);
 	free_cached_descriptors(&view.storage, 1);
+}
+
+void take_ownership_imported_external_memory_handle(const ExternalHandle &handle)
+{
+	if (bool(handle) && ExternalHandle::memory_handle_type_imports_by_reference(handle.memory_handle_type))
+	{
+#ifdef _WIN32
+		::CloseHandle(handle.handle);
+#else
+		::close(handle.handle);
+#endif
+	}
+}
+
+void take_ownership_imported_external_semaphore_handle(const ExternalHandle &handle)
+{
+	if (bool(handle) && ExternalHandle::semaphore_handle_type_imports_by_reference(handle.semaphore_handle_type))
+	{
+#ifdef _WIN32
+		::CloseHandle(handle.handle);
+#else
+		::close(handle.handle);
+#endif
+	}
 }
 }

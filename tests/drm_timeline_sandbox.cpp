@@ -425,7 +425,7 @@ static bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_
 	{
 		// Could this happen if the sync is already complete?
 		// Vulkan spec talks about this case at least ...
-		// Need to ensure signal order though.
+		// Need to ensure signal order though, fake a signal via proxy pollfd.
 		kmt_epoll_data data = { fence, order, -1 };
 		if (write(device->wake_fd, &data, sizeof(data)) < 0)
 			return false;
@@ -435,7 +435,7 @@ static bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_
 }
 
 bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle fence,
-											 uint32_t drm_timeline, uint64_t point, uint64_t value)
+                                      uint32_t drm_timeline, uint64_t point, uint64_t value)
 {
 	return kmt_fence_device_register_signal(device, fence, drm_timeline, point, -1, value);
 }
@@ -500,23 +500,6 @@ static kmt_pending_edge *kmt_fence_find_pending_edge_locked(kmt_fence_device, km
 	                        });
 
 	return itr == fence->pending_edges.end() ? nullptr : &(*itr);
-}
-
-bool kmt_fence_device_edge_signal_eventfd(kmt_fence_device device, kmt_fence_handle fence, uint64_t edge, int eventfd)
-{
-	std::lock_guard<std::mutex> holder{fence->lock};
-	auto *pending = kmt_fence_find_pending_edge_locked(device, fence, edge);
-
-	if (!pending)
-	{
-		const uint64_t dummy = 1;
-		return write(eventfd, &dummy, sizeof(dummy)) > 0;
-	}
-	else
-	{
-		pending->eventfd = eventfd;
-		return true;
-	}
 }
 
 static void kmt_fence_device_unregister_edge_locked(kmt_fence_device, kmt_fence_handle fence, uint64_t edge)

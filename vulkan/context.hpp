@@ -171,6 +171,8 @@ struct DeviceFeatures
 
 	uint32_t instance_api_core_version = VK_API_VERSION_1_1;
 	uint32_t device_api_core_version = VK_API_VERSION_1_1;
+
+	VkQueueGlobalPriority global_compute_priority = VK_QUEUE_GLOBAL_PRIORITY_MEDIUM;
 };
 
 enum VendorID
@@ -197,6 +199,8 @@ enum ContextCreationFlagBits
 	CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT = 1 << 10,
 	CONTEXT_CREATION_ENABLE_POST_MORTEM_BIT = 1 << 11,
 	CONTEXT_CREATION_ENABLE_VIDEO_FEATURE_ONLY_BIT = 1 << 12,
+	CONTEXT_CREATION_ENABLE_COMPUTE_REALTIME_GLOBAL_PRIORITY_BIT = 1 << 13,
+	CONTEXT_CREATION_ENABLE_COMPUTE_HIGH_GLOBAL_PRIORITY_BIT = 1 << 14
 };
 using ContextCreationFlags = uint32_t;
 

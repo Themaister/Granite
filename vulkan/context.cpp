@@ -1090,23 +1090,48 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	vkGetPhysicalDeviceQueueFamilyProperties2(gpu, &queue_family_count, nullptr);
 	Util::SmallVector<VkQueueFamilyProperties2> queue_props(queue_family_count);
 	Util::SmallVector<VkQueueFamilyVideoPropertiesKHR> video_queue_props2(queue_family_count);
+	Util::SmallVector<VkQueueFamilyGlobalPriorityProperties> global_prio_support(queue_family_count);
 
 	if ((flags & video_context_flags) != 0 && has_extension(VK_KHR_VIDEO_QUEUE_EXTENSION_NAME))
 		ext.supports_video_queue = true;
+
+	if (ext.device_api_core_version >= VK_API_VERSION_1_4)
+	{
+		VkPhysicalDeviceFeatures2 features2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &ext.vk14_features };
+		ext.vk14_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES;
+		vkGetPhysicalDeviceFeatures2(gpu, &features2);
+	}
 
 	for (uint32_t i = 0; i < queue_family_count; i++)
 	{
 		queue_props[i].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
 		if (ext.supports_video_queue)
 		{
+			video_queue_props2[i].pNext = queue_props[i].pNext;
 			queue_props[i].pNext = &video_queue_props2[i];
+
 			video_queue_props2[i].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR;
+		}
+
+		if (ext.vk14_features.globalPriorityQuery)
+		{
+			global_prio_support[i].pNext = queue_props[i].pNext;
+			queue_props[i].pNext = &global_prio_support[i];
+
+			global_prio_support[i].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_GLOBAL_PRIORITY_PROPERTIES;
 		}
 	}
 
 	Util::SmallVector<uint32_t> queue_offsets(queue_family_count);
 	Util::SmallVector<Util::SmallVector<float, QUEUE_INDEX_COUNT>> queue_priorities(queue_family_count);
 	vkGetPhysicalDeviceQueueFamilyProperties2(gpu, &queue_family_count, queue_props.data());
+
+#ifdef VULKAN_DEBUG
+	if (ext.vk14_features.globalPriorityQuery)
+		for (uint32_t i = 0; i < queue_family_count; i++)
+			for (uint32_t j = 0; j < global_prio_support[i].priorityCount; j++)
+				LOGI("Queue family %u supports global priority %u.\n", i, global_prio_support[i].priorities[j]);
+#endif
 
 	if (inherit_info)
 	{
@@ -1179,16 +1204,27 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		queue_indices[QUEUE_INDEX_COMPUTE] = queue_indices[QUEUE_INDEX_GRAPHICS];
 	}
 
-	// For transfer, try to find a queue which only supports transfer, e.g. DMA queue.
-	// If not, fallback to a dedicated compute queue.
-	// Finally, fallback to same queue as compute.
-	if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_TRANSFER], queue_indices[QUEUE_INDEX_TRANSFER],
-	                       VK_QUEUE_TRANSFER_BIT, VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0.5f) &&
-	    !find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_TRANSFER], queue_indices[QUEUE_INDEX_TRANSFER],
-	                       VK_QUEUE_COMPUTE_BIT, VK_QUEUE_GRAPHICS_BIT, 0.5f))
+	if ((flags & (CONTEXT_CREATION_ENABLE_COMPUTE_REALTIME_GLOBAL_PRIORITY_BIT |
+	              CONTEXT_CREATION_ENABLE_COMPUTE_HIGH_GLOBAL_PRIORITY_BIT)) != 0)
 	{
+		// If we're requesting high-prio compute queue, alias transfer on top of that.
+		// We don't want to risk failing realtime request due to requesting too many queues.
 		queue_info.family_indices[QUEUE_INDEX_TRANSFER] = queue_info.family_indices[QUEUE_INDEX_COMPUTE];
 		queue_indices[QUEUE_INDEX_TRANSFER] = queue_indices[QUEUE_INDEX_COMPUTE];
+	}
+	else
+	{
+		// For transfer, try to find a queue which only supports transfer, e.g. DMA queue.
+		// If not, fallback to a dedicated compute queue.
+		// Finally, fallback to same queue as compute.
+		if (!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_TRANSFER], queue_indices[QUEUE_INDEX_TRANSFER],
+							   VK_QUEUE_TRANSFER_BIT, VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0.5f) &&
+			!find_vacant_queue(queue_info.family_indices[QUEUE_INDEX_TRANSFER], queue_indices[QUEUE_INDEX_TRANSFER],
+							   VK_QUEUE_COMPUTE_BIT, VK_QUEUE_GRAPHICS_BIT, 0.5f))
+		{
+			queue_info.family_indices[QUEUE_INDEX_TRANSFER] = queue_info.family_indices[QUEUE_INDEX_COMPUTE];
+			queue_indices[QUEUE_INDEX_TRANSFER] = queue_indices[QUEUE_INDEX_COMPUTE];
+		}
 	}
 
 	if (ext.supports_video_queue)
@@ -1219,6 +1255,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	VkDeviceCreateInfo device_info = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 
 	Util::SmallVector<VkDeviceQueueCreateInfo> queue_infos;
+	VkDeviceQueueGlobalPriorityCreateInfo global_prio_info =
+		{ VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO };
+	global_prio_info.globalPriority = VK_QUEUE_GLOBAL_PRIORITY_MEDIUM;
+
+	if (flags & CONTEXT_CREATION_ENABLE_COMPUTE_REALTIME_GLOBAL_PRIORITY_BIT)
+		flags |= CONTEXT_CREATION_ENABLE_COMPUTE_HIGH_GLOBAL_PRIORITY_BIT;
+
 	for (uint32_t family_index = 0; family_index < queue_family_count; family_index++)
 	{
 		if (queue_offsets[family_index] == 0)
@@ -1228,6 +1271,36 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		info.queueFamilyIndex = family_index;
 		info.queueCount = queue_offsets[family_index];
 		info.pQueuePriorities = queue_priorities[family_index].data();
+
+		const auto supports_prio = [](const VkQueueFamilyGlobalPriorityProperties &props,
+		                              VkQueueGlobalPriority prio)
+		{
+			for (uint32_t i = 0; i < props.priorityCount; i++)
+				if (props.priorities[i] == prio)
+					return true;
+			return false;
+		};
+
+		if (family_index == queue_info.family_indices[QUEUE_INDEX_COMPUTE])
+		{
+			if ((flags & CONTEXT_CREATION_ENABLE_COMPUTE_REALTIME_GLOBAL_PRIORITY_BIT) != 0 &&
+			    supports_prio(global_prio_support[family_index], VK_QUEUE_GLOBAL_PRIORITY_REALTIME))
+			{
+				global_prio_info.globalPriority = VK_QUEUE_GLOBAL_PRIORITY_REALTIME;
+			}
+			else if ((flags & CONTEXT_CREATION_ENABLE_COMPUTE_HIGH_GLOBAL_PRIORITY_BIT) != 0 &&
+			         supports_prio(global_prio_support[family_index], VK_QUEUE_GLOBAL_PRIORITY_HIGH))
+			{
+				global_prio_info.globalPriority = VK_QUEUE_GLOBAL_PRIORITY_HIGH;
+			}
+
+			if (global_prio_info.globalPriority != VK_QUEUE_GLOBAL_PRIORITY_MEDIUM)
+			{
+				global_prio_info.pNext = info.pNext;
+				info.pNext = &global_prio_info;
+			}
+		}
+
 		queue_infos.push_back(info);
 	}
 
@@ -2194,12 +2267,56 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		if (device_factory)
 		{
 			device = device_factory->create_device(gpu, &device_info);
+
+			// Driver is allowed to fail device creation if the priority is not supported.
+			if (device == VK_NULL_HANDLE && global_prio_info.globalPriority == VK_QUEUE_GLOBAL_PRIORITY_REALTIME)
+			{
+				// Driver must fail the call if the priority is not marked as supported.
+				global_prio_info.globalPriority = VK_QUEUE_GLOBAL_PRIORITY_HIGH;
+				device = device_factory->create_device(gpu, &device_info);
+			}
+
+			if (device == VK_NULL_HANDLE && global_prio_info.globalPriority == VK_QUEUE_GLOBAL_PRIORITY_HIGH)
+			{
+				// This must be supported (or everything is broken).
+				global_prio_info.globalPriority = VK_QUEUE_GLOBAL_PRIORITY_MEDIUM;
+				device = device_factory->create_device(gpu, &device_info);
+			}
+
 			if (device == VK_NULL_HANDLE)
 				return false;
 		}
-		else if (vkCreateDevice(gpu, &device_info, nullptr, &device) != VK_SUCCESS)
-			return false;
+		else
+		{
+			VkResult vr = vkCreateDevice(gpu, &device_info, nullptr, &device);
+
+			if ((vr == VK_ERROR_INITIALIZATION_FAILED || vr == VK_ERROR_NOT_PERMITTED) &&
+			    global_prio_info.globalPriority == VK_QUEUE_GLOBAL_PRIORITY_REALTIME)
+			{
+				// Driver must fail the call if the priority is not marked as supported.
+				device = VK_NULL_HANDLE;
+				global_prio_info.globalPriority = VK_QUEUE_GLOBAL_PRIORITY_HIGH;
+				vr = vkCreateDevice(gpu, &device_info, nullptr, &device);
+			}
+
+			if ((vr == VK_ERROR_INITIALIZATION_FAILED || vr == VK_ERROR_NOT_PERMITTED) &&
+			    global_prio_info.globalPriority == VK_QUEUE_GLOBAL_PRIORITY_HIGH)
+			{
+				// Driver must fail the call if the priority is not marked as supported.
+				device = VK_NULL_HANDLE;
+				global_prio_info.globalPriority = VK_QUEUE_GLOBAL_PRIORITY_MEDIUM;
+				vr = vkCreateDevice(gpu, &device_info, nullptr, &device);
+			}
+
+			if (vr != VK_SUCCESS)
+			{
+				device = VK_NULL_HANDLE;
+				return false;
+			}
+		}
 	}
+
+	ext.global_compute_priority = global_prio_info.globalPriority;
 
 	if (inherit_info)
 	{

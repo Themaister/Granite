@@ -2116,6 +2116,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.pipeline_binary_properties, PIPELINE_BINARY_PROPERTIES_KHR);
 #endif
 
+	if (has_extension(VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME))
+	{
+		ADD_CHAIN(ext.drm_properties, DRM_PROPERTIES_EXT);
+		ext.supports_drm_properties = true;
+	}
+
 	vkGetPhysicalDeviceProperties2(gpu, &props);
 
 	// If a layer or driver doesn't tell us that internal cache is preferred,

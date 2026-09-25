@@ -157,6 +157,13 @@ add_granite_offline_tool(atomic-append-buffer-test atomic_append_buffer_test.cpp
 add_granite_offline_tool(unordered-array-test unordered_array_test.cpp)
 add_granite_offline_tool(z-binning-test z_binning_test.cpp)
 add_granite_offline_tool(animation-rail-test animation_rail_test.cpp)
+
+if (LINUX)
+    add_granite_offline_tool(drm-timeline-sandbox drm_timeline_sandbox.cpp)
+    target_include_directories(drm-timeline-sandbox PRIVATE /usr/include/drm)
+    target_link_libraries(drm-timeline-sandbox PRIVATE drm)
+endif()
+
 if (NOT ANDROID)
     target_compile_definitions(z-binning-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()

@@ -80,6 +80,7 @@ struct DeviceFeatures
 	bool supports_amd_buffer_marker = false;
 	bool supports_nv_checkpoints = false;
 	bool supports_post_mortem = false;
+	bool supports_drm_properties = false;
 
 	bool supports_descriptor_buffer_or_heap = false;
 	uint32_t resource_heap_offset_alignment = 0;
@@ -143,6 +144,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceDescriptorHeapFeaturesEXT descriptor_heap_features = {};
 	VkPhysicalDeviceDescriptorHeapPropertiesEXT descriptor_heap_properties = {};
 	VkPhysicalDeviceShaderImageAtomicInt64FeaturesEXT image_atomic_int64_features = {};
+	VkPhysicalDeviceDrmPropertiesEXT drm_properties = {};
 
 	// Vendor
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};

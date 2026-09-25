@@ -5,11 +5,16 @@
 #include <xf86drm.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <sys/poll.h>
 #include <sys/epoll.h>
+#include <sys/poll.h>
+#include <sys/eventfd.h>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <csignal>
+#include <future>
+#include "thread_id.hpp"
+#include "thread_name.hpp"
 
 extern "C" {
 typedef struct kmt_fence_device_opaque *kmt_fence_device;
@@ -20,6 +25,7 @@ kmt_fence_device kmt_fence_device_create_from_drm_properties(
 	const VkPhysicalDeviceDrmPropertiesEXT *drm_properties);
 int kmt_fence_device_get_drmfd(kmt_fence_device device);
 void kmt_fence_device_destroy(kmt_fence_device device);
+bool kmt_fence_device_import_timeline(kmt_fence_device device, int fd, uint32_t *syncobj);
 
 kmt_fence_handle kmt_fence_device_create_fence(kmt_fence_device device, uint64_t initial_value);
 void kmt_fence_device_destroy_fence(kmt_fence_device device, kmt_fence_handle fence);
@@ -28,8 +34,8 @@ bool kmt_fence_device_register_signal_immediate(kmt_fence_device device, kmt_fen
 bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle fence,
                                       uint32_t drm_timeline, uint64_t point, uint64_t value);
 
-uint64_t kmt_fence_device_register_edge(kmt_fence_device device, kmt_fence_handle fence, uint64_t value);
-bool kmt_fence_device_edge_signal_eventfd(kmt_fence_device device, kmt_fence_handle fence, uint64_t edge, int eventfd);
+uint64_t kmt_fence_device_query_fence(kmt_fence_device device, kmt_fence_handle fence);
+uint64_t kmt_fence_device_register_edge(kmt_fence_device device, kmt_fence_handle fence, uint64_t value, int eventfd);
 bool kmt_fence_device_edge_wait_materialization(kmt_fence_device device, kmt_fence_handle fence, uint64_t edge, int *sync_fd);
 void kmt_fence_device_unregister_edge(kmt_fence_device device, kmt_fence_handle fence, uint64_t edge);
 }
@@ -69,9 +75,8 @@ struct kmt_pending_edge
 {
 	uint64_t order;
 	uint64_t value;
-	int eventfd; // or HANDLE.
-	uint32_t sync_handle;
-	bool materialized;
+	int eventfd; // or ntsync, or HANDLE.
+	int syncfd; // A binary semaphore.
 };
 
 struct kmt_fence_handle_opaque
@@ -91,6 +96,7 @@ struct kmt_fence_handle_opaque
 
 void kmt_fence_device_opaque::epoll_main()
 {
+	Util::set_current_thread_name("epoll");
 	std::vector<epoll_event> events;
 	events.resize(256);
 	bool alive = true;
@@ -101,6 +107,15 @@ void kmt_fence_device_opaque::epoll_main()
 	{
 		int ret = epoll_wait(epoll_fd, events.data(), events.size(), -1);
 
+		if (ret == -1 && errno == EINTR)
+			continue;
+
+		if (ret < 0)
+			LOGE("Failed to epoll_wait(), errno = %d\n", errno);
+
+		if (ret <= 0)
+			break;
+
 		if (ret == int(events.size()))
 		{
 			// For signal ordering reasons, we need to receive every signaled fd at once.
@@ -109,9 +124,6 @@ void kmt_fence_device_opaque::epoll_main()
 			events.resize(events.size() * 2);
 			continue;
 		}
-
-		if (ret <= 0)
-			break;
 
 		wake_data.clear();
 
@@ -130,7 +142,9 @@ void kmt_fence_device_opaque::epoll_main()
 			}
 			else
 			{
-				wake_data.push_back(*static_cast<const kmt_epoll_data *>(events[i].data.ptr));
+				auto *ptr = static_cast<kmt_epoll_data *>(events[i].data.ptr);
+				wake_data.push_back(*ptr);
+				delete ptr;
 			}
 		}
 
@@ -144,7 +158,11 @@ void kmt_fence_device_opaque::epoll_main()
 		for (auto &wake : wake_data)
 		{
 			wake.fence->complete(wake.order);
-			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, wake.fd, nullptr);
+			if (wake.fd >= 0)
+			{
+				epoll_ctl(epoll_fd, EPOLL_CTL_DEL, wake.fd, nullptr);
+				close(wake.fd);
+			}
 		}
 	}
 }
@@ -159,6 +177,7 @@ kmt_fence_device kmt_fence_device_create(int drm_fd)
 	dev->pipe_fd = fds[0];
 	dev->wake_fd = fds[1];
 
+	// Writer must be blocking so we avoid losing wakeups spuriously under pressure.
 	if (fcntl(dev->pipe_fd, F_SETFL, fcntl(dev->pipe_fd, F_GETFL) | O_NONBLOCK) < 0)
 	{
 		delete dev;
@@ -216,6 +235,18 @@ int kmt_fence_device_get_drmfd(kmt_fence_device device)
 	return device->drmfd;
 }
 
+bool kmt_fence_device_import_timeline(kmt_fence_device device, int fd, uint32_t *syncobj)
+{
+	if (drmSyncobjFDToHandle(device->drmfd, fd, syncobj) < 0)
+	{
+		LOGE("Failed to import timeline.\n");
+		return false;
+	}
+
+	close(fd);
+	return true;
+}
+
 void kmt_fence_device_destroy(kmt_fence_device device)
 {
 	if (device->epoll_thread.joinable())
@@ -248,6 +279,11 @@ void kmt_fence_device_destroy_fence(kmt_fence_device device, kmt_fence_handle fe
 {
 	for (auto &signal : fence->pending_signals)
 		drmSyncobjDestroy(device->drmfd, signal.sync_handle);
+
+	for (auto &edge : fence->pending_edges)
+		if (edge.syncfd >= 0)
+			close(edge.syncfd);
+
 	delete fence;
 }
 
@@ -266,6 +302,9 @@ void kmt_fence_handle_opaque::signal_immediate_locked(uint64_t value)
 				uint64_t sig = 1;
 				write(edge.eventfd, &sig, sizeof(sig));
 			}
+
+			if (edge.syncfd >= 0)
+				close(edge.syncfd);
 
 			pending_edges[i] = pending_edges.back();
 			pending_edges.pop_back();
@@ -312,6 +351,12 @@ void kmt_fence_handle_opaque::complete(uint64_t order)
 bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle fence,
                                       uint32_t drm_timeline, uint64_t point, uint64_t value)
 {
+	uint32_t first_signaled;
+	int ret = drmSyncobjTimelineWait(device->drmfd, &drm_timeline, &point, 1, 0,
+		DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL | DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE, &first_signaled);
+	if (ret < 0)
+		return false;
+
 	uint32_t sync_handle;
 	if (drmSyncobjCreate(device->drmfd, 0, &sync_handle) < 0)
 		return false;
@@ -324,32 +369,38 @@ bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle 
 
 	uint64_t order = device->allocate_order();
 
-	{
-		std::lock_guard<std::mutex> holder{fence->lock};
-		kmt_pending_signal sig = {};
-		sig.value = value;
-		sig.order = order;
-		sig.sync_handle = sync_handle;
-		fence->pending_signals.push_back(sig);
-		fence->cond.notify_all();
-	}
-
 	int sync_fd;
-	if (drmSyncobjHandleToFD(device->epoll_fd, sync_handle, &sync_fd) < 0)
+	ret = drmSyncobjExportSyncFile(device->drmfd, sync_handle, &sync_fd);
+	if (ret < 0)
 	{
 		drmSyncobjDestroy(device->drmfd, sync_handle);
 		return false;
 	}
 
-	// Materialize the wait if we can unblock a thread.
-	for (auto &edge : fence->pending_edges)
 	{
-		// Materialize with the first submitted signal that could unblock the waiter.
-		if (value >= edge.value && !edge.materialized)
+		std::lock_guard<std::mutex> holder{fence->lock};
+
+		kmt_pending_signal sig = {};
+		sig.value = value;
+		sig.order = order;
+		sig.sync_handle = sync_handle;
+		fence->pending_signals.push_back(sig);
+
+		bool has_materialization = false;
+
+		// Materialize the wait if we can unblock a thread.
+		for (auto &edge : fence->pending_edges)
 		{
-			edge.materialized = true;
-			edge.sync_handle = sync_handle;
+			// Materialize with the first submitted signal that could unblock the waiter.
+			if (value >= edge.value && edge.eventfd < 0 && edge.syncfd < 0)
+			{
+				edge.syncfd = dup(sync_fd);
+				has_materialization = true;
+			}
 		}
+
+		if (has_materialization)
+			fence->cond.notify_all();
 	}
 
 	if (sync_fd >= 0)
@@ -360,20 +411,26 @@ bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle 
 		auto *data = new kmt_epoll_data();
 		data->order = order;
 		data->fence = fence;
+		data->fd = sync_fd;
 		ev.data.ptr = data;
 
-		if (epoll_ctl(device->epoll_fd, EPOLL_CTL_ADD, sync_fd, &ev) < 0)
+		ret = epoll_ctl(device->epoll_fd, EPOLL_CTL_ADD, sync_fd, &ev);
+
+		if (ret < 0)
 		{
+			LOGE("Failed to add syncfd to epoll, ret %d, errno %d\n", ret, errno);
 			drmSyncobjDestroy(device->drmfd, sync_handle);
+			delete data;
 			return false;
 		}
 	}
 	else
 	{
-		// Could happen if the sync is already complete?
+		// Could this happen if the sync is already complete?
+		// Vulkan spec talks about this case at least ...
 		// Need to ensure signal order though.
 
-		kmt_epoll_data data = { fence, order };
+		kmt_epoll_data data = { fence, order, -1 };
 		if (write(device->wake_fd, &data, sizeof(data)) < 0)
 		{
 			drmSyncobjDestroy(device->drmfd, sync_handle);
@@ -384,18 +441,34 @@ bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle 
 	return true;
 }
 
-uint64_t kmt_fence_device_register_edge(kmt_fence_device device, kmt_fence_handle fence, uint64_t value)
+uint64_t kmt_fence_device_query_fence(kmt_fence_device, kmt_fence_handle fence)
+{
+	std::lock_guard<std::mutex> holder{fence->lock};
+	return fence->current_value;
+}
+
+uint64_t kmt_fence_device_register_edge(kmt_fence_device device, kmt_fence_handle fence, uint64_t value, int eventfd)
 {
 	uint64_t order = device->allocate_order();
 	std::lock_guard<std::mutex> holder{fence->lock};
 
 	// The wait can be satisfied instantly.
 	if (fence->current_value >= value)
+	{
+		if (eventfd >= 0)
+		{
+			uint64_t dummy = 1;
+			write(eventfd, &dummy, sizeof(dummy));
+		}
+
 		return 0;
+	}
 
 	kmt_pending_edge edge = {};
 	edge.order = order;
 	edge.value = value;
+	edge.syncfd = -1;
+	edge.eventfd = eventfd;
 	fence->pending_edges.push_back(edge);
 	return order;
 }
@@ -428,33 +501,8 @@ bool kmt_fence_device_edge_signal_eventfd(kmt_fence_device device, kmt_fence_han
 	}
 }
 
-bool kmt_fence_device_edge_wait_materialization(kmt_fence_device device, kmt_fence_handle fence, uint64_t edge, int *sync_fd)
+static void kmt_fence_device_unregister_edge_locked(kmt_fence_device, kmt_fence_handle fence, uint64_t edge)
 {
-	std::unique_lock<std::mutex> holder{fence->lock};
-	fence->cond.wait(holder, [&]()
-	{
-		auto *pending = kmt_fence_find_pending_edge_locked(device, fence, edge);
-		if (!pending)
-			return true;
-		return pending->materialized;
-	});
-
-	auto *pending = kmt_fence_find_pending_edge_locked(device, fence, edge);
-	if (pending)
-	{
-		*sync_fd = -1;
-		return true;
-	}
-	else
-	{
-		return drmSyncobjHandleToFD(device->drmfd, pending->sync_handle, sync_fd) == 0;
-	}
-}
-
-void kmt_fence_device_unregister_edge(kmt_fence_device, kmt_fence_handle fence, uint64_t edge)
-{
-	std::lock_guard<std::mutex> holder{fence->lock};
-
 	auto itr = std::find_if(fence->pending_edges.begin(), fence->pending_edges.end(),
 							[&](const kmt_pending_edge &pending)
 							{
@@ -468,26 +516,76 @@ void kmt_fence_device_unregister_edge(kmt_fence_device, kmt_fence_handle fence, 
 	}
 }
 
+bool kmt_fence_device_edge_wait_materialization(kmt_fence_device device, kmt_fence_handle fence, uint64_t edge, int *sync_fd)
+{
+	std::unique_lock<std::mutex> holder{fence->lock};
+	fence->cond.wait(holder, [&]()
+	{
+		auto *pending = kmt_fence_find_pending_edge_locked(device, fence, edge);
+
+		// Already complete, nothing to wait for.
+		if (!pending)
+			return true;
+
+		// We have a binary semaphore to wait for.
+		return pending->syncfd >= 0;
+	});
+
+	auto *pending = kmt_fence_find_pending_edge_locked(device, fence, edge);
+
+	if (pending)
+	{
+		*sync_fd = -1;
+	}
+	else
+	{
+		*sync_fd = pending->syncfd;
+		pending->syncfd = -1;
+	}
+
+	kmt_fence_device_unregister_edge_locked(device, fence, edge);
+
+	return true;
+}
+
+void kmt_fence_device_unregister_edge(kmt_fence_device device, kmt_fence_handle fence, uint64_t edge)
+{
+	std::lock_guard<std::mutex> holder{fence->lock};
+	kmt_fence_device_unregister_edge_locked(device, fence, edge);
+}
+
 using namespace Granite;
 using namespace Vulkan;
 
-static int open_drm_fd(uint32_t render_minor)
+struct DRMTimeline
 {
-	char path[128];
-	snprintf(path, sizeof(path), "/dev/dri/renderD%u", render_minor);
-	return open(path, O_RDWR);
-}
+	Semaphore sem;
+	int drmfd = -1;
+	uint32_t drm_timeline = 0;
 
-static bool import_timeline(int drm_fd, int fd, uint32_t *handle)
-{
-	if (drmSyncobjFDToHandle(drm_fd, fd, handle) < 0)
+	~DRMTimeline()
 	{
-		LOGE("Failed to import timeline.\n");
-		return false;
+		if (drmfd >= 0)
+			drmSyncobjDestroy(drmfd, drm_timeline);
 	}
+};
 
-	::close(fd);
-	return true;
+static DRMTimeline create_drm_timeline_from_granite(Device &device, kmt_fence_device kmt_dev)
+{
+	DRMTimeline tl = {};
+	// On Mesa, this is always DRM timeline.
+	// There is a public EXT in flight that exposes DRM timeline properly for everyone.
+	tl.sem = device.request_semaphore_external(VK_SEMAPHORE_TYPE_TIMELINE, VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT);
+
+	auto exported = tl.sem->export_to_handle();
+	if (!exported)
+		LOGE("Failed to export.\n");
+
+	if (!kmt_fence_device_import_timeline(kmt_dev, exported.handle, &tl.drm_timeline))
+		LOGE("Failed to import timeline.\n");
+
+	tl.drmfd = kmt_fence_device_get_drmfd(kmt_dev);
+	return tl;
 }
 
 static void run_test(Device &device)
@@ -496,99 +594,142 @@ static void run_test(Device &device)
 		return;
 
 	const auto &props = device.get_device_features().drm_properties;
+	kmt_fence_device kmt_dev = kmt_fence_device_create_from_drm_properties(&props);
 
-	if (!props.hasRender)
+	if (!kmt_dev)
 		return;
 
-	int drm_fd = open_drm_fd(props.renderMinor);
-	if (drm_fd < 0)
-		return;
+	kmt_fence_handle kmt_fence = kmt_fence_device_create_fence(kmt_dev, 0);
 
-	// On Mesa, this is always DRM timeline.
-	// There is a public EXT in flight that exposes DRM timeline properly for everyone.
-	auto timeline = device.request_semaphore_external(
-		VK_SEMAPHORE_TYPE_TIMELINE, VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT);
+	BufferCreateInfo bufinfo = {};
+	bufinfo.domain = BufferDomain::CachedHost;
+	bufinfo.size = 1024 * sizeof(uint32_t);
+	bufinfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	uint32_t initial[1024] = { 0xcafebabe };
+	auto dummy_buffer = device.create_buffer(bufinfo, initial);
 
-	auto exported = timeline->export_to_handle();
-	if (!exported)
+	auto events = std::async(std::launch::async, [&]()
 	{
-		LOGE("Failed to export.\n");
-		return;
-	}
+		Util::set_current_thread_name("event");
+		int efd = eventfd(0, 0);
 
-	uint32_t drm_timeline;
-	if (!import_timeline(drm_fd, exported.handle, &drm_timeline))
+		for (int i = 0; i <= 32; i++)
+		{
+			kmt_fence_device_register_edge(kmt_dev, kmt_fence, i, efd);
+			uint64_t v;
+			read(efd, &v, sizeof(v));
+
+			if (kmt_fence_device_query_fence(kmt_dev, kmt_fence) < uint64_t(i))
+				LOGE("Signal ordering is broken.\n");
+			LOGI("EventFD waited for value %u complete!\n", i);
+		}
+
+		close(efd);
+	});
+
+	auto task0 = std::async(std::launch::async, [&]()
 	{
-		LOGE("Failed to import timeline.\n");
-		return;
-	}
+		Util::set_current_thread_name("graphics");
+		Util::register_thread_index(0);
+		// Every process/queue has its own monotonic timeline.
+		auto tl = create_drm_timeline_from_granite(device, kmt_dev);
+		uint64_t monotonic_value = 0;
 
-	uint32_t sync_handle;
-	if (drmSyncobjCreate(drm_fd, 0, &sync_handle) < 0)
+		for (int i = 0; i < 16; i++)
+		{
+			LOGI("Graphics waiting for %u to materialize\n", 2 * i);
+			// Wait API.
+			uint64_t edge = kmt_fence_device_register_edge(kmt_dev, kmt_fence, 2 * i, -1);
+			if (edge)
+			{
+				int sync_fd;
+				if (!kmt_fence_device_edge_wait_materialization(kmt_dev, kmt_fence, edge, &sync_fd))
+				{
+					LOGE("Failed to materialize wait.\n");
+					return;
+				}
+
+				auto binary_sem = device.request_semaphore_external(VK_SEMAPHORE_TYPE_BINARY, VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT);
+				ExternalHandle handle;
+				handle.semaphore_handle_type = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT;
+				handle.handle = sync_fd;
+				if (!binary_sem->import_from_handle(handle))
+				{
+					LOGE("Failed to import binary semaphore.\n");
+					return;
+				}
+
+				device.add_wait_semaphore(CommandBuffer::Type::Generic, std::move(binary_sem), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
+			}
+
+			auto cmd = device.request_command_buffer(CommandBuffer::Type::Generic);
+			cmd->copy_buffer(*dummy_buffer, (1 + 2 * i) * sizeof(uint32_t),
+			                 *dummy_buffer, (2 * i) * sizeof(uint32_t), sizeof(uint32_t));
+			device.submit(cmd);
+
+			auto binary = device.request_timeline_semaphore_as_binary(*tl.sem, ++monotonic_value);
+			device.submit_empty(CommandBuffer::Type::Generic, nullptr, binary.get());
+			// Transfer the sync payload and materialize any given wait.
+
+			LOGI("Graphics submitting signal to %u\n", 1 + 2 * i);
+			kmt_fence_device_register_signal(kmt_dev, kmt_fence, tl.drm_timeline, monotonic_value, 1 + 2 * i);
+		}
+	});
+
+	auto task1 = std::async(std::launch::async, [&]()
 	{
-		LOGE("Failed to create handle.\n");
-		return;
-	}
+		Util::set_current_thread_name("compute");
+		Util::register_thread_index(1);
+		// Every process/queue has its own monotonic timeline.
+		auto tl = create_drm_timeline_from_granite(device, kmt_dev);
+		uint64_t monotonic_value = 0;
 
-	uint32_t first_signaled;
-	uint64_t point = 8;
-	int ret = drmSyncobjTimelineWait(drm_fd, &drm_timeline, &point, 1, 0,
-		DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL |
-		DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE, &first_signaled);
+		for (int i = 0; i < 16; i++)
+		{
+			LOGI("Compute waiting for %u to materialize\n", 1 + 2 * i);
+			// Wait API.
+			uint64_t edge = kmt_fence_device_register_edge(kmt_dev, kmt_fence, 1 + 2 * i, -1);
+			if (edge)
+			{
+				int sync_fd;
+				if (!kmt_fence_device_edge_wait_materialization(kmt_dev, kmt_fence, edge, &sync_fd))
+				{
+					LOGE("Failed to materialize wait.\n");
+					return;
+				}
 
-	if (ret == -ETIME)
-	{
-		LOGI("Wait is not available.\n");
-	}
-	else if (ret < 0)
-	{
-		LOGE("Failed to wait.\n");
-		return;
-	}
+				auto binary_sem = device.request_semaphore_external(VK_SEMAPHORE_TYPE_BINARY,
+				                                                    VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT);
+				ExternalHandle handle;
+				handle.semaphore_handle_type = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT;
+				handle.handle = sync_fd;
+				if (!binary_sem->import_from_handle(handle))
+				{
+					LOGE("Failed to import binary semaphore.\n");
+					return;
+				}
 
-	{
-		auto binary = device.request_timeline_semaphore_as_binary(*timeline, 10);
-		device.submit_empty(CommandBuffer::Type::Generic, nullptr, binary.get());
-	}
+				device.add_wait_semaphore(CommandBuffer::Type::AsyncCompute, std::move(binary_sem),
+				                          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
+			}
 
-	ret = drmSyncobjTimelineWait(drm_fd, &drm_timeline, &point, 1, 1000000000,
-		DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL | DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE, &first_signaled);
+			auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncCompute);
+			cmd->copy_buffer(*dummy_buffer, (2 + 2 * i) * sizeof(uint32_t),
+			                 *dummy_buffer, (1 + 2 * i) * sizeof(uint32_t), sizeof(uint32_t));
+			device.submit(cmd);
 
-	if (ret < 0)
-	{
-		LOGE("Failed to wait.\n");
-		return;
-	}
+			auto binary = device.request_timeline_semaphore_as_binary(*tl.sem, ++monotonic_value);
+			device.submit_empty(CommandBuffer::Type::AsyncCompute, nullptr, binary.get());
+			// Transfer the sync payload and materialize any given wait.
 
-	if (drmSyncobjTransfer(drm_fd, sync_handle, 0, drm_timeline, 8, 0) < 0)
-	{
-		LOGE("Failed to transfer.\n");
-		return;
-	}
+			LOGI("Compute submitting signal to %u\n", 2 + 2 * i);
+			kmt_fence_device_register_signal(kmt_dev, kmt_fence, tl.drm_timeline, monotonic_value, 2 + 2 * i);
+		}
+	});
 
-	int sync_fd;
-	if (drmSyncobjExportSyncFile(drm_fd, sync_handle, &sync_fd) < 0)
-	{
-		LOGE("Failed to export sync file.\n");
-		return;
-	}
-
-	if (sync_fd >= 0)
-	{
-		pollfd fd = {};
-		fd.fd = sync_fd;
-		fd.events = POLLIN;
-		if (poll(&fd, 1, -1) != 1 || (fd.revents & POLLIN) == 0)
-			LOGE("Failed to poll?\n");
-	}
-
-	close(sync_fd);
-
-	if (drmSyncobjDestroy(drm_fd, drm_timeline) < 0)
-	{
-		LOGE("Failed to destroy?\n");
-		return;
-	}
+	events.get();
+	task0.get();
+	task1.get();
 }
 
 int main()
@@ -597,6 +738,7 @@ int main()
 		return EXIT_FAILURE;
 
 	Context ctx;
+	ctx.set_num_thread_indices(2);
 	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0))
 		return EXIT_FAILURE;
 

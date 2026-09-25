@@ -69,7 +69,6 @@ struct kmt_pending_signal
 {
 	uint64_t order;
 	uint64_t value;
-	uint32_t sync_handle;
 };
 
 struct kmt_pending_edge
@@ -276,11 +275,8 @@ kmt_fence_handle kmt_fence_device_create_fence(kmt_fence_device device, uint64_t
 	return fence;
 }
 
-void kmt_fence_device_destroy_fence(kmt_fence_device device, kmt_fence_handle fence)
+void kmt_fence_device_destroy_fence(kmt_fence_device, kmt_fence_handle fence)
 {
-	for (auto &signal : fence->pending_signals)
-		drmSyncobjDestroy(device->drmfd, signal.sync_handle);
-
 	for (auto &edge : fence->pending_edges)
 		if (edge.syncfd >= 0)
 			close(edge.syncfd);
@@ -341,42 +337,45 @@ void kmt_fence_handle_opaque::complete(uint64_t order)
 
 	uint64_t signal_value = itr->value;
 
-	drmSyncobjDestroy(device->drmfd, itr->sync_handle);
-
 	*itr = pending_signals.back();
 	pending_signals.pop_back();
 
 	signal_immediate_locked(signal_value);
 }
 
-bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle fence,
-                                      uint32_t drm_timeline, uint64_t point, uint64_t value)
+static bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle fence,
+                                             uint32_t drm_timeline, uint64_t point, int fd, uint64_t value)
 {
-	uint32_t first_signaled;
-	int ret = drmSyncobjTimelineWait(device->drmfd, &drm_timeline, &point, 1, 0,
-		DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL | DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE, &first_signaled);
-	if (ret < 0)
-		return false;
-
-	uint32_t sync_handle;
-	if (drmSyncobjCreate(device->drmfd, 0, &sync_handle) < 0)
-		return false;
-
-	if (drmSyncobjTransfer(device->drmfd, sync_handle, 0, drm_timeline, point, 0) < 0)
+	if (fd < 0 && point != 0)
 	{
+		uint32_t sync_handle;
+		uint32_t first_signaled;
+
+		int ret = drmSyncobjTimelineWait(device->drmfd, &drm_timeline, &point, 1, 0,
+			DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL | DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE, &first_signaled);
+		if (ret < 0)
+			return false;
+
+		if (drmSyncobjCreate(device->drmfd, 0, &sync_handle) < 0)
+			return false;
+
+		if (drmSyncobjTransfer(device->drmfd, sync_handle, 0, drm_timeline, point, 0) < 0)
+		{
+			drmSyncobjDestroy(device->drmfd, sync_handle);
+			return false;
+		}
+
+		ret = drmSyncobjExportSyncFile(device->drmfd, sync_handle, &fd);
+		if (ret < 0)
+		{
+			drmSyncobjDestroy(device->drmfd, sync_handle);
+			return false;
+		}
+
 		drmSyncobjDestroy(device->drmfd, sync_handle);
-		return false;
 	}
 
 	uint64_t order = device->allocate_order();
-
-	int sync_fd;
-	ret = drmSyncobjExportSyncFile(device->drmfd, sync_handle, &sync_fd);
-	if (ret < 0)
-	{
-		drmSyncobjDestroy(device->drmfd, sync_handle);
-		return false;
-	}
 
 	{
 		std::lock_guard<std::mutex> holder{fence->lock};
@@ -384,7 +383,6 @@ bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle 
 		kmt_pending_signal sig = {};
 		sig.value = value;
 		sig.order = order;
-		sig.sync_handle = sync_handle;
 		fence->pending_signals.push_back(sig);
 
 		bool has_materialization = false;
@@ -395,7 +393,7 @@ bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle 
 			// Materialize with the first submitted signal that could unblock the waiter.
 			if (value >= edge.value && edge.eventfd < 0 && edge.syncfd < 0)
 			{
-				edge.syncfd = dup(sync_fd);
+				edge.syncfd = dup(fd);
 				has_materialization = true;
 			}
 		}
@@ -404,7 +402,7 @@ bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle 
 			fence->cond.notify_all();
 	}
 
-	if (sync_fd >= 0)
+	if (fd >= 0)
 	{
 		epoll_event ev = {};
 		ev.events = EPOLLIN;
@@ -412,15 +410,13 @@ bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle 
 		auto *data = new kmt_epoll_data();
 		data->order = order;
 		data->fence = fence;
-		data->fd = sync_fd;
+		data->fd = fd;
 		ev.data.ptr = data;
 
-		ret = epoll_ctl(device->epoll_fd, EPOLL_CTL_ADD, sync_fd, &ev);
+		int ret = epoll_ctl(device->epoll_fd, EPOLL_CTL_ADD, fd, &ev);
 
 		if (ret < 0)
 		{
-			LOGE("Failed to add syncfd to epoll, ret %d, errno %d\n", ret, errno);
-			drmSyncobjDestroy(device->drmfd, sync_handle);
 			delete data;
 			return false;
 		}
@@ -430,16 +426,18 @@ bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle 
 		// Could this happen if the sync is already complete?
 		// Vulkan spec talks about this case at least ...
 		// Need to ensure signal order though.
-
 		kmt_epoll_data data = { fence, order, -1 };
 		if (write(device->wake_fd, &data, sizeof(data)) < 0)
-		{
-			drmSyncobjDestroy(device->drmfd, sync_handle);
 			return false;
-		}
 	}
 
 	return true;
+}
+
+bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle fence,
+											 uint32_t drm_timeline, uint64_t point, uint64_t value)
+{
+	return kmt_fence_device_register_signal(device, fence, drm_timeline, point, -1, value);
 }
 
 bool kmt_fence_device_register_sync_file(kmt_fence_device device, kmt_fence_handle fence, int fd, uint64_t value)
@@ -457,7 +455,6 @@ bool kmt_fence_device_register_sync_file(kmt_fence_device device, kmt_fence_hand
 		return false;
 	}
 
-	drmSyncobjDestroy(device->drmfd, handle);
 	close(fd);
 	return true;
 }
@@ -556,12 +553,12 @@ bool kmt_fence_device_edge_wait_materialization(kmt_fence_device device, kmt_fen
 
 	if (pending)
 	{
-		*sync_fd = -1;
+		*sync_fd = pending->syncfd;
+		pending->syncfd = -1;
 	}
 	else
 	{
-		*sync_fd = pending->syncfd;
-		pending->syncfd = -1;
+		*sync_fd = -1;
 	}
 
 	kmt_fence_device_unregister_edge_locked(device, fence, edge);

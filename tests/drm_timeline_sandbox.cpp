@@ -14,10 +14,10 @@
 extern "C" {
 typedef struct kmt_fence_device_opaque *kmt_fence_device;
 typedef struct kmt_fence_handle_opaque *kmt_fence_handle;
-typedef struct kmt_fence_edge_opaque *kmt_fence_edge;
 
 kmt_fence_device kmt_fence_device_create(int drm_fd);
-kmt_fence_device kmt_fence_device_create_from_drm_properties(const VkPhysicalDeviceDrmPropertiesEXT *drm_properties);
+kmt_fence_device kmt_fence_device_create_from_drm_properties(
+	const VkPhysicalDeviceDrmPropertiesEXT *drm_properties);
 int kmt_fence_device_get_drmfd(kmt_fence_device device);
 void kmt_fence_device_destroy(kmt_fence_device device);
 
@@ -28,10 +28,10 @@ bool kmt_fence_device_register_signal_immediate(kmt_fence_device device, kmt_fen
 bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle fence,
                                       uint32_t drm_timeline, uint64_t point, uint64_t value);
 
-kmt_fence_edge kmt_fence_device_register_edge(kmt_fence_device device, kmt_fence_handle fence, uint64_t value);
-bool kmt_fence_device_signal_event(kmt_fence_device device, kmt_fence_handle fence, kmt_fence_edge edge, int eventfd);
-bool kmt_fence_device_wait_materialization(kmt_fence_device device, kmt_fence_handle fence, kmt_fence_edge edge, int *sync_fd);
-void kmt_fence_device_unregister_edge(kmt_fence_device device, kmt_fence_handle fence, kmt_fence_edge edge);
+uint64_t kmt_fence_device_register_edge(kmt_fence_device device, kmt_fence_handle fence, uint64_t value);
+bool kmt_fence_device_edge_signal_eventfd(kmt_fence_device device, kmt_fence_handle fence, uint64_t edge, int eventfd);
+bool kmt_fence_device_edge_wait_materialization(kmt_fence_device device, kmt_fence_handle fence, uint64_t edge, int *sync_fd);
+void kmt_fence_device_unregister_edge(kmt_fence_device device, kmt_fence_handle fence, uint64_t edge);
 }
 
 struct kmt_epoll_data
@@ -218,6 +218,13 @@ int kmt_fence_device_get_drmfd(kmt_fence_device device)
 
 void kmt_fence_device_destroy(kmt_fence_device device)
 {
+	if (device->epoll_thread.joinable())
+	{
+		kmt_epoll_data dummy = {};
+		write(device->epoll_fd, &dummy, sizeof(dummy));
+		device->epoll_thread.join();
+	}
+
 	if (device->drmfd >= 0)
 		close(device->drmfd);
 	if (device->epoll_fd >= 0)
@@ -375,6 +382,90 @@ bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle 
 	}
 
 	return true;
+}
+
+uint64_t kmt_fence_device_register_edge(kmt_fence_device device, kmt_fence_handle fence, uint64_t value)
+{
+	uint64_t order = device->allocate_order();
+	std::lock_guard<std::mutex> holder{fence->lock};
+
+	// The wait can be satisfied instantly.
+	if (fence->current_value >= value)
+		return 0;
+
+	kmt_pending_edge edge = {};
+	edge.order = order;
+	edge.value = value;
+	fence->pending_edges.push_back(edge);
+	return order;
+}
+
+static kmt_pending_edge *kmt_fence_find_pending_edge_locked(kmt_fence_device, kmt_fence_handle fence, uint64_t edge)
+{
+	auto itr = std::find_if(fence->pending_edges.begin(), fence->pending_edges.end(),
+	                        [&](const kmt_pending_edge &pending)
+	                        {
+		                        return pending.order == edge;
+	                        });
+
+	return itr == fence->pending_edges.end() ? nullptr : &(*itr);
+}
+
+bool kmt_fence_device_edge_signal_eventfd(kmt_fence_device device, kmt_fence_handle fence, uint64_t edge, int eventfd)
+{
+	std::lock_guard<std::mutex> holder{fence->lock};
+	auto *pending = kmt_fence_find_pending_edge_locked(device, fence, edge);
+
+	if (!pending)
+	{
+		const uint64_t dummy = 1;
+		return write(eventfd, &dummy, sizeof(dummy)) > 0;
+	}
+	else
+	{
+		pending->eventfd = eventfd;
+		return true;
+	}
+}
+
+bool kmt_fence_device_edge_wait_materialization(kmt_fence_device device, kmt_fence_handle fence, uint64_t edge, int *sync_fd)
+{
+	std::unique_lock<std::mutex> holder{fence->lock};
+	fence->cond.wait(holder, [&]()
+	{
+		auto *pending = kmt_fence_find_pending_edge_locked(device, fence, edge);
+		if (!pending)
+			return true;
+		return pending->materialized;
+	});
+
+	auto *pending = kmt_fence_find_pending_edge_locked(device, fence, edge);
+	if (pending)
+	{
+		*sync_fd = -1;
+		return true;
+	}
+	else
+	{
+		return drmSyncobjHandleToFD(device->drmfd, pending->sync_handle, sync_fd) == 0;
+	}
+}
+
+void kmt_fence_device_unregister_edge(kmt_fence_device, kmt_fence_handle fence, uint64_t edge)
+{
+	std::lock_guard<std::mutex> holder{fence->lock};
+
+	auto itr = std::find_if(fence->pending_edges.begin(), fence->pending_edges.end(),
+							[&](const kmt_pending_edge &pending)
+							{
+								return pending.order == edge;
+							});
+
+	if (itr != fence->pending_edges.end())
+	{
+		*itr = fence->pending_edges.back();
+		fence->pending_edges.pop_back();
+	}
 }
 
 using namespace Granite;

@@ -33,6 +33,7 @@ void kmt_fence_device_destroy_fence(kmt_fence_device device, kmt_fence_handle fe
 bool kmt_fence_device_register_signal_immediate(kmt_fence_device device, kmt_fence_handle fence, uint64_t value);
 bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle fence,
                                       uint32_t drm_timeline, uint64_t point, uint64_t value);
+bool kmt_fence_device_register_sync_file(kmt_fence_device device, kmt_fence_handle fence, int fd, uint64_t value);
 
 uint64_t kmt_fence_device_query_fence(kmt_fence_device device, kmt_fence_handle fence);
 uint64_t kmt_fence_device_register_edge(kmt_fence_device device, kmt_fence_handle fence, uint64_t value, int eventfd);
@@ -441,6 +442,26 @@ bool kmt_fence_device_register_signal(kmt_fence_device device, kmt_fence_handle 
 	return true;
 }
 
+bool kmt_fence_device_register_sync_file(kmt_fence_device device, kmt_fence_handle fence, int fd, uint64_t value)
+{
+	uint32_t handle;
+
+	if (drmSyncobjCreate(device->drmfd, 0, &handle) < 0)
+		return false;
+	if (drmSyncobjImportSyncFile(device->drmfd, handle, fd) < 0)
+		return false;
+
+	if (!kmt_fence_device_register_signal(device, fence, handle, 0, value))
+	{
+		drmSyncobjDestroy(device->drmfd, handle);
+		return false;
+	}
+
+	drmSyncobjDestroy(device->drmfd, handle);
+	close(fd);
+	return true;
+}
+
 uint64_t kmt_fence_device_query_fence(kmt_fence_device, kmt_fence_handle fence)
 {
 	std::lock_guard<std::mutex> holder{fence->lock};
@@ -680,9 +701,12 @@ static void run_test(Device &device)
 	{
 		Util::set_current_thread_name("compute");
 		Util::register_thread_index(1);
+
+#if 0
 		// Every process/queue has its own monotonic timeline.
 		auto tl = create_drm_timeline_from_granite(device, kmt_dev);
 		uint64_t monotonic_value = 0;
+#endif
 
 		for (int i = 0; i < 16; i++)
 		{
@@ -718,18 +742,29 @@ static void run_test(Device &device)
 			                 *dummy_buffer, (1 + 2 * i) * sizeof(uint32_t), sizeof(uint32_t));
 			device.submit(cmd);
 
+#if 0
 			auto binary = device.request_timeline_semaphore_as_binary(*tl.sem, ++monotonic_value);
 			device.submit_empty(CommandBuffer::Type::AsyncCompute, nullptr, binary.get());
 			// Transfer the sync payload and materialize any given wait.
 
 			LOGI("Compute submitting signal to %u\n", 2 + 2 * i);
 			kmt_fence_device_register_signal(kmt_dev, kmt_fence, tl.drm_timeline, monotonic_value, 2 + 2 * i);
+#else
+			auto binary = device.request_semaphore_external(VK_SEMAPHORE_TYPE_BINARY, VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT);
+			device.submit_empty(CommandBuffer::Type::AsyncCompute, nullptr, binary.get());
+			auto external = binary->export_to_handle();
+			kmt_fence_device_register_sync_file(kmt_dev, kmt_fence, external.handle, 2 + 2 * i);
+#endif
 		}
 	});
 
 	events.get();
 	task0.get();
 	task1.get();
+
+	auto *ptr = static_cast<const uint32_t *>(device.map_host_buffer(*dummy_buffer, MEMORY_ACCESS_READ_BIT));
+	for (int i = 0; i < 34; i++)
+		LOGI("Value %u = %u\n", i, ptr[i]);
 }
 
 int main()

@@ -166,6 +166,12 @@ void VideoScaler::set_ycbcr_chroma_midpoint(float midpoint)
 	ycbcr_chroma_midpoint = midpoint;
 }
 
+void VideoScaler::set_ycbcr_range(VkSamplerYcbcrRange range, unsigned bit_depth)
+{
+	ycbcr_range = range;
+	ycbcr_range_bit_depth = bit_depth;
+}
+
 void VideoScaler::rescale(CommandBuffer &cmd, const RescaleInfo &info)
 {
 	if (!recognized_color_space(info.input_color_space) || !recognized_color_space(info.output_color_space))
@@ -349,19 +355,34 @@ void VideoScaler::rescale(CommandBuffer &cmd, const RescaleInfo &info)
 	};
 	auto *ubo = cmd.allocate_typed_constant_data<UBO>(0, 4, 1);
 
+	vec3 cr_row, y_row, cb_row;
 	if (info.output_color_space == VK_COLOR_SPACE_HDR10_ST2084_EXT)
 	{
-		ubo->gamma_space_transform[0] = vec4(0.5f, -0.459786f, -0.0402143f, ycbcr_chroma_midpoint);
-		ubo->gamma_space_transform[1] = vec4(0.2627f, 0.678f, 0.0593f, 0.0f);
-		ubo->gamma_space_transform[2] = vec4(-0.13963f, -0.36037f, 0.5f, ycbcr_chroma_midpoint);
+		cr_row = vec3(0.5f, -0.459786f, -0.0402143f);
+		y_row = vec3(0.2627f, 0.678f, 0.0593f);
+		cb_row = vec3(-0.13963f, -0.36037f, 0.5f);
 	}
 	else
 	{
 		// Everything else is standard BT.709.
-		ubo->gamma_space_transform[0] = vec4(0.5f, -0.454153f, -0.0458471f, ycbcr_chroma_midpoint);
-		ubo->gamma_space_transform[1] = vec4(0.2126f, 0.7152f, 0.0722f, 0.0f);
-		ubo->gamma_space_transform[2] = vec4(-0.114572f, -0.385428f, 0.5f, ycbcr_chroma_midpoint);
+		cr_row = vec3(0.5f, -0.454153f, -0.0458471f);
+		y_row = vec3(0.2126f, 0.7152f, 0.0722f);
+		cb_row = vec3(-0.114572f, -0.385428f, 0.5f);
 	}
+
+	float luma_scale = 1.0f, luma_offset = 0.0f, chroma_scale = 1.0f;
+	if (ycbcr_range == VK_SAMPLER_YCBCR_RANGE_ITU_NARROW)
+	{
+		// H.273 narrow range: 16..235 luma and 16..240 chroma at 8 bits, scaled up for higher bit depths.
+		float code_unit = float(1u << (ycbcr_range_bit_depth - 8u)) / float((1u << ycbcr_range_bit_depth) - 1u);
+		luma_scale = 219.0f * code_unit;
+		luma_offset = 16.0f * code_unit;
+		chroma_scale = 224.0f * code_unit;
+	}
+
+	ubo->gamma_space_transform[0] = vec4(cr_row * chroma_scale, ycbcr_chroma_midpoint);
+	ubo->gamma_space_transform[1] = vec4(y_row * luma_scale, luma_offset);
+	ubo->gamma_space_transform[2] = vec4(cb_row * chroma_scale, ycbcr_chroma_midpoint);
 
 	const Primaries bt709 = {
 		{ 0.640f, 0.330f },

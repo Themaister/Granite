@@ -1689,8 +1689,13 @@ void Device::emit_implicit_sync_to_queues(QueueIndices physical_type)
 	{
 		Util::for_each_bit(sync_to_queues, [&](unsigned bit)
 		{
-			auto sem = request_legacy_semaphore();
-			submit_empty_inner(physical_type, nullptr, sem.get(), 0, nullptr);
+   			// We are called with the device lock held (from submit_queue / submit_empty_inner),
+   			// so we must not go through request_legacy_semaphore(), which takes LOCK() again
+   			// and self-deadlocks on the non-recursive mutex. This path is only taken on
+   			// devices without timeline semaphores.
+   			VkSemaphore vk_semaphore = managers.semaphore.request_cleared_semaphore();
+   			auto sem = Semaphore(handle_pool.semaphores.allocate(this, vk_semaphore, false, true));
+   			submit_empty_inner(physical_type, nullptr, sem.get(), 0, nullptr);
 
 			auto queue_index = QueueIndices(bit);
 

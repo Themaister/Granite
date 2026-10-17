@@ -33,6 +33,26 @@ namespace Vulkan
 {
 class Device;
 
+static inline VkImageLayout convert_vk_image_layout2(VkImageLayout layout, VkImageUsageFlags flags)
+{
+	if (layout == VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL)
+	{
+		if ((flags & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0)
+			return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		else
+			return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	}
+	else if (layout == VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL)
+	{
+		if ((flags & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0)
+			return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		else
+			return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	}
+
+	return layout;
+}
+
 static inline uint32_t image_num_miplevels(const VkExtent3D &extent)
 {
 	uint32_t size = std::max<uint32_t>(std::max<uint32_t>(extent.width, extent.height), extent.depth);
@@ -450,7 +470,10 @@ public:
 
 	VkImageLayout get_layout(VkImageLayout optimal) const
 	{
-		return create_info.layout == ImageLayout::Optimal ? optimal : VK_IMAGE_LAYOUT_GENERAL;
+		auto layout = create_info.layout == ImageLayout::Optimal ? optimal : VK_IMAGE_LAYOUT_GENERAL;
+		if (!sync2)
+			layout = convert_vk_image_layout2(layout, create_info.usage);
+		return layout;
 	}
 
 	bool is_swapchain_image() const
@@ -519,6 +542,7 @@ private:
 	VkSurfaceTransformFlagBitsKHR surface_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	bool owns_image = true;
 	bool owns_memory_allocation = true;
+	bool sync2;
 };
 
 using ImageHandle = Util::IntrusivePtr<Image>;

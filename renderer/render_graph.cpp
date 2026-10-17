@@ -1979,6 +1979,8 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 	auto &phys = physical_dimensions[barrier.resource_index];
 	bool init_barrier = false;
 
+	bool sync2 = device->get_device_features().vk13_features.synchronization2;
+
 	if (phys.buffer_info.size || (phys.flags & ATTACHMENT_INFO_INTERNAL_PROXY_BIT) != 0)
 	{
 		// Buffers.
@@ -2041,6 +2043,12 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 		b.srcAccessMask = event.to_flush_access;
 		b.dstAccessMask = barrier.access;
 		b.dstStageMask = barrier.stages;
+
+		if (!sync2)
+		{
+			b.oldLayout = Vulkan::convert_vk_image_layout2(b.oldLayout, image->get_create_info().usage);
+			b.newLayout = Vulkan::convert_vk_image_layout2(b.newLayout, image->get_create_info().usage);
+		}
 
 		b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -2442,12 +2450,13 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 
 	auto target_layout = physical_dimensions[index].is_storage_image() ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 
+	bool sync2 = device->get_device_features().vk13_features.synchronization2;
+
 	if (physical_events[index].pipeline_barrier_src_stages != 0)
 	{
 		VkImageMemoryBarrier2 barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 		barrier.image = image.get_image();
 		barrier.oldLayout = physical_events[index].layout;
-
 		barrier.newLayout = target_layout;
 		barrier.srcAccessMask = physical_events[index].to_flush_access;
 		barrier.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
@@ -2458,6 +2467,12 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 		barrier.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(physical_attachments[index]->get_format());
 		barrier.srcStageMask = physical_events[index].pipeline_barrier_src_stages;
 		barrier.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+		if (!sync2)
+		{
+			barrier.oldLayout = Vulkan::convert_vk_image_layout2(barrier.oldLayout, image.get_create_info().usage);
+			barrier.newLayout = Vulkan::convert_vk_image_layout2(barrier.newLayout, image.get_create_info().usage);
+		}
 
 		cmd->image_barriers(1, &barrier);
 

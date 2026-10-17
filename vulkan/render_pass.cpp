@@ -102,6 +102,10 @@ RenderPass::RenderPass(Hash hash, Device *device_, const VkRenderPassCreateInfo2
 	// Store the important subpass information for later.
 	setup_subpasses(create_info);
 
+	// We're not going to rewrite a bunch of stuff for legacy here.
+	// sync1 path is only for special use.
+	VK_ASSERT(device->get_device_features().vk13_features.synchronization2);
+
 #ifdef VULKAN_DEBUG
 	LOGI("Creating render pass.\n");
 #endif
@@ -125,6 +129,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	bool enable_transient_store = (info.op_flags & RENDER_PASS_OP_ENABLE_TRANSIENT_STORE_BIT) != 0;
 	bool enable_transient_load = (info.op_flags & RENDER_PASS_OP_ENABLE_TRANSIENT_LOAD_BIT) != 0;
 	bool multiview = info.num_layers > 1;
+	bool sync2 = device->get_device_features().vk13_features.synchronization2;
 
 	// Set up default subpass info structure if we don't have it.
 	auto *subpass_infos = info.subpasses;
@@ -460,7 +465,10 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	for (unsigned attachment = 0; attachment < num_attachments; attachment++)
 	{
 		bool used = false;
-		auto current_layout = attachments[attachment].initialLayout;
+		auto &att = attachments[attachment];
+		auto current_layout = att.initialLayout;
+		const bool is_depth_image = attachment == info.num_color_attachments;
+
 		for (unsigned subpass = 0; subpass < num_subpasses; subpass++)
 		{
 			auto *color = find_color(subpass, attachment);
@@ -504,11 +512,11 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 				input->layout = current_layout;
 
 				// If the attachment is first used as a feedback attachment, the initial layout should actually be GENERAL.
-				if (!used && attachments[attachment].initialLayout != VK_IMAGE_LAYOUT_UNDEFINED)
-					attachments[attachment].initialLayout = current_layout;
+				if (!used && att.initialLayout != VK_IMAGE_LAYOUT_UNDEFINED)
+					att.initialLayout = current_layout;
 
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
-				if (!used && attachments[attachment].initialLayout != current_layout)
+				if (!used && att.initialLayout != current_layout)
 				{
 					external_color_dependencies |= 1u << subpass;
 					external_input_dependencies |= 1u << subpass;
@@ -523,10 +531,10 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 			else if (resolve)
 			{
 				if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
-					current_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+					current_layout = sync2 ? VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
-				if (!used && attachments[attachment].initialLayout != current_layout)
+				if (!used && att.initialLayout != current_layout)
 					external_color_dependencies |= 1u << subpass;
 
 				resolve->layout = current_layout;
@@ -541,11 +549,11 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 				input->layout = current_layout;
 
 				// If the attachment is first used as a feedback attachment, the initial layout should actually be GENERAL.
-				if (!used && attachments[attachment].initialLayout != VK_IMAGE_LAYOUT_UNDEFINED)
-					attachments[attachment].initialLayout = current_layout;
+				if (!used && att.initialLayout != VK_IMAGE_LAYOUT_UNDEFINED)
+					att.initialLayout = current_layout;
 
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
-				if (!used && attachments[attachment].initialLayout != current_layout)
+				if (!used && att.initialLayout != current_layout)
 				{
 					external_color_dependencies |= 1u << subpass;
 					external_input_dependencies |= 1u << subpass;
@@ -561,11 +569,11 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 			else if (color) // No particular preference
 			{
 				if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
-					current_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+					current_layout = sync2 ? VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 				color->layout = current_layout;
 
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
-				if (!used && attachments[attachment].initialLayout != current_layout)
+				if (!used && att.initialLayout != current_layout)
 					external_color_dependencies |= 1u << subpass;
 
 				used = true;
@@ -582,17 +590,17 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 					depth_stencil_attachment_write |= 1u << subpass;
 
 					// If the attachment is first used as a feedback attachment, the initial layout should actually be GENERAL.
-					if (!used && attachments[attachment].initialLayout != VK_IMAGE_LAYOUT_UNDEFINED)
-						attachments[attachment].initialLayout = current_layout;
+					if (!used && att.initialLayout != VK_IMAGE_LAYOUT_UNDEFINED)
+						att.initialLayout = current_layout;
 				}
 				else
 				{
 					if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
-						current_layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+						current_layout = sync2 ? VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 				}
 
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
-				if (!used && attachments[attachment].initialLayout != current_layout)
+				if (!used && att.initialLayout != current_layout)
 				{
 					external_input_dependencies |= 1u << subpass;
 					external_depth_dependencies |= 1u << subpass;
@@ -611,12 +619,12 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 				{
 					depth_stencil_attachment_write |= 1u << subpass;
 					if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
-						current_layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+						current_layout = sync2 ? VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 				}
 				else
 				{
 					if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
-						current_layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+						current_layout = sync2 ? VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 				}
 
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
@@ -630,16 +638,25 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 			}
 			else if (input)
 			{
+				const VkImageLayout legacy_layout = is_depth_image
+					                                    ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+					                                    : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
 				if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
-					current_layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+					current_layout = sync2 ? VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL : legacy_layout;
 
 				// If the attachment is first used as an input attachment, the initial layout should actually be
 				// READ_ONLY_OPTIMAL.
-				if (!used && attachments[attachment].initialLayout == VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL)
-					attachments[attachment].initialLayout = current_layout;
+				if (!used &&
+				    (att.initialLayout == VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL ||
+				     att.initialLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL ||
+				     att.initialLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL))
+				{
+					att.initialLayout = current_layout;
+				}
 
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
-				if (!used && attachments[attachment].initialLayout != current_layout)
+				if (!used && att.initialLayout != current_layout)
 					external_input_dependencies |= 1u << subpass;
 
 				input->layout = current_layout;
@@ -824,6 +841,23 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 
 	// Store the important subpass information for later.
 	setup_subpasses(rp_info);
+
+	if (!sync2)
+	{
+		for (unsigned i = 0; i < info.num_color_attachments; i++)
+		{
+			auto &att = attachments[i];
+			att.initialLayout = convert_vk_image_layout2(att.initialLayout, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+			att.finalLayout = convert_vk_image_layout2(att.finalLayout, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+		}
+
+		if (info.depth_stencil)
+		{
+			auto &att = attachments[info.num_color_attachments];
+			att.initialLayout = convert_vk_image_layout2(att.initialLayout, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+			att.finalLayout = convert_vk_image_layout2(att.finalLayout, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+		}
+	}
 
 #ifdef VULKAN_DEBUG
 	LOGI("Creating render pass.\n");

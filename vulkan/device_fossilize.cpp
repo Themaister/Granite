@@ -833,6 +833,12 @@ void Device::init_pipeline_state(const Fossilize::FeatureFilter &filter,
 		return;
 	}
 
+	if (!ext.vk13_features.synchronization2)
+	{
+		LOGW("Fossilize is only supported in sync2 path.\n");
+		return;
+	}
+
 	replayer_state.reset(new ReplayerState);
 	recorder_state.reset(new RecorderState);
 

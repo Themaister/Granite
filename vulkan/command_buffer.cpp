@@ -64,6 +64,7 @@ CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCa
     , cmd(cmd_)
     , type(type_)
 	, is_secondary(secondary)
+	, sync2(device->ext.vk13_features.synchronization2)
 {
 	pipeline_state.cache = cache;
 	begin_compute();
@@ -458,15 +459,101 @@ void CommandBuffer::barrier(const VkDependencyInfo &dep)
 	if (stages & VK_ACCESS_SHADER_WRITE_BIT)
 		LOGW("Using deprecated SHADER_WRITE access.\n");
 
-	for (uint32_t i = 0; i < dep.imageMemoryBarrierCount; i++)
+	if (sync2)
 	{
-		VK_ASSERT(!is_legacy_layout(dep.pImageMemoryBarriers[i].oldLayout) &&
-		          !is_legacy_layout(dep.pImageMemoryBarriers[i].newLayout));
+		for (uint32_t i = 0; i < dep.imageMemoryBarrierCount; i++)
+		{
+			VK_ASSERT(!is_legacy_layout(dep.pImageMemoryBarriers[i].oldLayout) &&
+					  !is_legacy_layout(dep.pImageMemoryBarriers[i].newLayout));
+		}
 	}
 #endif
 
-	table.vkCmdPipelineBarrier2(cmd, &dep);
+	if (sync2)
+		table.vkCmdPipelineBarrier2(cmd, &dep);
+	else
+		pipeline_barrier2_fallback(dep);
+
 	checkpoint_with_signal<CheckpointString>("barrier");
+}
+
+void CommandBuffer::pipeline_barrier2_fallback(const VkDependencyInfo &dep)
+{
+	// Sigh ... old Android do be old Android :(
+	Util::SmallVector<VkImageMemoryBarrier> image_barriers;
+	Util::SmallVector<VkBufferMemoryBarrier> buffer_barriers;
+	Util::SmallVector<VkMemoryBarrier> barriers;
+
+	VkPipelineStageFlags src_stages = 0;
+	VkPipelineStageFlags dst_stages = 0;
+
+	image_barriers.reserve(dep.imageMemoryBarrierCount);
+	buffer_barriers.reserve(dep.bufferMemoryBarrierCount);
+	barriers.reserve(dep.memoryBarrierCount);
+
+	for (uint32_t i = 0; i < dep.memoryBarrierCount; i++)
+	{
+		VkMemoryBarrier b = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
+		auto &ib = dep.pMemoryBarriers[i];
+
+		b.srcAccessMask |= convert_vk_access_flags2(ib.srcAccessMask);
+		b.dstAccessMask |= convert_vk_access_flags2(ib.dstAccessMask);
+		src_stages |= convert_vk_src_stage2(ib.srcStageMask);
+		dst_stages |= convert_vk_dst_stage2(ib.dstStageMask);
+		barriers.push_back(b);
+	}
+
+	for (uint32_t i = 0; i < dep.bufferMemoryBarrierCount; i++)
+	{
+		VkBufferMemoryBarrier b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
+		auto &ib = dep.pBufferMemoryBarriers[i];
+
+		b.buffer = ib.buffer;
+		b.srcQueueFamilyIndex = ib.srcQueueFamilyIndex;
+		b.dstQueueFamilyIndex = ib.dstQueueFamilyIndex;
+		b.offset = ib.offset;
+		b.size = ib.size;
+
+		b.srcAccessMask |= convert_vk_access_flags2(ib.srcAccessMask);
+		b.dstAccessMask |= convert_vk_access_flags2(ib.dstAccessMask);
+		src_stages |= convert_vk_src_stage2(ib.srcStageMask);
+		dst_stages |= convert_vk_dst_stage2(ib.dstStageMask);
+		buffer_barriers.push_back(b);
+	}
+
+	for (uint32_t i = 0; i < dep.imageMemoryBarrierCount; i++)
+	{
+		VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+		auto &ib = dep.pImageMemoryBarriers[i];
+
+		b.image = ib.image;
+		b.srcQueueFamilyIndex = ib.srcQueueFamilyIndex;
+		b.dstQueueFamilyIndex = ib.dstQueueFamilyIndex;
+		b.subresourceRange = ib.subresourceRange;
+
+		// We don't know the image's usage flags here.
+		// This is only relevant if we use the raw barrier API, which is more or less never used.
+		VK_ASSERT(convert_vk_image_layout2(ib.oldLayout, 0) == ib.oldLayout);
+		VK_ASSERT(convert_vk_image_layout2(ib.newLayout, 0) == ib.newLayout);
+		b.oldLayout = ib.oldLayout;
+		b.newLayout = ib.newLayout;
+
+		b.srcAccessMask |= convert_vk_access_flags2(ib.srcAccessMask);
+		b.dstAccessMask |= convert_vk_access_flags2(ib.dstAccessMask);
+		src_stages |= convert_vk_src_stage2(ib.srcStageMask);
+		dst_stages |= convert_vk_dst_stage2(ib.dstStageMask);
+		image_barriers.push_back(b);
+	}
+
+	if (!src_stages)
+		src_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	if (!dst_stages)
+		dst_stages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+
+	table.vkCmdPipelineBarrier(cmd, src_stages, dst_stages, dep.dependencyFlags,
+		uint32_t(barriers.size()), barriers.data(),
+		uint32_t(buffer_barriers.size()), buffer_barriers.data(),
+		uint32_t(image_barriers.size()), image_barriers.data());
 }
 
 void CommandBuffer::buffer_barrier(const Buffer &buffer,
@@ -539,6 +626,12 @@ void CommandBuffer::release_image_barrier(
 		VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
 		uint32_t dst_queue_family)
 {
+	if (!device->get_device_features().vk13_features.synchronization2)
+	{
+		old_layout = convert_vk_image_layout2(old_layout, image.get_create_info().usage);
+		new_layout = convert_vk_image_layout2(new_layout, image.get_create_info().usage);
+	}
+
 	VkImageMemoryBarrier2 barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 	uint32_t family_index = device->get_queue_info().family_indices[device->get_physical_queue_type(type)];
 
@@ -566,6 +659,12 @@ void CommandBuffer::acquire_image_barrier(
 		VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access,
 		uint32_t src_queue_family)
 {
+	if (!device->get_device_features().vk13_features.synchronization2)
+	{
+		old_layout = convert_vk_image_layout2(old_layout, image.get_create_info().usage);
+		new_layout = convert_vk_image_layout2(new_layout, image.get_create_info().usage);
+	}
+
 	VkImageMemoryBarrier2 b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 	uint32_t family_index = device->get_queue_info().family_indices[device->get_physical_queue_type(type)];
 
@@ -621,10 +720,17 @@ void CommandBuffer::image_barrier(const Image &image,
                                   VkPipelineStageFlags2 src_stages, VkAccessFlags2 src_access,
                                   VkPipelineStageFlags2 dst_stages, VkAccessFlags2 dst_access)
 {
+	VK_ASSERT(!is_legacy_layout(old_layout) && !is_legacy_layout(new_layout));
+
+	if (!sync2)
+	{
+		old_layout = convert_vk_image_layout2(old_layout, image.get_create_info().usage);
+		new_layout = convert_vk_image_layout2(new_layout, image.get_create_info().usage);
+	}
+
 	VK_ASSERT(!actual_render_pass);
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(image.get_create_info().domain != ImageDomain::Transient);
-	VK_ASSERT(!is_legacy_layout(old_layout) && !is_legacy_layout(new_layout));
 
 	VkImageMemoryBarrier2 b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 	b.srcAccessMask = src_access;
@@ -2730,7 +2836,9 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView 
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_SAMPLED_BIT);
 	auto &fp = view.get_float_view();
 	auto &integer = view.get_integer_view();
-	set_texture(set, binding, fp.view, integer.view, view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL),
+
+	set_texture(set, binding, fp.view, integer.view,
+	            view.get_image().get_layout(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL),
 	            fp.sampled, integer.sampled,
 	            view.get_cookie());
 }

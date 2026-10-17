@@ -123,6 +123,7 @@ Image::Image(Device *device_, VkImage image_, const CachedImageView &default_vie
     , image(image_)
     , alloc(alloc_)
     , create_info(create_info_)
+    , sync2(device->get_device_features().vk13_features.synchronization2)
 {
 	if (view_type != VK_IMAGE_VIEW_TYPE_MAX_ENUM)
 	{

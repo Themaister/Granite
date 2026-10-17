@@ -143,6 +143,10 @@ struct DeviceFeatures
 	VkPhysicalDeviceDescriptorHeapFeaturesEXT descriptor_heap_features = {};
 	VkPhysicalDeviceDescriptorHeapPropertiesEXT descriptor_heap_properties = {};
 	VkPhysicalDeviceShaderImageAtomicInt64FeaturesEXT image_atomic_int64_features = {};
+	VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features = {};
+	VkPhysicalDeviceScalarBlockLayoutFeatures scalar_block_layout_features = {};
+	VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures shader_demote_features = {};
+	VkPhysicalDeviceBufferDeviceAddressFeatures buffer_device_address_features = {};
 
 	// Vendor
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};

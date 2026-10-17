@@ -891,6 +891,10 @@ void Device::init_workarounds()
 		workarounds.emulate_event_as_pipeline_barrier = true;
 	}
 
+	// Don't want to write more emulation paths than necessary.
+	if (!ext.vk13_features.synchronization2)
+		workarounds.emulate_event_as_pipeline_barrier = true;
+
 	// For whatever ridiculous reason, pipeline cache control causes GPU hangs on Pascal cards in parallel-rdp.
 	// Use mesh shaders as the sentinel to check for that.
 	if (ext.driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
@@ -1767,7 +1771,80 @@ void Device::emit_queue_signals(Helper::BatchComposer &composer,
 
 VkResult Device::queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo2 *submits, VkFence fence)
 {
-	return table->vkQueueSubmit2(queue, count, submits, fence);
+    if (ext.vk13_features.synchronization2)
+    {
+        return table->vkQueueSubmit2(queue, count, submits, fence);
+    }
+    else
+    {
+        for (uint32_t submit_index = 0; submit_index < count; submit_index++)
+        {
+            VkTimelineSemaphoreSubmitInfo timeline = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO };
+            const auto &submit = submits[submit_index];
+            VkSubmitInfo sub = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+            bool need_timeline = false;
+
+            Util::SmallVector<VkPipelineStageFlags> wait_stages;
+            Util::SmallVector<uint64_t> signal_values;
+            Util::SmallVector<uint64_t> wait_values;
+            Util::SmallVector<VkSemaphore> signals;
+            Util::SmallVector<VkCommandBuffer> cmd;
+            Util::SmallVector<VkSemaphore> waits;
+
+            for (uint32_t i = 0; i < submit.commandBufferInfoCount; i++)
+                cmd.push_back(submit.pCommandBufferInfos[i].commandBuffer);
+
+            for (uint32_t i = 0; i < submit.waitSemaphoreInfoCount; i++)
+            {
+                waits.push_back(submit.pWaitSemaphoreInfos[i].semaphore);
+                wait_stages.push_back(convert_vk_dst_stage2(submit.pWaitSemaphoreInfos[i].stageMask));
+                wait_values.push_back(submit.pWaitSemaphoreInfos[i].value);
+                if (wait_values.back() != 0)
+                    need_timeline = true;
+            }
+
+            for (uint32_t i = 0; i < submit.signalSemaphoreInfoCount; i++)
+            {
+                signals.push_back(submit.pSignalSemaphoreInfos[i].semaphore);
+                signal_values.push_back(submit.pSignalSemaphoreInfos[i].value);
+                if (signal_values.back() != 0)
+                    need_timeline = true;
+            }
+
+            sub.commandBufferCount = uint32_t(cmd.size());
+            sub.pCommandBuffers = cmd.data();
+            sub.signalSemaphoreCount = uint32_t(signals.size());
+            sub.pSignalSemaphores = signals.data();
+            sub.waitSemaphoreCount = uint32_t(waits.size());
+            sub.pWaitSemaphores = waits.data();
+            sub.pWaitDstStageMask = wait_stages.data();
+
+            sub.pNext = submit.pNext;
+            if (need_timeline)
+            {
+                timeline.pNext = sub.pNext;
+                sub.pNext = &timeline;
+
+                timeline.signalSemaphoreValueCount = uint32_t(signal_values.size());
+                timeline.pSignalSemaphoreValues = signal_values.data();
+                timeline.waitSemaphoreValueCount = uint32_t(wait_values.size());
+                timeline.pWaitSemaphoreValues = wait_values.data();
+            }
+
+            auto result = table->vkQueueSubmit(queue, 1, &sub, submit_index + 1 == count ? fence : VK_NULL_HANDLE);
+            if (result != VK_SUCCESS)
+                return result;
+        }
+
+        if (count == 0 && fence)
+        {
+            auto result = table->vkQueueSubmit(queue, 0, nullptr, fence);
+            if (result != VK_SUCCESS)
+                return result;
+        }
+
+        return VK_SUCCESS;
+    }
 }
 
 VkResult Device::submit_batches(Helper::BatchComposer &composer, VkQueue queue, VkFence fence, int profiling_iteration)

@@ -342,11 +342,11 @@ void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 	bindless.shadow_images.clear();
 	bindless.shadow_images.resize(bindless.parameters.num_lights + bindless.global_transforms.num_lights);
 
-	const auto add_barrier = [&](VkImage image) {
+	const auto add_barrier = [&](const Image &image) {
 		VkImageMemoryBarrier2 barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
-		barrier.image = image;
+		barrier.image = image.get_image();
 		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		barrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+		barrier.newLayout = image.get_layout(VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
 		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		barrier.srcAccessMask = 0;
@@ -411,7 +411,7 @@ void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 
 		bindless.handles[i]->set_shadow_transform_hash(current_transform_hash);
 		bindless.shadow_images[i] = image.get();
-		add_barrier(image->get_image());
+		add_barrier(*image);
 	}
 
 	if (!bindless.shadow_barriers.empty())
@@ -424,6 +424,10 @@ void LightClusterer::end_bindless_barriers(Vulkan::CommandBuffer &cmd)
 	auto src_stage = vsm ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 	// We use semaphores to handle sync, so don't do access masks.
 
+	auto ro_layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+	if (!cmd.get_device().get_device_features().vk13_features.synchronization2)
+		ro_layout = convert_vk_image_layout2(ro_layout, vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+
 	for (auto &barrier : bindless.shadow_barriers)
 	{
 		if (vsm)
@@ -431,7 +435,7 @@ void LightClusterer::end_bindless_barriers(Vulkan::CommandBuffer &cmd)
 		else
 			barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 		barrier.oldLayout = barrier.newLayout;
-		barrier.newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+		barrier.newLayout = ro_layout;
 		barrier.dstAccessMask = 0;
 		barrier.srcStageMask = src_stage;
 		barrier.dstStageMask = src_stage; // Transitive barrier, will do visibility op later.

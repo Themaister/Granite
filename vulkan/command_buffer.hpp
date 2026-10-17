@@ -52,6 +52,10 @@ static inline VkPipelineStageFlags convert_vk_stage2(VkPipelineStageFlags2 stage
 	constexpr VkPipelineStageFlags2 preraster_mask =
 			VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT;
 
+	constexpr VkPipelineStageFlags2 vertex_input_mask =
+			VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT |
+			VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT;
+
 	if ((stages & transfer_mask) != 0)
 	{
 		stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -60,10 +64,19 @@ static inline VkPipelineStageFlags convert_vk_stage2(VkPipelineStageFlags2 stage
 
 	if ((stages & preraster_mask) != 0)
 	{
-		// TODO: Augment if we add mesh shader support eventually.
+		// We don't support mesh shaders in this ancient model.
 		stages |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
 		stages &= ~preraster_mask;
 	}
+
+	if ((stages & vertex_input_mask) != 0)
+	{
+		stages |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+		stages &= ~vertex_input_mask;
+	}
+
+	// We should have resolved all higher bits now.
+	VK_ASSERT((stages & UINT32_MAX) == stages);
 
 	return VkPipelineStageFlags(stages);
 }
@@ -105,6 +118,8 @@ static inline VkAccessFlags convert_vk_access_flags2(VkAccessFlags2 access)
 		access |= VK_ACCESS_SHADER_WRITE_BIT;
 		access &= ~storage_mask;
 	}
+
+	VK_ASSERT((access & UINT32_MAX) == access);
 
 	return VkAccessFlags(access);
 }
@@ -1031,6 +1046,9 @@ private:
 	void build_tlas_batch();
 	void setup_batch(VkAccelerationStructureTypeKHR rtas_type);
 	void emit_scratch_barrier();
+
+	void pipeline_barrier2_fallback(const VkDependencyInfo &dep);
+	bool sync2;
 
 	template <typename T, typename... Ts> void checkpoint(Ts &&... ts);
 	template <typename T, typename... Ts> void checkpoint_with_signal(Ts &&... ts);

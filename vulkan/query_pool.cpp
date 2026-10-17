@@ -407,7 +407,16 @@ QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageF
 	VK_ASSERT((stage & (stage - 1)) == 0);
 
 	auto handle = allocate_query(cmd);
-	table.vkCmdWriteTimestamp2(cmd, stage, handle->get_query_pool(), handle->get_query_pool_index());
+
+	if (device->get_device_features().vk13_features.synchronization2)
+	{
+		table.vkCmdWriteTimestamp2(cmd, stage, handle->get_query_pool(), handle->get_query_pool_index());
+	}
+	else
+	{
+		table.vkCmdWriteTimestamp(cmd, VkPipelineStageFlagBits(convert_vk_src_stage2(stage)),
+			handle->get_query_pool(), handle->get_query_pool_index());
+	}
 	return handle;
 }
 

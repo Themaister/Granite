@@ -552,6 +552,8 @@ VkResult Context::create_device_from_profile(const VkDeviceCreateInfo &info, VkD
 #endif
 }
 
+#define SIMULATE_OLD_ANDROID 0
+
 VkApplicationInfo Context::get_promoted_application_info() const
 {
 	auto *inherit_info = instance_factory ? instance_factory->get_existing_create_info() : nullptr;
@@ -561,11 +563,14 @@ VkApplicationInfo Context::get_promoted_application_info() const
 	uint32_t supported_instance_version =
 			inherit_info ? inherit_info->pApplicationInfo->apiVersion : volkGetInstanceVersion();
 
+#if SIMULATE_OLD_ANDROID
+	supported_instance_version = VK_API_VERSION_1_1;
+#endif
+
 	// Granite min-req is 1.1.
 	app_info.apiVersion = std::max(VK_API_VERSION_1_1, app_info.apiVersion);
 
-	// Target Vulkan 1.4 if available,
-	// but the tooling ecosystem isn't quite ready for this yet, so stick to 1.3 for the time being.
+	// Target Vulkan 1.4 if available.
 	app_info.apiVersion = std::max(app_info.apiVersion, std::min(VK_API_VERSION_1_4, supported_instance_version));
 
 	return app_info;
@@ -1572,7 +1577,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	};
 
 #define ADD_CHAIN(s, type) add_chain(&(s), sizeof(s), VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ ## type, inherit_info)
-
 	if (ext.supports_video_encode_av1)
 		ADD_CHAIN(ext.av1_features, VIDEO_ENCODE_AV1_FEATURES_KHR);
 
@@ -1613,6 +1617,30 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			ADD_CHAIN(ext.storage_8bit_features, 8BIT_STORAGE_FEATURES_KHR);
 			enabled_extensions.push_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
 		}
+
+		if (has_extension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
+		{
+			ADD_CHAIN(ext.descriptor_indexing_features, DESCRIPTOR_INDEXING_FEATURES);
+			enabled_extensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+		}
+
+		if (has_extension(VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME))
+		{
+			ADD_CHAIN(ext.scalar_block_layout_features, SCALAR_BLOCK_LAYOUT_FEATURES);
+			enabled_extensions.push_back(VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME);
+		}
+
+		if (has_extension(VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME))
+			enabled_extensions.push_back(VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME);
+
+		if (has_extension(VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME))
+			enabled_extensions.push_back(VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME);
+
+		if (has_extension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME))
+		{
+			ADD_CHAIN(ext.buffer_device_address_features, BUFFER_DEVICE_ADDRESS_FEATURES);
+			enabled_extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+		}
 	}
 
 	if (ext.device_api_core_version >= VK_API_VERSION_1_3)
@@ -1627,16 +1655,19 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			enabled_extensions.push_back(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
 		}
 
+		if (has_extension(VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME))
+		{
+			ADD_CHAIN(ext.shader_demote_features, SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES);
+			enabled_extensions.push_back(VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME);
+		}
+
+#if !SIMULATE_OLD_ANDROID
 		if (has_extension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME))
 		{
 			ADD_CHAIN(ext.sync2_features, SYNCHRONIZATION_2_FEATURES_KHR);
 			enabled_extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
 		}
-		else
-		{
-			LOGE("KHR_synchronization2 is not supported. This is a hard requirement for Granite.\n");
-			return false;
-		}
+#endif
 	}
 
 	bool supports_khr_push_descriptor = false;
@@ -1659,7 +1690,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			ADD_CHAIN(ext.index_type_uint8_features, INDEX_TYPE_UINT8_FEATURES_EXT);
 		}
 
-		if (has_extension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME))
+		// Requires dynamic rendering. Only relevant on newer drivers anyway.
+		if (ext.device_api_core_version >= VK_API_VERSION_1_3 && has_extension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME))
 		{
 			enabled_extensions.push_back(VK_KHR_MAINTENANCE_5_EXTENSION_NAME);
 			ADD_CHAIN(ext.maintenance5_features, MAINTENANCE_5_FEATURES_KHR);
@@ -1703,7 +1735,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.pageable_device_local_memory_features, PAGEABLE_DEVICE_LOCAL_MEMORY_FEATURES_EXT);
 	}
 
-	if (has_extension(VK_EXT_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME))
+	if (ext.device_api_core_version >= VK_API_VERSION_1_3 &&
+	    has_extension(VK_EXT_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_EXT_DEVICE_GENERATED_COMMANDS_EXTENSION_NAME);
 		ADD_CHAIN(ext.device_generated_commands_features, DEVICE_GENERATED_COMMANDS_FEATURES_EXT);
@@ -1715,7 +1748,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.descriptor_pool_overallocation_features, DESCRIPTOR_POOL_OVERALLOCATION_FEATURES_NV);
 	}
 
-	if (has_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
+	// We don't deal with mesh shader stages in sync2 emulation.
+	// No ancient drivers support mesh shaders anyway.
+	if (ext.device_api_core_version >= VK_API_VERSION_1_3 && has_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
 		ADD_CHAIN(ext.mesh_shader_features, MESH_SHADER_FEATURES_EXT);
@@ -1770,7 +1805,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.anti_lag_features, ANTI_LAG_FEATURES_AMD);
 	}
 
-	if (has_extension(VK_KHR_RAY_QUERY_EXTENSION_NAME))
+	if (ext.device_api_core_version >= VK_API_VERSION_1_3 && has_extension(VK_KHR_RAY_QUERY_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
 		enabled_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
@@ -1809,7 +1844,11 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	}
 
 #if !defined(VULKAN_DEBUG)
-	if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT) != 0 &&
+	// Only allow descriptor buffer/heap with sync2 so we don't have to mess around with layout workarounds
+	// more than we need to. There is no driver out there that supports only sync1 but supports DB/heap.
+	// Not even sure it's possible ...
+	if (ext.device_api_core_version >= VK_API_VERSION_1_3 &&
+        (flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT) != 0 &&
 	    has_extension(VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME))
 	{
 		ADD_CHAIN(ext.descriptor_heap_features, DESCRIPTOR_HEAP_FEATURES_EXT);
@@ -1817,7 +1856,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ADD_CHAIN(ext.untyped_pointers_features, SHADER_UNTYPED_POINTERS_FEATURES_KHR);
 		enabled_extensions.push_back(VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME);
 	}
-	else if ((flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
+	else if (ext.device_api_core_version >= VK_API_VERSION_1_3 &&
+            (flags & CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT) != 0 &&
 	         has_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
 	{
 		ADD_CHAIN(ext.descriptor_buffer_features, DESCRIPTOR_BUFFER_FEATURES_EXT);
@@ -1971,6 +2011,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ext.vk11_features.storagePushConstant16 = VK_TRUE;
 	if (ext.storage_16bit_features.uniformAndStorageBuffer16BitAccess)
 		ext.vk11_features.uniformAndStorageBuffer16BitAccess = VK_TRUE;
+	if (has_extension(VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME))
+		ext.vk11_features.shaderDrawParameters = VK_TRUE;
 
 	if (ext.storage_8bit_features.storageBuffer8BitAccess)
 		ext.vk12_features.storageBuffer8BitAccess = VK_TRUE;
@@ -1978,11 +2020,27 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ext.vk12_features.storagePushConstant8 = VK_TRUE;
 	if (ext.storage_8bit_features.uniformAndStorageBuffer8BitAccess)
 		ext.vk12_features.uniformAndStorageBuffer8BitAccess = VK_TRUE;
+	if (has_extension(VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME))
+		ext.vk12_features.drawIndirectCount = VK_TRUE;
 
 	if (ext.float16_int8_features.shaderFloat16)
 		ext.vk12_features.shaderFloat16 = VK_TRUE;
 	if (ext.float16_int8_features.shaderInt8)
 		ext.vk12_features.shaderInt8 = VK_TRUE;
+
+	if (ext.descriptor_indexing_features.descriptorBindingPartiallyBound &&
+		ext.descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind &&
+		ext.descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending &&
+		ext.descriptor_indexing_features.runtimeDescriptorArray)
+	{
+		// This is the only field we actually care about.
+		ext.vk12_features.descriptorIndexing = VK_TRUE;
+	}
+
+	if (ext.scalar_block_layout_features.scalarBlockLayout)
+		ext.vk12_features.scalarBlockLayout = VK_TRUE;
+	if (ext.buffer_device_address_features.bufferDeviceAddress)
+		ext.vk12_features.bufferDeviceAddress = VK_TRUE;
 
 	if (ext.subgroup_size_control_features.computeFullSubgroups)
 		ext.vk13_features.computeFullSubgroups = VK_TRUE;
@@ -1991,6 +2049,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	if (ext.sync2_features.synchronization2)
 		ext.vk13_features.synchronization2 = VK_TRUE;
+
+	if (ext.shader_demote_features.shaderDemoteToHelperInvocation)
+		ext.vk13_features.shaderDemoteToHelperInvocation = VK_TRUE;
 
 	if (ext.maintenance5_features.maintenance5)
 		ext.vk14_features.maintenance5 = VK_TRUE;
@@ -2008,6 +2069,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 
 	ext.vk12_features.bufferDeviceAddressCaptureReplay = VK_FALSE;
 	ext.vk12_features.bufferDeviceAddressMultiDevice = VK_FALSE;
+	ext.buffer_device_address_features.bufferDeviceAddressCaptureReplay = VK_FALSE;
+	ext.buffer_device_address_features.bufferDeviceAddressMultiDevice = VK_FALSE;
 	ext.vk12_features.imagelessFramebuffer = VK_FALSE;
 
 	ext.vk13_features.descriptorBindingInlineUniformBlockUpdateAfterBind = VK_FALSE;
@@ -2361,6 +2424,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	PROMOTE_CALL(CmdWaitEvents2, KHR);
 	PROMOTE_CALL(ResetQueryPool, EXT);
 	PROMOTE_CALL(CmdPushDescriptorSetWithTemplate, KHR);
+	PROMOTE_CALL(CmdDrawIndirectCount, KHR);
+	PROMOTE_CALL(CmdDrawIndexedIndirectCount, KHR);
+	PROMOTE_CALL(GetBufferDeviceAddress, KHR);
 #undef PROMOTE_CALL
 
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)

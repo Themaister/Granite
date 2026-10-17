@@ -528,7 +528,7 @@ void PipelineLayout::init_legacy(const ImmutableSamplerBank *immutable_samplers)
 	device->register_pipeline_layout(pipe_layout, get_hash(), info);
 #endif
 
-	if (!device->get_device_features().descriptor_buffer_features.descriptorBuffer)
+	if (!device->get_device_features().supports_descriptor_buffer)
 		create_update_templates();
 }
 

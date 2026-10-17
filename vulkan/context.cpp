@@ -1641,6 +1641,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 			ADD_CHAIN(ext.buffer_device_address_features, BUFFER_DEVICE_ADDRESS_FEATURES);
 			enabled_extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
 		}
+
+		if (has_extension(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME))
+		{
+			ADD_CHAIN(ext.sampler_ycbcr_conversion_features, SAMPLER_YCBCR_CONVERSION_FEATURES);
+			enabled_extensions.push_back(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME);
+		}
 	}
 
 	if (ext.device_api_core_version >= VK_API_VERSION_1_3)
@@ -2013,6 +2019,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 		ext.vk11_features.uniformAndStorageBuffer16BitAccess = VK_TRUE;
 	if (has_extension(VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME))
 		ext.vk11_features.shaderDrawParameters = VK_TRUE;
+	if (ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+		ext.vk11_features.samplerYcbcrConversion = VK_TRUE;
 
 	if (ext.storage_8bit_features.storageBuffer8BitAccess)
 		ext.vk12_features.storageBuffer8BitAccess = VK_TRUE;
@@ -2427,6 +2435,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface,
 	PROMOTE_CALL(CmdDrawIndirectCount, KHR);
 	PROMOTE_CALL(CmdDrawIndexedIndirectCount, KHR);
 	PROMOTE_CALL(GetBufferDeviceAddress, KHR);
+	PROMOTE_CALL(CreateSamplerYcbcrConversion, KHR);
+	PROMOTE_CALL(DestroySamplerYcbcrConversion, KHR);
 #undef PROMOTE_CALL
 
 	for (int i = 0; i < QUEUE_INDEX_COUNT; i++)

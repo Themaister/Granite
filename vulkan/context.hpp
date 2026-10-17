@@ -147,6 +147,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceScalarBlockLayoutFeatures scalar_block_layout_features = {};
 	VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures shader_demote_features = {};
 	VkPhysicalDeviceBufferDeviceAddressFeatures buffer_device_address_features = {};
+	VkPhysicalDeviceSamplerYcbcrConversionFeatures sampler_ycbcr_conversion_features = {};
 
 	// Vendor
 	VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV descriptor_pool_overallocation_features = {};

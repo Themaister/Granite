@@ -1442,7 +1442,7 @@ bool DescriptorBufferAllocator::create_image_view(const VkImageViewCreateInfo &i
 			copy_storage_image(resource_heap.mapped + view.input_attachment_feedback.heap_index * desc_size, view.input_attachment_feedback.ptr);
 		}
 	}
-	else if (device->get_device_features().descriptor_buffer_features.descriptorBuffer &&
+	else if (device->get_device_features().supports_descriptor_buffer &&
 	         need_image_view_object)
 	{
 		VkDescriptorImageInfo image_info = {};

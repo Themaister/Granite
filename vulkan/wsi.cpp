@@ -1572,7 +1572,7 @@ bool WSI::begin_frame()
 		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
 		device->register_time_interval("WSI", std::move(acquire_ts), device->write_calibrated_timestamp(), "acquire");
 
-		if (fence)
+		if (fence && (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR))
 			fence->wait();
 
 #if defined(ANDROID)
@@ -1843,7 +1843,7 @@ bool WSI::end_frame()
 		// The presentID only seems to get updated if QueuePresent returns success.
 		// This makes sense I guess. Record the latest present ID which was successfully presented
 		// so we don't risk deadlock.
-		if ((result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) &&
+		if (overall >= 0 && (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) &&
 		    (device->get_device_features().present_id_features.presentId || supports_present_wait2) &&
 		    !dupes_frame)
 		{
@@ -1883,10 +1883,18 @@ bool WSI::end_frame()
 
 		if (overall < 0 || result < 0)
 		{
-			LOGE("vkQueuePresentKHR failed.\n");
+			const auto recoverable = [](VkResult status) {
+				return status >= 0 || status == VK_ERROR_OUT_OF_DATE_KHR ||
+				       status == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT;
+			};
+			const bool recreate = recoverable(overall) && recoverable(result);
+			if (recreate)
+				LOGI("Presentation invalidated the swapchain; recreating next frame.\n");
+			else
+				LOGE("vkQueuePresentKHR failed.\n");
 			release.reset();
 			tear_down_swapchain();
-			return false;
+			return recreate;
 		}
 		else
 		{

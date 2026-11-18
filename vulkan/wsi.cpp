@@ -505,7 +505,8 @@ void WSI::drain_swapchain(bool in_tear_down)
 	device->set_acquire_semaphore(0, Semaphore{});
 	device->consume_release_semaphore();
 
-	if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
+	if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1 &&
+	    !device->get_workarounds().broken_present_fence)
 	{
 		// If we're just resizing, there's no need to block, defer deletions for later.
 		if (in_tear_down)
@@ -530,7 +531,8 @@ void WSI::drain_swapchain(bool in_tear_down)
 	}
 	else if (swapchain != VK_NULL_HANDLE)
 	{
-		wait_for_present(present_last_id);
+		if (present_last_id)
+			wait_for_present(present_last_id);
 
 		device->external_queue_lock();
 		table->vkDeviceWaitIdle(device->get_device());

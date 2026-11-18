@@ -2432,10 +2432,10 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		present_mode_caps.presentModeCount = present_mode_compat_group.size();
 		present_mode_caps.pPresentModes = present_mode_compat_group.data();
 
-		info.present_mode.pNext = const_cast<void *>(info.surface_info.pNext);
-		info.surface_info.pNext = &info.present_mode;
 		info.present_mode = { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_KHR };
+		info.present_mode.pNext = const_cast<void *>(info.surface_info.pNext);
 		info.present_mode.presentMode = swapchain_present_mode;
+		info.surface_info.pNext = &info.present_mode;
 
 		surface_capabilities2.pNext = &present_mode_caps;
 		if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
@@ -2461,8 +2461,11 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 				continue;
 			}
 
-			info.present_mode.presentMode = mode;
-			if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
+			auto alternate_mode = info.present_mode;
+			alternate_mode.presentMode = mode;
+			auto alternate_query = info.surface_info;
+			alternate_query.pNext = &alternate_mode;
+			if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &alternate_query, &surface_capabilities2) != VK_SUCCESS)
 				return false;
 
 			// Accept the present mode if it does not modify minImageCount.
@@ -2851,7 +2854,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	present_mode_compat_group = std::move(surface_info.present_mode_compat_group);
 
 #ifdef _WIN32
-	if (surface_info.exclusive_info.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT)
+	if (res == VK_SUCCESS && surface_info.exclusive_info.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT)
 	{
 		bool success = vkAcquireFullScreenExclusiveModeEXT(context->get_device(), swapchain) == VK_SUCCESS;
 		if (success)

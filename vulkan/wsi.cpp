@@ -505,7 +505,8 @@ void WSI::drain_swapchain(bool in_tear_down)
 	device->set_acquire_semaphore(0, Semaphore{});
 	device->consume_release_semaphore();
 
-	if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1)
+	if (device->get_device_features().swapchain_maintenance1_features.swapchainMaintenance1 &&
+	    !device->get_workarounds().broken_present_fence)
 	{
 		// If we're just resizing, there's no need to block, defer deletions for later.
 		if (in_tear_down)
@@ -530,7 +531,8 @@ void WSI::drain_swapchain(bool in_tear_down)
 	}
 	else if (swapchain != VK_NULL_HANDLE)
 	{
-		wait_for_present(present_last_id);
+		if (present_last_id)
+			wait_for_present(present_last_id);
 
 		device->external_queue_lock();
 		table->vkDeviceWaitIdle(device->get_device());
@@ -1570,7 +1572,7 @@ bool WSI::begin_frame()
 		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
 		device->register_time_interval("WSI", std::move(acquire_ts), device->write_calibrated_timestamp(), "acquire");
 
-		if (fence)
+		if (fence && (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR))
 			fence->wait();
 
 #if defined(ANDROID)
@@ -1841,7 +1843,7 @@ bool WSI::end_frame()
 		// The presentID only seems to get updated if QueuePresent returns success.
 		// This makes sense I guess. Record the latest present ID which was successfully presented
 		// so we don't risk deadlock.
-		if ((result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) &&
+		if (overall >= 0 && (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) &&
 		    (device->get_device_features().present_id_features.presentId || supports_present_wait2) &&
 		    !dupes_frame)
 		{
@@ -1881,10 +1883,18 @@ bool WSI::end_frame()
 
 		if (overall < 0 || result < 0)
 		{
-			LOGE("vkQueuePresentKHR failed.\n");
+			const auto recoverable = [](VkResult status) {
+				return status >= 0 || status == VK_ERROR_OUT_OF_DATE_KHR ||
+				       status == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT;
+			};
+			const bool recreate = recoverable(overall) && recoverable(result);
+			if (recreate)
+				LOGI("Presentation invalidated the swapchain; recreating next frame.\n");
+			else
+				LOGE("vkQueuePresentKHR failed.\n");
 			release.reset();
 			tear_down_swapchain();
-			return false;
+			return recreate;
 		}
 		else
 		{
@@ -2432,10 +2442,10 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 		present_mode_caps.presentModeCount = present_mode_compat_group.size();
 		present_mode_caps.pPresentModes = present_mode_compat_group.data();
 
-		info.present_mode.pNext = const_cast<void *>(info.surface_info.pNext);
-		info.surface_info.pNext = &info.present_mode;
 		info.present_mode = { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_KHR };
+		info.present_mode.pNext = const_cast<void *>(info.surface_info.pNext);
 		info.present_mode.presentMode = swapchain_present_mode;
+		info.surface_info.pNext = &info.present_mode;
 
 		surface_capabilities2.pNext = &present_mode_caps;
 		if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
@@ -2461,8 +2471,11 @@ static bool init_surface_info(Device &device, WSIPlatform &platform,
 				continue;
 			}
 
-			info.present_mode.presentMode = mode;
-			if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &info.surface_info, &surface_capabilities2) != VK_SUCCESS)
+			auto alternate_mode = info.present_mode;
+			alternate_mode.presentMode = mode;
+			auto alternate_query = info.surface_info;
+			alternate_query.pNext = &alternate_mode;
+			if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &alternate_query, &surface_capabilities2) != VK_SUCCESS)
 				return false;
 
 			// Accept the present mode if it does not modify minImageCount.
@@ -2851,7 +2864,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	present_mode_compat_group = std::move(surface_info.present_mode_compat_group);
 
 #ifdef _WIN32
-	if (surface_info.exclusive_info.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT)
+	if (res == VK_SUCCESS && surface_info.exclusive_info.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT)
 	{
 		bool success = vkAcquireFullScreenExclusiveModeEXT(context->get_device(), swapchain) == VK_SUCCESS;
 		if (success)
